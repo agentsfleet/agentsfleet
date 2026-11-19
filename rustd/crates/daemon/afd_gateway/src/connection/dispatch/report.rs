@@ -20,11 +20,11 @@ impl ConnectionServices {
         let result = self
             .operation(Operation::Report, async {
                 request.requests.validate()?;
-                let id = Uuid7::parse(&request.lease_id)?;
+                let id = Uuid7::parse(&request.run_id)?;
                 let received = self.gateway.inner.dependencies.wall_clock.now();
-                // A draft-owned lease's report carries its setup outcome.
+                // A draft-owned run's report carries its setup outcome.
                 if request.setup.is_some() {
-                    self.leases
+                    self.runs
                         .report_draft(&self.creations, &self.handle.runner, request, received)
                         .await?;
                     self.cache.forget(&id);
@@ -35,10 +35,10 @@ impl ConnectionServices {
                 }
                 let kept = self.cache.reported(&id);
                 let settled = self
-                    .leases
+                    .runs
                     .report_with(&self.handle.runner, request, received, kept, &mut clock)
                     .await?;
-                if let Err(error) = afd_fleet::lease::report::observe(
+                if let Err(error) = afd_fleet::run::report::observe(
                     &self.gateway.inner.dependencies.analytics,
                     &settled,
                     request,
@@ -57,7 +57,7 @@ impl ConnectionServices {
         let acknowledged = self
             .send(&Message::ReportAck {
                 request_id,
-                lease_id: request.lease_id.as_ref().into(),
+                run_id: request.run_id.as_ref().into(),
                 answer: answer(result),
             })
             .await;

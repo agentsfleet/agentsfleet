@@ -50,7 +50,7 @@ impl Admissions {
         let row: Option<FactsRow> = sqlx::query_as(sql::RUN_FACTS)
             .bind(fleet)
             .bind(admission)
-            .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
+            .bind(afd_state::sql::RUN_STATUS_ACTIVE)
             .bind(Producer::Steer.as_str())
             .bind(person.machine_actor)
             .bind(person.actor_pattern)

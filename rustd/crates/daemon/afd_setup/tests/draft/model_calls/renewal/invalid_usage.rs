@@ -1,4 +1,4 @@
-//! Refused renewal cannot change the durable lease or its observed runtime.
+//! Refused renewal cannot change the durable run or its observed runtime.
 
 use super::super::fixture::{self, Provider};
 use super::{Attempt, Fixture, request, snapshot};
@@ -17,7 +17,7 @@ async fn a_runner_cannot_renew_using_calls_absent_from_daemon_receipts() {
     forged.usage.calls = 1;
     let error = f
         .drafts
-        .renew(&f.runner, &a.lease, forged)
+        .renew(&f.runner, &a.run, forged)
         .await
         .expect_err("unreceipted usage refused");
     assert_eq!(error.code(), error_code::INVALID_REQUEST);
@@ -40,7 +40,7 @@ async fn an_exhausted_saved_allowance_cannot_commit_a_failed_renewal() {
     let before = snapshot(&f, &a).await;
     let error = f
         .drafts
-        .renew(&f.runner, &a.lease, request())
+        .renew(&f.runner, &a.run, request())
         .await
         .expect_err("negative remaining allowance refused");
     assert_eq!(error.code(), error_code::AUTHORING_TOKEN);

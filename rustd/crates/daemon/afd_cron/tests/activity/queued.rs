@@ -1,4 +1,4 @@
-//! Queued fires reload before leasing and promote under their original identity.
+//! Queued fires reload before running and promote under their original identity.
 
 use af_core::event::status;
 use af_core::id::Uuid7;
@@ -16,7 +16,7 @@ const DELIVER: &str = "WITH landed AS (INSERT INTO fleet.events \
 
 // Value: protects=one accepted fire is readable offline and remains one row after delivery;
 // fails_when=queued history excludes schedule_fire or retry rewrites its first payload;
-// seam=atomic SQL seeds the reachable delivered state; no_claim=signatures or native lease execution.
+// seam=atomic SQL seeds the reachable delivered state; no_claim=signatures or native run execution.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion() {

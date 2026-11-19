@@ -166,12 +166,12 @@ async fn finish_request(
     let runner = mint();
     case.base.own_runner(&runner);
     let token = format!("agt_r{}{}", mint(), mint()).replace('-', "");
-    let lease = mint();
+    let run = mint();
     let digest = Digest::of(&Presented::new(&token).expect("fixture runner token"));
     attempt::seed(
         &case.base,
         &runner,
-        &lease,
+        &run,
         &crate::authoring::id_field(&draft["id"]),
         digest.as_str(),
     )
@@ -180,7 +180,7 @@ async fn finish_request(
         "usage":{"knowledge":"known","calls":0,"input_tokens":0,"output_tokens":0,
             "runtime_ms":0,"provider_cost_nanos":"0"},"answer":"Prepared."});
     (
-        crate::harness::native::Operation::Report(lease),
+        crate::harness::native::Operation::Report(run),
         token,
         report,
     )

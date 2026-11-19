@@ -7,14 +7,14 @@
 //!
 //! # Why a type rather than a log line
 //!
-//! A lease path that answers `Option<T>` and logs on the way past cannot tell
+//! A run path that answers `Option<T>` and logs on the way past cannot tell
 //! a transient Postgres blip from an idle fleet: both reach the caller as the
 //! same value, and the only thing that knows the difference is a log line
 //! nobody reads at request time.
 //!
 //! That is RULE ECL's failure exactly, and it is not fixed by adding a log. It
 //! is fixed by making the difference a TYPE the caller has to handle, which is
-//! what this file is for. The lease verb still answers no-work-with-backoff on
+//! what this file is for. The run verb still answers no-work-with-backoff on
 //! a transient failure, but it does so at ONE place that says so, instead of
 //! at every catch site deciding it privately.
 
@@ -35,11 +35,10 @@ mod tests;
 pub use self::detail::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
-    DETAIL_HOST_ID_BOUNDS, DETAIL_LEASE_CANCELLED, DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME,
-    DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT, DETAIL_MESSAGE_NO_CHANNEL,
+    DETAIL_HOST_ID_BOUNDS, DETAIL_MESSAGE_LIMIT, DETAIL_MESSAGE_NO_CHANNEL,
     DETAIL_PROVIDER_UNRESOLVED, DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST,
-    DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE,
-    DETAIL_VAULT_DATA_INVALID,
+    DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_CANCELLED, DETAIL_RUN_LOST, DETAIL_RUN_MAX_RUNTIME,
+    DETAIL_RUN_NOT_FOUND, DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
 };
 // The mint family's sentences, listed apart from the block above because they
 // are read together: every one is a refusal the credential mint path answers.
@@ -52,9 +51,9 @@ pub use self::detail::{
 /// names the file the cap moved them into.
 pub(crate) use self::refuse::{
     budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
-    github_reconnect_required, grant_required, integration_not_connected, lease_cancelled,
-    lease_lost, lease_max_runtime, lease_not_found, message_limit_reached, message_no_channel,
-    mint_unconfigured, renewal_no_credits, stale_fence, task_target_counter, wire_lease,
+    github_reconnect_required, grant_required, integration_not_connected, message_limit_reached,
+    message_no_channel, mint_unconfigured, renewal_no_credits, run_cancelled, run_lost,
+    run_max_runtime, run_not_found, stale_fence, task_target_counter, wire_run,
 };
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.
@@ -84,7 +83,7 @@ af_core::error_shell!(
 
 /// The refusals a suite outside this crate needs to CONSTRUCT.
 ///
-/// M-TEST-UTIL. The router suites stub the lease plane, and a stub for the mint
+/// M-TEST-UTIL. The router suites stub the run plane, and a stub for the mint
 /// verb has no honest success to answer with — it holds no vault row, no grant
 /// and no vendor — so it answers the refusal a deployment with no platform
 /// credentials gives. Every other constructor stays `pub(crate)`: this is a
@@ -98,11 +97,11 @@ impl Error {
         mint_unconfigured()
     }
 
-    /// The refusal a lease this runner does not hold answers: what a stub
-    /// plane with no lease rows says to every lease-addressed verb.
+    /// The refusal a run this runner does not hold answers: what a stub
+    /// plane with no run rows says to every run-addressed verb.
     #[must_use]
-    pub fn lease_not_found() -> Self {
-        lease_not_found()
+    pub fn run_not_found() -> Self {
+        run_not_found()
     }
 
     /// The refusal an uninstalled or revoked GitHub App answers a mint with:
@@ -112,8 +111,8 @@ impl Error {
         github_reconnect_required()
     }
 
-    /// The refusal a fenced verb answers a superseded lease, or a token not
-    /// the lease's own, with: the memory routes render it as a conflict.
+    /// The refusal a fenced verb answers a superseded run, or a token not
+    /// the run's own, with: the memory routes render it as a conflict.
     #[must_use]
     pub fn stale_fence() -> Self {
         stale_fence()

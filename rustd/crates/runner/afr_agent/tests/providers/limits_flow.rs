@@ -12,7 +12,7 @@ use afr_tools::{
 use serde_json::json;
 
 use super::support::{
-    Fake, Reply, engine_hosting, lease, run_with,
+    Fake, Reply, engine_hosting, payload, run_with,
     wires::{self, Wire},
 };
 
@@ -22,7 +22,7 @@ const OPERATING: u32 = 8192;
 /// (7,373) and two reads (18,000) pass the larger cap's (14,400), while one
 /// read stays under it.
 const LINES: usize = 1800;
-/// The lease's model, which `tiktoken-rs` does not know.
+/// The run's model, which `tiktoken-rs` does not know.
 const MODEL: &str = "model-1";
 
 /// What the runtime estimates a sent body at.
@@ -35,21 +35,17 @@ const SHOT: &str = "shot.png";
 const FRESH_SIGNATURE: &str = "fresh-prefix-signature";
 const OLD_SIGNATURE: &str = "old-prefix-signature";
 
-fn configured_lease(
-    fake: &Fake,
-    tools: &[&str],
-    message: &str,
-) -> af_wire::lease::LeasePayload<'static> {
-    let mut leased = lease(&Wire::Messages.provider(), tools, message);
-    leased.policy.inference = Some(af_wire::inference::ModelInference {
+fn configured_run(fake: &Fake, tools: &[&str], message: &str) -> af_wire::run::RunPayload<'static> {
+    let mut held = payload(&Wire::Messages.provider(), tools, message);
+    held.policy.inference = Some(af_wire::inference::ModelInference {
         api: af_wire::inference::InferenceApi::Messages,
         base_url: format!("{}/v1", fake.base),
         dialect: None,
         max_output_tokens: 4096,
     });
-    leased.policy.model_context_tokens = PHYSICAL;
-    leased.policy.context.context_cap_tokens = OPERATING;
-    leased
+    held.policy.model_context_tokens = PHYSICAL;
+    held.policy.context.context_cap_tokens = OPERATING;
+    held
 }
 
 async fn workspace() -> (tempfile::TempDir, afr_executor::Client, String) {
@@ -103,11 +99,11 @@ async fn a_tool_result_past_the_operating_cap_is_compacted_before_tools_continue
         wire.answer("Final answer"),
     ])
     .await;
-    let leased = configured_lease(&fake, &[FILE_READ.name()], "Read context.txt, then answer.");
+    let held = configured_run(&fake, &[FILE_READ.name()], "Read context.txt, then answer.");
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = engine_hosting(&fake, Catalog::hosted(Arc::new(transport)));
 
-    let (output, _frames) = run_with(&engine, &leased, Some(&client)).await;
+    let (output, _frames) = run_with(&engine, &held, Some(&client)).await;
 
     assert!(
         matches!(output.result.outcome, ResultOutcome::Completed(_)),
@@ -169,7 +165,7 @@ async fn fresh_images_and_signed_tool_turns_survive_after_compaction() {
         wire.answer("Screenshot inspected"),
     ])
     .await;
-    let leased = configured_lease(
+    let held = configured_run(
         &fake,
         &[FILE_READ.name(), IMAGE.name()],
         "Read context.txt, then inspect shot.png.",
@@ -177,7 +173,7 @@ async fn fresh_images_and_signed_tool_turns_survive_after_compaction() {
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = engine_hosting(&fake, Catalog::hosted(Arc::new(transport)));
 
-    let (output, _frames) = run_with(&engine, &leased, Some(&client)).await;
+    let (output, _frames) = run_with(&engine, &held, Some(&client)).await;
 
     assert_eq!(
         output.result.content, "Screenshot inspected",
@@ -233,12 +229,12 @@ async fn compaction_clears_old_signed_replay_but_keeps_the_retained_tool_exchang
     ])
     .await;
     let prompt = "Read context.txt twice, then inspect shot.png.";
-    let mut leased = configured_lease(&fake, &[read, image], prompt);
-    leased.policy.context.context_cap_tokens = 16_000;
+    let mut held = configured_run(&fake, &[read, image], prompt);
+    held.policy.context.context_cap_tokens = 16_000;
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = engine_hosting(&fake, Catalog::hosted(Arc::new(transport)));
 
-    let (output, _frames) = run_with(&engine, &leased, Some(&client)).await;
+    let (output, _frames) = run_with(&engine, &held, Some(&client)).await;
 
     assert_eq!(output.result.content, "Screenshot inspected");
     let seen = fake.seen();

@@ -81,7 +81,7 @@ async fn superseded_schedule_sync_emits_no_successful_activity() {
     let lane = CronLane::open().await;
     let old = CronLane::token();
     let created = create(&lane, &old).await;
-    lane.expire_lease(&created.schedule_id).await;
+    lane.expire_run(&created.schedule_id).await;
     let current = CronLane::token();
     let held = lane
         .store
@@ -124,9 +124,9 @@ async fn superseded_schedule_sync_emits_no_successful_activity() {
     no_work(&lane).await;
 }
 
-// Value: protects=foreign ownership and lost lease authority refuse state and history together;
+// Value: protects=foreign ownership and lost run authority refuse state and history together;
 // fails_when=receipt insertion precedes the proven owner/guard;
-// seam=fixed native Precondition verdict; no_claim=the runner's actual lease guard.
+// seam=fixed native Precondition verdict; no_claim=the runner's actual run guard.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn refused_schedule_changes_leave_history_and_state_unchanged() {

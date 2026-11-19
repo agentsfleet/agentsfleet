@@ -57,7 +57,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry() {
+async fn closed_retention_waits_for_a_live_authoring_run_then_purges_at_expiry() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
@@ -68,13 +68,13 @@ async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry
     f.drafts
         .maintain()
         .await
-        .expect("live lease blocks physical purge");
+        .expect("live run blocks physical purge");
     assert_eq!(f.counts().await, (1, 0, 1));
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
-        .expect("lease expires");
+        .expect("run expires");
     f.drafts
         .maintain()
         .await

@@ -21,39 +21,39 @@ use crate::{
 async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
-        let run = scenario(&mut supervisor).await;
-        let mut native = Native::connect(&run, transport).await;
+        let scene = scenario(&mut supervisor).await;
+        let mut native = Native::connect(&scene, transport).await;
         native.heartbeat().await;
         native.ready().await;
         let offer = native.expect(StreamKind::Work, "offer").await;
-        let (lease, _) = wire::claim(offer.pointer("/lease").expect("native response field"));
+        let (run, _) = wire::claim(offer.pointer("/run").expect("native response field"));
         // The renewal takes no host lock; it waits on its fleet's slot.
-        let (host, blocker) = hold_slot(&run, &lease).await;
+        let (host, blocker) = hold_slot(&scene, &run).await;
         native
             .send(
                 StreamKind::Control,
                 &json!({
                     "type":"renew_batch", "request_id":4,
-                    "leases":[{"lease_id":lease,"request":{"requests":[]}}]
+                    "runs":[{"run_id":run,"request":{"requests":[]}}]
                 }),
             )
             .await;
-        wait_for_slot_wait(&run, blocker).await;
-        let drain = run.booted.drain.clone();
+        wait_for_slot_wait(&scene, blocker).await;
+        let drain = scene.booted.drain.clone();
         let settled = tokio::spawn(async move { drain.settle(DRAIN_TIMEOUT).await });
-        run.booted.drain.accepting().cancelled().await;
+        scene.booted.drain.accepting().cancelled().await;
         host.commit()
             .await
             .expect("release accepted renewal during drain");
         let renewed = native.expect(StreamKind::Control, "renewed").await;
         assert_eq!((*crate::wire::pointer(&renewed, "/request_id")), 4);
         assert_eq!(
-            (*crate::wire::pointer(&renewed, "/leases/0/answer/status")),
+            (*crate::wire::pointer(&renewed, "/runs/0/answer/status")),
             "ok"
         );
         assert!(
             renewed
-                .pointer("/leases/0/answer/response/recorded_through")
+                .pointer("/runs/0/answer/response/recorded_through")
                 .is_none()
         );
         let away = native.expect(StreamKind::Control, "go_away").await;
@@ -66,13 +66,14 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
         let drained = settled.await.expect("drain task joins");
         assert!(drained.is_clean(), "native drain: {drained:?}");
         supervisor.shutdown().await;
-        run.cleanup().await;
+        scene.cleanup().await;
     }
 }
 
-async fn hold_slot(run: &Scenario, lease: &str) -> (Transaction<'static, Postgres>, i32) {
+async fn hold_slot(scene: &Scenario, run: &str) -> (Transaction<'static, Postgres>, i32) {
     let mut host = Transaction::begin(
-        run.booted
+        scene
+            .booted
             .database
             .acquire()
             .await
@@ -85,26 +86,33 @@ async fn hold_slot(run: &Scenario, lease: &str) -> (Transaction<'static, Postgre
         .fetch_one(&mut *host)
         .await
         .expect("owned blocker identity");
-    let lease = af_core::id::Uuid7::parse(lease).expect("the offer names a lease");
+    let run = af_core::id::Uuid7::parse(run).expect("the offer names a run");
     let _held: af_core::id::Uuid7 = sqlx::query_scalar(
-        "SELECT s.fleet_id FROM runner.slots s JOIN runner.leases l ON l.fleet_id = s.fleet_id \
+        "SELECT s.fleet_id FROM runner.slots s JOIN runner.runs l ON l.fleet_id = s.fleet_id \
          WHERE l.id = $1 FOR UPDATE OF s",
     )
-    .bind(&lease)
+    .bind(&run)
     .fetch_one(&mut *host)
     .await
-    .expect("hold the lease's slot");
+    .expect("hold the run's slot");
     (host, blocker)
 }
 
-async fn wait_for_slot_wait(run: &Scenario, blocker: i32) {
+async fn wait_for_slot_wait(scene: &Scenario, blocker: i32) {
     tokio::time::timeout(STREAM_ANSWER_TIMEOUT, async {
         loop {
             let waiting: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))",
             )
             .bind(blocker)
-            .fetch_one(&mut *run.booted.database.acquire().await.expect("lock observer"))
+            .fetch_one(
+                &mut *scene
+                    .booted
+                    .database
+                    .acquire()
+                    .await
+                    .expect("lock observer"),
+            )
             .await
             .expect("observe this host's real wait");
             if waiting {

@@ -33,7 +33,7 @@ async fn manifest(case: &Case) {
     );
     request.entry_count = 3;
     let plan = tasks
-        .plan_checkpoint(case.lease(), &valid(request))
+        .plan_checkpoint(case.run(), &valid(request))
         .await
         .expect("plan");
     let manifest = Manifest {
@@ -58,7 +58,7 @@ struct Manifest<'a> {
 impl Manifest<'_> {
     fn page_input(&self, contents: CheckpointPage) -> CheckpointPageInput {
         CheckpointPageInput {
-            fencing_token: self.case.lease().fencing_token,
+            fencing_token: self.case.run().fencing_token,
             task: self.task.clone(),
             pin_id: self.plan.pin.id.clone(),
             digest: sha256_hex(&serde_json::to_vec(&contents).expect("page JSON")),
@@ -76,7 +76,7 @@ impl Manifest<'_> {
         for contents in invalid {
             let failure = tasks
                 .write_checkpoint_page(
-                    case.lease(),
+                    case.run(),
                     &checkpoint,
                     &page_id,
                     &valid(page_input(contents)),
@@ -98,13 +98,13 @@ impl Manifest<'_> {
         let mut mismatch = good.clone();
         mismatch.digest = "f".repeat(64);
         let failure = tasks
-            .write_checkpoint_page(case.lease(), &checkpoint, &page_id, &valid(mismatch))
+            .write_checkpoint_page(case.run(), &checkpoint, &page_id, &valid(mismatch))
             .await
             .expect_err("bytes must match digest");
         assert_eq!(failure.code(), error_code::TASK_CHECKPOINT_INCOMPATIBLE);
         let failure = tasks
             .write_checkpoint_page(
-                case.lease(),
+                case.run(),
                 &checkpoint,
                 &afd_db::test_util::mint_id(),
                 &valid(good.clone()),
@@ -124,7 +124,7 @@ impl Manifest<'_> {
         let contents = good.contents.clone();
         for _ in 0..2 {
             let saved = tasks
-                .write_checkpoint_page(case.lease(), &checkpoint, &page_id, &valid(good.clone()))
+                .write_checkpoint_page(case.run(), &checkpoint, &page_id, &valid(good.clone()))
                 .await
                 .expect("exact page write/replay");
             assert_eq!(
@@ -134,7 +134,7 @@ impl Manifest<'_> {
         }
         let failure = tasks
             .write_checkpoint_page(
-                case.lease(),
+                case.run(),
                 &checkpoint,
                 &page_id,
                 &valid(page_input(page(vec![]))),
@@ -152,7 +152,7 @@ impl Manifest<'_> {
         let checkpoint = id(&plan.checkpoint_id);
         let task = self.task;
         let commit = CheckpointCommitInput {
-            fencing_token: case.lease().fencing_token,
+            fencing_token: case.run().fencing_token,
             task: task.clone(),
             pin_id: plan.pin.id.clone(),
             manifest_root: checkpoint_digest::manifest_root([(
@@ -166,12 +166,12 @@ impl Manifest<'_> {
         let mut wrong = commit.clone();
         wrong.manifest_root = "e".repeat(64);
         let failure = tasks
-            .commit_checkpoint(case.lease(), &checkpoint, &valid(wrong.clone()))
+            .commit_checkpoint(case.run(), &checkpoint, &valid(wrong.clone()))
             .await
             .expect_err("root binds exact pages");
         assert_eq!(failure.code(), error_code::TASK_CHECKPOINT_INCOMPATIBLE);
         let saved = tasks
-            .commit_checkpoint(case.lease(), &checkpoint, &valid(commit.clone()))
+            .commit_checkpoint(case.run(), &checkpoint, &valid(commit.clone()))
             .await
             .expect("complete generation");
         assert_eq!(
@@ -179,12 +179,12 @@ impl Manifest<'_> {
             Some(commit.manifest_root.as_str())
         );
         let replay = tasks
-            .commit_checkpoint(case.lease(), &checkpoint, &valid(commit))
+            .commit_checkpoint(case.run(), &checkpoint, &valid(commit))
             .await
             .expect("identical commit replay");
         assert!(replay.replayed);
         let failure = tasks
-            .commit_checkpoint(case.lease(), &checkpoint, &valid(wrong))
+            .commit_checkpoint(case.run(), &checkpoint, &valid(wrong))
             .await
             .expect_err("committed root immutable");
         assert_eq!(failure.code(), error_code::TASK_REPLAY_CONFLICT);

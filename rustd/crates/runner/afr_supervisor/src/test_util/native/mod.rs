@@ -38,23 +38,23 @@ pub struct NativeDaemon {
 }
 
 impl NativeDaemon {
-    /// Serve one pushed lease and healthy protocol answers on both native transports.
+    /// Serve one pushed run and healthy protocol answers on both native transports.
     ///
     /// # Errors
     /// Preserves identity creation, listener binding and address failures.
     pub async fn serve<H, F>(
         healthy: Healthy,
-        lease: Value,
+        run: Value,
         observe: H,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
     where
         H: Fn(Value) -> F + Send + Sync + 'static,
         F: Future<Output = ()> + Send,
     {
-        Self::start(healthy, Some(lease), observe).await
+        Self::start(healthy, Some(run), observe).await
     }
 
-    /// Serve idle native sessions without injecting a lease offer.
+    /// Serve idle native sessions without injecting a run offer.
     ///
     /// # Errors
     /// Preserves identity creation, listener binding and address failures.
@@ -71,7 +71,7 @@ impl NativeDaemon {
 
     async fn start<H, F>(
         healthy: Healthy,
-        lease: Option<Value>,
+        run: Option<Value>,
         observe: H,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
     where
@@ -87,7 +87,7 @@ impl NativeDaemon {
         let cancellation = Arc::new(parking_lot::Mutex::new(None));
         let peer = Arc::new(Peer {
             healthy,
-            lease: Mutex::new(lease),
+            run: Mutex::new(run),
             ready: Notify::new(),
             observe,
             workers: workers.clone(),
@@ -118,10 +118,10 @@ impl NativeDaemon {
         })
     }
 
-    /// Push a lease cancellation immediately after its next renewal acknowledgement.
+    /// Push a run cancellation immediately after its next renewal acknowledgement.
     #[cfg(test)]
-    pub(crate) fn cancel_after_renewal(&self, lease: &af_core::id::Uuid7) {
-        self.cancellation.lock().replace(lease.clone());
+    pub(crate) fn cancel_after_renewal(&self, run: &af_core::id::Uuid7) {
+        self.cancellation.lock().replace(run.clone());
     }
 
     /// Leave UDP unanswered while forwarding TCP to this same native listener.
@@ -167,7 +167,7 @@ impl Drop for NativeDaemon {
 
 struct Peer<H> {
     healthy: Healthy,
-    lease: Mutex<Option<Value>>,
+    run: Mutex<Option<Value>>,
     ready: Notify,
     observe: H,
     workers: TaskTracker,
@@ -233,11 +233,11 @@ where
         );
         if kind == StreamKind::Work {
             tokio::select! { () = stop.cancelled() => return Ok(()), () = self.ready.notified() => {} }
-            let lease = self.lease.lock().await.take();
-            if let Some(lease) = lease {
+            let run = self.run.lock().await.take();
+            if let Some(run) = run {
                 send(
                     &mut writer,
-                    &serde_json::json!({"type":"offer", "lease":lease}),
+                    &serde_json::json!({"type":"offer", "run":run}),
                     &budget,
                     kind,
                     stop,
@@ -282,9 +282,9 @@ where
         }
         if matches!(message, Up::RenewBatch { .. }) {
             let cancelled = self.cancellation.lock().take();
-            if let Some(lease) = cancelled {
-                let response = serde_json::json!({"type":"cancel", "lease_id":lease,
-                    "error_code":af_core::error_code::RUN_LEASE_CANCELLED.as_str()});
+            if let Some(run) = cancelled {
+                let response = serde_json::json!({"type":"cancel", "run_id":run,
+                    "error_code":af_core::error_code::RUN_CANCELLED.as_str()});
                 send(writer, &response, budget, kind, stop).await?;
             }
         }

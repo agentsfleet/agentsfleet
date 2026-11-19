@@ -4,7 +4,7 @@
 //! reach a path, and hands `agentsfleetd`'s answer back to the model as it
 //! came: the schedule's view, the list, the run, or the refusal with its code.
 //! A message a schedule will hand a later run is masked for every token the
-//! lease minted before it leaves, as a line to the thread is; `agentsfleetd`
+//! run minted before it leaves, as a line to the thread is; `agentsfleetd`
 //! masks the fleet's stored secrets.
 
 use af_core::id::Uuid7;
@@ -98,14 +98,14 @@ impl Handler for CronAdd {
     type Arguments = Add;
 
     async fn run(&self, arguments: Add, context: ToolContext<'_, '_>) -> ToolOutput {
-        let message = egress::masked(context.lease, arguments.message).await;
+        let message = egress::masked(context.run, arguments.message).await;
         let call = ScheduleCall::Create {
             cron: &arguments.cron,
             timezone: arguments.timezone.as_deref(),
             message: &message,
             once: false,
         };
-        answered(context.lease.verbs.schedules(call).await)
+        answered(context.run.verbs.schedules(call).await)
     }
 }
 
@@ -121,7 +121,7 @@ impl Handler for CronList {
     type Arguments = List;
 
     async fn run(&self, _arguments: List, context: ToolContext<'_, '_>) -> ToolOutput {
-        answered(context.lease.verbs.schedules(ScheduleCall::List).await)
+        answered(context.run.verbs.schedules(ScheduleCall::List).await)
     }
 }
 
@@ -143,7 +143,7 @@ impl Handler for CronRemove {
         let call = ScheduleCall::Delete {
             schedule: &schedule,
         };
-        answered(context.lease.verbs.schedules(call).await)
+        answered(context.run.verbs.schedules(call).await)
     }
 }
 
@@ -164,7 +164,7 @@ impl Handler for CronUpdate {
             Err(refused) => return refused,
         };
         let message = match arguments.message {
-            Some(text) => Some(egress::masked(context.lease, text).await),
+            Some(text) => Some(egress::masked(context.run, text).await),
             None => None,
         };
         let call = ScheduleCall::Update {
@@ -174,7 +174,7 @@ impl Handler for CronUpdate {
             message: message.as_deref(),
             paused: arguments.paused,
         };
-        answered(context.lease.verbs.schedules(call).await)
+        answered(context.run.verbs.schedules(call).await)
     }
 }
 
@@ -197,7 +197,7 @@ impl Handler for CronRun {
         let call = ScheduleCall::Run {
             schedule: &schedule,
         };
-        answered(context.lease.verbs.schedules(call).await)
+        answered(context.run.verbs.schedules(call).await)
     }
 }
 
@@ -222,7 +222,7 @@ impl Handler for CronRuns {
             limit: arguments.limit,
             starting_after: arguments.starting_after.as_deref(),
         };
-        answered(context.lease.verbs.schedules(call).await)
+        answered(context.run.verbs.schedules(call).await)
     }
 }
 

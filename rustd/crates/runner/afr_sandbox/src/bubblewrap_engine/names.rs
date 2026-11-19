@@ -1,4 +1,4 @@
-//! What a lease's network needs from the engine: the resolver files its
+//! What a run's network needs from the engine: the resolver files its
 //! sandbox reads, and, under an allowlist, the egress scope joining it to the
 //! host once it runs.
 
@@ -12,7 +12,7 @@ use crate::egress::{self, Scope};
 use crate::error::Result;
 use crate::network::{Allowlist, Network, RESOLV_CONF};
 
-/// Where an allowlisted lease's rendered resolver files are written, in its
+/// Where an allowlisted run's rendered resolver files are written, in its
 /// directory, before bubblewrap binds them over the image's own.
 const HOSTS_FILE: &str = "hosts";
 const RESOLV_CONF_FILE: &str = "resolv.conf";
@@ -22,7 +22,7 @@ const RESOLVER_FILE_MODE: u32 = 0o644;
 /// Joins the running sandbox whose cgroup lists its processes at `procs` to the
 /// host, admitting `allowlist`, off the async runtime: netlink blocks. The
 /// blocking thread runs inside the caller's span, so a scope's refusal is
-/// logged under the lease it refused.
+/// logged under the run it refused.
 pub(super) async fn join(procs: PathBuf, allowlist: Allowlist) -> Result<Scope> {
     let span = tracing::Span::current();
     tokio::task::spawn_blocking(move || {
@@ -40,7 +40,7 @@ pub(super) async fn join(procs: PathBuf, allowlist: Allowlist) -> Result<Scope> 
 pub(super) enum Names {
     /// The host's own, or the image's: nothing to render.
     Kept(NetworkLayout<'static>),
-    /// An allowlist's, rendered into the lease's directory.
+    /// An allowlist's, rendered into the run's directory.
     Rendered {
         hosts: PathBuf,
         resolv_conf: PathBuf,
@@ -48,8 +48,8 @@ pub(super) enum Names {
 }
 
 impl Names {
-    /// Writes an allowlisted lease's `/etc/hosts` and resolver-less
-    /// `/etc/resolv.conf` into `dir`; any other lease's names need nothing.
+    /// Writes an allowlisted run's `/etc/hosts` and resolver-less
+    /// `/etc/resolv.conf` into `dir`; any other run's names need nothing.
     pub(super) fn render(dir: &Path, network: Network<'_>) -> Result<Self> {
         let Network::Allowed(allowlist) = network else {
             let kept = match network {

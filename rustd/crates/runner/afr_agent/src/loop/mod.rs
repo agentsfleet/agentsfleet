@@ -1,5 +1,5 @@
 //! The agent loop: turns until the model answers without a tool call, the
-//! context cap is reached, the lease is stopped, or the provider fails.
+//! context cap is reached, the run is stopped, or the provider fails.
 //!
 //! One [`Harness`] drives one loop: the run's root, or a child a nested tool
 //! started, which is the same loop over a task of the model's with a narrower
@@ -36,13 +36,13 @@ const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
 const EVENT_TURN_STARTED: &str = "provider_turn_started";
 const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
-/// Why a turn the lease stopped did not complete.
-const REASON_STOPPED: &str = "lease_stopped";
+/// Why a turn the run stopped did not complete.
+const REASON_STOPPED: &str = "run_stopped";
 
 /// How a loop's turns ended, a failure being the provider's.
 pub(crate) type Ending = guffbolt::Ending<af_providers::Error>;
 
-/// The agent engine that runs the model against the lease's tools.
+/// The agent engine that runs the model against the run's tools.
 #[derive(Debug)]
 pub struct Loop {
     catalog: Catalog,
@@ -65,16 +65,16 @@ impl Loop {
 impl AgentEngine for Loop {
     async fn prepare_task(
         &self,
-        lease: &af_wire::lease::LeasePayload<'_>,
-        verbs: &dyn afr_tools::LeaseVerbs,
+        run: &af_wire::run::RunPayload<'_>,
+        verbs: &dyn afr_tools::RunVerbs,
         meter: &crate::Meter,
         stop: &CancellationToken,
     ) -> Result<Option<crate::PreparedTask>> {
-        if !lease.durable_tasks {
+        if !run.durable_tasks {
             return Ok(None);
         }
-        let provider = self.connect.connect(lease)?;
-        crate::decision::prepare(lease, verbs, provider.as_ref(), meter, stop)
+        let provider = self.connect.connect(run)?;
+        crate::decision::prepare(run, verbs, provider.as_ref(), meter, stop)
             .await
             .map(Some)
     }
@@ -86,8 +86,8 @@ impl AgentEngine for Loop {
     }
 
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
-        let policy = &run.lease.policy;
-        if run.lease.durable_tasks && run.prepared_task.is_none() {
+        let policy = &run.run.policy;
+        if run.run.durable_tasks && run.prepared_task.is_none() {
             return Err(crate::decision::unavailable());
         }
         let tools = if run
@@ -99,10 +99,10 @@ impl AgentEngine for Loop {
             &policy.tools
         };
         let selection = self.catalog.select(tools)?;
-        let provider = self.connect.connect(run.lease)?;
+        let provider = self.connect.connect(run.run)?;
         let scrub = Scrub::new(policy)?;
         let span = spans::invoke_agent(policy);
-        let prompt = Prompt::new(run.lease);
+        let prompt = Prompt::new(run.run);
         let mut instructions = scrub.clean(prompt.instructions).into_inner();
         if let Some(prepared) = run.prepared_task {
             let native = serde_json::json!({ "current_task": prepared.inputs.current_task,
@@ -184,9 +184,9 @@ pub(crate) struct Harness<'s, 'run> {
     /// first. A child takes none.
     folded_through: i64,
     folded_inputs: Vec<crate::engine::FoldRef>,
-    turn_checkpoint: Option<af_wire::lease::TurnResume>,
+    turn_checkpoint: Option<af_wire::run::TurnResume>,
     /// Whether the daemon's claim already answered this loop's next fold ask:
-    /// its lease said no later message waited, so the ask before the first
+    /// its run said no later message waited, so the ask before the first
     /// model call would claim nothing. Spent by that ask.
     claim_answered: bool,
 }

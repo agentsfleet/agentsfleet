@@ -58,7 +58,7 @@ const CONTEXT_OPEN: &str = "open a personal account";
 /// The one-time starter balance a new tenant opens with, in nanos.
 ///
 /// The only credit INFLOW this daemon has. Every other movement of
-/// `balance_nanos` is a drain and happens in SQL, in the lease renew and settle
+/// `balance_nanos` is a drain and happens in SQL, in the run renew and settle
 /// writable CTEs.
 pub const STARTER_CREDIT_NANOS: i64 = 5 * NANOS_PER_USD;
 

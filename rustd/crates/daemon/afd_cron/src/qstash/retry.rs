@@ -20,7 +20,7 @@
 //! These calls run while the syncer holds the schedule's fence. Three attempts
 //! at the client's ten seconds would outlast that fence and let a second syncer
 //! push beside this one, so each attempt is bounded here and the whole budget
-//! is asserted against [`SYNC_LEASE`].
+//! is asserted against [`SYNC_RUN`].
 
 // # The credentials are read before the first attempt
 //
@@ -36,7 +36,7 @@ use backon::{ExponentialBuilder, Retryable as _};
 use reqwest::StatusCode;
 
 use crate::error::{Error, ErrorKind, Result};
-use crate::store::SYNC_LEASE;
+use crate::store::SYNC_RUN;
 
 /// How many times one call is sent before its failure is recorded on the row.
 const ATTEMPTS: usize = 3;
@@ -75,7 +75,7 @@ pub(super) const fn longest_waits() -> u128 {
 // inside the call budget, and the budget inside the fence the syncer holds.
 const _: () = assert!(
     ATTEMPT_TIMEOUT.as_millis() * ATTEMPTS as u128 + longest_waits() <= CALL_BUDGET.as_millis()
-        && CALL_BUDGET.as_millis() < SYNC_LEASE.as_millis(),
+        && CALL_BUDGET.as_millis() < SYNC_RUN.as_millis(),
     "every attempt and wait must end inside the call budget, and the budget inside the sync fence"
 );
 

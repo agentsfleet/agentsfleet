@@ -2,7 +2,7 @@
 
 use crate::{auth::RunnerIdentity, services::Services};
 use af_wire::task::CheckpointReadQuery;
-use afd_fleet::task::TaskLease;
+use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id};
 use axum::{
     Json,
@@ -13,10 +13,10 @@ use http::{StatusCode, header};
 use std::sync::Arc;
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = af_wire::paths::LEASE_TASK_CHECKPOINT_OBJECTS, tag = afd_http::openapi::tag::RUNNERS,
+    get, path = af_wire::paths::RUN_TASK_CHECKPOINT_OBJECTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_checkpoint_objects_read", summary = "Page authorized restore objects",
-    description = "Returns at most 100 scoped registered objects and expiring read authorizations. Every page checks the current lease and restore pin.",
-    params(("lease_id" = String, Path, description = "Native lease UUIDv7."),
+    description = "Returns at most 100 scoped registered objects and expiring read authorizations. Every page checks the current run and restore pin.",
+    params(("run_id" = String, Path, description = "Native run UUIDv7."),
         ("checkpoint_id" = String, Path, description = "Native checkpoint UUIDv7."), CheckpointReadQuery),
     responses((status = 200, body = af_wire::task::CheckpointObjectsPage, description = "Native checkpoint result"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -27,23 +27,23 @@ use std::sync::Arc;
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease, checkpoint)): Path<(String, String)>,
+    Path((run, checkpoint)): Path<(String, String)>,
     query: Result<Query<CheckpointReadQuery>, QueryRejection>,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let checkpoint_id = parse_id(&checkpoint, "checkpoint_id must be a UUIDv7")?;
     let Query(value) = query.map_err(|_invalid| Refusal::malformed(super::MALFORMED))?;
     let input = garde::Unvalidated::new(value)
         .validate()
         .map_err(|_invalid| Refusal::malformed(super::MALFORMED))?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let result = services
         .tasks()
-        .checkpoint_objects(lease, &checkpoint_id, &input)
+        .checkpoint_objects(run, &checkpoint_id, &input)
         .await
         .map_err(Refusal::at(super::EVENT))?;
     let status = StatusCode::OK;

@@ -17,11 +17,11 @@ use tracing_subscriber::layer::SubscriberExt as _;
 
 use super::{EVENT_CLOSE_TIMED_OUT, EVENT_DISABLED, EVENT_STARTED, Telemetry, announce_disabled};
 use crate::budget::tests::Hand;
-use crate::budget::{MAX_LEASE_SPANS, RUNNER_SPANS_PER_SECOND};
+use crate::budget::{MAX_RUN_SPANS, RUNNER_SPANS_PER_SECOND};
 use crate::endpoint::Endpoint;
 
 /// The runner's root span, as the supervisor names it.
-const LEASE: &str = "runner.lease";
+const RUN: &str = "runner.run";
 
 /// A runner child span.
 const TOOL: &str = "execute_tool";
@@ -52,8 +52,8 @@ fn the_layer_exports_the_runners_spans_and_nothing_else() {
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
 
     tracing::subscriber::with_default(subscriber, || {
-        let lease = tracing::info_span!(target: RUNNER_SCOPE_NAME, "runner.lease");
-        let _entered = lease.enter();
+        let run = tracing::info_span!(target: RUNNER_SCOPE_NAME, "runner.run");
+        let _entered = run.enter();
         tracing::info!(target: RUNNER_SCOPE_NAME, event = "a_log_line", "not a span");
         tracing::info_span!(target: RUNNER_SCOPE_NAME, "execute_tool").in_scope(|| {});
         tracing::info_span!(target: "rig::completions", "a_library_span").in_scope(|| {});
@@ -63,7 +63,7 @@ fn the_layer_exports_the_runners_spans_and_nothing_else() {
     assert_eq!(
         telemetry.exports().spans_lost().count(),
         2,
-        "the lease and its call reached the exporter; the library span and the \
+        "the run and its call reached the exporter; the library span and the \
          log record did not"
     );
 }
@@ -95,25 +95,25 @@ fn the_export_lines_name_the_knob_and_never_the_endpoint() {
     );
 }
 
-/// The production pipeline carries the span budget: a lease far past it
-/// hands the exporter no more than one lease's worth.
+/// The production pipeline carries the span budget: a run far past it
+/// hands the exporter no more than one run's worth.
 ///
 /// Read through the loss count against a collector that refuses everything,
 /// so the count is exactly what the sampler let through. One second admits
-/// at least its own budget; no lease, however many seconds it spans, passes
-/// its per-lease cap.
+/// at least its own budget; no run, however many seconds it spans, passes
+/// its per-run cap.
 #[test]
-fn the_pipeline_sheds_a_lease_past_its_budget() {
+fn the_pipeline_sheds_a_run_past_its_budget() {
     let endpoint = Endpoint::from_env(&MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, REFUSING)]))
         .expect("every knob reads")
         .expect("an endpoint is configured");
     let telemetry = Telemetry::install(&endpoint).expect("the pipeline builds");
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
-    let calls = MAX_LEASE_SPANS * 2;
+    let calls = MAX_RUN_SPANS * 2;
 
     tracing::subscriber::with_default(subscriber, || {
-        let lease = tracing::info_span!(target: RUNNER_SCOPE_NAME, "runner.lease");
-        let _entered = lease.enter();
+        let run = tracing::info_span!(target: RUNNER_SCOPE_NAME, "runner.run");
+        let _entered = run.enter();
         for _call in 0..calls {
             tracing::info_span!(target: RUNNER_SCOPE_NAME, "execute_tool").in_scope(|| {});
         }
@@ -124,7 +124,7 @@ fn the_pipeline_sheds_a_lease_past_its_budget() {
     // The root is inside the second's budget, so one second admits the root
     // and its budget's remainder.
     let floor = RUNNER_SPANS_PER_SECOND as usize;
-    let cap = MAX_LEASE_SPANS as usize;
+    let cap = MAX_RUN_SPANS as usize;
     assert!(
         (floor..=cap).contains(&sent),
         "{sent} of {} spans reached the exporter; the budget admits {floor} to {cap}",
@@ -132,31 +132,31 @@ fn the_pipeline_sheds_a_lease_past_its_budget() {
     );
 }
 
-/// A finished lease gives its slot back through the production pipeline: a
-/// runner that has run more leases than its table holds still exports a new
-/// lease's children.
+/// A finished run gives its slot back through the production pipeline: a
+/// runner that has run more runs than its table holds still exports a new
+/// run's children.
 ///
 /// The reaper reads the root's end through the pipeline's one processor, so a
 /// bridge or pipeline change that stopped it seeing roots would leak a slot
-/// per lease, and once the table filled every later child would be shed.
+/// per run, and once the table filled every later child would be shed.
 /// Moving the hand clock on puts the run in a second its roots never charged,
 /// so only a leaked slot could shed the last child.
 #[test]
-fn a_finished_lease_frees_its_slot_through_the_production_pipeline() {
+fn a_finished_run_frees_its_slot_through_the_production_pipeline() {
     let clock = Hand::default();
     let endpoint = Endpoint::from_env(&MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, REFUSING)]))
         .expect("every knob reads")
         .expect("an endpoint is configured");
     let telemetry = Telemetry::install_on(&endpoint, clock.clone()).expect("the pipeline builds");
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
-    let leases = usize::try_from(af_core::limits::MAX_WORKERS).unwrap_or(usize::MAX) * 4;
+    let runs = usize::try_from(af_core::limits::MAX_WORKERS).unwrap_or(usize::MAX) * 4;
 
     tracing::subscriber::with_default(subscriber, || {
-        for _lease in 0..leases {
-            tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE).in_scope(|| {});
+        for _run in 0..runs {
+            tracing::info_span!(target: RUNNER_SCOPE_NAME, RUN).in_scope(|| {});
         }
         clock.0.fetch_add(1, Ordering::SeqCst);
-        tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE).in_scope(|| {
+        tracing::info_span!(target: RUNNER_SCOPE_NAME, RUN).in_scope(|| {
             tracing::info_span!(target: RUNNER_SCOPE_NAME, TOOL).in_scope(|| {});
         });
     });
@@ -164,8 +164,8 @@ fn a_finished_lease_frees_its_slot_through_the_production_pipeline() {
 
     assert_eq!(
         telemetry.exports().spans_lost().count(),
-        leases + 2,
-        "every root, and the last lease's child: the earlier leases gave their slots back"
+        runs + 2,
+        "every root, and the last run's child: the earlier runs gave their slots back"
     );
 }
 
@@ -178,13 +178,13 @@ async fn every_span_the_budget_sheds_is_counted() {
 
     let telemetry = installed(&[(OTEL_ENDPOINT_KNOB, REFUSING)]);
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
-    let calls = MAX_LEASE_SPANS * 2;
+    let calls = MAX_RUN_SPANS * 2;
     let (tally, recorded) = Tally::new();
 
     scoped(tally, async {
         tracing::subscriber::with_default(subscriber, || {
-            let lease = tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE);
-            let _entered = lease.enter();
+            let run = tracing::info_span!(target: RUNNER_SCOPE_NAME, RUN);
+            let _entered = run.enter();
             for _call in 0..calls {
                 tracing::info_span!(target: RUNNER_SCOPE_NAME, TOOL).in_scope(|| {});
             }
@@ -227,7 +227,7 @@ fn closing_against_a_silent_collector_stops_at_its_budget() {
     ]);
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
     tracing::subscriber::with_default(subscriber, || {
-        tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE).in_scope(|| {});
+        tracing::info_span!(target: RUNNER_SCOPE_NAME, RUN).in_scope(|| {});
     });
 
     let capture = trace::Capture::install();
@@ -285,7 +285,7 @@ fn a_close_that_cannot_start_its_thread_shuts_down_on_the_callers() {
     let telemetry = installed(&[(OTEL_ENDPOINT_KNOB, REFUSING)]);
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
     tracing::subscriber::with_default(subscriber, || {
-        tracing::info_span!(target: RUNNER_SCOPE_NAME, LEASE).in_scope(|| {});
+        tracing::info_span!(target: RUNNER_SCOPE_NAME, RUN).in_scope(|| {});
     });
     let lost = telemetry.exports().spans_lost().clone();
 
@@ -297,7 +297,7 @@ fn a_close_that_cannot_start_its_thread_shuts_down_on_the_callers() {
     assert_eq!(
         lost.count(),
         1,
-        "the buffered lease span reached the exporter on this thread"
+        "the buffered run span reached the exporter on this thread"
     );
     assert!(
         capture

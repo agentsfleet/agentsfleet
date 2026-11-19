@@ -1,5 +1,5 @@
 //! A run's end closes every session its calls left open, including one whose
-//! call the lease stopped mid-yield.
+//! call the run stopped mid-yield.
 
 #![expect(
     clippy::unwrap_used,
@@ -14,7 +14,7 @@ use crate::ResultOutcome;
 use af_core::test_util::trace::Capture;
 use af_egress::testing::{CountingMint, RecordingTransport};
 use af_wire::activity::ActivityFrame;
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_executor::ProcessId;
 use afr_tools::Catalog;
@@ -28,7 +28,7 @@ use super::Loop;
 use super::finish::{DETAIL_STOPPED, EVENT_SESSIONS_INTERRUPTED};
 use super::tests::completions;
 use crate::engine::{AgentEngine, AgentRun, Meter, RunOutput};
-use crate::fixture::{Frames, Script, call, lease, say, unbounded};
+use crate::fixture::{Frames, Script, call, payload, say, unbounded};
 use crate::testing::Discard;
 
 /// The shortest yield a session call may ask for.
@@ -56,11 +56,11 @@ fn opening(id: &str, cmd: &str, yield_ms: Option<u64>) -> Chunk {
     )
 }
 
-/// Runs `lease` on the hosted catalog with `executor` as its sandbox's, until
+/// Runs `run` on the hosted catalog with `executor` as its sandbox's, until
 /// it ends or `stop` is cancelled.
 pub(super) async fn drive_in(
     script: &Script,
-    lease: &LeasePayload<'_>,
+    run: &RunPayload<'_>,
     executor: &ScriptedExecutor,
     stop: &CancellationToken,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
@@ -73,7 +73,7 @@ pub(super) async fn drive_in(
         recovered_task: None,
         recovered_turn: None,
         prepared_task: None,
-        lease,
+        run,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::ready(executor),
         mint: &CountingMint::never(),
@@ -88,9 +88,9 @@ pub(super) async fn drive_in(
     (output, frames.taken())
 }
 
-/// A lease offering the session tools.
-fn session_lease() -> LeasePayload<'static> {
-    lease(&[EXEC_COMMAND.name()], unbounded())
+/// A run offering the session tools.
+fn session_run() -> RunPayload<'static> {
+    payload(&[EXEC_COMMAND.name()], unbounded())
 }
 
 /// Whether `capture` saw the run's end kill any session.
@@ -118,7 +118,7 @@ async fn test_sessions_close_at_run_end() {
 
     let (output, frames) = drive_in(
         &script,
-        &session_lease(),
+        &session_run(),
         &executor,
         &CancellationToken::new(),
     )
@@ -136,11 +136,11 @@ async fn test_sessions_close_at_run_end() {
     let closed = capture.only(EVENT_SESSIONS_INTERRUPTED);
     assert_eq!(closed.level, tracing::Level::INFO);
     assert_eq!(closed.field(SESSIONS_FIELD), Some("2"));
-    assert_eq!(closed.field("lease_id"), Some("lease-1"));
+    assert_eq!(closed.field("run_id"), Some("run-1"));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_session_whose_call_the_lease_stopped_is_still_closed() {
+async fn a_session_whose_call_the_run_stopped_is_still_closed() {
     let capture = Capture::install();
     let script = Script::new([vec![opening(FIRST_CALL, DEV_SERVER, None)]]);
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
@@ -152,7 +152,7 @@ async fn a_session_whose_call_the_lease_stopped_is_still_closed() {
         stopping.cancel();
     });
 
-    let (output, frames) = drive_in(&script, &session_lease(), &executor, &stop).await;
+    let (output, frames) = drive_in(&script, &session_run(), &executor, &stop).await;
     stopper.await.unwrap();
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
@@ -187,7 +187,7 @@ async fn a_run_whose_sessions_all_ended_kills_nothing() {
 
     let (_output, frames) = drive_in(
         &script,
-        &session_lease(),
+        &session_run(),
         &executor,
         &CancellationToken::new(),
     )

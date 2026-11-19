@@ -11,9 +11,9 @@ fn context() -> Value {
         "effect_cursor":9, "confirmed_effect_watermark":8, "checkpoint_id":"checkpoint",
         "checkpoint_generation":6, "expires_at":"2026-11-01T00:00:00Z",
         "limits":{"model_nanos":"1000","wall_seconds":40,"running_seconds":30,
-            "leases":10,"publications":4,"decision_calls":20,"fallback_reads":6},
+            "runs":10,"publications":4,"decision_calls":20,"fallback_reads":6},
         "usage":{"model_nanos":"100","reserved_model_nanos":"20","running_nanos":300,
-            "leases":2,"publications":1,"decision_calls":3,"fallback_reads":4}
+            "runs":2,"publications":1,"decision_calls":3,"fallback_reads":4}
     })
 }
 

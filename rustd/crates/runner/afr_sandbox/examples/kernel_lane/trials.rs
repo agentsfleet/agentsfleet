@@ -38,7 +38,7 @@ use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 pub(crate) const SMALL_DISK: u64 = 64 * 1024 * 1024;
 /// Starts measured each way for the start-budget trial.
 const STARTS: usize = 5;
-/// The disk-limit trial's lease name.
+/// The disk-limit trial's run name.
 const DISK: &str = "disk";
 /// What the kernel says to a writer on a full disk.
 pub(crate) const ENOSPC: &str = "No space left on device";
@@ -47,7 +47,7 @@ pub(crate) const TWO_OUTCOMES: &str = "two outcomes";
 /// How a tenant process's cgroup reads from inside the sandbox's namespace.
 pub(crate) const TENANT_CGROUP: &str = "0::/../tenant";
 /// Where a refusal trial points the engine's state.
-const LEASES: &str = "leases";
+const RUNS: &str = "runs";
 
 pub(crate) type Body = fn(&Lane) -> Result<(), Failed>;
 
@@ -85,9 +85,9 @@ const TRIALS: &[(&str, Body)] = &[
         "test_sandbox_has_private_shared_memory_and_cgroup_view",
         shared_memory_and_cgroup_view,
     ),
-    ("test_unbuildable_sandbox_refuses_lease", unbuildable),
+    ("test_unbuildable_sandbox_refuses_run", unbuildable),
     ("test_toolbox_build_is_reproducible", reproducible),
-    ("test_lease_sees_toolbox_read_only", toolbox_read_only),
+    ("test_run_sees_toolbox_read_only", toolbox_read_only),
     ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
     ("test_toolbox_admission_survives_path_swap", path_swap),
     ("test_toolbox_adoption_checks_identity", adoption),
@@ -114,7 +114,7 @@ const TRIALS: &[(&str, Body)] = &[
         file_tools_refuse_link_out,
     ),
     ("test_warm_start_beats_cold_start", warm_beats_cold),
-    ("test_start_budgets_with_four_leases", start_budgets),
+    ("test_start_budgets_with_four_runs", start_budgets),
     (
         "test_no_sandbox_process_outlives_the_report",
         no_sandbox_process_outlives_the_report,
@@ -191,9 +191,9 @@ fn disk_limit(lane: &Lane) -> Result<(), Failed> {
         filled.output.contains(ENOSPC),
         format!("ENOSPC, got {:?}", filled.output),
     )?;
-    let dir = lane.lease_dir(DISK);
+    let dir = lane.run_dir(DISK);
     let mounts = fs::read_to_string(MOUNTINFO).unwrap_or_default();
-    expect(!dir.exists(), "the lease's directory is removed")?;
+    expect(!dir.exists(), "the run's directory is removed")?;
     expect(
         !mounts.contains(&dir.display().to_string()),
         "nothing stays mounted",
@@ -221,7 +221,7 @@ fn shared_memory_and_cgroup_view(lane: &Lane) -> Result<(), Failed> {
     // a tenant process sits in the leaf beside it.
     expect(
         said.lines().any(|line| line == TENANT_CGROUP),
-        format!("the lease sees the tenant leaf beside its root, got {said:?}"),
+        format!("the run sees the tenant leaf beside its root, got {said:?}"),
     )
 }
 
@@ -234,7 +234,7 @@ fn unbuildable(lane: &Lane) -> Result<(), Failed> {
         lsm,
         ..config.probe_paths()
     });
-    config.state_dir = fake.path().join(LEASES);
+    config.state_dir = fake.path().join(RUNS);
     let refused = BubblewrapEngine::new(config, &host)
         .err()
         .and_then(|error| error.missing_mechanism());
@@ -243,8 +243,8 @@ fn unbuildable(lane: &Lane) -> Result<(), Failed> {
         format!("refused for Landlock, got {refused:?}"),
     )?;
     expect(
-        !fake.path().join(LEASES).exists(),
-        "nothing was built for a lease",
+        !fake.path().join(RUNS).exists(),
+        "nothing was built for a run",
     )
 }
 
@@ -271,7 +271,7 @@ fn reproducible(lane: &Lane) -> Result<(), Failed> {
 }
 
 /// `/usr` is the toolbox, read-only; a sandbox holds the toolbox it runs on
-/// until it is destroyed, so retention never unmounts one under a lease. The
+/// until it is destroyed, so retention never unmounts one under a run. The
 /// trial counts holds on a toolbox handle of its own, since trials run at once.
 fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
     let mut config = lane.config.clone();
@@ -315,7 +315,7 @@ fn warm_beats_cold(lane: &Lane) -> Result<(), Failed> {
         let slots = WarmSlots::start(Arc::clone(&engine), 1, Limits::default());
         let warm = starts(&slots, "warm").await?;
         slots.shutdown().await;
-        println!("lease-accept to executor-ready, p50 of {STARTS}: cold {cold:?}, warm {warm:?}");
+        println!("run-accept to executor-ready, p50 of {STARTS}: cold {cold:?}, warm {warm:?}");
         expect(
             warm < cold,
             format!("warm {warm:?} must beat cold {cold:?}"),
@@ -327,12 +327,12 @@ fn warm_beats_cold(lane: &Lane) -> Result<(), Failed> {
 async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
     let mut taken = Vec::with_capacity(STARTS);
     for number in 0..STARTS {
-        // A warm slot refills in the background between leases, as on a host.
+        // A warm slot refills in the background between runs, as on a host.
         tokio::time::sleep(Duration::from_millis(500)).await;
-        let lease_id = format!("{kind}-{number}");
+        let run_id = format!("{kind}-{number}");
         let started = Instant::now();
         let sandbox = engine
-            .prepare(SandboxRequest::new(&lease_id, Limits::default()))
+            .prepare(SandboxRequest::new(&run_id, Limits::default()))
             .await?;
         taken.push(started.elapsed());
         sandbox.destroy().await?;

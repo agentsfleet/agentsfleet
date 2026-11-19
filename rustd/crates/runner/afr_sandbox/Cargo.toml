@@ -62,7 +62,7 @@ tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "s
 tracing.workspace = true
 # The in-sandbox process logs to the error stream the supervisor drains.
 tracing-subscriber.workspace = true
-# A warm slot is named like a lease: unique, so a restart never meets its own
+# A warm slot is named like a run: unique, so a restart never meets its own
 # leftovers under the same name.
 uuid.workspace = true
 
@@ -93,7 +93,7 @@ af_crypto.workspace = true
 af_core = { workspace = true, features = ["test-util"] }
 af_wire.workspace = true
 afr_agent.workspace = true
-# The kernel lane's lease and credential expiries are jiff instants.
+# The kernel lane's run and credential expiries are jiff instants.
 jiff.workspace = true
 af_providers = { workspace = true, features = ["test-util"] }
 axum = { workspace = true, features = ["json"] }
@@ -104,7 +104,7 @@ reqwest.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true
 # The kernel lane drives the runner's real sandbox-side tools through its
-# catalog, with a lease whose egress sends nothing, and reads what each call
+# catalog, with a run whose egress sends nothing, and reads what each call
 # answered as the harness's output.
 af_egress = { workspace = true, features = ["test-util"] }
 afr_tools = { workspace = true, features = ["test-util"] }

@@ -64,7 +64,7 @@ afd_http::plane_collector! {
 
 /// What the runner plane serves, as an `OpenAPI` document.
 ///
-/// A runner speaking for itself: liveness, the lease it runs, and what it reports back.
+/// A runner speaking for itself: liveness, the run it runs, and what it reports back.
 #[must_use]
 pub fn document() -> utoipa::openapi::OpenApi {
     Plane::openapi()

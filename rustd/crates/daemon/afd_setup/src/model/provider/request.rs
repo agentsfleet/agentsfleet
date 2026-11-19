@@ -1,4 +1,4 @@
-//! Translate the closed lease protocol into the SDK's typed conversation.
+//! Translate the closed run protocol into the SDK's typed conversation.
 
 use super::super::ModelCallInput;
 use super::PROPOSAL_ARGUMENT;

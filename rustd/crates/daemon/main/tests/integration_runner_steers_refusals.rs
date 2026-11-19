@@ -40,7 +40,7 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
     let installing = crew.sibling_as("installing-fleet", INSTALLING).await;
     let stale = crew.sibling("stale-setup-fleet").await;
     crew.stale_setup(&stale).await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
     let own = crew.run().fleet.clone();
     let own_rows = crew.admissions(&own).await.len();
 
@@ -52,7 +52,7 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
         (&stale, 409, "UZ-AUTHOR-009", None),
     ];
     for (target, status, code, state) in cases {
-        let (answered, refused) = crew.steer((&lease, fence), target, "run the check").await;
+        let (answered, refused) = crew.steer((&run, fence), target, "scene the check").await;
         assert_eq!(
             (answered, &refused["error_code"]),
             (status, &json!(code)),
@@ -80,13 +80,13 @@ async fn fleet_steer_is_not_a_person_steer_to_onboarding_and_filters() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
-    let (status, answer) = crew.steer((&lease, fence), &target, "run the check").await;
+    let (run, fence) = crew.speaking.run_seeded().await;
+    let (status, answer) = crew.steer((&run, fence), &target, "scene the check").await;
     assert_eq!(status, 202, "{answer}");
 
-    let run = crew.run();
-    let signals = Preferences::new(run.booted.database.clone(), Entropy::new())
-        .signals(&run.workspace, &run.tenant)
+    let scene = crew.run();
+    let signals = Preferences::new(scene.booted.database.clone(), Entropy::new())
+        .signals(&scene.workspace, &scene.tenant)
         .await
         .expect("the onboarding read");
     assert!(
@@ -97,8 +97,8 @@ async fn fleet_steer_is_not_a_person_steer_to_onboarding_and_filters() {
         actor_like: Some(prefix_to_like("steer:")),
         since: None,
     };
-    let rows = History::new(run.booted.database.clone())
-        .page_for_workspace(&run.workspace, Some(&target), &filter, None, 50)
+    let rows = History::new(scene.booted.database.clone())
+        .page_for_workspace(&scene.workspace, Some(&target), &filter, None, 50)
         .await
         .expect("the filtered read");
     assert!(rows.is_empty(), "{rows:?}");
@@ -113,18 +113,18 @@ async fn fleet_steer_refuses_a_key_a_person_took() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
     let text = "open the fix";
     let digest = af_core::etag::sha256_hex(text.as_bytes());
     let operation = format!("{}:{}", crew.run().event_id, &digest[..KEY_DIGEST_HEX]);
 
-    let run = crew.run();
-    let admissions = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone());
+    let scene = crew.run();
+    let admissions = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
     let person = steer_actor(PERSON);
     Steer::new(admissions)
         .append(
             &target,
-            &run.workspace,
+            &scene.workspace,
             &person,
             r#"{"message":"open the fix"}"#,
             Some(&operation),
@@ -132,7 +132,7 @@ async fn fleet_steer_refuses_a_key_a_person_took() {
         .await
         .expect("the person's message is admitted");
 
-    let (status, refused) = crew.steer((&lease, fence), &target, text).await;
+    let (status, refused) = crew.steer((&run, fence), &target, text).await;
     assert_eq!(
         (status, &refused["error_code"], &refused["current_state"]),
         (409, &json!("UZ-AGT-016"), &json!("admitted")),
@@ -144,14 +144,14 @@ async fn fleet_steer_refuses_a_key_a_person_took() {
     crew.finish(supervisor).await;
 }
 
-/// A sender archived while its lease is live steers nothing.
+/// A sender archived while its run is live steers nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_refuses_a_sender_that_is_no_longer_installed() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
     let sender = crew.run().fleet.clone();
     crew.alter(
         "UPDATE fleet.fleets SET status = 'archived' WHERE id = $1",
@@ -159,7 +159,7 @@ async fn fleet_steer_refuses_a_sender_that_is_no_longer_installed() {
     )
     .await;
 
-    let (status, refused) = crew.steer((&lease, fence), &target, "run the check").await;
+    let (status, refused) = crew.steer((&run, fence), &target, "scene the check").await;
     assert_eq!(
         (status, &refused["error_code"]),
         (404, &json!("UZ-RUN-006")),
@@ -179,8 +179,8 @@ async fn fleet_steer_refuses_bad_bodies_with_the_route_sentences() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
-    let path = format!("/v1/runners/me/leases/{lease}/steers");
+    let (run, fence) = crew.speaking.run_seeded().await;
+    let path = format!("/v1/runners/me/runs/{run}/steers");
     let id = target.as_str();
 
     for (body, sentence) in [

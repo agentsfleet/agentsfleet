@@ -145,7 +145,7 @@ where
             .bind(tenant)
             .bind(i64::from(limit))
             .bind(sql::CHARGE_TYPE_AUTHORING)
-            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
         Some(after) => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_AFTER))
             .bind(tenant)
@@ -153,7 +153,7 @@ where
             .bind(&after.id)
             .bind(i64::from(limit))
             .bind(sql::CHARGE_TYPE_AUTHORING)
-            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
     }
 }

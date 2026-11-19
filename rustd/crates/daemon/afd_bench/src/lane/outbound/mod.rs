@@ -168,8 +168,8 @@ pub async fn run(
 /// the payer, whose one lane every job shares.
 async fn parents(database: &Db, prefix: &RunPrefix, destinations: &[&String]) -> Result<Uuid7> {
     let now = af_core::clock::now();
-    let tenant = crate::lane::lease::seed::identifier(KIND_TENANT, 0)?;
-    let payer = crate::lane::lease::seed::identifier(KIND_PAYER, 0)?;
+    let tenant = crate::lane::run::seed::identifier(KIND_TENANT, 0)?;
+    let payer = crate::lane::run::seed::identifier(KIND_PAYER, 0)?;
     let mut connection = database.acquire().await?;
     TenantSeed::new(&tenant)
         .name(&prefix.name("tenant"))
@@ -188,7 +188,7 @@ async fn parents(database: &Db, prefix: &RunPrefix, destinations: &[&String]) ->
             &Uuid7::parse(destination)?,
             &payer,
             &tenant,
-            afd_fleet::lease::sql::FLEET_STATUS_ACTIVE,
+            afd_fleet::run::sql::FLEET_STATUS_ACTIVE,
         )
         .name(&prefix.name(&format!("fleet-{index}")))
         .at(now)
@@ -228,7 +228,7 @@ async fn owe_all(
     let mut connection = database.acquire().await?;
     for (index, destination) in (0..jobs).zip(destinations.iter().cycle()) {
         let fleet = Uuid7::parse(destination)?;
-        let event = crate::lane::lease::seed::identifier(KIND_ANSWERED, index)?;
+        let event = crate::lane::run::seed::identifier(KIND_ANSWERED, index)?;
         let row = entropy.uuid7(af_core::clock::now())?;
         let token = entropy.uuid7(af_core::clock::now())?;
         obligation::owe(
@@ -254,7 +254,7 @@ async fn owe_all(
 
 /// The identifier kinds this lane mints: a destination fleet, the paying
 /// workspace, an answered event, and the paying tenant. Distinct from the
-/// lease seeds' kinds.
+/// run seeds' kinds.
 const KIND_DESTINATION: u32 = 0x0d1;
 const KIND_PAYER: u32 = 0x0d2;
 const KIND_ANSWERED: u32 = 0x0d3;
@@ -281,7 +281,7 @@ pub(crate) fn script(
                 Behaviour::Fast
             };
             Ok((
-                crate::lane::lease::seed::identifier(KIND_DESTINATION, index)?.to_string(),
+                crate::lane::run::seed::identifier(KIND_DESTINATION, index)?.to_string(),
                 behaviour,
             ))
         })

@@ -11,7 +11,7 @@ use af_core::env::MapEnv;
 use afr_sandbox::{BubblewrapEngine, Engine, Sandbox, SandboxRequest, probe};
 use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
 use afr_supervisor::config::{ENV_STREAM_CA, ENV_STREAM_URL};
-use afr_supervisor::test_util::LEASE_ID;
+use afr_supervisor::test_util::RUN_ID;
 use guffbolt::Call;
 use libtest_mimic::Failed;
 use tokio::sync::Notify;
@@ -215,7 +215,7 @@ async fn until_done(lane: &Lane, case: &Case, reported: &Notify) -> Result<Vec<u
         reported.notified().await;
         return Ok(Vec::new());
     }
-    let marker = lane.lease_dir(LEASE_ID).join(MARKER);
+    let marker = lane.run_dir(RUN_ID).join(MARKER);
     let mut poll = tokio::time::interval(Duration::from_millis(20));
     while !marker.exists() {
         poll.tick().await;
@@ -223,7 +223,7 @@ async fn until_done(lane: &Lane, case: &Case, reported: &Notify) -> Result<Vec<u
     let procs = lane
         .config
         .cgroup_root
-        .join(LEASE_ID)
+        .join(RUN_ID)
         .join("tenant/cgroup.procs");
     let pids = fs::read_to_string(procs)?
         .lines()
@@ -238,12 +238,12 @@ async fn until_done(lane: &Lane, case: &Case, reported: &Notify) -> Result<Vec<u
 
 fn removed(lane: &Lane) -> Result<(), Failed> {
     expect(
-        !lane.lease_dir(LEASE_ID).exists(),
-        "lease directory removed after supervisor shutdown",
+        !lane.run_dir(RUN_ID).exists(),
+        "run directory removed after supervisor shutdown",
     )?;
     expect(
-        !lane.config.cgroup_root.join(LEASE_ID).exists(),
-        "lease cgroup removed after shutdown",
+        !lane.config.cgroup_root.join(RUN_ID).exists(),
+        "run cgroup removed after shutdown",
     )?;
     Ok(())
 }

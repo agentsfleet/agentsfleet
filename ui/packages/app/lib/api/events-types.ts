@@ -32,11 +32,11 @@ export function buildQuery(opts?: EventsQuery): string {
 // as SSE messages by the backend handler. `hello`, `catching_up` and
 // `access_revoked` are rustd/crates/daemon/afd_sse/src/frame/mod.rs's `KIND_*` control
 // frames. The four mid-run frames are the
-// `Published` enum in rustd/crates/daemon/afd_fleet/src/lease/activity/mod.rs, where the
+// `Published` enum in rustd/crates/daemon/afd_fleet/src/run/activity/mod.rs, where the
 // runner's wire vocabulary becomes this one. The two brackets and the two gate
 // frames are the daemon's own `TailFrame` in rustd/crates/daemon/afd_api_wire/src/tail/mod.rs:
 // `event_admitted` when a person's message is accepted, before any runner has
-// it, `event_received` when the lease opens the row, `event_complete` with the
+// it, `event_received` when the run opens the row, `event_complete` with the
 // whole row when a report or a refusal closes it, `gate_opened` and
 // `gate_resolved` when a human is asked and answers. Keep every spelling in
 // sync with those enums.

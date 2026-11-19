@@ -56,7 +56,7 @@ WITH workspace AS (
 ), runners AS (
     INSERT INTO runner.runners
       (id, host_id, token_hash, sandbox_tier, status, labels, network_policy,
-       registry_allowlist, worker_count, last_seen_at, lease_version, created_at, updated_at,
+       registry_allowlist, worker_count, last_seen_at, run_version, created_at, updated_at,
        platform_owned)
     SELECT uuidv7(), 'hold-plan-' || r, 'hold-plan-' || r, 'dev_none', 'active',
            '[]'::jsonb, 'deny_all_egress', '[]'::jsonb, 1, $2, 0, $2, $2, true
@@ -76,7 +76,7 @@ WITH workspace AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS n FROM fleets
 )
 INSERT INTO runner.slots
-  (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+  (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
    created_at, updated_at)
 SELECT slots.id, slots.id, ranked.id, 1, $2,
        CASE WHEN slots.n % $5 = 0 THEN $2 + interval '1 millisecond' END,

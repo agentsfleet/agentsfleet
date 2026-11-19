@@ -127,9 +127,9 @@ async fn test_a_heard_mount_is_laid_out_and_kept() {
 
     assert_eq!(caching, Caching::Direct);
     assert!(disk.workspace().is_dir() && disk.tmp().is_dir());
-    // Root alone may read the raw image: it is every file the lease wrote.
+    // Root alone may read the raw image: it is every file the run wrote.
     let image = fs::metadata(dir.path().join(IMAGE_NAME)).unwrap();
-    assert_eq!(image.len(), DISK_BYTES, "sized to the lease's limit");
+    assert_eq!(image.len(), DISK_BYTES, "sized to the run's limit");
     assert_eq!(image.permissions().mode() & 0o7777, IMAGE_MODE);
 }
 

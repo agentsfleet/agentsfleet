@@ -62,7 +62,7 @@ pub struct Delivery<'a> {
     /// The workspace whose grant pays for it.
     pub workspace_id: &'a Uuid7,
     /// Which connector carries it back. The connector type rather than its
-    /// id, so a lease's model provider cannot be passed here and compile.
+    /// id, so a run's model provider cannot be passed here and compile.
     pub provider: Provider,
     /// Where that connector posts it, as the producer recorded it at admission.
     pub destination: &'a str,

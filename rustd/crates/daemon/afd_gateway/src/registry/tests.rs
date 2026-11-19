@@ -70,7 +70,7 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
             .acquire_connection(runner, enrolled.token.digest().clone(), None, clock::now())
             .await?,
     )?;
-    // B commits and registers while A is delayed rebuilding its lease cache.
+    // B commits and registers while A is delayed rebuilding its run cache.
     let b = allowed(
         runners
             .acquire_connection(runner, enrolled.token.digest().clone(), None, clock::now())

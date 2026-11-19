@@ -12,8 +12,8 @@ pub(in crate::task) async fn record(tasks: &Tasks, input: &VerifiedCompletion) -
         CompletionScope::Workspace(workspace) => (workspace, None),
         CompletionScope::Fleet(scope) => (&scope.workspace_id, Some(&scope.fleet_id)),
     };
-    let id = tasks.leases.entropy().uuid7(af_core::clock::now())?;
-    let mut connection = tasks.leases.pool().acquire().await?;
+    let id = tasks.runs.entropy().uuid7(af_core::clock::now())?;
+    let mut connection = tasks.runs.pool().acquire().await?;
     let inserted: i64 = sqlx::query_scalar(include_str!("sql/completion.sql"))
         .bind(id)
         .bind(workspace)

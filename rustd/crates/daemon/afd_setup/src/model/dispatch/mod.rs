@@ -17,8 +17,8 @@ use crate::{
     Drafts, Error, Result,
     error::{ErrorKind, raise::query},
     funnel::Owed,
-    lease::{failure, guard},
     replay,
+    run::{failure, guard},
 };
 
 mod funding;
@@ -136,25 +136,25 @@ impl ModelCalls {
     pub async fn call(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: ModelCallInput,
     ) -> Result<ModelCallResult> {
         let request = prepare::request(request)?;
         let _attempt = Uuid7::parse(&request.attempt_id)?;
         let dispatch = Uuid7::parse(&request.dispatch_id)?;
         let counters = guard::Counters::model_call(&request)?;
-        let intent = match self.reserve(runner, lease, &request, &counters).await? {
+        let intent = match self.reserve(runner, run, &request, &counters).await? {
             Decision::Replay(result) => return Ok(result),
             Decision::Refused(error) => return Err(error),
             Decision::Send(intent) => intent,
         };
-        Box::pin(self.invoke(runner, lease, &request, &counters, *intent, dispatch)).await
+        Box::pin(self.invoke(runner, run, &request, &counters, *intent, dispatch)).await
     }
 
     async fn reserve(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
     ) -> Result<Decision> {
@@ -165,16 +165,16 @@ impl ModelCalls {
             request.call_index,
             &request.request,
         ))?;
-        let held = self.funding(runner, lease, request, counters).await;
+        let held = self.funding(runner, run, request, counters).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let guarded = self
             .drafts
-            .invocation(&mut tx, runner, lease, counters)
+            .invocation(&mut tx, runner, run, counters)
             .await?;
         capability::check(&guarded.attempt, request)?;
         if guarded.attempt.usage_unknown
-            || guarded.attempt.status == crate::lease::Status::AwaitingAccounting
+            || guarded.attempt.status == crate::run::Status::AwaitingAccounting
         {
             return Err(ErrorKind::Unknown.into());
         }

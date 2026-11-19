@@ -9,7 +9,7 @@ use af_wire::task::{
     TaskInputsResponse,
 };
 
-use super::{TaskLease, Tasks, guard, row, transaction};
+use super::{TaskRun, Tasks, guard, row, transaction};
 use crate::{
     Result,
     error::{query, rejected},
@@ -49,16 +49,16 @@ struct InputRow {
 
 pub(super) async fn read(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskInputsQuery>,
 ) -> Result<TaskInputsResponse<'static>> {
     let after = cursor(input.starting_after.as_deref())?;
     let limit = usize::try_from(input.limit)
         .map_err(|_overflow| rejected("Invalid task input limit"))?
         .min(tasks.dependencies.policy.input_batch());
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::run(&mut tx, run).await?;
     let current_task = guard::context(&mut tx, &current).await?;
     let current_message = current_message(&mut tx, &current).await?;
     let accepted_inputs = accepted(
@@ -68,7 +68,7 @@ pub(super) async fn read(
         tasks.dependencies.policy.input_batch(),
     )
     .await?;
-    let humans = pending_humans(&mut tx, &current, after, limit, lease).await?;
+    let humans = pending_humans(&mut tx, &current, after, limit, run).await?;
     let (humans, next_cursor) = human_page(humans, limit);
     let sources: Vec<_> = humans
         .iter()
@@ -79,7 +79,7 @@ pub(super) async fn read(
     let current_interpretation = recovered.remove(&current.source_admission_id);
     let candidates = candidates(&mut tx, &current).await?;
     let inputs = human_inputs(humans, &mut recovered)?;
-    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id).await?;
+    let execution_deadline = crate::run::deadline::read(&mut tx, run.run_id).await?;
     tx.commit().await.map_err(query("finish task input read"))?;
     transaction::recycle(connection);
     Ok(TaskInputsResponse {
@@ -115,7 +115,7 @@ fn cursor(value: Option<&str>) -> Result<i64> {
 
 async fn accepted(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     input: &TaskInputsQuery,
     batch: usize,
 ) -> Result<Vec<TaskAcceptedInput>> {
@@ -172,7 +172,7 @@ impl TryFrom<InputRow> for TaskAcceptedInput {
 
 async fn candidates(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
 ) -> Result<Vec<TaskInputCandidate>> {
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/input_candidates.sql"))
         .bind(&current.fleet_id)
@@ -200,10 +200,10 @@ async fn candidates(
 
 async fn pending_humans(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     after: i64,
     limit: usize,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
 ) -> Result<Vec<Human>> {
     let humans: Vec<Human> = sqlx::query_as(include_str!("../sql/pending_inputs.sql"))
         .bind(&current.fleet_id)
@@ -214,9 +214,9 @@ async fn pending_humans(
         .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
         .bind(after)
         .bind(row::sql_counter(limit, "input batch limit")? + 1)
-        .bind(lease.lease_id)
+        .bind(run.run_id)
         .bind(current.fence)
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
+        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
         .bind(None::<&str>.map(crate::task::guard::wire).transpose()?)
         .bind(true)
         .bind(afd_turns::Producer::SlackMention.as_str())
@@ -265,7 +265,7 @@ fn human_inputs(
 
 async fn current_message(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
 ) -> Result<Option<String>> {
     let source =
         super::admit::source::load(connection, current, &current.source_admission_id).await?;

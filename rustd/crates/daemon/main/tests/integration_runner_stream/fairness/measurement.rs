@@ -2,7 +2,7 @@
 
 use super::{Hot, Scenario, wire};
 use af_core::{id::Uuid7, timing::OFFER_FALLBACK_TICK};
-use af_wire::{lease::TaggedLease, protocol::Down};
+use af_wire::{protocol::Down, run::TaggedRun};
 use afd_db::Db;
 
 const PROBES: &str = "SELECT calls FROM pg_stat_statements \
@@ -20,14 +20,14 @@ pub(super) struct Witness {
 pub(super) struct Offered {
     pub(super) fleet: Uuid7,
     event: Uuid7,
-    lease: String,
+    run: String,
     fence: u64,
 }
 
-pub(super) async fn offered(run: &Scenario) -> Offered {
+pub(super) async fn offered(scene: &Scenario) -> Offered {
     let frame = tokio::time::timeout(
         OFFER_FALLBACK_TICK + af_core::timing::STREAM_ANSWER_TIMEOUT,
-        run.native_session().await.offer(),
+        scene.native_session().await.offer(),
     )
     .await
     .expect("a ready worker receives a bounded native offer")
@@ -35,23 +35,23 @@ pub(super) async fn offered(run: &Scenario) -> Offered {
     let decoded = frame
         .decode::<Down<'_>>()
         .expect("the current offer schema");
-    let lease = match decoded {
+    let run = match decoded {
         Down::Offer {
-            lease: TaggedLease::Fleet(lease),
-        } => Some(lease),
+            run: TaggedRun::Fleet(run),
+        } => Some(run),
         _ => None,
     }
     .expect("only fleet work was seeded");
     Offered {
-        fleet: Uuid7::parse(&lease.event.fleet_id).expect("fleet id"),
-        event: Uuid7::parse(&lease.event.event_id).expect("event id"),
-        lease: lease.lease_id.to_string(),
-        fence: lease.fencing_token,
+        fleet: Uuid7::parse(&run.event.fleet_id).expect("fleet id"),
+        event: Uuid7::parse(&run.event.event_id).expect("event id"),
+        run: run.run_id.to_string(),
+        fence: run.fencing_token,
     }
 }
 
 pub(super) async fn progress(
-    run: &Scenario,
+    scene: &Scenario,
     owner: &Db,
     hot: &Hot,
     first: Offered,
@@ -63,22 +63,22 @@ pub(super) async fn progress(
     loop {
         // Ensure a hot hint and another eligible hot admission precede every capacity release.
         hot.admit().await;
-        wire::report(run, &zero_usage(&next))
+        wire::report(scene, &zero_usage(&next))
             .await
             .expect("the native report settles");
         witness.offers += 1;
-        witness.old |= next.event == run.event_id;
+        witness.old |= next.event == scene.event_id;
         witness.hot |= next.fleet == hot.fleet;
         if witness.old && witness.hot && probes(owner).await >= before + 2 {
             break;
         }
-        next = offered(run).await;
+        next = offered(scene).await;
     }
     let settled: bool = sqlx::query_scalar(
         "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1 AND fleet_id = $2",
     )
-    .bind(&run.event_id)
-    .bind(&run.fleet)
+    .bind(&scene.event_id)
+    .bind(&scene.fleet)
     .fetch_one(&mut *owner.acquire().await.expect("the result connection"))
     .await
     .expect("the original admission remains readable");
@@ -89,7 +89,7 @@ pub(super) async fn progress(
 }
 
 pub(super) fn zero_usage(offer: &Offered) -> serde_json::Value {
-    let mut body = wire::report_body(&offer.lease, &offer.event, offer.fence);
+    let mut body = wire::report_body(&offer.run, &offer.event, offer.fence);
     let fields = body
         .as_object_mut()
         .expect("the report fixture is an object");

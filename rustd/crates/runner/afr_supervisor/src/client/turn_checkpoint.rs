@@ -4,8 +4,8 @@ use std::{borrow::Cow, num::NonZeroU64};
 
 use af_core::id::Uuid7;
 use af_wire::{
-    lease::{TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointResponse},
     protocol::{Down, Up},
+    run::{TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointResponse},
 };
 use backon::Retryable as _;
 use garde::Validate as _;
@@ -19,23 +19,23 @@ use crate::{Result, downlink::pending::Expected, error::ErrorKind};
 impl ControlPlane {
     pub(crate) async fn turn_checkpoint(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &TurnCheckpointCommand,
     ) -> Result<TurnCheckpointResponse> {
         request.validate()?;
         let outgoing: Up<'_> = Up::TurnCheckpoint {
             request_id: NonZeroU64::MAX,
-            lease_id: lease.as_str().into(),
+            run_id: run.as_str().into(),
             request: Cow::Borrowed(request),
         };
-        if !af_wire::decision::serialized_within(&outgoing, af_wire::lease::TURN_CHECKPOINT_BYTES) {
+        if !af_wire::decision::serialized_within(&outgoing, af_wire::run::TURN_CHECKPOINT_BYTES) {
             return Err(ErrorKind::StreamRefused {
                 code: af_core::error_code::RUN_CHECKPOINT_LIMIT,
                 retryable: false,
             }
             .into());
         }
-        (|| self.stream.compute(Turn { lease, request }))
+        (|| self.stream.compute(Turn { run, request }))
             .retry(
                 self.runtime
                     .backoff()
@@ -47,7 +47,7 @@ impl ControlPlane {
 }
 
 struct Turn<'a> {
-    lease: &'a Uuid7,
+    run: &'a Uuid7,
     request: &'a TurnCheckpointCommand,
 }
 
@@ -65,7 +65,7 @@ impl Command for Turn<'_> {
 
     fn expected(&self) -> Expected {
         Expected::TurnCheckpoint {
-            lease: self.lease.clone(),
+            run: self.run.clone(),
             operation: self.request.operation_id.clone(),
             kind: self.request.action.kind(),
         }
@@ -74,7 +74,7 @@ impl Command for Turn<'_> {
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::TurnCheckpoint {
             request_id,
-            lease_id: self.lease.as_str().into(),
+            run_id: self.run.as_str().into(),
             request: Cow::Borrowed(self.request),
         }
     }

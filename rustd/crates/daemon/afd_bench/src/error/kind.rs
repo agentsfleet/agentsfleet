@@ -1,7 +1,7 @@
 //! What actually refused a run. Private, so a new kind is not a breaking change.
 //!
 //! The lane's own machinery — the statement counter, the credential the drain
-//! seals, the lease answers it reads back, the stream ceiling — shares this
+//! seals, the run answers it reads back, the stream ceiling — shares this
 //! enum with the path under measurement: they are refusals of the same run.
 
 use std::path::PathBuf;
@@ -65,8 +65,8 @@ pub(crate) enum ErrorKind {
     #[error("the steer path would not run")]
     SteerPathFaulted { source: afd_turns::view::Error },
 
-    #[error("the lease path would not run")]
-    LeasePathFaulted { source: afd_fleet::Error },
+    #[error("the run path would not run")]
+    RunPathFaulted { source: afd_fleet::Error },
 
     #[error("the outbound ledger would not take an owed answer")]
     OutboundPathFaulted { source: afd_outbound::Error },
@@ -151,10 +151,10 @@ pub(crate) enum ErrorKind {
     /// Carries the observability crate's own error rather than its message:
     /// the census names the row it rejected, and stringifying here would drop
     /// that from the chain a reader walks.
-    #[error("the lease instrument would not install")]
+    #[error("the run instrument would not install")]
     InstrumentUnavailable { source: af_observability::Error },
 
-    #[error("the lease counters would not be collected")]
+    #[error("the run counters would not be collected")]
     InstrumentUnflushable {
         source: opentelemetry_sdk::error::OTelSdkError,
     },
@@ -162,7 +162,7 @@ pub(crate) enum ErrorKind {
     /// No source: a poisoned lock is a fact about this process, not a failure
     /// something else reported, and inventing a cause for it would be the
     /// chain-padding `docs/RUST_ERROR_STANDARD.md` rule 4 warns against.
-    #[error("the captured lease counters are unreadable: a holder panicked")]
+    #[error("the captured run counters are unreadable: a holder panicked")]
     InstrumentPoisoned,
 
     /// No path, because nothing was written: rendering happens before the
@@ -252,8 +252,8 @@ pub(crate) enum ErrorKind {
     #[error("the stream ceiling refused one of {opened} streams it was sized to hold")]
     CeilingRefused { opened: u64 },
 
-    #[error("a lease answer would not parse as a lease response")]
-    LeaseUnreadable { source: serde_json::Error },
+    #[error("a run answer would not parse as a run response")]
+    RunUnreadable { source: serde_json::Error },
 
     /// Refused rather than defaulted: a misspelt shape would otherwise run the
     /// default lane under the name of the one asked for.
@@ -285,14 +285,14 @@ pub(crate) enum ErrorKind {
     /// without it.
     /// Refused rather than reported as clean: a census over work never
     /// issued counts zero whatever the path would have done.
-    #[error("under saturation no {kind} lease was issued, so the window measured nothing about it")]
+    #[error("under saturation no {kind} run was issued, so the window measured nothing about it")]
     NothingIssued { kind: &'static str },
 
     #[error("under saturation {invariant} was broken {count} time(s)")]
     InvariantBroken { invariant: &'static str, count: u64 },
 
     #[error(
-        "lease drain incomplete: expected {expected}, processed {processed}, failures {failures}"
+        "run drain incomplete: expected {expected}, processed {processed}, failures {failures}"
     )]
     DrainIncomplete {
         expected: u64,

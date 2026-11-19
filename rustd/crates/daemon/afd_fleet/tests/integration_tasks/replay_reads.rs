@@ -8,12 +8,12 @@ use tokio::time::{interval, timeout};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn accepted_replays_share_slot_and_lease_read_locks() {
+async fn accepted_replays_share_slot_and_run_read_locks() {
     exercise(async |case| {
         let plan = case.plan("shared-receipt", 3);
         let first = case
             .tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
             .expect("accepted plan");
         let mut connection = case.held.fixtures.database.acquire().await.expect("reader");
@@ -23,14 +23,14 @@ async fn accepted_replays_share_slot_and_lease_read_locks() {
             .fetch_one(&mut *reader)
             .await
             .expect("shared slot lock");
-        sqlx::query("SELECT id FROM runner.leases WHERE id=$1 FOR SHARE")
-            .bind(&case.held.lease_key)
+        sqlx::query("SELECT id FROM runner.runs WHERE id=$1 FOR SHARE")
+            .bind(&case.held.run_key)
             .fetch_one(&mut *reader)
             .await
-            .expect("shared lease lock");
+            .expect("shared run lock");
         let replay = case
             .tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
             .expect("receipt readers coexist while both locks remain held");
         assert!(replay.replayed);
@@ -50,7 +50,7 @@ async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
         let plan = case.plan("fenced-receipt", 1);
         let first = case
             .tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
             .expect("accepted plan");
         let mut connection = case.held.fixtures.database.acquire().await.expect("writer");
@@ -71,7 +71,7 @@ async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
                 .expect("new authority fence");
             writer.commit().await.expect("release writer");
         };
-        let (replay, ()) = tokio::join!(case.tasks.bind(case.lease(), &plan), change);
+        let (replay, ()) = tokio::join!(case.tasks.bind(case.run(), &plan), change);
         assert_eq!(
             replay
                 .expect_err("old fence cannot read an execution receipt")

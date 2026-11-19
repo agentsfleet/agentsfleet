@@ -275,8 +275,8 @@ pub(super) async fn seed_wait(case: &Case, task: &Uuid7, cooling: bool) {
         .execute(&mut *connection)
         .await
         .expect("preexisting waiting task");
-    sqlx::query("INSERT INTO fleet.task_waits (id,task_id,fleet_id,workspace_id,owner_lease_id,task_generation,stop_generation,generation,installation_id,repository_id,pull_request_number,expected_head,checks,baseline_digest,due_at,expires_at,cooldown_expires_at,fallback_count,signal_sequence,observed_signal_sequence,created_at,updated_at) SELECT $1,id,fleet_id,workspace_id,$3,generation,stop_generation,1,1,101,101,$4,$5,$6,now()-interval '1 second',expires_at,CASE WHEN $7 THEN now()+interval '1 hour' ELSE now()-interval '1 second' END,0,0,0,now(),now() FROM fleet.tasks WHERE id=$2")
-        .bind(mint_id()).bind(task).bind(&case.held.lease_key).bind("0".repeat(40))
+    sqlx::query("INSERT INTO fleet.task_waits (id,task_id,fleet_id,workspace_id,owner_run_id,task_generation,stop_generation,generation,installation_id,repository_id,pull_request_number,expected_head,checks,baseline_digest,due_at,expires_at,cooldown_expires_at,fallback_count,signal_sequence,observed_signal_sequence,created_at,updated_at) SELECT $1,id,fleet_id,workspace_id,$3,generation,stop_generation,1,1,101,101,$4,$5,$6,now()-interval '1 second',expires_at,CASE WHEN $7 THEN now()+interval '1 hour' ELSE now()-interval '1 second' END,0,0,0,now(),now() FROM fleet.tasks WHERE id=$2")
+        .bind(mint_id()).bind(task).bind(&case.held.run_key).bind("0".repeat(40))
         .bind(Json(checks)).bind("a".repeat(64)).bind(cooling)
         .execute(&mut *connection).await.expect("persisted dependency, no fabricated observation");
 }

@@ -3,7 +3,7 @@
 //! Before each model call a run asks for every message its fleet has received
 //! after the one that started the run and not yet settled, whatever sent it:
 //! a steer, a webhook, a chat mention or a schedule fire. The daemon claims
-//! them for the run's lease, oldest first, and stops at the first message that
+//! them for the run's run, oldest first, and stops at the first message that
 //! is parked behind an approval gate or bound to a durable task, so no message
 //! passes one received before it. A run that belongs to a durable task claims
 //! nothing here. The report then says how far the run read, and each message
@@ -17,12 +17,12 @@ use serde::{Deserialize, Serialize};
 /// The most messages one claim takes: a burst is read in batches, oldest first.
 pub const FOLDS_PER_CLAIM_MAX: u16 = 32;
 
-/// `POST /v1/runners/me/leases/{lease_id}/folds` request.
+/// `POST /v1/runners/me/runs/{run_id}/folds` request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct FoldRequest {
-    /// The lease's fencing token; a holder the fleet has superseded claims
+    /// The run's fencing token; a holder the fleet has superseded claims
     /// nothing.
     #[garde(skip)]
     pub fencing_token: u64,
@@ -49,7 +49,7 @@ pub struct FoldedInput<'a> {
     pub text: Cow<'a, str>,
 }
 
-/// `POST /v1/runners/me/leases/{lease_id}/folds` reply: the messages claimed
+/// `POST /v1/runners/me/runs/{run_id}/folds` reply: the messages claimed
 /// for the run, oldest first, at most [`FOLDS_PER_CLAIM_MAX`].
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

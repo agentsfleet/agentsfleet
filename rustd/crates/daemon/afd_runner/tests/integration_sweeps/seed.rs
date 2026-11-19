@@ -1,5 +1,5 @@
 //! The rows [`Fixture::seed`] writes: the stale, draining, cordoned and
-//! unknown-status runners, the fleets and leases they hold, and the aged event
+//! unknown-status runners, the fleets and runs they hold, and the aged event
 //! retention retires.
 //!
 //! Split from [`super`] at the line between writing the fixture and reading it
@@ -9,14 +9,14 @@ use std::time::Duration;
 
 use af_core::clock;
 use afd_db::test_util::{FleetSeed, RunnerSeed, TenantSeed, WorkspaceSeed};
-use afd_state::sql::{FLEET_STATUS_ACTIVE, LEASE_STATUS_ACTIVE, LEASE_STATUS_REPORTED};
+use afd_state::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE, RUN_STATUS_REPORTED};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
 use super::{Fixture, OLD};
-use crate::rows::{self, LeaseRow, POLICY};
+use crate::rows::{self, POLICY, RunRow};
 
-/// How far ahead an active lease's slot is held.
+/// How far ahead an active run's slot is held.
 const SLOT_HELD_FOR: Duration = Duration::from_mins(1);
 
 /// A status this daemon does not model, which the pass must skip, not guess.
@@ -24,7 +24,7 @@ const UNMODELLED_STATUS: &str = "future_state";
 
 impl Fixture {
     /// The tenant, its workspace, four runners in four states, three fleets,
-    /// their leases, and one per-work event old enough to retire.
+    /// their runs, and one per-work event old enough to retire.
     pub(super) async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         TenantSeed::new(&self.tenant)
@@ -39,7 +39,7 @@ impl Fixture {
             .expect("the workspace seeds");
         self.seed_runners(&mut connection).await;
         self.seed_fleets(&mut connection).await;
-        self.seed_events_and_leases(&mut connection).await;
+        self.seed_events_and_runs(&mut connection).await;
     }
 
     /// The stale runner last beat [`OLD`]; the other three beat just now, so
@@ -84,39 +84,39 @@ impl Fixture {
         }
     }
 
-    async fn seed_events_and_leases(&self, connection: &mut sqlx::PgConnection) {
-        let leases = [
+    async fn seed_events_and_runs(&self, connection: &mut sqlx::PgConnection) {
+        let runs = [
             (
                 &self.stale,
                 &self.stale_fleet,
-                &self.stale_lease,
-                LEASE_STATUS_ACTIVE,
+                &self.stale_run,
+                RUN_STATUS_ACTIVE,
             ),
             (
                 &self.cordoned,
                 &self.cordoned_fleet,
-                &self.cordoned_lease,
-                LEASE_STATUS_ACTIVE,
+                &self.cordoned_run,
+                RUN_STATUS_ACTIVE,
             ),
             (
                 &self.unknown,
                 &self.unknown_fleet,
-                &self.unknown_lease,
-                LEASE_STATUS_ACTIVE,
+                &self.unknown_run,
+                RUN_STATUS_ACTIVE,
             ),
             (
                 &self.stale,
                 &self.stale_fleet,
-                &self.reported_lease,
-                LEASE_STATUS_REPORTED,
+                &self.reported_run,
+                RUN_STATUS_REPORTED,
             ),
         ];
         let held_until = clock::after(clock::now(), SLOT_HELD_FOR);
-        for (runner, fleet, lease, status) in leases {
-            rows::lease(
+        for (runner, fleet, run, status) in runs {
+            rows::payload(
                 connection,
-                LeaseRow {
-                    id: lease,
+                RunRow {
+                    id: run,
                     runner,
                     fleet,
                     workspace: &self.workspace,
@@ -127,7 +127,7 @@ impl Fixture {
                 },
             )
             .await;
-            if status == LEASE_STATUS_ACTIVE {
+            if status == RUN_STATUS_ACTIVE {
                 rows::slot(connection, (fleet, runner), held_until, None, Some(OLD)).await;
             }
         }
@@ -137,7 +137,7 @@ impl Fixture {
     async fn seed_aged_event(&self, connection: &mut sqlx::PgConnection, at: Timestamp) {
         sqlx::query(
             "INSERT INTO runner.events (id, runner_id, event_type, metadata, created_at) \
-             VALUES ($1, $2, 'lease_acquired', '{}', $3::timestamptz)",
+             VALUES ($1, $2, 'run_acquired', '{}', $3::timestamptz)",
         )
         .bind(&self.old_event)
         .bind(&self.stale)

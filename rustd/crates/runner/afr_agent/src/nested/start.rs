@@ -29,9 +29,9 @@ pub(super) fn start(harness: &Harness<'_, '_>, task: Task) -> Result<u64, ToolOu
 
 /// A refusal, logged by its code and never by the task.
 fn logged(harness: &Harness<'_, '_>, refused: Refused) -> ToolOutput {
-    let lease_id = harness.shared.lease_id;
+    let run_id = harness.shared.run_id;
     let error_code = refused.code().as_str();
     let event = EVENT_CHILD_REFUSED;
-    tracing::info!(lease_id, error_code, event);
+    tracing::info!(run_id, error_code, event);
     refused.into()
 }

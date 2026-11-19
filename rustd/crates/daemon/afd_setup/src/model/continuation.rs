@@ -7,8 +7,8 @@ use crate::{
         ErrorKind,
         raise::{query, stored},
     },
-    lease::guard::Attempt,
     replay,
+    run::guard::Attempt,
 };
 use af_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
 use jiff::Timestamp;

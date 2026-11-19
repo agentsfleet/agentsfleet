@@ -17,7 +17,7 @@ const CONTEXT_TOOL_CALL: &str = "read one tool call's record";
 /// One call by event, fence and number, inside its workspace and fleet.
 ///
 /// A call record names its event by `event_id` inside its fleet; the call's
-/// number in its lease's run is the record's `sequence`.
+/// number in its run's run is the record's `sequence`.
 ///
 /// `$1` workspace, `$2` fleet, `$3` event, `$4` fence, `$5` call number.
 const SELECT_TOOL_CALL: &str = include_str!("select_tool_call.sql");
@@ -25,9 +25,9 @@ const SELECT_TOOL_CALL: &str = include_str!("select_tool_call.sql");
 /// Which call a read names: the two halves of its `{fence}:{n}` id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CallAddress {
-    /// The fencing token of the lease that made the call.
+    /// The fencing token of the run that made the call.
     pub fence: i64,
-    /// The call's number in that lease's run, from 1.
+    /// The call's number in that run's run, from 1.
     pub call_number: i64,
 }
 

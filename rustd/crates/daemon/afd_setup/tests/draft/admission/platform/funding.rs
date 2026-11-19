@@ -32,7 +32,7 @@ async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
         .await
         .expect("a model that can retain this history");
     let draft = queued(&f).await;
-    let lease = claim(&f, &draft)
+    let run = claim(&f, &draft)
         .await
         .expect("output and runtime remain fundable");
     let provider = Arc::new(Provider::default());
@@ -40,7 +40,7 @@ async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
     crate::draft::model_calls::compaction::history_for(
         &f,
         &draft.id,
-        &Uuid7::parse(&lease.attempt_id).expect("attempt"),
+        &Uuid7::parse(&run.attempt_id).expect("attempt"),
         12,
     )
     .await;
@@ -49,14 +49,14 @@ async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
     let error = calls
         .call(
             &f.runner,
-            &Uuid7::parse(&lease.lease_id).expect("lease"),
-            request(&lease, 1),
+            &Uuid7::parse(&run.run_id).expect("run"),
+            request(&run, 1),
         )
         .await
         .expect_err("input cost cannot fit a signed ledger amount");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(provider.0.load(Ordering::SeqCst), 0);
-    assert_eq!(durable(&f, &lease).await, (ADMISSION, 0));
+    assert_eq!(durable(&f, &run).await, (ADMISSION, 0));
     f.cleanup().await;
 }
 
@@ -87,11 +87,11 @@ fn calls(f: &Fixture, provider: Arc<Provider>) -> ModelCalls {
     ModelCalls::new(f.drafts.clone(), providers, provider)
 }
 
-fn request(lease: &Claimed, index: u32) -> ModelCallInput {
+fn request(run: &Claimed, index: u32) -> ModelCallInput {
     ModelCall {
-        capability_token: lease.model_access.token.clone(),
-        attempt_id: lease.attempt_id.clone(),
-        fence: lease.fence.clone(),
+        capability_token: run.model_access.token.clone(),
+        attempt_id: run.attempt_id.clone(),
+        fence: run.fence.clone(),
         dispatch_id: super::mint().to_string(),
         call_index: index,
         request: ModelRequest {
@@ -103,9 +103,9 @@ fn request(lease: &Claimed, index: u32) -> ModelCallInput {
     }
 }
 
-async fn durable(f: &Fixture, lease: &Claimed) -> (i64, i64) {
+async fn durable(f: &Fixture, run: &Claimed) -> (i64, i64) {
     sqlx::query_as("SELECT a.reserved_nanos,(SELECT count(*) FROM authoring.dispatches d WHERE d.attempt_id=a.id) FROM authoring.attempts a WHERE a.id=$1")
-        .bind(Uuid7::parse(&lease.attempt_id).expect("attempt")).fetch_one(&mut *f.connection().await).await.expect("the attempt's bound and receipts")
+        .bind(Uuid7::parse(&run.attempt_id).expect("attempt")).fetch_one(&mut *f.connection().await).await.expect("the attempt's bound and receipts")
 }
 
 #[tokio::test]
@@ -113,19 +113,19 @@ async fn durable(f: &Fixture, lease: &Claimed) -> (i64, i64) {
 async fn each_platform_send_funds_measured_input_and_keeps_prior_known_cost() {
     let f = configured().await;
     let draft = queued(&f).await;
-    let lease = claim(&f, &draft).await.expect("platform admission");
-    let id = Uuid7::parse(&lease.lease_id).expect("lease");
+    let run = claim(&f, &draft).await.expect("platform admission");
+    let id = Uuid7::parse(&run.run_id).expect("run");
     let provider = Arc::new(Provider::default());
     let calls = calls(&f, Arc::clone(&provider));
-    assert_eq!(durable(&f, &lease).await, (ADMISSION, 0));
+    assert_eq!(durable(&f, &run).await, (ADMISSION, 0));
     let mut previous = ADMISSION;
     for index in 1..=2 {
         let reply = calls
-            .call(&f.runner, &id, request(&lease, index))
+            .call(&f.runner, &id, request(&run, index))
             .await
             .expect("funded physical call");
         assert_eq!(reply.text, "funded answer");
-        let (reserved, receipts) = durable(&f, &lease).await;
+        let (reserved, receipts) = durable(&f, &run).await;
         assert!(
             reserved > previous,
             "each send must cover measured input and known prior spend"
@@ -142,20 +142,20 @@ async fn each_platform_send_funds_measured_input_and_keeps_prior_known_cost() {
 async fn an_admission_only_balance_refuses_measured_input_before_any_dispatch() {
     let f = configured().await;
     let draft = queued(&f).await;
-    let lease = claim(&f, &draft).await.expect("platform admission");
+    let run = claim(&f, &draft).await.expect("platform admission");
     super::super::fixture::balance(&f, ADMISSION).await;
     let provider = Arc::new(Provider::default());
     let calls = calls(&f, Arc::clone(&provider));
     let error = calls
         .call(
             &f.runner,
-            &Uuid7::parse(&lease.lease_id).expect("lease"),
-            request(&lease, 1),
+            &Uuid7::parse(&run.run_id).expect("run"),
+            request(&run, 1),
         )
         .await
         .expect_err("input needs additional funding");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(provider.0.load(Ordering::SeqCst), 0);
-    assert_eq!(durable(&f, &lease).await, (ADMISSION, 0));
+    assert_eq!(durable(&f, &run).await, (ADMISSION, 0));
     f.cleanup().await;
 }

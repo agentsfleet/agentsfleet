@@ -13,7 +13,7 @@
 //! connection, which fails — so the answer is `UZ-INTERNAL-001`, a 503. That is
 //! not a weaker assertion than a 200; it is a DIFFERENT one, and it is the one
 //! that matters here: the request got past the guard. Whether the handler then
-//! writes the right rows is `test_lease_writes_row_parity`'s question, and it
+//! writes the right rows is `test_run_writes_row_parity`'s question, and it
 //! runs against a live datastore in `make test-integration-rustd`.
 //!
 //! The 503 is also load-bearing on its own (RULE ECL): a runner counts
@@ -48,7 +48,7 @@ const STREAM_PATH: &str = af_wire::paths::RUNNER_STREAM;
 const ENROL_PATH: &str = "/v1/admin/runners";
 
 /// Stable identifiers for runner-route payload and path fixtures.
-const LEASE_ID: &str = "01924f4e-0000-7000-8000-00000000a11e";
+const RUN_ID: &str = "01924f4e-0000-7000-8000-00000000a11e";
 const FLEET_ID: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 
 /// The identity-provider subject a fixture operator acts as.

@@ -1,6 +1,6 @@
 //! Invalid model edits receive feedback without acquiring proposal authority.
 
-use super::{ack, json, lease, result, rig, run, run_logged};
+use super::{ack, json, payload, result, rig, run, run_logged};
 use crate::client::{Call, Verb};
 use serde_json::Value;
 use std::sync::atomic::Ordering;
@@ -60,7 +60,7 @@ async fn rejected_model_edits_receive_feedback_before_a_corrected_proposal_is_ap
             Verb::AuthoringReport => ack(),
             other => panic!("unexpected authority {other:?}"),
         });
-        let (calls, report) = run(&mut rig, lease()).await;
+        let (calls, report) = run(&mut rig, payload()).await;
         assert_eq!(
             calls
                 .iter()
@@ -112,7 +112,7 @@ async fn a_refusal_naming_a_field_tells_the_model_that_field() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (_calls, report, logs) = run_logged(&mut rig, lease()).await;
+    let (_calls, report, logs) = run_logged(&mut rig, payload()).await;
     assert_eq!(report["outcome"], "completed");
     assert_eq!(report["usage"]["calls"], 2);
     // The log names the setting and the kind of refusal; the checker's sentence, which can
@@ -163,7 +163,7 @@ async fn an_oversized_first_setup_is_refused_by_the_runner_without_asking_the_da
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (calls, report, logs) = run_logged(&mut rig, lease()).await;
+    let (calls, report, logs) = run_logged(&mut rig, payload()).await;
     assert_eq!(report["outcome"], "completed");
     assert_eq!(
         calls
@@ -191,7 +191,7 @@ async fn exhausted_corrections_fail_with_known_usage_and_no_activity_or_answer()
         Verb::AuthoringReport => ack(),
         other => panic!("a rejected edit acquired authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(
         calls
             .iter()
@@ -226,7 +226,7 @@ async fn refusals_that_ask_for_an_answer_do_not_spend_the_one_correction() {
         Verb::AuthoringReport => ack(),
         other => panic!("a refused proposal acquired authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(
         calls
             .iter()
@@ -255,7 +255,7 @@ async fn a_second_format_refusal_ends_the_message_even_after_an_answer_request()
         Verb::AuthoringReport => ack(),
         other => panic!("a refused proposal acquired authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(
         calls
             .iter()
@@ -277,7 +277,7 @@ async fn should_stop_corrections_when_the_output_budget_is_spent() {
         Verb::AuthoringReport => ack(),
         other => panic!("a rejected edit acquired authority {other:?}"),
     });
-    let mut configured = lease();
+    let mut configured = payload();
     configured.limits.output_per_turn = 2;
     let (calls, report) = run(&mut rig, configured).await;
     assert_eq!(

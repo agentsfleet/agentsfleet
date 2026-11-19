@@ -16,10 +16,10 @@ import {
   assertPassed,
   classifyTerminalEvent,
   failWith,
-  findLeaseFor,
+  findRunFor,
   JOURNEY_LEG,
   VERDICT_KIND,
-  type LeaseLocation,
+  type RunLocation,
 } from "./fixtures/execution";
 import {
   awaitTerminalTurn,
@@ -59,10 +59,10 @@ const SWEEP_PREFIX = "grant-walk";
 const GRANT_WORKSPACE = "fixture-browser-connector-grants";
 
 const RENDER_TIMEOUT_MS = 15_000;
-// How long a delivery may take to reach a runner before the lease is called
+// How long a delivery may take to reach a runner before the run is called
 // missing. Comfortably past the runner's poll cadence: a shorter window would
 // call a slow queue a park.
-const LEASE_WINDOW_MS = 30_000;
+const RUN_WINDOW_MS = 30_000;
 // The install-time grant request runs after the fleet flips active, so the row
 // lands a beat behind the install itself.
 // The usage ledger settles after the terminal row; the balance follows it.
@@ -182,7 +182,7 @@ test.describe.serial("multi-fleet grant journey", () => {
     expect(first.callsign, "two fleets must not share one callsign").not.toBe(second.callsign);
   });
 
-  test("the first delivery leases and runs, because the grant already stands", async ({
+  test("the first delivery runs and runs, because the grant already stands", async ({
     page,
   }) => {
     test.setTimeout(RUN_TEST_TIMEOUT_MS);
@@ -191,18 +191,18 @@ test.describe.serial("multi-fleet grant journey", () => {
 
     // An online runner distinguishes a blocked grant from missing capacity.
     expect(
-      await observed(JOURNEY_LEG.lease, () => anyRunnerLive()),
-      "no runner is online, so an unleased delivery says nothing about the grant",
+      await observed(JOURNEY_LEG.run, () => anyRunnerLive()),
+      "no runner is online, so an idle delivery says nothing about the grant",
     ).toBe(true);
 
     await messageFleet(page, workspaceId, fleet.id, `${MESSAGE_PREFIX}${uniqueTag()}`);
-    const leased = await pollFor<LeaseLocation>(
-      () => observed(JOURNEY_LEG.lease, () => findLeaseFor(fleet.id)),
-      LEASE_WINDOW_MS,
+    const held = await pollFor<RunLocation>(
+      () => observed(JOURNEY_LEG.run, () => findRunFor(fleet.id)),
+      RUN_WINDOW_MS,
     );
     expect(
-      leased,
-      "a delivery whose grant already stands must lease, not park",
+      held,
+      "a delivery whose grant already stands must run, not park",
     ).not.toBeNull();
 
     // Every model turn is its own event. A continuation that asked again would

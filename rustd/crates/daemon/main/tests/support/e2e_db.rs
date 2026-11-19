@@ -40,7 +40,7 @@ pub(crate) async fn admin(base_url: &str, statement: AssertSqlSafe<String>) {
     sqlx::query(statement)
         .execute(&mut *connection)
         .await
-        .expect("the admin statement must run");
+        .expect("the admin statement must scene");
     drop(connection);
     pool.close().await;
 }
@@ -72,7 +72,7 @@ pub(crate) fn daemon_environment(
             (
                 "NATS_URL",
                 afd_bus::test_util::lane_url()
-                    .expect("the lane's NATS seeds: run through make test-integration-rustd")
+                    .expect("the lane's NATS seeds: scene through make test-integration-rustd")
                     .as_str(),
             ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),

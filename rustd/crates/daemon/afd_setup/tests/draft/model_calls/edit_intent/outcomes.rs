@@ -19,7 +19,7 @@ async fn a_question_preserves_the_candidate_even_when_the_setup_model_proposes_a
     let request = fixture::request(&case.attempt);
     let response = case
         .calls
-        .call(&case.f.runner, &case.attempt.lease, request.clone());
+        .call(&case.f.runner, &case.attempt.run, request.clone());
     let observe = async {
         let body = server.received().await;
         assert!(
@@ -62,13 +62,13 @@ async fn a_question_preserves_the_candidate_even_when_the_setup_model_proposes_a
     let fault = case
         .f
         .drafts
-        .activity(&case.f.runner, &case.attempt.lease, forged)
+        .activity(&case.f.runner, &case.attempt.run, forged)
         .await
         .expect_err("native veto survives runner bypass");
     assert_eq!(fault.code(), error_code::INVALID_REQUEST);
     let replay = case
         .calls
-        .call(&case.f.runner, &case.attempt.lease, request)
+        .call(&case.f.runner, &case.attempt.run, request)
         .await
         .expect("saved refusal");
     assert!(replay.replayed);
@@ -92,7 +92,7 @@ async fn an_explicit_setup_change_remains_an_ordinary_validated_edit() {
     let case = Case::create(&server, "Add an instruction to prefer clarity.").await;
     let response = case.calls.call(
         &case.f.runner,
-        &case.attempt.lease,
+        &case.attempt.run,
         fixture::request(&case.attempt),
     );
     let observe = async {
@@ -108,7 +108,7 @@ async fn an_explicit_setup_change_remains_an_ordinary_validated_edit() {
     let accepted = case
         .f
         .drafts
-        .activity(&case.f.runner, &case.attempt.lease, activity)
+        .activity(&case.f.runner, &case.attempt.run, activity)
         .await
         .expect("native edit");
     assert_eq!(accepted.candidate.expect("changed candidate").revision, "2");

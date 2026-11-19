@@ -1,5 +1,5 @@
 //! The prompt: the installed instructions as the system prompt, the trusted
-//! repair context beneath them on a write-bound lease, where the workspace's
+//! repair context beneath them on a write-bound run, where the workspace's
 //! repositories are checked out, the fleet's earlier turns, and the event's
 //! message as the latest user turn.
 //!
@@ -9,9 +9,9 @@
 use std::fmt;
 
 use af_wire::event::message_of;
-use af_wire::lease::LeasePayload;
 use af_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
 use af_wire::policy::{ExecutionPolicy, HttpMethod, RepositoryAccess};
+use af_wire::run::RunPayload;
 use afr_tools::sandbox::{Checkout, checkouts};
 
 /// The heading the installed instructions render under.
@@ -39,18 +39,18 @@ pub(crate) struct Prompt {
 }
 
 impl Prompt {
-    /// The prompt for `lease`.
-    pub(crate) fn new(lease: &LeasePayload<'_>) -> Self {
-        let message = message_of(&lease.event.request_json).into_owned();
-        let history = lease
+    /// The prompt for `run`.
+    pub(crate) fn new(run: &RunPayload<'_>) -> Self {
+        let message = message_of(&run.event.request_json).into_owned();
+        let history = run
             .history
             .iter()
             .map(|turn| (turn.message.to_string(), turn.answer.to_string()))
             .collect();
-        let installed = (!lease.instructions.is_empty())
-            .then(|| format!("{INSTALLED_INSTRUCTIONS}{}", lease.instructions));
-        let repair = RepairContext::of(&lease.policy).map(|context| context.to_string());
-        let workspace = Workspace::of(&lease.policy).map(|workspace| workspace.to_string());
+        let installed = (!run.instructions.is_empty())
+            .then(|| format!("{INSTALLED_INSTRUCTIONS}{}", run.instructions));
+        let repair = RepairContext::of(&run.policy).map(|context| context.to_string());
+        let workspace = Workspace::of(&run.policy).map(|workspace| workspace.to_string());
         let instructions = installed
             .into_iter()
             .chain(repair)
@@ -65,7 +65,7 @@ impl Prompt {
     }
 }
 
-/// What a write-bound lease may publish.
+/// What a write-bound run may publish.
 ///
 /// Read from the daemon's binding and the ref rule it locked, never from the
 /// event: the branch is the one value the model must not choose, and both
@@ -81,7 +81,7 @@ struct RepairContext<'p> {
 
 impl<'p> RepairContext<'p> {
     /// The context `policy` authorises; `None` for a read-bound or unbound
-    /// lease, and for a write binding the daemon compiled no ref rule for.
+    /// run, and for a write binding the daemon compiled no ref rule for.
     fn of(policy: &'p ExecutionPolicy<'_>) -> Option<Self> {
         let binding = policy
             .repository_binding
@@ -119,7 +119,7 @@ impl fmt::Display for RepairContext<'_> {
     }
 }
 
-/// Where the supervisor checked the lease's repositories out, so the model
+/// Where the supervisor checked the run's repositories out, so the model
 /// starts in them instead of looking for them.
 struct Workspace<'p>(Vec<Checkout<'p>>);
 

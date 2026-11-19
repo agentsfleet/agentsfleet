@@ -49,11 +49,11 @@ impl Operator {
         })
     }
 
-    pub(super) async fn seed(&self, run: &Scenario) -> TestResult {
-        let mut connection = run.booted.database.acquire().await?;
+    pub(super) async fn seed(&self, scene: &Scenario) -> TestResult {
+        let mut connection = scene.booted.database.acquire().await?;
         UserSeed::new(
             &self.user,
-            &run.tenant,
+            &scene.tenant,
             self.user.as_str(),
             &format!("{}@fixture.test", self.user),
         )
@@ -61,7 +61,7 @@ impl Operator {
         .await?;
         ApiKeySeed::new(
             &self.key,
-            &run.tenant,
+            &scene.tenant,
             self.token.digest().as_str(),
             self.user.as_str(),
         )
@@ -71,9 +71,9 @@ impl Operator {
         Ok(())
     }
 
-    pub(super) fn access<'a>(&'a self, run: &'a Scenario) -> afd_setup::Access<'a> {
+    pub(super) fn access<'a>(&'a self, scene: &'a Scenario) -> afd_setup::Access<'a> {
         afd_setup::Access {
-            workspace: &run.workspace,
+            workspace: &scene.workspace,
             subject: self.user.as_str(),
         }
     }
@@ -81,13 +81,13 @@ impl Operator {
     /// An action on one of the caller's tenant's runners, through the tenant route.
     pub(super) async fn tenant_runner(
         &self,
-        run: &Scenario,
+        scene: &Scenario,
         runner: &af_core::id::Uuid7,
         action: &str,
     ) -> TestResult<Value> {
         let response = self
             .http
-            .patch(format!("{}/v1/tenants/me/runners/{runner}", run.base))
+            .patch(format!("{}/v1/tenants/me/runners/{runner}", scene.base))
             .bearer_auth(self.token.expose())
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .body(serde_json::to_vec(&json!({"action":action}))?)
@@ -96,11 +96,11 @@ impl Operator {
         Self::answer(response).await
     }
 
-    pub(super) async fn runner(&self, run: &Scenario, action: &str) -> TestResult<Value> {
-        let path = format!("/v1/admin/runners/{}", run.runner_id);
+    pub(super) async fn runner(&self, scene: &Scenario, action: &str) -> TestResult<Value> {
+        let path = format!("/v1/admin/runners/{}", scene.runner_id);
         let response = self
             .http
-            .patch(format!("{}{path}", run.base))
+            .patch(format!("{}{path}", scene.base))
             .bearer_auth(self.token.expose())
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .body(serde_json::to_vec(&json!({"action":action}))?)
@@ -109,10 +109,10 @@ impl Operator {
         Self::answer(response).await
     }
 
-    pub(super) async fn archive(&self, run: &Scenario) -> TestResult {
+    pub(super) async fn archive(&self, scene: &Scenario) -> TestResult {
         let url = format!(
             "{}/v1/workspaces/{}/fleets/{}",
-            run.base, run.workspace, run.fleet
+            scene.base, scene.workspace, scene.fleet
         );
         let current = self
             .http
@@ -149,8 +149,8 @@ impl Operator {
         Ok(body)
     }
 
-    pub(super) async fn finish(mut self, run: &Scenario) -> TestResult {
-        let mut connection = run.booted.database.acquire().await?;
+    pub(super) async fn finish(mut self, scene: &Scenario) -> TestResult {
+        let mut connection = scene.booted.database.acquire().await?;
         sqlx::query("DELETE FROM identity.api_keys WHERE id=$1")
             .bind(&self.key)
             .execute(&mut *connection)

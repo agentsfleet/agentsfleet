@@ -7,7 +7,7 @@ use std::{
 
 use af_core::error_code;
 use af_wire::task::{TaskLimits, TaskState, TaskUsage};
-use afd_fleet::task::{PreparedPlan, TaskBindings, TaskLease, TaskLifecycle as _, TaskScope};
+use afd_fleet::task::{PreparedPlan, TaskBindings, TaskLifecycle as _, TaskRun, TaskScope};
 use futures_util::future::join_all;
 use tokio::sync::Barrier;
 
@@ -75,7 +75,7 @@ async fn contended_calls(case: &Case, plan: &PreparedPlan) -> Vec<TaskBindings> 
             let in_flight = active.fetch_add(1, Ordering::Relaxed) + 1;
             peak.fetch_max(in_flight, Ordering::Relaxed);
             let result = tasks
-                .bind(case.lease(), plan)
+                .bind(case.run(), plan)
                 .await
                 .expect("complete plan binds");
             active.fetch_sub(1, Ordering::Relaxed);
@@ -100,7 +100,7 @@ async fn accepted_goals(case: &Case, bindings: &TaskBindings) {
             TaskState::Ready
         };
         let usage = TaskUsage {
-            leases: u32::from(index == 0),
+            runs: u32::from(index == 0),
             ..TaskUsage::default()
         };
         assert_eq!(
@@ -137,7 +137,7 @@ async fn replay_after_revision(case: &Case, plan: &PreparedPlan, first: &TaskBin
         )
         .await;
     let replay = tasks
-        .bind(case.lease(), plan)
+        .bind(case.run(), plan)
         .await
         .expect("accepted identity survives a newer setup");
     assert!(replay.replayed);
@@ -145,7 +145,7 @@ async fn replay_after_revision(case: &Case, plan: &PreparedPlan, first: &TaskBin
     assert_eq!(replay.execution_deadline, first.execution_deadline);
     let changed = case.plan("changed-meaning", 3);
     let refusal = tasks
-        .bind(case.lease(), &changed)
+        .bind(case.run(), &changed)
         .await
         .expect_err("changed replay cannot allocate work");
     assert_eq!(refusal.code(), error_code::TASK_REPLAY_CONFLICT);
@@ -162,21 +162,21 @@ async fn wrong_attempts(case: &Case, plan: &PreparedPlan) {
     let tasks = &case.tasks;
     let wrong_runner = tasks
         .bind(
-            TaskLease {
+            TaskRun {
                 runner_id: &case.held.spare,
-                ..case.lease()
+                ..case.run()
             },
             plan,
         )
         .await
         .expect_err("a peer runner owns no part of this source");
-    assert_eq!(wrong_runner.code(), error_code::RUN_LEASE_NOT_FOUND);
+    assert_eq!(wrong_runner.code(), error_code::RUN_NOT_FOUND);
     assert_eq!(case.counts().await, (0, 0, 1));
     let stale = tasks
         .bind(
-            TaskLease {
-                fencing_token: case.lease().fencing_token + 1,
-                ..case.lease()
+            TaskRun {
+                fencing_token: case.run().fencing_token + 1,
+                ..case.run()
             },
             plan,
         )
@@ -191,7 +191,7 @@ async fn ownership(case: &Case) {
     let plan = case.plan("owned-goals", 2);
     wrong_attempts(case, &plan).await;
     let accepted = tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect("current owner still binds");
     assert_eq!(accepted.items.len(), 2);
@@ -226,8 +226,8 @@ async fn ownership(case: &Case) {
 /// Native receipts preserve the database ceiling rather than restarting a slice on replay.
 async fn stored_deadline(case: &Case, reply: &TaskBindings) {
     let stored: jiff_sqlx::Timestamp =
-        sqlx::query_scalar("SELECT task_execution_deadline_at FROM runner.leases WHERE id=$1")
-            .bind(case.lease().lease_id)
+        sqlx::query_scalar("SELECT task_execution_deadline_at FROM runner.runs WHERE id=$1")
+            .bind(case.run().run_id)
             .fetch_one(
                 &mut *case
                     .held
@@ -238,14 +238,14 @@ async fn stored_deadline(case: &Case, reply: &TaskBindings) {
                     .expect("deadline connection"),
             )
             .await
-            .expect("bound lease deadline");
+            .expect("bound run deadline");
     assert_eq!(reply.execution_deadline, stored.to_jiff());
     let input = case
         .tasks
         .inputs(
-            case.lease(),
+            case.run(),
             &garde::Unvalidated::new(af_wire::task::TaskInputsQuery {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 starting_after: None,
                 after_input_sequence: None,
                 limit: 4,

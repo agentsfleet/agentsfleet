@@ -153,7 +153,7 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108122900_fleet_sessions.sql"),
     migration!("20261108123000_fleet_activity_counters.sql"),
     migration!("20261108123100_runner_runners.sql"),
-    migration!("20261108123200_runner_leases.sql"),
+    migration!("20261108123200_runner_runs.sql"),
     migration!("20261108123400_runner_events.sql"),
     migration!("20261108123500_runner_lifetime_counters.sql"),
     migration!("20261108123600_authoring_drafts.sql"),

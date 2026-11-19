@@ -114,9 +114,9 @@ async fn assert_recovers(f: &super::Fixture, draft: &Uuid7) {
         .expect("idle draft accepts the next request");
     assert_eq!(accepted.sequence, "2");
     let reloaded = f.drafts.read(f.access(), draft).await.expect("reload");
-    let lease = claim(f, &reloaded).await.expect("replacement admitted");
-    assert_eq!(lease.sequence, "2");
-    assert_eq!(lease.model.reference, f.other_model.to_string());
+    let run = claim(f, &reloaded).await.expect("replacement admitted");
+    assert_eq!(run.sequence, "2");
+    assert_eq!(run.model.reference, f.other_model.to_string());
     assert_eq!(fixture::attempts(f).await, 1);
     let kept = fixture::failure(f, &reloaded).await;
     assert_eq!(

@@ -111,7 +111,7 @@ async fn next_physical_call_is_blocked(fixture: &Decisions<'_>) {
     );
     let refused = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), &input)
+        .reserve_decision(fixture.case.run(), &input)
         .await
         .expect_err("a fresh physical intent cannot bypass its durable actual overage");
     assert_eq!(refused.code(), error_code::TASK_LIMIT_EXHAUSTED);

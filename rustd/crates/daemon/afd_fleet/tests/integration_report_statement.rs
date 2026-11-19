@@ -1,5 +1,5 @@
 //! The report is one statement: every write a terminal report makes
-//! commits together, under the lease's own row lock, fenced and replay-safe,
+//! commits together, under the run's own row lock, fenced and replay-safe,
 //! and its runtime line is priced as the rater prices it. The pricing half of
 //! these tests is in `integration_report_pricing.rs`.
 #![expect(
@@ -11,14 +11,14 @@ use af_core::id::Uuid7;
 use af_wire::usage::{LineKind, RequestUsage};
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Window as Counted};
-use afd_fleet::lease::{Committed, Reported, TerminalReport};
+use afd_fleet::run::{Committed, Reported, TerminalReport};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::{Held, held, held_in};
 use crate::rows::Row;
 use crate::support::Fixtures;
 
-/// The lease's runtime lines: their number, milliseconds, charge and tier.
+/// The run's runtime lines: their number, milliseconds, charge and tier.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms, charged_nanos, platform_model_price_id \
     FROM billing.usage_lines WHERE work_id = $1 AND kind = $2 ORDER BY seq";
 
@@ -30,7 +30,7 @@ const THREAD: &str = "C0FIXTURE:1700000000.000100";
 
 pub(crate) async fn runtime_lines(held: &Held) -> Vec<RuntimeLine> {
     sqlx::query_as(RUNTIME_LINES)
-        .bind(&held.lease_key)
+        .bind(&held.run_key)
         .bind(LineKind::Runtime.as_str())
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("observer"))
         .await
@@ -38,11 +38,11 @@ pub(crate) async fn runtime_lines(held: &Held) -> Vec<RuntimeLine> {
 }
 
 pub(crate) async fn reported(held: &Held) -> Reported {
-    held.leases
-        .load_for_report(&held.issued.lease_id, &held.runner)
+    held.runs
+        .load_for_report(&held.issued.run_id, &held.runner)
         .await
-        .expect("the lease reads")
-        .expect("the lease is the runner's")
+        .expect("the run reads")
+        .expect("the run is the runner's")
 }
 
 /// The seeded admission asks for its answer back on a Slack thread.
@@ -97,19 +97,19 @@ async fn one_statement_report_commits_every_write() {
     let owner = held.fixtures.open(DbRole::Migrator).await;
     statements::install(&owner).await;
     owe_to_slack(&held).await;
-    let lease = reported(&held).await;
+    let run = reported(&held).await;
     let requests = [request(&held)];
     let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
 
     let window = Counted::open(&owner).await;
     let committed = held
-        .leases
+        .runs
         .commit_report(with_requests(
             report(
-                &held.issued.lease_id,
+                &held.issued.run_id,
                 &held.runner,
-                &lease,
-                (&held.lease_key, &held.pricing),
+                &run,
+                (&held.run_key, &held.pricing),
                 RESPONSE_ACCEPTED,
                 at,
             ),
@@ -120,7 +120,7 @@ async fn one_statement_report_commits_every_write() {
     let ran = window.close().await;
 
     let Committed::Settled { closed, owed, .. } = committed else {
-        unreachable!("the lease is the runner's and live");
+        unreachable!("the run is the runner's and live");
     };
     assert_eq!(ran.total(), 1, "{:?}", ran.statements());
     assert_eq!(
@@ -136,7 +136,7 @@ async fn one_statement_report_commits_every_write() {
             .expect("the session is checkpointed");
     assert!(checkpoint.contains(crate::report_commit::RESUME_RESPONSE));
     let released: bool =
-        sqlx::query_scalar("SELECT lease_expires_at < now() FROM runner.slots WHERE fleet_id = $1")
+        sqlx::query_scalar("SELECT run_expires_at < now() FROM runner.slots WHERE fleet_id = $1")
             .bind(&held.fleet)
             .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
             .await
@@ -145,13 +145,13 @@ async fn one_statement_report_commits_every_write() {
     let lines: i64 = scalar(
         &held,
         "SELECT count(*) FROM billing.usage_lines WHERE work_id = $1",
-        &held.lease_key,
+        &held.run_key,
     )
     .await;
     assert_eq!(lines, 2, "the request line and the runtime line");
     let audits: i64 = scalar(
         &held,
-        "SELECT count(*) FROM runner.events WHERE runner_id = $1 AND event_type = 'lease_released'",
+        "SELECT count(*) FROM runner.events WHERE runner_id = $1 AND event_type = 'run_released'",
         &held.runner,
     )
     .await;
@@ -160,7 +160,7 @@ async fn one_statement_report_commits_every_write() {
     held.fixtures.cleanup().await;
 }
 
-// Value: protects=a reclaimed lease's report writes nothing but its known
+// Value: protects=a reclaimed run's report writes nothing but its known
 // request lines; fails_when=the fence leaves the statement's guard, or the
 // refused statement's locks outlive it and the known lines wait on them;
 // why_new=the guard moved into the one statement; seam=none; no_claim=what the
@@ -169,23 +169,23 @@ async fn one_statement_report_commits_every_write() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn one_statement_report_refuses_stale_fence() {
     let held = held().await;
-    let lease = reported(&held).await;
+    let run = reported(&held).await;
     let requests = [request(&held)];
     held.fixtures
-        .lapse_holder(&held.issued.lease_id, &held.fleet)
+        .lapse_holder(&held.issued.run_id, &held.fleet)
         .await;
-    crate::seed::select_fleet(&held.leases, &held.spare, &held.fleet)
+    crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
         .await
         .expect("the spare reclaims the lapsed fleet");
 
     let committed = held
-        .leases
+        .runs
         .commit_report(with_requests(
             report(
-                &held.issued.lease_id,
+                &held.issued.run_id,
                 &held.runner,
-                &lease,
-                (&held.lease_key, &held.pricing),
+                &run,
+                (&held.run_key, &held.pricing),
                 RESPONSE_ACCEPTED,
                 held.now,
             ),
@@ -212,22 +212,22 @@ async fn one_statement_report_refuses_stale_fence() {
 
 // Value: protects=a replayed report settles once; fails_when=two copies both
 // pass the guard; why_new=the replay answer moved into the statement's
-// trailing row; seam=none; no_claim=a replay after the lease row is purged.
+// trailing row; seam=none; no_claim=a replay after the run row is purged.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn one_statement_report_replay_returns_stored_outcome() {
     const COPIES: usize = 100;
     let held = held().await;
     owe_to_slack(&held).await;
-    let lease = reported(&held).await;
+    let run = reported(&held).await;
     let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
 
     let answers = futures_util::future::join_all((0..COPIES).map(|_| {
-        held.leases.commit_report(report(
-            &held.issued.lease_id,
+        held.runs.commit_report(report(
+            &held.issued.run_id,
             &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
+            &run,
+            (&held.run_key, &held.pricing),
             RESPONSE_ACCEPTED,
             at,
         ))

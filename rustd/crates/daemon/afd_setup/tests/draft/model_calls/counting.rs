@@ -102,8 +102,8 @@ async fn start(
     calls: ModelCalls,
 ) -> tokio::task::JoinHandle<afd_setup::Result<afd_setup::ModelCallResult>> {
     let request = fixture::request(attempt);
-    let (runner, lease) = (f.runner.clone(), attempt.lease.clone());
-    let task = tokio::spawn(async move { calls.call(&runner, &lease, request).await });
+    let (runner, run) = (f.runner.clone(), attempt.run.clone());
+    let task = tokio::spawn(async move { calls.call(&runner, &run, request).await });
     tokio::time::timeout(
         std::time::Duration::from_secs(30),
         provider.counted.acquire(),

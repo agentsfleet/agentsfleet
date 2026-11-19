@@ -37,7 +37,7 @@ pub(super) async fn read(
         .bind(after.map(|boundary| &boundary.id))
         .bind(i64::from(limit) + 1);
     let mut rows: Vec<SummaryRow> = fetch::rows(
-        tasks.leases.pool(),
+        tasks.runs.pool(),
         statement,
         Some(scope),
         "list current durable tasks",

@@ -58,10 +58,7 @@ async fn the_http_client_classifies_every_status_class() {
         .unwrap_err();
 
     assert!(busy.is_retryable() && throttled.is_retryable());
-    assert_eq!(
-        lost.refusal_code(),
-        Some(af_core::error_code::RUN_LEASE_LOST)
-    );
+    assert_eq!(lost.refusal_code(), Some(af_core::error_code::RUN_LOST));
     assert!(!lost.is_retryable());
     assert!(unauthorized.is_unauthorized());
 }

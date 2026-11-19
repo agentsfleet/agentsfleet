@@ -2,7 +2,7 @@
 
 use crate::{auth::RunnerIdentity, services::Services};
 use af_wire::task::TaskInputReceiptInput;
-use afd_fleet::task::TaskLease;
+use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
 use axum::{
     Json,
@@ -17,10 +17,10 @@ const EVENT: &str = "runner_task_input_receipt_failed";
 const MALFORMED: &str = "Input receipt exceeds its supported shape or bounds";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = af_wire::paths::LEASE_TASK_INPUT_RECEIPTS, tag = afd_http::openapi::tag::RUNNERS,
+    post, path = af_wire::paths::RUN_TASK_INPUT_RECEIPTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_accept_task_input_receipt", summary = "Acknowledge accepted input and its original reply",
-    description = "Fences apply-here and queued acknowledgements against immutable accepted meaning. Advances the current input cursor once, preserves original delivery obligations and never runs a different task under the current lease.",
-    params(("lease_id" = String, Path, description = "Current lease UUIDv7.")), request_body = TaskInputReceiptInput,
+    description = "Fences apply-here and queued acknowledgements against immutable accepted meaning. Advances the current input cursor once, preserves original delivery obligations and never runs a different task under the current run.",
+    params(("run_id" = String, Path, description = "Current run UUIDv7.")), request_body = TaskInputReceiptInput,
     responses((status = 201, body = af_wire::task::TaskInputReceiptResult, description = "Accepted input receipt"),
         (status = 200, body = af_wire::task::TaskInputReceiptResult, description = "Immutable receipt replay"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -31,23 +31,23 @@ const MALFORMED: &str = "Input receipt exceeds its supported shape or bounds";
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease): Path<String>,
+    Path(run): Path<String>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let input: TaskInputReceiptInput =
         read_strict_body(&body).map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     let input = garde::Unvalidated::new(input)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let result = services
         .tasks()
-        .accept_input(lease, &input)
+        .accept_input(run, &input)
         .await
         .map_err(Refusal::at(EVENT))?;
     let status = if result.replayed {

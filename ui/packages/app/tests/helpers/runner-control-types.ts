@@ -14,7 +14,7 @@ export enum RunnerLiveness {
   Offline = "offline",
 }
 
-export enum LeaseOutcome {
+export enum RunOutcome {
   Running = "running",
   Succeeded = "succeeded",
   Failed = "failed",
@@ -22,12 +22,12 @@ export enum LeaseOutcome {
   Unknown = "unknown",
 }
 
-export enum LeaseKind {
+export enum RunKind {
   Fresh = "fresh",
   Reclaim = "reclaim",
 }
 
-export enum LeaseDestination {
+export enum RunDestination {
   Available = "available",
   FleetDeleted = "fleet_deleted",
   NotPermitted = "not_permitted",

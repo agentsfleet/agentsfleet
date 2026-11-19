@@ -1,4 +1,4 @@
-//! A sandbox killed at its lease's end: every process inside is gone, one
+//! A sandbox killed at its run's end: every process inside is gone, one
 //! that left its shell's group with `setsid` among them, while the disk stays
 //! for the release that follows the report.
 
@@ -12,9 +12,9 @@ use crate::admission::MOUNTINFO;
 use crate::lane::Lane;
 use crate::run::{expect, run as run_in, runtime, shell};
 
-/// The lease whose sandbox is killed.
-const LEASE: &str = "killed";
-/// A process that would outlive the lease by ten minutes, out of the
+/// The run whose sandbox is killed.
+const RUN: &str = "killed";
+/// A process that would outlive the run by ten minutes, out of the
 /// command's process group, so only the cgroup's kill can end it. The
 /// executor kills what is left in a command's group once its shell exits, so
 /// the shell waits, at most thirty seconds, until the sleeper leads a session
@@ -32,7 +32,7 @@ const CGROUP_EVENTS: &str = "cgroup.events";
 const UNPOPULATED: &str = "populated 0";
 /// The processes a cgroup holds.
 const CGROUP_PROCS: &str = "cgroup.procs";
-/// Where a lease's workspace disk is mounted, under its directory.
+/// Where a run's workspace disk is mounted, under its directory.
 const DISK_MOUNT: &str = "workspace";
 
 /// What the host saw before the kill, and between the kill and the release.
@@ -49,11 +49,11 @@ struct Seen {
 /// The kill settles with `sleep 600` running in the tenant leaf before it:
 /// the cgroup reads `populated 0` when the report would post, the workspace
 /// disk is still mounted for the release, and the release then removes the
-/// lease's directory.
+/// run's directory.
 pub(crate) fn no_sandbox_process_outlives_the_report(lane: &Lane) -> Result<(), Failed> {
-    let cgroup = lane.config.cgroup_root.join(LEASE);
+    let cgroup = lane.config.cgroup_root.join(RUN);
     let seen = runtime().block_on(async {
-        let request = SandboxRequest::new(LEASE, Limits::default());
+        let request = SandboxRequest::new(RUN, Limits::default());
         let sandbox = lane.engine().prepare(request).await?;
         let said = run_in(sandbox.executor(), shell(SLEEPER)).await?;
         let leaf = cgroup.join(TENANT_LEAF);
@@ -69,7 +69,7 @@ pub(crate) fn no_sandbox_process_outlives_the_report(lane: &Lane) -> Result<(), 
         };
         let killed = sandbox.kill().await;
         let events = fs::read_to_string(cgroup.join(CGROUP_EVENTS))?;
-        let mounted = mounted_at(&lane.lease_dir(LEASE).join(DISK_MOUNT))?;
+        let mounted = mounted_at(&lane.run_dir(RUN).join(DISK_MOUNT))?;
         sandbox.destroy().await?;
         Ok::<_, Failed>(Seen {
             sleeping,
@@ -99,8 +99,8 @@ pub(crate) fn no_sandbox_process_outlives_the_report(lane: &Lane) -> Result<(), 
         "the workspace disk stays mounted for the release",
     )?;
     expect(
-        !lane.lease_dir(LEASE).exists(),
-        "the release removed the lease's directory",
+        !lane.run_dir(RUN).exists(),
+        "the release removed the run's directory",
     )
 }
 

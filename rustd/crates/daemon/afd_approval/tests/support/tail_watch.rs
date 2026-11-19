@@ -26,7 +26,7 @@ pub(crate) const SWEEPER: &str = "system:approval_gate_sweeper";
 /// The actor prefix a continuation is recorded under.
 ///
 /// Mirrored from `afd_approval::inbox`, which keeps it private. A fixture
-/// standing in for the lease path must write the admission BYTE-identically
+/// standing in for the run path must write the admission BYTE-identically
 /// or the payload digest diverges and the ledger mints a second id — which
 /// would prove the opposite of what the converged-continuation proof asserts.
 pub(crate) const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";

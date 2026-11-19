@@ -19,7 +19,7 @@ A fleet holding the read grant then loads and recalls such a row, naming the wri
 | Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `schema/20261108124700_memory_entries.sql` |
 | Every read and write goes through one store, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `afd_memory`: `Memories`, the Postgres store (`PgStore`), and the grants |
 | The grants are read and set as the api role on `fleet.fleets`, never by the store | `schema/20261108121900_fleet_fleets.sql` and `afd_memory`'s access module |
-| `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::hydrate` / `Plane::capture`, which refuse a runner holding no live lease on that fleet |
+| `fleet_id` is **server-derived from the run**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::hydrate` / `Plane::capture`, which refuse a runner holding no live run on that fleet |
 | Private rows remain writer-scoped; granted readers can read other fleets' workspace-visible rows, but cannot overwrite or forget them | shared-memory grants + workspace predicate + the `(key, fleet_id)` key |
 
 > [!NOTE]
@@ -44,7 +44,7 @@ Two layers, deliberately split:
 
 - **Durable** — the `fleet_id`-keyed rows in `memory.entries` (Postgres), the default backend. This is what survives, and Postgres is the only store. A second store, and the flip that migrates a workspace onto it, come with the first vendor store ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 
-- **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at lease start and pushed, fenced, before the report. It is gone when the run ends ([`runner_execution.md`](./runner_execution.md#crates)).
+- **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at run start and pushed, fenced, before the report. It is gone when the run ends ([`runner_execution.md`](./runner_execution.md#crates)).
 
 Continuity is the load/capture loop bridging the two. `GET /v1/runners/me/memory/{fleet_id}` seeds the run at its start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
 
@@ -58,7 +58,7 @@ Memory belongs to a configured fleet and its permitted scope, rather than a Slac
 Mentions routed to that fleet can use saved facts only when its tools and grants permit memory capture and recall.
 A shared fleet identifier alone proves neither operation.
 
-The runner reads or saves memory only under the current lease fence.
+The runner reads or saves memory only under the current run fence.
 [Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects configured fleets; an unconfigured channel never creates a memory-owning fallback fleet.
 Historical stored fleets and their memory remain unchanged.
 
@@ -99,6 +99,6 @@ See [conversation compaction](context_lifecycle.md) for summary generation, toke
 |---|---|
 | Schema (table, `(fleet_id, key)` unique constraint, role grants, `fleet_id` foreign key + cascade) | `schema/20261108124700_memory_entries.sql` |
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `afd_memory`'s Postgres store and its SQL statements |
-| Runner load/capture endpoints (lease-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
+| Runner load/capture endpoints (run-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
 | Tenant read and forget (ownership-gated) | `afd_api_tenant`'s fleet memory handler |
-| A run's memory, seeded at lease start and pushed before the report | `afr_memory`'s `Hydrated` store |
+| A run's memory, seeded at run start and pushed before the report | `afr_memory`'s `Hydrated` store |

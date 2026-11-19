@@ -62,20 +62,20 @@ const GATE_BLOCKED: &str = "gate_blocked";
 /// Its identifier is the scenario's own with a distinct trailing slot, so it
 /// satisfies the column's version-7 CHECK and cannot collide with any other
 /// scenario's fleet in a shared lane.
-async fn seed_unreadable_fleet(run: &Scenario) -> Uuid7 {
-    let own = run.fleet.as_str();
+async fn seed_unreadable_fleet(scene: &Scenario) -> Uuid7 {
+    let own = scene.fleet.as_str();
     let fleet = Uuid7::parse(&format!("{}00f0", &own[..own.len() - 4]))
         .expect("the neighbour's id is a canonical UUIDv7");
-    FleetSeed::new(&fleet, &run.workspace, &run.tenant, FLEET_STATUS_ACTIVE)
+    FleetSeed::new(&fleet, &scene.workspace, &scene.tenant, FLEET_STATUS_ACTIVE)
         .name("e2e-unreadable-fleet")
-        .at(run.seeded_at)
+        .at(scene.seeded_at)
         .setup(SetupRevision {
             definition: UNREADABLE_CONFIG,
             digest: UNREADABLE_DIGEST,
             semantics: FIXTURE_SETUP_SEMANTICS,
             model_ref: Some(FIXTURE_SETUP_MODEL_REF),
         })
-        .insert(&mut *run.booted.database.acquire().await.expect("connection"))
+        .insert(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
         .expect("the neighbour fleet must insert");
     fleet
@@ -85,41 +85,41 @@ async fn seed_unreadable_fleet(run: &Scenario) -> Uuid7 {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
 
-    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    let beat = crate::wire::heartbeat(&scene, &capable_beat()).await;
     assert!(
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
 
-    let poisoned = seed_unreadable_fleet(&run).await;
-    let poisoned_event = enqueue(&run.booted, &poisoned, &run.workspace, EventType::Chat).await;
+    let poisoned = seed_unreadable_fleet(&scene).await;
+    let poisoned_event = enqueue(&scene.booted, &poisoned, &scene.workspace, EventType::Chat).await;
 
     // The deployment still serves work. Every poll on the way is asserted to
     // answer 200, which is the regression this file exists for: before the
     // fix, the poll that sampled the neighbour's partition answered 500 and
     // this loop died there rather than finding the scenario's own event.
-    let (lease_id, fence) = wait_for_seeded_offer(&run).await;
+    let (run_id, fence) = wait_for_seeded_offer(&scene).await;
 
-    // Settled so the runner's one lease slot is free for the polls below.
-    let settled = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    // Settled so the runner's one run slot is free for the polls below.
+    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.event_id, fence)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
 
     // And the neighbour is ended rather than retried forever, which is what
     // puts it in front of a human.
-    let refused = wait_without_offer(&run, || async {
-        event_column_of(&run, &poisoned, &poisoned_event, "status").await
+    let refused = wait_without_offer(&scene, || async {
+        event_column_of(&scene, &poisoned, &poisoned_event, "status").await
             == Some(GATE_BLOCKED.to_owned())
     })
     .await;
     assert!(refused, "the unreadable fleet's own event is ended");
     assert_eq!(
-        event_column_of(&run, &poisoned, &poisoned_event, "failure_reason").await,
+        event_column_of(&scene, &poisoned, &poisoned_event, "failure_reason").await,
         Some(CONFIG_UNREADABLE.to_owned()),
         "and the row names the document rather than the runner or the money"
     );
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

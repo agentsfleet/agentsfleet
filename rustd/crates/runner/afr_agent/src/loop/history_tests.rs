@@ -5,47 +5,47 @@
 )]
 
 use af_wire::event::message_of;
-use af_wire::lease::{LeasePayload, Turn};
+use af_wire::run::{RunPayload, Turn};
 use afr_tools::catalog::DELEGATE;
 use guffbolt::{Message, Replay};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use crate::fixture::{GITHUB_TOKEN, Script, call, clean, lease, say, unbounded};
+use crate::fixture::{GITHUB_TOKEN, Script, call, clean, payload, say, unbounded};
 use crate::harness::tests::{drive, engine};
 use crate::prompt::Prompt;
 
 /// What the fleet was asked before, and what it answered.
 const ASKED: &str = "which tests failed?";
 const ANSWERED: &str = "two: a and b";
-/// The current event's message, as the fixture lease carries it.
+/// The current event's message, as the fixture run carries it.
 const CURRENT: &str = "triage the failed run";
 /// The task the root delegates, which opens its child's conversation.
 const DELEGATED: &str = "read the build log";
 
-/// The fixture lease, carrying `turns` as its earlier history.
-fn with_history(turns: &[(&str, &str)]) -> LeasePayload<'static> {
-    let mut lease = lease(&[], unbounded());
-    lease.history = turns
+/// The fixture run, carrying `turns` as its earlier history.
+fn with_history(turns: &[(&str, &str)]) -> RunPayload<'static> {
+    let mut run = payload(&[], unbounded());
+    run.history = turns
         .iter()
         .map(|(message, answer)| Turn {
             message: (*message).to_owned().into(),
             answer: (*answer).to_owned().into(),
         })
         .collect();
-    lease
+    run
 }
 
-/// The first request a lease's run sends.
-async fn first_request(lease: &LeasePayload<'_>) -> crate::fixture::Sent {
+/// The first request a run's run sends.
+async fn first_request(run: &RunPayload<'_>) -> crate::fixture::Sent {
     let script = Script::new([vec![say("done")]]);
     let engine = engine(Vec::new(), &script);
-    drive(&engine, lease, &CancellationToken::new()).await;
+    drive(&engine, run, &CancellationToken::new()).await;
     script.sent().remove(0)
 }
 
 /// The turns lead the conversation, ahead of the current message, and leave
-/// the system prompt as a lease without them has it.
+/// the system prompt as a run without them has it.
 #[tokio::test]
 async fn test_history_leads_the_conversation() {
     let with = first_request(&with_history(&[(ASKED, ANSWERED)])).await;
@@ -98,9 +98,9 @@ fn test_history_message_matches_its_first_reading() {
         r#"{"message":"fix the second one","ref":"main"}"#,
         r#"{"ref":"main"}"#,
     ] {
-        let mut lease = lease(&[], unbounded());
-        lease.event.request_json = request.into();
-        assert_eq!(Prompt::new(&lease).message, message_of(request));
+        let mut run = payload(&[], unbounded());
+        run.event.request_json = request.into();
+        assert_eq!(Prompt::new(&run).message, message_of(request));
     }
 }
 
@@ -143,7 +143,7 @@ async fn test_cache_tokens_recorded_on_the_chat_span() {
 }
 
 /// Every request of a run files the provider's prompt cache under the
-/// lease's fleet, a delegated child's as well as the root's, so a follow-up
+/// run's fleet, a delegated child's as well as the root's, so a follow-up
 /// and every child of the fleet read the one cache.
 #[tokio::test]
 async fn test_every_request_keys_the_cache_by_the_fleet() {
@@ -153,9 +153,9 @@ async fn test_every_request_keys_the_cache_by_the_fleet() {
     ])
     .with_child(DELEGATED, [vec![say("read")]]);
     let engine = engine(Vec::new(), &script);
-    let lease = lease(&[DELEGATE.name()], unbounded());
+    let run = payload(&[DELEGATE.name()], unbounded());
 
-    drive(&engine, &lease, &CancellationToken::new()).await;
+    drive(&engine, &run, &CancellationToken::new()).await;
 
     let sent = script.sent();
     let child = sent.iter().filter(|request| {
@@ -167,15 +167,15 @@ async fn test_every_request_keys_the_cache_by_the_fleet() {
         "two root turns and the child's one"
     );
     for request in &sent {
-        assert_eq!(request.cache_key, lease.event.fleet_id, "{request:?}");
+        assert_eq!(request.cache_key, run.event.fleet_id, "{request:?}");
     }
 }
 
-/// A follow-up's first request repeats the previous lease's, through that
-/// lease's message: the same system prompt, the same tools, and the earlier
+/// A follow-up's first request repeats the previous run's, through that
+/// run's message: the same system prompt, the same tools, and the earlier
 /// message as it was sent, so the provider's cache can serve it.
 #[tokio::test]
-async fn test_history_prefix_is_byte_identical_across_leases() {
+async fn test_history_prefix_is_byte_identical_across_runs() {
     let first = first_request(&with_history(&[])).await;
     let mut follow_up = with_history(&[(CURRENT, ANSWERED)]);
     follow_up.event.request_json = r#"{"message":"fix the second one"}"#.into();
@@ -190,7 +190,7 @@ async fn test_history_prefix_is_byte_identical_across_leases() {
     );
 }
 
-/// A write-bound lease keeps its trusted repair context in the system prompt
+/// A write-bound run keeps its trusted repair context in the system prompt
 /// and out of every message, earlier turns included.
 #[tokio::test]
 async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
@@ -202,13 +202,13 @@ async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
 
     const REPOSITORY: &str = "agentsfleet/linkwarden";
     const HEADING: &str = "## Trusted repair context";
-    let mut lease = with_history(&[(ASKED, ANSWERED)]);
-    lease.policy.repository_binding = Some(RepositoryBinding {
+    let mut run = with_history(&[(ASKED, ANSWERED)]);
+    run.policy.repository_binding = Some(RepositoryBinding {
         repositories: vec![REPOSITORY.into()],
         access: RepositoryAccess::Write,
         base_branch: "dev".into(),
     });
-    lease.policy.http_origin_policies = vec![HttpOriginPolicy {
+    run.policy.http_origin_policies = vec![HttpOriginPolicy {
         host: "api.github.com".into(),
         credential_names: vec!["github".into()],
         requests: vec![HttpRequestRule {
@@ -224,7 +224,7 @@ async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
         }],
     }];
 
-    let sent = first_request(&lease).await;
+    let sent = first_request(&run).await;
 
     assert!(sent.instructions.contains(HEADING), "{}", sent.instructions);
     assert!(

@@ -8,7 +8,7 @@ use crate::{
     Result,
     error::query,
     task::{
-        TaskLease, TaskRefusal, Tasks, execution,
+        TaskRefusal, TaskRun, Tasks, execution,
         github::BoundPr,
         guard as task_guard,
         row::{sql_counter, sql_small_counter},
@@ -32,16 +32,16 @@ struct Base {
 
 pub(in crate::task) async fn create(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<CheckpointPlanInput>,
 ) -> Result<CheckpointPlan> {
     // Replay and plan allocation need no remote round trip; upload activation
     // is proved before coding admission and again before the first signed PUT.
     let _configured = guard::storage(tasks)?;
     let digest = request_digest(input)?;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = task_guard::lease(&mut tx, lease).await?;
+    let current = task_guard::run(&mut tx, run).await?;
     let task = current
         .task_id
         .clone()
@@ -91,7 +91,7 @@ pub(in crate::task) async fn create(
     identity::quota(&mut tx, &owned.current.workspace_id).await?;
     sqlx::query(include_str!("sql/abandon_capture.sql"))
         .bind(&task)
-        .bind(lease.lease_id)
+        .bind(run.run_id)
         .bind(owned.current.fence)
         .execute(&mut *tx)
         .await
@@ -105,7 +105,7 @@ pub(in crate::task) async fn create(
     let id = allocate(
         tasks,
         &mut tx,
-        lease,
+        run,
         input,
         &owned,
         &digest,
@@ -113,7 +113,7 @@ pub(in crate::task) async fn create(
     )
     .await?;
     let plan = Plan::load(&mut tx, &id, &task).await?;
-    let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, lease, "writer").await?;
+    let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, run, "writer").await?;
     let response = plan.wire(&pin, false)?;
     tx.commit()
         .await
@@ -144,7 +144,7 @@ fn request_digest(input: &CheckpointPlanInput) -> Result<String> {
 async fn allocate(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &CheckpointPlanInput,
     owned: &execution::Owned,
     digest: &str,
@@ -158,7 +158,7 @@ async fn allocate(
         .ok_or(TaskRefusal::NotFound)?;
     // A `u32` always fits the `usize` of every target this daemon builds for.
     let page_count = usize::try_from(input.page_count).unwrap_or(usize::MAX);
-    let mut pages = std::iter::repeat_with(|| tasks.leases.entropy().uuid7(clock::now()))
+    let mut pages = std::iter::repeat_with(|| tasks.runs.entropy().uuid7(clock::now()))
         .take(page_count)
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let base = base(
@@ -171,7 +171,7 @@ async fn allocate(
         &mut pages,
     )
     .await?;
-    let id = tasks.leases.entropy().uuid7(clock::now())?;
+    let id = tasks.runs.entropy().uuid7(clock::now())?;
     let ready_base = base
         .as_ref()
         .filter(|base| input.mode == CheckpointMode::RetainBase && base.ready);
@@ -213,7 +213,7 @@ async fn allocate(
             i32::try_from(input.entry_count).map_err(|_overflow| TaskRefusal::LimitExhausted)?,
             |base| base.entry_count,
         ))
-        .bind(lease.lease_id)
+        .bind(run.run_id)
         .bind(owned.current.fence)
         .bind(super::TRANSFER_SECONDS)
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
@@ -320,7 +320,7 @@ async fn base(
         pages.clone_from(&base.page_ids);
         return Ok(Some(base));
     }
-    let id = tasks.leases.entropy().uuid7(clock::now())?;
+    let id = tasks.runs.entropy().uuid7(clock::now())?;
     sqlx::query(include_str!("sql/base_insert.sql"))
         .bind(&id)
         .bind(workspace)

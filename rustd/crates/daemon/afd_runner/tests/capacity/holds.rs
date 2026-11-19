@@ -1,4 +1,4 @@
-//! Idle holds consume new-work capacity and never renew an existing lease.
+//! Idle holds consume new-work capacity and never renew an existing run.
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use super::{
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_lease_and_a_hold_refuse_a_third_fleet() {
+async fn test_a_run_and_a_hold_refuse_a_third_fleet() {
     let fixture = Fixture::create(2).await;
     let now = clock::now();
     fixture.runtime(clock::after(now, LIVE_FOR)).await;
@@ -21,10 +21,7 @@ async fn test_a_lease_and_a_hold_refuse_a_third_fleet() {
 
     assert!(!fixture.capacity(Claimant::Fleet(&other)).await.can_claim());
     assert!(!fixture.capacity(Claimant::Authoring).await.can_claim());
-    assert!(
-        !fixture.try_claim().await,
-        "authoring writes no third lease"
-    );
+    assert!(!fixture.try_claim().await, "authoring writes no third run");
     fixture.cleanup().await;
 }
 

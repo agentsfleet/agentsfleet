@@ -179,7 +179,7 @@ impl Inbox {
     /// retried resolve continues the run exactly once.
     ///
     /// The row is announced on the fleet's tail as `event_received` when it
-    /// lands here, and only here: the lease verb announces the rows it
+    /// lands here, and only here: the run verb announces the rows it
     /// writes, and this one is already there when the runner pulls it, so a
     /// watcher would otherwise never see the continued run open.
     async fn continue_from(&self, resolved: &Resolved, event_id: &Uuid7) -> Result<Option<Uuid7>> {
@@ -208,7 +208,7 @@ impl Inbox {
             .insert_continuation(resolved, &admitted.stored.id, &actor, event_id)
             .await?;
         // Once, on the write that landed the row: a retried resolve finds it
-        // already there and announces nothing, as the lease verb does.
+        // already there and announces nothing, as the run verb does.
         if inserted {
             let frame = TailFrame::EventReceived {
                 event_id: Cow::Borrowed(admitted.stored.id.as_str()),

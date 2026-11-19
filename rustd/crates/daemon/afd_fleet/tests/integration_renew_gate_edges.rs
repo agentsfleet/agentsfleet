@@ -28,14 +28,14 @@ const DEEP_DAILY_BUDGET: &str = r#"{"name":"renew-edges","x-agentsfleet":{"trigg
 const GATE_UNREADABLE: &str = "renew_gate_unreadable_admitted";
 
 /// Takes the charge column away, so every read that sums charges fails as a
-/// database fault: the lease's own (the hold gate) and the fleet's (the spend
+/// database fault: the run's own (the hold gate) and the fleet's (the spend
 /// gate). Only in a database of the case's own.
 const HIDE_CHARGES: &str =
     "ALTER TABLE billing.usage_lines RENAME COLUMN charged_nanos TO charged_nanos_hidden";
 
-/// Moves the lease's runtime cursor past the database clock, so the window
+/// Moves the run's runtime cursor past the database clock, so the window
 /// measures nothing and the renewal logs no line into the hidden column.
-const CURSOR_AHEAD: &str = "UPDATE runner.leases \
+const CURSOR_AHEAD: &str = "UPDATE runner.runs \
      SET last_metered_at = now() + interval '1 hour' WHERE id = $1";
 
 /// Takes the revision table away, so the fleet's ceiling read fails as a
@@ -61,13 +61,13 @@ async fn run(held: &Held, statement: &'static str, binds: &[&Uuid7]) {
     owner.close().await;
 }
 
-/// Renews `held`'s lease with nothing to report.
+/// Renews `held`'s run with nothing to report.
 async fn renew(held: &Held) -> afd_fleet::Result<(jiff::Timestamp, afd_billing::Nanos)> {
     held.fixtures
         .plane()
         .renew(
             &held.runner,
-            &held.issued.lease_id,
+            &held.issued.run_id,
             RenewRequest::default(),
             held.now,
         )
@@ -103,7 +103,7 @@ async fn test_a_gate_that_cannot_be_read_admits_the_run_and_names_itself() {
     held.fixtures
         .native_config(&held.fleet, DEEP_DAILY_BUDGET)
         .await;
-    run(&held, CURSOR_AHEAD, &[&held.issued.lease_id]).await;
+    run(&held, CURSOR_AHEAD, &[&held.issued.run_id]).await;
 
     let mut gates = Vec::new();
     for hide in [HIDE_CHARGES, HIDE_REVISIONS] {
@@ -118,7 +118,7 @@ async fn test_a_gate_that_cannot_be_read_admits_the_run_and_names_itself() {
         drop(capture);
         assert!(renewed.is_ok(), "{:?}", renewed.err());
         for line in &lines {
-            assert_eq!(line.field("lease_id"), Some(held.issued.lease_id.as_str()));
+            assert_eq!(line.field("run_id"), Some(held.issued.run_id.as_str()));
             // Each gate's own crate decides its code; what holds for all of
             // them is that the line carries one beside an uncoded sentence.
             assert!(

@@ -1,6 +1,6 @@
 //! The worker forwards saved context and respects the configured turn allowance.
 
-use super::{ack, json, lease, result, rig, run};
+use super::{ack, json, payload, result, rig, run};
 use crate::{
     client::{Call, Verb},
     test_support::Answer,
@@ -9,7 +9,7 @@ use serde_json::Value;
 
 // Value: protects=earlier assistant text and the current candidate reach the daemon in order;
 // fails_when=the worker drops context or silently replaces the candidate;
-// why_new=the original lease fixture contains only one user message and no candidate;
+// why_new=the original run fixture contains only one user message and no candidate;
 // seam=the existing control-plane transport fixture; no_claim=live model inference.
 #[tokio::test]
 async fn existing_candidate_and_assistant_context_reach_the_model_call() {
@@ -18,7 +18,7 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let mut configured = lease();
+    let mut configured = payload();
     configured
         .messages
         .push(af_wire::authoring::ContextMessage {
@@ -85,7 +85,7 @@ async fn unknown_or_exhausted_usage_prevents_another_model_call() {
             Verb::AuthoringReport => ack(),
             other => panic!("unexpected authority {other:?}"),
         });
-        let mut configured = lease();
+        let mut configured = payload();
         configured.limits.output_per_turn = 2;
         let (calls, report) = run(&mut rig, configured).await;
         assert_eq!(
@@ -117,7 +117,7 @@ async fn unknown_or_exhausted_usage_prevents_another_model_call() {
 // Value: protects=an invalid saved allowance cannot be truncated into an authorized call;
 // fails_when=an allowance above the wire range wraps or silently admits a request;
 // why_new=the larger normal allowance test remains within u32;
-// seam=the existing control-plane transport fixture; no_claim=live invalid leases.
+// seam=the existing control-plane transport fixture; no_claim=live invalid runs.
 #[tokio::test]
 async fn an_output_allowance_beyond_the_wire_range_never_calls_the_model() {
     for allowance in [-1, i64::from(u32::MAX) + 1] {
@@ -125,7 +125,7 @@ async fn an_output_allowance_beyond_the_wire_range_never_calls_the_model() {
             Verb::AuthoringReport => ack(),
             other => panic!("invalid allowance requested authority {other:?}"),
         });
-        let mut configured = lease();
+        let mut configured = payload();
         configured.limits.output_per_turn = allowance;
         let (calls, report) = run(&mut rig, configured).await;
         assert_eq!(calls.len(), 1);
@@ -153,7 +153,7 @@ async fn a_compaction_receipt_continues_the_same_turn_and_counts_both_calls() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     let requests: Vec<Value> = calls
         .iter()
         .filter(|call| call.verb == Verb::AuthoringModel)

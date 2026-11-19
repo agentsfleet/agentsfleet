@@ -11,14 +11,14 @@ use crate::e2e::Scenario;
 use af_wire::runner::HeartbeatRequest;
 use afr_supervisor::test_util::Session;
 
-async fn session(run: &Scenario, origin: &str, proxy: Option<&str>) -> Session {
+async fn session(scene: &Scenario, origin: &str, proxy: Option<&str>) -> Session {
     use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STREAM_CA, ENV_STREAM_URL};
     let root = crate::support::runner_stream::root_file()
         .to_string_lossy()
         .into_owned();
     let pairs = [
-        (ENV_API_URL, run.base.as_str()),
-        (ENV_RUNNER_TOKEN, run.token.as_str()),
+        (ENV_API_URL, scene.base.as_str()),
+        (ENV_RUNNER_TOKEN, scene.token.as_str()),
         (ENV_STREAM_URL, origin),
         (ENV_STREAM_CA, root.as_str()),
     ]
@@ -42,10 +42,17 @@ async fn heartbeat(session: &Session) -> afr_supervisor::Result<serde_json::Valu
     session.heartbeat(&beat).await
 }
 
-async fn owner(run: &Scenario) -> af_core::id::Uuid7 {
+async fn owner(scene: &Scenario) -> af_core::id::Uuid7 {
     sqlx::query_scalar("SELECT connection_id FROM runner.runners WHERE id=$1")
-        .bind(&run.runner_id)
-        .fetch_one(&mut *run.booted.database.acquire().await.expect("owner observer"))
+        .bind(&scene.runner_id)
+        .fetch_one(
+            &mut *scene
+                .booted
+                .database
+                .acquire()
+                .await
+                .expect("owner observer"),
+        )
         .await
         .expect("the session has a durable owner")
 }
@@ -54,16 +61,16 @@ async fn owner(run: &Scenario) -> af_core::id::Uuid7 {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_stream_connects_through_an_environment_proxy_without_a_direct_http3_attempt() {
     let mut supervisor = agentsfleetd::supervisor::Supervisor::new();
-    let run = crate::e2e::scenario(&mut supervisor).await;
+    let scene = crate::e2e::scenario(&mut supervisor).await;
     let direct =
-        crate::integration_runner_stream::raw::Native::connect(&run, af_stream::Transport::H3)
+        crate::integration_runner_stream::raw::Native::connect(&scene, af_stream::Transport::H3)
             .await;
     direct.close().await;
-    let relay = relay::Relay::start(run.booted.runner_stream_address, true).await;
+    let relay = relay::Relay::start(scene.booted.runner_stream_address, true).await;
     let proxy = connect::Proxy::start(relay.address).await;
     // The proxy tunnels only to its backend's literal address, so the origin names it the same way.
     let origin = format!("https://[::1]:{}", relay.address.port());
-    let mut runner = session(&run, &origin, Some(&proxy.url)).await;
+    let mut runner = session(&scene, &origin, Some(&proxy.url)).await;
     let reply = heartbeat(&runner)
         .await
         .expect("native heartbeat through CONNECT");
@@ -82,5 +89,5 @@ async fn the_stream_connects_through_an_environment_proxy_without_a_direct_http3
     proxy.close().await;
     relay.close().await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

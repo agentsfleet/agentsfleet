@@ -130,7 +130,7 @@ async fn test_the_operator_reads_derive_liveness_and_page_by_creation() {
     assert_eq!(item.status(), AdminState::Active);
     assert_eq!(item.liveness(), RunnerLiveness::Registered);
     assert_eq!(item.last_seen_at(), NEVER_SEEN);
-    assert_eq!(detail.active_lease_count(), 0);
+    assert_eq!(detail.active_run_count(), 0);
     let registered = fixture.history(&newer).await;
     let enrolment_event = registered.first().expect("the enrolment is recorded");
     assert_eq!(
@@ -230,8 +230,8 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
         &mut connection,
         (&runner, &mint_id(), &mint_id()),
         AttemptRow {
-            status: afd_runner::sql::LEASE_STATUS_EXPIRED,
-            lease_expires_at: clock::now(),
+            status: afd_runner::sql::RUN_STATUS_EXPIRED,
+            run_expires_at: clock::now(),
             reserved_nanos: RESERVED_NANOS,
         },
     )
@@ -384,11 +384,11 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
     };
     register().await.expect("the first runner registers");
 
-    // The page's rows join `runner.leases` and its total does not, so holding
+    // The page's rows join `runner.runs` and its total does not, so holding
     // that table parks the page after its total and before its rows.
     let mut holder = owner.acquire().await.expect("a holding connection");
     let mut hold = sqlx::Acquire::begin(&mut *holder).await.expect("a hold");
-    sqlx::query("LOCK TABLE runner.leases IN ACCESS EXCLUSIVE MODE")
+    sqlx::query("LOCK TABLE runner.runs IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *hold)
         .await
         .expect("the lock");
@@ -398,7 +398,7 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
         async move { runners.tenant(&tenant).list_runners(None, 200).await }
     });
     let waiting = "SELECT count(*) FROM pg_locks \
-                   WHERE NOT granted AND relation = 'runner.leases'::regclass";
+                   WHERE NOT granted AND relation = 'runner.runs'::regclass";
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
             let parked: i64 = sqlx::query_scalar(waiting)

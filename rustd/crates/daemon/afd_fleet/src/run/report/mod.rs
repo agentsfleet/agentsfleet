@@ -1,0 +1,199 @@
+//! The report verb: one runner's terminal result, from fence to acknowledgement.
+//!
+//! Two halves with a commit between them. Everything before
+//! [`Runs::commit_report`](crate::run::commit) can still refuse the report;
+//! nothing after it can, because by then the run is flipped, the tenant is
+//! charged, and the run's answer is durable beside both.
+//!
+//! # Why the money is settled before the event row is closed
+//!
+//! The reverse order looks tidier — end the work, then bill for it — and it
+//! loses money on the cap path. A run that reaches `MAX_RUNTIME` is racing
+//! the reclaim sweep, and the sweep bumps `fencing_token`. Settle first and the
+//! affinity lock inside the statement holds the sweep off until the charge
+//! commits. Settle second and the sweep wins the fence, the settle is refused,
+//! and the last slice of a twelve-hour run is never charged to anyone.
+//!
+//! So the fence — which is what authorizes reporting at all — is spent on the
+//! money first, and the narrative log is closed afterwards from a position
+//! where nothing can take it away. Since §7 that position is the same
+//! TRANSACTION rather than merely the next statement: the result, the session
+//! cursor and the freed slot commit with the charge or not at all, so there is
+//! no interval in which a tenant is charged for a run whose answer was never
+//! written. [`crate::run::commit`] carries that argument.
+//!
+//! # What this verb does NOT do
+//!
+//! No activity publish and no outbound wake inside the settle. An owed
+//! answer's obligation row does commit there, through
+//! [`crate::run::obligation`]; the publish and the wake run after the
+//! commit, best effort, and a failure is logged, never returned.
+//! No OTLP spans either — the drained amount comes back as a VALUE, the way
+//! [`afd_billing::Accounts::debit_receive`] answers one, and the caller
+//! attaches the instrument. An exporter fused into the money path would be one
+//! a report could not settle without.
+
+use af_core::id::Uuid7;
+use af_observability::verb_span::{ReportStage, VerbClock};
+use af_wire::report::ReportRequest;
+use jiff::Timestamp;
+
+use crate::error::{Result, run_not_found};
+use crate::run::commit::{Committed, TerminalReport};
+use crate::run::pull::RunService;
+use crate::run::settle::Reported;
+use crate::run::usage::Pricing;
+
+use assembly::{Subject, stored_trace, terminal};
+pub use result::Reconciled;
+pub use tokens::RunTokens;
+mod assembly;
+mod finalize;
+mod observations;
+mod result;
+pub use observations::observe;
+
+impl RunService {
+    /// Record one runner's terminal result for a run it holds.
+    ///
+    /// Answers what the final slice's usage line cost, so the caller can meter
+    /// it, and
+    /// the two identifiers that were only knowable INSIDE this call: the report
+    /// names a run, and which fleet and workspace that run belonged to is
+    /// something the load resolved. The caller needs both to report the run,
+    /// and reading them again would be a second statement for a fact this one
+    /// already had.
+    ///
+    /// `kept` is the run's facts a stream session kept from the offer, so the
+    /// report reads no run row. `None` reads them, as a session rebuilt from
+    /// the database must. The facts never change after issue, and the report
+    /// statement still checks the fence.
+    ///
+    /// # Errors
+    /// Refuses a run that is not this runner's with
+    /// [`run_not_found`](crate::error), and a holder the fleet has superseded
+    /// with [`stale_fence`](crate::error) — neither writes anything. Also
+    /// reports a datastore that would not answer, in which case the run is
+    /// left `active` for the runner to re-report against and nothing was
+    /// logged.
+    ///
+    /// Marks each stage it reaches on `clock`: the load, the preparation, the
+    /// capture, the commit and the announce.
+    pub async fn report_with(
+        &self,
+        runner_id: &Uuid7,
+        request: &ReportRequest<'_>,
+        now: Timestamp,
+        kept: Option<Reported>,
+        clock: &mut VerbClock<ReportStage>,
+    ) -> Result<Reconciled> {
+        let run_id = &crate::error::wire_run(request.run_id.as_ref())?;
+        // The load stage is marked either way: a kept run reaches it at
+        // once, so the span shows the read the session saved.
+        let loaded = match kept {
+            Some(run) => Ok(Some(run)),
+            None => self.runs.load_for_report(run_id, runner_id).await,
+        };
+        clock.mark(ReportStage::Load);
+        let Some(run) = loaded? else {
+            return Err(run_not_found());
+        };
+        clock.identify(run.event_id.as_str(), run.fleet_id.as_str());
+
+        let run_key = run_id.clone();
+        let task_plan = self
+            .prepare_task_report(runner_id, &run_key, request)
+            .await?;
+        let task_settlement = match &task_plan {
+            Some(plan) => Some(plan.settlement().await?),
+            None => None,
+        };
+        let tool_calls = stored_trace(&run, request);
+        // The book cached at the version this report read beside the run:
+        // a warm replica reads no price, and the statement guards on the
+        // version.
+        let posture = Pricing::posture_of(&run.posture)?;
+        let pricing = match run.catalogue_version {
+            Some(version) => {
+                self.runs
+                    .prices()
+                    .get_or_load(
+                        self.runs.pool(),
+                        posture,
+                        &run.provider,
+                        &run.model,
+                        Some(version),
+                        run_id.as_str(),
+                    )
+                    .await
+            }
+            None => std::sync::Arc::new(
+                Pricing::load(
+                    self.runs.pool(),
+                    posture,
+                    &run.provider,
+                    &run.model,
+                    run_id.as_str(),
+                )
+                .await,
+            ),
+        };
+        let last_event = Uuid7::parse(request.checkpoint.last_event_id.as_ref())?;
+        let mut report = terminal(
+            Subject {
+                id: run_id,
+                last_event: &last_event,
+                key: &run_key,
+                runner: runner_id,
+                row: &run,
+            },
+            &pricing,
+            request,
+            tool_calls.as_deref(),
+            now,
+        );
+
+        report.task_settlement = task_settlement;
+        clock.mark(ReportStage::Prepare);
+        let committed = self
+            .commit_reported(report, &run, (runner_id, request, now), clock)
+            .await?;
+        let context = finalize::Context {
+            runner_id,
+            request,
+            run_id,
+            now,
+        };
+        let reconciled = self
+            .finalize_report(run, committed, task_plan.as_ref(), context)
+            .await;
+        clock.mark(ReportStage::Announce);
+        reconciled
+    }
+
+    /// The inline memory capture and the commit, each marked on `clock` as it
+    /// ends; the commit consumes the report, so the run is free after.
+    async fn commit_reported(
+        &self,
+        report: TerminalReport<'_>,
+        run: &Reported,
+        (runner_id, request, now): (&Uuid7, &ReportRequest<'_>, Timestamp),
+        clock: &mut VerbClock<ReportStage>,
+    ) -> Result<Committed> {
+        // Boxed: the capture's state would otherwise ride inside every report
+        // future, past the large-future bound, for a step most reports skip.
+        Box::pin(self.capture_reported(runner_id, run, request, now)).await;
+        clock.mark(ReportStage::Capture);
+        let committed = self.runs.commit_report(report).await;
+        clock.mark(ReportStage::Commit);
+        committed
+    }
+}
+
+mod memory;
+mod steps;
+mod timing;
+mod tokens;
+
+#[cfg(test)]
+mod tests;

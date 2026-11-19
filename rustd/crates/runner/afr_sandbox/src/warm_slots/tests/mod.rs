@@ -19,13 +19,13 @@ async fn test_warm_slot_single_use() {
     let inner = Arc::new(Counting::default());
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
-    let request = SandboxRequest::new("lease-a", Limits::default());
+    let request = SandboxRequest::new("run-a", Limits::default());
 
     let first = slots.prepare(request).await.unwrap();
     settle().await;
     let second = slots
         .prepare(SandboxRequest {
-            lease_id: "lease-b",
+            run_id: "run-b",
             ..request
         })
         .await
@@ -63,7 +63,7 @@ async fn test_a_request_with_other_limits_starts_cold() {
 
     let cold = slots
         .prepare(SandboxRequest::new(
-            "lease-c",
+            "run-c",
             Limits {
                 pids: 7,
                 ..Limits::default()
@@ -72,7 +72,7 @@ async fn test_a_request_with_other_limits_starts_cold() {
         .await
         .unwrap();
 
-    assert!(name_of(cold.as_ref()).contains("lease-c"));
+    assert!(name_of(cold.as_ref()).contains("run-c"));
     assert_eq!(
         capture.only("sandbox_start_completed").field("start"),
         Some("cold")
@@ -87,11 +87,11 @@ async fn test_zero_slots_makes_every_start_cold() {
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 0, Limits::default());
 
     let cold = slots
-        .prepare(SandboxRequest::new("lease-d", Limits::default()))
+        .prepare(SandboxRequest::new("run-d", Limits::default()))
         .await
         .unwrap();
 
-    assert!(name_of(cold.as_ref()).contains("lease-d"));
+    assert!(name_of(cold.as_ref()).contains("run-d"));
     cold.destroy().await.unwrap();
     slots.shutdown().await;
 }
@@ -109,7 +109,7 @@ async fn test_a_slot_that_keeps_failing_is_retried_until_shutdown() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let refused = slots
-        .prepare(SandboxRequest::new("lease-e", Limits::default()))
+        .prepare(SandboxRequest::new("run-e", Limits::default()))
         .await;
     slots.shutdown().await;
 
@@ -138,7 +138,7 @@ async fn test_a_slot_that_failed_a_few_times_is_started_after_all() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     let warm = slots
-        .prepare(SandboxRequest::new("lease-g", Limits::default()))
+        .prepare(SandboxRequest::new("run-g", Limits::default()))
         .await
         .unwrap();
 
@@ -149,7 +149,7 @@ async fn test_a_slot_that_failed_a_few_times_is_started_after_all() {
 
 /// A slot whose sandbox died while it waited is retired, never handed out.
 #[tokio::test]
-async fn test_a_slot_that_died_is_never_handed_to_a_lease() {
+async fn test_a_slot_that_died_is_never_handed_to_a_run() {
     let inner = Arc::new(Counting {
         dead: true,
         ..Counting::default()
@@ -159,13 +159,13 @@ async fn test_a_slot_that_died_is_never_handed_to_a_lease() {
     settle().await;
 
     let cold = slots
-        .prepare(SandboxRequest::new("lease-h", Limits::default()))
+        .prepare(SandboxRequest::new("run-h", Limits::default()))
         .await
         .unwrap();
     settle().await;
 
     assert!(
-        name_of(cold.as_ref()).contains("lease-h"),
+        name_of(cold.as_ref()).contains("run-h"),
         "started cold instead"
     );
     assert!(
@@ -208,17 +208,17 @@ async fn test_shutdown_waits_for_a_start_still_in_flight() {
     assert_eq!(inner.destroyed.load(Ordering::SeqCst), 1);
 }
 
-/// A lease that stops waiting after its claim is answered never strands the
+/// A run that stops waiting after its claim is answered never strands the
 /// slot it was handed: the keeper takes it back and tears it down.
 #[tokio::test]
-async fn test_a_slot_whose_lease_stopped_waiting_is_retired() {
+async fn test_a_slot_whose_run_stopped_waiting_is_retired() {
     use futures_util::FutureExt as _;
     let inner = Arc::new(Counting::default());
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
 
     let abandoned = slots
-        .prepare(SandboxRequest::new("lease-f", Limits::default()))
+        .prepare(SandboxRequest::new("run-f", Limits::default()))
         .now_or_never();
     settle().await;
 
@@ -251,7 +251,7 @@ async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
     );
 }
 
-/// A slot is built isolated, so a lease that asks for the host's network or
+/// A slot is built isolated, so a run that asks for the host's network or
 /// an allowlist is never handed one: its namespace was chosen when the slot
 /// started, under whatever the runner was assigned then.
 #[tokio::test]
@@ -262,19 +262,19 @@ async fn test_warm_slot_serves_only_its_own_network() {
     settle().await;
     let allowlist = Allowlist::new(Vec::new()).unwrap();
 
-    for (lease_id, network) in [
-        ("lease-h", Network::Host),
-        ("lease-a", Network::Allowed(&allowlist)),
+    for (run_id, network) in [
+        ("run-h", Network::Host),
+        ("run-a", Network::Allowed(&allowlist)),
     ] {
         let cold = slots
-            .prepare(SandboxRequest::new(lease_id, Limits::default()).with_network(network))
+            .prepare(SandboxRequest::new(run_id, Limits::default()).with_network(network))
             .await
             .unwrap();
-        assert!(name_of(cold.as_ref()).contains(lease_id));
+        assert!(name_of(cold.as_ref()).contains(run_id));
         cold.destroy().await.unwrap();
     }
     let warm = slots
-        .prepare(SandboxRequest::new("lease-i", Limits::default()))
+        .prepare(SandboxRequest::new("run-i", Limits::default()))
         .await
         .unwrap();
 
@@ -300,7 +300,7 @@ async fn test_a_sandbox_names_no_host_workspace_by_default() {
     let engine = Counting::default();
 
     let sandbox = engine
-        .prepare(SandboxRequest::new("lease-w", Limits::default()))
+        .prepare(SandboxRequest::new("run-w", Limits::default()))
         .await
         .unwrap();
 

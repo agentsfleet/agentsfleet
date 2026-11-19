@@ -13,7 +13,7 @@ use afr_tools::catalog::IMAGE;
 use serde_json::json;
 
 use super::support::wires::Wire;
-use super::support::{Fake, engine_hosting, lease, run_with};
+use super::support::{Fake, engine_hosting, payload, run_with};
 use super::{ANSWER, CALL_ID};
 
 /// The screenshot the image suite's workspace holds, forty kibibytes of PNG.
@@ -54,9 +54,9 @@ async fn test_image_attaches_to_next_turn() {
             wire.answer(ANSWER),
         ])
         .await;
-        let leased = lease(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
+        let assigned = payload(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
 
-        let (output, _frames) = run_with(&hosting(&fake), &leased, Some(&client)).await;
+        let (output, _frames) = run_with(&hosting(&fake), &assigned, Some(&client)).await;
 
         assert!(
             matches!(output.result.outcome, ResultOutcome::Completed(_)),
@@ -95,9 +95,9 @@ async fn an_image_call_on_the_chat_wire_is_refused_before_any_read() {
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
+    let assigned = payload(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
 
-    let (output, _frames) = run_with(&hosting(&fake), &leased, Some(&client)).await;
+    let (output, _frames) = run_with(&hosting(&fake), &assigned, Some(&client)).await;
 
     let trace = output.trace.unwrap();
     assert_eq!(trace.calls[0].status, ToolCallStatus::Failed);

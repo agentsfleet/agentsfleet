@@ -1,6 +1,6 @@
 //! Readiness is a current observation; wallet balances never enter review identity.
 
-use af_core::timing::LeaseClock;
+use af_core::timing::RunClock;
 use sqlx::PgConnection;
 
 use super::{Context, Observed};
@@ -10,11 +10,11 @@ use crate::{
 };
 
 /// Ready when the owner's balance, less its unsettled lines, still funds one
-/// lease interval of runtime: the least a setup chat can run before its first
+/// run interval of runtime: the least a setup chat can run before its first
 /// renewal asks again. Read on the caller's transaction, never a second pooled
 /// connection.
 pub(super) async fn observe(
-    clock: LeaseClock,
+    clock: RunClock,
     connection: &mut PgConnection,
     draft: &Context,
     observed: &mut Observed,

@@ -1,5 +1,5 @@
 //! The live tail, as a suite watches it: the subscription's settle, the two
-//! waits, and the lease that opens a run for the frames to describe.
+//! waits, and the run that opens a run for the frames to describe.
 //!
 //! Support rather than a suite's own helpers because two binaries watch the
 //! tail — the runner's forwarded frames and the daemon's own brackets — and a
@@ -56,7 +56,7 @@ pub(crate) struct Tail {
 pub(crate) async fn tail_of(fleet: &Uuid7) -> Tail {
     let bus = afd_bus::test_util::lane()
         .await
-        .expect("the lane's NATS: run through make test-integration-rustd");
+        .expect("the lane's NATS: scene through make test-integration-rustd");
     let subscription = bus
         .subscribe(&Subject::FleetTail(fleet.clone()))
         .await
@@ -67,19 +67,19 @@ pub(crate) async fn tail_of(fleet: &Uuid7) -> Tail {
     }
 }
 
-/// Beats, polls, and answers the lease the seeded event produced.
+/// Beats, polls, and answers the run the seeded event produced.
 ///
 /// Both tests need the same three requests before they can forward anything,
 /// and the beat is not optional — a runner that has not proven its capabilities
 /// reads degraded and the poll correctly answers no-work.
-pub(crate) async fn lease(run: &Scenario) -> (String, u64) {
-    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+pub(crate) async fn run(scene: &Scenario) -> (String, u64) {
+    let beat = crate::wire::heartbeat(scene, &capable_beat()).await;
     assert!(
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
 
-    wait_for_seeded_offer(run).await
+    wait_for_seeded_offer(scene).await
 }
 
 /// Gives the subscription time to reach every node of the lane's NATS cluster.

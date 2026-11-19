@@ -119,7 +119,7 @@ impl Harness<'_, '_> {
         let assessed = tokio::select! {
             biased;
             () = self.stop.cancelled() => return Some(Ending::Stopped),
-            assessed = crate::decision::goal::assess(prepared, assignment, self.shared.lease.verbs,
+            assessed = crate::decision::goal::assess(prepared, assignment, self.shared.run.verbs,
                 self.shared.fencing_token, evidence) => assessed,
         };
         match assessed {
@@ -150,7 +150,7 @@ impl Harness<'_, '_> {
         let Some(prepared) = self.task.as_mut().filter(|prepared| prepared.allow_actions) else {
             return Ok(());
         };
-        let verbs = self.shared.lease.verbs;
+        let verbs = self.shared.run.verbs;
         // Always read the oldest unsettled source page. Advancing the message
         // cursor before all mixed-source replies are acknowledged can strand
         // an accepted conversation item while a later action completes.
@@ -168,7 +168,7 @@ impl Harness<'_, '_> {
             .collect();
         for input in pending {
             let binding = crate::decision::Intake {
-                lease: self.shared.payload,
+                run: self.shared.payload,
                 verbs,
                 provider: self.shared.provider,
                 meter: self.shared.meter,
@@ -254,7 +254,7 @@ impl Harness<'_, '_> {
 }
 
 async fn record_input(
-    verbs: &dyn afr_tools::LeaseVerbs,
+    verbs: &dyn afr_tools::RunVerbs,
     fencing_token: u64,
     input: &af_wire::task::TaskAcceptedInput,
     mode: TaskInputMode,
@@ -284,7 +284,7 @@ async fn record_input(
 }
 
 async fn read_inputs(
-    verbs: &dyn afr_tools::LeaseVerbs,
+    verbs: &dyn afr_tools::RunVerbs,
     fencing_token: u64,
     incorporated: u64,
 ) -> crate::Result<af_wire::task::TaskInputsResponse<'static>> {

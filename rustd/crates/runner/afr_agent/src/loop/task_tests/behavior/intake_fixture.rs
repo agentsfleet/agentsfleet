@@ -17,7 +17,7 @@ pub(super) struct IntakeNative {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for IntakeNative {
+impl RunVerbs for IntakeNative {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -180,10 +180,10 @@ pub(super) fn proposed(
 
 pub(super) async fn prepare(script: &Script, native: &IntakeNative) -> crate::Result<PreparedTask> {
     let engine = super::super::super::tests::engine(vec![], script);
-    let lease = assigned_lease(&[], 16_384);
+    let this_run = assigned_run(&[], 16_384);
     engine
         .prepare_task(
-            &lease,
+            &this_run,
             native,
             &Meter::default(),
             &tokio_util::sync::CancellationToken::new(),

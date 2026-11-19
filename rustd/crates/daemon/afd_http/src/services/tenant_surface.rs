@@ -59,7 +59,7 @@ pub trait TenantSurface {
 
     /// Opening a personal account from a verified signup event.
     ///
-    /// An associated type for the reason [`Services::Leases`] is one: the
+    /// An associated type for the reason [`Services::Runs`] is one: the
     /// suites drive the refusal cases through a stub that reaches no store, and
     /// the daemon's own is a Postgres pool.
     type Signups: Signups;

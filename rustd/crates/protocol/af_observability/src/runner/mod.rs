@@ -104,13 +104,13 @@ pub const MAX_SERIES: usize = 4096;
 struct Counters {
     /// When this runner was last heard from.
     last_seen: LastSeen,
-    /// How many leases it is believed to hold.
+    /// How many runs it is believed to hold.
     ///
-    /// Best effort, and knowingly: a lease abandoned by a dead runner expires
+    /// Best effort, and knowingly: a run abandoned by a dead runner expires
     /// by the clock with no report to decrement against, so a crashed host's
     /// gauge stays high until the process restarts. The liveness sweeper's row
     /// is the authority; this is a hint next to it.
-    active_leases: AtomicI64,
+    active_runs: AtomicI64,
 }
 
 /// The per-runner metric families this process holds.
@@ -126,7 +126,7 @@ pub struct RunnerMetrics {
     /// before it writes — which is what keeps a slow publisher from blocking a
     /// fast one, and what makes the write path lock-free in the common case.
     ///
-    /// Sharded rather than one map behind one lock: every lease poll, beat and
+    /// Sharded rather than one map behind one lock: every run poll, beat and
     /// release looks a runner up here, so the table is read from every request
     /// task in the process at once, and admitting a new runner took a lock
     /// over the WHOLE table to insert one key. Nothing is ever removed, which
@@ -197,17 +197,17 @@ impl RunnerMetrics {
         }
     }
 
-    /// Records that a runner took a lease.
-    pub fn leased(&self, runner_id: &str) {
+    /// Records that a runner took a run.
+    pub fn held(&self, runner_id: &str) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.active_leases.fetch_add(1, Ordering::Relaxed);
+            counters.active_runs.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     /// Records that a runner gave one back.
     pub fn released(&self, runner_id: &str) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.active_leases.fetch_sub(1, Ordering::Relaxed);
+            counters.active_runs.fetch_sub(1, Ordering::Relaxed);
         }
     }
 

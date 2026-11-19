@@ -1,4 +1,4 @@
--- One row per event, keyed by its parent: replacement leases share this head.
+-- One row per event, keyed by its parent: replacement runs share this head.
 -- head_turn_checkpoint_id is read by offer/restore; next_generation by begin.
 CREATE TABLE runner.turn_recovery (
     event_id UUID PRIMARY KEY REFERENCES fleet.events (event_id) ON DELETE CASCADE,

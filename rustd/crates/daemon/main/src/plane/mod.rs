@@ -26,7 +26,7 @@ use afd_api::router::{Dependencies, ReadyInputs};
 use afd_approval::IntegrationGrants;
 use afd_billing::Accounts;
 use afd_credential::provider::Providers;
-use afd_fleet::lease::{LeaseService, Leases};
+use afd_fleet::run::{RunService, Runs};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
 use afd_runner::Runners;
@@ -62,7 +62,7 @@ pub struct ServingPlane {
     signup_writeback: SignupWriteback,
     authenticator: Authenticator,
     runners: Runners,
-    leases: LeaseService,
+    runs: RunService,
     runner_streams: afd_gateway::Gateway,
     runner_commands: afd_bus::Handle,
     tasks: afd_fleet::task::Tasks,
@@ -117,7 +117,7 @@ impl ServingPlane {
     ///
     /// Two handles are built first because several groups take a share:
     ///
-    /// - ONE provider store, read by two planes. The lease verb resolves which
+    /// - ONE provider store, read by two planes. The run verb resolves which
     ///   key a run dials with; the tenant surface reads and writes the row that
     ///   decides it. A `Providers` is a pool handle and an `Arc` over the
     ///   process key, so a clone shares one connection set and one key —
@@ -129,7 +129,7 @@ impl ServingPlane {
     ///   outbound group takes it by value, so it is built after every group
     ///   that clones it.
     ///
-    /// The lease plane is last, because it takes the pool and the key by
+    /// The run plane is last, because it takes the pool and the key by
     /// value.
     #[must_use]
     pub fn new(parts: PlaneParts) -> Self {
@@ -194,7 +194,7 @@ impl ServingPlane {
             runners: native.runners,
             runner_streams: native.streams,
             runner_commands: activity_streams,
-            leases: native.leases,
+            runs: native.runs,
             tasks: native.tasks,
             identity_webhook_secret: parts.identity_webhook_secret,
             platform_admin_workspace: parts.platform_admin_workspace,
@@ -230,24 +230,24 @@ mod surfaces;
 
 pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 
-/// The plane every runner verb acts through: leases, gates, grants, wallets,
+/// The plane every runner verb acts through: runs, gates, grants, wallets,
 /// memory, provider keys, the chat thread and declared credentials.
 ///
 /// Takes the pool and the key by value, so [`ServingPlane::new`]
 /// builds it after every other group has cloned what it needs.
-fn lease_plane(
+fn run_plane(
     database: afd_db::Db,
     kek: Arc<af_crypto::secret::Kek>,
     providers: Providers,
     bus: afd_bus::Handle,
     broker: Arc<afd_credential::credential::Broker>,
     biller: Arc<dyn afd_billing::biller::Biller>,
-) -> LeaseService {
+) -> RunService {
     let activity_streams = bus.clone();
-    LeaseService {
+    RunService {
         task_reports: None,
-        turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
-        leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
+        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
+        runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
         // same table: a delivery that finds no grant asks through the crate
@@ -258,7 +258,7 @@ fn lease_plane(
         memories: Memories::new(database.clone(), Entropy::new())
             .with_activity_streams(activity_streams),
         providers,
-        // The thread a chat lease reads its earlier turns from: the rows the
+        // The thread a chat run reads its earlier turns from: the rows the
         // dashboard thread shows, through the same reader.
         thread: Arc::new(History::new(database.clone())),
         vault: Vault::new(database, kek, Entropy::new()),
@@ -282,9 +282,9 @@ pub type Shared = Arc<ServingPlane>;
 #[cfg(test)]
 mod tests;
 
-/// One native task owner attaches reporting to the existing lease plane.
+/// One native task owner attaches reporting to the existing run plane.
 fn task_plane(
-    leases: &mut LeaseService,
+    runs: &mut RunService,
     admissions: Admissions,
     admin_workspace: Option<Uuid7>,
     storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
@@ -298,26 +298,23 @@ fn task_plane(
             afd_fleet::task::storage::R2CheckpointStore::new(
                 config,
                 admin,
-                leases.vault.clone(),
+                runs.vault.clone(),
                 Arc::clone(&master),
                 client.clone(),
             )
         });
-    leases.turn_checkpoints = leases
-        .turn_checkpoints
-        .clone()
-        .with_storage(storage.clone());
+    runs.turn_checkpoints = runs.turn_checkpoints.clone().with_storage(storage.clone());
     let tasks = afd_fleet::task::Tasks::new(
-        leases.leases.clone(),
+        runs.runs.clone(),
         admissions,
         afd_fleet::task::TaskDependencies {
             policy,
             admin_workspace,
             storage,
-            github: Some(afd_fleet::task::Github::new(leases.clone(), client, master)),
-            ..afd_fleet::task::TaskDependencies::from(&*leases)
+            github: Some(afd_fleet::task::Github::new(runs.clone(), client, master)),
+            ..afd_fleet::task::TaskDependencies::from(&*runs)
         },
     );
-    leases.task_reports = Some(Arc::new(tasks.clone()));
+    runs.task_reports = Some(Arc::new(tasks.clone()));
     tasks
 }

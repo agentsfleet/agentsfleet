@@ -6,7 +6,7 @@ use crate::{
     supervisor::{Case, Observed},
     supervisor_model::call,
 };
-use af_wire::{lease::LeasePayload, task::TaskTarget};
+use af_wire::{run::RunPayload, task::TaskTarget};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 mod archive;
@@ -73,9 +73,9 @@ impl Config {
             workflows: vec![],
         }
     }
-    pub(crate) fn configure(lease: &mut LeasePayload<'_>) -> Result<(), Failed> {
-        lease.durable_tasks = true;
-        lease.decision = Some(Box::new(wire::assignment()?));
+    pub(crate) fn configure(run: &mut RunPayload<'_>) -> Result<(), Failed> {
+        run.durable_tasks = true;
+        run.decision = Some(Box::new(wire::assignment()?));
         Ok(())
     }
 }

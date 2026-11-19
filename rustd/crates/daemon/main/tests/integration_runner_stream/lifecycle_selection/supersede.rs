@@ -17,9 +17,13 @@ async fn a_superseded_runner_stops_without_opening_another_connection() {
 
 async fn superseded(transport: Transport) {
     let mut supervisor = Supervisor::new();
-    let run = crate::e2e::scenario(&mut supervisor).await;
-    let relay = Relay::start(run.booted.runner_stream_address, transport == Transport::H3).await;
-    let mut first = session(&run, &relay.origin, None).await;
+    let scene = crate::e2e::scenario(&mut supervisor).await;
+    let relay = Relay::start(
+        scene.booted.runner_stream_address,
+        transport == Transport::H3,
+    )
+    .await;
+    let mut first = session(&scene, &relay.origin, None).await;
     heartbeat(&first).await.expect("first owner heartbeat");
     let initial = relay.connections();
     assert_eq!(
@@ -30,9 +34,9 @@ async fn superseded(transport: Transport) {
             (0, 1)
         }
     );
-    let mut replacement = Native::connect(&run, Transport::H3).await;
+    let mut replacement = Native::connect(&scene, Transport::H3).await;
     replacement.heartbeat().await;
-    let current = owner(&run).await;
+    let current = owner(&scene).await;
     assert_eq!(current.as_str(), replacement.owner);
     tokio::time::sleep(RECOVERY_SLACK + STREAM_RECOVERY_BUDGET).await;
     assert_eq!(
@@ -40,7 +44,7 @@ async fn superseded(transport: Transport) {
         initial,
         "supersession must not start even a refused replacement connection"
     );
-    assert_eq!(owner(&run).await, current);
+    assert_eq!(owner(&scene).await, current);
     let failure = first
         .close()
         .await
@@ -49,5 +53,5 @@ async fn superseded(transport: Transport) {
     replacement.close().await;
     relay.close().await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

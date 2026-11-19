@@ -22,7 +22,7 @@ async fn a_failed_http_status_keeps_known_cost_without_publishing_successful_con
     let request = fixture::request(&attempt);
     for request in [request.clone(), request] {
         let error = calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect_err("HTTP failure cannot publish the enclosed answer");
         assert_eq!(error.code(), error_code::AUTHORING_PROVIDER);
@@ -52,7 +52,7 @@ async fn malformed_proposal_keeps_known_usage_and_replays_a_nonexecutable_refusa
         let request = fixture::request(&attempt);
         for request in [request.clone(), request] {
             let result = calls
-                .call(&f.runner, &attempt.lease, request)
+                .call(&f.runner, &attempt.run, request)
                 .await
                 .expect("bounded correction feedback");
             assert!(
@@ -89,7 +89,7 @@ async fn incomplete_proposals_return_no_executable_changes() {
     let provider = Arc::new(stub);
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let result = calls
-        .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+        .call(&f.runner, &attempt.run, fixture::request(&attempt))
         .await
         .expect("bounded cut result with known usage");
     assert!(result.cut);
@@ -114,7 +114,7 @@ async fn duplicate_proposal_identities_preserve_cost_without_returning_executabl
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+            .call(&f.runner, &attempt.run, fixture::request(&attempt))
             .await
             .expect_err("ambiguous proposal identities cannot execute")
             .code(),

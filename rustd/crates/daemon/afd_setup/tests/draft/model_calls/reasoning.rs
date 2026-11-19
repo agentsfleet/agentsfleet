@@ -53,7 +53,7 @@ async fn a_tool_continuation_replays_native_reasoning_without_exposing_it_to_the
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let first_request = fixture::request(&attempt);
     let first = calls
-        .call(&f.runner, &attempt.lease, first_request.clone())
+        .call(&f.runner, &attempt.run, first_request.clone())
         .await
         .expect("proposal");
     let public = serde_json::to_string(&first).expect("runner result");
@@ -70,7 +70,7 @@ async fn a_tool_continuation_replays_native_reasoning_without_exposing_it_to_the
         text: "Accepted".into(),
     });
     let second = calls
-        .call(&f.runner, &attempt.lease, next)
+        .call(&f.runner, &attempt.run, next)
         .await
         .expect("tool continuation");
     assert_eq!(second.text, "Ready");

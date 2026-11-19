@@ -76,7 +76,7 @@ fn a_steer_request_refuses_an_unknown_field() {
 
 /// A message holding NUL is refused wherever it sits, and one without is not.
 ///
-/// The length rule alone accepted it, so the lease's `jsonb` cast was the first
+/// The length rule alone accepted it, so the run's `jsonb` cast was the first
 /// thing to object, after the caller had been answered 202.
 #[test]
 fn test_steer_message_holding_nul_is_refused() {

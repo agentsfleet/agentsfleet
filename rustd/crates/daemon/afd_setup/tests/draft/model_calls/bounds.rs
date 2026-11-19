@@ -19,7 +19,7 @@ async fn a_physical_completion_uses_the_context_left_after_the_assembled_input()
     let mut request = fixture::request(&attempt);
     request.request.max_output_tokens = 32_768;
     calls
-        .call(&f.runner, &attempt.lease, request)
+        .call(&f.runner, &attempt.run, request)
         .await
         .expect("completion fits remaining context");
     let sent = provider
@@ -51,7 +51,7 @@ async fn the_complete_request_including_system_instructions_is_bounded_before_di
         let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
         assert_eq!(
             calls
-                .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+                .call(&f.runner, &attempt.run, fixture::request(&attempt))
                 .await
                 .expect_err("assembled tokenizer/window bound includes system instructions")
                 .code(),
@@ -79,7 +79,7 @@ async fn usage_beyond_the_physical_output_or_combined_context_is_uncertain() {
         request.request.max_output_tokens = 32_768;
         assert_eq!(
             calls
-                .call(&f.runner, &attempt.lease, request)
+                .call(&f.runner, &attempt.run, request)
                 .await
                 .expect_err("provider usage exceeded the actual allowance")
                 .code(),
@@ -114,7 +114,7 @@ async fn spent_output_cannot_create_a_dispatch() {
         .expect("spent output");
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+            .call(&f.runner, &attempt.run, fixture::request(&attempt))
             .await
             .expect_err("remaining output exhausted")
             .code(),
@@ -139,7 +139,7 @@ async fn a_missing_wallet_cannot_create_a_dispatch() {
         .expect("owner wallet missing");
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+            .call(&f.runner, &attempt.run, fixture::request(&attempt))
             .await
             .expect_err("missing wallet")
             .code(),

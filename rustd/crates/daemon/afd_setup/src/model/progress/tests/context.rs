@@ -6,7 +6,7 @@
 )]
 
 use super::super::ContextPublisher;
-use crate::{Drafts, lease::guard::Counters};
+use crate::{Drafts, run::guard::Counters};
 use af_core::{error_code, test_util::trace::Capture};
 use af_crypto::entropy::Entropy;
 use af_wire::{
@@ -105,5 +105,5 @@ fn counters() -> Counters {
     })
     .validate()
     .expect("wire bounds");
-    Counters::renew(&request).expect("positive lease fence")
+    Counters::renew(&request).expect("positive run fence")
 }

@@ -1,13 +1,13 @@
 //! The `fleet.events` row a suite seeds, spelled once.
 //!
-//! A runner lease names the event it executes through a foreign key, so every
-//! suite that seeds a lease first needs an event row. They build a
+//! A runner run names the event it executes through a foreign key, so every
+//! suite that seeds a run first needs an event row. They build a
 //! [`FleetEventSeed`] rather than each spelling the insert, and the column list
 //! changes here alone.
 //!
 //! The actor, type and status are arguments because their spellings live above
 //! this crate; the request body is an empty object, which every reader of the
-//! column accepts. A lease names the event by its `event_id`, the table's key.
+//! column accepts. A run names the event by its `event_id`, the table's key.
 
 use af_core::id::Uuid7;
 use jiff::Timestamp;

@@ -1,6 +1,6 @@
 //! Write one complete interpretation through the already locked source and fleet slot.
 
-use super::super::{PreparedItem, PreparedPlan, TaskBinding, TaskLease, Tasks, guard::LeaseRow};
+use super::super::{PreparedItem, PreparedPlan, TaskBinding, TaskRun, Tasks, guard::RunRow};
 use super::{input, insert, prepare::Wake, source::Source};
 use crate::Result;
 use af_core::id::Uuid7;
@@ -8,10 +8,10 @@ use afd_turns::PreparedAdmission;
 
 pub(super) struct Writer<'a> {
     pub tasks: &'a Tasks,
-    pub current: &'a LeaseRow,
+    pub current: &'a RunRow,
     pub source: &'a Source,
     pub plan: &'a PreparedPlan,
-    pub lease: TaskLease<'a>,
+    pub run: TaskRun<'a>,
 }
 
 pub(super) struct Written {
@@ -93,7 +93,7 @@ impl Writer<'_> {
         binding.applies_here = active;
         binding.task_generation = Some(1);
         if active {
-            insert::lease(connection, self.lease, binding).await?;
+            insert::run(connection, self.run, binding).await?;
             insert::admission(connection, &self.plan.source_admission_id, binding).await?;
             bound.clone_from(&binding.task_id);
         }

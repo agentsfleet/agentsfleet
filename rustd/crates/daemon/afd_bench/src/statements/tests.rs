@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::paths::{Path, by_path_with, costliest, per_lease};
+use super::paths::{Path, by_path_with, costliest, per_run};
 use super::{QueryCost, QueryReading, READ_COST, StatementCost, StatementReading};
 
 /// Statements the server had run before a window opened.
@@ -78,7 +78,7 @@ fn statements_by_path_sum_to_total() {
         cost("UPDATE runner.slots SET y", 5),
     ];
     let totals = by_path_with(TABLE, &costs);
-    let per = per_lease(&totals, 10);
+    let per = per_run(&totals, 10);
     let of = |path: Path| per.as_ref().and_then(|per| per.get(&path)).copied();
 
     assert_eq!(of(Path::Claim), Some(1.0));
@@ -114,12 +114,12 @@ fn shared_statement_counts_in_its_first_path() {
 }
 
 #[test]
-fn no_leases_reports_no_ratio() {
+fn no_runs_reports_no_ratio() {
     let totals: BTreeMap<Path, u64> = BTreeMap::from([(Path::Claim, 9)]);
 
     assert!(
-        per_lease(&totals, 0).is_none(),
-        "a ratio over zero leases would report infinity"
+        per_run(&totals, 0).is_none(),
+        "a ratio over zero runs would report infinity"
     );
 }
 
@@ -151,47 +151,47 @@ fn the_costliest_statements_come_first() {
 const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
     (
         "claim_admission_head.sql",
-        afd_fleet::lease::sql::queue::CLAIM_HEAD,
+        afd_fleet::run::sql::queue::CLAIM_HEAD,
         Path::Claim,
     ),
     (
         "select_gates.sql",
-        afd_fleet::lease::sql::gates::SELECT_GATES,
+        afd_fleet::run::sql::gates::SELECT_GATES,
         Path::Gates,
     ),
     (
-        "insert_lease_with_event.sql",
-        afd_fleet::lease::sql::lease::INSERT_LEASE_WITH_EVENT,
+        "insert_run_with_event.sql",
+        afd_fleet::run::sql::run::INSERT_RUN_WITH_EVENT,
         Path::Issue,
     ),
     (
         "select_renewals.sql",
-        afd_fleet::lease::sql::renew::SELECT_RENEWALS,
+        afd_fleet::run::sql::renew::SELECT_RENEWALS,
         Path::Meter,
     ),
     (
         "select_revision_documents.sql",
-        afd_fleet::lease::sql::renew::SELECT_REVISION_DOCUMENTS,
+        afd_fleet::run::sql::renew::SELECT_REVISION_DOCUMENTS,
         Path::Meter,
     ),
     (
         "renew_batch.sql",
-        afd_fleet::lease::sql::renew::RENEW_BATCH,
+        afd_fleet::run::sql::renew::RENEW_BATCH,
         Path::Meter,
     ),
     (
         "commit_report.sql",
-        afd_fleet::lease::sql::report_statement::COMMIT_REPORT,
+        afd_fleet::run::sql::report_statement::COMMIT_REPORT,
         Path::Report,
     ),
     (
         "apply_report_notice.sql",
-        afd_fleet::lease::sql::report_statement::APPLY_REPORT_NOTICE,
+        afd_fleet::run::sql::report_statement::APPLY_REPORT_NOTICE,
         Path::Report,
     ),
     (
         "claim_inputs.sql",
-        afd_fleet::lease::sql::lease::CLAIM_INPUTS,
+        afd_fleet::run::sql::run::CLAIM_INPUTS,
         Path::Fold,
     ),
 ];
@@ -238,7 +238,7 @@ const DELIVERY_READS: &[(&str, Path)] = &[
         Path::Issue,
     ),
     (
-        "SELECT lease_version, last_lease_type FROM runner.runners WHERE id = $1",
+        "SELECT run_version, last_run_type FROM runner.runners WHERE id = $1",
         Path::Host,
     ),
 ];

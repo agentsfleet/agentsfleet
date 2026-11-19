@@ -14,7 +14,7 @@ async fn a_model_call_waiting_on_the_host_lock_cannot_use_its_pre_wait_expiry_ch
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;
     let (host, blocker) = hold_host(&fixture).await;
     let until = clock::after(clock::now(), Duration::from_secs(2));
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at=$2 WHERE lease_id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at=$2 WHERE run_id=$1")
         .bind(fixture.id())
         .bind(until.to_sqlx())
         .execute(
@@ -23,18 +23,18 @@ async fn a_model_call_waiting_on_the_host_lock_cannot_use_its_pre_wait_expiry_ch
                 .database
                 .acquire()
                 .await
-                .expect("lease expiry connection"),
+                .expect("run expiry connection"),
         )
         .await
-        .expect("bound the original lease expiry");
-    let lease = fixture.id();
+        .expect("bound the original run expiry");
+    let run = fixture.id();
     let model = fixture.model();
-    let (result, ()) = tokio::join!(fixture.session.authoring_model(&lease, &model), async {
+    let (result, ()) = tokio::join!(fixture.session.authoring_model(&run, &model), async {
         wait_for_host_wait(&fixture, blocker).await;
         tokio::time::sleep(Duration::from_millis(2_100)).await;
         host.commit()
             .await
-            .expect("release the host after lease expiry");
+            .expect("release the host after run expiry");
     });
     assert_eq!(
         result.expect_err("expiry after host-lock wait").code(),

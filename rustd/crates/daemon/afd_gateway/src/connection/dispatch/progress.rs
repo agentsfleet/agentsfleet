@@ -7,7 +7,7 @@ use af_wire::{
     activity::{ActivityFrame, ActivityRequest, StreamTextKind},
     fold::FoldRequest,
 };
-use afd_setup::setup_lease::PreviewChunk;
+use afd_setup::setup_run::PreviewChunk;
 use garde::Validate as _;
 
 use super::super::{ConnectionServices, Message, context::answer};
@@ -16,10 +16,10 @@ use crate::{Operation, Result};
 impl ConnectionServices {
     pub(in super::super) async fn progress(
         &self,
-        lease: &str,
+        run: &str,
         request: &ActivityRequest<'_>,
     ) -> Result<()> {
-        let id = Uuid7::parse(lease)?;
+        let id = Uuid7::parse(run)?;
         for frame in &request.frames {
             frame.validate()?;
             if !frame.outcome_usable() {
@@ -37,7 +37,7 @@ impl ConnectionServices {
         if let Err(error) = self
             .operation(Operation::Activity, async {
                 Ok(self
-                    .leases
+                    .runs
                     .activity_for_target(&self.handle.runner, &id, &target, &request.frames)
                     .await?)
             })
@@ -48,9 +48,9 @@ impl ConnectionServices {
         Ok(())
     }
 
-    /// A draft lease's answer chunks, republished on its draft's private
+    /// A draft run's answer chunks, republished on its draft's private
     /// stream. Cosmetic: a refused publish is observed, never returned.
-    async fn setup_preview(&self, lease: &Uuid7, frames: &[ActivityFrame<'_>]) -> Result<()> {
+    async fn setup_preview(&self, run: &Uuid7, frames: &[ActivityFrame<'_>]) -> Result<()> {
         let chunks: Vec<PreviewChunk<'_>> = frames
             .iter()
             .filter_map(|frame| match frame {
@@ -70,7 +70,7 @@ impl ConnectionServices {
             .operation(Operation::Activity, async {
                 Ok(self
                     .drafts
-                    .publish_setup_preview(&self.handle.runner, lease, &chunks)
+                    .publish_setup_preview(&self.handle.runner, run, &chunks)
                     .await?)
             })
             .await
@@ -83,19 +83,19 @@ impl ConnectionServices {
     pub(in super::super) async fn folds(
         &self,
         request_id: NonZeroU64,
-        lease: &str,
+        run: &str,
         request: &FoldRequest,
     ) -> Result<()> {
         let result = self
             .operation(Operation::Folds, async {
-                let id = Uuid7::parse(lease)?;
+                let id = Uuid7::parse(run)?;
                 request.validate()?;
-                Ok(self.leases.folds(&self.handle.runner, &id, request).await?)
+                Ok(self.runs.folds(&self.handle.runner, &id, request).await?)
             })
             .await;
         self.send(&Message::Folded {
             request_id,
-            lease_id: lease.into(),
+            run_id: run.into(),
             answer: answer(result),
         })
         .await

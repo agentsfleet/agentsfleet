@@ -22,7 +22,7 @@
 ///
 /// Three disjunctions, and each is a different reason a runner needs looking
 /// at: it has gone quiet, it is draining, or it is not active and still holds
-/// leases. A runner that is none of these is healthy and is not fetched at all
+/// runs. A runner that is none of these is healthy and is not fetched at all
 /// — which is what keeps the pass proportional to the trouble rather than to
 /// the fleet. `checked_at` is the instant the staleness test used, so the pass
 /// judges each row against the clock that selected it.
@@ -33,26 +33,26 @@
 /// is total.
 ///
 /// `$1` the never-seen sentinel, `$2` the offline threshold, `$3` the active
-/// status, `$4` the active lease status, `$5` draining, `$6` the batch limit.
+/// status, `$4` the active run status, `$5` draining, `$6` the batch limit.
 pub const SELECT_DUE_RUNNERS: &str = include_str!("select_due_runners.sql");
 
 /// Record a freshly proved silent episode and automatic quarantine atomically.
 pub const CORDON_SILENT_RUNNER: &str = include_str!("cordon_silent_runner.sql");
 
-/// Finishes draining a runner once its last lease is gone, and records the
+/// Finishes draining a runner once its last run is gone, and records the
 /// transition in the same statement.
 ///
 /// The `NOT EXISTS` guard is the safety property: a draining runner still
-/// holding a lease is still working, and marking it drained would tell an
+/// holding a run is still working, and marking it drained would tell an
 /// operator it was safe to take the host away mid-run. The event is written in
 /// the same statement as the status change, so history cannot disagree with
 /// the row it describes.
 ///
-/// `$1` runner, `$2` drained, `$3` draining, `$4` the active lease status, `$5`
+/// `$1` runner, `$2` drained, `$3` draining, `$4` the active run status, `$5`
 /// event id, `$6` event type, `$7` the from-status key, `$8` the to-status key.
 pub const MARK_DRAINED_IF_IDLE: &str = include_str!("mark_drained_if_idle.sql");
 
-/// One batch of settled leases past the retention window.
+/// One batch of settled runs past the retention window.
 ///
 /// `updated_at`, not `created_at`, is the retention clock: settle and reclaim
 /// both stamp it, so the window counts from the settlement the API documents.
@@ -60,7 +60,7 @@ pub const MARK_DRAINED_IF_IDLE: &str = include_str!("mark_drained_if_idle.sql");
 /// with it concurrent sweepers take disjoint batches.
 ///
 /// `$1` the terminal statuses, `$2` the retention window, `$3` the batch limit.
-pub const DELETE_TERMINAL_LEASES_BATCH: &str = include_str!("delete_terminal_leases_batch.sql");
+pub const DELETE_TERMINAL_RUNS_BATCH: &str = include_str!("delete_terminal_runs_batch.sql");
 
 /// One batch of per-work event rows past the retention window.
 ///
@@ -77,11 +77,11 @@ pub const DELETE_TERMINAL_LEASES_BATCH: &str = include_str!("delete_terminal_lea
 pub const DELETE_AGED_RUNNER_EVENTS_BATCH: &str =
     include_str!("delete_aged_runner_events_batch.sql");
 
-/// One batch of abandoned `active` leases, flipped to `expired`.
+/// One batch of abandoned `active` runs, flipped to `expired`.
 ///
 /// The rows nothing will ever settle: a fleet whose events stopped arriving is
-/// never re-leased, so the reclaim path never reaches its stranded lease. What
-/// makes an age-keyed flip safe here is the renewal CEILING — a lease anything
+/// never re-held, so the reclaim path never reaches its stranded run. What
+/// makes an age-keyed flip safe here is the renewal CEILING — a run anything
 /// still holds is at most `MAX_RUNTIME` stale, and the retention window is
 /// longer than that, so a row past it is provably abandoned.
 ///
@@ -91,8 +91,8 @@ pub const DELETE_AGED_RUNNER_EVENTS_BATCH: &str =
 ///
 /// `$1` the active status, `$2` the retention window, `$3` expired, `$4` the
 /// batch limit.
-pub const EXPIRE_ABANDONED_ACTIVE_LEASES_BATCH: &str =
-    include_str!("expire_abandoned_active_leases_batch.sql");
+pub const EXPIRE_ABANDONED_ACTIVE_RUNS_BATCH: &str =
+    include_str!("expire_abandoned_active_runs_batch.sql");
 
 /// Every fleet, counted by its stored status.
 ///

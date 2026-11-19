@@ -1,4 +1,4 @@
-//! Releasing what a lease holds: on teardown, on drop, and at boot.
+//! Releasing what a run holds: on teardown, on drop, and at boot.
 #![expect(
     clippy::unwrap_used,
     reason = "a test fails loudly on a fake host it cannot build"
@@ -24,7 +24,7 @@ use crate::error::{EgressRefusal, egress_refused};
 #[tokio::test]
 async fn test_parts_with_no_sandbox_never_report_an_exit() {
     let dir = tempfile::tempdir().unwrap();
-    let mut parts = Parts::new("lease-1", dir.path().to_owned());
+    let mut parts = Parts::new("run-1", dir.path().to_owned());
 
     let waited = tokio::time::timeout(Duration::from_millis(5), parts.exited()).await;
 
@@ -33,19 +33,19 @@ async fn test_parts_with_no_sandbox_never_report_an_exit() {
     parts.teardown().await.unwrap();
     assert!(
         !dir.path().exists(),
-        "an empty lease's directory is all teardown removes"
+        "an empty run's directory is all teardown removes"
     );
 }
 
 #[test]
 fn test_dropping_parts_releases_what_they_hold() {
     let dir = tempfile::tempdir().unwrap();
-    let lease = dir.path().join("lease-2");
-    fs::create_dir(&lease).unwrap();
+    let run = dir.path().join("run-2");
+    fs::create_dir(&run).unwrap();
 
-    drop(Parts::new("lease-2", lease.clone()));
+    drop(Parts::new("run-2", run.clone()));
 
-    assert!(!lease.exists());
+    assert!(!run.exists());
 }
 
 /// On a runtime, even a single-threaded one with no sibling worker to take
@@ -54,13 +54,13 @@ fn test_dropping_parts_releases_what_they_hold() {
 #[tokio::test]
 async fn test_dropping_parts_on_a_runtime_releases_them_off_its_workers() {
     let dir = tempfile::tempdir().unwrap();
-    let lease = dir.path().join("lease-6");
-    fs::create_dir(&lease).unwrap();
+    let run = dir.path().join("run-6");
+    fs::create_dir(&run).unwrap();
 
-    drop(Parts::new("lease-6", lease.clone()));
+    drop(Parts::new("run-6", run.clone()));
 
     tokio::time::timeout(PATIENCE, async {
-        while lease.exists() {
+        while run.exists() {
             tokio::time::sleep(POLL).await;
         }
     })
@@ -75,8 +75,8 @@ async fn test_dropping_parts_on_a_runtime_releases_them_off_its_workers() {
 #[test]
 fn test_parts_a_stopped_runtime_refuses_are_released_where_they_drop() {
     let dir = tempfile::tempdir().unwrap();
-    let lease = dir.path().join("lease-7");
-    fs::create_dir(&lease).unwrap();
+    let run = dir.path().join("run-7");
+    fs::create_dir(&run).unwrap();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap();
@@ -84,9 +84,9 @@ fn test_parts_a_stopped_runtime_refuses_are_released_where_they_drop() {
     runtime.shutdown_background();
     let _entered = stopped.enter();
 
-    drop(Parts::new("lease-7", lease.clone()));
+    drop(Parts::new("run-7", run.clone()));
 
-    assert!(!lease.exists());
+    assert!(!run.exists());
 }
 
 /// A start abandoned mid-way — its caller stopped waiting — is released when
@@ -97,11 +97,8 @@ async fn test_a_cancelled_start_releases_its_sandbox() {
     let engine = host.engine();
     let capture = Capture::install();
 
-    let abandoned = tokio::time::timeout(
-        Duration::from_millis(100),
-        engine.prepare(request("lease-3")),
-    )
-    .await;
+    let abandoned =
+        tokio::time::timeout(Duration::from_millis(100), engine.prepare(request("run-3"))).await;
 
     abandoned.unwrap_err();
     // Released on the blocking pool, logging where this test listens.
@@ -117,11 +114,11 @@ async fn test_a_cancelled_start_releases_its_sandbox() {
     .await
     .unwrap();
     assert_eq!(
-        capture.only("sandbox_teardown_failed").field("lease_id"),
-        Some("lease-3")
+        capture.only("sandbox_teardown_failed").field("run_id"),
+        Some("run-3")
     );
     assert!(
-        host.lease_dir("lease-3").join(IMAGE).exists(),
+        host.run_dir("run-3").join(IMAGE).exists(),
         "kept, never unlinked"
     );
 }
@@ -129,29 +126,26 @@ async fn test_a_cancelled_start_releases_its_sandbox() {
 #[test]
 fn test_the_boot_sweep_removes_what_a_previous_run_left() {
     let host = FakeHost::new(SLEEPER);
-    let clean = host.lease_dir("lease-4");
+    let clean = host.run_dir("run-4");
     fs::create_dir_all(clean.join("workspace")).unwrap();
     fs::write(clean.join(IMAGE), "").unwrap();
-    let busy = host.lease_dir("lease-5");
+    let busy = host.run_dir("run-5");
     fs::create_dir_all(&busy).unwrap();
-    fs::create_dir_all(host.config.cgroup_root.join("lease-5").join("child")).unwrap();
-    fs::write(host.dir.path().join("leases").join("stray-file"), "").unwrap();
+    fs::create_dir_all(host.config.cgroup_root.join("run-5").join("child")).unwrap();
+    fs::write(host.dir.path().join("runs").join("stray-file"), "").unwrap();
     let capture = Capture::install();
 
     let _engine = host.engine();
 
     assert!(!clean.exists());
-    assert_eq!(
-        capture.only("sandbox_swept").field("lease_id"),
-        Some("lease-4")
-    );
+    assert_eq!(capture.only("sandbox_swept").field("run_id"), Some("run-4"));
     assert!(
         busy.exists(),
-        "a cgroup that will not go keeps its lease for later"
+        "a cgroup that will not go keeps its run for later"
     );
     assert_eq!(
-        capture.only("sandbox_sweep_failed").field("lease_id"),
-        Some("lease-5")
+        capture.only("sandbox_sweep_failed").field("run_id"),
+        Some("run-5")
     );
 }
 
@@ -191,12 +185,12 @@ fn test_a_host_whose_egress_is_owned_elsewhere_is_refused_before_its_sweep() {
 }
 
 /// An egress sweep the kernel will not list for is logged, and the engine is
-/// built and the leases swept all the same.
+/// built and the runs swept all the same.
 #[test]
-fn test_an_egress_sweep_that_cannot_list_still_sweeps_the_leases() {
+fn test_an_egress_sweep_that_cannot_list_still_sweeps_the_runs() {
     let mut host = FakeHost::new(SLEEPER);
     host.probe.egress = true;
-    let left = host.lease_dir("lease-6");
+    let left = host.run_dir("run-6");
     fs::create_dir_all(&left).unwrap();
     let blind = Fake::default().closed(Protocol::Netfilter);
     let capture = Capture::install();
@@ -204,8 +198,8 @@ fn test_an_egress_sweep_that_cannot_list_still_sweeps_the_leases() {
     BubblewrapEngine::with_egress(host.config.clone(), &host.probe, || Ok(()), &blind).unwrap();
 
     let failed = capture.only("sandbox_sweep_failed");
-    assert!(!left.exists(), "the lease was swept");
-    assert_eq!(failed.field("lease_id"), None, "the egress sweep failed");
+    assert!(!left.exists(), "the run was swept");
+    assert_eq!(failed.field("run_id"), None, "the egress sweep failed");
     assert!(
         failed
             .field("reason")

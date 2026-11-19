@@ -1,5 +1,5 @@
 //! What the handler suites share: one call, made the way the router makes it,
-//! a lease that sends through a fake, and an executor served in-process for
+//! a run that sends through a fake, and an executor served in-process for
 //! the file tools to cross.
 
 #![expect(
@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use af_core::clock::FixedClock;
 use af_egress::Egress;
-use af_egress::fixture::{LEASE_ID, policy};
+use af_egress::fixture::{RUN_ID, policy};
 use af_egress::testing::{CountingMint, RecordingTransport, Sent};
 use af_wire::policy::ExecutionPolicy;
 use afr_executor::{Client, Executor};
@@ -25,7 +25,7 @@ use tokio::task::JoinHandle;
 
 use crate::catalog::{Catalog, Entry};
 use crate::egress::SharedTransport;
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::{CatalogTool, ToolContext};
 use crate::selection::Selection;
 
@@ -102,49 +102,49 @@ impl Live {
     }
 }
 
-/// Calls `tool` with `arguments` from the supervisor, with `lease`'s state.
+/// Calls `tool` with `arguments` from the supervisor, with `run`'s state.
 pub(crate) async fn call(
     tool: &CatalogTool,
-    lease: &Lease<'_>,
+    run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
     tool.call(
         &arguments,
         ToolContext {
             executor: None,
-            lease,
+            run,
         },
     )
     .await
 }
 
 /// Calls `tool` with `arguments` as the router calls a sandbox-side tool:
-/// with `executor`, and `lease`'s state.
+/// with `executor`, and `run`'s state.
 pub(crate) async fn call_in(
     tool: &CatalogTool,
     executor: &dyn Executor,
-    lease: &Lease<'_>,
+    run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
     tool.call(
         &arguments,
         ToolContext {
             executor: Some(executor),
-            lease,
+            run,
         },
     )
     .await
 }
 
-/// What an egress suite holds for one lease: the policy the guard admits
+/// What an egress suite holds for one run: the policy the guard admits
 /// under, its clock, and a mint answering [`MINTED`].
-pub(crate) struct Run {
+pub(crate) struct RunFixture {
     pub(crate) policy: ExecutionPolicy<'static>,
     pub(crate) clock: FixedClock,
     pub(crate) mint: CountingMint,
 }
 
-impl Run {
+impl RunFixture {
     /// The fixture policy, with `read_only` as given.
     pub(crate) fn new(read_only: bool) -> Self {
         let clock = FixedClock::at(START);
@@ -155,19 +155,16 @@ impl Run {
         }
     }
 
-    /// A lease sending through this run's guard.
-    pub(crate) fn lease(&self) -> Lease<'_> {
-        self.lease_reaching(&crate::verbs::CLOSED)
+    /// A run sending through this run's guard.
+    pub(crate) fn run(&self) -> Run<'_> {
+        self.run_reaching(&crate::verbs::CLOSED)
     }
 
-    /// A lease sending through this run's guard and reaching `verbs`.
-    pub(crate) fn lease_reaching<'r>(
-        &'r self,
-        verbs: &'r dyn crate::verbs::LeaseVerbs,
-    ) -> Lease<'r> {
-        Lease::new(
+    /// A run sending through this run's guard and reaching `verbs`.
+    pub(crate) fn run_reaching<'r>(&'r self, verbs: &'r dyn crate::verbs::RunVerbs) -> Run<'r> {
+        Run::new(
             Box::new(Hydrated::default()),
-            Egress::new(LEASE_ID, &self.policy, &self.mint, &self.clock),
+            Egress::new(RUN_ID, &self.policy, &self.mint, &self.clock),
             verbs,
         )
     }
@@ -183,5 +180,5 @@ pub(crate) fn replying(status: u16, body: &str) -> (SharedTransport, Receiver<Se
 mod recorded;
 
 pub(crate) use recorded::{
-    Asked, OwnedCall, OwnedFleetsCall, RecordingVerbs, STEERED_EVENT, lease_with,
+    Asked, OwnedCall, OwnedFleetsCall, RecordingVerbs, STEERED_EVENT, run_with,
 };

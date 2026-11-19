@@ -8,11 +8,11 @@ use crate::{Result, error::query};
 
 pub(super) async fn required_on(
     connection: &mut PgConnection,
-    lease: &Uuid7,
+    run: &Uuid7,
     coding_headroom: Nanos,
 ) -> Result<Nanos> {
     let unresolved: i64 = sqlx::query_scalar(include_str!("sql/required_credit.sql"))
-        .bind(lease)
+        .bind(run)
         .fetch_one(connection)
         .await
         .map_err(query("read unresolved physical decision credit"))?;

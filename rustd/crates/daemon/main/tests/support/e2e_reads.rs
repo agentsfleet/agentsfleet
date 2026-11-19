@@ -27,14 +27,14 @@ use crate::e2e::Scenario;
 /// decides whether the statement should fill it. A hand-maintained list on both
 /// sides would agree with itself forever.
 pub(crate) async fn assert_shape(
-    run: &Scenario,
+    scene: &Scenario,
     table: &str,
     predicate: &str,
     bind: &Uuid7,
     recorded: &[&str],
 ) {
     let (schema, name) = table.split_once('.').expect("a qualified table name");
-    let mut connection = run
+    let mut connection = scene
         .booted
         .database
         .acquire()
@@ -69,7 +69,7 @@ async fn column_names(
     .bind(name)
     .fetch_all(connection)
     .await
-    .expect("the catalogue read must run")
+    .expect("the catalogue read must scene")
     .into_iter()
     .map(|row| row.try_get::<String, _>(0).expect("a column name is text"))
     .collect()
@@ -94,7 +94,7 @@ async fn matching_row(
         .bind(bind)
         .fetch_optional(connection)
         .await
-        .expect("the shape read must run")
+        .expect("the shape read must scene")
         .unwrap_or_else(|| panic!("{table} carries no row matching {predicate}"))
 }
 
@@ -111,29 +111,29 @@ fn populated_columns<'a>(columns: &'a [String], row: &sqlx::postgres::PgRow) -> 
         .collect()
 }
 
-/// One column of a lease row, as text.
-pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> Option<String> {
+/// One column of a run row, as text.
+pub(crate) async fn run_column(scene: &Scenario, run: &str, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM runner.leases WHERE id = $1"
+        "SELECT {column}::text FROM runner.runs WHERE id = $1"
     ));
-    let mut connection = run
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    let lease = Uuid7::parse(lease).expect("a lease id the daemon answered is a canonical UUIDv7");
+    let run = Uuid7::parse(run).expect("a run id the daemon answered is a canonical UUIDv7");
     sqlx::query(statement)
-        .bind(&lease)
+        .bind(&run)
         .fetch_optional(&mut *connection)
         .await
-        .expect("the lease read must run")
+        .expect("the run read must scene")
         .map(|row| row.try_get(0).expect("the column must be readable as text"))
 }
 
 /// One column of the scenario fleet's event row, as text.
-pub(crate) async fn event_column(run: &Scenario, event: &Uuid7, column: &str) -> Option<String> {
-    event_column_of(run, &run.fleet, event, column).await
+pub(crate) async fn event_column(scene: &Scenario, event: &Uuid7, column: &str) -> Option<String> {
+    event_column_of(scene, &scene.fleet, event, column).await
 }
 
 /// One column of ANY fleet's event row, read over the scenario's pool.
@@ -142,7 +142,7 @@ pub(crate) async fn event_column(run: &Scenario, event: &Uuid7, column: &str) ->
 /// `integration_unreadable_config` seeds a neighbour it expects the daemon to
 /// refuse, and the row proving that refusal is the neighbour's.
 pub(crate) async fn event_column_of(
-    run: &Scenario,
+    scene: &Scenario,
     fleet: &Uuid7,
     event: &Uuid7,
     column: &str,
@@ -151,7 +151,7 @@ pub(crate) async fn event_column_of(
         "SELECT {column}::text FROM fleet.events \
          WHERE fleet_id = $1 AND event_id = $2"
     ));
-    let mut connection = run
+    let mut connection = scene
         .booted
         .database
         .acquire()
@@ -162,40 +162,40 @@ pub(crate) async fn event_column_of(
         .bind(event)
         .fetch_optional(&mut *connection)
         .await
-        .expect("the event read must run")
+        .expect("the event read must scene")
         .map(|row| row.try_get(0).expect("the column must be readable as text"))
 }
 
 /// The scenario tenant's current balance.
-pub(crate) async fn balance(run: &Scenario) -> Option<i64> {
-    let mut connection = run
+pub(crate) async fn balance(scene: &Scenario) -> Option<i64> {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1")
-        .bind(&run.tenant)
+        .bind(&scene.tenant)
         .fetch_optional(&mut *connection)
         .await
-        .expect("the balance read must run")
+        .expect("the balance read must scene")
         .map(|row| row.try_get(0).expect("the balance is a bigint"))
 }
 
 /// How many usage lines the scenario's event has logged: one per slice that
 /// measured something, the report's final slice among them.
-pub(crate) async fn ledger_rows(run: &Scenario) -> i64 {
+pub(crate) async fn ledger_rows(scene: &Scenario) -> i64 {
     count_lines(
-        run,
+        scene,
         "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1",
     )
     .await
 }
 
 /// The completion tokens the scenario's event's usage lines record.
-pub(crate) async fn line_output_tokens(run: &Scenario) -> i64 {
+pub(crate) async fn line_output_tokens(scene: &Scenario) -> i64 {
     count_lines(
-        run,
+        scene,
         "SELECT COALESCE(sum(output_token_count), 0)::bigint FROM billing.usage_lines \
          WHERE event_id = $1",
     )
@@ -204,73 +204,73 @@ pub(crate) async fn line_output_tokens(run: &Scenario) -> i64 {
 
 /// How many of those lines the biller has not yet settled.
 ///
-/// Zero once a report has answered: the lease path settles its lines after
+/// Zero once a report has answered: the run path settles its lines after
 /// commit and before it replies, and only a failed settle leaves one for the
 /// billing sweeper.
-pub(crate) async fn unsettled_lines(run: &Scenario) -> i64 {
+pub(crate) async fn unsettled_lines(scene: &Scenario) -> i64 {
     count_lines(
-        run,
+        scene,
         "SELECT count(*) FROM billing.usage_lines WHERE event_id = $1 AND settled_at IS NULL",
     )
     .await
 }
 
 /// One count over the scenario event's usage lines.
-async fn count_lines(run: &Scenario, statement: &'static str) -> i64 {
-    let mut connection = run
+async fn count_lines(scene: &Scenario, statement: &'static str) -> i64 {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query(statement)
-        .bind(&run.event_id)
+        .bind(&scene.event_id)
         .fetch_one(&mut *connection)
         .await
-        .expect("the usage count must run")
+        .expect("the usage count must scene")
         .try_get(0)
         .expect("a count is a bigint")
 }
 
 /// One column of the scenario runner's lifetime counters, as text.
-pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<String> {
+pub(crate) async fn counter_column(scene: &Scenario, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
         "SELECT {column}::text FROM runner.lifetime_counters WHERE runner_id = $1"
     ));
-    let mut connection = run
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query_scalar(statement)
-        .bind(&run.runner_id)
+        .bind(&scene.runner_id)
         .fetch_optional(&mut *connection)
         .await
-        .expect("the counter read must run")
+        .expect("the counter read must scene")
 }
 
-/// How many lease rows this scenario's runner holds on the fleet under test,
+/// How many run rows this scenario's runner holds on the fleet under test,
 /// of any status.
 ///
 /// Counted rather than read, because the claim is an ABSENCE: a gate that
 /// refused after writing would leave exactly one row, and only a count can say
 /// there is none. Scoped to the fleet, because the shared lane can hand this
-/// runner a lease on another scenario's fleet; see
-/// `assert_no_lease_for_fleet_under_test`.
-pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
-    let mut connection = run
+/// runner a run on another scenario's fleet; see
+/// `assert_no_run_for_fleet_under_test`.
+pub(crate) async fn run_rows(scene: &Scenario) -> i64 {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT count(*) FROM runner.leases WHERE runner_id = $1 AND fleet_id = $2")
-        .bind(&run.runner_id)
-        .bind(&run.fleet)
+    sqlx::query("SELECT count(*) FROM runner.runs WHERE runner_id = $1 AND fleet_id = $2")
+        .bind(&scene.runner_id)
+        .bind(&scene.fleet)
         .fetch_one(&mut *connection)
         .await
-        .expect("the lease count must run")
+        .expect("the run count must scene")
         .try_get(0)
         .expect("a count is a bigint")
 }
@@ -284,9 +284,9 @@ const RELAY_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Waits until the relay has settled every line the scenario's event logged,
 /// or the limit passes; the caller's assertion names what is left.
-pub(crate) async fn relay_settled(run: &Scenario) {
+pub(crate) async fn relay_settled(scene: &Scenario) {
     let deadline = tokio::time::Instant::now() + RELAY_LIMIT;
-    while unsettled_lines(run).await > 0 && tokio::time::Instant::now() < deadline {
+    while unsettled_lines(scene).await > 0 && tokio::time::Instant::now() < deadline {
         tokio::time::sleep(RELAY_POLL).await;
     }
 }

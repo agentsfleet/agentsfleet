@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{TaskLimits, TaskState, TaskUsage};
 
-/// Context for a task-bound lease; ordinary leases omit this owner.
+/// Context for a task-bound run; ordinary runs omit this owner.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskContext<'a> {

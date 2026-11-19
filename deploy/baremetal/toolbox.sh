@@ -12,7 +12,7 @@
 #
 # The runner verifies the manifest's signature against the key it is built
 # with, stages the image and mounts it (`afr_sandbox::Toolboxes`). A host
-# without an admitted toolbox refuses every lease, so a set that is incomplete
+# without an admitted toolbox refuses every run, so a set that is incomplete
 # is refused before the restart, where the cause is easy to read.
 
 # Where the runner keeps its state unless RUNNER_STORAGE_HOME in the env file

@@ -1,6 +1,6 @@
 //! Construction groups retain each shared owner while the serving plane is assembled.
 
-use super::{PlaneParts, lease_plane, surfaces, task_plane};
+use super::{PlaneParts, run_plane, surfaces, task_plane};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
@@ -8,7 +8,7 @@ use af_observability::Analytics;
 use afd_billing::biller::Biller;
 use afd_credential::provider::Providers;
 use afd_db::Db;
-use afd_fleet::lease::LeaseService;
+use afd_fleet::run::RunService;
 use afd_runner::Runners;
 use afd_turns::Admissions;
 use std::sync::Arc;
@@ -73,7 +73,7 @@ pub(super) struct NativeInputs<'a> {
 }
 
 pub(super) struct Native {
-    pub(super) leases: LeaseService,
+    pub(super) runs: RunService,
     pub(super) tasks: afd_fleet::task::Tasks,
     pub(super) runners: Runners,
     pub(super) streams: afd_gateway::Gateway,
@@ -81,7 +81,7 @@ pub(super) struct Native {
 
 impl NativeInputs<'_> {
     pub(super) fn build(self) -> Native {
-        let mut leases = lease_plane(
+        let mut runs = run_plane(
             self.database.clone(),
             self.kek,
             self.providers,
@@ -89,13 +89,13 @@ impl NativeInputs<'_> {
             self.broker,
             self.biller,
         );
-        leases.leases = leases
-            .leases
+        runs.runs = runs
+            .runs
             .with_wake(self.wake.clone())
             .with_clock(self.runtime.clock)
             .with_checkpoint_resume(self.runtime.resume_from_checkpoint);
         let tasks = task_plane(
-            &mut leases,
+            &mut runs,
             self.admissions,
             self.admin_workspace,
             self.storage_config,
@@ -112,7 +112,7 @@ impl NativeInputs<'_> {
             },
             database: self.database.clone(),
             runners: runners.clone(),
-            leases: leases.clone(),
+            runs: runs.clone(),
             drafts: self.authoring.drafts.clone(),
             models: self.authoring.models.clone(),
             creations: self.authoring.creations.clone(),
@@ -124,7 +124,7 @@ impl NativeInputs<'_> {
             analytics: self.analytics,
         });
         Native {
-            leases,
+            runs,
             tasks,
             runners,
             streams,

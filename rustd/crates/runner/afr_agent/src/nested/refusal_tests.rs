@@ -20,7 +20,7 @@ use super::fixture::{
     results, tools,
 };
 use super::start::EVENT_CHILD_REFUSED;
-use crate::fixture::{Script, call, lease, say, unbounded};
+use crate::fixture::{Script, call, payload, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
 #[tokio::test]
@@ -55,9 +55,9 @@ async fn test_children_caps_refuse() {
         script = script.with_child(&format!("delegated {n}"), [vec![say("x")]]);
     }
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let root = requests_opening_with(&script, OPENING);
@@ -103,9 +103,9 @@ async fn test_child_tools_subset_of_parent() {
     ])
     .with_child(READS, [vec![say(SUMMARY)]]);
     let engine = engine(tools(), &script);
-    let lease = lease(&[UPDATE_PLAN.name(), DELEGATE.name()], unbounded());
+    let run = payload(&[UPDATE_PLAN.name(), DELEGATE.name()], unbounded());
 
-    let (_output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (_output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let root = requests_opening_with(&script, OPENING);
     let refused = results(&root[1])[0];
@@ -140,9 +140,9 @@ async fn test_each_nested_tool_refuses_arguments_its_schema_does_not_name() {
         .collect();
     let script = Script::new([refused_calls, vec![say(DONE)]]);
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let root = requests_opening_with(&script, OPENING);

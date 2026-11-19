@@ -1,4 +1,4 @@
-//! Publication runs through the offered root tool and the executor/lease boundaries.
+//! Publication runs through the offered root tool and the executor/run boundaries.
 
 #![expect(
     clippy::expect_used,
@@ -28,7 +28,7 @@ impl Publisher {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Publisher {
+impl RunVerbs for Publisher {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -114,7 +114,7 @@ pub(super) async fn publish(
 ) -> crate::Result<crate::RunOutput> {
     let tool = &afr_tools::catalog::EXEC_COMMAND;
     let engine = super::super::super::tests::engine(vec![Canned::boxed(tool, "unused")], script);
-    let lease = assigned_lease(&[tool.name()], 16_384);
+    let this_run = assigned_run(&[tool.name()], 16_384);
     let prepared = PreparedTask {
         execution_deadline: native.goals.inputs.execution_deadline,
         inputs: native.goals.inputs.clone(),
@@ -123,7 +123,7 @@ pub(super) async fn publish(
     engine
         .run(AgentRun {
             recovery: None,
-            lease: &lease,
+            run: &this_run,
             prepared_task: Some(&prepared),
             recovered_task: None,
             recovered_turn: None,

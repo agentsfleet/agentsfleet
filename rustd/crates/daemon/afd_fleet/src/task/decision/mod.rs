@@ -1,4 +1,4 @@
-//! Physical decision calls share the native task owner and original lease biller.
+//! Physical decision calls share the native task owner and original run biller.
 
 mod account;
 mod allocate;
@@ -32,7 +32,7 @@ use std::fmt;
 use af_core::id::Uuid7;
 use af_wire::task::{DecisionReceiptInput, DecisionReceiptResult, DecisionReservationInput};
 
-use super::{DecisionMaintenance, DecisionMaintenanceCursor, TaskLease, Tasks};
+use super::{DecisionMaintenance, DecisionMaintenanceCursor, TaskRun, Tasks};
 use crate::Result;
 
 /// Full assembled budget query for the database statement inventory.
@@ -81,17 +81,17 @@ impl fmt::Debug for ReservedDecision {
 
 pub(super) async fn reserve(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
 ) -> Result<ReservedDecision> {
-    reserve::reserve(tasks, lease, input).await
+    reserve::reserve(tasks, run, input).await
 }
 
 pub(super) async fn record(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     call: &Uuid7,
     input: &garde::Valid<DecisionReceiptInput>,
 ) -> Result<DecisionReceiptResult> {
-    record::record(tasks, lease, call, input).await
+    record::record(tasks, run, call, input).await
 }

@@ -28,14 +28,14 @@ async fn publish(case: &Case) {
         .expect("bounded publication");
     script(&server);
     let (receipt, replayed) = tasks
-        .publish_effect(case.lease(), &input)
+        .publish_effect(case.run(), &input)
         .await
         .expect("native publication");
     assert!(!replayed);
     assert_eq!(receipt.state, TaskEffectState::Confirmed);
     assert_eq!(receipt.commit, Some("3".repeat(40)));
     let (again, replayed) = tasks
-        .publish_effect(case.lease(), &input)
+        .publish_effect(case.run(), &input)
         .await
         .expect("same effect replay");
     assert!(replayed);

@@ -12,7 +12,7 @@ use afr_memory::{Hydrated, Seed};
 use serde_json::json;
 
 use crate::generic::Generic;
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::testing::call;
 use guffbolt::tools::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStoreTool};
@@ -27,9 +27,9 @@ fn hydrated() -> Vec<MemoryDelta<'static>> {
 }
 
 #[tokio::test]
-async fn the_four_tools_share_one_lease_memory() {
+async fn the_four_tools_share_one_run_memory() {
     let window = hydrated();
-    let lease = Lease::new(
+    let run = Run::new(
         Box::new(Hydrated::new(Seed::window(&window))),
         af_egress::testing::closed(),
         &crate::verbs::CLOSED,
@@ -43,18 +43,13 @@ async fn the_four_tools_share_one_lease_memory() {
 
     let stored = call(
         store.as_ref(),
-        &lease,
+        &run,
         json!({"key": "operator_context:review_status", "content": "two findings open"}),
     )
     .await;
     assert_eq!(stored.text, "stored operator_context:review_status");
 
-    let recalled = call(
-        recall.as_ref(),
-        &lease,
-        json!({"query": "OPERATOR_context"}),
-    )
-    .await;
+    let recalled = call(recall.as_ref(), &run, json!({"query": "OPERATOR_context"})).await;
     assert_eq!(
         recalled.text,
         "operator_context:review_status (core): two findings open\n\
@@ -63,7 +58,7 @@ async fn the_four_tools_share_one_lease_memory() {
 
     let dropped = call(
         forget.as_ref(),
-        &lease,
+        &run,
         json!({"key": "operator_context:codename"}),
     )
     .await;
@@ -74,10 +69,10 @@ async fn the_four_tools_share_one_lease_memory() {
         "{}",
         dropped.text
     );
-    let listed = call(list.as_ref(), &lease, json!({})).await;
+    let listed = call(list.as_ref(), &run, json!({})).await;
     assert_eq!(listed.text, "operator_context:review_status (core)");
 
-    let pushed = lease.memory.into_inner().into_pending();
+    let pushed = run.memory.into_inner().into_pending();
     assert_eq!(pushed.len(), 1);
     assert_eq!(
         pushed[0].category, PINNED_CATEGORY,
@@ -87,25 +82,25 @@ async fn the_four_tools_share_one_lease_memory() {
 
 #[tokio::test]
 async fn empty_answers_say_what_was_looked_for() {
-    let lease = Lease::default();
+    let run = Run::default();
 
     let recalled = call(
         Generic::boxed(MemoryRecall).as_ref(),
-        &lease,
+        &run,
         json!({"query": "deploy"}),
     )
     .await;
     assert_eq!(recalled.text, "nothing remembered matches deploy");
     let listed = call(
         Generic::boxed(MemoryList).as_ref(),
-        &lease,
+        &run,
         json!({"category": "daily"}),
     )
     .await;
     assert_eq!(listed.text, "nothing remembered");
     let forgot = call(
         Generic::boxed(MemoryForget).as_ref(),
-        &lease,
+        &run,
         json!({"key": "ghost"}),
     )
     .await;
@@ -115,9 +110,9 @@ async fn empty_answers_say_what_was_looked_for() {
 #[tokio::test]
 async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
     let store = Generic::boxed(MemoryStoreTool);
-    let lease = Lease::default();
+    let run = Run::default();
 
-    let empty = call(store.as_ref(), &lease, json!({"key": "", "content": "c"})).await;
+    let empty = call(store.as_ref(), &run, json!({"key": "", "content": "c"})).await;
     assert_eq!(
         empty.error_code,
         Some(ToolErrorCode::InvalidArguments.into())
@@ -133,7 +128,7 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
     for at in 0..=(MAX_PUSH_BYTES / MAX_CONTENT_LEN) {
         let output = call(
             store.as_ref(),
-            &lease,
+            &run,
             json!({"key": format!("k{at}"), "content": content}),
         )
         .await;
@@ -148,12 +143,12 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
 
 #[tokio::test]
 async fn recall_never_answers_more_than_its_ceiling() {
-    let lease = Lease::default();
+    let run = Run::default();
     let store = Generic::boxed(MemoryStoreTool);
     for at in 0..RECALL_LIMIT_MAX + 10 {
         call(
             store.as_ref(),
-            &lease,
+            &run,
             json!({"key": format!("k{at}"), "content": "c"}),
         )
         .await;
@@ -161,14 +156,14 @@ async fn recall_never_answers_more_than_its_ceiling() {
 
     let recalled = call(
         Generic::boxed(MemoryRecall).as_ref(),
-        &lease,
+        &run,
         json!({"query": "k", "limit": 500}),
     )
     .await;
     assert_eq!(recalled.text.lines().count(), RECALL_LIMIT_MAX);
     let defaulted = call(
         Generic::boxed(MemoryRecall).as_ref(),
-        &lease,
+        &run,
         json!({"query": "k"}),
     )
     .await;

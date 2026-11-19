@@ -3,7 +3,7 @@
 use super::meter::Observed;
 use crate::{Result, client::ControlPlane, error};
 use af_core::{clock::Clock, id::Uuid7};
-use af_wire::authoring::{Lease, Renew};
+use af_wire::authoring::{Renew, Run};
 use jiff::Timestamp;
 use serde_json::Value;
 use std::time::Duration;
@@ -12,16 +12,16 @@ use tokio::time::Instant;
 pub(super) async fn keep(
     plane: &ControlPlane,
     id: &Uuid7,
-    lease: &Lease<Value>,
+    run: &Run<Value>,
     clock: &dyn Clock,
     observed: &Observed,
 ) -> Result<()> {
-    let maximum = deadline(lease.deadline, clock)
+    let maximum = deadline(run.deadline, clock)
         .min(Instant::now() + Duration::from_secs(u64::from(af_wire::authoring::WALL_SECONDS_MAX)));
     let lifetime = plane
         .stream
         .renewing
-        .authoring(id, deadline(lease.expires_at, clock).min(maximum))?;
+        .authoring(id, deadline(run.expires_at, clock).min(maximum))?;
     let settings = plane.runtime.settings();
     let interval = Duration::from_millis(settings.authoring_renewal_interval_ms);
     let retry = Duration::from_millis(settings.authoring_renewal_retry_ms);
@@ -31,10 +31,10 @@ pub(super) async fn keep(
         let renew_at = (Instant::now() + pause).min(expiry).min(maximum);
         tokio::time::sleep_until(renew_at).await;
         if Instant::now() >= expiry || Instant::now() >= maximum {
-            return Err(error::config("the private authoring lease expired"));
+            return Err(error::config("the private authoring run expired"));
         }
         let request = Renew {
-            fence: lease.fence.clone(),
+            fence: run.fence.clone(),
             usage: observed.snapshot()?,
         };
         let response =

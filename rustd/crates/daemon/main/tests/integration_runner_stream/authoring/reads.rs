@@ -26,7 +26,7 @@ impl AuthoringFixture {
         Option<sqlx::types::Json<Value>>,
     ) {
         sqlx::query_as("SELECT result,usage FROM authoring.dispatches WHERE attempt_id=$1")
-            .bind(Uuid7::parse(&self.lease.attempt_id).expect("attempt id"))
+            .bind(Uuid7::parse(&self.run.attempt_id).expect("attempt id"))
             .fetch_one(
                 &mut *self
                     .booted
@@ -43,7 +43,7 @@ impl AuthoringFixture {
         sqlx::query_scalar(
             "SELECT answer_text FROM authoring.messages WHERE draft_id=$1 AND sequence=1",
         )
-        .bind(Uuid7::parse(&self.lease.draft_id).expect("draft id"))
+        .bind(Uuid7::parse(&self.run.draft_id).expect("draft id"))
         .fetch_one(
             &mut *self
                 .booted
@@ -60,14 +60,14 @@ impl AuthoringFixture {
         // `kind DESC` reads runtime, then model, then decision lines: each kind
         // numbers its own lines, so `seq` alone no longer orders them.
         sqlx::query_as("SELECT seq,input_token_count,output_token_count,charged_nanos FROM billing.usage_lines WHERE work_id=$1 ORDER BY kind DESC, seq")
-            .bind(Uuid7::parse(&self.lease.attempt_id).expect("attempt id"))
+            .bind(Uuid7::parse(&self.run.attempt_id).expect("attempt id"))
             .fetch_all(&mut *self.booted.database.acquire().await.expect("accounting read connection"))
             .await.expect("durable billing lines")
     }
 
     pub(super) async fn receipts(&self) -> (i64, i64, i64) {
         sqlx::query_as("SELECT (SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1), (SELECT count(*) FROM authoring.activity_receipts WHERE attempt_id=$1), (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1)")
-            .bind(Uuid7::parse(&self.lease.attempt_id).expect("attempt id"))
+            .bind(Uuid7::parse(&self.run.attempt_id).expect("attempt id"))
             .fetch_one(&mut *self.booted.database.acquire().await.expect("receipt read connection"))
             .await.expect("scoped receipt counts")
     }

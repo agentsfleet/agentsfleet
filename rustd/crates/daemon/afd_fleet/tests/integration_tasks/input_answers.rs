@@ -44,18 +44,18 @@ async fn scenario(case: &Case, reply: Reply<'_>) {
     let plan = case.source_plan(source.clone(), &"a".repeat(64), 3, TaskLimits::default());
     let bindings = case
         .tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect("accepted separate source");
     assert_eq!(bindings.items.len(), 3);
     interpreted(case, &source).await;
-    let before_lease = lease(case).await;
+    let before_run = payload(case).await;
     let mut accepted = Vec::new();
     for (index, item) in bindings.items.iter().enumerate().rev() {
         let input = receipt(case, &source, item, index);
         let result = case
             .tasks
-            .accept_input(case.lease(), &input)
+            .accept_input(case.run(), &input)
             .await
             .expect("item answer");
         assert!(!result.replayed);
@@ -72,8 +72,8 @@ async fn scenario(case: &Case, reply: Reply<'_>) {
     refuse_replacement(case, accepted.first().expect("three accepted receipts")).await;
     assert_eq!(assert_completed(case, &source, reply).await, saved);
     assert_eq!(
-        lease(case).await,
-        before_lease,
+        payload(case).await,
+        before_run,
         "answering input does not settle its owning execution"
     );
 }
@@ -120,7 +120,7 @@ fn receipt(
         ),
     };
     garde::Unvalidated::new(TaskInputReceiptInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         operation_id: afd_db::test_util::mint_id().into(),
         source_admission_id: source.to_string(),
         plan_digest: "a".repeat(64),
@@ -195,9 +195,9 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
     event.clone()
 }
 
-async fn lease(case: &Case) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(l) FROM runner.leases l WHERE id=$1")
-        .bind(&case.held.lease_key)
+async fn payload(case: &Case) -> Value {
+    sqlx::query_scalar("SELECT to_jsonb(l) FROM runner.runs l WHERE id=$1")
+        .bind(&case.held.run_key)
         .fetch_one(
             &mut *case
                 .held
@@ -205,10 +205,10 @@ async fn lease(case: &Case) -> Value {
                 .database
                 .acquire()
                 .await
-                .expect("owning lease observer"),
+                .expect("owning run observer"),
         )
         .await
-        .expect("original execution lease")
+        .expect("original execution run")
 }
 
 async fn refuse_replacement(case: &Case, original: &TaskInputReceiptInput) {
@@ -221,7 +221,7 @@ async fn refuse_replacement(case: &Case, original: &TaskInputReceiptInput) {
         .expect("bounded conflicting answer");
     let error = case
         .tasks
-        .accept_input(case.lease(), &replacement)
+        .accept_input(case.run(), &replacement)
         .await
         .expect_err("first answer is immutable");
     assert_eq!(error.code(), error_code::TASK_REPLAY_CONFLICT);
@@ -231,7 +231,7 @@ async fn replay(case: &Case, accepted: &[garde::Valid<TaskInputReceiptInput>]) {
     for input in accepted {
         let result = case
             .tasks
-            .accept_input(case.lease(), input)
+            .accept_input(case.run(), input)
             .await
             .expect("exact receipt replay");
         assert!(result.replayed);
@@ -266,8 +266,8 @@ fn assert_event(event: &Value) {
 async fn interpreted(case: &Case, source: &Uuid7) {
     // PreparedPlan::from_parts supplies accepted meaning without a paid model call.
     // Its original source must also carry the persisted interpretation boundary.
-    let updated = sqlx::query("UPDATE fleet.admissions SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_claim_lease_id=$2 AND interpreted_at IS NULL")
-        .bind(source).bind(&case.held.lease_key)
+    let updated = sqlx::query("UPDATE fleet.admissions SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_claim_run_id=$2 AND interpreted_at IS NULL")
+        .bind(source).bind(&case.held.run_key)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("accepted interpretation fixture"))
         .await.expect("accepted source interpretation boundary");
     assert_eq!(updated.rows_affected(), 1);

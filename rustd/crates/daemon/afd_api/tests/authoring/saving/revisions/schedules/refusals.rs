@@ -45,7 +45,7 @@ async fn a_live_schedule_sync_refuses_the_entire_apply_and_keeps_its_private_dra
     let request = scheduled.improvement().await;
     let row = scheduled.read().await;
     sqlx::query(
-        "UPDATE fleet.schedules SET sync_token=$2,sync_lease_expires_at=clock_timestamp()+$3::interval WHERE id=$1",
+        "UPDATE fleet.schedules SET sync_token=$2,sync_run_expires_at=clock_timestamp()+$3::interval WHERE id=$1",
     )
         .bind(crate::authoring::id_field(&row["schedule_id"]))
         .bind(mint())

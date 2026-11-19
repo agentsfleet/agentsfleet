@@ -55,12 +55,12 @@ impl<'lane> Tasks<'lane> {
 
     pub(super) fn lifecycle(&self) -> afd_fleet::task::Tasks {
         let bus = afd_bus::test_util::unreachable();
-        let leases =
-            afd_fleet::lease::Leases::new(self.base.database.clone(), bus.clone(), Entropy::new());
+        let runs =
+            afd_fleet::run::Runs::new(self.base.database.clone(), bus.clone(), Entropy::new());
         let admissions =
             afd_turns::Admissions::new(self.base.database.clone(), bus, Entropy::new());
         afd_fleet::task::Tasks::new(
-            leases,
+            runs,
             admissions,
             harness::task_dependencies(self.base.database.clone()),
         )

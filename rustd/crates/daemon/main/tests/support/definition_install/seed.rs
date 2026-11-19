@@ -47,7 +47,7 @@ pub(super) async fn seed_workspace(
         .bind(workspace)
         .fetch_one(&mut *connection)
         .await
-        .expect("the workspace probe must run");
+        .expect("the workspace probe must scene");
     if seeded {
         return;
     }

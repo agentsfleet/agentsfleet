@@ -7,7 +7,7 @@ SELECT w.id, w.task_id, w.fleet_id, w.workspace_id,
        t.accepted_revision_id, t.target, t.used_fallback_reads, t.max_fallback_reads,
        t.reply_provider, t.reply_address, i.admission_id AS source_admission_id,
        t.expires_at > statement_timestamp() AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
-         AND t.used_running_nanos < t.max_running_nanos AND t.used_leases < t.max_leases AS within_limits,
+         AND t.used_running_nanos < t.max_running_nanos AND t.used_runs < t.max_runs AS within_limits,
        w.due_at <= statement_timestamp() AND w.cooldown_expires_at <= statement_timestamp() AS due
 FROM fleet.task_waits w JOIN fleet.tasks t ON t.id = w.task_id AND t.fleet_id = w.fleet_id AND t.workspace_id = w.workspace_id
 JOIN fleet.task_items i ON i.id = t.originating_task_item_id

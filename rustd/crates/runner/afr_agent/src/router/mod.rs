@@ -2,7 +2,7 @@
 //! catalog handler run where its runtime says.
 //!
 //! A supervisor-side handler runs in-process with no executor in its context;
-//! a sandbox-side one runs with the lease's executor, waiting for the lease's
+//! a sandbox-side one runs with the run's executor, waiting for the run's
 //! build when the sandbox is not ready yet. A name the loop holds no tool for
 //! is a tool error the model reads, never a failed run, so the next turn
 //! still runs (`docs/architecture/runner_execution.md` §"Tool catalog").
@@ -15,7 +15,7 @@ use tokio::time::Instant;
 use afr_executor::{ExecutorSource, Outcome};
 use afr_telemetry::labels::SandboxWait;
 use afr_telemetry::record;
-use afr_tools::{CatalogTool, Lease, Runtime, Selection, ToolContext, ToolErrorCode};
+use afr_tools::{CatalogTool, Run, Runtime, Selection, ToolContext, ToolErrorCode};
 
 use crate::harness::Harness;
 
@@ -74,7 +74,7 @@ impl<'s, 'run> Router<'s, 'run> {
     }
 }
 
-/// A catalog handler as a loop runs it: lent the lease's state, and its
+/// A catalog handler as a loop runs it: lent the run's state, and its
 /// executor only when the handler's published entry runs in the sandbox, the
 /// way Codex's `ExtensionToolAdapter` lends an extension tool its turn.
 #[derive(Debug)]
@@ -89,13 +89,13 @@ impl<'s> Routed<'s> {
         Self { handler, runtime }
     }
 
-    /// Runs one call where the handler's runtime says: with `lease`, and
+    /// Runs one call where the handler's runtime says: with `run`, and
     /// with the sandbox's executor from `executor` for a sandbox-side call.
     pub(crate) async fn run(
         &self,
         arguments: &serde_json::Value,
         executor: &dyn ExecutorSource,
-        lease: &Lease<'_>,
+        run: &Run<'_>,
     ) -> ToolOutput {
         let name = self.handler.name();
         let executor = match self.runtime {
@@ -107,7 +107,7 @@ impl<'s> Routed<'s> {
             Runtime::Provider => return hosted_elsewhere(name),
         };
         self.handler
-            .call(arguments, ToolContext { executor, lease })
+            .call(arguments, ToolContext { executor, run })
             .await
     }
 }
@@ -128,7 +128,7 @@ impl<'call, 's, 'run> Tool<&'call Harness<'s, 'run>> for Routed<'s> {
         &'call Harness<'s, 'run>: 'a,
     {
         let shared = cx.shared;
-        Box::pin(self.run(arguments, shared.executor, &shared.lease))
+        Box::pin(self.run(arguments, shared.executor, &shared.run))
     }
 }
 

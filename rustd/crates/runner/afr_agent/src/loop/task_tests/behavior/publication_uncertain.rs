@@ -18,7 +18,7 @@ enum Failure {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Uncertain {
+impl RunVerbs for Uncertain {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }

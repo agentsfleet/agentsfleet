@@ -11,14 +11,14 @@
 //! that is an answer rather than a failure.
 //!
 //! None of them takes the caller's clock: Postgres stamps the row and judges
-//! the lease (see [`sql`] on whose clock).
+//! the run (see [`sql`] on whose clock).
 
 use af_core::id::Uuid7;
 
 use afd_db::Precondition;
 
 use super::history::{Fact, Receipt};
-use super::{Change, Refused, SYNC_LEASE, Schedules, fire_at};
+use super::{Change, Refused, SYNC_RUN, Schedules, fire_at};
 use crate::error::{self, Result};
 use crate::model::{DesiredStatus, Schedule, SyncStatus};
 use crate::sql;
@@ -30,7 +30,7 @@ impl Schedules {
     /// Applies a change and takes the fence, in one statement.
     ///
     /// `Ok(None)` for a schedule that is absent, belongs to another fleet, or
-    /// is held by a syncer whose lease has not run out — three states the
+    /// is held by a syncer whose run has not run out — three states the
     /// caller renders differently and none of which is a failure.
     ///
     /// # Errors
@@ -79,7 +79,7 @@ impl Schedules {
             .bind(change.desired_status.map(DesiredStatus::as_str))
             .bind(SyncStatus::Syncing.as_str())
             .bind(token)
-            .bind(SYNC_LEASE)
+            .bind(SYNC_RUN)
             .fetch_optional(transaction.as_mut())
             .await
             .map_err(error::query(CONTEXT_CLAIM))?;
@@ -123,7 +123,7 @@ impl Schedules {
             .bind(fleet)
             .bind(SyncStatus::Syncing.as_str())
             .bind(token)
-            .bind(SYNC_LEASE)
+            .bind(SYNC_RUN)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_CLAIM))

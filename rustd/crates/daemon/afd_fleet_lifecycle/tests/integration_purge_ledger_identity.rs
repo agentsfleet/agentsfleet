@@ -38,7 +38,7 @@ const CHARGED_AS: &str = "deploy-bot";
 /// Spelled here rather than borrowed from `afd_billing`: this crate does not
 /// depend on it, and a literal in a fixture that only has to be well formed is
 /// cheaper than a crate edge drawn to share two words.
-const WORK_TYPE: &str = "fleet_lease";
+const WORK_TYPE: &str = "fleet_run";
 /// The posture column's platform spelling.
 const POSTURE: &str = "platform";
 /// Any model name; nothing here prices it.
@@ -57,7 +57,7 @@ pub(crate) const SEEDED: [(&str, i64); 4] = [
 /// daemon does.
 ///
 /// `fleet_name` is read from the fleet row by subselect rather than bound, as
-/// the lease path's metering statement reads it — a fixture that bound a
+/// the run path's metering statement reads it — a fixture that bound a
 /// literal would prove the column holds text, not that the capture works.
 async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
     let row = mint();

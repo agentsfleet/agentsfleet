@@ -13,7 +13,7 @@ use super::fixture::Case;
 use af_core::id::Uuid7;
 use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 use afd_billing::Posture;
-use afd_billing::sql::work::{AUTHORING_ATTEMPT, FLEET_LEASE};
+use afd_billing::sql::work::{AUTHORING_ATTEMPT, FLEET_RUN};
 use afd_setup::types::{Source, Start};
 
 /// The private output a dispatch holds until an erasure root scrubs it.
@@ -136,7 +136,7 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
     .bind(&c.base.tenant)
     .bind(&c.base.workspace)
     .bind(fleet)
-    .bind(FLEET_LEASE)
+    .bind(FLEET_RUN)
     .bind(Posture::Platform.as_str())
     .bind(FLEET_CHARGE_NANOS)
     .execute(&mut *c.base.connection().await)
@@ -167,7 +167,7 @@ async fn the_draft_root_keeps_money(c: &Case) -> (Uuid7, (i64, i64, i64)) {
     let reported = c
         .base
         .drafts
-        .report(&c.base.runner, &a.lease, settling_report())
+        .report(&c.base.runner, &a.run, settling_report())
         .await
         .expect("the report settles");
     assert!(reported.settled, "known usage settles");

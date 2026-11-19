@@ -1,9 +1,9 @@
 //! What the sandbox-side tools share on this runner: the repositories a
-//! lease's workspace holds, the identity a commit made in the sandbox names,
+//! run's workspace holds, the identity a commit made in the sandbox names,
 //! and a scripted executor for the suites.
 //!
 //! The tools themselves are `guffbolt`'s (`guffbolt::tools::process` and
-//! `guffbolt::tools::files`), run through the lease's executor as a
+//! `guffbolt::tools::files`), run through the run's executor as a
 //! [`SandboxEnv`](crate::SandboxEnv): none starts a process on the host.
 //! Their suites stay here, beside the executor they cross.
 

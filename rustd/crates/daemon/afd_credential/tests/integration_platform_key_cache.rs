@@ -189,8 +189,8 @@ impl Lane {
         .expect("the price window closes");
     }
 
-    /// A lease's resolution of `reference`, as the claim path asks for it.
-    async fn lease(&self, reference: &str) -> String {
+    /// A run's resolution of `reference`, as the claim path asks for it.
+    async fn run(&self, reference: &str) -> String {
         let observed = self.observed().await;
         self.providers
             .resolve_observed(&self.tenant, reference, Some(&observed.key))

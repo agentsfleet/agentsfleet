@@ -4,14 +4,14 @@ WITH origin AS MATERIALIZED (
     SELECT reply_provider, reply_address FROM fleet.admissions
     WHERE id = $3 AND fleet_id = $1 AND workspace_id = $2
 ), conversation AS (
-    SELECT a.id, a.sequence, a.request_json, a.producer, a.actor, a.input_claim_lease_id, a.input_claim_fence
+    SELECT a.id, a.sequence, a.request_json, a.producer, a.actor, a.input_claim_run_id, a.input_claim_fence
     FROM fleet.admissions a CROSS JOIN origin o
     WHERE a.fleet_id = $1 AND a.workspace_id = $2
       AND o.reply_provider IS NOT NULL
       AND a.reply_provider = o.reply_provider AND a.reply_address = o.reply_address
       AND a.settled_at IS NULL AND ($13 OR a.interpreted_at IS NULL)
     UNION ALL
-    SELECT a.id, a.sequence, a.request_json, a.producer, a.actor, a.input_claim_lease_id, a.input_claim_fence
+    SELECT a.id, a.sequence, a.request_json, a.producer, a.actor, a.input_claim_run_id, a.input_claim_fence
     FROM fleet.admissions a CROSS JOIN origin o
     WHERE a.fleet_id = $1 AND a.workspace_id = $2
       AND o.reply_provider IS NULL
@@ -19,14 +19,14 @@ WITH origin AS MATERIALIZED (
       AND a.settled_at IS NULL AND ($13 OR a.interpreted_at IS NULL)
 ), candidates AS MATERIALIZED (
     SELECT a.id, a.sequence, a.request_json, a.producer,
-           (a.input_claim_lease_id IS NULL
-            OR (a.input_claim_lease_id = $9 AND a.input_claim_fence = $10)
+           (a.input_claim_run_id IS NULL
+            OR (a.input_claim_run_id = $9 AND a.input_claim_fence = $10)
             OR NOT EXISTS (
-                SELECT 1 FROM runner.leases claimed
+                SELECT 1 FROM runner.runs claimed
                 JOIN runner.slots s ON s.fleet_id = claimed.fleet_id
-                WHERE claimed.id = a.input_claim_lease_id
+                WHERE claimed.id = a.input_claim_run_id
                   AND claimed.fencing_token = a.input_claim_fence
-                  AND claimed.status = $11 AND claimed.lease_expires_at > clock_timestamp()
+                  AND claimed.status = $11 AND claimed.run_expires_at > clock_timestamp()
                   AND s.last_runner_id = claimed.runner_id AND s.fencing_token = claimed.fencing_token
             )) AS claimable
     FROM conversation a
@@ -40,7 +40,7 @@ WITH origin AS MATERIALIZED (
         SELECT 1 FROM candidates barrier WHERE NOT barrier.claimable AND barrier.sequence <= candidates.sequence)
 ), claimed AS (
     UPDATE fleet.admissions a
-    SET input_claim_lease_id = $9, input_claim_fence = $10, updated_at = now()
+    SET input_claim_run_id = $9, input_claim_fence = $10, updated_at = now()
     FROM eligible e
     WHERE a.id = e.id AND a.id = $12
       AND e.sequence = (SELECT min(sequence) FROM eligible)

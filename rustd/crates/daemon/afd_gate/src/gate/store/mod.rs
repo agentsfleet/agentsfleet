@@ -42,7 +42,7 @@ impl Gates {
     /// a gate mints two identifiers — the action a human answers about and the
     /// row that records it — and they are drawn through the workspace's one
     /// entropy surface rather than a second source with its own failure mode.
-    /// [`Leases`](crate::lease::Leases) takes it for the same reason.
+    /// [`Runs`](crate::run::Runs) takes it for the same reason.
     #[must_use]
     pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {

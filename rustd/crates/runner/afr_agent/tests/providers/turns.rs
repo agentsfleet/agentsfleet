@@ -1,4 +1,4 @@
-//! One turn streamed straight from the provider a lease connects to, with no
+//! One turn streamed straight from the provider a run connects to, with no
 //! loop above it to stop reading at the first failure: a conversation that
 //! cannot be sent, a call whose arguments are not JSON, an output item the
 //! wire does not model, and the reasoning a turn hands back.
@@ -14,7 +14,7 @@ mod usage_failure;
 
 use super::ends::{SIGNATURE, THOUGHT};
 use super::support::wires::{self, Wire};
-use super::support::{Fake, RUN_BUDGET, Reply, connector, lease};
+use super::support::{Fake, RUN_BUDGET, Reply, connector, payload};
 use super::{ANSWER, CALL_ID};
 
 /// The model every turn here names.
@@ -33,8 +33,8 @@ async fn streamed(
     wire: Wire,
     messages: &[Message],
 ) -> Vec<af_providers::Result<Chunk>> {
-    let leased = lease(&wire.provider(), &[], QUESTION);
-    let provider = connector(fake).connect(&leased).unwrap();
+    let held = payload(&wire.provider(), &[], QUESTION);
+    let provider = connector(fake).connect(&held).unwrap();
     let request = Request {
         model: MODEL,
         instructions: "Read the run.",

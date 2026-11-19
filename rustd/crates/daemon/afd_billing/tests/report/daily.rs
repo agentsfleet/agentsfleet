@@ -25,7 +25,7 @@ async fn daily_spend_reconciles_filtered_snapshot() {
         },
         Filter {
             fleet: Some(f.fleet.clone()),
-            work_type: Some(work::FLEET_LEASE),
+            work_type: Some(work::FLEET_RUN),
         },
     ] {
         request.filter = filter;

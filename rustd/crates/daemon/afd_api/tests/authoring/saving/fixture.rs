@@ -113,66 +113,66 @@ impl Case {
         self.base.cleanup().await;
     }
 
-    /// Seeds a runner and one live lease it holds on `fleet`, so a test can
+    /// Seeds a runner and one live run it holds on `fleet`, so a test can
     /// see what archive and delete do to work in flight; answers both.
-    pub(super) async fn live_lease(&mut self, fleet: &Uuid7) -> (Uuid7, Uuid7) {
+    pub(super) async fn live_run(&mut self, fleet: &Uuid7) -> (Uuid7, Uuid7) {
         let runner = mint();
         self.base.own_runner(&runner);
-        let mut connection = self.base.db.acquire().await.expect("lease connection");
-        RunnerSeed::new(&runner, RUNNER_STATUS_ACTIVE, LEASE_POLICY)
+        let mut connection = self.base.db.acquire().await.expect("run connection");
+        RunnerSeed::new(&runner, RUNNER_STATUS_ACTIVE, RUN_POLICY)
             .insert(&mut *connection)
             .await
             .expect("own runner");
-        let lease = mint();
-        sqlx::query(LIVE_LEASE)
-            .bind(&lease)
+        let run = mint();
+        sqlx::query(LIVE_RUN)
+            .bind(&run)
             .bind(&runner)
             .bind(fleet)
             .bind(&self.base.workspace)
             .bind(&self.base.tenant)
             .bind(mint())
-            .bind(af_core::timing::LEASE_TTL.as_secs_f64())
-            .bind(LEASE_STATUS_ACTIVE)
+            .bind(af_core::timing::RUN_TTL.as_secs_f64())
+            .bind(RUN_STATUS_ACTIVE)
             .execute(&mut *connection)
             .await
-            .expect("live lease");
-        (runner, lease)
+            .expect("live run");
+        (runner, run)
     }
 }
 
-/// The runner a seeded lease belongs to: admitted to no real work.
-const LEASE_POLICY: RunnerPolicy<'static> = RunnerPolicy {
+/// The runner a seeded run belongs to: admitted to no real work.
+const RUN_POLICY: RunnerPolicy<'static> = RunnerPolicy {
     sandbox_tier: "dev_none",
     network_policy: "deny_all_egress",
 };
-/// A runner that may hold leases.
+/// A runner that may hold runs.
 const RUNNER_STATUS_ACTIVE: &str = afd_runner::sql::RUNNER_STATUS_ACTIVE;
-/// A lease still in flight.
-const LEASE_STATUS_ACTIVE: &str = afd_state::sql::LEASE_STATUS_ACTIVE;
-/// One live lease, expiring a lease TTL from now.
-const LIVE_LEASE: &str = "INSERT INTO runner.leases \
+/// A run still in flight.
+const RUN_STATUS_ACTIVE: &str = afd_state::sql::RUN_STATUS_ACTIVE;
+/// One live run, expiring a run TTL from now.
+const LIVE_RUN: &str = "INSERT INTO runner.runs \
     (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
-     posture, provider, model, last_metered_at, fencing_token, lease_expires_at, \
+     posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
      status, posted_message_count, created_at, updated_at) \
     VALUES ($1,$2,$3,$4,$5,$6,now(),'self_managed','fixture-provider','fixture-model', \
             now(),1,clock_timestamp() + make_interval(secs => $7),$8,0,now(),now())";
 
-/// Waits for the runner command channel to carry a Cancel for `lease`.
-pub(super) async fn cancel_heard(commands: &mut afd_bus::Subscription, lease: &Uuid7) {
+/// Waits for the runner command channel to carry a Cancel for `run`.
+pub(super) async fn cancel_heard(commands: &mut afd_bus::Subscription, run: &Uuid7) {
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
             if let afd_bus::Received::Message(message) =
                 commands.recv().await.expect("command channel")
-                && let Ok(afd_bus::Command::Cancel { lease_id }) =
+                && let Ok(afd_bus::Command::Cancel { run_id }) =
                     serde_json::from_str::<afd_bus::Command>(&message.payload)
-                && &lease_id == lease
+                && &run_id == run
             {
                 return;
             }
         }
     })
     .await
-    .expect("the runner is told to cancel its lease");
+    .expect("the runner is told to cancel its run");
 }
 
 /// The fleet a saved item's location names.
@@ -180,16 +180,14 @@ pub(super) fn fleet_of(item: &str) -> Uuid7 {
     Uuid7::parse(item.rsplit('/').next().expect("fleet id")).expect("fleet id")
 }
 
-/// What a seeded lease looks like afterwards: still live, and whether a
+/// What a seeded run looks like afterwards: still live, and whether a
 /// cancel was asked of it.
-pub(super) async fn lease_state(case: &Case, lease: &Uuid7) -> Option<(String, bool)> {
-    sqlx::query_as(
-        "SELECT status, cancel_requested_at IS NOT NULL FROM runner.leases WHERE id = $1",
-    )
-    .bind(lease)
-    .fetch_optional(&mut *case.base.db.acquire().await.expect("lease connection"))
-    .await
-    .expect("lease read")
+pub(super) async fn run_state(case: &Case, run: &Uuid7) -> Option<(String, bool)> {
+    sqlx::query_as("SELECT status, cancel_requested_at IS NOT NULL FROM runner.runs WHERE id = $1")
+        .bind(run)
+        .fetch_optional(&mut *case.base.db.acquire().await.expect("run connection"))
+        .await
+        .expect("run read")
 }
 
 pub(super) fn runtime_history(page: &Value, fleet: &str, workspace: &str) -> Vec<Value> {

@@ -139,19 +139,19 @@ pub struct ConnectorCallback {
     pub location: Option<String>,
 }
 
-/// The fence a lease-addressed read or delete carries, having no body.
+/// The fence a run-addressed read or delete carries, having no body.
 #[derive(Debug, Clone, Copy, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct Fence {
-    /// Attempt token returned with the lease. Replaced assignments are refused.
+    /// Attempt token returned with the run. Replaced assignments are refused.
     pub fencing_token: u64,
 }
 
-/// One schedule's runs, newest first, as a keyset page under the lease's fence.
+/// One schedule's runs, newest first, as a keyset page under the run's fence.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ScheduleRunsPage {
-    /// Attempt token returned with the lease. Replaced assignments are refused.
+    /// Attempt token returned with the run. Replaced assignments are refused.
     pub fencing_token: u64,
     /// The `next_cursor` of the previous page. Omit it for the first page.
     pub starting_after: Option<String>,

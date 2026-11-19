@@ -166,7 +166,7 @@ impl Error {
 
     /// Whether this failure is a stored-configuration fault a human must fix.
     ///
-    /// The question the lease's block path turns on: a permanent fault earns a
+    /// The question the run's block path turns on: a permanent fault earns a
     /// terminal row that puts the fleet in front of a person, where a transient
     /// one leaves the delivery leasable for the next poll.
     ///

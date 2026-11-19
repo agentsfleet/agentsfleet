@@ -92,7 +92,7 @@ impl DecisionCapabilities {
     }
 }
 
-/// Non-secret catalogue metadata frozen for a lease's selected decision model.
+/// Non-secret catalogue metadata frozen for a run's selected decision model.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]

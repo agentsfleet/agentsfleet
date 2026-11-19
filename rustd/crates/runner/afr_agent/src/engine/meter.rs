@@ -1,4 +1,4 @@
-//! Usage belongs to the current lease and never enters recovered private state.
+//! Usage belongs to the current run and never enters recovered private state.
 
 use af_core::clock::{Clock, SystemClock};
 use af_wire::usage::{LINES_MAX, RequestLines, RequestUsage};
@@ -12,7 +12,7 @@ use std::sync::{
 /// provider request the daemon has not yet recorded.
 ///
 /// The engine adds each turn's usage. The supervisor sends the unrecorded lines
-/// with every lease renewal and forgets the ones the daemon says it recorded;
+/// with every run renewal and forgets the ones the daemon says it recorded;
 /// before the report it renews until one body holds the rest, and the report
 /// carries those, so the daemon prices every request on its own and a lost
 /// response never loses a line. Each total is its own

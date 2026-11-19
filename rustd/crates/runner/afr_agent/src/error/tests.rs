@@ -13,7 +13,7 @@ use afr_tools::Catalog;
 use super::{Error, Unhosted};
 
 #[test]
-fn should_carry_the_catalogs_code_and_tool_when_a_lease_is_refused() {
+fn should_carry_the_catalogs_code_and_tool_when_a_run_is_refused() {
     let refusal = Catalog::new(Vec::new()).select(&["browser"]).unwrap_err();
 
     let failure = Error::from(refusal);
@@ -90,7 +90,7 @@ fn should_refuse_a_private_persisted_endpoint_without_mistaking_it_for_an_unhost
 }
 
 /// An executor failure under the scripted engine is the engine's own fault:
-/// logged as an internal failure, and naming nothing the lease asked for.
+/// logged as an internal failure, and naming nothing the run asked for.
 #[cfg(feature = "test-util")]
 #[test]
 fn should_log_an_executor_failure_as_internal_and_name_nothing_unhosted() {

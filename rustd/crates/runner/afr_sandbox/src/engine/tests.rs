@@ -8,16 +8,16 @@ use std::path::Path;
 use super::{Limits, SandboxRequest};
 use crate::network::{Allowlist, Network};
 
-fn request(lease_id: &str) -> SandboxRequest<'_> {
-    SandboxRequest::new(lease_id, Limits::default())
+fn request(run_id: &str) -> SandboxRequest<'_> {
+    SandboxRequest::new(run_id, Limits::default())
 }
 
 /// A request names no network until it is told one, and then names that one,
-/// keeping its lease and limits.
+/// keeping its run and limits.
 #[test]
 fn test_a_request_is_isolated_until_told_otherwise() {
     let allowlist = Allowlist::new(Vec::new()).expect("an empty allowlist is within the cap");
-    let isolated = request("lease-a");
+    let isolated = request("run-a");
 
     let shared = isolated.with_network(Network::Host);
     let allowed = isolated.with_network(Network::Allowed(&allowlist));
@@ -26,27 +26,25 @@ fn test_a_request_is_isolated_until_told_otherwise() {
     assert_eq!(shared.network, Network::Host);
     assert_eq!(allowed.network, Network::Allowed(&allowlist));
     assert_eq!(
-        (allowed.lease_id, allowed.limits),
-        (isolated.lease_id, isolated.limits)
+        (allowed.run_id, allowed.limits),
+        (isolated.run_id, isolated.limits)
     );
 }
 
 #[test]
-fn test_a_lease_directory_is_one_component_under_its_base() {
+fn test_a_run_directory_is_one_component_under_its_base() {
     let dir = request("0198f0c2-7a3e-7c1d-9b2e-4f6a8c0d1e2f")
         .name()
-        .map(|name| name.dir_in(Path::new("/srv/leases")));
+        .map(|name| name.dir_in(Path::new("/srv/runs")));
 
     assert_eq!(
         dir.ok().as_deref(),
-        Some(Path::new(
-            "/srv/leases/0198f0c2-7a3e-7c1d-9b2e-4f6a8c0d1e2f"
-        ))
+        Some(Path::new("/srv/runs/0198f0c2-7a3e-7c1d-9b2e-4f6a8c0d1e2f"))
     );
 }
 
 #[test]
-fn test_a_lease_identifier_that_could_leave_its_base_is_refused() {
+fn test_a_run_identifier_that_could_leave_its_base_is_refused() {
     for unsafe_id in [
         "", ".", "..", "../etc", "a/b", "/abs", "a/..", "x/", "x/.", "a\0b",
     ] {

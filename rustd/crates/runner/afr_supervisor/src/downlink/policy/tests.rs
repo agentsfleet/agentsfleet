@@ -27,7 +27,7 @@ use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, pl
 pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
 /// A fleet consuming the worker reserved for cold work.
 const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
-const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
+const RUN: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
 /// A name in `release_holds` that is no fleet id.
 const NOT_AN_ID: &str = "not-a-fleet";
 /// A tick long enough that a beat inside it came early.
@@ -41,7 +41,7 @@ pub(super) const STOP: &str = "stop";
 /// The beat's field listing the fleets the runner holds.
 pub(super) const HOLDS_FIELD: &str = "holds";
 
-/// A registry holding nothing, as a runner that has run no lease.
+/// A registry holding nothing, as a runner that has run no run.
 fn idle_holds() -> Holds {
     Holds::start(Arc::new(SystemClock))
 }
@@ -105,16 +105,16 @@ pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
 /// Parks a sandbox `engine` builds for [`FLEET`], and answers as `holds` did:
 /// a sandbox it refuses is still the caller's to end.
 pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> crate::holds::Parked {
-    let request = SandboxRequest::new(LEASE, Limits::default());
+    let request = SandboxRequest::new(RUN, Limits::default());
     let key = HoldKey {
         fleet: Uuid7::parse(FLEET).unwrap(),
-        workspace: LEASE.to_owned(),
+        workspace: RUN.to_owned(),
         limits: Limits::default(),
         policy: BuiltUnder::allowing(&[]),
     };
     let sandbox = engine.prepare(request).await.unwrap();
-    let lease = Uuid7::parse(LEASE).unwrap();
-    let parked = holds.park(key, lease, sandbox);
+    let run = Uuid7::parse(RUN).unwrap();
+    let parked = holds.park(key, run, sandbox);
     crate::test_support::bounded("the keeper's answer to a park", parked).await
 }
 
@@ -122,11 +122,11 @@ pub(super) fn sent(call: &Call) -> serde_json::Value {
     serde_json::from_slice(call.body.as_ref().unwrap()).unwrap()
 }
 
-/// An answered beat carries its assignment to the leases, and the self-test it
+/// An answered beat carries its assignment to the runs, and the self-test it
 /// asks for rides the next beat under that assignment's label. An answer whose
 /// assignment is null is malformed, never an empty assignment.
 #[tokio::test]
-async fn an_assignment_reaches_the_leases_and_labels_the_self_test_it_asks_for() {
+async fn an_assignment_reaches_the_runs_and_labels_the_self_test_it_asks_for() {
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
     let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
@@ -144,7 +144,7 @@ async fn an_assignment_reaches_the_leases_and_labels_the_self_test_it_asks_for()
     assert_eq!(
         assigned.egress,
         test_support::assigned(NetworkPolicy::AllowAll, &[]),
-        "the assigned posture reaches the leases"
+        "the assigned posture reaches the runs"
     );
     assert_eq!(assigned.interval, Duration::from_millis(2000));
     assert!(
@@ -195,7 +195,7 @@ fn a_worker_takes_work_only_when_wanted() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_failed_beat_retries_and_a_stop_ends_leases_in_flight() {
+async fn a_failed_beat_retries_and_a_stop_ends_runs_in_flight() {
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
     let (plane, _calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
@@ -224,7 +224,7 @@ async fn a_failed_beat_retries_and_a_stop_ends_leases_in_flight() {
     );
     assert!(
         halt.running().is_cancelled(),
-        "stop ends leases in flight too"
+        "stop ends runs in flight too"
     );
     assert_eq!(watching.borrow_and_update().status, HeartbeatStatus::Stop);
 }
@@ -298,7 +298,7 @@ async fn test_a_saturation_release_beats_at_once() {
     let saturating = async {
         watching.changed().await.unwrap();
         holds.occupy(crate::holds::Occupant::Fleet {
-            lease: Uuid7::parse(OTHER_FLEET).unwrap(),
+            run: Uuid7::parse(OTHER_FLEET).unwrap(),
             fleet: Uuid7::parse(OTHER_FLEET).unwrap(),
         })
     };

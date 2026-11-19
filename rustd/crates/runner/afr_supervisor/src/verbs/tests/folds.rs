@@ -1,4 +1,4 @@
-//! A run claims the messages a person sent its fleet through the lease's fence,
+//! A run claims the messages a person sent its fleet through the run's fence,
 //! and a claim that goes wrong costs it no message.
 
 use af_core::error_code::{self, ErrorCode};
@@ -7,7 +7,7 @@ use af_core::test_util::trace::{Capture, CapturedEvent};
 use af_wire::fold::{FoldResponse, FoldedInput};
 use afr_agent::{Folded, Inbox as _};
 
-use super::{FENCING, FencedVerbs, Host, LEASE_ID};
+use super::{FENCING, FencedVerbs, Host, RUN_ID};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::test_support::{Answer, drain, json, plane};
@@ -26,11 +26,11 @@ struct Claimed {
 async fn claim(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Claimed {
     let capture = Capture::install();
     let (plane, mut calls) = plane(answer);
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,

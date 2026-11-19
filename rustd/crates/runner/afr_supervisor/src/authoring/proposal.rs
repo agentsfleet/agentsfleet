@@ -4,15 +4,15 @@ use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_fleet_runtime::Definition;
 use af_wire::authoring::{
-    ActivityEvent, ActivityRequest, Lease, ModelMessage, Proposal, ProposalCall, ProposalRejection,
-    RefusalDetail,
+    ActivityEvent, ActivityRequest, ModelMessage, Proposal, ProposalCall, ProposalRejection,
+    RefusalDetail, Run,
 };
 use serde_json::Value;
 
 pub(super) async fn apply(
     plane: &ControlPlane,
     id: &Uuid7,
-    lease: &Lease<Value>,
+    run: &Run<Value>,
     sequence: u64,
     call: &ProposalCall,
 ) -> Result<(ModelMessage, bool)> {
@@ -45,7 +45,7 @@ pub(super) async fn apply(
     if let Some(reply) = initial_reply(proposal, call_id, sequence) {
         return Ok((reply, false));
     }
-    let (text, accepted) = submit(plane, id, lease, sequence, proposal).await?;
+    let (text, accepted) = submit(plane, id, run, sequence, proposal).await?;
     Ok((
         ModelMessage::Tool {
             call_id: call_id.clone(),
@@ -73,11 +73,11 @@ fn initial_reply(proposal: &Proposal, call_id: &str, sequence: u64) -> Option<Mo
 async fn submit(
     plane: &ControlPlane,
     id: &Uuid7,
-    lease: &Lease<Value>,
+    run: &Run<Value>,
     sequence: u64,
     proposal: &Proposal,
 ) -> Result<(String, bool)> {
-    let request = request(lease, sequence, proposal);
+    let request = request(run, sequence, proposal);
     let receipt = plane
         .retrying(|| plane.authoring_activity(id, &request))
         .await;
@@ -111,10 +111,10 @@ async fn submit(
     })
 }
 
-fn request(lease: &Lease<Value>, sequence: u64, proposal: &Proposal) -> ActivityRequest {
+fn request(run: &Run<Value>, sequence: u64, proposal: &Proposal) -> ActivityRequest {
     ActivityRequest {
-        fence: lease.fence.clone(),
-        sequence: lease.sequence.clone(),
+        fence: run.fence.clone(),
+        sequence: run.sequence.clone(),
         activity_sequence: sequence.to_string(),
         event: ActivityEvent::Proposal {
             proposal: proposal.clone(),

@@ -20,7 +20,7 @@ async fn an_ignored_expiry_write_cannot_acknowledge_or_meter_a_renewal() {
         "ignore_renewal",
         a.id.as_str(),
         &format!(
-            "NEW.id='{}'::uuid AND NEW.lease_expires_at<>OLD.lease_expires_at",
+            "NEW.id='{}'::uuid AND NEW.run_expires_at<>OLD.run_expires_at",
             a.id
         ),
         "RETURN NULL",
@@ -29,7 +29,7 @@ async fn an_ignored_expiry_write_cannot_acknowledge_or_meter_a_renewal() {
     .expect("the fixture refusal installs");
     let error = f
         .drafts
-        .renew(&f.runner, &a.lease, request())
+        .renew(&f.runner, &a.run, request())
         .await
         .expect_err("no expiry was written");
     assert_eq!(error.code(), error_code::AUTHORING_FENCE);
@@ -38,7 +38,7 @@ async fn an_ignored_expiry_write_cannot_acknowledge_or_meter_a_renewal() {
     drop(fault);
     let renewed = f
         .drafts
-        .renew(&f.runner, &a.lease, request())
+        .renew(&f.runner, &a.run, request())
         .await
         .expect("same renewal succeeds once the boundary recovers");
     let after = snapshot(&f, &a).await;

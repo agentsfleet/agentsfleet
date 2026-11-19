@@ -24,9 +24,9 @@ async fn ordinary_uploads_share_one_authorization_and_one_readback_request() -> 
         authorized,
     } = stage(root.path(), objects, &server.url, &stop)?;
     let (plane, mut calls) = upload_plane(authorized);
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = server.transfers();
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let reference = TurnCheckpointRef {
         checkpoint_id: TurnId(ID.to_owned()),
         pin_id: TurnId(PAGE.to_owned()),
@@ -193,9 +193,9 @@ async fn stored_chunks_the_owner_does_not_verify_fail_the_upload() -> Checked {
         authorized,
     } = stage(root.path(), objects, &server.url, &stop)?;
     let (plane, mut calls) = unverifying_plane(authorized, None);
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = server.transfers();
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
 
     let uploaded = session.upload_batch(pending).await;
@@ -224,9 +224,9 @@ async fn a_put_refused_before_sending_is_the_failure_an_unverified_batch_reports
         authorized,
     } = stage(root.path(), objects, "https://objects.invalid", &stop)?;
     let (plane, mut calls) = unverifying_plane(authorized, Some(Owner::NoCreateOnly));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
 
     let uploaded = session.upload_batch(pending).await;

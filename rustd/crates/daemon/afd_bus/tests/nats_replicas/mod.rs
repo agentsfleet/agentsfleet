@@ -52,7 +52,7 @@ async fn a_runner_command_reaches_only_the_runner_it_names() -> TestResult {
     settle(&publishing, &addressed, &mut [&mut recipient]).await?;
     settle(&publishing, &unrelated, &mut [&mut other]).await?;
     let command = Command::Cancel {
-        lease_id: Uuid7::parse("0195b4ba-8d3a-7000-8abc-00000000c003")?,
+        run_id: Uuid7::parse("0195b4ba-8d3a-7000-8abc-00000000c003")?,
     };
     command.publish(&publishing, &runner).await?;
     let Received::Message(message) = next(&mut recipient).await? else {

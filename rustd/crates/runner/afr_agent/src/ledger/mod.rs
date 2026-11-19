@@ -6,7 +6,7 @@
 //! 1 and sends its `tool_call_started` frame. [`Ledger::close`] sends its
 //! `tool_call_completed` frame, adds its trace row and, when it answered,
 //! holds its full record. A call whose run was dropped before it answered
-//! (the lease stopped, the run future was dropped) ends `interrupted`, live
+//! (the run stopped, the run future was dropped) ends `interrupted`, live
 //! and in the trace, so no run ending can leave a call open. Records are held
 //! only while they fit what one event may keep, measured as the daemon
 //! measures it: one it would refuse is not held to be posted.
@@ -45,7 +45,7 @@ const EVENT_RECORD_DROPPED: &str = "tool_record_dropped";
 /// runs: a child's call opens and ends while its parent's `delegate` call is
 /// still open.
 pub(crate) struct Ledger<'run> {
-    lease_id: &'run str,
+    run_id: &'run str,
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
     book: Mutex<Book>,
@@ -62,11 +62,11 @@ struct Book {
 }
 
 impl<'run> Ledger<'run> {
-    /// Lease `lease_id`'s ledger, sending its frames to `sink` and masking
+    /// Run `run_id`'s ledger, sending its frames to `sink` and masking
     /// through `scrub`.
-    pub(crate) fn new(lease_id: &'run str, sink: &'run dyn EventSink, scrub: &'run Scrub) -> Self {
+    pub(crate) fn new(run_id: &'run str, sink: &'run dyn EventSink, scrub: &'run Scrub) -> Self {
         Self {
-            lease_id,
+            run_id,
             sink,
             scrub,
             book: Mutex::default(),
@@ -89,11 +89,11 @@ impl<'run> Ledger<'run> {
         // fallback would break it; a JSON value always encodes, so there is
         // no failure to fall back from or carry.
         let args_redacted = Value::Object(bounded.clone()).to_string();
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let call_id = id.as_str();
         let tool = call.name.as_str();
         let event = EVENT_CALL_STARTED;
-        tracing::debug!(lease_id, call_id, tool, event);
+        tracing::debug!(run_id, call_id, tool, event);
         self.sink
             .emit(ActivityFrame::ToolCallStarted(ToolCallStarted {
                 name: Cow::Owned(call.name.clone()),
@@ -154,13 +154,13 @@ impl<'run> Ledger<'run> {
         bounded: Map<String, Value>,
         outcome: Outcome,
     ) {
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let call_id = ended.id.as_str();
         let tool = ended.name;
         let status = outcome.status;
         let duration_ms = saturating_millis(outcome.elapsed);
         let event = EVENT_CALL_COMPLETED;
-        tracing::debug!(lease_id, call_id, tool, ?status, duration_ms, event);
+        tracing::debug!(run_id, call_id, tool, ?status, duration_ms, event);
         record::tool_call(Tool::of(tool), tool_outcome(status), outcome.elapsed);
         self.sink
             .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
@@ -185,11 +185,11 @@ impl<'run> Ledger<'run> {
             book.spent = after;
             book.records.push(record);
         } else {
-            let lease_id = self.lease_id;
+            let run_id = self.run_id;
             let call_number = record.call_number;
             let bytes = record.byte_count();
             let event = EVENT_RECORD_DROPPED;
-            tracing::warn!(lease_id, call_number, bytes, event);
+            tracing::warn!(run_id, call_number, bytes, event);
         }
     }
 

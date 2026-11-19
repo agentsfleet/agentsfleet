@@ -1,0 +1,150 @@
+//! The transaction owns host, slot and run locks through its final decision.
+
+use af_core::id::Uuid7;
+use afd_billing::biller::Settlement;
+use jiff::Timestamp;
+use sqlx::{Connection as _, FromRow as _, Postgres, Transaction};
+
+use super::{RenewAnswer, Renewed};
+use crate::{
+    Result,
+    error::query,
+    run::{
+        sql::{self, meter::Metering},
+        store::Runs,
+        usage::{self, Pricing, SliceColumns},
+    },
+};
+
+const CONTEXT: &str = "renew and meter";
+
+struct Extension<'a> {
+    store: &'a Runs,
+    run: Metering<'a>,
+    key: &'a Uuid7,
+    pricing: &'a Pricing,
+    now: Timestamp,
+}
+
+impl Runs {
+    /// Fence, measure and extend together; cancellation never grants another slice.
+    ///
+    /// # Errors
+    /// Preserves database, pricing and entropy failures with their original causes.
+    pub async fn extend(
+        &self,
+        run: Metering<'_>,
+        key: &Uuid7,
+        pricing: &Pricing,
+        now: Timestamp,
+    ) -> Result<Renewed> {
+        let mut connection = self.pool().acquire().await?;
+        let transaction = connection.begin().await.map_err(query(CONTEXT))?;
+        Extension {
+            store: self,
+            run,
+            key,
+            pricing,
+            now,
+        }
+        .run(transaction)
+        .await
+    }
+}
+
+impl Extension<'_> {
+    async fn run(self, mut transaction: Transaction<'_, Postgres>) -> Result<Renewed> {
+        let capacity = self
+            .store
+            .lock_host_capacity(&mut transaction, self.run.runner_id)
+            .await?;
+        let Some(capacity) = capacity.filter(|capacity| capacity.can_renew()) else {
+            return self.refuse(transaction, Renewed::Lost).await;
+        };
+        let cancelled: Option<bool> = sqlx::query_scalar(sql::shared::LOCK_CANCELLED)
+            .bind(self.run.run_id)
+            .bind(self.run.runner_id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT))?;
+        match cancelled {
+            Some(false) => {}
+            Some(true) => return self.refuse(transaction, Renewed::Cancelled).await,
+            None => return self.refuse(transaction, Renewed::Lost).await,
+        }
+        let row = self
+            .run
+            .bind(self.store.clock())
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT))?;
+        let answer = RenewAnswer::from_row(&row).map_err(query(CONTEXT))?;
+        match answer.extended() {
+            Some(expires_at) => {
+                let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT))?;
+                self.extend(transaction, expires_at, slice).await
+            }
+            None => {
+                self.refuse(transaction, answer.verdict(capacity.now()))
+                    .await
+            }
+        }
+    }
+
+    async fn refuse(
+        self,
+        mut transaction: Transaction<'_, Postgres>,
+        verdict: Renewed,
+    ) -> Result<Renewed> {
+        let settlement = self
+            .pricing
+            .original_requests(
+                &mut transaction,
+                self.key,
+                self.run.runner_id,
+                self.run.requests,
+            )
+            .await?;
+        self.commit(transaction, settlement.as_ref()).await?;
+        // Known usage settled in the commit above whatever the answer is. The
+        // verdict stands as it was reached: a Kill mark and the runtime ceiling
+        // are the answers a runner acts on, so neither is turned into a loss
+        // by the usage that settled beside it.
+        Ok(verdict)
+    }
+
+    async fn extend(
+        self,
+        transaction: Transaction<'_, Postgres>,
+        expires_at: Timestamp,
+        columns: SliceColumns,
+    ) -> Result<Renewed> {
+        let settlement = columns.into_slice().map_or(Ok(None), |slice| {
+            self.pricing.settlement(self.key, slice, self.run.requests)
+        })?;
+        let allowed = self.commit(transaction, settlement.as_ref()).await?;
+        let settlement = settlement.map(Box::new);
+        // Task authority stopped during this measurement: the usage settled,
+        // and the run is no longer the runner's to run.
+        Ok(if allowed {
+            Renewed::Extended {
+                expires_at,
+                settlement,
+            }
+        } else {
+            Renewed::Lost
+        })
+    }
+
+    async fn commit(
+        &self,
+        mut transaction: Transaction<'_, Postgres>,
+        settlement: Option<&Settlement>,
+    ) -> Result<bool> {
+        let allowed =
+            usage::log_measured(&mut transaction, self.store.entropy(), self.now, settlement)
+                .await?;
+        transaction.commit().await.map_err(query(CONTEXT))?;
+        Ok(allowed)
+    }
+}

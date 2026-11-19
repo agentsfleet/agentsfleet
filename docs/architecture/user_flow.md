@@ -30,8 +30,8 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Trigger declarations | 0–8 entries, unique on `(type, source)`; none is a fleet woken only by messages | GitHub App triggers require explicit `repositories` (fail-closed); at most one declarative cron | §8.3 |
 | Cron authority | QStash (Upstash's hosted scheduler) owns the clock | Save stores the schedule intent in the same transaction; `afd_cron` mirrors it to QStash; the runner owns no timer | §8.3 |
 | Steer | always accepted | same single ingress as webhook and cron: a committed `fleet.admissions` row with `actor=steer:<user>`; the answer names a disposition (`started`, `folded`, `queued`) | §8.3 |
-| Model identity | selected at lease time | the revision's `runtime_model_ref` resolves to a credentialed saved model; authored model text cannot replace it | §8.7 |
-| Context limits | saved physical window and separate operating cap | each lease reads the saved model window; an absent or zero operating cap inherits it, without a provider lookup | §8.7 |
+| Model identity | selected at run time | the revision's `runtime_model_ref` resolves to a credentialed saved model; authored model text cannot replace it | §8.7 |
+| Context limits | saved physical window and separate operating cap | each run reads the saved model window; an absent or zero operating cap inherits it, without a provider lookup | §8.7 |
 | Conversation compaction | Defaults to 90 percent of the selected physical window | An authored operating threshold or output headroom can trigger earlier; valid checkpoints let the same run continue with tools. | §8.7 |
 | Slack surface | Configured fleet routing | Only configured Addressed/Sole fleets receive admissions; unconfigured channels return `channel_not_configured`. | §8.8 |
 
@@ -272,7 +272,7 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 ## §8.7 Model and context-cap origin (platform vs. self-managed)
 
-The draft selects a credentialed model, and Save pins its reference on the immutable revision as `runtime_model_ref`. Both platform-managed and self-managed runs resolve that reference at lease time. The selected row in `model.platform_models` supplies the model identity, endpoint, API format, physical context window and maximum output length.
+The draft selects a credentialed model, and Save pins its reference on the immutable revision as `runtime_model_ref`. Both platform-managed and self-managed runs resolve that reference at run time. The selected row in `model.platform_models` supplies the model identity, endpoint, API format, physical context window and maximum output length.
 
 Authored `config` model text cannot replace that selection.
 
@@ -320,7 +320,7 @@ An absent or zero `context_cap_tokens` inherits the saved physical window. A non
 A valid checkpoint lets the same run continue with tools. Output stays bounded by the saved maximum and remaining physical headroom, planned by `af_context`.
 The other `x-agentsfleet.context.*` settings keep their authored values or use the defaults in [`capabilities.md`](./capabilities.md) §4.
 
-The lease reads saved catalogue metadata instead of querying the inference provider for limits. Updating provider configuration is an explicit settings change; it does not require a deployment or a JSON routing file ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10).
+The run reads saved catalogue metadata instead of querying the inference provider for limits. Updating provider configuration is an explicit settings change; it does not require a deployment or a JSON routing file ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10).
 
 **Dashboard equivalent: the Models page (`/w/{workspace_id}/settings/models`).** A browser user can use the platform default or connect a provider through the owner registry.
 

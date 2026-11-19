@@ -48,7 +48,7 @@ use std::time::Duration;
 
 use af_core::clock::{Clock, SystemClock, after};
 use af_core::id::Uuid7;
-use af_observability::metrics::label::fleet::{CacheOutcome, LeaseCache};
+use af_observability::metrics::label::fleet::{CacheOutcome, RunCache};
 use af_observability::producers::fleet::cache::looked_up;
 use jiff::Timestamp;
 use moka::Expiry;
@@ -85,7 +85,7 @@ pub struct PlatformKeyKey {
 impl PlatformKeyKey {
     /// The key for the witnesses the caller's statement returned in this pass.
     ///
-    /// Only a statement row's decoder calls this: the lease claim and the
+    /// Only a statement row's decoder calls this: the run claim and the
     /// platform resolution's own read.
     #[must_use]
     pub fn observed(
@@ -208,7 +208,7 @@ impl PlatformKeys {
         } else {
             CacheOutcome::Miss
         };
-        looked_up(LeaseCache::PlatformKey, outcome);
+        looked_up(RunCache::PlatformKey, outcome);
         held
     }
 

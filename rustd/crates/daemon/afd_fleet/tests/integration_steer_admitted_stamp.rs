@@ -1,12 +1,12 @@
-//! A leased steer keeps the place in its thread it was listed under.
+//! A held steer keeps the place in its thread it was listed under.
 //!
 //! A thread page merges history rows with the ledger's waiting steers on one
 //! key, `(created_at, event_id)`, and a waiting steer sits at its admission
-//! instant. When the lease stamped the history row with the lease instant, a
-//! steer cut off one page and leased before the next jumped above the cursor
+//! instant. When the run stamped the history row with the run instant, a
+//! steer cut off one page and held before the next jumped above the cursor
 //! that page handed out: the resumed history read skipped it as too new and
 //! the resumed waiting read skipped it as delivered. These drive the real
-//! lease path, the claim statement, between two page reads.
+//! run path, the claim statement, between two page reads.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -17,7 +17,7 @@
 
 use af_core::event::status;
 use af_core::id::Uuid7;
-use afd_fleet::lease::Delivery;
+use afd_fleet::run::Delivery;
 use afd_turns::view::{Cursor, History, Steer};
 
 use crate::recovery_seed::{admission, ledger, producer_key};
@@ -37,15 +37,15 @@ const WAITING: usize = 3;
 /// The first page keeps the newest two, so the oldest is cut.
 const PAGE: i64 = 2;
 
-/// How far before the lease the oldest steer's admission is aged: far enough
-/// that a row stamped with the lease instant sorts above every admission here.
+/// How far before the run the oldest steer's admission is aged: far enough
+/// that a row stamped with the run instant sorts above every admission here.
 const ADMITTED_EARLIER: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// A steer cut from page one and leased before page two is still on page two,
-/// once, as the history row the lease wrote, at its admission instant.
+/// A steer cut from page one and held before page two is still on page two,
+/// once, as the history row the run wrote, at its admission instant.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
+async fn test_steer_rund_between_pages_stays_on_the_resumed_page() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let steer = Steer::new(ledger(&fixtures));
@@ -82,8 +82,8 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
     let last = kept.last().expect("page one is full");
     let cursor = Cursor::after(last.row.created_at, &last.row.event_id);
 
-    let leases = fixtures.leases();
-    let acquired = select_fleet(&leases, &runner, &fleet)
+    let runs = fixtures.runs();
+    let acquired = select_fleet(&runs, &runner, &fleet)
         .await
         .expect("the fleet holding the steers is leasable");
     assert_eq!(
@@ -95,7 +95,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
     assert_eq!(
         Some(received.opened_at),
         admitted_at,
-        "the row is stamped with the admission instant, not the lease"
+        "the row is stamped with the admission instant, not the run"
     );
 
     let second = history
@@ -106,31 +106,31 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
         .iter()
         .filter(|row| row.row.event_id == oldest_id)
         .collect();
-    assert_eq!(found.len(), 1, "the leased steer is on page two, once");
+    assert_eq!(found.len(), 1, "the held steer is on page two, once");
     assert_eq!(
         found.first().map(|row| row.row.status.as_str()),
         Some(status::RECEIVED),
-        "as the history row the lease wrote"
+        "as the history row the run wrote"
     );
 
     fixtures.cleanup().await;
 }
 
-/// Only a steer moves: a webhook's row keeps the instant the lease passed.
+/// Only a steer moves: a webhook's row keeps the instant the run passed.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_webhook_row_keeps_the_lease_instant() {
+async fn test_webhook_row_keeps_the_run_instant() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let key = producer_key(&fleet, "lease-instant");
+    let key = producer_key(&fleet, "run-instant");
     ledger(&fixtures)
         .admit(admission(&fleet, &workspace, &key))
         .await
         .expect("a live queue admits the webhook");
 
-    let leases = fixtures.leases();
-    let (acquired, lease_window) = fixtures
-        .clock_around(select_fleet(&leases, &runner, &fleet))
+    let runs = fixtures.runs();
+    let (acquired, run_window) = fixtures
+        .clock_around(select_fleet(&runs, &runner, &fleet))
         .await;
     let received = acquired
         .expect("the fleet holding the webhook is leasable")
@@ -138,8 +138,8 @@ async fn test_webhook_row_keeps_the_lease_instant() {
         .received;
     assert_eq!(received.delivery, Delivery::First);
     assert!(
-        lease_window.contains(&received.opened_at),
-        "the webhook's row carries the lease's own instant: {} outside {lease_window:?}",
+        run_window.contains(&received.opened_at),
+        "the webhook's row carries the run's own instant: {} outside {run_window:?}",
         received.opened_at
     );
 

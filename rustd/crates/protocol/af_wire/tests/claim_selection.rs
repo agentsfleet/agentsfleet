@@ -6,8 +6,8 @@
 )]
 
 use af_wire::{
-    lease::{AcceptedKinds, LeaseKind, TaggedLease},
     protocol::{Down, Up},
+    run::{AcceptedKinds, RunKind, TaggedRun},
 };
 
 #[test]
@@ -48,9 +48,9 @@ fn accepted_kind_order_is_a_set_and_serializes_canonically() {
                 .expect("canonical set decodes");
         assert_eq!(round_trip, expected);
     }
-    assert!(AcceptedKinds::ALL.contains(LeaseKind::Fleet));
-    assert!(AcceptedKinds::ALL.contains(LeaseKind::Authoring));
-    assert!(!AcceptedKinds::FLEET.contains(LeaseKind::Authoring));
+    assert!(AcceptedKinds::ALL.contains(RunKind::Fleet));
+    assert!(AcceptedKinds::ALL.contains(RunKind::Authoring));
+    assert!(!AcceptedKinds::FLEET.contains(RunKind::Authoring));
     assert_eq!(
         serde_json::to_value(AcceptedKinds::ALL).expect("serializable set"),
         serde_json::json!(["fleet", "authoring"])
@@ -66,10 +66,10 @@ fn test_claim_reply_requires_a_supported_discriminator() {
         r#"{"kind":"fleet"}"#,
     ] {
         assert!(
-            serde_json::from_str::<TaggedLease<'_>>(body).is_err(),
+            serde_json::from_str::<TaggedRun<'_>>(body).is_err(),
             "{body}"
         );
     }
-    serde_json::from_str::<Down<'_>>(r#"{"type":"offer","lease":null}"#)
-        .expect_err("an offer must contain a native lease");
+    serde_json::from_str::<Down<'_>>(r#"{"type":"offer","run":null}"#)
+        .expect_err("an offer must contain a native run");
 }

@@ -3,9 +3,9 @@
  * what it saw.
  *
  * Two halves. The polls read the operator plane and the tenant thread until a
- * delivery has been leased and has reached a terminal row. The classifier then
+ * delivery has been held and has reached a terminal row. The classifier then
  * says, from that row alone, whether the walk PASSED, met a PRODUCT defect, or
- * met an ENVIRONMENT condition — a provider outage, a runner that died, a lease
+ * met an ENVIRONMENT condition — a provider outage, a runner that died, a run
  * that ran out of clock. RULE ECL: those are different failures with different
  * next moves, and a lane that collapses them reports a regression every time
  * GitHub or the model endpoint has a bad minute.
@@ -13,9 +13,9 @@
  * The classifier is a pure function over the row, so the unit lane proves each
  * branch red and green without a runner in reach; the journey only calls it.
  */
-import type { RunnerLeaseResponse, RunnerListResponse } from "@/tests/helpers/runner-control";
+import type { RunnerRunResponse, RunnerListResponse } from "@/tests/helpers/runner-control";
 import type { EventDetail, ThreadPage } from "@/lib/api/events";
-import { LeaseOutcome } from "@/tests/helpers/runner-control-types";
+import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 
@@ -42,7 +42,7 @@ export const FAILURE_CLASS = {
   runnerCrash: "runner_crash",
   transportLoss: "transport_loss",
   landlockDeny: "landlock_deny",
-  leaseExpired: "lease_expired",
+  runExpired: "run_expired",
   renewalTerminate: "renewal_terminate",
   budgetBreach: "budget_breach",
 } as const;
@@ -58,12 +58,12 @@ export const PRODUCT_FAILURE_CLASSES: readonly string[] = [
 ];
 
 // The host, the provider path or the clock decided these. A runner that
-// crashed mid-call, a transport that dropped, a lease that ran out while the
+// crashed mid-call, a transport that dropped, a run that ran out while the
 // provider stalled: none of them is a fleet that cannot execute.
 export const ENVIRONMENT_FAILURE_CLASSES: readonly string[] = [
   FAILURE_CLASS.runnerCrash,
   FAILURE_CLASS.transportLoss,
-  FAILURE_CLASS.leaseExpired,
+  FAILURE_CLASS.runExpired,
   FAILURE_CLASS.renewalTerminate,
   FAILURE_CLASS.timeoutKill,
   FAILURE_CLASS.oomKill,
@@ -80,7 +80,7 @@ export type VerdictKind = (typeof VERDICT_KIND)[keyof typeof VERDICT_KIND];
 // The legs of the walk, so a failure line names WHERE it broke.
 export const JOURNEY_LEG = {
   install: "install",
-  lease: "lease",
+  run: "run",
   execute: "execute",
   observe: "observe",
 } as const;
@@ -104,18 +104,18 @@ const HTTP_SERVER_ERROR_FLOOR = 500;
 // status is the one fact the classifier needs out of that line.
 const API_STATUS_PATTERN = /→ (\d{3}):/;
 
-const DETAIL_NO_REPLY = "the lease finished without a reply";
+const DETAIL_NO_REPLY = "the run finished without a reply";
 const DETAIL_GATE_BLOCKED = "the delivery is waiting on an approval no journey granted";
-const DETAIL_RUNNER_OFFLINE = "no runner was online to lease the delivery";
-const DETAIL_NEVER_LEASED = "an online runner never leased the delivery";
-const DETAIL_REPORT_MISSING = "the lease settled and no terminal row followed";
+const DETAIL_RUNNER_OFFLINE = "no runner was online to run the delivery";
+const DETAIL_NEVER_RUND = "an online runner never held the delivery";
+const DETAIL_REPORT_MISSING = "the run settled and no terminal row followed";
 const DETAIL_STILL_RUNNING =
-  "the lease was still running when the execution budget expired";
+  "the run was still running when the execution budget expired";
 const DETAIL_UNKNOWN_CLASS = "an unrecognised failure class";
 const DETAIL_API_UNREACHABLE = "the API could not be reached";
 
 const FLEET_RUNNERS_PATH = "/v1/admin/runners";
-const LEASE_PAGE_SIZE = 50;
+const RUN_PAGE_SIZE = 50;
 const LIVE_RUNNER_STATES: readonly string[] = ["online", "busy"];
 
 /**
@@ -172,34 +172,34 @@ export function classifyTerminalEvent(row: TerminalObservation): ExecutionVerdic
 
 /**
  * What a delivery that never reached a terminal row says. With no live runner
- * that is the environment; with one, the scheduler or the lease path lost it.
+ * that is the environment; with one, the scheduler or the run path lost it.
  */
-export function classifyUnleased(runnerLive: boolean): FailedVerdict {
+export function classifyIdle(runnerLive: boolean): FailedVerdict {
   return runnerLive
-    ? { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.lease, detail: DETAIL_NEVER_LEASED }
-    : { kind: VERDICT_KIND.environment, leg: JOURNEY_LEG.lease, detail: DETAIL_RUNNER_OFFLINE };
+    ? { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.run, detail: DETAIL_NEVER_RUND }
+    : { kind: VERDICT_KIND.environment, leg: JOURNEY_LEG.run, detail: DETAIL_RUNNER_OFFLINE };
 }
 
 /**
- * What a lease that settled with no terminal row behind it says: the runner
+ * What a run that settled with no terminal row behind it says: the runner
  * finished, and the report that should have closed the row never landed. The
- * daemon's, whichever way the lease went.
+ * daemon's, whichever way the run went.
  */
 export function classifyReportMissing(outcome: string): FailedVerdict {
   return {
     kind: VERDICT_KIND.product,
     leg: JOURNEY_LEG.execute,
-    detail: `${DETAIL_REPORT_MISSING} (lease ${outcome})`,
+    detail: `${DETAIL_REPORT_MISSING} (run ${outcome})`,
   };
 }
 
 /**
- * What a lease still RUNNING past the execution budget says.
+ * What a run still RUNNING past the execution budget says.
  *
- * The environment, not the scheduler. The delivery was leased and started; the
+ * The environment, not the scheduler. The delivery was held and started; the
  * clock ran out before the work came back, which is what a slow provider minute
- * looks like from here. [`classifyUnleased`] reads the same state as "an online
- * runner never leased the delivery" — a scheduler regression that did not
+ * looks like from here. [`classifyIdle`] reads the same state as "an online
+ * runner never held the delivery" — a scheduler regression that did not
  * happen — so this branch exists to keep RULE ECL's two failures apart at the
  * one moment they are easiest to confuse.
  */
@@ -207,7 +207,7 @@ export function classifyStillRunning(outcome: string): FailedVerdict {
   return {
     kind: VERDICT_KIND.environment,
     leg: JOURNEY_LEG.execute,
-    detail: `${DETAIL_STILL_RUNNING} (lease ${outcome})`,
+    detail: `${DETAIL_STILL_RUNNING} (run ${outcome})`,
   };
 }
 
@@ -228,26 +228,26 @@ export function classifyApiFailure(error: unknown, leg: JourneyLeg): FailedVerdi
   return { kind: VERDICT_KIND.product, leg, detail: message };
 }
 
-export interface LeaseLocation {
+export interface RunLocation {
   runnerId: string;
   hostId: string;
   outcome: string;
 }
 
 /**
- * The lease an online runner took for this fleet, wherever the scheduler put
- * it. The read is per runner, so the walk visits every runner's first lease
- * page; the fleet is fresh, so its first lease is the one.
+ * The run an online runner took for this fleet, wherever the scheduler put
+ * it. The read is per runner, so the walk visits every runner's first run
+ * page; the fleet is fresh, so its first run is the one.
  */
-export async function findLeaseFor(fleetId: string): Promise<LeaseLocation | null> {
+export async function findRunFor(fleetId: string): Promise<RunLocation | null> {
   const operator = clientFor(FIXTURE_KEY.operator);
   const runners = await operator.get<RunnerListResponse>(FLEET_RUNNERS_PATH);
   for (const runner of runners.items) {
-    const leases = await operator.get<RunnerLeaseResponse>(
-      `${FLEET_RUNNERS_PATH}/${runner.id}/leases?limit=${LEASE_PAGE_SIZE}`,
+    const runs = await operator.get<RunnerRunResponse>(
+      `${FLEET_RUNNERS_PATH}/${runner.id}/runs?limit=${RUN_PAGE_SIZE}`,
     );
-    const lease = leases.items.find((item) => item.fleet_id === fleetId);
-    if (lease) return { runnerId: runner.id, hostId: runner.host_id, outcome: lease.outcome };
+    const run = runs.items.find((item) => item.fleet_id === fleetId);
+    if (run) return { runnerId: runner.id, hostId: runner.host_id, outcome: run.outcome };
   }
   return null;
 }
@@ -258,9 +258,9 @@ export async function anyRunnerLive(): Promise<boolean> {
   return runners.items.some((item) => LIVE_RUNNER_STATES.includes(item.liveness));
 }
 
-/** Whether a lease outcome is one the runner has finished reporting. */
-export function leaseIsSettled(outcome: string): boolean {
-  return outcome !== LeaseOutcome.Running;
+/** Whether a run outcome is one the runner has finished reporting. */
+export function runIsSettled(outcome: string): boolean {
+  return outcome !== RunOutcome.Running;
 }
 
 /**

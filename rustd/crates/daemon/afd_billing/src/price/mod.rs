@@ -106,7 +106,7 @@ impl PriceBook {
         })
     }
 
-    /// Reads the dated tiers for the lease's saved model/revision identity.
+    /// Reads the dated tiers for the run's saved model/revision identity.
     /// It does not follow the model's current revision pointer or coding rates.
     /// Callers retain this book before dispatch and rate later receipts from it.
     ///

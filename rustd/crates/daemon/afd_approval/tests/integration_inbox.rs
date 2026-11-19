@@ -240,7 +240,7 @@ async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
     );
 }
 
-/// Expiry clears the durable park so the fleet can lease its oldest row.
+/// Expiry clears the durable park so the fleet can run its oldest row.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_expired_gate_wakes_its_fleet() {

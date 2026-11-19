@@ -3,7 +3,7 @@
 //! The deletes themselves are statements, proven in the integration lane
 //! against real rows. What is decidable here is the PACING — a cycle that
 //! drained everything waits an hour, and one that filled every batch comes back
-//! in a minute — and the window's relationship to a lease's maximum life, which
+//! in a minute — and the window's relationship to a run's maximum life, which
 //! the compiler already checked and this states where a reader looks for it.
 #![expect(
     clippy::expect_used,

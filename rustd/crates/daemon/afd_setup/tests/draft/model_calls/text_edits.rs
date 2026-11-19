@@ -81,7 +81,7 @@ async fn model_text_edits_resolve_against_the_stored_revision_and_apply_atomical
     let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
     let request = fixture::request(&a);
     let result = calls
-        .call(&f.runner, &a.lease, request.clone())
+        .call(&f.runner, &a.run, request.clone())
         .await
         .expect("anchored proposal");
     let mut activity = a.initialize(1);
@@ -90,7 +90,7 @@ async fn model_text_edits_resolve_against_the_stored_revision_and_apply_atomical
     };
     let accepted = f
         .drafts
-        .activity(&f.runner, &a.lease, activity)
+        .activity(&f.runner, &a.run, activity)
         .await
         .expect("native activity");
     assert_eq!(
@@ -103,7 +103,7 @@ async fn model_text_edits_resolve_against_the_stored_revision_and_apply_atomical
     );
     assert_changed(&f, &a).await;
     let replay = calls
-        .call(&f.runner, &a.lease, request)
+        .call(&f.runner, &a.run, request)
         .await
         .expect("same dispatch replay");
     assert!(replay.replayed);

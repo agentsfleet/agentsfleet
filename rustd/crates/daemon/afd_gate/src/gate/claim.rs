@@ -42,7 +42,7 @@ pub const MAX_PROPOSED_ACTION_BYTES: usize = 512;
 
 /// Evidence is identifiers and links, never file contents.
 ///
-/// A workspace is destroyed per lease, so fleets cannot hand each other bytes
+/// A workspace is destroyed per run, so fleets cannot hand each other bytes
 /// anyway — what this bounds is one fleet's own payload.
 pub const MAX_EVIDENCE_BYTES: usize = 1024;
 

@@ -6,14 +6,14 @@ use std::fmt;
 use afr_executor::Executor;
 use guffbolt::tools::code;
 
-use crate::lease::Lease;
+use crate::run::Run;
 
 /// Where a tool's handler runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Runtime {
     /// In the supervisor, beside the loop. Never touches the sandbox.
     Supervisor,
-    /// Inside the lease's sandbox, through the executor connection.
+    /// Inside the run's sandbox, through the executor connection.
     Sandbox,
     /// At the model provider, sent as the provider's own hosted tool spec.
     Provider,
@@ -25,19 +25,19 @@ pub enum Runtime {
 /// handler, so a supervisor-side one cannot reach the sandbox by construction.
 /// A generic tool reaches that executor as its `guffbolt` environment, and
 /// nothing else: no handler here runs a command on the runner's host.
-/// The lease's state is shared: a run's child loops call tools at the same
+/// The run's state is shared: a run's child loops call tools at the same
 /// time as their parent, so each part a call changes sits behind its own lock
-/// ([`Lease`]).
+/// ([`Run`]).
 #[derive(Debug)]
 pub struct ToolContext<'call, 'run> {
-    /// The lease's executor; `None` for a supervisor-side call.
+    /// The run's executor; `None` for a supervisor-side call.
     pub executor: Option<&'call dyn Executor>,
-    /// What every call of the lease shares.
-    pub lease: &'call Lease<'run>,
+    /// What every call of the run shares.
+    pub run: &'call Run<'run>,
 }
 
-/// One handler the catalog hosts: a `guffbolt` tool lent one lease's
-/// [`ToolContext`] per call, so the same handler serves every lease and every
+/// One handler the catalog hosts: a `guffbolt` tool lent one run's
+/// [`ToolContext`] per call, so the same handler serves every run and every
 /// call. Its runtime is its published entry's, never its own claim.
 pub type CatalogTool = dyn for<'call, 'run> guffbolt::Tool<ToolContext<'call, 'run>>;
 

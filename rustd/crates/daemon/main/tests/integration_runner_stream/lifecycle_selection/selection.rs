@@ -11,19 +11,19 @@ use tokio::time::Instant;
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn http3_is_reselected_only_when_the_http2_session_ends() {
     let mut supervisor = Supervisor::new();
-    let run = crate::e2e::scenario(&mut supervisor).await;
-    let relay = Relay::start(run.booted.runner_stream_address, false).await;
-    let mut runner = session(&run, &relay.origin, None).await;
+    let scene = crate::e2e::scenario(&mut supervisor).await;
+    let relay = Relay::start(scene.booted.runner_stream_address, false).await;
+    let mut runner = session(&scene, &relay.origin, None).await;
     heartbeat(&runner).await.expect("initial HTTP/2 heartbeat");
-    let first = owner(&run).await;
+    let first = owner(&scene).await;
     assert_eq!(relay.connections(), (1, 0));
     // Let the expired QUIC attempt finish cleanup before opening the UDP path.
     tokio::time::sleep(HEARTBEAT_INTERVAL / 2).await;
     relay.enable_udp();
-    hold_healthy_http2(&run, &runner, &relay, &first).await;
+    hold_healthy_http2(&scene, &runner, &relay, &first).await;
     relay.end_tcp();
-    reconnect_heartbeat(&run, &runner, &first).await;
-    assert_ne!(owner(&run).await, first);
+    reconnect_heartbeat(&scene, &runner, &first).await;
+    assert_ne!(owner(&scene).await, first);
     assert_eq!(
         relay.connections(),
         (1, 1),
@@ -32,11 +32,11 @@ async fn http3_is_reselected_only_when_the_http2_session_ends() {
     runner.close().await.expect("downlink joins");
     relay.close().await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 async fn hold_healthy_http2(
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     runner: &Session,
     relay: &Relay,
     first: &af_core::id::Uuid7,
@@ -47,7 +47,7 @@ async fn hold_healthy_http2(
         heartbeat(runner)
             .await
             .expect("healthy HTTP/2 session continues after UDP returns");
-        assert_eq!(&owner(run).await, first);
+        assert_eq!(&owner(scene).await, first);
         assert_eq!(
             relay.connections(),
             (1, 0),
@@ -61,14 +61,14 @@ async fn hold_healthy_http2(
     reason = "a terminal refusal must fail this recovery test"
 )]
 async fn reconnect_heartbeat(
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     runner: &Session,
     first: &af_core::id::Uuid7,
 ) {
     tokio::time::timeout(RECOVERY_SLACK + STREAM_RECOVERY_BUDGET, async {
         loop {
             match heartbeat(runner).await {
-                Ok(_) if owner(run).await != *first => return,
+                Ok(_) if owner(scene).await != *first => return,
                 Ok(_) => tokio::task::yield_now().await,
                 Err(error) if error.is_retryable() => tokio::task::yield_now().await,
                 Err(error) => panic!("normal connection loss became terminal: {error}"),

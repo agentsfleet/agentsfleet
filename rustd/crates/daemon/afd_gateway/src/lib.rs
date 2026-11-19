@@ -17,7 +17,7 @@ use std::sync::Arc;
 use af_core::clock::Clock;
 use af_stream::Budget;
 use afd_bus::{Handle, wake::Wake};
-use afd_fleet::lease::LeaseService;
+use afd_fleet::run::RunService;
 use afd_runner::Runners;
 use afd_setup::Drafts;
 use afd_sse::StreamLimit;
@@ -40,7 +40,7 @@ pub struct GatewayDependencies {
     /// Host policy, liveness and guarded connection ownership.
     pub runners: Runners,
     /// Existing fleet placement, billing, activity and report owner.
-    pub leases: LeaseService,
+    pub runs: RunService,
     /// Existing private authoring owner.
     pub drafts: Drafts,
     /// Scoped provider invocations share the daemon's key owner and dispatch ledger.
@@ -55,7 +55,7 @@ pub struct GatewayDependencies {
     pub wake: Wake,
     /// Per-replica frame budgets resolved and validated before accepting connections.
     pub frame_memory: af_stream::MemoryLimits,
-    /// Wall time for identifiers and cached lease expiry; timeouts use monotonic instants.
+    /// Wall time for identifiers and cached run expiry; timeouts use monotonic instants.
     pub wall_clock: Arc<dyn Clock>,
     /// Product completion events reuse the daemon's configured sink.
     pub analytics: af_observability::Analytics,

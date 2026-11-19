@@ -47,9 +47,9 @@ const Detail = z.object({
     covered_input_sequence: Count, effect_cursor: Count, confirmed_effect_watermark: Count,
     checkpoint_id: Identity.nullable(), expires_at: Instant,
     limits: z.object({model_nanos: nanosSchema, wall_seconds: Count, running_seconds: Count,
-      leases: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
+      runs: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
     usage: z.object({model_nanos: nanosSchema, reserved_model_nanos: nanosSchema,
-      running_nanos: Count, leases: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
+      running_nanos: Count, runs: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
   }),
 });
 

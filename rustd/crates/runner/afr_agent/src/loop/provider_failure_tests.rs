@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::tests::{drive, engine};
 use crate::engine::{AgentEngine, AgentRun, Meter};
-use crate::fixture::{Frames, Script, Unreachable, lease, say, unbounded};
+use crate::fixture::{Frames, Script, Unreachable, payload, say, unbounded};
 use crate::testing::Discard;
 
 #[tokio::test]
@@ -22,8 +22,12 @@ async fn a_provider_refusal_ends_the_run_as_the_fleets_error() {
     let script = Script::failing(Vec::new(), || Error::refused(401));
     let engine = engine(Vec::new(), &script);
 
-    let (output, _frames) =
-        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
+    let (output, _frames) = drive(
+        &engine,
+        &payload(&[], unbounded()),
+        &CancellationToken::new(),
+    )
+    .await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a refused turn fails the run");
@@ -45,8 +49,12 @@ async fn a_lost_provider_connection_ends_the_run_as_transport_loss() {
     let script = Script::failing(vec![say("partial ")], lost);
     let engine = engine(Vec::new(), &script);
 
-    let (output, _frames) =
-        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
+    let (output, _frames) = drive(
+        &engine,
+        &payload(&[], unbounded()),
+        &CancellationToken::new(),
+    )
+    .await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a lost turn fails the run");
@@ -58,12 +66,12 @@ async fn a_lost_provider_connection_ends_the_run_as_transport_loss() {
 #[tokio::test]
 async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
     let engine = super::Loop::new(afr_tools::Catalog::new(Vec::new()), Unreachable);
-    let lease = lease(&[], unbounded());
+    let run = payload(&[], unbounded());
     let frames = Frames::default();
     let sink = frames.sink();
 
     assert!(
-        engine.admit(&lease.policy).is_ok(),
+        engine.admit(&run.policy).is_ok(),
         "admission never dials the model; only the run connects"
     );
     let failure = engine
@@ -72,7 +80,7 @@ async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -111,7 +119,7 @@ fn turn_outcomes(
         .collect()
 }
 
-/// A turn the provider fails is counted as failed, under the lease's
+/// A turn the provider fails is counted as failed, under the run's
 /// provider.
 #[tokio::test]
 async fn a_failed_turn_is_counted_as_failed() {
@@ -124,7 +132,11 @@ async fn a_failed_turn_is_counted_as_failed() {
 
     let _ended = scoped(
         tally,
-        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()),
+        drive(
+            &engine,
+            &payload(&[], unbounded()),
+            &CancellationToken::new(),
+        ),
     )
     .await;
 
@@ -142,7 +154,7 @@ impl af_providers::Connect for Silent {
 
     fn connect(
         &self,
-        _lease: &af_wire::lease::LeasePayload<'_>,
+        _run: &af_wire::run::RunPayload<'_>,
     ) -> af_providers::Result<Box<af_providers::Provider>> {
         Ok(Box::new(Self))
     }
@@ -168,7 +180,7 @@ impl guffbolt::Model for Silent {
     }
 }
 
-/// A turn the lease stops before the provider answers is counted as
+/// A turn the run stops before the provider answers is counted as
 /// stopped, never as failed.
 #[tokio::test(start_paused = true)]
 async fn a_stopped_turn_is_counted_as_stopped() {
@@ -176,7 +188,7 @@ async fn a_stopped_turn_is_counted_as_stopped() {
     use afr_telemetry::testing::{Tally, scoped};
 
     let engine = super::Loop::new(afr_tools::Catalog::new(Vec::new()), Silent);
-    let lease = lease(&[], unbounded());
+    let run = payload(&[], unbounded());
     let stop = CancellationToken::new();
     let (tally, recorded) = Tally::new();
     let stopper = async {
@@ -184,17 +196,21 @@ async fn a_stopped_turn_is_counted_as_stopped() {
         stop.cancel();
     };
 
-    let (_ended, ()) = tokio::join!(scoped(tally, drive(&engine, &lease, &stop)), stopper);
+    let (_ended, ()) = tokio::join!(scoped(tally, drive(&engine, &run, &stop)), stopper);
 
     assert_eq!(turn_outcomes(&recorded), vec![TurnOutcome::Stopped]);
 }
 
-/// Drives a run whose model plays `turns` with an empty-tooled lease.
+/// Drives a run whose model plays `turns` with an empty-tooled run.
 async fn outcome_of(turns: Vec<Vec<guffbolt::Chunk>>) -> crate::engine::RunOutput {
     let script = Script::new(turns);
     let engine = engine(Vec::new(), &script);
-    let (output, _frames) =
-        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
+    let (output, _frames) = drive(
+        &engine,
+        &payload(&[], unbounded()),
+        &CancellationToken::new(),
+    )
+    .await;
     output
 }
 
@@ -270,7 +286,7 @@ async fn a_closing_turn_without_text_after_a_tool_call_still_completes() {
     );
     let (output, _frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;

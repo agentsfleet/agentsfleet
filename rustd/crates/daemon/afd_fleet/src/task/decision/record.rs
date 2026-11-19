@@ -15,21 +15,21 @@ use super::{
 use crate::{
     Result,
     error::{Error, ErrorKind, query, stale_fence},
-    task::{TaskLease, TaskRefusal, TaskScope, Tasks, transaction},
+    task::{TaskRefusal, TaskRun, TaskScope, Tasks, transaction},
 };
 
 pub(super) async fn record(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     id: &Uuid7,
     input: &garde::Valid<DecisionReceiptInput>,
 ) -> Result<DecisionReceiptResult> {
-    if input.fencing_token != lease.fencing_token {
+    if input.fencing_token != task_run.fencing_token {
         return Err(stale_fence());
     }
     tokio::time::timeout(
         super::OPERATION_TIMEOUT,
-        run(tasks, lease, id, &input.receipt),
+        run(tasks, task_run, id, &input.receipt),
     )
     .await
     .map_err(|source| Error::from(ErrorKind::DecisionDeadline { source }))?
@@ -37,12 +37,12 @@ pub(super) async fn record(
 
 async fn run(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     id: &Uuid7,
     receipt: &DecisionReceipt,
 ) -> Result<DecisionReceiptResult> {
     let digest = receipt_digest(receipt)?;
-    let (written, payload) = commit(tasks, lease, id, receipt, &digest).await?;
+    let (written, payload) = commit(tasks, task_run, id, receipt, &digest).await?;
     after_commit(tasks, written, payload, receipt).await
 }
 
@@ -72,19 +72,19 @@ async fn after_commit(
 
 async fn commit(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     id: &Uuid7,
     receipt: &DecisionReceipt,
     digest: &str,
 ) -> Result<(Written, Option<Payload>)> {
-    let call = row::peek(tasks.leases.pool(), Lookup::Id(id))
+    let call = row::peek(tasks.runs.pool(), Lookup::Id(id))
         .await?
         .ok_or(TaskRefusal::NotFound)?;
-    if !call.owned_by(lease) {
+    if !call.owned_by(task_run) {
         return Err(stale_fence());
     }
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
-    let result = commit_on(&mut connection, tasks, lease, &call, receipt, digest).await;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
+    let result = commit_on(&mut connection, tasks, task_run, &call, receipt, digest).await;
     transaction::recycle(connection);
     result
 }
@@ -92,7 +92,7 @@ async fn commit(
 async fn commit_on(
     connection: &mut PgConnection,
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     call: &Call,
     receipt: &DecisionReceipt,
     digest: &str,
@@ -102,14 +102,14 @@ async fn commit_on(
     super::locks::Mode::Wait
         .parents(&mut transaction, call)
         .await?;
-    let call = owned(&mut transaction, lease, &call.id).await?;
+    let call = owned(&mut transaction, task_run, &call.id).await?;
     let plan = account::classify(&call, receipt, digest)?;
     let written = Recording {
         call: &call,
         receipt,
         digest,
     }
-    .write(&mut transaction, tasks.leases.entropy(), plan)
+    .write(&mut transaction, tasks.runs.entropy(), plan)
     .await?;
     let payload = row::payload(&mut transaction, &call.id).await?;
     transaction
@@ -119,11 +119,11 @@ async fn commit_on(
     Ok((written, payload))
 }
 
-async fn owned(connection: &mut PgConnection, lease: TaskLease<'_>, id: &Uuid7) -> Result<Call> {
+async fn owned(connection: &mut PgConnection, task_run: TaskRun<'_>, id: &Uuid7) -> Result<Call> {
     let call = row::find(connection, Lookup::Id(id))
         .await?
         .ok_or(TaskRefusal::NotFound)?;
-    if !call.owned_by(lease) {
+    if !call.owned_by(task_run) {
         return Err(stale_fence());
     }
     Ok(call)

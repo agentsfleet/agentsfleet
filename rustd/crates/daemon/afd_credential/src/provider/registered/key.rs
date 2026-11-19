@@ -41,7 +41,7 @@ impl Providers {
     }
 
     /// [`Self::registered_key`] with the host its saved settings dial, for a
-    /// lease whose runner makes the model call itself.
+    /// run whose runner makes the model call itself.
     ///
     /// # Errors
     /// As [`Self::registered_key`].

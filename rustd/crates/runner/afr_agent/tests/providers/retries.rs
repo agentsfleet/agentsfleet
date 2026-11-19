@@ -8,7 +8,7 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 use afr_agent::ResultOutcome;
 
 use super::support::wires::Wire;
-use super::support::{Fake, Reply, engine, lease, run};
+use super::support::{Fake, Reply, engine, payload, run};
 use super::{ANSWER, ATTEMPTS};
 
 /// One 429 then success counts one retry, rate limited, under the provider's
@@ -27,10 +27,10 @@ async fn test_provider_retry_is_counted() {
     ])
     .await;
     let provider = wire.provider();
-    let leased = lease(&provider, &[], "hello");
+    let held = payload(&provider, &[], "hello");
     let (tally, recorded) = Tally::new();
 
-    let (output, _frames) = scoped(tally, run(&engine(&fake), &leased)).await;
+    let (output, _frames) = scoped(tally, run(&engine(&fake), &held)).await;
 
     assert_eq!(output.result.content, ANSWER);
     let label = Provider::of(&provider);
@@ -79,10 +79,10 @@ async fn each_reopened_stream_is_one_retry() {
         events.truncate(silent);
         let fake = Fake::serve(vec![Reply::Stream(events); ATTEMPTS]).await;
         let provider = wire.provider();
-        let leased = lease(&provider, &[], "hello");
+        let held = payload(&provider, &[], "hello");
         let (tally, recorded) = Tally::new();
 
-        let (output, _frames) = scoped(tally, run(&engine(&fake), &leased)).await;
+        let (output, _frames) = scoped(tally, run(&engine(&fake), &held)).await;
 
         assert!(
             matches!(output.result.outcome, ResultOutcome::Failed(_)),
@@ -124,10 +124,10 @@ async fn a_send_that_cannot_connect_is_retried_as_transport() {
         .unwrap();
     fake.client = client;
     let provider = wire.provider();
-    let leased = lease(&provider, &[], "hello");
+    let held = payload(&provider, &[], "hello");
     let (tally, recorded) = Tally::new();
 
-    let (output, _frames) = scoped(tally, run(&engine(&fake), &leased)).await;
+    let (output, _frames) = scoped(tally, run(&engine(&fake), &held)).await;
 
     assert!(matches!(output.result.outcome, ResultOutcome::Failed(_)));
     let recorded: Vec<Recorded> = recorded.try_iter().collect();

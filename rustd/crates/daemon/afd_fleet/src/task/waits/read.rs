@@ -1,6 +1,6 @@
 //! Private read custody is derived from a locked native wait, never a runner URL.
 
-use crate::lease::scope::MintScope;
+use crate::run::scope::MintScope;
 
 pub(crate) struct ReadPermit {
     pub(super) scope: MintScope,

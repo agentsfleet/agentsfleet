@@ -1,20 +1,20 @@
 //! The private authoring protocol confers no fleet or tool authority.
 
 mod activity;
-mod lease;
 mod meter;
 mod model;
 mod proposal;
 mod renew;
 mod report;
+mod run;
 
 pub use activity::{ActivityAccepted, ActivityEvent, ActivityRequest, CandidateVersion, Proposal};
-pub use lease::{ContextMessage, ContextRole, Lease, Limits, ModelAccess, Pricing, SelectedModel};
 pub use meter::{Knowledge, Meter, Usage};
 pub use model::{ModelCall, ModelMessage, ModelRequest, ModelResult, ModelUsage};
 pub use proposal::{ProposalCall, ProposalRejection, REFUSAL_TEXT_BYTES_MAX, RefusalDetail};
 pub use renew::{Renew, Renewed};
 pub use report::{Accounting, FailureReason, Outcome, Report, Reported};
+pub use run::{ContextMessage, ContextRole, Limits, ModelAccess, Pricing, Run, SelectedModel};
 
 /// A terminal, proposal or model-call envelope has this UTF-8 byte ceiling.
 pub const ENVELOPE_BYTES_MAX: usize = 128 * 1024;

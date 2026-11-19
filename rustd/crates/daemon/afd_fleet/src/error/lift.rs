@@ -9,7 +9,7 @@
 //!
 //! Each source lands in its own kind. Most are planes that moved to their own
 //! crate — billing, credentials, gates, memory, events, outbound —
-//! while the lease still speaks THIS crate's error, so their faults compose in
+//! while the run still speaks THIS crate's error, so their faults compose in
 //! with the code and sentence their own plane decided.
 //!
 //! Two foreign types are wrapped in more than one place, and the asymmetry is

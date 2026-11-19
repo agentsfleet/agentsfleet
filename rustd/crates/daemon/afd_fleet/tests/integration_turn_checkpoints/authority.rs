@@ -5,7 +5,7 @@ use super::{
 };
 use af_core::{clock, error_code, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use af_wire::lease::{
+use af_wire::run::{
     TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnId,
     TurnWorkspace,
 };
@@ -58,20 +58,20 @@ async fn refused_after_wait(operation: Operation, rotates: bool) -> Checked {
     // Prove this exact request succeeds with live authority, including replay.
     files
         .store
-        .execute(&bound, files.case.lease(), &request)
+        .execute(&bound, files.case.run(), &request)
         .await?;
     let before = witness(&files).await?;
     let result = blocked(&files, &bound, &request, rotates).await?;
     let Err(failure) = result else {
         return Err(format!("{operation:?} retained superseded authority").into());
     };
-    assert_eq!(failure.code(), error_code::RUN_LEASE_LOST, "{operation:?}");
+    assert_eq!(failure.code(), error_code::RUN_LOST, "{operation:?}");
     assert_eq!(witness(&files).await?, before, "{operation:?}");
     files.finish().await;
     Ok(())
 }
 
-async fn connected(files: &Files) -> Checked<afd_fleet::lease::Leases> {
+async fn connected(files: &Files) -> Checked<afd_fleet::run::Runs> {
     let runners = Runners::new(files.case.fixtures.database.clone(), Entropy::new());
     let token = runners
         .platform()
@@ -88,13 +88,13 @@ async fn connected(files: &Files) -> Checked<afd_fleet::lease::Leases> {
     else {
         return Err("fresh checkpoint owner refused".into());
     };
-    Ok(files.case.leases.clone().for_connection(owner))
+    Ok(files.case.runs.clone().for_connection(owner))
 }
 
 async fn blocked(
     files: &Files,
-    bound: &afd_fleet::lease::Leases,
-    request: &garde::Valid<af_wire::lease::TurnCheckpointCommand>,
+    bound: &afd_fleet::run::Runs,
+    request: &garde::Valid<af_wire::run::TurnCheckpointCommand>,
     rotates: bool,
 ) -> Checked<afd_fleet::Result<Response>> {
     let mut connection = files.case.fixtures.database.acquire().await?;
@@ -112,7 +112,7 @@ async fn blocked(
         Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
     };
     let (result, replacement) = tokio::join!(
-        files.store.execute(bound, files.case.lease(), request),
+        files.store.execute(bound, files.case.run(), request),
         replace,
     );
     replacement?;
@@ -169,7 +169,7 @@ async fn witness(files: &Files) -> Checked<(serde_json::Value, serde_json::Value
           'pins', (SELECT jsonb_agg(jsonb_build_array(p.id,p.resource_version) ORDER BY p.id)
                    FROM runner.turn_checkpoint_pins p JOIN runner.turn_checkpoints c
                    ON c.id=p.turn_checkpoint_id WHERE c.event_id=$1)),
-        (SELECT jsonb_agg(jsonb_build_array(id,lease_fence,input_claim_lease_id,input_claim_fence) ORDER BY id)
+        (SELECT jsonb_agg(jsonb_build_array(id,run_fence,input_claim_run_id,input_claim_fence) ORDER BY id)
          FROM fleet.admissions WHERE fleet_id=$2)",
     ).bind(&files.case.acquired.event_id).bind(&files.case.acquired.fleet_id)
       .fetch_one(&mut *files.case.fixtures.database.acquire().await?).await?)

@@ -33,7 +33,7 @@ pub(crate) const DIAGNOSIS: &str = "Run https://github.com/agentsfleet/linkwarde
     Its returned log says: 2026-10-30T08:35:25Z assertion failed: retries must be 3. \
     src/lib/fetch.ts at that commit sets retries to 0; the separately read dev \
     head has the same code. A small forward fix sets retries to 3. No repository write was made.";
-pub(crate) const SOURCE_GAP: &str = "Evidence gap: run 101 attempt 1, GET job 202 logs \
+pub(crate) const SOURCE_GAP: &str = "Evidence gap: scene 101 attempt 1, GET job 202 logs \
     returned HTTP 403. Run, attempt and failed-job metadata were read; required \
     job-log text is unavailable. Restore download access before investigating. No fix is proposed.";
 pub(crate) const MEMORY_KEY: &str = "ci:linkwarden:101:1";

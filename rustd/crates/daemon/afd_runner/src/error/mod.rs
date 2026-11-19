@@ -21,7 +21,7 @@ pub use self::detail::*;
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
     admin_state_malformed, assignment_malformed, decision_model_id, query, registration_key_reused,
-    rejected, row_malformed, runner_not_found, runner_not_revoked, runner_still_leased,
+    rejected, row_malformed, runner_not_found, runner_not_revoked, runner_still_running,
     runner_vanished, selftest_refused, stored_json, tenant_managed, undigestible,
 };
 
@@ -57,7 +57,7 @@ pub(crate) enum ErrorKind {
     /// (`afd_db::login`). Retryable: the statement changed nothing.
     ///
     /// Told apart from [`Self::Query`] because the host's capacity lock queues
-    /// every lease verb of one runner behind one row, so a wait that outlasts
+    /// every run verb of one runner behind one row, so a wait that outlasts
     /// the bound is contention the runner retries, not a defect the runner
     /// counts toward its self-termination ceiling.
     #[error("the runner store gave up waiting to {context}")]
@@ -106,13 +106,13 @@ pub(crate) enum ErrorKind {
     #[error("a runner still in service cannot have its record retired")]
     RunnerNotRevoked,
 
-    /// A revoked runner still holds a live or unbilled lease and was asked to retire.
+    /// A revoked runner still holds a live or unbilled run and was asked to retire.
     ///
-    /// The lease row is what the liveness sweep releases the fleet's slot
+    /// The run row is what the liveness sweep releases the fleet's slot
     /// through; retiring the runner under it would strand the slot until the
-    /// lease's own expiry. The sweep clears it on its next pass.
-    #[error("a runner still holding an active lease cannot have its record retired")]
-    RunnerStillLeased,
+    /// run's own expiry. The sweep clears it on its next pass.
+    #[error("a runner still holding an active run cannot have its record retired")]
+    RunnerStillRunning,
 
     /// A tenant registration's key was reused for a different request.
     #[error("a registration key was reused for a different request")]
@@ -212,7 +212,7 @@ impl Error {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
-            ErrorKind::RunnerStillLeased => DETAIL_RUNNER_STILL_LEASED,
+            ErrorKind::RunnerStillRunning => DETAIL_RUNNER_STILL_RUND,
             ErrorKind::RegistrationKeyReused => DETAIL_REGISTRATION_KEY_REUSED,
             ErrorKind::TenantManaged => DETAIL_TENANT_MANAGED,
             ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,
@@ -252,7 +252,7 @@ impl Error {
             | ErrorKind::RunnerVanished
             | ErrorKind::RunnerNotFound
             | ErrorKind::RunnerNotRevoked
-            | ErrorKind::RunnerStillLeased
+            | ErrorKind::RunnerStillRunning
             | ErrorKind::RegistrationKeyReused
             | ErrorKind::TenantManaged
             | ErrorKind::SelftestRefused
@@ -288,7 +288,7 @@ impl Error {
             ErrorKind::Rejected { .. } | ErrorKind::DecisionModelId { .. } => error_code::INVALID_REQUEST,
             ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
             ErrorKind::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
-            ErrorKind::RunnerNotRevoked | ErrorKind::RunnerStillLeased => {
+            ErrorKind::RunnerNotRevoked | ErrorKind::RunnerStillRunning => {
                 error_code::RUNNER_MUST_REVOKE_FIRST
             }
             ErrorKind::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,

@@ -5,12 +5,12 @@ use super::fixture::{self, Checked, ID};
 use crate::{
     Result, error,
     recovery::{NativeTurn, Transfers},
-    test_support::{self, Answer, FLEET_ID, LEASE_ID},
+    test_support::{self, Answer, FLEET_ID, RUN_ID},
 };
 use af_core::{clock, id::Uuid7};
-use af_wire::lease::{
-    FoldRef, LeasePayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
-    TurnCheckpointRead, TurnCheckpointResponse as Response, TurnId, TurnScope, TurnWorkspace,
+use af_wire::run::{
+    FoldRef, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
+    TurnCheckpointResponse as Response, TurnId, TurnScope, TurnWorkspace,
 };
 use af_wire::task::CheckpointPage;
 use std::time::Duration;
@@ -25,15 +25,15 @@ enum Fault {
     WrongRelease,
 }
 
-/// A lease offered an API-only ordinary checkpoint, and what the owner saved.
-fn api_only() -> Checked<(LeasePayload<'static>, TurnCheckpointRead)> {
-    let mut lease = test_support::lease(LEASE_ID, FLEET_ID);
-    lease.event.workspace_id = ID.into();
-    lease.setup_revision_id = Some(ID.into());
+/// A run offered an API-only ordinary checkpoint, and what the owner saved.
+fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointRead)> {
+    let mut run = test_support::payload(RUN_ID, FLEET_ID);
+    run.event.workspace_id = ID.into();
+    run.setup_revision_id = Some(ID.into());
     let scope = TurnScope {
-        event_id: TurnId(lease.event.event_id.to_string()),
-        fleet_id: TurnId(lease.event.fleet_id.to_string()),
-        workspace_id: TurnId(lease.event.workspace_id.to_string()),
+        event_id: TurnId(run.event.event_id.to_string()),
+        fleet_id: TurnId(run.event.fleet_id.to_string()),
+        workspace_id: TurnId(run.event.workspace_id.to_string()),
         setup_revision_id: TurnId(ID.to_owned()),
         workspace: TurnWorkspace::ApiOnly,
     };
@@ -43,12 +43,12 @@ fn api_only() -> Checked<(LeasePayload<'static>, TurnCheckpointRead)> {
         history_objects: Vec::new(),
     };
     let expiry = clock::after(clock::now(), Duration::from_mins(10));
-    let mut saved = fixture::checkpoint(&lease, scope, expiry, &page)?;
+    let mut saved = fixture::checkpoint(&run, scope, expiry, &page)?;
     saved.page_ids = Vec::new();
     saved.descriptor.manifest_root =
         af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(&str, &str)>());
-    lease.turn_resume = Some(saved.descriptor.clone());
-    Ok((lease, saved))
+    run.turn_resume = Some(saved.descriptor.clone());
+    Ok((run, saved))
 }
 
 fn owner(
@@ -102,15 +102,15 @@ fn sent(calls: &mut test_support::Calls) -> Checked<Vec<Action>> {
 
 /// Restores `offer` API-only against an owner holding `saved`.
 async fn restore(
-    offer: &LeasePayload<'_>,
+    offer: &RunPayload<'_>,
     saved: TurnCheckpointRead,
     fault: Option<Fault>,
     stop: &CancellationToken,
 ) -> Checked<(Result<Option<afr_agent::TurnRecovery>>, Vec<Action>)> {
     let (plane, mut calls) = owner(saved, fault);
-    let lease = Uuid7::parse(LEASE_ID)?;
+    let run = Uuid7::parse(RUN_ID)?;
     let transfers = Transfers::new()?;
-    let restored = NativeTurn::new(&plane, &lease, offer.fencing_token, &transfers)
+    let restored = NativeTurn::new(&plane, &run, offer.fencing_token, &transfers)
         .restore(offer, TurnWorkspace::ApiOnly, None, stop, None)
         .await;
     Ok((restored, sent(&mut calls)?))
@@ -148,10 +148,10 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
         TurnWorkspace::ApiOnly,
     ] {
         let (plane, mut calls) = owner(saved.clone(), None);
-        let lease = Uuid7::parse(LEASE_ID)?;
+        let run = Uuid7::parse(RUN_ID)?;
         let transfers = Transfers::new()?;
 
-        let restored = NativeTurn::new(&plane, &lease, offer.fencing_token, &transfers)
+        let restored = NativeTurn::new(&plane, &run, offer.fencing_token, &transfers)
             .restore(
                 &offer,
                 workspace,

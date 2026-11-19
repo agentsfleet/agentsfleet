@@ -291,7 +291,7 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 #
 #   runner     the Rust runner's crates, plus the daemon suite's
 #              `integration_rust_runner::` modules: the runner against a live
-#              daemon. A runner leases any fleet whose required tags it carries,
+#              daemon. A runner runs any fleet whose required tags it carries,
 #              so on the shared lane it was offered every fleet the other
 #              scenarios had left behind; on its own datastores it is offered its own.
 #   daemon     `agentsfleetd`, minus the runner and native-stream modules.

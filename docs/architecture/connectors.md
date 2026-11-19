@@ -38,7 +38,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - No pool slot rides a vendor call; credentials load under a short acquire released before the exchange (§Bounded outbound).
 
-- The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames (§GitHub App).
+- The App private key and webhook secret never enter the run, runner environment, sandbox, logs, or response frames (§GitHub App).
 
 ## Terminology (binding)
 
@@ -285,7 +285,7 @@ This gives each layer one job:
 
 A grant is **requested at Save**. When a saved fleet's readiness review finds a declared credential's grant missing, setup activation asks for it (`afd_setup`'s creation activate). The request writes a `pending` `connector.integration_grants` row and raises an approval card in one transaction (`afd_approval`'s grant statements).
 
-The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_setup`'s creation progress). The lease path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s lease deliver).
+The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_setup`'s creation progress). The run path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s run deliver).
 
 Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook, a timeout sweeper and an append-only audit.
 
@@ -293,13 +293,13 @@ Either way, the decision belongs to the approval-gate machine this codebase alre
 
 Resolving the gate as approved flips the grant and the gate in one statement, so the two cannot disagree. Any non-approval outcome drives the grant to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no event, takes no lease and reports nothing.
+Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no event, takes no run and reports nothing.
 
 It goes silently inert rather than failing visibly.
 
 An origination path reachable only with a credential the fleet does not hold produces exactly that silence.
 
-A lease is the last checkpoint. A credential with a mintable handle but no
+A run is the last checkpoint. A credential with a mintable handle but no
 approved grant **parks the event**.
 
 Parked admissions stay out of runner claims until gate resolution clears the
@@ -363,12 +363,12 @@ Slack is the contrast and the reason this page cannot generalise: its retry sema
 Receiving a signed event does not give GitHub credentials to a fleet.
 When the fleet calls GitHub through `${secrets.github.token}`, its runner-token plane asks the daemon to mint a token.
 
-The daemon derives the fleet and workspace from the lease and rechecks the approved integration grant.
+The daemon derives the fleet and workspace from the run and rechecks the approved integration grant.
 It loads the workspace installation handle, signs with the platform key and exchanges for a short-lived token.
 
-The runner caches that token for the lease and refreshes it 30 seconds before expiry.
+The runner caches that token for the run and refreshes it 30 seconds before expiry.
 It masks the token in tool responses (`af_egress`'s vault module).
-The App private key and webhook secret never enter the lease, runner environment, sandbox, logs or response frames.
+The App private key and webhook secret never enter the run, runner environment, sandbox, logs or response frames.
 
 The binding determines token scope (`afd_credential`'s GitHub request builder).
 Read bindings receive contents read without Pull Request permissions; repair bindings add bounded write permissions, never workflows.

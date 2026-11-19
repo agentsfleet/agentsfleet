@@ -12,13 +12,13 @@ use tokio_util::sync::CancellationToken;
 
 use self::fixture::{Arriving, Interrupted, Replaying, lost, run_with, shape, users};
 use super::finish::DETAIL_STOPPED;
-use crate::fixture::{Script, call, lease, say, unbounded};
+use crate::fixture::{Script, call, payload, say, unbounded};
 use crate::{Failure, Folded, ResultOutcome};
 
 #[tokio::test]
 async fn a_message_waiting_when_the_run_starts_joins_its_opening_turn() -> crate::Result<()> {
     let script = Script::new([vec![say("Deployed to staging.")]]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(0, 7, "actually, use staging");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
@@ -38,20 +38,20 @@ async fn a_message_waiting_when_the_run_starts_joins_its_opening_turn() -> crate
     Ok(())
 }
 
-/// The claims one answering run asks for, under a lease whose
+/// The claims one answering run asks for, under a run whose
 /// `inputs_waiting` is `waiting`.
 async fn answered(waiting: bool) -> crate::Result<Vec<i64>> {
     let script = Script::new([vec![say("Deployed to staging.")]]);
-    let mut payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let mut payload = payload(&[HTTP_REQUEST.name()], unbounded());
     payload.inputs_waiting = waiting;
     let inbox = Arriving::default();
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     Ok(inbox.asked())
 }
 
-// Value: protects=a lease whose claim found nothing waiting skips the ask
+// Value: protects=a run whose claim found nothing waiting skips the ask
 // before its first model call, and asks after the answer; fails_when=the skip
-// never happens, swallows the ask after the answer, or fires on a lease that
+// never happens, swallows the ask after the answer, or fires on a run that
 // said true; why_new=that ask moved into the claim;
 // seam=none; no_claim=what the daemon computes, which its claim test proves.
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn a_message_sent_while_tools_run_is_read_by_the_next_call() -> crate::Res
         vec![call("c1", HTTP_REQUEST.name(), serde_json::json!({}))],
         vec![say("Deployed, and tagged.")],
     ]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(1, 9, "and tag it");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
@@ -95,7 +95,7 @@ async fn a_message_sent_while_the_answer_is_written_gets_one_more_turn() -> crat
         vec![say("Deployed to prod.")],
         vec![say("Moved to staging.")],
     ]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(1, 11, "wait, staging not prod");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
@@ -119,7 +119,7 @@ async fn a_correction_sent_while_the_answer_is_written_follows_that_answer() -> 
         vec![say("Deployed to prod.")],
         vec![say("Moved to staging.")],
     ]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(1, 11, "wait, staging not prod");
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
@@ -145,7 +145,7 @@ async fn a_correction_after_tool_calls_follows_the_answer_it_interrupted() -> cr
         vec![say("Deployed to prod.")],
         vec![say("Moved to staging.")],
     ]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(2, 12, "wait, staging not prod");
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
@@ -167,7 +167,7 @@ async fn a_correction_after_tool_calls_follows_the_answer_it_interrupted() -> cr
 #[tokio::test]
 async fn a_blank_answer_after_a_correction_adds_nothing_to_the_reply() -> crate::Result<()> {
     let script = Script::new([vec![say("Deployed to prod.")], vec![say("  ")]]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(1, 11, "wait, staging not prod");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
@@ -181,7 +181,7 @@ async fn the_claim_moves_past_what_the_run_read() -> crate::Result<()> {
         vec![call("c1", HTTP_REQUEST.name(), serde_json::json!({}))],
         vec![say("Done.")],
     ]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(0, 3, "first");
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
@@ -199,7 +199,7 @@ async fn a_message_the_inbox_replays_is_joined_once() -> crate::Result<()> {
         vec![call("c1", HTTP_REQUEST.name(), serde_json::json!({}))],
         vec![say("Done.")],
     ]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Replaying {
         message: Folded {
             event_id: "019f0000-0000-7000-8000-000000000004".to_owned(),
@@ -222,7 +222,7 @@ async fn a_message_the_inbox_replays_is_joined_once() -> crate::Result<()> {
 #[tokio::test]
 async fn a_stop_during_the_claim_joins_nothing() -> crate::Result<()> {
     let script = Script::new([vec![say("unreachable")]]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let stop = CancellationToken::new();
     let inbox = Interrupted { stop: stop.clone() };
     let output = run_with(&script, &payload, &inbox, &stop).await?;
@@ -246,7 +246,7 @@ async fn a_stop_during_the_claim_joins_nothing() -> crate::Result<()> {
 #[tokio::test]
 async fn a_run_that_folded_nothing_reports_no_cursor() -> crate::Result<()> {
     let script = Script::new([vec![say("Done.")]]);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let output = run_with(
         &script,
         &payload,
@@ -261,7 +261,7 @@ async fn a_run_that_folded_nothing_reports_no_cursor() -> crate::Result<()> {
 #[tokio::test]
 async fn a_failed_run_reports_no_cursor_so_its_folds_run_again() -> crate::Result<()> {
     let script = Script::failing(vec![], lost);
-    let payload = lease(&[HTTP_REQUEST.name()], unbounded());
+    let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
     inbox.on_claim(0, 5, "are you there?");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;

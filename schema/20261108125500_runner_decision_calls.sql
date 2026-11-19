@@ -1,15 +1,15 @@
--- Physical decision-call accounting. It outlives lease, admission, task, fleet and model
+-- Physical decision-call accounting. It outlives run, admission, task, fleet and model
 -- deletion, so its ids are opaque; private payloads live in `runner.decision_payloads`.
 CREATE TABLE runner.decision_calls (
     id UUID PRIMARY KEY,
     original_runner_id UUID NOT NULL,
-    original_lease_id UUID NOT NULL,
+    original_run_id UUID NOT NULL,
     source_admission_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
     tenant_id UUID NOT NULL,
     -- Budget owner only: intent is charged to its source admission even while another task
-    -- holds the lease.
+    -- holds the run.
     task_id UUID,
     task_generation BIGINT,
     fencing_token BIGINT NOT NULL CHECK (fencing_token >= 0),
@@ -32,7 +32,7 @@ CREATE TABLE runner.decision_calls (
     price_snapshot JSONB NOT NULL,
     -- Non-secret generations and cursors this call assessed.
     context_snapshot JSONB NOT NULL,
-    -- Decision usage lines number from 0 per lease under the usage kind `decision`.
+    -- Decision usage lines number from 0 per run under the usage kind `decision`.
     usage_sequence BIGINT NOT NULL CHECK (usage_sequence >= 0),
     reserved_nanos BIGINT NOT NULL CHECK (reserved_nanos >= 0),
     -- NULL until dispatch is issued; never NULL again after.
@@ -50,10 +50,10 @@ CREATE TABLE runner.decision_calls (
     created_at TIMESTAMPTZ(3) NOT NULL,
     updated_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_decision_calls_scope UNIQUE (id, fleet_id, workspace_id, tenant_id),
-    CONSTRAINT uq_decision_calls_operation UNIQUE (original_lease_id, operation_id),
+    CONSTRAINT uq_decision_calls_operation UNIQUE (original_run_id, operation_id),
     CONSTRAINT uq_decision_calls_assessment UNIQUE (assessment_key, attempt_number),
     CONSTRAINT uq_decision_calls_retry UNIQUE (retry_of_decision_call_id),
-    CONSTRAINT uq_decision_calls_usage UNIQUE (original_lease_id, usage_sequence),
+    CONSTRAINT uq_decision_calls_usage UNIQUE (original_run_id, usage_sequence),
     CONSTRAINT ck_decision_calls_attempt CHECK (
         (attempt_number = 0 AND retry_of_decision_call_id IS NULL)
         OR (attempt_number = 1 AND retry_of_decision_call_id IS NOT NULL)
@@ -66,8 +66,8 @@ CREATE TABLE runner.decision_calls (
     CONSTRAINT ck_decision_calls_charge_accounted CHECK (charged_nanos IS NULL OR accounted_at IS NOT NULL)
 );
 
-CREATE INDEX idx_decision_calls_unresolved_lease
-    ON runner.decision_calls (original_lease_id) WHERE accounted_at IS NULL;
+CREATE INDEX idx_decision_calls_unresolved_run
+    ON runner.decision_calls (original_run_id) WHERE accounted_at IS NULL;
 
 CREATE INDEX idx_decision_calls_unresolved_fleet
     ON runner.decision_calls (fleet_id, workspace_id) WHERE accounted_at IS NULL;

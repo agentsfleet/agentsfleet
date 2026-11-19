@@ -19,8 +19,8 @@ async fn retained_unknown_report_settles_late_known_usage_once() {
     let provider = Arc::new(stub);
     let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
     let task = tokio::spawn({
-        let (runner, lease, request) = (f.runner.clone(), a.lease.clone(), fixture::request(&a));
-        async move { calls.call(&runner, &lease, request).await }
+        let (runner, run, request) = (f.runner.clone(), a.run.clone(), fixture::request(&a));
+        async move { calls.call(&runner, &run, request).await }
     });
     tokio::time::timeout(Duration::from_secs(5), provider.arrived())
         .await
@@ -45,7 +45,7 @@ async fn retained_unknown_report_settles_late_known_usage_once() {
 async fn acknowledged_unknown(f: &Fixture, a: &Attempt, before: i64, request: &Report) {
     let ack = f
         .drafts
-        .report(&f.runner, &a.lease, request.clone())
+        .report(&f.runner, &a.run, request.clone())
         .await
         .expect("unknown acknowledgement");
     assert!(!ack.settled);
@@ -64,7 +64,7 @@ async fn acknowledged_unknown(f: &Fixture, a: &Attempt, before: i64, request: &R
     assert_eq!(failure.recovery_action, "retry_message");
     let early = f
         .drafts
-        .report(&f.runner, &a.lease, request.clone())
+        .report(&f.runner, &a.run, request.clone())
         .await
         .expect("replay while still pending");
     assert!(!early.settled && early.replayed);
@@ -73,8 +73,8 @@ async fn acknowledged_unknown(f: &Fixture, a: &Attempt, before: i64, request: &R
 
 async fn settled_by_the_same_report(f: &Fixture, a: &Attempt, before: i64, request: &Report) {
     let (first, racing) = tokio::join!(
-        f.drafts.report(&f.runner, &a.lease, request.clone()),
-        f.drafts.report(&f.runner, &a.lease, request.clone())
+        f.drafts.report(&f.runner, &a.run, request.clone()),
+        f.drafts.report(&f.runner, &a.run, request.clone())
     );
     for ack in [first, racing] {
         let ack = ack.expect("retained report settles late usage");
@@ -90,7 +90,7 @@ async fn settled_by_the_same_report(f: &Fixture, a: &Attempt, before: i64, reque
     );
     let again = f
         .drafts
-        .report(&f.runner, &a.lease, accounting(request))
+        .report(&f.runner, &a.run, accounting(request))
         .await
         .expect("accounting-only replay reads the settlement");
     assert!(again.settled && again.replayed);
@@ -102,7 +102,7 @@ async fn settled_by_the_same_report(f: &Fixture, a: &Attempt, before: i64, reque
     }
     assert_eq!(
         f.drafts
-            .report(&f.runner, &a.lease, changed)
+            .report(&f.runner, &a.run, changed)
             .await
             .expect_err("changed body under the same identity")
             .code(),

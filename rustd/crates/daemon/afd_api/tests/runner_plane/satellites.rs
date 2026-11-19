@@ -3,11 +3,11 @@
 use afd_auth::directory::Liveness;
 use http::{Method, StatusCode};
 
-use super::{FLEET_ID, LEASE_ID, RUNNER_TOKEN, code_of};
+use super::{FLEET_ID, RUN_ID, RUNNER_TOKEN, code_of};
 use crate::harness::{Fleet, json_body, runner_id, send};
 
 #[tokio::test]
-async fn runner_lease_satellite_routes_parse_and_render() {
+async fn runner_run_satellite_routes_parse_and_render() {
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
@@ -18,10 +18,10 @@ async fn runner_lease_satellite_routes_parse_and_render() {
     assert_eq!(code_of(malformed).await, "UZ-REQ-001");
 
     // Refused before the plane is asked: the stub would answer 503 below.
-    for lease in ["x", &"a".repeat(4_096)] {
-        let body = format!(r#"{{"lease_id":"{lease}","integration":"github","scope":null}}"#);
+    for run in ["x", &"a".repeat(4_096)] {
+        let body = format!(r#"{{"run_id":"{run}","integration":"github","scope":null}}"#);
         let refused = send(&router, Method::POST, mint_path, Some(RUNNER_TOKEN), &body).await;
-        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{}", lease.len());
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{}", run.len());
         assert_eq!(code_of(refused).await, "UZ-REQ-001");
     }
 
@@ -30,7 +30,7 @@ async fn runner_lease_satellite_routes_parse_and_render() {
         Method::POST,
         mint_path,
         Some(RUNNER_TOKEN),
-        &format!(r#"{{"lease_id":"{LEASE_ID}","integration":"github","scope":null}}"#),
+        &format!(r#"{{"run_id":"{RUN_ID}","integration":"github","scope":null}}"#),
     )
     .await;
     assert_eq!(unconfigured.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -44,12 +44,12 @@ async fn runner_lease_satellite_routes_parse_and_render() {
 async fn runner_conflicts_name_the_state_that_refuses_them() {
     let fenced = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
-        .with_lease_refusal(afd_fleet::Error::stale_fence)
+        .with_run_refusal(afd_fleet::Error::stale_fence)
         .router();
     let memory_path = format!("/v1/runners/me/memory/{FLEET_ID}");
     let recall_path = format!("{memory_path}/recall");
-    let recall = format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":1,"query":"x","limit":5}}"#);
-    let capture = format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":7,"memory":[]}}"#);
+    let recall = format!(r#"{{"run_id":"{RUN_ID}","fencing_token":1,"query":"x","limit":5}}"#);
+    let capture = format!(r#"{{"run_id":"{RUN_ID}","fencing_token":7,"memory":[]}}"#);
     for (method, path, body) in [
         (Method::GET, &memory_path, ""),
         (Method::POST, &recall_path, recall.as_str()),
@@ -70,14 +70,14 @@ async fn runner_conflicts_name_the_state_that_refuses_them() {
 
     let revoked = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
-        .with_lease_refusal(afd_fleet::Error::github_reconnect_required)
+        .with_run_refusal(afd_fleet::Error::github_reconnect_required)
         .router();
     let minted = send(
         &revoked,
         Method::POST,
         "/v1/runners/me/credentials/mint",
         Some(RUNNER_TOKEN),
-        &format!(r#"{{"lease_id":"{LEASE_ID}","integration":"github","scope":null}}"#),
+        &format!(r#"{{"run_id":"{RUN_ID}","integration":"github","scope":null}}"#),
     )
     .await;
     assert_eq!(minted.status(), StatusCode::CONFLICT);
@@ -97,7 +97,7 @@ async fn runner_tool_call_records_validate_and_render() {
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
-    let path = format!("/v1/runners/me/leases/{LEASE_ID}/tool-calls");
+    let path = format!("/v1/runners/me/runs/{RUN_ID}/tool-calls");
 
     let malformed = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), "{}").await;
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
@@ -126,15 +126,15 @@ async fn runner_tool_call_records_validate_and_render() {
     );
 }
 
-/// A plane holding no lease refuses every schedule and message verb as a lease
+/// A plane holding no run refuses every schedule and message verb as a run
 /// this runner does not hold, before any body field is acted on.
 #[tokio::test]
-async fn runner_schedule_and_message_verbs_refuse_a_lease_not_held() {
+async fn runner_schedule_and_message_verbs_refuse_a_run_not_held() {
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
-    let schedules = format!("/v1/runners/me/leases/{LEASE_ID}/schedules");
-    let messages = format!("/v1/runners/me/leases/{LEASE_ID}/messages");
+    let schedules = format!("/v1/runners/me/runs/{RUN_ID}/schedules");
+    let messages = format!("/v1/runners/me/runs/{RUN_ID}/messages");
     let listed = format!("{schedules}?fencing_token=1");
     let created = r#"{"fencing_token":1,"cron":"0 9 * * 1","message":"weekly check"}"#;
     let posted = r#"{"fencing_token":1,"text":"halfway there"}"#;
@@ -151,21 +151,21 @@ async fn runner_schedule_and_message_verbs_refuse_a_lease_not_held() {
 }
 
 /// A mint the plane grants is rendered as the token and its expiry, nothing
-/// else: no registry code, no lease id echoed back.
+/// else: no registry code, no run id echoed back.
 #[tokio::test]
 async fn a_granted_mint_renders_only_the_token_and_its_expiry() {
     const TOKEN: &str = "fixture-minted-token";
     const EXPIRES_AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_600, 0);
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
-        .with_lease_minting(TOKEN, EXPIRES_AT)
+        .with_run_minting(TOKEN, EXPIRES_AT)
         .router();
     let minted = send(
         &router,
         Method::POST,
         "/v1/runners/me/credentials/mint",
         Some(RUNNER_TOKEN),
-        &format!(r#"{{"lease_id":"{LEASE_ID}","integration":"github","scope":null}}"#),
+        &format!(r#"{{"run_id":"{RUN_ID}","integration":"github","scope":null}}"#),
     )
     .await;
     assert_eq!(minted.status(), StatusCode::OK);
@@ -175,15 +175,15 @@ async fn a_granted_mint_renders_only_the_token_and_its_expiry() {
     );
 }
 
-/// A path lease id that is not an identifier is refused before the plane is
+/// A path run id that is not an identifier is refused before the plane is
 /// asked, which here would have answered success.
 #[tokio::test]
-async fn lease_routes_refuse_a_path_id_that_is_not_an_identifier() {
+async fn run_routes_refuse_a_path_id_that_is_not_an_identifier() {
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
     for (suffix, body) in [("tool-calls", r#"{"fencing_token":7,"calls":[]}"#)] {
-        let path = format!("/v1/runners/me/leases/x/{suffix}");
+        let path = format!("/v1/runners/me/runs/x/{suffix}");
         let refused = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), body).await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{suffix}");
         assert_eq!(code_of(refused).await, "UZ-REQ-001", "{suffix}");

@@ -101,5 +101,5 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &Uuid7, now: T
     .bind(PROVIDER_KEY_KIND)
     .execute(&mut *connection)
     .await
-    .expect("the provider key seed must run");
+    .expect("the provider key seed must scene");
 }

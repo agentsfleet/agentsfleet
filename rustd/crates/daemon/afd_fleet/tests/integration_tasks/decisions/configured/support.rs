@@ -1,6 +1,6 @@
 //! Policy edits use the native runner API; fixture time advances expose the next poll.
 use super::super::super::fixture::Case;
-use afd_fleet::lease::{Acquired, Billed, Issued};
+use afd_fleet::run::{Acquired, Billed, Issued};
 use sqlx::Connection as _;
 
 pub(in super::super) async fn set(case: &Case, enabled: bool) {
@@ -33,22 +33,22 @@ pub(super) async fn expire(case: &Case) {
         .acquire()
         .await
         .expect("fixture clock");
-    sqlx::query("UPDATE runner.slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.slots SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("slot elapsed");
-    sqlx::query("UPDATE runner.leases SET status='expired' WHERE id=$1")
-        .bind(&case.held.lease_key)
+    sqlx::query("UPDATE runner.runs SET status='expired' WHERE id=$1")
+        .bind(&case.held.run_key)
         .execute(&mut *connection)
         .await
-        .expect("prior lease expired");
+        .expect("prior run expired");
 }
 
 pub(super) async fn selected(case: &Case) -> Option<Acquired> {
-    crate::seed::select_fleet(&case.held.leases, &case.held.runner, &case.held.fleet).await
+    crate::seed::select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet).await
 }
 
 pub(super) async fn issue(case: &Case, acquired: &Acquired) -> Option<Issued> {
     case.held
-        .leases
+        .runs
         .issue(
             &case.held.runner,
             acquired,
@@ -73,7 +73,7 @@ pub(super) async fn claimable(case: &Case) -> bool {
         .await
         .expect("direct claim");
     let mut tx = connection.begin().await.expect("rollback-only claim probe");
-    let claim = sqlx::query(afd_fleet::lease::sql::queue::CLAIM_HEAD)
+    let claim = sqlx::query(afd_fleet::run::sql::queue::CLAIM_HEAD)
         .bind(&case.held.fleet)
         .bind(&case.held.runner)
         .bind(std::time::Duration::from_secs(60))
@@ -85,7 +85,7 @@ pub(super) async fn claimable(case: &Case) -> bool {
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
-        .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+        .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::event::status::RECEIVED)
         .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)

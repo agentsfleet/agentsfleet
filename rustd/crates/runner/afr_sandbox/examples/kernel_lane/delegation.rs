@@ -7,8 +7,8 @@ use std::process::Command;
 
 use af_core::env::ProcessEnv;
 use afr_sandbox::{
-    Booted, BubblewrapBackend, BubblewrapEngine, HostPaths, LeaseCgroup, Limits,
-    REQUIRED_CONTROLLERS, SUBTREE_CONTROL, ToolboxHome, probe,
+    Booted, BubblewrapBackend, BubblewrapEngine, HostPaths, Limits, REQUIRED_CONTROLLERS,
+    RunCgroup, SUBTREE_CONTROL, ToolboxHome, probe,
 };
 use libtest_mimic::Failed;
 
@@ -17,7 +17,7 @@ use crate::run::expect;
 
 const CONTROLLERS: &str = "cgroup.controllers";
 const PROCS: &str = "cgroup.procs";
-const LEASE: &str = "boot-lease";
+const RUN: &str = "boot-run";
 const CHILD: &str = "undelegated";
 const TOOLBOX: &str = "toolbox";
 const CPU: &str = "cpu";
@@ -42,8 +42,8 @@ fn boot(lane: &Lane, root: &Path, state: &Path) -> Result<Booted<BubblewrapEngin
     let home = ToolboxHome::open(state.join(TOOLBOX))?;
     lane.signer
         .stage(lane.image.path(), lane.image.digest(), &home.incoming())?;
-    let leases = state.join("leases");
-    fs::create_dir_all(&leases)?;
+    let runs = state.join("runs");
+    fs::create_dir_all(&runs)?;
     let release = lane.signer.release()?;
     let backend = BubblewrapBackend {
         entry: std::env::current_exe()?,
@@ -55,7 +55,7 @@ fn boot(lane: &Lane, root: &Path, state: &Path) -> Result<Booted<BubblewrapEngin
         backend,
         &HostPaths {
             cgroup_root: root.to_owned(),
-            state_dir: leases,
+            state_dir: runs,
         },
     )?)
 }
@@ -90,12 +90,12 @@ pub(crate) fn boots_disabled(lane: &Lane) -> Result<(), Failed> {
                     afr_sandbox::BubblewrapRequirements::missing(&host.probe).is_none(),
                     "boot reports an enforceable host",
                 )?;
-                let lease = LeaseCgroup::create(root, LEASE, &Limits::default())?;
+                let run = RunCgroup::create(root, RUN, &Limits::default())?;
                 let limited = expect(
-                    fs::read_to_string(root.join(LEASE).join("pids.max"))?.trim() == "512",
-                    "the child enforces the lease limit",
+                    fs::read_to_string(root.join(RUN).join("pids.max"))?.trim() == "512",
+                    "the child enforces the run limit",
                 );
-                lease.remove()?;
+                run.remove()?;
                 limited
             })();
             drop(host.started.engine);

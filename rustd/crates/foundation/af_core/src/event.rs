@@ -56,14 +56,14 @@ pub mod status {
 
     /// A thread row for a message admitted and waiting for a runner.
     ///
-    /// Never stored: `fleet.events` gains the row only at lease. The
+    /// Never stored: `fleet.events` gains the row only at run. The
     /// thread read derives it from the admission ledger's undelivered rows,
     /// so a screen opened while a message waits shows it waiting.
     pub const QUEUED: &str = "queued";
 }
 
 /// Why the daemon ended an event itself, as `fleet.events.failure_reason`: a
-/// gate's refusal, or leases that kept lapsing.
+/// gate's refusal, or runs that kept lapsing.
 ///
 /// One ownership site (RULE UFS) — the webhook path, the steer path and the
 /// dashboard all read these strings, and a second spelling at a second write
@@ -106,13 +106,13 @@ pub mod label {
     /// integration.
     pub const GRANT_DENIED: &str = "grant_denied";
 
-    /// Every lease the event was issued lapsed, and the daemon stopped
-    /// re-leasing it.
+    /// Every run the event was issued lapsed, and the daemon stopped
+    /// re-running it.
     ///
-    /// Spelled identically to the runner-reported `lease_expired` failure
+    /// Spelled identically to the runner-reported `run_expired` failure
     /// class, as [`BUDGET_BREACH`] is to its own: one label whether a run
     /// reported its lapse or the daemon ended an event nobody reported on.
-    pub const LEASE_EXPIRED: &str = "lease_expired";
+    pub const RUN_EXPIRED: &str = "run_expired";
 
     /// The event names a type this daemon has no execution path for.
     ///

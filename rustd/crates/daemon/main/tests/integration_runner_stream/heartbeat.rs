@@ -13,7 +13,7 @@ use crate::{e2e::scenario, wire::capable_beat};
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn heartbeat_reply_names_the_holds_to_release() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
     let never_held = afd_db::test_util::mint_id();
     let mut request = capable_beat();
     request
@@ -22,23 +22,23 @@ async fn heartbeat_reply_names_the_holds_to_release() {
         .insert("holds".into(), json!([never_held]));
     let bytes = serde_json::to_vec(&request).expect("a heartbeat encodes");
     let request: HeartbeatRequest<'_> = serde_json::from_slice(&bytes).expect("a current beat");
-    let reply = run
+    let reply = scene
         .native_session()
         .await
         .heartbeat(&request)
         .await
         .expect("native heartbeat");
     assert_eq!(reply.get("release_holds"), Some(&json!([never_held])));
-    finish(run, supervisor).await;
+    finish(scene, supervisor).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let native = run.native_session().await;
-    let tier = corrupt_tier(&run).await;
+    let scene = scenario(&mut supervisor).await;
+    let native = scene.native_session().await;
+    let tier = corrupt_tier(&scene).await;
     let bytes = serde_json::to_vec(&capable_beat()).expect("a heartbeat encodes");
     let request: HeartbeatRequest<'_> = serde_json::from_slice(&bytes).expect("a current beat");
     let failure = native
@@ -52,7 +52,7 @@ async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() 
     let http = afd_identity::direct(af_core::timing::STREAM_ANSWER_TIMEOUT)
         .build()
         .expect("a loopback client");
-    let me = crate::wire::get(&http, &run, "/v1/runners/me").await;
+    let me = crate::wire::get(&http, &scene, "/v1/runners/me").await;
     assert_eq!(me.status(), reqwest::StatusCode::INTERNAL_SERVER_ERROR);
     let reply: serde_json::Value = me.json().await.expect("a problem response");
     assert_eq!(
@@ -60,10 +60,10 @@ async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() 
         Some(&json!(af_core::error_code::INTERNAL_DB_QUERY.as_str()))
     );
     sqlx::query("UPDATE runner.runners SET sandbox_tier = $2 WHERE id = $1")
-        .bind(&run.runner_id)
+        .bind(&scene.runner_id)
         .bind(tier)
         .execute(
-            &mut *run
+            &mut *scene
                 .booted
                 .database
                 .acquire()
@@ -72,20 +72,20 @@ async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() 
         )
         .await
         .expect("restore the runner before platform reads");
-    finish(run, supervisor).await;
+    finish(scene, supervisor).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_native_heartbeat_records_liveness_without_waiting_for_work() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let native = run.native_session().await;
+    let scene = scenario(&mut supervisor).await;
+    let native = scene.native_session().await;
     sqlx::query("UPDATE runner.runners SET last_seen_at = $2 WHERE id = $1")
-        .bind(&run.runner_id)
+        .bind(&scene.runner_id)
         .bind(jiff::Timestamp::UNIX_EPOCH.to_sqlx())
         .execute(
-            &mut *run
+            &mut *scene
                 .booted
                 .database
                 .acquire()
@@ -105,10 +105,10 @@ async fn a_native_heartbeat_records_liveness_without_waiting_for_work() {
     .expect("native heartbeat");
     let recorded: bool =
         sqlx::query_scalar("SELECT last_seen_at > $2 FROM runner.runners WHERE id = $1")
-            .bind(&run.runner_id)
+            .bind(&scene.runner_id)
             .bind(jiff::Timestamp::UNIX_EPOCH.to_sqlx())
             .fetch_one(
-                &mut *run
+                &mut *scene
                     .booted
                     .database
                     .acquire()
@@ -120,23 +120,23 @@ async fn a_native_heartbeat_records_liveness_without_waiting_for_work() {
     assert!(recorded);
     assert!(reply.get("woken").is_none());
     assert!(reply.get("assigned_policy").is_some());
-    finish(run, supervisor).await;
+    finish(scene, supervisor).await;
 }
 
-async fn corrupt_tier(run: &crate::e2e::Scenario) -> String {
-    let mut connection = run
+async fn corrupt_tier(scene: &crate::e2e::Scenario) -> String {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a fixture connection");
     let tier: String = sqlx::query_scalar("SELECT sandbox_tier FROM runner.runners WHERE id = $1")
-        .bind(&run.runner_id)
+        .bind(&scene.runner_id)
         .fetch_one(&mut *connection)
         .await
         .expect("the enrolled tier");
     sqlx::query("UPDATE runner.runners SET sandbox_tier = $2 WHERE id = $1")
-        .bind(&run.runner_id)
+        .bind(&scene.runner_id)
         .bind("not-a-tier")
         .execute(&mut *connection)
         .await
@@ -145,13 +145,14 @@ async fn corrupt_tier(run: &crate::e2e::Scenario) -> String {
     tier
 }
 
-async fn finish(mut run: crate::e2e::Scenario, supervisor: Supervisor) {
-    run.native
+async fn finish(mut scene: crate::e2e::Scenario, supervisor: Supervisor) {
+    scene
+        .native
         .get_mut()
         .expect("the session opened")
         .close()
         .await
         .expect("native shutdown");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

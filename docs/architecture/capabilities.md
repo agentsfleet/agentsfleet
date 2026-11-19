@@ -2,9 +2,9 @@
 
 > Parent: [`README.md`](./README.md). User-facing: [docs.agentsfleet.net/fleets/tools](https://docs.agentsfleet.net/fleets/tools) (the tool inventory) and [docs.agentsfleet.net/concepts/context-lifecycle](https://docs.agentsfleet.net/concepts/context-lifecycle) (§4 as a user reads it).
 
-> **Scope:** the platform *guarantees* below are binding. The *mechanism* runs on the split. `agentsfleetd` (control plane) assigns work and resolves policy on `lease`.
+> **Scope:** the platform *guarantees* below are binding. The *mechanism* runs on the split. `agentsfleetd` (control plane) assigns work and resolves policy on `run`.
 
-> The host-resident `agentsfleet-runner` enforces the hard layer in its supervisor and the lease's sandbox ([`runner_execution.md`](./runner_execution.md#process-model)). See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
+> The host-resident `agentsfleet-runner` enforces the hard layer in its supervisor and the run's sandbox ([`runner_execution.md`](./runner_execution.md#process-model)). See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
 
 A Fleet's capabilities split into two layers. The soft layer is what the language model is told it can do, which the model can ignore or get wrong. The hard layer is what the platform enforces, which the model cannot escape from inside the sandbox.
 
@@ -21,13 +21,13 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Capability layers | 2 | the Definition's `instructions_md` is advisory; its reviewed `config` plus approved grants are binding, enforced by the runner | §1 |
 | `trigger.type` vs `event_type` | orthogonal fields | different homes and meanings (the setup's `config` vs `fleet.events`); some values overlap | §1.1 |
 | Tool primitives | the runner's published catalog, e.g. `http_request` · the `file_*` tools · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | [`runner_execution.md`](./runner_execution.md) §"Tool catalog" |
-| Mintable integrations | short-lived tokens, minted per lease | GitHub App: daemon-signed RS256 JSON Web Token (JWT) exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
-| Vault secret shapes | 2 | static (stores the value, resolved at lease) vs mintable (stores a handle, never a token) | §3 |
+| Mintable integrations | short-lived tokens, minted per run | GitHub App: daemon-signed RS256 JSON Web Token (JWT) exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
+| Vault secret shapes | 2 | static (stores the value, resolved at run) vs mintable (stores a handle, never a token) | §3 |
 | Context lifecycle | Shared conversation compaction; separate semantic memory | Compaction defaults to 90 percent; an authored operating threshold or output headroom can trigger earlier. Semantic memory pushes every five tool calls. `tool_window` remains accepted metadata. | §4 |
 | Continuation authority | guarded private checkpoint | Source and assignment checks guard saved working notes; valid compaction continues the same run with tool access. | §4 |
-| Runaway bound | `budget` caps + lease runtime deadline | there is no enforced continuation-chain counter | §4 |
+| Runaway bound | `budget` caps + run runtime deadline | there is no enforced continuation-chain counter | §4 |
 | Memory hygiene | `core` pinned; `daily` expires | `daily` rows older than 72 h are deleted on the next capture push; re-storing a key is an upsert | §4 |
-| Cap resolution | saved catalogue window, read per lease | the revision's `runtime_model_ref` selects the model; an absent or zero operating cap inherits its physical window | §4 |
+| Cap resolution | saved catalogue window, read per run | the revision's `runtime_model_ref` selects the model; an absent or zero operating cap inherits its physical window | §4 |
 
 ## Traps
 
@@ -43,7 +43,7 @@ Each trap is enforced in its owner section; this list is the index. §5 (What th
 
 - A fleet that hoards everything as `core` defeats the pinning, since an over-cap all-`core` set evicts the coldest `core` (§4).
 
-- The GitHub App private key never rides the lease envelope, the `secrets_map`, or the runner (§3, §5).
+- The GitHub App private key never rides the run envelope, the `secrets_map`, or the runner (§3, §5).
 
 ## 1. Reasoning + tool inventory (declared in the fleet's own files)
 
@@ -88,14 +88,14 @@ The runner hosts every published tool; `tools:` selects which the model is offer
 
 | Capability | What it does | Primary owner |
 |---|---|---|
-| Work assignment + archive | `agentsfleetd` assigns the next event on `lease` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per lease). Archive and delete stop new leases and send Cancel to a running one ([`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete"). | agentsfleetd control plane |
-| Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model"). | Lease ExecutionPolicy |
+| Work assignment + archive | `agentsfleetd` assigns the next event on `run` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per run). Archive and delete stop new runs and send Cancel to a running one ([`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete"). | agentsfleetd control plane |
+| Per-run policy | Each `run` reply carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model"). | Run ExecutionPolicy |
 | Admissions ledger + history | Every steer / webhook / cron event commits to `fleet.admissions` with actor provenance. `fleet.events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub App + manual) | Both receivers verify the signature, bind the delivery to subscribed fleets and refuse replays before queueing. The App records actor `github-app`; the manual receiver records `webhook:<source>` ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs"). | App ingress + webhook receiver |
-| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`af_crypto`). Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`), never a token, which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
+| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`af_crypto`). Two shapes: a **static** secret stores the value itself (resolved at run, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`), never a token, which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
 | Integration credential broker | `agentsfleetd` mints a short-lived, workspace-scoped token per mintable integration on demand; the App private key never leaves the daemon ([`connectors.md`](./connectors.md) §"Credential use remains separate from event receipt"). | Credential broker (daemon-side) |
-| Provider config (self-managed) | A tenant chooses platform-managed inference or its own provider key. The api_key crosses vault → lease `ExecutionPolicy` → runner's supervisor → outbound HTTPS and never reaches a user-facing surface ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary"). | Provider resolution path |
-| Approval gating | A gated event parks at lease until a workspace member approves it in the dashboard, through the API, or with `agentsfleet fleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`afd_gate`'s `park.rs`, "No pending summary, no staged notification"). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
+| Provider config (self-managed) | A tenant chooses platform-managed inference or its own provider key. The api_key crosses vault → run `ExecutionPolicy` → runner's supervisor → outbound HTTPS and never reaches a user-facing surface ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary"). | Provider resolution path |
+| Approval gating | A gated event parks at run until a workspace member approves it in the dashboard, through the API, or with `agentsfleet fleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`afd_gate`'s `park.rs`, "No pending summary, no staged notification"). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `run`). | Approval workflow |
 | Budget caps | Daily and monthly hard caps in integer nanos (`daily_nanos`, `monthly_nanos`), configured per fleet in the reviewed `config`, block further runs at the first trip ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"5.1 The per-fleet budget gate"). | Billing gate |
 | Per-run context lifecycle | Shared compaction and guarded working notes let the same run continue. See §4. | Context lifecycle |
 
@@ -125,7 +125,7 @@ Semantic memory has its own save cadence for facts used by later runs.
 
 The block sits in the fleet's `config`:
 
-- `model` is parsed as setup metadata. The revision's `runtime_model_ref` selects the execution model at lease time; authored model text cannot replace that identity.
+- `model` is parsed as setup metadata. The revision's `runtime_model_ref` selects the execution model at run time; authored model text cannot replace that identity.
 - `tool_window` remains accepted setup metadata. Whole tool call/result groups now follow shared compaction instead of count-based eviction.
 - `memory_checkpoint_every` pushes already-stored semantic memory every N tool calls. It does not ask the model to create a snapshot.
 - `stage_chunk_threshold` selects an earlier compaction threshold; values above 0.90 use 0.90.
@@ -202,6 +202,6 @@ The selection is deterministic and documented, so "why does my fleet remember X 
 - Never logs raw secret bytes
 - Never echoes secrets in the fleet's context
 - Never saves secrets in `fleet.events`
-- Never lets the GitHub App private key leave the daemon. The key is platform-side, and the lease envelope, the `secrets_map`, and the runner never carry it
+- Never lets the GitHub App private key leave the daemon. The key is platform-side, and the run envelope, the `secrets_map`, and the runner never carry it
 - Never lets the fleet reach a host outside its `network.allow` list
 - Never lets the fleet exceed its `budget` caps without trip-blocking

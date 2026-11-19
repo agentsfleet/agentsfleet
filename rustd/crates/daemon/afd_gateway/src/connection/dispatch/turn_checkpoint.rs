@@ -3,8 +3,8 @@
 use std::num::NonZeroU64;
 
 use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
-use af_wire::lease::{TurnCheckpointAction, TurnCheckpointCommand};
-use afd_fleet::lease::turn_checkpoint::{TurnCheckpointRefusal, TurnLease};
+use af_wire::run::{TurnCheckpointAction, TurnCheckpointCommand};
+use afd_fleet::run::turn_checkpoint::{TurnCheckpointRefusal, TurnRun};
 use tokio::{sync::SemaphorePermit, time::Instant};
 
 use super::super::{ConnectionServices, Message, context::answer};
@@ -14,7 +14,7 @@ impl ConnectionServices {
     pub(in super::super) async fn turn_checkpoint(
         &self,
         request_id: NonZeroU64,
-        lease: &str,
+        run: &str,
         request: &TurnCheckpointCommand,
     ) -> Result<()> {
         let bulk = request.action.verifies_uploads();
@@ -27,17 +27,17 @@ impl ConnectionServices {
         };
         let result = self
             .operation_until(Operation::TurnCheckpoint, Instant::now() + work, async {
-                let id = Uuid7::parse(lease)?;
+                let id = Uuid7::parse(run)?;
                 let request = garde::Unvalidated::new(request.clone()).validate()?;
                 let _permits = bulk.then(|| self.verification_permits()).transpose()?;
                 Ok(self
-                    .leases
+                    .runs
                     .turn_checkpoints
                     .execute(
-                        &self.leases.leases,
-                        TurnLease {
+                        &self.runs.runs,
+                        TurnRun {
                             runner_id: &self.handle.runner,
-                            lease_id: &id,
+                            run_id: &id,
                             fencing_token: request.fencing_token,
                         },
                         &request,
@@ -47,7 +47,7 @@ impl ConnectionServices {
             .await;
         self.send(&Message::TurnCheckpoint {
             request_id,
-            lease_id: lease.into(),
+            run_id: run.into(),
             operation_id: request.operation_id.clone(),
             kind: request.action.kind(),
             answer: answer(result),

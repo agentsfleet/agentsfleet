@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
-use afd_fleet::lease::{Acquired, Leases};
+use afd_fleet::run::{Acquired, Runs};
 use sqlx::Connection as _;
 use tokio::{sync::Barrier, task::JoinHandle};
 
@@ -31,16 +31,16 @@ type Claimer = JoinHandle<afd_fleet::Result<Option<Acquired>>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_concurrent_claims_lease_one_row() {
+async fn test_concurrent_claims_run_one_row() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, runners) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let replica = Leases::new(
+    let replica = Runs::new(
         fixtures.open(DbRole::Api).await,
         afd_bus::test_util::unreachable(),
         af_crypto::entropy::Entropy::new(),
     );
-    let replicas = [fixtures.leases_with_dead_bus(), replica];
+    let replicas = [fixtures.runs_with_dead_bus(), replica];
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
     let mut observer = owner.acquire().await.expect("reserved observer");
@@ -66,20 +66,20 @@ async fn test_concurrent_claims_lease_one_row() {
     fixtures.cleanup().await;
 }
 
-fn start_claimers(replicas: &[Leases; 2], runners: &[Uuid7; 2]) -> Vec<Claimer> {
+fn start_claimers(replicas: &[Runs; 2], runners: &[Uuid7; 2]) -> Vec<Claimer> {
     let barrier = Arc::new(Barrier::new(CLAIMERS));
     replicas
         .iter()
         .zip(runners)
         .cycle()
         .take(CLAIMERS)
-        .map(|(leases, runner)| {
-            let leases = leases.clone();
+        .map(|(runs, runner)| {
+            let runs = runs.clone();
             let runner = runner.clone();
             let barrier = Arc::clone(&barrier);
             tokio::spawn(async move {
                 barrier.wait().await;
-                leases.select(&runner, &[]).await
+                runs.select(&runner, &[]).await
             })
         })
         .collect()

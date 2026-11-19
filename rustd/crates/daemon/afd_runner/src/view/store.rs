@@ -100,13 +100,13 @@ impl RunnerScope<'_> {
         let statement = cursor.map_or_else(
             || {
                 sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
-                    .bind(sql::LEASE_STATUS_ACTIVE)
+                    .bind(sql::RUN_STATUS_ACTIVE)
                     .bind(past_page(limit))
                     .bind(self.owner.tenant())
             },
             |boundary| {
                 sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_AFTER)
-                    .bind(sql::LEASE_STATUS_ACTIVE)
+                    .bind(sql::RUN_STATUS_ACTIVE)
                     .bind(boundary.created_at().to_sqlx())
                     .bind(boundary.id())
                     .bind(past_page(limit))
@@ -139,7 +139,7 @@ impl RunnerScope<'_> {
         let mut connection = self.runners.pool().acquire().await?;
         sqlx::query_as::<_, DetailRow>(sql::runner_view::RUNNER_DETAIL)
             .bind(runner)
-            .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(sql::RUN_STATUS_ACTIVE)
             .bind(self.owner.tenant())
             .bind(self.owner.platform())
             .fetch_optional(&mut *connection)

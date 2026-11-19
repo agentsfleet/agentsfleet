@@ -46,7 +46,7 @@ async fn unsupported_output_call_bounds_and_native_overflow_keep_known_usage() {
         let request = fixture::request(&a);
         for request in [request.clone(), request] {
             let error = calls
-                .call(&f.runner, &a.lease, request)
+                .call(&f.runner, &a.run, request)
                 .await
                 .expect_err("untrusted output cannot execute");
             assert_eq!(error.code(), error_code::AUTHORING_PROVIDER);
@@ -87,7 +87,7 @@ async fn a_provider_cannot_reuse_a_call_identity_already_in_the_conversation() {
     ]);
     assert_eq!(
         calls
-            .call(&f.runner, &a.lease, request)
+            .call(&f.runner, &a.run, request)
             .await
             .expect_err("reused proposal identity")
             .code(),

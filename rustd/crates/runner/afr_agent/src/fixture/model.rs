@@ -12,8 +12,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
 use af_providers::{Connect, Provider};
-use af_wire::lease::LeasePayload;
 use af_wire::policy::ExecutionPolicy;
+use af_wire::run::RunPayload;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 use guffbolt::{Call, Chunk, End, Message, Model, Request, TextKind, Usage};
@@ -178,12 +178,12 @@ impl Connect for Replay {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<Provider>> {
+    fn connect(&self, _run: &RunPayload<'_>) -> af_providers::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
 
-/// A model no lease can reach: admitted, then refused at connect with `404`.
+/// A model no run can reach: admitted, then refused at connect with `404`.
 #[derive(Debug)]
 pub(crate) struct Unreachable;
 
@@ -195,7 +195,7 @@ impl Connect for Unreachable {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<Provider>> {
+    fn connect(&self, _run: &RunPayload<'_>) -> af_providers::Result<Box<Provider>> {
         Err(af_providers::Error::refused(UNREACHABLE_STATUS))
     }
 }

@@ -35,8 +35,8 @@ impl Memories {
     /// The window that seeds one run of `fleet`, under the workspace and grants
     /// a statement in the caller's pass already read.
     ///
-    /// The lease path's claim returns both memory flags beside the fleet's
-    /// workspace, so the window follows a grant change on the next lease with
+    /// The run path's claim returns both memory flags beside the fleet's
+    /// workspace, so the window follows a grant change on the next run with
     /// no read of its own and no cache to go stale.
     ///
     /// # Errors

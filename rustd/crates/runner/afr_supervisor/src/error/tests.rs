@@ -66,7 +66,7 @@ fn a_refusal_without_a_known_code_falls_back_by_status_then_verb() {
     let unauthorized = raise::refused(Verb::Heartbeat, 401, None);
     let absent = raise::refused(Verb::Hydrate, 404, None);
 
-    assert_eq!(unknown.code(), error_code::RUN_LEASE_LOST);
+    assert_eq!(unknown.code(), error_code::RUN_LOST);
     assert_eq!(unreadable.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(unreadable.refusal_code(), None);
     assert!(unauthorized.is_unauthorized());

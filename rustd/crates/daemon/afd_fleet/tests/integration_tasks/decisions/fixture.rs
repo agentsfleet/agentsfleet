@@ -1,4 +1,4 @@
-//! Well-formed frozen lease data; native freeze itself has its own scenario.
+//! Well-formed frozen run data; native freeze itself has its own scenario.
 
 use afd_admin::test_util::DecisionModelFixture;
 use std::sync::Arc;
@@ -57,8 +57,8 @@ impl<'a> Decisions<'a> {
             .acquire()
             .await
             .expect("frozen decision fixture");
-        sqlx::query("UPDATE runner.leases SET decision_snapshot=$2 WHERE id=$1")
-            .bind(&case.held.lease_key)
+        sqlx::query("UPDATE runner.runs SET decision_snapshot=$2 WHERE id=$1")
+            .bind(&case.held.run_key)
             .bind(Json(&assignment))
             .execute(&mut *connection)
             .await
@@ -73,7 +73,7 @@ impl<'a> Decisions<'a> {
         let mut dependencies = TaskDependencies::from(&case.held.fixtures.plane());
         dependencies.admin_workspace = Some(case.scope.workspace_id.clone());
         let tasks = Tasks::new(
-            case.held.leases.clone(),
+            case.held.runs.clone(),
             case.admissions.clone(),
             dependencies.clone(),
         );
@@ -136,7 +136,7 @@ impl<'a> Decisions<'a> {
     ) -> garde::Valid<DecisionReservationInput> {
         garde::Unvalidated::new(DecisionReservationInput {
             operation_id: mint_id().into(),
-            fencing_token: self.case.lease().fencing_token,
+            fencing_token: self.case.run().fencing_token,
             source_admission_id: self.case.held.event_id.clone().into(),
             assessment,
             task,
@@ -153,7 +153,7 @@ impl<'a> Decisions<'a> {
     ) -> (bool, Value) {
         let response = self
             .tasks
-            .reserve_decision(self.case.lease(), input)
+            .reserve_decision(self.case.run(), input)
             .await
             .expect("native reservation");
         assert!(!format!("{response:?}").contains("native-decision-fixture-"));
@@ -167,13 +167,13 @@ impl<'a> Decisions<'a> {
         receipt: DecisionReceipt,
     ) -> DecisionReceiptResult {
         let input = garde::Unvalidated::new(DecisionReceiptInput {
-            fencing_token: self.case.lease().fencing_token,
+            fencing_token: self.case.run().fencing_token,
             receipt,
         })
         .validate()
         .expect("bounded receipt");
         self.tasks
-            .record_decision(self.case.lease(), &id(call), &input)
+            .record_decision(self.case.run(), &id(call), &input)
             .await
             .expect("original-owner receipt")
     }
@@ -213,7 +213,7 @@ impl<'a> Decisions<'a> {
         );
         let bindings = self
             .tasks
-            .bind(self.case.lease(), &plan)
+            .bind(self.case.run(), &plan)
             .await
             .expect("native bound task");
         DecisionTaskVersion {
@@ -230,8 +230,8 @@ impl<'a> Decisions<'a> {
     }
 
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1), (SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2)")
-            .bind(&self.case.held.lease_key).bind(af_wire::usage::LineKind::Decision.as_str())
+        sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_run_id=$1), (SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_run_id=$1), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2)")
+            .bind(&self.case.held.run_key).bind(af_wire::usage::LineKind::Decision.as_str())
             .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("financial counts"))
             .await.expect("retained financial and private row counts")
     }
@@ -249,8 +249,8 @@ impl<'a> Decisions<'a> {
     }
 
     pub(super) async fn call_snapshot(&self) -> (Value, Value) {
-        sqlx::query_as("SELECT to_jsonb(c), to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1")
-            .bind(self.case.lease().lease_id)
+        sqlx::query_as("SELECT to_jsonb(c), to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_run_id=$1")
+            .bind(self.case.run().run_id)
             .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("retained assessment observer"))
             .await.expect("complete call and private payload")
     }

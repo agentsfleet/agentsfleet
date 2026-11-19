@@ -1,4 +1,4 @@
-//! Reading and ageing one row of any table the lease suites touch.
+//! Reading and ageing one row of any table the run suites touch.
 //!
 //! Split from `fleet_fixtures.rs` at the file cap. Every column read and every
 //! ageing write here goes through [`Row`], so a table's name and key are
@@ -16,8 +16,8 @@ use sqlx::AssertSqlSafe;
 use crate::support::Fixtures;
 
 /// Far enough to put any deadline a claim, an issue or a renewal wrote behind
-/// the database clock: each lies at most one lease lifetime ahead of it.
-pub(crate) const LAPSE: std::time::Duration = af_core::timing::LEASE_TTL.saturating_mul(2);
+/// the database clock: each lies at most one run lifetime ahead of it.
+pub(crate) const LAPSE: std::time::Duration = af_core::timing::RUN_TTL.saturating_mul(2);
 
 /// One row a test reads a column of, or ages: the table it lives in and the
 /// key that names it.
@@ -25,8 +25,8 @@ pub(crate) const LAPSE: std::time::Duration = af_core::timing::LEASE_TTL.saturat
 pub(crate) enum Row<'a> {
     /// A `runner.runners` row, by runner id.
     Runner(&'a Uuid7),
-    /// A `runner.leases` row, by lease id.
-    Lease(&'a Uuid7),
+    /// A `runner.runs` row, by run id.
+    Run(&'a Uuid7),
     /// A fleet's `runner.slots` row, by fleet id.
     Slot(&'a Uuid7),
     /// A fleet's `fleet.sessions` row, by fleet id.
@@ -72,7 +72,7 @@ impl<'a> Row<'a> {
     const fn locate(self) -> (&'static str, &'static str, &'a Uuid7, Option<Second<'a>>) {
         match self {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
-            Self::Lease(id) => ("runner.leases", "id = $1", id, None),
+            Self::Run(id) => ("runner.runs", "id = $1", id, None),
             Self::Slot(fleet) => ("runner.slots", "fleet_id = $1", fleet, None),
             Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
             Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
@@ -158,7 +158,7 @@ impl Fixtures {
     /// passing would have.
     ///
     /// Every deadline the code under test checks is read on the database's
-    /// clock, so a test reaches a lapsed lease, an expired hold, a silent
+    /// clock, so a test reaches a lapsed run, an expired hold, a silent
     /// runner or a run at its hard cap by ageing the row it reads, never by
     /// handing the code a future instant.
     pub(crate) async fn age(&self, row: Row<'_>, column: &str, by: std::time::Duration) {
@@ -169,10 +169,10 @@ impl Fixtures {
 
 impl Fixtures {
     /// Lapses both deadlines a holder that stopped renewing leaves behind: its
-    /// lease's and its fleet's slot's.
-    pub(crate) async fn lapse_holder(&self, lease: &Uuid7, fleet: &Uuid7) {
-        self.age(Row::Lease(lease), "lease_expires_at", LAPSE).await;
-        self.age(Row::Slot(fleet), "lease_expires_at", LAPSE).await;
+    /// run's and its fleet's slot's.
+    pub(crate) async fn lapse_holder(&self, run: &Uuid7, fleet: &Uuid7) {
+        self.age(Row::Run(run), "run_expires_at", LAPSE).await;
+        self.age(Row::Slot(fleet), "run_expires_at", LAPSE).await;
     }
 }
 

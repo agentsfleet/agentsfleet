@@ -56,7 +56,7 @@ impl Live {
             .bind(&draft)
             .execute(&mut *f.db.acquire().await.expect("message connection"))
             .await
-            .expect("leased message state");
+            .expect("held message state");
         Self {
             f,
             router,

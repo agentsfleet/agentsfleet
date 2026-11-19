@@ -8,7 +8,7 @@ use super::{
 use af_core::error_code;
 use afd_setup::{Observation, View};
 
-/// Moves the draft's one message to `status`, as a lease or a cutoff does.
+/// Moves the draft's one message to `status`, as a run or a cutoff does.
 const MESSAGE_STATUS: &str = "UPDATE authoring.messages SET status=$2 WHERE draft_id=$1";
 
 /// Closes the draft for its retention window, as a Save or an apply does.

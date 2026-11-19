@@ -6,7 +6,7 @@ CREATE TABLE fleet.task_effects (
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
     source_item_id UUID NOT NULL,
-    original_lease_id UUID NOT NULL,
+    original_run_id UUID NOT NULL,
     original_runner_id UUID NOT NULL,
     original_fence BIGINT NOT NULL,
     task_generation BIGINT NOT NULL CHECK (task_generation > 0),

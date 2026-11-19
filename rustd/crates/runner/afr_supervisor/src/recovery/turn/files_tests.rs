@@ -8,7 +8,7 @@ use crate::{
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::{
-    lease::{
+    run::{
         TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnId, TurnScope, TurnWorkspace,
     },
@@ -140,9 +140,9 @@ async fn restore(
     let stop = cancel_after_read.clone().unwrap_or_default();
     let (plane, _calls) = fixture_plane(page, objects, cancel_after_read);
 
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let default_transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &default_transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &default_transfers);
     let scope = scope();
     let reference = TurnCheckpointRef {
         checkpoint_id: TurnId(ID.to_owned()),

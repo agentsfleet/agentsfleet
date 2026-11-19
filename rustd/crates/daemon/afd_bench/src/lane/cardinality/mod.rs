@@ -10,7 +10,7 @@ use self::probe::{
 use crate::datastores::Datastores;
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
-use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
+use crate::lane::run::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use crate::profile::{Parameter, Profile, Target};
 use crate::report::{Fixture, Lane, Provenance, Report, count};
 use af_core::id::Uuid7;
@@ -127,7 +127,7 @@ async fn climb(
     postgres_at_population(stores, &runner, report).await
 }
 
-/// Seed the fleets `indices` names, ready to lease, noting the last one
+/// Seed the fleets `indices` names, ready to run, noting the last one
 /// seeded in `last_fleet` — the fleet the rung's admission read is timed on.
 async fn seed_rung(
     stores: &Datastores,

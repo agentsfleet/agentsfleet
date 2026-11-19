@@ -3,19 +3,19 @@ use af_wire::activity::ActivityFrame;
 use tokio_util::sync::CancellationToken;
 
 use super::{AgentRun, Meter};
-use crate::fixture::{API_KEY, GITHUB_TOKEN, lease, unbounded};
+use crate::fixture::{API_KEY, GITHUB_TOKEN, payload, unbounded};
 use crate::testing::Discard;
 
 #[test]
-fn a_run_debugs_without_the_leases_secrets() {
-    let lease = lease(&[], unbounded());
+fn a_run_debugs_without_the_runs_secrets() {
+    let this_run = payload(&[], unbounded());
     let sink = |_frame: ActivityFrame<'static>| {};
     let run = AgentRun {
         recovery: None,
         recovered_task: None,
         recovered_turn: None,
         prepared_task: None,
-        lease: &lease,
+        run: &this_run,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
         mint: &CountingMint::never(),
@@ -29,11 +29,11 @@ fn a_run_debugs_without_the_leases_secrets() {
 
     let rendered = format!("{run:?}");
 
-    assert!(rendered.contains(&*lease.lease_id), "{rendered}");
+    assert!(rendered.contains(&*this_run.run_id), "{rendered}");
     for secret in [API_KEY, GITHUB_TOKEN] {
         assert!(
             !rendered.contains(secret),
-            "a lease secret must never render: {rendered}"
+            "a this_run secret must never render: {rendered}"
         );
     }
 }

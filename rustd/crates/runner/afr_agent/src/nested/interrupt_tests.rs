@@ -21,7 +21,7 @@ use super::fixture::{
     parsed, requests_opening_with, root_requests, spawn_call, stall, stalling_offered,
     stalling_tools,
 };
-use crate::fixture::{Script, call, lease, say, unbounded};
+use crate::fixture::{Script, call, payload, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
 /// The first child's id, as the log spells it.
@@ -88,9 +88,9 @@ async fn test_interrupting_a_child_mid_call_ends_its_call_once() {
     let capture = Capture::install();
     let script = interrupted_mid_call();
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let root = root_requests(&script);
     assert_eq!(
@@ -151,9 +151,9 @@ async fn test_an_interrupted_childs_slot_is_freed_once() {
     let capture = Capture::install();
     let script = fill_then_interrupt();
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let root = root_requests(&script);
@@ -208,9 +208,9 @@ async fn test_interrupting_a_finished_child_keeps_its_end() {
         std::iter::repeat_with(stall).take(CHILDREN_RUNNING_MAX + 1),
     );
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let root = root_requests(&script);
@@ -262,9 +262,9 @@ async fn test_an_interrupted_delegated_child_is_the_calls_interruption() {
     )
     .with_child(STALLS, stalls_then_never("g1"));
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let root = root_requests(&script);

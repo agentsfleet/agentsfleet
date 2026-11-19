@@ -9,7 +9,7 @@
 ///
 /// The clock is read outside the locking `MATERIALIZED` step. Inside it, the
 /// select list is computed before the lock is granted, and a holder that only
-/// locked the row triggers no re-check, so a lease that lapsed during the wait
+/// locked the row triggers no re-check, so a run that lapsed during the wait
 /// would still read as held.
 pub(super) const ROWS: &str = include_str!("rows.sql");
 

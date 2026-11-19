@@ -105,7 +105,7 @@ pub(super) const AUTHORING: &[Problem] = &[
     Problem {
         code: error_code::AUTHORING_FENCE,
         status: 409,
-        title: "Authoring lease lost",
+        title: "Authoring run lost",
         hint: "Stop this attempt; refresh the private draft before starting another message.",
         user_message: Some("This authoring attempt can no longer update the draft."),
     },

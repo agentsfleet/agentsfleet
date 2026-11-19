@@ -1,14 +1,14 @@
-//! Lease-scoped human input reads are separate from durable consumption receipts.
+//! Run-scoped human input reads are separate from durable consumption receipts.
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// Read a bounded page of human inputs using the current lease and recovery cursor.
+/// Read a bounded page of human inputs using the current run and recovery cursor.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema, utoipa::IntoParams))]
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskInputsQuery {
-    /// Current native lease fence.
+    /// Current native run fence.
     #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub fencing_token: u64,
     /// Opaque ascending boundary returned by the previous input page.
@@ -56,11 +56,11 @@ pub struct TaskInputCandidate {
     pub generation: u64,
 }
 
-/// Complete bounded messages and eligible current work from the same lease scope.
+/// Complete bounded messages and eligible current work from the same run scope.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskInputsResponse<'a> {
-    /// Native admission owned by this lease, including signed continuation events.
+    /// Native admission owned by this run, including signed continuation events.
     pub source_admission_id: String,
     /// Installed revision under which a new human interpretation may bind.
     pub accepted_revision_id: Option<String>,
@@ -74,7 +74,7 @@ pub struct TaskInputsResponse<'a> {
     /// Current native objective and recovery pointer, including after interpretation replay.
     #[serde(borrow)]
     pub current_task: Option<super::TaskContext<'a>>,
-    /// Immutable ceiling read with this lease's current native ownership.
+    /// Immutable ceiling read with this run's current native ownership.
     #[serde(
         default,
         with = "crate::instant::option",

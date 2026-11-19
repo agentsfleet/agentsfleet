@@ -240,7 +240,7 @@ pub(crate) enum ErrorKind {
         source: af_core::error::Error,
     },
 
-    /// A host the lease's egress allowlist names did not resolve.
+    /// A host the run's egress allowlist names did not resolve.
     #[error("egress host {host} could not be resolved")]
     EgressUnresolved {
         /// The host, as the allowlist names it.
@@ -250,7 +250,7 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
-    /// A host the lease's egress allowlist names resolved to no IPv4 address,
+    /// A host the run's egress allowlist names resolved to no IPv4 address,
     /// and only an IPv4 address can be admitted.
     #[error("egress host {host} resolves to no IPv4 address")]
     EgressNoIpv4 {
@@ -270,8 +270,8 @@ pub(crate) enum ErrorKind {
         host: String,
     },
 
-    /// The sandbox engine would not take the lease's resolved allowlist.
-    #[error("the lease's egress allowlist was refused")]
+    /// The sandbox engine would not take the run's resolved allowlist.
+    #[error("the run's egress allowlist was refused")]
     Egress {
         /// The engine's reason.
         #[source]

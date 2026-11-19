@@ -1,6 +1,6 @@
 //! A run's full tool-call records, packed into the posts the daemon takes.
 //!
-//! Each body carries the lease's fencing token and as many records as fit in
+//! Each body carries the run's fencing token and as many records as fit in
 //! `DETAIL_POST_MAX_BYTES`; the agent already cut every record to fit a post
 //! on its own. Records are encoded once and carried as raw JSON.
 

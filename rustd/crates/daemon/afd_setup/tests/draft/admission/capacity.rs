@@ -1,4 +1,4 @@
-//! Two database transactions cannot turn one host slot into two leases.
+//! Two database transactions cannot turn one host slot into two runs.
 
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ async fn runtime_occupancy_blocks_authoring_until_original_runtime_expiry() {
     let fleet = fixture::runtime(&f, af_core::clock::after(now(), Duration::from_mins(1))).await;
     assert!(claim(&f, &draft).await.is_none());
     assert_eq!(fixture::attempts(&f).await, 0);
-    sqlx::query("UPDATE runner.leases SET lease_expires_at=now() WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.runs SET run_expires_at=now() WHERE fleet_id=$1")
         .bind(fleet)
         .execute(&mut *f.connection().await)
         .await

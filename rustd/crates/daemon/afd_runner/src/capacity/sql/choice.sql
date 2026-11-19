@@ -1,1 +1,1 @@
-SELECT lease_version, last_lease_type FROM runner.runners WHERE id = $1
+SELECT run_version, last_run_type FROM runner.runners WHERE id = $1

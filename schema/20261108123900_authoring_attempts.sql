@@ -1,9 +1,9 @@
--- One runner lease running one chat turn, with money reserved and the model pinned. No foreign
+-- One runner run running one chat turn, with money reserved and the model pinned. No foreign
 -- key to drafts, workspaces, tenants or users: usage lines name the attempt and money outlives
 -- every deletion. NULL `runner_id` means the runner was removed, never that none ran it.
 CREATE TABLE authoring.attempts (
     id                      UUID PRIMARY KEY,
-    lease_id                UUID    NOT NULL,
+    run_id                UUID    NOT NULL,
     runner_id               UUID    REFERENCES runner.runners(id) ON DELETE SET NULL (runner_id),
     workspace_id            UUID    NOT NULL,
     tenant_id               UUID    NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE authoring.attempts (
     model_token_hash        TEXT    NOT NULL,
     model_snapshot          JSONB   NOT NULL,
     status                  TEXT    NOT NULL,
-    lease_expires_at        TIMESTAMPTZ(3)  NOT NULL,
+    run_expires_at        TIMESTAMPTZ(3)  NOT NULL,
     expires_at              TIMESTAMPTZ(3)  NOT NULL,
     reserved_nanos          BIGINT  NOT NULL,
     -- Accepted once at issue; replica profile changes do not reset an attempt.
@@ -32,17 +32,17 @@ CREATE TABLE authoring.attempts (
     outcome                 TEXT,
     created_at              TIMESTAMPTZ(3)  NOT NULL,
     updated_at              TIMESTAMPTZ(3)  NOT NULL,
-    CONSTRAINT uq_attempts_lease_id UNIQUE (lease_id),
+    CONSTRAINT uq_attempts_run_id UNIQUE (run_id),
     CONSTRAINT uq_attempts_draft_id_message_sequence UNIQUE (draft_id, message_sequence)
 );
 
-CREATE INDEX idx_attempts_runner_id_status_lease_expires_at
-    ON authoring.attempts (runner_id, status, lease_expires_at);
+CREATE INDEX idx_attempts_runner_id_status_run_expires_at
+    ON authoring.attempts (runner_id, status, run_expires_at);
 
 -- The expression matches the lapse sweep's own ORDER BY, so the scan reads in order and stops
 -- at its limit.
 CREATE INDEX idx_attempts_status_deadline_id
-    ON authoring.attempts (status, LEAST(lease_expires_at, expires_at), id);
+    ON authoring.attempts (status, LEAST(run_expires_at, expires_at), id);
 
 CREATE INDEX idx_attempts_tenant_id_status ON authoring.attempts (tenant_id, status);
 

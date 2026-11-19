@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 
 use crate::{Connect, Provider};
-use af_wire::lease::LeasePayload;
 use af_wire::policy::ExecutionPolicy;
+use af_wire::run::RunPayload;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 use guffbolt::{Call, Chunk, End, Message, Model, Request, TextKind, Usage};
@@ -108,7 +108,7 @@ impl Connect for FakeModel {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> crate::Result<Box<Provider>> {
+    fn connect(&self, _run: &RunPayload<'_>) -> crate::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }

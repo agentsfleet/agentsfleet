@@ -30,7 +30,7 @@ async fn should_read_text_through_admitted_redirects() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_interrupted_job_log_returns_no_usable_source_text() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "github-log-reader", &[], None).await;
+    let scene = install_definition(&mut supervisor, "github-log-reader", &[], None).await;
     let mut routes = vec![Route::new(
         LOG_READER_HOST,
         Method::GET,
@@ -43,7 +43,7 @@ async fn an_interrupted_job_log_returns_no_usable_source_text() {
         vec![github_get("log", JOB_LOG)],
         vec![say("Required log unavailable.")],
     ]);
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     assert_eq!(settled.answer, "Required log unavailable.");
     let asked = transcript.asked();
     let result = asked
@@ -58,27 +58,27 @@ async fn an_interrupted_job_log_returns_no_usable_source_text() {
     let seen = upstream.seen();
     assert_download(&seen);
     assert_token_stayed_on_the_wire(&seen, &asked);
-    let trace = stored_trace(&run)
+    let trace = stored_trace(&scene)
         .await
         .expect("the failed call was reported");
     assert_eq!(trace["calls"][0]["status"], "failed");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 async fn read_redirect_case(provider: &str, redirect: u16, status: u16) {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "github-log-reader", &[], Some(provider)).await;
+    let scene = install_definition(&mut supervisor, "github-log-reader", &[], Some(provider)).await;
     let upstream = Upstream::serve(log_reader_routes(redirect, status)).await;
     let (model, transcript) = FakeModel::new(vec![
         vec![
-            github_get("run", RUN),
+            github_get("scene", RUN),
             github_get("job", "/repos/agentsfleet/linkwarden/actions/jobs/202"),
         ],
         vec![github_get("log", JOB_LOG)],
         vec![say("Source read inspected.")],
     ]);
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
         ("processed", "Source read inspected.")
@@ -92,9 +92,9 @@ async fn read_redirect_case(provider: &str, redirect: u16, status: u16) {
     let seen = upstream.seen();
     assert_download(&seen);
     assert_token_stayed_on_the_wire(&seen, &asked);
-    assert_retained_read(&run, status).await;
+    assert_retained_read(&scene, status).await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 fn assert_download(seen: &[crate::https::Seen]) {
@@ -107,11 +107,11 @@ fn assert_download(seen: &[crate::https::Seen]) {
     assert_eq!(downloads[0].query, LOG_SIGNATURE);
 }
 
-async fn assert_retained_read(run: &Scenario, status: u16) {
-    let trace = stored_trace(run).await.expect("native trace");
+async fn assert_retained_read(scene: &Scenario, status: u16) {
+    let trace = stored_trace(scene).await.expect("native trace");
     assert_eq!(trace["calls"].as_array().map(Vec::len), Some(3));
     let token = mint_tenant_token();
-    seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
+    seed_tenant_key(&scene.booted, &scene.tenant, &token, scene.seeded_at).await;
     let http = afd_identity::direct(std::time::Duration::from_secs(10))
         .build()
         .expect("tenant client");
@@ -119,9 +119,9 @@ async fn assert_retained_read(run: &Scenario, status: u16) {
     let id = call["call_id"].as_str().expect("fenced call id");
     let path = format!(
         "/v1/workspaces/{}/fleets/{}/events/{}/tool-calls/{id}",
-        run.workspace, run.fleet, run.event_id
+        scene.workspace, scene.fleet, scene.event_id
     );
-    let detail = tenant_get(&http, run, &token, &path).await;
+    let detail = tenant_get(&http, scene, &token, &path).await;
     assert_eq!(detail["truncated"], false);
     assert_eq!(detail["truncated_arguments"], false);
     let output = detail["output"].as_str().expect("retained text");

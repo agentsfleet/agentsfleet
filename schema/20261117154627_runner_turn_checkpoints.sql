@@ -7,7 +7,7 @@ CREATE TABLE runner.turn_checkpoints (
     setup_revision_id UUID NOT NULL,
     generation BIGINT NOT NULL CHECK (generation > 0),
     expected_turn_checkpoint_id UUID,
-    owner_lease_id UUID NOT NULL,
+    owner_run_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL CHECK (owner_fence > 0),
     format_version INTEGER NOT NULL CHECK (format_version > 0),
     has_workspace BOOLEAN NOT NULL,

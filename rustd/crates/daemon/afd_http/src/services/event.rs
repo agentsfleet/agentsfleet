@@ -183,7 +183,7 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     ) -> impl Future<Output = EventResult<Steered>> + Send;
 
     /// Puts one fleet's message on another fleet's stream, behind `guard`:
-    /// the sender's lease, proved again inside the admission's transaction.
+    /// the sender's run, proved again inside the admission's transaction.
     ///
     /// # Errors
     /// As [`afd_turns::view::Steer::append_from_fleet`]: a guard that does not

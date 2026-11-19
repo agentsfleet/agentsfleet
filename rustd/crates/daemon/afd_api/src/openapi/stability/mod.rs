@@ -51,7 +51,7 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // are read by that same new runner.
     ("View", &["source", "once"]),
     // The memory window travels in native offers and may still change shape.
-    ("LeasePayload", &["memory"]),
+    ("RunPayload", &["memory"]),
     // Where a steer went is new, and folding may reshape it.
     ("SteerAccepted", &["disposition", "folded_into_event_id"]),
     // A run claiming the messages its fleet receives is new, and so is the

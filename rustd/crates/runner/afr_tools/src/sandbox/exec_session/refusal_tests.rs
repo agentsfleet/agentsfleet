@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::session;
 use super::tests::{CAT, CHARS, FIRST, SESSION_ID, exec, opening, write, writing};
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{call, call_in};
@@ -13,11 +13,11 @@ use crate::testing::{call, call_in};
 #[tokio::test]
 async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
     let executor = ScriptedExecutor::new([]);
-    let lease = Lease::default();
+    let run = Run::default();
 
     for session_id in [json!("1"), json!(-1), json!(1.5)] {
         let arguments = json!({SESSION_ID: session_id, CHARS: "x"});
-        let output = call_in(&*write(), &executor, &lease, arguments).await;
+        let output = call_in(&*write(), &executor, &run, arguments).await;
 
         assert_eq!(
             output.error_code,
@@ -35,7 +35,7 @@ async fn should_refuse_a_session_that_is_not_open() {
     let output = call_in(
         &*write(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         writing(99, "x", None),
     )
     .await;
@@ -50,14 +50,14 @@ async fn should_refuse_a_session_that_is_not_open() {
 
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
-    let lease = Lease::default();
+    let run = Run::default();
 
-    let opened = call(&*exec(), &lease, opening(CAT, None)).await;
-    let written = call(&*write(), &lease, writing(1, "", None)).await;
+    let opened = call(&*exec(), &run, opening(CAT, None)).await;
+    let written = call(&*write(), &run, writing(1, "", None)).await;
     let refused = call_in(
         &*exec(),
         &ScriptedExecutor::new([]),
-        &lease,
+        &run,
         opening(CAT, None),
     )
     .await;
@@ -75,5 +75,5 @@ async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
         "a refused spawn reads the executor's reason, got {:?}",
         refused.text
     );
-    assert!(lease.sessions.get(session(FIRST)).is_none());
+    assert!(run.sessions.get(session(FIRST)).is_none());
 }

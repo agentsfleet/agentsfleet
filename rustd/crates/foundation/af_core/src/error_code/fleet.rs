@@ -24,14 +24,14 @@ pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001")
 /// run.
 pub const RUN_STALE_FENCING_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-005");
 
-/// No lease with that id belongs to the presenting runner.
+/// No run with that id belongs to the presenting runner.
 ///
-/// One code for two facts, deliberately: a lease that never existed and a lease
+/// One code for two facts, deliberately: a run that never existed and a run
 /// belonging to ANOTHER runner both answer this. The load is scoped by
-/// `runner_id`, so a runner asking about a peer's lease gets the same 404 a
+/// `runner_id`, so a runner asking about a peer's run gets the same 404 a
 /// missing row gets — the scope IS the ownership check, and distinguishing the
-/// two would turn this endpoint into an oracle for which lease ids are live.
-pub const RUN_LEASE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
+/// two would turn this endpoint into an oracle for which run ids are live.
+pub const RUN_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
 
 /// The runner is known and its administrative state bars the runner plane.
 ///
@@ -40,22 +40,22 @@ pub const RUN_LEASE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
 /// out of service — the heartbeat reply is unconditionally `ok`.
 pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 
-/// The lease reached the hard ceiling on how long one run may take.
+/// The run reached the hard ceiling on how long one run may take.
 ///
-/// Distinct from [`RUN_LEASE_LOST`] even though both are 409s and both end the
+/// Distinct from [`RUN_LOST`] even though both are 409s and both end the
 /// run: this one says the runner did nothing wrong and its result is still
-/// wanted — it stops the child and reports. Lost says the lease is somebody
+/// wanted — it stops the child and reports. Lost says the run is somebody
 /// else's now and the result will be refused. Collapsing them would throw away
 /// a completed run's output at the cap.
-pub const RUN_LEASE_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN-010");
+pub const RUN_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN-010");
 
-/// The lease moved to another runner before this renewal.
+/// The run moved to another runner before this renewal.
 ///
 /// Reached when the fence no longer holds or the row is no longer `active`, and
-/// also when the lease row advanced but the affinity slot did not — a
+/// also when the run row advanced but the affinity slot did not — a
 /// half-applied renewal is reported LOST rather than renewed, because the slot
 /// can be reclaimed before the deadline the reply would name.
-pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
+pub const RUN_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 
 /// The tenant's credit pool cannot fund another slice of this run.
 ///
@@ -63,16 +63,16 @@ pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 /// a renew refusal by status AND code. The two 402s are different pools — this
 /// is the TENANT's balance, that is the FLEET's own declared ceiling — and an
 /// operator tops up for one and revises the fleet's reviewed setup for the other.
-pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
+pub const RUN_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
 /// A renewal sent a body this daemon cannot read.
 ///
 /// ANSWERED only for the cumulative totals a runner sent before usage moved to
-/// one line per provider request: a 400 naming the field, and the lease does not
+/// one line per provider request: a 400 naming the field, and the run does not
 /// renew. A runner speaking that shape can never have its usage recorded, and
 /// its report is refused for the same field, so renewing would only run it
 /// unbilled to a result nobody keeps. Every other unreadable body is LOGGED
-/// under this code rather than answered: the lease renews, no line is recorded,
+/// under this code rather than answered: the run renews, no line is recorded,
 /// and the runner sends its lines again.
 pub const RUN_RENEW_BODY_MALFORMED: ErrorCode = ErrorCode::declare("UZ-RUN-013");
 
@@ -112,19 +112,19 @@ pub const RUN_SELFTEST_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-018");
 /// tool hands the code to the model, which says it in the report instead.
 pub const MESSAGE_NO_CHANNEL: ErrorCode = ErrorCode::declare("UZ-RUN-019");
 
-/// The lease already posted as many messages as one run may.
+/// The run already posted as many messages as one run may.
 ///
-/// A 409 carrying `current_state`, and per lease rather than per window: the
+/// A 409 carrying `current_state`, and per run rather than per window: the
 /// bound is on how much one run says to a person's thread, so waiting does not
 /// lift it and a 429 would tell a client to retry into the same refusal. A
-/// reclaimed lease starts its own count.
+/// reclaimed run starts its own count.
 pub const MESSAGE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-RUN-020");
 
 /// A newer connection owns this runner; the superseded process must halt.
 pub const RUN_STREAM_SUPERSEDED: ErrorCode = ErrorCode::declare("UZ-RUN-021");
 
-/// An operator durably cancelled this lease.
-pub const RUN_LEASE_CANCELLED: ErrorCode = ErrorCode::declare("UZ-RUN-022");
+/// An operator durably cancelled this run.
+pub const RUN_CANCELLED: ErrorCode = ErrorCode::declare("UZ-RUN-022");
 
 /// Runner and daemon do not speak the same application protocol.
 pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023");
@@ -164,7 +164,7 @@ pub const RUN_CHECKPOINT_LIMIT: ErrorCode = ErrorCode::declare("UZ-RUN-031");
 
 /// A fleet declared a credential the vault does not hold.
 ///
-/// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it
+/// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the run path, where it
 /// is LOGGED rather than answered: a fleet that names a credential nobody
 /// stored cannot run, so the event is ended with a terminal row and the asking
 /// runner is told there is no work. The code is what an operator correlates the

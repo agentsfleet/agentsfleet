@@ -7,7 +7,7 @@ use guffbolt::ToolSpec;
 use guffbolt::{Chunk, Message, Request};
 use serde_json::{Value, json};
 
-use super::support::{Fake, KEY, Reply, lease};
+use super::support::{Fake, KEY, Reply, payload};
 
 const GOOGLE: &str = "gemini";
 const OLLAMA: &str = "ollama";
@@ -54,9 +54,9 @@ fn ollama(message: &Value) -> Reply {
 }
 
 async fn streamed(connector: &Native, provider: &str, messages: &[Message]) -> Vec<Chunk> {
-    let mut leased = lease(provider, &[], QUESTION);
-    leased.policy.inference = Some(connector.settings.clone());
-    let model = connector.inner.connect(&leased).unwrap();
+    let mut held = payload(provider, &[], QUESTION);
+    held.policy.inference = Some(connector.settings.clone());
+    let model = connector.inner.connect(&held).unwrap();
     let parameters = json!({"type":"object","properties":{}});
     let tools = [ToolSpec {
         name: TOOL,

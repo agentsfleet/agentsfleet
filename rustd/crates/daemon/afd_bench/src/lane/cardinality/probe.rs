@@ -8,8 +8,8 @@ use af_core::id::Uuid7;
 use core::time::Duration;
 use std::time::Instant;
 
-use afd_fleet::lease::assign::MAX_CANDIDATES_PER_POLL;
-use afd_fleet::lease::sql::queue::SELECT_CANDIDATES;
+use afd_fleet::run::assign::MAX_CANDIDATES_PER_POLL;
+use afd_fleet::run::sql::queue::SELECT_CANDIDATES;
 
 use crate::datastores::{Datastores, postgres_count};
 use crate::error::{ErrorKind, Result};
@@ -52,21 +52,21 @@ const POPULATION_QUERY: &str = include_str!("sql/select_fleet_population.sql");
 const POSTGRES: &str = "postgres";
 const SELECT_ADMISSION_HEAD: &str = include_str!("sql/select_admission_head.sql");
 
-/// The serving candidate query's binds, as the lease path sends them
-/// (`afd_fleet::lease::assign::ledger`): no held fleets and no hint. One
+/// The serving candidate query's binds, as the run path sends them
+/// (`afd_fleet::run::assign::ledger`): no held fleets and no hint. One
 /// place, so the timed query and its plan never drift apart.
 fn candidates<'q, O>(
     query: sqlx::query::QueryScalar<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments>,
     runner: &'q Uuid7,
 ) -> sqlx::query::QueryScalar<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments> {
     query
-        .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+        .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
         .bind(runner)
         .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
         // How long a silent holder binds, and the status a holder must be in
         // to bind at all; the instant they compare against is the statement's.
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-        .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_fleet::run::sql::RUNNER_STATUS_ACTIVE)
         .bind(Vec::<Uuid7>::new())
         .bind(None::<&Uuid7>)
         .bind(af_wire::task::CAPABILITY)

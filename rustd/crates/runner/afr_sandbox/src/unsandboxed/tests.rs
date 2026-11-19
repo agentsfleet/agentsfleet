@@ -25,7 +25,7 @@ fn test_release_build_refuses_unsandboxed_engine() {
 }
 
 #[tokio::test]
-async fn test_an_unsandboxed_lease_runs_a_process_and_is_removed() {
+async fn test_an_unsandboxed_runs_a_process_and_is_removed() {
     let base = tempfile::Builder::new()
         .prefix("afr")
         .tempdir_in("/tmp")
@@ -55,7 +55,7 @@ async fn test_an_unsandboxed_lease_runs_a_process_and_is_removed() {
     );
     assert!(
         !base.path().join("l1").exists(),
-        "the lease's directory is gone"
+        "the run's directory is gone"
     );
 }
 
@@ -126,7 +126,7 @@ async fn test_an_unconfined_sandbox_refuses_to_freeze_or_thaw() {
 }
 
 #[tokio::test]
-async fn test_a_lease_directory_that_cannot_be_made_is_refused() {
+async fn test_a_run_directory_that_cannot_be_made_is_refused() {
     let base = tempfile::Builder::new()
         .prefix("afr")
         .tempdir_in("/tmp")
@@ -142,7 +142,7 @@ async fn test_a_lease_directory_that_cannot_be_made_is_refused() {
 }
 
 #[tokio::test]
-async fn test_an_executor_that_never_answers_refuses_the_lease_and_cleans_up() {
+async fn test_an_executor_that_never_answers_refuses_the_run_and_cleans_up() {
     let base = tempfile::Builder::new()
         .prefix("afr")
         .tempdir_in("/tmp")
@@ -164,7 +164,7 @@ async fn test_an_executor_that_never_answers_refuses_the_lease_and_cleans_up() {
     );
     assert!(
         !base.path().join("l3").exists(),
-        "the lease's directory is removed"
+        "the run's directory is removed"
     );
 }
 
@@ -194,12 +194,12 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
     tokio::task::yield_now().await;
     assert_eq!(started.elapsed(), super::SERVER_GRACE);
     assert!(abort.is_finished(), "the lingering task was aborted");
-    assert!(!dir.exists(), "the lease directory was removed");
+    assert!(!dir.exists(), "the run directory was removed");
 }
 
-/// An unsandboxed lease shares the host's network and holds nothing to an
+/// An unsandboxed run shares the host's network and holds nothing to an
 /// allowlist, so a held one asked to take new addresses refuses as having no
-/// scope, and its lease builds fresh: the refill is never taken as done.
+/// scope, and its run builds fresh: the refill is never taken as done.
 #[tokio::test]
 async fn should_refuse_new_addresses_it_has_no_scope_to_hold() {
     let base = tempfile::Builder::new()
@@ -221,7 +221,7 @@ async fn should_refuse_new_addresses_it_has_no_scope_to_hold() {
     );
 }
 
-/// No cgroup holds an unsandboxed lease's processes, so its kill proves
+/// No cgroup holds an unsandboxed run's processes, so its kill proves
 /// nothing about them: it is never settled.
 #[tokio::test]
 async fn test_an_unsandboxed_kill_is_never_settled() {

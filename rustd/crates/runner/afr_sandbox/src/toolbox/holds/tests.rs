@@ -105,11 +105,11 @@ fn test_toolbox_holds_and_retention() {
     );
 
     let first = toolboxes.admit(&one.manifest, &one.source).unwrap();
-    let (lease, slot) = (Arc::clone(&first), Arc::clone(&first));
+    let (run, slot) = (Arc::clone(&first), Arc::clone(&first));
     drop(first);
     toolboxes.admit(&two.manifest, &two.source).unwrap();
     toolboxes.admit(&three.manifest, &three.source).unwrap();
-    drop(lease);
+    drop(run);
     toolboxes.retain().unwrap();
     let held_by_the_slot = toolboxes.digests();
     drop(slot);

@@ -11,7 +11,7 @@ use sqlx::PgConnection;
 use crate::{
     Drafts, Result,
     error::ErrorKind,
-    lease::guard::{self, Attempt},
+    run::guard::{self, Attempt},
 };
 
 pub(crate) const PROVIDER_TIMEOUT: Duration = af_inference::stream::READ_TIMEOUT;
@@ -83,12 +83,12 @@ pub(crate) async fn gate(
     }
 }
 
-/// Whether the attempt behind `lease` is still funded, checked before a
+/// Whether the attempt behind `run` is still funded, checked before a
 /// renewal and outside its transaction.
-pub(crate) async fn funded(drafts: &Drafts, runner: &Uuid7, lease: &Uuid7) -> Result<()> {
+pub(crate) async fn funded(drafts: &Drafts, runner: &Uuid7, run: &Uuid7) -> Result<()> {
     let attempt = {
         let mut connection = drafts.database.acquire().await?;
-        guard::peek(&mut connection, runner, lease).await
+        guard::peek(&mut connection, runner, run).await
     };
     match attempt {
         Ok(attempt) => covers(&drafts.database, drafts.biller.as_ref(), &attempt).await,

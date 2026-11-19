@@ -19,7 +19,7 @@ const GIT: &str = "git";
 const RIPGREP: &str = "ripgrep";
 /// The key a release manifest record holds its SHA-256 under.
 const SHA256: &str = "sha256";
-/// The Debian packages the lease's tools come from, each pinned with the hash
+/// The Debian packages the run's tools come from, each pinned with the hash
 /// apt checked it by.
 const PINNED: [&str; 7] = [
     "ca-certificates",

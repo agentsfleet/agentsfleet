@@ -37,7 +37,7 @@ A machine credential cannot impersonate a human approval.
 ## Admit and steer work through ordinary conversation
 
 ```text
-Indy                    Fleet message admission          Current fleet lease
+Indy                    Fleet message admission          Current fleet run
  |                                |                               |
  | Repair import PR X             |                               |
  |------------------------------->| save source message A1        |
@@ -65,7 +65,7 @@ Replaying A2 must return those items instead of creating duplicate repairs.
 A3 changes the import method within the accepted objective; it grants no new repository access or completion criteria.
 
 The human-input view reads messages in source order while machine work waits.
-A steer for Search remains queued while Import owns the lease.
+A steer for Search remains queued while Import owns the run.
 Import cannot write Search's PR or attach Search's writable files.
 
 A greeting receives a brief greeting without restarting an investigation.
@@ -78,12 +78,12 @@ Neither a sidebar selection nor a new chat mode supplies task authority.
 
 ## Publish, lose a worker and recover the same task
 
-The fleet runs one active lease at a time.
-The [lease flow](../lease_flow.md) and [task scheduling](../durable_tasks.md#proposed-input-claims-and-scheduling) own serialization and fair switching.
+The fleet runs one active run at a time.
+The [run flow](../run_flow.md) and [task scheduling](../durable_tasks.md#proposed-input-claims-and-scheduling) own serialization and fair switching.
 Waiting work releases the slot so another assigned task can run.
 
 ```text
-Import lease             Native publication          Saved state / GitHub
+Import run             Native publication          Saved state / GitHub
      |                            |                            |
  read PR X at A                   |                            |
  reproduce -> patch -> test       |                            |
@@ -94,15 +94,15 @@ Import lease             Native publication          Saved state / GitHub
  accept steer A3 beyond G1 cursor |                            |
  worker disappears               |                            |
      |                            |                            |
- replacement lease               |                            |
+ replacement run               |                            |
  fresh authority + restore G1 <-------------------------------|
  read E1 and exact PR history --->| confirm B already exists    |
  replay accepted A3              |                            |
  test correction C -> save G2     |                            |
  publish C, record CI(C) wait ----|--------------------------->|
  settle report and release       |                            |
- Search lease -> own files -> head Y1 -> wait -> release       |
- Export lease -> own files -> head Z1 -> wait -> release       |
+ Search run -> own files -> head Y1 -> wait -> release       |
+ Export run -> own files -> head Z1 -> wait -> release       |
 ```
 
 The lost acknowledgement and worker replacement are deliberate failure conditions for the controlled run.
@@ -117,7 +117,7 @@ A completed remote write retains its reconciliation record even if its acknowled
 The initial write scope excludes fork heads, protected/base targets, workflow edits, force pushes, merge and deployment.
 A push with privileged or deployment effects needs separate review before admission.
 
-[Workspace recovery](../sandbox_evaluation.md#coding-sessions-and-worktrees-across-leases) owns compatible files, Git state, history and confirmed outcomes.
+[Workspace recovery](../sandbox_evaluation.md#coding-sessions-and-worktrees-across-runs) owns compatible files, Git state, history and confirmed outcomes.
 [Incremental checkpoints](../sandbox_evaluation.md#large-repositories-and-incremental-checkpoints) owns retained bases, encrypted chunks, transfer bounds and collection pins.
 The repository's size must come from measurement; this example assumes no fixed checkout size.
 
@@ -230,7 +230,7 @@ M236 completion depends on the [active acceptance ledger](../../../playbooks/ope
 
 | Proof | Evidence to retain |
 |---|---|
-| Three assigned repairs | Actual PR URLs, accepted objectives/questions, stable task identities and one active fleet lease. |
+| Three assigned repairs | Actual PR URLs, accepted objectives/questions, stable task identities and one active fleet run. |
 | Conversation and steering | Greeting with a complete empty tool-call inventory; saved status; accepted A3; ambiguous-target clarification; duplicate A2 replay. |
 | Publication and recovery | Exact tested trees/heads, unknown E1 readback, worker replacement, compatible G1/G2 coverage and accepted-input replay. |
 | CI continuation | Signed, duplicate, stale, fast and missed completion cases; one effective wake; final current-head checks and unchanged regressions. |

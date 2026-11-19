@@ -9,7 +9,7 @@ pub const SPAN_FLEET_STEER: &str = "fleet.steer";
 /// The span one offer that selected work leaves: claim to the stream write.
 pub const SPAN_FLEET_OFFER: &str = "fleet.offer";
 
-/// The span one terminal report leaves: the lease read to the acknowledgement.
+/// The span one terminal report leaves: the run read to the acknowledgement.
 pub const SPAN_FLEET_REPORT: &str = "fleet.report";
 
 /// The span one fallback memory hydrate leaves.

@@ -53,10 +53,10 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
+            | ErrorKind::RunMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
@@ -122,10 +122,10 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
+            | ErrorKind::RunMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel

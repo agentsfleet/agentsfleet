@@ -1,5 +1,5 @@
-//! What a chat lease's earlier turns record: how many bytes each carried,
-//! which caps cut them, and the leases issued without them.
+//! What a chat run's earlier turns record: how many bytes each carried,
+//! which caps cut them, and the runs issued without them.
 
 use opentelemetry::KeyValue;
 
@@ -7,7 +7,7 @@ use crate::metrics::label::fleet::HistoryCut;
 use crate::producers::installed;
 use crate::semconv;
 
-/// Records the bytes of earlier turns one chat lease carries.
+/// Records the bytes of earlier turns one chat run carries.
 pub fn carried(bytes: usize) {
     if let Some(producers) = installed() {
         // Exact below 2^52 bytes, which a capped window never nears.
@@ -20,7 +20,7 @@ pub fn carried(bytes: usize) {
     }
 }
 
-/// Records one cap that cut a chat lease's turns.
+/// Records one cap that cut a chat run's turns.
 pub fn cut(cap: HistoryCut) {
     if let Some(producers) = installed() {
         producers
@@ -30,7 +30,7 @@ pub fn cut(cap: HistoryCut) {
     }
 }
 
-/// Records a chat lease issued without its turns because the read failed.
+/// Records a chat run issued without its turns because the read failed.
 pub fn read_failed() {
     if let Some(producers) = installed() {
         producers.fleet.history_read_failures.add(1, &[]);

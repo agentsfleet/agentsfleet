@@ -3,7 +3,7 @@
 //! Every read and write a route makes names the workspace its caller was
 //! proven in, and the fleet is checked against it before any schedule of the
 //! fleet is read, claimed or pushed — see `afd_cron`'s `Schedules::holds_fleet`.
-//! The lease-guarded writes are the exception, because the lease already
+//! The run-guarded writes are the exception, because the run already
 //! binds the fleet to its workspace; they live in `guarded`.
 
 use af_core::id::Uuid7;

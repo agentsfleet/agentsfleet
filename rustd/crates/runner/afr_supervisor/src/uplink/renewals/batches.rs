@@ -14,13 +14,13 @@ pub(super) fn split(
     entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
     let empty: Up<'_> = Up::RenewBatch {
         request_id: NonZeroU64::MAX,
-        leases: Vec::new(),
+        runs: Vec::new(),
     };
     let overhead = af_validate::serialized_len(&empty).map_err(crate::error::encode)?;
     let mut bytes = overhead;
     let mut current = RenewalBatch {
         ids: Vec::new(),
-        leases: Vec::new(),
+        runs: Vec::new(),
     };
     let mut batches = Vec::new();
     for (id, renewal) in entries {
@@ -28,20 +28,20 @@ pub(super) fn split(
         if overhead + entry_bytes > MESSAGE_BYTES_MAX {
             return Err(ErrorKind::StreamProtocol.into());
         }
-        let separator = usize::from(!current.leases.is_empty());
+        let separator = usize::from(!current.runs.is_empty());
         if bytes + separator + entry_bytes > MESSAGE_BYTES_MAX {
             batches.push(current);
             current = RenewalBatch {
                 ids: Vec::new(),
-                leases: Vec::new(),
+                runs: Vec::new(),
             };
             bytes = overhead;
         }
-        bytes += usize::from(!current.leases.is_empty()) + entry_bytes;
+        bytes += usize::from(!current.runs.is_empty()) + entry_bytes;
         current.ids.push(id);
-        current.leases.push(renewal);
+        current.runs.push(renewal);
     }
-    if !current.leases.is_empty() {
+    if !current.runs.is_empty() {
         batches.push(current);
     }
     Ok(batches)

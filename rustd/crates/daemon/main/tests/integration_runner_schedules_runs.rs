@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use sqlx::Row as _;
 
 use crate::e2e::Scenario;
-use crate::schedules::{Leased, Seeded};
+use crate::schedules::{Assigned, Seeded};
 use crate::verbs::FakeQStash;
 use crate::wire::wait_for_offer;
 
@@ -33,25 +33,25 @@ use crate::wire::wait_for_offer;
 async fn test_schedule_run_now_admits_one_event() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let (_status, created) = leased.create(false).await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let (_status, created) = assigned.create(false).await;
     let schedule = created["schedule_id"].as_str().expect("an id").to_owned();
 
-    let (status, first) = leased.run_now(&schedule).await;
+    let (status, first) = assigned.run_now(&schedule).await;
     assert_eq!(status, 201, "{first}");
-    let (status, again) = leased.run_now(&schedule).await;
+    let (status, again) = assigned.run_now(&schedule).await;
     assert_eq!(status, 201, "{again}");
     assert_eq!(
         first["event_id"], again["event_id"],
-        "one event's retry is one run"
+        "one event's retry is one scene"
     );
 
-    let mut connection = leased.connection().await;
+    let mut connection = assigned.connection().await;
     let row = sqlx::query(
         "SELECT count(*), min(event_type) FROM fleet.admissions \
          WHERE fleet_id = $1 AND actor = $2",
     )
-    .bind(&leased.run.fleet)
+    .bind(&assigned.scene.fleet)
     .bind(format!("{ACTOR_PREFIX}{schedule}"))
     .fetch_one(&mut *connection)
     .await
@@ -60,41 +60,41 @@ async fn test_schedule_run_now_admits_one_event() {
     let event_type: String = row.try_get(1).expect("a type");
     assert_eq!((admitted, event_type.as_str()), (1, "cron"));
     drop(connection);
-    leased.finish(supervisor).await;
+    assigned.finish(supervisor).await;
 }
 
 /// A run a schedule starts reaches the runner with the schedule's message as
-/// its body: the lease records the fired event, which it can only do when the
+/// its body: the run records the fired event, which it can only do when the
 /// fire stored JSON, as every other producer does.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_scheduled_run_is_leased_with_its_message() {
+async fn test_scheduled_run_is_rund_with_its_message() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let (_status, created) = leased.create(false).await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let (_status, created) = assigned.create(false).await;
     let schedule = created["schedule_id"].as_str().expect("an id").to_owned();
-    let (status, fired) = leased.run_now(&schedule).await;
+    let (status, fired) = assigned.run_now(&schedule).await;
     assert_eq!(status, 201, "{fired}");
     let event = Uuid7::parse(fired["event_id"].as_str().expect("an event id"))
-        .expect("the run answers a canonical event id");
+        .expect("the scene answers a canonical event id");
 
-    leased.settle().await;
-    let _woken = wait_for_offer(&leased.run, &event).await;
+    assigned.settle().await;
+    let _woken = wait_for_offer(&assigned.scene, &event).await;
 
-    let mut connection = leased.connection().await;
+    let mut connection = assigned.connection().await;
     let message: String = sqlx::query_scalar(
         "SELECT request_json->>'message' FROM fleet.events \
          WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(&leased.run.fleet)
+    .bind(&assigned.scene.fleet)
     .bind(&event)
     .fetch_one(&mut *connection)
     .await
-    .expect("the leased run is recorded");
+    .expect("the assigned scene is recorded");
     assert_eq!(json!(message), created["message"]);
     drop(connection);
-    leased.finish(supervisor).await;
+    assigned.finish(supervisor).await;
 }
 
 /// A person's active schedule may be run now: running is not changing it.
@@ -103,13 +103,13 @@ async fn test_scheduled_run_is_leased_with_its_message() {
 async fn test_run_now_of_a_person_s_active_schedule_runs() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let schedule = leased.seed(Source::Api, "person-active").await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let schedule = assigned.seed(Source::Api, "person-active").await;
 
-    let (status, run) = leased.run_now(&schedule).await;
-    assert_eq!(status, 201, "{run}");
-    assert_eq!(leased.admitted(&schedule).await, 1);
-    leased.finish(supervisor).await;
+    let (status, scene) = assigned.run_now(&schedule).await;
+    assert_eq!(status, 201, "{scene}");
+    assert_eq!(assigned.admitted(&schedule).await, 1);
+    assigned.finish(supervisor).await;
 }
 
 /// A run-now overrides neither a person's pause nor a retirement: each is a
@@ -119,23 +119,23 @@ async fn test_run_now_of_a_person_s_active_schedule_runs() {
 async fn test_run_now_refuses_a_schedule_that_would_not_fire() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
     for (source, state) in [(Source::Api, "paused"), (Source::Fleet, "deleting")] {
         let row = Seeded {
             desired_status: state,
             ..Seeded::active(source, state)
         };
-        let schedule = leased.seed_row(&leased.run.fleet, row).await;
+        let schedule = assigned.seed_row(&assigned.scene.fleet, row).await;
 
-        let (status, refused) = leased.run_now(&schedule).await;
+        let (status, refused) = assigned.run_now(&schedule).await;
         assert_eq!(
             (status, &refused["error_code"], &refused["current_state"]),
             (409, &json!("UZ-SCHED-011"), &json!(state)),
             "{refused}"
         );
-        assert_eq!(leased.admitted(&schedule).await, 0, "{state}");
+        assert_eq!(assigned.admitted(&schedule).await, 0, "{state}");
     }
-    leased.finish(supervisor).await;
+    assigned.finish(supervisor).await;
 }
 
 /// An archived fleet takes no run-now, whatever its schedules say.
@@ -144,20 +144,20 @@ async fn test_run_now_refuses_a_schedule_that_would_not_fire() {
 async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let schedule = leased.seed(Source::Fleet, "own-active").await;
-    leased
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let schedule = assigned.seed(Source::Fleet, "own-active").await;
+    assigned
         .on_fleet("UPDATE fleet.fleets SET status = 'archived' WHERE id = $1")
         .await;
 
-    let (status, refused) = leased.run_now(&schedule).await;
+    let (status, refused) = assigned.run_now(&schedule).await;
     assert_eq!(
         (status, &refused["error_code"], &refused["current_state"]),
         (409, &json!("UZ-AGT-012"), &json!("archived")),
         "{refused}"
     );
-    assert_eq!(leased.admitted(&schedule).await, 0);
-    leased.finish(supervisor).await;
+    assert_eq!(assigned.admitted(&schedule).await, 0);
+    assigned.finish(supervisor).await;
 }
 
 /// A run a schedule started cannot run one now, so no schedule wakes its fleet
@@ -167,18 +167,18 @@ async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
 async fn test_run_now_from_a_scheduled_run_is_refused() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let schedule = leased.seed(Source::Fleet, "own-active").await;
-    leased.lease_woken_by_schedule().await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let schedule = assigned.seed(Source::Fleet, "own-active").await;
+    assigned.run_woken_by_schedule().await;
 
-    let (status, refused) = leased.run_now(&schedule).await;
+    let (status, refused) = assigned.run_now(&schedule).await;
     assert_eq!(
         (status, &refused["error_code"], &refused["current_state"]),
         (409, &json!("UZ-SCHED-011"), &json!("scheduled_run")),
         "{refused}"
     );
-    assert_eq!(leased.admitted(&schedule).await, 0);
-    leased.finish(supervisor).await;
+    assert_eq!(assigned.admitted(&schedule).await, 0);
+    assigned.finish(supervisor).await;
 }
 
 /// Dimension 1.7. A schedule's runs are its events, newest first, paged.
@@ -187,32 +187,32 @@ async fn test_run_now_from_a_scheduled_run_is_refused() {
 async fn test_schedule_runs_lists_events() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let schedule = leased.seed(Source::Fleet, "runs-fixture").await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let schedule = assigned.seed(Source::Fleet, "runs-fixture").await;
     let actor = format!("{ACTOR_PREFIX}{schedule}");
     // Minted in ascending order, so an id breaks a same-millisecond tie the
     // same way the write order does.
     let runs: [Uuid7; 3] = std::array::from_fn(|_slot| afd_db::test_util::mint_id());
     for event in &runs {
-        record_event(&leased.run, event, &actor).await;
+        record_event(&assigned.scene, event, &actor).await;
     }
     // Another schedule's run, which this list must not carry, and a longer
     // actor this one's id is a prefix of, which an exact read never matches.
     record_event(
-        &leased.run,
+        &assigned.scene,
         &afd_db::test_util::mint_id(),
         "cron:someone-else",
     )
     .await;
     record_event(
-        &leased.run,
+        &assigned.scene,
         &afd_db::test_util::mint_id(),
         &format!("{actor}0"),
     )
     .await;
 
-    let first = format!("{}&limit=2", leased.fenced(&format!("/{schedule}/runs")));
-    let (status, page) = leased.call(Method::GET, &first, None).await;
+    let first = format!("{}&limit=2", assigned.fenced(&format!("/{schedule}/runs")));
+    let (status, page) = assigned.call(Method::GET, &first, None).await;
     assert_eq!(status, 200, "{page}");
     assert_eq!(event_ids(&page), [&json!(runs[2]), &json!(runs[1])]);
     let cursor = page["next_cursor"]
@@ -220,11 +220,11 @@ async fn test_schedule_runs_lists_events() {
         .expect("a full page names its successor");
 
     let next = format!("{first}&starting_after={cursor}");
-    let (status, page) = leased.call(Method::GET, &next, None).await;
+    let (status, page) = assigned.call(Method::GET, &next, None).await;
     assert_eq!(status, 200, "{page}");
     assert_eq!(event_ids(&page), [&json!(runs[0])]);
     assert_eq!(page["next_cursor"], Value::Null);
-    leased.finish(supervisor).await;
+    assigned.finish(supervisor).await;
 }
 
 /// Dimension 1.9. A `once` schedule run now retires: `QStash` removes it and the
@@ -234,16 +234,16 @@ async fn test_schedule_runs_lists_events() {
 async fn test_once_schedule_retires_after_fire() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let (_status, created) = leased.create(true).await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let (_status, created) = assigned.create(true).await;
     assert_eq!(created["once"], true);
     let schedule = created["schedule_id"].as_str().expect("an id");
 
-    let (status, run) = leased.run_now(schedule).await;
-    assert_eq!(status, 201, "{run}");
+    let (status, scene) = assigned.run_now(schedule).await;
+    assert_eq!(status, 201, "{scene}");
     assert_eq!(qstash.deletes(), 1, "the once schedule left QStash");
-    assert_eq!(leased.held(None).await, 0, "and its row went");
-    let (status, again) = leased.run_now(schedule).await;
+    assert_eq!(assigned.held(None).await, 0, "and its row went");
+    let (status, again) = assigned.run_now(schedule).await;
     assert_eq!(
         (status, &again["error_code"]),
         (404, &json!("UZ-SCHED-002")),
@@ -251,14 +251,19 @@ async fn test_once_schedule_retires_after_fire() {
     );
 
     // Its run outlives the row: the history still lists it.
-    let event = Uuid7::parse(run["event_id"].as_str().expect("the run's event"))
-        .expect("the run answers a canonical event id");
-    record_event(&leased.run, &event, &format!("{ACTOR_PREFIX}{schedule}")).await;
-    let runs = leased.fenced(&format!("/{schedule}/runs"));
-    let (status, page) = leased.call(Method::GET, &runs, None).await;
+    let event = Uuid7::parse(scene["event_id"].as_str().expect("the scene's event"))
+        .expect("the scene answers a canonical event id");
+    record_event(
+        &assigned.scene,
+        &event,
+        &format!("{ACTOR_PREFIX}{schedule}"),
+    )
+    .await;
+    let runs = assigned.fenced(&format!("/{schedule}/runs"));
+    let (status, page) = assigned.call(Method::GET, &runs, None).await;
     assert_eq!(status, 200, "{page}");
     assert_eq!(event_ids(&page), [&json!(event)]);
-    leased.finish(supervisor).await;
+    assigned.finish(supervisor).await;
 }
 
 /// A `once` schedule fired while another syncer held its row: the fire is
@@ -269,33 +274,33 @@ async fn test_once_schedule_retires_after_fire() {
 async fn test_once_retirement_held_is_repeated_not_dropped() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
+    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
     let row = Seeded {
         once: true,
         ..Seeded::active(Source::Fleet, "once-held")
     };
-    let schedule = leased.seed_row(&leased.run.fleet, row).await;
-    leased.hold_sync(&schedule, true).await;
+    let schedule = assigned.seed_row(&assigned.scene.fleet, row).await;
+    assigned.hold_sync(&schedule, true).await;
 
-    let (status, refused) = leased.run_now(&schedule).await;
+    let (status, refused) = assigned.run_now(&schedule).await;
     assert_eq!(
         (status, &refused["error_code"]),
         (409, &json!("UZ-SCHED-006")),
         "{refused}"
     );
-    assert_eq!(leased.admitted(&schedule).await, 1, "the fire is durable");
-    assert_eq!(leased.held(None).await, 1, "the row waits, still active");
+    assert_eq!(assigned.admitted(&schedule).await, 1, "the fire is durable");
+    assert_eq!(assigned.held(None).await, 1, "the row waits, still active");
 
-    leased.hold_sync(&schedule, false).await;
-    let (status, run) = leased.run_now(&schedule).await;
-    assert_eq!(status, 201, "{run}");
+    assigned.hold_sync(&schedule, false).await;
+    let (status, scene) = assigned.run_now(&schedule).await;
+    assert_eq!(status, 201, "{scene}");
     assert_eq!(
-        leased.admitted(&schedule).await,
+        assigned.admitted(&schedule).await,
         1,
         "the repeat replayed it"
     );
-    assert_eq!(leased.held(None).await, 0, "and retired the row");
-    leased.finish(supervisor).await;
+    assert_eq!(assigned.held(None).await, 0, "and retired the row");
+    assigned.finish(supervisor).await;
 }
 
 /// The event ids a runs page carries, in order.
@@ -311,12 +316,12 @@ fn event_ids(page: &Value) -> Vec<&Value> {
 /// Writes one history row for the scenario's fleet. The statement stamps
 /// `created_at` with `now()`, so rows order by the sequence the test writes
 /// them in, with `event_id` breaking a same-millisecond tie the same way.
-async fn record_event(run: &Scenario, event: &Uuid7, actor: &str) {
-    let mut connection = run.booted.database.acquire().await.expect("a connection");
+async fn record_event(scene: &Scenario, event: &Uuid7, actor: &str) {
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
-        .bind(&run.fleet)
+        .bind(&scene.fleet)
         .bind(event)
-        .bind(&run.workspace)
+        .bind(&scene.workspace)
         .bind(actor)
         .bind("cron")
         .bind(sqlx::types::Json(json!({})))

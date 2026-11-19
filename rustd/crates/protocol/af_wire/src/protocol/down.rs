@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use super::StreamKind;
 use crate::fold::FoldResponse;
-use crate::lease::TaggedLease;
 use crate::report::{RenewResponse, ReportResponse};
+use crate::run::TaggedRun;
 use crate::runner::HeartbeatResponse;
 
 /// A domain answer or a classified refusal, without optional success fields.
@@ -33,13 +33,13 @@ pub enum Answer<'a, T> {
     },
 }
 
-/// An independent answer for each lease in a renewal batch.
+/// An independent answer for each run in a renewal batch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenewalAnswer<'a> {
-    /// Lease to which this answer and usage acknowledgement apply.
+    /// Run to which this answer and usage acknowledgement apply.
     #[serde(borrow)]
-    pub lease_id: Cow<'a, str>,
+    pub run_id: Cow<'a, str>,
     /// Complete renewal response or refusal.
     #[serde(borrow)]
     pub answer: Answer<'a, RenewResponse>,
@@ -66,7 +66,7 @@ pub enum Down<
         #[serde(borrow)]
         previous_connection_id: Option<Cow<'a, str>>,
     },
-    /// The connection owns this runner and has rebuilt its live leases.
+    /// The connection owns this runner and has rebuilt its live runs.
     Welcome {
         /// Identifier of the opening hello.
         request_id: NonZeroU64,
@@ -86,7 +86,7 @@ pub enum Down<
     Offer {
         /// Fleet or authoring work, with its existing payload.
         #[serde(borrow)]
-        lease: TaggedLease<'a, C>,
+        run: TaggedRun<'a, C>,
     },
     /// Current policy, capability verdict and held-sandbox releases.
     Heartbeat {
@@ -105,17 +105,17 @@ pub enum Down<
     Renewed {
         /// Identifier of the renewal batch.
         request_id: NonZeroU64,
-        /// Lease-specific deadlines, usage acknowledgements or refusals.
+        /// Run-specific deadlines, usage acknowledgements or refusals.
         #[serde(borrow)]
-        leases: Vec<RenewalAnswer<'a>>,
+        runs: Vec<RenewalAnswer<'a>>,
     },
     /// Result or classified refusal for one authoring dispatch.
     AuthoringModelResult {
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[serde(borrow)]
         /// Complete response or a registered, classified refusal.
         answer: Answer<'a, crate::authoring::ModelResult<D, O, I>>,
@@ -124,9 +124,9 @@ pub enum Down<
     AuthoringActivityAck {
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[serde(borrow)]
         /// Complete response or a registered, classified refusal.
         answer: Answer<'a, crate::authoring::ActivityAccepted>,
@@ -135,9 +135,9 @@ pub enum Down<
     AuthoringRenewed {
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[serde(borrow)]
         /// Complete response or a registered, classified refusal.
         answer: Answer<'a, crate::authoring::Renewed>,
@@ -146,9 +146,9 @@ pub enum Down<
     AuthoringReportAck {
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[serde(borrow)]
         /// Complete response or a registered, classified refusal.
         answer: Answer<'a, crate::authoring::Reported>,
@@ -157,20 +157,20 @@ pub enum Down<
     ReportAck {
         /// Identifier of this transmission of the pending report.
         request_id: NonZeroU64,
-        /// Lease whose pending in-memory report this answer acknowledges.
+        /// Run whose pending in-memory report this answer acknowledges.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// Full report response or classified refusal.
         #[serde(borrow)]
         answer: Answer<'a, ReportResponse>,
     },
-    /// Pending input claimed under the requesting lease's fence.
+    /// Pending input claimed under the requesting run's fence.
     Folded {
         /// Identifier of the folds request.
         request_id: NonZeroU64,
-        /// Lease whose input inbox receives this answer.
+        /// Run whose input inbox receives this answer.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// Claimed inputs or classified refusal.
         #[serde(borrow)]
         answer: Answer<'a, FoldResponse<'a>>,
@@ -179,23 +179,23 @@ pub enum Down<
     TurnCheckpoint {
         /// Transport request identity.
         request_id: NonZeroU64,
-        /// Ordinary lease that authorized this command.
+        /// Ordinary run that authorized this command.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// Stable identity retained when an acknowledgement is lost.
-        operation_id: crate::lease::TurnId,
+        operation_id: crate::run::TurnId,
         /// Echoed even for refusals, so another operation cannot satisfy this request.
-        kind: crate::lease::TurnCheckpointKind,
+        kind: crate::run::TurnCheckpointKind,
         /// Full response or safe registered refusal.
         #[serde(borrow)]
-        answer: Answer<'a, crate::lease::TurnCheckpointResponse>,
+        answer: Answer<'a, crate::run::TurnCheckpointResponse>,
     },
-    /// Stop the named running lease.
+    /// Stop the named running run.
     Cancel {
-        /// Lease whose interrupt token must be cancelled.
+        /// Run whose interrupt token must be cancelled.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        /// Why this lease no longer has authority.
+        run_id: Cow<'a, str>,
+        /// Why this run no longer has authority.
         #[serde(borrow)]
         error_code: Cow<'a, str>,
     },

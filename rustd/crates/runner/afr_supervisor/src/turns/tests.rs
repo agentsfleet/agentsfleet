@@ -9,14 +9,14 @@ use std::time::Duration;
 use af_core::id::Uuid7;
 
 use super::FleetTurns;
-use crate::test_support::{FLEET_ID, LEASE_ID};
+use crate::test_support::{FLEET_ID, RUN_ID};
 
 #[tokio::test(start_paused = true)]
 async fn one_fleet_runs_one_at_a_time_and_others_do_not_wait() {
     let (turns, coordinator) = FleetTurns::start();
     tokio::spawn(coordinator);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
-    let other = Uuid7::parse(LEASE_ID).unwrap();
+    let other = Uuid7::parse(RUN_ID).unwrap();
 
     let held = turns.claim(&fleet).await.unwrap();
     let waiting = tokio::time::timeout(Duration::from_secs(1), turns.claim(&fleet)).await;

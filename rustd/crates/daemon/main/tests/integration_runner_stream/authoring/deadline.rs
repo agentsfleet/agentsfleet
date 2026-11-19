@@ -16,7 +16,7 @@ async fn known_usage_survives_the_model_answer_deadline_during_its_edit_check() 
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::with_decision(&mut supervisor, &boundary).await;
     propose_edit(&fixture).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     let model = fixture.model();
     let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
     let expired = Semaphore::new(0);
@@ -24,7 +24,7 @@ async fn known_usage_survives_the_model_answer_deadline_during_its_edit_check() 
         async {
             let result = fixture
                 .session
-                .authoring_model_until(&lease, &model, deadline)
+                .authoring_model_until(&run, &model, deadline)
                 .await;
             expired.add_permits(1);
             result
@@ -75,7 +75,7 @@ async fn cross_deadline(
 }
 
 async fn verify_accounting(fixture: &AuthoringFixture, model: &af_wire::authoring::ModelCall) {
-    let lease = fixture.id();
+    let run = fixture.id();
     let mut replacement = Session::connect(&fixture.config)
         .await
         .expect("current native owner");
@@ -85,7 +85,7 @@ async fn verify_accounting(fixture: &AuthoringFixture, model: &af_wire::authorin
     let report = Report::Accounting { accounting };
     assert!(
         replacement
-            .authoring_report(&lease, &report)
+            .authoring_report(&run, &report)
             .await
             .expect("known accounting")
             .settled
@@ -101,7 +101,7 @@ async fn verify_accounting(fixture: &AuthoringFixture, model: &af_wire::authorin
     assert_eq!(fixture.receipts().await, (1, 1, 1));
     assert!(
         replacement
-            .authoring_report(&lease, &report)
+            .authoring_report(&run, &report)
             .await
             .expect("accounting replay")
             .replayed
@@ -109,7 +109,7 @@ async fn verify_accounting(fixture: &AuthoringFixture, model: &af_wire::authorin
     assert_eq!(fixture.charges().await, charged);
     assert_eq!(
         replacement
-            .authoring_model(&lease, model)
+            .authoring_model(&run, model)
             .await
             .expect_err("settled work cannot redispatch")
             .code(),
@@ -124,7 +124,7 @@ async fn propose_edit(fixture: &AuthoringFixture) {
         .authoring_activity(&fixture.id(), &fixture.proposal())
         .await
         .expect("initial candidate");
-    let draft = Uuid7::parse(&fixture.lease.draft_id).expect("draft identity");
+    let draft = Uuid7::parse(&fixture.run.draft_id).expect("draft identity");
     let candidate = fixture
         .drafts
         .read(fixture.access(), &draft)

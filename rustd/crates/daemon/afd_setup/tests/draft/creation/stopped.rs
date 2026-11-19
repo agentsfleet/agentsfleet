@@ -65,7 +65,7 @@ async fn late(c: &Case, a: &Attempt) {
     let error = c
         .base
         .drafts
-        .activity(&c.base.runner, &a.lease, a.initialize(1))
+        .activity(&c.base.runner, &a.run, a.initialize(1))
         .await
         .expect_err("old proposal fenced");
     assert_eq!(error.code(), error_code::AUTHORING_FENCE);
@@ -74,7 +74,7 @@ async fn late(c: &Case, a: &Attempt) {
         let ack = c
             .base
             .drafts
-            .report(&c.base.runner, &a.lease, request.clone())
+            .report(&c.base.runner, &a.run, request.clone())
             .await
             .expect("retained accounting");
         assert!(ack.settled);

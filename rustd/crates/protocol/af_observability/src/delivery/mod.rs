@@ -58,7 +58,7 @@ const HOURS_IN_A_WEEK: u64 = 24 * 7;
 
 /// A settled run, as the span it becomes.
 ///
-/// Borrowed rather than owned throughout: every field is read out of the lease
+/// Borrowed rather than owned throughout: every field is read out of the run
 /// row the report already loaded, and the span is built and finished inside
 /// one call. Owning them would copy a run's whole identity to describe it.
 #[derive(Debug)]
@@ -71,7 +71,7 @@ pub struct Delivery<'a> {
     pub fleet_id: &'a str,
     /// The event the run executed.
     pub event_id: &'a str,
-    /// The sandbox posture, in the spelling the lease row stored.
+    /// The sandbox posture, in the spelling the run row stored.
     pub posture: &'a str,
     /// The provider the run was issued against, as configured.
     pub provider: &'a str,
@@ -99,7 +99,7 @@ pub struct Delivery<'a> {
 /// on this daemon's. A segment the run never reached is absent, never zero.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Segments {
-    /// Event creation to lease issue.
+    /// Event creation to run issue.
     pub queue_wait: Option<Duration>,
     /// The runner's memory read.
     pub memory: Option<Duration>,

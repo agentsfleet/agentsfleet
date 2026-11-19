@@ -2,7 +2,7 @@
 //!
 //! A steer is admitted and put on the fleet's queue; no runner takes it. The
 //! first page of the thread carries it as a `queued` row with its body. Once a
-//! lease stamps the admission delivered and writes the history row, the same
+//! run stamps the admission delivered and writes the history row, the same
 //! event appears once, as the history row. The waiting read is planned against
 //! a private database, so its index is the one the statement was written for.
 //!
@@ -35,7 +35,7 @@ const BODY: &str = r#"{"message":"wait for me"}"#;
 /// A first page's size, as the dashboard asks for it.
 const PAGE: i64 = 26;
 
-/// What a lease writes to the admission when a runner takes it.
+/// What a run writes to the admission when a runner takes it.
 const MARK_DELIVERED: &str = "UPDATE fleet.admissions SET delivered_at = now() \
      WHERE fleet_id = $1 AND delivered_at IS NULL";
 

@@ -24,7 +24,7 @@ test.each(["0", "101", "1.5", "many"])("refuses an unsupported runner page size 
 test("reads runner policy and counters without a workspace context", async () => {
   fixture.respond = () => Response.json(RUNNER_DETAIL);
   const result = await fixture.run(["runners", "show", RUNNER_ID, "--json"]);
-  expect(result.code).toBe(0); expect(JSON.parse(result.stdout)).toMatchObject({id: RUNNER_ID, active_lease_count: 0, assigned_policy: POLICY});
+  expect(result.code).toBe(0); expect(JSON.parse(result.stdout)).toMatchObject({id: RUNNER_ID, active_run_count: 0, assigned_policy: POLICY});
 });
 
 test("converts a relative event window to a wire instant", async () => {
@@ -56,9 +56,9 @@ test("refuses an unknown runner event type before HTTP", async () => {
   expect(fixture.calls).toEqual([]);
 });
 
-test("passes workspace and fleet lease filters under their wire names", async () => {
+test("passes workspace and fleet run filters under their wire names", async () => {
   fixture.respond = () => Response.json({items: [], total: 0, next_cursor: null});
-  const result = await fixture.run(["runners", "leases", RUNNER_ID, "--workspace", WORKSPACE_ID, "--fleet", "Support triage", "--json"]);
+  const result = await fixture.run(["runners", "runs", RUNNER_ID, "--workspace", WORKSPACE_ID, "--fleet", "Support triage", "--json"]);
   expect(result.code).toBe(0);
   expect(fixture.calls[0]?.url.searchParams.get("workspace_id")).toBe(WORKSPACE_ID);
   expect(fixture.calls[0]?.url.searchParams.get("fleet")).toBe("Support triage");
@@ -156,7 +156,7 @@ test("runner text shows quarantine independently of policy state", async () => {
 
 test("platform runners still call the admin path", async () => {
   fixture.respond = () => Response.json({items: [], total: 0, next_cursor: null});
-  for (const verb of [["list"], ["show", RUNNER_ID], ["events", RUNNER_ID], ["leases", RUNNER_ID], ["cordon", RUNNER_ID], ["drain", RUNNER_ID]]) {
+  for (const verb of [["list"], ["show", RUNNER_ID], ["events", RUNNER_ID], ["runs", RUNNER_ID], ["cordon", RUNNER_ID], ["drain", RUNNER_ID]]) {
     fixture.calls.length = 0;
     await fixture.run(["runners", ...verb, "--json"]);
     expect(fixture.calls[0]?.url.pathname.startsWith("/v1/admin/runners")).toBe(true);

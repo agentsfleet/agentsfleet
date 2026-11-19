@@ -83,7 +83,7 @@ fn test_every_fleet_producer_runs_its_body() {
 
     producers::fleet::signup_bootstrapped();
     producers::fleet::signup_replayed();
-    producers::fleet::lease_polled(11);
+    producers::fleet::run_polled(11);
     for wake in [ReadyWake::Ring, ReadyWake::Gap] {
         producers::fleet::ready_wake_failed(wake);
     }
@@ -143,8 +143,8 @@ fn test_every_runner_producer_runs_its_body() {
     );
     producers::fleet::runner::processed(RUNNER);
     producers::fleet::runner::seen(RUNNER, jiff::Timestamp::constant(1_767_225_600, 0));
-    producers::fleet::runner::lease_taken(RUNNER);
-    producers::fleet::runner::lease_released(RUNNER);
+    producers::fleet::runner::run_taken(RUNNER);
+    producers::fleet::runner::run_released(RUNNER);
 
     // No class at all is its own arm — an unmodelled reason still counts.
     producers::fleet::runner::failed(RUNNER, None);
@@ -157,7 +157,7 @@ fn test_every_runner_producer_runs_its_body() {
         FailureClass::RunnerCrash,
         FailureClass::TransportLoss,
         FailureClass::LandlockDeny,
-        FailureClass::LeaseExpired,
+        FailureClass::RunExpired,
         FailureClass::RenewalTerminate,
         FailureClass::BudgetBreach,
     ] {

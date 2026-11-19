@@ -1,6 +1,6 @@
 //! The one client every egress tool sends through.
 //!
-//! Built once per runner and shared by every lease. Its resolver refuses a
+//! Built once per runner and shared by every run. Its resolver refuses a
 //! name any of whose addresses is private, loopback or reserved
 //! (`af_core::net`), so an allowlisted host that resolves inside the host's
 //! network is never reached; the check runs on each new connection's lookup,

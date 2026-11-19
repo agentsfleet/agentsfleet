@@ -5,7 +5,7 @@
 ///
 /// The reason this type exists rather than an array spelled at each producer:
 /// the reader refuses an entry missing ANY of these, so a producer that writes
-/// four of five appends work nothing can lease — silently, because the entry
+/// four of five appends work nothing can run — silently, because the entry
 /// is durable, delivered, and undecodable. That is not hypothetical. It shipped:
 /// the producers wrote `event_type`/`request_json` and no `created_at` while
 /// the reader asked for `type`/`request`/`created_at`, and every event appended

@@ -15,73 +15,73 @@ use crate::{e2e::scenario, wire};
 async fn native_renewal_keeps_usage_acknowledgements_and_independent_refusals() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
-        let run = scenario(&mut supervisor).await;
-        let mut native = Native::connect(&run, transport).await;
+        let scene = scenario(&mut supervisor).await;
+        let mut native = Native::connect(&scene, transport).await;
         native.heartbeat().await;
         native.ready().await;
         let offer = native.expect(StreamKind::Work, "offer").await;
-        let (lease, fence) = wire::claim(offer.pointer("/lease").expect("native response field"));
-        let report = wire::report_body(&lease, &run.event_id, fence);
-        mixed_renewal(&mut native, &lease, &report).await;
-        empty_folds(&mut native, &lease, fence).await;
-        cancellation(&run, &mut native, &lease).await;
-        final_report(&run, &mut native, &report).await;
+        let (run, fence) = wire::claim(offer.pointer("/run").expect("native response field"));
+        let report = wire::report_body(&run, &scene.event_id, fence);
+        mixed_renewal(&mut native, &run, &report).await;
+        empty_folds(&mut native, &run, fence).await;
+        cancellation(&scene, &mut native, &run).await;
+        final_report(&scene, &mut native, &report).await;
         native.close().await;
         supervisor.shutdown().await;
-        run.cleanup().await;
+        scene.cleanup().await;
     }
 }
 
-async fn mixed_renewal(native: &mut Native, lease: &str, report: &serde_json::Value) {
+async fn mixed_renewal(native: &mut Native, run: &str, report: &serde_json::Value) {
     let missing = afd_db::test_util::mint_id();
     native
         .send(
             StreamKind::Control,
             &json!({
                 "type":"renew_batch", "request_id":4,
-                "leases":[
-                    {"lease_id":lease,"request":{"requests":(*crate::wire::pointer(report, "/requests"))}},
-                    {"lease_id":missing,"request":{"requests":[]}}
+                "runs":[
+                    {"run_id":run,"request":{"requests":(*crate::wire::pointer(report, "/requests"))}},
+                    {"run_id":missing,"request":{"requests":[]}}
                 ]
             }),
         )
         .await;
     let renewed = native.expect(StreamKind::Control, "renewed").await;
-    let answers = (*crate::wire::pointer(&renewed, "/leases"))
+    let answers = (*crate::wire::pointer(&renewed, "/runs"))
         .as_array()
         .expect("one answer per renewal");
     assert_eq!(answers.len(), 2);
     let accepted = answers
         .iter()
-        .find(|answer| (*crate::wire::pointer(answer, "/lease_id")) == lease)
-        .expect("live lease answer");
+        .find(|answer| (*crate::wire::pointer(answer, "/run_id")) == run)
+        .expect("live run answer");
     assert_eq!((*crate::wire::pointer(accepted, "/answer/status")), "ok");
     assert_eq!(
         (*crate::wire::pointer(accepted, "/answer/response/recorded_through")),
         1
     );
-    assert!((*crate::wire::pointer(accepted, "/answer/response/lease_expires_at")).is_string());
+    assert!((*crate::wire::pointer(accepted, "/answer/response/run_expires_at")).is_string());
     let refused = answers
         .iter()
-        .find(|answer| (*crate::wire::pointer(answer, "/lease_id")) == missing.as_str())
-        .expect("missing lease answer");
+        .find(|answer| (*crate::wire::pointer(answer, "/run_id")) == missing.as_str())
+        .expect("missing run answer");
     assert_eq!(
         (*crate::wire::pointer(refused, "/answer/status")),
         "refused"
     );
     assert_eq!(
         (*crate::wire::pointer(refused, "/answer/error_code")),
-        af_core::error_code::RUN_LEASE_NOT_FOUND.as_str()
+        af_core::error_code::RUN_NOT_FOUND.as_str()
     );
     assert_eq!((*crate::wire::pointer(refused, "/answer/retryable")), false);
 }
 
-async fn empty_folds(native: &mut Native, lease: &str, fence: u64) {
+async fn empty_folds(native: &mut Native, run: &str, fence: u64) {
     native
         .send(
             StreamKind::Work,
             &json!({
-                "type":"folds", "request_id":5, "lease_id":lease,
+                "type":"folds", "request_id":5, "run_id":run,
                 "request":{"fencing_token":fence,"after_sequence":0}
             }),
         )
@@ -93,11 +93,11 @@ async fn empty_folds(native: &mut Native, lease: &str, fence: u64) {
     );
 }
 
-async fn cancellation(run: &crate::e2e::Scenario, native: &mut Native, lease: &str) {
-    sqlx::query("UPDATE runner.leases SET cancel_requested_at=now() WHERE id=$1")
-        .bind(af_core::id::Uuid7::parse(lease).expect("issued UUIDv7"))
+async fn cancellation(scene: &crate::e2e::Scenario, native: &mut Native, run: &str) {
+    sqlx::query("UPDATE runner.runs SET cancel_requested_at=now() WHERE id=$1")
+        .bind(af_core::id::Uuid7::parse(run).expect("issued UUIDv7"))
         .execute(
-            &mut *run
+            &mut *scene
                 .booted
                 .database
                 .acquire()
@@ -111,22 +111,26 @@ async fn cancellation(run: &crate::e2e::Scenario, native: &mut Native, lease: &s
             StreamKind::Control,
             &json!({
                 "type":"renew_batch", "request_id":6,
-                "leases":[{"lease_id":lease,"request":{"requests":[]}}]
+                "runs":[{"run_id":run,"request":{"requests":[]}}]
             }),
         )
         .await;
     let cancelled = native.expect(StreamKind::Control, "renewed").await;
     assert_eq!(
-        (*crate::wire::pointer(&cancelled, "/leases/0/answer/error_code")),
-        af_core::error_code::RUN_LEASE_CANCELLED.as_str()
+        (*crate::wire::pointer(&cancelled, "/runs/0/answer/error_code")),
+        af_core::error_code::RUN_CANCELLED.as_str()
     );
     assert_eq!(
-        (*crate::wire::pointer(&cancelled, "/leases/0/answer/retryable")),
+        (*crate::wire::pointer(&cancelled, "/runs/0/answer/retryable")),
         false
     );
 }
 
-async fn final_report(run: &crate::e2e::Scenario, native: &mut Native, report: &serde_json::Value) {
+async fn final_report(
+    scene: &crate::e2e::Scenario,
+    native: &mut Native,
+    report: &serde_json::Value,
+) {
     native
         .send(
             StreamKind::Reports,
@@ -137,8 +141,15 @@ async fn final_report(run: &crate::e2e::Scenario, native: &mut Native, report: &
     assert_eq!((*crate::wire::pointer(&settled, "/answer/status")), "ok");
     let lines: i64 =
         sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE event_id=$1 AND seq=1")
-            .bind(&run.event_id)
-            .fetch_one(&mut *run.booted.database.acquire().await.expect("usage observer"))
+            .bind(&scene.event_id)
+            .fetch_one(
+                &mut *scene
+                    .booted
+                    .database
+                    .acquire()
+                    .await
+                    .expect("usage observer"),
+            )
             .await
             .expect("read usage after renewal and final report");
     assert_eq!(

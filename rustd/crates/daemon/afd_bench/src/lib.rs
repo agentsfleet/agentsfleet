@@ -20,7 +20,7 @@
 //!
 //! # These lanes measure and change nothing
 //!
-//! Every lane drives the production types directly — `afd_fleet`'s lease path,
+//! Every lane drives the production types directly — `afd_fleet`'s run path,
 //! `afd_outbound`'s worker, `afd_turns`' steer — rather than a copy of them,
 //! because a reimplementation would measure the reimplementation. Nothing here
 //! is reachable from the daemon, and no measurement is emitted as a metric:
@@ -51,6 +51,6 @@ pub use abort::Abort;
 pub use datastores::Datastores;
 pub use error::{Error, Result};
 pub use fixture::{FixtureLedger, RunPrefix};
-pub use instrument::{LeaseInstrument, PollCounters};
+pub use instrument::{PollCounters, RunInstrument};
 pub use profile::{Caps, Parameter, Profile, Target};
 pub use report::{Lane, Latency, Report};

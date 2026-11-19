@@ -255,7 +255,7 @@ fn test_only_a_clean_stop_is_success() {
     assert_eq!(
         status_for(&stuck),
         FAILURE,
-        "a task that would not stop is a failed run, not a quiet one"
+        "a task that would not stop is a failed scene, not a quiet one"
     );
 
     let fell_over = Outcome {
@@ -283,7 +283,7 @@ fn test_migrate_refuses_a_database_that_will_not_answer() {
         std::future::ready(()),
     );
 
-    assert_eq!(status, FAILURE, "a migration that could not run exits 1");
+    assert_eq!(status, FAILURE, "a migration that could not scene exits 1");
 }
 
 mod configuration;

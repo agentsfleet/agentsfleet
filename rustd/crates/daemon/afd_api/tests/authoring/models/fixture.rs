@@ -90,7 +90,7 @@ impl Model {
         let attempt: Uuid7 = sqlx::query_scalar("UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE draft_id=$1 RETURNING id")
             .bind(&running.draft).bind(hex_hash()).fetch_one(&mut *connection).await.expect("bound admitted capability");
         drop(connection);
-        let operation = crate::harness::native::Operation::Model(running.lease.clone());
+        let operation = crate::harness::native::Operation::Model(running.run.clone());
         let request = json!({"capability_token":CAPABILITY,"attempt_id":attempt,"fence":"1",
             "dispatch_id":mint(),"call_index":1,"request":{"messages":[{"role":"user","text":"Investigate checkout"}],"max_output_tokens":128}});
         Self {

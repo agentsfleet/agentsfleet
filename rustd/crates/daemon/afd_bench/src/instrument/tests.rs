@@ -1,7 +1,7 @@
 //! The exporter's own contract, without installing the process-wide producers.
 //!
 //! Installing here would flip `producers::installed()` for every other unit
-//! test in this binary (see `tests/lease_instrument.rs`), so these build a
+//! test in this binary (see `tests/run_instrument.rs`), so these build a
 //! provider over the exporter directly and record into it by name.
 
 #![expect(
@@ -68,7 +68,7 @@ fn a_flush_and_a_shutdown_keep_the_last_capture_a_lane_reads() {
             polls: 3,
             candidates: 30,
         },
-        "only the lease families are captured, and a flush or shutdown clears none"
+        "only the run families are captured, and a flush or shutdown clears none"
     );
 }
 

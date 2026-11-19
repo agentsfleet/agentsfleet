@@ -1,7 +1,7 @@
 //! A healthy daemon, as this crate's own suites fake it.
 //!
 //! A suite outside the crate fakes the same one from here (`M-TEST-UTIL`):
-//! the fixture lease, the identifiers it carries, and the reply a healthy
+//! the fixture run, the identifiers it carries, and the reply a healthy
 //! daemon gives each route.
 
 #[cfg(feature = "test-util")]
@@ -18,7 +18,7 @@ use std::borrow::Cow;
 use af_wire::fold::FoldResponse;
 use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
 use af_wire::paths::{
-    LEASE_TOOL_CALLS_SUFFIX, RUNNER_LEASES, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_SELF,
+    RUN_TOOL_CALLS_SUFFIX, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_RUNS, RUNNER_SELF,
 };
 use af_wire::report::{RenewResponse, ReportResponse};
 use af_wire::runner::{AssignedPolicy, HeartbeatResponse, HeartbeatStatus, SelfResponse};
@@ -28,14 +28,14 @@ use serde_json::Value;
 
 use crate::client::Verb;
 
-/// The lease every suite is granted, with its identifiers left for the suite
+/// The run every suite is granted, with its identifiers left for the suite
 /// to fill.
-pub const LEASE_JSON: &str = include_str!("../test_support/lease.json");
-/// A canonical lease identifier.
-pub const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
+pub const RUN_JSON: &str = include_str!("../test_support/run.json");
+/// A canonical run identifier.
+pub const RUN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
 /// A canonical fleet identifier.
 pub const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
-/// The fencing token the fixture lease carries.
+/// The fencing token the fixture run carries.
 pub const FENCING: u64 = 504;
 /// The id a healthy daemon names this runner by.
 pub const RUNNER_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8059";
@@ -52,7 +52,7 @@ const ACTIVE: &str = "active";
 pub struct Healthy {
     /// The assignment every beat carries.
     pub assigned: AssignedPolicy<'static>,
-    /// How often to beat and to ask for a lease again, in milliseconds.
+    /// How often to beat and to ask for a run again, in milliseconds.
     pub interval_ms: u32,
     /// When a renewal is granted until.
     pub granted_until: jiff::Timestamp,
@@ -141,7 +141,7 @@ impl Healthy {
     /// A renewal: the instant this daemon granted, with nothing recorded.
     fn renewed(&self) -> Value {
         value(&RenewResponse {
-            lease_expires_at: self.granted_until,
+            run_expires_at: self.granted_until,
             recorded_through: None,
         })
     }
@@ -184,15 +184,15 @@ impl Healthy {
 /// answers with a reply of its own; none for a route it only acknowledges.
 fn routed(method: &str, path: &str) -> Option<Verb> {
     let path = path.split_once('?').map_or(path, |(path, _query)| path);
-    let leased = path
-        .strip_prefix(RUNNER_LEASES)
+    let held = path
+        .strip_prefix(RUNNER_RUNS)
         .and_then(|rest| rest.strip_prefix('/'))
         .and_then(|rest| rest.split_once('/'))
-        .map(|(_lease, suffix)| suffix);
+        .map(|(_run, suffix)| suffix);
     let memory = path.starts_with(RUNNER_MEMORY);
-    match (path, leased) {
+    match (path, held) {
         (RUNNER_SELF, _) => Some(Verb::Me),
-        (_, Some(LEASE_TOOL_CALLS_SUFFIX)) => Some(Verb::Records),
+        (_, Some(RUN_TOOL_CALLS_SUFFIX)) => Some(Verb::Records),
         _ if memory && path.ends_with(RUNNER_MEMORY_RECALL_SUFFIX) => Some(Verb::Recall),
         _ if memory && method == GET => Some(Verb::Hydrate),
         _ if memory => Some(Verb::Capture),

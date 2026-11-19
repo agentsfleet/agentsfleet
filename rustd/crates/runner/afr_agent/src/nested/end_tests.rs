@@ -16,7 +16,7 @@ use super::fixture::{
     ACCEPTED, ANSWER, CHILD_ID, DETAIL, DONE, FAILED, FIRST_CALL, SECOND_CALL, STATUS, TASK,
     TASK_KEY, THIRD_CALL, last_result, parsed, root_requests, stalling_offered, stalling_tools,
 };
-use crate::fixture::{Script, call, lease, say, unbounded};
+use crate::fixture::{Script, call, payload, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
 /// An id no child of a run has.
@@ -50,9 +50,9 @@ async fn test_unknown_child_reads_not_found() {
         vec![say(DONE)],
     ]);
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (_output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (_output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let root = root_requests(&script);
     for request in &root[1..=3] {
@@ -81,9 +81,9 @@ async fn test_input_after_a_child_ended_is_not_accepted() {
     ])
     .with_child(TASK, [vec![say("x")]]);
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (_output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (_output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let root = root_requests(&script);
     assert_eq!(
@@ -101,9 +101,9 @@ async fn test_a_delegated_childs_failure_is_the_calls_failure() {
     ])
     .with_failing_child(TASK, vec![say("partial ")], unavailable);
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let root = root_requests(&script);
     let failed = last_result(&root[1]);
@@ -129,9 +129,9 @@ async fn test_wait_agent_returns_a_spawned_childs_failure() {
     ])
     .with_failing_child(TASK, vec![say("partial ")], unavailable);
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let root = root_requests(&script);
     assert_eq!(

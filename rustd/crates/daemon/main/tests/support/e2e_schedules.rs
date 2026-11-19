@@ -1,8 +1,8 @@
 //! What the runner schedules suites share: a booted daemon pointed at a fake
-//! `QStash`, its lease taken, and the rows a case seeds or reads directly.
+//! `QStash`, its run taken, and the rows a case seeds or reads directly.
 //!
 //! Split from the suites by concern (RULE FLL): each suite file holds one
-//! family of cases, and this holds the lease they all act under.
+//! family of cases, and this holds the run they all act under.
 #![allow(
     dead_code,
     reason = "test support: shared by several suites, each using a subset"
@@ -25,9 +25,9 @@ use sqlx::Row as _;
 use crate::definition_install::seal;
 use crate::e2e::{Scenario, scenario_with, unique_ids};
 use crate::e2e_seed::{FLEET_CONFIG_JSON, seed_fleet};
-use crate::tail::lease;
+use crate::tail::run;
 
-/// How long a held sync lease outlives the database clock: past the case.
+/// How long a held sync run outlives the database clock: past the case.
 const SYNC_HOLD: std::time::Duration = std::time::Duration::from_secs(60);
 use crate::verbs::{FakeQStash, QSTASH_TOKEN, send};
 use crate::wire::report_body;
@@ -59,16 +59,16 @@ impl<'a> Seeded<'a> {
 }
 
 /// Seeds the admin workspace and seals its `qstash` bag naming `qstash`.
-async fn seed_scheduler_bag(run: &Scenario, admin: &Uuid7, qstash: &FakeQStash) {
-    let mut connection = run
+async fn seed_scheduler_bag(scene: &Scenario, admin: &Uuid7, qstash: &FakeQStash) {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("the scoped pool");
-    WorkspaceSeed::new(admin, &run.tenant)
+    WorkspaceSeed::new(admin, &scene.tenant)
         .name("platform-scheduler")
-        .at(run.seeded_at)
+        .at(scene.seeded_at)
         .insert(&mut *connection)
         .await
         .expect("the admin workspace seeds");
@@ -80,20 +80,20 @@ async fn seed_scheduler_bag(run: &Scenario, admin: &Uuid7, qstash: &FakeQStash) 
         "next_signing_key": "sig_next_fixture",
     });
     seal(
-        &run.booted,
+        &scene.booted,
         admin,
         afd_cron::test_util::QSTASH_BAG,
         &bag.to_string(),
-        run.seeded_at,
+        scene.seeded_at,
     )
     .await;
 }
 
-/// A booted daemon pointed at `qstash`, its lease taken.
-pub(crate) struct Leased {
-    pub(crate) run: Scenario,
+/// A booted daemon pointed at `qstash`, its run taken.
+pub(crate) struct Assigned {
+    pub(crate) scene: Scenario,
     pub(crate) http: reqwest::Client,
-    pub(crate) lease_id: Uuid7,
+    pub(crate) run_id: Uuid7,
     pub(crate) fence: u64,
 }
 
@@ -101,32 +101,32 @@ pub(crate) struct Leased {
 /// fleet holds [`crate::e2e_seed::FLEET_NAME`].
 const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
 
-impl Leased {
+impl Assigned {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
         // The scheduler credentials are the admin workspace's `qstash` bag, read
         // on use, as production reads them; nothing reaches the daemon by env.
         let admin = unique_ids().0;
         let extra = [(PLATFORM_ADMIN_WORKSPACE_KNOB, admin.as_str())];
-        let run = scenario_with(supervisor, None, &extra, FLEET_CONFIG_JSON).await;
-        seed_scheduler_bag(&run, &admin, qstash).await;
+        let scene = scenario_with(supervisor, None, &extra, FLEET_CONFIG_JSON).await;
+        seed_scheduler_bag(&scene, &admin, qstash).await;
         #[expect(
             clippy::disallowed_methods,
             reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
         )]
         let http = reqwest::Client::new();
-        let (lease_id, fence) = lease(&run).await;
-        let lease_id = Uuid7::parse(&lease_id).expect("the daemon answers a canonical lease id");
+        let (run_id, fence) = run(&scene).await;
+        let run_id = Uuid7::parse(&run_id).expect("the daemon answers a canonical run id");
         Self {
-            run,
+            scene,
             http,
-            lease_id,
+            run_id,
             fence,
         }
     }
 
-    /// `path` under this lease's schedules collection.
+    /// `path` under this run's schedules collection.
     pub(crate) fn path(&self, tail: &str) -> String {
-        format!("/v1/runners/me/leases/{}/schedules{tail}", self.lease_id)
+        format!("/v1/runners/me/runs/{}/schedules{tail}", self.run_id)
     }
 
     /// The fence as a read's or a delete's query.
@@ -145,14 +145,14 @@ impl Leased {
         path: &str,
         body: Option<&Value>,
     ) -> (u16, Value) {
-        let response = send(&self.http, &self.run, method, path, body).await;
+        let response = send(&self.http, &self.scene, method, path, body).await;
         let status = response.status().as_u16();
         let bytes = response.bytes().await.expect("the body is readable");
         let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         (status, body)
     }
 
-    /// Creates a schedule under this lease's fence, answering the status and
+    /// Creates a schedule under this run's fence, answering the status and
     /// the body.
     pub(crate) async fn create(&self, once: bool) -> (u16, Value) {
         let body = json!({"fencing_token": self.fence, "cron": WEEKLY, "timezone": KOLKATA,
@@ -160,14 +160,14 @@ impl Leased {
         self.call(Method::POST, &self.path(""), Some(&body)).await
     }
 
-    /// Settles the held lease, so the fleet takes its next event.
+    /// Settles the held run, so the fleet takes its next event.
     pub(crate) async fn settle(&self) {
-        let report = report_body(self.lease_id.as_str(), &self.run.event_id, self.fence);
-        let reported = crate::wire::report(&self.run, &report).await;
+        let report = report_body(self.run_id.as_str(), &self.scene.event_id, self.fence);
+        let reported = crate::wire::report(&self.scene, &report).await;
         assert!(reported.is_ok(), "native report refused: {reported:?}");
     }
 
-    /// Runs `schedule` now under this lease's fence.
+    /// Runs `schedule` now under this run's fence.
     pub(crate) async fn run_now(&self, schedule: &str) -> (u16, Value) {
         let runs = self.path(&format!("/{schedule}/runs"));
         self.call(Method::POST, &runs, Some(&self.fence_body()))
@@ -182,7 +182,7 @@ impl Leased {
         };
         let mut connection = self.connection().await;
         sqlx::query(statement)
-            .bind(&self.run.fleet)
+            .bind(&self.scene.fleet)
             .bind(source.map_or("", Source::as_str))
             .fetch_one(&mut *connection)
             .await
@@ -194,7 +194,7 @@ impl Leased {
     /// Writes a schedule straight into the table, as a person's surface or
     /// an earlier run would have.
     pub(crate) async fn seed(&self, source: Source, key: &str) -> String {
-        self.seed_row(&self.run.fleet, Seeded::active(source, key))
+        self.seed_row(&self.scene.fleet, Seeded::active(source, key))
             .await
     }
 
@@ -228,11 +228,11 @@ impl Leased {
         let now = af_core::clock::now();
         let fleet = Entropy::new().uuid7(now).expect("an identifier");
         seed_fleet(
-            &self.run.booted,
+            &self.scene.booted,
             &fleet,
             OTHER_FLEET_NAME,
-            &self.run.workspace,
-            &self.run.tenant,
+            &self.scene.workspace,
+            &self.scene.tenant,
             FLEET_CONFIG_JSON,
             now,
         )
@@ -244,13 +244,13 @@ impl Leased {
     pub(crate) async fn on_fleet(&self, statement: &'static str) {
         let mut connection = self.connection().await;
         sqlx::query(statement)
-            .bind(&self.run.fleet)
+            .bind(&self.scene.fleet)
             .execute(&mut *connection)
             .await
             .expect("the fixture statement runs");
     }
 
-    /// Moves the fleet's live sequence past this lease's, as a reclaim does.
+    /// Moves the fleet's live sequence past this run's, as a reclaim does.
     pub(crate) async fn supersede(&self) {
         self.on_fleet(
             "UPDATE runner.slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
@@ -258,21 +258,21 @@ impl Leased {
         .await;
     }
 
-    /// Records that a schedule's fire woke the leased event, as a `QStash`
+    /// Records that a schedule's fire woke the held event, as a `QStash`
     /// callback's admission would.
-    pub(crate) async fn lease_woken_by_schedule(&self) {
+    pub(crate) async fn run_woken_by_schedule(&self) {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE fleet.events SET actor = $2 \
-             WHERE event_id = (SELECT event_id FROM runner.leases WHERE id = $1)",
+             WHERE event_id = (SELECT event_id FROM runner.runs WHERE id = $1)",
         )
-        .bind(&self.lease_id)
+        .bind(&self.run_id)
         .bind(format!(
             "{ACTOR_PREFIX}0195b4ba-8d3a-7000-8abc-00000000c401"
         ))
         .execute(&mut *connection)
         .await
-        .expect("the lease's actor moves");
+        .expect("the run's actor moves");
     }
 
     /// Hands `schedule`'s row to another syncer for a minute, or back.
@@ -283,7 +283,7 @@ impl Leased {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE fleet.schedules SET sync_token = $2, \
-             sync_lease_expires_at = CASE WHEN $3 THEN clock_timestamp() + $4::interval END \
+             sync_run_expires_at = CASE WHEN $3 THEN clock_timestamp() + $4::interval END \
              WHERE id = $1",
         )
         .bind(&schedule)
@@ -292,7 +292,7 @@ impl Leased {
         .bind(SYNC_HOLD)
         .execute(&mut *connection)
         .await
-        .expect("the sync lease moves");
+        .expect("the sync run moves");
     }
 
     /// How many fires the ledger admitted under `schedule`'s actor.
@@ -301,7 +301,7 @@ impl Leased {
         sqlx::query_scalar(
             "SELECT count(*) FROM fleet.admissions WHERE workspace_id = $1 AND actor = $2",
         )
-        .bind(&self.run.workspace)
+        .bind(&self.scene.workspace)
         .bind(format!("{ACTOR_PREFIX}{schedule}"))
         .fetch_one(&mut *connection)
         .await
@@ -310,7 +310,7 @@ impl Leased {
 
     /// A pooled connection to the lane's database.
     pub(crate) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
-        self.run
+        self.scene
             .booted
             .database
             .acquire()
@@ -320,12 +320,12 @@ impl Leased {
 
     pub(crate) async fn finish(self, supervisor: Supervisor) {
         supervisor.shutdown().await;
-        self.run.cleanup().await;
+        self.scene.cleanup().await;
     }
 
     /// [`Self::finish`], retiring `other` first.
     pub(crate) async fn finish_with(self, supervisor: Supervisor, other: &Uuid7) {
-        crate::e2e_retire::retire_fleet(&self.run.booted, other).await;
+        crate::e2e_retire::retire_fleet(&self.scene.booted, other).await;
         self.finish(supervisor).await;
     }
 }

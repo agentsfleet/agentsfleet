@@ -5,7 +5,7 @@ import { eventTime } from "../../lib/event-time.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { ADMIN_RUNNERS_PATH, decodePlatform, invalidInput, platformInput, platformPath, platformQuery, platformRequest, platformResult, readPlatformFile } from "./common.ts";
-import { RegistrationReplaySchema, RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerLeasesSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
+import { RegistrationReplaySchema, RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerRunsSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
 import { withRunnerTokenFile } from "./token.ts";
 import type { RunnerKind } from "./runner-kind.ts";
 import { v7 as uuidv7 } from "uuid";
@@ -42,8 +42,8 @@ export const runnerShow = Effect.fn("runners.show")(function* (kind: RunnerKind,
     "Network policy": runner.assigned_policy.network_policy, Workers: String(runner.assigned_policy.worker_count),
     Labels: runner.labels.join(", ") || "None", "Last seen": runner.last_seen_at,
     Health: runner.degraded ? `Degraded: ${runner.degraded_reason ?? "unknown reason"}` : "Ready",
-    "Active leases": String(runner.active_lease_count), "Active fleets": String(runner.active_fleet_count),
-    "Leases succeeded": String(runner.leases_succeeded), "Leases failed": String(runner.leases_failed),
+    "Active runs": String(runner.active_run_count), "Active fleets": String(runner.active_fleet_count),
+    "Runs succeeded": String(runner.runs_succeeded), "Runs failed": String(runner.runs_failed),
     "Self-test": selftestStatus(runner),
     "Auto cordon": runner.cordon?.reason ?? "None",
     ...(runner.cordon ? {"Cordoned at": runner.cordon.cordoned_at,
@@ -76,7 +76,7 @@ export const runnerHistory = Effect.fn("runners.history")(function* (id: string,
     ], ageKey: null}, page.items);
     if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
   } else {
-    const page = yield* decodePlatform(RunnerLeasesSchema, body);
+    const page = yield* decodePlatform(RunnerRunsSchema, body);
     if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
     yield* output.printEntityTable({id: {key: "id", label: "ID"}, name: {key: "fleet", label: "FLEET"}, domain: [
       {key: "outcome", label: "OUTCOME"}, {key: "kind", label: "KIND"}, {key: "model", label: "MODEL"},

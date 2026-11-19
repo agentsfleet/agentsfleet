@@ -9,9 +9,9 @@ use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
 const ATTEMPT: &str = "\
-INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,
+INSERT INTO authoring.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
-lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
+run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
 VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,$8::jsonb,
 'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
@@ -27,7 +27,7 @@ pub(super) struct Running {
     pub(super) router: Router,
     pub(super) token: String,
     pub(super) operation: crate::harness::native::Operation,
-    pub(super) lease: Uuid7,
+    pub(super) run: Uuid7,
     pub(super) draft: Uuid7,
 }
 
@@ -57,15 +57,15 @@ impl Running {
                 .expect("draft id"),
         )
         .expect("the draft id is a UUIDv7");
-        let lease = mint();
+        let run = mint();
         let digest = Digest::of(&Presented::new(&token).expect("fixture runner token"));
-        seed(&f, &runner, &lease, &draft, digest.as_str()).await;
+        seed(&f, &runner, &run, &draft, digest.as_str()).await;
         Self {
             f,
             router,
             token,
-            operation: crate::harness::native::Operation::Activity(lease.clone()),
-            lease,
+            operation: crate::harness::native::Operation::Activity(run.clone()),
+            run,
             draft,
         }
     }
@@ -79,8 +79,8 @@ impl Running {
 }
 
 /// Seeds a runner presenting `digest` and an admitted authoring attempt for
-/// `draft` under `lease`, with the draft's pending message marked running.
-pub(super) async fn seed(f: &Fixture, runner: &Uuid7, lease: &Uuid7, draft: &Uuid7, digest: &str) {
+/// `draft` under `run`, with the draft's pending message marked running.
+pub(super) async fn seed(f: &Fixture, runner: &Uuid7, run: &Uuid7, draft: &Uuid7, digest: &str) {
     let mut connection = f.db.acquire().await.expect("seed connection");
     RunnerSeed::new(runner, "active", POLICY)
         .token_hash(digest)
@@ -97,7 +97,7 @@ pub(super) async fn seed(f: &Fixture, runner: &Uuid7, lease: &Uuid7, draft: &Uui
     .expect("owner model exists");
     sqlx::query(ATTEMPT)
         .bind(mint())
-        .bind(lease)
+        .bind(run)
         .bind(runner)
         .bind(&f.workspace)
         .bind(&f.tenant)

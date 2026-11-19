@@ -1,4 +1,4 @@
-//! How much context a run gets, resolved per lease from three sources.
+//! How much context a run gets, resolved per run from three sources.
 //!
 //! The saved provider model supplies execution identity. Authored context knobs
 //! may reduce the operating window without changing that identity or the saved
@@ -57,7 +57,7 @@ pub struct Overlay<'a> {
     pub model: &'a str,
 }
 
-/// The budget this lease runs under.
+/// The budget this run runs under.
 ///
 /// `authored` supplies operating overrides. `overlay` carries the resolved
 /// provider model and the defaults for knobs the fleet left unset.

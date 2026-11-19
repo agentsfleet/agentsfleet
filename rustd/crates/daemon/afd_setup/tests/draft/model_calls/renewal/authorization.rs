@@ -6,23 +6,23 @@ use af_core::error_code;
 use afd_setup::types::Source;
 use std::sync::Arc;
 
-// Value: an unknown lease or another runner cannot renew or meter the real attempt.
+// Value: an unknown run or another runner cannot renew or meter the real attempt.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn an_unknown_lease_or_foreign_runner_cannot_renew_or_meter_an_attempt() {
+async fn an_unknown_run_or_foreign_runner_cannot_renew_or_meter_an_attempt() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     let before = snapshot(&f, &a).await;
-    for (runner, lease) in [
+    for (runner, run) in [
         (f.runner.clone(), crate::draft::mint()),
-        (crate::draft::mint(), a.lease.clone()),
+        (crate::draft::mint(), a.run.clone()),
     ] {
         let error = f
             .drafts
-            .renew(&runner, &lease, request())
+            .renew(&runner, &run, request())
             .await
-            .expect_err("no lease authority");
+            .expect_err("no run authority");
         assert_eq!(error.code(), error_code::AUTHORING_NOT_FOUND);
         assert_eq!(snapshot(&f, &a).await, before);
         assert_eq!(fixture::receipts(&f, &a).await, (0, 0, false));
@@ -30,7 +30,7 @@ async fn an_unknown_lease_or_foreign_runner_cannot_renew_or_meter_an_attempt() {
     f.cleanup().await;
 }
 
-// Value: protects=an unusable model cannot prolong a lease or lose its recovery action;
+// Value: protects=an unusable model cannot prolong a run or lose its recovery action;
 // fails_when=renewal keeps a stale model or hides the saved daemon failure;
 // why_new=existing renewal proofs exercise only time and wallet lock contention;
 // seam=real Postgres; no_claim=live runner renewal.
@@ -49,7 +49,7 @@ async fn missing_or_invalid_model_settings_deny_renewal_with_durable_recovery() 
             .bind(f.catalogue.first().expect("owned catalogue model")).bind(inference).execute(&mut *f.connection().await).await.expect("changed saved model");
         let error = f
             .drafts
-            .renew(&f.runner, &a.lease, request())
+            .renew(&f.runner, &a.run, request())
             .await
             .expect_err("model no longer usable");
         assert_eq!(error.code(), error_code::AUTHORING_MODEL);
@@ -73,7 +73,7 @@ async fn missing_or_invalid_model_settings_deny_renewal_with_durable_recovery() 
 // seam=real Postgres and current credentials; no_claim=live billing.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn an_underreserved_attempt_cannot_extend_its_lease() {
+async fn an_underreserved_attempt_cannot_extend_its_run() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
@@ -85,7 +85,7 @@ async fn an_underreserved_attempt_cannot_extend_its_lease() {
         .expect("insufficient own reservation");
     let error = f
         .drafts
-        .renew(&f.runner, &a.lease, request())
+        .renew(&f.runner, &a.run, request())
         .await
         .expect_err("reservation no longer covers work");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
@@ -101,12 +101,12 @@ async fn an_underreserved_attempt_cannot_extend_its_lease() {
 }
 
 // Value: protects=administratively removed hosts lose renewal authority;
-// fails_when=a removed host keeps extending an otherwise valid private lease;
+// fails_when=a removed host keeps extending an otherwise valid private run;
 // why_new=existing renewal tests keep the runner active;
 // seam=real Postgres; no_claim=live runner management.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn a_removed_host_cannot_extend_or_meter_a_private_lease() {
+async fn a_removed_host_cannot_extend_or_meter_a_private_run() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
@@ -118,7 +118,7 @@ async fn a_removed_host_cannot_extend_or_meter_a_private_lease() {
         .expect("removed runner");
     assert_eq!(
         f.drafts
-            .renew(&f.runner, &a.lease, request())
+            .renew(&f.runner, &a.run, request())
             .await
             .expect_err("host not authorized")
             .code(),

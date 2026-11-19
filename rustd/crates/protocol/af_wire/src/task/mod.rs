@@ -1,6 +1,6 @@
-//! Durable objective context carried by the existing lease protocol.
+//! Durable objective context carried by the existing run protocol.
 //!
-//! A task is an owner across leases. Its generation, a lease fence and a
+//! A task is an owner across runs. Its generation, a run fence and a
 //! checkpoint generation remain separate counters with separate purposes.
 
 mod assessment;

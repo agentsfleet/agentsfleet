@@ -80,16 +80,16 @@ impl Transport for UnknownProvider {
     }
 }
 
-pub(super) async fn unknown(f: &Fixture, lease: &Claimed) {
+pub(super) async fn unknown(f: &Fixture, run: &Claimed) {
     let kek =
         Kek::from_hex(&"00112233445566778899aabbccddeeff".repeat(2)).expect("fixture vault key");
     let providers = Providers::new(f.db.clone(), Arc::new(kek), Entropy::new());
     let calls = ModelCalls::new(f.drafts.clone(), providers, Arc::new(UnknownProvider));
-    let token = lease.model_access.token.clone();
+    let token = run.model_access.token.clone();
     let input = ModelCall {
         capability_token: token,
-        attempt_id: lease.attempt_id.clone(),
-        fence: lease.fence.clone(),
+        attempt_id: run.attempt_id.clone(),
+        fence: run.fence.clone(),
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {
@@ -99,18 +99,14 @@ pub(super) async fn unknown(f: &Fixture, lease: &Claimed) {
     };
     assert_eq!(
         calls
-            .call(
-                &f.runner,
-                &Uuid7::parse(&lease.lease_id).expect("lease"),
-                input
-            )
+            .call(&f.runner, &Uuid7::parse(&run.run_id).expect("run"), input)
             .await
             .expect_err("missing authoritative usage")
             .code(),
         error_code::AUTHORING_UNKNOWN
     );
-    let report = unknown_report(lease);
-    let id = Uuid7::parse(&lease.lease_id).expect("lease");
+    let report = unknown_report(run);
+    let id = Uuid7::parse(&run.run_id).expect("run");
     let ack = f
         .drafts
         .report(&f.runner, &id, report)
@@ -119,11 +115,11 @@ pub(super) async fn unknown(f: &Fixture, lease: &Claimed) {
     assert!(!ack.settled);
 }
 
-fn unknown_report(lease: &Claimed) -> Report {
+fn unknown_report(run: &Claimed) -> Report {
     Report::Terminal {
         answer: None,
         accounting: Accounting {
-            fence: lease.fence.clone(),
+            fence: run.fence.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Failed,
             failure_reason: Some(FailureReason::ProviderUsageUnknown),
@@ -171,8 +167,8 @@ async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
         .await
         .expect("accepted first request")
         .draft;
-    let lease = claim(&f, &draft).await.expect("first attempt");
-    unknown(&f, &lease).await;
+    let run = claim(&f, &draft).await.expect("first attempt");
+    unknown(&f, &run).await;
     let original = SendMessage {
         save: false,
         message: FIRST.into(),
@@ -199,7 +195,7 @@ async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
     let newer = claim(&f, &draft)
         .await
         .expect("an attempt awaiting accounting does not own the chat");
-    assert_ne!(newer.attempt_id, lease.attempt_id);
+    assert_ne!(newer.attempt_id, run.attempt_id);
     assert_eq!(newer.sequence, "2");
     let retained: (i64, bool) = sqlx::query_as(ATTEMPTS)
         .bind(&draft.id)
@@ -211,7 +207,7 @@ async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
         failed(&f, &draft).await.recovery_action,
         ACTION_RETRY_MESSAGE
     );
-    late_cannot_publish(&f, &lease).await;
+    late_cannot_publish(&f, &run).await;
     f.cleanup().await;
 }
 
@@ -223,8 +219,8 @@ async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
 async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
     let f = funded(2).await;
     let draft = queue(&f, FIRST).await;
-    let lease = claim(&f, &draft).await.expect("first attempt");
-    unknown(&f, &lease).await;
+    let run = claim(&f, &draft).await.expect("first attempt");
+    unknown(&f, &run).await;
     f.drafts
         .cancel(f.access(), &draft.id, 1)
         .await
@@ -247,7 +243,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
     let newer = claim(&f, &draft)
         .await
         .expect("stopped liability cannot own current chat");
-    assert_ne!(newer.attempt_id, lease.attempt_id);
+    assert_ne!(newer.attempt_id, run.attempt_id);
     assert_eq!(newer.sequence, "2");
     let retained: (i64, bool) = sqlx::query_as(ATTEMPTS)
         .bind(&draft.id)
@@ -259,7 +255,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
         failed(&f, &draft).await.recovery_action,
         ACTION_RETRY_MESSAGE
     );
-    late_cannot_publish(&f, &lease).await;
+    late_cannot_publish(&f, &run).await;
     f.drafts
         .cancel(f.access(), &draft.id, 1)
         .await
@@ -275,11 +271,11 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
     f.cleanup().await;
 }
 
-async fn late_cannot_publish(f: &Fixture, lease: &Claimed) {
-    let id = Uuid7::parse(&lease.lease_id).expect("old lease");
+async fn late_cannot_publish(f: &Fixture, run: &Claimed) {
+    let id = Uuid7::parse(&run.run_id).expect("old run");
     let proposal = ActivityRequest {
-        fence: lease.fence.clone(),
-        sequence: lease.sequence.clone(),
+        fence: run.fence.clone(),
+        sequence: run.sequence.clone(),
         activity_sequence: "1".into(),
         event: ActivityEvent::Proposal {
             proposal: Proposal::Initialize {
@@ -296,7 +292,7 @@ async fn late_cannot_publish(f: &Fixture, lease: &Claimed) {
     let before = f.counts().await;
     let ack = f
         .drafts
-        .report(&f.runner, &id, super::stop::finished(lease))
+        .report(&f.runner, &id, super::stop::finished(run))
         .await
         .expect("retained late report");
     assert!(!ack.settled, "uncertain usage is never invented");

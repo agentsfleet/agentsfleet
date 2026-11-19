@@ -52,27 +52,27 @@ pub(crate) enum Verb {
     AuthoringRenew,
     /// Independent authoring accounting and optional answer.
     AuthoringReport,
-    /// More time on a held lease.
+    /// More time on a held run.
     Renew,
-    /// Live-tail frames for a held lease.
+    /// Live-tail frames for a held run.
     Activity,
-    /// A lease's terminal result.
+    /// A run's terminal result.
     Report,
-    /// A fleet's memory at lease start.
+    /// A fleet's memory at run start.
     Hydrate,
     /// A fleet's memory written back.
     Capture,
     /// A search of a fleet's memory past the window.
     Recall,
-    /// A scoped credential for a held lease.
+    /// A scoped credential for a held run.
     Mint,
-    /// Finished calls' full records for a held lease.
+    /// Finished calls' full records for a held run.
     Records,
     /// The runner's own row: which runner this is, as the daemon names it.
     Me,
-    /// A schedule created for the leased fleet.
+    /// A schedule created for the held fleet.
     ScheduleCreate,
-    /// The leased fleet's schedules.
+    /// The held fleet's schedules.
     ScheduleList,
     /// A change to a schedule the fleet made.
     ScheduleUpdate,
@@ -82,13 +82,13 @@ pub(crate) enum Verb {
     ScheduleRun,
     /// A schedule's runs.
     ScheduleRuns,
-    /// A line said to the leased event's thread.
+    /// A line said to the held event's thread.
     Message,
-    /// The leased fleet's workspace's fleets.
+    /// The held fleet's workspace's fleets.
     FleetList,
-    /// One fleet's recent events, as the leased fleet reads them.
+    /// One fleet's recent events, as the held fleet reads them.
     FleetEvents,
-    /// Work the leased fleet puts on another fleet.
+    /// Work the held fleet puts on another fleet.
     FleetSteer,
     /// The messages a person sent while the run works, claimed for it.
     Folds,

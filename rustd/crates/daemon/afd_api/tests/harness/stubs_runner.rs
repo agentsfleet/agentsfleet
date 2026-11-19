@@ -1,15 +1,15 @@
-//! The runner plane's stub: a lease plane that by default answers no-work.
+//! The runner plane's stub: a run plane that by default answers no-work.
 
 use af_core::id::Uuid7;
-use afd_api::services::Leasing;
+use afd_api::services::RunPlane;
 use jiff::Timestamp;
 
-/// A lease plane that by default answers no-work.
+/// A run plane that by default answers no-work.
 ///
 /// The production plane holds a bus connection beside its stores, and these
 /// suites should not build one: what they prove is the router's guard, scope
 /// and refusal matrix, which is decided BEFORE any verb runs. A stub that answers each verb the same way keeps that boundary honest,
-/// because a suite here cannot accidentally start asserting on lease
+/// because a suite here cannot accidentally start asserting on run
 /// behaviour that belongs to `afd_fleet`'s own integration lane.
 ///
 /// [`NoWork::refusing`] makes the memory verbs and the mint answer one chosen
@@ -47,7 +47,7 @@ impl NoWork {
     }
 }
 
-impl Leasing for NoWork {
+impl RunPlane for NoWork {
     /// Mints nothing, and says so with the code a deployment holding no
     /// platform credential answers, unless built with [`NoWork::refusing`].
     ///
@@ -128,7 +128,7 @@ impl Leasing for NoWork {
     fn record_tool_calls(
         &self,
         _runner_id: &Uuid7,
-        _lease_id: &str,
+        _run_id: &str,
         request: &af_wire::tool_detail::ToolCallRecordsRequest<'_>,
         _now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<af_wire::tool_detail::ToolCallRecordsStored>> + Send
@@ -139,44 +139,43 @@ impl Leasing for NoWork {
         }))
     }
 
-    /// Holds no lease, so every lease-addressed verb is refused as one this
+    /// Holds no run, so every run-addressed verb is refused as one this
     /// runner does not hold — the answer a plane with no rows gives.
     fn standing(
         &self,
         _runner_id: &Uuid7,
-        _lease_id: Uuid7,
+        _run_id: Uuid7,
         _fencing_token: u64,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::lease::Standing>> + Send {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::run::Standing>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
     }
 
     /// Refused for the reason [`NoWork::standing`] is.
     fn message(
         &self,
         _runner_id: &Uuid7,
-        _lease_id: Uuid7,
+        _run_id: Uuid7,
         _request: &af_wire::message_verb::MessageRequest<'_>,
     ) -> impl Future<Output = afd_fleet::Result<afd_outbound::Interim>> + Send {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
     }
 
     /// Refused for the reason [`NoWork::standing`] is.
     fn masked(
         &self,
-        _standing: &afd_fleet::lease::Standing,
+        _standing: &afd_fleet::run::Standing,
         _text: &str,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
     }
 
     /// Refused for the reason [`NoWork::standing`] is.
     fn sender(
         &self,
-        _standing: &afd_fleet::lease::Standing,
+        _standing: &afd_fleet::run::Standing,
         _text: &str,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::lease::message::SteerSender>> + Send
-    {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::run::message::SteerSender>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
     }
 }
 

@@ -147,15 +147,15 @@ async fn differently_priced_turns_dispatch_and_settle_concurrently_at_their_own_
         .await
         .expect("queue a turn on the dearer model")
         .draft;
-    let (cheap_lease, dear_lease) = tokio::join!(claim(&f, &cheap), claim(&f, &dearer));
-    let (cheap_lease, dear_lease) = (
-        cheap_lease.expect("cheap turn admitted"),
-        dear_lease.expect("dear turn admitted"),
+    let (cheap_run, dear_run) = tokio::join!(claim(&f, &cheap), claim(&f, &dearer));
+    let (cheap_run, dear_run) = (
+        cheap_run.expect("cheap turn admitted"),
+        dear_run.expect("dear turn admitted"),
     );
     let calls = model_calls(&f);
     let (first, second) = tokio::join!(
-        dispatch(&f, &calls, &cheap_lease),
-        dispatch(&f, &calls, &dear_lease)
+        dispatch(&f, &calls, &cheap_run),
+        dispatch(&f, &calls, &dear_run)
     );
     assert_eq!(
         cost(&first),
@@ -168,13 +168,12 @@ async fn differently_priced_turns_dispatch_and_settle_concurrently_at_their_own_
         "the dear turn pays its own rate"
     );
     let before = fixture_balance(&f).await;
-    let (cheap_report, dear_report) =
-        tokio::join!(settle(&f, &cheap_lease), settle(&f, &dear_lease));
+    let (cheap_report, dear_report) = tokio::join!(settle(&f, &cheap_run), settle(&f, &dear_run));
     assert!(cheap_report.settled && dear_report.settled);
     assert!(!cheap_report.replayed && !dear_report.replayed);
     tokio::join!(
-        f.relay(&cheap_lease.attempt_id),
-        f.relay(&dear_lease.attempt_id)
+        f.relay(&cheap_run.attempt_id),
+        f.relay(&dear_run.attempt_id)
     );
     assert_eq!(
         fixture_balance(&f).await,
@@ -216,11 +215,11 @@ fn model_calls(f: &super::Fixture) -> ModelCalls {
     ModelCalls::new(f.drafts.clone(), providers, Arc::new(OneTokenProvider))
 }
 
-async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> ModelUsage {
+async fn dispatch(f: &super::Fixture, calls: &ModelCalls, run: &Claimed) -> ModelUsage {
     let input: ModelCallInput = ModelCall {
-        capability_token: lease.model_access.token.clone(),
-        attempt_id: lease.attempt_id.clone(),
-        fence: lease.fence.clone(),
+        capability_token: run.model_access.token.clone(),
+        attempt_id: run.attempt_id.clone(),
+        fence: run.fence.clone(),
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {
@@ -231,7 +230,7 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> Mo
         },
     };
     calls
-        .call(&f.runner, &id(&lease.lease_id), input)
+        .call(&f.runner, &id(&run.run_id), input)
         .await
         .expect("an admitted, pinned dispatch")
         .usage
@@ -240,16 +239,16 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> Mo
 /// How far a turn is backdated so its attempt reads as already started.
 const AGE: std::time::Duration = std::time::Duration::from_secs(1);
 
-async fn settle(f: &super::Fixture, lease: &Claimed) -> af_wire::authoring::Reported {
+async fn settle(f: &super::Fixture, run: &Claimed) -> af_wire::authoring::Reported {
     sqlx::query("UPDATE authoring.attempts SET created_at=created_at-$2::interval WHERE id=$1")
-        .bind(id(&lease.attempt_id))
+        .bind(id(&run.attempt_id))
         .bind(AGE)
         .execute(&mut *f.connection().await)
         .await
         .expect("a second of elapsed runtime covers the reported millisecond");
     let report = Report::Accounting {
         accounting: Accounting {
-            fence: lease.fence.clone(),
+            fence: run.fence.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,
@@ -264,7 +263,7 @@ async fn settle(f: &super::Fixture, lease: &Claimed) -> af_wire::authoring::Repo
         },
     };
     f.drafts
-        .report(&f.runner, &id(&lease.lease_id), report)
+        .report(&f.runner, &id(&run.run_id), report)
         .await
         .expect("the report settles")
 }
@@ -281,7 +280,7 @@ fn cost(usage: &ModelUsage) -> Option<&str> {
 }
 
 fn id(raw: &str) -> Uuid7 {
-    Uuid7::parse(raw).expect("the lease names a UUIDv7")
+    Uuid7::parse(raw).expect("the run names a UUIDv7")
 }
 
 async fn fixture_balance(f: &super::Fixture) -> i64 {

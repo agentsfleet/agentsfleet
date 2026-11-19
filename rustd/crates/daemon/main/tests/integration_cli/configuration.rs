@@ -13,7 +13,7 @@ fn a_selected_file_drives_the_serving_daemon() {
     let mut file = tempfile::NamedTempFile::new().expect("application file");
     writeln!(
         file,
-        "[server]\nport = {port}\n[runner.lease]\nttl_seconds = 40\n\
+        "[server]\nport = {port}\n[runner.run]\nttl_seconds = 40\n\
          [runner.recovery]\nresume_from_checkpoint = false\n\
          [runner.scheduling]\nmissed_wake_probe_seconds = 2\nmax_concurrent_recovery_claims = 4"
     )

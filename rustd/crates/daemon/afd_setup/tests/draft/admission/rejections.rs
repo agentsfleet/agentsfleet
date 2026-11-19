@@ -68,7 +68,7 @@ async fn replace(f: &Fixture, key: &str) {
 
 async fn call<T: Transport + 'static>(
     f: &Fixture,
-    lease: &Claimed,
+    run: &Claimed,
     provider: Arc<T>,
 ) -> afd_setup::Result<afd_setup::ModelCallResult> {
     let providers = afd_credential::provider::Providers::new(
@@ -79,11 +79,11 @@ async fn call<T: Transport + 'static>(
     ModelCalls::new(f.drafts.clone(), providers, provider)
         .call(
             &f.runner,
-            &Uuid7::parse(&lease.lease_id).expect("lease"),
+            &Uuid7::parse(&run.run_id).expect("run"),
             ModelCall {
-                capability_token: lease.model_access.token.clone(),
-                attempt_id: lease.attempt_id.clone(),
-                fence: lease.fence.clone(),
+                capability_token: run.model_access.token.clone(),
+                attempt_id: run.attempt_id.clone(),
+                fence: run.fence.clone(),
                 dispatch_id: mint().to_string(),
                 call_index: 1,
                 request: ModelRequest {
@@ -95,17 +95,17 @@ async fn call<T: Transport + 'static>(
         .await
 }
 
-async fn state(f: &Fixture, lease: &Claimed) -> (String, bool, i64) {
+async fn state(f: &Fixture, run: &Claimed) -> (String, bool, i64) {
     sqlx::query_as(LEDGER)
-        .bind(Uuid7::parse(&lease.attempt_id).expect("attempt"))
+        .bind(Uuid7::parse(&run.attempt_id).expect("attempt"))
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("durable accounting state")
 }
 
-async fn settled(f: &Fixture, lease: &Claimed, calls: u32) {
-    let report = unknown_report(lease, calls);
-    let id = Uuid7::parse(&lease.lease_id).expect("lease");
+async fn settled(f: &Fixture, run: &Claimed, calls: u32) {
+    let report = unknown_report(run, calls);
+    let id = Uuid7::parse(&run.run_id).expect("run");
     for replayed in [false, true] {
         let ack = f
             .drafts
@@ -116,12 +116,12 @@ async fn settled(f: &Fixture, lease: &Claimed, calls: u32) {
         assert_eq!(ack.state, Outcome::Failed);
         assert_eq!(ack.replayed, replayed);
     }
-    f.relay(&lease.attempt_id).await;
+    f.relay(&run.attempt_id).await;
     assert_eq!(
-        state(f, lease).await,
+        state(f, run).await,
         ("settled".into(), false, i64::from(calls))
     );
-    let draft = Uuid7::parse(&lease.draft_id).expect("draft");
+    let draft = Uuid7::parse(&run.draft_id).expect("draft");
     let page = f
         .drafts
         .messages(
@@ -143,11 +143,11 @@ async fn settled(f: &Fixture, lease: &Claimed, calls: u32) {
     assert_eq!(failure.recovery_action, "choose_authoring_model");
 }
 
-fn unknown_report(lease: &Claimed, calls: u32) -> Report {
+fn unknown_report(run: &Claimed, calls: u32) -> Report {
     Report::Terminal {
         answer: None,
         accounting: Accounting {
-            fence: lease.fence.clone(),
+            fence: run.fence.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Failed,
             failure_reason: Some(FailureReason::ProviderUsageUnknown),
@@ -187,20 +187,20 @@ async fn malformed_key(api: InferenceApi, key: &str) {
         .expect("select the persisted inference API");
     replace(&f, key).await;
     let draft = queue(&f, TEXT).await;
-    let lease = claim(&f, &draft).await.expect("admission");
+    let run = claim(&f, &draft).await.expect("admission");
     let provider = Arc::new(Provider {
         count: AtomicUsize::new(0),
         status: 200,
         body: json!({}),
     });
-    let fault = call(&f, &lease, Arc::clone(&provider))
+    let fault = call(&f, &run, Arc::clone(&provider))
         .await
         .expect_err("invalid header key");
     assert_eq!(fault.code(), error_code::AUTHORING_MODEL);
     assert!(!fault.to_string().contains("fixture-key"));
     assert_eq!(provider.count.load(Ordering::Relaxed), 0);
-    assert_eq!(state(&f, &lease).await, ("active".into(), false, 0));
-    settled(&f, &lease, 0).await;
+    assert_eq!(state(&f, &run).await, ("active".into(), false, 0));
+    settled(&f, &run, 0).await;
     replace(&f, "repaired-fixture-key").await;
     f.drafts
         .send(
@@ -226,19 +226,19 @@ async fn malformed_key(api: InferenceApi, key: &str) {
 async fn authentication_rejection_fails_and_settles_without_cancelling_the_chat() {
     let f = funded(2).await;
     let draft = queue(&f, TEXT).await;
-    let lease = claim(&f, &draft).await.expect("admission");
+    let run = claim(&f, &draft).await.expect("admission");
     let provider = Arc::new(Provider {
         count: AtomicUsize::new(0),
         status: 401,
         body: json!({"error":{"code":401,"message":"Invalid credentials"}}),
     });
-    let fault = call(&f, &lease, Arc::clone(&provider))
+    let fault = call(&f, &run, Arc::clone(&provider))
         .await
         .expect_err("invalid credentials");
     assert_eq!(fault.code(), error_code::AUTHORING_MODEL);
     assert_eq!(provider.count.load(Ordering::Relaxed), 1);
-    assert_eq!(state(&f, &lease).await, ("active".into(), false, 1));
-    settled(&f, &lease, 1).await;
+    assert_eq!(state(&f, &run).await, ("active".into(), false, 1));
+    settled(&f, &run, 1).await;
     let current = f
         .drafts
         .read(f.access(), &draft.id)

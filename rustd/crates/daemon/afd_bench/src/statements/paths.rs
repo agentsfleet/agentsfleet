@@ -20,18 +20,18 @@ pub enum Path {
     /// writes and reads that follow the claim.
     Claim,
     /// Admission and renewal gates: policy, money, approvals, grants and the
-    /// provider and key a lease is delivered with.
+    /// provider and key a run is delivered with.
     Gates,
     /// The model price catalogue, read by the estimate, every renewal and the
     /// report alike.
     Pricing,
-    /// Building and writing the lease: config, memory, secret, lease row.
+    /// Building and writing the run: config, memory, secret, run row.
     Issue,
     /// The host row's capacity lock and census, shared by issue, renewal and
     /// report, so it is its own path rather than the first caller's.
     Host,
-    /// Metering a lease's slice: the renewal's and the report's shared
-    /// statement, its usage lines and the lease read before it.
+    /// Metering a run's slice: the renewal's and the report's shared
+    /// statement, its usage lines and the run read before it.
     Meter,
     /// Authorizing a live-tail post.
     Activity,
@@ -39,7 +39,7 @@ pub enum Path {
     Report,
     /// A live run's ask for the messages its fleet received while it works.
     Fold,
-    /// Durable-task reads every verb sends: the lease's task, its generation
+    /// Durable-task reads every verb sends: the run's task, its generation
     /// and its execution deadline.
     Task,
     /// Statements several paths send: billing's per-transaction timeouts,
@@ -92,12 +92,12 @@ impl Path {
 
 /// Fragments of normalized statement text, first match wins.
 ///
-/// Read off a `bench-lease` drain on `main` `14539a73e`: each fragment is the
+/// Read off a `bench-run` drain on `main` `14539a73e`: each fragment is the
 /// shortest text that names one product statement. When a statement changes,
 /// its row lands in `other` until its fragment follows.
 const FRAGMENTS: &[(&str, Path)] = &[
     // The one-statement paths come first: each embeds text a later,
-    // older entry also matches (the issue insert stamps the host's lease
+    // older entry also matches (the issue insert stamps the host's run
     // version; the report writes usage lines and sessions).
     (
         "WITH instant AS MATERIALIZED ( SELECT clock_timestamp() AS checked_at ), host AS MATERIALIZED",
@@ -175,44 +175,44 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     ("FROM memory.entries WHERE fleet_id", Path::Issue),
     ("SELECT dek_ciphertext, dek_nonce", Path::Issue),
-    // The memory window's role, and the thread's earlier turns a chat lease
+    // The memory window's role, and the thread's earlier turns a chat run
     // carries (`select_thread_finished_before.sql`): both ride the delivery.
     ("SET LOCAL ROLE memory_runtime", Path::Issue),
     (
         "SELECT fleet_id, event_id, workspace_id, actor, event_type, status, token_count, wall_ms, failure_reason",
         Path::Issue,
     ),
-    // Host: the capacity lock, its census and the lease-type record.
+    // Host: the capacity lock, its census and the run-type record.
     ("SELECT worker_count, status, degraded_reason", Path::Host),
     (
-        "SELECT instant.checked_at, (SELECT count(*) FROM runner.leases",
+        "SELECT instant.checked_at, (SELECT count(*) FROM runner.runs",
         Path::Host,
     ),
-    ("UPDATE runner.runners SET lease_version", Path::Host),
+    ("UPDATE runner.runners SET run_version", Path::Host),
     // The placement choice an offer reads before it claims (`choice.sql`).
     (
-        "SELECT lease_version, last_lease_type FROM runner.runners",
+        "SELECT run_version, last_run_type FROM runner.runners",
         Path::Host,
     ),
     // Meter.
     (
-        "s.fencing_token, s.lease_expires_at FROM runner.slots s JOIN runner.leases",
+        "s.fencing_token, s.run_expires_at FROM runner.slots s JOIN runner.runs",
         Path::Meter,
     ),
     ("INSERT INTO billing.usage_lines", Path::Meter),
     (
-        "posture, provider, model, status, cancel_requested_at IS NOT NULL AS cancelled FROM runner.leases WHERE id",
+        "posture, provider, model, status, cancel_requested_at IS NOT NULL AS cancelled FROM runner.runs WHERE id",
         Path::Meter,
     ),
-    // Activity has no fragment: a session authorizes its lease once, when it
+    // Activity has no fragment: a session authorizes its run once, when it
     // opens, so a live-tail post of a plain chat sends no statement and the
     // path reads zero. A durable task's progress frame runs
-    // `lease/activity/task_history.sql`, whose text the claim fragments above
+    // `run/activity/task_history.sql`, whose text the claim fragments above
     // already match; the chat drain sends none. A statement a post starts
     // sending lands in `other`, which every drain reports.
     // Report.
     (
-        "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval",
+        "UPDATE runner.slots SET run_expires_at = clock_timestamp() - interval",
         Path::Report,
     ),
     (
@@ -231,7 +231,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ("INSERT INTO runner.events (id, runner_id", Path::Report),
     // Task: the durable-task reads that issue, renewal and report each send.
     (
-        "SELECT task_id, fleet_id, workspace_id FROM runner.leases",
+        "SELECT task_id, fleet_id, workspace_id FROM runner.runs",
         Path::Task,
     ),
     ("SELECT t.id AS task_id, t.status, t.generation", Path::Task),
@@ -284,16 +284,16 @@ pub fn by_path(costs: &[QueryCost]) -> BTreeMap<Path, u64> {
     by_path_with(FRAGMENTS, costs)
 }
 
-/// Each path's calls per lease, or nothing when no lease was issued: a ratio
-/// over zero leases describes nothing.
+/// Each path's calls per run, or nothing when no run was issued: a ratio
+/// over zero runs describes nothing.
 #[must_use]
-pub fn per_lease(totals: &BTreeMap<Path, u64>, leases: u64) -> Option<BTreeMap<Path, f64>> {
-    if leases == 0 {
+pub fn per_run(totals: &BTreeMap<Path, u64>, runs: u64) -> Option<BTreeMap<Path, f64>> {
+    if runs == 0 {
         return None;
     }
     let per = totals
         .iter()
-        .map(|(path, calls)| (*path, crate::report::ratio(*calls, leases)))
+        .map(|(path, calls)| (*path, crate::report::ratio(*calls, runs)))
         .collect();
     Some(per)
 }

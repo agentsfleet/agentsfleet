@@ -4,7 +4,7 @@ use super::{Case, Checked, files, storage::Files};
 use crate::support::Fixtures;
 use af_core::id::Uuid7;
 use af_wire::{
-    lease::{
+    run::{
         TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
         TurnId,
     },
@@ -61,7 +61,7 @@ fn tasks(files: &Files) -> Tasks {
     );
     let mut dependencies = TaskDependencies::from(&files.case.fixtures.plane());
     dependencies.storage = Some(files.storage.clone());
-    Tasks::new(files.case.leases.clone(), admissions, dependencies)
+    Tasks::new(files.case.runs.clone(), admissions, dependencies)
 }
 
 async fn orphan(files: &Files) -> Checked<Uuid7> {

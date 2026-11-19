@@ -40,7 +40,7 @@ impl Producer {
             &json!({"ok": true, "messages": [{"user": "UPERSONFIXTURE", "text": "Please repair this failure", "ts": THREAD}], "has_more": false}).to_string(),
         );
         let admin = unique_ids().0;
-        let run = install_with(
+        let scene = install_with(
             supervisor,
             "ci-repairer",
             &[],
@@ -54,9 +54,13 @@ impl Producer {
         .await;
         let team = format!(
             "T{}",
-            run.workspace.as_str().replace('-', "").to_ascii_uppercase()
+            scene
+                .workspace
+                .as_str()
+                .replace('-', "")
+                .to_ascii_uppercase()
         );
-        seed(&run, &admin, &team).await;
+        seed(&scene, &admin, &team).await;
         let timestamp = af_core::clock::now().as_second().to_string();
         let body = json!({"type": "event_callback", "team_id": team, "event_id": "EvSameSignedRepair",
             "event": {"type": "app_mention", "user": "UPERSONFIXTURE", "text": format!("<@{BOT}> ci-repairer: repair https://github.com/agentsfleet/linkwarden/actions/runs/77 attempt 1"),
@@ -64,7 +68,7 @@ impl Producer {
         let signature = signature(Scheme::SlackV0, SECRET, Some(&timestamp), body.as_bytes())
             .expect("the event signs");
         (
-            run,
+            scene,
             Self {
                 slack,
                 team,
@@ -78,10 +82,10 @@ impl Producer {
         )
     }
 
-    pub(crate) async fn deliver(&self, run: &Scenario) -> Value {
+    pub(crate) async fn deliver(&self, scene: &Scenario) -> Value {
         let response = self
             .client
-            .post(format!("{}/v1/connectors/slack/events", run.base))
+            .post(format!("{}/v1/connectors/slack/events", scene.base))
             .header("x-slack-request-timestamp", &self.timestamp)
             .header("x-slack-signature", &self.signature)
             .header("content-type", "application/json")
@@ -93,8 +97,8 @@ impl Producer {
         response.json().await.expect("the producer receipt is JSON")
     }
 
-    pub(crate) async fn assert_admission(&self, run: &Scenario, event: &Uuid7) {
-        let mut connection = run
+    pub(crate) async fn assert_admission(&self, scene: &Scenario, event: &Uuid7) {
+        let mut connection = scene
             .booted
             .database
             .acquire()
@@ -107,7 +111,7 @@ impl Producer {
         assert_eq!(rows.len(), 1);
         assert_eq!(
             (&rows[0].0, &rows[0].1, &rows[0].2),
-            (event, &run.fleet, &run.workspace)
+            (event, &scene.fleet, &scene.workspace)
         );
         let request: Value = serde_json::from_str(&rows[0].3).expect("the native request is JSON");
         assert_eq!(request["route"]["verdict"], "addressed");
@@ -117,35 +121,35 @@ impl Producer {
     }
 }
 
-async fn seed(run: &Scenario, admin: &Uuid7, team: &str) {
-    let mut connection = run
+async fn seed(scene: &Scenario, admin: &Uuid7, team: &str) {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("the scoped pool");
-    WorkspaceSeed::new(admin, &run.tenant)
+    WorkspaceSeed::new(admin, &scene.tenant)
         .name("platform-app")
-        .at(run.seeded_at)
+        .at(scene.seeded_at)
         .insert(&mut *connection)
         .await
         .expect("the app workspace seeds");
-    InstallSeed::new(Provider::Slack.id(), team, &run.workspace)
+    InstallSeed::new(Provider::Slack.id(), team, &scene.workspace)
         .scopes(&["app_mentions:read"])
-        .at(run.seeded_at)
+        .at(scene.seeded_at)
         .insert(&mut *connection)
         .await
         .expect("the Slack routing row seeds");
     drop(connection);
     seal(
-        &run.booted,
+        &scene.booted,
         admin,
         &Provider::Slack.app_key(),
         &json!({"client_id": "fixture", "signing_secret": str::from_utf8(SECRET).expect("text")})
             .to_string(),
-        run.seeded_at,
+        scene.seeded_at,
     )
     .await;
-    seal(&run.booted, &run.workspace, Provider::Slack.grant_key(),
-        &json!({"integration": "slack", "bot_token": "xoxb-fixture", "bot_user_id": BOT, "team_id": team}).to_string(), run.seeded_at).await;
+    seal(&scene.booted, &scene.workspace, Provider::Slack.grant_key(),
+        &json!({"integration": "slack", "bot_token": "xoxb-fixture", "bot_user_id": BOT, "team_id": team}).to_string(), scene.seeded_at).await;
 }

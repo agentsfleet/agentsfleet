@@ -18,7 +18,7 @@ use garde::Validate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminState {
-    /// Admitted; may lease and report.
+    /// Admitted; may run and report.
     Active,
     /// Refused new work, existing work untouched.
     Cordoned,
@@ -140,10 +140,10 @@ pub enum RunnerEventType {
     RunnerOnline,
     /// Stopped being reachable.
     RunnerOffline,
-    /// Took a lease.
-    LeaseAcquired,
-    /// Released a lease.
-    LeaseReleased,
+    /// Took a run.
+    RunAcquired,
+    /// Released a run.
+    RunReleased,
     /// Stopped taking new work.
     RunnerCordoned,
     /// Continuous proved healthy heartbeats lifted automatic quarantine.

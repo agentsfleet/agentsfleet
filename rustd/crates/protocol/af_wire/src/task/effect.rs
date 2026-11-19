@@ -104,7 +104,7 @@ pub struct TaskEffect {
 #[derive(Debug, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskEffectsQuery {
-    /// Current lease fence.
+    /// Current run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Selected current task.
@@ -133,7 +133,7 @@ pub struct TaskEffectsPage {
     pub next_cursor: Option<String>,
 }
 
-/// Current lease proof for an individual publication read.
+/// Current run proof for an individual publication read.
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]

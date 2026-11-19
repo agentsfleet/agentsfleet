@@ -33,18 +33,18 @@ impl<'run> Raise for Shared<'run> {
     }
 
     fn started(&self, id: u64, depth: u8) {
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let child_id = id;
         let event = EVENT_CHILD_STARTED;
-        tracing::info!(lease_id, child_id, depth, event);
+        tracing::info!(run_id, child_id, depth, event);
     }
 
     fn ended(&self, id: u64, depth: u8, status: Kind, calls: u64) {
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let child_id = id;
         let status = status.as_str();
         let event = EVENT_CHILD_ENDED;
-        tracing::info!(lease_id, child_id, depth, status, calls, event);
+        tracing::info!(run_id, child_id, depth, status, calls, event);
     }
 }
 

@@ -3,7 +3,7 @@
 //! The runner forwards its mid-run frames through [`af_wire::activity`]; these
 //! are the daemon's own. `event_admitted` says a person's message was accepted,
 //! before any runner has it; the brackets open and close a run —
-//! `event_received` when the lease verb records the row, `event_complete` when
+//! `event_received` when the run verb records the row, `event_complete` when
 //! a report or a gate refusal ends it — and the gate frames say when a human
 //! was asked and when they answered. All of them ride `fleet:{id}:activity`
 //! beside the runner's. The dashboard's stream registry switches on every

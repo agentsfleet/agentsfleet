@@ -34,18 +34,18 @@ use tokio_util::sync::CancellationToken;
 struct NoHttp;
 
 #[test]
-fn turn_replies_require_lease_operation_kind_and_matching_success_variant() -> serde_json::Result<()>
+fn turn_replies_require_run_operation_kind_and_matching_success_variant() -> serde_json::Result<()>
 {
-    use af_wire::lease::{TurnCheckpointKind, TurnId};
-    let lease = "01900000-0000-7000-8000-000000000001";
+    use af_wire::run::{TurnCheckpointKind, TurnId};
+    let run = "01900000-0000-7000-8000-000000000001";
     let operation = "01900000-0000-7000-8000-000000000002";
     let other = "01900000-0000-7000-8000-000000000003";
     let expected = Expected::TurnCheckpoint {
-        lease: Uuid7::parse(lease).expect("fixture UUID"),
+        run: Uuid7::parse(run).expect("fixture UUID"),
         operation: TurnId(operation.into()),
         kind: TurnCheckpointKind::PinRelease,
     };
-    let original = json!({"type":"turn_checkpoint","request_id":2,"lease_id":lease,
+    let original = json!({"type":"turn_checkpoint","request_id":2,"run_id":run,
         "operation_id":operation,"kind":"pin_release","answer":{"status":"ok","response":{"kind":"pin_released"}}});
     let accept = |value: &Value| -> serde_json::Result<bool> {
         let bytes = serde_json::to_string(value)?;
@@ -53,7 +53,7 @@ fn turn_replies_require_lease_operation_kind_and_matching_success_variant() -> s
     };
     assert!(accept(&original)?);
     for (key, wrong) in [
-        ("lease_id", other),
+        ("run_id", other),
         ("operation_id", other),
         ("kind", "abandon"),
     ] {
@@ -99,7 +99,7 @@ impl Harness {
         let (current, session) = watch::channel(None);
         let (assignments, watching) = watch::channel(None);
         let stream = StreamHandle::new(session, Arc::clone(&running), watching);
-        let (offers, offered) = mpsc::channel(af_wire::protocol::LEASES_MAX);
+        let (offers, offered) = mpsc::channel(af_wire::protocol::RUNS_MAX);
         Self {
             plane: ControlPlane::new(Box::new(NoHttp), stream),
             current,
@@ -180,33 +180,33 @@ impl Peer {
     }
 }
 
-fn lease() -> Uuid7 {
-    Uuid7::parse(crate::test_util::LEASE_ID).expect("fixture UUIDv7")
+fn payload() -> Uuid7 {
+    Uuid7::parse(crate::test_util::RUN_ID).expect("fixture UUIDv7")
 }
 
 fn folded(request: &Value, text: &str) -> Value {
-    json!({"type":"folded","request_id":(*request.pointer("/request_id").expect("native response field")),"lease_id":(*request.pointer("/lease_id").expect("native response field")),
+    json!({"type":"folded","request_id":(*request.pointer("/request_id").expect("native response field")),"run_id":(*request.pointer("/run_id").expect("native response field")),
         "answer":{"status":"ok","response":{"inputs":[{"event_id":crate::test_util::FLEET_ID,
             "sequence":1,"text":text}]}}})
 }
 
 fn renewed(request: &Value, through: u32) -> Value {
     json!({"type":"renewed","request_id":(*request.pointer("/request_id").expect("native response field")),
-        "leases":[{"lease_id":(*request.pointer("/leases/0/lease_id").expect("native response field")),"answer":{"status":"ok",
-            "response":{"lease_expires_at":"2030-01-01T00:00:00Z","recorded_through":through}}}]})
+        "runs":[{"run_id":(*request.pointer("/runs/0/run_id").expect("native response field")),"answer":{"status":"ok",
+            "response":{"run_expires_at":"2030-01-01T00:00:00Z","recorded_through":through}}}]})
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_late_fold_answer_cannot_complete_the_next_caller_after_cancellation() -> Result<()> {
     let harness = Harness::new();
     let mut peer = harness.connect();
-    let lease = lease();
-    let mut abandoned = Box::pin(harness.plane.folds(&lease, 7, 0));
+    let run = payload();
+    let mut abandoned = Box::pin(harness.plane.folds(&run, 7, 0));
     assert!(matches!(futures_util::poll!(&mut abandoned), Poll::Pending));
     let previous = peer.next(StreamKind::Work).await;
     drop(abandoned);
     peer.released();
-    let mut current = Box::pin(harness.plane.folds(&lease, 7, 0));
+    let mut current = Box::pin(harness.plane.folds(&run, 7, 0));
     assert!(matches!(futures_util::poll!(&mut current), Poll::Pending));
     let request = peer.next(StreamKind::Work).await;
     assert_ne!(
@@ -238,16 +238,16 @@ async fn a_late_fold_answer_cannot_complete_the_next_caller_after_cancellation()
 async fn a_late_renewal_answer_cannot_acknowledge_a_new_callers_usage() -> Result<()> {
     let harness = Harness::new();
     let mut peer = harness.connect();
-    let lease = lease();
+    let run = payload();
     let usage = RenewRequest {
         requests: af_wire::usage::RequestLines::default(),
     };
-    let mut abandoned = Box::pin(harness.plane.renew(&lease, &usage));
+    let mut abandoned = Box::pin(harness.plane.renew(&run, &usage));
     assert!(matches!(futures_util::poll!(&mut abandoned), Poll::Pending));
     let previous = peer.next(StreamKind::Control).await;
     drop(abandoned);
     peer.released();
-    let mut current = Box::pin(harness.plane.renew(&lease, &usage));
+    let mut current = Box::pin(harness.plane.renew(&run, &usage));
     assert!(matches!(futures_util::poll!(&mut current), Poll::Pending));
     let request = peer.next(StreamKind::Control).await;
     assert_ne!(
@@ -274,8 +274,8 @@ async fn a_late_renewal_answer_cannot_acknowledge_a_new_callers_usage() -> Resul
 async fn equal_request_ids_from_different_sessions_keep_separate_pending_owners() -> Result<()> {
     let harness = Harness::new();
     let mut previous_peer = harness.connect();
-    let lease = lease();
-    let mut previous = Box::pin(harness.plane.folds(&lease, 7, 0));
+    let run = payload();
+    let mut previous = Box::pin(harness.plane.folds(&run, 7, 0));
     assert!(matches!(futures_util::poll!(&mut previous), Poll::Pending));
     let old_request = previous_peer.next(StreamKind::Work).await;
     previous_peer.disconnect();
@@ -285,7 +285,7 @@ async fn equal_request_ids_from_different_sessions_keep_separate_pending_owners(
     assert!(failure.is_retryable());
     previous_peer.released();
     let mut peer = harness.connect();
-    let mut current = Box::pin(harness.plane.folds(&lease, 7, 0));
+    let mut current = Box::pin(harness.plane.folds(&run, 7, 0));
     assert!(matches!(futures_util::poll!(&mut current), Poll::Pending));
     let request = peer.next(StreamKind::Work).await;
     assert_eq!(

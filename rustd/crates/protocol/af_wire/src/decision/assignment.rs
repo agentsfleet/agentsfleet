@@ -1,11 +1,11 @@
-//! Non-secret decision selection frozen with one issued fleet lease.
+//! Non-secret decision selection frozen with one issued fleet run.
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use super::{DecisionProfile, GoalDecisionPolicy, IntentDecisionPolicy};
 
-/// One reviewed catalogue revision, retained unchanged for this lease.
+/// One reviewed catalogue revision, retained unchanged for this run.
 /// Provider keys are resolved separately for each reserved physical call.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]

@@ -1,4 +1,4 @@
-//! Ordinary allocation uses the real lease issuer and API-role PostgreSQL store.
+//! Ordinary allocation uses the real run issuer and API-role PostgreSQL store.
 
 mod authority;
 mod expiry;
@@ -16,11 +16,11 @@ mod storage;
 use crate::integration_tasks::decisions::checkpoint_server as storage_server;
 
 use af_core::{error_code, id::Uuid7};
-use af_wire::lease::{
+use af_wire::run::{
     TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointPlan, TurnId,
     TurnWorkspace,
 };
-use afd_fleet::lease::{Acquired, Billed, Issued, Leases, turn_checkpoint::TurnLease};
+use afd_fleet::run::{Acquired, Billed, Issued, Runs, turn_checkpoint::TurnRun};
 
 use crate::{seed, support::Fixtures};
 
@@ -28,7 +28,7 @@ type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 struct Case {
     fixtures: Fixtures,
-    leases: Leases,
+    runs: Runs,
     runner: Uuid7,
     foreign: Uuid7,
     acquired: Acquired,
@@ -44,32 +44,31 @@ impl Case {
     async fn with_fixtures(fixtures: Fixtures) -> Checked<Self> {
         let seeded = seed::seeded::<2>(&fixtures).await;
         let [runner, foreign] = seeded.runners;
-        let leases = fixtures.leases();
+        let runs = fixtures.runs();
         fixtures
             .seed_wallet(&seeded.tenant, crate::report_seed::DEEP_POOL)
             .await;
-        let acquired = required(seed::select_fleet(&leases, &runner, &seeded.fleet).await)?;
-        let installed = required(leases.installed(&seeded.fleet).await?)?;
+        let acquired = required(seed::select_fleet(&runs, &runner, &seeded.fleet).await)?;
+        let installed = required(runs.installed(&seeded.fleet).await?)?;
         let revision = required(installed.issue_revision)?;
         let issued = required(
-            leases
-                .issue_for_revision(
-                    &runner,
-                    &acquired,
-                    Billed {
-                        tenant_id: &seeded.tenant,
-                        posture: seed::POSTURE,
-                        provider: seed::PROVIDER,
-                        model: seed::MODEL,
-                    },
-                    fixtures.enrolled_at(),
-                    Some(&revision),
-                )
-                .await?,
+            runs.issue_for_revision(
+                &runner,
+                &acquired,
+                Billed {
+                    tenant_id: &seeded.tenant,
+                    posture: seed::POSTURE,
+                    provider: seed::PROVIDER,
+                    model: seed::MODEL,
+                },
+                fixtures.enrolled_at(),
+                Some(&revision),
+            )
+            .await?,
         )?;
         Ok(Self {
             fixtures,
-            leases,
+            runs,
             runner,
             foreign,
             acquired,
@@ -78,10 +77,10 @@ impl Case {
         })
     }
 
-    fn lease(&self) -> TurnLease<'_> {
-        TurnLease {
+    fn run(&self) -> TurnRun<'_> {
+        TurnRun {
             runner_id: &self.runner,
-            lease_id: &self.issued.lease_id,
+            run_id: &self.issued.run_id,
             fencing_token: self.acquired.fence.as_u64(),
         }
     }
@@ -105,8 +104,8 @@ impl Case {
 
     async fn begin(&self, input: TurnCheckpointCommand) -> Checked<TurnCheckpointPlan> {
         Ok(self
-            .leases
-            .begin_turn_checkpoint(self.lease(), &valid(input)?)
+            .runs
+            .begin_turn_checkpoint(self.run(), &valid(input)?)
             .await?)
     }
 
@@ -117,7 +116,7 @@ impl Case {
             af_crypto::entropy::Entropy::new(),
         );
         afd_fleet::task::Tasks::new(
-            self.leases.clone(),
+            self.runs.clone(),
             admissions,
             afd_fleet::task::TaskDependencies::from(&self.fixtures.plane()),
         )
@@ -139,7 +138,7 @@ impl Case {
 }
 
 fn required<T>(value: Option<T>) -> Checked<T> {
-    value.ok_or_else(|| std::io::Error::other("complete ordinary lease fixture").into())
+    value.ok_or_else(|| std::io::Error::other("complete ordinary run fixture").into())
 }
 
 fn valid(input: TurnCheckpointCommand) -> Checked<garde::Valid<TurnCheckpointCommand>> {
@@ -187,8 +186,8 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
         input.history_digest = "b".repeat(64);
     }
     assert!(
-        case.leases
-            .begin_turn_checkpoint(case.lease(), &valid(changed)?)
+        case.runs
+            .begin_turn_checkpoint(case.run(), &valid(changed)?)
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_CHECKPOINT_CONFLICT)
     );
@@ -201,8 +200,8 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
         .await?;
     drop(connection);
     assert!(
-        case.leases
-            .begin_turn_checkpoint(case.lease(), &valid(original)?)
+        case.runs
+            .begin_turn_checkpoint(case.run(), &valid(original)?)
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_CHECKPOINT_CONFLICT)
     );
@@ -215,24 +214,24 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
 async fn a_foreign_runner_or_wrong_fence_allocates_no_checkpoint() -> Checked {
     let case = Case::new().await?;
     let input = valid(case.command())?;
-    let foreign = TurnLease {
+    let foreign = TurnRun {
         runner_id: &case.foreign,
-        ..case.lease()
+        ..case.run()
     };
     assert!(
-        case.leases
+        case.runs
             .begin_turn_checkpoint(foreign, &input)
             .await
-            .is_err_and(|fault| fault.code() == error_code::RUN_LEASE_NOT_FOUND)
+            .is_err_and(|fault| fault.code() == error_code::RUN_NOT_FOUND)
     );
     let mut input = case.command();
     input.fencing_token += 1;
-    let wrong = TurnLease {
+    let wrong = TurnRun {
         fencing_token: input.fencing_token,
-        ..case.lease()
+        ..case.run()
     };
     assert!(
-        case.leases
+        case.runs
             .begin_turn_checkpoint(wrong, &valid(input)?)
             .await
             .is_err_and(|fault| fault.code() == error_code::RUN_STALE_FENCING_TOKEN)
@@ -264,10 +263,10 @@ async fn a_parked_or_settled_source_cannot_begin_recovery() -> Checked {
         .await?;
         drop(connection);
         assert!(
-            case.leases
-                .begin_turn_checkpoint(case.lease(), &valid(case.command())?)
+            case.runs
+                .begin_turn_checkpoint(case.run(), &valid(case.command())?)
                 .await
-                .is_err_and(|fault| fault.code() == error_code::RUN_LEASE_LOST)
+                .is_err_and(|fault| fault.code() == error_code::RUN_LOST)
         );
     }
     let mut connection = case.fixtures.database.acquire().await?;
@@ -297,10 +296,10 @@ async fn a_revoked_drained_or_degraded_host_cannot_allocate_a_checkpoint() -> Ch
             .await?;
         drop(connection);
         assert!(
-            case.leases
-                .begin_turn_checkpoint(case.lease(), &valid(case.command())?)
+            case.runs
+                .begin_turn_checkpoint(case.run(), &valid(case.command())?)
                 .await
-                .is_err_and(|fault| fault.code() == error_code::RUN_LEASE_LOST)
+                .is_err_and(|fault| fault.code() == error_code::RUN_LOST)
         );
         let mut connection = case.fixtures.database.acquire().await?;
         let count: i64 =

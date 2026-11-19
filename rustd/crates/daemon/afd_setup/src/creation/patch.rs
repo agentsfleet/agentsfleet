@@ -90,9 +90,9 @@ impl Creations {
         fleet: &Uuid7,
     ) -> Result<Vec<(Uuid7, Uuid7)>> {
         self.grants.cancel_setup_on(connection, fleet).await?;
-        let cancelled = sqlx::query_as(sql::CANCEL_LEASES)
+        let cancelled = sqlx::query_as(sql::CANCEL_RUNS)
             .bind(fleet)
-            .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
+            .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -117,9 +117,9 @@ impl Creations {
 
     pub(super) async fn announce_cancellations(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
         let bus = self.activity_streams();
-        for (runner, lease_id) in cancelled {
+        for (runner, run_id) in cancelled {
             let subject = afd_bus::Subject::RunnerCommand(runner.clone());
-            let publication = afd_bus::Command::Cancel { lease_id }
+            let publication = afd_bus::Command::Cancel { run_id }
                 .publish(&bus, &runner)
                 .await;
             afd_bus::observe_notification(&subject, publication);

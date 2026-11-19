@@ -46,7 +46,7 @@ const COLUMN_REGISTRY_ALLOWLIST: &str = "registry_allowlist";
 /// documents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssignmentColumns {
-    /// Whether this runner accepts new durable task leases.
+    /// Whether this runner accepts new durable task runs.
     pub durable_tasks_enabled: bool,
     /// Optional reviewed catalogue identity selected by the operator.
     pub decision_model_id: Option<String>,

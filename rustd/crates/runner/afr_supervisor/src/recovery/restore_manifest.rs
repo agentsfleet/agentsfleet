@@ -74,7 +74,7 @@ impl Session<'_> {
             let page = self
                 .plane
                 .task_checkpoint_page(
-                    self.lease,
+                    self.run,
                     &checkpoint,
                     &Uuid7::parse(id)?,
                     &CheckpointReadQuery {

@@ -1,4 +1,4 @@
-//! A lease's terminal report, built from how its run ended.
+//! A run's terminal report, built from how its run ended.
 
 pub(crate) mod delivery;
 
@@ -6,13 +6,13 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use af_core::clock::saturating_millis;
-use af_wire::lease::LeasePayload;
 use af_wire::report::{FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
+use af_wire::run::RunPayload;
 use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 use afr_agent::{Meter, RunOutput};
 use jiff::Timestamp;
 
-/// How a lease's run ended.
+/// How a run's run ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Ending {
     /// The engine ran the turn to its end; the result may itself be a failure
@@ -24,7 +24,7 @@ pub(crate) enum Ending {
         first_chunk: Option<Duration>,
     },
     /// The run never finished: it could not start, the engine broke, or the
-    /// daemon ended the lease.
+    /// daemon ended the run.
     Failed {
         /// Why, at the granularity the report carries.
         class: FailureClass,
@@ -40,7 +40,7 @@ impl Ending {
         verdict(self).0 == Outcome::Processed
     }
 
-    /// This ending, for a lease the daemon or the runner ended before the run
+    /// This ending, for a run the daemon or the runner ended before the run
     /// did: a run that handed back output keeps it, with `class` and `detail`
     /// as its failure, so its tokens are billed and its memory pushed.
     pub(crate) fn cut(self, class: FailureClass, detail: &'static str) -> Self {
@@ -66,15 +66,15 @@ impl Ending {
     }
 }
 
-/// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
+/// The report for `run`, which ran for `wall`, carrying `trace`: the run's
 /// trace encoded, when it called a tool, and `held_until`: when the sandbox it
-/// left held for the fleet's next lease lapses, if it left one. It carries the
+/// left held for the fleet's next run lapses, if it left one. It carries the
 /// request lines no renewal recorded, at most one body's worth, since the
 /// settle renews the rest away first. A run that never finished still bills
 /// what it spent; its token total is the result's when the run handed one back,
 /// for the event history.
 pub(crate) fn report<'a>(
-    lease: &'a LeasePayload<'a>,
+    run: &'a RunPayload<'a>,
     ending: &'a Ending,
     meter: &Meter,
     wall: Duration,
@@ -98,9 +98,9 @@ pub(crate) fn report<'a>(
             Ending::Ran { output, .. } if outcome == Outcome::Processed => output.task.clone(),
             Ending::Ran { .. } | Ending::Failed { .. } => None,
         },
-        lease_id: Cow::Borrowed(&lease.lease_id),
-        event_id: Cow::Borrowed(&lease.event.event_id),
-        fencing_token: lease.fencing_token,
+        run_id: Cow::Borrowed(&run.run_id),
+        event_id: Cow::Borrowed(&run.event.event_id),
+        fencing_token: run.fencing_token,
         outcome,
         failure_reason,
         failure_detail,
@@ -109,7 +109,7 @@ pub(crate) fn report<'a>(
         requests: meter.unrecorded(),
         telemetry: report_telemetry(first_chunk, wall),
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(&lease.event.event_id),
+            last_event_id: Cow::Borrowed(&run.event.event_id),
             last_response: response_text,
         },
         tool_calls: trace,

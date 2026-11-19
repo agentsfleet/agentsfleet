@@ -11,7 +11,7 @@ async fn initialize_edit_edit_replay_returns_original_versions_without_extra_wri
     let first = a.initialize(1);
     let initial = f
         .drafts
-        .activity(&f.runner, &a.lease, first.clone())
+        .activity(&f.runner, &a.run, first.clone())
         .await
         .expect("initialize");
     let one = initial.candidate.as_ref().expect("revision one");
@@ -19,14 +19,14 @@ async fn initialize_edit_edit_replay_returns_original_versions_without_extra_wri
     let second = edit(&a, 2, one, "First edit.\r\n");
     let two = f
         .drafts
-        .activity(&f.runner, &a.lease, second.clone())
+        .activity(&f.runner, &a.run, second.clone())
         .await
         .expect("edit one")
         .candidate
         .expect("revision two");
     let three = f
         .drafts
-        .activity(&f.runner, &a.lease, edit(&a, 3, &two, "Second edit.\n"))
+        .activity(&f.runner, &a.run, edit(&a, 3, &two, "Second edit.\n"))
         .await
         .expect("edit two")
         .candidate
@@ -35,14 +35,14 @@ async fn initialize_edit_edit_replay_returns_original_versions_without_extra_wri
     assert_ne!(three.id, two.id);
     let replay = f
         .drafts
-        .activity(&f.runner, &a.lease, first)
+        .activity(&f.runner, &a.run, first)
         .await
         .expect("lost initialization acknowledgement");
     assert!(replay.replayed);
     assert_eq!(replay.candidate.as_ref(), Some(one));
     let replay = f
         .drafts
-        .activity(&f.runner, &a.lease, second)
+        .activity(&f.runner, &a.run, second)
         .await
         .expect("lost edit acknowledgement");
     assert_eq!(replay.candidate, Some(two));
@@ -61,7 +61,7 @@ async fn assert_conflicts(
     let changed = edit(a, 1, head, "changed accepted body");
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, changed)
+            .activity(&f.runner, &a.run, changed)
             .await
             .expect_err("changed body")
             .code(),
@@ -69,7 +69,7 @@ async fn assert_conflicts(
     );
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, edit(a, 5, head, "gap"))
+            .activity(&f.runner, &a.run, edit(a, 5, head, "gap"))
             .await
             .expect_err("gap")
             .code(),
@@ -77,7 +77,7 @@ async fn assert_conflicts(
     );
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, edit(a, 4, old, "stale"))
+            .activity(&f.runner, &a.run, edit(a, 4, old, "stale"))
             .await
             .expect_err("stale base")
             .code(),

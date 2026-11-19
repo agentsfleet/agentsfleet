@@ -30,7 +30,7 @@ pub(super) fn prepare_root<'run>(
     message: &str,
 ) -> Result<RootSetup<'run>> {
     if (run.recovered_task.is_some() && run.recovered_turn.is_some())
-        || (run.lease.turn_resume.is_some() && run.recovered_turn.is_none())
+        || (run.run.turn_resume.is_some() && run.recovered_turn.is_none())
     {
         return Err(recovery_invalid(
             "offered recovery has no single complete restore owner",
@@ -44,12 +44,12 @@ pub(super) fn prepare_root<'run>(
         Some(TaskRecovery::restore(
             &recovered.history,
             current,
-            &run.lease.policy.context.model,
-            &run.lease.policy.provider,
+            &run.run.policy.context.model,
+            &run.run.policy.provider,
             scrub,
         )?)
     } else if let Some(recovered) = run.recovered_turn {
-        Some(recovered.restore(run.lease, recovered.workspace.clone(), scrub)?)
+        Some(recovered.restore(run.run, recovered.workspace.clone(), scrub)?)
     } else {
         None
     };
@@ -90,7 +90,7 @@ impl Harness<'_, '_> {
             messages: self.transcript.messages().to_vec(),
             driver: driver.clone(),
             children: ChildRecovery::capture(&self.shared.registry, pause)?,
-            memory: self.shared.lease.memory.lock().await.snapshot()?,
+            memory: self.shared.run.memory.lock().await.snapshot()?,
             pinned: self.context.pinned,
             folds: self.folded_inputs.clone(),
         })
@@ -116,7 +116,7 @@ impl Harness<'_, '_> {
             skipped(RecoverySkip::BusyChildren);
             return None;
         };
-        if !self.shared.lease.sessions.is_quiescent() {
+        if !self.shared.run.sessions.is_quiescent() {
             skipped(RecoverySkip::BusySessions);
             return None;
         }
@@ -129,7 +129,7 @@ impl Harness<'_, '_> {
         };
         let snapshot = match self.snapshot_state(driver, &pause, workspace).await {
             Ok(state) => RecoverySnapshot {
-                lease_id: self.shared.lease_id.to_owned(),
+                run_id: self.shared.run_id.to_owned(),
                 event_id: self.shared.payload.event.event_id.to_string(),
                 fencing_token: self.shared.fencing_token,
                 state,
@@ -183,7 +183,7 @@ impl Harness<'_, '_> {
         &self,
         driver: &DriveState,
         pause: &Pause,
-        workspace: Option<af_wire::lease::TurnWorkspace>,
+        workspace: Option<af_wire::run::TurnWorkspace>,
     ) -> Result<RecoveryState> {
         let root = self.root_snapshot(driver, pause).await?;
         if let Some(mut task) = self
@@ -214,14 +214,14 @@ impl Harness<'_, '_> {
 }
 
 fn committed(receipt: &crate::RecoveryReceipt) {
-    let lease_id = receipt.lease_id.as_str();
+    let run_id = receipt.run_id.as_str();
     let event_id = receipt.event_id.as_str();
     let fencing_token = receipt.fencing_token;
     let checkpoint_id = receipt.checkpoint.id();
     let generation = receipt.checkpoint.generation();
     tracing::debug!(
         event = "respawn_checkpoint_committed",
-        lease_id,
+        run_id,
         event_id,
         fencing_token,
         checkpoint_id,
@@ -246,12 +246,12 @@ pub(super) fn restored(run: &AgentRun<'_>) {
     } else {
         return;
     };
-    let lease_id = run.lease.lease_id.as_ref();
-    let event_id = run.lease.event.event_id.as_ref();
-    let fencing_token = run.lease.fencing_token;
+    let run_id = run.run.run_id.as_ref();
+    let event_id = run.run.event.event_id.as_ref();
+    let fencing_token = run.run.fencing_token;
     tracing::debug!(
         event = "respawn_checkpoint_restored",
-        lease_id,
+        run_id,
         event_id,
         fencing_token,
         checkpoint_id,

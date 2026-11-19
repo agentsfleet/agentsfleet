@@ -2,7 +2,7 @@
 
 use af_core::error_code::{self, ErrorCode};
 
-use super::{CLOSED, LeaseVerbs as _, ScheduleCall, Unanswered, answered};
+use super::{CLOSED, RunVerbs as _, ScheduleCall, Unanswered, answered};
 use crate::runtime::ToolErrorCode;
 
 /// The five codes a model acts on differently each name their own tool error.
@@ -88,7 +88,7 @@ fn a_refusal_is_the_tool_error_with_its_detail() {
     );
 }
 
-/// A lease with nothing behind it says so for every verb.
+/// A run with nothing behind it says so for every verb.
 #[tokio::test]
 async fn closed_verbs_answer_nothing() {
     assert_eq!(

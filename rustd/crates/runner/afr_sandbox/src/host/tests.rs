@@ -64,7 +64,7 @@ fn test_default_tools_are_where_debian_puts_them() {
     assert_eq!(tools.bwrap, Path::new(crate::probe::BWRAP_PATH));
 }
 
-/// The owner a lease's workspace disk is formatted for.
+/// The owner a run's workspace disk is formatted for.
 const USER: u32 = 1000;
 /// Its group.
 const GROUP: u32 = 100;

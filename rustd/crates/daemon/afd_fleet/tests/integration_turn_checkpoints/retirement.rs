@@ -3,7 +3,7 @@
 use super::{Case, Checked, lifecycle::isolated, manifest::Pending, storage::Files};
 use crate::support::Fixtures;
 use af_core::{error_code, id::Uuid7};
-use af_wire::lease::{
+use af_wire::run::{
     TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
 };
 use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _};
@@ -16,8 +16,8 @@ async fn reading_an_uncaptured_offer_does_not_allocate_recovery_state() -> Check
     assert!(
         files
             .case
-            .leases
-            .turn_resume(files.case.lease())
+            .runs
+            .turn_resume(files.case.run())
             .await?
             .is_none()
     );

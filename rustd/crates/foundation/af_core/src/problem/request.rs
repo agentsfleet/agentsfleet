@@ -186,7 +186,7 @@ pub(super) const REQUEST: &[Problem] = &[
         code: error_code::SCHEDULE_SYNCING,
         status: 409,
         title: "Schedule update busy",
-        hint: "Another schedule mutation holds the synchronization lease. Retry after the reported delay.",
+        hint: "Another schedule mutation holds the synchronization run. Retry after the reported delay.",
         user_message: None,
     },
     Problem {

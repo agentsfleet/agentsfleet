@@ -3,7 +3,7 @@
 use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use af_core::error_code;
-use af_wire::{lease::TaggedLease, protocol::Down};
+use af_wire::{protocol::Down, run::TaggedRun};
 use futures_util::FutureExt as _;
 use tokio::{
     sync::{Mutex, mpsc, watch},
@@ -13,7 +13,7 @@ use tokio::{
 use crate::{
     Result,
     downlink::{Offered, policy::Assignment},
-    lease_loop::Lessee,
+    run_loop::Lessee,
     turns::FleetTurns,
 };
 
@@ -60,7 +60,7 @@ pub(crate) async fn serve(
         }
         spawned = spawned.max(workers_wanted);
         tokio::select! {
-            () = lessee.halt.leasing().cancelled() => break,
+            () = lessee.halt.run_plane().cancelled() => break,
             changed = assignment.changed() => if changed.is_err() { break; },
         }
     }
@@ -79,13 +79,13 @@ impl Worker {
     async fn run(mut self) {
         let worker = self.number;
         tracing::info!(event = "worker_started", worker);
-        while !self.lessee.halt.leasing().is_cancelled() {
+        while !self.lessee.halt.run_plane().is_cancelled() {
             match AssertUnwindSafe(self.next()).catch_unwind().await {
                 Ok(Ok(true)) => {}
                 Ok(Ok(false)) => break,
                 Ok(Err(error)) => {
                     let error_code = error.code().as_str();
-                    tracing::warn!(event = "lease_write_failed", worker, error_code);
+                    tracing::warn!(event = "run_write_failed", worker, error_code);
                     if self.lessee.halt.stops_on(&error) {
                         break;
                     }
@@ -101,15 +101,15 @@ impl Worker {
 
     async fn next(&mut self) -> Result<bool> {
         let number = self.number;
-        let leasing = self.lessee.halt.leasing().clone();
+        let run_plane = self.lessee.halt.run_plane().clone();
         while !self.assignment.borrow_and_update().takes_work(number) {
             tokio::select! {
-                () = leasing.cancelled() => return Ok(false),
+                () = run_plane.cancelled() => return Ok(false),
                 changed = self.assignment.changed() => if changed.is_err() { return Ok(false); },
             }
         }
         let offer = tokio::select! {
-            () = leasing.cancelled() => return Ok(false),
+            () = run_plane.cancelled() => return Ok(false),
             changed = self.assignment.changed() => return Ok(changed.is_ok()),
             offer = async { self.offers.lock().await.recv().await } => offer,
         };
@@ -120,23 +120,18 @@ impl Worker {
             return Ok(true);
         }
         let egress = self.assignment.borrow().egress.clone();
-        let Down::Offer { lease } = offer.frame.decode::<Down<'_>>()? else {
+        let Down::Offer { run } = offer.frame.decode::<Down<'_>>()? else {
             return Err(crate::error::ErrorKind::StreamProtocol.into());
         };
-        match lease {
-            TaggedLease::Fleet(lease) => {
+        match run {
+            TaggedRun::Fleet(run) => {
                 self.lessee
-                    .run(
-                        &self.turns,
-                        &lease,
-                        &egress,
-                        offer.registration.stop.clone(),
-                    )
+                    .run(&self.turns, &run, &egress, offer.registration.stop.clone())
                     .await?;
             }
-            TaggedLease::Authoring(lease) => {
+            TaggedRun::Authoring(run) => {
                 self.lessee
-                    .author(&lease, offer.registration.stop.clone())
+                    .author(&run, offer.registration.stop.clone())
                     .await?;
             }
         }

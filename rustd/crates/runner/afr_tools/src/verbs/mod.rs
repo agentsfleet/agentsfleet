@@ -5,7 +5,7 @@
 //! ```text
 //!   cron_* / schedule ──┐
 //!   message ────────────┤
-//!   fleet_steer ────────┼──► LeaseVerbs ──► agentsfleetd, fenced by the lease
+//!   fleet_steer ────────┼──► RunVerbs ──► agentsfleetd, fenced by the run
 //!   fleet_activity ─────┘        ▲
 //!                                └── the supervisor's control plane
 //! ```
@@ -14,8 +14,8 @@
 //!
 //! A schedule lives in `agentsfleetd` and fires through `QStash`; a line is
 //! posted by `agentsfleetd`, which holds the Slack token. The tools here only
-//! say what to do. [`LeaseVerbs`] is the seam the supervisor implements over
-//! its control plane, carrying the lease's id and fencing token itself, so a
+//! say what to do. [`RunVerbs`] is the seam the supervisor implements over
+//! its control plane, carrying the run's id and fencing token itself, so a
 //! tool never holds the token and a fake answers every call in a suite.
 //!
 //! # A refusal reaches the model with its code
@@ -62,7 +62,7 @@ const DETAIL_REFUSED: &str = "agentsfleetd refused the request";
 /// schedule removed outright.
 const DONE: &str = "done";
 
-/// One schedules call, as a tool asks it: the fleet is the lease's, so none
+/// One schedules call, as a tool asks it: the fleet is the run's, so none
 /// names one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScheduleCall<'a> {
@@ -113,7 +113,7 @@ pub enum ScheduleCall<'a> {
     },
 }
 
-/// One fleets read, as `fleet_activity` asks it: the workspace is the lease's,
+/// One fleets read, as `fleet_activity` asks it: the workspace is the run's,
 /// so none names one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FleetsCall<'a> {
@@ -208,12 +208,12 @@ pub(crate) fn answered_with<T>(
     }
 }
 
-/// The `agentsfleetd` verbs one lease's tools send through.
+/// The `agentsfleetd` verbs one run's tools send through.
 ///
 /// Implemented by the supervisor over its control plane, which adds the
-/// lease's id and fencing token to every call.
+/// run's id and fencing token to every call.
 #[async_trait::async_trait]
-pub trait LeaseVerbs: Send + Sync + fmt::Debug {
+pub trait RunVerbs: Send + Sync + fmt::Debug {
     /// Sends one schedules call and answers the reply body of a success.
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered>;
 
@@ -292,7 +292,7 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
 
 /// Verbs with nothing behind them: every call is unanswered.
 ///
-/// For a lease that runs with no control plane, in a suite, so a tool that
+/// For a run that runs with no control plane, in a suite, so a tool that
 /// reaches for one says so rather than pretending it worked. Test-only, as
 /// `af_egress::testing::closed` is: production always has a plane.
 #[cfg(any(test, feature = "test-util"))]
@@ -305,7 +305,7 @@ pub static CLOSED: Closed = Closed;
 
 #[cfg(any(test, feature = "test-util"))]
 #[async_trait::async_trait]
-impl LeaseVerbs for Closed {
+impl RunVerbs for Closed {
     async fn schedules(&self, _call: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }

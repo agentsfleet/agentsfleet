@@ -1,5 +1,5 @@
 //! The reviewing fleet, end to end: `github-pr-reviewer` installed from the
-//! corpus into a real daemon and leased by the Rust runner's real loop, its
+//! corpus into a real daemon and held by the Rust runner's real loop, its
 //! calls sent through the production egress to an HTTPS GitHub.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
@@ -35,11 +35,11 @@ const REVIEWS: &str = "/repos/agentsfleet/linkwarden/pulls/7/reviews";
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_pr_reviewer_posts_one_review() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "github-pr-reviewer", &[], None).await;
+    let scene = install_definition(&mut supervisor, "github-pr-reviewer", &[], None).await;
     let upstream = Upstream::serve(review_routes()).await;
     let (model, transcript) = review_script();
 
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
     let seen = upstream.seen();
@@ -56,10 +56,10 @@ async fn test_pr_reviewer_posts_one_review() {
     );
     assert_post_refused(&transcript);
 
-    assert_steer_reads_and_posts_nothing(&run).await;
+    assert_steer_reads_and_posts_nothing(&scene).await;
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// GitHub for one reviewer run: the Pull Request's diff, and its reviews.
@@ -124,11 +124,11 @@ fn assert_post_refused(transcript: &Transcript) {
 
 /// A steer: the event's own text is what the model is asked, and the
 /// script, following the fleet's instructions, reaches for no upstream.
-async fn assert_steer_reads_and_posts_nothing(run: &Scenario) {
-    let steer = run.enqueue_event(EventType::Chat).await;
+async fn assert_steer_reads_and_posts_nothing(scene: &Scenario) {
+    let steer = scene.enqueue_event(EventType::Chat).await;
     let quiet = Upstream::serve(review_routes()).await;
     let (model, transcript) = FakeModel::new(vec![vec![say("Noted; no review for a steer.")]]);
-    let settled = run_event(run, &steer, &quiet, model).await;
+    let settled = run_event(scene, &steer, &quiet, model).await;
     assert_eq!(settled.status, "processed");
     let steer_text = serde_json::from_str::<serde_json::Value>(REQUEST_JSON)
         .ok()

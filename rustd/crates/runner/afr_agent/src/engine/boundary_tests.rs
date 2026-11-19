@@ -19,14 +19,14 @@ fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt)> {
     )?;
     let digest = af_core::etag::sha256_hex(&task.history);
     let snapshot = RecoverySnapshot {
-        lease_id: "019f0000-0000-7000-8000-000000000010".to_owned(),
+        run_id: "019f0000-0000-7000-8000-000000000010".to_owned(),
         event_id: "019f0000-0000-7000-8000-000000000011".to_owned(),
         fencing_token: 9,
         file_permit: None,
         state: RecoveryState::Task(task),
     };
     let valid = RecoveryReceipt {
-        lease_id: snapshot.lease_id.clone(),
+        run_id: snapshot.run_id.clone(),
         event_id: snapshot.event_id.clone(),
         fencing_token: snapshot.fencing_token,
         checkpoint: CommittedRecovery::Task {
@@ -45,7 +45,7 @@ fn committed_receipt_requires_the_exact_attempt() -> crate::Result<()> {
     assert!(valid.matches(&expected));
     for invalid in [
         RecoveryReceipt {
-            lease_id: "other".to_owned(),
+            run_id: "other".to_owned(),
             ..valid.clone()
         },
         RecoveryReceipt {

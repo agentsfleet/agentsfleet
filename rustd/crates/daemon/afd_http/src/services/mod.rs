@@ -8,7 +8,7 @@
 //! runner plane.
 //!
 //! One file per plane, because the seams are one per plane too: the runner
-//! plane's verbs in [`leasing`], the device-flow login in [`device_flow`], the
+//! plane's verbs in [`running`], the device-flow login in [`device_flow`], the
 //! tenant's own credentials and ownership in [`tenant`], the tenant's money in
 //! [`billing`], and a workspace's fleets in [`fleets`]. Each trait is
 //! re-exported here, so a handler still names `crate::services::TenantKeys` and
@@ -41,12 +41,12 @@ mod event;
 mod fleets;
 mod grant;
 mod ingress;
-mod leasing;
 mod mail;
 mod memory;
 mod model_entry;
 mod preference;
 mod provider;
+mod run_plane;
 mod runner_stream;
 mod schedule;
 mod signup;
@@ -63,12 +63,12 @@ pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
 pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
-pub use self::leasing::Leasing;
 pub use self::mail::InviteMail;
 pub use self::memory::FleetMemories;
 pub use self::model_entry::TenantModelEntries;
 pub use self::preference::WorkspacePreferences;
 pub use self::provider::TenantProviders;
+pub use self::run_plane::RunPlane;
 pub use self::runner_stream::RunnerStreams;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::signup::{

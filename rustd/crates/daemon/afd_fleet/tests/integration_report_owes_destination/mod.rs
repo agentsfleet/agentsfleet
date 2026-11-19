@@ -1,8 +1,8 @@
 //! A report owes its answer only to the destination its event was admitted
-//! with, and never to the lease's model provider.
+//! with, and never to the run's model provider.
 //!
 //! Driven end to end through the real verbs: `Admissions::admit` records the
-//! event and its destination, the lease path takes it, and `commit_report`
+//! event and its destination, the run path takes it, and `commit_report`
 //! settles it. What is read back is `fleet.obligations` for this test's
 //! own fleet (ISO-1). No suite drove a report into that table before this one,
 //! which is how every non-empty answer came to be owed to `anthropic` unseen.
@@ -17,7 +17,7 @@
 )]
 
 use afd_connector::Provider;
-use afd_fleet::lease::Committed;
+use afd_fleet::run::Committed;
 use afd_turns::{Producer, Reply};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES};
@@ -93,7 +93,7 @@ async fn answer_is_owed_to_the_recorded_destination() {
     stage.fixtures.cleanup().await;
 }
 
-/// with every lease resolved to a model provider, no ledger
+/// with every run resolved to a model provider, no ledger
 /// row names it, whichever producer asked.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -125,7 +125,7 @@ async fn the_model_provider_never_reaches_the_ledger() {
     );
     assert!(
         owed.iter().all(|row| row.provider != PROVIDER),
-        "the lease's model provider ({PROVIDER}) reached the delivery ledger: {owed:?}"
+        "the run's model provider ({PROVIDER}) reached the delivery ledger: {owed:?}"
     );
 
     stage.fixtures.cleanup().await;
@@ -139,10 +139,10 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
     let stage = stage().await;
     stage.admit_thread("asked-once").await;
     let now = stage.fixtures.enrolled_at();
-    let (lease_id, lease) = stage.lease_next(now).await;
+    let (run_id, run) = stage.assign_next(now).await;
 
     let refused = stage
-        .report(&lease_id, &lease, RESPONSE_POSTGRES_REFUSES, now)
+        .report(&run_id, &run, RESPONSE_POSTGRES_REFUSES, now)
         .await;
     assert!(
         refused.is_err(),
@@ -155,7 +155,7 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
     );
 
     let settled = stage
-        .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
+        .report(&run_id, &run, RESPONSE_ACCEPTED, now)
         .await
         .expect("the retry must reach the datastore");
     assert!(
@@ -163,12 +163,12 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
         "the retry that settled owes the answer"
     );
     let repeated = stage
-        .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
+        .report(&run_id, &run, RESPONSE_ACCEPTED, now)
         .await
         .expect("a repeated report is an answer, not a fault");
     assert!(
         matches!(repeated, Committed::AlreadySettled),
-        "the lease is settled, so the repeat writes nothing"
+        "the run is settled, so the repeat writes nothing"
     );
     assert_eq!(
         obligations(&stage.fixtures, &stage.fleet).await.len(),
@@ -218,9 +218,9 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
     let stage = stage().await;
     let event_id = stage.admit_thread("asked-and-answered").await;
     let now = stage.fixtures.enrolled_at();
-    let (lease_id, lease) = stage.lease_next(now).await;
+    let (run_id, run) = stage.assign_next(now).await;
 
-    stage.report_through_plane(&lease_id, &lease, now).await;
+    stage.report_through_plane(&run_id, &run, now).await;
 
     let receipt = stage.receipt(&event_id).await;
     assert!(

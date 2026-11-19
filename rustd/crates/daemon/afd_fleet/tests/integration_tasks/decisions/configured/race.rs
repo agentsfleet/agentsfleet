@@ -9,7 +9,7 @@ use std::time::Duration;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn disabling_during_issue_waits_on_the_same_host_lock_and_rolls_back_the_lease() {
+async fn disabling_during_issue_waits_on_the_same_host_lock_and_rolls_back_the_run() {
     exercise(race).await;
 }
 

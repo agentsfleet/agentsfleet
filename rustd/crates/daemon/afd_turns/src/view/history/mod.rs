@@ -191,7 +191,7 @@ impl History {
     }
 
     /// The finished rows of a fleet's thread before `at`, newest first, bodies
-    /// included: what a chat lease reads its turns from. Finished is the
+    /// included: what a chat run reads its turns from. Finished is the
     /// statement's predicate, so `limit` counts finished rows only, and no
     /// waiting message is merged in, since it has no answer yet.
     ///

@@ -1,6 +1,6 @@
 //! The write-bound fleets, end to end: each repairer reconciles, reads, and
 //! writes through the Git Data API under the rules the daemon compiled for its
-//! lease — the one branch it named, a draft against the trusted base — with a
+//! run — the one branch it named, a draft against the trusted base — with a
 //! token minted through the real grant check and broker.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
@@ -61,7 +61,7 @@ fn assert_reconciled_for(repo: Repo, branch: &str, seen: &[crate::https::Seen]) 
     let reconcile = seen
         .iter()
         .find(|request| request.method == Method::GET && request.path == repo.path("pulls"))
-        .expect("the run reconciled before any write");
+        .expect("the scene reconciled before any write");
     assert!(
         reconcile.query.contains(&format!("head={owner}:{branch}")),
         "the reconcile looked for the daemon's branch: {}",
@@ -189,12 +189,12 @@ fn incident_upstream(contents: Reply) -> Vec<Route> {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_incident_repairer_ships_or_stops() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "incident-repairer", &telemetry(), None).await;
+    let scene = install_definition(&mut supervisor, "incident-repairer", &telemetry(), None).await;
     let upstream = Upstream::serve(incident_upstream(file_at_head())).await;
     let (model, transcript) =
         FakeModel::deciding(script(AGENTSFLEET, incident_reads(), vec![bulk_write()]));
 
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
     assert!(settled.answer.contains(DRAFT_URL), "{}", settled.answer);
@@ -219,10 +219,10 @@ async fn test_incident_repairer_ships_or_stops() {
         .and_then(|request| request.headers.get("authorization"))
         .and_then(|value| value.to_str().ok());
     assert_eq!(key, Some("ApiKey es_fixture_key"));
-    assert_repaired_on_named_branch(AGENTSFLEET, run.event_id.as_str(), &seen, &asked);
+    assert_repaired_on_named_branch(AGENTSFLEET, scene.event_id.as_str(), &seen, &asked);
     assert_token_stayed_on_the_wire(&seen, &asked);
 
-    let second = run.enqueue_event(EventType::Chat).await;
+    let second = scene.enqueue_event(EventType::Chat).await;
     let forbidden = Reply::json(
         403,
         &json!({"message": "Resource not accessible by integration"}),
@@ -230,7 +230,7 @@ async fn test_incident_repairer_ships_or_stops() {
     let partial = Upstream::serve(incident_upstream(forbidden)).await;
     let (model, transcript) =
         FakeModel::deciding(script(AGENTSFLEET, incident_reads(), Vec::new()));
-    let settled = run_event(&run, &second, &partial, model).await;
+    let settled = run_event(&scene, &second, &partial, model).await;
     let read = transcript
         .asked()
         .last()
@@ -253,5 +253,5 @@ async fn test_incident_repairer_ships_or_stops() {
     );
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

@@ -1,5 +1,5 @@
 -- Opens, as received, the event of each message a run folded, joined to the
--- run whose answer it takes: insert_leased_fleet_event.sql for many messages
+-- run whose answer it takes: insert_rund_fleet_event.sql for many messages
 -- in one statement. Each event's instant is its message's own while the
 -- ledger has not stamped the message delivered. An event the message already
 -- has keeps its history and learns the run it joined if it named none.

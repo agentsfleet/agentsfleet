@@ -1,6 +1,6 @@
 //! Only an exact confirmation can turn a proposal into a database-issued connection authority.
 
-use super::super::{ConfirmedConnection, ConnectionOpening, Message, cache::LeaseCache};
+use super::super::{ConfirmedConnection, ConnectionOpening, Message, cache::RunCache};
 use super::allowed;
 use crate::{
     Operation, Result,
@@ -36,7 +36,7 @@ impl ConnectionOpening {
             &self.context.native.stop,
             self.deadline,
             Operation::Opening,
-            LeaseCache::rebuild(
+            RunCache::rebuild(
                 &self.gateway.inner.dependencies.database,
                 authority.runner(),
             ),

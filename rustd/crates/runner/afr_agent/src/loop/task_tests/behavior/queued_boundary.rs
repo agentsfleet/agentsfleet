@@ -10,7 +10,7 @@ struct Queued {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Queued {
+impl RunVerbs for Queued {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -121,7 +121,7 @@ async fn queued_message_is_bound_once_then_reread_and_answered_before_root_work(
         vec![say("Investigation awaits checks."), ended(false)],
     ]);
     let engine = super::super::super::tests::engine(vec![], &script);
-    let lease = assigned_lease(&[], 16_384);
+    let this_run = assigned_run(&[], 16_384);
     let inputs = native
         .intake
         .inputs
@@ -133,7 +133,7 @@ async fn queued_message_is_bound_once_then_reread_and_answered_before_root_work(
         inputs,
         allow_actions: true,
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_queued_outcome(&native, &script, output)
 }
 

@@ -153,7 +153,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["platform", "runners", "rotate-token"], missingArgName: "runner_id" },
   { args: ["platform", "runners", "delete"], missingArgName: "runner_id" },
   { args: ["platform", "runners", "events"], missingArgName: "runner_id" },
-  { args: ["platform", "runners", "leases"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "runs"], missingArgName: "runner_id" },
   { args: ["runners", "show"], missingArgName: "runner_id" },
   { args: ["runners", "update"], missingArgName: "runner_id" },
   { args: ["runners", "cordon"], missingArgName: "runner_id" },

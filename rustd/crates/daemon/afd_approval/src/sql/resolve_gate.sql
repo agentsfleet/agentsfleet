@@ -30,7 +30,7 @@ WITH resolved AS (
   -- this waits on it, so the park cannot strand its flag. The unclaimed backlog is
   -- neither rewritten nor locked.
   WHERE a.fleet_id = r.fleet_id AND a.settled_at IS NULL
-    AND (a.parked_at IS NOT NULL OR a.lease_fence IS NOT NULL)
+    AND (a.parked_at IS NOT NULL OR a.run_fence IS NOT NULL)
 )
 
 SELECT id AS gate_id, action_id, workspace_id,

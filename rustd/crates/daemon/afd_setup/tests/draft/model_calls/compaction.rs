@@ -59,7 +59,7 @@ async fn changed_history_after_funding_cannot_dispatch_the_previously_measured_b
     let provider = Arc::new(Provider::default());
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let error = calls
-        .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+        .call(&f.runner, &attempt.run, fixture::request(&attempt))
         .await
         .expect_err("a funded body cannot authorize changed history");
     assert_eq!(error.code(), af_core::error_code::AUTHORING_FENCE);
@@ -188,7 +188,7 @@ async fn repeated_authoring_compaction_restores_notes_and_continues_with_all_181
         let mut request = fixture::request(&attempt);
         request.call_index = index;
         let response = calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect("metered physical call");
         if response.compacted {

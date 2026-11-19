@@ -1,4 +1,4 @@
-//! Conditional controls reach the same native owner as lease-bound task work.
+//! Conditional controls reach the same native owner as run-bound task work.
 
 use std::sync::Arc;
 

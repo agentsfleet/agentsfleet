@@ -120,7 +120,7 @@ async fn saved(case: &Case, funded: bool) -> (String, String, String) {
 }
 
 /// Deletes `item` under `tag` and proves the row and its live work are gone.
-async fn assert_deleted(case: &Case, item: &str, tag: &str, lease: Option<&af_core::id::Uuid7>) {
+async fn assert_deleted(case: &Case, item: &str, tag: &str, run: Option<&af_core::id::Uuid7>) {
     assert_eq!(
         remove(case, item, Some(tag)).await.status(),
         StatusCode::NO_CONTENT
@@ -128,11 +128,11 @@ async fn assert_deleted(case: &Case, item: &str, tag: &str, lease: Option<&af_co
     let gone =
         super::super::send(&case.router, Method::GET, item, Some(&case.base.token), "").await;
     assert_eq!(gone.status(), StatusCode::NOT_FOUND);
-    if let Some(lease) = lease {
+    if let Some(run) = run {
         assert_eq!(
-            super::fixture::lease_state(case, lease).await,
+            super::fixture::run_state(case, run).await,
             None,
-            "the live lease went with the fleet"
+            "the live run went with the fleet"
         );
     }
 }
@@ -149,14 +149,14 @@ async fn delete_removes_a_fleet_in_any_status() {
     let mut active = Case::create().await;
     let (item, tag, status) = saved(&active, true).await;
     assert_eq!(status, "active");
-    let (runner, lease) = active.live_lease(&super::fixture::fleet_of(&item)).await;
+    let (runner, run) = active.live_run(&super::fixture::fleet_of(&item)).await;
     let mut commands = active
         .bus
         .subscribe(&afd_bus::Subject::RunnerCommand(runner))
         .await
         .expect("runner command channel");
     assert_eq!(
-        super::fixture::lease_state(&active, &lease).await,
+        super::fixture::run_state(&active, &run).await,
         Some(("active".to_owned(), false))
     );
     let foreign = remove(
@@ -170,8 +170,8 @@ async fn delete_removes_a_fleet_in_any_status() {
         json_body(foreign).await["error_code"],
         error_code::AGENTSFLEET_NOT_FOUND.as_str()
     );
-    assert_deleted(&active, &item, &tag, Some(&lease)).await;
-    super::fixture::cancel_heard(&mut commands, &lease).await;
+    assert_deleted(&active, &item, &tag, Some(&run)).await;
+    super::fixture::cancel_heard(&mut commands, &run).await;
     drop(commands);
     active.cleanup().await;
 

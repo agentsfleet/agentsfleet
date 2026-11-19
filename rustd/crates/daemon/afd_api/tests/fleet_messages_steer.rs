@@ -151,7 +151,7 @@ async fn test_nul_operation_id_is_refused() {
     assert_eq!(field_of(refused, "detail").await, OPERATION_ID_DETAIL);
 }
 
-/// A message holding NUL, which the lease's `jsonb` cast cannot store, is
+/// A message holding NUL, which the run's `jsonb` cast cannot store, is
 /// refused with the message sentence. The store behind this router only reports
 /// an outage, so a 400 proves the refusal came before anything was admitted.
 #[tokio::test]

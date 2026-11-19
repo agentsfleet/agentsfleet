@@ -41,7 +41,7 @@ impl Host {
             Ok(OfferOutcome::Deferred) if self.extra_pages > 0 => self.extra_pages -= 1,
             Ok(OfferOutcome::Empty | OfferOutcome::Deferred) => return false,
             Err(failure) => {
-                // The connection may have committed a lease before its reply was lost.
+                // The connection may have committed a run before its reply was lost.
                 Gateway::observe(&failure, Operation::Offer);
                 return false;
             }

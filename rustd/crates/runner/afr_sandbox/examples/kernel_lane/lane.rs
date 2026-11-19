@@ -18,7 +18,7 @@ use crate::release::Signer;
 
 /// The environment variable naming the toolbox image to run against.
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
-/// The delegated cgroup every lease's cgroup is made under.
+/// The delegated cgroup every run's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
 /// The unprivileged host user and group bubblewrap runs as, as on a host.
 pub(crate) const SANDBOX_IDS: (u32, u32) = afr_sandbox::SANDBOX_HOST_IDS;
@@ -29,14 +29,14 @@ const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_u
 /// What a host that does not forward IPv4 lacks: an allowlisted sandbox's
 /// traffic is forwarded from its link, so the egress trials need it on.
 const FORWARDING_OFF: &str = "forwarding: net.ipv4.ip_forward is not 1";
-/// Where each run's leases and toolbox mount live; short, for socket paths.
+/// Where each run's runs and toolbox mount live; short, for socket paths.
 pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// What the sandbox side says, on its error stream, when its command line
 /// names no descriptors it can read.
 pub(crate) const NOT_TOLD: &str = "the sandbox was not told its descriptors";
-/// Where, under the lane's state, each lease's directory is made; apart from
-/// the toolbox mount, so no lease name can land on it.
-const LEASES_DIR: &str = "leases";
+/// Where, under the lane's state, each run's directory is made; apart from
+/// the toolbox mount, so no run name can land on it.
+const RUNS_DIR: &str = "runs";
 /// Where, under the lane's state, the toolbox image is staged, kept and
 /// mounted, as a host keeps it.
 const TOOLBOX_DIR: &str = "toolbox";
@@ -95,9 +95,9 @@ impl Lane {
             .unwrap_or_else(|refused| unreachable!("{refused}"))
     }
 
-    /// Where a lease's directory goes.
-    pub(crate) fn lease_dir(&self, lease_id: &str) -> PathBuf {
-        self.state.path().join(LEASES_DIR).join(lease_id)
+    /// Where a run's directory goes.
+    pub(crate) fn run_dir(&self, run_id: &str) -> PathBuf {
+        self.state.path().join(RUNS_DIR).join(run_id)
     }
 }
 
@@ -162,7 +162,7 @@ pub(crate) fn main() -> ExitCode {
     let toolbox = ProcessEnv.get(TOOLBOX_VARIABLE);
     let root = rustix::process::geteuid().is_root();
     // The controllers are delegated first, so the probe reads the cgroup the
-    // leases are made under; a host that cannot delegate them is a gap too.
+    // runs are made under; a host that cannot delegate them is a gap too.
     let delegated = if root { delegate().ok() } else { None };
     let paths = ProbePaths {
         cgroup_root: delegated.unwrap_or_else(|| PathBuf::from(LANE_CGROUP)),
@@ -236,7 +236,7 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
     };
     let host_paths = HostPaths {
         cgroup_root: paths.cgroup_root,
-        state_dir: state.path().join(LEASES_DIR),
+        state_dir: state.path().join(RUNS_DIR),
     };
     let booted = boot(backend, &host_paths)?;
     let image = LaneImage {
@@ -263,13 +263,13 @@ fn install_entry(state: &Path) -> std::io::Result<PathBuf> {
     let entry = state.join(ENTRY_NAME);
     fs::copy(std::env::current_exe()?, &entry)?;
     fs::set_permissions(&entry, fs::Permissions::from_mode(ENTRY_MODE))?;
-    // The lease directories live beside it, so the directory itself must be
+    // The run directories live beside it, so the directory itself must be
     // traversable from inside too.
     fs::set_permissions(state, fs::Permissions::from_mode(STATE_MODE))?;
     Ok(entry)
 }
 
-/// Makes the lane's own cgroup and delegates the lease controllers to it,
+/// Makes the lane's own cgroup and delegates the run controllers to it,
 /// from the cgroup v2 root down.
 fn delegate() -> std::io::Result<PathBuf> {
     let enable = REQUIRED_CONTROLLERS

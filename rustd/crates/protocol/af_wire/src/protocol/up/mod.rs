@@ -6,24 +6,24 @@ use std::num::NonZeroU64;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use super::{LEASES_MAX, StreamKind};
+use super::{RUNS_MAX, StreamKind};
 use crate::activity::ActivityRequest;
 use crate::fold::FoldRequest;
-use crate::lease::AcceptedKinds;
 use crate::report::{RenewRequest, ReportRequest};
+use crate::run::AcceptedKinds;
 use crate::runner::HeartbeatRequest;
 
 mod decode;
 mod other;
 
-/// One lease's usage records in the host's renewal batch.
+/// One run's usage records in the host's renewal batch.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct Renewal<'a> {
-    /// Canonical identifier, resolved by the lease service after validation.
+    /// Canonical identifier, resolved by the run service after validation.
     #[serde(borrow)]
     #[garde(length(bytes, min = 36, max = 36))]
-    pub lease_id: Cow<'a, str>,
+    pub run_id: Cow<'a, str>,
     /// Existing per-provider-request usage and its declared bounds.
     #[garde(dive)]
     pub request: RenewRequest,
@@ -38,7 +38,7 @@ pub enum Up<
     O: Clone = serde_json::Value,
     I: Clone = serde_json::Value,
 > {
-    /// Reconcile the running leases before accepting offers.
+    /// Reconcile the running runs before accepting offers.
     Hello {
         /// Session-local correlation identifier.
         #[garde(skip)]
@@ -46,12 +46,12 @@ pub enum Up<
         /// Work domains this runner can execute.
         #[garde(skip)]
         accepted_kinds: AcceptedKinds,
-        /// Leases the runner still considers active.
+        /// Runs the runner still considers active.
         #[serde(borrow)]
-        #[garde(length(max = LEASES_MAX), inner(length(bytes, min = 36, max = 36)))]
+        #[garde(length(max = RUNS_MAX), inner(length(bytes, min = 36, max = 36)))]
         running: Vec<Cow<'a, str>>,
         /// Idle workers available to accept offers.
-        #[garde(range(max = LEASES_MAX))]
+        #[garde(range(max = RUNS_MAX))]
         credits: usize,
         /// Proposal whose final welcome may have been lost on the prior connection.
         #[serde(default, borrow, skip_serializing_if = "Option::is_none")]
@@ -71,7 +71,7 @@ pub enum Up<
     /// Replace, rather than increment, the advertised idle-worker count.
     Ready {
         /// Current idle workers, before subtracting offers still in flight.
-        #[garde(range(max = LEASES_MAX))]
+        #[garde(range(max = RUNS_MAX))]
         credits: usize,
         /// Increasing availability update on this physical connection.
         #[garde(skip)]
@@ -101,20 +101,20 @@ pub enum Up<
         /// Echoed by the batch answer.
         #[garde(skip)]
         request_id: NonZeroU64,
-        /// Independently fenced and acknowledged lease requests.
+        /// Independently fenced and acknowledged run requests.
         #[serde(borrow)]
-        #[garde(length(min = 1, max = LEASES_MAX), dive)]
-        leases: Vec<Renewal<'a>>,
+        #[garde(length(min = 1, max = RUNS_MAX), dive)]
+        runs: Vec<Renewal<'a>>,
     },
     /// One physical authoring invocation; connection recovery must not redispatch it.
     AuthoringModel {
         #[garde(skip)]
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[garde(skip)]
         /// Current operation body; its domain service owns nested validation.
         request: Cow<'a, crate::authoring::ModelCall<D, O, I>>,
@@ -124,23 +124,23 @@ pub enum Up<
         #[garde(skip)]
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[garde(skip)]
         /// Current operation body; its domain service owns nested validation.
         request: Cow<'a, crate::authoring::ActivityRequest<D, O, I>>,
     },
-    /// Extend an existing private authoring lease without blocking model work.
+    /// Extend an existing private authoring run without blocking model work.
     AuthoringRenew {
         #[garde(skip)]
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[garde(dive)]
         /// Current operation body; its domain service owns nested validation.
         request: crate::authoring::Renew,
@@ -150,20 +150,20 @@ pub enum Up<
         #[garde(skip)]
         /// Session-local correlation identifier.
         request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
+        /// Authoring run whose fence and ownership scope this exchange.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[garde(dive)]
         /// Current operation body; its domain service owns nested validation.
         request: Cow<'a, crate::authoring::Report>,
     },
     /// Frame-specific validation remains in the existing activity service.
     Activity {
-        /// Lease whose target and fence scope the progress.
+        /// Run whose target and fence scope the progress.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// The existing bounded activity body.
         #[serde(borrow)]
         #[garde(skip)]
@@ -179,31 +179,31 @@ pub enum Up<
         #[garde(skip)]
         request: Box<Cow<'a, ReportRequest<'a>>>,
     },
-    /// Claim pending inputs at a model-call boundary under the lease fence.
+    /// Claim pending inputs at a model-call boundary under the run fence.
     Folds {
         /// Echoed by the folded-input answer.
         #[garde(skip)]
         request_id: NonZeroU64,
-        /// The live lease requesting its next inputs.
+        /// The live run requesting its next inputs.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// The fence and last consumed input cursor.
         #[garde(dive)]
         request: FoldRequest,
     },
-    /// Event-owned recovery on the current ordinary lease.
+    /// Event-owned recovery on the current ordinary run.
     TurnCheckpoint {
         /// Correlates this transmission, independently of semantic operation identity.
         #[garde(skip)]
         request_id: NonZeroU64,
-        /// Current lease; the daemon derives every storage scope from it.
+        /// Current run; the daemon derives every storage scope from it.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// Bounded command retained unchanged across transmission retries.
         #[garde(dive)]
-        request: Cow<'a, crate::lease::TurnCheckpointCommand>,
+        request: Cow<'a, crate::run::TurnCheckpointCommand>,
     },
 }
 

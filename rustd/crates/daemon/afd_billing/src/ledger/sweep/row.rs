@@ -81,7 +81,7 @@ impl UnsettledRow {
     /// The work this row belongs to, by its stored kind.
     pub(super) fn work(&self) -> Option<fn(Uuid7) -> WorkKey> {
         match self.work_type.as_str() {
-            sql::work::FLEET_LEASE => Some(WorkKey::FleetLease),
+            sql::work::FLEET_RUN => Some(WorkKey::FleetRun),
             sql::work::AUTHORING_ATTEMPT => Some(WorkKey::AuthoringAttempt),
             _ => None,
         }

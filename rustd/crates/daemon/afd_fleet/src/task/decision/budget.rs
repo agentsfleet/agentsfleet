@@ -11,8 +11,8 @@ use super::{context::AssessedContext, sql};
 use crate::{
     Result,
     error::query,
-    lease::Leases,
-    task::{TaskRefusal, TaskSnapshot, guard::LeaseRow},
+    run::Runs,
+    task::{TaskRefusal, TaskSnapshot, guard::RunRow},
 };
 
 pub(super) const CALL_NANOS: i64 = 20_000_000;
@@ -27,7 +27,7 @@ struct FleetSpend {
 
 pub(super) async fn check_on(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     context: &AssessedContext,
     task: Option<&TaskSnapshot>,
     allocating: bool,
@@ -50,7 +50,7 @@ pub(super) async fn check_on(
     } else {
         // A non-goal call that allocates nothing spends no source allowance.
     }
-    let config = Leases::stored_config_on(connection, &current.fleet_id, None)
+    let config = Runs::stored_config_on(connection, &current.fleet_id, None)
         .await?
         .ok_or(TaskRefusal::StaleState)?;
     let totals: FleetSpend = sqlx::query_as(sql::BUDGET)
@@ -90,7 +90,7 @@ fn goal(task: &TaskContext<'_>, extra: i64, allocating: bool) -> Result<()> {
 
 async fn paid_ready(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     context: &AssessedContext,
 ) -> Result<()> {
     let task = context
@@ -98,7 +98,7 @@ async fn paid_ready(
         .as_ref()
         .filter(|_task| context.assessment.purpose() == DecisionPurpose::Goal);
     let overage: bool = sqlx::query_scalar(sql::OVERAGE)
-        .bind(&current.lease_id)
+        .bind(&current.run_id)
         .bind(&context.source_admission_id)
         .bind(task.map(|task| &task.task_id))
         .bind(&current.fleet_id)
@@ -112,7 +112,7 @@ async fn paid_ready(
         tracing::warn!(
             event = "dt_decision_blocked",
             reason = "reservation_overage",
-            lease_id = current.lease_id.as_str(),
+            run_id = current.run_id.as_str(),
             source_admission_id = context.source_admission_id.as_str()
         );
         return Err(TaskRefusal::DecisionOverage.into());

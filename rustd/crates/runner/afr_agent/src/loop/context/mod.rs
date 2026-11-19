@@ -106,7 +106,7 @@ impl Harness<'_, '_> {
     fn context_parameters(&mut self) -> af_context::Result<(Identity, Window)> {
         if self.context.branch.is_none() {
             self.context.branch = Some(if self.depth == 0 {
-                self.shared.lease_id.to_owned()
+                self.shared.run_id.to_owned()
             } else {
                 af_crypto::entropy::Entropy::new()
                     .uuid7(SystemClock.now())
@@ -122,7 +122,7 @@ impl Harness<'_, '_> {
         let identity = Identity {
             scope: format!(
                 "run:{}:{}:{branch}",
-                self.shared.fleet_id, self.shared.lease_id
+                self.shared.fleet_id, self.shared.run_id
             ),
             model: hex::encode(Sha256::digest(
                 serde_json::to_vec(&(

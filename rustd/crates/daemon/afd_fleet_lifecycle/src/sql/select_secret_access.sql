@@ -1,7 +1,7 @@
 -- Which runnable fleets in a workspace may read each secret, by name.
--- A lease resolves exactly the names its revision declares. A task's accepted
+-- A run resolves exactly the names its revision declares. A task's accepted
 -- revision installs only when its runtime authority, credentials included,
--- equals the head's (`Leases::install`, `same_task_authority`), so the head's
+-- equals the head's (`Runs::install`, `same_task_authority`), so the head's
 -- declared names are the whole answer: a task revision that differs cannot run.
 -- Trigger verification and textual references grant nothing here.
 WITH governing AS (

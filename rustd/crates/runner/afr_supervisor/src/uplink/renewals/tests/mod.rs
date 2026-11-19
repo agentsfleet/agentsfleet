@@ -9,10 +9,10 @@ mod recovery;
 async fn configured_host_renewal_interval_reaches_the_native_queue() -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
     let (handle, mut peer) = RenewalPeer::new();
-    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let started = Instant::now();
     let _registration = registry.register(
-        &lease,
+        &run,
         Arc::new(afr_agent::Meter::default()),
         started + Duration::from_secs(28),
     )?;
@@ -36,12 +36,12 @@ async fn configured_host_renewal_interval_reaches_the_native_queue() -> crate::R
             .await
             .ok_or(crate::error::ErrorKind::Disconnected)?;
         assert_eq!(started.elapsed(), Duration::from_secs(1));
-        let af_wire::protocol::Up::RenewBatch { leases, .. } =
+        let af_wire::protocol::Up::RenewBatch { runs, .. } =
             message.frame.decode::<af_wire::protocol::Up<'_>>()?
         else {
             return Err(crate::error::ErrorKind::StreamProtocol.into());
         };
-        assert_eq!(leases.len(), 1);
+        assert_eq!(runs.len(), 1);
         stop.cancel();
         Ok::<(), crate::Error>(())
     };
@@ -54,8 +54,8 @@ async fn configured_host_renewal_interval_reaches_the_native_queue() -> crate::R
 async fn recovery_shares_confirmed_deadlines_and_retires_them_before_final_delivery()
 -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
-    let fleet = Uuid7::parse(crate::test_util::LEASE_ID)?;
-    let authoring = Uuid7::parse(crate::authoring::tests::lease().lease_id.as_str())?;
+    let fleet = Uuid7::parse(crate::test_util::RUN_ID)?;
+    let authoring = Uuid7::parse(crate::authoring::tests::payload().run_id.as_str())?;
     let now = Instant::now();
     let fleet = registry.register(
         &fleet,
@@ -94,7 +94,7 @@ async fn full_host_usage_renews_in_bounded_independently_correlated_frames() -> 
     let snapshot = host.registry.snapshot();
     let oversized: af_wire::protocol::Up<'_> = af_wire::protocol::Up::RenewBatch {
         request_id: std::num::NonZeroU64::MAX,
-        leases: snapshot.into_iter().map(|(_, renewal)| renewal).collect(),
+        runs: snapshot.into_iter().map(|(_, renewal)| renewal).collect(),
     };
     assert!(
         serde_json::to_vec(&oversized)
@@ -133,7 +133,7 @@ impl FullHost {
         let registry = Arc::new(Renewals::default());
         let deadline = Instant::now() + Duration::from_secs(28);
         let mut registrations = Vec::new();
-        for index in 0..af_wire::protocol::LEASES_MAX {
+        for index in 0..af_wire::protocol::RUNS_MAX {
             let id = Uuid7::parse(&format!("019f0000-0000-7000-8000-{index:012x}"))?;
             let meter = Arc::new(afr_agent::Meter::new(Arc::new(
                 af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH),
@@ -195,12 +195,12 @@ impl RenewalPeer {
 
     /// Read all partitions before answering in reverse order, retaining only small replies.
     async fn answer_snapshot(&mut self) -> crate::Result<usize> {
-        use af_wire::protocol::{LEASES_MAX, MESSAGE_BYTES_MAX, Up};
+        use af_wire::protocol::{MESSAGE_BYTES_MAX, RUNS_MAX, Up};
         let mut seen = std::collections::HashSet::new();
         let mut request_ids = std::collections::HashSet::new();
         let mut responses = Vec::new();
         let deadline = Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT;
-        while seen.len() < LEASES_MAX {
+        while seen.len() < RUNS_MAX {
             let message = self
                 .outgoing
                 .priority
@@ -212,7 +212,7 @@ impl RenewalPeer {
                 message.deadline, deadline,
                 "partitions share one answer window"
             );
-            let Up::RenewBatch { request_id, leases } = message.frame.decode::<Up<'_>>()? else {
+            let Up::RenewBatch { request_id, runs } = message.frame.decode::<Up<'_>>()? else {
                 return Err(crate::error::ErrorKind::StreamProtocol.into());
             };
             assert!(
@@ -220,25 +220,25 @@ impl RenewalPeer {
                 "each batch owns its correlation id"
             );
             let mut answers = Vec::new();
-            for renewal in leases.into_iter().rev() {
-                let id = Uuid7::parse(&renewal.lease_id)?;
+            for renewal in runs.into_iter().rev() {
+                let id = Uuid7::parse(&renewal.run_id)?;
                 assert!(seen.insert(id));
                 assert_eq!(renewal.request.requests.0.len(), af_wire::usage::LINES_MAX);
                 let index = u32::from_str_radix(
                     renewal
-                        .lease_id
+                        .run_id
                         .rsplit('-')
                         .next()
                         .ok_or(crate::error::ErrorKind::StreamProtocol)?,
                     16,
                 )
                 .map_err(crate::error::stream_protocol)?;
-                answers.push(serde_json::json!({"lease_id":renewal.lease_id,
+                answers.push(serde_json::json!({"run_id":renewal.run_id,
                     "answer":{"status":"ok","response":{
-                        "lease_expires_at":"2030-01-01T00:00:00Z","recorded_through":index}}}));
+                        "run_expires_at":"2030-01-01T00:00:00Z","recorded_through":index}}}));
             }
             responses.push(serde_json::json!({"type":"renewed","request_id":request_id,
-                "leases":answers}));
+                "runs":answers}));
         }
         let batches = responses.len();
         for response in responses.into_iter().rev() {

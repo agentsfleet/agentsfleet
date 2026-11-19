@@ -102,7 +102,7 @@ fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> Test
         "[telemetry]\notlp_endpoint = 'private-invalid-value'",
         "[server]\nport = 'private-invalid-value'",
         "[server]\nunknown = 'private-invalid-value'",
-        "[runner.lease]\nttl_seconds = 32",
+        "[runner.run]\nttl_seconds = 32",
         "[runner.scheduling]\nmax_concurrent_recovery_claims = 0",
         "[runner.stream.data]\nmax_buffered_bytes = 1",
         "[runner.listener]\nmax_udp_payload_bytes = 1199",
@@ -146,7 +146,7 @@ fn every_supported_file_section_reuses_its_existing_startup_input() -> TestResul
     assert_eq!(
         source
             .environment()
-            .get("AGENTSFLEET_LEASE_TTL_SECONDS")
+            .get("AGENTSFLEET_RUN_TTL_SECONDS")
             .as_deref(),
         Some("40")
     );
@@ -207,7 +207,7 @@ tls_key_file = "/certs/server.key"
 max_buffered_bytes = 16_777_216
 [runner.stream.data]
 max_buffered_bytes = 67_108_864
-[runner.lease]
+[runner.run]
 ttl_seconds = 40
 [runner.recovery]
 resume_from_checkpoint = false

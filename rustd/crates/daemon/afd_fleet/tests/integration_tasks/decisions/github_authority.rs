@@ -51,7 +51,7 @@ async fn configured(
         Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("fixture key")),
     ));
     Tasks::new(
-        case.held.leases.clone(),
+        case.held.runs.clone(),
         case.admissions.clone(),
         dependencies,
     )

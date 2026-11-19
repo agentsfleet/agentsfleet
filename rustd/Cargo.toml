@@ -136,7 +136,7 @@ afd_api_tenant = { path = "crates/daemon/afd_api_tenant" }
 afd_approval = { path = "crates/daemon/afd_approval" }
 afd_auth = { path = "crates/daemon/afd_auth" }
 afd_setup = { path = "crates/daemon/afd_setup" }
-# What a lease costs and what a tenant has. Split out of `afd_fleet` because it
+# What a run costs and what a tenant has. Split out of `afd_fleet` because it
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
 # calls it — the runner plane's other 23,000 lines never ask about money.
 afd_billing = { path = "crates/daemon/afd_billing" }
@@ -150,17 +150,17 @@ af_core = { path = "crates/foundation/af_core" }
 af_context = { path = "crates/protocol/af_context" }
 # What a run may USE: the declared secret, the vault that opens it, the provider
 # it dials, the token a broker mints. Split from afd_fleet once the one misfiled
-# file (an `impl Plane` living under credential/) stopped tying it to the lease.
+# file (an `impl Plane` living under credential/) stopped tying it to the run.
 afd_credential = { path = "crates/daemon/afd_credential" }
 af_crypto = { path = "crates/foundation/af_crypto" }
 afd_db = { path = "crates/daemon/afd_db" }
 # `fleet.events` and its live tail. A crate of its own because the table
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
-# plane, so `afd_approval` copied the insert rather than depend on leases,
+# plane, so `afd_approval` copied the insert rather than depend on runs,
 # money, policy and four sweepers to reuse ten lines of SQL.
 afd_fleet = { path = "crates/daemon/afd_fleet" }
 # What a fleet is ALLOWED to do, and the gate a run stops at when the answer
-# needs a person. The lease plane calls down into it at two moments and it
+# needs a person. The run plane calls down into it at two moments and it
 # calls back at none, which is what let it out.
 afd_gate = { path = "crates/daemon/afd_gate" }
 afd_gateway = { path = "crates/daemon/afd_gateway" }
@@ -175,7 +175,7 @@ af_inference = { path = "crates/protocol/af_inference" }
 afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
-# is the host's own plane and WRITES it — a lease-history join reaching for
+# is the host's own plane and WRITES it — a run-history join reaching for
 # `fleet.fleets` and `fleet.events` would put both on the heartbeat path.
 afd_fleet_ops = { path = "crates/daemon/afd_fleet_ops" }
 af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
@@ -192,7 +192,7 @@ afd_ingress = { path = "crates/daemon/afd_ingress" }
 # crate so the transport, its TLS posture and the templates have one owner, and
 # the tenant store never links a mail client.
 afd_mail = { path = "crates/daemon/afd_mail" }
-# Fleet memory behind one store trait. Its own crate so the lease plane and both
+# Fleet memory behind one store trait. Its own crate so the run plane and both
 # route families reach memory through the trait, and a store for another vendor
 # is a new implementation rather than an edit to the runner plane.
 afd_memory = { path = "crates/daemon/afd_memory" }
@@ -519,7 +519,7 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 # carry our own encoder.
 reqwest = { version = "0.13.5", default-features = false, features = ["form", "rustls", "stream"] }
 # Git on the runner host: the supervisor fetches a fleet's repository into a
-# per-workspace mirror and checks it out into the lease's workspace, so the
+# per-workspace mirror and checks it out into the run's workspace, so the
 # token never enters the sandbox. A native library, not a spawned `git`,
 # per the operating model's native-SDK rule; Codex reads repositories with it
 # too. Network and checkout features are chosen by the crate that uses them.
@@ -546,7 +546,7 @@ rmcp = { version = "3.11.0", default-features = false, features = ["client", "tr
 # OpenAI-compatible chat dialect, streamed, with tool calls assembled, usage
 # split and reasoning carried across turns. IronClaw builds its provider layer
 # on the same library; the runner owns what rig does not: which providers a
-# lease may reach, the transport (one client, no redirect, `backon` retry), the
+# run may reach, the transport (one client, no redirect, `backon` retry), the
 # key's one header and the secret scrub. Pinned exactly: rig's minors break
 # their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
 # change. No default features: the transport is ours, so no HTTP stack, async

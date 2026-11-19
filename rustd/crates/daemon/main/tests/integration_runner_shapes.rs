@@ -10,7 +10,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{MODEL, POSTURE, Scenario, scenario};
-use crate::reads::{assert_shape, lease_column, line_output_tokens, relay_settled};
+use crate::reads::{assert_shape, line_output_tokens, relay_settled, run_column};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, post, report_body,
     wait_for_seeded_offer,
@@ -18,11 +18,11 @@ use crate::wire::{
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
 ///
-/// `posted_message_count` is `NOT NULL`, so every lease carries it from the
+/// `posted_message_count` is `NOT NULL`, so every run carries it from the
 /// moment it is written, and the messages verb counts against it under the
-/// lease's fence. The lease names its event by its id (`event_id`); the
-/// actor and type are read from the event, not copied onto the lease.
-const LEASE_SHAPE: &[&str] = &[
+/// run's fence. The run names its event by its id (`event_id`); the
+/// actor and type are read from the event, not copied onto the run.
+const RUN_SHAPE: &[&str] = &[
     "id",
     "runner_id",
     "fleet_id",
@@ -35,7 +35,7 @@ const LEASE_SHAPE: &[&str] = &[
     "model",
     "last_metered_at",
     "fencing_token",
-    "lease_expires_at",
+    "run_expires_at",
     "max_runtime_seconds",
     "status",
     "posted_message_count",
@@ -90,7 +90,7 @@ const LEDGER_SHAPE: &[&str] = &[
 /// Memory is scoped to a FLEET: `(fleet_id, key)` is both the upsert's conflict
 /// target and the fleet's own overwrite mechanism. `workspace_id` rides along
 /// so a workspace-visible entry is readable by its siblings, and the capture
-/// verb cross-checks it against the lease that authorised the write.
+/// verb cross-checks it against the run that authorised the write.
 const MEMORY_SHAPE: &[&str] = &[
     "id",
     "fleet_id",
@@ -107,35 +107,35 @@ const MEMORY_SHAPE: &[&str] = &[
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_cycle_settles_in_the_ledger_and_populates_rows() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let lease_id = complete_cycle(&http, &run).await;
-    assert_rows(&run, &lease_id).await;
-    assert_values(&run, &lease_id).await;
-    assert_settled_in_the_ledger(&run).await;
+    let run_id = complete_cycle(&http, &scene).await;
+    assert_rows(&scene, &run_id).await;
+    assert_values(&scene, &run_id).await;
+    assert_settled_in_the_ledger(&scene).await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
-async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
-    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+async fn complete_cycle(http: &reqwest::Client, scene: &Scenario) -> String {
+    let beat = crate::wire::heartbeat(scene, &capable_beat()).await;
     assert!(
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
 
-    let (lease_id, fence) = wait_for_seeded_offer(run).await;
+    let (run_id, fence) = wait_for_seeded_offer(scene).await;
 
     let captured = post(
         http,
-        run,
-        &format!("/v1/runners/me/memory/{}", run.fleet),
+        scene,
+        &format!("/v1/runners/me/memory/{}", scene.fleet),
         &json!({
-            "lease_id": lease_id,
+            "run_id": run_id,
             "fencing_token": fence,
             "memory": [{
                 "key": MEMORY_KEY,
@@ -147,70 +147,70 @@ async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
     .await;
     assert_eq!(captured.status().as_u16(), 200, "the memory capture lands");
 
-    let settled = crate::wire::report(run, &report_body(&lease_id, &run.event_id, fence)).await;
+    let settled = crate::wire::report(scene, &report_body(&run_id, &scene.event_id, fence)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
-    lease_id
+    run_id
 }
 
-async fn assert_rows(run: &Scenario, lease_id: &str) {
+async fn assert_rows(scene: &Scenario, run_id: &str) {
     // `settled_at` is part of the recorded line shape; the relay fills it.
-    relay_settled(run).await;
-    let lease = Uuid7::parse(lease_id).expect("the daemon answers a canonical lease id");
-    assert_shape(run, "runner.leases", "id = $1", &lease, LEASE_SHAPE).await;
+    relay_settled(scene).await;
+    let run = Uuid7::parse(run_id).expect("the daemon answers a canonical run id");
+    assert_shape(scene, "runner.runs", "id = $1", &run, RUN_SHAPE).await;
     assert_shape(
-        run,
+        scene,
         "runner.events",
         "runner_id = $1",
-        &run.runner_id,
+        &scene.runner_id,
         EVENT_SHAPE,
     )
     .await;
     assert_shape(
-        run,
+        scene,
         "billing.usage_lines",
         "id = (SELECT id FROM billing.usage_lines WHERE event_id = $1 \
          ORDER BY requested_at DESC, id DESC LIMIT 1)",
-        &run.event_id,
+        &scene.event_id,
         LEDGER_SHAPE,
     )
     .await;
     assert_shape(
-        run,
+        scene,
         "memory.entries",
         "fleet_id = $1",
-        &run.fleet,
+        &scene.fleet,
         MEMORY_SHAPE,
     )
     .await;
 }
 
-async fn assert_values(run: &Scenario, lease_id: &str) {
+async fn assert_values(scene: &Scenario, run_id: &str) {
     assert_eq!(
-        lease_column(run, lease_id, "posture").await.as_deref(),
+        run_column(scene, run_id, "posture").await.as_deref(),
         Some(POSTURE),
-        "the lease records the posture the money pass resolved"
+        "the run records the posture the money pass resolved"
     );
     assert_eq!(
-        lease_column(run, lease_id, "model").await.as_deref(),
+        run_column(scene, run_id, "model").await.as_deref(),
         Some(MODEL),
         "and the model it was priced at"
     );
     assert_eq!(
-        line_output_tokens(run).await,
+        line_output_tokens(scene).await,
         i64::from(OUTPUT_TOKENS),
-        "the runner's request lines carried the run's tokens onto the usage lines"
+        "the runner's request lines carried the scene's tokens onto the usage lines"
     );
 }
 
-async fn assert_settled_in_the_ledger(run: &Scenario) {
+async fn assert_settled_in_the_ledger(scene: &Scenario) {
     let settled: bool = sqlx::query_scalar(
-        "SELECT lease_fence IS NOT NULL AND delivered_at IS NOT NULL AND settled_at IS NOT NULL \
+        "SELECT run_fence IS NOT NULL AND delivered_at IS NOT NULL AND settled_at IS NOT NULL \
          FROM fleet.admissions WHERE id = $1 AND fleet_id = $2",
     )
-    .bind(&run.event_id)
-    .bind(&run.fleet)
-    .fetch_one(&mut *run.booted.database.acquire().await.expect("database"))
+    .bind(&scene.event_id)
+    .bind(&scene.fleet)
+    .fetch_one(&mut *scene.booted.database.acquire().await.expect("database"))
     .await
     .expect("accepted event remains in the ledger");
-    assert!(settled, "the report settled the admission it leased");
+    assert!(settled, "the report settled the admission it held");
 }

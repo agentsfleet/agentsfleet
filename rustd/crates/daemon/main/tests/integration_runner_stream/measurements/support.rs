@@ -14,22 +14,22 @@ use std::collections::HashSet;
 pub(super) struct Fixture {
     database: TestDatabase,
     pub(super) owner: Db,
-    pub(super) run: Scenario,
+    pub(super) scene: Scenario,
 }
 
 impl Fixture {
     pub(super) async fn open(supervisor: &mut Supervisor) -> Self {
-        let (database, owner, run) = super::super::isolation::open(supervisor, &[]).await;
+        let (database, owner, scene) = super::super::isolation::open(supervisor, &[]).await;
         Self {
             database,
             owner,
-            run,
+            scene,
         }
     }
 
     pub(super) async fn finish(self, supervisor: Supervisor) {
         supervisor.shutdown().await;
-        self.run.cleanup().await;
+        self.scene.cleanup().await;
         self.owner.close().await;
         self.database.cleanup().await;
     }
@@ -58,25 +58,25 @@ pub(super) async fn healthy(native: &mut Native, request_id: u64) {
     );
 }
 
-pub(super) async fn offer(run: &Scenario, native: &mut Native) -> Result<Held> {
+pub(super) async fn offer(scene: &Scenario, native: &mut Native) -> Result<Held> {
     let response = native.expect(StreamKind::Work, "offer").await;
-    let lease = response
-        .get("lease")
-        .ok_or("the native offer lacks its lease")?;
-    assert_eq!(lease.pointer("/event/event_id"), Some(&json!(run.event_id)));
-    let (id, fence) = wire::claim(lease);
+    let run = response
+        .get("run")
+        .ok_or("the native offer lacks its run")?;
+    assert_eq!(run.pointer("/event/event_id"), Some(&json!(scene.event_id)));
+    let (id, fence) = wire::claim(run);
     Ok(Held { id, fence })
 }
 
 // afd_state/src/sql/select_runner_token.sql; other owner checks read by runner id.
 const TOKEN: &str = "%SELECT id AS runner, status, degraded_reason IS NOT NULL AS degraded%FROM runner.runners%WHERE token_hash =%";
-// afd_fleet/src/lease/sql/select_lease_target.sql; a native cache hit avoids this join.
-const TARGET: &str = "%SELECT l.fleet_id, l.event_id, l.created_at, l.event_created_at,%FROM runner.leases l%JOIN fleet.events e ON e.event_id = l.event_id%WHERE l.id =%";
+// afd_fleet/src/run/sql/select_run_target.sql; a native cache hit avoids this join.
+const TARGET: &str = "%SELECT l.fleet_id, l.event_id, l.created_at, l.event_created_at,%FROM runner.runs l%JOIN fleet.events e ON e.event_id = l.event_id%WHERE l.id =%";
 // afd_runner/src/capacity/sql/lock_host.sql; Ready must reach this durable guard.
-const HOST: &str = "%SELECT worker_count, status, cordon_reason, degraded_reason IS NOT NULL AS degraded, lease_version,%FROM runner.runners%WHERE id =%FOR UPDATE%";
-// afd_fleet/src/lease/sql/select_lease_for_report.sql; a session that kept
+const HOST: &str = "%SELECT worker_count, status, cordon_reason, degraded_reason IS NOT NULL AS degraded, run_version,%FROM runner.runners%WHERE id =%FOR UPDATE%";
+// afd_fleet/src/run/sql/select_run_for_report.sql; a session that kept
 // the offer's facts reports without it.
-const REPORTED: &str = "%SELECT l.fleet_id, l.workspace_id,%l.tenant_id, l.event_id, e.actor, l.posture%FROM runner.leases l%WHERE l.id = $1 AND l.runner_id = $2%";
+const REPORTED: &str = "%SELECT l.fleet_id, l.workspace_id,%l.tenant_id, l.event_id, e.actor, l.posture%FROM runner.runs l%WHERE l.id = $1 AND l.runner_id = $2%";
 const COUNTS: &str = "SELECT \
     COALESCE(sum(calls) FILTER (WHERE query LIKE $1), 0)::bigint, \
     COALESCE(sum(calls) FILTER (WHERE query LIKE $2), 0)::bigint, \
@@ -125,16 +125,16 @@ pub(super) struct Tail {
 }
 
 impl Tail {
-    pub(super) async fn open(run: &Scenario) -> Result<Self> {
+    pub(super) async fn open(scene: &Scenario) -> Result<Self> {
         let bus = afd_bus::test_util::lane().await?;
         let subscription = bus
-            .subscribe(&Subject::FleetTail(run.fleet.clone()))
+            .subscribe(&Subject::FleetTail(scene.fleet.clone()))
             .await?;
         crate::tail::settle().await;
         Ok(Self {
             bus,
             subscription,
-            event: run.event_id.to_string(),
+            event: scene.event_id.to_string(),
             seen: HashSet::new(),
         })
     }

@@ -184,7 +184,7 @@ async fn saved_replay(
         .expect("bounded changed operation");
     let fault = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), &changed)
+        .reserve_decision(fixture.case.run(), &changed)
         .await
         .expect_err("operation meaning is immutable");
     assert_eq!(fault.code(), error_code::TASK_REPLAY_CONFLICT);
@@ -194,7 +194,7 @@ async fn saved_replay(
 async fn assert_line(fixture: &Decisions<'_>) {
     let row: (i64, i64, i64, i64, i64, i64, String, String, Uuid7) = sqlx::query_as(
         "SELECT seq,input_token_count,cached_input_token_count,output_token_count,runtime_ms,charged_nanos,provider,model,tenant_id FROM billing.usage_lines WHERE work_id=$1 AND kind = $2")
-        .bind(&fixture.case.held.lease_key).bind(LineKind::Decision.as_str())
+        .bind(&fixture.case.held.run_key).bind(LineKind::Decision.as_str())
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original work ledger"))
         .await.expect("one complete charge line");
     assert_eq!(

@@ -22,7 +22,7 @@ pub(super) async fn retain(
     cursor: &mut crate::task::CheckpointMaintenanceCursor,
 ) -> Result<(u64, u64)> {
     let cutoff = *cursor.cutoff.get_or_insert_with(af_core::clock::now);
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let rows: Vec<Task> = sqlx::query_as(include_str!("../sql/retention_tasks.sql"))
         .bind(cutoff.to_sqlx())
         .bind(cursor.after.as_ref().map(|(at, _id)| at.to_sqlx()))
@@ -57,7 +57,7 @@ async fn retain_one(tasks: &Tasks, task: &Task) -> Result<u64> {
         fleet_id: task.fleet_id.clone(),
         workspace_id: task.workspace_id.clone(),
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     task_guard::scope(&mut tx, &scope).await?;
     let locked: Option<String> = sqlx::query_scalar(sql::LOCK_TASK)
@@ -72,7 +72,7 @@ async fn retain_one(tasks: &Tasks, task: &Task) -> Result<u64> {
     let removed = if locked.is_some() {
         sqlx::query(include_str!("../sql/retention_abandon.sql"))
             .bind(&task.id)
-            .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
+            .bind(crate::run::sql::RUN_STATUS_ACTIVE)
             .execute(&mut *tx)
             .await
             .map_err(query("abandon expired or fenced capture owners"))?;
@@ -112,7 +112,7 @@ struct Base {
 }
 
 pub(super) async fn bases(tasks: &Tasks) -> Result<u64> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let bases: Vec<Base> = sqlx::query_as(include_str!("../sql/base_orphans.sql"))
         .bind(super::super::ORPHAN_SECONDS)
         .bind(super::super::GC_BATCH)
@@ -123,7 +123,7 @@ pub(super) async fn bases(tasks: &Tasks) -> Result<u64> {
     let mut removed = 0;
     // Each base mutation owns one workspace quota lock; no task lock follows it.
     for base in bases {
-        let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+        let mut connection = transaction::acquire(tasks.runs.pool()).await?;
         let mut tx = transaction::begin(&mut connection).await?;
         if super::lock(&mut tx, &base.workspace_id).await? {
             removed += sqlx::query(include_str!("../sql/base_delete.sql"))

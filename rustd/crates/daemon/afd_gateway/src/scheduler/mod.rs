@@ -111,7 +111,7 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
     }
 }
 
-/// Empty claims advance the walk; successful claims spend the pass's lease budget.
+/// Empty claims advance the walk; successful claims spend the pass's run budget.
 async fn pass(connections: Vec<Arc<ConnectionHandle>>, mut budget: u64) -> Result<()> {
     for connection in connections {
         while budget > 0 {

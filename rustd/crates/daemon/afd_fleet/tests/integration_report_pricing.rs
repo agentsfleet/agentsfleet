@@ -11,8 +11,8 @@ use afd_billing::price::{PriceBook, Rater, Window};
 use afd_billing::rates::Posture;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Window as Counted};
-use afd_fleet::lease::Committed;
-use afd_fleet::lease::usage::Pricing;
+use afd_fleet::run::Committed;
+use afd_fleet::run::usage::Pricing;
 
 use crate::integration_report_statement::{reported, runtime_lines};
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
@@ -33,10 +33,10 @@ async fn closing_cost_counts_the_reports_own_lines() {
          unpriced_token_count, charged_nanos, created_at, updated_at) \
          SELECT uuidv7(), $2, l.id, 7, $4::text, l.tenant_id, l.workspace_id, l.fleet_id, 'Support triage', \
                 l.event_id, l.provider, l.model, l.posture, now(), 0, 0, 0, 0, 0, 0, 0, 0, $3, now(), now() \
-         FROM runner.leases l WHERE l.id = $1",
+         FROM runner.runs l WHERE l.id = $1",
     )
-    .bind(&held.issued.lease_id)
-    .bind(afd_billing::sql::work::FLEET_LEASE)
+    .bind(&held.issued.run_id)
+    .bind(afd_billing::sql::work::FLEET_RUN)
     .bind(LOGGED)
     .bind(af_wire::usage::LineKind::Model.as_str())
     .execute(&mut *held.fixtures.database.acquire().await.expect("biller"))
@@ -45,25 +45,25 @@ async fn closing_cost_counts_the_reports_own_lines() {
     let before = afd_turns::view::fleet_counters(&held.fixtures.database, &held.fleet)
         .await
         .expect("counters");
-    let lease = reported(&held).await;
+    let run = reported(&held).await;
     let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
 
     let Committed::Settled {
         charged, closed, ..
     } = held
-        .leases
+        .runs
         .commit_report(report(
-            &held.issued.lease_id,
+            &held.issued.run_id,
             &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
+            &run,
+            (&held.run_key, &held.pricing),
             RESPONSE_ACCEPTED,
             at,
         ))
         .await
         .expect("the report commits")
     else {
-        unreachable!("the lease is the runner's and live");
+        unreachable!("the run is the runner's and live");
     };
 
     let closed = closed.expect("the event closed");
@@ -85,14 +85,14 @@ async fn closing_cost_counts_the_reports_own_lines() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn statement_lines_match_rater() {
     let held = held().await;
-    let lease = reported(&held).await;
+    let run = reported(&held).await;
     let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
-    held.leases
+    held.runs
         .commit_report(report(
-            &held.issued.lease_id,
+            &held.issued.run_id,
             &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
+            &run,
+            (&held.run_key, &held.pricing),
             RESPONSE_ACCEPTED,
             at,
         ))
@@ -119,13 +119,13 @@ async fn statement_lines_match_rater() {
         &book,
         Posture::Platform,
         Window {
-            from: lease.lease_created_at,
+            from: run.run_created_at,
             until: af_core::clock::now(),
         },
     )
     .rate(&line)
     .expect("the line rates");
-    assert_eq!(seq, 0, "the lease's first slice starts with the lease");
+    assert_eq!(seq, 0, "the run's first slice starts with the run");
     assert_eq!(charged, rated.charged.as_i64());
     assert_eq!(price, rated.price);
     held.fixtures.cleanup().await;
@@ -138,24 +138,24 @@ async fn statement_lines_match_rater() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn report_with_wrong_pricing_facts_writes_nothing() {
     let held = held().await;
-    let lease = reported(&held).await;
+    let run = reported(&held).await;
     let wrong = Pricing::load(
         &held.fixtures.database,
         Posture::Platform,
         PROVIDER,
         "another-model",
-        held.issued.lease_id.as_str(),
+        held.issued.run_id.as_str(),
     )
     .await;
     let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
 
     let committed = held
-        .leases
+        .runs
         .commit_report(report(
-            &held.issued.lease_id,
+            &held.issued.run_id,
             &held.runner,
-            &lease,
-            (&held.lease_key, &wrong),
+            &run,
+            (&held.run_key, &wrong),
             RESPONSE_ACCEPTED,
             at,
         ))
@@ -168,14 +168,14 @@ async fn report_with_wrong_pricing_facts_writes_nothing() {
     );
     let models: Vec<String> =
         sqlx::query_scalar("SELECT DISTINCT model FROM billing.usage_lines WHERE work_id = $1")
-            .bind(&held.lease_key)
+            .bind(&held.run_key)
             .fetch_all(&mut *held.fixtures.database.acquire().await.expect("observer"))
             .await
             .expect("models");
     assert_eq!(
         models,
         [MODEL],
-        "the retry priced under the lease's own model"
+        "the retry priced under the run's own model"
     );
     assert_eq!(runtime_lines(&held).await.len(), 1, "settled once");
     held.fixtures.cleanup().await;
@@ -203,7 +203,7 @@ async fn a_warm_replica_report_reads_no_price_book() {
     plane
         .report_with(&held.runner, &request, held.now, None, &mut untimed)
         .await
-        .expect("the report settles the lease");
+        .expect("the report settles the run");
     let cold = cold.close().await;
     let warm = Counted::open(&owner).await;
     plane

@@ -4,7 +4,7 @@ CREATE TABLE fleet.task_waits (
     task_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
-    owner_lease_id UUID NOT NULL,
+    owner_run_id UUID NOT NULL,
     task_generation BIGINT NOT NULL CHECK (task_generation > 0),
     stop_generation BIGINT NOT NULL CHECK (stop_generation >= 0),
     generation BIGINT NOT NULL CHECK (generation > 0),
@@ -30,7 +30,7 @@ CREATE TABLE fleet.task_waits (
     updated_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_task_wait_scope FOREIGN KEY (task_id, fleet_id, workspace_id)
         REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE CASCADE,
-    CONSTRAINT uq_task_wait_owner UNIQUE (owner_lease_id),
+    CONSTRAINT uq_task_wait_owner UNIQUE (owner_run_id),
     CONSTRAINT uq_task_wait_generation UNIQUE (task_id, generation),
     CONSTRAINT ck_task_wait_claim CHECK ((claim_id IS NULL) = (claim_expires_at IS NULL))
 );

@@ -19,7 +19,7 @@ CREATE TABLE fleet.fleets (
     CONSTRAINT fk_fleets_workspace_tenant
         FOREIGN KEY (workspace_id, tenant_id)
         REFERENCES identity.workspaces (id, tenant_id) ON DELETE CASCADE,
-    -- For runner leases, which must prove the fleet's workspace and tenant.
+    -- For runner runs, which must prove the fleet's workspace and tenant.
     CONSTRAINT uq_fleets_id_workspace_id_tenant_id UNIQUE (id, workspace_id, tenant_id)
 );
 
@@ -31,7 +31,7 @@ CREATE INDEX idx_fleets_workspace_id_created_at_id
 CREATE INDEX idx_fleets_workspace_id_status_id ON fleet.fleets (workspace_id, status, id);
 
 -- The offer probe asks whether a connected tenant runner's tenant has work
--- waiting (`afd_fleet/src/lease/sql/lease/select_waiting_work.sql`).
+-- waiting (`afd_fleet/src/run/sql/run/select_waiting_work.sql`).
 CREATE INDEX idx_fleets_tenant_id ON fleet.fleets (tenant_id);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.fleets TO api_runtime;

@@ -28,7 +28,7 @@ use crate::e2e::{Scenario, scenario, scenario_with_provider};
 use crate::e2e_seed_keys::seed_tenant_key;
 use crate::integration_tenant_registry::{mint_tenant_token, provider_listener};
 use crate::reads::event_column;
-use crate::tail::lease;
+use crate::tail::run;
 use crate::wire::{field, json as body_of, report_body};
 
 /// A trace of `count` calls, numbered from 1 as the runner numbers them.
@@ -45,8 +45,8 @@ pub(crate) fn trace(count: usize) -> Value {
 }
 
 /// The report a run sends, carrying `tool_calls`.
-pub(crate) fn report_with(lease_id: &str, run: &Scenario, fence: u64, tool_calls: Value) -> Value {
-    let mut body = report_body(lease_id, &run.event_id, fence);
+pub(crate) fn report_with(run_id: &str, scene: &Scenario, fence: u64, tool_calls: Value) -> Value {
+    let mut body = report_body(run_id, &scene.event_id, fence);
     body["tool_calls"] = tool_calls;
     body
 }
@@ -55,24 +55,24 @@ pub(crate) fn report_with(lease_id: &str, run: &Scenario, fence: u64, tool_calls
 ///
 /// `event_column` reads a column that holds a value; the columns these cases
 /// read are NULL exactly when the case passes.
-async fn nullable_column(run: &Scenario, column: &str) -> Option<String> {
+async fn nullable_column(scene: &Scenario, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
         "SELECT {column}::text FROM fleet.events \
          WHERE fleet_id = $1 AND event_id = $2"
     ));
-    let mut connection = run.booted.database.acquire().await.expect("a connection");
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
     let row = sqlx::query(statement)
-        .bind(&run.fleet)
-        .bind(&run.event_id)
+        .bind(&scene.fleet)
+        .bind(&scene.event_id)
         .fetch_one(&mut *connection)
         .await
-        .expect("the event row exists once leased");
+        .expect("the event row exists once held");
     row.try_get(0).expect("the column reads as nullable text")
 }
 
 /// The stored trace of the scenario's event, parsed, or `None`.
-pub(crate) async fn stored_trace(run: &Scenario) -> Option<Value> {
-    nullable_column(run, "tool_calls")
+pub(crate) async fn stored_trace(scene: &Scenario) -> Option<Value> {
+    nullable_column(scene, "tool_calls")
         .await
         .map(|text| serde_json::from_str(&text).expect("the column holds JSON"))
 }
@@ -93,25 +93,25 @@ fn fenced(sent: &Value, fence: u64) -> Value {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_report_writes_tool_calls_with_result() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let (lease_id, fence) = lease(&run).await;
+    let scene = scenario(&mut supervisor).await;
+    let (run_id, fence) = run(&scene).await;
 
     let sent = trace(2);
     let settled =
-        crate::wire::report(&run, &report_with(&lease_id, &run, fence, sent.clone())).await;
+        crate::wire::report(&scene, &report_with(&run_id, &scene, fence, sent.clone())).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
 
-    assert_eq!(stored_trace(&run).await, Some(fenced(&sent, fence)));
+    assert_eq!(stored_trace(&scene).await, Some(fenced(&sent, fence)));
     assert_eq!(
-        event_column(&run, &run.event_id, "response_text")
+        event_column(&scene, &scene.event_id, "response_text")
             .await
             .as_deref(),
-        Some("the fixture run produced this"),
+        Some("the fixture scene produced this"),
         "the trace rides the statement that writes the answer"
     );
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Dimension 3.2. A trace past a bound is dropped; the run still settles.
@@ -119,21 +119,23 @@ async fn test_report_writes_tool_calls_with_result() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_oversize_tool_trace_dropped_report_settles() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let (lease_id, fence) = lease(&run).await;
+    let scene = scenario(&mut supervisor).await;
+    let (run_id, fence) = run(&scene).await;
 
     let over = trace(TRACE_MAX_CALLS + 1);
-    let settled = crate::wire::report(&run, &report_with(&lease_id, &run, fence, over)).await;
+    let settled = crate::wire::report(&scene, &report_with(&run_id, &scene, fence, over)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
-    assert_eq!(stored_trace(&run).await, None, "the trace is not stored");
+    assert_eq!(stored_trace(&scene).await, None, "the trace is not stored");
     assert_eq!(
-        event_column(&run, &run.event_id, "status").await.as_deref(),
+        event_column(&scene, &scene.event_id, "status")
+            .await
+            .as_deref(),
         Some("processed"),
-        "and the run's answer is"
+        "and the scene's answer is"
     );
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Dimension 3.4. A report the fence refuses writes neither answer nor trace.
@@ -141,24 +143,24 @@ async fn test_oversize_tool_trace_dropped_report_settles() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fenced_report_writes_no_tool_calls() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let (lease_id, fence) = lease(&run).await;
+    let scene = scenario(&mut supervisor).await;
+    let (run_id, fence) = run(&scene).await;
 
-    // A reclaim bumps the fleet's sequence past the lease's token; this is
+    // A reclaim bumps the fleet's sequence past the run's token; this is
     // that bump without the reclaim, so the report is the stale holder's.
-    let mut connection = run.booted.database.acquire().await.expect("a connection");
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query(AssertSqlSafe(
         "UPDATE runner.slots SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1"
             .to_owned(),
     ))
-    .bind(&run.fleet)
+    .bind(&scene.fleet)
     .execute(&mut *connection)
     .await
-    .expect("the sequence moves past the lease");
+    .expect("the sequence moves past the run");
     drop(connection);
 
-    let refused = crate::wire::report(&run, &report_with(&lease_id, &run, fence, trace(2))).await;
+    let refused = crate::wire::report(&scene, &report_with(&run_id, &scene, fence, trace(2))).await;
     assert_eq!(
         refused
             .expect_err("the stale holder is refused")
@@ -166,35 +168,35 @@ async fn test_fenced_report_writes_no_tool_calls() {
         Some(af_core::error_code::RUN_STALE_FENCING_TOKEN),
         "the stale holder is refused"
     );
-    assert_eq!(stored_trace(&run).await, None, "no trace was written");
+    assert_eq!(stored_trace(&scene).await, None, "no trace was written");
     assert_eq!(
-        nullable_column(&run, "response_text").await,
+        nullable_column(&scene, "response_text").await,
         None,
         "and no answer"
     );
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// A tenant credential for the scenario's workspace, read with `fleet:read`.
 pub(crate) async fn tenant_reader(supervisor: &mut Supervisor) -> (Scenario, String) {
     let provider_base = provider_listener().await;
-    let run = scenario_with_provider(supervisor, Some(&provider_base)).await;
+    let scene = scenario_with_provider(supervisor, Some(&provider_base)).await;
     let token = mint_tenant_token();
-    seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
-    (run, token)
+    seed_tenant_key(&scene.booted, &scene.tenant, &token, scene.seeded_at).await;
+    (scene, token)
 }
 
 /// One authenticated tenant read, answered as its JSON body.
 pub(crate) async fn tenant_get(
     http: &reqwest::Client,
-    run: &Scenario,
+    scene: &Scenario,
     token: &str,
     path: &str,
 ) -> Value {
     let response = http
-        .get(format!("{}{path}", run.base))
+        .get(format!("{}{path}", scene.base))
         .bearer_auth(token)
         .send()
         .await
@@ -203,14 +205,14 @@ pub(crate) async fn tenant_get(
     body_of(response).await
 }
 
-/// Settles a lease the caller holds with `tool_calls`.
+/// Settles a run the caller holds with `tool_calls`.
 pub(crate) async fn settle_with(
-    run: &Scenario,
-    (lease_id, fence): (String, u64),
+    scene: &Scenario,
+    (run_id, fence): (String, u64),
     tool_calls: Value,
 ) {
-    let body = report_with(&lease_id, run, fence, tool_calls);
-    crate::wire::report(run, &body)
+    let body = report_with(&run_id, scene, fence, tool_calls);
+    crate::wire::report(scene, &body)
         .await
         .expect("the native report is acknowledged");
 }
@@ -221,45 +223,45 @@ pub(crate) async fn settle_with(
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_detail_serves_tool_calls() {
     let mut supervisor = Supervisor::new();
-    let (run, token) = tenant_reader(&mut supervisor).await;
+    let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
     let detail = format!(
         "/v1/workspaces/{}/fleets/{}/events/{}",
-        run.workspace, run.fleet, run.event_id
+        scene.workspace, scene.fleet, scene.event_id
     );
 
     // The row is written when a runner takes the event, before any report.
-    let claimed = lease(&run).await;
+    let claimed = run(&scene).await;
     let fence = claimed.1;
-    let before = tenant_get(&http, &run, &token, &detail).await;
+    let before = tenant_get(&http, &scene, &token, &detail).await;
     assert_eq!(
         field(&before, "tool_calls"),
         &Value::Null,
-        "a run still in flight has recorded nothing"
+        "a scene still in flight has recorded nothing"
     );
 
     let sent = trace(3);
-    settle_with(&run, claimed, sent.clone()).await;
-    let after = tenant_get(&http, &run, &token, &detail).await;
+    settle_with(&scene, claimed, sent.clone()).await;
+    let after = tenant_get(&http, &scene, &token, &detail).await;
     assert_eq!(field(&after, "tool_calls"), &fenced(&sent, fence));
 
     let thread = format!(
         "/v1/workspaces/{}/fleets/{}/messages",
-        run.workspace, run.fleet
+        scene.workspace, scene.fleet
     );
-    let page = tenant_get(&http, &run, &token, &thread).await;
+    let page = tenant_get(&http, &scene, &token, &thread).await;
     let turn = page["items"]
         .as_array()
         .and_then(|items| {
             items
                 .iter()
-                .find(|item| item["event_id"] == json!(run.event_id))
+                .find(|item| item["event_id"] == json!(scene.event_id))
         })
         .expect("the settled turn is on the thread");
     assert_eq!(field(turn, "tool_calls"), &fenced(&sent, fence));
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Dimension 4.3. The events list never carries the trace.
@@ -267,25 +269,25 @@ async fn test_event_detail_serves_tool_calls() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_list_omits_tool_calls() {
     let mut supervisor = Supervisor::new();
-    let (run, token) = tenant_reader(&mut supervisor).await;
+    let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let claimed = lease(&run).await;
-    settle_with(&run, claimed, trace(2)).await;
+    let claimed = run(&scene).await;
+    settle_with(&scene, claimed, trace(2)).await;
 
     let list = format!(
         "/v1/workspaces/{}/fleets/{}/events",
-        run.workspace, run.fleet
+        scene.workspace, scene.fleet
     );
-    let page = tenant_get(&http, &run, &token, &list).await;
+    let page = tenant_get(&http, &scene, &token, &list).await;
     let items = page["items"].as_array().expect("a page of items");
     let ours = items
         .iter()
-        .find(|item| item["event_id"] == json!(run.event_id))
+        .find(|item| item["event_id"] == json!(scene.event_id))
         .expect("the settled event is listed");
     assert!(ours.get("tool_calls").is_none(), "{ours}");
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Known zero calls stay distinct from unavailable data through the tenant API.
@@ -293,19 +295,19 @@ async fn test_event_list_omits_tool_calls() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_reported_empty_trace_is_served_as_known_zero_calls() {
     let mut supervisor = Supervisor::new();
-    let (run, token) = tenant_reader(&mut supervisor).await;
+    let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
     let detail = format!(
         "/v1/workspaces/{}/fleets/{}/events/{}",
-        run.workspace, run.fleet, run.event_id
+        scene.workspace, scene.fleet, scene.event_id
     );
-    let claimed = lease(&run).await;
-    let before = tenant_get(&http, &run, &token, &detail).await;
+    let claimed = run(&scene).await;
+    let before = tenant_get(&http, &scene, &token, &detail).await;
     assert_eq!(field(&before, "tool_calls"), &Value::Null);
     let known = json!({"calls": [], "omitted_call_count": 0});
-    settle_with(&run, claimed, known.clone()).await;
-    let after = tenant_get(&http, &run, &token, &detail).await;
+    settle_with(&scene, claimed, known.clone()).await;
+    let after = tenant_get(&http, &scene, &token, &detail).await;
     assert_eq!(field(&after, "tool_calls"), &known);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

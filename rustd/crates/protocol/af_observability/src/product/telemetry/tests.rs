@@ -23,7 +23,7 @@ const WORKSPACE: &str = "01924f4e-0000-7000-8000-000000000001";
 /// The fleet a fixture run belongs to.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 
-/// The stream entry a fixture run was leased from.
+/// The stream entry a fixture run was held from.
 const ENTRY: &str = "1700000000000-0";
 
 /// The request a fixture event was answered on.

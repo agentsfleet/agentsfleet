@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use super::tests::{drive, engine};
 use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{
-    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, call, lease, say, spent, unbounded,
+    API_KEY, Canned, Frames, GITHUB_TOKEN, Script, call, payload, say, spent, unbounded,
 };
 use crate::testing::Discard;
 
@@ -46,7 +46,7 @@ async fn test_report_sums_token_usage() {
 
     let (output, _frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -78,7 +78,7 @@ async fn test_meter_holds_what_the_report_sums() {
         vec![say("done"), spent(5, 0, 1)],
     ]);
     let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
-    let lease = lease(&[UPDATE_PLAN.name()], unbounded());
+    let run = payload(&[UPDATE_PLAN.name()], unbounded());
     let frames = Frames::default();
     let sink = frames.sink();
     let meter = Meter::default();
@@ -89,7 +89,7 @@ async fn test_meter_holds_what_the_report_sums() {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -129,7 +129,7 @@ async fn test_secret_values_masked_in_outputs() {
 
     let (output, frames) = drive(
         &engine,
-        &lease(&["http_request"], unbounded()),
+        &payload(&["http_request"], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -170,18 +170,18 @@ fn the_loop_admits_through_its_catalog() {
 
     assert!(
         !engine
-            .admit(&lease(&[UPDATE_PLAN.name(), "web_search"], unbounded()).policy)
+            .admit(&payload(&[UPDATE_PLAN.name(), "web_search"], unbounded()).policy)
             .unwrap()
             .sandbox
     );
     assert!(
         engine
-            .admit(&lease(&["file_read"], unbounded()).policy)
+            .admit(&payload(&["file_read"], unbounded()).policy)
             .unwrap()
             .sandbox
     );
     let refused = engine
-        .admit(&lease(&["browser"], unbounded()).policy)
+        .admit(&payload(&["browser"], unbounded()).policy)
         .unwrap_err();
     assert_eq!(refused.unhosted(), Some(crate::Unhosted::Tool("browser")));
 }

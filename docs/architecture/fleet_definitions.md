@@ -51,7 +51,7 @@ Publishing creates a Plugin entry or appends an immutable revision to a selected
 
 ## Storage and runtime reads
 
-Postgres stores normalized Definitions, immutable candidate/Plugin/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision.
+Postgres stores normalized Definitions, immutable candidate/Plugin/fleet revisions, and content-free replay identities. Runtime runs receive instructions and parsed policy from the fleet's pinned revision.
 
 Setup saves, readiness, access storage and memory-sharing changes add history-only receipts to `fleet.events` in their mutation's transaction. Their `recorded` status creates no admission and stays outside runtime model history; the browser displays permitted metadata in chronological order.
 

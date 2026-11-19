@@ -1,7 +1,7 @@
 //! A native setup a fixture fleet can select, built the way Save builds one.
 //!
 //! Admission refuses a fleet that selects no setup revision written under the
-//! current policy semantics, and the lease path reads its definition. So every
+//! current policy semantics, and the run path reads its definition. So every
 //! suite that seeds a fleet those paths reach seeds one of these beside it.
 //! The definition is parsed and digested by the production code here, never
 //! typed out as JSON a suite could get subtly wrong (M-TEST-UTIL).

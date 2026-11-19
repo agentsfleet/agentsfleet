@@ -90,7 +90,7 @@ async fn test_an_unmatched_request_opens_no_server_span() {
 /// No span attribute ever carries a value from the request line.
 ///
 /// The point of the whole dimension, stated as a search rather than a spot
-/// check: a concrete path holds workspace, fleet and lease identifiers, and a
+/// check: a concrete path holds workspace, fleet and run identifiers, and a
 /// span attribute is exported to a third-party backend.
 #[tokio::test]
 async fn test_no_span_attribute_carries_a_concrete_path() {

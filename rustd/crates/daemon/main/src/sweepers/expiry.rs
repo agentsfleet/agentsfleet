@@ -1,6 +1,6 @@
 //! One clock for every deadline pass: every
 //! `maintenance.expired_work.interval_seconds` this task bills the last slice of each
-//! fleet lease that expired unreported, and moves each setup attempt past its
+//! fleet run that expired unreported, and moves each setup attempt past its
 //! deadline to accounting recovery. Both were riders on other clocks: the
 //! billing relay's and authoring's privacy pass.
 
@@ -19,7 +19,7 @@ const FAILED: &str = "expiry_sweep_failed";
 /// A pass moved something.
 const COMPLETED: &str = "expiry_sweep_completed";
 
-/// The biller refused an expired lease's last slice; the next tick retries.
+/// The biller refused an expired run's last slice; the next tick retries.
 const REFUSED: &str = "expiry_sweep_refused";
 
 pub(super) fn spawn(
@@ -63,14 +63,14 @@ struct Passes {
 impl Passes {
     /// Both deadline passes; a failed one is logged and the other still runs.
     async fn tick(&self) -> Ticked {
-        let leases = afd_fleet::lease::billing_sweep::bill_expired_leases(
+        let runs = afd_fleet::run::billing_sweep::bill_expired_runs(
             &self.database,
             self.biller.as_ref(),
             &self.entropy,
             af_core::clock::now(),
         )
         .await;
-        let billed = match leases {
+        let billed = match runs {
             Ok(swept) => {
                 if let (true, Some(code)) = (swept.settle_failures > 0, swept.refused) {
                     let error_code = code.as_str();
@@ -79,7 +79,7 @@ impl Passes {
                         event = REFUSED,
                         error_code,
                         refused,
-                        "the biller refused an expired lease's last slice; the next tick retries"
+                        "the biller refused an expired run's last slice; the next tick retries"
                     );
                 }
                 Some(swept.billed)
@@ -89,8 +89,8 @@ impl Passes {
                 {
                     let (event, pass, message) = (
                         &FAILED,
-                        &"leases",
-                        format_args!("expired leases wait for the next tick"),
+                        &"runs",
+                        format_args!("expired runs wait for the next tick"),
                     );
                     tracing::warn!(message, event, pass, error_code);
                 };
@@ -115,7 +115,7 @@ impl Passes {
         if billed.unwrap_or(0) + expired.unwrap_or(0) > 0 {
             tracing::info!(
                 event = COMPLETED,
-                expired_leases = billed.unwrap_or(0),
+                expired_runs = billed.unwrap_or(0),
                 expired_attempts = expired.unwrap_or(0),
                 "deadline passes advanced"
             );
@@ -172,7 +172,7 @@ mod tests {
             .iter()
             .filter_map(|event| event.field("pass"))
             .collect();
-        assert_eq!(passes_logged, ["leases", "attempts"]);
+        assert_eq!(passes_logged, ["runs", "attempts"]);
         assert!(
             failed.iter().all(|event| event.field("error_code")
                 == Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())),

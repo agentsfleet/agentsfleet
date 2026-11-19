@@ -1,6 +1,6 @@
 //! Memory held behind `agentsfleetd`, reached through its runner API.
 //!
-//! The window `agentsfleetd` hydrated at lease start is borrowed, never
+//! The window `agentsfleetd` hydrated at run start is borrowed, never
 //! copied. A store is held here until the supervisor pushes it, fenced, before
 //! the report, so a run's memory calls cost `agentsfleetd` one hydrate and one
 //! push per run — plus, when a recall finds fewer entries than it asked for,

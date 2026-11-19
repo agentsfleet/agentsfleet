@@ -13,7 +13,7 @@
 // `tests/` import, since those are separate crates it cannot see. Naming them
 // here is the lint's own documented remedy, and keeps the deny in force for
 // everything else. The first three belong to the end-to-end suite; the runner
-// crates, `tempfile` and `async-trait` drive the Rust runner through a lease
+// crates, `tempfile` and `async-trait` drive the Rust runner through a run
 // against it; the egress, provider and tool crates, `futures-util` and the
 // three TLS crates carry the corpus suite's real loop to its HTTPS fakes.
 #[cfg(test)]

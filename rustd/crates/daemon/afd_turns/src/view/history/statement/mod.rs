@@ -108,7 +108,7 @@ pub(super) const SELECT_THREAD_PAGE: &str = include_str!("select_thread_page.sql
 /// `$5` limit.
 pub(super) const SELECT_THREAD_PAGE_AFTER: &str = include_str!("select_thread_page_after.sql");
 
-/// A thread's finished rows before a cursor, the turns a chat lease carries:
+/// A thread's finished rows before a cursor, the turns a chat run carries:
 /// `$3` cursor instant, `$4` cursor event id, `$5` and `$6` the two finished
 /// statuses, `$7` limit. The statuses are a predicate so the limit counts
 /// finished rows: running or refused rows among the newest would otherwise

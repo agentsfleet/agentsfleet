@@ -1,4 +1,4 @@
-//! Image bytes and licence notices, checked against the toolbox a lease sees.
+//! Image bytes and licence notices, checked against the toolbox a run sees.
 
 use std::fs;
 

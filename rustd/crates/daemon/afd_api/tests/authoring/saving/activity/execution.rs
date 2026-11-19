@@ -35,7 +35,7 @@ async fn assert_no_work(saved: &Saved) {
     let counts: (i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT
          (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1),
-         (SELECT count(*) FROM runner.leases WHERE fleet_id=$1),
+         (SELECT count(*) FROM runner.runs WHERE fleet_id=$1),
          (SELECT count(*) FROM runner.slots WHERE fleet_id=$1),
          (SELECT count(*) FROM billing.usage_lines WHERE fleet_id=$1),
          (SELECT count(*) FROM fleet.obligations WHERE fleet_id=$1)",
@@ -47,7 +47,7 @@ async fn assert_no_work(saved: &Saved) {
     assert_eq!(
         counts,
         (0, 0, 0, 0, 0),
-        "receipts create no queue, lease, run, charge or delivery"
+        "receipts create no queue, run, run, charge or delivery"
     );
 }
 
@@ -69,7 +69,7 @@ async fn assert_runtime_context(saved: &Saved) {
         .bind(&control)
         .execute(&mut *saved.case.base.db.acquire().await.expect("positive-control connection"))
         .await.expect("completed runtime turn");
-    let turns = read().await.expect("production lease history query");
+    let turns = read().await.expect("production run history query");
     assert_eq!(
         turns.len(),
         1,

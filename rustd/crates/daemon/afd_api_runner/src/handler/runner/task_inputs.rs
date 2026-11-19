@@ -1,7 +1,7 @@
 //! Pending inputs are complete native messages; this route never consumes them.
 
 use af_wire::task::TaskInputsQuery;
-use afd_fleet::task::TaskLease;
+use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id};
 use axum::{
     Json,
@@ -16,10 +16,10 @@ const MALFORMED: &str = "Task input query exceeds its supported shape or bounds"
 const EVENT: &str = "runner_task_inputs_failed";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = af_wire::paths::LEASE_TASK_INPUTS, tag = afd_http::openapi::tag::RUNNERS,
+    get, path = af_wire::paths::RUN_TASK_INPUTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_read_task_inputs", summary = "Read pending human task input",
-    description = "Returns up to four complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live lease and fence.",
-    params(("lease_id" = String, Path, description = "Current lease UUIDv7."), TaskInputsQuery),
+    description = "Returns up to four complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live run and fence.",
+    params(("run_id" = String, Path, description = "Current run UUIDv7."), TaskInputsQuery),
     responses((status = 200, body = af_wire::task::TaskInputsResponse<'_>, description = "Complete pending input and native work"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND), (status = 409, description = afd_http::openapi::CONFLICT),
@@ -29,22 +29,22 @@ const EVENT: &str = "runner_task_inputs_failed";
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease): Path<String>,
+    Path(run): Path<String>,
     query: Result<Query<TaskInputsQuery>, QueryRejection>,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let Query(query) = query.map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     let input = garde::Unvalidated::new(query)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let page = services
         .tasks()
-        .inputs(lease, &input)
+        .inputs(run, &input)
         .await
         .map_err(Refusal::conflict_or_at(EVENT, conflict))?;
     Ok(([(http::header::CACHE_CONTROL, "no-store")], Json(page)).into_response())

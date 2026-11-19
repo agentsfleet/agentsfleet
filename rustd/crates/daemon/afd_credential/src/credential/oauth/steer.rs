@@ -9,7 +9,7 @@
 //! tenant `base_url` passes is not enough for this, because it admits any
 //! public `https` host.
 //!
-//! [`steer`] is the one reader of the field, shared with the lease plane's mint
+//! [`steer`] is the one reader of the field, shared with the run plane's mint
 //! admission, which refuses the same handles earlier and under the provider
 //! they claim to be.
 

@@ -67,8 +67,8 @@ fn runner(values: &mut Values, settings: &ConfigToml) {
     );
     insert(
         values,
-        "AGENTSFLEET_LEASE_TTL_SECONDS",
-        runner.lease.ttl_seconds,
+        "AGENTSFLEET_RUN_TTL_SECONDS",
+        runner.run.ttl_seconds,
     );
     insert(
         values,

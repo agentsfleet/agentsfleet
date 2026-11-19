@@ -27,13 +27,13 @@ async fn elapsed_authorization_budget_records_deadline_without_sending_or_replay
     let request = fixture::request(&attempt);
     let (mut owner, pid) = hold(&f, &request.dispatch_id).await;
     let task = tokio::spawn({
-        let (calls, runner, lease, request) = (
+        let (calls, runner, run, request) = (
             calls.clone(),
             f.runner.clone(),
-            attempt.lease.clone(),
+            attempt.run.clone(),
             request.clone(),
         );
-        async move { calls.call(&runner, &lease, request).await }
+        async move { calls.call(&runner, &run, request).await }
     });
     f.waits_on(pid, 1).await;
     assert_eq!(
@@ -61,7 +61,7 @@ async fn elapsed_authorization_budget_records_deadline_without_sending_or_replay
     .await;
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect_err("unknown replay remains fenced")
             .code(),

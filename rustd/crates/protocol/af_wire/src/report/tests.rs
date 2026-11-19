@@ -23,7 +23,7 @@ fn runner_outcomes_use_the_same_spelling_in_rows_and_json() {
 /// A report a runner sends, with `tool_calls` spliced in as given.
 fn report_with(tool_calls: &str) -> String {
     format!(
-        r#"{{"lease_id":"lease","event_id":"1-0","fencing_token":7,"outcome":"processed",
+        r#"{{"run_id":"run","event_id":"1-0","fencing_token":7,"outcome":"processed",
             "failure_reason":null,"failure_detail":"","response_text":"done","tokens":3,
             "requests":[{{"seq":0,"at":"2026-10-19T10:00:00Z","input_tokens":1,
                 "cached_input_tokens":0,"cache_write_tokens":0,"cache_write_5m_tokens":0,

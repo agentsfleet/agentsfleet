@@ -13,12 +13,12 @@ use crate::egress::{ERRNO, FAR_NAME, connect};
 use crate::lane::Lane;
 use crate::run::{expect, run, runtime, shell};
 
-/// The lease each trial's sandbox is built and refilled under.
-const LEASE: &str = "egress-reallow";
-const OVERLAP_LEASE: &str = "egress-reallow-overlap";
+/// The run each trial's sandbox is built and refilled under.
+const RUN: &str = "egress-reallow";
+const OVERLAP_RUN: &str = "egress-reallow-overlap";
 
 /// Built to reach the far host's name at one address, then frozen and
-/// refilled to the other, as a held sandbox is when its next lease's hosts
+/// refilled to the other, as a held sandbox is when its next run's hosts
 /// resolved anew: the name follows the set, and the address it left is closed.
 pub(crate) fn reallow_swaps_the_set_in_place(lane: &Lane) -> Result<(), Failed> {
     let _far = Far::start()?;
@@ -30,7 +30,7 @@ pub(crate) fn reallow_swaps_the_set_in_place(lane: &Lane) -> Result<(), Failed> 
         connect(&FAR_LISTED.to_string(), FAR_PORT),
     ];
 
-    let (before, after) = across_a_refill(lane, LEASE, &first, &moved, &scripts)?;
+    let (before, after) = across_a_refill(lane, RUN, &first, &moved, &scripts)?;
 
     expect(
         reached(&before) == [Some(true), Some(true), Some(false)],
@@ -55,7 +55,7 @@ pub(crate) fn reallow_keeps_an_address_both_sets_hold(lane: &Lane) -> Result<(),
     let scripts = [FAR_LISTED, FAR_UNLISTED, FAR_SPARE]
         .map(|address| connect(&address.to_string(), FAR_PORT));
 
-    let (before, after) = across_a_refill(lane, OVERLAP_LEASE, &first, &moved, &scripts)?;
+    let (before, after) = across_a_refill(lane, OVERLAP_RUN, &first, &moved, &scripts)?;
 
     expect(
         reached(&before) == [Some(true), Some(true), Some(false)],
@@ -67,18 +67,18 @@ pub(crate) fn reallow_keeps_an_address_both_sets_hold(lane: &Lane) -> Result<(),
     )
 }
 
-/// What each of `scripts` printed in a sandbox built for `lease` to reach
+/// What each of `scripts` printed in a sandbox built for `run` to reach
 /// `first`, then again after it was frozen, refilled to `moved` and thawed.
 fn across_a_refill(
     lane: &Lane,
-    lease: &str,
+    run: &str,
     first: &Allowlist,
     moved: &Allowlist,
     scripts: &[String],
 ) -> Result<(Vec<String>, Vec<String>), Failed> {
     runtime().block_on(async {
         let request =
-            SandboxRequest::new(lease, Limits::default()).with_network(Network::Allowed(first));
+            SandboxRequest::new(run, Limits::default()).with_network(Network::Allowed(first));
         let mut sandbox = lane.engine().prepare(request).await?;
         let mut said = Vec::with_capacity(2 * scripts.len());
         for script in scripts {

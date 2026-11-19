@@ -173,7 +173,7 @@ export type ActivityLiveFrame = (
       message?: string;
       created_at?: string;
     }
-  // The row as the lease verb opened it: who raised it, how it entered, and
+  // The row as the run verb opened it: who raised it, how it entered, and
   // the row's own instant. Every field past the identifier is optional on the
   // TYPE because the wire is untrusted; the reducer guards each and falls back.
   // The counters ride here because a receive is when `events_processed` moves.

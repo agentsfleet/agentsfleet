@@ -6,7 +6,7 @@ CREATE TABLE fleet.task_object_pins (
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
     kind TEXT NOT NULL,
-    owner_lease_id UUID NOT NULL,
+    owner_run_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL,
     task_generation BIGINT NOT NULL,
     stop_generation BIGINT NOT NULL,

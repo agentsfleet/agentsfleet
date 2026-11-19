@@ -113,8 +113,8 @@ pub(crate) enum ErrorKind {
         source: af_secrets::Error,
     },
 
-    /// The catalog refused the lease's tools.
-    #[error("the lease's tools were refused")]
+    /// The catalog refused the run's tools.
+    #[error("the run's tools were refused")]
     Tools {
         /// The catalog's refusal, naming the tool.
         #[from]
@@ -164,7 +164,7 @@ impl Error {
         }
     }
 
-    /// What a refused lease named that this engine cannot host, for its log
+    /// What a refused run named that this engine cannot host, for its log
     /// line; none for a failure that refused nothing.
     #[must_use]
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
@@ -187,7 +187,7 @@ impl Error {
     }
 }
 
-/// What a refused lease named that the engine cannot host.
+/// What a refused run named that the engine cannot host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unhosted<'a> {
     /// A tool with no handler in the catalog.

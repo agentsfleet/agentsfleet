@@ -51,7 +51,7 @@ async fn refused_ranges(fixture: &Decisions<'_>, source: &Uuid7) {
         let input = item(fixture, source, start..end);
         let failure = fixture
             .tasks
-            .reserve_decision(fixture.case.lease(), &input)
+            .reserve_decision(fixture.case.run(), &input)
             .await
             .expect_err("reversed, oversized and split-Unicode ranges cannot fund a call");
         assert_eq!(failure.code(), error_code::TASK_INVALID_TARGET);

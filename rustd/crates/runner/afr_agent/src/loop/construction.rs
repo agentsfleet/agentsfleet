@@ -1,4 +1,4 @@
-//! Root and child state start under the current lease's authority.
+//! Root and child state start under the current run's authority.
 
 use super::{Harness, Shared, context, publication};
 use crate::{context::Checkpoints, events::Live, offer, router::Router};
@@ -7,7 +7,7 @@ use guffbolt::agents::Seat;
 use guffbolt::{Message, Replay, Transcript};
 
 impl<'s, 'run> Harness<'s, 'run> {
-    /// The run's root loop, over every tool the lease was offered, opening
+    /// The run's root loop, over every tool the run was offered, opening
     /// with the fleet's earlier turns and then the event's message.
     pub(super) fn root(shared: &'s Shared<'run>, opening: Vec<Message>) -> Self {
         let selection = shared.selection;

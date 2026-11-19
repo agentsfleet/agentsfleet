@@ -75,7 +75,7 @@ wake ring or 5 s recovery probe -> offer pass -> Postgres head probe
                          |
               slot + admission claim
                          |
-        fenced lease offered down the runner stream
+        fenced run offered down the runner stream
                          |
 report -> usage + terminal event + settlement + delivery obligation
 ```

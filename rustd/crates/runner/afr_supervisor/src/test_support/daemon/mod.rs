@@ -138,7 +138,7 @@ where
 {
     async fn activity(
         &self,
-        _lease: &af_core::id::Uuid7,
+        _run: &af_core::id::Uuid7,
         request: &af_wire::activity::ActivityRequest<'_>,
     ) -> crate::Result<()> {
         self.0

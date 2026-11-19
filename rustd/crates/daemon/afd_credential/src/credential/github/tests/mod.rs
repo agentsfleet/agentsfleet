@@ -258,7 +258,7 @@ fn installation_ids_accept_only_unsigned_numbers_and_decimal_strings() {
 
 #[test]
 fn a_handle_names_its_installation_only_through_the_installation_field() {
-    // The reader the lease plane's ownership check and the exchange share:
+    // The reader the run plane's ownership check and the exchange share:
     // whatever this answers is both the installation checked and the one
     // minted for.
     assert_eq!(

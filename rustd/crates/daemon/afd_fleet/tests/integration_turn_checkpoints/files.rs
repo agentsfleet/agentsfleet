@@ -6,7 +6,7 @@ use super::{
     storage::{self, Files},
 };
 use af_wire::{
-    lease::{
+    run::{
         TurnCheckpointAction as Action, TurnCheckpointPlan, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnWorkspace,
     },
@@ -305,7 +305,7 @@ async fn corrupt_uploaded_ciphertext_never_becomes_verified_or_a_recovery_head()
     ))?;
     let failure = files
         .store
-        .execute(&files.case.leases, files.case.lease(), &command)
+        .execute(&files.case.runs, files.case.run(), &command)
         .await
         .err()
         .ok_or("corrupt ciphertext must refuse authorization")?;

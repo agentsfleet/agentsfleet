@@ -60,17 +60,17 @@ async fn assert_runner_reads_reach_store(runner_reader: &axum::Router) {
         Some("UZ-INTERNAL-001")
     );
 
-    let leases = send(
+    let runs = send(
         runner_reader,
         Method::GET,
-        &format!("/v1/admin/runners/{RUNNER}/leases"),
+        &format!("/v1/admin/runners/{RUNNER}/runs"),
         Some(TENANT_KEY),
         "",
     )
     .await;
-    assert_eq!(leases.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(runs.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(
-        json_body(leases)
+        json_body(runs)
             .await
             .get("error_code")
             .and_then(serde_json::Value::as_str),
@@ -125,7 +125,7 @@ async fn runner_events_reject_filter_shape_before_io() {
 }
 
 #[tokio::test]
-async fn runner_leases_require_runner_read_and_reject_query_shape_before_io() {
+async fn runner_runs_require_runner_read_and_reject_query_shape_before_io() {
     let stream_reader = Fleet::new()
         .with_person(
             TENANT_KEY,
@@ -136,7 +136,7 @@ async fn runner_leases_require_runner_read_and_reject_query_shape_before_io() {
     let denied = send(
         &stream_reader,
         Method::GET,
-        &format!("/v1/admin/runners/{RUNNER}/leases"),
+        &format!("/v1/admin/runners/{RUNNER}/runs"),
         Some(TENANT_KEY),
         "",
     )
@@ -160,7 +160,7 @@ async fn runner_leases_require_runner_read_and_reject_query_shape_before_io() {
         let malformed = send(
             &runner_reader,
             Method::GET,
-            &format!("/v1/admin/runners/{RUNNER}/leases?{query}"),
+            &format!("/v1/admin/runners/{RUNNER}/runs?{query}"),
             Some(TENANT_KEY),
             "",
         )
@@ -321,7 +321,7 @@ async fn every_runner_route_refuses_a_malformed_runner_id_with_one_sentence() {
     for (method, tail) in [
         (Method::GET, ""),
         (Method::GET, "/events"),
-        (Method::GET, "/leases"),
+        (Method::GET, "/runs"),
         (Method::PATCH, ""),
         (Method::DELETE, ""),
     ] {

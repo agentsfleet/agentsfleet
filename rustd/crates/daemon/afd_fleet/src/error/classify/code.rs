@@ -27,8 +27,8 @@ impl Error {
     ///   own, and the parser's own error survives in the source chain.
     /// - **Vault body** — a body that will not parse answers its own code,
     ///   because its SHAPE is a fact the operator who stored it can act on.
-    /// - **Lease lifecycle** — six refusals, six codes. They are one fact (this
-    ///   runner may not do this to this lease) observed at six moments, and the
+    /// - **Run lifecycle** — six refusals, six codes. They are one fact (this
+    ///   runner may not do this to this run) observed at six moments, and the
     ///   runner acts differently on every one.
     /// - **Messages** — no thread, or the run has spoken its fill. Neither is a
     ///   fault, and the model acts on each differently.
@@ -91,11 +91,11 @@ impl Error {
             | ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
             ErrorKind::StaleFence => error_code::RUN_STALE_FENCING_TOKEN,
-            ErrorKind::LeaseNotFound => error_code::RUN_LEASE_NOT_FOUND,
-            ErrorKind::LeaseLost => error_code::RUN_LEASE_LOST,
-            ErrorKind::LeaseCancelled => error_code::RUN_LEASE_CANCELLED,
-            ErrorKind::LeaseMaxRuntime => error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
-            ErrorKind::RenewalNoCredits => error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+            ErrorKind::RunNotFound => error_code::RUN_NOT_FOUND,
+            ErrorKind::RunLost => error_code::RUN_LOST,
+            ErrorKind::RunCancelled => error_code::RUN_CANCELLED,
+            ErrorKind::RunMaxRuntime => error_code::RUN_EXCEEDED_MAX_RUNTIME,
+            ErrorKind::RenewalNoCredits => error_code::RUN_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
             ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,
             ErrorKind::MessageLimitReached => error_code::MESSAGE_LIMIT_REACHED,

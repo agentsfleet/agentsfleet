@@ -4,7 +4,7 @@
 //! # Why this is not a module inside `afd_fleet`
 //!
 //! `fleet.events` had no owner. Its statements lived in `afd_fleet::sql`,
-//! beside leases, money, policy, bundles and four sweepers — so a crate wanting
+//! beside runs, money, policy, bundles and four sweepers — so a crate wanting
 //! ten lines of SQL had to depend on 25,500 lines of runner plane to get them.
 //! `afd_approval` proved the cost: rather than pay it, it carried a
 //! byte-identical COPY of the insert, and a third copy of the status spelling
@@ -15,7 +15,7 @@
 //!
 //! # Writes are statements here, reads are verbs
 //!
-//! A write binds a caller's domain type — an acquired lease, a gate's refusal,
+//! A write binds a caller's domain type — an acquired run, a gate's refusal,
 //! a runner's verdict — and those types belong to the planes that own them.
 //! Moving the binding down here would drag them with it and invert the
 //! layering, so [`sql`] exports the text and the writers keep their `bind`

@@ -1,8 +1,8 @@
-//! Native publications stay inside the authenticated runner's current lease.
+//! Native publications stay inside the authenticated runner's current run.
 
 use crate::{auth::RunnerIdentity, services::Services};
 use af_wire::task::{TaskEffectInput, TaskEffectQuery, TaskEffectState, TaskEffectsQuery};
-use afd_fleet::task::TaskLease;
+use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
 use afd_http::{envelope::ProblemResponse, request_id::RequestId};
 use axum::{
@@ -18,10 +18,10 @@ const EVENT: &str = "runner_task_effect_failed";
 const MALFORMED: &str = "Publication request exceeds its supported shape or bounds";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = af_wire::paths::LEASE_TASK_EFFECTS, tag = afd_http::openapi::tag::RUNNERS,
+    post, path = af_wire::paths::RUN_TASK_EFFECTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_publish_task_effect", summary = "Publish one tested exact-head repair",
     description = "Records immutable expected-head and tested-tree authority before one native publication. Refuses workflow changes, unsupported file modes, stale ownership and unresolved effects. Unknown acknowledgements require reconciliation and never repeat the mutation.",
-    params(("lease_id" = String, Path, description = "Current lease UUIDv7.")), request_body = TaskEffectInput,
+    params(("run_id" = String, Path, description = "Current run UUIDv7.")), request_body = TaskEffectInput,
     responses((status = 201, body = af_wire::task::TaskEffect, description = "Confirmed new publication"),
         (status = 200, body = af_wire::task::TaskEffect, description = "Saved operation replay"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -33,23 +33,23 @@ const MALFORMED: &str = "Publication request exceeds its supported shape or boun
 pub(crate) async fn publish<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease): Path<String>,
+    Path(run): Path<String>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let input: TaskEffectInput =
         read_strict_body(&body).map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     let input = garde::Unvalidated::new(input)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let (effect, replayed) = services
         .tasks()
-        .publish_effect(lease, &input)
+        .publish_effect(run, &input)
         .await
         .map_err(Refusal::at(EVENT))?;
     if effect.state != TaskEffectState::Confirmed {
@@ -83,10 +83,10 @@ pub(crate) async fn publish<D: Services>(
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = af_wire::paths::LEASE_TASK_EFFECT, tag = afd_http::openapi::tag::RUNNERS,
+    get, path = af_wire::paths::RUN_TASK_EFFECT, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_read_task_effect", summary = "Read and reconcile one publication",
     description = "Returns the immutable publication identity and verified receipt. Reconciles unknown outcomes through bounded exact-branch history reads; absence never authorizes another mutation.",
-    params(("lease_id" = String, Path, description = "Current lease UUIDv7."),
+    params(("run_id" = String, Path, description = "Current run UUIDv7."),
         ("effect_id" = String, Path, description = "Native effect UUIDv7."), TaskEffectQuery),
     responses((status = 200, body = af_wire::task::TaskEffect, description = "Native publication state"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -97,33 +97,33 @@ pub(crate) async fn publish<D: Services>(
 pub(crate) async fn read<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease, effect)): Path<(String, String)>,
+    Path((run, effect)): Path<(String, String)>,
     input: Result<Query<TaskEffectQuery>, QueryRejection>,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let effect_id = parse_id(&effect, "effect_id must be a UUIDv7")?;
     let Query(input) = input.map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     let input = garde::Unvalidated::new(input)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let effect = services
         .tasks()
-        .effect(lease, &effect_id)
+        .effect(run, &effect_id)
         .await
         .map_err(Refusal::at(EVENT))?;
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(effect)).into_response())
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = af_wire::paths::LEASE_TASK_EFFECTS, tag = afd_http::openapi::tag::RUNNERS,
+    get, path = af_wire::paths::RUN_TASK_EFFECTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_list_task_effects", summary = "Recover publications after a checkpoint watermark",
     description = "Pages native task-local effect order, including unresolved and newly confirmed effects. A replacement worker needs no previously returned effect ID.",
-    params(("lease_id" = String, Path, description = "Current lease UUIDv7."), TaskEffectsQuery),
+    params(("run_id" = String, Path, description = "Current run UUIDv7."), TaskEffectsQuery),
     responses((status = 200, body = af_wire::task::TaskEffectsPage, description = "Ordered recoverable publication states"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -133,22 +133,22 @@ pub(crate) async fn read<D: Services>(
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease): Path<String>,
+    Path(run): Path<String>,
     input: Result<Query<TaskEffectsQuery>, QueryRejection>,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let Query(input) = input.map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     let input = garde::Unvalidated::new(input)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let page = services
         .tasks()
-        .effects(lease, &input)
+        .effects(run, &input)
         .await
         .map_err(Refusal::at(EVENT))?;
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(page)).into_response())

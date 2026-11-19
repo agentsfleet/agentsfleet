@@ -3,7 +3,7 @@
 use crate::{
     Drafts, Result, candidate, draft,
     error::{ErrorKind, raise::invalid},
-    lease::{ActivityInput, Event, Proposal, guard::Guarded},
+    run::{ActivityInput, Event, Proposal, guard::Guarded},
 };
 use af_fleet_runtime::{Definition, definition::EditBatch};
 use af_wire::authoring::CandidateVersion;

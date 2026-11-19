@@ -8,11 +8,11 @@ The architecture optimises for one generic operational runtime, not bespoke type
 
 Principles. Each links to where it's enforced; when a spec contradicts one of these, the spec is wrong:
 
-- **One Fleet is a durable runtime, not a one-shot prompt.** The lease model enforces it. `agentsfleetd` hands a runner one event at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each lease ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
+- **One Fleet is a durable runtime, not a one-shot prompt.** The run model enforces it. `agentsfleetd` hands a runner one event at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each run ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
 
   See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The coding fleet and the Fleet runtime".
 
-- **All trigger sources enter the same event-processing path.** Webhook, cron, steer, and continuation all commit to `fleet.admissions`; the lease/run path treats every actor alike. See the [admission and run flows](./data_flow.md).
+- **All trigger sources enter the same event-processing path.** Webhook, cron, steer, and continuation all commit to `fleet.admissions`; the run/run path treats every actor alike. See the [admission and run flows](./data_flow.md).
 
 - **Behaviour is defined mainly in natural language, through chat, into one reviewed Definition**. It holds a one-line `description`, `instructions_md` and a `config` policy document.
 
@@ -32,7 +32,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
 - **Approvals are first-class.** Risky actions block at the gate; the state machine survives runner restarts. See [`capabilities.md`](./capabilities.md) §3 "Approval gating" row and [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
 
-- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the lease, before the run starts (`afd_fleet`'s lease pull). The instructions may ask for approval explicitly.
+- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the run, before the run starts (`afd_fleet`'s run pull). The instructions may ask for approval explicitly.
 
   See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
 
@@ -66,4 +66,4 @@ Everything else stays prompt-driven and is iterated in chat, then applied as a r
 
 A Plugin entry is reusable setup above the runtime, not a second runtime entity. It is an immutable revision a person explicitly published, which a new fleet pins at Save. Prose cannot grant capabilities.
 
-Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on lease. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.
+Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on run. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.

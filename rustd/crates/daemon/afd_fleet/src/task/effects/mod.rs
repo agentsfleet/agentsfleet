@@ -1,4 +1,4 @@
-//! Immutable expected-head publication through the existing task/lease owner.
+//! Immutable expected-head publication through the existing task/run owner.
 
 mod allocate;
 mod maintenance;
@@ -7,7 +7,7 @@ mod record;
 mod recover;
 mod row;
 
-use super::{TaskLease, TaskRefusal, Tasks};
+use super::{TaskRefusal, TaskRun, Tasks};
 use crate::Result;
 use af_core::id::Uuid7;
 use af_wire::task::{TaskEffect, TaskEffectInput, TaskEffectsPage, TaskEffectsQuery};
@@ -22,19 +22,19 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<super::EffectMaintenance> 
 
 pub(super) async fn publish(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskEffectInput>,
 ) -> Result<(TaskEffect, bool)> {
-    let (effect, replayed) = allocate::reserve(tasks, lease, input).await?;
+    let (effect, replayed) = allocate::reserve(tasks, run, input).await?;
     if replayed {
-        return Ok((read::one(tasks, lease, &effect.id).await?, true));
+        return Ok((read::one(tasks, run, &effect.id).await?, true));
     }
     let github = tasks
         .dependencies
         .github
         .as_ref()
         .ok_or(TaskRefusal::InvalidTarget)?;
-    let session = match github.session(lease).await {
+    let session = match github.session(run).await {
         Ok(session) => session,
         Err(error) => {
             record::refuse(tasks, &effect).await?;
@@ -46,7 +46,7 @@ pub(super) async fn publish(
         return Err(error);
     }
     let recovery = match github
-        .seal_recovery(lease, &effect.workspace_id, &effect.id, effect.target()?)
+        .seal_recovery(run, &effect.workspace_id, &effect.id, effect.target()?)
         .await
     {
         Ok(recovery) => recovery,
@@ -57,7 +57,7 @@ pub(super) async fn publish(
     };
     // This transaction is the committed stop cutoff. No ref request exists
     // before it; a stop after issuance retains an explicit in-flight effect.
-    let permit = match record::issue(tasks, lease, input, &effect, &recovery).await {
+    let permit = match record::issue(tasks, run, input, &effect, &recovery).await {
         Ok(permit) => permit,
         Err(error) => {
             record::refuse(tasks, &effect).await?;
@@ -75,17 +75,17 @@ pub(super) async fn publish(
             tracing::warn!(event = "dt_effect_uncertain", effect_id = %effect.id, error_code = %error.code());
         }
     }
-    Ok((read::one(tasks, lease, &effect.id).await?, false))
+    Ok((read::one(tasks, run, &effect.id).await?, false))
 }
 
-pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Result<TaskEffect> {
-    read::one(tasks, lease, id).await
+pub(super) async fn one(tasks: &Tasks, run: TaskRun<'_>, id: &Uuid7) -> Result<TaskEffect> {
+    read::one(tasks, run, id).await
 }
 
 pub(super) async fn list(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskEffectsQuery>,
 ) -> Result<TaskEffectsPage> {
-    read::list(tasks, lease, input).await
+    read::list(tasks, run, input).await
 }

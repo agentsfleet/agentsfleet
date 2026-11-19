@@ -42,7 +42,7 @@ async fn scenario(case: &Case, protected: bool) {
     let tasks = github_authority::publisher(&fixture, &remote).await;
     let input = proposed(&fixture).await;
     let before = case.counts().await;
-    let result = tasks.interpret(case.lease(), &valid(input.clone())).await;
+    let result = tasks.interpret(case.run(), &valid(input.clone())).await;
     if protected {
         assert_eq!(
             result
@@ -106,7 +106,7 @@ async fn proposed(fixture: &Decisions<'_>) -> TaskBindingsInput {
 
 fn binding(case: &Case, source: String, revision: String, call: String) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         source_admission_id: source,
         accepted_revision_id: revision,
         plan_digest: "0".repeat(64),
@@ -181,7 +181,7 @@ async fn accepted(
     let task = id(item.task_id.as_ref().expect("native target owner"));
     assert_target(case, &task).await;
     let replay = tasks
-        .interpret(case.lease(), &valid(input))
+        .interpret(case.run(), &valid(input))
         .await
         .expect("preflight result replay");
     assert!(replay.replayed);

@@ -5,7 +5,7 @@
 //! [`crate::grant`]'s module note already argues it: this crate was the grant
 //! table's writer before either verb existed, because `sql::RESOLVE_GATE` moves
 //! a grant in the same statement that answers its gate. The request is the
-//! third direction of that one authority, and putting it on the lease path
+//! third direction of that one authority, and putting it on the run path
 //! instead would give `connector.integration_grants` a second writer whose writes
 //! the resolve would have to trust.
 //!

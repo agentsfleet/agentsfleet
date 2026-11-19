@@ -8,7 +8,7 @@
 //! answer needs a human: it parks the event, records what was proposed, and
 //! reads the durable decision back.
 //!
-//! Neither asks anything of a lease. The lease plane calls DOWN into this one
+//! Neither asks anything of a run. The run plane calls DOWN into this one
 //! at exactly two moments — admitting a claim and spending an approval — and
 //! nothing here calls back.
 //!

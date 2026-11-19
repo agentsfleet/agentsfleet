@@ -52,7 +52,7 @@ pub const ATTR_HTTP_REQUEST_METHOD: &str = "http.request.method";
 /// The matched route TEMPLATE — never a concrete path.
 ///
 /// This is the low-cardinality half of the contract. A real path carries
-/// workspace, fleet and lease identifiers, so exporting one would put tenant
+/// workspace, fleet and run identifiers, so exporting one would put tenant
 /// identity into span attributes AND give the backend a distinct route value
 /// per request, which is the same thing as having no route dimension at all.
 pub const ATTR_HTTP_ROUTE: &str = "http.route";
@@ -116,10 +116,10 @@ pub const ATTR_TENANT_ID: &str = "agentsfleet.tenant.id";
 /// The event a run executed.
 pub const ATTR_EVENT_ID: &str = "agentsfleet.event.id";
 
-/// Event creation to lease issue, both instants on the lease row.
+/// Event creation to run issue, both instants on the run row.
 pub const ATTR_DELIVERY_QUEUE_WAIT_MS: &str = "agentsfleet.delivery.queue_wait_ms";
 
-/// The runner's memory read, when the lease carried no window.
+/// The runner's memory read, when the run carried no window.
 pub const ATTR_DELIVERY_MEMORY_MS: &str = "agentsfleet.delivery.memory_ms";
 
 /// The model's turns, as the runner measured them.
@@ -230,13 +230,13 @@ pub const LABEL_FAULT: &str = "fault";
 /// causes of the same event — a run started fresh or by reclaim.
 pub const LABEL_KIND: &str = "kind";
 
-/// Which of the lease path's in-process caches a lookup asked.
+/// Which of the run path's in-process caches a lookup asked.
 pub const LABEL_CACHE: &str = "cache";
 
 /// Which committed automatic quarantine transition a runner count records.
 pub const LABEL_CHANGE: &str = "change";
 
-/// Which product's work a billing count is about: a fleet lease or a setup
+/// Which product's work a billing count is about: a fleet run or a setup
 /// chat attempt.
 pub const LABEL_WORK_TYPE: &str = "work_type";
 

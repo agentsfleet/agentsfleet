@@ -39,17 +39,17 @@ impl Observe<af_providers::Error> for Harness<'_, '_> {
 
     fn turn_started(&self, number: u64) -> Span {
         let shared = self.shared;
-        let lease_id = shared.lease_id;
+        let run_id = shared.run_id;
         let depth = self.depth;
         let event = EVENT_TURN_STARTED;
-        tracing::debug!(lease_id, depth, turn = number, event);
+        tracing::debug!(run_id, depth, turn = number, event);
         spans::chat(shared.model)
     }
 
     fn turn_ended(&self, end: TurnEnd<'_, af_providers::Error>) {
         let shared = self.shared;
         record::turn(shared.provider_label, label(&end.outcome), end.duration);
-        let lease_id = shared.lease_id;
+        let run_id = shared.run_id;
         let depth = self.depth;
         let number = end.number;
         match end.outcome {
@@ -60,7 +60,7 @@ impl Observe<af_providers::Error> for Harness<'_, '_> {
                 let calls = done.calls.len();
                 let event = EVENT_TURN_COMPLETED;
                 tracing::debug!(
-                    lease_id,
+                    run_id,
                     depth,
                     turn = number,
                     input_tokens,
@@ -72,12 +72,12 @@ impl Observe<af_providers::Error> for Harness<'_, '_> {
             TurnOutcome::Failed(failure) => {
                 let code = failure.code().as_str();
                 let event = EVENT_PROVIDER_FAILED;
-                tracing::warn!(error_code = code, lease_id, depth, turn = number, event);
+                tracing::warn!(error_code = code, run_id, depth, turn = number, event);
             }
             TurnOutcome::Stopped => {
                 let reason = REASON_STOPPED;
                 let event = EVENT_PROVIDER_FAILED;
-                tracing::debug!(lease_id, depth, turn = number, reason, event);
+                tracing::debug!(run_id, depth, turn = number, reason, event);
             }
         }
     }

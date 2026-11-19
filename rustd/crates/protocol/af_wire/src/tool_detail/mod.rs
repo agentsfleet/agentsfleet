@@ -1,7 +1,7 @@
 //! A tool call's full arguments and output, kept so an operator can open more
 //! than the first and last lines the trace shows.
 //!
-//! The runner posts each finished call under its lease's fence; the daemon
+//! The runner posts each finished call under its run's fence; the daemon
 //! narrows each record, holds an event to a byte budget, and keeps one row per
 //! call. Both sides read the bounds below. Arguments and output are scrubbed
 //! runner-side, so resolved secret bytes never cross this boundary.
@@ -190,12 +190,12 @@ impl DetailRejection {
     }
 }
 
-/// `POST /v1/runners/me/leases/{lease_id}/tool-calls` request.
+/// `POST /v1/runners/me/runs/{run_id}/tool-calls` request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCallRecordsRequest<'a> {
-    /// The lease's fencing token; a holder the fleet has superseded is refused.
+    /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
     /// The finished calls to keep. A call posted again replaces its record.
     #[serde(borrow)]

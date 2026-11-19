@@ -21,7 +21,7 @@ async fn malformed_or_stale_provider_decisions_record_fallback_without_blocking_
         let case = Case::create(&server, SOAK).await;
         let response = case.calls.call(
             &case.f.runner,
-            &case.attempt.lease,
+            &case.attempt.run,
             fixture::request(&case.attempt),
         );
         let observe = async {
@@ -43,7 +43,7 @@ async fn malformed_or_stale_provider_decisions_record_fallback_without_blocking_
         assert_eq!(
             case.f
                 .drafts
-                .activity(&case.f.runner, &case.attempt.lease, activity)
+                .activity(&case.f.runner, &case.attempt.run, activity)
                 .await
                 .expect("existing behavior")
                 .candidate
@@ -63,7 +63,7 @@ async fn a_revoked_profile_makes_the_inflight_answer_stale_but_retains_usage() {
     let calls = case.calls.clone();
     let response = calls.call(
         &case.f.runner,
-        &case.attempt.lease,
+        &case.attempt.run,
         fixture::request(&case.attempt),
     );
     let observe = async {
@@ -102,7 +102,7 @@ async fn missing_decision_configuration_preserves_the_existing_chat_path() {
         .calls
         .call(
             &case.f.runner,
-            &case.attempt.lease,
+            &case.attempt.run,
             fixture::request(&case.attempt),
         )
         .await

@@ -7,7 +7,7 @@ use super::{
 use crate::{
     Result,
     error::query,
-    lease::{Leases, scope::MintScope},
+    run::{Runs, scope::MintScope},
     task::{TaskRefusal, Tasks, guard, transaction},
 };
 use af_core::{clock, id::Uuid7};
@@ -23,7 +23,7 @@ pub(super) struct Claimed {
 
 pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option<Claimed>> {
     let scope = candidate.scope();
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     guard::scope(&mut tx, &scope).await?;
     let _task: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_TASK)
@@ -43,7 +43,7 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
     let Some((mut tx, binding)) = checked_authority(tx, &owner).await? else {
         return Ok(None);
     };
-    let claim = tasks.leases.entropy().uuid7(clock::now())?;
+    let claim = tasks.runs.entropy().uuid7(clock::now())?;
     let until = reserve(&mut tx, &owner, &claim, fallback).await?;
     tx.commit()
         .await
@@ -178,7 +178,7 @@ pub(super) async fn authority(
 ) -> Result<af_fleet_runtime::config::RepositoryBinding> {
     let mut live = None;
     for revision in [Some(&owner.accepted_revision_id), None] {
-        let config = Leases::stored_config_on(connection, &owner.fleet_id, revision)
+        let config = Runs::stored_config_on(connection, &owner.fleet_id, revision)
             .await?
             .ok_or(TaskRefusal::InvalidTarget)?;
         owner.target.within(&config)?;

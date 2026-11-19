@@ -123,8 +123,8 @@ async fn drained(
     );
     assert_eq!(oldest.counts().await, (1, 1, 0));
     assert_eq!(later.counts().await, (101, 101, 0));
-    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.decision_calls WHERE original_lease_id IN ($1,$2) AND accounted_at IS NULL")
-        .bind(&oldest.case.held.lease_key).bind(&later.case.held.lease_key)
+    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.decision_calls WHERE original_run_id IN ($1,$2) AND accounted_at IS NULL")
+        .bind(&oldest.case.held.run_key).bind(&later.case.held.run_key)
         .fetch_one(&mut *oldest.case.held.fixtures.database.acquire().await.expect("complete retained reservations"))
         .await.expect("nothing remains reserved");
     assert_eq!(remaining, 0);

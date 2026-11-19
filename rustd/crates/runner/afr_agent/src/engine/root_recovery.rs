@@ -1,6 +1,6 @@
 //! Root state paired with one frozen workspace generation.
 
-use af_wire::lease::FoldRef;
+use af_wire::run::FoldRef;
 use afr_memory::MemoryRecovery;
 use garde::Validate;
 use guffbolt::DriveState;

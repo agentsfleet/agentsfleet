@@ -112,7 +112,7 @@ pub async fn resettle(
     let owed = {
         let mut connection = database.acquire().await?;
         sqlx::query_as::<_, OwedRow>(SELECT_OWED)
-            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::work::FLEET_RUN)
             .bind(sql::work::AUTHORING_ATTEMPT)
             .fetch_one(&mut *connection)
             .await

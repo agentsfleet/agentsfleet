@@ -4,7 +4,7 @@ use super::row::{Pin, Plan};
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, execution},
+    task::{TaskRefusal, TaskRun, Tasks, execution},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{CheckpointTransferPurpose, DecisionTaskVersion};
@@ -20,19 +20,19 @@ pub(super) fn storage(tasks: &Tasks) -> Result<&crate::task::storage::R2Checkpoi
 
 pub(super) async fn owned(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     version: &DecisionTaskVersion,
     checkpoint: &Uuid7,
     pin: &Uuid7,
     purpose: CheckpointTransferPurpose,
 ) -> Result<(execution::Owned, Plan, Pin)> {
-    let owned = execution::load(connection, lease, version).await?;
-    with_execution(connection, lease, owned, checkpoint, pin, purpose).await
+    let owned = execution::load(connection, run, version).await?;
+    with_execution(connection, run, owned, checkpoint, pin, purpose).await
 }
 
 pub(super) async fn with_execution(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     owned: execution::Owned,
     checkpoint: &Uuid7,
     pin: &Uuid7,
@@ -55,7 +55,7 @@ pub(super) async fn with_execution(
         .await
         .map_err(query("lock checkpoint pin"))?
         .ok_or(TaskRefusal::CheckpointIncompatible)?;
-    if pin.owner_lease_id != lease.lease_id.as_str()
+    if pin.owner_run_id != run.run_id.as_str()
         || pin.owner_fence != owned.current.fence
         || pin.task_generation
             != i64::try_from(owned.snapshot.context.generation)
@@ -72,7 +72,7 @@ pub(super) async fn with_execution(
     }
     plan.compatible(&owned, purpose)?;
     if purpose == CheckpointTransferPurpose::Upload
-        && (plan.owner_lease_id != lease.lease_id.as_str()
+        && (plan.owner_run_id != run.run_id.as_str()
             || plan.owner_fence != owned.current.fence
             || plan.transfer_deadline <= clock::now())
     {

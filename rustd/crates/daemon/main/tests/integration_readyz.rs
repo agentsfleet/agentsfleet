@@ -51,7 +51,7 @@ const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
-        panic!("{knob} is unset — run these through `make test-integration-rustd`")
+        panic!("{knob} is unset — scene these through `make test-integration-rustd`")
     })
 }
 

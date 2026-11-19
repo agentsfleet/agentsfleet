@@ -34,8 +34,8 @@ pub(crate) struct Native {
 }
 
 impl Native {
-    pub(crate) async fn connect(run: &Scenario, transport: Transport) -> Self {
-        Self::connect_at(run.booted.runner_stream_address, &run.token, transport).await
+    pub(crate) async fn connect(scene: &Scenario, transport: Transport) -> Self {
+        Self::connect_at(scene.booted.runner_stream_address, &scene.token, transport).await
     }
 
     pub(crate) async fn connect_at(

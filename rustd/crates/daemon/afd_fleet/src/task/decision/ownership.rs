@@ -12,12 +12,12 @@ use super::{
 use crate::{
     Result,
     error::query,
-    lease::sql::{FLEET_STATUS_ACTIVE, LEASE_STATUS_ACTIVE},
-    task::{TaskLease, TaskRefusal, TaskScope, TaskSnapshot, admit::source, guard, read},
+    run::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE},
+    task::{TaskRefusal, TaskRun, TaskScope, TaskSnapshot, admit::source, guard, read},
 };
 
 pub(super) struct NativeContext {
-    pub current: guard::LeaseRow,
+    pub current: guard::RunRow,
     pub scope: TaskScope,
     pub task: Option<Execution>,
     pub source: source::Source,
@@ -32,10 +32,10 @@ pub(super) struct Execution {
 impl NativeContext {
     pub(super) async fn load(
         connection: &mut PgConnection,
-        lease: TaskLease<'_>,
+        run: TaskRun<'_>,
         input: &DecisionReservationInput,
     ) -> Result<Self> {
-        let current = guard::lease(connection, lease).await?;
+        let current = guard::run(connection, run).await?;
         if current.fleet_status != FLEET_STATUS_ACTIVE {
             return Err(TaskRefusal::StaleState.into());
         }
@@ -48,14 +48,14 @@ impl NativeContext {
         let source = source::load(connection, &current, &source_id).await?;
         authorize_source(
             connection,
-            lease,
+            run,
             &current,
             &source,
             &source_id,
             input.assessment.purpose(),
         )
         .await?;
-        let current = guard::lease(connection, lease).await?;
+        let current = guard::run(connection, run).await?;
         Ok(Self {
             current,
             scope,
@@ -104,7 +104,7 @@ impl NativeContext {
 
 pub(super) async fn execution(
     connection: &mut PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     scope: &TaskScope,
     input: &DecisionReservationInput,
 ) -> Result<Option<Execution>> {
@@ -138,8 +138,8 @@ pub(super) async fn execution(
 
 pub(super) async fn authorize_source(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
-    current: &guard::LeaseRow,
+    run: TaskRun<'_>,
+    current: &guard::RunRow,
     input: &source::Source,
     source_id: &Uuid7,
     purpose: DecisionPurpose,
@@ -161,9 +161,9 @@ pub(super) async fn authorize_source(
             .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
             .bind(0_i64)
             .bind(1_i64)
-            .bind(lease.lease_id)
+            .bind(run.run_id)
             .bind(current.fence)
-            .bind(LEASE_STATUS_ACTIVE)
+            .bind(RUN_STATUS_ACTIVE)
             .bind(source_id)
             .bind(false)
             .bind(afd_turns::Producer::SlackMention.as_str())

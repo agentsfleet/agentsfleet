@@ -94,7 +94,7 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_one_ring_pass_ends_at_its_first_lease() -> TestResult {
+async fn a_one_ring_pass_ends_at_its_first_run() -> TestResult {
     let mut first = ConnectionFixture::new(1)?;
     let mut second = ConnectionFixture::new(2)?;
     let job = tokio::spawn(pass(
@@ -106,11 +106,11 @@ async fn a_one_ring_pass_ends_at_its_first_lease() -> TestResult {
         .await?
         .reply
         .send(OfferOutcome::Issued)
-        .map_err(|unsent| format!("pass lost its lease answer {unsent:?}"))?;
+        .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     tokio::select! {
         result = job => result??,
         extra = first.requests.recv() => assert!(extra.is_none(), "one ring issued a second claim on its first host"),
-        extra = second.requests.recv() => assert!(extra.is_none(), "one ring continued after its first lease"),
+        extra = second.requests.recv() => assert!(extra.is_none(), "one ring continued after its first run"),
     }
     assert!(matches!(
         first.requests.try_recv(),
@@ -171,7 +171,7 @@ async fn a_ring_reaches_a_later_eligible_host_when_the_first_claim_is_empty() ->
         .await?
         .reply
         .send(OfferOutcome::Issued)
-        .map_err(|unsent| format!("pass lost its lease answer {unsent:?}"))?;
+        .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     job.await??;
     assert!(matches!(
         second.requests.try_recv(),
@@ -194,7 +194,7 @@ async fn several_rings_spend_one_budget_across_connections() -> TestResult {
             .await?
             .reply
             .send(OfferOutcome::Issued)
-            .map_err(|unsent| format!("pass lost its lease answer {unsent:?}"))?;
+            .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     }
     first
         .request()
@@ -207,7 +207,7 @@ async fn several_rings_spend_one_budget_across_connections() -> TestResult {
         .await?
         .reply
         .send(OfferOutcome::Issued)
-        .map_err(|unsent| format!("pass lost its lease answer {unsent:?}"))?;
+        .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     job.await??;
     assert!(matches!(
         second.requests.try_recv(),

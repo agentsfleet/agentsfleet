@@ -57,7 +57,7 @@ const PRODUCTION_DESCRIPTION: &str = "Production";
     // Frame payload schemas accompany the native stream's binary HTTP body.
     components(schemas(
         ProblemBody,
-        af_wire::lease::LeasePayload<'static>,
+        af_wire::run::RunPayload<'static>,
         af_wire::fold::FoldResponse<'static>,
     ))
 )]

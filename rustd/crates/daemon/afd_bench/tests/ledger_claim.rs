@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use afd_bench::datastores::Datastores;
 use afd_bench::fixture::RunPrefix;
-use afd_bench::lane::{lease, sweep};
+use afd_bench::lane::{run, sweep};
 use afd_bench::profile::Profile;
 use afd_bench::report::{Lane, Provenance, Report};
 use afd_db::{Migrator, config::DbRole, test_util::TestDatabase};
@@ -17,7 +17,7 @@ const FLEETS: u64 = 200;
 const RUNNERS: u64 = 8;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the exclusive benchmark rig's Postgres and NATS: run by hand after make bench-lease with `cargo test -p afd_bench --all-features -- --ignored`"]
+#[ignore = "needs the exclusive benchmark rig's Postgres and NATS: run by hand after make bench-run with `cargo test -p afd_bench --all-features -- --ignored`"]
 async fn test_ledger_claim_lane_reports_round_trips() {
     let lane = database().await;
     let bus = afd_bus::test_util::lane()
@@ -27,7 +27,7 @@ async fn test_ledger_claim_lane_reports_round_trips() {
         .await
         .expect("the benchmark rig answers");
     let prefix = RunPrefix::mint();
-    let parameters = lease::Parameters {
+    let parameters = run::Parameters {
         fleets: FLEETS,
         runners: RUNNERS,
         window: Duration::from_secs(30),
@@ -38,11 +38,11 @@ async fn test_ledger_claim_lane_reports_round_trips() {
         datastore_image: "test-cluster".to_owned(),
         owned: true,
     };
-    let measured = lease::run_both(Profile::Rig, provenance, parameters, &stores, &prefix).await;
+    let measured = run::run_both(Profile::Rig, provenance, parameters, &stores, &prefix).await;
     let swept = sweep::everything(&stores.database, &prefix)
         .await
         .expect("all prefixed fixtures are swept even on a failure");
-    let report = measured.expect("the full lease and report path drains");
+    let report = measured.expect("the full run and report path drains");
     assert_eq!(report.fixture.created, swept);
     verify(&report);
     rejects_incomplete(&stores, parameters).await;
@@ -59,7 +59,7 @@ async fn database() -> TestDatabase {
 }
 
 /// A real event-write refusal must not publish an empty drain as a cheap one.
-async fn rejects_incomplete(stores: &Datastores, parameters: lease::Parameters) {
+async fn rejects_incomplete(stores: &Datastores, parameters: run::Parameters) {
     let mut connection = stores.database.acquire().await.expect("owned connection");
     sqlx::raw_sql(
         "CREATE FUNCTION fleet.refuse_bench_event() RETURNS trigger LANGUAGE plpgsql AS \
@@ -73,7 +73,7 @@ async fn rejects_incomplete(stores: &Datastores, parameters: lease::Parameters) 
     drop(connection);
     let prefix = RunPrefix::mint();
     let mut report = Report::new(
-        Lane::Lease,
+        Lane::Run,
         Profile::Rig,
         Provenance {
             revision: "failure-proof".to_owned(),
@@ -81,13 +81,13 @@ async fn rejects_incomplete(stores: &Datastores, parameters: lease::Parameters) 
             owned: true,
         },
     );
-    let measured = lease::drain::run(Profile::Rig, parameters, stores, &prefix, &mut report).await;
+    let measured = run::drain::run(Profile::Rig, parameters, stores, &prefix, &mut report).await;
     let swept = sweep::everything(&stores.database, &prefix)
         .await
         .expect("refused fixtures swept");
     let refused = measured.expect_err("an incomplete drain refuses measurement");
     assert!(
-        refused.to_string().contains("lease drain incomplete"),
+        refused.to_string().contains("run drain incomplete"),
         "{refused}"
     );
     assert!(
@@ -106,11 +106,11 @@ fn verify(report: &Report) {
     assert_eq!(measurements["drain_events"], 200.0);
     assert_eq!(measurements["drain_event_rows"], 200.0);
     assert_eq!(measurements["drain_events_processed"], 200.0);
-    assert_eq!(measurements["drain_leases"], 200.0);
+    assert_eq!(measurements["drain_runs"], 200.0);
     assert_eq!(measurements["drain_failures"], 0.0);
-    assert!(measurements["drain_leases_per_second"] > 0.0);
+    assert!(measurements["drain_runs_per_second"] > 0.0);
     assert!(measurements["candidates_per_poll"] > 0.0);
-    assert!(measurements["drain_statements_per_lease"] > 0.0);
+    assert!(measurements["drain_statements_per_run"] > 0.0);
     assert!(measurements["idle_statements_per_poll"] > 0.0);
     assert!(report.abort.is_none());
 }

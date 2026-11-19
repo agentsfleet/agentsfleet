@@ -69,21 +69,21 @@ async fn saved_platform_reference_resolves_the_platform_credential_and_billing_p
 
 // Value: protects=platform choices reserve actual provider costs and saved output settings;
 // fails_when=admission treats platform inference as bring-your-own credentials or hardcodes a cap;
-// why_new=the existing admitted leases use only workspace-owned models;
+// why_new=the existing admitted runs use only workspace-owned models;
 // seam=isolated real Postgres and encrypted vault; no_claim=live inference.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn platform_admission_reserves_output_and_runtime_before_rolling_input_funding() {
     let f = configured().await;
     let draft = queued(&f).await;
-    let lease = claim(&f, &draft)
+    let run = claim(&f, &draft)
         .await
         .expect("configured platform model admitted");
-    assert_eq!(lease.model.reference, "platform-default");
-    assert_eq!(lease.limits.output_per_turn, 8192);
+    assert_eq!(run.model.reference, "platform-default");
+    assert_eq!(run.limits.output_per_turn, 8192);
     let (reserved, managed): (i64, bool) = sqlx::query_as(
         "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM authoring.attempts WHERE id=$1",
-    ).bind(Uuid7::parse(&lease.attempt_id).expect("the lease names its attempt")).fetch_one(&mut *f.connection().await).await.expect("durable priced bound");
+    ).bind(Uuid7::parse(&run.attempt_id).expect("the run names its attempt")).fetch_one(&mut *f.connection().await).await.expect("durable priced bound");
     // Measured input is funded before each physical dispatch; admission reserves
     // total output, rounding and the separately priced five-minute runtime.
     assert_eq!(reserved, 30_000_000 + 16_384_000 + 7);
@@ -97,12 +97,12 @@ async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
     use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
     let f = configured().await;
     let draft = queued(&f).await;
-    let lease = claim(&f, &draft)
+    let run = claim(&f, &draft)
         .await
         .expect("configured platform model admitted");
     let report = Report::Accounting {
         accounting: Accounting {
-            fence: lease.fence.clone(),
+            fence: run.fence.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,
@@ -116,16 +116,16 @@ async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
             },
         },
     };
-    let lease_id = Uuid7::parse(&lease.lease_id).expect("lease identity");
+    let run_id = Uuid7::parse(&run.run_id).expect("run identity");
     let ack = f
         .drafts
-        .report(&f.runner, &lease_id, report)
+        .report(&f.runner, &run_id, report)
         .await
         .expect("the platform attempt settles");
     assert!(ack.settled);
     let postures: Vec<String> =
         sqlx::query_scalar("SELECT DISTINCT posture FROM billing.usage_lines WHERE work_id=$1")
-            .bind(Uuid7::parse(&lease.attempt_id).expect("the lease names its attempt"))
+            .bind(Uuid7::parse(&run.attempt_id).expect("the run names its attempt"))
             .fetch_all(&mut *f.connection().await)
             .await
             .expect("the attempt's lines");

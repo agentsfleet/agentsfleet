@@ -40,11 +40,11 @@ async fn stale_claim(
 ) -> TestResult {
     let mut old = fixture.native(transport).await;
     old.heartbeat().await;
-    let locked = HostLock::hold(&fixture.run).await?;
+    let locked = HostLock::hold(&fixture.scene).await?;
     old.ready().await;
-    let waiter = locked.blocked(&fixture.run).await?;
-    let token = locked.replace(&fixture.run, replacement).await?;
-    locks::finished(&fixture.run, waiter).await?;
+    let waiter = locked.blocked(&fixture.scene).await?;
+    let token = locked.replace(&fixture.scene, replacement).await?;
+    locks::finished(&fixture.scene, waiter).await?;
     assert_unissued(fixture, replacement).await?;
     let mut current =
         Native::connect_at(fixture.peer.runner_stream_address, &token, transport).await;
@@ -52,23 +52,23 @@ async fn stale_claim(
     signals::no_offer(&mut old).await?;
     current.ready().await;
     let held = signals::offer(&mut current).await?;
-    assert_eq!(held.event, fixture.run.event_id);
-    signals::report(&fixture.run, &mut current, &held, false).await?;
+    assert_eq!(held.event, fixture.scene.event_id);
+    signals::report(&fixture.scene, &mut current, &held, false).await?;
     current.close().await;
     old.close().await;
     Ok(())
 }
 
 async fn assert_unissued(fixture: &Fixture, replacement: Replacement) -> TestResult {
-    let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE event_id=$1")
-        .bind(&fixture.run.event_id)
-        .fetch_one(&mut *fixture.run.booted.database.acquire().await?)
+    let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE event_id=$1")
+        .bind(&fixture.scene.event_id)
+        .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
         .await?;
-    assert_eq!(issued, 0, "a stale issue wrote a lease: {replacement:?}");
+    assert_eq!(issued, 0, "a stale issue wrote a run: {replacement:?}");
     let pending: bool =
         sqlx::query_scalar("SELECT settled_at IS NULL FROM fleet.admissions WHERE id=$1")
-            .bind(&fixture.run.event_id)
-            .fetch_one(&mut *fixture.run.booted.database.acquire().await?)
+            .bind(&fixture.scene.event_id)
+            .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;
     assert!(pending, "refused issuance must retain the admitted work");
     Ok(())
@@ -83,21 +83,21 @@ async fn stale_renewal(
     old.heartbeat().await;
     old.ready().await;
     let held = signals::offer(&mut old).await?;
-    let locked = HostLock::hold(&fixture.run).await?;
+    let locked = HostLock::hold(&fixture.scene).await?;
     old.send(
         StreamKind::Control,
         &json!({"type":"renew_batch","request_id":4,
-        "leases":[{"lease_id":held.lease,"request":{"requests":[]}}]}),
+        "runs":[{"run_id":held.run,"request":{"requests":[]}}]}),
     )
     .await;
-    locked.blocked(&fixture.run).await?;
-    let token = locked.replace(&fixture.run, replacement).await?;
+    locked.blocked(&fixture.scene).await?;
+    let token = locked.replace(&fixture.scene, replacement).await?;
     assert_stale_renewal(fixture, &mut old, &held).await?;
     let mut current =
         Native::connect_at(fixture.peer.runner_stream_address, &token, transport).await;
     let renewed = signals::renew(&mut current, &[&held], 4).await;
-    assert_eq!(wire::pointer(&renewed, "/leases/0/answer/status"), "ok");
-    signals::report(&fixture.run, &mut current, &held, false).await?;
+    assert_eq!(wire::pointer(&renewed, "/runs/0/answer/status"), "ok");
+    signals::report(&fixture.scene, &mut current, &held, false).await?;
     current.close().await;
     old.close().await;
     Ok(())
@@ -110,13 +110,13 @@ async fn assert_stale_renewal(
 ) -> TestResult {
     let denied = old.expect(StreamKind::Control, "renewed").await;
     assert_eq!(
-        wire::pointer(&denied, "/leases/0/answer/error_code"),
-        af_core::error_code::RUN_LEASE_LOST.as_str()
+        wire::pointer(&denied, "/runs/0/answer/error_code"),
+        af_core::error_code::RUN_LOST.as_str()
     );
     let expiry: jiff_sqlx::Timestamp =
-        sqlx::query_scalar("SELECT lease_expires_at FROM runner.leases WHERE id=$1")
-            .bind(af_core::id::Uuid7::parse(&held.lease)?)
-            .fetch_one(&mut *fixture.run.booted.database.acquire().await?)
+        sqlx::query_scalar("SELECT run_expires_at FROM runner.runs WHERE id=$1")
+            .bind(af_core::id::Uuid7::parse(&held.run)?)
+            .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;
     assert_eq!(
         expiry.to_jiff(),

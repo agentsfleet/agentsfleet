@@ -214,7 +214,7 @@ const OPENING_BRACE: &str = "{";
 /// carriage returns"). The kind is read by slicing the publisher's bytes rather
 /// than by parsing them, so nothing upstream has ruled one out.
 ///
-/// No current publisher can produce one — `afd_fleet::lease::activity` builds
+/// No current publisher can produce one — `afd_fleet::run::activity` builds
 /// every frame through `serde`, which escapes a newline to the two characters
 /// `\n` — so this is depth, not a live defect. It is still the right shape:
 /// the module's contract is that a publisher whose payload drifts loses its

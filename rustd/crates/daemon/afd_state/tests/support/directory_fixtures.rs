@@ -250,7 +250,7 @@ impl Fixtures {
             "INSERT INTO runner.runners \
                  (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
                   registry_allowlist, worker_count, degraded_reason, last_seen_at, \
-                  lease_version, created_at, updated_at, platform_owned) \
+                  run_version, created_at, updated_at, platform_owned) \
                  VALUES ($1, 'fixture-host', $2, 'standard', $3, jsonb_build_array(), \
                          'deny_all_egress', jsonb_build_array(), 1, $4, clock_timestamp(), 0, \
                          clock_timestamp(), clock_timestamp(), true)",

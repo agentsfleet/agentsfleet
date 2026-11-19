@@ -26,7 +26,7 @@ pub trait Recall: Send + Sync + fmt::Debug {
     async fn recall(&self, query: &str, limit: usize) -> Result<MemoryRecallResponse<'static>>;
 }
 
-/// What `agentsfleetd` hydrated at lease start, borrowed from its reply.
+/// What `agentsfleetd` hydrated at run start, borrowed from its reply.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Seed<'run> {
     /// The fleet's own window, newest first.

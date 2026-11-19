@@ -3,7 +3,7 @@
 //!
 //! On paused time: every wait below is the loop's own, measured exactly.
 
-use super::{ack, json, lease, rig, run};
+use super::{ack, json, payload, rig, run};
 use crate::{
     authoring::{meter::Observed, renew},
     client::{Call, Verb},
@@ -11,7 +11,7 @@ use crate::{
     test_support::{Answer, clock, plane},
 };
 use af_core::id::Uuid7;
-use af_wire::authoring::Lease;
+use af_wire::authoring::Run;
 use serde_json::Value;
 use std::{
     sync::{Arc, Mutex},
@@ -19,7 +19,7 @@ use std::{
 };
 use tokio::time::Instant;
 
-/// A minute past the rig clock's zero: beyond the fixture lease's expiry.
+/// A minute past the rig clock's zero: beyond the fixture run's expiry.
 const EXTENDED: &str = "1970-01-01T00:01:00Z";
 /// How long the loop waits between successful renewals (`renew::INTERVAL`).
 const INTERVAL: Duration = Duration::from_secs(10);
@@ -33,11 +33,11 @@ fn renewed(stop_requested: bool) -> Answer {
     )
 }
 
-/// Runs the renewal loop for `lease` against a daemon answering its `n`th
+/// Runs the renewal loop for `run` against a daemon answering its `n`th
 /// renewal with `answer(n)`; returns the loop's result and when each renewal
 /// was sent, measured from the start.
 async fn keep(
-    lease: &Lease<Value>,
+    run: &Run<Value>,
     answer: impl Fn(usize) -> Answer + Send + Sync + 'static,
 ) -> (crate::Result<()>, Vec<Duration>) {
     let start = Instant::now();
@@ -53,15 +53,15 @@ async fn keep(
         log.push(start.elapsed());
         answer(log.len() - 1)
     });
-    let id = Uuid7::parse(super::LEASE).unwrap();
-    let kept = renew::keep(&plane, &id, lease, clock().as_ref(), &Observed::new()).await;
+    let id = Uuid7::parse(super::RUN).unwrap();
+    let kept = renew::keep(&plane, &id, run, clock().as_ref(), &Observed::new()).await;
     let sent = sent.lock().unwrap().clone();
     (kept, sent)
 }
 
-/// The fixture lease with its expiry and attempt end replaced.
-fn lease_until(expires_at: &str, deadline: &str) -> Lease<Value> {
-    let mut wire = serde_json::to_value(lease()).unwrap();
+/// The fixture run with its expiry and attempt end replaced.
+fn run_until(expires_at: &str, deadline: &str) -> Run<Value> {
+    let mut wire = serde_json::to_value(payload()).unwrap();
     wire["expires_at"] = serde_json::json!(expires_at);
     wire["deadline"] = serde_json::json!(deadline);
     serde_json::from_value(wire).unwrap()
@@ -69,14 +69,14 @@ fn lease_until(expires_at: &str, deadline: &str) -> Lease<Value> {
 
 #[tokio::test(start_paused = true)]
 async fn renewal_extends_the_slot_every_interval_until_the_daemon_asks_it_to_stop() {
-    let (kept, sent) = keep(&lease(), |n| renewed(n > 0)).await;
+    let (kept, sent) = keep(&payload(), |n| renewed(n > 0)).await;
     kept.unwrap();
     assert_eq!(sent, [INTERVAL, INTERVAL * 2]);
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_retryable_refusal_is_retried_quickly_and_a_final_refusal_ends_renewal() {
-    let (kept, sent) = keep(&lease(), |n| {
+    let (kept, sent) = keep(&payload(), |n| {
         Answer::Fail(if n == 0 {
             error::unavailable(Verb::AuthoringRenew, 503)
         } else {
@@ -94,7 +94,7 @@ async fn a_retryable_refusal_is_retried_quickly_and_a_final_refusal_ends_renewal
 #[tokio::test(start_paused = true)]
 async fn unanswered_native_renewals_retry_only_until_the_confirmed_expiry() {
     let start = Instant::now();
-    let (kept, sent) = keep(&lease(), |_| Answer::Stall).await;
+    let (kept, sent) = keep(&payload(), |_| Answer::Stall).await;
     kept.unwrap_err();
     assert_eq!(
         sent,
@@ -108,15 +108,15 @@ async fn unanswered_native_renewals_retry_only_until_the_confirmed_expiry() {
     assert_eq!(
         start.elapsed(),
         Duration::from_secs(30),
-        "the fixture lease's expiry"
+        "the fixture run's expiry"
     );
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_slot_that_expires_before_its_first_renewal_ends_without_asking() {
     let start = Instant::now();
-    let lease = lease_until("1970-01-01T00:00:05Z", super::ATTEMPT_ENDS);
-    let (kept, sent) = keep(&lease, |_| renewed(false)).await;
+    let run = run_until("1970-01-01T00:00:05Z", super::ATTEMPT_ENDS);
+    let (kept, sent) = keep(&run, |_| renewed(false)).await;
     kept.unwrap_err();
     assert!(
         sent.is_empty(),
@@ -128,8 +128,8 @@ async fn a_slot_that_expires_before_its_first_renewal_ends_without_asking() {
 #[tokio::test(start_paused = true)]
 async fn renewal_never_holds_the_slot_past_the_attempt_end() {
     let start = Instant::now();
-    let lease = lease_until(super::GRANTED_UNTIL, "1970-01-01T00:00:15Z");
-    let (kept, sent) = keep(&lease, |_| renewed(false)).await;
+    let run = run_until(super::GRANTED_UNTIL, "1970-01-01T00:00:15Z");
+    let (kept, sent) = keep(&run, |_| renewed(false)).await;
     kept.unwrap_err();
     assert_eq!(sent, [INTERVAL], "the daemon's longer extension is capped");
     assert_eq!(
@@ -148,7 +148,7 @@ async fn a_halt_ends_a_running_turn_and_reports_its_usage_unknown() {
         other => panic!("unexpected authority {other:?}"),
     });
     rig.lessee.halt.running().cancel();
-    let (_, report) = run(&mut rig, lease()).await;
+    let (_, report) = run(&mut rig, payload()).await;
     assert_eq!(report["outcome"], "failed");
     assert_eq!(report["failure_reason"], "provider_usage_unknown");
     assert_eq!(report["usage"]["knowledge"], "unknown");
@@ -161,7 +161,7 @@ async fn a_lost_slot_ends_a_running_turn_and_reports_its_usage_unknown() {
         Verb::AuthoringReport => ack(),
         other => panic!("an expired slot asked for {other:?}"),
     });
-    let expired = lease_until("1970-01-01T00:00:00Z", super::ATTEMPT_ENDS);
+    let expired = run_until("1970-01-01T00:00:00Z", super::ATTEMPT_ENDS);
     let (calls, report) = run(&mut rig, expired).await;
     assert!(
         calls.iter().all(|call| call.verb != Verb::AuthoringRenew),
@@ -179,7 +179,7 @@ async fn a_turn_that_reaches_its_attempt_end_reports_timed_out() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let ends = lease_until(super::GRANTED_UNTIL, "1970-01-01T00:00:15Z");
+    let ends = run_until(super::GRANTED_UNTIL, "1970-01-01T00:00:15Z");
     let (_, report) = run(&mut rig, ends).await;
     assert_eq!(report["outcome"], "timed_out");
     assert_eq!(report["failure_reason"], "attempt_timed_out");
@@ -188,8 +188,8 @@ async fn a_turn_that_reaches_its_attempt_end_reports_timed_out() {
 #[tokio::test(start_paused = true)]
 async fn reconnect_uses_the_live_authoring_deadline_and_recovers_freely_after_expiry() {
     let (plane, _calls) = plane(|_call| Answer::Stall);
-    let id = Uuid7::parse(super::LEASE).unwrap();
-    let slot = lease_until("1970-01-01T00:00:03Z", "1970-01-01T00:05:00Z");
+    let id = Uuid7::parse(super::RUN).unwrap();
+    let slot = run_until("1970-01-01T00:00:03Z", "1970-01-01T00:05:00Z");
     let observed = Observed::new();
     let wall = clock();
     let started = Instant::now();

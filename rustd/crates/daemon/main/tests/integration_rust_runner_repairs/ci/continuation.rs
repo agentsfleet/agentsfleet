@@ -34,10 +34,10 @@ async fn should_correct_failed_validation_in_the_same_draft() {
 
 async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
+    let scene = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(run.event_id.as_str()),
+        &branch_for(scene.event_id.as_str()),
         acknowledgement,
         readback,
     );
@@ -46,7 +46,7 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
         LINKWARDEN,
         head_reads(LINKWARDEN),
     ));
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     let succeeded = readback == Readback::Exact && acknowledgement != Acknowledgement::RejectUpdate;
     assert_eq!(
         settled.answer,
@@ -64,7 +64,7 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
     assert_lost_reply(&state, &transcript, lost);
     assert_candidate(&state, acknowledgement);
     assert_update_walk(&upstream.seen(), succeeded, readback);
-    let trace = crate::integration_tool_trace::stored_trace(&run)
+    let trace = crate::integration_tool_trace::stored_trace(&scene)
         .await
         .expect("the native event trace");
     assert_eq!(trace["omitted_call_count"], 0);
@@ -73,7 +73,7 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
         assert!(trace.to_string().contains("upstream_unreachable"));
     }
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 fn assert_lost_reply(state: &State, transcript: &Transcript, lost: bool) {
@@ -165,7 +165,7 @@ fn assert_terminal_read(seen: &[Seen], readback: Readback, after_check: &str) {
     }
     if readback == Readback::StaleValidation {
         assert_eq!(
-            seen.last().expect("the stale validation run").path,
+            seen.last().expect("the stale validation scene").path,
             LINKWARDEN.path(&format!("actions/runs/{CORRECTED_RUN}"))
         );
     }

@@ -117,11 +117,11 @@ pub(crate) enum ErrorKind {
     TaskRefused { reason: crate::task::TaskRefusal },
     #[error("{reason}")]
     TurnCheckpointRefused {
-        reason: crate::lease::turn_checkpoint::TurnCheckpointRefusal,
+        reason: crate::run::turn_checkpoint::TurnCheckpointRefusal,
     },
     #[error("a turn checkpoint is invalid during {context}")]
     TurnCheckpointFailure {
-        reason: crate::lease::turn_checkpoint::TurnCheckpointRefusal,
+        reason: crate::run::turn_checkpoint::TurnCheckpointRefusal,
         context: &'static str,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -142,7 +142,7 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
-    #[error("the runner host could not establish lease capacity")]
+    #[error("the runner host could not establish run capacity")]
     Runner {
         #[source]
         source: afd_runner::Error,
@@ -236,17 +236,17 @@ pub(crate) enum ErrorKind {
     #[error("the reporting holder's fence is behind the fleet's live sequence")]
     StaleFence,
 
-    #[error("no lease with that id belongs to the presenting runner")]
-    LeaseNotFound,
+    #[error("no run with that id belongs to the presenting runner")]
+    RunNotFound,
 
-    #[error("the lease is no longer this runner's to renew")]
-    LeaseLost,
+    #[error("the run is no longer this runner's to renew")]
+    RunLost,
 
-    #[error("the fleet was archived and this lease must stop")]
-    LeaseCancelled,
+    #[error("the fleet was archived and this run must stop")]
+    RunCancelled,
 
-    #[error("the lease reached the hard ceiling on one run's wall time")]
-    LeaseMaxRuntime,
+    #[error("the run reached the hard ceiling on one run's wall time")]
+    RunMaxRuntime,
 
     #[error("the tenant's credit pool cannot fund another slice of this run")]
     RenewalNoCredits,
@@ -254,10 +254,10 @@ pub(crate) enum ErrorKind {
     #[error("the fleet reached a spend ceiling its own author declared")]
     BudgetExhausted,
 
-    #[error("the leased event recorded no thread a message can go to")]
+    #[error("the held event recorded no thread a message can go to")]
     MessageNoChannel,
 
-    #[error("the lease already posted as many messages as one run may")]
+    #[error("the run already posted as many messages as one run may")]
     MessageLimitReached,
 
     #[error("the fleet's secret values could not be gathered into a mask")]

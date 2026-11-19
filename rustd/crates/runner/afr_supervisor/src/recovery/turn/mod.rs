@@ -10,8 +10,8 @@ mod session;
 
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use af_wire::lease::{
-    LeasePayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
+use af_wire::run::{
+    RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
     TurnCheckpointRef, TurnCheckpointResponse as Response, TurnId, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
@@ -22,7 +22,7 @@ use crate::{Result, client::ControlPlane, error};
 #[derive(Debug)]
 pub(crate) struct NativeTurn<'a> {
     pub(crate) plane: &'a ControlPlane,
-    pub(crate) lease: &'a Uuid7,
+    pub(crate) run: &'a Uuid7,
     pub(crate) fence: u64,
     transfers: &'a super::Transfers,
     publication: publication::Publication,
@@ -31,13 +31,13 @@ pub(crate) struct NativeTurn<'a> {
 impl<'a> NativeTurn<'a> {
     pub(crate) fn new(
         plane: &'a ControlPlane,
-        lease: &'a Uuid7,
+        run: &'a Uuid7,
         fence: u64,
         transfers: &'a super::Transfers,
     ) -> Self {
         Self {
             plane,
-            lease,
+            run,
             fence,
             transfers,
             publication: publication::Publication::default(),
@@ -54,12 +54,12 @@ impl<'a> NativeTurn<'a> {
 
     pub(crate) async fn command(&self, action: Action) -> Result<Response> {
         let request = self.request(action)?;
-        self.plane.turn_checkpoint(self.lease, &request).await
+        self.plane.turn_checkpoint(self.run, &request).await
     }
 
     async fn adopt(
         &self,
-        offer: &LeasePayload<'_>,
+        offer: &RunPayload<'_>,
         saved: TurnCheckpointRead,
         workspace: TurnWorkspace,
     ) -> Result<TurnRecovery> {

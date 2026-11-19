@@ -32,15 +32,15 @@ use measurement::{Witness, offered, probes, progress, wait_for_probes, zero_usag
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notifications_continue() {
     let mut supervisor = Supervisor::new();
-    let (database, owner, run) = setup(&mut supervisor).await;
-    let population = Population::seed(&run, FLEETS).await;
-    wire::heartbeat(&run, &wire::capable_beat()).await;
-    let first = offered(&run).await;
+    let (database, owner, scene) = setup(&mut supervisor).await;
+    let population = Population::seed(&scene, FLEETS).await;
+    wire::heartbeat(&scene, &wire::capable_beat()).await;
+    let first = offered(&scene).await;
     assert_eq!(
         first.fleet, population.hot.fleet,
         "only the warm-up fleet is initially runnable"
     );
-    population.activate(&run, 1_000).await;
+    population.activate(&scene, 1_000).await;
     let before = probes(&owner).await;
     population.hot.admit().await;
     let stop = CancellationToken::new();
@@ -50,7 +50,7 @@ async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notificatio
     let mut witness = Witness::default();
     let measured = tokio::time::timeout(
         OFFER_FALLBACK_TICK * 3,
-        progress(&run, &owner, &population.hot, first, before, &mut witness),
+        progress(&scene, &owner, &population.hot, first, before, &mut witness),
     )
     .await;
     stop.cancel();
@@ -64,47 +64,48 @@ async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notificatio
         produced.load(Ordering::Relaxed) > 2,
         "the producer ran throughout the measurement"
     );
-    cleanup(run, owner, database, supervisor).await;
+    cleanup(scene, owner, database, supervisor).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_busy_runner_remembers_recovery_when_its_worker_becomes_free() {
     let mut supervisor = Supervisor::new();
-    let (database, owner, run) = setup(&mut supervisor).await;
-    let population = Population::seed(&run, 2).await;
-    wire::heartbeat(&run, &wire::capable_beat()).await;
-    let first = offered(&run).await;
+    let (database, owner, scene) = setup(&mut supervisor).await;
+    let population = Population::seed(&scene, 2).await;
+    wire::heartbeat(&scene, &wire::capable_beat()).await;
+    let first = offered(&scene).await;
     assert_eq!(first.fleet, population.hot.fleet);
-    population.activate(&run, 2).await;
+    population.activate(&scene, 2).await;
     let before = probes(&owner).await;
     tokio::time::timeout(OFFER_FALLBACK_TICK * 3, wait_for_probes(&owner, before + 2))
         .await
         .expect("the independent clock probes while the sole worker is busy");
     population.hot.admit().await;
-    wire::report(&run, &zero_usage(&first))
+    wire::report(&scene, &zero_usage(&first))
         .await
         .expect("the worker finishes");
-    let next = offered(&run).await;
+    let next = offered(&scene).await;
     assert_eq!(
-        next.fleet, run.fleet,
+        next.fleet, scene.fleet,
         "returning capacity must serve the older unhinted admission"
     );
-    wire::report(&run, &zero_usage(&next))
+    wire::report(&scene, &zero_usage(&next))
         .await
         .expect("the old admission settles");
-    cleanup(run, owner, database, supervisor).await;
+    cleanup(scene, owner, database, supervisor).await;
 }
 
-async fn cleanup(mut run: Scenario, owner: Db, database: TestDatabase, supervisor: Supervisor) {
-    run.native
+async fn cleanup(mut scene: Scenario, owner: Db, database: TestDatabase, supervisor: Supervisor) {
+    scene
+        .native
         .get_mut()
         .expect("the session opened")
         .close()
         .await
         .expect("native shutdown");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
     owner.close().await;
     database.cleanup().await;
 }
@@ -122,7 +123,7 @@ async fn setup(supervisor: &mut Supervisor) -> (TestDatabase, Db, Scenario) {
         .await
         .expect("actual statement counters are available");
     let api = database.api_url();
-    let run = scenario_with(
+    let scene = scenario_with(
         supervisor,
         None,
         &[
@@ -132,7 +133,7 @@ async fn setup(supervisor: &mut Supervisor) -> (TestDatabase, Db, Scenario) {
         e2e_seed::FLEET_CONFIG_JSON,
     )
     .await;
-    (database, owner, run)
+    (database, owner, scene)
 }
 
 struct Population {
@@ -141,24 +142,24 @@ struct Population {
 }
 
 impl Population {
-    async fn seed(run: &Scenario, count: usize) -> Self {
+    async fn seed(scene: &Scenario, count: usize) -> Self {
         // Parked as `archived` (not leasable, and nothing sweeps it) until the
         // population is ready, then flipped to `active` by statement below.
         set_status(
-            &run.booted.database,
-            std::slice::from_ref(&run.fleet),
+            &scene.booted.database,
+            std::slice::from_ref(&scene.fleet),
             FleetStatus::Archived,
         )
         .await;
-        let common = e2e_seed::scenario_tag(&run.fleet);
-        let mut fleets = vec![run.fleet.clone()];
+        let common = e2e_seed::scenario_tag(&scene.fleet);
+        let mut fleets = vec![scene.fleet.clone()];
         let mut hot = None;
         for number in 1..count {
-            let (fleet, workspace) = seed_fleet(run, &common).await;
+            let (fleet, workspace) = seed_fleet(scene, &common).await;
             let source = Hot {
                 admissions: Admissions::for_tests(
-                    run.booted.database.clone(),
-                    run.booted.bus.clone(),
+                    scene.booted.database.clone(),
+                    scene.booted.bus.clone(),
                 ),
                 fleet: fleet.clone(),
                 workspace,
@@ -171,7 +172,7 @@ impl Population {
         }
         let hot = hot.expect("the population contains its hot fleet");
         set_status(
-            &run.booted.database,
+            &scene.booted.database,
             std::slice::from_ref(&hot.fleet),
             FleetStatus::Active,
         )
@@ -179,26 +180,26 @@ impl Population {
         Self { fleets, hot }
     }
 
-    async fn activate(&self, run: &Scenario, expected: i64) {
+    async fn activate(&self, scene: &Scenario, expected: i64) {
         // Make cold work eligible without publishing any new locality hint for it.
-        set_status(&run.booted.database, &self.fleets, FleetStatus::Active).await;
-        let common = vec![e2e_seed::scenario_tag(&run.fleet)];
+        set_status(&scene.booted.database, &self.fleets, FleetStatus::Active).await;
+        let common = vec![e2e_seed::scenario_tag(&scene.fleet)];
         let eligible: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE id = ANY($1) AND status = $2 AND required_tags = $3")
             .bind(&self.fleets).bind(FleetStatus::Active.as_str()).bind(&common)
-            .fetch_one(&mut *run.booted.database.acquire().await.expect("population connection"))
+            .fetch_one(&mut *scene.booted.database.acquire().await.expect("population connection"))
             .await.expect("count the exact common-tag population");
         assert_eq!(eligible, expected);
     }
 }
 
-async fn seed_fleet(run: &Scenario, common: &str) -> (Uuid7, Uuid7) {
+async fn seed_fleet(scene: &Scenario, common: &str) -> (Uuid7, Uuid7) {
     let (fleet, workspace, tenant) = (mint_id(), mint_id(), mint_id());
     let now = af_core::clock::now();
     let stored = Stored::of(&crate::e2e_native::definition(
         e2e_seed::FLEET_CONFIG_JSON,
         e2e_seed::FIXTURE_INSTRUCTIONS,
     ));
-    let mut connection = run
+    let mut connection = scene
         .booted
         .database
         .acquire()

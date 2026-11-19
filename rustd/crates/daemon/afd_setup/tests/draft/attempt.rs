@@ -13,9 +13,9 @@ use afd_setup::{
 };
 
 const ATTEMPT: &str = "\
-INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,
+INSERT INTO authoring.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
-lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
+run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
 VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,$8::jsonb,
 'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
@@ -28,7 +28,7 @@ const POLICY: RunnerPolicy<'static> = RunnerPolicy {
 
 pub(super) struct Attempt {
     pub(super) id: Uuid7,
-    pub(super) lease: Uuid7,
+    pub(super) run: Uuid7,
     pub(super) draft: Draft,
     sequence: String,
 }
@@ -53,7 +53,7 @@ impl Attempt {
             .expect("queue native chat");
         let attempt = Self {
             id: mint(),
-            lease: mint(),
+            run: mint(),
             draft: created.draft,
             sequence: created.accepted.expect("first message accepted").sequence,
         };
@@ -73,7 +73,7 @@ impl Attempt {
         };
         sqlx::query(ATTEMPT)
             .bind(&attempt.id)
-            .bind(&attempt.lease)
+            .bind(&attempt.run)
             .bind(&f.runner)
             .bind(&f.workspace)
             .bind(&f.tenant)

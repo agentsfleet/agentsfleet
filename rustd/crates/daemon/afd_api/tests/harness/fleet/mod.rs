@@ -62,10 +62,10 @@ impl Fleet {
             authenticator,
             runners: Runners::new(database.clone(), Entropy::new()),
             runner_commands: bus.clone(),
-            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            runner_run_history: RunnerRunHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
-            leases: NoWork::default(),
+            runs: NoWork::default(),
             tasks: tasks(&database, &bus, &ledger),
             authoring: authoring.drafts,
             authoring_setup: authoring.setup,
@@ -154,7 +154,7 @@ fn tasks(
     ledger: &afd_turns::Admissions,
 ) -> afd_fleet::task::Tasks {
     afd_fleet::task::Tasks::new(
-        afd_fleet::lease::Leases::new(database.clone(), bus.clone(), Entropy::new()),
+        afd_fleet::run::Runs::new(database.clone(), bus.clone(), Entropy::new()),
         ledger.clone(),
         task_dependencies(database.clone()),
     )

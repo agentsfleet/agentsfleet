@@ -17,7 +17,7 @@ const INDEX: &str = "SELECT indexdef FROM pg_indexes \
     WHERE schemaname = 'fleet' AND indexname = 'idx_admissions_unsettled'";
 /// A zero-row update still checks privileges for all three new columns.
 const UPDATE: &str = "UPDATE fleet.admissions \
-    SET lease_fence = 1, parked_at = now(), settled_at = now() WHERE false";
+    SET run_fence = 1, parked_at = now(), settled_at = now() WHERE false";
 
 #[derive(sqlx::FromRow)]
 struct SchemaField {
@@ -40,12 +40,12 @@ async fn test_admissions_queue_migration_bootstraps() {
     let api = lane.open(DbRole::Api, &[]).await;
     let mut connection = api.acquire().await.expect("runtime connection");
     let columns: Vec<SchemaField> = sqlx::query_as(COLUMNS)
-        .bind(&["lease_fence", "parked_at", "settled_at"][..])
+        .bind(&["run_fence", "parked_at", "settled_at"][..])
         .fetch_all(&mut *connection)
         .await
         .expect("runtime sees queue columns");
     let expected = [
-        ("lease_fence", "bigint", None),
+        ("run_fence", "bigint", None),
         ("parked_at", "timestamp with time zone", Some(3)),
         ("settled_at", "timestamp with time zone", Some(3)),
     ];

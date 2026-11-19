@@ -1,4 +1,4 @@
-//! Every row a §7 scenario has to put in place before a runner can lease.
+//! Every row a §7 scenario has to put in place before a runner can run.
 //!
 //! Split from `e2e.rs` by concern rather than by size (RULE FLL): that file
 //! owns the LIFECYCLE — create a database, boot a daemon at it, tear both
@@ -10,7 +10,7 @@
 //!
 //! Six rows, and every one of them was discovered by a failing poll rather than
 //! by reading the code, because §7 is the first suite in this workspace to cross
-//! the pull path at all. The store suites next door call `Leases::select` and
+//! the pull path at all. The store suites next door call `Runs::select` and
 //! `issue` directly and reach none of these checks, which is why their fixtures
 //! can seed an empty config and an unsupported event type and stay green.
 //!
@@ -79,8 +79,8 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 /// The fleet's stored configuration, as §5's parser reads it.
 ///
 /// NOT `{}`. The store suites next door seed an empty object and never notice,
-/// because they call `Leases::select`/`issue` directly and only the PULL path
-/// resolves a configuration — `Plane::lease` reads it through
+/// because they call `Runs::select`/`issue` directly and only the PULL path
+/// resolves a configuration — `Plane::run` reads it through
 /// `FleetConfig::stored` and answers `UZ-INTERNAL-003`,
 /// "the fleet's stored configuration cannot be read", on anything that will not
 /// parse. A §7 suite is the first thing in this workspace to cross that seam,
@@ -103,8 +103,8 @@ const MODEL_INFERENCE: &str =
 /// The placement tag a scenario's fleet requires and only its own runner
 /// carries.
 ///
-/// A runner holds as many leases as its worker count and no more, so one
-/// stray lease on another scenario's leftover fleet takes the only slot a
+/// A runner holds as many runs as its worker count and no more, so one
+/// stray run on another scenario's leftover fleet takes the only slot a
 /// scenario's runner has. Tagged, a scenario's fleet is placed on its own
 /// runner alone.
 pub(crate) fn scenario_tag(fleet: &Uuid7) -> String {
@@ -144,7 +144,7 @@ pub(crate) const FLEET_NAME: &str = "e2e-fleet";
 /// The instructions every directly seeded fleet runs.
 pub(crate) const FIXTURE_INSTRUCTIONS: &str = "# fixture";
 
-/// The tenant, workspace and fleet rows a lease joins against, the fleet
+/// The tenant, workspace and fleet rows a run joins against, the fleet
 /// named `name` and selecting the native setup `config` describes.
 ///
 /// Written directly because no store verb in this workspace creates a fleet —
@@ -198,7 +198,7 @@ pub(crate) async fn seed_fleet_as(
         .bind(workspace)
         .fetch_one(&mut *connection)
         .await
-        .expect("the workspace probe must run");
+        .expect("the workspace probe must scene");
     if !seeded {
         TenantSeed::new(tenant)
             .name("e2e-tenant")
@@ -243,7 +243,7 @@ pub(crate) async fn seed_wallet(booted: &Booted, tenant: &Uuid7, nanos: i64, now
     .bind(now.to_sqlx())
     .execute(&mut *connection)
     .await
-    .expect("the wallet seed must run");
+    .expect("the wallet seed must scene");
 }
 
 /// Prices `(PROVIDER, MODEL)`, so a platform-posture run has a floor at all.
@@ -269,14 +269,14 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
         .inference(MODEL_INFERENCE)
         .insert(&mut *connection)
         .await
-        .expect("the catalogue seed must run");
+        .expect("the catalogue seed must scene");
 }
 
 /// Makes `(PROVIDER, MODEL)` the active platform default.
 ///
 /// The last precondition the pull path needs and the store suites do not.
 /// Under `platform` posture the money pass resolves the tenant's provider
-/// through `model.platform_defaults`, and with no active row the lease
+/// through `model.platform_defaults`, and with no active row the run
 /// fails with "no active platform provider default is configured" — a 500
 /// rather than a refusal, because a deployment with no default is an operator
 /// gap and not something a runner can act on.
@@ -292,7 +292,7 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
 /// the tenant, not state a test owns. The conflict clause therefore takes
 /// NOTHING: the first scenario to arrive writes the row and every later one
 /// leaves it alone. An overwrite would point `source_workspace_id` at the
-/// newest scenario's workspace while an earlier scenario is still leasing
+/// newest scenario's workspace while an earlier scenario is still running
 /// against it, which is a shared mutable row under concurrent readers — the
 /// class `docs/architecture/testing.md` names ISO-1. The value written is a
 /// fixture either way: whichever workspace wins holds the same seeded provider

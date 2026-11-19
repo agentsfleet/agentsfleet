@@ -8,7 +8,7 @@ use afd_billing::tenant::cursor::Boundary;
 /// The tenant's wallet, raw charges and settled usage reports.
 ///
 /// Read-only by construction: no method can move money, and
-/// `afd_billing::tenant` documents why the write half lives on the lease
+/// `afd_billing::tenant` documents why the write half lives on the run
 /// plane instead. Each takes already-parsed values — the limit is bounded and
 /// the boundary is a decoded cursor — so there is no validation arm in any
 /// implementation, and none a stub could get differently right from the real

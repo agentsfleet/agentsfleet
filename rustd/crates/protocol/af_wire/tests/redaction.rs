@@ -127,7 +127,7 @@ fn should_not_leak_a_minted_credential_through_debug() {
     assert!(serde_json::to_string(&response).unwrap().contains(SECRET));
 }
 
-/// A lease embeds the policy, so a derived `Debug` anywhere up the tree would
+/// A run embeds the policy, so a derived `Debug` anywhere up the tree would
 /// re-expose what the leaf redacts. This is the assertion that catches it.
 #[test]
 fn should_not_leak_a_secret_through_an_enclosing_type() {
@@ -187,7 +187,7 @@ fn should_redact_both_authoring_context_roles_without_changing_the_wire() {
     }
 }
 
-// Value: protects=lease capability and private call context cannot leak through ModelCall diagnostics;
+// Value: protects=run capability and private call context cannot leak through ModelCall diagnostics;
 // fails_when=Debug formats the capability or request, or redaction removes required wire data;
 // why_new=existing redaction tests cover policies and tokens but not a complete authoring model call;
 // seam=none; no_claim=capability authorization or provider acceptance (wire type only).

@@ -38,13 +38,13 @@ use crate::labels::{
 /// harness declares them (`af_providers::observe`), and this crate records
 /// them with the rest.
 pub trait Recorder: Observer {
-    /// A lease chose its inline memory or a separate hydration request.
+    /// A run chose its inline memory or a separate hydration request.
     fn memory_source(&self, source: crate::labels::MemorySource);
     /// One model turn ended, after `elapsed`.
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration);
     /// A sandbox start ended, after `elapsed`.
     fn sandbox_start(&self, outcome: SandboxStart, elapsed: Duration);
-    /// A sandbox tool call's wait for its lease's build ended, after `elapsed`.
+    /// A sandbox tool call's wait for its run's build ended, after `elapsed`.
     fn sandbox_wait(&self, outcome: SandboxWait, elapsed: Duration);
     /// A sandbox's disk release after its report ended, after `elapsed`.
     fn sandbox_release(&self, outcome: SandboxRelease, elapsed: Duration);
@@ -56,9 +56,9 @@ pub trait Recorder: Observer {
     fn tool_call(&self, tool: Tool, outcome: ToolOutcome, elapsed: Duration);
     /// The kernel killed a tenant process for memory.
     fn out_of_memory(&self);
-    /// A sandbox held between a fleet's leases was parked, reused or released.
+    /// A sandbox held between a fleet's runs was parked, reused or released.
     fn sandbox_hold(&self, outcome: SandboxHold);
-    /// A lease's sandbox build ended.
+    /// A run's sandbox build ended.
     fn sandbox_build(&self, outcome: SandboxBuild);
     /// The span budget shed `spans`.
     fn spans_suppressed(&self, spans: u64);
@@ -105,7 +105,7 @@ pub fn sandbox_start(outcome: SandboxStart, elapsed: Duration) {
     with(|recorder| recorder.sandbox_start(outcome, elapsed));
 }
 
-/// Records a sandbox tool call's wait for its lease's build.
+/// Records a sandbox tool call's wait for its run's build.
 pub fn sandbox_wait(outcome: SandboxWait, elapsed: Duration) {
     with(|recorder| recorder.sandbox_wait(outcome, elapsed));
 }
@@ -135,12 +135,12 @@ pub fn out_of_memory() {
     with(|recorder| recorder.out_of_memory());
 }
 
-/// Records what became of a sandbox held between a fleet's leases.
+/// Records what became of a sandbox held between a fleet's runs.
 pub fn sandbox_hold(outcome: SandboxHold) {
     with(|recorder| recorder.sandbox_hold(outcome));
 }
 
-/// Records how a lease's sandbox build ended.
+/// Records how a run's sandbox build ended.
 pub fn sandbox_build(outcome: SandboxBuild) {
     with(|recorder| recorder.sandbox_build(outcome));
 }

@@ -35,11 +35,11 @@ pub use self::recording::RecordingBiller;
 /// The piece of work money is charged for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WorkKey {
-    /// A fleet run's lease.
-    FleetLease(Uuid7),
-    /// A setup-chat attempt, or a draft-owned lease: setup work's own id. A
-    /// draft lease's lines keep this kind, so the charges page still shows
-    /// them as `authoring` with the lease as their `authoring_attempt_id`.
+    /// A fleet run's run.
+    FleetRun(Uuid7),
+    /// A setup-chat attempt, or a draft-owned run: setup work's own id. A
+    /// draft run's lines keep this kind, so the charges page still shows
+    /// them as `authoring` with the run as their `authoring_attempt_id`.
     AuthoringAttempt(Uuid7),
 }
 
@@ -48,7 +48,7 @@ impl WorkKey {
     #[must_use]
     pub const fn work_type(&self) -> &'static str {
         match self {
-            Self::FleetLease(_) => sql::work::FLEET_LEASE,
+            Self::FleetRun(_) => sql::work::FLEET_RUN,
             Self::AuthoringAttempt(_) => sql::work::AUTHORING_ATTEMPT,
         }
     }
@@ -57,7 +57,7 @@ impl WorkKey {
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {
         match self {
-            Self::FleetLease(id) | Self::AuthoringAttempt(id) => id,
+            Self::FleetRun(id) | Self::AuthoringAttempt(id) => id,
         }
     }
 }
@@ -85,11 +85,11 @@ pub enum Attribution {
     },
     /// A setup-chat attempt; the attempt is the work itself.
     SetupChat,
-    /// A draft-owned lease's setup turn: the lease is the work, and the line
+    /// A draft-owned run's setup turn: the run is the work, and the line
     /// names the draft message it ran as its `event_id`, so a line reaches its
-    /// draft through the lease and its message directly.
-    SetupLease {
-        /// The draft message the lease ran.
+    /// draft through the run and its message directly.
+    SetupRun {
+        /// The draft message the run ran.
         message: Uuid7,
     },
 }

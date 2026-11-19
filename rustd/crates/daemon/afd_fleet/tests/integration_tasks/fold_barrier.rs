@@ -21,7 +21,7 @@ async fn claim_around_bound_continuations(case: &Case) {
         .source_message(Producer::Steer, &actor, "check the logs first")
         .await;
     case.tasks
-        .bind(case.lease(), &case.plan("three-goals", 3))
+        .bind(case.run(), &case.plan("three-goals", 3))
         .await
         .expect("the plan binds and queues its continuations");
     let after = case
@@ -29,14 +29,14 @@ async fn claim_around_bound_continuations(case: &Case) {
         .await;
     assert!(
         waiting_task_bound(case).await > 0,
-        "task-bound continuations wait, unparked, behind the run"
+        "task-bound continuations wait, unparked, behind the test_run"
     );
-    // The bind made this lease a durable task's, which claims nothing. Making
+    // The bind made this run a durable task's, which claims nothing. Making
     // it a plain run again leaves the bound continuations as the only thing
     // that can stop the claim.
     assert_eq!(
-        held.leases
-            .claim_folds(&held.runner, &held.issued.lease_id, held.fence.as_u64(), 0)
+        held.runs
+            .claim_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
             .await
             .expect("bound task fold refusal")
             .inputs
@@ -45,8 +45,8 @@ async fn claim_around_bound_continuations(case: &Case) {
     );
     clear_task_binding(case).await;
     let claimed = held
-        .leases
-        .claim_folds(&held.runner, &held.issued.lease_id, held.fence.as_u64(), 0)
+        .runs
+        .claim_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
         .await
         .expect("the claim reaches the datastore");
     let ids: Vec<&str> = claimed
@@ -65,13 +65,13 @@ async fn claim_around_bound_continuations(case: &Case) {
 async fn clear_task_binding(case: &Case) {
     // Both immutable generation witnesses distinguish task work from ordinary chat.
     sqlx::query(
-        "WITH reset AS (UPDATE runner.leases SET task_id = NULL, task_generation = NULL, \
+        "WITH reset AS (UPDATE runner.runs SET task_id = NULL, task_generation = NULL, \
          task_stop_generation = NULL, task_started_at = NULL, task_runtime_accounted_at = NULL, \
          task_execution_deadline_at = NULL WHERE id = $1 RETURNING event_id) \
          UPDATE fleet.admissions a SET task_id = NULL, task_item_id = NULL, task_generation = NULL \
          FROM reset WHERE a.id = reset.event_id",
     )
-    .bind(&case.held.issued.lease_id)
+    .bind(&case.held.issued.run_id)
     .execute(
         &mut *case
             .held
@@ -82,7 +82,7 @@ async fn clear_task_binding(case: &Case) {
             .expect("connection"),
     )
     .await
-    .expect("the lease and its admission become an ordinary run");
+    .expect("the run and its admission become an ordinary test_run");
 }
 
 /// The unsettled, unparked, task-bound messages after the run's own.

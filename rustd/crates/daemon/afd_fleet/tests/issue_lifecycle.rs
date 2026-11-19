@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afd_fleet::lease::{Acquired, Billed, Issued};
+use afd_fleet::run::{Acquired, Billed, Issued};
 use sqlx::{Connection as _, PgConnection};
 
 use crate::{
@@ -29,8 +29,8 @@ impl Selected {
             tenant,
             ..
         } = seed::seeded::<1>(&fixtures).await;
-        let leases = fixtures.leases();
-        let acquired = seed::select_fleet(&leases, &runner, &fleet)
+        let runs = fixtures.runs();
+        let acquired = seed::select_fleet(&runs, &runner, &fleet)
             .await
             .ok_or("expected queued work")?;
         Ok(Self {
@@ -44,7 +44,7 @@ impl Selected {
     async fn issue(&self) -> TestResult<Option<Issued>> {
         Ok(self
             .fixtures
-            .leases()
+            .runs()
             .issue(
                 &self.runner,
                 &self.acquired,
@@ -69,12 +69,11 @@ impl Selected {
     }
 
     async fn assert_empty(&self) -> TestResult {
-        let leases: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE runner_id = $1")
-                .bind(&self.runner)
-                .fetch_one(&mut *self.fixtures.database.acquire().await?)
-                .await?;
-        assert_eq!(leases, 0, "a rejected issue writes no lease");
+        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE runner_id = $1")
+            .bind(&self.runner)
+            .fetch_one(&mut *self.fixtures.database.acquire().await?)
+            .await?;
+        assert_eq!(runs, 0, "a rejected issue writes no run");
         Ok(())
     }
 }

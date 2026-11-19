@@ -8,7 +8,7 @@ use super::{
     valid,
 };
 use af_core::id::Uuid7;
-use af_wire::lease::{
+use af_wire::run::{
     FoldRef, TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
     TurnCheckpointResponse as Response, TurnId, TurnResume, TurnWorkspace,
 };
@@ -21,7 +21,7 @@ const MESSAGE: &str = "Use staging before publishing";
 async fn file_recovery_adopts_the_saved_nonempty_prefix_under_the_replacement_fence() -> Checked {
     let mut files = Files::new().await?;
     let (saved, fold) = publish(&files).await?;
-    let previous = files.case.issued.lease_id.clone();
+    let previous = files.case.issued.run_id.clone();
     files.case.replace().await?;
     let reference = read(&files, saved).await?;
     let Response::Adopted(covered) = files
@@ -35,7 +35,7 @@ async fn file_recovery_adopts_the_saved_nonempty_prefix_under_the_replacement_fe
     assert_eq!(covered, vec![fold.clone()]);
     let claim = claim(&files, &fold).await?;
     assert_ne!(claim.owner, previous);
-    assert_eq!(claim.owner, files.case.issued.lease_id);
+    assert_eq!(claim.owner, files.case.issued.run_id);
     assert_eq!(claim.fence, files.case.acquired.fence.as_i64());
     assert!(!claim.settled);
     assert!(matches!(
@@ -55,7 +55,7 @@ async fn file_recovery_adopts_the_saved_nonempty_prefix_under_the_replacement_fe
 async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_claim() -> Checked {
     let mut files = Files::new().await?;
     let (saved, fold) = publish(&files).await?;
-    let previous = files.case.issued.lease_id.clone();
+    let previous = files.case.issued.run_id.clone();
     files.case.replace().await?;
     let reference = read(&files, saved).await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
@@ -156,7 +156,7 @@ fn history(
     files: &Files,
     workspace: TurnWorkspace,
     fold: &FoldRef,
-) -> Checked<af_wire::lease::TurnPrivateRoot> {
+) -> Checked<af_wire::run::TurnPrivateRoot> {
     let mut history = root(&files.case, workspace);
     let mut encoded: serde_json::Value = serde_json::from_str(&history.history)?;
     *encoded.pointer_mut("/root/folds").ok_or("root folds")? = serde_json::to_value([&fold])?;
@@ -191,10 +191,10 @@ async fn incorporate(files: &Files) -> Checked<FoldRef> {
         .await?;
     let claimed = files
         .case
-        .leases
+        .runs
         .claim_folds(
             &files.case.runner,
-            &files.case.issued.lease_id,
+            &files.case.issued.run_id,
             files.case.acquired.fence.as_u64(),
             0,
         )
@@ -212,7 +212,7 @@ async fn read(files: &Files, saved: Box<TurnResume>) -> Checked<TurnCheckpointRe
     let request = valid(command(&files.case, Action::Read { descriptor: saved }))?;
     let Response::Read(read) = files
         .store
-        .execute(&files.case.leases, files.case.lease(), &request)
+        .execute(&files.case.runs, files.case.run(), &request)
         .await?
     else {
         return Err("complete pinned root".into());
@@ -234,6 +234,6 @@ struct Claim {
 
 async fn claim(files: &Files, fold: &FoldRef) -> Checked<Claim> {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    Ok(sqlx::query_as("SELECT input_claim_lease_id AS owner,input_claim_fence AS fence,settled_at IS NOT NULL AS settled FROM fleet.admissions WHERE id=$1")
+    Ok(sqlx::query_as("SELECT input_claim_run_id AS owner,input_claim_fence AS fence,settled_at IS NOT NULL AS settled FROM fleet.admissions WHERE id=$1")
         .bind(Uuid7::parse(&fold.event_id.0)?).fetch_one(&mut *connection).await?)
 }

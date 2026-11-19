@@ -1,6 +1,6 @@
 //! The native setup a seeded fleet row selects, as production Save writes it.
 //!
-//! A lease reads a fleet's policy only from its current immutable definition
+//! A run reads a fleet's policy only from its current immutable definition
 //! revision, so a row without one is a fleet no runner can ever run. Every
 //! scenario that seeds a fleet row directly selects one here, through the same
 //! parser and digest the setup authority uses.

@@ -39,7 +39,7 @@ pub use af_core::env::LOG_LEVEL_VAR;
 /// Where a record goes when nobody chose.
 ///
 /// `info`, because the lines an incident needs — which routes mounted, which
-/// gate refused, which lease issued — are all `info`.
+/// gate refused, which run issued — are all `info`.
 pub const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
 
 /// What the slot holds once an exporter exists.

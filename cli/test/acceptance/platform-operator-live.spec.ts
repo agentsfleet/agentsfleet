@@ -108,7 +108,7 @@ else describe("Platform operator commands", () => {
     assert.equal((await stat(nextFile)).mode & 0o777, 0o600);
     assert.notEqual((await Bun.file(nextFile).text()).trim(), token);
     await command(["runners", "events", runnerId, "--since", "1h"]);
-    await command(["runners", "leases", runnerId]);
+    await command(["runners", "runs", runnerId]);
     for (const action of ["cordon", "drain", "revoke"]) await command(["runners", action, runnerId]);
     const revoked = Schema.decodeUnknownSync(RunnerDetailSchema)(await command(["runners", "show", runnerId]));
     assert.equal(revoked.status, "revoked");

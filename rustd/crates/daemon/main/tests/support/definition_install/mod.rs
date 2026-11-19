@@ -2,7 +2,7 @@
 //!
 //! Where `e2e::scenario` seeds a fleet with an empty tool list, this reads the
 //! corpus fleet's `definition.json` — the native Definition a reviewed Save
-//! stores — so the policy every lease compiles from it is that fleet's own. The GitHub grant lands approved, which is what a
+//! stores — so the policy every run compiles from it is that fleet's own. The GitHub grant lands approved, which is what a
 //! person's answer on the setup's grant check leaves behind. The credentials
 //! the definition declares are sealed into the vault first, as setup readiness
 //! requires.
@@ -13,7 +13,7 @@
 //! reader in `e2e_reads` and every tenant helper works on it unchanged.
 //!
 //! The rows a scenario stands on live in [`seed`]; the installed fleet and the
-//! runner that leases it live in [`fleet`].
+//! runner that runs it live in [`fleet`].
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
@@ -83,7 +83,7 @@ pub(crate) struct Secret {
 /// steer in its admissions ledger.
 ///
 /// A steer for every fleet, webhook-triggered ones included: the pull path
-/// leases any event type it can name, and the scripted model, not the event
+/// runs any event type it can name, and the scripted model, not the event
 /// body, decides what each run reads. `provider_base` points the identity
 /// provider at a suite's listener, for one that reads through tenant routes.
 pub(crate) async fn install_definition(

@@ -1,4 +1,4 @@
-//! Custody must remain live after a real manifest lock wait, with the lease still live.
+//! Custody must remain live after a real manifest lock wait, with the run still live.
 
 use super::{Checked, manifest::Pending, storage::Files};
 use af_core::id::Uuid7;

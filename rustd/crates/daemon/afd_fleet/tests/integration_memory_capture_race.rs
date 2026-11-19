@@ -55,7 +55,7 @@ fn delayed_capture(run: &Held) -> tokio::task::JoinHandle<afd_fleet::Result<afd_
     tokio::spawn({
         let (plane, runner, fleet) = (run.fixtures.plane(), run.runner.clone(), run.fleet.clone());
         let request = MemoryPushRequest {
-            lease_id: Cow::Owned(run.issued.lease_id.to_string()),
+            run_id: Cow::Owned(run.issued.run_id.to_string()),
             fencing_token: run.fence.as_u64(),
             memory: vec![entry("stale", Visibility::Workspace)],
         };

@@ -5,7 +5,7 @@ use serde_json::json;
 use super::{DELIVERED, Message, NOT_DELIVERED};
 use crate::handler::Typed;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{Asked, RecordingVerbs, call, lease_with};
+use crate::testing::{Asked, RecordingVerbs, call, run_with};
 use crate::verbs::Unanswered;
 
 /// Posts `text` through verbs answering `delivered`.
@@ -14,13 +14,8 @@ async fn posted(
     text: &str,
 ) -> (guffbolt::ToolOutput, Vec<Asked>) {
     let verbs = RecordingVerbs::answering(Ok(String::new()), delivered);
-    let lease = lease_with(&verbs);
-    let output = call(
-        Typed::boxed(Message).as_ref(),
-        &lease,
-        json!({"text": text}),
-    )
-    .await;
+    let run = run_with(&verbs);
+    let output = call(Typed::boxed(Message).as_ref(), &run, json!({"text": text})).await;
     (output, verbs.asked())
 }
 

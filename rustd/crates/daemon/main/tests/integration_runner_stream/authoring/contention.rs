@@ -14,10 +14,10 @@ const CONCURRENT_REPORTS: usize = 4;
 async fn contending_completion_retries_share_one_saved_acknowledgement_and_charge() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     fixture
         .session
-        .authoring_model(&lease, &fixture.model())
+        .authoring_model(&run, &fixture.model())
         .await
         .expect("one physical model call");
     let report = fixture.report(1);
@@ -33,7 +33,7 @@ async fn contending_completion_retries_share_one_saved_acknowledgement_and_charg
             peak.fetch_max(running, Ordering::SeqCst);
             let ack = fixture
                 .session
-                .authoring_report(&lease, &report)
+                .authoring_report(&run, &report)
                 .await
                 .expect("contending completion");
             active.fetch_sub(1, Ordering::SeqCst);

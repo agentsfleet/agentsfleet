@@ -11,7 +11,7 @@ use super::{
 use crate::{
     Result,
     error::{ErrorKind, query},
-    lease::Leases,
+    run::Runs,
 };
 
 const CONTEXT: &str = "adopt reviewed task goal";
@@ -61,7 +61,7 @@ pub(super) async fn apply(
         Some(wake) => Some(tasks.admissions.prepare(wake.admission()).await?),
         None => None,
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let locked = lock(&mut tx, scope, task).await?;
     let current = read::on(&mut tx, scope, task).await?;
@@ -169,10 +169,10 @@ async fn questions(
     if !reviewed {
         return Err(TaskRefusal::InvalidTarget.into());
     }
-    let config = Leases::stored_config_on(connection, &scope.fleet_id, Some(revision))
+    let config = Runs::stored_config_on(connection, &scope.fleet_id, Some(revision))
         .await?
         .ok_or(TaskRefusal::InvalidTarget)?;
-    let original = Leases::stored_config_on(
+    let original = Runs::stored_config_on(
         connection,
         &scope.fleet_id,
         Some(&crate::task::guard::wire(previous)?),
@@ -228,7 +228,7 @@ async fn origin(
     adoption: &TaskAdoption,
 ) -> Result<Origin> {
     fetch::rows(
-        tasks.leases.pool(),
+        tasks.runs.pool(),
         sqlx::query_as(include_str!("sql/adoption_origin.sql"))
             .bind(task)
             .bind(&scope.fleet_id)

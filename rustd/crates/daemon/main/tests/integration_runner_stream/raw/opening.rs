@@ -44,7 +44,7 @@ pub(super) async fn control_hello(
         .expect("opening metadata");
     let hello = json!({
         "type":"hello", "request_id":1,
-        "accepted_kinds":af_wire::lease::AcceptedKinds::FLEET,
+        "accepted_kinds":af_wire::run::AcceptedKinds::FLEET,
         "running":running, "credits":0
     });
     let frame = af_stream::encode(&hello, budget, StreamKind::Control, stop, deadline)

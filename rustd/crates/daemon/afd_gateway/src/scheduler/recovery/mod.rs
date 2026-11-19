@@ -6,7 +6,7 @@ use crate::registry::Registry;
 use crate::{Gateway, Operation, Result, error::within};
 use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use afd_bus::wake::Wake;
-use afd_fleet::lease::waiting::{Waiting, waiting};
+use afd_fleet::run::waiting::{Waiting, waiting};
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
@@ -72,7 +72,7 @@ async fn probe_ticks<F: Future<Output = Result<bool>>>(
 }
 
 /// The query only asks whether a pass may help, and which of `runners` it
-/// cannot help; it does not acquire leases or reimplement admission.
+/// cannot help; it does not acquire runs or reimplement admission.
 pub(super) async fn waiting_work(
     gateway: &Gateway,
     stop: &CancellationToken,
@@ -90,8 +90,8 @@ pub(super) async fn waiting_work(
                 gateway
                     .inner
                     .dependencies
-                    .leases
-                    .leases
+                    .runs
+                    .runs
                     .checkpoint_resume_enabled(),
             )
             .await?)

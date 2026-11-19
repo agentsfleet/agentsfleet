@@ -1,4 +1,4 @@
-//! Assembling the one value a lease hands a runner.
+//! Assembling the one value a run hands a runner.
 //!
 //! Everything below has already been decided somewhere else — the config
 //! parsed, the provider resolved, the credentials split, the gates passed. This
@@ -13,7 +13,7 @@
 //! standing human decision, because it reaches a third party under the
 //! workspace's own authority — so a mintable credential whose integration has
 //! no approved grant does not silently degrade to "not available". It PARKS the
-//! lease, which is what puts the question to a human.
+//! run, which is what puts the question to a human.
 //!
 //! The grant set arrives as an argument rather than being read here, and that
 //! is the fail-closed direction: resolving it lazily inside would make "nobody
@@ -38,7 +38,7 @@ pub enum Assembled<'a> {
     Ready(Box<ExecutionPolicy<'a>>),
     /// A mintable credential names an integration nobody has granted.
     ///
-    /// The lease parks and a human is asked. Boxed values name WHICH credential
+    /// The run parks and a human is asked. Boxed values name WHICH credential
     /// and WHICH integration, because "a grant is missing" is unactionable
     /// while "`github` for `repair-bot`" is a button someone can press.
     Ungranted {
@@ -49,27 +49,27 @@ pub enum Assembled<'a> {
     },
 }
 
-/// What one lease's policy is assembled from.
+/// What one run's policy is assembled from.
 ///
 /// A bundle rather than six arguments, three of which are borrowed slices of
 /// the same shape. Everything here is borrowed BY the assembled policy, which
 /// is why the grant set is not among them: it decides whether there is a
 /// policy at all and contributes no bytes to one, so tying it to the same
-/// lifetime would make a caller hold its grant rows for as long as the lease
+/// lifetime would make a caller hold its grant rows for as long as the run
 /// answer it has nothing to do with.
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
-    /// The config resolved for this lease.
+    /// The config resolved for this run.
     pub config: &'a FleetConfig,
     /// The provider this run was billed against.
     pub provider: &'a Resolved,
     /// The credentials the vault answered with, already split by channel.
     pub declared: &'a Declared,
-    /// The branch a write-bound lease may author on, when one was authorised.
+    /// The branch a write-bound run may author on, when one was authorised.
     pub repair_branch: Option<&'a str>,
 }
 
-/// The policy this lease runs under.
+/// The policy this run runs under.
 ///
 /// `granted` is what the workspace stands behind; see [`Grants`] for why the
 /// empty set has to be named rather than defaulted into.

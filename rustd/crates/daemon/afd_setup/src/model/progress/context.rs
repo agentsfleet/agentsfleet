@@ -1,4 +1,4 @@
-//! Summary status uses the same creator/lease guard as private answer previews.
+//! Summary status uses the same creator/run guard as private answer previews.
 
 use af_core::id::Uuid7;
 use af_wire::context::{ContextProgress, ContextState};
@@ -9,7 +9,7 @@ use super::{
     publish::{DEADLINE, authorize},
     trace::Trace,
 };
-use crate::{Drafts, lease::guard};
+use crate::{Drafts, run::guard};
 
 /// Creator-private metadata; generated summary text never enters this channel.
 pub const CONTEXT_EVENT: &str = "context.progress";
@@ -36,7 +36,7 @@ pub(in crate::model) struct ContextPublisher<'a> {
     streams: &'a Handle,
     drafts: &'a Drafts,
     runner: &'a Uuid7,
-    lease: &'a Uuid7,
+    run: &'a Uuid7,
     counters: &'a guard::Counters,
     dispatch: Uuid7,
     generation: u64,
@@ -47,7 +47,7 @@ impl<'a> ContextPublisher<'a> {
         streams: &'a Handle,
         drafts: &'a Drafts,
         runner: &'a Uuid7,
-        lease: &'a Uuid7,
+        run: &'a Uuid7,
         counters: &'a guard::Counters,
         dispatch: Uuid7,
         generation: u64,
@@ -56,7 +56,7 @@ impl<'a> ContextPublisher<'a> {
             streams,
             drafts,
             runner,
-            lease,
+            run,
             counters,
             dispatch,
             generation,
@@ -77,7 +77,7 @@ impl<'a> ContextPublisher<'a> {
 
     async fn publish(&self, state: ContextState) -> crate::Result<()> {
         let (draft_id, sequence) =
-            authorize(self.drafts, self.runner, self.lease, self.counters).await?;
+            authorize(self.drafts, self.runner, self.run, self.counters).await?;
         let frame = ContextNotice {
             draft_id,
             sequence: sequence.to_string(),

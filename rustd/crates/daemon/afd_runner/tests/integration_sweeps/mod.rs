@@ -64,8 +64,8 @@ async fn liveness_and_retention_converge_real_runner_rows() {
     let retention = Retention::new(fixture.database.clone());
     let retained = retention.sweep().await.expect("retention sweeps real rows");
     assert!(retained.changed >= 4);
-    assert!(!fixture.lease_exists(&fixture.reported_lease).await);
-    assert_eq!(fixture.lease_state(&fixture.unknown_lease).await, "expired");
+    assert!(!fixture.run_exists(&fixture.reported_run).await);
+    assert_eq!(fixture.run_state(&fixture.unknown_run).await, "expired");
     assert!(!fixture.runner_event_exists(&fixture.old_event).await);
 
     fixture.cleanup().await;
@@ -83,10 +83,10 @@ struct Fixture {
     stale_fleet: Uuid7,
     cordoned_fleet: Uuid7,
     unknown_fleet: Uuid7,
-    stale_lease: Uuid7,
-    cordoned_lease: Uuid7,
-    unknown_lease: Uuid7,
-    reported_lease: Uuid7,
+    stale_run: Uuid7,
+    cordoned_run: Uuid7,
+    unknown_run: Uuid7,
+    reported_run: Uuid7,
     old_event: Uuid7,
 }
 
@@ -104,10 +104,10 @@ impl Fixture {
             stale_fleet: mint_id(),
             cordoned_fleet: mint_id(),
             unknown_fleet: mint_id(),
-            stale_lease: mint_id(),
-            cordoned_lease: mint_id(),
-            unknown_lease: mint_id(),
-            reported_lease: mint_id(),
+            stale_run: mint_id(),
+            cordoned_run: mint_id(),
+            unknown_run: mint_id(),
+            reported_run: mint_id(),
             old_event: mint_id(),
             lane,
         }
@@ -132,7 +132,7 @@ impl Fixture {
 
     async fn slot_is_expired(&self, fleet: &Uuid7) -> bool {
         self.scalar(
-            "SELECT lease_expires_at < statement_timestamp() FROM runner.slots WHERE fleet_id = $1",
+            "SELECT run_expires_at < statement_timestamp() FROM runner.slots WHERE fleet_id = $1",
             fleet,
         )
         .await
@@ -152,16 +152,16 @@ impl Fixture {
         ).await
     }
 
-    async fn lease_exists(&self, lease: &Uuid7) -> bool {
+    async fn run_exists(&self, run: &Uuid7) -> bool {
         self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.leases WHERE id = $1)",
-            lease,
+            "SELECT EXISTS(SELECT 1 FROM runner.runs WHERE id = $1)",
+            run,
         )
         .await
     }
 
-    async fn lease_state(&self, lease: &Uuid7) -> String {
-        self.scalar("SELECT status FROM runner.leases WHERE id = $1", lease)
+    async fn run_state(&self, run: &Uuid7) -> String {
+        self.scalar("SELECT status FROM runner.runs WHERE id = $1", run)
             .await
     }
 
@@ -223,7 +223,7 @@ async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     .expect("the runner row seeds");
     sqlx::query(
         "INSERT INTO runner.events (id, runner_id, event_type, metadata, created_at) \
-         SELECT uuidv7(), $1, 'lease_acquired', '{}', $2::timestamptz \
+         SELECT uuidv7(), $1, 'run_acquired', '{}', $2::timestamptz \
          FROM generate_series(1, $3::bigint)",
     )
     .bind(&fixture.stale)

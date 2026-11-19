@@ -107,13 +107,13 @@ impl ControlPlane {
 
     pub(crate) async fn renew(
         &self,
-        lease_id: &Uuid7,
+        run_id: &Uuid7,
         spent: &RenewRequest,
     ) -> Result<RenewResponse> {
         let batch = RenewalBatch {
-            ids: vec![lease_id.clone()],
-            leases: vec![Renewal {
-                lease_id: lease_id.as_str().into(),
+            ids: vec![run_id.clone()],
+            runs: vec![Renewal {
+                run_id: run_id.as_str().into(),
                 request: spent.clone(),
             }],
         };
@@ -123,14 +123,14 @@ impl ControlPlane {
 
     pub(crate) async fn activity(
         &self,
-        lease_id: &Uuid7,
+        run_id: &Uuid7,
         request: &ActivityRequest<'_>,
     ) -> Result<()> {
         let verb = Verb::Activity.as_str();
         tracing::debug!(event = "runner_activity_queued", verb);
         self.stream
             .send(&Up::Activity {
-                lease_id: lease_id.as_str().into(),
+                run_id: run_id.as_str().into(),
                 request: request.clone(),
             })
             .await
@@ -142,13 +142,13 @@ impl ControlPlane {
 
     pub(crate) async fn folds(
         &self,
-        lease_id: &Uuid7,
+        run_id: &Uuid7,
         fencing_token: u64,
         after_sequence: i64,
     ) -> Result<Body> {
         self.stream
             .compute(Folds {
-                lease: lease_id,
+                run: run_id,
                 request: FoldRequest {
                     fencing_token,
                     after_sequence,
@@ -182,7 +182,7 @@ impl Command for Heartbeat<'_> {
 
 pub(crate) struct RenewalBatch<'a> {
     pub(crate) ids: Vec<Uuid7>,
-    pub(crate) leases: Vec<Renewal<'a>>,
+    pub(crate) runs: Vec<Renewal<'a>>,
 }
 
 impl Command for RenewalBatch<'_> {
@@ -194,27 +194,21 @@ impl Command for RenewalBatch<'_> {
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::RenewBatch {
             request_id,
-            leases: self.leases.clone(),
+            runs: self.runs.clone(),
         }
     }
     fn decode(reply: Down<'_>) -> Result<Self::Output> {
-        let Down::Renewed { leases, .. } = reply else {
+        let Down::Renewed { runs, .. } = reply else {
             return Err(ErrorKind::StreamProtocol.into());
         };
-        leases
-            .into_iter()
-            .map(|lease| {
-                Ok((
-                    Uuid7::parse(&lease.lease_id)?,
-                    Outcome::try_from(lease.answer)?,
-                ))
-            })
+        runs.into_iter()
+            .map(|run| Ok((Uuid7::parse(&run.run_id)?, Outcome::try_from(run.answer)?)))
             .collect()
     }
 }
 
 pub(crate) struct Report<'a> {
-    lease: Uuid7,
+    run: Uuid7,
     request: Box<ReportRequest<'a>>,
 }
 
@@ -224,7 +218,7 @@ impl<'a> TryFrom<&'a [u8]> for Report<'a> {
         let request: ReportRequest<'_> =
             af_core::json::object_from_slice(bytes).map_err(error::malformed(Verb::Report))?;
         Ok(Self {
-            lease: Uuid7::parse(&request.lease_id)?,
+            run: Uuid7::parse(&request.run_id)?,
             request: Box::new(request),
         })
     }
@@ -234,7 +228,7 @@ impl Command for Report<'_> {
     const VERB: Option<Verb> = Some(Verb::Report);
     type Output = af_wire::report::ReportResponse;
     fn expected(&self) -> Expected {
-        Expected::Report(self.lease.clone())
+        Expected::Report(self.run.clone())
     }
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::Report {
@@ -255,7 +249,7 @@ impl Command for Report<'_> {
 }
 
 struct Folds<'a> {
-    lease: &'a Uuid7,
+    run: &'a Uuid7,
     request: FoldRequest,
 }
 
@@ -263,12 +257,12 @@ impl Command for Folds<'_> {
     const VERB: Option<Verb> = Some(Verb::Folds);
     type Output = Body;
     fn expected(&self) -> Expected {
-        Expected::Folds(self.lease.clone())
+        Expected::Folds(self.run.clone())
     }
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::Folds {
             request_id,
-            lease_id: self.lease.as_str().into(),
+            run_id: self.run.as_str().into(),
             request: self.request,
         }
     }

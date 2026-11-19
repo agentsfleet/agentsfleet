@@ -67,11 +67,11 @@ pub(crate) fn shell(script: &str) -> Spawn {
 /// Runs `script` in a fresh sandbox with `limits`, then destroys it.
 pub(crate) fn in_sandbox(
     lane: &Lane,
-    lease_id: &str,
+    run_id: &str,
     limits: Limits,
     script: &str,
 ) -> Result<Outcome, Failed> {
-    in_sandbox_each(lane, SandboxRequest::new(lease_id, limits), &[script])?
+    in_sandbox_each(lane, SandboxRequest::new(run_id, limits), &[script])?
         .pop()
         .ok_or_else(|| Failed::from("one script runs once"))
 }

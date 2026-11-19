@@ -1,5 +1,5 @@
 //! The installed fleet: its native rows read from the corpus, its approved
-//! GitHub grant, and the runner enrolled to lease it.
+//! GitHub grant, and the runner enrolled to run it.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -118,7 +118,7 @@ async fn approve(connection: &mut sqlx::PgConnection, fleet: &Uuid7, at: Timesta
 /// Enrols a runner labelled with every tag the installed fleet's row requires —
 /// a fleet is placed only on a runner carrying its `required_tags` — and with
 /// no egress control, since this runner reports none and the daemon withholds
-/// leases from a host that cannot enforce what its policy demands. Then points
+/// runs from a host that cannot enforce what its policy demands. Then points
 /// the fleet's affinity at it, so a ready mark another suite left behind cannot
 /// take its place.
 pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uuid7, String) {
@@ -141,7 +141,7 @@ pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uu
         .register(&request, "fixture:platform-operator", now)
         .await
         .expect("enrolment must succeed");
-    afd_fleet::lease::Leases::new(booted.database.clone(), booted.bus.clone(), Entropy::new())
+    afd_fleet::run::Runs::new(booted.database.clone(), booted.bus.clone(), Entropy::new())
         .claim(fleet, &enrolled.runner_id, std::time::Duration::ZERO)
         .await
         .expect("the affinity claim runs")

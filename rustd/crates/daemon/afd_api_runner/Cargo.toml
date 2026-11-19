@@ -1,6 +1,6 @@
 [package]
 name = "afd_api_runner"
-description = "Runner-control HTTP handlers over host and lease services."
+description = "Runner-control HTTP handlers over host and run services."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

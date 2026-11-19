@@ -99,30 +99,30 @@ async fn receive(
 }
 
 impl ConnectionServices {
-    /// Recheck reloads ownership and policy; Cancel confirms just its durable lease marker.
+    /// Recheck reloads ownership and policy; Cancel confirms just its durable run marker.
     pub(super) async fn command(&self, command: Command) -> Result<()> {
         match command {
             Command::Recheck => self.recheck().await,
-            Command::Cancel { lease_id } => self.check_cancellation(&lease_id).await,
+            Command::Cancel { run_id } => self.check_cancellation(&run_id).await,
         }
     }
 
-    async fn check_cancellation(&self, lease: &af_core::id::Uuid7) -> Result<()> {
+    async fn check_cancellation(&self, run: &af_core::id::Uuid7) -> Result<()> {
         let cancelled = self
             .operation(Operation::Recheck, async {
                 Ok(
-                    sqlx::query_scalar::<_, bool>(include_str!(
-                        "sql/select_lease_cancellation.sql"
-                    ))
-                    .bind(lease)
-                    .bind(&self.handle.runner)
-                    .fetch_optional(&mut *self.gateway.inner.dependencies.database.acquire().await?)
-                    .await?,
+                    sqlx::query_scalar::<_, bool>(include_str!("sql/select_run_cancellation.sql"))
+                        .bind(run)
+                        .bind(&self.handle.runner)
+                        .fetch_optional(
+                            &mut *self.gateway.inner.dependencies.database.acquire().await?,
+                        )
+                        .await?,
                 )
             })
             .await?;
         if cancelled == Some(true) {
-            self.cancel(lease, af_core::error_code::RUN_LEASE_CANCELLED.as_str())
+            self.cancel(run, af_core::error_code::RUN_CANCELLED.as_str())
                 .await?;
         }
         Ok(())

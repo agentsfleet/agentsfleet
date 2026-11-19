@@ -38,7 +38,7 @@ impl Drafts {
 
     /// Moves every live attempt past its deadline to accounting recovery:
     /// what `sweeper:expiry` runs every `maintenance.expired_work.interval_seconds`, beside
-    /// the lease expiry pass.
+    /// the run expiry pass.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.

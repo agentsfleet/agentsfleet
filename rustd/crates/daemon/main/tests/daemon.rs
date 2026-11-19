@@ -110,7 +110,7 @@ async fn test_a_server_that_stops_on_its_own_is_named_and_torn_down() {
     );
     assert!(
         !outcome.is_clean(),
-        "a server that fell over is not a clean run, however clean the join was"
+        "a server that fell over is not a clean scene, however clean the join was"
     );
 }
 

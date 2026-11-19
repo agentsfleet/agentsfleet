@@ -7,8 +7,8 @@
 //! delete takes the fleet from any status, including `active`. A delete that
 //! also ends the fleet's setup and live work runs [`delete_locked`] inside the
 //! transaction that does that teardown (`Creations::delete`), so all of it
-//! commits or none does. A live lease that survives is deleted here, and its
-//! runner learns at its next renewal, which answers `RUN_LEASE_NOT_FOUND`.
+//! commits or none does. A live run that survives is deleted here, and its
+//! runner learns at its next renewal, which answers `RUN_NOT_FOUND`.
 //!
 //! # What goes, and what stays
 //!
@@ -21,10 +21,10 @@
 //! and `the_purge_itself_runs_as_api_runtime` proves both through a pool that
 //! holds `api_runtime` alone.
 //!
-//! Runner leases are the one child the purge deletes by hand. `runner.leases`
-//! holds no foreign key to the fleet, so a SETTLED lease outlives it as runner
+//! Runner runs are the one child the purge deletes by hand. `runner.runs`
+//! holds no foreign key to the fleet, so a SETTLED run outlives it as runner
 //! history for its own 30-day window, with the fleet shown as deleted. A LIVE
-//! lease would name a fleet that no longer exists, so the purge deletes those
+//! run would name a fleet that no longer exists, so the purge deletes those
 //! in the same transaction, before the row, as the cascade used to.
 //!
 //! `billing.usage_lines` survives deliberately, WITH its attribution:
@@ -37,16 +37,16 @@
 //! rather than creating it again (slot 1980).
 //!
 use af_core::id::Uuid7;
-use afd_state::sql::LEASE_STATUS_ACTIVE;
+use afd_state::sql::RUN_STATUS_ACTIVE;
 
 use crate::error::{self, ErrorKind, Result};
 use crate::sql;
 
 /// The contexts a failed statement on this path reports under.
 const CONTEXT_PARENT: &str = "purge fleet row";
-const CONTEXT_LEASES: &str = "purge fleet live leases";
+const CONTEXT_RUNS: &str = "purge fleet live runs";
 
-/// Deletes `fleet`'s live leases, then its row, inside the caller's
+/// Deletes `fleet`'s live runs, then its row, inside the caller's
 /// transaction.
 ///
 /// The only delete path: the caller already holds the row lock and has
@@ -61,12 +61,12 @@ pub async fn delete_locked(
     workspace: &Uuid7,
     fleet: &Uuid7,
 ) -> Result<()> {
-    sqlx::query(sql::DELETE_ACTIVE_LEASES)
+    sqlx::query(sql::DELETE_ACTIVE_RUNS)
         .bind(fleet)
-        .bind(LEASE_STATUS_ACTIVE)
+        .bind(RUN_STATUS_ACTIVE)
         .execute(&mut *connection)
         .await
-        .map_err(error::query(CONTEXT_LEASES))?;
+        .map_err(error::query(CONTEXT_RUNS))?;
     sqlx::query_scalar::<_, Uuid7>(sql::DELETE_FLEET)
         .bind(fleet)
         .bind(workspace)

@@ -87,9 +87,9 @@ stages!(
 );
 
 stages!(
-    /// A terminal report, from the lease read to the acknowledgement.
+    /// A terminal report, from the run read to the acknowledgement.
     ReportStage, semconv::SPAN_FLEET_REPORT {
-        /// The lease read.
+        /// The run read.
         Load => semconv::ATTR_REPORT_LOAD_MS,
         /// The task report and pricing.
         Prepare => semconv::ATTR_REPORT_PREPARE_MS,

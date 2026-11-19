@@ -20,7 +20,7 @@ async fn a_lost_usage_reply_never_redispatches_and_fences_private_proposals() {
     let request = fixture::request(&attempt);
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request.clone())
+            .call(&f.runner, &attempt.run, request.clone())
             .await
             .expect_err("reply lacks authoritative usage")
             .code(),
@@ -28,7 +28,7 @@ async fn a_lost_usage_reply_never_redispatches_and_fences_private_proposals() {
     );
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request.clone())
+            .call(&f.runner, &attempt.run, request.clone())
             .await
             .expect_err("never resend uncertain intent")
             .code(),
@@ -39,7 +39,7 @@ async fn a_lost_usage_reply_never_redispatches_and_fences_private_proposals() {
     next.call_index = 2;
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, next)
+            .call(&f.runner, &attempt.run, next)
             .await
             .expect_err("unknown remaining output")
             .code(),
@@ -47,7 +47,7 @@ async fn a_lost_usage_reply_never_redispatches_and_fences_private_proposals() {
     );
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &attempt.lease, attempt.initialize(1))
+            .activity(&f.runner, &attempt.run, attempt.initialize(1))
             .await
             .expect_err("uncertain attempt cannot publish")
             .code(),
@@ -70,13 +70,13 @@ async fn competing_dispatch_and_same_intent_retry_cannot_duplicate_an_inflight_e
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
-        let (calls, runner, lease, request) = (
+        let (calls, runner, run, request) = (
             calls.clone(),
             f.runner.clone(),
-            attempt.lease.clone(),
+            attempt.run.clone(),
             request.clone(),
         );
-        async move { calls.call(&runner, &lease, request).await }
+        async move { calls.call(&runner, &run, request).await }
     });
     tokio::time::timeout(Duration::from_secs(5), provider.arrived())
         .await
@@ -84,7 +84,7 @@ async fn competing_dispatch_and_same_intent_retry_cannot_duplicate_an_inflight_e
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request.clone())
+            .call(&f.runner, &attempt.run, request.clone())
             .await
             .expect_err("inflight retry")
             .code(),
@@ -95,7 +95,7 @@ async fn competing_dispatch_and_same_intent_retry_cannot_duplicate_an_inflight_e
     next.dispatch_id = mint().to_string();
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, next)
+            .call(&f.runner, &attempt.run, next)
             .await
             .expect_err("one inflight call")
             .code(),
@@ -121,12 +121,12 @@ async fn a_refusal_while_a_dispatch_is_in_flight_shows_its_usage_as_unknown() {
     let provider = Arc::new(stub);
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let task = tokio::spawn({
-        let (runner, lease, request) = (
+        let (runner, run, request) = (
             f.runner.clone(),
-            attempt.lease.clone(),
+            attempt.run.clone(),
             fixture::request(&attempt),
         );
-        async move { calls.call(&runner, &lease, request).await }
+        async move { calls.call(&runner, &run, request).await }
     });
     tokio::time::timeout(Duration::from_secs(5), provider.arrived())
         .await
@@ -149,7 +149,7 @@ async fn a_refusal_while_a_dispatch_is_in_flight_shows_its_usage_as_unknown() {
     };
     let refused = f
         .drafts
-        .renew(&f.runner, &attempt.lease, renewal)
+        .renew(&f.runner, &attempt.run, renewal)
         .await
         .expect_err("the pinned model is gone");
     assert_eq!(refused.code(), error_code::AUTHORING_MODEL);

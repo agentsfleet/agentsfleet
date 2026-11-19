@@ -82,7 +82,7 @@ impl Visibility {
 /// One durable memory item — the unit of both reading and writing.
 //
 // Carries no scope: the fleet is a path segment, validated server-side against
-// the runner's live lease. The bounds are declared here, so the daemon's push
+// the runner's live run. The bounds are declared here, so the daemon's push
 // and the runner's store refuse the same entries. NUL is refused on every text
 // field because Postgres cannot store it in `text`: one such delta would fail
 // the whole push's statement instead of being skipped as malformed.
@@ -142,17 +142,17 @@ impl MemoryDelta<'_> {
 
 /// `POST /v1/runners/me/memory/{fleet_id}` request.
 //
-// The lease and fencing token ride the body exactly as they do on a report: the
-// control plane loads that lease, verifies the runner owns it, cross-checks the
+// The run and fencing token ride the body exactly as they do on a report: the
+// control plane loads that run, verifies the runner owns it, cross-checks the
 // fleet against the path, and fences the write. Each delta is upserted, so a
 // retried push is idempotent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryPushRequest<'a> {
-    /// The lease authorizing this write.
+    /// The run authorizing this write.
     #[serde(borrow)]
-    pub lease_id: Cow<'a, str>,
+    pub run_id: Cow<'a, str>,
     /// Monotonic guard; a reclaimed holder is rejected.
     pub fencing_token: u64,
     /// The items to remember.
@@ -240,10 +240,10 @@ const fn is_false(granted: &bool) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryRecallRequest<'a> {
-    /// The lease authorizing this read.
+    /// The run authorizing this read.
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = MAX_KEY_LEN))]
-    pub lease_id: Cow<'a, str>,
+    pub run_id: Cow<'a, str>,
     /// Monotonic guard; a reclaimed holder is rejected.
     #[garde(skip)]
     pub fencing_token: u64,

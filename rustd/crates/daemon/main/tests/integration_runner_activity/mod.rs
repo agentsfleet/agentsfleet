@@ -1,4 +1,4 @@
-//! Native activity publishes through the Bus only after decoding and lease ownership checks.
+//! Native activity publishes through the Bus only after decoding and run ownership checks.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -16,7 +16,7 @@ use crate::wire::field;
 
 pub(crate) const TOOL_NAME: &str = "shell";
 const CHUNK_TEXT: &str = "the fleet said this out loud";
-const UNHELD_LEASE: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
+const UNHELD_RUN: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
 
 /// A valid batch publishes; malformed and unowned activity have no effect.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -37,8 +37,8 @@ async fn test_activity_publish() {
     assert_eq!(field(&frame, "text"), &json!(CHUNK_TEXT));
     assert_eq!(
         field(&frame, "event_id"),
-        &json!(tailed.run.event_id),
-        "activity is grouped by the event, never the lease"
+        &json!(tailed.scene.event_id),
+        "activity is grouped by the event, never the run"
     );
     tailed = tailed
         .refused(&json!({"frames": [{"no_such_frame": {"text": "?"}}]}))
@@ -71,7 +71,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
     let frame = tailed
         .next_frame()
         .await
-        .expect("one dropped frame does not poison the lease");
+        .expect("one dropped frame does not poison the run");
     assert_eq!(field(&frame, "text"), &json!(CHUNK_TEXT));
     assert_eq!(
         tailed.silence().await,
@@ -81,7 +81,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
     tailed.finish(supervisor).await;
 }
 
-/// An unowned frame cannot publish, and the same connection still serves its real lease.
+/// An unowned frame cannot publish, and the same connection still serves its real run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unowned_native_activity_frame_reaches_no_tail() {
@@ -89,16 +89,16 @@ async fn an_unowned_native_activity_frame_reaches_no_tail() {
     let mut tailed = Tailed::open(&mut supervisor).await;
     tailed
         .forward_for(
-            UNHELD_LEASE,
+            UNHELD_RUN,
             &json!({"frames": [{"fleet_response_chunk": {
-                "text":"an unowned lease must not publish", "text_kind":"answer"
+                "text":"an unowned run must not publish", "text_kind":"answer"
             }}]}),
         )
         .await;
     assert_eq!(
         tailed.silence().await,
         None,
-        "an unowned lease has no cached target"
+        "an unowned run has no cached target"
     );
     tailed
         .forward(&json!({"frames": [{"fleet_response_chunk": {

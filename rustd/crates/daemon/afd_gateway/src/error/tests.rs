@@ -54,7 +54,7 @@ fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
 }
 
 #[tokio::test]
-async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Proof {
+async fn transient_failures_keep_the_run_deadline_and_ask_for_a_retry() -> Proof {
     let elapsed = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
         .await
         .err()
@@ -66,7 +66,7 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &timeout,
         error_code::INTERNAL_OPERATION_FAILED,
-        "The stream timed out while renewing work. Retain the last confirmed lease deadline.",
+        "The stream timed out while renewing work. Retain the last confirmed run deadline.",
         true,
         "timeout",
     );
@@ -74,7 +74,7 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &closed,
         error_code::INTERNAL_OPERATION_FAILED,
-        "The connection_id ended. Reconnect before the last confirmed lease deadline.",
+        "The connection_id ended. Reconnect before the last confirmed run deadline.",
         true,
         "closed",
     );
@@ -82,7 +82,7 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &query,
         error_code::INTERNAL_DB_QUERY,
-        "The database did not confirm the operation. Retain the last confirmed lease deadline.",
+        "The database did not confirm the operation. Retain the last confirmed run deadline.",
         true,
         "database",
     );
@@ -97,7 +97,7 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &worker,
         error_code::INTERNAL_OPERATION_FAILED,
-        "A connection worker stopped. Reconnect before the last confirmed lease deadline.",
+        "A connection worker stopped. Reconnect before the last confirmed run deadline.",
         true,
         "worker",
     );

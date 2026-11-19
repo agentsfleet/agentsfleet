@@ -14,7 +14,7 @@
 //! Each signal gets its own exporter and each is wrapped in the counting
 //! wrapper `af_observability` shipped for it. That wrapper is the whole
 //! failure posture: a collector that is down costs dropped batches and a
-//! counter that says so, never latency on a request or a lease. Nothing here
+//! counter that says so, never latency on a request or a run. Nothing here
 //! is allowed to change that, which is why the transport plugs INTO the
 //! wrapper rather than beside it.
 //!

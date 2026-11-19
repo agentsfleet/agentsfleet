@@ -9,7 +9,7 @@ use super::*;
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn platform_model_work_never_reaches_a_tenant_runner() {
     let fixtures = Fixtures::create().await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let t = Owner::new();
     let fleet = t
         .fleet(&fixtures, afd_credential::provider::PLATFORM_MODEL_REF)
@@ -18,7 +18,7 @@ async fn platform_model_work_never_reaches_a_tenant_runner() {
 
     for poll in 1..=2 {
         assert!(
-            select_fleet(&leases, &t_runner, &fleet).await.is_none(),
+            select_fleet(&runs, &t_runner, &fleet).await.is_none(),
             "poll {poll}: no candidate"
         );
     }
@@ -27,13 +27,13 @@ async fn platform_model_work_never_reaches_a_tenant_runner() {
         !claim_head(&fixtures, &fleet, &t_runner).await,
         "the claim alone refuses too"
     );
-    assert_eq!(leases_of(&fixtures, &t_runner).await, 0, "no lease");
+    assert_eq!(runs_of(&fixtures, &t_runner).await, 0, "no run");
 
     let p_runner = platform_runner(&fixtures, &t.tag).await;
-    let held = select_fleet(&leases, &p_runner, &fleet)
+    let held = select_fleet(&runs, &p_runner, &fleet)
         .await
         .expect("a platform runner takes it");
-    assert!(issue(&fixtures, &leases, &p_runner, &held, &t.tenant, PLATFORM).await);
+    assert!(issue(&fixtures, &runs, &p_runner, &held, &t.tenant, PLATFORM).await);
     fixtures.cleanup().await;
 }
 
@@ -45,21 +45,21 @@ async fn platform_model_work_never_reaches_a_tenant_runner() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn issue_refuses_platform_posture_on_a_tenant_runner() {
     let fixtures = Fixtures::create().await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let t = Owner::new();
     let fleet = t.fleet(&fixtures, TENANT_MODEL).await;
     let t_runner = tenant_runner(&fixtures, &t.tenant, &t.tag).await;
-    let held = select_fleet(&leases, &t_runner, &fleet)
+    let held = select_fleet(&runs, &t_runner, &fleet)
         .await
         .expect("T's runner claims");
 
     let captured = af_core::test_util::trace::Capture::install();
-    let issued = issue(&fixtures, &leases, &t_runner, &held, &t.tenant, PLATFORM).await;
+    let issued = issue(&fixtures, &runs, &t_runner, &held, &t.tenant, PLATFORM).await;
     let refused = captured.only("runner_placement_refused");
     drop(captured);
 
     assert!(!issued, "platform posture never issues to a tenant host");
-    assert_eq!(leases_of(&fixtures, &t_runner).await, 0);
+    assert_eq!(runs_of(&fixtures, &t_runner).await, 0);
     assert_eq!(refused.field("reason"), Some("platform_model"));
     fixtures.cleanup().await;
 }
@@ -86,24 +86,14 @@ async fn execute(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
     let fixtures = Fixtures::create().await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let t = Owner::new();
     let fleet = t.fleet(&fixtures, TENANT_MODEL).await;
     let t_runner = tenant_runner(&fixtures, &t.tenant, &t.tag).await;
-    let first = select_fleet(&leases, &t_runner, &fleet)
+    let first = select_fleet(&runs, &t_runner, &fleet)
         .await
         .expect("T's runner takes its fleet");
-    assert!(
-        issue(
-            &fixtures,
-            &leases,
-            &t_runner,
-            &first,
-            &t.tenant,
-            SELF_MANAGED
-        )
-        .await
-    );
+    assert!(issue(&fixtures, &runs, &t_runner, &first, &t.tenant, SELF_MANAGED).await);
     execute(
         &fixtures,
         "UPDATE fleet.admissions SET settled_at = clock_timestamp() WHERE id = $1",
@@ -112,7 +102,7 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
     .await;
     execute(
         &fixtures,
-        "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval '1 second', \
+        "UPDATE runner.slots SET run_expires_at = clock_timestamp() - interval '1 second', \
          hold_expires_at = clock_timestamp() + interval '10 minutes' WHERE fleet_id = $1",
         &fleet,
     )
@@ -131,11 +121,11 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
     .await;
     let p_runner = platform_runner(&fixtures, &t.tag).await;
     assert!(
-        select_fleet(&leases, &p_runner, &fleet).await.is_none(),
+        select_fleet(&runs, &p_runner, &fleet).await.is_none(),
         "the tenant holder's live hold keeps the fleet"
     );
     assert!(
-        select_fleet(&leases, &t_runner, &fleet).await.is_none(),
+        select_fleet(&runs, &t_runner, &fleet).await.is_none(),
         "and the holder cannot take platform-model work"
     );
 
@@ -146,9 +136,9 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
         &fleet,
     )
     .await;
-    let taken = select_fleet(&leases, &p_runner, &fleet)
+    let taken = select_fleet(&runs, &p_runner, &fleet)
         .await
         .expect("once the hold expires, a platform runner takes the fleet");
-    assert!(issue(&fixtures, &leases, &p_runner, &taken, &t.tenant, PLATFORM).await);
+    assert!(issue(&fixtures, &runs, &p_runner, &taken, &t.tenant, PLATFORM).await);
     fixtures.cleanup().await;
 }

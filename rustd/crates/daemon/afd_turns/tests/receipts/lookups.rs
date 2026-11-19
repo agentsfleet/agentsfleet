@@ -1,4 +1,4 @@
-//! The lookups the lease path makes back into the ledger, keyed on the row id
+//! The lookups the run path makes back into the ledger, keyed on the row id
 //! an event is named by.
 
 use afd_db::test_util::mint_id;
@@ -7,7 +7,7 @@ use afd_turns::{Reply as ReplyTo, sql};
 use super::ledger::{CONNECTOR, THREAD, admit, steer};
 use super::{Fallible, lane::Lane, queue::over_lane};
 
-/// The lease path's two lookups key on the fleet and the row id: another
+/// The run path's two lookups key on the fleet and the row id: another
 /// fleet's id answers nothing, and a second delivery stamps nothing.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

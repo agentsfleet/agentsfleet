@@ -23,7 +23,7 @@ async fn an_unfunded_wallet_cannot_dispatch_an_already_admitted_attempt() {
         .await
         .expect("funding removed after admission");
     let error = calls
-        .call(&f.runner, &a.lease, fixture::request(&a))
+        .call(&f.runner, &a.run, fixture::request(&a))
         .await
         .expect_err("current funding must cover active obligations");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
@@ -50,7 +50,7 @@ async fn a_ceiling_at_the_integer_edge_cannot_authorize_a_physical_request() {
         .await
         .expect("second owned draft");
     let mut connection = f.connection().await;
-    sqlx::query("INSERT INTO authoring.attempts SELECT (jsonb_populate_record(NULL::authoring.attempts,to_jsonb(source)||jsonb_build_object('id',$2,'lease_id',$3,'draft_id',$4))).* FROM authoring.attempts source WHERE id=$1")
+    sqlx::query("INSERT INTO authoring.attempts SELECT (jsonb_populate_record(NULL::authoring.attempts,to_jsonb(source)||jsonb_build_object('id',$2,'run_id',$3,'draft_id',$4))).* FROM authoring.attempts source WHERE id=$1")
         .bind(&a.id).bind(mint()).bind(mint()).bind(&other.draft.id)
         .execute(&mut *connection).await.expect("second active owned obligation");
     sqlx::query("UPDATE authoring.attempts SET reserved_nanos=$2 WHERE tenant_id=$1")
@@ -69,7 +69,7 @@ async fn a_ceiling_at_the_integer_edge_cannot_authorize_a_physical_request() {
         .expect("one nano below the largest ceiling");
     drop(connection);
     let error = calls
-        .call(&f.runner, &a.lease, fixture::request(&a))
+        .call(&f.runner, &a.run, fixture::request(&a))
         .await
         .expect_err("a ceiling the balance cannot fund is refused");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
@@ -102,7 +102,7 @@ async fn unrepresentable_provider_cost_is_uncertain_without_private_output_or_re
     request.request.max_output_tokens = 2_000_000_000;
     for request in [request.clone(), request] {
         let error = calls
-            .call(&f.runner, &a.lease, request)
+            .call(&f.runner, &a.run, request)
             .await
             .expect_err("provider cost cannot fit durable accounting");
         assert_eq!(error.code(), error_code::AUTHORING_UNKNOWN);

@@ -1,5 +1,5 @@
 -- `fleet_id` and `workspace_id` copy the event's scope, written once with it, so the detail
--- endpoint authorizes without joining the event. `sequence` orders calls within one lease.
+-- endpoint authorizes without joining the event. `sequence` orders calls within one run.
 CREATE TABLE fleet.tool_calls (
     id                   UUID PRIMARY KEY,
     workspace_id         UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,

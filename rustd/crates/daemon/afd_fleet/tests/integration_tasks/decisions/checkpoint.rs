@@ -41,7 +41,7 @@ async fn capture(case: &Case) {
         &"0".repeat(40),
     );
     let base = tasks
-        .plan_checkpoint(case.lease(), &valid(base_input))
+        .plan_checkpoint(case.run(), &valid(base_input))
         .await
         .expect("base allocation");
     let base = complete(&tasks, case, &task, &base).await;
@@ -58,7 +58,7 @@ async fn capture(case: &Case) {
         &head,
     );
     let plan = tasks
-        .plan_checkpoint(case.lease(), &valid(request.clone()))
+        .plan_checkpoint(case.run(), &valid(request.clone()))
         .await
         .expect("reuse older base");
     assert_eq!(
@@ -70,7 +70,7 @@ async fn capture(case: &Case) {
     assert_eq!(plan.base_page_ids, base.page_ids);
     let committed = complete(&tasks, case, &task, &plan).await;
     let replay = tasks
-        .plan_checkpoint(case.lease(), &valid(request.clone()))
+        .plan_checkpoint(case.run(), &valid(request.clone()))
         .await
         .expect("immutable replay");
     assert!(replay.replayed);
@@ -104,7 +104,7 @@ pub(super) fn storage(fixture: &Decisions<'_>) -> Tasks {
         client,
     ));
     Tasks::new(
-        case.held.leases.clone(),
+        case.held.runs.clone(),
         case.admissions.clone(),
         dependencies,
     )
@@ -118,7 +118,7 @@ pub(super) fn input(
     head: &str,
 ) -> CheckpointPlanInput {
     CheckpointPlanInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         operation_id: mint_id().into(),
         task: task.clone(),
         mode,
@@ -153,18 +153,18 @@ pub(super) async fn complete(
     let digest = sha256_hex(&serde_json::to_vec(&contents).expect("manifest encoding"));
     let page = plan.page_ids.first().expect("one allocated page");
     let input = valid(CheckpointPageInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task: task.clone(),
         pin_id: plan.pin.id.clone(),
         digest: digest.clone(),
         contents,
     });
     tasks
-        .write_checkpoint_page(case.lease(), &id(&plan.checkpoint_id), &id(page), &input)
+        .write_checkpoint_page(case.run(), &id(&plan.checkpoint_id), &id(page), &input)
         .await
         .expect("freeze complete empty manifest");
     let input = valid(CheckpointCommitInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task: task.clone(),
         pin_id: plan.pin.id.clone(),
         manifest_root: checkpoint_digest::manifest_root([(page.as_str(), digest.as_str())]),
@@ -173,7 +173,7 @@ pub(super) async fn complete(
         effect_watermark: 0,
     });
     tasks
-        .commit_checkpoint(case.lease(), &id(&plan.checkpoint_id), &input)
+        .commit_checkpoint(case.run(), &id(&plan.checkpoint_id), &input)
         .await
         .expect("verified manifest commit")
 }
@@ -201,7 +201,7 @@ async fn report_head(case: &Case, task: &DecisionTaskVersion, plan: &CheckpointP
         let accepted = afd_fleet::task::CheckpointGuard {
             checkpoint_id: Some(plan.checkpoint_id.as_str()),
             task_id: &task_id,
-            lease_id: case.lease().lease_id,
+            run_id: case.run().run_id,
             generation: 1,
             stop_generation: 0,
             revision_id: &revision,
@@ -226,7 +226,7 @@ async fn refusals(tasks: &Tasks, case: &Case, request: CheckpointPlanInput) {
             invalid.toolbox_digest = "4".repeat(64);
         }
         let failure = tasks
-            .plan_checkpoint(case.lease(), &valid(invalid))
+            .plan_checkpoint(case.run(), &valid(invalid))
             .await
             .expect_err("base compatibility required");
         assert_eq!(failure.code(), error_code::TASK_CHECKPOINT_INCOMPATIBLE);
@@ -236,7 +236,7 @@ async fn refusals(tasks: &Tasks, case: &Case, request: CheckpointPlanInput) {
         invalid.operation_id = mint_id().into();
         invalid.commit_oid = commit;
         let failure = tasks
-            .plan_checkpoint(case.lease(), &valid(invalid))
+            .plan_checkpoint(case.run(), &valid(invalid))
             .await
             .expect_err("current head required");
         assert_eq!(failure.code(), error_code::TASK_INVALID_TARGET);

@@ -69,10 +69,10 @@ async fn cannot_update(connection: &mut PgConnection) {
         .expect("restore transaction after denied UPDATE");
 }
 
-// Value: protects=API lease and checkpoint transactions hold exact immutable parents;
+// Value: protects=API run and checkpoint transactions hold exact immutable parents;
 // fails_when=runtime needs UPDATE privilege, loses its deletion fence, or locks unrelated workspaces;
 // why_new=table grant probes did not exercise row locks; seam=exported production SQL;
-// no_claim=full lease issuance or remote object storage.
+// no_claim=full run issuance or remote object storage.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn api_parent_locks_preserve_immutability_and_exact_scope() {

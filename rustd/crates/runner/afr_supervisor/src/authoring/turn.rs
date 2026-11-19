@@ -5,8 +5,8 @@ use crate::{Result, client::ControlPlane, error};
 use af_core::{clock::Clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::authoring::{
-    ContextRole, Lease, ModelCall, ModelMessage, ModelRequest, ModelResult, ProposalCall,
-    ProposalRejection,
+    ContextRole, ModelCall, ModelMessage, ModelRequest, ModelResult, ProposalCall,
+    ProposalRejection, Run,
 };
 use serde_json::Value;
 use std::ops::ControlFlow;
@@ -14,7 +14,7 @@ use std::ops::ControlFlow;
 /// One accepted private attempt and the authority it may call.
 pub(super) struct Turn<'a> {
     pub(super) plane: &'a ControlPlane,
-    pub(super) lease: &'a Lease<Value>,
+    pub(super) run: &'a Run<Value>,
     pub(super) id: &'a Uuid7,
     pub(super) clock: &'a dyn Clock,
     pub(super) observed: &'a Observed,
@@ -36,7 +36,7 @@ impl Turn<'_> {
             corrections: 0,
         };
         let max_calls = u32::try_from(
-            self.lease
+            self.run
                 .limits
                 .max_calls
                 .min(i64::from(af_wire::authoring::MODEL_CALLS_MAX)),
@@ -58,7 +58,7 @@ impl Turn<'_> {
 
     fn request(&self, progress: &Progress, call_index: u32) -> Result<Option<ModelCall>> {
         let meter = self.observed.snapshot()?;
-        let budget = u64::try_from(self.lease.limits.output_per_turn).map_err(|source| {
+        let budget = u64::try_from(self.run.limits.output_per_turn).map_err(|source| {
             error::boundary("the authoring output allowance is invalid", source)
         })?;
         let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
@@ -67,9 +67,9 @@ impl Turn<'_> {
             return Ok(None);
         }
         Ok(Some(ModelCall {
-            capability_token: self.lease.model_access.token.clone(),
-            attempt_id: self.lease.attempt_id.clone(),
-            fence: self.lease.fence.clone(),
+            capability_token: self.run.model_access.token.clone(),
+            attempt_id: self.run.attempt_id.clone(),
+            fence: self.run.fence.clone(),
             dispatch_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
             call_index,
             request: ModelRequest {
@@ -146,7 +146,7 @@ impl Turn<'_> {
             let (message, accepted) = proposal::apply(
                 self.plane,
                 self.id,
-                self.lease,
+                self.run,
                 progress.activity_sequence,
                 &call,
             )
@@ -168,7 +168,7 @@ impl Turn<'_> {
         if !progress.accepted_any && !asked_for_an_answer {
             if progress.corrections
                 >= self
-                    .lease
+                    .run
                     .limits
                     .max_proposal_corrections
                     .min(af_wire::authoring::PROPOSAL_CORRECTIONS_MAX)
@@ -183,7 +183,7 @@ impl Turn<'_> {
 
     fn context(&self) -> Result<Vec<ModelMessage>> {
         let mut messages: Vec<_> = self
-            .lease
+            .run
             .messages
             .iter()
             .map(|message| match message.role {
@@ -196,7 +196,7 @@ impl Turn<'_> {
                 },
             })
             .collect();
-        if let Some(candidate) = &self.lease.candidate {
+        if let Some(candidate) = &self.run.candidate {
             let candidate = serde_json::to_string(candidate).map_err(error::encode)?;
             // Keep the person's current request last, after the setup data it edits.
             messages.insert(

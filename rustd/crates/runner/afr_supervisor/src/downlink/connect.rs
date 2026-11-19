@@ -24,8 +24,8 @@ use crate::{
     error::{self, ErrorKind},
 };
 
-/// The protocol revision this runner speaks. It stays v2 until the setup lease
-/// agent lands: a v3 runner is offered draft-owned leases, which this runner
+/// The protocol revision this runner speaks. It stays v2 until the setup run
+/// agent lands: a v3 runner is offered draft-owned runs, which this runner
 /// cannot yet run.
 const SPOKEN: &str = protocol::VERSION_V2;
 
@@ -140,7 +140,7 @@ impl Opening<'_> {
         let running = self.running.snapshot();
         let hello: Up<'_> = Up::Hello {
             request_id: NonZeroU64::MIN,
-            accepted_kinds: af_wire::lease::AcceptedKinds::ALL,
+            accepted_kinds: af_wire::run::AcceptedKinds::ALL,
             running: running.iter().map(|id| id.as_str().into()).collect(),
             credits: 0,
             unconfirmed_connection_id: resume.unconfirmed().map(|id| id.as_str().into()),

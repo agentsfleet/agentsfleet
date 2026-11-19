@@ -3,7 +3,7 @@
 //! # The whole point is what is absent
 //!
 //! The raw path is deliberately not carried into the span: it holds real
-//! workspace, fleet, and lease identifiers. The matched route's template is.
+//! workspace, fleet, and run identifiers. The matched route's template is.
 //! Both halves matter, and for different reasons.
 //!
 //! Privacy: a concrete path is tenant data, and a span attribute is exported to

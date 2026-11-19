@@ -6,12 +6,12 @@ use af_wire::{
     decision::{DecisionAnswer, DecisionAssignment},
     task::{DecisionAssessment, DecisionReservationInput, TaskDisposition, TaskReport},
 };
-use afr_tools::LeaseVerbs;
+use afr_tools::RunVerbs;
 
 pub(crate) async fn assess(
     prepared: &PreparedTask,
     assignment: &DecisionAssignment,
-    verbs: &dyn LeaseVerbs,
+    verbs: &dyn RunVerbs,
     fence: u64,
     evidence: serde_json::Value,
 ) -> Result<TaskReport> {

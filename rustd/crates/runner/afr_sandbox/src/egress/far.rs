@@ -66,7 +66,7 @@ pub fn objects() -> Result<Vec<String>> {
 }
 
 /// Leaves slot `index`'s table and link in the host's namespace, held by no
-/// scope, as a run killed mid-lease leaves them.
+/// scope, as a run killed mid-run leaves them.
 ///
 /// # Errors
 /// No such slot, or the kernel refused.

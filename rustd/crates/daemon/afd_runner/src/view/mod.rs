@@ -56,7 +56,7 @@ pub struct RunnerItem {
     sandbox_tier: String,
     /// Operator-controlled status.
     status: afd_api_wire::admin::AdminState,
-    /// Runtime state derived from heartbeat and lease rows.
+    /// Runtime state derived from heartbeat and run rows.
     liveness: RunnerLiveness,
     /// Placement labels, as enrolment or the last operator replacement stored them.
     labels: Vec<String>,
@@ -111,7 +111,7 @@ impl RunnerItem {
         self.status
     }
 
-    /// Runtime state derived from heartbeat and lease rows.
+    /// Runtime state derived from heartbeat and run rows.
     #[must_use]
     pub const fn liveness(&self) -> RunnerLiveness {
         self.liveness
@@ -202,18 +202,18 @@ impl RunnerPage {
 pub struct RunnerDetail {
     /// The same runner shape the list returns.
     item: RunnerItem,
-    /// Live leases currently held by this runner.
-    active_lease_count: i64,
-    /// Distinct fleets represented by those live leases.
+    /// Live runs currently held by this runner.
+    active_run_count: i64,
+    /// Distinct fleets represented by those live runs.
     active_fleet_count: i64,
-    /// Leases acquired over the runner's lifetime.
-    leases_acquired: i64,
-    /// Leases settled successfully over the runner's lifetime.
-    leases_succeeded: i64,
-    /// Leases settled unsuccessfully over the runner's lifetime.
-    leases_failed: i64,
-    /// Leases expired over the runner's lifetime.
-    leases_expired: i64,
+    /// Runs acquired over the runner's lifetime.
+    runs_acquired: i64,
+    /// Runs settled successfully over the runner's lifetime.
+    runs_succeeded: i64,
+    /// Runs settled unsuccessfully over the runner's lifetime.
+    runs_failed: i64,
+    /// Runs expired over the runner's lifetime.
+    runs_expired: i64,
     /// Outstanding self-test request instant.
     selftest_requested_at: Option<Timestamp>,
     /// Most recent self-test completion instant.
@@ -229,40 +229,40 @@ impl RunnerDetail {
         &self.item
     }
 
-    /// Live leases currently held by this runner.
+    /// Live runs currently held by this runner.
     #[must_use]
-    pub const fn active_lease_count(&self) -> i64 {
-        self.active_lease_count
+    pub const fn active_run_count(&self) -> i64 {
+        self.active_run_count
     }
 
-    /// Distinct fleets represented by those live leases.
+    /// Distinct fleets represented by those live runs.
     #[must_use]
     pub const fn active_fleet_count(&self) -> i64 {
         self.active_fleet_count
     }
 
-    /// Leases acquired over the runner's lifetime.
+    /// Runs acquired over the runner's lifetime.
     #[must_use]
-    pub const fn leases_acquired(&self) -> i64 {
-        self.leases_acquired
+    pub const fn runs_acquired(&self) -> i64 {
+        self.runs_acquired
     }
 
-    /// Leases settled successfully over the runner's lifetime.
+    /// Runs settled successfully over the runner's lifetime.
     #[must_use]
-    pub const fn leases_succeeded(&self) -> i64 {
-        self.leases_succeeded
+    pub const fn runs_succeeded(&self) -> i64 {
+        self.runs_succeeded
     }
 
-    /// Leases settled unsuccessfully over the runner's lifetime.
+    /// Runs settled unsuccessfully over the runner's lifetime.
     #[must_use]
-    pub const fn leases_failed(&self) -> i64 {
-        self.leases_failed
+    pub const fn runs_failed(&self) -> i64 {
+        self.runs_failed
     }
 
-    /// Leases expired over the runner's lifetime.
+    /// Runs expired over the runner's lifetime.
     #[must_use]
-    pub const fn leases_expired(&self) -> i64 {
-        self.leases_expired
+    pub const fn runs_expired(&self) -> i64 {
+        self.runs_expired
     }
 
     /// Outstanding self-test request instant.

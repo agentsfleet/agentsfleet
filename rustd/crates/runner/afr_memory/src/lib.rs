@@ -3,7 +3,7 @@
 //! [`MemoryBackend`] is what the four memory tools read and write
 //! (`docs/architecture/runner_fleet.md` §"Memory backends and scope").
 //! [`Hydrated`] is how a run reaches it: the [`Seed`] `agentsfleetd` hydrated
-//! at lease start — the fleet's own window, the workspace's shared entries for
+//! at run start — the fleet's own window, the workspace's shared entries for
 //! a fleet granted to read them, and whether it may publish — with the run's
 //! stores held here and pushed, fenced, before the report. A recall the window
 //! cannot fill asks `agentsfleetd` through [`Recall`], a capped number of times

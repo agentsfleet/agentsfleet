@@ -1,5 +1,5 @@
 //! The sandbox-side tools in a real sandbox: each trial calls the handler a
-//! lease's model calls, through the catalog the runner hosts, over the
+//! run's model calls, through the catalog the runner hosts, over the
 //! executor bubblewrap serves.
 
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use af_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use afr_tools::catalog::SHELL;
-use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode};
+use afr_tools::{Catalog, Run, ToolContext, ToolErrorCode};
 use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
@@ -49,7 +49,7 @@ pub(crate) fn shell(command: &str, timeout_ms: Option<u64>) -> Value {
 /// the handler the runner's catalog hosts; what each answered, in order.
 pub(crate) fn shell_calls(
     lane: &Lane,
-    lease_id: &str,
+    run_id: &str,
     calls: &[Value],
 ) -> Result<Vec<ToolOutput>, Failed> {
     runtime().block_on(async {
@@ -60,14 +60,14 @@ pub(crate) fn shell_calls(
             .tool(SHELL.name())
             .ok_or("the runner hosts shell")?;
         let engine = lane.engine();
-        let request = SandboxRequest::new(lease_id, Limits::default());
+        let request = SandboxRequest::new(run_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
-        let lease = Lease::default();
+        let run = Run::default();
         let mut outputs = Vec::with_capacity(calls.len());
         for arguments in calls {
             let context = ToolContext {
                 executor: Some(sandbox.executor()),
-                lease: &lease,
+                run: &run,
             };
             outputs.push(tool.call(arguments, context).await);
         }

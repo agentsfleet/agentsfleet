@@ -1,12 +1,12 @@
-//! Opening reconciles durable leases without replaying an omitted lease before it lapses.
+//! Opening reconciles durable runs without replaying an omitted run before it lapses.
 
 use super::{isolation, population, raw::Native};
 use crate::{e2e::Scenario, wire};
 use af_core::{error_code, id::Uuid7};
 use af_stream::Transport;
 use af_wire::{
-    lease::TaggedLease,
     protocol::{Down, StreamKind},
+    run::TaggedRun,
 };
 use afd_db::{Db, test_util::TestDatabase};
 use afr_supervisor::test_util::Session;
@@ -16,7 +16,7 @@ use std::{collections::BTreeSet, time::Duration};
 
 type Proof<T = ()> = af_stream::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-struct Lease {
+struct Run {
     id: Uuid7,
     event: Uuid7,
     fence: u64,
@@ -26,26 +26,27 @@ struct Case {
     supervisor: Supervisor,
     database: TestDatabase,
     owner: Db,
-    run: Scenario,
+    scene: Scenario,
     siblings: [(Uuid7, Uuid7); 2],
-    held: [Lease; 3],
+    held: [Run; 3],
 }
 
 impl Case {
     async fn open() -> Proof<Self> {
         let mut supervisor = Supervisor::new();
-        let (database, owner, mut run) = isolation::open(&mut supervisor, &[]).await;
+        let (database, owner, mut scene) = isolation::open(&mut supervisor, &[]).await;
         let siblings = [
-            population::sibling(&run, "Pull request review").await,
-            population::sibling(&run, "Release review").await,
+            population::sibling(&scene, "Pull request review").await,
+            population::sibling(&scene, "Release review").await,
         ];
         sqlx::query("UPDATE runner.runners SET worker_count=$2 WHERE id=$1")
-            .bind(&run.runner_id)
+            .bind(&scene.runner_id)
             .bind(3_i32)
-            .execute(&mut *run.booted.database.acquire().await?)
+            .execute(&mut *scene.booted.database.acquire().await?)
             .await?;
-        let held = acquire(&run).await?;
-        run.native
+        let held = acquire(&scene).await?;
+        scene
+            .native
             .get_mut()
             .ok_or("the original session was not opened")?
             .close()
@@ -54,34 +55,34 @@ impl Case {
             supervisor,
             database,
             owner,
-            run,
+            scene,
             siblings,
             held,
         })
     }
 
-    fn lease(&self, event: &Uuid7) -> Proof<&Lease> {
+    fn run(&self, event: &Uuid7) -> Proof<&Run> {
         self.held
             .iter()
-            .find(|lease| &lease.event == event)
+            .find(|run| &run.event == event)
             .ok_or_else(|| "the expected event was not offered".into())
     }
 
     async fn close(self) {
         self.supervisor.shutdown().await;
         for (fleet, _) in &self.siblings {
-            crate::e2e_retire::retire_fleet(&self.run.booted, fleet).await;
+            crate::e2e_retire::retire_fleet(&self.scene.booted, fleet).await;
         }
-        self.run.cleanup().await;
+        self.scene.cleanup().await;
         self.owner.close().await;
         self.database.cleanup().await;
     }
 }
 
-async fn acquire(run: &Scenario) -> Proof<[Lease; 3]> {
-    let session = run.native_session().await;
+async fn acquire(scene: &Scenario) -> Proof<[Run; 3]> {
+    let session = scene.native_session().await;
     session.capacity(3);
-    wire::heartbeat(run, &wire::capable_beat()).await;
+    wire::heartbeat(scene, &wire::capable_beat()).await;
     Ok([
         offered(session).await?,
         offered(session).await?,
@@ -89,19 +90,19 @@ async fn acquire(run: &Scenario) -> Proof<[Lease; 3]> {
     ])
 }
 
-async fn offered(session: &Session) -> Proof<Lease> {
+async fn offered(session: &Session) -> Proof<Run> {
     let frame = tokio::time::timeout(Duration::from_secs(5), session.offer()).await??;
     let message: Down<'_> = frame.decode()?;
     let Down::Offer {
-        lease: TaggedLease::Fleet(lease),
+        run: TaggedRun::Fleet(run),
     } = message
     else {
         return Err("the native offer was not fleet work".into());
     };
-    Ok(Lease {
-        id: Uuid7::parse(&lease.lease_id)?,
-        event: Uuid7::parse(&lease.event.event_id)?,
-        fence: lease.fencing_token,
+    Ok(Run {
+        id: Uuid7::parse(&run.run_id)?,
+        event: Uuid7::parse(&run.event.event_id)?,
+        fence: run.fencing_token,
     })
 }
 
@@ -117,18 +118,18 @@ async fn opening_reconciles_retained_missing_and_cancelled_work_without_reofferi
 
 async fn reconcile(transport: Transport) -> Proof {
     let case = Case::open().await?;
-    let listed = case.lease(&case.run.event_id)?;
+    let listed = case.run(&case.scene.event_id)?;
     let [(omitted_fleet, omitted_event), (_, marked_event)] = &case.siblings;
-    let omitted = case.lease(omitted_event)?;
-    let marked = case.lease(marked_event)?;
-    sqlx::query("UPDATE runner.leases SET cancel_requested_at=statement_timestamp() WHERE id=$1")
+    let omitted = case.run(omitted_event)?;
+    let marked = case.run(marked_event)?;
+    sqlx::query("UPDATE runner.runs SET cancel_requested_at=statement_timestamp() WHERE id=$1")
         .bind(&marked.id)
-        .execute(&mut *case.run.booted.database.acquire().await?)
+        .execute(&mut *case.scene.booted.database.acquire().await?)
         .await?;
     let missing = afd_db::test_util::mint_id();
     let mut current = Native::connect_running(
-        case.run.booted.runner_stream_address,
-        &case.run.token,
+        case.scene.booted.runner_stream_address,
+        &case.scene.token,
         transport,
         &[listed.id.clone(), missing.clone(), marked.id.clone()],
     )
@@ -140,17 +141,17 @@ async fn reconcile(transport: Transport) -> Proof {
         .await
         .is_ok()
     {
-        return Err("an omitted live lease cannot be offered before its expiry".into());
+        return Err("an omitted live run cannot be offered before its expiry".into());
     }
-    expire(&case.run, omitted_fleet, &omitted.id).await?;
-    let bus = case.run.booted.bus.clone();
+    expire(&case.scene, omitted_fleet, &omitted.id).await?;
+    let bus = case.scene.booted.bus.clone();
     afd_bus::wake::publish(&bus, omitted_fleet.clone()).await;
     let offered = current.expect(StreamKind::Work, "offer").await;
     assert_eq!(
-        wire::pointer(&offered, "/lease/event/event_id"),
+        wire::pointer(&offered, "/run/event/event_id"),
         omitted_event.as_str()
     );
-    let (replacement, fence) = wire::claim(wire::pointer(&offered, "/lease"));
+    let (replacement, fence) = wire::claim(wire::pointer(&offered, "/run"));
     assert_ne!(replacement, omitted.id.as_str());
     assert!(fence > omitted.fence);
     current.close().await;
@@ -164,7 +165,7 @@ fn assert_cancelled(native: &Native, missing: &Uuid7, marked: &Uuid7) {
         .iter()
         .map(|frame| {
             frame
-                .get("lease_id")
+                .get("run_id")
                 .and_then(serde_json::Value::as_str)
                 .zip(frame.get("error_code").and_then(serde_json::Value::as_str))
         })
@@ -172,30 +173,30 @@ fn assert_cancelled(native: &Native, missing: &Uuid7, marked: &Uuid7) {
     assert_eq!(
         cancelled,
         BTreeSet::from([
-            Some((missing.as_str(), error_code::RUN_LEASE_LOST.as_str())),
-            Some((marked.as_str(), error_code::RUN_LEASE_CANCELLED.as_str()))
+            Some((missing.as_str(), error_code::RUN_LOST.as_str())),
+            Some((marked.as_str(), error_code::RUN_CANCELLED.as_str()))
         ])
     );
 }
 
-async fn assert_retained_renews(native: &mut Native, lease: &Uuid7) {
+async fn assert_retained_renews(native: &mut Native, run: &Uuid7) {
     native
         .send(
             StreamKind::Control,
             &json!({"type":"renew_batch", "request_id":7,
-        "leases":[{"lease_id":lease,"request":{"requests":[]}}]}),
+        "runs":[{"run_id":run,"request":{"requests":[]}}]}),
         )
         .await;
     let reply = native.expect(StreamKind::Control, "renewed").await;
-    assert_eq!(wire::pointer(&reply, "/leases/0/lease_id"), lease.as_str());
-    assert_eq!(wire::pointer(&reply, "/leases/0/answer/status"), "ok");
+    assert_eq!(wire::pointer(&reply, "/runs/0/run_id"), run.as_str());
+    assert_eq!(wire::pointer(&reply, "/runs/0/answer/status"), "ok");
 }
 
-async fn expire(run: &Scenario, fleet: &Uuid7, lease: &Uuid7) -> Proof {
-    let mut connection = run.booted.database.acquire().await?;
-    sqlx::query("UPDATE runner.leases SET lease_expires_at=statement_timestamp()-interval '1 second' WHERE id=$1")
-        .bind(lease).execute(&mut *connection).await?;
-    sqlx::query("UPDATE runner.slots SET lease_expires_at=statement_timestamp()-interval '1 second' WHERE fleet_id=$1")
+async fn expire(scene: &Scenario, fleet: &Uuid7, run: &Uuid7) -> Proof {
+    let mut connection = scene.booted.database.acquire().await?;
+    sqlx::query("UPDATE runner.runs SET run_expires_at=statement_timestamp()-interval '1 second' WHERE id=$1")
+        .bind(run).execute(&mut *connection).await?;
+    sqlx::query("UPDATE runner.slots SET run_expires_at=statement_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(fleet).execute(&mut *connection).await?;
     Ok(())
 }

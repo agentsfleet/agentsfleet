@@ -1,5 +1,5 @@
 //! The delegating fleet, end to end: installed from the corpus into a real
-//! daemon, leased by the Rust runner's real loop, its model a script, its two
+//! daemon, held by the Rust runner's real loop, its model a script, its two
 //! children reading the checked-out repository through the executor, and
 //! every call of the run, the children's included, in the one trace the
 //! daemon stores under one counter.
@@ -101,13 +101,13 @@ fn row(call: &Value) -> (String, String, String) {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_delegating_definition_roundtrip() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, FLEET, &[], None).await;
+    let scene = install_definition(&mut supervisor, FLEET, &[], None).await;
     let origins = tempfile::tempdir().expect("an origin directory");
     let origin = greeter_origin(origins.path());
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, transcript) = FakeModel::deciding(triager);
 
-    let settled = run_event_from(&run, &run.event_id, &upstream, model, Some(origin)).await;
+    let settled = run_event_from(&scene, &scene.event_id, &upstream, model, Some(origin)).await;
 
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
@@ -143,7 +143,7 @@ async fn test_delegating_definition_roundtrip() {
         "the child read the workspace through the executor: {reads:#?}"
     );
 
-    let trace = stored_trace(&run)
+    let trace = stored_trace(&scene)
         .await
         .expect("the report carried a trace");
     let rows: Vec<(String, String, String)> = trace["calls"]
@@ -167,5 +167,5 @@ async fn test_delegating_definition_roundtrip() {
     assert_eq!(trace["omitted_call_count"], 0, "{trace}");
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

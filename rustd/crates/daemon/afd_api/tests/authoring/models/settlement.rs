@@ -10,8 +10,8 @@ use serde_json::{Value, json};
 async fn runner_renews_and_accounts_after_creator_deletes_private_text() {
     let model = Model::create().await;
     let r = &model.running;
-    let renew = crate::harness::native::Operation::Renew(r.lease.clone());
-    let reports = crate::harness::native::Operation::Report(r.lease.clone());
+    let renew = crate::harness::native::Operation::Renew(r.run.clone());
+    let reports = crate::harness::native::Operation::Report(r.run.clone());
     let usage = json!({"knowledge":"known","calls":0,"input_tokens":0,"output_tokens":0,"runtime_ms":0,"provider_cost_nanos":"0"});
     let input = json!({"fence":"1","usage":usage});
     let extended =
@@ -58,11 +58,11 @@ async fn renewal_and_report_refuse_person_identity_and_accounting_text() {
     let report = json!({"kind":"accounting","fence":"1","report_id":mint(),"outcome":"completed","usage":usage});
     for (operation, body) in [
         (
-            crate::harness::native::Operation::Renew(r.lease.clone()),
+            crate::harness::native::Operation::Renew(r.run.clone()),
             renew,
         ),
         (
-            crate::harness::native::Operation::Report(r.lease.clone()),
+            crate::harness::native::Operation::Report(r.run.clone()),
             report.clone(),
         ),
     ] {
@@ -82,7 +82,7 @@ async fn renewal_and_report_refuse_person_identity_and_accounting_text() {
         .insert("answer".into(), json!("private"));
     crate::harness::native::assert_closed(
         &r.router,
-        &crate::harness::native::Operation::Report(r.lease.clone()),
+        &crate::harness::native::Operation::Report(r.run.clone()),
         Some(&r.token),
         &forged.to_string(),
     )

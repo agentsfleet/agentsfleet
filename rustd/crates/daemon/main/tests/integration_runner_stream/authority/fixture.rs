@@ -17,7 +17,7 @@ use std::sync::Arc;
 use super::super::raw::Native;
 
 pub(super) struct Fixture {
-    pub(super) run: Scenario,
+    pub(super) scene: Scenario,
     pub(super) peer: Booted,
     pub(super) bus: Handle,
     pub(super) operator: Operator,
@@ -30,8 +30,8 @@ impl Fixture {
     pub(super) async fn start() -> TestResult<Self> {
         let operator = Operator::start().await?;
         let mut primary = Supervisor::new();
-        let run = e2e::scenario_with_provider(&mut primary, Some(&operator.provider)).await;
-        operator.seed(&run).await?;
+        let scene = e2e::scenario_with_provider(&mut primary, Some(&operator.provider)).await;
+        operator.seed(&scene).await?;
         let mut replica = Supervisor::new();
         let environment = e2e::daemon_environment(
             &e2e::lane(e2e::DATABASE_LANE_KNOB),
@@ -39,9 +39,9 @@ impl Fixture {
             &[],
         );
         let peer = boot(&environment, e2e::EPHEMERAL, &mut replica).await?;
-        let bus = run.booted.bus.clone();
+        let bus = scene.booted.bus.clone();
         let mut fixture = Self {
-            run,
+            scene,
             peer,
             bus,
             operator,
@@ -69,33 +69,39 @@ impl Fixture {
             .creations(self.bus.clone())?
             .materialise(
                 SystemSetup {
-                    workspace: &self.run.workspace,
+                    workspace: &self.scene.workspace,
                     definition: &definition,
                 },
                 clock::now(),
             )
             .await?;
-        crate::e2e_retire::retire_fleet(&self.run.booted, &self.run.fleet).await;
-        self.run.fleet = fleet;
-        let registered = afd_runner::Runners::new(self.run.booted.database.clone(), Entropy::new())
-            .register(
-                &crate::e2e_seed::scenario_enrolment(&self.run.fleet),
-                "fixture:platform-operator",
-                clock::now(),
-            )
-            .await?;
-        self.run.runner_id = registered.runner_id;
-        registered.token.expose().clone_into(&mut self.run.token);
-        self.run.event_id = self.run.enqueue_event(e2e::EVENT_TYPE).await;
+        crate::e2e_retire::retire_fleet(&self.scene.booted, &self.scene.fleet).await;
+        self.scene.fleet = fleet;
+        let registered =
+            afd_runner::Runners::new(self.scene.booted.database.clone(), Entropy::new())
+                .register(
+                    &crate::e2e_seed::scenario_enrolment(&self.scene.fleet),
+                    "fixture:platform-operator",
+                    clock::now(),
+                )
+                .await?;
+        self.scene.runner_id = registered.runner_id;
+        registered.token.expose().clone_into(&mut self.scene.token);
+        self.scene.event_id = self.scene.enqueue_event(e2e::EVENT_TYPE).await;
         Ok(())
     }
 
     pub(super) async fn native(&self, transport: Transport) -> Native {
-        Native::connect_at(self.peer.runner_stream_address, &self.run.token, transport).await
+        Native::connect_at(
+            self.peer.runner_stream_address,
+            &self.scene.token,
+            transport,
+        )
+        .await
     }
 
     pub(super) fn creations(&self, bus: Handle) -> TestResult<Creations> {
-        let database = self.run.booted.database.clone();
+        let database = self.scene.booted.database.clone();
         let drafts = Drafts::new(
             database.clone(),
             Entropy::new(),
@@ -111,7 +117,7 @@ impl Fixture {
     }
 
     pub(super) async fn sibling(&mut self, name: &str) -> (af_core::id::Uuid7, af_core::id::Uuid7) {
-        let sibling = super::super::population::sibling(&self.run, name).await;
+        let sibling = super::super::population::sibling(&self.scene, name).await;
         self.siblings.push(sibling.0.clone());
         sibling
     }
@@ -120,11 +126,11 @@ impl Fixture {
         self.replica.shutdown().await;
         self.primary.shutdown().await;
         for sibling in &self.siblings {
-            crate::e2e_retire::retire_fleet(&self.run.booted, sibling).await;
+            crate::e2e_retire::retire_fleet(&self.scene.booted, sibling).await;
         }
-        self.operator.finish(&self.run).await?;
+        self.operator.finish(&self.scene).await?;
         drop(self.peer);
-        self.run.cleanup().await;
+        self.scene.cleanup().await;
         Ok(())
     }
 }

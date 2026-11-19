@@ -21,7 +21,7 @@ pub const STATUS_APPROVED: &str = afd_api_wire::grant::status::APPROVED;
 
 /// Every integration `fleet_id` may mint against, in one read.
 ///
-/// ONE batch read per lease rather than one per declared credential: a fleet
+/// ONE batch read per run rather than one per declared credential: a fleet
 /// declaring six credentials would otherwise pay six round trips to answer a
 /// question the whole set shares.
 ///

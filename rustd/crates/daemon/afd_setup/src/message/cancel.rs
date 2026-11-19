@@ -69,11 +69,11 @@ impl Drafts {
                 .await
                 .map_err(query(CONTEXT))?;
         }
-        // A draft lease running a message this Stop finished is killed with it.
-        let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_lease::CANCEL_LEASES)
+        // A draft run running a message this Stop finished is killed with it.
+        let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_run::CANCEL_RUNS)
             .bind(id)
             .bind(cutoff)
-            .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
+            .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

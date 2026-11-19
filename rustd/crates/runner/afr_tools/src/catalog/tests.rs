@@ -174,7 +174,7 @@ fn an_entry_reads_back_the_name_and_runtime_it_was_built_with() {
     assert_eq!(entry.runtime(), Runtime::Sandbox);
 }
 
-/// The schedule and message tools are hosted, so a lease naming any of them
+/// The schedule and message tools are hosted, so a run naming any of them
 /// runs rather than being refused; none needs a sandbox.
 #[test]
 fn the_hosted_catalog_offers_every_schedule_and_message_tool() {
@@ -232,7 +232,7 @@ fn a_selection_without_entries_keeps_the_rest() {
 }
 
 /// Every published entry a handler serves is hosted, so a policy naming any
-/// of them is admitted; one left out of `hosted` would refuse every lease
+/// of them is admitted; one left out of `hosted` would refuse every run
 /// naming it at admission, which is how a tool goes dark.
 #[test]
 fn every_published_handler_entry_is_hosted() {
@@ -261,7 +261,7 @@ fn every_published_handler_entry_is_hosted() {
     );
 }
 
-/// The two fleet tools are offered only to a lease whose
+/// The two fleet tools are offered only to a run whose
 /// policy names them, and both are hosted here.
 #[test]
 fn fleet_tools_are_offered_only_when_declared() {

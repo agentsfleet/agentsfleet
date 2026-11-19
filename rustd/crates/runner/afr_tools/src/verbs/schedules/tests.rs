@@ -11,7 +11,9 @@ use super::{CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate};
 use crate::generic::Generic;
 use crate::handler::Typed;
 use crate::runtime::{CatalogTool, ToolErrorCode};
-use crate::testing::{Asked, MINTED, OwnedCall, RecordingVerbs, Run, call, lease_with, replying};
+use crate::testing::{
+    Asked, MINTED, OwnedCall, RecordingVerbs, RunFixture, call, replying, run_with,
+};
 use crate::verbs::Unanswered;
 use guffbolt::tools::web::HttpRequest;
 
@@ -24,8 +26,8 @@ const ANSWER: &str = r#"{"schedule_id":"0199a0b0-0000-7000-8000-0000000000aa"}"#
 /// Calls `tool` with `arguments` and answers what it asked and returned.
 async fn asked(tool: Box<CatalogTool>, arguments: serde_json::Value) -> (Vec<Asked>, String) {
     let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
-    let lease = lease_with(&verbs);
-    let output = call(tool.as_ref(), &lease, arguments).await;
+    let run = run_with(&verbs);
+    let output = call(tool.as_ref(), &run, arguments).await;
     (verbs.asked(), output.text)
 }
 
@@ -102,21 +104,21 @@ async fn test_cron_tools_map_onto_the_verb() {
     );
 }
 
-/// A token the lease minted never rides a schedule's message out of the
+/// A token the run minted never rides a schedule's message out of the
 /// runner: the message is the prompt a later run reads, and it is stored and
 /// handed to the scheduler.
 #[tokio::test]
 async fn a_minted_token_is_masked_out_of_a_schedule_message() {
-    let run = Run::new(false);
+    let run = RunFixture::new(false);
     let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
-    let lease = run.lease_reaching(&verbs);
+    let run = run.run_reaching(&verbs);
     let (minting, _sent) = replying(200, "ok");
     let read = json!({
         "url": "https://api.github.com/repos/acme/widgets/",
         "headers": {"Authorization": "Bearer ${secrets.github.token}"},
     });
     let request = Generic::sending(HttpRequest, minting);
-    assert_eq!(call(request.as_ref(), &lease, read).await.error_code, None);
+    assert_eq!(call(request.as_ref(), &run, read).await.error_code, None);
 
     let leaky = format!("retry with {MINTED}");
     for (tool, arguments) in [
@@ -129,7 +131,7 @@ async fn a_minted_token_is_masked_out_of_a_schedule_message() {
             json!({"schedule_id": SCHEDULE, "message": leaky}),
         ),
     ] {
-        let output = call(tool.as_ref(), &lease, arguments).await;
+        let output = call(tool.as_ref(), &run, arguments).await;
         assert_eq!(output.error_code, None, "{}", output.text);
     }
     let messages: Vec<String> = verbs
@@ -159,13 +161,8 @@ async fn a_schedule_id_that_is_not_one_never_leaves() {
         Typed::boxed(CronRuns),
     ] {
         let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
-        let lease = lease_with(&verbs);
-        let output = call(
-            tool.as_ref(),
-            &lease,
-            json!({"schedule_id": "../../memory"}),
-        )
-        .await;
+        let run = run_with(&verbs);
+        let output = call(tool.as_ref(), &run, json!({"schedule_id": "../../memory"})).await;
         assert_eq!(
             output.error_code,
             Some(ToolErrorCode::InvalidArguments.into())
@@ -184,10 +181,10 @@ async fn a_refusal_reaches_the_model_with_its_code() {
         ))),
         Ok(true),
     );
-    let lease = lease_with(&verbs);
+    let run = run_with(&verbs);
     let output = call(
         Typed::boxed(CronRemove).as_ref(),
-        &lease,
+        &run,
         json!({"schedule_id": SCHEDULE}),
     )
     .await;
@@ -199,7 +196,7 @@ async fn a_refusal_reaches_the_model_with_its_code() {
 }
 
 /// An argument the schema does not name refuses the call; the fleet is the
-/// lease's, so naming one is not a way in.
+/// run's, so naming one is not a way in.
 #[tokio::test]
 async fn naming_a_fleet_refuses_the_call() {
     let (asked, _text) = asked(

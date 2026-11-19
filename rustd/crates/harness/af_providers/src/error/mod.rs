@@ -319,7 +319,7 @@ impl Error {
         }
     }
 
-    /// The provider a refused lease named, for its log line.
+    /// The provider a refused run named, for its log line.
     #[must_use]
     pub fn unhosted_provider(&self) -> Option<&str> {
         match self.kind() {

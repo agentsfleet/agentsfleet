@@ -3,7 +3,7 @@
 use super::Loop;
 use crate::{
     engine::{AgentEngine, AgentRun, Meter, RunOutput},
-    fixture::{Frames, Script, call, lease, say, unbounded},
+    fixture::{Frames, Script, call, payload, say, unbounded},
     testing::Discard,
 };
 use af_egress::testing::{CountingMint, RecordingTransport};
@@ -42,7 +42,7 @@ async fn test_memory_tools_round_trip_through_push() -> Checked {
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let names = [MEMORY_STORE, MEMORY_RECALL, MEMORY_FORGET, MEMORY_LIST].map(|entry| entry.name());
-    let lease = lease(&names, unbounded());
+    let run = payload(&names, unbounded());
     let frames = Frames::default();
     let sink = frames.sink();
 
@@ -52,7 +52,7 @@ async fn test_memory_tools_round_trip_through_push() -> Checked {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::window(&hydrated),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,

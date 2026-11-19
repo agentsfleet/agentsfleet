@@ -5,12 +5,12 @@
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-use af_wire::lease::LeasePayload;
 use af_wire::paths::{RUNNER_CREDENTIALS_MINT, RUNNER_STREAM, SCHEDULE_RUNS_SUFFIX};
 use af_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_wire::run::RunPayload;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use af_wire::schedule_verb::ScheduleRun;
-use afr_supervisor::test_util::{FENCING, FLEET_ID, Healthy, LEASE_ID, LEASE_JSON};
+use afr_supervisor::test_util::{FENCING, FLEET_ID, Healthy, RUN_ID, RUN_JSON};
 use axum::extract::State;
 use axum::http::{Method, StatusCode, Uri};
 use axum::{Json, Router};
@@ -26,7 +26,7 @@ pub(crate) const GRAFANA: &str = "grafana.example.test";
 pub(crate) const SCHEDULE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 pub(crate) const SCHEDULE_EVENT_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
 const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
-/// How long the fixture grants a lease and a minted credential for.
+/// How long the fixture grants a run and a minted credential for.
 const GRANTED_FOR: Duration = Duration::from_secs(60);
 pub(crate) const PROVIDER_TOKEN: &str = "provider-fixture-credential";
 pub(crate) const RUNNER_TOKEN: &str = "agt_r_kernel_fixture";
@@ -83,7 +83,7 @@ impl Server {
         let completed = Arc::clone(&reported);
         let native = afr_supervisor::test_util::NativeDaemon::serve(
             healthy.clone(),
-            lease(tools, repository, granted_until, recovery.as_ref())?,
+            run(tools, repository, granted_until, recovery.as_ref())?,
             move |frame| {
                 let sent = sent.clone();
                 let completed = Arc::clone(&completed);
@@ -187,44 +187,43 @@ fn response(plane: &Plane, method: &Method, path: &str) -> Value {
     }
 }
 
-fn lease(
+fn run(
     tools: &[&str],
     repository: bool,
     expires: jiff::Timestamp,
     recovery: Option<&crate::supervisor_recovery::Config>,
 ) -> Result<Value, Failed> {
-    let mut lease: LeasePayload<'_> = serde_json::from_str(LEASE_JSON)?;
-    lease.lease_id = LEASE_ID.into();
-    lease.lease_expires_at = expires;
-    lease.fencing_token = FENCING;
-    lease.event.fleet_id = FLEET_ID.into();
-    lease.event.workspace_id = WORKSPACE_ID.into();
-    lease.event.actor = "steer:user".into();
-    lease.event.request_json = json!({ "message": STEER }).to_string().into();
-    lease.instructions = INSTRUCTIONS.into();
-    lease.policy.tools = tools.iter().map(|name| (*name).to_owned().into()).collect();
-    lease.policy.context.tool_window = 32;
-    lease.policy.context.context_cap_tokens = 65_536;
-    lease.policy.model_context_tokens = lease.policy.context.context_cap_tokens;
-    if let Some(inference) = &mut lease.policy.inference {
+    let mut run: RunPayload<'_> = serde_json::from_str(RUN_JSON)?;
+    run.run_id = RUN_ID.into();
+    run.run_expires_at = expires;
+    run.fencing_token = FENCING;
+    run.event.fleet_id = FLEET_ID.into();
+    run.event.workspace_id = WORKSPACE_ID.into();
+    run.event.actor = "steer:user".into();
+    run.event.request_json = json!({ "message": STEER }).to_string().into();
+    run.instructions = INSTRUCTIONS.into();
+    run.policy.tools = tools.iter().map(|name| (*name).to_owned().into()).collect();
+    run.policy.context.tool_window = 32;
+    run.policy.context.context_cap_tokens = 65_536;
+    run.policy.model_context_tokens = run.policy.context.context_cap_tokens;
+    if let Some(inference) = &mut run.policy.inference {
         inference.max_output_tokens = MODEL_OUTPUT_TOKENS;
     }
-    lease.policy.api_key = PROVIDER_TOKEN.into();
-    lease.policy.network_policy.allow = vec![GRAFANA.into(), "other.example.test".into()];
-    lease.policy.secrets_map = Some(json!({ "grafana": { "host": GRAFANA, "token": TOKEN } }));
+    run.policy.api_key = PROVIDER_TOKEN.into();
+    run.policy.network_policy.allow = vec![GRAFANA.into(), "other.example.test".into()];
+    run.policy.secrets_map = Some(json!({ "grafana": { "host": GRAFANA, "token": TOKEN } }));
     if repository {
-        lease.policy.repository_binding = Some(RepositoryBinding {
+        run.policy.repository_binding = Some(RepositoryBinding {
             repositories: vec!["acme/widget".into()],
             access: RepositoryAccess::Write,
             base_branch: "main".into(),
         });
     }
     if recovery.is_some() {
-        crate::supervisor_recovery::Config::configure(&mut lease)?;
+        crate::supervisor_recovery::Config::configure(&mut run)?;
     }
-    // Offers use the daemon's tagged lease encoding.
-    Ok(serde_json::to_value(af_wire::lease::TaggedLease::<
-        '_,
-        Value,
-    >::Fleet(Box::new(lease)))?)
+    // Offers use the daemon's tagged run encoding.
+    Ok(serde_json::to_value(
+        af_wire::run::TaggedRun::<'_, Value>::Fleet(Box::new(run)),
+    )?)
 }

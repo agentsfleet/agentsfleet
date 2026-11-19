@@ -1,4 +1,4 @@
-//! Fenced plans, immutable object custody and bounded recovery on existing leases.
+//! Fenced plans, immutable object custody and bounded recovery on existing runs.
 
 mod commit;
 mod effective;

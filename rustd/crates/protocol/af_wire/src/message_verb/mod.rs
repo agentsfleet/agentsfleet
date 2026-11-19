@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// interim line is a status, never the answer, so it is held to that.
 pub const MESSAGE_MAX_BYTES: usize = 4096;
 
-/// The most messages one lease may post before it answers.
+/// The most messages one run may post before it answers.
 ///
 /// A run that needs more than this to say what it is doing is looping, or is
 /// being steered by what it read; the thread is a person's, and it is not
@@ -34,12 +34,12 @@ pub const MESSAGES_PER_RUN_MAX: u32 = 8;
 /// The runner pins that ordering at compile time.
 pub const MESSAGE_DELIVERY_DEADLINE: Duration = Duration::from_secs(12);
 
-/// `POST /v1/runners/me/leases/{lease_id}/messages` request.
+/// `POST /v1/runners/me/runs/{run_id}/messages` request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct MessageRequest<'a> {
-    /// The lease's fencing token; a holder the fleet has superseded is refused.
+    /// The run's fencing token; a holder the fleet has superseded is refused.
     #[garde(skip)]
     pub fencing_token: u64,
     /// What to say in the thread. At most 4096 bytes.

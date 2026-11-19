@@ -3,7 +3,7 @@ use super::{CONTEXT, ModelCallInput, ModelCalls, budget, capability, prepare};
 use crate::{
     Result,
     error::{ErrorKind, raise::query},
-    lease::guard,
+    run::guard,
 };
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
@@ -24,7 +24,7 @@ impl ModelCalls {
     pub(super) async fn funding(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
     ) -> Result<Option<Funding>> {
@@ -33,7 +33,7 @@ impl ModelCalls {
             let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
             let guarded = self
                 .drafts
-                .invocation(&mut tx, runner, lease, counters)
+                .invocation(&mut tx, runner, run, counters)
                 .await?;
             capability::check(&guarded.attempt, request)?;
             guarded.attempt.policy.admit_call(request.call_index)?;

@@ -1,14 +1,14 @@
 //! Production interpretation prepares remote targets outside the native bind transaction.
 
-use super::{PreparedPlan, TaskLease, TaskRefusal, Tasks, admit, decision, guard, transaction};
-use crate::{Result, lease::Leases};
+use super::{PreparedPlan, TaskRefusal, TaskRun, Tasks, admit, decision, guard, transaction};
+use crate::{Result, run::Runs};
 use af_wire::task::{TaskBindingsInput, TaskBindingsResponse, TaskItemBinding};
 
 mod preparation;
 
 pub(super) async fn accept(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskBindingsInput>,
 ) -> Result<TaskBindingsResponse<'static>> {
     let digest = af_core::etag::sha256_hex(
@@ -24,10 +24,10 @@ pub(super) async fn accept(
         items: Vec::new(),
         authorization: Some((**input).clone()),
     };
-    if let Some(accepted) = admit::existing(tasks, lease, &plan).await? {
+    if let Some(accepted) = admit::existing(tasks, run, &plan).await? {
         return Ok(response(accepted));
     }
-    let (config, message) = source(tasks, lease, &plan).await?;
+    let (config, message) = source(tasks, run, &plan).await?;
     let policy = config
         .decision_policy()
         .ok_or(TaskRefusal::DecisionUnavailable)?;
@@ -36,25 +36,25 @@ pub(super) async fn accept(
         .policy
         .interpretation(input, &message, policy)?;
     let questions = decision::compile::completion(policy)?;
-    plan.items = preparation::prepare(tasks, lease, input, objectives, &config, &questions).await?;
-    Ok(response(admit::bind(tasks, lease, &plan).await?))
+    plan.items = preparation::prepare(tasks, run, input, objectives, &config, &questions).await?;
+    Ok(response(admit::bind(tasks, run, &plan).await?))
 }
 
 async fn source(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     plan: &PreparedPlan,
 ) -> Result<(af_fleet_runtime::FleetConfig, String)> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
-    let source = admit::source::lock(&mut tx, lease, &current, plan).await?;
+    let current = guard::run(&mut tx, run).await?;
+    let source = admit::source::lock(&mut tx, run, &current, plan).await?;
     admit::source::check_human(&source)?;
     if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
         return Err(TaskRefusal::StaleState.into());
     }
     let config =
-        Leases::stored_config_on(&mut tx, &current.fleet_id, Some(&plan.accepted_revision_id))
+        Runs::stored_config_on(&mut tx, &current.fleet_id, Some(&plan.accepted_revision_id))
             .await?
             .ok_or(TaskRefusal::InvalidTarget)?;
     let message = source.message()?.into_owned();

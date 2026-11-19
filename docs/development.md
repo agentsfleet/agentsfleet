@@ -52,7 +52,7 @@ Mailpit shares its inbox, so use distinct development recipients and avoid delet
 
 ### Runner on the existing Linux host
 
-Compile `agentsfleet-runner`, the host process that leases work and runs it in a sandbox, from the matching checkout on the existing Linux host.
+Compile `agentsfleet-runner`, the host process that runs work and runs it in a sandbox, from the matching checkout on the existing Linux host.
 Register that runner against this worktree's daemon using the existing runner registration workflow.
 Keep its returned `AGENTSFLEET_RUNNER_TOKEN` private and separate from tokens for other worktrees.
 
@@ -400,11 +400,11 @@ The lane starts the production `afr_sandbox::BubblewrapEngine` with the built to
 It exercises confinement, filesystem and resource limits, network policies, tool execution, warm starts, freeze/resume and cleanup.
 Unit and service integration tests cover additional runner logic.
 
-Caller tests start with a lease carrying a steer and instructions, then drive the real supervisor, agent loop and tool catalog.
+Caller tests start with a run carrying a steer and instructions, then drive the real supervisor, agent loop and tool catalog.
 They verify workspace edits and local Git commits inside bubblewrap.
 They also verify memory, schedules, thread messages and guarded HTTPS reads through the supervisor.
 
-These cases receive an admitted lease; they do not test the steer API or how a lease loads a fleet's saved instructions.
+These cases receive an admitted run; they do not test the steer API or how a run loads a fleet's saved instructions.
 
 The model, daemon and upstream endpoints are fakes shared with existing tests.
 The service integration lane checks daemon storage and Slack delivery.

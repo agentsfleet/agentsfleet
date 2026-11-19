@@ -55,13 +55,13 @@ fn should_count_unpriced_tokens_under_their_model() {
 fn should_count_each_funds_check_under_its_answer() {
     let capture = Capture::install();
     let series = [
-        (semconv::LABEL_WORK_TYPE, WorkType::FleetLease.as_str()),
+        (semconv::LABEL_WORK_TYPE, WorkType::FleetRun.as_str()),
         (semconv::LABEL_OUTCOME, FundsOutcome::Short.as_str()),
     ];
     let family = BILLING_FUNDS_CHECK_TOTAL.wire_name();
     let before = capture.sum(family, &series);
 
-    billing::funds_checked(WorkType::FleetLease, FundsOutcome::Short);
+    billing::funds_checked(WorkType::FleetRun, FundsOutcome::Short);
 
     assert_eq!(capture.sum(family, &series), before + 1);
 }
@@ -92,7 +92,7 @@ fn should_count_only_the_settlement_groups_a_sweep_settled() {
 #[test]
 fn should_withdraw_what_is_owed_when_the_read_fails() {
     let capture = Capture::install();
-    let fleet = [(semconv::LABEL_WORK_TYPE, WorkType::FleetLease.as_str())];
+    let fleet = [(semconv::LABEL_WORK_TYPE, WorkType::FleetRun.as_str())];
     let attempt = [(
         semconv::LABEL_WORK_TYPE,
         WorkType::AuthoringAttempt.as_str(),

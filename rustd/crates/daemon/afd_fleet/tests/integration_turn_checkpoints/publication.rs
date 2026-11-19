@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use af_crypto::secret::Kek;
-use af_wire::lease::{
+use af_wire::run::{
     TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef, TurnCheckpointResponse, TurnId,
     TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
 };
-use afd_fleet::lease::turn_checkpoint::TurnCheckpoints;
+use afd_fleet::run::turn_checkpoint::TurnCheckpoints;
 use serde_json::json;
 
 use super::{Case, Checked, valid};
@@ -66,12 +66,12 @@ pub(super) async fn publish(
         },
     ))?;
     let TurnCheckpointResponse::Committed(descriptor) =
-        store.execute(&case.leases, case.lease(), &commit).await?
+        store.execute(&case.runs, case.run(), &commit).await?
     else {
         return Err("publication must acknowledge a committed generation".into());
     };
     let TurnCheckpointResponse::Committed(replay) =
-        store.execute(&case.leases, case.lease(), &commit).await?
+        store.execute(&case.runs, case.run(), &commit).await?
     else {
         return Err("lost acknowledgement must return the same committed generation".into());
     };
@@ -102,8 +102,7 @@ async fn read_and_adopt(
             descriptor: Box::new(descriptor.clone()),
         },
     ))?;
-    let TurnCheckpointResponse::Read(saved) =
-        store.execute(&case.leases, case.lease(), &read).await?
+    let TurnCheckpointResponse::Read(saved) = store.execute(&case.runs, case.run(), &read).await?
     else {
         return Err("reader must return the exact committed root".into());
     };
@@ -121,7 +120,7 @@ async fn read_and_adopt(
         },
     ))?;
     assert!(
-        matches!(store.execute(&case.leases, case.lease(), &adopt).await?, TurnCheckpointResponse::Adopted(covered) if covered.is_empty())
+        matches!(store.execute(&case.runs, case.run(), &adopt).await?, TurnCheckpointResponse::Adopted(covered) if covered.is_empty())
     );
     release_and_refuse_replayed_read(case, store, reference, read).await
 }
@@ -139,12 +138,12 @@ async fn release_and_refuse_replayed_read(
         },
     ))?;
     assert!(matches!(
-        store.execute(&case.leases, case.lease(), &release).await?,
+        store.execute(&case.runs, case.run(), &release).await?,
         TurnCheckpointResponse::PinReleased
     ));
     assert!(
         store
-            .execute(&case.leases, case.lease(), &read)
+            .execute(&case.runs, case.run(), &read)
             .await
             .is_err_and(|fault| fault.code() == af_core::error_code::RUN_CHECKPOINT_CONFLICT)
     );

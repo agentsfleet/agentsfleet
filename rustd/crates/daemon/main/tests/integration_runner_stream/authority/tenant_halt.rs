@@ -33,7 +33,7 @@ fn request() -> RegisterRequest<'static> {
 
 /// Registers a runner for `tenant` and answers its id and token.
 async fn tenant_runner(fixture: &Fixture, tenant: &Uuid7) -> TestResult<(Uuid7, String)> {
-    let runners = Runners::new(fixture.run.booted.database.clone(), Entropy::new());
+    let runners = Runners::new(fixture.scene.booted.database.clone(), Entropy::new());
     match runners
         .register_tenant(
             tenant,
@@ -67,7 +67,7 @@ async fn connected(
         .to_string_lossy()
         .into_owned();
     let config = Config::from_env(&af_core::env::MapEnv::from_pairs([
-        (ENV_API_URL, fixture.run.base.as_str()),
+        (ENV_API_URL, fixture.scene.base.as_str()),
         (ENV_RUNNER_TOKEN, token),
         (ENV_STREAM_CA, root.as_str()),
         (ENV_STREAM_URL, origin.as_str()),
@@ -87,12 +87,12 @@ async fn connected(
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn tenant_revoke_closes_its_runner_stream() -> TestResult {
     let fixture = Fixture::start().await?;
-    let (runner, token) = tenant_runner(&fixture, &fixture.run.tenant).await?;
+    let (runner, token) = tenant_runner(&fixture, &fixture.scene.tenant).await?;
     let mut session = connected(&fixture, &token).await?;
 
     fixture
         .operator
-        .tenant_runner(&fixture.run, &runner, "revoke")
+        .tenant_runner(&fixture.scene, &runner, "revoke")
         .await?;
     let stopped = tokio::time::timeout(PUSH_BOUND, session.offer()).await?;
     assert!(
@@ -105,7 +105,13 @@ async fn tenant_revoke_closes_its_runner_stream() -> TestResult {
         .err()
         .ok_or("the tenant's revoke did not halt the downlink")?;
     assert_eq!(failure.refusal_code(), Some(RUN_ADMIN_STATE_BLOCKED));
-    signals::opening_refused(&fixture.run, &token, RUN_ADMIN_STATE_BLOCKED, Transport::H2).await?;
+    signals::opening_refused(
+        &fixture.scene,
+        &token,
+        RUN_ADMIN_STATE_BLOCKED,
+        Transport::H2,
+    )
+    .await?;
     fixture.finish().await
 }
 
@@ -118,14 +124,14 @@ async fn tenant_erasure_closes_its_runner_stream() -> TestResult {
     let fixture = Fixture::start().await?;
     let erased = mint_id();
     TenantSeed::new(&erased)
-        .insert(&mut *fixture.run.booted.database.acquire().await?)
+        .insert(&mut *fixture.scene.booted.database.acquire().await?)
         .await?;
     let (_, token) = tenant_runner(&fixture, &erased).await?;
     let session = connected(&fixture, &token).await?;
 
     sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
         .bind(&erased)
-        .execute(&mut *fixture.run.booted.database.acquire().await?)
+        .execute(&mut *fixture.scene.booted.database.acquire().await?)
         .await?;
     let bytes = serde_json::to_vec(&wire::capable_beat())?;
     let beat = serde_json::from_slice(&bytes)?;
@@ -141,7 +147,7 @@ async fn tenant_erasure_closes_its_runner_stream() -> TestResult {
         "the erased runner's next beat is refused: {answer:?}"
     );
     signals::opening_refused(
-        &fixture.run,
+        &fixture.scene,
         &token,
         RUN_INVALID_RUNNER_TOKEN,
         Transport::H2,

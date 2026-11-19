@@ -31,25 +31,25 @@ const TENANT_SECRET_ROW: &str = "INSERT INTO vault.secrets \
      secret_ciphertext, secret_tag, kek_version, meta_provider, meta_has_key, created_at, updated_at) \
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, now(), now())";
 
-const LEASE_OF_EVENT: &str = "SELECT runner_id, posture FROM runner.leases WHERE event_id = $1";
+const RUN_OF_EVENT: &str = "SELECT runner_id, posture FROM runner.runs WHERE event_id = $1";
 
 /// Registers the tenant's own model with a sealed key and moves the scenario's
 /// fleet onto it.
-async fn seat_tenant_model(run: &Scenario) {
+async fn seat_tenant_model(scene: &Scenario) {
     let entry = mint_id();
     let kek = Kek::from_hex(GOOD_KEK).expect("the lane key is well formed");
     let body = format!(r#"{{"provider":"{PROVIDER}","api_key":"sk-tenant-fixture-key"}}"#);
     let sealed = Sealer::new()
         .seal(
             &kek,
-            &Aad::new(run.workspace.as_str(), TENANT_SECRET),
+            &Aad::new(scene.workspace.as_str(), TENANT_SECRET),
             body.as_bytes(),
         )
         .expect("the tenant key seals");
-    let mut connection = run.booted.database.acquire().await.expect("a connection");
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query(TENANT_SECRET_ROW)
         .bind(mint_id())
-        .bind(&run.workspace)
+        .bind(&scene.workspace)
         .bind(TENANT_SECRET)
         .bind(sealed.wrapped_dek())
         .bind(sealed.dek_nonce().as_slice())
@@ -64,29 +64,30 @@ async fn seat_tenant_model(run: &Scenario) {
         .expect("the tenant key is stored");
     sqlx::query(TENANT_MODEL_ENTRY)
         .bind(&entry)
-        .bind(&run.tenant)
+        .bind(&scene.tenant)
         .bind(MODEL)
         .bind(TENANT_SECRET)
-        .bind(&run.workspace)
+        .bind(&scene.workspace)
         .execute(&mut *connection)
         .await
         .expect("the tenant's model is registered");
     let definition = crate::e2e_native::definition(FLEET_CONFIG_JSON, FIXTURE_INSTRUCTIONS);
-    crate::e2e_native::reselect_on(&mut connection, &run.fleet, &definition, entry.as_str()).await;
+    crate::e2e_native::reselect_on(&mut connection, &scene.fleet, &definition, entry.as_str())
+        .await;
 }
 
 /// A runner the scenario's tenant registers for its fleet through
 /// `POST /v1/tenants/me/runners`, with no egress control the scripted host
 /// would have to enforce. Answers its id and token.
-async fn tenant_runner(run: &Scenario, credential: &str) -> (Uuid7, String) {
-    let mut request = scenario_enrolment(&run.fleet);
+async fn tenant_runner(scene: &Scenario, credential: &str) -> (Uuid7, String) {
+    let mut request = scenario_enrolment(&scene.fleet);
     request.host_id = Cow::Borrowed("tenant-host-e2e.fixture.test");
     request.assigned_policy.network_policy = NetworkPolicy::AllowAll;
     request.assigned_policy.registry_allowlist = Vec::new();
     let response = afd_identity::direct(Duration::from_secs(5))
         .build()
         .expect("an HTTP client")
-        .post(format!("{}/v1/tenants/me/runners", run.base))
+        .post(format!("{}/v1/tenants/me/runners", scene.base))
         .bearer_auth(credential)
         .header("Idempotency-Key", mint_id().as_str())
         .json(&request)
@@ -114,31 +115,31 @@ async fn tenant_runner(run: &Scenario, credential: &str) -> (Uuid7, String) {
 async fn tenant_runner_completes_a_tenant_model_chat() {
     let mut supervisor = Supervisor::new();
     let provider = provider_granting("runner:tenant").await;
-    let run = scenario_with_provider(&mut supervisor, Some(&provider)).await;
+    let scene = scenario_with_provider(&mut supervisor, Some(&provider)).await;
     let credential = mint_tenant_token();
-    seed_tenant_key(&run.booted, &run.tenant, &credential, run.seeded_at).await;
-    seat_tenant_model(&run).await;
-    let (runner_id, token) = tenant_runner(&run, &credential).await;
+    seed_tenant_key(&scene.booted, &scene.tenant, &credential, scene.seeded_at).await;
+    seat_tenant_model(&scene).await;
+    let (runner_id, token) = tenant_runner(&scene, &credential).await;
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = tokio_util::sync::CancellationToken::new();
     let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
         .expect("a debug build permits the unsandboxed engine");
     let runner = tokio::spawn(rust_runner(
-        &run,
+        &scene,
         &token,
         home.path(),
         (Box::new(engine), Box::new(scripted())),
         shutdown.clone(),
     ));
 
-    assert_settled(&run).await;
-    let (leased_by, posture): (Uuid7, String) = sqlx::query_as(LEASE_OF_EVENT)
-        .bind(&run.event_id)
-        .fetch_one(&mut *run.booted.database.acquire().await.expect("a connection"))
+    assert_settled(&scene).await;
+    let (rund_by, posture): (Uuid7, String) = sqlx::query_as(RUN_OF_EVENT)
+        .bind(&scene.event_id)
+        .fetch_one(&mut *scene.booted.database.acquire().await.expect("a connection"))
         .await
-        .expect("the chat's lease");
-    assert_eq!(leased_by, runner_id, "the tenant's runner ran the chat");
+        .expect("the chat's run");
+    assert_eq!(rund_by, runner_id, "the tenant's runner ran the chat");
     assert_eq!(posture, afd_billing::sql::posture::SELF_MANAGED);
 
     shutdown.cancel();
@@ -147,5 +148,5 @@ async fn tenant_runner_completes_a_tenant_model_chat() {
         .expect("the runner task joins")
         .expect("the runner stops cleanly on shutdown");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

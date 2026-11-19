@@ -15,7 +15,7 @@ async fn a_partially_full_fleet_rolls_back_the_whole_plan_and_retries_after_room
 async fn fill_capacity(case: &Case) -> TaskBindings {
     let tasks = &case.tasks;
     let first = tasks
-        .bind(case.lease(), &case.plan("first-three", 3))
+        .bind(case.run(), &case.plan("first-three", 3))
         .await
         .expect("first goals");
     for round in 1..5 {
@@ -27,7 +27,7 @@ async fn fill_capacity(case: &Case) -> TaskBindings {
             TaskLimits::default(),
         );
         let reply = tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
             .expect("more queued goals");
         assert_eq!(reply.items.len(), 3);
@@ -46,7 +46,7 @@ async fn capacity(case: &Case) {
     let with_source = case.counts().await;
     assert_eq!(with_source, (before.0, before.1, before.2 + 1));
     let refusal = tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect_err("second item exceeds the last remaining slot");
     assert_eq!(refusal.code(), error_code::TASK_LIMIT_EXHAUSTED);
@@ -75,7 +75,7 @@ async fn capacity(case: &Case) {
         .await
         .expect("release one unfinished slot");
     let retry = tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect("same complete interpretation now fits");
     assert_eq!(retry.items.len(), 2);
@@ -92,7 +92,7 @@ async fn recovered_plan(
 ) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let replay = tasks
-        .bind(case.lease(), plan)
+        .bind(case.run(), plan)
         .await
         .expect("stable replay after rollback and retry");
     assert!(replay.replayed);

@@ -1,6 +1,6 @@
 //! Accepted edits retain the model's conversational answer.
 
-use super::{ack, json, lease, result, rig, run};
+use super::{ack, json, payload, result, rig, run};
 use crate::client::Verb;
 
 fn tool_only(call: &crate::client::Call) -> crate::test_support::Answer {
@@ -36,7 +36,7 @@ async fn an_accepted_edit_finishes_from_its_receipt_without_another_model_call()
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(
         calls
             .iter()
@@ -77,7 +77,7 @@ async fn an_accepted_tool_only_edit_gets_a_conversational_follow_up() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (_, report) = run(&mut rig, lease()).await;
+    let (_, report) = run(&mut rig, payload()).await;
     assert_eq!(report["outcome"], "completed");
     assert_eq!(report["answer"], "Private result");
     assert_eq!(report["usage"]["calls"], 2);
@@ -94,7 +94,7 @@ async fn a_tool_only_edit_without_a_follow_up_allowance_completes_with_no_invent
             Verb::AuthoringReport => ack(),
             other => panic!("unexpected authority {other:?}"),
         });
-        let mut configured = lease();
+        let mut configured = payload();
         if spent_output {
             configured.limits.output_per_turn = 2;
         } else {
@@ -134,7 +134,7 @@ async fn a_refusal_after_an_accepted_setup_ends_the_turn_completed() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(
         calls
             .iter()

@@ -8,7 +8,7 @@
 //! # What this crate has that the others do not
 //!
 //! Seven codes across the sampled kinds, because a caller here DOES discriminate — a
-//! runner that vanished, one that is still leased and one refused for its host id
+//! runner that vanished, one that is still held and one refused for its host id
 //! are three different things to answer with.
 //!
 //! Every count below was MEASURED against the sample set, not chosen. Each is a

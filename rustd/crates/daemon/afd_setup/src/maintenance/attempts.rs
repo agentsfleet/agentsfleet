@@ -6,7 +6,7 @@ use crate::{
     Drafts, Result,
     error::raise::query,
     funnel::Owed,
-    lease::{
+    run::{
         Status,
         guard::{Attempt, AttemptRow},
     },
@@ -49,7 +49,7 @@ async fn expire_one(drafts: &Drafts, hint: &Hint) -> Result<bool> {
         .fetch_optional(&mut *tx)
         .await
         .map_err(query(CONTEXT))?;
-    let row: Option<AttemptRow> = sqlx::query_as(crate::lease::sql::LOCK_BY_ID)
+    let row: Option<AttemptRow> = sqlx::query_as(crate::run::sql::LOCK_BY_ID)
         .bind(&hint.id)
         .fetch_optional(&mut *tx)
         .await
@@ -58,7 +58,7 @@ async fn expire_one(drafts: &Drafts, hint: &Hint) -> Result<bool> {
     let attempt = row.decode()?;
     let now = crate::sql::clock(&mut tx, CONTEXT).await?;
     if attempt.status != Status::Active
-        || (attempt.lease_expires_at > now && attempt.expires_at > now)
+        || (attempt.run_expires_at > now && attempt.expires_at > now)
     {
         return Ok(false);
     }
@@ -84,7 +84,7 @@ async fn mark(
         .bind(&attempt.draft_id)
         .bind(attempt.message_sequence)
         .bind(FAILED)
-        .bind(crate::lease::report::verdict::reason(
+        .bind(crate::run::report::verdict::reason(
             af_wire::authoring::FailureReason::ProviderUsageUnknown,
         ))
         .bind(RUNNING)

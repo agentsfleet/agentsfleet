@@ -29,7 +29,7 @@ async fn paid_steer_and_refresh_append_once_to_the_running_task() {
             let input = proposed(&fixture, &source, &task.task_id, action).await;
             let accepted = fixture
                 .tasks
-                .interpret(case.lease(), &valid(input.clone()))
+                .interpret(case.run(), &valid(input.clone()))
                 .await
                 .expect("paid existing association");
             assert!(!accepted.replayed);
@@ -43,7 +43,7 @@ async fn paid_steer_and_refresh_append_once_to_the_running_task() {
             assert_input(case, &task_id, action).await;
             let replay = fixture
                 .tasks
-                .interpret(case.lease(), &valid(input))
+                .interpret(case.run(), &valid(input))
                 .await
                 .expect("accepted association replay");
             assert!(replay.replayed);
@@ -78,7 +78,7 @@ async fn paid_existing_input_refuses_missing_and_foreign_task_without_partial_wr
             digest(&mut wrong);
             let error = fixture
                 .tasks
-                .interpret(case.lease(), &valid(wrong))
+                .interpret(case.run(), &valid(wrong))
                 .await
                 .expect_err("unowned association refused");
             assert_eq!(error.code(), code);
@@ -151,7 +151,7 @@ fn binding(
     call: String,
 ) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
-        fencing_token: fixture.case.lease().fencing_token,
+        fencing_token: fixture.case.run().fencing_token,
         source_admission_id: source.to_string(),
         accepted_revision_id: fixture.revision.to_string(),
         plan_digest: "0".repeat(64),

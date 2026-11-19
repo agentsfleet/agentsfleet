@@ -17,16 +17,16 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::tests::{drive, engine};
-use crate::fixture::{Canned, Script, call, lease, say, unbounded};
+use crate::fixture::{Canned, Script, call, payload, say, unbounded};
 
 /// A PNG's first bytes: all the image the seam needs.
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
 /// What the attaching tool answers.
 const ATTACHED: &str = "attached";
-/// How the seeing tool spells what the lease told it.
+/// How the seeing tool spells what the run told it.
 const IMAGES: &str = "images:";
 
-/// A tool that attaches a PNG to the lease and says so, as `image` does. It
+/// A tool that attaches a PNG to the run and says so, as `image` does. It
 /// serves a supervisor-side entry, because the router hands a sandbox-side
 /// tool no call on a run with no executor, and this suite drives none.
 #[derive(Debug)]
@@ -66,7 +66,7 @@ impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Attaches {
     }
 }
 
-/// A tool that says whether the lease's wire takes images.
+/// A tool that says whether the run's wire takes images.
 #[derive(Debug)]
 struct Sees {
     schema: Schema,
@@ -97,7 +97,7 @@ impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Sees {
     {
         Box::pin(std::future::ready(ToolOutput::succeeded(format!(
             "{IMAGES}{}",
-            cx.lease.image_input
+            cx.run.image_input
         ))))
     }
 }
@@ -117,9 +117,9 @@ async fn an_attachment_rides_its_calls_result_alone() {
         vec![Attaches::boxed(), Canned::boxed(&UPDATE_PLAN, "4")],
         &script,
     );
-    let leased = lease(&[MEMORY_RECALL.name(), UPDATE_PLAN.name()], unbounded());
+    let held = payload(&[MEMORY_RECALL.name(), UPDATE_PLAN.name()], unbounded());
 
-    let (output, frames) = drive(&engine, &leased, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &held, &CancellationToken::new()).await;
 
     let sent = script.sent();
     assert_eq!(
@@ -152,7 +152,7 @@ async fn an_attachment_rides_its_calls_result_alone() {
 }
 
 #[tokio::test]
-async fn the_wire_tells_the_lease_whether_it_takes_images() {
+async fn the_wire_tells_the_run_whether_it_takes_images() {
     let turns = || {
         [
             vec![call("p1", UPDATE_PLAN.name(), json!({}))],
@@ -164,9 +164,9 @@ async fn the_wire_tells_the_lease_whether_it_takes_images() {
         (Script::new(turns()).text_only(), "images:false"),
     ] {
         let engine = engine(vec![Sees::boxed()], &script);
-        let leased = lease(&[UPDATE_PLAN.name()], unbounded());
+        let held = payload(&[UPDATE_PLAN.name()], unbounded());
 
-        drive(&engine, &leased, &CancellationToken::new()).await;
+        drive(&engine, &held, &CancellationToken::new()).await;
 
         let sent = script.sent();
         let Message::ToolResult { output, .. } = &sent[1].messages[2] else {

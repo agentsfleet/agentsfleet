@@ -13,7 +13,7 @@ impl Connect for Model {
     fn admit(&self, _: &af_wire::policy::ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
-    fn connect(&self, _: &af_wire::lease::LeasePayload<'_>) -> af_providers::Result<Box<Provider>> {
+    fn connect(&self, _: &af_wire::run::RunPayload<'_>) -> af_providers::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }

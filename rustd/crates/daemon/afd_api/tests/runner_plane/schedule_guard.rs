@@ -1,6 +1,6 @@
-//! The schedules plane's lease-guarded change, before anything is reconciled.
+//! The schedules plane's run-guarded change, before anything is reconciled.
 //!
-//! The runner routes check the lease and the schedule before they ask, so a
+//! The runner routes check the run and the schedule before they ask, so a
 //! request cannot reach the two answers that return early: a guard that no
 //! longer holds, and a schedule the claim cannot find. The plane is asked
 //! directly, over the lane's Postgres, with a guard that answers a fixed
@@ -49,7 +49,7 @@ fn pause() -> Change<'static> {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_guarded_change_refuses_an_unheld_lease_and_finds_no_unknown_schedule() {
+async fn a_guarded_change_refuses_an_unheld_run_and_finds_no_unknown_schedule() {
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
     let plane = SchedulePlane::new(

@@ -85,17 +85,17 @@ async fn a_large_current_request_is_transferred_for_exact_daemon_window_prefligh
         .execute(&mut *f.connection().await)
         .await
         .expect("controlled context ceiling");
-    let lease = claim(&f, &draft)
+    let run = claim(&f, &draft)
         .await
         .expect("bounded request transferred");
-    assert_eq!(lease.limits.input_per_call, 8192);
+    assert_eq!(run.limits.input_per_call, 8192);
     assert_eq!(
-        lease.messages.first().expect("current request").text,
+        run.messages.first().expect("current request").text,
         "語".repeat(10_000)
     );
     let dispatches: i64 =
         sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1")
-            .bind(Uuid7::parse(&lease.attempt_id).expect("attempt"))
+            .bind(Uuid7::parse(&run.attempt_id).expect("attempt"))
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("no provider intent before preflight");

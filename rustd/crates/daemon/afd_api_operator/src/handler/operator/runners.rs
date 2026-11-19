@@ -127,12 +127,12 @@ fn item(row: &StoredItem) -> RunnerItem<'static> {
 fn detail_payload(row: &StoredDetail) -> RunnerDetail<'static> {
     RunnerDetail {
         item: item(row.item()),
-        active_lease_count: row.active_lease_count(),
+        active_run_count: row.active_run_count(),
         active_fleet_count: row.active_fleet_count(),
-        leases_acquired: row.leases_acquired(),
-        leases_succeeded: row.leases_succeeded(),
-        leases_failed: row.leases_failed(),
-        leases_expired: row.leases_expired(),
+        runs_acquired: row.runs_acquired(),
+        runs_succeeded: row.runs_succeeded(),
+        runs_failed: row.runs_failed(),
+        runs_expired: row.runs_expired(),
         selftest_requested_at: row.selftest_requested_at(),
         selftest_completed_at: row.selftest_completed_at(),
         selftest: row.selftest().cloned(),

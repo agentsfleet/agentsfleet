@@ -36,7 +36,7 @@ fn page_query_refuses_out_of_range_inputs() {
 }
 
 #[test]
-fn lease_query_parses_independent_filters_and_refuses_each_bad_dimension() {
+fn run_query_parses_independent_filters_and_refuses_each_bad_dimension() {
     let cursor = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
     let workspace = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a7d";
     let params = HashMap::from([
@@ -45,7 +45,7 @@ fn lease_query_parses_independent_filters_and_refuses_each_bad_dimension() {
         (QUERY_WORKSPACE_ID.to_owned(), workspace.to_owned()),
         (QUERY_FLEET.to_owned(), "Production".to_owned()),
     ]);
-    let parsed = leases(&params).expect("every dimension is valid");
+    let parsed = runs(&params).expect("every dimension is valid");
     assert_eq!(parsed.limit, 100);
     assert_eq!(
         parsed.starting_after.as_ref().map(Uuid7::as_str),
@@ -58,13 +58,13 @@ fn lease_query_parses_independent_filters_and_refuses_each_bad_dimension() {
     assert_eq!(parsed.fleet.as_deref(), Some("Production"));
 
     for (key, value, detail) in [
-        (QUERY_LIMIT, "0", DETAIL_BAD_LEASE_LIMIT),
-        (QUERY_STARTING_AFTER, "foreign", DETAIL_BAD_LEASE_CURSOR),
+        (QUERY_LIMIT, "0", DETAIL_BAD_RUN_LIMIT),
+        (QUERY_STARTING_AFTER, "foreign", DETAIL_BAD_RUN_CURSOR),
         (QUERY_WORKSPACE_ID, "workspace", DETAIL_BAD_WORKSPACE),
         (QUERY_FLEET, "", DETAIL_BAD_FLEET),
     ] {
         assert_eq!(
-            leases(&HashMap::from([(key.to_owned(), value.to_owned())])).err(),
+            runs(&HashMap::from([(key.to_owned(), value.to_owned())])).err(),
             Some(detail)
         );
     }
@@ -116,7 +116,7 @@ fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
 #[test]
 fn the_fleet_filter_and_the_event_type_set_are_bounded() {
     let fleet = |length: usize| {
-        leases(&HashMap::from([(
+        runs(&HashMap::from([(
             QUERY_FLEET.to_owned(),
             "f".repeat(length),
         )]))
@@ -155,7 +155,7 @@ fn a_blank_limit_is_the_default_page() {
     let blank = HashMap::from([(QUERY_LIMIT.to_owned(), String::new())]);
     let default = CEILING.default_rows();
     assert_eq!(page(&blank).map(|query| query.limit).ok(), Some(default));
-    assert_eq!(leases(&blank).map(|query| query.limit).ok(), Some(default));
+    assert_eq!(runs(&blank).map(|query| query.limit).ok(), Some(default));
     assert_eq!(events(&blank).map(|query| query.limit).ok(), Some(default));
 }
 
@@ -169,12 +169,9 @@ fn an_event_type_token_reads_by_its_stored_spelling_and_an_unknown_one_refuses()
             raw.to_owned(),
         )]))
     };
-    let read = set("runner_online,lease_released").expect("two stored spellings");
+    let read = set("runner_online,run_released").expect("two stored spellings");
     let expected = RunnerEventFilter::new(
-        vec![
-            RunnerEventType::RunnerOnline,
-            RunnerEventType::LeaseReleased,
-        ],
+        vec![RunnerEventType::RunnerOnline, RunnerEventType::RunReleased],
         None,
         None,
     );

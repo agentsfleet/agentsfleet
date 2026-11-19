@@ -3,7 +3,7 @@
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, guard::LeaseRow, row::counter},
+    task::{TaskRefusal, guard::RunRow, row::counter},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{TaskInputReceiptInput, TaskInputReceiptResult};
@@ -21,7 +21,7 @@ pub(super) struct Item {
 
 pub(super) async fn item(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
 ) -> Result<Item> {
     let item: Item = sqlx::query_as(include_str!("sql/item.sql"))
@@ -61,7 +61,7 @@ pub(super) fn current(item: &Item, input: &TaskInputReceiptInput) -> Result<()> 
 
 pub(super) async fn replay(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
 ) -> Result<Option<String>> {
     let mut saved: Vec<String> = sqlx::query_scalar(include_str!("sql/replay.sql"))

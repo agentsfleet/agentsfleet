@@ -1,4 +1,4 @@
-//! Why a lease's egress was refused, and which netlink step the kernel
+//! Why a run's egress was refused, and which netlink step the kernel
 //! refused: one value each, so a log line and a test tell them apart while
 //! the sentence an operator reads stays the one each has always been.
 
@@ -20,7 +20,7 @@ const HELD_ELSEWHERE: &str = "another runner process owns this host's egress tab
 /// What [`EgressRefusal::NoScope`] says.
 const NO_SCOPE: &str = "the sandbox was built to no allowlist, so it has no addresses to replace";
 
-/// Why a lease's egress cannot be held to what its policy allows.
+/// Why a run's egress cannot be held to what its policy allows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EgressRefusal {
     /// The host does not forward IPv4, so no allowlisted packet would leave.
@@ -67,7 +67,7 @@ impl fmt::Display for EgressRefusal {
             Self::HeldElsewhere => f.write_str(HELD_ELSEWHERE),
             Self::TooManyAddresses(addresses) => write!(
                 f,
-                "{addresses} addresses, past the {ALLOWLIST_ADDRESSES_MAX} a lease may reach"
+                "{addresses} addresses, past the {ALLOWLIST_ADDRESSES_MAX} a run may reach"
             ),
             Self::NoScope => f.write_str(NO_SCOPE),
         }

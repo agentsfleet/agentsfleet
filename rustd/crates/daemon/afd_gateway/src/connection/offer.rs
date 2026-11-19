@@ -3,8 +3,8 @@
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use af_observability::verb_span::{OfferStage, VerbClock};
 use af_stream::Encoder;
-use af_wire::{lease::TaggedLease, protocol::StreamKind};
-use afd_fleet::lease::{OfferRequest, Offered, RecoveryScan};
+use af_wire::{protocol::StreamKind, run::TaggedRun};
+use afd_fleet::run::{OfferRequest, Offered, RecoveryScan};
 use tokio::time::Instant;
 
 use super::{ConnectionServices, Message, OfferMode, OfferOutcome, SchedulingState};
@@ -105,14 +105,14 @@ impl ConnectionServices {
         let issued = self
             .operation(Operation::Offer, async {
                 Ok(self
-                    .leases
+                    .runs
                     .claim_with(
                         &self.drafts,
                         request,
                         self.accepted,
-                        self.draft_leases,
+                        self.draft_runs,
                         clock,
-                        |lease, metadata| encode_offer(encoder, lease, metadata),
+                        |run, metadata| encode_offer(encoder, run, metadata),
                     )
                     .await?)
             })
@@ -124,9 +124,9 @@ impl ConnectionServices {
 /// Serialization finishes while the policy's borrowed inputs still exist.
 fn encode_offer(
     encoder: &mut Encoder,
-    lease: TaggedLease<'_, afd_setup::types::Candidate>,
+    run: TaggedRun<'_, afd_setup::types::Candidate>,
     offered: Offered,
 ) -> Result<Offered> {
-    serde_json::to_writer(encoder, &Message::Offer { lease })?;
+    serde_json::to_writer(encoder, &Message::Offer { run })?;
     Ok(offered)
 }

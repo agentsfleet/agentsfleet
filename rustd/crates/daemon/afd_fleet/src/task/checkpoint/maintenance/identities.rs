@@ -23,7 +23,7 @@ pub(super) async fn retain(
     tasks: &Tasks,
     cursor: &mut crate::task::CheckpointMaintenanceCursor,
 ) -> Result<(u64, u64)> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let rows: Vec<Identity> = sqlx::query_as(include_str!("../sql/identity_retention.sql"))
         .bind(super::super::TERMINAL_SECONDS)
         .bind(cursor.identity_after.as_ref().map(|(at, _)| at.to_sqlx()))
@@ -58,7 +58,7 @@ pub(super) async fn retain(
 }
 
 async fn remove(tasks: &Tasks, identity: &Identity) -> Result<u64> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // Both registration families take this quota lock before creating a key or object.
     let removed = if super::lock(&mut tx, &identity.workspace_id).await? {

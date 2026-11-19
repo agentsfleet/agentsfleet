@@ -7,7 +7,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use af_core::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
 use super::{hold, live, slot};
 use crate::rows::Row;
@@ -23,10 +23,10 @@ async fn test_holder_claims_its_held_fleet() {
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(
-        &leases,
+        &runs,
         &fixtures,
         &fleet,
         &holder,
@@ -34,9 +34,9 @@ async fn test_holder_claims_its_held_fleet() {
     )
     .await;
 
-    let acquired = seed::select_fleet(&leases, &holder, &fleet)
+    let acquired = seed::select_fleet(&runs, &holder, &fleet)
         .await
-        .expect("the holder leases its held fleet");
+        .expect("the holder runs its held fleet");
 
     assert_eq!(acquired.fleet_id, fleet);
     fixtures.cleanup().await;
@@ -51,10 +51,10 @@ async fn test_other_runner_skips_held_fleet() {
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(
-        &leases,
+        &runs,
         &fixtures,
         &fleet,
         &holder,
@@ -62,19 +62,19 @@ async fn test_other_runner_skips_held_fleet() {
     )
     .await;
 
-    let skipped = seed::select_fleet(&leases, &other, &fleet).await;
-    let refused = leases
-        .claim(&fleet, &other, LEASE_TTL)
+    let skipped = seed::select_fleet(&runs, &other, &fleet).await;
+    let refused = runs
+        .claim(&fleet, &other, RUN_TTL)
         .await
         .expect("the claim answers");
-    let held = seed::select_fleet(&leases, &holder, &fleet).await;
+    let held = seed::select_fleet(&runs, &holder, &fleet).await;
 
     assert!(
         skipped.is_none(),
         "another runner's poll passes a held fleet by"
     );
     assert!(refused.is_none(), "and its claim loses");
-    assert!(held.is_some(), "while the holder still leases it");
+    assert!(held.is_some(), "while the holder still runs it");
     fixtures.cleanup().await;
 }
 
@@ -84,19 +84,19 @@ async fn test_lapsed_hold_is_claimable() {
     let fixtures = Fixtures::create().await;
     let (expired, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let (silent, ..) = seeded_parts::<1>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &expired, &holder, until).await;
-    hold(&leases, &fixtures, &silent, &holder, until).await;
+    hold(&runs, &fixtures, &expired, &holder, until).await;
+    hold(&runs, &fixtures, &silent, &holder, until).await;
 
     // The first hold passes its deadline while its holder is still live.
     let lapse = SANDBOX_HOLD_IDLE.saturating_mul(2);
     fixtures
         .age(Row::Slot(&expired), "hold_expires_at", lapse)
         .await;
-    let past_the_hold = leases
-        .claim(&expired, &other, LEASE_TTL)
+    let past_the_hold = runs
+        .claim(&expired, &other, RUN_TTL)
         .await
         .expect("answers");
     // Then the holder falls silent with the second hold still in date.
@@ -104,10 +104,7 @@ async fn test_lapsed_hold_is_claimable() {
     fixtures
         .age(Row::Runner(&holder), "last_seen_at", silence)
         .await;
-    let past_the_silence = leases
-        .claim(&silent, &other, LEASE_TTL)
-        .await
-        .expect("answers");
+    let past_the_silence = runs.claim(&silent, &other, RUN_TTL).await.expect("answers");
 
     assert!(
         past_the_hold.is_some(),
@@ -131,10 +128,10 @@ async fn test_holder_polls_its_holds_first() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(
-        &leases,
+        &runs,
         &fixtures,
         &fleet,
         &holder,
@@ -142,7 +139,7 @@ async fn test_holder_polls_its_holds_first() {
     )
     .await;
 
-    let first_poll = leases
+    let first_poll = runs
         .select(&holder, std::slice::from_ref(&fleet))
         .await
         .expect("a poll answers")
@@ -157,18 +154,17 @@ async fn test_holder_polls_its_holds_first() {
 async fn test_drained_claim_keeps_held_hint() {
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, until).await;
+    hold(&runs, &fixtures, &fleet, &holder, until).await;
 
-    let claimed = leases
-        .claim(&fleet, &holder, LEASE_TTL)
+    let claimed = runs
+        .claim(&fleet, &holder, RUN_TTL)
         .await
         .expect("answers")
         .expect("the holder wins");
-    leases
-        .release(&fleet, claimed.fence)
+    runs.release(&fleet, claimed.fence)
         .await
         .expect("an empty claim lets go");
 
@@ -184,26 +180,17 @@ async fn test_drained_claim_keeps_held_hint() {
 async fn test_unheld_fleet_claims_as_before() {
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [first, second]) = seeded_parts::<2>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
 
-    let claimed = leases
-        .claim(&fleet, &first, LEASE_TTL)
+    let claimed = runs
+        .claim(&fleet, &first, RUN_TTL)
         .await
         .expect("answers")
         .expect("a free slot is won");
-    let contended = leases
-        .claim(&fleet, &second, LEASE_TTL)
-        .await
-        .expect("answers");
-    leases
-        .release(&fleet, claimed.fence)
-        .await
-        .expect("lets go");
+    let contended = runs.claim(&fleet, &second, RUN_TTL).await.expect("answers");
+    runs.release(&fleet, claimed.fence).await.expect("lets go");
     let after = slot(&fixtures, &fleet).await;
-    let reclaimed = leases
-        .claim(&fleet, &second, LEASE_TTL)
-        .await
-        .expect("answers");
+    let reclaimed = runs.claim(&fleet, &second, RUN_TTL).await.expect("answers");
 
     assert!(contended.is_none(), "one live holder per fleet, as before");
     assert_eq!(

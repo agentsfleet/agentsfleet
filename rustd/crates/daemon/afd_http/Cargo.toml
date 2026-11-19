@@ -43,7 +43,7 @@ af_fleet_runtime.workspace = true
 afd_identity.workspace = true
 # The invite email the invite routes send through, behind `services::InviteMail`.
 afd_mail.workspace = true
-# Fleet memory, behind `services::FleetMemories` and the lease plane's verbs.
+# Fleet memory, behind `services::FleetMemories` and the run plane's verbs.
 afd_memory.workspace = true
 # The interim message poster, behind `Services::interjector`.
 afd_outbound.workspace = true

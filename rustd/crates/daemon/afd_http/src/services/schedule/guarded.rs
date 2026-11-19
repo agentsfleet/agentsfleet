@@ -1,4 +1,4 @@
-//! The plane's writes under a runner's lease.
+//! The plane's writes under a runner's run.
 //!
 //! The guard is proved on the write's own transaction (`afd_cron`'s
 //! `store::guarded`), and only a write that landed is reconciled.

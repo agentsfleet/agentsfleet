@@ -95,7 +95,7 @@ fn record_spend(settlement: &Settlement, receipt: &Receipt) {
 /// The label a work's kind is counted under.
 pub(crate) const fn work_type(work: &WorkKey) -> WorkType {
     match work {
-        WorkKey::FleetLease(_) => WorkType::FleetLease,
+        WorkKey::FleetRun(_) => WorkType::FleetRun,
         WorkKey::AuthoringAttempt(_) => WorkType::AuthoringAttempt,
     }
 }
@@ -116,8 +116,8 @@ mod tests {
         let id = Uuid7::encode(jiff::Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
             .unwrap_or_else(|_unencodable| unreachable!("the epoch encodes"));
         assert_eq!(
-            work_type(&WorkKey::FleetLease(id.clone())).as_str(),
-            sql::work::FLEET_LEASE
+            work_type(&WorkKey::FleetRun(id.clone())).as_str(),
+            sql::work::FLEET_RUN
         );
         assert_eq!(
             work_type(&WorkKey::AuthoringAttempt(id)).as_str(),

@@ -8,7 +8,7 @@ use super::*;
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn cross_tenant_placement_matrix() {
     let fixtures = Fixtures::create().await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let t = Owner::new();
     let [own, shared, foreign] = [
         t.fleet(&fixtures, TENANT_MODEL).await,
@@ -20,45 +20,21 @@ async fn cross_tenant_placement_matrix() {
     let p_runner = platform_runner(&fixtures, &t.tag).await;
     let u_runner = tenant_runner(&fixtures, &u, &t.tag).await;
 
-    let held = select_fleet(&leases, &t_runner, &own)
+    let held = select_fleet(&runs, &t_runner, &own)
         .await
         .expect("T's runner takes T's work");
-    assert!(
-        issue(
-            &fixtures,
-            &leases,
-            &t_runner,
-            &held,
-            &t.tenant,
-            SELF_MANAGED
-        )
-        .await
-    );
-    let held = select_fleet(&leases, &p_runner, &shared)
+    assert!(issue(&fixtures, &runs, &t_runner, &held, &t.tenant, SELF_MANAGED).await);
+    let held = select_fleet(&runs, &p_runner, &shared)
         .await
         .expect("a platform runner takes any tenant's");
-    assert!(
-        issue(
-            &fixtures,
-            &leases,
-            &p_runner,
-            &held,
-            &t.tenant,
-            SELF_MANAGED
-        )
-        .await
-    );
+    assert!(issue(&fixtures, &runs, &p_runner, &held, &t.tenant, SELF_MANAGED).await);
 
     assert!(
-        select_fleet(&leases, &u_runner, &foreign).await.is_none(),
+        select_fleet(&runs, &u_runner, &foreign).await.is_none(),
         "U's runner sees no candidate"
     );
     assert!(!slotted(&fixtures, &foreign).await, "and writes no slot");
-    assert_eq!(
-        leases_of(&fixtures, &u_runner).await,
-        0,
-        "and holds no lease"
-    );
+    assert_eq!(runs_of(&fixtures, &u_runner).await, 0, "and holds no run");
     fixtures.cleanup().await;
 }
 
@@ -111,33 +87,25 @@ async fn claim_statement_refuses_a_foreign_runner() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn issue_refuses_a_foreign_runner_under_the_host_lock() {
     let fixtures = Fixtures::create().await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let t = Owner::new();
     let fleet = t.fleet(&fixtures, TENANT_MODEL).await;
     let u = fixtures.seed_tenant().await;
     let t_runner = tenant_runner(&fixtures, &t.tenant, &t.tag).await;
     let u_runner = tenant_runner(&fixtures, &u, &t.tag).await;
-    let held = select_fleet(&leases, &t_runner, &fleet)
+    let held = select_fleet(&runs, &t_runner, &fleet)
         .await
         .expect("T's runner claims");
 
     let captured = af_core::test_util::trace::Capture::install();
-    let issued = issue(
-        &fixtures,
-        &leases,
-        &u_runner,
-        &held,
-        &t.tenant,
-        SELF_MANAGED,
-    )
-    .await;
+    let issued = issue(&fixtures, &runs, &u_runner, &held, &t.tenant, SELF_MANAGED).await;
     let refused = captured.only("runner_placement_refused");
     drop(captured);
 
-    assert!(!issued, "a foreign host gets no lease");
-    assert_eq!(leases_of(&fixtures, &u_runner).await, 0);
+    assert!(!issued, "a foreign host gets no run");
+    assert_eq!(runs_of(&fixtures, &u_runner).await, 0);
     assert_eq!(refused.field("error_code"), Some("UZ-RUN-027"));
     assert_eq!(refused.field("reason"), Some("foreign_tenant"));
-    assert_eq!(refused.field("lease_type"), Some("fleet"));
+    assert_eq!(refused.field("run_type"), Some("fleet"));
     fixtures.cleanup().await;
 }

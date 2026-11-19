@@ -16,7 +16,7 @@ async fn an_operator_revocation_halts_the_production_native_downlink() -> TestRe
     let bytes = serde_json::to_vec(&wire::capable_beat())?;
     let beat = serde_json::from_slice(&bytes)?;
     runner.heartbeat(&beat).await?;
-    fixture.operator.runner(&fixture.run, "revoke").await?;
+    fixture.operator.runner(&fixture.scene, "revoke").await?;
     let stopped = tokio::time::timeout(PUSH_BOUND, runner.offer()).await?;
     assert!(stopped.is_err(), "revoked runners cannot await more offers");
     let failure = runner
@@ -26,8 +26,8 @@ async fn an_operator_revocation_halts_the_production_native_downlink() -> TestRe
         .ok_or("revocation did not halt the downlink")?;
     assert_eq!(failure.refusal_code(), Some(RUN_ADMIN_STATE_BLOCKED));
     signals::opening_refused(
-        &fixture.run,
-        &fixture.run.token,
+        &fixture.scene,
+        &fixture.scene.token,
         RUN_ADMIN_STATE_BLOCKED,
         af_stream::Transport::H2,
     )
@@ -47,8 +47,8 @@ async fn production_runner(fixture: &Fixture) -> TestResult<afr_supervisor::test
         .to_string_lossy()
         .into_owned();
     let config = Config::from_env(&af_core::env::MapEnv::from_pairs([
-        (ENV_API_URL, fixture.run.base.as_str()),
-        (ENV_RUNNER_TOKEN, fixture.run.token.as_str()),
+        (ENV_API_URL, fixture.scene.base.as_str()),
+        (ENV_RUNNER_TOKEN, fixture.scene.token.as_str()),
         (ENV_STREAM_CA, root.as_str()),
         (ENV_STREAM_URL, origin.as_str()),
     ]))?;

@@ -6,7 +6,7 @@ WHERE id = $2 RETURNING id, checkpoint_sequence, expires_at
 INSERT INTO fleet.task_checkpoints (id, task_id, fleet_id, workspace_id, generation, task_generation,
     accepted_revision_id, stop_generation, mode, repository, task_base_id,
     commit_oid, format_version, toolbox_digest, page_count, page_ids, upload_budget_bytes, uploaded_bytes,
-    logical_bytes, entry_count, covered_input_sequence, effect_watermark, owner_lease_id, owner_fence,
+    logical_bytes, entry_count, covered_input_sequence, effect_watermark, owner_run_id, owner_fence,
     expires_at, transfer_expires_at, manifest_root, ready_at, created_at, updated_at)
 SELECT $1, t.id, $3, $4,
     t.checkpoint_sequence,

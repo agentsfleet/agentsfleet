@@ -14,7 +14,6 @@ mod creation;
 mod draft;
 pub mod error;
 mod funnel;
-mod lease;
 mod maintenance;
 mod message;
 mod model;
@@ -24,8 +23,9 @@ mod plugin;
 mod privacy;
 mod replay;
 mod review;
+mod run;
 mod setup;
-pub mod setup_lease;
+pub mod setup_run;
 mod sql;
 pub mod turn_policy;
 pub mod types;
@@ -34,7 +34,6 @@ pub use self::access::Access;
 pub use self::creation::{Creations, SavedFleet, SetupCheck, SetupProgress, SystemSetup};
 pub use self::draft::Drafts;
 pub use self::error::{Error, Result};
-pub use self::lease::{ActivityInput, Claimed};
 pub use self::maintenance::Maintenance;
 pub use self::message::{Cancellation, Conversation, Stopped};
 pub use self::model::{
@@ -42,4 +41,5 @@ pub use self::model::{
     Network, ProviderRequest, ProviderResponse, TextKind, Transport,
 };
 pub use self::observe::{Notice, Observation, View};
+pub use self::run::{ActivityInput, Claimed};
 pub use self::setup::Setup;

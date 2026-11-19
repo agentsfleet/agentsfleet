@@ -196,11 +196,11 @@ impl Drop for FakeQStash {
 }
 
 /// Seals a Slack grant for the scenario's workspace, under the daemon's key.
-pub(crate) async fn seal_slack_grant(run: &Scenario) {
+pub(crate) async fn seal_slack_grant(scene: &Scenario) {
     let body = json!({"integration": "slack", "bot_token": BOT_TOKEN, "bot_user_id": BOT_USER});
     seal(
-        &run.booted,
-        &run.workspace,
+        &scene.booted,
+        &scene.workspace,
         Provider::Slack.grant_key(),
         &body.to_string(),
         af_core::clock::now(),
@@ -210,15 +210,15 @@ pub(crate) async fn seal_slack_grant(run: &Scenario) {
 
 /// Admits an event on the scenario's fleet from a Slack thread, so an answer
 /// or a line said before it is owed there.
-pub(crate) async fn enqueue_from_thread(run: &Scenario) -> Uuid7 {
+pub(crate) async fn enqueue_from_thread(scene: &Scenario) -> Uuid7 {
     let address = json!({"team_id": "T0FIXTURE", "channel_id": CHANNEL, "thread_ts": THREAD});
     let address = address.to_string();
-    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
+    let admitted = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,
-            fleet: &run.fleet,
-            workspace: &run.workspace,
+            fleet: &scene.fleet,
+            workspace: &scene.workspace,
             actor: ACTOR,
             event_type: crate::e2e::EVENT_TYPE,
             request_json: REQUEST_JSON,
@@ -246,14 +246,14 @@ pub(crate) fn posts(slack: &FakeSlack) -> Vec<Value> {
 /// when given, a JSON body.
 pub(crate) async fn send(
     http: &reqwest::Client,
-    run: &Scenario,
+    scene: &Scenario,
     method: reqwest::Method,
     path: &str,
     body: Option<&Value>,
 ) -> reqwest::Response {
     let request = http
-        .request(method, format!("{}{path}", run.base))
-        .bearer_auth(&run.token);
+        .request(method, format!("{}{path}", scene.base))
+        .bearer_auth(&scene.token);
     let request = match body {
         Some(body) => request
             .header(reqwest::header::CONTENT_TYPE, "application/json")

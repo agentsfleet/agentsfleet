@@ -45,7 +45,7 @@ async fn expired_native_state_is_purged_even_when_the_public_result_is_already_a
     let provider = Arc::new(Reasoning::default());
     let calls = fixture::calls(&f, &attempt, provider).await;
     calls
-        .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+        .call(&f.runner, &attempt.run, fixture::request(&attempt))
         .await
         .expect("native proposal");
     let before: bool = sqlx::query_scalar("UPDATE authoring.dispatches SET result=NULL,private_expires_at=to_timestamp(0) WHERE attempt_id=$1 RETURNING native_reply IS NOT NULL")
@@ -65,7 +65,7 @@ async fn refused(changed: Changed) {
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let mut next = fixture::request(&attempt);
     let first = calls
-        .call(&f.runner, &attempt.lease, next.clone())
+        .call(&f.runner, &attempt.run, next.clone())
         .await
         .expect("native proposal");
     next.call_index = 2;
@@ -80,7 +80,7 @@ async fn refused(changed: Changed) {
     });
     mutate(&f, &attempt, &mut next, changed).await;
     let failure = calls
-        .call(&f.runner, &attempt.lease, next)
+        .call(&f.runner, &attempt.run, next)
         .await
         .expect_err("native state must be refused");
     if matches!(

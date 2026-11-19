@@ -42,7 +42,7 @@ async fn wrong_attempt_fence_refuses_all_authoring_operations_without_effects() 
 }
 
 async fn refused(fixture: &AuthoringFixture, wrong_fence: bool, code: ErrorCode) {
-    let lease = fixture.id();
+    let run = fixture.id();
     let mut model = fixture.model();
     let mut proposal = fixture.proposal();
     let mut renewal = fixture.renewal(0);
@@ -57,23 +57,17 @@ async fn refused(fixture: &AuthoringFixture, wrong_fence: bool, code: ErrorCode)
             *fence = "2".into();
         }
     }
-    assert_refused(fixture.session.authoring_model(&lease, &model).await, code);
+    assert_refused(fixture.session.authoring_model(&run, &model).await, code);
     assert_refused(
-        fixture.session.authoring_activity(&lease, &proposal).await,
+        fixture.session.authoring_activity(&run, &proposal).await,
         code,
     );
-    assert_refused(
-        fixture.session.authoring_renew(&lease, &renewal).await,
-        code,
-    );
+    assert_refused(fixture.session.authoring_renew(&run, &renewal).await, code);
     let report = Report::Terminal {
         accounting,
         answer: Some(super::ANSWER.into()),
     };
-    assert_refused(
-        fixture.session.authoring_report(&lease, &report).await,
-        code,
-    );
+    assert_refused(fixture.session.authoring_report(&run, &report).await, code);
     assert_eq!(fixture.provider.state.count(), 0);
     assert_eq!(fixture.receipts().await, (0, 0, 0));
     assert_eq!(fixture.charges().await, Vec::new());

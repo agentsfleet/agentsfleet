@@ -27,8 +27,8 @@ async fn should_discover_two_queued_drafts_when_stopped_history_grows() {
         .expect("isolated plan owner");
     let mut start = 2;
     for last in HISTORY {
-        for (draft, lease) in [&first, &second] {
-            seed(&mut owner, draft, lease, start, last).await;
+        for (draft, run) in [&first, &second] {
+            seed(&mut owner, draft, run, start, last).await;
             f.drafts
                 .send(
                     f.access(),
@@ -68,13 +68,13 @@ async fn should_discover_two_queued_drafts_when_stopped_history_grows() {
 
 async fn stopped(f: &Fixture) -> (Draft, Claimed) {
     let draft = queue(f, "Original unknown request").await;
-    let lease = claim(f, &draft).await.expect("initial attempt");
-    unknown(f, &lease).await;
+    let run = claim(f, &draft).await.expect("initial attempt");
+    unknown(f, &run).await;
     f.drafts
         .cancel(f.access(), &draft.id, 1)
         .await
         .expect("Stop old attempt");
-    (draft, lease)
+    (draft, run)
 }
 
 fn indexed(plan: &Value, history: i64) {

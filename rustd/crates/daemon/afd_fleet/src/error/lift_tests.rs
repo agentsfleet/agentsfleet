@@ -71,7 +71,7 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
 }
 
 /// A memory-store failure answers with the code, the sentence and the outage
-/// class `afd_memory` decided; the lease plane restates none of them.
+/// class `afd_memory` decided; the run plane restates none of them.
 #[test]
 fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(), &'static str> {
     let outage = afd_db::error::one_of_each_kind()
@@ -101,7 +101,7 @@ fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(),
 /// A vault failure answers with the code and the sentence the vault decided,
 /// through the credential plane: one conversion, no restating.
 ///
-/// The outage class is the credential family's, which the lease plane has never
+/// The outage class is the credential family's, which the run plane has never
 /// counted as a datastore outage (`classify/availability.rs`), so it is not
 /// compared here.
 #[test]
@@ -119,7 +119,7 @@ fn a_vault_failure_keeps_the_vault_crates_code_and_sentence() {
 
 /// A runner-host or setup-chat failure answers with the code, the sentence and
 /// the outage class its own crate decided, for every kind that crate has: the
-/// lease plane restates none of them.
+/// run plane restates none of them.
 #[test]
 fn runner_and_authoring_failures_keep_their_crates_classification() {
     let runners = afd_runner::error::one_of_each_kind()

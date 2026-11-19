@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use af_egress::testing::CountingMint;
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use afr_tools::catalog::HTTP_REQUEST;
 use guffbolt::Message;
 use tokio_util::sync::CancellationToken;
@@ -83,7 +83,7 @@ impl Inbox for Replaying {
     }
 }
 
-/// An inbox whose claim is still being answered when the lease stops.
+/// An inbox whose claim is still being answered when the run stops.
 #[derive(Debug)]
 pub(super) struct Interrupted {
     pub(super) stop: CancellationToken,
@@ -104,7 +104,7 @@ impl Inbox for Interrupted {
 
 pub(super) async fn run_with(
     script: &Script,
-    payload: &LeasePayload<'_>,
+    payload: &RunPayload<'_>,
     inbox: &dyn Inbox,
     stop: &CancellationToken,
 ) -> crate::Result<RunOutput> {
@@ -115,7 +115,7 @@ pub(super) async fn run_with(
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: payload,
+            run: payload,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,

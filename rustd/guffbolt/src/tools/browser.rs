@@ -33,10 +33,10 @@ fn browser<'a>(name: &str, context: &Context<'a>) -> Result<&'a dyn Browser, Too
         Some(Err(why)) => why,
         None => NO_ENV,
     };
-    let lease_id = context.run_id;
+    let run_id = context.run_id;
     let tool = name;
     let event = EVENT_REFUSED;
-    tracing::info!(lease_id, tool, event);
+    tracing::info!(run_id, tool, event);
     Err(ToolOutput::failed(
         code::BROWSER_UNAVAILABLE,
         &format!("{tool} {why}"),

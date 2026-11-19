@@ -3,11 +3,11 @@
 //! # Why this is not a module inside `afd_fleet`
 //!
 //! It was, and nothing about a RUNNER required it to be. `afd_fleet` is the
-//! run's plane — leases, gates, the vault a run opens — and this crate is the
+//! run's plane — runs, gates, the vault a run opens — and this crate is the
 //! HOST's: enrolment, liveness, the verdict matrix over what a machine may
 //! assert about itself, and the sweepers that notice when one goes quiet.
-//! The two meet at exactly one point, the `lease_released` audit row the
-//! lease's finalize writes, and that meeting is a vocabulary import from
+//! The two meet at exactly one point, the `run_released` audit row the
+//! run's finalize writes, and that meeting is a vocabulary import from
 //! [`sql`] rather than a shared module.
 //!
 //! # Shape
@@ -52,7 +52,7 @@ pub use self::decision_profile::{DecisionSelection, decision_assignment_on};
 pub use self::edit::{RunnerEdit, RunnerEdited};
 pub use self::error::{
     DETAIL_DATABASE_ERROR, DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST,
-    DETAIL_RUNNER_NOT_FOUND, DETAIL_RUNNER_NOT_REVOKED, DETAIL_RUNNER_STILL_LEASED,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_RUNNER_NOT_REVOKED, DETAIL_RUNNER_STILL_RUND,
     DETAIL_SELFTEST_REFUSED, Error, Result,
 };
 pub use self::heartbeat::{Beat, NO_REPORT};

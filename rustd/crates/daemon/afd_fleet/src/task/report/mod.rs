@@ -7,7 +7,7 @@ mod settle;
 pub use checkpoint::CheckpointGuard;
 
 use super::{
-    TaskFuture, TaskLease, TaskScope, TaskSnapshot, Tasks,
+    TaskFuture, TaskRun, TaskScope, TaskSnapshot, Tasks,
     continuation::Continuation,
     github::{BoundPr, status::Snapshot},
 };
@@ -19,7 +19,7 @@ pub trait TaskReportOwner: std::fmt::Debug + Send + Sync {
     /// Read recorded decisions and current dependency evidence outside the report transaction.
     fn prepare_report<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a ReportRequest<'a>,
     ) -> TaskFuture<'a, Option<PreparedReport>>;
 }
@@ -28,7 +28,7 @@ pub trait TaskReportOwner: std::fmt::Debug + Send + Sync {
 #[derive(Debug)]
 pub struct PreparedReport {
     tasks: Tasks,
-    lease_id: Uuid7,
+    run_id: Uuid7,
     runner_id: Uuid7,
     scope: TaskScope,
     snapshot: TaskSnapshot,
@@ -41,7 +41,7 @@ pub struct PreparedReport {
 impl TaskReportOwner for Tasks {
     fn prepare_report<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a ReportRequest<'a>,
     ) -> TaskFuture<'a, Option<PreparedReport>> {
         if input.task.is_none() {
@@ -49,7 +49,7 @@ impl TaskReportOwner for Tasks {
         }
         Box::pin(super::observe::measure(
             af_observability::metrics::label::task::TaskOperation::ReportPrepare,
-            prepare::prepare(self, lease, input),
+            prepare::prepare(self, run, input),
             |prepared| {
                 if prepared.is_some() {
                     af_observability::metrics::label::task::TaskOutcome::Accepted

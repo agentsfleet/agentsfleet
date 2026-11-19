@@ -4,7 +4,7 @@
 //! tool is a published catalog name or `_other`, and every outcome and reason
 //! is an enum. The provider's labels are declared where it measures them
 //! (`af_providers::observe::labels`).
-//! A label written from a string the model or the lease chose would be one
+//! A label written from a string the model or the run chose would be one
 //! more series than the census ceiling admits, and the SDK would fold live
 //! data into its overflow marker.
 
@@ -55,7 +55,7 @@ af_observability::closed_set! {
         Completed => "completed",
         /// The provider failed the turn, and the run with it.
         Failed => FAILED,
-        /// The lease stopped the turn before it ended.
+        /// The run stopped the turn before it ended.
         Stopped => "stopped",
     }
 }
@@ -71,8 +71,8 @@ af_observability::closed_set! {
 }
 
 af_observability::closed_set! {
-    /// How a lease's sandbox build, beside its first model call, ended. A
-    /// build that fails no longer ends its lease, so this is where a host or
+    /// How a run's sandbox build, beside its first model call, ended. A
+    /// build that fails no longer ends its run, so this is where a host or
     /// repository fault shows.
     SandboxBuild {
         /// Every repository was in place, and the executor answered.
@@ -81,17 +81,17 @@ af_observability::closed_set! {
         Prepare => "prepare",
         /// A bound repository would not check out.
         Checkout => "checkout",
-        /// The lease ended first, and the build was stopped.
+        /// The run ended first, and the build was stopped.
         Stopped => "stopped",
     }
 }
 
 af_observability::closed_set! {
-    /// How a sandbox tool call's wait for its lease's build ended.
+    /// How a sandbox tool call's wait for its run's build ended.
     SandboxWait {
         /// The build finished, and the call ran in its sandbox.
         Ready => "ready",
-        /// The build failed or the lease ended, and the call answered
+        /// The build failed or the run ended, and the call answered
         /// `sandbox_unavailable`.
         Unavailable => "unavailable",
     }
@@ -108,33 +108,33 @@ af_observability::closed_set! {
 }
 
 af_observability::closed_set! {
-    /// What became of a sandbox held for its fleet between two leases: held,
+    /// What became of a sandbox held for its fleet between two runs: held,
     /// reused, or released for the reason given.
     SandboxHold {
-        /// A processed lease's sandbox was frozen and held.
+        /// A processed run's sandbox was frozen and held.
         Parked => "parked",
-        /// The fleet's next lease took it, and it thawed and answered.
+        /// The fleet's next run took it, and it thawed and answered.
         Reused => "reused",
         /// Its idle window ran out.
         Expired => "expired",
-        /// The runner's last free worker took a lease for another fleet.
+        /// The runner's last free worker took a run for another fleet.
         Saturated => "saturated",
         /// The runner held as many as it has workers, and this was the oldest.
         Capped => "capped",
-        /// The next lease wanted another size or policy.
+        /// The next run wanted another size or policy.
         Mismatch => "mismatch",
-        /// The daemon named its fleet: halted, deleted, or leased by another
+        /// The daemon named its fleet: halted, deleted, or held by another
         /// runner since.
         Inactive => "inactive",
-        /// The runner takes no new lease, so no lease could take it: leasing
+        /// The runner takes no new run, so no run could take it: running
         /// stopped, or the runner is shutting down or stopped.
         Shutdown => "shutdown",
         /// It would not thaw, or its executor did not answer once thawed.
         ThawFailed => "thaw_failed",
         /// It no longer carries the fleet's latest run: the daemon refused
-        /// the report of the lease that left it, as settled without it or for
-        /// good, or never received it; the fleet's next lease was not told to
-        /// resume it; a newer park of the same fleet replaced it; or the lease
+        /// the report of the run that left it, as settled without it or for
+        /// good, or never received it; the fleet's next run was not told to
+        /// resume it; a newer park of the same fleet replaced it; or the run
         /// that asked for it stopped waiting before taking it.
         Superseded => "superseded",
     }
@@ -147,8 +147,8 @@ af_observability::closed_set! {
         Backpressure => "backpressure",
         /// The daemon did not take the batch, and activity is not retried.
         PostFailed => "post_failed",
-        /// The lease ended while the daemon was still slow to take the live
-        /// tail, and what was still held went with the lease.
+        /// The run ended while the daemon was still slow to take the live
+        /// tail, and what was still held went with the run.
         Abandoned => "abandoned",
     }
 }
@@ -188,14 +188,14 @@ af_observability::closed_set! {
 mod tests;
 
 af_observability::closed_set! {
-    /// Where a lease obtains its memory window, regardless of the run's outcome.
+    /// Where a run obtains its memory window, regardless of the run's outcome.
     MemorySource {
-        /// The daemon attached the window to the lease.
+        /// The daemon attached the window to the run.
         Inline => "inline",
         /// The runner must perform a separate hydration request.
         Fallback => "fallback"
     }
 }
 
-/// The bounded origin of a lease memory window.
+/// The bounded origin of a run memory window.
 pub const LABEL_MEMORY_SOURCE: &str = "source";

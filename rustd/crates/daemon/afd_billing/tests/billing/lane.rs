@@ -7,7 +7,7 @@
 //! fleet in its predicate, and no other test can name them.
 //!
 //! The wallet and the usage lines are written here directly, because their
-//! production writers live in `afd_tenant` (signup) and the lease and setup
+//! production writers live in `afd_tenant` (signup) and the run and setup
 //! chat paths, which depend on this crate rather than the other way round.
 #![expect(
     clippy::expect_used,
@@ -159,7 +159,7 @@ impl Lane {
         let id = mint_id();
         sqlx::query(INSERT_LINE)
             .bind(&id)
-            .bind(afd_billing::sql::work::FLEET_LEASE)
+            .bind(afd_billing::sql::work::FLEET_RUN)
             .bind(mint_id())
             .bind(&self.tenant)
             .bind(&self.workspace)

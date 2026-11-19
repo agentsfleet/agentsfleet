@@ -3,7 +3,7 @@
 //!
 //! Split from `integration_tool_call_details.rs` at the length cap. The router
 //! suites prove the guard with no datastore; these prove the statements' own
-//! scopes — the runner, the lease's liveness, the workspace — against rows.
+//! scopes — the runner, the run's liveness, the workspace — against rows.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -30,23 +30,23 @@ use crate::e2e::scenario;
 use crate::e2e_seed::enrolment;
 use crate::e2e_seed_keys::seed_tenant_key;
 use crate::integration_tenant_registry::mint_tenant_token;
-use crate::integration_tool_call_details::{execute, leased, post_records, record, rows};
+use crate::integration_tool_call_details::{execute, held, post_records, record, rows};
 use crate::integration_tool_trace::{report_with, stored_trace, tenant_reader, trace};
 use crate::reads::event_column;
-use crate::tail::lease;
+use crate::tail::run;
 use crate::wire::json as body_of;
 
-/// Posts `calls` to `lease_id` under `fence`, presenting `token`.
+/// Posts `calls` to `run_id` under `fence`, presenting `token`.
 async fn post_as(
     http: &reqwest::Client,
-    run: &Scenario,
+    scene: &Scenario,
     token: &str,
-    (lease_id, fence): (&str, u64),
+    (run_id, fence): (&str, u64),
     calls: &[Value],
 ) -> u16 {
     http.post(format!(
-        "{}/v1/runners/me/leases/{lease_id}/tool-calls",
-        run.base
+        "{}/v1/runners/me/runs/{run_id}/tool-calls",
+        scene.base
     ))
     .bearer_auth(token)
     .header(reqwest::header::CONTENT_TYPE, "application/json")
@@ -62,9 +62,9 @@ async fn post_as(
 }
 
 /// A runner other than the scenario's, enrolled through the production verb.
-async fn another_runner(run: &Scenario) -> String {
-    Runners::new(run.booted.database.clone(), Entropy::new())
-        .register(&enrolment(), "fixture:platform-operator", run.seeded_at)
+async fn another_runner(scene: &Scenario) -> String {
+    Runners::new(scene.booted.database.clone(), Entropy::new())
+        .register(&enrolment(), "fixture:platform-operator", scene.seeded_at)
         .await
         .expect("enrolment must succeed")
         .token
@@ -72,45 +72,45 @@ async fn another_runner(run: &Scenario) -> String {
         .to_owned()
 }
 
-/// A lease that is not the caller's, one that has expired, and one that does
+/// A run that is not the caller's, one that has expired, and one that does
 /// not exist each answer 404 and keep nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_tool_call_details_refused_for_a_lease_not_held() {
+async fn test_tool_call_details_refused_for_a_run_not_held() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     let calls = [record(1, "x")];
 
-    let stranger = another_runner(&run).await;
-    let status = post_as(&http, &run, &stranger, (&lease_id, fence), &calls).await;
-    assert_eq!(status, 404, "another runner's lease is not found");
+    let stranger = another_runner(&scene).await;
+    let status = post_as(&http, &scene, &stranger, (&run_id, fence), &calls).await;
+    assert_eq!(status, 404, "another runner's run is not found");
 
     let unknown = afd_db::test_util::mint_id();
-    let (status, _) = post_records(&http, &run, (unknown.as_str(), fence), &calls).await;
-    assert_eq!(status, 404, "an unknown lease is not found");
-    let report = report_with(unknown.as_str(), &run, fence, trace(1));
-    let refused = crate::wire::report(&run, &report).await;
+    let (status, _) = post_records(&http, &scene, (unknown.as_str(), fence), &calls).await;
+    assert_eq!(status, 404, "an unknown run is not found");
+    let report = report_with(unknown.as_str(), &scene, fence, trace(1));
+    let refused = crate::wire::report(&scene, &report).await;
     assert_eq!(
         refused
-            .expect_err("an unknown lease is refused")
+            .expect_err("an unknown run is refused")
             .refusal_code(),
-        Some(af_core::error_code::RUN_LEASE_NOT_FOUND),
+        Some(af_core::error_code::RUN_NOT_FOUND),
         "and its report, trace and all, is refused before anything is read"
     );
 
     execute(
-        &run,
+        &scene,
         &format!(
-            "UPDATE runner.leases SET lease_expires_at = to_timestamp(0) \
-             WHERE id = '{lease_id}'::uuid AND fleet_id = $1 AND event_id = $2"
+            "UPDATE runner.runs SET run_expires_at = to_timestamp(0) \
+             WHERE id = '{run_id}'::uuid AND fleet_id = $1 AND event_id = $2"
         ),
     )
     .await;
-    let (status, _) = post_records(&http, &run, (&lease_id, fence), &calls).await;
-    assert_eq!(status, 404, "an expired lease is not found");
-    assert_eq!(rows(&run).await, 0, "nothing was kept");
+    let (status, _) = post_records(&http, &scene, (&run_id, fence), &calls).await;
+    assert_eq!(status, 404, "an expired run is not found");
+    assert_eq!(rows(&scene).await, 0, "nothing was kept");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// A record holding a NUL is skipped and counted; the rest of the post stays.
@@ -118,18 +118,18 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_nul_tool_call_detail_skipped() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     let calls = [
         record(1, "one"),
         record(2, "bin\u{0}ary"),
         record(3, "three"),
     ];
-    let (status, body) = post_records(&http, &run, (&lease_id, fence), &calls).await;
+    let (status, body) = post_records(&http, &scene, (&run_id, fence), &calls).await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body, json!({"stored_count": 2, "skipped_count": 1}));
-    assert_eq!(rows(&run).await, 2);
+    assert_eq!(rows(&scene).await, 2);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Posting a call again replaces its record, and at a full budget a
@@ -138,22 +138,22 @@ async fn test_nul_tool_call_detail_skipped() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_repost_replaces_its_record() {
     let mut supervisor = Supervisor::new();
-    let (run, token) = tenant_reader(&mut supervisor).await;
+    let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&run).await;
-    let claimed = (lease_id.as_str(), fence);
+    let (run_id, fence) = run(&scene).await;
+    let claimed = (run_id.as_str(), fence);
 
     // `{}` arguments make each record exactly 64 KiB; sixteen fill the event.
     let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
     let full: Vec<Value> = (1..=16).map(|n| record(n, &output)).collect();
     for batch in full.chunks(3) {
-        assert_eq!(post_records(&http, &run, claimed, batch).await.0, 200);
+        assert_eq!(post_records(&http, &scene, claimed, batch).await.0, 200);
     }
-    let (_, body) = post_records(&http, &run, claimed, &[record(17, "x")]).await;
+    let (_, body) = post_records(&http, &scene, claimed, &[record(17, "x")]).await;
     assert_eq!(body["skipped_count"], 1, "the event is full: {body}");
 
     let replacement = [record(16, "replaced")];
-    let (status, body) = post_records(&http, &run, claimed, &replacement).await;
+    let (status, body) = post_records(&http, &scene, claimed, &replacement).await;
     assert_eq!(status, 200);
     assert_eq!(
         body,
@@ -162,17 +162,17 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
     );
     let path = format!(
         "/v1/workspaces/{}/fleets/{}/events/{}/tool-calls/{fence}:16",
-        run.workspace, run.fleet, run.event_id
+        scene.workspace, scene.fleet, scene.event_id
     );
     let read = http
-        .get(format!("{}{path}", run.base))
+        .get(format!("{}{path}", scene.base))
         .bearer_auth(&token)
         .send()
         .await
         .expect("the daemon answers");
     assert_eq!(body_of(read).await["output"], "replaced");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// A member of another workspace cannot read this workspace's records by
@@ -181,15 +181,15 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     let mut supervisor = Supervisor::new();
-    let (run, _owner) = tenant_reader(&mut supervisor).await;
+    let (scene, _owner) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&run).await;
-    let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(3, "secret")]).await;
+    let (run_id, fence) = run(&scene).await;
+    let (status, _) = post_records(&http, &scene, (&run_id, fence), &[record(3, "secret")]).await;
     assert_eq!(status, 200);
 
     let (tenant, workspace) = (afd_db::test_util::mint_id(), afd_db::test_util::mint_id());
     execute(
-        &run,
+        &scene,
         &format!(
             "WITH t AS (INSERT INTO identity.tenants (id, name, created_at, updated_at) \
                VALUES ('{tenant}'::uuid, 'other', now(), now()) RETURNING id) \
@@ -200,14 +200,14 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     )
     .await;
     let token = mint_tenant_token();
-    seed_tenant_key(&run.booted, &tenant, &token, run.seeded_at).await;
+    seed_tenant_key(&scene.booted, &tenant, &token, scene.seeded_at).await;
 
     let path = format!(
         "/v1/workspaces/{workspace}/fleets/{}/events/{}/tool-calls/{fence}:3",
-        run.fleet, run.event_id
+        scene.fleet, scene.event_id
     );
     let answer = http
-        .get(format!("{}{path}", run.base))
+        .get(format!("{}{path}", scene.base))
         .bearer_auth(&token)
         .send()
         .await
@@ -218,7 +218,7 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
         json!(af_core::error_code::TOOL_CALL_NOT_FOUND.as_str())
     );
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// A trace holding a NUL — tool output from a binary file — is dropped, and
@@ -228,40 +228,42 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_nul_tool_trace_dropped_report_settles() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let (lease_id, fence) = lease(&run).await;
+    let scene = scenario(&mut supervisor).await;
+    let (run_id, fence) = run(&scene).await;
 
     let mut sent = trace(1);
     sent["calls"][0]["output_head"] = json!("bin\u{0}ary");
-    let settled = crate::wire::report(&run, &report_with(&lease_id, &run, fence, sent)).await;
+    let settled = crate::wire::report(&scene, &report_with(&run_id, &scene, fence, sent)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
-    assert_eq!(stored_trace(&run).await, None);
+    assert_eq!(stored_trace(&scene).await, None);
     assert_eq!(
-        event_column(&run, &run.event_id, "status").await.as_deref(),
+        event_column(&scene, &scene.event_id, "status")
+            .await
+            .as_deref(),
         Some("processed")
     );
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
-/// Posts racing for one event serialise on the lease row, so together they
+/// Posts racing for one event serialise on the run row, so together they
 /// keep no more than the budget: 24 posts of one 64 KiB record each, released
 /// together, store exactly 16 and skip exactly 8.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_concurrent_posts_never_pass_the_event_budget() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(24));
-    let url = format!("{}/v1/runners/me/leases/{lease_id}/tool-calls", run.base);
+    let url = format!("{}/v1/runners/me/runs/{run_id}/tool-calls", scene.base);
     let mut posts = tokio::task::JoinSet::new();
     for n in 1..=24_u64 {
         let (http, url, token, barrier) = (
             http.clone(),
             url.clone(),
-            run.token.clone(),
+            scene.token.clone(),
             std::sync::Arc::clone(&barrier),
         );
         let body =
@@ -288,7 +290,7 @@ async fn test_concurrent_posts_never_pass_the_event_budget() {
         skipped += body["skipped_count"].as_u64().expect("a count");
     }
     assert_eq!((stored, skipped), (16, 8), "exactly the budget, once");
-    assert_eq!(rows(&run).await, 16);
+    assert_eq!(rows(&scene).await, 16);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

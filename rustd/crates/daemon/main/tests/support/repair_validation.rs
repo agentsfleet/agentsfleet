@@ -13,7 +13,7 @@ pub(crate) const CORRECTED_JOB: u64 = 431;
 
 impl Remote {
     pub(super) fn validation(&self, state: &State, request: &Seen) -> Reply {
-        for (head, run, job, check, conclusion) in [
+        for (head, scene, job, check, conclusion) in [
             (
                 NEW_COMMIT,
                 VALIDATION_RUN,
@@ -29,17 +29,17 @@ impl Remote {
                 "success",
             ),
         ] {
-            if request.path == self.repo.path(&format!("actions/runs/{run}")) {
+            if request.path == self.repo.path(&format!("actions/runs/{scene}")) {
                 return Reply::json(
                     200,
-                    &json!({"id": run, "run_attempt": 1, "head_sha": if run == CORRECTED_RUN && self.readback == Readback::StaleValidation {NEW_COMMIT} else {head}}),
+                    &json!({"id": scene, "run_attempt": 1, "head_sha": if scene == CORRECTED_RUN && self.readback == Readback::StaleValidation {NEW_COMMIT} else {head}}),
                 );
             }
-            let value = self.validation_job(head, run, job, check, conclusion);
+            let value = self.validation_job(head, scene, job, check, conclusion);
             if request.path
                 == self
                     .repo
-                    .path(&format!("actions/runs/{run}/attempts/1/jobs"))
+                    .path(&format!("actions/runs/{scene}/attempts/1/jobs"))
             {
                 return Reply::json(200, &json!({"total_count": 1, "jobs": [value]}));
             }
@@ -84,12 +84,12 @@ impl Remote {
     fn validation_job(
         &self,
         head: &str,
-        run: u64,
+        scene: u64,
         job: u64,
         check: u64,
         conclusion: &str,
     ) -> Value {
-        json!({"id": job, "run_id": run, "run_attempt": 1, "head_sha": head,
+        json!({"id": job, "run_id": scene, "run_attempt": 1, "head_sha": head,
             "conclusion": conclusion, "check_run_url": format!("https://{GITHUB}/repos/{}/check-runs/{check}", self.repo.name),
             "steps": [{"name": "Check retry count", "conclusion": conclusion}]})
     }

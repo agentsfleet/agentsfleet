@@ -2,7 +2,7 @@
 
 use super::TurnSnapshot;
 use crate::{Result, TaskRecovery};
-use af_wire::lease::{TurnResume, TurnScope, TurnWorkspace};
+use af_wire::run::{TurnResume, TurnScope, TurnWorkspace};
 use garde::Validate as _;
 use std::sync::Arc;
 
@@ -22,7 +22,7 @@ pub enum RecoveryState {
 #[derive(Debug)]
 pub struct RecoverySnapshot {
     /// Current attempt, retained in the native request's authority proof.
-    pub lease_id: String,
+    pub run_id: String,
     /// Stable event whose root was captured.
     pub event_id: String,
     /// Current attempt's database fence.
@@ -53,7 +53,7 @@ pub enum CommittedRecovery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveryReceipt {
     /// Attempt that authorized publication.
-    pub lease_id: String,
+    pub run_id: String,
     /// Stable event owner.
     pub event_id: String,
     /// Fence proved by publication.
@@ -120,7 +120,7 @@ pub trait RecoveryBoundarySink: Send + Sync + std::fmt::Debug {
 
 /// Correlation witness retained while the capture owner owns the private bytes.
 pub(crate) struct RecoveryWitness {
-    lease_id: String,
+    run_id: String,
     event_id: String,
     fence: u64,
     generation: u64,
@@ -150,7 +150,7 @@ impl RecoverySnapshot {
             ),
         };
         RecoveryWitness {
-            lease_id: self.lease_id.clone(),
+            run_id: self.run_id.clone(),
             event_id: self.event_id.clone(),
             fence: self.fencing_token,
             generation,
@@ -163,7 +163,7 @@ impl RecoverySnapshot {
 
 impl RecoveryReceipt {
     pub(crate) fn matches(&self, expected: &RecoveryWitness) -> bool {
-        self.lease_id == expected.lease_id
+        self.run_id == expected.run_id
             && self.event_id == expected.event_id
             && self.fencing_token == expected.fence
             && self.checkpoint.generation() > expected.generation

@@ -83,7 +83,7 @@ impl Continuation {
     }
 }
 
-/// Retire superseded native work without settling an issued lease or human reply.
+/// Retire superseded native work without settling an issued run or human reply.
 pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &Uuid7) -> crate::Result<()> {
     sqlx::query(include_str!("sql/retire_continuations.sql"))
         .bind(task)

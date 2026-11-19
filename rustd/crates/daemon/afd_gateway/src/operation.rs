@@ -5,13 +5,13 @@
 pub enum Operation {
     /// Read and confirm connection ownership.
     Opening,
-    /// Place one new lease.
+    /// Place one new run.
     Offer,
     /// Reconcile liveness and assigned policy.
     Heartbeat,
     /// Refresh authority after a broker command or gap.
     Recheck,
-    /// Extend one lease and acknowledge its usage.
+    /// Extend one run and acknowledge its usage.
     Renewal,
     /// Await one already-accounted physical authoring provider invocation.
     Model,

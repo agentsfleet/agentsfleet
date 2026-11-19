@@ -14,11 +14,11 @@ use super::{
 use crate::{
     Result,
     error::{query, sequence_corrupt},
-    task::TaskLease,
+    task::TaskRun,
 };
 
 pub(super) struct Intent<'a> {
-    pub lease: TaskLease<'a>,
+    pub run: TaskRun<'a>,
     pub input: &'a DecisionReservationInput,
     pub id: &'a Uuid7,
     pub prepared: &'a Prepared,
@@ -57,7 +57,7 @@ impl Intent<'_> {
 
     async fn sequence(&self, connection: &mut PgConnection) -> Result<i64> {
         let sequence = sqlx::query_scalar(sql::SEQUENCE)
-            .bind(self.lease.lease_id)
+            .bind(self.run.run_id)
             .fetch_one(connection)
             .await
             .map_err(query("allocate the native decision usage sequence"))?;
@@ -71,8 +71,8 @@ impl Intent<'_> {
         let generation = self.goal().map(|task| task.generation);
         sqlx::query(sql::INSERT_CALL)
             .bind(self.id)
-            .bind(self.lease.runner_id)
-            .bind(self.lease.lease_id)
+            .bind(self.run.runner_id)
+            .bind(self.run.run_id)
             .bind(&prepared.context.source_admission_id)
             .bind(&prepared.current.fleet_id)
             .bind(&prepared.current.workspace_id)

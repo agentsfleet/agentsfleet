@@ -43,9 +43,9 @@ fn page(answer: &Value, id_key: &str) -> (Vec<String>, Option<String>) {
     (ids, answer["next_cursor"].as_str().map(str::to_owned))
 }
 
-/// The runner's route for `tail` under `lease`, presenting `fence`.
-fn route(lease: &str, tail: &str, fence: u64, query: &str) -> String {
-    format!("/v1/runners/me/leases/{lease}/{tail}?fencing_token={fence}{query}")
+/// The runner's route for `tail` under `run`, presenting `fence`.
+fn route(run: &str, tail: &str, fence: u64, query: &str) -> String {
+    format!("/v1/runners/me/runs/{run}/{tail}?fencing_token={fence}{query}")
 }
 
 /// The answer of `event`, read from whichever of `pages` lists it, is the
@@ -82,14 +82,14 @@ async fn fleets_read_walks_its_pages() {
     for name in ["page-one", "page-two", "page-three"] {
         crew.sibling(name).await;
     }
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
 
-    let (status, first) = crew.read(&route(&lease, "fleets", fence, "&limit=2")).await;
+    let (status, first) = crew.read(&route(&run, "fleets", fence, "&limit=2")).await;
     assert_eq!(status, 200, "{first}");
     let (head, cursor) = page(&first, "fleet_id");
     let cursor = cursor.expect("two of four fleets leave a next page");
     let (status, second) = crew
-        .read(&route(&lease, "fleets", fence, &continuing(&cursor)))
+        .read(&route(&run, "fleets", fence, &continuing(&cursor)))
         .await;
     assert_eq!(status, 200, "{second}");
     let (tail, last) = page(&second, "fleet_id");
@@ -120,15 +120,15 @@ async fn events_read_walks_its_pages_and_cuts_answers() {
     for answer in ["first", "second"] {
         crew.answered_event(&target, answer).await;
     }
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
     let events = format!("fleets/{target}/events");
 
-    let (status, first) = crew.read(&route(&lease, &events, fence, "&limit=2")).await;
+    let (status, first) = crew.read(&route(&run, &events, fence, "&limit=2")).await;
     assert_eq!(status, 200, "{first}");
     let (head, cursor) = page(&first, "event_id");
     let cursor = cursor.expect("two of three events leave a next page");
     let (_, second) = crew
-        .read(&route(&lease, &events, fence, &continuing(&cursor)))
+        .read(&route(&run, &events, fence, &continuing(&cursor)))
         .await;
     let (tail, last) = page(&second, "event_id");
     assert_eq!(
@@ -148,7 +148,7 @@ async fn events_read_walks_its_pages_and_cuts_answers() {
 async fn fleets_reads_refuse_a_bad_bound_cursor_and_missing_fence() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
     let events = format!("fleets/{}/events", crew.run().fleet);
 
     for (tail, query, sentence) in [
@@ -179,14 +179,14 @@ async fn fleets_reads_refuse_a_bad_bound_cursor_and_missing_fence() {
             "The cursor is not valid",
         ),
     ] {
-        let (status, refused) = crew.read(&route(&lease, tail, fence, query)).await;
+        let (status, refused) = crew.read(&route(&run, tail, fence, query)).await;
         assert_eq!(status, 400, "{tail}{query}: {refused}");
         assert_eq!(refused["detail"], sentence, "{tail}{query}: {refused}");
     }
-    let (status, refused) = crew.read(&route(&lease, "fleets", fence, "&limit=0")).await;
+    let (status, refused) = crew.read(&route(&run, "fleets", fence, "&limit=0")).await;
     assert_eq!(status, 400, "{refused}");
 
-    let unfenced = format!("/v1/runners/me/leases/{lease}/fleets");
+    let unfenced = format!("/v1/runners/me/runs/{run}/fleets");
     let (status, refused) = crew.read(&unfenced).await;
     assert_eq!(status, 400, "a read with no fence is refused: {refused}");
     crew.finish(supervisor).await;

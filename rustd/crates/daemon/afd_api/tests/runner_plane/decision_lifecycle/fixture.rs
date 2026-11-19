@@ -1,4 +1,4 @@
-//! Registered runners issue a real lease and share the router's native secret key.
+//! Registered runners issue a real run and share the router's native secret key.
 
 mod native_report;
 mod storage;
@@ -22,7 +22,7 @@ use afd_db::{
     test_util::{OwnedRows, TestDatabase, mint_id},
 };
 use afd_fleet::{
-    lease::{Billed, Leases},
+    run::{Billed, Runs},
     task::Tasks,
 };
 use afd_runner::Runners;
@@ -40,7 +40,7 @@ pub(super) struct Runner {
     pub token: String,
 }
 
-pub(super) struct Lease {
+pub(super) struct Run {
     pub id: Uuid7,
     pub fence: u64,
     pub source: Uuid7,
@@ -52,7 +52,7 @@ pub(super) struct Fixture {
     pub owner: Owner,
     pub runner: Runner,
     pub other: Runner,
-    pub lease: Lease,
+    pub run: Run,
     pub key: String,
     pub model: DecisionModelFixture,
     cleanup: OwnedRows,
@@ -95,14 +95,14 @@ impl Fixture {
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
         let bus = harness::bus().await;
         let admissions = Admissions::for_tests(database.clone(), bus.clone());
-        let leases = Leases::new(database.clone(), bus, Entropy::new());
-        let lease = acquire(&leases, &admissions, &owner, &runner).await;
+        let runs = Runs::new(database.clone(), bus, Entropy::new());
+        let run = acquire(&runs, &admissions, &owner, &runner).await;
         let key = format!("decision-http-fixture-{}", mint_id());
         save_key(&database, &owner.workspace, &key).await;
         let mut dependencies = harness::task_dependencies(database.clone());
         dependencies.admin_workspace = Some(owner.workspace.clone());
         dependencies.storage = Some(storage::build(&database, &owner).await);
-        let tasks = Tasks::new(leases, admissions, dependencies);
+        let tasks = Tasks::new(runs, admissions, dependencies);
         let router = harness::Fleet::live(
             database.clone(),
             "native_decision_http",
@@ -117,7 +117,7 @@ impl Fixture {
             owner,
             runner,
             other,
-            lease,
+            run,
             key,
             model,
             cleanup,
@@ -127,7 +127,7 @@ impl Fixture {
     }
 
     pub(super) fn collection(&self) -> String {
-        format!("/v1/runners/me/leases/{}/tasks/decisions", self.lease.id)
+        format!("/v1/runners/me/runs/{}/tasks/decisions", self.run.id)
     }
 
     pub(super) fn item(&self, call: &str) -> String {
@@ -137,8 +137,8 @@ impl Fixture {
     pub(super) fn reservation(&self) -> DecisionReservationInput {
         DecisionReservationInput {
             operation_id: mint_id().into(),
-            fencing_token: self.lease.fence,
-            source_admission_id: self.lease.source.to_string(),
+            fencing_token: self.run.fence,
+            source_admission_id: self.run.source.to_string(),
             assessment: DecisionAssessment::Message,
             task: None,
             retry_of: None,
@@ -215,14 +215,9 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
         .expect("exactly two registered runners")
 }
 
-async fn acquire(
-    leases: &Leases,
-    admissions: &Admissions,
-    owner: &Owner,
-    runner: &Runner,
-) -> Lease {
+async fn acquire(runs: &Runs, admissions: &Admissions, owner: &Owner, runner: &Runner) -> Run {
     let admitted = admit(admissions, owner).await;
-    let acquired = leases
+    let acquired = runs
         .select(&runner.id, &[])
         .await
         .expect("native claim")
@@ -231,7 +226,7 @@ async fn acquire(
         (&acquired.fleet_id, &acquired.event_id),
         (&owner.fleet, &admitted)
     );
-    let issued = leases
+    let issued = runs
         .issue(
             &runner.id,
             &acquired,
@@ -245,10 +240,10 @@ async fn acquire(
         )
         .await
         .expect("native issue")
-        .expect("fenced lease still owned");
+        .expect("fenced run still owned");
     assert!(issued.decision.is_some());
-    Lease {
-        id: issued.lease_id,
+    Run {
+        id: issued.run_id,
         fence: acquired.fence.as_u64(),
         source: admitted,
     }

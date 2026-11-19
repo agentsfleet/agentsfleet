@@ -5,7 +5,7 @@
 
 use crate::connection::{
     ConnectionHandle, ConnectionServices, OfferMode, OfferOutcome, SchedulingState,
-    cache::LeaseCache,
+    cache::RunCache,
     io::{self, IncomingFrame, StreamWriters},
     liveness::Liveness,
     opening::allowed,
@@ -15,8 +15,8 @@ use crate::{Gateway, Result, error::ErrorKind};
 use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use af_stream::{Budget, OwnedFrame, Reader};
 use af_wire::{
-    lease::AcceptedKinds,
     protocol::{StreamKind, Up},
+    run::AcceptedKinds,
 };
 use afd_auth::directory::Digest;
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
@@ -48,7 +48,7 @@ impl std::fmt::Debug for RunnerConnection {
 }
 
 impl RunnerConnection {
-    /// Acquire the enrolled identity and rebuild its real lease targets before measurement.
+    /// Acquire the enrolled identity and rebuild its real run targets before measurement.
     ///
     /// # Errors
     /// Preserves ownership, database and frame-assembly failures.
@@ -67,7 +67,7 @@ impl RunnerConnection {
                 .await?,
         )?;
         let authority = allowed(dependencies.runners.confirm_connection(proposed).await?)?;
-        let cache = LeaseCache::rebuild(&dependencies.database, &runner).await?;
+        let cache = RunCache::rebuild(&dependencies.database, &runner).await?;
         let stop = CancellationToken::new();
         let budget = Budget::default();
         let pipes = Pipes::new(&stop, &budget)?;

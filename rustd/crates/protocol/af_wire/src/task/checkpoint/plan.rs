@@ -146,7 +146,7 @@ pub struct CheckpointPlan {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointPinInput {
-    /// Existing lease fence.
+    /// Existing run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current task version.
@@ -162,7 +162,7 @@ pub struct CheckpointPinInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointCommitInput {
-    /// Existing lease fence.
+    /// Existing run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current task version.
@@ -204,7 +204,7 @@ pub enum CheckpointTransferPurpose {
 #[derive(Debug, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointReadQuery {
-    /// Current lease fence.
+    /// Current run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current restore pin.

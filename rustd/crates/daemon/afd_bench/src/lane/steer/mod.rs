@@ -16,10 +16,10 @@ use crate::datastores::Datastores;
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::joined;
-use crate::lane::lease::seed::{
+use crate::lane::outcomes::Outcomes;
+use crate::lane::run::seed::{
     self, BENCH_ACTOR, BENCH_REQUEST_JSON, ROWS_PER_FLEET, SEEDED_AT, SeededFleet,
 };
-use crate::lane::outcomes::Outcomes;
 use crate::profile::{Parameter, Profile};
 use crate::report::{
     DatastoreCost, DatastoreCosts, Fixture, Lane, Provenance, Report, count, ratio,

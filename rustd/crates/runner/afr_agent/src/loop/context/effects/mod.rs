@@ -14,7 +14,7 @@ pub(super) async fn compact(
     visible: bool,
 ) -> af_context::Result<Checkpoint> {
     let mut trace =
-        af_context::Trace::start(shared.lease_id.into(), af_context::Host::Runtime, &task);
+        af_context::Trace::start(shared.run_id.into(), af_context::Host::Runtime, &task);
     let mut progress = progress::Notifications::new(shared.events, &task, visible);
     let result = af_context::execute(
         task,

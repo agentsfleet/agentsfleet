@@ -15,7 +15,7 @@
 //! them: the heartbeat and the worker pool side by side until
 //! shutdown. No state is shared behind a lock: the
 //! heartbeat publishes its assignment on a watch channel, a coordinator task
-//! owns which fleet is busy, each lease is one task that owns its sandbox, and
+//! owns which fleet is busy, each run is one task that owns its sandbox, and
 //! the stop signals are cancellation tokens.
 //!
 //! # What the binary composes
@@ -41,12 +41,12 @@ mod egress;
 mod halt;
 mod holds;
 mod identity;
-mod lease_loop;
 mod memory;
 mod records;
 mod recovery;
 mod renew;
 mod report;
+mod run_loop;
 mod shutdown;
 mod storage_home;
 mod turns;
@@ -60,7 +60,7 @@ mod test_support;
 pub mod test_util;
 
 #[cfg(test)]
-mod lease_telemetry_tests;
+mod run_telemetry_tests;
 
 use std::sync::Arc;
 
@@ -82,7 +82,7 @@ use self::downlink::policy::{Assignment, Heartbeat};
 use self::halt::Halt;
 use self::holds::Holds;
 use self::identity::Whoami;
-use self::lease_loop::Lessee;
+use self::run_loop::Lessee;
 use self::workspace_clone::{GITHUB_ORIGIN, Mirrors};
 
 /// Everything a runner process is made of.
@@ -94,15 +94,15 @@ pub(crate) struct Runner {
     pub(crate) offers: tokio::sync::mpsc::Receiver<downlink::Offered>,
     /// The storage root.
     pub(crate) home: StorageHome,
-    /// Builds each lease's sandbox.
+    /// Builds each run's sandbox.
     pub(crate) engine: Box<dyn Engine>,
-    /// Runs each lease's turn.
+    /// Runs each run's turn.
     pub(crate) agent: Box<dyn AgentEngine>,
     /// What this host's kernel can enforce, probed at boot.
     pub(crate) probe: HostProbe,
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
-    /// The wall clock lease deadlines are read against.
+    /// The wall clock run deadlines are read against.
     pub(crate) clock: Arc<dyn Clock>,
 }
 

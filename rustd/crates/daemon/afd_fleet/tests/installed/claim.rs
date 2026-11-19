@@ -2,7 +2,7 @@
 
 use super::definition;
 use crate::{seed::seeded, support::Fixtures};
-use afd_fleet::lease::FRESH_CONTEXT;
+use afd_fleet::run::FRESH_CONTEXT;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -12,7 +12,7 @@ async fn native_instructions_and_model_survive_the_claim_without_markdown_parsin
     let definition = definition();
     fixtures.native_definition(&held.fleet, &definition).await;
     let installed = fixtures
-        .leases()
+        .runs()
         .installed(&held.fleet)
         .await
         .expect("claim read")
@@ -39,7 +39,7 @@ async fn archived_and_missing_fleets_do_not_issue_work() {
         .expect("archive owned fleet");
     assert!(
         fixtures
-            .leases()
+            .runs()
             .installed(&held.fleet)
             .await
             .expect("archived read")
@@ -48,7 +48,7 @@ async fn archived_and_missing_fleets_do_not_issue_work() {
     let absent = afd_db::test_util::mint_id();
     assert!(
         fixtures
-            .leases()
+            .runs()
             .installed(&absent)
             .await
             .expect("absent read")

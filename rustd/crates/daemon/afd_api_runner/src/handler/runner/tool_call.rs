@@ -1,4 +1,4 @@
-//! `POST /v1/runners/me/leases/{lease_id}/tool-calls` — each finished call,
+//! `POST /v1/runners/me/runs/{run_id}/tool-calls` — each finished call,
 //! in full, for an operator's "show all".
 //!
 //! Its own verb rather than a field of the report. A large record set beside an
@@ -7,7 +7,7 @@
 //! records. The runner posts before it reports, and nothing about settlement
 //! waits on a post.
 //!
-//! Fenced as the memory push is (`afd_fleet::lease::tool_detail`): the lease
+//! Fenced as the memory push is (`afd_fleet::run::tool_detail`): the run
 //! must be this runner's and live, and a holder a reclaim has superseded is
 //! refused. Each record is read on its own, so one of the wrong shape or over
 //! a bound is counted in the answer and the rest are kept.
@@ -22,7 +22,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
 use crate::handler::{malformed, refuse, reject};
-use crate::services::{Leasing as _, Services};
+use crate::services::{RunPlane as _, Services};
 
 /// The scoped event a failed post is logged under.
 const EVENT: &str = "runner_tool_calls_failed";
@@ -36,7 +36,7 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
 /// Keeps each finished call's full arguments and output.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = af_wire::paths::LEASE_TOOL_CALLS,
+    path = af_wire::paths::RUN_TOOL_CALLS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_record_tool_calls",
     summary = "Save full tool call output",
@@ -49,7 +49,7 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
     ),
     request_body = ToolCallRecordsRequest<'_>,
     params(
-        afd_http::openapi::path::Lease,
+        afd_http::openapi::path::Run,
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ToolCallRecordsStored),
@@ -63,12 +63,12 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease_id): Path<String>,
+    Path(run_id): Path<String>,
     body: Bytes,
 ) -> Response {
-    // Parsed first, so the lease lookup's `::uuid` cast never decides the
-    // answer: a value that cannot name any lease is the caller's mistake.
-    if let Err(refusal) = super::schedule::lease(&lease_id) {
+    // Parsed first, so the run lookup's `::uuid` cast never decides the
+    // answer: a value that cannot name any run is the caller's mistake.
+    if let Err(refusal) = super::schedule::run(&run_id) {
         return refusal.into_response();
     }
     if body.len() > DETAIL_POST_MAX_BYTES {
@@ -79,8 +79,8 @@ pub(crate) async fn handle<D: Services>(
         return malformed(DETAIL_MALFORMED);
     };
     match services
-        .leases()
-        .record_tool_calls(runner.id(), &lease_id, &request, services.now())
+        .runs()
+        .record_tool_calls(runner.id(), &run_id, &request, services.now())
         .await
     {
         Ok(stored) => Json::<ToolCallRecordsStored>(stored).into_response(),

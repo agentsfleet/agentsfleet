@@ -1,4 +1,4 @@
-//! The six refusals a lease's own lifecycle can answer with.
+//! The six refusals a run's own lifecycle can answer with.
 //!
 //! Split from [`super`] because they are a different KIND of failure from
 //! everything beside them there. Every other constructor in that module reports
@@ -15,7 +15,7 @@
 
 use super::{Error, ErrorKind};
 
-/// Refuses a lease verb from a holder the fleet has already superseded.
+/// Refuses a run verb from a holder the fleet has already superseded.
 ///
 /// The six builders here and below carry no payload, which is what distinguishes
 /// them from every other kind in this file: each names ONE outcome of one
@@ -26,30 +26,30 @@ pub(crate) fn stale_fence() -> Error {
     Error::new(ErrorKind::StaleFence)
 }
 
-/// Refuses a lease id that is not this runner's, or is not a lease at all.
-pub(crate) fn lease_not_found() -> Error {
-    Error::new(ErrorKind::LeaseNotFound)
+/// Refuses a run id that is not this runner's, or is not a run at all.
+pub(crate) fn run_not_found() -> Error {
+    Error::new(ErrorKind::RunNotFound)
 }
 
-/// The lease a runner named in text: one that is not a `UUIDv7` names no lease,
+/// The run a runner named in text: one that is not a `UUIDv7` names no run,
 /// so it is refused as not found rather than bound and refused by Postgres.
-pub(crate) fn wire_lease(text: &str) -> crate::error::Result<af_core::id::Uuid7> {
-    af_core::id::Uuid7::parse(text).map_err(|_text| lease_not_found())
+pub(crate) fn wire_run(text: &str) -> crate::error::Result<af_core::id::Uuid7> {
+    af_core::id::Uuid7::parse(text).map_err(|_text| run_not_found())
 }
 
-/// Refuses a renewal for a lease that has moved on.
-pub(crate) fn lease_lost() -> Error {
-    Error::new(ErrorKind::LeaseLost)
+/// Refuses a renewal for a run that has moved on.
+pub(crate) fn run_lost() -> Error {
+    Error::new(ErrorKind::RunLost)
 }
 
 /// Refuses a new execution slice after the fleet's durable Kill decision.
-pub(crate) fn lease_cancelled() -> Error {
-    Error::new(ErrorKind::LeaseCancelled)
+pub(crate) fn run_cancelled() -> Error {
+    Error::new(ErrorKind::RunCancelled)
 }
 
 /// Refuses a renewal past the hard runtime ceiling.
-pub(crate) fn lease_max_runtime() -> Error {
-    Error::new(ErrorKind::LeaseMaxRuntime)
+pub(crate) fn run_max_runtime() -> Error {
+    Error::new(ErrorKind::RunMaxRuntime)
 }
 
 /// Refuses a renewal the tenant's balance cannot fund.

@@ -7,7 +7,7 @@
 //! requests crossed a tier, and a price can change at a date mid-run. The
 //! runner reports one [`RequestUsage`] per provider request; the daemon turns
 //! each into a [`UsageLine`] and adds its own runtime-only line, measured on
-//! its own clock, for the time the run held its lease.
+//! its own clock, for the time the run held its run.
 //!
 //! Every line says what it bills, as its [`LineKind`], and is stored once per
 //! `(work, kind, seq)`, so a retried renewal or report re-sends lines

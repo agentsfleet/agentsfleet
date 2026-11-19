@@ -156,7 +156,7 @@ async fn further_work_is_blocked(fixture: &Decisions<'_>, task: DecisionTaskVers
     );
     let refused = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), &next)
+        .reserve_decision(fixture.case.run(), &next)
         .await
         .expect_err("actual overage blocks another paid call");
     assert_eq!(refused.code(), error_code::TASK_LIMIT_EXHAUSTED);
@@ -166,7 +166,7 @@ async fn further_work_is_blocked(fixture: &Decisions<'_>, task: DecisionTaskVers
     );
     assert_eq!(fixture.counts().await, (2, 2, 2));
     let lines: Vec<(Uuid7, i64)> = sqlx::query_as("SELECT event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
-        .bind(&fixture.case.held.lease_key).bind(af_wire::usage::LineKind::Decision.as_str())
+        .bind(&fixture.case.held.run_key).bind(af_wire::usage::LineKind::Decision.as_str())
         .fetch_all(&mut *fixture.case.held.fixtures.database.acquire().await.expect("source and goal charges"))
         .await.expect("two original-work lines");
     assert_eq!(

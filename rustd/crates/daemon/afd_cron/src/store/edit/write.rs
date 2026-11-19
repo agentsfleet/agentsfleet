@@ -2,7 +2,7 @@
 
 use super::{EditRequest, input, sql};
 use crate::store::history::{Fact, Receipt};
-use crate::store::{SYNC_LEASE, fire_at};
+use crate::store::{SYNC_RUN, fire_at};
 use crate::{Result, Schedule, Schedules, SyncStatus, error};
 use af_core::id::Uuid7;
 
@@ -32,7 +32,7 @@ impl Schedules {
             .bind(encoded)
             .bind(SyncStatus::Syncing.as_str())
             .bind(token)
-            .bind(SYNC_LEASE)
+            .bind(SYNC_RUN)
             .execute(&mut *tx)
             .await
             .map_err(error::query(CONTEXT))?;

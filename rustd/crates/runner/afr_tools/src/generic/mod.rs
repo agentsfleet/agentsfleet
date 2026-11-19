@@ -1,15 +1,15 @@
 //! `guffbolt`'s generic tools, as this runner hosts them: each call lent the
-//! lease's sandbox, egress guard and memory through the harness's seams.
+//! run's sandbox, egress guard and memory through the harness's seams.
 //!
 //! ```text
-//!  router ─► ToolContext { executor, lease } ─► Generic<T>::call
+//!  router ─► ToolContext { executor, run } ─► Generic<T>::call
 //!               executor ─► SandboxEnv  ─┐
-//!               lease.egress ─► Egressed ├─► guffbolt::tools::Context ─► T::call
-//!               lease.memory ─► Leased   ─┘
+//!               run.egress ─► Egressed ├─► guffbolt::tools::Context ─► T::call
+//!               run.memory ─► RunMemory   ─┘
 //! ```
 //!
 //! A generic tool reaches the machine only through an `Env`, and here that
-//! is only ever the lease's sandbox: a runner host holds the provider's key,
+//! is only ever the run's sandbox: a runner host holds the provider's key,
 //! so no tool built here runs a command or opens a file on it. A call the
 //! router lends no executor has no environment at all, and a tool that needs
 //! one refuses.
@@ -25,13 +25,13 @@ use crate::egress::{Egressed, SharedTransport};
 use crate::runtime::{CatalogTool, ToolContext};
 
 pub use self::env::SandboxEnv;
-use self::memory::Leased;
+use self::memory::RunMemory;
 
-/// A generic tool lent one lease's state per call.
+/// A generic tool lent one run's state per call.
 #[derive(Debug)]
 pub(crate) struct Generic<T> {
     tool: T,
-    /// Where its requests go once the lease's guard admits them; `None` for
+    /// Where its requests go once the run's guard admits them; `None` for
     /// a tool that sends none, whose every request is refused.
     transport: Option<SharedTransport>,
 }
@@ -71,13 +71,13 @@ where
         ToolContext<'call, 'run>: 'a,
     {
         Box::pin(async move {
-            let lease = cx.lease;
+            let run = cx.run;
             let env = cx.executor.map(SandboxEnv::new);
-            let outbound = Egressed::new(self.transport.as_deref(), lease);
-            let memory = Leased::new(&lease.memory);
-            // In the one repository the lease holds; with several, the model
+            let outbound = Egressed::new(self.transport.as_deref(), run);
+            let memory = RunMemory::new(&run.memory);
+            // In the one repository the run holds; with several, the model
             // names one itself.
-            let repository = match lease.checkouts.as_slice() {
+            let repository = match run.checkouts.as_slice() {
                 [only] => Some(only.name),
                 _none_or_several => None,
             };
@@ -85,10 +85,10 @@ where
                 env: env.as_ref().map(|env| env as &dyn guffbolt::tools::Env),
                 outbound: &outbound,
                 memory: &memory,
-                sessions: &lease.sessions,
-                image_input: lease.image_input,
+                sessions: &run.sessions,
+                image_input: run.image_input,
                 repository,
-                run_id: lease.lease_id,
+                run_id: run.run_id,
                 wake: None,
             };
             self.tool.call(arguments, context).await

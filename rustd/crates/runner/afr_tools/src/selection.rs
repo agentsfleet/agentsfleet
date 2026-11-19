@@ -1,4 +1,4 @@
-//! The tools one lease, or one child loop, was offered.
+//! The tools one run, or one child loop, was offered.
 //!
 //! A selection is what a policy named, in the order it named it: the
 //! catalog's handlers, the nested tools the loop runs itself, and the entries
@@ -31,7 +31,7 @@ impl Offered<'_> {
     }
 }
 
-/// The tools one lease is offered: the functions the loop runs, and the tools
+/// The tools one run is offered: the functions the loop runs, and the tools
 /// the provider hosts.
 #[derive(Debug, Clone, Default)]
 pub struct Selection<'c> {
@@ -40,7 +40,7 @@ pub struct Selection<'c> {
 }
 
 impl<'c> Selection<'c> {
-    /// Whether any offered tool runs inside the sandbox; a lease with none
+    /// Whether any offered tool runs inside the sandbox; a run with none
     /// starts no sandbox.
     #[must_use]
     pub fn needs_sandbox(&self) -> bool {
@@ -49,7 +49,7 @@ impl<'c> Selection<'c> {
             .any(|offered| offered.entry().runtime() == Runtime::Sandbox)
     }
 
-    /// The handler for `name`, when the lease was offered one.
+    /// The handler for `name`, when the run was offered one.
     #[must_use]
     pub fn tool(&self, name: &str) -> Option<&'c CatalogTool> {
         match self.find(name)? {
@@ -64,7 +64,7 @@ impl<'c> Selection<'c> {
         self.hosted_entry(name).is_some()
     }
 
-    /// The functions the lease was offered, in the order its policy named
+    /// The functions the run was offered, in the order its policy named
     /// them.
     pub fn offered(&self) -> impl Iterator<Item = Offered<'c>> {
         self.tools.iter().copied()

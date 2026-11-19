@@ -1,7 +1,7 @@
 //! Replica choices advance only with a committed placement under the host lock.
 
 use af_crypto::entropy::Entropy;
-use af_wire::lease::{AcceptedKinds, LeaseKind};
+use af_wire::run::{AcceptedKinds, RunKind};
 use afd_runner::capacity::choice::Ticket;
 use afd_runner::{Runners, capacity};
 use sqlx::Connection as _;
@@ -21,7 +21,7 @@ async fn test_kind_preference_survives_a_new_store_handle() {
         .expect("host exists");
     assert_eq!(
         ticket.order().collect::<Vec<_>>(),
-        [LeaseKind::Authoring, LeaseKind::Fleet]
+        [RunKind::Authoring, RunKind::Fleet]
     );
 
     place_authoring(&fixture, ticket).await;
@@ -33,7 +33,7 @@ async fn test_kind_preference_survives_a_new_store_handle() {
         .expect("host exists");
     assert_eq!(
         next.order().collect::<Vec<_>>(),
-        [LeaseKind::Fleet, LeaseKind::Authoring]
+        [RunKind::Fleet, RunKind::Authoring]
     );
     let mut connection = fixture.db.acquire().await.expect("next connection");
     let mut tx = connection.begin().await.expect("next transaction");
@@ -47,16 +47,16 @@ async fn test_kind_preference_survives_a_new_store_handle() {
     .expect("fresh guard")
     .expect("host exists");
     assert!(
-        !ticket.permits(census, LeaseKind::Fleet),
+        !ticket.permits(census, RunKind::Fleet),
         "a stale poll cannot take the other kind"
     );
-    assert!(next.permits(census, LeaseKind::Fleet));
+    assert!(next.permits(census, RunKind::Fleet));
     tx.rollback().await.expect("release fresh guard");
     drop(connection);
     fixture.cleanup().await;
 }
 
-/// Places an authoring lease under the host lock and advances the preference
+/// Places an authoring run under the host lock and advances the preference
 /// in the SAME transaction, so the two commit together.
 async fn place_authoring(fixture: &Fixture, ticket: Ticket) {
     let mut connection = fixture.db.acquire().await.expect("placement connection");
@@ -70,12 +70,12 @@ async fn place_authoring(fixture: &Fixture, ticket: Ticket) {
     .await
     .expect("host guard")
     .expect("host exists");
-    assert!(ticket.permits(census, LeaseKind::Authoring));
+    assert!(ticket.permits(census, RunKind::Authoring));
     fixture
         .authoring(&mut tx, af_core::clock::after(census.now(), LIVE_FOR))
         .await;
     assert!(
-        capacity::choice::record(&mut tx, &fixture.runner, census, LeaseKind::Authoring)
+        capacity::choice::record(&mut tx, &fixture.runner, census, RunKind::Authoring)
             .await
             .expect("advance alongside placement")
     );
@@ -107,7 +107,7 @@ async fn test_failed_placement_does_not_advance_preference() {
     .expect("guard")
     .expect("host");
     assert!(
-        capacity::choice::record(&mut tx, &fixture.runner, census, LeaseKind::Authoring)
+        capacity::choice::record(&mut tx, &fixture.runner, census, RunKind::Authoring)
             .await
             .expect("conditional choice update")
     );
@@ -123,7 +123,7 @@ async fn test_failed_placement_does_not_advance_preference() {
     .expect("retry guard")
     .expect("host");
     assert!(
-        ticket.permits(census, LeaseKind::Authoring),
+        ticket.permits(census, RunKind::Authoring),
         "rollback leaves the old offer usable"
     );
     tx.rollback().await.expect("release guard");
@@ -133,6 +133,6 @@ async fn test_failed_placement_does_not_advance_preference() {
         .await
         .expect("fleet-only choice")
         .expect("host");
-    assert_eq!(fleet_only.order().collect::<Vec<_>>(), [LeaseKind::Fleet]);
+    assert_eq!(fleet_only.order().collect::<Vec<_>>(), [RunKind::Fleet]);
     fixture.cleanup().await;
 }

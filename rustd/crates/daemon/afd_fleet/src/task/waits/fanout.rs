@@ -15,7 +15,7 @@ struct Progress {
 }
 
 pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
-    let mut connection = tasks.leases.pool().acquire().await?;
+    let mut connection = tasks.runs.pool().acquire().await?;
     let rows: Vec<Uuid7> = sqlx::query_scalar(include_str!("sql/fanout_due.sql"))
         .bind(PASS_LIMIT)
         .fetch_all(&mut *connection)
@@ -50,7 +50,7 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
 }
 
 async fn one(tasks: &Tasks, completion: &Uuid7) -> Result<Option<Progress>> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // No SKIP LOCKED on the wait: advancing past a busy row would lose its signal.
     // One wait lock prevents cycles with mixed-input transitions over several tasks.
@@ -72,7 +72,7 @@ async fn one(tasks: &Tasks, completion: &Uuid7) -> Result<Option<Progress>> {
 }
 
 async fn defer(tasks: &Tasks, completion: &Uuid7) -> Result<()> {
-    let mut connection = tasks.leases.pool().acquire().await?;
+    let mut connection = tasks.runs.pool().acquire().await?;
     sqlx::query(include_str!("sql/defer_fanout.sql"))
         .bind(completion)
         .bind(Duration::from_secs(30))

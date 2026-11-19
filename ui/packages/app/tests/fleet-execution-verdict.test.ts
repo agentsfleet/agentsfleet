@@ -11,20 +11,20 @@ import { EXECUTION_REPLY_PREFIX, executionInstructions, fixtureDefinition, fixtu
  */
 import { describe, expect, it } from "vitest";
 import { NANOS_PER_USD } from "@/lib/types";
-import { LeaseOutcome } from "@/tests/helpers/runner-control-types";
+import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import {
   classifyApiFailure,
   classifyReportMissing,
   classifyStillRunning,
   classifyTerminalEvent,
-  classifyUnleased,
+  classifyIdle,
   ENVIRONMENT_FAILURE_CLASSES,
   EVENT_STATUS,
   ExecutionJourneyFailure,
   FAILURE_CLASS,
   failWith,
   JOURNEY_LEG,
-  leaseIsSettled,
+  runIsSettled,
   PRODUCT_FAILURE_CLASSES,
   VERDICT_KIND,
   type TerminalObservation,
@@ -88,33 +88,33 @@ describe("the terminal row is classified before it is trusted", () => {
     );
   });
 
-  it("a lease still running past the budget is the environment, not a scheduler regression", () => {
-    // The confusion RULE ECL exists to prevent: this state and "never leased"
+  it("a run still running past the budget is the environment, not a scheduler regression", () => {
+    // The confusion RULE ECL exists to prevent: this state and "never held"
     // are both "no terminal row", and only one of them is a defect. Reported as
     // product, a slow provider minute reads as a scheduler regression.
-    const running = classifyStillRunning(LeaseOutcome.Running);
+    const running = classifyStillRunning(RunOutcome.Running);
     expect(running).toMatchObject({
       kind: VERDICT_KIND.environment,
       leg: JOURNEY_LEG.execute,
     });
-    expect(running.detail).toContain(LeaseOutcome.Running);
-    expect(leaseIsSettled(LeaseOutcome.Running)).toBe(false);
+    expect(running.detail).toContain(RunOutcome.Running);
+    expect(runIsSettled(RunOutcome.Running)).toBe(false);
     // The verdict it must NOT share.
-    expect(classifyUnleased(true)).toMatchObject({ kind: VERDICT_KIND.product });
-    expect(running.kind).not.toBe(classifyUnleased(true).kind);
+    expect(classifyIdle(true)).toMatchObject({ kind: VERDICT_KIND.product });
+    expect(running.kind).not.toBe(classifyIdle(true).kind);
   });
 
-  it("a delivery nobody leased is the runner when none is live, and the product when one is", () => {
-    expect(classifyUnleased(false)).toMatchObject({ kind: VERDICT_KIND.environment, leg: JOURNEY_LEG.lease });
-    expect(classifyUnleased(true)).toMatchObject({ kind: VERDICT_KIND.product, leg: JOURNEY_LEG.lease });
+  it("a delivery nobody held is the runner when none is live, and the product when one is", () => {
+    expect(classifyIdle(false)).toMatchObject({ kind: VERDICT_KIND.environment, leg: JOURNEY_LEG.run });
+    expect(classifyIdle(true)).toMatchObject({ kind: VERDICT_KIND.product, leg: JOURNEY_LEG.run });
   });
 
   it("an API refusal is the environment on 5xx and transport loss, the product on 4xx", () => {
     const unavailable = new Error("GET /v1/admin/runners → 503: {}");
     const refused = new Error("POST /v1/workspaces/ws/fleets → 409: {}");
     const dropped = new TypeError("fetch failed");
-    expect(classifyApiFailure(unavailable, JOURNEY_LEG.lease).kind).toBe(VERDICT_KIND.environment);
-    expect(classifyApiFailure(dropped, JOURNEY_LEG.lease).kind).toBe(VERDICT_KIND.environment);
+    expect(classifyApiFailure(unavailable, JOURNEY_LEG.run).kind).toBe(VERDICT_KIND.environment);
+    expect(classifyApiFailure(dropped, JOURNEY_LEG.run).kind).toBe(VERDICT_KIND.environment);
     expect(classifyApiFailure(refused, JOURNEY_LEG.install)).toMatchObject({
       kind: VERDICT_KIND.product,
       leg: JOURNEY_LEG.install,
@@ -122,10 +122,10 @@ describe("the terminal row is classified before it is trusted", () => {
     expect(classifyApiFailure("not even an error", JOURNEY_LEG.execute).kind).toBe(VERDICT_KIND.environment);
   });
 
-  it("a running lease is not settled; every other outcome is", () => {
-    expect(leaseIsSettled("running")).toBe(false);
+  it("a running run is not settled; every other outcome is", () => {
+    expect(runIsSettled("running")).toBe(false);
     for (const outcome of ["succeeded", "failed", "expired", "unknown"]) {
-      expect(leaseIsSettled(outcome), outcome).toBe(true);
+      expect(runIsSettled(outcome), outcome).toBe(true);
     }
   });
 });

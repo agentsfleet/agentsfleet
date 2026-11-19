@@ -1,6 +1,6 @@
 //! Shared working-context preparation over creator-private authoritative history.
 use super::{ModelCallInput, continuation, prepare::Prepared, provider};
-use crate::{Result, error::ErrorKind, lease::guard::Attempt, replay};
+use crate::{Result, error::ErrorKind, replay, run::guard::Attempt};
 use af_context::{
     CheckpointStore as _, Identity, Plan, Window,
     repository::{Repository, identity as draft_identity},

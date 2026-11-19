@@ -2,13 +2,13 @@
 //!
 //! # The runner NAMES the fleet
 //!
-//! It already holds the fleet in its lease payload, so naming it explicitly
-//! beats inferring it from ambient lease state — and it gives the write path an
-//! IDOR cross-check to make: the body's lease must belong to the path's fleet.
+//! It already holds the fleet in its run payload, so naming it explicitly
+//! beats inferring it from ambient run state — and it gives the write path an
+//! IDOR cross-check to make: the body's run must belong to the path's fleet.
 //!
 //! # Two verbs, one path, different authorization
 //!
-//! GET asks whether this runner holds a live lease on this fleet. POST asks
+//! GET asks whether this runner holds a live run on this fleet. POST asks
 //! that AND fences the token, because it writes. Both refusals are the
 //! statement's `WHERE`, decided in `afd_fleet` — this layer supplies the
 //! identity and renders the answer.
@@ -26,7 +26,7 @@ use garde::Validate as _;
 
 use crate::auth::RunnerIdentity;
 use crate::handler::malformed;
-use crate::services::{Leasing as _, Services};
+use crate::services::{RunPlane as _, Services};
 
 /// The scoped event a failed hydrate is logged under.
 const EVENT_HYDRATE: &str = "runner_memory_hydrate_failed";
@@ -44,7 +44,7 @@ const EVENT_RECALL: &str = "runner_memory_recall_failed";
 const DETAIL_RECALL_MALFORMED: &str = "Malformed memory recall body";
 
 /// The `current_state` a fenced memory verb names: the fleet has moved past
-/// the lease, or the token is not the lease's own.
+/// the run, or the token is not the run's own.
 const STATE_SUPERSEDED: &str = "superseded";
 
 /// Seeds a run with its fleet's memory window.
@@ -78,7 +78,7 @@ pub(crate) async fn hydrate<D: Services>(
         Ok(fleet) => fleet,
         Err(refused) => return refused.into_response(),
     };
-    match services.leases().hydrate(runner.id(), &fleet).await {
+    match services.runs().hydrate(runner.id(), &fleet).await {
         Ok(hydrated) => Json(hydrated).into_response(),
         Err(error) => Refusal::conflict_or_at(EVENT_HYDRATE, conflict_state)(error).into_response(),
     }
@@ -125,11 +125,7 @@ pub(crate) async fn recall<D: Services>(
     if request.validate().is_err() {
         return malformed(DETAIL_RECALL_MALFORMED);
     }
-    match services
-        .leases()
-        .recall(runner.id(), &fleet, &request)
-        .await
-    {
+    match services.runs().recall(runner.id(), &fleet, &request).await {
         Ok(recalled) => Json(recalled).into_response(),
         Err(error) => Refusal::conflict_or_at(EVENT_RECALL, conflict_state)(error).into_response(),
     }
@@ -178,7 +174,7 @@ pub(crate) async fn capture<D: Services>(
     };
 
     match services
-        .leases()
+        .runs()
         .capture(runner.id(), &fleet, &request, services.now())
         .await
     {
@@ -213,7 +209,7 @@ mod tests {
             conflict_state(&afd_fleet::Error::stale_fence()),
             Some(STATE_SUPERSEDED)
         );
-        assert_eq!(conflict_state(&afd_fleet::Error::lease_not_found()), None);
+        assert_eq!(conflict_state(&afd_fleet::Error::run_not_found()), None);
         assert_eq!(conflict_state(&afd_fleet::Error::mint_unconfigured()), None);
     }
 }

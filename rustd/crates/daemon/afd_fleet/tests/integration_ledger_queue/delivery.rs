@@ -7,7 +7,7 @@
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_db::config::DbRole;
-use afd_fleet::lease::Delivery;
+use afd_fleet::run::Delivery;
 use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use sqlx::Connection as _;
 
@@ -31,7 +31,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
     let before = afd_turns::view::fleet_counters(&fixtures.database, &fleet)
@@ -42,7 +42,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
         .execute(&mut *connection)
         .await
         .expect("inject fault");
-    tokio::time::timeout(WITHIN, leases.select(&runner, &[]))
+    tokio::time::timeout(WITHIN, runs.select(&runner, &[]))
         .await
         .expect("the claim never waits")
         .expect_err("a refused stamp refuses the claim");
@@ -63,7 +63,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
         .await
         .expect("remove fault");
 
-    let acquired = next(&leases, &runner).await.expect("claim");
+    let acquired = next(&runs, &runner).await.expect("claim");
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     assert_eq!(delivery_state(&fixtures, &event).await, (1, true));
     let after = afd_turns::view::fleet_counters(&fixtures.database, &fleet)
@@ -75,7 +75,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
         Some(after),
         "the claim answers the counters its own insert moved"
     );
-    drop((connection, leases));
+    drop((connection, runs));
     owner.close().await;
     fixtures.cleanup().await;
 }
@@ -89,7 +89,7 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
     let admissions =
         Admissions::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
     let prepared = admissions
@@ -113,12 +113,12 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
         .expect("producer holds budget lock");
     // `next` bounds the claim by WITHIN: the producer stays uncommitted until
     // delivery finishes, so a claim that waited on it would time out.
-    let acquired = next(&leases, &runner).await.expect("claim");
+    let acquired = next(&runs, &runner).await.expect("claim");
     assert_eq!(acquired.event_id, event);
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     assert_eq!(delivery_state(&fixtures, &event).await, (1, true));
     pending.rollback().await.expect("discard pending producer");
-    drop((connection, leases, admissions));
+    drop((connection, runs, admissions));
     fixtures.cleanup().await;
 }
 

@@ -1,6 +1,6 @@
 -- An enrolled host. Runners hold no datastore credential; agentsfleetd writes this row for them.
--- Degraded is `degraded_reason IS NOT NULL`. `lease_version` serializes the choice of the next
--- lease type, so a stale poll cannot overwrite the alternation another daemon set.
+-- Degraded is `degraded_reason IS NOT NULL`. `run_version` serializes the choice of the next
+-- run type, so a stale poll cannot overwrite the alternation another daemon set.
 CREATE TABLE runner.runners (
     id                       UUID PRIMARY KEY,
     host_id                  TEXT    NOT NULL,
@@ -30,19 +30,19 @@ CREATE TABLE runner.runners (
     selftest_checks          JSONB,
     selftest_sandbox_tier    TEXT,
     selftest_network_policy  TEXT,
-    lease_version            BIGINT  NOT NULL,
-    last_lease_type          TEXT,
+    run_version            BIGINT  NOT NULL,
+    last_run_type          TEXT,
     created_at               TIMESTAMPTZ(3)  NOT NULL,
     updated_at               TIMESTAMPTZ(3)  NOT NULL,
     CONSTRAINT uq_runners_token_hash UNIQUE (token_hash),
     -- The operator assigns a catalogue identity here, never provider credentials.
     decision_platform_model_id UUID
         REFERENCES model.platform_models (id) ON DELETE RESTRICT,
-    -- Gates new lease eligibility only, never the authority of an issued lease.
+    -- Gates new run eligibility only, never the authority of an issued run.
     durable_tasks_enabled BOOLEAN NOT NULL DEFAULT true,
     -- Ownership is stated at registration, never inferred from a missing tenant: a
     -- platform runner takes every tenant's work, so it must be named as one. Both
-    -- columns are fixed after insert (trigger below). Read by the lease claim and
+    -- columns are fixed after insert (trigger below). Read by the run claim and
     -- candidate scan, authoring candidates, the host lock and the runner statements.
     platform_owned BOOLEAN NOT NULL,
     tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,

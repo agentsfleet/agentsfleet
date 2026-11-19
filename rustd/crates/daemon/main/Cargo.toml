@@ -26,8 +26,8 @@ name = "agentsfleetd"
 path = "src/main.rs"
 
 [[bench]]
-name = "lease"
-path = "benches/lease/main.rs"
+name = "run"
+path = "benches/run/main.rs"
 harness = false
 required-features = ["test-util"]
 
@@ -83,7 +83,7 @@ jiff.workspace = true
 # The composition root: this crate is the one that names which directory,
 # capability provider and verifier the generic HTTP shell is served through.
 # The operator's approval queue. Its own crate, not an `afd_fleet` module:
-# showing a person what a fleet wants to do must not pull in leases, money,
+# showing a person what a fleet wants to do must not pull in runs, money,
 # policy and the sweepers.
 afd_approval.workspace = true
 afd_auth.workspace = true
@@ -108,7 +108,7 @@ afd_sse.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
-# Fleet memory, held once and shared by the lease plane and both route families.
+# Fleet memory, held once and shared by the run plane and both route families.
 afd_memory.workspace = true
 afd_gate.workspace = true
 # The signed-ingress plane the webhook and App ingress routes resolve through.

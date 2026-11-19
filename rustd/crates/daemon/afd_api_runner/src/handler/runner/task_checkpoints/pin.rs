@@ -2,7 +2,7 @@
 
 use crate::{auth::RunnerIdentity, services::Services};
 use af_wire::task::CheckpointPinInput;
-use afd_fleet::task::TaskLease;
+use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id};
 use axum::{
     Json,
@@ -14,10 +14,10 @@ use http::{StatusCode, header};
 use std::sync::Arc;
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    patch, path = af_wire::paths::LEASE_TASK_CHECKPOINT_PIN, tag = afd_http::openapi::tag::RUNNERS,
+    patch, path = af_wire::paths::RUN_TASK_CHECKPOINT_PIN, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_checkpoint_pin", summary = "Renew a current capture or restore pin",
     description = "Requires matching task, fence and pin versions. Renewal cannot extend the original transfer deadline or revive expired, stopped or superseded authority.",
-    params(("lease_id" = String, Path, description = "Native lease UUIDv7."),
+    params(("run_id" = String, Path, description = "Native run UUIDv7."),
         ("checkpoint_id" = String, Path, description = "Native checkpoint UUIDv7."),
         ("pin_id" = String, Path, description = "Native pin UUIDv7.")), request_body = CheckpointPinInput,
     responses((status = 200, body = af_wire::task::CheckpointPin, description = "Native checkpoint result"),
@@ -29,21 +29,21 @@ use std::sync::Arc;
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease, checkpoint, pin)): Path<(String, String, String)>,
+    Path((run, checkpoint, pin)): Path<(String, String, String)>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let checkpoint_id = parse_id(&checkpoint, "checkpoint_id must be a UUIDv7")?;
     let pin_id = parse_id(&pin, "pin_id must be a UUIDv7")?;
     let input: garde::Valid<CheckpointPinInput> = super::input(&body)?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let result = services
         .tasks()
-        .renew_checkpoint_pin(lease, &checkpoint_id, &pin_id, &input)
+        .renew_checkpoint_pin(run, &checkpoint_id, &pin_id, &input)
         .await
         .map_err(Refusal::at(super::EVENT))?;
     let status = StatusCode::OK;

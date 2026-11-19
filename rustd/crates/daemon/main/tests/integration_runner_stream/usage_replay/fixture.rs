@@ -1,4 +1,4 @@
-//! Two real fleet leases share one production runner renewal ticker.
+//! Two real fleet runs share one production runner renewal ticker.
 #![expect(
     clippy::expect_used,
     clippy::panic,
@@ -7,7 +7,7 @@
 
 use crate::e2e::Scenario;
 use af_core::{env::MapEnv, id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
-use af_wire::{lease::TaggedLease, protocol::Down};
+use af_wire::{protocol::Down, run::TaggedRun};
 use afr_agent::Meter;
 use afr_supervisor::{config, test_util::Session};
 use std::sync::Arc;
@@ -16,17 +16,17 @@ use tokio_util::sync::CancellationToken;
 pub(super) use super::super::population::sibling;
 
 pub(super) struct Held {
-    pub(super) lease: Uuid7,
+    pub(super) run: Uuid7,
     pub(super) event: Uuid7,
     pub(super) fence: u64,
     expires: jiff::Timestamp,
 }
 
-pub(super) fn config(run: &Scenario, origin: &str, root: &std::path::Path) -> config::Config {
+pub(super) fn config(scene: &Scenario, origin: &str, root: &std::path::Path) -> config::Config {
     let root = root.to_string_lossy().into_owned();
     config::Config::from_env(&MapEnv::from_pairs([
-        (config::ENV_API_URL, run.base.as_str()),
-        (config::ENV_RUNNER_TOKEN, run.token.as_str()),
+        (config::ENV_API_URL, scene.base.as_str()),
+        (config::ENV_RUNNER_TOKEN, scene.token.as_str()),
         (config::ENV_STREAM_URL, origin),
         (config::ENV_STREAM_CA, root.as_str()),
     ]))
@@ -42,20 +42,20 @@ pub(super) async fn offers(session: &Session, first: &Uuid7, second: &Uuid7) -> 
             .expect("pushed offer");
         let message: Down<'_> = frame.decode().expect("strict native offer");
         let Down::Offer {
-            lease: TaggedLease::Fleet(lease),
+            run: TaggedRun::Fleet(run),
         } = message
         else {
             panic!("fleet work expected");
         };
         held.push(Held {
-            lease: Uuid7::parse(&lease.lease_id).expect("lease UUIDv7"),
-            event: Uuid7::parse(&lease.event.event_id).expect("event UUIDv7"),
-            fence: lease.fencing_token,
-            expires: lease.lease_expires_at,
+            run: Uuid7::parse(&run.run_id).expect("run UUIDv7"),
+            event: Uuid7::parse(&run.event.event_id).expect("event UUIDv7"),
+            fence: run.fencing_token,
+            expires: run.run_expires_at,
         });
     }
-    held.sort_by_key(|lease| i32::from(&lease.event != first));
-    let held: [Held; 2] = held.try_into().ok().expect("two leases");
+    held.sort_by_key(|run| i32::from(&run.event != first));
+    let held: [Held; 2] = held.try_into().ok().expect("two runs");
     assert_eq!(&held[0].event, first);
     assert_eq!(&held[1].event, second);
     held
@@ -75,12 +75,12 @@ pub(super) fn meter(lines: usize, input: u64) -> Arc<Meter> {
 
 pub(super) fn keep(
     session: &Arc<Session>,
-    leases: &[Held; 2],
+    runs: &[Held; 2],
     meters: &[Arc<Meter>; 2],
     stop: &CancellationToken,
 ) -> Vec<tokio::task::JoinHandle<()>> {
-    leases.iter().zip(meters).map(|(lease, meter)| {
-        let (session, id, expires, meter, stop) = (Arc::clone(session), lease.lease.clone(), lease.expires, Arc::clone(meter), stop.clone());
+    runs.iter().zip(meters).map(|(run, meter)| {
+        let (session, id, expires, meter, stop) = (Arc::clone(session), run.run.clone(), run.expires, Arc::clone(meter), stop.clone());
         tokio::spawn(async move {
             tokio::select! {
                 () = stop.cancelled() => {},

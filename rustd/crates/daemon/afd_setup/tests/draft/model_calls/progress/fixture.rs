@@ -74,8 +74,8 @@ impl Live {
         attempt: &Attempt,
         request: ModelCallInput,
     ) -> tokio::task::JoinHandle<afd_setup::Result<ModelCallResult>> {
-        let (calls, runner, lease) = (self.calls.clone(), runner.clone(), attempt.lease.clone());
-        tokio::spawn(async move { calls.call(&runner, &lease, request).await })
+        let (calls, runner, run) = (self.calls.clone(), runner.clone(), attempt.run.clone());
+        tokio::spawn(async move { calls.call(&runner, &run, request).await })
     }
 
     pub(super) async fn start(f: &Fixture, attempt: &Attempt) -> Self {

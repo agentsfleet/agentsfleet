@@ -12,7 +12,7 @@
 //!
 //! This module prices the ISSUE-time gate, and the gate's whole posture follows
 //! from that sentence. A rate that cannot be established here must not refuse a
-//! lease: the run has not happened, nothing is being billed, and a catalogue
+//! run: the run has not happened, nothing is being billed, and a catalogue
 //! that has moved out from under a fleet's model is an operational state rather
 //! than a reason to stop the platform. So an unpriceable model answers
 //! [`Estimate::Unpriceable`] and the gate admits.
@@ -103,7 +103,7 @@ impl Accounts {
     ///
     /// Prices the conservative token floor through the same
     /// [`Rater`] that prices every usage line, and no run fee: the runner does
-    /// not know its real token counts at lease time, and no time has elapsed
+    /// not know its real token counts at run time, and no time has elapsed
     /// yet. A self-managed run costs nothing at issue, so it reads no
     /// catalogue.
     ///
@@ -147,7 +147,7 @@ impl Accounts {
 
 impl Accounts {
     /// [`Self::estimate`] against a book the caller already holds, as the
-    /// lease path's version-keyed cache does: no statement.
+    /// run path's version-keyed cache does: no statement.
     ///
     /// # Errors
     /// Preserves the rater's arithmetic failures.
@@ -208,7 +208,7 @@ mod tests {
         // The fail-open posture, expressed as a value rather than performed by
         // a `catch`: a balance of zero still covers a floor of zero, so a
         // catalogue that moved out from under a fleet does not refuse its
-        // lease.
+        // run.
         assert_eq!(Estimate::Unpriceable.floor(), Nanos::ZERO);
         assert!(Nanos::ZERO.covers(Estimate::Unpriceable.floor()));
     }

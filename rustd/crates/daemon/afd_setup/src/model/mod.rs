@@ -39,7 +39,7 @@ pub type ModelCallResult = af_wire::authoring::ModelResult<Definition, ConfigOp,
 pub(crate) use af_inference::input_tokens;
 
 /// The `propose_setup` tool's definition, as the daemon broker offers it and a
-/// setup lease hands it to the runner.
+/// setup run hands it to the runner.
 pub(crate) fn setup_tool(editing: bool) -> serde_json::Value {
     provider::setup_tool(editing)
 }

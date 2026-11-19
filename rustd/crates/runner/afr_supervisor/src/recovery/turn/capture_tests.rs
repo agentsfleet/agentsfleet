@@ -3,7 +3,7 @@
 
 use super::*;
 use af_wire::{
-    lease::{TurnCheckpointPlan, TurnResume},
+    run::{TurnCheckpointPlan, TurnResume},
     task::CheckpointTransferPurpose,
 };
 use afr_agent::TurnSnapshot;
@@ -208,7 +208,7 @@ impl Remote {
             .ok_or_else(|| error::config("the capture named a chunk this fixture does not hold"))
     }
 
-    fn begin(&mut self, begin: af_wire::lease::TurnCheckpointBegin) -> Response {
+    fn begin(&mut self, begin: af_wire::run::TurnCheckpointBegin) -> Response {
         if self.fault == Some(Fault::WrongBegin) {
             return Response::Abandoned;
         }
@@ -221,7 +221,7 @@ impl Remote {
         let plan = TurnCheckpointPlan {
             checkpoint_id: TurnId(format!("019f0000-0000-7000-8000-{:012}", generation + 20)),
             generation,
-            format_version: af_wire::lease::TURN_CHECKPOINT_FORMAT,
+            format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
             scope: scope(),
             expected_head: begin.expected_head,
             page_ids: (0..pages)
@@ -307,9 +307,9 @@ async fn a_file_backed_capture_uploads_each_missing_chunk_and_commits_its_pages(
     let root = workspace()?;
     let remote = Arc::new(Mutex::new(Remote::new(objects, &server.url, None)?));
     let (plane, _calls) = capture_plane(Arc::clone(&remote));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = server.transfers();
-    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
     let stop = CancellationToken::new();
 
     let saved = native
@@ -395,9 +395,9 @@ async fn a_capture_the_owner_cannot_honour_is_abandoned_without_a_head() -> Chec
             Some(fault),
         )?));
         let (plane, _calls) = capture_plane(Arc::clone(&remote));
-        let lease = Uuid7::parse(ID)?;
+        let run = Uuid7::parse(ID)?;
         let transfers = Transfers::new()?;
-        let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+        let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
         let stop = CancellationToken::new();
 
         let refused = native
@@ -424,9 +424,9 @@ async fn a_page_acknowledged_with_other_bytes_ends_the_capture() -> Checked {
         Some(Fault::ChangedPage),
     )?));
     let (plane, _calls) = capture_plane(Arc::clone(&remote));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = server.transfers();
-    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
     let stop = CancellationToken::new();
 
     let refused = native
@@ -454,9 +454,9 @@ async fn a_capture_refuses_a_wrong_reply_or_a_root_its_scope_does_not_name() -> 
         Some(Fault::WrongBegin),
     )?));
     let (plane, mut calls) = capture_plane(Arc::clone(&remote));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = Transfers::new()?;
-    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
     let stop = CancellationToken::new();
 
     // An allocation answered with another command's response.
@@ -503,9 +503,9 @@ async fn a_capture_whose_pin_is_about_to_lapse_renews_custody_as_it_works() -> C
     owner.custody.0 = Duration::from_secs(30);
     let remote = Arc::new(Mutex::new(owner));
     let (plane, _calls) = capture_plane(Arc::clone(&remote));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = server.transfers();
-    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
     let stop = CancellationToken::new();
 
     let saved = native
@@ -549,9 +549,9 @@ async fn a_capture_stops_when_custody_changes_hands_or_has_ended() -> Checked {
         owner.custody = (pin_lasts, capture_lasts);
         let remote = Arc::new(Mutex::new(owner));
         let (plane, _calls) = capture_plane(Arc::clone(&remote));
-        let lease = Uuid7::parse(ID)?;
+        let run = Uuid7::parse(ID)?;
         let transfers = Transfers::new()?;
-        let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+        let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
         let stop = CancellationToken::new();
 
         let refused = native
@@ -582,9 +582,9 @@ async fn a_root_that_is_not_utf8_is_abandoned_before_its_commit() -> Checked {
         None,
     )?));
     let (plane, _calls) = capture_plane(Arc::clone(&remote));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = Transfers::new()?;
-    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
     let stop = CancellationToken::new();
     let mut binary = snapshot(scope());
     binary.history = Zeroizing::new(vec![0xff, 0xfe]);
@@ -617,9 +617,9 @@ async fn a_commit_receipt_naming_another_generation_commits_no_head() -> Checked
         Some(Fault::ChangedCommit),
     )?));
     let (plane, _calls) = capture_plane(Arc::clone(&remote));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = Transfers::new()?;
-    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let mut native = NativeTurn::new(&plane, &run, 1, &transfers);
     let stop = CancellationToken::new();
 
     let refused = native

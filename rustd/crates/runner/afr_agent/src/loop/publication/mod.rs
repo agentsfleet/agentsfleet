@@ -146,7 +146,7 @@ impl Harness<'_, '_> {
         // No background session may keep editing while this root validates.
         if self
             .shared
-            .lease
+            .run
             .sessions
             .close_all(&SandboxEnv::new(executor))
             .await
@@ -163,7 +163,7 @@ impl Harness<'_, '_> {
             .ok_or_else(|| refused("Native task identity is absent."))?;
         let effects = self
             .shared
-            .lease
+            .run
             .verbs
             .task_effects(af_wire::task::TaskEffectsQuery {
                 fencing_token: self.shared.fencing_token,
@@ -245,7 +245,7 @@ impl Harness<'_, '_> {
                 source,
             )
         })?;
-        let effect = self.shared.lease.verbs.task_publish(request).await
+        let effect = self.shared.run.verbs.task_publish(request).await
             .map_err(|source| failed(ToolErrorCode::AgentsfleetdRefused, "Publication did not return a confirmed outcome. Reconcile its native receipt before another attempt.", crate::decision::native(source)))?;
         Ok(effect)
     }

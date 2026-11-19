@@ -102,7 +102,7 @@ fn test_preflight_lists_missing() {
     {
         assert!(
             stderr.contains(knob),
-            "one run must name every unset knob; {knob} is absent from: {stderr}"
+            "one scene must name every unset knob; {knob} is absent from: {stderr}"
         );
     }
 }

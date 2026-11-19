@@ -1,10 +1,10 @@
-//! The cgroup a service manager delegated to this process: where every lease's
+//! The cgroup a service manager delegated to this process: where every run's
 //! cgroup is made.
 //!
 //! systemd's `Delegate=` with `DelegateSubgroup=` starts the runner in a leaf
 //! of its own and hands it the service's cgroup to manage
 //! (`deploy/baremetal/agentsfleet-runner.service`). cgroup v2 keeps processes
-//! out of an inner node, so a lease's cgroup is a sibling of that leaf, made
+//! out of an inner node, so a run's cgroup is a sibling of that leaf, made
 //! under its parent: the delegated root is the parent of the cgroup
 //! `/proc/self/cgroup` names.
 
@@ -32,7 +32,7 @@ const UNIFIED_HIERARCHY: u32 = 0;
 /// Controllers the parent has made available to this delegated root.
 const CONTROLLERS: &str = "cgroup.controllers";
 
-/// Enables the lease controllers only within the service's delegated root.
+/// Enables the run controllers only within the service's delegated root.
 /// systemd makes them available but leaves activation to the delegatee.
 /// `DelegateSubgroup=runner` keeps the service's processes out of this node;
 /// a populated root is refused by the kernel, never repaired by moving tasks.

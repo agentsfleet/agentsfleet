@@ -232,7 +232,7 @@ pub struct AdminModelItem<'a> {
     /// The complete schedule, ordered by tier then start.
     #[serde(borrow)]
     pub prices: Vec<CataloguePrice<'a>>,
-    /// Non-secret settings used by setup chat and runtime leases.
+    /// Non-secret settings used by setup chat and runtime runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inference: Option<ModelInference>,
     /// Reviewed decision definition and independent rates, when configured.

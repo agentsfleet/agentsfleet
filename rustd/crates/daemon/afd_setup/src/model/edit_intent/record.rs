@@ -13,13 +13,13 @@ use super::{
     CONTEXT, ModelCalls, Prepared,
     verdict::{Disposition, Evaluation},
 };
-use crate::{Result, error::raise::query, lease::guard};
+use crate::{Result, error::raise::query, run::guard};
 
 impl ModelCalls {
     pub(super) async fn record_edit(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         counters: &guard::Counters,
         prepared: &Prepared,
         evaluation: Evaluation,
@@ -28,7 +28,7 @@ impl ModelCalls {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let fresh = match self
             .drafts
-            .publication(&mut tx, runner, lease, counters)
+            .publication(&mut tx, runner, run, counters)
             .await
         {
             Ok(current) => {

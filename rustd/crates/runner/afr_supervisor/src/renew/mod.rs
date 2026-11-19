@@ -1,4 +1,4 @@
-//! Renewal: a held lease bought more time, tick by tick, until the daemon says
+//! Renewal: a held run bought more time, tick by tick, until the daemon says
 //! no or the time it granted runs out.
 
 use std::{sync::Arc, time::Duration};
@@ -17,7 +17,7 @@ use crate::client::ControlPlane;
 use crate::error::Error;
 
 /// Leave time for an uncooperative engine, process-group termination and reaping before
-/// the daemon may hand the expired lease to another runner.
+/// the daemon may hand the expired run to another runner.
 pub(crate) const EXPIRY_MARGIN: Duration = af_core::timing::ENGINE_STOP_GRACE
     .saturating_add(afr_executor::timing::KILL_GRACE)
     .saturating_add(Duration::from_secs(2));
@@ -27,54 +27,54 @@ const _: () = assert!(
         < af_core::timing::RENEWAL_WINDOW.as_nanos(),
     "recovery must leave a complete renewal answer and physical cleanup window"
 );
-/// The longest a lease can be granted for, which bounds any deadline a reply
+/// The longest a run can be granted for, which bounds any deadline a reply
 /// can set, however far ahead it claims.
 const LONGEST_GRANT: Duration = MAX_RUNTIME;
-const EVENT_RENEWED: &str = "lease_renewed";
-const EVENT_TERMINATED: &str = "lease_terminated_by_renewal";
-const EVENT_EXPIRED: &str = "lease_timed_out";
+const EVENT_RENEWED: &str = "run_renewed";
+const EVENT_TERMINATED: &str = "run_terminated_by_renewal";
+const EVENT_EXPIRED: &str = "run_timed_out";
 const EVENT_UNFLUSHED: &str = "usage_lines_unflushed";
 
-/// Renews one lease.
+/// Renews one run.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Renewal<'a> {
     plane: &'a ControlPlane,
-    lease_id: &'a Uuid7,
+    run_id: &'a Uuid7,
     expires_at: Timestamp,
     clock: &'a dyn Clock,
     meter: &'a std::sync::Arc<Meter>,
 }
 
 impl<'a> Renewal<'a> {
-    /// Renews `lease_id`, granted until `expires_at`, with
+    /// Renews `run_id`, granted until `expires_at`, with
     /// `clock` reading the wall time the daemon's deadlines are written in and
     /// `meter` the tokens each renewal reports.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
-        lease_id: &'a Uuid7,
+        run_id: &'a Uuid7,
         expires_at: Timestamp,
         clock: &'a dyn Clock,
         meter: &'a std::sync::Arc<Meter>,
     ) -> Self {
         Self {
             plane,
-            lease_id,
+            run_id,
             expires_at,
             clock,
             meter,
         }
     }
 
-    /// Renews every [`RENEWAL_TICK`] and returns why the lease ended.
+    /// Renews every [`RENEWAL_TICK`] and returns why the run ended.
     ///
-    /// A transport failure or a 5xx keeps the lease: the daemon may be briefly
+    /// A transport failure or a 5xx keeps the run: the daemon may be briefly
     /// unwell and the next tick may land. A 4xx ends it — revoked, lapsed, out
-    /// of budget. And whatever the failures were, the lease ends once the last
+    /// of budget. And whatever the failures were, the run ends once the last
     /// granted deadline, less [`EXPIRY_MARGIN`], has passed: past it the daemon
     /// may already have given the event to another runner.
     pub(crate) async fn keep(self) -> FailureClass {
         let mut registration = match self.plane.stream.renewing.register(
-            self.lease_id,
+            self.run_id,
             Arc::clone(self.meter),
             self.deadline(self.expires_at),
         ) {
@@ -95,12 +95,12 @@ impl<'a> Renewal<'a> {
                 Some(crate::uplink::renewals::Renewed::Confirmed(response)) => {
                     registration
                         .lifetime
-                        .extend(self.deadline(response.lease_expires_at));
+                        .extend(self.deadline(response.run_expires_at));
                     if let Some(sequence) = response.recorded_through {
                         self.meter.recorded_through(sequence);
                     }
-                    let lease_id = self.lease_id.as_str();
-                    tracing::debug!(event = EVENT_RENEWED, lease_id);
+                    let run_id = self.run_id.as_str();
+                    tracing::debug!(event = EVENT_RENEWED, run_id);
                 }
                 Some(crate::uplink::renewals::Renewed::Refused(code)) => {
                     let error = crate::error::ErrorKind::StreamRefused {
@@ -115,7 +115,7 @@ impl<'a> Renewal<'a> {
         }
     }
 
-    /// When to give the lease up, for a grant until `expires_at`.
+    /// When to give the run up, for a grant until `expires_at`.
     fn deadline(&self, expires_at: Timestamp) -> Instant {
         let left = af_core::clock::elapsed(self.clock.now(), expires_at).min(LONGEST_GRANT);
         Instant::now() + left.saturating_sub(EXPIRY_MARGIN)
@@ -123,11 +123,11 @@ impl<'a> Renewal<'a> {
 
     fn terminated(&self, refusal: &Error) -> FailureClass {
         let code = refusal.code().as_str();
-        let lease_id = self.lease_id.as_str();
+        let run_id = self.run_id.as_str();
         let event = EVENT_TERMINATED;
         {
-            let (error_code, message) = (&code, format_args!("the daemon ended the lease"));
-            tracing::warn!(message, error_code, lease_id, event);
+            let (error_code, message) = (&code, format_args!("the daemon ended the run"));
+            tracing::warn!(message, error_code, run_id, event);
         };
         if refusal.refusal_code() == Some(RUN_BUDGET_EXCEEDED) {
             FailureClass::BudgetBreach
@@ -137,15 +137,15 @@ impl<'a> Renewal<'a> {
     }
 
     fn expired(&self) -> FailureClass {
-        let code = error_code::RUN_LEASE_LOST.as_str();
-        let lease_id = self.lease_id.as_str();
+        let code = error_code::RUN_LOST.as_str();
+        let run_id = self.run_id.as_str();
         let event = EVENT_EXPIRED;
         {
             let (error_code, message) = (
                 &code,
-                format_args!("the lease ran out before a renewal landed"),
+                format_args!("the run ran out before a renewal landed"),
             );
-            tracing::warn!(message, error_code, lease_id, event);
+            tracing::warn!(message, error_code, run_id, event);
         };
         FailureClass::RenewalTerminate
     }
@@ -161,7 +161,7 @@ impl<'a> Renewal<'a> {
 /// flush. The report then carries the oldest lines left, and the lines past
 /// them are logged unbilled. A line sent twice is still billed once, since the
 /// daemon keys lines on `(work, kind, seq)`.
-pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter) {
+pub(crate) async fn flush(plane: &ControlPlane, run_id: &Uuid7, meter: &Meter) {
     loop {
         let backlog = meter.backlog();
         if backlog <= LINES_MAX {
@@ -170,7 +170,7 @@ pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter)
         let spent = RenewRequest {
             requests: meter.unrecorded(),
         };
-        let renewed = plane.retrying(|| plane.renew(lease_id, &spent)).await;
+        let renewed = plane.retrying(|| plane.renew(run_id, &spent)).await;
         if let Some(seq) = renewed
             .as_ref()
             .ok()
@@ -187,14 +187,14 @@ pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter)
             .err()
             .map_or(RUN_RENEW_BODY_MALFORMED, |failure| failure.code());
         let error_code = code.as_str();
-        let lease_id = lease_id.as_str();
+        let run_id = run_id.as_str();
         let unbilled = meter.backlog().saturating_sub(LINES_MAX);
         let event = EVENT_UNFLUSHED;
         {
             let (message,) = (format_args!(
                 "a renewal did not take the run's usage lines; the report carries the oldest"
             ),);
-            tracing::error!(message, error_code, lease_id, unbilled, event);
+            tracing::error!(message, error_code, run_id, unbilled, event);
         };
         return;
     }

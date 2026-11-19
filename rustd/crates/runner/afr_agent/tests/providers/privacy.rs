@@ -7,7 +7,7 @@ use tracing::level_filters::LevelFilter;
 
 use super::CALL_ID;
 use super::support::wires::Wire;
-use super::support::{Fake, KEY, Seen, TOKEN, engine, lease, run};
+use super::support::{Fake, KEY, Seen, TOKEN, engine, payload, run};
 
 // Value: protects=tool replay keeps opaque credential references and excludes original secrets;
 // fails_when=replay drops or restores canonical arguments after the real loop scrubs them;
@@ -24,13 +24,13 @@ async fn test_api_key_never_leaves_the_supervisor() {
             wire.answer(&format!("the key was {KEY}")),
         ])
         .await;
-        let leased = lease(
+        let held = payload(
             &wire.provider(),
             &[UPDATE_PLAN.name()],
             &format!("use {TOKEN}"),
         );
 
-        let (output, frames) = run(&engine(&fake), &leased).await;
+        let (output, frames) = run(&engine(&fake), &held).await;
 
         let seen = fake.seen();
         assert_eq!(seen.len(), 2, "{wire:?}: one request per turn");

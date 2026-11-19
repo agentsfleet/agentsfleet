@@ -1,4 +1,4 @@
-//! Exhausted work stays readable and cannot gain another lease by resuming.
+//! Exhausted work stays readable and cannot gain another run by resuming.
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::task::{TaskLimits, TaskState};
@@ -15,19 +15,19 @@ async fn cumulative_limits_and_wall_expiry_refuse_resume_without_erasing_progres
 async fn exhausted(case: &Case) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let accepted = tasks
-        .bind(case.lease(), &case.plan("bounded-goals", 3))
+        .bind(case.run(), &case.plan("bounded-goals", 3))
         .await
         .expect("initial goals");
     let source = case.claimed_source().await;
     let fourth = tasks
         .bind(
-            case.lease(),
+            case.run(),
             &case.source_plan(source, "fourth-goal", 1, TaskLimits::default()),
         )
         .await
         .expect("fourth independent goal");
     let all = accepted.items.into_iter().chain(fourth.items);
-    for (binding, resource) in all.zip(["model", "running", "leases", "wall"]) {
+    for (binding, resource) in all.zip(["model", "running", "runs", "wall"]) {
         refused_resume(
             case,
             binding.task_id.as_ref().expect("accepted goal owns a task"),
@@ -57,7 +57,7 @@ async fn refused_resume(case: &Case, task: &Uuid7, resource: &str) {
         )
         .await
         .expect("pause before exhaustion");
-    sqlx::query("UPDATE fleet.tasks SET used_model_nanos=CASE WHEN $2='model' THEN max_model_nanos-100 ELSE 50 END, reserved_model_nanos=CASE WHEN $2='model' THEN 100 ELSE 0 END, used_running_nanos=CASE WHEN $2='running' THEN max_running_nanos ELSE 10 END, used_leases=CASE WHEN $2='leases' THEN max_leases ELSE used_leases END, created_at=CASE WHEN $2='wall' THEN created_at-interval '8 days' ELSE created_at END, expires_at=CASE WHEN $2='wall' THEN expires_at-interval '8 days' ELSE expires_at END WHERE id=$1")
+    sqlx::query("UPDATE fleet.tasks SET used_model_nanos=CASE WHEN $2='model' THEN max_model_nanos-100 ELSE 50 END, reserved_model_nanos=CASE WHEN $2='model' THEN 100 ELSE 0 END, used_running_nanos=CASE WHEN $2='running' THEN max_running_nanos ELSE 10 END, used_runs=CASE WHEN $2='runs' THEN max_runs ELSE used_runs END, created_at=CASE WHEN $2='wall' THEN created_at-interval '8 days' ELSE created_at END, expires_at=CASE WHEN $2='wall' THEN expires_at-interval '8 days' ELSE expires_at END WHERE id=$1")
         .bind(task).bind(resource)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("usage connection"))
         .await.expect("retained cumulative usage");

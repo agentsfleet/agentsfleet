@@ -4,14 +4,14 @@ use super::{Case, Checked, manifest::Pending, publication::command, storage::Fil
 use crate::support::Fixtures;
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
-    lease::{
+    run::{
         TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
         TurnId, TurnResume, TurnWorkspace,
     },
     task::CheckpointEntry,
 };
 use afd_fleet::{
-    lease::turn_checkpoint::TurnLease,
+    run::turn_checkpoint::TurnRun,
     task::{CheckpointMaintenanceCursor, TaskLifecycle as _},
 };
 
@@ -250,7 +250,7 @@ async fn end_reader(
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_leases() -> Checked {
+async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_runs() -> Checked {
     for workspace in modes() {
         let files = isolated().await?;
         let (pending, saved) = publish(&files, workspace, None).await?;
@@ -283,11 +283,11 @@ async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_leases() -> Che
             foreign(&files, action.clone()).await?;
         }
         let mut connection = files.case.fixtures.database.acquire().await?;
-        sqlx::query("UPDATE runner.leases SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
-            .bind(&files.case.issued.lease_id).execute(&mut *connection).await?;
+        sqlx::query("UPDATE runner.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+            .bind(&files.case.issued.run_id).execute(&mut *connection).await?;
         drop(connection);
         for action in actions {
-            refused(files.execute(action).await, error_code::RUN_LEASE_LOST)?;
+            refused(files.execute(action).await, error_code::RUN_LOST)?;
         }
         assert_eq!(
             files.case.counts().await?.3,
@@ -300,25 +300,25 @@ async fn commit_read_and_adopt_refuse_foreign_fences_and_expired_leases() -> Che
 
 async fn foreign(files: &Files, action: Action) -> Checked {
     let request = valid(command(&files.case, action.clone()))?;
-    let presented = TurnLease {
+    let presented = TurnRun {
         runner_id: &files.case.foreign,
-        ..files.case.lease()
+        ..files.case.run()
     };
     let result = files
         .store
-        .execute(&files.case.leases, presented, &request)
+        .execute(&files.case.runs, presented, &request)
         .await
         .map_err(Into::into);
-    refused(result, error_code::RUN_LEASE_NOT_FOUND)?;
+    refused(result, error_code::RUN_NOT_FOUND)?;
     let mut request = command(&files.case, action);
     request.fencing_token += 1;
-    let presented = TurnLease {
+    let presented = TurnRun {
         fencing_token: request.fencing_token,
-        ..files.case.lease()
+        ..files.case.run()
     };
     let result = files
         .store
-        .execute(&files.case.leases, presented, &valid(request)?)
+        .execute(&files.case.runs, presented, &valid(request)?)
         .await
         .map_err(Into::into);
     refused(result, error_code::RUN_STALE_FENCING_TOKEN)

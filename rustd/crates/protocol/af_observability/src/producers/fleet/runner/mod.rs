@@ -76,15 +76,15 @@ pub fn seen(runner_id: &str, at: jiff::Timestamp) {
     }
 }
 
-/// Records that a runner took a lease.
-pub fn lease_taken(runner_id: &str) {
+/// Records that a runner took a run.
+pub fn run_taken(runner_id: &str) {
     if let Some(producers) = installed() {
-        producers.fleet.runners.leased(runner_id);
+        producers.fleet.runners.held(runner_id);
     }
 }
 
-/// Records that a runner gave a lease back.
-pub fn lease_released(runner_id: &str) {
+/// Records that a runner gave a run back.
+pub fn run_released(runner_id: &str) {
     if let Some(producers) = installed() {
         producers.fleet.runners.released(runner_id);
     }
@@ -114,7 +114,7 @@ const fn fault_of(reason: Option<FailureClass>) -> Fault {
             FailureClass::StartupPosture
             | FailureClass::RunnerCrash
             | FailureClass::TransportLoss
-            | FailureClass::LeaseExpired
+            | FailureClass::RunExpired
             | FailureClass::RenewalTerminate,
         )
         | None => Fault::Platform,
@@ -153,7 +153,7 @@ const fn class_label(class: FailureClass) -> &'static str {
         FailureClass::RunnerCrash => "runner_crash",
         FailureClass::TransportLoss => "transport_loss",
         FailureClass::LandlockDeny => "landlock_deny",
-        FailureClass::LeaseExpired => "lease_expired",
+        FailureClass::RunExpired => "run_expired",
         FailureClass::RenewalTerminate => "renewal_terminate",
         FailureClass::BudgetBreach => "budget_breach",
     }

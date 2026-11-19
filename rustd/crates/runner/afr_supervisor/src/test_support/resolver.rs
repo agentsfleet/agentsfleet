@@ -1,4 +1,4 @@
-//! The egress an assignment names, for the suites that bind a lease's egress
+//! The egress an assignment names, for the suites that bind a run's egress
 //! without the network; they resolve through `af_egress`'s `FakeResolver`.
 
 use std::io;
@@ -12,7 +12,7 @@ use super::FakeResolver;
 use crate::egress::Egress;
 
 /// A [`FakeResolver`] that answers each host only after `takes`, so a suite
-/// sees the egress bind's time on the lease's line.
+/// sees the egress bind's time on the run's line.
 #[derive(Debug, Clone)]
 pub(crate) struct Stalled {
     pub(crate) answers: FakeResolver,

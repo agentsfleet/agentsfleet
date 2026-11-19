@@ -1,9 +1,9 @@
 //! The billing sweeper when its biller misses, and when a report beats it to
-//! a lease.
+//! a run.
 //!
-//! `integration_billing_sweep.rs` proves a pass finishes what the lease path
+//! `integration_billing_sweep.rs` proves a pass finishes what the run path
 //! left. These prove a pass that cannot finish it counts the miss and leaves
-//! the work for the next pass, and that a lease another writer billed while
+//! the work for the next pass, and that a run another writer billed while
 //! the pass waited for it is skipped rather than billed twice.
 //!
 //! Each case runs in its own database: a pass sweeps every row it can see.
@@ -21,8 +21,8 @@ use std::time::Duration;
 use af_core::error_code;
 use af_crypto::entropy::Entropy;
 use afd_billing::ledger::LedgerBiller;
-use afd_fleet::lease::billing_sweep::{BillingSwept, sweep};
-use afd_fleet::lease::sql::LEASE_STATUS_REPORTED;
+use afd_fleet::run::billing_sweep::{BillingSwept, sweep};
+use afd_fleet::run::sql::RUN_STATUS_REPORTED;
 use sqlx::Connection as _;
 
 use crate::faulty_biller::{Faults, Faulty};
@@ -36,8 +36,8 @@ const QUEUED_WITHIN: Duration = Duration::from_secs(10);
 /// How often it looks.
 const POLL: Duration = Duration::from_millis(20);
 
-/// Locks the lease row the pass is about to bill, answering the holder's pid.
-const HOLD_LEASE: &str = "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1 FOR UPDATE";
+/// Locks the run row the pass is about to bill, answering the holder's pid.
+const HOLD_RUN: &str = "SELECT pg_backend_pid() FROM runner.runs WHERE id = $1 FOR UPDATE";
 
 /// Sessions queued behind `$1`.
 const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
@@ -45,7 +45,7 @@ const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
 
 /// What a late report does to the cursor: carries it to the deadline.
 const BILL_TO_DEADLINE: &str =
-    "UPDATE runner.leases SET last_metered_at = lease_expires_at WHERE id = $1";
+    "UPDATE runner.runs SET last_metered_at = run_expires_at WHERE id = $1";
 
 async fn isolated() -> Held {
     held_in(Fixtures::create_isolated().await).await
@@ -55,7 +55,7 @@ async fn close(held: Held) {
     held.fixtures.cleanup().await;
 }
 
-/// A reported lease's line the biller cannot settle is counted and left
+/// A reported run's line the biller cannot settle is counted and left
 /// unsettled; the next pass, with the biller back, settles it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -64,12 +64,12 @@ async fn a_line_the_biller_cannot_settle_waits_for_the_next_pass() {
     let database = &held.fixtures.database;
     let ledger = LedgerBiller::on_system_clock(database.clone());
     orphan(&held).await;
-    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1")
-        .bind(&held.lease_key)
-        .bind(LEASE_STATUS_REPORTED)
+    sqlx::query("UPDATE runner.runs SET status = $2 WHERE id = $1")
+        .bind(&held.run_key)
+        .bind(RUN_STATUS_REPORTED)
         .execute(&mut *database.acquire().await.expect("a connection"))
         .await
-        .expect("the lease reported before the relay's next pass");
+        .expect("the run reported before the relay's next pass");
     let down = Faulty::over(database, Faults { settle: true });
 
     let missed = sweep(database, down.as_ref(), &Entropy::new(), held.now, None)
@@ -97,7 +97,7 @@ async fn a_line_the_biller_cannot_settle_waits_for_the_next_pass() {
     close(held).await;
 }
 
-/// An abandoned lease's last slice is logged even when the biller cannot
+/// An abandoned run's last slice is logged even when the biller cannot
 /// settle it; the pass counts the miss twice, once for the slice and once when
 /// the line pass meets the same line, and a later pass settles it.
 #[tokio::test]
@@ -123,7 +123,7 @@ async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
     );
     let logged: i64 =
         sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE work_id = $1")
-            .bind(&held.lease_key)
+            .bind(&held.run_key)
             .fetch_one(&mut *database.acquire().await.expect("a connection"))
             .await
             .expect("the lines count");
@@ -131,23 +131,23 @@ async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
     close(held).await;
 }
 
-/// A lease a late report billed while the pass waited on its row is skipped:
+/// A run a late report billed while the pass waited on its row is skipped:
 /// the pass re-reads the row under the lock, finds the cursor at the
 /// deadline, and bills nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_lease_billed_while_the_pass_waited_is_skipped() {
+async fn a_run_billed_while_the_pass_waited_is_skipped() {
     let held = isolated().await;
     let database = held.fixtures.database.clone();
     abandon(&held).await;
-    let lease = held.lease_key.clone();
+    let run = held.run_key.clone();
     let mut reporter = database.acquire().await.expect("a connection");
     let mut report = reporter.begin().await.expect("a transaction");
-    let pid: i32 = sqlx::query_scalar(HOLD_LEASE)
-        .bind(&lease)
+    let pid: i32 = sqlx::query_scalar(HOLD_RUN)
+        .bind(&run)
         .fetch_one(&mut *report)
         .await
-        .expect("the lease row locks");
+        .expect("the run row locks");
 
     let biller = Arc::new(LedgerBiller::on_system_clock(database.clone()));
     let pass = tokio::spawn({
@@ -165,7 +165,7 @@ async fn a_lease_billed_while_the_pass_waited_is_skipped() {
         tokio::time::sleep(POLL).await;
     }
     sqlx::query(BILL_TO_DEADLINE)
-        .bind(&lease)
+        .bind(&run)
         .execute(&mut *report)
         .await
         .expect("the late report carries the cursor");

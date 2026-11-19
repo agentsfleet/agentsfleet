@@ -48,7 +48,7 @@ pub const AUTHORING: &str = "sweeper:authoring";
 
 /// The supervised name of the billing sweeper.
 pub const BILLING: &str = "sweeper:billing";
-/// The supervised name of the deadline sweeper: expired leases' last slices
+/// The supervised name of the deadline sweeper: expired runs' last slices
 /// and lapsed setup attempts, on one clock.
 pub const EXPIRY: &str = "sweeper:expiry";
 /// Native task waits, effect readback and storage cleanup; never a second work queue.

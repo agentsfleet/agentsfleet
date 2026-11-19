@@ -1,9 +1,9 @@
-//! Credentials a held lease mints on demand.
+//! Credentials a held run mints on demand.
 //!
 //! A [`Mint`] asks the daemon's mint verb for one integration under the held
-//! lease; the supervisor implements it over its control plane, so this crate
+//! run; the supervisor implements it over its control plane, so this crate
 //! never holds the runner's own token. A minted token lives only in the
-//! lease's vault and reaches a request only in its `Authorization` header.
+//! run's vault and reaches a request only in its `Authorization` header.
 
 use std::fmt;
 
@@ -12,7 +12,7 @@ use jiff::Timestamp;
 
 use crate::error::Result;
 
-/// A credential minted for the held lease. Its `Debug` never prints the token.
+/// A credential minted for the held run. Its `Debug` never prints the token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Minted {
     token: Secret,
@@ -39,7 +39,7 @@ impl Minted {
     }
 }
 
-/// Mints a credential for one integration under the held lease.
+/// Mints a credential for one integration under the held run.
 #[async_trait::async_trait]
 pub trait Mint: Send + Sync + fmt::Debug {
     /// A fresh credential for `integration`.

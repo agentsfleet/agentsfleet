@@ -34,10 +34,10 @@ fn ids(page: &Value) -> Vec<String> {
 
 /// Seeds an active fleet named `name`, into `workspace` of `tenant` when the
 /// scenario's own are named, or into a workspace of its own.
-async fn seed_named(run: &Scenario, name: &str, own: bool) -> Uuid7 {
+async fn seed_named(scene: &Scenario, name: &str, own: bool) -> Uuid7 {
     let (fleet, workspace, tenant) = unique_ids();
     let (workspace, tenant) = if own {
-        (run.workspace.clone(), run.tenant.clone())
+        (scene.workspace.clone(), scene.tenant.clone())
     } else {
         (workspace, tenant)
     };
@@ -49,7 +49,7 @@ async fn seed_named(run: &Scenario, name: &str, own: bool) -> Uuid7 {
     };
     let now = af_core::clock::now();
     seed_fleet_as(
-        &run.booted,
+        &scene.booted,
         &fleet,
         &workspace,
         &tenant,
@@ -67,30 +67,30 @@ async fn seed_named(run: &Scenario, name: &str, own: bool) -> Uuid7 {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_list_finds_one_fleet_by_exact_name() {
     let mut supervisor = Supervisor::new();
-    let (run, token) = tenant_reader(&mut supervisor).await;
-    let bob = seed_named(&run, "agentbob", true).await;
-    let bob_two = seed_named(&run, "agentbob-2", true).await;
-    let elsewhere = seed_named(&run, "agentbob", false).await;
+    let (scene, token) = tenant_reader(&mut supervisor).await;
+    let bob = seed_named(&scene, "agentbob", true).await;
+    let bob_two = seed_named(&scene, "agentbob-2", true).await;
+    let elsewhere = seed_named(&scene, "agentbob", false).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let list = format!("/v1/workspaces/{}/fleets", run.workspace);
+    let list = format!("/v1/workspaces/{}/fleets", scene.workspace);
 
-    let named = tenant_get(&http, &run, &token, &format!("{list}?name=agentbob")).await;
+    let named = tenant_get(&http, &scene, &token, &format!("{list}?name=agentbob")).await;
     assert_eq!(ids(&named), vec![bob.to_string()], "{named}");
-    let prefix = tenant_get(&http, &run, &token, &format!("{list}?name=agent")).await;
+    let prefix = tenant_get(&http, &scene, &token, &format!("{list}?name=agent")).await;
     assert!(ids(&prefix).is_empty(), "{prefix}");
-    let all = ids(&tenant_get(&http, &run, &token, &list).await);
+    let all = ids(&tenant_get(&http, &scene, &token, &list).await);
     for fleet in [&bob, &bob_two] {
         assert!(all.contains(&fleet.to_string()), "{fleet} missing: {all:?}");
     }
     assert!(!all.contains(&elsewhere.to_string()));
 
     for fleet in [&bob, &bob_two, &elsewhere] {
-        crate::e2e_retire::retire_fleet(&run.booted, fleet).await;
+        crate::e2e_retire::retire_fleet(&scene.booted, fleet).await;
     }
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

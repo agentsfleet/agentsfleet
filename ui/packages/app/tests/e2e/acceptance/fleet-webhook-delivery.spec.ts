@@ -8,7 +8,7 @@ import { executionInstructions, WEBHOOK_EVENT_WORKFLOW_RUN, fixtureDefinition, w
  * delivery is signed with it and posted to the fleet's webhook route → the
  * daemon accepts it and names the event → the identical bytes are posted
  * again → the daemon reports a replay and names the SAME event → an online
- * runner leases the one event, and the fleet's history carries exactly one
+ * runner runs the one event, and the fleet's history carries exactly one
  * webhook row after both posts.
  *
  * The replay is byte-identical on purpose. The daemon keys its claim on the
@@ -29,7 +29,7 @@ import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   anyRunnerLive,
-  classifyUnleased,
+  classifyIdle,
   EVENT_STATUS,
   failWith,
 } from "./fixtures/execution";
@@ -72,8 +72,8 @@ const HMAC_ALGORITHM = "sha256";
 
 const EVENT_TYPE_WEBHOOK = "webhook";
 const HTTP_ACCEPTED = 202;
-// Delivery → lease → durable row rides the queue and the heartbeat cadence,
-// the same budget the other lease-crossing journeys carry.
+// Delivery → run → durable row rides the queue and the heartbeat cadence,
+// the same budget the other run-crossing journeys carry.
 const EVENT_ROW_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 2_000;
 // Long enough for a second delivery to have become a second row if the
@@ -143,11 +143,11 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
 /**
  * Waits for a runner to take the event, or reports why nobody did.
  *
- * NO row exists until a runner leases the event. The ingress writes nothing to
+ * NO row exists until a runner runs the event. The ingress writes nothing to
  * `fleet.events` — it admits the delivery to the admissions ledger and answers
  * 202, and the row is
- * written by the lease (`afd_ingress::deliver`, module note: "the row appears
- * when the runner leases the event, and a daemon that inserted one at ingress
+ * written by the run (`afd_ingress::deliver`, module note: "the row appears
+ * when the runner runs the event, and a daemon that inserted one at ingress
  * would be racing its own runner to describe the same event").
  *
  * This function read the opposite until Sep 8, 2026, and the cost was the
@@ -158,8 +158,8 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
  * a wait that runs out reaches the classifier below, which is the sentence
  * this journey exists to print (RULE ECL).
  */
-async function awaitLease(workspaceId: string, fleetId: string): Promise<void> {
-  const leased = await expect
+async function awaitRun(workspaceId: string, fleetId: string): Promise<void> {
+  const held = await expect
     .poll(
       async () => {
         const [current] = await webhookEvents(workspaceId, fleetId);
@@ -170,11 +170,11 @@ async function awaitLease(workspaceId: string, fleetId: string): Promise<void> {
     .not.toBe(EVENT_STATUS.received)
     .then(() => true)
     .catch(() => false);
-  if (!leased) {
-    // A delivery nobody leased is the runner fleet's fault when none is live
+  if (!held) {
+    // A delivery nobody held is the runner fleet's fault when none is live
     // and the product's when one is — the same split every other
-    // lease-crossing journey reports, rather than a bare timeout.
-    failWith(classifyUnleased(await anyRunnerLive()));
+    // run-crossing journey reports, rather than a bare timeout.
+    failWith(classifyIdle(await anyRunnerLive()));
   }
 }
 
@@ -209,10 +209,10 @@ test.describe("fleet webhook delivery", () => {
     expect(replay.body.event_id).toBe(first.body.event_id);
 
     // ── One durable event, once a runner has taken it ──
-    await awaitLease(workspaceId, fleetId);
+    await awaitRun(workspaceId, fleetId);
 
     // The replay had its chance to become a second row across the grace above
-    // plus the whole lease wait; a count taken now is what proves it did not.
+    // plus the whole run wait; a count taken now is what proves it did not.
     await new Promise((resolve) => setTimeout(resolve, REPLAY_GRACE_MS));
     const rows = await webhookEvents(workspaceId, fleetId);
     expect(rows, "the replay added no second event").toHaveLength(1);

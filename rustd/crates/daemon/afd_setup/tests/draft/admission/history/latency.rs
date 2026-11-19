@@ -98,13 +98,13 @@ async fn relay<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 async fn delayed_database_keeps_one_hundred_sends_within_the_existing_pool_budget() {
     let mut f = fund(Fixture::isolated().await, 2).await;
     let draft = queue(&f, "Original unknown request").await;
-    let lease = claim(&f, &draft).await.expect("first attempt");
-    unknown(&f, &lease).await;
+    let run = claim(&f, &draft).await.expect("first attempt");
+    unknown(&f, &run).await;
     f.drafts
         .cancel(f.access(), &draft.id, 1)
         .await
         .expect("Stop old work");
-    super::history(&f, &draft, &lease).await;
+    super::history(&f, &draft, &run).await;
     let proxy = DelayedDatabase::start(&f.owner_url()).await;
     let database = proxy.open().await;
     f.drafts = Drafts::new(

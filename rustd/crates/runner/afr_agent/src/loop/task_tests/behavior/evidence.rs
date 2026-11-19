@@ -24,14 +24,14 @@ async fn oversized_group_is_summarized_without_losing_its_complete_digest() -> c
         vec![Canned::boxed(tool, &"evidence ".repeat(1400))],
         &script,
     );
-    let lease = assigned_lease(&[tool.name()], 65_536);
+    let this_run = assigned_run(&[tool.name()], 65_536);
     let native = goals([evaluation("WAIT", Some(1.0), 0.0)]);
     let prepared = PreparedTask {
         execution_deadline: native.inputs.execution_deadline,
         inputs: native.inputs.clone(),
         allow_actions: true,
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(
         output
             .task
@@ -80,14 +80,14 @@ async fn empty_oversized_cut_or_tool_bearing_summary_blocks_goal_assessment() ->
             vec![Canned::boxed(tool, &"evidence ".repeat(1400))],
             &script,
         );
-        let lease = assigned_lease(&[tool.name()], 65_536);
+        let this_run = assigned_run(&[tool.name()], 65_536);
         let native = goals([]);
         let prepared = PreparedTask {
             execution_deadline: native.inputs.execution_deadline,
             inputs: native.inputs.clone(),
             allow_actions: true,
         };
-        let output = run(&engine, &lease, &native, &prepared).await?;
+        let output = run(&engine, &this_run, &native, &prepared).await?;
         assert!(output.task.is_none());
         assert!(output.recovery.is_some());
         assert_eq!(
@@ -114,7 +114,7 @@ async fn expiring_slice_assesses_continuation_before_starting_another_action() -
 {
     let script = Script::new([]);
     let engine = super::super::super::tests::engine(vec![], &script);
-    let lease = assigned_lease(&[], 16_384);
+    let this_run = assigned_run(&[], 16_384);
     let mut native = goals([evaluation("CONTINUE", Some(1.0), 0.0)]);
     native.inputs.execution_deadline = Some(af_core::clock::after(
         af_core::clock::now(),
@@ -125,7 +125,7 @@ async fn expiring_slice_assesses_continuation_before_starting_another_action() -
         inputs: native.inputs.clone(),
         allow_actions: true,
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(
         output
             .task

@@ -16,22 +16,22 @@ use super::*;
 
 /// The statements joined from parts with `const_format::concatcp!`, by path.
 ///
-/// `afd_fleet`'s lease read puts each locking clause between a shared head and
+/// `afd_fleet`'s run read puts each locking clause between a shared head and
 /// tail so the three variants cannot drift; the head alone is no statement, so
 /// only the joined whole can be prepared. Enumerate with
 /// `git grep -n 'concatcp!' -- rustd/crates/*/*/src` and keep the SQL ones here.
 const JOINED: [(&str, &str); 5] = [
     (
-        "afd_fleet::lease::sql::standing::SELECT_STANDING",
-        afd_fleet::lease::sql::standing::SELECT_STANDING,
+        "afd_fleet::run::sql::standing::SELECT_STANDING",
+        afd_fleet::run::sql::standing::SELECT_STANDING,
     ),
     (
-        "afd_fleet::lease::sql::standing::SELECT_STANDING_SHARED",
-        afd_fleet::lease::sql::standing::SELECT_STANDING_SHARED,
+        "afd_fleet::run::sql::standing::SELECT_STANDING_SHARED",
+        afd_fleet::run::sql::standing::SELECT_STANDING_SHARED,
     ),
     (
-        "afd_fleet::lease::sql::tool_detail::SELECT_LIVE_LEASE",
-        afd_fleet::lease::sql::tool_detail::SELECT_LIVE_LEASE,
+        "afd_fleet::run::sql::tool_detail::SELECT_LIVE_RUN",
+        afd_fleet::run::sql::tool_detail::SELECT_LIVE_RUN,
     ),
     (
         "afd_fleet::task::DECISION_BUDGET_STATEMENT",

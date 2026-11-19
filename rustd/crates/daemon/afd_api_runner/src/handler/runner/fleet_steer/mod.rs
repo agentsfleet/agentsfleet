@@ -1,4 +1,4 @@
-//! `POST /v1/runners/me/leases/{lease_id}/steers` — the fleet a lease runs
+//! `POST /v1/runners/me/runs/{run_id}/steers` — the fleet a run runs
 //! putting work on another fleet in its workspace.
 //!
 //! # A person's steer in every field but four
@@ -9,10 +9,10 @@
 //! destination is copied from the event the sender runs, and the key is the
 //! daemon's (`afd_turns::view::steer`).
 //!
-//! # The lease is proved twice
+//! # The run is proved twice
 //!
 //! Once to learn the sender, and again inside the admission's transaction
-//! through the write guard a schedule write uses, so a runner whose lease a
+//! through the write guard a schedule write uses, so a runner whose run a
 //! reclaim took after the first proof writes nothing.
 //!
 //! # Nothing limits the targets, the chain or the count
@@ -29,8 +29,8 @@ use af_validate::Sentences;
 use af_wire::event::{EventType, STEER_MESSAGE_MAX_BYTES};
 use af_wire::steer_verb::{FleetSteerAccepted, FleetSteerRequest};
 use afd_api_wire::tail::TailFrame;
-use afd_fleet::lease::Standing;
-use afd_fleet::lease::message::SteerSender;
+use afd_fleet::run::Standing;
+use afd_fleet::run::message::SteerSender;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
 use afd_turns::Unheld;
 use afd_turns::view::{FleetSteer, FleetSteered, fleet_actor};
@@ -44,7 +44,7 @@ use http::StatusCode;
 use super::fleets::{DETAIL_FLEET_ID, DETAIL_FLEET_NOT_FOUND, STATE_SUPERSEDED, proven};
 use super::schedule::write_fence;
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSteering as _, Leasing as _, Services};
+use crate::services::{FleetSteering as _, RunPlane as _, Services};
 
 /// The scoped event a steer that failed outright is logged under.
 const EVENT_FAILED: &str = "runner_fleet_steer_failed";
@@ -78,7 +78,7 @@ const DETAIL_NOT_ACTIVE: &str = "Fleet is not active";
 const DETAIL_CONFLICT: &str = "This steer was already sent with different words";
 
 /// The refusal a holder a reclaim superseded earns, found inside the write.
-const DETAIL_SUPERSEDED: &str = "A newer runner holds this lease";
+const DETAIL_SUPERSEDED: &str = "A newer runner holds this run";
 
 /// The `current_state` a steer to the sending fleet names.
 const STATE_SELF: &str = "self";
@@ -96,16 +96,16 @@ const DESCRIPTION: &str = concat!(
     "A fleet outside the workspace returns 404 `UZ-AGT-009`.",
 );
 
-/// Puts work on another fleet in the leased fleet's workspace.
+/// Puts work on another fleet in the held fleet's workspace.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = af_wire::paths::LEASE_STEERS,
+    path = af_wire::paths::RUN_STEERS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_steer_fleet",
     summary = "Steer another fleet",
     description = DESCRIPTION,
     request_body = FleetSteerRequest<'_>,
-    params(afd_http::openapi::path::Lease),
+    params(afd_http::openapi::path::Run),
     responses(
         (status = 202, description = afd_http::openapi::ACCEPTED, body = FleetSteerAccepted<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -118,7 +118,7 @@ const DESCRIPTION: &str = concat!(
 pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease_id): Path<String>,
+    Path(run_id): Path<String>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let request = read_request(&body)?;
@@ -126,7 +126,7 @@ pub(crate) async fn handle<D: Services>(
     let standing = proven(
         &*services,
         runner.id(),
-        &lease_id,
+        &run_id,
         request.fencing_token,
         EVENT_FAILED,
     )
@@ -140,11 +140,11 @@ pub(crate) async fn handle<D: Services>(
         ));
     }
     let sender = services
-        .leases()
+        .runs()
         .sender(&standing, &request.text)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
-    let guard = write_fence(runner.id(), &lease_id, request.fencing_token)?;
+    let guard = write_fence(runner.id(), &run_id, request.fencing_token)?;
     let steer = FleetSteer {
         target: &target,
         workspace: &standing.workspace_id,
@@ -252,12 +252,12 @@ async fn announce<D: Services>(
 fn log_refused(standing: &Standing, target: &Uuid7, code: ErrorCode) {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let error_code = code.as_str();
-    let lease_id = standing.lease_id.as_str();
+    let run_id = standing.run_id.as_str();
     let sender_fleet_id = standing.fleet_id.as_str();
     let target_fleet_id = target.as_str();
     tracing::warn!(
         error_code,
-        lease_id,
+        run_id,
         sender_fleet_id,
         target_fleet_id,
         event = EVENT_REFUSED

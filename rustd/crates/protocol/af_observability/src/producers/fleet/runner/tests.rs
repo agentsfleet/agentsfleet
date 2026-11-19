@@ -15,7 +15,7 @@ const SPLIT: &[(FailureClass, Fault)] = &[
     (FailureClass::StartupPosture, Fault::Platform),
     (FailureClass::RunnerCrash, Fault::Platform),
     (FailureClass::TransportLoss, Fault::Platform),
-    (FailureClass::LeaseExpired, Fault::Platform),
+    (FailureClass::RunExpired, Fault::Platform),
     (FailureClass::RenewalTerminate, Fault::Platform),
     (FailureClass::PolicyDeny, Fault::Workload),
     (FailureClass::LandlockDeny, Fault::Workload),

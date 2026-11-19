@@ -111,9 +111,9 @@ pub(crate) fn runner_not_revoked() -> Error {
     ErrorKind::RunnerNotRevoked.into()
 }
 
-/// Refuses deleting a runner that still holds a live or unbilled lease.
-pub(crate) fn runner_still_leased() -> Error {
-    ErrorKind::RunnerStillLeased.into()
+/// Refuses deleting a runner that still holds a live or unbilled run.
+pub(crate) fn runner_still_running() -> Error {
+    ErrorKind::RunnerStillRunning.into()
 }
 
 /// Refuses a registration key reused for a different request.
@@ -153,7 +153,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("runner vanished", runner_vanished()),
         ("runner not found", runner_not_found()),
         ("runner not revoked", runner_not_revoked()),
-        ("runner still leased", runner_still_leased()),
+        ("runner still held", runner_still_running()),
         ("registration key reused", registration_key_reused()),
         ("tenant managed", tenant_managed()),
         ("selftest refused", selftest_refused()),

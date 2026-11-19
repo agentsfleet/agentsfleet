@@ -132,7 +132,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 /// A cage tier opens DEGRADED, and its enrolment event lands in the same write.
 ///
 /// The fail-closed window: between minting a token and the host's first beat
-/// there is no evidence, so the lease gate refuses work rather than assuming
+/// there is no evidence, so the run gate refuses work rather than assuming
 /// the cage exists.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

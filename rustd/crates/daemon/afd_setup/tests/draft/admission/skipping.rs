@@ -10,7 +10,7 @@ use super::fixture::{attempts, fund, queue};
 use super::{Fixture, mint, now};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::lease::AcceptedKinds;
+use af_wire::run::AcceptedKinds;
 use afd_runner::Runners;
 use afd_setup::Claimed;
 use afd_setup::types::Draft;

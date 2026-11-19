@@ -51,7 +51,7 @@ fn failed_validation(repo: Repo, asked: &Asked, stage: usize) -> Vec<Chunk> {
         )],
         1 if checks(asked, repo, NEW_COMMIT, "failure") => vec![get(
             repo,
-            "validation-run",
+            "validation-scene",
             &format!("actions/runs/{VALIDATION_RUN}"),
         )],
         2 if run_matches(asked) => vec![get(
@@ -216,7 +216,7 @@ fn after_verification_or_retry(repo: Repo, branch: &str, asked: &Asked) -> Vec<C
         return if checks(asked, repo, NEXT_COMMIT, "success") {
             vec![get(
                 repo,
-                "corrected-run",
+                "corrected-scene",
                 &format!("actions/runs/{CORRECTED_RUN}"),
             )]
         } else {
@@ -238,10 +238,10 @@ fn run_matches(asked: &Asked) -> bool {
         .results
         .last()
         .and_then(|text| body(text))
-        .is_some_and(|run| {
-            run.get("id").and_then(Value::as_u64) == Some(VALIDATION_RUN)
-                && run.get("run_attempt").and_then(Value::as_u64) == Some(1)
-                && run.get("head_sha").and_then(Value::as_str) == Some(NEW_COMMIT)
+        .is_some_and(|scene| {
+            scene.get("id").and_then(Value::as_u64) == Some(VALIDATION_RUN)
+                && scene.get("run_attempt").and_then(Value::as_u64) == Some(1)
+                && scene.get("head_sha").and_then(Value::as_str) == Some(NEW_COMMIT)
         })
 }
 
@@ -289,7 +289,7 @@ fn finish_verification(repo: Repo, branch: &str, asked: &Asked) -> Vec<Chunk> {
     if checks(asked, repo, NEXT_COMMIT, "success") {
         return vec![get(
             repo,
-            "corrected-run",
+            "corrected-scene",
             &format!("actions/runs/{CORRECTED_RUN}"),
         )];
     }

@@ -46,7 +46,7 @@ impl Inbox {
     ///
     /// The ledger is read first so a settled gate costs one read and writes
     /// nothing. An admission that landed while its event row did not is left
-    /// to the lease, which writes that row on the same conflict arm.
+    /// to the run, which writes that row on the same conflict arm.
     async fn owed_continuation(
         &self,
         resolved: &Resolved,

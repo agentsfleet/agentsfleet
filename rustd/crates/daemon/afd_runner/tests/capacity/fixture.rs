@@ -11,12 +11,12 @@ use afd_db::{
 use jiff::Timestamp;
 use sqlx::{Connection as _, Postgres, Transaction};
 
-use crate::rows::{self, AttemptRow, LeaseRow, POLICY};
+use crate::rows::{self, AttemptRow, POLICY, RunRow};
 
-/// How long a live seeded lease or attempt has left.
+/// How long a live seeded run or attempt has left.
 pub(super) const LIVE_FOR: Duration = Duration::from_mins(1);
 
-/// How far past its expiry a lapsed seeded lease or attempt is.
+/// How far past its expiry a lapsed seeded run or attempt is.
 pub(super) const LAPSED_BY: Duration = Duration::from_millis(1);
 
 pub(super) struct Fixture {
@@ -81,8 +81,8 @@ impl Fixture {
             tx,
             (&self.runner, &self.workspace, &self.tenant),
             AttemptRow {
-                status: afd_runner::sql::LEASE_STATUS_ACTIVE,
-                lease_expires_at: until,
+                status: afd_runner::sql::RUN_STATUS_ACTIVE,
+                run_expires_at: until,
                 reserved_nanos: 0,
             },
         )
@@ -91,15 +91,15 @@ impl Fixture {
 
     pub(super) async fn runtime(&self, until: Timestamp) {
         let mut connection = self.owner.acquire().await.expect("runtime seed connection");
-        rows::lease(
+        rows::payload(
             &mut connection,
-            LeaseRow {
+            RunRow {
                 id: &mint_id(),
                 runner: &self.runner,
                 fleet: &self.fleet,
                 workspace: &self.workspace,
                 tenant: &self.tenant,
-                status: afd_runner::sql::LEASE_STATUS_ACTIVE,
+                status: afd_runner::sql::RUN_STATUS_ACTIVE,
                 expires_at: until,
                 stamped_at: None,
             },
@@ -107,7 +107,7 @@ impl Fixture {
         .await;
     }
 
-    /// A hold is a slot deadline, independent of the preceding lease's status.
+    /// A hold is a slot deadline, independent of the preceding run's status.
     pub(super) async fn hold(&self, until: Timestamp) -> Uuid7 {
         use jiff_sqlx::ToSqlx as _;
         let mut connection = self.owner.acquire().await.expect("hold seed connection");
@@ -121,10 +121,10 @@ impl Fixture {
         .name("Hold capacity")
         .insert(&mut *connection)
         .await
-        .expect("seed a fleet distinct from the live lease");
+        .expect("seed a fleet distinct from the live run");
         sqlx::query(
             "INSERT INTO runner.slots \
-             (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, \
+             (id, fleet_id, last_runner_id, fencing_token, run_expires_at, \
               hold_expires_at, created_at, updated_at) \
              VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now())",
         )
@@ -151,21 +151,21 @@ impl Fixture {
         capacity
     }
 
-    /// Moves this host's runtime lease to lapse `after` from now on the
+    /// Moves this host's runtime run to lapse `after` from now on the
     /// database clock, the clock the census compares against.
     pub(super) async fn lapse_runtime_in(&self, after: Duration) {
         let millis = i64::try_from(after.as_millis()).expect("a test interval fits");
-        let mut connection = self.owner.acquire().await.expect("lease update connection");
+        let mut connection = self.owner.acquire().await.expect("run update connection");
         sqlx::query(
-            "UPDATE runner.leases \
-             SET lease_expires_at = clock_timestamp() + $2 * interval '1 millisecond' \
+            "UPDATE runner.runs \
+             SET run_expires_at = clock_timestamp() + $2 * interval '1 millisecond' \
              WHERE runner_id = $1",
         )
         .bind(&self.runner)
         .bind(millis)
         .execute(&mut *connection)
         .await
-        .expect("the runtime lease's expiry moves");
+        .expect("the runtime run's expiry moves");
     }
 
     pub(super) async fn try_claim(&self) -> bool {

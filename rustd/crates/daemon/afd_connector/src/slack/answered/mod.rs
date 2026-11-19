@@ -78,16 +78,16 @@ pub struct AnswerMarker {
     pub part: Option<Part>,
 }
 
-/// One interim line's place: the lease that said it, and its number there.
+/// One interim line's place: the run that said it, and its number there.
 ///
-/// The lease is part of it because the count is the lease's: a reclaimed
-/// lease numbers its lines from one again, and its first line must not read
-/// as the dead lease's first.
+/// The run is part of it because the count is the run's: a reclaimed
+/// run numbers its lines from one again, and its first line must not read
+/// as the dead run's first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Part {
-    /// The lease that posted the line.
-    pub lease_id: String,
-    /// Which line of that lease it is, from one.
+    /// The run that posted the line.
+    pub run_id: String,
+    /// Which line of that run it is, from one.
     pub line: u32,
 }
 

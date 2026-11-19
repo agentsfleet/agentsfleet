@@ -41,7 +41,7 @@ async fn source_authority(case: &Case) {
     }
     case.claim(&source).await;
     let bound = tasks
-        .bind(case.lease(), &unclaimed)
+        .bind(case.run(), &unclaimed)
         .await
         .expect("claimed human intent remains usable");
     assert_eq!(
@@ -49,7 +49,7 @@ async fn source_authority(case: &Case) {
         (2, false, (2, 2, 6))
     );
     let replay = tasks
-        .bind(case.lease(), &unclaimed)
+        .bind(case.run(), &unclaimed)
         .await
         .expect("stable source replay");
     assert_eq!(replay.items, bound.items);
@@ -74,7 +74,7 @@ async fn interpretation_bounds(case: &Case) {
         refused(case, &plan, expected).await;
     }
     let accepted = tasks
-        .bind(case.lease(), &case.plan("corrected-interpretation", 3))
+        .bind(case.run(), &case.plan("corrected-interpretation", 3))
         .await
         .expect("valid retry");
     assert_eq!(
@@ -149,7 +149,7 @@ async fn accepted_revision(case: &Case, revision: &Uuid7, number: u64) {
         items(3, TaskLimits::default()),
     );
     let accepted = tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect("current reviewed setup binds");
     assert_eq!(
@@ -180,7 +180,7 @@ async fn refused(case: &Case, plan: &PreparedPlan, expected: ErrorCode) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let before = case.counts().await;
     let refusal = tasks
-        .bind(case.lease(), plan)
+        .bind(case.run(), plan)
         .await
         .expect_err("native qualification rejects this complete plan");
     assert_eq!(refusal.code(), expected);
@@ -203,16 +203,16 @@ async fn refused(case: &Case, plan: &PreparedPlan, expected: ErrorCode) {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_current_lease_without_durable_capability_cannot_allocate_work() {
+async fn a_current_run_without_durable_capability_cannot_allocate_work() {
     exercise(async |case| {
         let plan = case.plan("capability", 1);
         super::fixture::task_capability(&case.held, false).await;
         refused(case, &plan, error_code::RUN_STALE_FENCING_TOKEN).await;
         super::fixture::task_capability(&case.held, true).await;
         case.tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
-            .expect("the same current lease binds after advertising protocol support");
+            .expect("the same current run binds after advertising protocol support");
     })
     .await;
 }

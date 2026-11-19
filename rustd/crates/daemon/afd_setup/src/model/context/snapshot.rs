@@ -1,6 +1,6 @@
 //! Revalidate funded inputs without rebuilding or remeasuring the provider body.
 use super::{ModelCallInput, continuation, source::Source};
-use crate::{Result, error::ErrorKind, lease::guard, replay};
+use crate::{Result, error::ErrorKind, replay, run::guard};
 use af_context::repository::Repository;
 use af_context::{Checkpoint, Group, HistorySource as _};
 use sqlx::PgConnection;

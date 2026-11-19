@@ -114,7 +114,7 @@ impl Handler for ExecCommand {
             Err(failure) => return failed(&failure),
         };
         let id = process.id;
-        // Registered before it is read, so a call the lease stops mid-wait
+        // Registered before it is read, so a call the run stops mid-wait
         // still leaves the process where the run's end finds it.
         let shared = sessions.open(slot, process);
         let mut process = shared.lock().await;
@@ -122,11 +122,11 @@ impl Handler for ExecCommand {
         let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MIN);
         let ended = collected.until(&mut process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
-        let lease_id = context.run_id;
+        let run_id = context.run_id;
         // `process` stays locked through the close inside `reply`: a call that
         // locked a finished process before then would find its ending already
         // taken and answer `Interrupted`.
-        reply(sessions, lease_id, id, &collected, ended, budget, None)
+        reply(sessions, run_id, id, &collected, ended, budget, None)
     }
 }
 
@@ -190,9 +190,9 @@ impl Handler for WriteStdin {
             collected.until(&mut process, deadline).await
         };
         let budget = output::budget(arguments.max_output_tokens);
-        let lease_id = context.run_id;
+        let run_id = context.run_id;
         // Locked through the close inside `reply`, as in `ExecCommand::run`.
-        reply(sessions, lease_id, id, &collected, ended, budget, refused)
+        reply(sessions, run_id, id, &collected, ended, budget, refused)
     }
 }
 
@@ -218,13 +218,13 @@ fn yield_of(asked: Option<u64>, floor: Duration) -> Duration {
         .clamp(floor, YIELD_MAX)
 }
 
-/// One call's answer on session `id` of lease `lease_id`: what arrived, why a
+/// One call's answer on session `id` of run `run_id`: what arrived, why a
 /// write was refused when it was, then the session's state. A process that
 /// ended leaves the registry here, logged as a one-shot command is when the
 /// kernel killed it for memory.
 fn reply(
     sessions: &Sessions,
-    lease_id: &str,
+    run_id: &str,
     id: ProcessId,
     collected: &Collected,
     ended: Option<Ending>,
@@ -235,7 +235,7 @@ fn reply(
         || format!("{} {}", output::RUNNING, id.get()),
         |ending| {
             if ending == Ending::OutOfMemory {
-                oneshot::out_of_memory(lease_id);
+                oneshot::out_of_memory(run_id);
             }
             sessions.close(id, ending);
             output::status(ending)

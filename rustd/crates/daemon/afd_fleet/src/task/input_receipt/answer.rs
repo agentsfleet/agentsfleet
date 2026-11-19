@@ -3,12 +3,12 @@
 use crate::{
     Result,
     error::query,
-    lease::{
-        Leases,
+    run::{
+        Runs,
         obligation::ReplyDestination,
         verdict::{Terminal, Verdict},
     },
-    task::{TaskRefusal, Tasks, guard::LeaseRow},
+    task::{TaskRefusal, Tasks, guard::RunRow},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::TaskInputReceiptInput;
@@ -31,7 +31,7 @@ pub(super) struct Completion {
 pub(super) async fn finish(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
 ) -> Result<Option<Completion>> {
     let rows: Vec<Option<String>> = sqlx::query_scalar(include_str!("sql/answers.sql"))
@@ -47,8 +47,7 @@ pub(super) async fn finish(
     let answer = rows.into_iter().flatten().collect::<Vec<_>>().join("\n\n");
     let closed = complete_history(tasks, connection, current, input, &answer).await?;
     let reply =
-        Leases::reply_destination(connection, &current.fleet_id, &input.source_admission_id)
-            .await?;
+        Runs::reply_destination(connection, &current.fleet_id, &input.source_admission_id).await?;
     let owed = owe_reply(tasks, connection, current, input, &answer, reply.as_ref()).await?;
     sqlx::query(include_str!("sql/settle_source.sql"))
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
@@ -69,7 +68,7 @@ pub(super) async fn finish(
 async fn complete_history(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
     answer: &str,
 ) -> Result<Option<afd_turns::view::Closed>> {
@@ -81,8 +80,8 @@ async fn complete_history(
         .await
         .map_err(query("lock original accepted reply source"))?
         .ok_or(TaskRefusal::NotFound)?;
-    // Same event owner and received/terminal writers as an ordinary lease report.
-    sqlx::query(afd_turns::view::sql::INSERT_LEASED_FLEET_EVENT)
+    // Same event owner and received/terminal writers as an ordinary run report.
+    sqlx::query(afd_turns::view::sql::INSERT_RUND_FLEET_EVENT)
         .bind(&current.fleet_id)
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(&current.workspace_id)
@@ -97,7 +96,7 @@ async fn complete_history(
         .await
         .map_err(query("open accepted input history before completing it"))?;
     tasks
-        .leases
+        .runs
         .mark_terminal(
             connection,
             &current.fleet_id,
@@ -116,14 +115,14 @@ async fn complete_history(
 async fn owe_reply(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
     answer: &str,
     reply: Option<&ReplyDestination>,
 ) -> Result<Option<Uuid7>> {
     let owed = if let Some(reply) = reply {
         tasks
-            .leases
+            .runs
             .owe_delivery(
                 connection,
                 Delivery {
@@ -147,7 +146,7 @@ impl Completion {
     pub(super) async fn announce(self, tasks: &Tasks) {
         if let Some(closed) = self.closed {
             let publication = tasks
-                .leases
+                .runs
                 .publish_completion(&closed, Some(&self.answer))
                 .await;
             afd_bus::observe_notification(
@@ -156,7 +155,7 @@ impl Completion {
             );
         }
         if let Some(owed) = self.owed {
-            tasks.leases.wake_delivery(&owed).await;
+            tasks.runs.wake_delivery(&owed).await;
         }
     }
 }

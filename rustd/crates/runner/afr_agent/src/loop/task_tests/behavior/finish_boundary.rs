@@ -9,7 +9,7 @@ struct LateReply {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for LateReply {
+impl RunVerbs for LateReply {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -67,13 +67,13 @@ async fn late_unacknowledged_reply_revokes_goal_report_and_retains_recovery() ->
     ]);
     let engine =
         super::super::super::tests::engine(vec![Canned::boxed(tool, "inspected")], &script);
-    let lease = assigned_lease(&[tool.name()], 16_384);
+    let this_run = assigned_run(&[tool.name()], 16_384);
     let prepared = PreparedTask {
         inputs: native.replies.goals.inputs.clone(),
         execution_deadline: native.replies.goals.inputs.execution_deadline,
         allow_actions: true,
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_late_reply_outcome(&native, &script, &output);
     Ok(())
 }

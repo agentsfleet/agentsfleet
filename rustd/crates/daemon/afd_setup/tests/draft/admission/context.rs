@@ -47,9 +47,9 @@ async fn a_blank_draft_keeps_completed_history_in_the_daemon_without_a_candidate
     let draft = blank(&f).await;
     complete(&f, &draft, "Earlier answer").await;
     send(&f, &draft).await;
-    let lease = claim(&f, &draft).await.expect("second message admitted");
-    assert!(lease.candidate.is_none());
-    let actual: Vec<_> = lease
+    let run = claim(&f, &draft).await.expect("second message admitted");
+    assert!(run.candidate.is_none());
+    let actual: Vec<_> = run
         .messages
         .iter()
         .map(|m| (matches!(m.role, ContextRole::Assistant), m.text.as_str()))
@@ -93,12 +93,12 @@ async fn saved_history_over_the_old_row_or_transfer_bound_remains_available_for_
                 .expect("completed owned history");
         }
         send(&f, &draft).await;
-        let lease = claim(&f, &draft)
+        let run = claim(&f, &draft)
             .await
             .expect("history does not block admission");
-        assert_eq!(lease.messages.len(), 1);
+        assert_eq!(run.messages.len(), 1);
         assert_eq!(
-            lease.messages.first().expect("current request").text,
+            run.messages.first().expect("current request").text,
             "Next question"
         );
         let saved: (i64, String) = sqlx::query_as(

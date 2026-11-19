@@ -16,16 +16,16 @@ use std::sync::{
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test(start_paused = true)]
-async fn dropping_a_receipt_caller_preserves_its_known_usage_for_lease_settlement()
+async fn dropping_a_receipt_caller_preserves_its_known_usage_for_run_settlement()
 -> crate::Result<()> {
     let accepting = Arc::new(AtomicBool::new(false));
     let (plane, mut calls) = receipt_peer(Arc::clone(&accepting));
-    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let call = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
     let pending = PendingDecisions::default();
     let input = pending.retain(call.clone(), receipt())?;
     let halt = Halt::new(CancellationToken::new());
-    let mut recording = Box::pin(pending.record(&plane, &halt, &lease, &call, &input));
+    let mut recording = Box::pin(pending.record(&plane, &halt, &run, &call, &input));
     let first = tokio::select! {
         result = &mut recording => panic!("receipt must remain pending: {result:?}"),
         first = calls.recv() => first.ok_or_else(|| crate::error::config("receipt request missing"))?,
@@ -34,7 +34,7 @@ async fn dropping_a_receipt_caller_preserves_its_known_usage_for_lease_settlemen
     drop(input);
     tokio::time::advance(std::time::Duration::from_secs(6)).await;
     accepting.store(true, Ordering::SeqCst);
-    pending.settle(&plane, &halt, &lease).await?;
+    pending.settle(&plane, &halt, &run).await?;
     let repeated = calls
         .recv()
         .await
@@ -52,10 +52,10 @@ async fn dropping_a_receipt_caller_preserves_its_known_usage_for_lease_settlemen
         body.pointer("/receipt/result/usage/input_tokens"),
         Some(&serde_json::json!(13))
     );
-    pending.settle(&plane, &halt, &lease).await?;
+    pending.settle(&plane, &halt, &run).await?;
     assert!(
         crate::test_support::drain(&mut calls).is_empty(),
-        "acknowledgement retires the lease's receipt"
+        "acknowledgement retires the run's receipt"
     );
     Ok(())
 }
@@ -81,7 +81,7 @@ fn receipt() -> DecisionReceiptInput {
 #[tokio::test]
 async fn a_conflicting_receipt_cannot_replace_the_original_pending_charge() -> crate::Result<()> {
     let (plane, mut calls) = receipt_peer(Arc::new(AtomicBool::new(true)));
-    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let call = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
     let pending = PendingDecisions::default();
     let original = receipt();
@@ -106,7 +106,7 @@ async fn a_conflicting_receipt_cannot_replace_the_original_pending_charge() -> c
         if *detail == "a physical decision already has a retained receipt")
     );
     let halt = Halt::new(CancellationToken::new());
-    pending.settle(&plane, &halt, &lease).await?;
+    pending.settle(&plane, &halt, &run).await?;
     let observed = crate::test_support::drain(&mut calls);
     assert_eq!(observed.len(), 1);
     let body = observed
@@ -115,7 +115,7 @@ async fn a_conflicting_receipt_cannot_replace_the_original_pending_charge() -> c
         .ok_or_else(|| crate::error::config("original receipt was lost"))?;
     let sent: DecisionReceiptInput = serde_json::from_slice(body).map_err(crate::error::encode)?;
     assert_eq!(sent, original);
-    pending.settle(&plane, &halt, &lease).await?;
+    pending.settle(&plane, &halt, &run).await?;
     assert_eq!(crate::test_support::drain(&mut calls).len(), 0);
     Ok(())
 }

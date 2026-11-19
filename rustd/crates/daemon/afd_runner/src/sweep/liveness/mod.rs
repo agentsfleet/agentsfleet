@@ -10,7 +10,7 @@
 //! It is recorded offline, ONCE per stale episode; the affinity slots it still
 //! takes no new work through a separate automatic cordon; and
 //! if an operator asked it to drain, the drain is finished now that its last
-//! live lease is gone. Reclaim still waits for the original lease deadline.
+//! live run is gone. Reclaim still waits for the original run deadline.
 //!
 //! # A never-seen runner is `registered`, not offline
 //!
@@ -87,7 +87,7 @@ impl Due {
     /// Dimension 6.3 against, and a fetch widened later must not silently make
     /// a never-seen runner offline. Judged at the database's clock, the same
     /// instant the fetch's own staleness test used.
-    fn is_stale(&self, clock: af_core::timing::LeaseClock) -> bool {
+    fn is_stale(&self, clock: af_core::timing::RunClock) -> bool {
         self.last_seen_at != sql::NEVER_SEEN
             && self.last_seen_at < clock::before(self.checked_at, clock.offline_after())
     }
@@ -109,7 +109,7 @@ impl DueRow {
     ///
     /// A status this daemon does not model is a row it cannot reason about,
     /// so the pass reports it rather than guessing — guessing `active` would
-    /// leave a revoked runner leasing.
+    /// leave a revoked runner running.
     fn parse(self) -> Due {
         Due {
             id: self.id.clone(),
@@ -125,7 +125,7 @@ impl DueRow {
 pub struct Liveness {
     settings: LivenessSettings,
     /// Where the rows are.
-    clock: af_core::timing::LeaseClock,
+    clock: af_core::timing::RunClock,
     database: Db,
     /// The identifiers the event rows are minted from.
     entropy: Entropy,
@@ -140,7 +140,7 @@ impl Liveness {
     }
     /// Uses the deployment clock validated before startup.
     #[must_use]
-    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+    pub fn with_clock(mut self, clock: af_core::timing::RunClock) -> Self {
         self.clock = clock;
         self
     }
@@ -152,7 +152,7 @@ impl Liveness {
             settings: LivenessSettings::DEFAULT,
             database,
             entropy,
-            clock: af_core::timing::LeaseClock::DEFAULT,
+            clock: af_core::timing::RunClock::DEFAULT,
         }
     }
 
@@ -168,7 +168,7 @@ impl Liveness {
             .bind(sql::NEVER_SEEN.to_sqlx())
             .bind(self.clock.offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
-            .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(sql::RUN_STATUS_ACTIVE)
             .bind(sql::RUNNER_STATUS_DRAINING)
             .bind(self.settings.batch_size)
             .fetch_all(&mut *connection)
@@ -233,7 +233,7 @@ impl Liveness {
         Ok(u64::try_from(changed).unwrap_or(0))
     }
 
-    /// Finishes a drain, if the runner's last lease is gone.
+    /// Finishes a drain, if the runner's last run is gone.
     async fn finish_drain(&self, runner_id: &Uuid7) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
         let event_id = self.event_id()?;
@@ -241,7 +241,7 @@ impl Liveness {
             .bind(runner_id)
             .bind(sql::RUNNER_STATUS_DRAINED)
             .bind(sql::RUNNER_STATUS_DRAINING)
-            .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(sql::RUN_STATUS_ACTIVE)
             .bind(event_id)
             .bind(sql::event_type::RUNNER_DRAINED)
             .bind(sql::meta::FROM_STATUS)
@@ -260,7 +260,7 @@ impl Sweep for Liveness {
 
     /// Paced to the heartbeat, not to the offline threshold.
     ///
-    /// A runner is declared offline after three lease TTLs, and this looks
+    /// A runner is declared offline after three run TTLs, and this looks
     /// every heartbeat interval — so the delay between a runner going quiet and
     /// the plane noticing is bounded by the threshold plus one tick, rather
     /// than by twice the threshold.

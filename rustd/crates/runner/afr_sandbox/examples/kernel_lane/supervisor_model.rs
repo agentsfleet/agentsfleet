@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 use af_providers::testing::scripted as existing;
 pub(crate) use existing::Asked;
 
-/// The installed instructions accompanying the fixture's lease.
+/// The installed instructions accompanying the fixture's run.
 pub(crate) const INSTRUCTIONS: &str = "Read Grafana, remember findings, and report to the thread.";
 pub(crate) const STEER: &str = "Check the fleet and commit the workspace fix.";
 pub(crate) const ANSWER: &str = "kernel caller proof complete";

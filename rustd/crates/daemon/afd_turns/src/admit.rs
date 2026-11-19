@@ -115,7 +115,7 @@ impl Admissions {
     /// [`Admissions::admit_runnable`] behind `guard`, in one transaction.
     ///
     /// The guard is proved first, on the transaction the insert then runs on,
-    /// so what it locks stays locked until the commit: a lease a reclaim took
+    /// so what it locks stays locked until the commit: a run a reclaim took
     /// after its holder last proved it writes nothing. The deployment estimate
     /// is read before the transaction opens, as [`Admissions::prepare`] reads
     /// it, so no lock is held across a sample. An `Ok` answer always commits,

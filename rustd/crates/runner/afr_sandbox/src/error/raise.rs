@@ -23,7 +23,7 @@ af_core::error_lifts!(Error, ErrorKind:
     seccompiler::Error => Seccomp,
 );
 
-/// Refuses every lease on this host: `missing` is what it lacks.
+/// Refuses every run on this host: `missing` is what it lacks.
 pub(crate) fn refused(missing: &'static str) -> Error {
     ErrorKind::Refused { missing }.into()
 }
@@ -103,7 +103,7 @@ pub(crate) fn not_ready(waited: std::time::Duration) -> impl Fn(afr_executor::Er
     move |source| ErrorKind::NotReady { waited, source }.into()
 }
 
-/// Refuses a lease whose egress cannot be held to its policy, saying why.
+/// Refuses a run whose egress cannot be held to its policy, saying why.
 pub(crate) fn egress_refused(refusal: EgressRefusal) -> Error {
     ErrorKind::EgressRefused { refusal }.into()
 }
@@ -114,10 +114,10 @@ pub(crate) fn netlink(step: Step) -> impl Fn(std::io::Error) -> Error {
     move |source| ErrorKind::Netlink { step, source }.into()
 }
 
-/// Refuses a lease whose identifier could name a directory not its own.
-pub(crate) fn lease_id_unsafe(lease_id: &str) -> Error {
-    ErrorKind::LeaseIdUnsafe {
-        lease_id: lease_id.to_owned(),
+/// Refuses a run whose identifier could name a directory not its own.
+pub(crate) fn run_id_unsafe(run_id: &str) -> Error {
+    ErrorKind::RunIdUnsafe {
+        run_id: run_id.to_owned(),
     }
     .into()
 }

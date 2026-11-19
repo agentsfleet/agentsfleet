@@ -1,4 +1,4 @@
-//! Publication status cannot outrun the durable checkpoint or escape a stopped lease.
+//! Publication status cannot outrun the durable checkpoint or escape a stopped run.
 use super::fixture::{Live, WAIT};
 use crate::draft::{attempt::Attempt, fixture::Fixture, model_calls};
 use af_wire::context::ContextState;

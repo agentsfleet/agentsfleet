@@ -23,13 +23,13 @@ use tokio::sync::Mutex;
 // is kept under the wire's pinned one by name, below.
 const _: () = assert!(HARNESS_RECALL_LIMIT_MAX == RECALL_LIMIT_MAX);
 
-/// One lease's memory, lent to a call.
+/// One run's memory, lent to a call.
 #[derive(Debug)]
-pub(super) struct Leased<'l, 'run> {
+pub(super) struct RunMemory<'l, 'run> {
     backend: &'l Mutex<Box<dyn MemoryBackend + 'run>>,
 }
 
-impl<'l, 'run> Leased<'l, 'run> {
+impl<'l, 'run> RunMemory<'l, 'run> {
     pub(super) const fn new(backend: &'l Mutex<Box<dyn MemoryBackend + 'run>>) -> Self {
         Self { backend }
     }
@@ -62,7 +62,7 @@ fn remembered(found: &Recalled<'_>) -> Remembered {
     }
 }
 
-impl MemoryStore for Leased<'_, '_> {
+impl MemoryStore for RunMemory<'_, '_> {
     fn store(&self, memory: Memory) -> MemoryFuture<'_, ()> {
         Box::pin(async move {
             let category = if memory.category == CORE_CATEGORY {

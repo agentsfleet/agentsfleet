@@ -33,7 +33,7 @@ impl Default for RetrySettings {
     }
 }
 
-/// Checked settings shared by all lease providers on one runner.
+/// Checked settings shared by all run providers on one runner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
     pub(super) attempts: usize,

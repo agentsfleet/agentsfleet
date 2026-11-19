@@ -16,7 +16,7 @@ use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_fleet_lifecycle::Fleets;
-use afd_fleet_ops::RunnerLeaseHistory;
+use afd_fleet_ops::RunnerRunHistory;
 use afd_ingress::Ingress;
 use afd_mail::InviteMailer;
 use afd_tenant::apikey::ApiKeys;
@@ -84,13 +84,13 @@ pub(super) struct Admin {
     /// reads the same rows.
     pub(super) models: AdminModels,
     pub(super) platform_keys: PlatformKeys,
-    pub(super) runner_lease_history: RunnerLeaseHistory,
+    pub(super) runner_run_history: RunnerRunHistory,
 }
 
 /// Builds the admin surface's stores.
 pub(super) fn admin(database: &Db) -> Admin {
     Admin {
-        runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+        runner_run_history: RunnerRunHistory::new(database.clone()),
         models: AdminModels::new(database.clone(), Entropy::new()),
         platform_keys: PlatformKeys::new(database.clone()),
     }

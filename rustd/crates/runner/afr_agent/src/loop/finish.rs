@@ -8,11 +8,11 @@ use guffbolt::agents::Pause;
 use super::{Ending, Harness};
 use crate::engine::RunOutput;
 
-/// What a run stopped by its lease reports as its detail.
+/// What a run stopped by its run reports as its detail.
 pub(super) const DETAIL_STOPPED: &str = "the run was stopped before it finished";
-/// What a run that asked the person a question fails with: no lease carries
+/// What a run that asked the person a question fails with: no run carries
 /// a question to its person yet, so the run cannot wait on one.
-pub(super) const DETAIL_WAITING: &str = "the run asked a question this lease cannot deliver";
+pub(super) const DETAIL_WAITING: &str = "the run asked a question this run cannot deliver";
 /// The event a run's end logs when it killed sessions still open.
 pub(super) const EVENT_SESSIONS_INTERRUPTED: &str = "sessions_interrupted";
 
@@ -110,7 +110,7 @@ impl Harness<'_, '_> {
         };
         let usage = shared.meter.read();
         let (trace, records) = shared.ledger.finish();
-        let memory = (shared.lease.memory.lock().await)
+        let memory = (shared.run.memory.lock().await)
             .pending()
             .into_iter()
             .map(MemoryDelta::into_owned)
@@ -162,7 +162,7 @@ impl Harness<'_, '_> {
 
     /// Kills every process a session still holds, so none outlives the run
     /// whatever becomes of its sandbox, and logs how many there were. A call
-    /// the lease stopped mid-yield left its process registered, so it is
+    /// the run stopped mid-yield left its process registered, so it is
     /// closed here too.
     async fn close_sessions(&self) {
         let Some(executor) = self.shared.executor.peek() else {
@@ -170,14 +170,14 @@ impl Harness<'_, '_> {
         };
         let sessions = self
             .shared
-            .lease
+            .run
             .sessions
             .close_all(&afr_tools::SandboxEnv::new(executor))
             .await;
         if sessions > 0 {
-            let lease_id = self.shared.lease_id;
+            let run_id = self.shared.run_id;
             let event = EVENT_SESSIONS_INTERRUPTED;
-            tracing::info!(lease_id, sessions, event);
+            tracing::info!(run_id, sessions, event);
         }
     }
 }

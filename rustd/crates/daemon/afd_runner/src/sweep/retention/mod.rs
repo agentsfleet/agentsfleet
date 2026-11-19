@@ -1,16 +1,16 @@
 //! Keeping history from growing without end.
 //!
-//! Three passes over two tables: settled leases past the window are deleted,
-//! per-work events past it are deleted, and `active` leases nothing will ever
+//! Three passes over two tables: settled runs past the window are deleted,
+//! per-work events past it are deleted, and `active` runs nothing will ever
 //! settle are flipped to `expired` so they stop looking like live work.
 //!
 //! # Why an age-keyed sweep can never reach live work
 //!
-//! A lease's total wall clock is capped: renewal clamps to
+//! A run's total wall clock is capped: renewal clamps to
 //! `created_at + MAX_RUNTIME`, is refused past it, and every renewal stamps
-//! `updated_at`. So a lease anything still holds is at most one `MAX_RUNTIME`
+//! `updated_at`. So a run anything still holds is at most one `MAX_RUNTIME`
 //! stale, and the retention window is far longer — which is what lets the event
-//! sweep key on age alone with no lease-liveness join, and what makes flipping
+//! sweep key on age alone with no run-liveness join, and what makes flipping
 //! an aged `active` row safe.
 //!
 //! That premise is asserted at COMPILE time below. Grow the runtime ceiling past
@@ -30,7 +30,7 @@
 //! A cycle that filled every batch it was allowed means the backlog outran the
 //! cycle's ceiling. Idling an hour after that would cap throughput at
 //! `MAX_BATCHES × BATCH_LIMIT` rows per table per replica-hour, and a sustained
-//! lease rate above that grows the backlog while every cycle reports success.
+//! run rate above that grows the backlog while every cycle reports success.
 //! Only the idle GAP shrinks — the per-statement batch limit still bounds lock
 //! time and write-ahead log, which is what makes the sweep safe to run at all.
 
@@ -50,13 +50,13 @@ mod config;
 pub use config::RetentionSettings;
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_LEASES: &str = "retention lease delete";
+const CONTEXT_RUNS: &str = "retention run delete";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_EVENTS: &str = "retention event delete";
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_ABANDONED: &str = "retention abandoned lease expiry";
+const CONTEXT_ABANDONED: &str = "retention abandoned run expiry";
 
 /// How many days of history are kept past settlement.
 const RETENTION_DAYS: u32 = 30;
@@ -70,12 +70,12 @@ const RETENTION_WINDOW: Duration = DAY.saturating_mul(RETENTION_DAYS);
 
 /// The premise the whole age-keyed design rests on.
 ///
-/// Asserted at compile time because if a lease could outlive the retention
+/// Asserted at compile time because if a run could outlive the retention
 /// window, this sweep would delete rows
 /// belonging to work still running, and it would do it silently.
 const _: () = assert!(
     MAX_RUNTIME.as_secs() < RETENTION_WINDOW.as_secs(),
-    "the retention window must exceed the maximum lease runtime, or an age-keyed sweep reaches live work"
+    "the retention window must exceed the maximum run runtime, or an age-keyed sweep reaches live work"
 );
 
 /// One statement's row ceiling — bounds lock time and write-ahead log.
@@ -93,16 +93,13 @@ const IDLE_INTERVAL: Duration = Duration::from_hours(1);
 /// How long after a cycle that filled every batch.
 const SATURATED_INTERVAL: Duration = Duration::from_mins(1);
 
-/// The lease statuses whose rows are settled and may be deleted.
-const TERMINAL_STATUSES: [&str; 2] = [sql::LEASE_STATUS_REPORTED, sql::LEASE_STATUS_EXPIRED];
+/// The run statuses whose rows are settled and may be deleted.
+const TERMINAL_STATUSES: [&str; 2] = [sql::RUN_STATUS_REPORTED, sql::RUN_STATUS_EXPIRED];
 
-/// The event types that belong to ONE lease, and age out with it.
+/// The event types that belong to ONE run, and age out with it.
 ///
 /// The lifecycle tags are deliberately absent — see the module note.
-const PER_WORK_EVENTS: [&str; 2] = [
-    sql::event_type::LEASE_ACQUIRED,
-    sql::event_type::LEASE_RELEASED,
-];
+const PER_WORK_EVENTS: [&str; 2] = [sql::event_type::RUN_ACQUIRED, sql::event_type::RUN_RELEASED];
 
 /// The retention pass, over the api-role pool.
 #[derive(Debug)]
@@ -209,27 +206,27 @@ impl Retention {
     /// [`Sweep::sweep`] without the recording, so the tally exists before
     /// anything is said about it.
     async fn sweep_counted(&self) -> Result<Swept> {
-        // Abandoned leases are flipped FIRST, so the rows this cycle strands
+        // Abandoned runs are flipped FIRST, so the rows this cycle strands
         // become deletable by the pass below rather than waiting a whole
         // window longer.
         let (expired, expired_full) = self
             .drain(
                 CONTEXT_ABANDONED,
-                sql::sweep::EXPIRE_ABANDONED_ACTIVE_LEASES_BATCH,
+                sql::sweep::EXPIRE_ABANDONED_ACTIVE_RUNS_BATCH,
                 |statement| {
                     statement
-                        .bind(vec![sql::LEASE_STATUS_ACTIVE])
+                        .bind(vec![sql::RUN_STATUS_ACTIVE])
                         .bind(DAY.saturating_mul(self.settings.keep_days))
-                        .bind(sql::LEASE_STATUS_EXPIRED)
+                        .bind(sql::RUN_STATUS_EXPIRED)
                         .bind(self.settings.batch_size)
                 },
             )
             .await?;
 
-        let (leases, leases_full) = self
+        let (runs, runs_full) = self
             .drain(
-                CONTEXT_LEASES,
-                sql::sweep::DELETE_TERMINAL_LEASES_BATCH,
+                CONTEXT_RUNS,
+                sql::sweep::DELETE_TERMINAL_RUNS_BATCH,
                 |statement| {
                     statement
                         .bind(TERMINAL_STATUSES.to_vec())
@@ -252,11 +249,9 @@ impl Retention {
             )
             .await?;
 
-        self.saturated.store(
-            expired_full || leases_full || events_full,
-            Ordering::Relaxed,
-        );
-        let changed = expired.saturating_add(leases).saturating_add(events);
+        self.saturated
+            .store(expired_full || runs_full || events_full, Ordering::Relaxed);
+        let changed = expired.saturating_add(runs).saturating_add(events);
         Ok(Swept {
             // Every row this pass reached is a row it changed: the statements
             // select exactly what they then delete or flip, so there is no

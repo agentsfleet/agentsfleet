@@ -19,7 +19,7 @@ async fn skipped_indices_and_foreign_dispatch_ids_create_no_physical_intent() {
     let request = fixture::request(&a);
     let occupied = request.dispatch_id.clone();
     calls
-        .call(&first.runner, &a.lease, request)
+        .call(&first.runner, &a.run, request)
         .await
         .expect("original dispatch");
     let second = Fixture::create().await;
@@ -31,7 +31,7 @@ async fn skipped_indices_and_foreign_dispatch_ids_create_no_physical_intent() {
         request.dispatch_id = id;
         assert_eq!(
             calls
-                .call(&second.runner, &b.lease, request)
+                .call(&second.runner, &b.run, request)
                 .await
                 .expect_err("invalid physical identity")
                 .code(),
@@ -57,8 +57,8 @@ async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_re
         let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
         let request = fixture::request(&a);
         let task = tokio::spawn({
-            let (runner, lease) = (f.runner.clone(), a.lease.clone());
-            async move { calls.call(&runner, &lease, request).await }
+            let (runner, run) = (f.runner.clone(), a.run.clone());
+            async move { calls.call(&runner, &run, request).await }
         });
         tokio::time::timeout(Duration::from_secs(5), provider.arrived())
             .await

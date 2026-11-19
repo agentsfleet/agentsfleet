@@ -6,7 +6,7 @@ import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
  * Turns under this tab's own account whose tab it cannot tell yet.
  *
  * A steer's opening frame names the sender's account, never the tab, and the
- * daemon can lease a send and announce it before the send's own 202 reaches
+ * daemon can run a send and announce it before the send's own 202 reaches
  * this tab. While a send here awaits its 202, a turn the thread has no row for,
  * opened under the account that send will be named under (`sentAs`), may be
  * this tab's or the same operator's in another tab, so its frames wait here
@@ -59,7 +59,7 @@ export class HeldTurns {
 }
 
 // Either frame can open a turn: the admitted frame normally comes first, but a
-// runner can lease a send and announce it before the route publishes.
+// runner can run a send and announce it before the route publishes.
 function opensAWaitingSendsTurn(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
   if (frame.kind !== FRAME_KIND.EVENT_ADMITTED && frame.kind !== FRAME_KIND.EVENT_RECEIVED) return false;
   return !events.some((event) => event.id === frame.event_id)

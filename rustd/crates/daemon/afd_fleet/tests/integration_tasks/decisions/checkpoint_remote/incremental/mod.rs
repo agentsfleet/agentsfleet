@@ -95,12 +95,12 @@ async fn incremental(
         )
     };
     let plan = tasks
-        .plan_checkpoint(case.lease(), &valid(request))
+        .plan_checkpoint(case.run(), &valid(request))
         .await
         .expect("incremental plan");
     let registered = tasks
         .register_checkpoint_objects(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(object_input(case, task, &plan, bytes)),
         )
@@ -130,7 +130,7 @@ fn object_input(
     bytes: &[u8],
 ) -> CheckpointObjectsInput {
     CheckpointObjectsInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task: task.clone(),
         pin_id: plan.pin.id.clone(),
         objects: vec![CheckpointPlaintext {

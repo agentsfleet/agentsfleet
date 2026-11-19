@@ -34,7 +34,7 @@ const QUOTE: char = '\'';
 ///
 /// Borrowed from the authored string rather than owned: it is parsed on the
 /// claim path, consulted once, and dropped — allocating three `Box<str>` per
-/// rule per lease would be work with no product.
+/// rule per run would be work with no product.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Condition<'a> {
     /// The context field to read.

@@ -1,5 +1,5 @@
-//! A sandbox held between two of its fleet's leases: frozen, it runs nothing
-//! and keeps everything; thawed, the next lease finds the files and the
+//! A sandbox held between two of its fleet's runs: frozen, it runs nothing
+//! and keeps everything; thawed, the next run finds the files and the
 //! processes the last one left.
 //!
 //! Every observation while frozen is made from the host, because the executor
@@ -12,16 +12,16 @@ use std::process::{Child, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
 use afr_executor::WORKSPACE_ROOT;
-use afr_sandbox::{Engine as _, LeaseCgroup, Limits, SANDBOX_LEAF, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine as _, Limits, RunCgroup, SANDBOX_LEAF, Sandbox, SandboxRequest};
 use libtest_mimic::Failed;
 use rustix::process::Signal;
 
 use crate::lane::Lane;
 use crate::run::{Outcome, expect, run as run_in, runtime, shell};
 
-/// The lease whose sandbox is held.
-const LEASE: &str = "held";
-/// What the first lease writes, for the next to read back, and the file in
+/// The run whose sandbox is held.
+const RUN: &str = "held";
+/// What the first run writes, for the next to read back, and the file in
 /// the workspace it writes it to.
 const NOTE: &str = "written before the hold";
 const NOTE_FILE: &str = "note";
@@ -37,9 +37,9 @@ const FROZEN: &str = "frozen 1";
 const CGROUP_EVENTS: &str = "cgroup.events";
 /// The file a process is moved into a cgroup through.
 const CGROUP_PROCS: &str = "cgroup.procs";
-/// The lease whose held sandbox is destroyed without a thaw.
+/// The run whose held sandbox is destroyed without a thaw.
 const DESTROYED_FROZEN: &str = "heldgone";
-/// The lease a runner died holding, frozen.
+/// The run a runner died holding, frozen.
 const LEFT_FROZEN: &str = "heldleft";
 /// A process that outlives the trial unless something kills it.
 const SLEEPER: &str = "sleep";
@@ -64,7 +64,7 @@ struct Seen {
 pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), Failed> {
     let seen = runtime().block_on(async {
         let engine = lane.engine();
-        let request = SandboxRequest::new(LEASE, Limits::default());
+        let request = SandboxRequest::new(RUN, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let seen = hold_and_resume(lane, sandbox.as_ref()).await;
         sandbox.destroy().await?;
@@ -81,7 +81,7 @@ pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), F
     )?;
     expect(
         seen.after.output.lines().next() == Some(NOTE),
-        format!("the next lease reads the note back, got {:?}", seen.after),
+        format!("the next run reads the note back, got {:?}", seen.after),
     )?;
     expect(
         seen.after.output.lines().any(|line| line == ALIVE),
@@ -115,7 +115,7 @@ fn start_ticker() -> String {
 }
 
 /// Starts the ticker, freezes, watches, thaws, and asks the executor what the
-/// first lease left.
+/// first run left.
 async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Failed> {
     let started = run_in(sandbox.executor(), shell(&start_ticker())).await?;
     let pid = started.output.trim().to_owned();
@@ -126,7 +126,7 @@ async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Fai
     tokio::time::sleep(WATCH).await;
 
     sandbox.freeze().await?;
-    let frozen_events = fs::read_to_string(events(lane, LEASE)).unwrap_or_default();
+    let frozen_events = fs::read_to_string(events(lane, RUN)).unwrap_or_default();
     let frozen_at = size(&tick);
     tokio::time::sleep(WATCH).await;
     let ticks_while_frozen = (frozen_at, size(&tick));
@@ -145,9 +145,9 @@ async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Fai
     })
 }
 
-/// The lease cgroup's own state, its `frozen` key among it.
-fn events(lane: &Lane, lease_id: &str) -> PathBuf {
-    lane.config.cgroup_root.join(lease_id).join(CGROUP_EVENTS)
+/// The run cgroup's own state, its `frozen` key among it.
+fn events(lane: &Lane, run_id: &str) -> PathBuf {
+    lane.config.cgroup_root.join(run_id).join(CGROUP_EVENTS)
 }
 
 fn size(path: &Path) -> u64 {
@@ -179,17 +179,17 @@ pub(crate) fn destroy_frozen(lane: &Lane) -> Result<(), Failed> {
         "its cgroup is gone",
     )?;
     expect(
-        !lane.lease_dir(DESTROYED_FROZEN).exists(),
+        !lane.run_dir(DESTROYED_FROZEN).exists(),
         "its directory is gone",
     )
 }
 
 /// A runner that died holding a sandbox leaves its cgroup frozen with a
 /// process stopped inside; the next engine's boot sweep kills it where it
-/// stands and removes the cgroup and the lease's directory.
+/// stands and removes the cgroup and the run's directory.
 pub(crate) fn sweep_frozen(lane: &Lane) -> Result<(), Failed> {
     let cgroup = lane.config.cgroup_root.join(LEFT_FROZEN);
-    let made = LeaseCgroup::create(&lane.config.cgroup_root, LEFT_FROZEN, &Limits::default())?;
+    let made = RunCgroup::create(&lane.config.cgroup_root, LEFT_FROZEN, &Limits::default())?;
     let mut stopped = Command::new(SLEEPER).arg(SLEEP_SECONDS).spawn()?;
     fs::write(
         cgroup.join(SANDBOX_LEAF).join(CGROUP_PROCS),
@@ -198,7 +198,7 @@ pub(crate) fn sweep_frozen(lane: &Lane) -> Result<(), Failed> {
     made.freezer().freeze()?;
     let frozen_events = fs::read_to_string(events(lane, LEFT_FROZEN)).unwrap_or_default();
     drop(made);
-    fs::create_dir_all(lane.lease_dir(LEFT_FROZEN))?;
+    fs::create_dir_all(lane.run_dir(LEFT_FROZEN))?;
 
     drop(lane.engine());
 
@@ -219,8 +219,8 @@ pub(crate) fn sweep_frozen(lane: &Lane) -> Result<(), Failed> {
     )?;
     expect(!cgroup.exists(), "the sweep removed the frozen cgroup")?;
     expect(
-        !lane.lease_dir(LEFT_FROZEN).exists(),
-        "the sweep removed the lease's directory",
+        !lane.run_dir(LEFT_FROZEN).exists(),
+        "the sweep removed the run's directory",
     )
 }
 

@@ -46,7 +46,7 @@ async fn fleet_lifecycle_is_activate_archive_delete() {
         "archive starts from a live fleet"
     );
     let fleet = super::fixture::fleet_of(&item);
-    let (_, lease) = case.live_lease(&fleet).await;
+    let (_, run) = case.live_run(&fleet).await;
     for status in REMOVED {
         let body = format!(r#"{{"status":"{status}"}}"#);
         let refused = patch(&case, &item, &body, &tag).await;
@@ -63,9 +63,9 @@ async fn fleet_lifecycle_is_activate_archive_delete() {
     let archived = json_body(archived).await;
     assert_eq!(archived["status"], "archived");
     assert_eq!(
-        super::fixture::lease_state(&case, &lease).await,
+        super::fixture::run_state(&case, &run).await,
         Some(("active".to_owned(), true)),
-        "the live lease is asked to cancel"
+        "the live run is asked to cancel"
     );
     let current = archived["etag"].as_str().expect("archived tag");
     for body in [r#"{"status":"active"}"#, r#"{"status":"archived"}"#] {

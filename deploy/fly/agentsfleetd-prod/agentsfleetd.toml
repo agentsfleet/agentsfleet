@@ -47,7 +47,7 @@ max_buffered_bytes = 16_777_216
 [runner.stream.data]
 max_buffered_bytes = 50_331_648
 
-[runner.lease]
+[runner.run]
 ttl_seconds = 35
 max_runtime_seconds = 43_200
 
@@ -138,7 +138,7 @@ max_authored_question_bytes = 1_024
 model_budget_nanodollars = 5_000_000_000
 wall_seconds = 604_800
 running_seconds = 7_200
-max_leases = 12
+max_runs = 12
 max_publication_attempts = 8
 max_decision_calls = 128
 max_fallback_reads = 24

@@ -4,7 +4,7 @@
 //! calls, then ends [`crate::Ending::Waiting`] with the call's id and the
 //! question. How the question reaches the person is the embedder's: a chat
 //! message, a notification, an approval card. Nothing waits inside the run,
-//! so a run that holds a lease or a machine gives it back while the person
+//! so a run that holds a run or a machine gives it back while the person
 //! thinks. The answer arrives later through [`crate::DriveState::resume`],
 //! as this call's result, and the run goes on from there.
 

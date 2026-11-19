@@ -10,14 +10,14 @@ use agentsfleetd::supervisor::Supervisor;
 async fn unknown_completion_keeps_its_obligation_until_the_same_report_can_settle() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     let model = fixture.model();
     let report = unknown_report(&fixture);
-    let (result, ()) = tokio::join!(fixture.session.authoring_model(&lease, &model), async {
+    let (result, ()) = tokio::join!(fixture.session.authoring_model(&run, &model), async {
         fixture.provider.state.arrived().await;
         let first = fixture
             .session
-            .authoring_report(&lease, &report)
+            .authoring_report(&run, &report)
             .await
             .expect("pending accounting acknowledgement");
         assert!(!first.settled && !first.replayed);
@@ -27,7 +27,7 @@ async fn unknown_completion_keeps_its_obligation_until_the_same_report_can_settl
         );
         let replayed = fixture
             .session
-            .authoring_report(&lease, &report)
+            .authoring_report(&run, &report)
             .await
             .expect("pending report replay");
         assert!(!replayed.settled && replayed.replayed);
@@ -41,7 +41,7 @@ async fn unknown_completion_keeps_its_obligation_until_the_same_report_can_settl
     );
     let settled = fixture
         .session
-        .authoring_report(&lease, &report)
+        .authoring_report(&run, &report)
         .await
         .expect("same report settles authoritative usage");
     assert!(settled.settled && settled.replayed);
@@ -65,22 +65,22 @@ fn unknown_report(fixture: &AuthoringFixture) -> Report {
 async fn completion_accounting_replays_after_private_draft_deletion_without_another_charge() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     fixture
         .session
-        .authoring_model(&lease, &fixture.model())
+        .authoring_model(&run, &fixture.model())
         .await
         .expect("native model result");
     let report = fixture.report(1);
     let first = fixture
         .session
-        .authoring_report(&lease, &report)
+        .authoring_report(&run, &report)
         .await
         .expect("native terminal report");
     assert!(first.settled);
     assert_eq!(fixture.answer().await.as_deref(), Some(ANSWER));
     let charged = fixture.charges().await;
-    let draft = Uuid7::parse(&fixture.lease.draft_id).expect("draft identity");
+    let draft = Uuid7::parse(&fixture.run.draft_id).expect("draft identity");
     fixture
         .drafts
         .delete(fixture.access(), &draft)
@@ -91,7 +91,7 @@ async fn completion_accounting_replays_after_private_draft_deletion_without_anot
     };
     let replayed = fixture
         .session
-        .authoring_report(&lease, &recovery)
+        .authoring_report(&run, &recovery)
         .await
         .expect("content-free completion replay");
     assert!(replayed.settled && replayed.replayed);

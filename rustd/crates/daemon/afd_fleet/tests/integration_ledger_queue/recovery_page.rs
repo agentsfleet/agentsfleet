@@ -3,7 +3,7 @@
 use super::{enqueue, seeded_parts};
 use crate::support::Fixtures;
 use af_core::id::Uuid7;
-use afd_fleet::lease::RecoveryScan;
+use afd_fleet::run::RecoveryScan;
 use sqlx::Connection as _;
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -26,13 +26,13 @@ async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -
     .await?;
     assert_eq!(held.len(), 64);
 
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
     let mut scan = RecoveryScan::default();
-    let (outcome, cost) = leases.select_recovery_measured(&runner, &mut scan).await;
+    let (outcome, cost) = runs.select_recovery_measured(&runner, &mut scan).await;
     assert!(outcome?.is_none());
     assert_eq!(cost.candidates_scanned, 64);
     assert!(scan.deferred());
-    let (outcome, cost) = leases.select_recovery_measured(&runner, &mut scan).await;
+    let (outcome, cost) = runs.select_recovery_measured(&runner, &mut scan).await;
     assert_eq!(
         outcome?.ok_or("fleet outside the locked page")?.event_id,
         last.0
@@ -43,14 +43,13 @@ async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -
     drop(connection);
 
     assert!(
-        leases
-            .select_recovery_measured(&runner, &mut scan)
+        runs.select_recovery_measured(&runner, &mut scan)
             .await
             .0?
             .is_none()
     );
     let oldest = prefix.first().ok_or("old head")?;
-    let (outcome, _) = leases.select_recovery_measured(&runner, &mut scan).await;
+    let (outcome, _) = runs.select_recovery_measured(&runner, &mut scan).await;
     assert_eq!(
         outcome?.ok_or("oldest fleet after wrap")?.event_id,
         oldest.0
@@ -78,17 +77,16 @@ async fn unlocked_older_heads_return_while_newer_work_stays_ready() -> Checked {
     .await?;
     assert_eq!(held.len(), 64);
 
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
     let mut scan = RecoveryScan::default();
     assert!(
-        leases
-            .select_recovery_measured(&runner, &mut scan)
+        runs.select_recovery_measured(&runner, &mut scan)
             .await
             .0?
             .is_none()
     );
     assert!(scan.deferred());
-    let arrived = leases
+    let arrived = runs
         .select_recovery_measured(&runner, &mut scan)
         .await
         .0?
@@ -98,7 +96,7 @@ async fn unlocked_older_heads_return_while_newer_work_stays_ready() -> Checked {
     drop(connection);
 
     for _ in 0..64 {
-        let (next, _) = leases.select_recovery_measured(&runner, &mut scan).await;
+        let (next, _) = runs.select_recovery_measured(&runner, &mut scan).await;
         let next = next?.ok_or("newer work must remain available throughout the probe")?;
         if next.event_id == oldest.0 {
             fixtures.cleanup().await;
@@ -127,7 +125,7 @@ async fn cohort(
         let event = enqueue(fixtures, &fleet, workspace).await;
         sqlx::query(
             "INSERT INTO runner.slots
-                (id, fleet_id, fencing_token, lease_expires_at, created_at, updated_at)
+                (id, fleet_id, fencing_token, run_expires_at, created_at, updated_at)
              VALUES ($1, $1, 0, clock_timestamp()-interval '1 second', now(), now())",
         )
         .bind(&fleet)

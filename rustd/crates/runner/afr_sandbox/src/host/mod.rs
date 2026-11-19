@@ -3,7 +3,7 @@
 //! Two steps have no library a runner should link: launching bubblewrap, and
 //! formatting an ext4 image. Attaching an image to a loop device and mounting
 //! it run in-process (`crate::toolbox::loop_device`), so no `mount` program
-//! starts for a lease.
+//! starts for a run.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -68,7 +68,7 @@ impl Default for HostTools {
 /// Runs `path` with `args` to completion, refusing on a non-zero exit with the
 /// tail of what it wrote to standard error.
 ///
-/// The program is killed if the caller stops waiting: a cancelled lease start
+/// The program is killed if the caller stops waiting: a cancelled run start
 /// leaves no `mke2fs` running behind it.
 pub(crate) async fn run<I, S>(name: &'static str, path: &Path, args: I) -> Result<()>
 where

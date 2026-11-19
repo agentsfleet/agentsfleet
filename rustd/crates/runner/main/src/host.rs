@@ -1,5 +1,5 @@
-//! What `run` leases with on this host: the sandbox engine, the capability
-//! report heartbeats carry, and the agent loop every lease's turn runs on.
+//! What `run` runs with on this host: the sandbox engine, the capability
+//! report heartbeats carry, and the agent loop every run's turn runs on.
 //!
 //! On Linux the engine is bubblewrap, built from the cgroup the service
 //! manager delegated, the toolbox release a deploy staged, and the runner
@@ -31,9 +31,9 @@ const EXIT_FAILED: u8 = 1;
 #[cfg(target_os = "linux")]
 const RUNNER_SUBGROUP: &str = "runner";
 
-/// The engine and the facts `run` serves leases with.
+/// The engine and the facts `run` serves runs with.
 pub(crate) struct Host {
-    /// Builds each lease's sandbox.
+    /// Builds each run's sandbox.
     pub(crate) engine: Box<dyn Engine>,
     /// What this host's kernel can enforce, as every heartbeat states it.
     pub(crate) probe: HostProbe,
@@ -42,7 +42,7 @@ pub(crate) struct Host {
 }
 
 impl Host {
-    /// A host leasing with `engine`, on a kernel `probe` describes, its
+    /// A host running with `engine`, on a kernel `probe` describes, its
     /// sandboxes using `resources`. A release build off Linux builds no
     /// engine at all, so it has no caller there.
     #[cfg(any(target_os = "linux", debug_assertions))]
@@ -109,7 +109,7 @@ impl Host {
         ))
     }
 
-    /// An engine that builds no sandbox: each lease's tools run in a scratch
+    /// An engine that builds no sandbox: each run's tools run in a scratch
     /// directory under the storage home. A debug build alone has it, and the
     /// engine itself refuses to exist in a release build.
     ///
@@ -134,7 +134,7 @@ impl<E: Engine + 'static> From<afr_sandbox::Booted<E>> for Host {
     }
 }
 
-/// The agent loop every lease's turn runs on: every tool this runner hosts,
+/// The agent loop every run's turn runs on: every tool this runner hosts,
 /// their egress through the guarded network, and the model providers the
 /// shipped registry names.
 ///

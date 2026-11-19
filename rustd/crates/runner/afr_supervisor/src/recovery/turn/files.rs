@@ -7,7 +7,7 @@ use super::super::{
 use super::session::TurnSession;
 use crate::{Result, error};
 use af_wire::{
-    lease::{TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnId},
+    run::{TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnId},
     task::{CheckpointEntry, CheckpointTransferPurpose},
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, stream};
@@ -84,7 +84,7 @@ impl TurnSession<'_, '_> {
                 || !page.history_objects.is_empty()
                 || !af_wire::decision::serialized_within(
                     &page,
-                    af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES,
+                    af_wire::run::TURN_CHECKPOINT_PAGE_BYTES,
                 )
             {
                 return Err(error::config(

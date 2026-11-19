@@ -178,21 +178,21 @@ mod tests {
             assert!(remember(
                 &mut named,
                 Unreadable::LineKind,
-                "fleet_lease",
+                "fleet_run",
                 &index.to_string()
             ));
         }
         assert!(!remember(
             &mut named,
             Unreadable::LineKind,
-            "fleet_lease",
+            "fleet_run",
             "one-more"
         ));
         assert_eq!(named.count, REMEMBERED_MAX);
         assert!(!remember(
             &mut named,
             Unreadable::LineKind,
-            "fleet_lease",
+            "fleet_run",
             "0"
         ));
     }
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn a_long_spelling_is_cut_before_it_is_logged() {
         let capture = Capture::install();
-        skipped(Unreadable::LineKind, "fleet_lease", &"é".repeat(200));
+        skipped(Unreadable::LineKind, "fleet_run", &"é".repeat(200));
         let named = capture
             .events()
             .into_iter()
@@ -218,13 +218,13 @@ mod tests {
     #[test]
     fn a_different_meaning_or_work_type_is_named_again() {
         let capture = Capture::install();
-        skipped(Unreadable::Posture, "fleet_lease", "distinct-spelling");
+        skipped(Unreadable::Posture, "fleet_run", "distinct-spelling");
         skipped(
             Unreadable::Posture,
             "authoring_attempt",
             "distinct-spelling",
         );
-        skipped(Unreadable::LineKind, "fleet_lease", "distinct-spelling");
+        skipped(Unreadable::LineKind, "fleet_run", "distinct-spelling");
         assert_eq!(logged(&capture), 3);
     }
 }

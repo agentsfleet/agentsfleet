@@ -48,7 +48,7 @@ pub(crate) async fn configured(fixture: &Decisions<'_>, server: &Server) -> Task
         server.client.clone(),
     ));
     Tasks::new(
-        case.held.leases.clone(),
+        case.held.runs.clone(),
         case.admissions.clone(),
         dependencies,
     )

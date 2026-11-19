@@ -35,7 +35,7 @@ async fn already_received_ciphertext_is_verified_without_a_second_physical_uploa
     let saved = Capture {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        lease: &identity,
+        run: &identity,
         workspace: &identity,
         fence: FENCE,
         task: &task,
@@ -75,7 +75,7 @@ async fn upload_response_cannot_replace_registered_ciphertext_or_skip_readback()
         let error = Capture {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,
@@ -158,7 +158,7 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
             permit: None,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,

@@ -2,7 +2,7 @@
 //! runners whose tenant has nothing waiting, so the pass skips them.
 
 use super::*;
-use afd_fleet::lease::waiting::waiting;
+use afd_fleet::run::waiting::waiting;
 
 /// The probe names exactly the tenant runners with nothing to take.
 // Value: protects=a wake skips only a tenant runner whose tenant has no work

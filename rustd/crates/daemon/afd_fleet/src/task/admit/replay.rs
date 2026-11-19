@@ -5,7 +5,7 @@ use sqlx::PgConnection;
 
 use super::super::{
     PreparedPlan, TaskBinding, TaskBindings, TaskRefusal,
-    guard::{self, LeaseRow},
+    guard::{self, RunRow},
     sql,
 };
 use crate::error::{Result, query};
@@ -23,7 +23,7 @@ struct Existing {
 
 pub(super) async fn read(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     plan: &PreparedPlan,
 ) -> Result<Option<TaskBindings>> {
     let rows: Vec<Existing> = sqlx::query_as(sql::REPLAY)
@@ -73,7 +73,7 @@ pub(super) async fn read(
     // Reading a receipt grants no execution and changes no terminal state,
     // generation or allowance. Continuation claim owns attempt attachment.
     let current_task = guard::context(&mut *connection, current).await?;
-    let execution_deadline = crate::lease::deadline::read(connection, &current.lease_id).await?;
+    let execution_deadline = crate::run::deadline::read(connection, &current.run_id).await?;
     Ok(Some(TaskBindings {
         items,
         current_task,

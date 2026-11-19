@@ -145,11 +145,11 @@ async fn one_attempt(
                 error::refused(call.verb, 409, Some(error_code::TASK_STALE_STATE))
             })
         });
-        let lease = Uuid7::parse(LEASE_ID).unwrap();
+        let run = Uuid7::parse(RUN_ID).unwrap();
         let host = Host::new();
         let verbs = FencedVerbs::new(
             &plane,
-            &lease,
+            &run,
             FENCING,
             &host.halt,
             &host.stop,
@@ -165,7 +165,7 @@ async fn one_attempt(
         assert_eq!(requests.len(), 1);
         let call = requests.first().unwrap();
         assert_eq!(call.verb, verb);
-        assert!(call.path.contains(LEASE_ID), "{call:?}");
+        assert!(call.path.contains(RUN_ID), "{call:?}");
         assert_fence(call);
     }
 }
@@ -188,11 +188,11 @@ fn assert_fence(call: &crate::client::Call) {
 #[tokio::test]
 async fn an_effect_identifier_that_is_not_a_uuid_is_refused_without_a_call() {
     let (plane, mut calls) = plane(|_call| Answer::Fail(error::config("unexpected effect read")));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,

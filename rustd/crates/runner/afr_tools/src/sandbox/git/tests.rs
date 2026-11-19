@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, Git, subcommand};
 use crate::generic::Generic;
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::{CatalogTool, ToolErrorCode};
 use crate::sandbox::{Checkout, ScriptedExecutor, ScriptedProcess};
 use crate::testing::{Live, call, call_in};
@@ -35,9 +35,9 @@ fn only_spawn(executor: &ScriptedExecutor) -> Spawn {
     }
 }
 
-/// A lease whose workspace holds `checkouts`.
-fn holding(checkouts: Vec<Checkout<'static>>) -> Lease<'static> {
-    Lease::default().with_checkouts(checkouts)
+/// A run whose workspace holds `checkouts`.
+fn holding(checkouts: Vec<Checkout<'static>>) -> Run<'static> {
+    Run::default().with_checkouts(checkouts)
 }
 
 /// The fixture repository, checked out under its name.
@@ -53,9 +53,9 @@ fn widgets() -> Checkout<'static> {
 #[tokio::test]
 async fn test_git_tool_runs_in_the_one_checked_out_repository() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("On branch dev\n", 0)]);
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
-    let output = call_in(&*git(), &executor, &lease, running(&["status"])).await;
+    let output = call_in(&*git(), &executor, &run, running(&["status"])).await;
 
     assert_eq!(output.text, "On branch dev\n");
     assert_eq!((output.exit_code, output.error_code), (Some(0), None));
@@ -101,10 +101,10 @@ async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
 async fn test_git_tool_refuses_network_subcommands() {
     let capture = Capture::install();
     let executor = ScriptedExecutor::new([]);
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
     for refused in GIT_REFUSED_SUBCOMMANDS {
-        let output = call_in(&*git(), &executor, &lease, running(&[refused, "origin"])).await;
+        let output = call_in(&*git(), &executor, &run, running(&[refused, "origin"])).await;
 
         assert_eq!(
             output.error_code,
@@ -132,12 +132,12 @@ async fn test_git_tool_refuses_network_subcommands() {
 #[tokio::test]
 async fn should_find_the_subcommand_after_global_options() {
     let executor = ScriptedExecutor::new([]);
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
     let output = call_in(
         &*git(),
         &executor,
-        &lease,
+        &run,
         running(&["-c", "user.name=x", "--no-pager", "-C", WIDGETS, "push"]),
     )
     .await;
@@ -181,13 +181,13 @@ fn should_skip_each_valued_global_option_with_its_value() {
 
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
-    let unsandboxed = call(&*git(), &lease, running(&["status"])).await;
+    let unsandboxed = call(&*git(), &run, running(&["status"])).await;
     let refused = call_in(
         &*git(),
         &ScriptedExecutor::new([]),
-        &lease,
+        &run,
         running(&["status"]),
     )
     .await;
@@ -210,7 +210,7 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
     let output = call_in(
         &*git(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"args": "status"}),
     )
     .await;
@@ -228,9 +228,9 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
 #[tokio::test]
 async fn should_read_file_not_found_when_the_checkout_is_gone() {
     let live = Live::start().await;
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
-    let missing = call_in(&*git(), &live.client, &lease, running(&["status"])).await;
+    let missing = call_in(&*git(), &live.client, &run, running(&["status"])).await;
 
     assert_eq!(
         missing.error_code,

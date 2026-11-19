@@ -7,7 +7,7 @@ import { AGENTSFLEET_EVENT_STATUS, text, type FleetEvent } from "./fleet-stream-
 // How a message waiting for a runner reaches the timeline, beside
 // `fleet-stream-frames.ts`: `event_admitted` opens a waiting row the moment the
 // daemon accepts a message, and `event_received` for the same event starts it.
-// The two can arrive in either order — a runner can lease a send and announce
+// The two can arrive in either order — a runner can run a send and announce
 // it before the route publishes — so an admitted frame for a row already held
 // fills only an empty text and never moves the row back to waiting.
 

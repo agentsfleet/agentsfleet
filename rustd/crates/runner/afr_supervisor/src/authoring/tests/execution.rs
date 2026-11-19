@@ -1,6 +1,6 @@
 //! Authoring proposals never acquire fleet tools, memory or sandbox authority.
 
-use super::{ack, json, lease, result, rig, run};
+use super::{ack, json, payload, result, rig, run};
 use crate::client::Verb;
 use std::sync::atomic::Ordering;
 
@@ -11,7 +11,7 @@ async fn saved_output_allowances_above_eight_thousand_reach_the_daemon() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let mut configured = lease();
+    let mut configured = payload();
     configured.limits.output_per_turn = 32_768;
     let (calls, report) = run(&mut rig, configured).await;
     let model = calls
@@ -30,7 +30,7 @@ async fn a_plain_answer_uses_only_the_native_session_and_private_report() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(calls.len(), 2);
     assert!(
         calls
@@ -63,7 +63,7 @@ async fn cut_output_never_completes_or_submits_a_proposal() {
         Verb::AuthoringReport => ack(),
         other => panic!("cut output requested authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(calls.len(), 2);
     assert_eq!(report["outcome"], "failed");
     assert_eq!(report["failure_reason"], "provider_failed");
@@ -105,7 +105,7 @@ async fn a_refused_proposal_is_repaired_without_skipping_its_activity_sequence()
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (_, report) = run(&mut rig, lease()).await;
+    let (_, report) = run(&mut rig, payload()).await;
     let activities = activities.lock().unwrap();
     assert_eq!(activities.len(), 2);
     assert!(

@@ -1,21 +1,21 @@
 //! Exact event, workspace and incorporated inputs are proved before root restoration.
 
 use super::{RootRecovery, TurnRecovery, TurnSnapshot};
-use af_wire::lease::{FoldRef, LeasePayload, TurnId, TurnResume, TurnWorkspace};
+use af_wire::run::{FoldRef, RunPayload, TurnId, TurnResume, TurnWorkspace};
 use guffbolt::{Message, Replay};
 
 fn id(number: u32) -> TurnId {
     TurnId(format!("019f0000-0000-7000-8000-{number:012x}"))
 }
 
-fn lease() -> LeasePayload<'static> {
-    let mut lease = crate::fixture::lease(&[], crate::fixture::unbounded());
-    lease.event.workspace_id = id(1).0.into();
-    lease.event.fleet_id = id(2).0.into();
-    lease.event.event_id = id(3).0.into();
-    lease.setup_revision_id = Some(id(4).0.into());
-    lease.lease_id = id(5).0.into();
-    lease
+fn payload() -> RunPayload<'static> {
+    let mut run = crate::fixture::payload(&[], crate::fixture::unbounded());
+    run.event.workspace_id = id(1).0.into();
+    run.event.fleet_id = id(2).0.into();
+    run.event.event_id = id(3).0.into();
+    run.setup_revision_id = Some(id(4).0.into());
+    run.run_id = id(5).0.into();
+    run
 }
 
 fn root() -> crate::Result<RootRecovery> {
@@ -43,9 +43,9 @@ fn root() -> crate::Result<RootRecovery> {
     })
 }
 
-fn fixture() -> crate::Result<(LeasePayload<'static>, TurnRecovery)> {
-    let mut lease = lease();
-    let snapshot = TurnSnapshot::capture(&lease, TurnWorkspace::ApiOnly, None, root()?)?;
+fn fixture() -> crate::Result<(RunPayload<'static>, TurnRecovery)> {
+    let mut run = payload();
+    let snapshot = TurnSnapshot::capture(&run, TurnWorkspace::ApiOnly, None, root()?)?;
     let descriptor = TurnResume {
         checkpoint_id: id(6),
         generation: 1,
@@ -54,9 +54,9 @@ fn fixture() -> crate::Result<(LeasePayload<'static>, TurnRecovery)> {
         manifest_root: af_core::etag::sha256_hex(b"manifest"),
         history_digest: af_core::etag::sha256_hex(&snapshot.history),
     };
-    lease.turn_resume = Some(descriptor.clone());
+    run.turn_resume = Some(descriptor.clone());
     Ok((
-        lease,
+        run,
         TurnRecovery {
             descriptor,
             history: snapshot.history,
@@ -76,8 +76,8 @@ fn has_replay(root: &RootRecovery) -> bool {
 #[test]
 fn ordinary_state_restores_answers_input_membership_and_current_secret_scrubbing()
 -> crate::Result<()> {
-    let (lease, recovered) = fixture()?;
-    let root = recovered.restore(&lease, TurnWorkspace::ApiOnly, &crate::fixture::scrub())?;
+    let (run, recovered) = fixture()?;
+    let root = recovered.restore(&run, TurnWorkspace::ApiOnly, &crate::fixture::scrub())?;
     assert_eq!(root.pinned, 1);
     assert_eq!(root.driver.completed_turns(), 1);
     assert_eq!(root.folds, recovered.adopted);
@@ -101,10 +101,10 @@ fn ordinary_state_restores_answers_input_membership_and_current_secret_scrubbing
 
 #[test]
 fn new_model_resolution_keeps_work_but_discards_provider_replay() -> crate::Result<()> {
-    let (mut lease, recovered) = fixture()?;
-    lease.policy.context.model = "another-model".into();
-    lease.policy.provider = "another-provider".into();
-    let root = recovered.restore(&lease, TurnWorkspace::ApiOnly, &crate::fixture::scrub())?;
+    let (mut run, recovered) = fixture()?;
+    run.policy.context.model = "another-model".into();
+    run.policy.provider = "another-provider".into();
+    let root = recovered.restore(&run, TurnWorkspace::ApiOnly, &crate::fixture::scrub())?;
     assert!(!has_replay(&root));
     assert_eq!(root.messages.len(), 2);
     assert_eq!(root.driver.answers().len(), 1);
@@ -113,16 +113,16 @@ fn new_model_resolution_keeps_work_but_discards_provider_replay() -> crate::Resu
 
 #[test]
 fn changed_setup_scope_workspace_digest_or_adopted_membership_refuses() -> crate::Result<()> {
-    let (lease, recovered) = fixture()?;
+    let (run, recovered) = fixture()?;
     for case in 0..8 {
-        let mut lease = lease.clone();
+        let mut run = run.clone();
         let mut saved = recovered.clone();
         let mut workspace = TurnWorkspace::ApiOnly;
         match case {
-            0 => lease.setup_revision_id = Some(id(8).0.into()),
-            1 => lease.event.event_id = id(8).0.into(),
-            2 => lease.event.fleet_id = id(8).0.into(),
-            3 => lease.event.workspace_id = id(8).0.into(),
+            0 => run.setup_revision_id = Some(id(8).0.into()),
+            1 => run.event.event_id = id(8).0.into(),
+            2 => run.event.fleet_id = id(8).0.into(),
+            3 => run.event.workspace_id = id(8).0.into(),
             4 => {
                 workspace = TurnWorkspace::Files {
                     toolbox_digest: "a".repeat(64),
@@ -130,11 +130,11 @@ fn changed_setup_scope_workspace_digest_or_adopted_membership_refuses() -> crate
             }
             5 => saved.history.push(b' '),
             6 => saved.adopted.clear(),
-            _ => lease.turn_resume = None,
+            _ => run.turn_resume = None,
         }
         assert!(
             saved
-                .restore(&lease, workspace, &crate::fixture::scrub())
+                .restore(&run, workspace, &crate::fixture::scrub())
                 .is_err(),
             "case {case}"
         );
@@ -144,7 +144,7 @@ fn changed_setup_scope_workspace_digest_or_adopted_membership_refuses() -> crate
 
 #[test]
 fn unsupported_format_refuses_even_when_its_bytes_match_the_descriptor() -> crate::Result<()> {
-    let (mut lease, mut recovered) = fixture()?;
+    let (mut run, mut recovered) = fixture()?;
     let mut bytes: serde_json::Value = serde_json::from_slice(&recovered.history)?;
     let object = bytes
         .as_object_mut()
@@ -152,10 +152,10 @@ fn unsupported_format_refuses_even_when_its_bytes_match_the_descriptor() -> crat
     object.insert("format".to_owned(), serde_json::json!(2));
     recovered.history = zeroize::Zeroizing::new(serde_json::to_vec(&bytes)?);
     recovered.descriptor.history_digest = af_core::etag::sha256_hex(&recovered.history);
-    lease.turn_resume = Some(recovered.descriptor.clone());
+    run.turn_resume = Some(recovered.descriptor.clone());
     assert!(
         recovered
-            .restore(&lease, TurnWorkspace::ApiOnly, &crate::fixture::scrub())
+            .restore(&run, TurnWorkspace::ApiOnly, &crate::fixture::scrub())
             .is_err_and(
                 |failure| failure.code() == af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
             )
@@ -167,19 +167,19 @@ fn unsupported_format_refuses_even_when_its_bytes_match_the_descriptor() -> crat
 fn capture_requires_plain_authority_a_frozen_setup_and_a_bounded_complete_root() -> crate::Result<()>
 {
     for case in 0..3 {
-        let mut lease = lease();
+        let mut run = payload();
         let mut root = root()?;
         match case {
-            0 => lease.durable_tasks = true,
-            1 => lease.setup_revision_id = None,
+            0 => run.durable_tasks = true,
+            1 => run.setup_revision_id = None,
             _ => root.messages.push(Message::User(
-                "x".repeat(af_wire::lease::TURN_CHECKPOINT_BYTES),
+                "x".repeat(af_wire::run::TURN_CHECKPOINT_BYTES),
             )),
         }
         assert!(
-            TurnSnapshot::capture(&lease, TurnWorkspace::ApiOnly, None, root).is_err_and(
-                |failure| failure.code() == af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
-            )
+            TurnSnapshot::capture(&run, TurnWorkspace::ApiOnly, None, root).is_err_and(|failure| {
+                failure.code() == af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
+            })
         );
     }
     Ok(())

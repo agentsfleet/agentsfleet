@@ -1,5 +1,5 @@
-//! The billing relay settles what the lease path logged, and bills the last
-//! slice of a lease that ended unreported.
+//! The billing relay settles what the run path logged, and bills the last
+//! slice of a run that ended unreported.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -16,8 +16,8 @@ use afd_billing::Nanos;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::price::RatedLine;
-use afd_fleet::lease::billing_sweep::{BillingSwept, GRACE, sweep};
-use afd_fleet::lease::{Renewed, sql::meter::Metering};
+use afd_fleet::run::billing_sweep::{BillingSwept, GRACE, sweep};
+use afd_fleet::run::{Renewed, sql::meter::Metering};
 use futures_util::FutureExt as _;
 
 use crate::report_seed::{DEEP_POOL, Held, held_in};
@@ -74,7 +74,7 @@ async fn the_relay_settles_orphaned_lines() {
     held.fixtures.cleanup().await;
 }
 
-/// A lease that ended unreported owes the run time between its last renewal
+/// A run that ended unreported owes the run time between its last renewal
 /// and the deadline it was granted (spec Dimension 9.5). The sweeper logs it as
 /// one runtime line numbered by its slice's start, settles it, and a second pass finds
 /// nothing more to bill.
@@ -186,19 +186,19 @@ const DECISION_CHARGE: Nanos = Nanos::from_i64(42_000);
 async fn renew_runtime(held: &Held, biller: &LedgerBiller) -> i64 {
     held.run_a_slice().await;
     let renewed = held
-        .leases
+        .runs
         .extend(
             Metering {
-                lease_id: &held.issued.lease_id,
+                run_id: &held.issued.run_id,
                 runner_id: &held.runner,
                 requests: &[],
             },
-            &held.lease_key,
+            &held.run_key,
             &held.pricing,
             held.now,
         )
         .await
-        .expect("current lease renews");
+        .expect("current run renews");
     let settlement = match renewed {
         Renewed::Extended { settlement, .. } => settlement,
         _ => None,
@@ -215,7 +215,7 @@ async fn renew_runtime(held: &Held, biller: &LedgerBiller) -> i64 {
     millis
 }
 
-/// The expiry sweep and a late report race on one abandoned lease: whichever
+/// The expiry sweep and a late report race on one abandoned run: whichever
 /// runs second finds the cursor at the deadline, so the tail is billed once,
 /// never twice and never not at all.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -232,13 +232,9 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 
     let entropy = Entropy::new();
     let swept = sweep(database, &biller, &entropy, held.now, None);
-    let reported = held.fixtures.commit_alone(
-        &held.leases,
-        &held.issued.lease_id,
-        &held.runner,
-        &[],
-        held.now,
-    );
+    let reported =
+        held.fixtures
+            .commit_alone(&held.runs, &held.issued.run_id, &held.runner, &[], held.now);
     let (swept, _reported) = tokio::join!(swept, reported);
     swept.expect("the pass reads");
 
@@ -251,13 +247,13 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
     held.fixtures.cleanup().await;
 }
 
-/// Leaves `held`'s lease active but abandoned: its deadline and its cursor
+/// Leaves `held`'s run active but abandoned: its deadline and its cursor
 /// both pushed back past the sweeper's grace, with three seconds of run time
-/// between them that no renewal billed. The lease's start moves back with its
+/// between them that no renewal billed. The run's start moves back with its
 /// cursor, as elapsed time moves both, so the tail starts where the last
 /// renewal ended. Answers that tail in milliseconds.
 pub(crate) async fn abandon(held: &Held) -> i64 {
-    let lease = &held.issued.lease_id;
+    let run = &held.issued.run_id;
     let mut connection = held
         .fixtures
         .database
@@ -265,30 +261,30 @@ pub(crate) async fn abandon(held: &Held) -> i64 {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "UPDATE runner.leases SET lease_expires_at = now() - $2::interval, \
+        "UPDATE runner.runs SET run_expires_at = now() - $2::interval, \
          last_metered_at = now() - $2::interval - $3::interval, \
          created_at = created_at - (last_metered_at - (now() - $2::interval - $3::interval)) \
          WHERE id = $1",
     )
-    .bind(lease)
+    .bind(run)
     .bind(GRACE.saturating_mul(2))
     .bind(TAIL)
     .execute(&mut *connection)
     .await
-    .expect("the lease is abandoned");
+    .expect("the run is abandoned");
     i64::try_from(TAIL.as_millis()).expect("three seconds fit")
 }
 
-/// The run time an abandoned lease's last renewal left unbilled.
+/// The run time an abandoned run's last renewal left unbilled.
 const TAIL: Duration = Duration::from_secs(3);
 
-/// `held`'s lease's runtime lines, as `(seq, runtime_ms)`.
+/// `held`'s run's runtime lines, as `(seq, runtime_ms)`.
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     sqlx::query_as(
         "SELECT seq, runtime_ms FROM billing.usage_lines \
          WHERE work_id = $1 AND kind = $2 ORDER BY seq",
     )
-    .bind(&held.lease_key)
+    .bind(&held.run_key)
     .bind(LineKind::Runtime.as_str())
     .fetch_all(
         &mut *held

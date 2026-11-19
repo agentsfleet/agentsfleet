@@ -37,7 +37,7 @@ const ASSISTANT_TURN = '[data-role="assistant"]';
 const SENDER_LINE = "fleet-message-sender";
 // A turn another screen sent lands over the live stream, well inside this.
 const LIVE_MS = 15_000;
-// A runner leases the turn and the provider answers inside this.
+// A runner runs the turn and the provider answers inside this.
 const REPLY_MS = 150_000;
 
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");

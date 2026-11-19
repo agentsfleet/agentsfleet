@@ -11,7 +11,7 @@ impl ModelCalls {
     pub(super) async fn invoke(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         intent: Intent,
@@ -36,7 +36,7 @@ impl ModelCalls {
                     streams,
                     &self.drafts,
                     runner,
-                    lease,
+                    run,
                     counters,
                     dispatch.clone(),
                     generation,
@@ -46,7 +46,7 @@ impl ModelCalls {
             progress.send(ContextState::Summarizing).await;
         }
         let result = self
-            .send(runner, lease, request, counters, intent, dispatch)
+            .send(runner, run, request, counters, intent, dispatch)
             .instrument(span)
             .await;
         if let Some(trace) = &mut trace {
@@ -70,7 +70,7 @@ impl ModelCalls {
     async fn send(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         intent: Intent,
@@ -89,7 +89,7 @@ impl ModelCalls {
         outbound.timeout = outbound.timeout.saturating_sub(authorized_at.elapsed());
         let publisher = self.preview(
             runner,
-            lease,
+            run,
             counters,
             dispatch,
             &mut outbound,
@@ -126,7 +126,7 @@ impl ModelCalls {
             && let Err(fault) = self
                 .screen_proposals(
                     runner,
-                    lease,
+                    run,
                     request,
                     counters,
                     Screening {
@@ -144,7 +144,7 @@ impl ModelCalls {
         receipt::finish(
             &self.drafts,
             runner,
-            lease,
+            run,
             request,
             counters,
             &attempt,
@@ -163,7 +163,7 @@ impl ModelCalls {
     async fn screen_proposals(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         screening: Screening<'_>,
@@ -172,7 +172,7 @@ impl ModelCalls {
         if screening.save {
             return provider::refuse_for_save(decoded, request);
         }
-        self.check_edit_intent(runner, lease, request, counters, decoded)
+        self.check_edit_intent(runner, run, request, counters, decoded)
             .await?;
         provider::refuse_invalid_edits(decoded, screening.candidate, request)
     }
@@ -180,7 +180,7 @@ impl ModelCalls {
     fn preview(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         counters: &guard::Counters,
         dispatch: Uuid7,
         outbound: &mut provider::Outbound,
@@ -191,7 +191,7 @@ impl ModelCalls {
                 streams.clone(),
                 self.drafts.clone(),
                 runner.clone(),
-                lease.clone(),
+                run.clone(),
                 counters.clone(),
                 dispatch,
             );

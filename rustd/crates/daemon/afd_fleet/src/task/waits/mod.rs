@@ -26,15 +26,15 @@ pub(in crate::task) async fn arm(
     tasks: &Tasks,
     connection: &mut PgConnection,
     task: &Uuid7,
-    lease: &af_core::id::Uuid7,
+    run: &af_core::id::Uuid7,
     target: &BoundPr,
     dependency: &Snapshot,
 ) -> Result<()> {
-    let id = tasks.leases.entropy().uuid7(af_core::clock::now())?;
+    let id = tasks.runs.entropy().uuid7(af_core::clock::now())?;
     sqlx::query(include_str!("sql/arm.sql"))
         .bind(&id)
         .bind(task)
-        .bind(lease)
+        .bind(run)
         .bind(
             i64::try_from(target.installation_id)
                 .map_err(crate::error::task_target_counter("installation_id"))?,

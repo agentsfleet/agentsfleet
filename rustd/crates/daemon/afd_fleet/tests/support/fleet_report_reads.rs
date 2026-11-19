@@ -1,8 +1,8 @@
 //! Reads and seeds the §3 suites need: the wallet a settle draws on, the
 //! catalogue that gives a run a price at all, and the rows it leaves behind.
 //!
-//! Separate from `fleet_lease_reads.rs` because the tables are different and
-//! so is the question: those helpers stage a LEASE, these ask what a run COST.
+//! Separate from `fleet_run_reads.rs` because the tables are different and
+//! so is the question: those helpers stage a RUN, these ask what a run COST.
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"

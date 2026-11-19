@@ -73,9 +73,9 @@ fn pending(
 ) -> JoinSet<Duration> {
     let mut tasks = JoinSet::new();
     for (attempt, request) in attempts {
-        let (runner, lease, request, calls, barrier) = (
+        let (runner, run, request, calls, barrier) = (
             f.runner.clone(),
-            attempt.lease.clone(),
+            attempt.run.clone(),
             request.clone(),
             calls.clone(),
             Arc::clone(barrier),
@@ -84,7 +84,7 @@ fn pending(
             barrier.wait().await;
             let began = Instant::now();
             let result = calls
-                .call(&runner, &lease, request)
+                .call(&runner, &run, request)
                 .await
                 .expect("known stream final");
             assert!(!result.replayed);
@@ -123,7 +123,7 @@ async fn replay(f: &Fixture, calls: &ModelCalls, attempts: &[(Attempt, ModelCall
     for (attempt, request) in attempts {
         assert!(
             calls
-                .call(&f.runner, &attempt.lease, request.clone())
+                .call(&f.runner, &attempt.run, request.clone())
                 .await
                 .expect("authorized final replay")
                 .replayed

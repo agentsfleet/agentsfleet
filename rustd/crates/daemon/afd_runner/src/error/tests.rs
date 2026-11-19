@@ -71,7 +71,7 @@ fn stored_and_query_failures_retain_their_causes() -> Result<(), &'static str> {
 #[test]
 fn a_statement_ended_by_the_logins_bound_is_unavailable_and_retryable() {
     for sqlstate in ["55P03", "57014"] {
-        let error = super::query("lock and count host lease capacity")(
+        let error = super::query("lock and count host run capacity")(
             afd_db::error::database_answer(sqlstate),
         );
 
@@ -87,7 +87,7 @@ fn a_statement_ended_by_the_logins_bound_is_unavailable_and_retryable() {
         assert!(
             error
                 .to_string()
-                .contains("lock and count host lease capacity"),
+                .contains("lock and count host run capacity"),
             "{error}"
         );
         assert!(error.source().is_some(), "{sqlstate} keeps its cause");

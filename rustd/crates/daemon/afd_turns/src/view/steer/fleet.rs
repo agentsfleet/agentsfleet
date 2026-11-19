@@ -5,8 +5,8 @@
 //! the event the sender is running, so the target answers where the sender
 //! was asked. The key is derived here, never named by a caller.
 //!
-//! It runs behind the lease's write guard, inside the admission's own
-//! transaction, so a runner whose lease a reclaim took writes nothing. It
+//! It runs behind the run's write guard, inside the admission's own
+//! transaction, so a runner whose run a reclaim took writes nothing. It
 //! computes no disposition: a fleet's steer never folds into a live run, and
 //! its sender does not wait to learn where it went.
 
@@ -42,7 +42,7 @@ pub fn is_fleet_actor(actor: &str) -> bool {
 pub struct FleetSteer<'a> {
     /// The fleet the work goes to.
     pub target: &'a Uuid7,
-    /// The workspace both fleets are in: the lease's, never the request's.
+    /// The workspace both fleets are in: the run's, never the request's.
     pub workspace: &'a Uuid7,
     /// The fleet sending it.
     pub sender_fleet: &'a Uuid7,

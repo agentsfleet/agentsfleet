@@ -6,7 +6,7 @@ mod waiting;
 use super::{Fixture, claim, fixture::fund, mint, now, queue, recovery::unknown};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::lease::AcceptedKinds;
+use af_wire::run::AcceptedKinds;
 use afd_runner::Runners;
 use afd_setup::{
     Claimed, Drafts,
@@ -26,20 +26,20 @@ const CONTENTION_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTENTION_POLL: Duration = Duration::from_millis(10);
 const MIN_WAITERS: i64 = 2;
 const BLOCKED: &str = "WITH RECURSIVE queued(pid) AS (SELECT $1::int UNION SELECT a.pid FROM pg_stat_activity a JOIN queued q ON q.pid = ANY(pg_blocking_pids(a.pid))) SELECT count(*) - 1 FROM queued";
-const CLONE_HISTORY: &str = "INSERT INTO authoring.attempts SELECT r.* FROM authoring.attempts a CROSS JOIN unnest($2,$3,$4::bigint[]) n(id,lease_id,sequence) CROSS JOIN LATERAL jsonb_populate_record(NULL::authoring.attempts,to_jsonb(a)||jsonb_build_object('id',n.id,'lease_id',n.lease_id,'message_sequence',n.sequence,'reserved_nanos',0)) r WHERE a.id=$1";
+const CLONE_HISTORY: &str = "INSERT INTO authoring.attempts SELECT r.* FROM authoring.attempts a CROSS JOIN unnest($2,$3,$4::bigint[]) n(id,run_id,sequence) CROSS JOIN LATERAL jsonb_populate_record(NULL::authoring.attempts,to_jsonb(a)||jsonb_build_object('id',n.id,'run_id',n.run_id,'message_sequence',n.sequence,'reserved_nanos',0)) r WHERE a.id=$1";
 const CUTOFF: &str = "UPDATE authoring.drafts SET last_message_sequence=$2,cancelled_through_sequence=$2 WHERE id=$1";
 const EXPLAIN: &str = const_format::concatcp!(
     "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ",
     Drafts::CURRENT_ATTEMPT_QUERY
 );
 
-async fn history(f: &Fixture, draft: &Draft, lease: &Claimed) {
+async fn history(f: &Fixture, draft: &Draft, run: &Claimed) {
     let mut owner = PgConnection::connect(&f.owner_url())
         .await
         .expect("isolated history owner");
     let mut first = 2;
     for last in HISTORY {
-        seed(&mut owner, draft, lease, first, last).await;
+        seed(&mut owner, draft, run, first, last).await;
         let plan: Value = sqlx::query_scalar(EXPLAIN)
             .bind(&draft.id)
             .bind(["awaiting_accounting", "settled"])
@@ -55,11 +55,11 @@ async fn history(f: &Fixture, draft: &Draft, lease: &Claimed) {
 pub(super) async fn seed(
     owner: &mut PgConnection,
     draft: &Draft,
-    lease: &Claimed,
+    run: &Claimed,
     first: i64,
     last: i64,
 ) {
-    let attempt = Uuid7::parse(&lease.attempt_id).expect("the lease names its attempt");
+    let attempt = Uuid7::parse(&run.attempt_id).expect("the run names its attempt");
     sqlx::query(CLONE_HISTORY)
         .bind(&attempt)
         .bind((first..=last).map(|_| mint()).collect::<Vec<_>>())
@@ -204,8 +204,8 @@ async fn claims(f: Arc<Fixture>, draft: &Draft) {
     }
     let mut admitted = Vec::new();
     while let Some(result) = tasks.join_next().await {
-        if let Some(lease) = result.expect("claim task") {
-            admitted.push(lease);
+        if let Some(run) = result.expect("claim task") {
+            admitted.push(run);
         }
     }
     assert_eq!(admitted.len(), 1);
@@ -230,13 +230,13 @@ async fn claims(f: Arc<Fixture>, draft: &Draft) {
 async fn stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_sequences() {
     let f = Arc::new(fund(Fixture::isolated().await, 2).await);
     let draft = queue(&f, "Original unknown request").await;
-    let lease = claim(&f, &draft).await.expect("first attempt");
-    unknown(&f, &lease).await;
+    let run = claim(&f, &draft).await.expect("first attempt");
+    unknown(&f, &run).await;
     f.drafts
         .cancel(f.access(), &draft.id, 1)
         .await
         .expect("Stop old work");
-    history(&f, &draft, &lease).await;
+    history(&f, &draft, &run).await;
     let peer = Drafts::new(
         f.db.clone(),
         Entropy::new(),
@@ -256,8 +256,8 @@ async fn stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_se
 async fn discovery_offers_new_work_after_stopped_unknown_usage() {
     let f = fund(Fixture::isolated().await, 2).await;
     let draft = queue(&f, "Original unknown request").await;
-    let lease = claim(&f, &draft).await.expect("first attempt");
-    unknown(&f, &lease).await;
+    let run = claim(&f, &draft).await.expect("first attempt");
+    unknown(&f, &run).await;
     f.drafts
         .cancel(f.access(), &draft.id, 1)
         .await

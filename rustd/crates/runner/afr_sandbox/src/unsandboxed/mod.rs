@@ -16,10 +16,10 @@ use crate::engine::{Engine, HostWorkspace, Killed, Sandbox, SandboxRequest};
 use crate::error::{EgressRefusal, ErrorKind, Result, egress_refused, unconfined};
 use crate::network::Allowlist;
 
-/// The executor's socket in each lease's scratch directory: with no sandbox
+/// The executor's socket in each run's scratch directory: with no sandbox
 /// to inherit a pair, the executor listens on a path.
 pub(crate) const SOCKET_NAME: &str = "executor.sock";
-/// The workspace directory inside each lease's scratch directory.
+/// The workspace directory inside each run's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
 /// How long the in-process executor may take to bind its socket.
 const CONNECT_WITHIN: Duration = Duration::from_secs(1);
@@ -30,14 +30,14 @@ const NO_FREEZER: &str = "its processes run under no cgroup to freeze";
 /// Why a kill here proves nothing.
 const NO_CGROUP_KILL: &str = "its processes run under no cgroup that a kill could prove empty";
 
-/// Builds an unconfined "sandbox" per lease under a scratch directory.
+/// Builds an unconfined "sandbox" per run under a scratch directory.
 #[derive(Debug)]
 pub struct UnsandboxedEngine {
     base: PathBuf,
 }
 
 impl UnsandboxedEngine {
-    /// An engine whose leases live under `base`. Keep `base` short: a Unix
+    /// An engine whose runs live under `base`. Keep `base` short: a Unix
     /// socket's path is capped near a hundred bytes.
     ///
     /// # Errors

@@ -1,0 +1,93 @@
+//! What a poll answers, as the bytes a runner reads.
+//!
+//! Split from [`super::pull`] because it is the half with no decisions in it:
+//! everything here renders a conclusion someone else reached. Keeping it apart
+//! is what lets the verb next door read as a sequence of decisions rather than
+//! as a sequence of decisions interleaved with serialization.
+
+use af_core::id::Uuid7;
+use af_wire::decision::DecisionAssignment;
+use af_wire::event::{EventEnvelope, EventType};
+use af_wire::memory::MemoryHydrateResponse;
+use af_wire::policy::ExecutionPolicy;
+use af_wire::run::{RunPayload, Turn};
+
+use crate::run::envelope::Acquired;
+use crate::run::installed::Installed;
+
+/// The event a poll that issued nothing is logged under.
+pub(super) const EVENT_NO_WORK: &str = "runner_run_no_work";
+
+/// The event an issued run is logged under.
+pub(super) const EVENT_RUND: &str = "runner_run_issued";
+
+/// The event a refused delivery is logged under.
+pub(super) const EVENT_REFUSED: &str = "runner_run_refused";
+
+/// The event a delivery ended after its runs kept lapsing is logged under.
+///
+/// Its own name rather than [`EVENT_REFUSED`]'s: no gate refused anything, and
+/// a count of refusals must not rise with lapsed runs.
+pub(super) const EVENT_ABANDONED: &str = "runner_run_abandoned";
+
+/// A placement decision that sends no frame; its reason stays in bounded operator telemetry.
+pub(super) fn no_work(runner: &Uuid7, reason: &str) {
+    let runner_id = runner.as_str();
+    tracing::debug!(event = EVENT_NO_WORK, runner_id, reason);
+}
+
+/// What a run carries about the fleet beyond its event: the thread's earlier
+/// turns and the memory window, both read after the issue.
+#[derive(Debug)]
+pub(super) struct Context<'a> {
+    pub(super) history: Vec<Turn<'a>>,
+    pub(super) memory: Option<MemoryHydrateResponse<'a>>,
+    pub(super) decision: Option<Box<DecisionAssignment>>,
+    pub(super) task: Option<af_wire::task::TaskContext<'static>>,
+    pub(super) turn_resume: Option<af_wire::run::TurnResume>,
+    pub(super) expires_at: jiff::Timestamp,
+}
+
+/// Assemble the issued payload while its policy still borrows the admitted work.
+pub(super) fn payload<'a>(
+    run_id: &'a Uuid7,
+    acquired: &'a Acquired,
+    event_type: EventType,
+    installed: &'a Installed,
+    policy: ExecutionPolicy<'a>,
+    context: Context<'a>,
+) -> RunPayload<'a> {
+    RunPayload {
+        run_id: run_id.as_str().into(),
+        fencing_token: acquired.fence.as_u64(),
+        setup_revision_id: installed
+            .issue_revision
+            .as_ref()
+            .map(|proof| proof.current.as_str().into()),
+        turn_resume: context.turn_resume,
+        run_expires_at: context.expires_at,
+        event: EventEnvelope {
+            event_id: acquired.event_id.as_str().into(),
+            fleet_id: acquired.fleet_id.as_str().into(),
+            workspace_id: acquired.workspace_id.as_str().into(),
+            actor: acquired.actor.as_str().into(),
+            event_type,
+            request_json: acquired.request_json.as_str().into(),
+            created_at: acquired.event_created_at,
+        },
+        policy,
+        instructions: installed.instructions.as_str().into(),
+        history: context.history,
+        resume_hold: acquired.resume_hold,
+        decision: context.decision,
+        task: context.task,
+        durable_tasks: installed.config.decision_policy().is_some(),
+        memory: context.memory,
+        inputs_waiting: acquired.opened.inputs_waiting,
+        owner: None,
+        setup: None,
+    }
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests;

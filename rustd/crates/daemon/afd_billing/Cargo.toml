@@ -1,6 +1,6 @@
 [package]
 name = "afd_billing"
-description = "What a lease costs, what a tenant has, and what a fleet has already spent."
+description = "What a run costs, what a tenant has, and what a fleet has already spent."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

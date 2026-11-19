@@ -12,7 +12,7 @@ use af_wire::{
 };
 
 use super::{ModelCallInput, ModelCalls, provider::Decoded};
-use crate::{Result, lease::guard};
+use crate::{Result, run::guard};
 
 const CONTEXT: &str = "check setup edit intent";
 const QUESTION: &str = "Does this message ask to change the fleet's setup (instructions, configuration, name, schedule or access)?";
@@ -44,7 +44,7 @@ impl ModelCalls {
     pub(in crate::model) async fn check_edit_intent(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
         decoded: &mut Decoded,
@@ -63,11 +63,11 @@ impl ModelCalls {
         if !has_edit {
             return Ok(());
         }
-        let Some(prepared) = self.prepare_edit(runner, lease, request, counters).await? else {
+        let Some(prepared) = self.prepare_edit(runner, run, request, counters).await? else {
             return Ok(());
         };
         let verdict = match self
-            .reserve_edit(runner, lease, request, counters, &prepared)
+            .reserve_edit(runner, run, request, counters, &prepared)
             .await
         {
             Ok(true) => self.evaluate_edit(&prepared).await,
@@ -75,7 +75,7 @@ impl ModelCalls {
             Err(error) => return Err(error),
         };
         let accepted = self
-            .record_edit(runner, lease, counters, &prepared, verdict)
+            .record_edit(runner, run, counters, &prepared, verdict)
             .await?;
         if accepted == verdict::Disposition::No {
             verdict::reject(decoded);

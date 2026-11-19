@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use af_core::event::status::PROCESSED;
 use af_wire::tool_trace::ToolCallStatus;
-use afd_state::sql::LEASE_STATUS_REPORTED;
+use afd_state::sql::RUN_STATUS_REPORTED;
 use afr_sandbox::{Engine, Sandbox, SandboxRequest, UnsandboxedEngine};
 use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;
@@ -125,9 +125,9 @@ async fn chunk_arrived(tail: &mut crate::tail::Tail) -> Option<Instant> {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_chat_streams_before_sandbox_ready() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    allow_all_egress(&run).await;
-    let mut tail = crate::tail::tail_of(&run.fleet).await;
+    let scene = scenario(&mut supervisor).await;
+    allow_all_egress(&scene).await;
+    let mut tail = crate::tail::tail_of(&scene.fleet).await;
     crate::tail::settle().await;
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
@@ -135,8 +135,8 @@ async fn test_chat_streams_before_sandbox_ready() {
     let ready = Arc::default();
     let engine = Stalled::new(sandboxes.path(), &ready);
     let runner = tokio::spawn(rust_runner(
-        &run,
-        &run.token,
+        &scene,
+        &scene.token,
         home.path(),
         (Box::new(engine), Box::new(answering_first())),
         shutdown.clone(),
@@ -145,12 +145,12 @@ async fn test_chat_streams_before_sandbox_ready() {
     let streamed = chunk_arrived(&mut tail).await.expect("the answer streamed");
     let later = later_frames(&mut tail).await;
     assert_eq!(
-        settled_status(&run).await.as_deref(),
-        Some(LEASE_STATUS_REPORTED)
+        settled_status(&scene).await.as_deref(),
+        Some(RUN_STATUS_REPORTED)
     );
     assert_streamed_first(streamed, &ready);
     assert_tool_succeeded(&later);
-    let status = crate::reads::event_column(&run, &run.event_id, "status").await;
+    let status = crate::reads::event_column(&scene, &scene.event_id, "status").await;
     assert_eq!(status.as_deref(), Some(PROCESSED), "the turn was processed");
 
     shutdown.cancel();
@@ -160,5 +160,5 @@ async fn test_chat_streams_before_sandbox_ready() {
         .expect("the runner stops cleanly on shutdown");
     drop(tail);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

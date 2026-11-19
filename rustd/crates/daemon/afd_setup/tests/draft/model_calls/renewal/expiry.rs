@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// Leaves the attempt ten seconds live from database time: long enough to
 /// renew, short enough that a renewal visibly extends it.
 const SHORTEN: &str = "UPDATE authoring.attempts \
-SET lease_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '10 seconds' \
+SET run_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '10 seconds' \
 WHERE id=$1";
 
 #[tokio::test]
@@ -22,11 +22,11 @@ async fn renewal_extends_only_a_live_slot_and_keeps_its_capability_binding() {
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
-        .expect("short live lease");
+        .expect("short live run");
     let before = snapshot(&f, &a).await;
     let renewed = f
         .drafts
-        .renew(&f.runner, &a.lease, request())
+        .renew(&f.runner, &a.run, request())
         .await
         .expect("live guarded renewal");
     assert!(renewed.expires_at > before.0 && !renewed.stop_requested);
@@ -41,7 +41,7 @@ async fn renewal_extends_only_a_live_slot_and_keeps_its_capability_binding() {
     let expired = snapshot(&f, &a).await;
     assert_eq!(
         f.drafts
-            .renew(&f.runner, &a.lease, request())
+            .renew(&f.runner, &a.run, request())
             .await
             .expect_err("no revival")
             .code(),
@@ -71,11 +71,11 @@ async fn a_renewal_whose_hold_the_biller_cannot_answer_extends_nothing_and_fails
     );
     let before = snapshot(&f, &a).await;
     let refused = offline
-        .renew(&f.runner, &a.lease, request())
+        .renew(&f.runner, &a.run, request())
         .await
         .expect_err("an unanswered hold is no extension");
     assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
-    assert_eq!(snapshot(&f, &a).await, before, "the lease is not extended");
+    assert_eq!(snapshot(&f, &a).await, before, "the run is not extended");
     let failure: Option<String> =
         sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1")
             .bind(a.id)

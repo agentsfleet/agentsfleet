@@ -50,7 +50,7 @@ Every row is extracted from the numbered sections below; the owner column names 
  +-----------------------+
 ```
 
-Postgres holds every durable fact. Admissions, events, leases, outbound obligations, sessions and usage are all rows.
+Postgres holds every durable fact. Admissions, events, runs, outbound obligations, sessions and usage are all rows.
 
 Core NATS carries disposable signals on five subjects: the fleet tail, draft events, the wake ring, runner commands and the outbound wake. It stores nothing, because JetStream is off.
 
@@ -370,7 +370,7 @@ The common architecture pages own this sequence:
 |---|---|
 | Setup and revisions | [Fleet definitions](fleet_definitions.md#validated-definition) |
 | Activation, admission and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
-| Leasing and scoped dispatch | [Runner protocol](runner_fleet.md#authoring-leases) |
+| Running and scoped dispatch | [Runner protocol](runner_fleet.md#authoring-runs) |
 | Private copies | [Runner runtime](runner_execution.md#private-content-and-report-retention) |
 | Money | [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) |
 | Interface | [Web app](web_app.md#workspace-setup-and-runtime-subjects) |

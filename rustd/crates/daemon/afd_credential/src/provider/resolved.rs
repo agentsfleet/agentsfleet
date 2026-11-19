@@ -3,10 +3,10 @@
 use af_crypto::secret::SecretString;
 use afd_billing::Posture;
 
-/// One tenant's provider, resolved for one lease.
+/// One tenant's provider, resolved for one run.
 ///
 /// Owned rather than borrowed: it outlives the reads that produced it and is
-/// carried into the lease row and the execution policy. The provider named here
+/// carried into the run row and the execution policy. The provider named here
 /// is the provider that will be BILLED, because there is no second resolution
 /// to disagree with it — which is what makes "the key we billed is the key we
 /// deliver" structural rather than a comment.
@@ -119,7 +119,7 @@ mod tests {
     fn a_resolution_never_renders_its_key() {
         // The failure this prevents is not hypothetical: `Resolved` is carried
         // on the admission pass, and one `tracing` field spelled `?resolved`
-        // would put a live provider key in the log stream of every lease.
+        // would put a live provider key in the log stream of every run.
         let rendered = format!("{:?}", resolved());
         assert!(
             !rendered.contains("sk-ant"),
@@ -127,7 +127,7 @@ mod tests {
         );
         assert!(rendered.contains("SecretString(redacted)"));
         // And the model and provider DO render, because an operator reading a
-        // lease line needs them and neither is sensitive.
+        // run line needs them and neither is sensitive.
         assert!(rendered.contains("claude-opus-5"));
     }
 

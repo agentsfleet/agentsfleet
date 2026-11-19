@@ -22,10 +22,10 @@ impl Operation {
     fn parts(&self) -> (&'static str, af_wire::protocol::StreamKind, &Uuid7) {
         use af_wire::protocol::StreamKind;
         match self {
-            Self::Activity(lease) => ("authoring_activity", StreamKind::Work, lease),
-            Self::Model(lease) => ("authoring_model", StreamKind::Work, lease),
-            Self::Renew(lease) => ("authoring_renew", StreamKind::Control, lease),
-            Self::Report(lease) => ("authoring_report", StreamKind::Reports, lease),
+            Self::Activity(run) => ("authoring_activity", StreamKind::Work, run),
+            Self::Model(run) => ("authoring_model", StreamKind::Work, run),
+            Self::Renew(run) => ("authoring_renew", StreamKind::Control, run),
+            Self::Report(run) => ("authoring_report", StreamKind::Reports, run),
         }
     }
 
@@ -89,8 +89,8 @@ async fn exchange(
     let mut session = Session::open(router, bearer)
         .await
         .map_err(Failed::Opening)?;
-    let (kind, stream, lease) = operation.parts();
-    let message = json!({"type":kind,"request_id":2,"lease_id":lease,
+    let (kind, stream, run) = operation.parts();
+    let message = json!({"type":kind,"request_id":2,"run_id":run,
         "request":serde_json::from_str::<Value>(body).expect("fixture operation JSON")});
     session.write(stream, &message).await;
     let reply = loop {
@@ -114,8 +114,8 @@ async fn exchange(
         operation.reply_kind()
     );
     assert_eq!(
-        (*reply.pointer("/lease_id").expect("native response field")),
-        lease.as_str()
+        (*reply.pointer("/run_id").expect("native response field")),
+        run.as_str()
     );
     Ok(render(
         operation,

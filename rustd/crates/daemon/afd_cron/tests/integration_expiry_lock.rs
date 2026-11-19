@@ -1,4 +1,4 @@
-//! For schedules, a sync lease that lapses while a guard waits on
+//! For schedules, a sync run that lapses while a guard waits on
 //! the schedule's row lock no longer holds the schedule once the guard has it.
 //!
 //! The holder only locks the row and writes nothing. A holder that wrote it
@@ -23,23 +23,23 @@ use sqlx::{Connection as _, Postgres, Transaction};
 
 use self::support::{CronLane, SEED_AT};
 
-/// How long the sync lease has left when the row lock is taken: long enough
-/// for the guard to queue behind the lock before the lease lapses.
+/// How long the sync run has left when the row lock is taken: long enough
+/// for the guard to queue behind the lock before the run lapses.
 const LAPSES_IN: Duration = Duration::from_millis(500);
 
-/// Hands the schedule to another syncer whose lease lapses `$3` past
+/// Hands the schedule to another syncer whose run lapses `$3` past
 /// database time.
-const LEASE_LAPSES: &str = "UPDATE fleet.schedules \
+const RUN_LAPSES: &str = "UPDATE fleet.schedules \
 SET sync_token = $2, \
-    sync_lease_expires_at = date_trunc('milliseconds', clock_timestamp()) + $3::interval \
+    sync_run_expires_at = date_trunc('milliseconds', clock_timestamp()) + $3::interval \
 WHERE id = $1";
 
 /// Takes the schedule row's lock and writes nothing.
 const LOCK_SCHEDULE: &str = "SELECT pg_backend_pid() FROM fleet.schedules WHERE id = $1 FOR UPDATE";
 
-/// Whether the schedule's sync lease is still live on database time.
-const LEASE_LIVE: &str =
-    "SELECT sync_lease_expires_at > clock_timestamp() FROM fleet.schedules WHERE id = $1";
+/// Whether the schedule's sync run is still live on database time.
+const RUN_LIVE: &str =
+    "SELECT sync_run_expires_at > clock_timestamp() FROM fleet.schedules WHERE id = $1";
 
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
@@ -49,14 +49,14 @@ const BLOCKING: &str =
 const RECIPE_SCHEDULE: &str =
     "SELECT id FROM fleet.schedules WHERE fleet_id = $1 AND recipe IS NOT NULL";
 
-/// Commits another syncer's lease on `schedule`, lapsing in [`LAPSES_IN`],
+/// Commits another syncer's run on `schedule`, lapsing in [`LAPSES_IN`],
 /// then takes the row's lock on `held`; answers the holder's backend.
 async fn lapse_and_lock(
     lane: &CronLane,
     held: &mut Transaction<'_, Postgres>,
     schedule: &Uuid7,
 ) -> i32 {
-    sqlx::query(LEASE_LAPSES)
+    sqlx::query(RUN_LAPSES)
         .bind(schedule)
         .bind(CronLane::token())
         .bind(LAPSES_IN)
@@ -70,10 +70,10 @@ async fn lapse_and_lock(
         .expect("take the schedule's row lock")
 }
 
-/// Holds the row lock while the guard queues behind it, past the lease's
+/// Holds the row lock while the guard queues behind it, past the run's
 /// deadline, then lets go without writing.
 ///
-/// Asserts the guard queued while the lease was still live, so a pass means it
+/// Asserts the guard queued while the run was still live, so a pass means it
 /// lapsed during the wait and not before the guard began.
 async fn hold_past_deadline(
     lane: &CronLane,
@@ -93,19 +93,19 @@ async fn hold_past_deadline(
         }
         tokio::task::yield_now().await;
     }
-    let live: bool = sqlx::query_scalar(LEASE_LIVE)
+    let live: bool = sqlx::query_scalar(RUN_LIVE)
         .bind(schedule)
         .fetch_one(&mut *probe)
         .await
-        .expect("read the lease");
-    assert!(live, "the guard must queue before the lease lapses");
+        .expect("read the run");
+    assert!(live, "the guard must queue before the run lapses");
     tokio::time::sleep(LAPSES_IN).await;
-    let live: bool = sqlx::query_scalar(LEASE_LIVE)
+    let live: bool = sqlx::query_scalar(RUN_LIVE)
         .bind(schedule)
         .fetch_one(&mut *probe)
         .await
-        .expect("read the lease");
-    assert!(!live, "the lease lapses while the row lock is held");
+        .expect("read the run");
+    assert!(!live, "the run lapses while the row lock is held");
     held.rollback()
         .await
         .expect("the holder lets go without writing");
@@ -139,7 +139,7 @@ async fn test_expiry_checks_read_clock_after_lock() {
     let lane = CronLane::open().await;
     let (workspace, fleet) = (lane.workspace_id(), lane.fleet_id());
 
-    // A schedule edit: the row lock, then the sync-lease read.
+    // A schedule edit: the row lock, then the sync-run read.
     let created = lane.settled("key-lapse-edit", "0 3 * * *").await;
     let schedule = created.schedule_id.clone();
     let patch: Patch =
@@ -160,7 +160,7 @@ async fn test_expiry_checks_read_clock_after_lock() {
         lane.store.edit(request, &editor),
         hold_past_deadline(&lane, held, pid, &schedule)
     );
-    let edited = edited.expect("a lease that lapsed in the wait no longer holds the schedule");
+    let edited = edited.expect("a run that lapsed in the wait no longer holds the schedule");
     assert_eq!(edited.cron, "0 5 * * *");
     assert_eq!(edited.sync_token.as_ref(), Some(&editor));
 
@@ -181,5 +181,5 @@ async fn test_expiry_checks_read_clock_after_lock() {
         replace_recipes(&lane, &recipes),
         hold_past_deadline(&lane, held, pid, &inherited)
     );
-    replaced.expect("a lease that lapsed in the wait no longer holds the recipe");
+    replaced.expect("a run that lapsed in the wait no longer holds the recipe");
 }

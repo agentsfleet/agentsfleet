@@ -17,7 +17,7 @@ use af_secrets::Clean;
 
 /// Room a post's envelope takes around its one record, measured rather than
 /// guessed: the request the supervisor seals a lone record in, empty, at the
-/// largest fencing token, so a record that fits here fits whichever lease
+/// largest fencing token, so a record that fits here fits whichever run
 /// posts it.
 fn post_envelope_bytes() -> usize {
     encoded_len(&ToolCallRecordsRequest {

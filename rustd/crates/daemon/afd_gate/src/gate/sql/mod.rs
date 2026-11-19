@@ -1,6 +1,6 @@
 //! The statements a raised gate is written and read through.
 //!
-//! The lease path recovers an event's reference and reads its gate status.
+//! The run path recovers an event's reference and reads its gate status.
 //! The row is written by the park, and the resolve is the tenant plane's.
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker

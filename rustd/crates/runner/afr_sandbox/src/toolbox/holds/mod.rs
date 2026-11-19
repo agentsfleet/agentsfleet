@@ -1,5 +1,5 @@
 //! Which toolbox images a host keeps: the current and previous releases, and
-//! any image a lease or warm slot still holds.
+//! any image a run or warm slot still holds.
 //!
 //! A sandbox holds the toolbox it runs on by keeping a clone of its `Arc`, so
 //! a hold is a strong count, and an image whose only `Arc` is this registry's

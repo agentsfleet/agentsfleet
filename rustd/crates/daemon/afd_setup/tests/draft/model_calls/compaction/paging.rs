@@ -13,7 +13,7 @@ async fn complete_history_at_and_around_full_pages_dispatches_once_without_losin
         let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
         let request = fixture::request(&attempt);
         let result = calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect("unchanged complete history can dispatch");
         assert!(!result.compacted, "{prior} previous exchanges");
@@ -58,7 +58,7 @@ async fn a_summary_receipt_cannot_be_replayed_by_a_changed_request() {
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let result = calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("the first request funds a metered summary");
     assert!(result.compacted);
@@ -66,13 +66,13 @@ async fn a_summary_receipt_cannot_be_replayed_by_a_changed_request() {
     let mut changed = request.clone();
     changed.request.max_output_tokens = request.request.max_output_tokens.saturating_sub(1).max(1);
     let error = calls
-        .call(&f.runner, &attempt.lease, changed)
+        .call(&f.runner, &attempt.run, changed)
         .await
         .expect_err("a changed request is not the original request");
     assert_eq!(error.code(), af_core::error_code::AUTHORING_REPLAY);
     assert_eq!(financial_state(&f).await, before);
     let replayed = calls
-        .call(&f.runner, &attempt.lease, request)
+        .call(&f.runner, &attempt.run, request)
         .await
         .expect("the exact request can recover its receipt");
     assert!(replayed.replayed && replayed.compacted);

@@ -13,7 +13,7 @@ pub(super) struct Worker {
 impl Worker {
     pub(super) fn start_with(
         binary: &Path,
-        run: &Scenario,
+        scene: &Scenario,
         token: &str,
         model: &Model,
     ) -> Checked<Self> {
@@ -31,7 +31,7 @@ impl Worker {
             .arg(model.address.to_string())
             .arg("--model-root")
             .arg(model.root())
-            .env(ENV_API_URL, &run.base)
+            .env(ENV_API_URL, &scene.base)
             .env(ENV_RUNNER_TOKEN, token)
             .env(ENV_STORAGE_HOME, home.path())
             .env(ENV_STREAM_CA, crate::support::runner_stream::root_file())
@@ -39,7 +39,7 @@ impl Worker {
                 ENV_STREAM_URL,
                 format!(
                     "https://localhost:{}",
-                    run.booted.runner_stream_address.port()
+                    scene.booted.runner_stream_address.port()
                 ),
             )
             .stdin(Stdio::null())

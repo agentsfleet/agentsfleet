@@ -36,7 +36,7 @@ mod rig;
 mod sandbox;
 
 pub(crate) use self::daemon::{Calls, activities, bounded, drain, plane, plane_with_http};
-pub(crate) use self::fixtures::{healthy, lease, report_body};
+pub(crate) use self::fixtures::{healthy, payload, report_body};
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::resolver::{Stalled, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
@@ -45,15 +45,15 @@ pub(crate) use self::sandbox::{
 };
 pub(crate) use af_egress::testing::FakeResolver;
 
-pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
-/// When every fake lease is granted until: thirty seconds after the fixed
+pub(crate) use crate::test_util::{FENCING, FLEET_ID, RUN_ID, RUNNER_HOST, RUNNER_ID};
+/// When every fake run is granted until: thirty seconds after the fixed
 /// clock's zero.
 pub(crate) const GRANTED_UNTIL: jiff::Timestamp = jiff::Timestamp::constant(30, 0);
 
 /// The cadence and retry delay the fake daemon answers with, in milliseconds.
 pub(crate) const INTERVAL_MS: u32 = 1000;
 
-/// The report fields, and the spellings, the lease tests read back.
+/// The report fields, and the spellings, the run tests read back.
 pub(crate) const FAILURE_REASON: &str = "failure_reason";
 pub(crate) const OUTCOME: &str = "outcome";
 pub(crate) const PROCESSED: &str = "processed";
@@ -61,7 +61,7 @@ pub(crate) const RENEWAL_TERMINATE: &str = "renewal_terminate";
 pub(crate) const STARTUP_POSTURE: &str = "startup_posture";
 pub(crate) const RUNNER_CRASH: &str = "runner_crash";
 
-/// The wall clock every lease test reads: fixed at zero, so a lease's deadline
+/// The wall clock every run test reads: fixed at zero, so a run's deadline
 /// is measured in the paused tokio time the tests advance.
 pub(crate) fn clock() -> std::sync::Arc<dyn af_core::clock::Clock> {
     std::sync::Arc::new(af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
@@ -230,7 +230,7 @@ async fn exercise(executor: &dyn Executor) {
     assert!(entries.is_empty(), "{entries:?}");
 }
 
-/// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the lease
+/// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the run
 /// ends them: [`answer`]'s counts.
 pub(crate) const SPENT: Usage = Usage {
     input: 3,

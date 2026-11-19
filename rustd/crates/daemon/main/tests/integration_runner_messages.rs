@@ -39,17 +39,17 @@ const OVER_BY: usize = 1024;
 const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["grafana"],"budget":{"daily_nanos":"1000000000"}}}"#;
 
 /// Dimension 2.1. A line reaches the event's Slack thread while the run is
-/// still leased, under its own marker part.
+/// still held, under its own marker part.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_posts_a_message_mid_run() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
-    let (lease_id, fence) = speaking.lease_thread().await;
+    let (run_id, fence) = speaking.run_thread().await;
 
     let (status, posted) = speaking
         .say(
-            (&lease_id, fence),
+            (&run_id, fence),
             "fix pushed as a draft; re-checking at 09:00",
         )
         .await;
@@ -66,7 +66,7 @@ async fn test_fleet_posts_a_message_mid_run() {
     assert_eq!(sent[0]["metadata"]["event_type"], "agentsfleet_interim");
     assert_eq!(
         sent[0]["metadata"]["event_payload"]["part"],
-        json!({"lease_id": lease_id, "line": 1})
+        json!({"run_id": run_id, "line": 1})
     );
     speaking.finish(supervisor).await;
 }
@@ -78,10 +78,10 @@ async fn test_fleet_posts_a_message_mid_run() {
 async fn test_message_caps_refuse() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
-    let (lease_id, fence) = speaking.lease_thread().await;
+    let (run_id, fence) = speaking.run_thread().await;
 
     let (status, refused) = speaking
-        .say((&lease_id, fence), &"a".repeat(MESSAGE_MAX_BYTES + OVER_BY))
+        .say((&run_id, fence), &"a".repeat(MESSAGE_MAX_BYTES + OVER_BY))
         .await;
     assert_eq!(
         (status, &refused["error_code"]),
@@ -90,11 +90,11 @@ async fn test_message_caps_refuse() {
     );
     for line in 1..=MESSAGES_PER_RUN_MAX {
         let (status, posted) = speaking
-            .say((&lease_id, fence), &format!("line {line}"))
+            .say((&run_id, fence), &format!("line {line}"))
             .await;
         assert_eq!(status, 200, "line {line}: {posted}");
     }
-    let (status, refused) = speaking.say((&lease_id, fence), "one too many").await;
+    let (status, refused) = speaking.say((&run_id, fence), "one too many").await;
     assert_eq!(
         (status, &refused["error_code"], &refused["current_state"]),
         (409, &json!("UZ-RUN-020"), &json!("at_capacity")),
@@ -116,9 +116,9 @@ async fn test_message_caps_refuse() {
 async fn test_message_without_channel_refused() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
-    let (lease_id, fence) = speaking.lease_seeded().await;
+    let (run_id, fence) = speaking.run_seeded().await;
 
-    let (status, refused) = speaking.say((&lease_id, fence), "anyone there?").await;
+    let (status, refused) = speaking.say((&run_id, fence), "anyone there?").await;
     assert_eq!(
         (status, &refused["error_code"], &refused["current_state"]),
         (409, &json!("UZ-RUN-019"), &json!("no_thread")),
@@ -130,23 +130,23 @@ async fn test_message_without_channel_refused() {
         posts(&speaking.slack)
     );
     assert_eq!(
-        speaking.counted(&lease_id).await,
+        speaking.counted(&run_id).await,
         0,
-        "a line with nowhere to go spends none of the run's eight"
+        "a line with nowhere to go spends none of the scene's eight"
     );
     let unknown = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
-    let (status, refused) = speaking.say((unknown, fence), "whose lease?").await;
+    let (status, refused) = speaking.say((unknown, fence), "whose run?").await;
     assert_eq!(
         (status, &refused["error_code"]),
         (404, &json!("UZ-RUN-006")),
         "{refused}"
     );
-    let (status, _) = speaking.say(("not-a-lease", fence), "malformed").await;
+    let (status, _) = speaking.say(("not-a-run", fence), "malformed").await;
     assert_eq!(status, 400);
-    let path = format!("/v1/runners/me/leases/{lease_id}/messages");
+    let path = format!("/v1/runners/me/runs/{run_id}/messages");
     let unread = post(
         &speaking.http,
-        &speaking.run,
+        &speaking.scene,
         &path,
         &json!({"fencing_token": fence}),
     )
@@ -168,17 +168,17 @@ async fn test_message_is_scrubbed() {
     let speaking = Speaking::boot(&mut supervisor, DECLARING).await;
     let body = json!({"host": "grafana.example.test", "token": TOKEN}).to_string();
     seal(
-        &speaking.run.booted,
-        &speaking.run.workspace,
+        &speaking.scene.booted,
+        &speaking.scene.workspace,
         CREDENTIAL,
         &body,
         af_core::clock::now(),
     )
     .await;
-    let (lease_id, fence) = speaking.lease_thread().await;
+    let (run_id, fence) = speaking.run_thread().await;
 
     let (status, posted) = speaking
-        .say((&lease_id, fence), &format!("the token was {TOKEN}"))
+        .say((&run_id, fence), &format!("the token was {TOKEN}"))
         .await;
     assert_eq!(status, 200, "{posted}");
     let sent = posts(&speaking.slack);
@@ -196,9 +196,9 @@ async fn test_message_refused_by_slack_is_undelivered() {
     speaking
         .slack
         .post_answers(200, r#"{"ok":false,"error":"channel_not_found"}"#);
-    let (lease_id, fence) = speaking.lease_thread().await;
+    let (run_id, fence) = speaking.run_thread().await;
 
-    let (status, posted) = speaking.say((&lease_id, fence), "status").await;
+    let (status, posted) = speaking.say((&run_id, fence), "status").await;
     assert_eq!((status, posted), (200, json!({"delivered": false})));
     speaking.finish(supervisor).await;
 }
@@ -212,10 +212,10 @@ async fn test_message_to_a_stalled_slack_answers_at_the_deadline() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
     speaking.slack.post_stalls();
-    let (lease_id, fence) = speaking.lease_thread().await;
+    let (run_id, fence) = speaking.run_thread().await;
 
     let started = std::time::Instant::now();
-    let (status, posted) = speaking.say((&lease_id, fence), "status").await;
+    let (status, posted) = speaking.say((&run_id, fence), "status").await;
     let took = started.elapsed();
     assert_eq!((status, posted), (200, json!({"delivered": false})));
     assert!(

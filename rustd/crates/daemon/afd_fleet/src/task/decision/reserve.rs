@@ -10,26 +10,26 @@ use super::{
 use crate::{
     Result,
     error::{Error, ErrorKind},
-    task::{TaskLease, Tasks},
+    task::{TaskRun, Tasks},
 };
 
 pub(super) async fn reserve(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
 ) -> Result<ReservedDecision> {
-    tokio::time::timeout(super::OPERATION_TIMEOUT, run(tasks, lease, input))
+    tokio::time::timeout(super::OPERATION_TIMEOUT, run(tasks, task_run, input))
         .await
         .map_err(|source| Error::from(ErrorKind::DecisionDeadline { source }))?
 }
 
 async fn run(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
 ) -> Result<ReservedDecision> {
-    match allocate::allocate(tasks, lease, input).await? {
-        Allocation::Reserved(call) => fund::issue(tasks, lease, input, call).await,
+    match allocate::allocate(tasks, task_run, input).await? {
+        Allocation::Reserved(call) => fund::issue(tasks, task_run, input, call).await,
         Allocation::Existing(call) => replay::response(tasks, call).await,
     }
 }

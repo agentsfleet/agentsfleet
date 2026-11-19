@@ -4,10 +4,10 @@ use crate::e2e::Scenario;
 use std::path::Path;
 use tokio::process::Command;
 impl Worker {
-    pub(super) fn start(run: &Scenario, token: &str, model: &Model) -> Checked<Self> {
+    pub(super) fn start(scene: &Scenario, token: &str, model: &Model) -> Checked<Self> {
         let binary = Path::new(env!("CARGO_BIN_EXE_agentsfleetd"))
             .with_file_name("agentsfleet-recovery-fixture");
-        Self::start_with(&binary, run, token, model)
+        Self::start_with(&binary, scene, token, model)
     }
 
     pub(super) async fn next(&mut self, model: &mut Model) -> Checked<super::model::Asked> {

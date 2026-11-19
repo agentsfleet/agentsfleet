@@ -36,7 +36,7 @@ impl Providers {
     /// Opens the platform-admin key for one already-reserved physical call.
     ///
     /// `admin` comes from the daemon's platform-admin workspace setting, never
-    /// from the lease, model configuration or tenant. No cached default or
+    /// from the run, model configuration or tenant. No cached default or
     /// environment key can substitute for a missing or revoked row.
     ///
     /// # Errors

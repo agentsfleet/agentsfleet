@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::{LINES_DEFAULT, Page};
 use crate::catalog::FILE_READ;
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 use guffbolt::tools::process::output;
@@ -34,7 +34,7 @@ async fn read(live: &Live, arguments: Value) -> ToolOutput {
     call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &Lease::default(),
+        &Run::default(),
         arguments,
     )
     .await

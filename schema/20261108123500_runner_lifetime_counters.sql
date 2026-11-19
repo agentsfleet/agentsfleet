@@ -1,4 +1,4 @@
--- Per-runner tallies, kept off the runner row so lease outcomes do not lock the row a heartbeat
+-- Per-runner tallies, kept off the runner row so run outcomes do not lock the row a heartbeat
 -- writes.
 CREATE TABLE runner.lifetime_counters (
     runner_id        UUID PRIMARY KEY REFERENCES runner.runners(id) ON DELETE CASCADE,

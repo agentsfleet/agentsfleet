@@ -35,16 +35,15 @@ async fn resolve_during_park(expire: bool) {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let acquired = next(&leases, &runner).await.expect("claim");
+    let runs = fixtures.runs_with_dead_bus();
+    let acquired = next(&runs, &runner).await.expect("claim");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut blocker = owner.acquire().await.expect("owner");
     let blocker_pid = hold_park(&mut blocker, &fleet).await;
     let parking_event = event.clone();
     let parking = tokio::spawn(async move {
-        leases
-            .park(&acquired.fleet_id, &parking_event, acquired.fence)
+        runs.park(&acquired.fleet_id, &parking_event, acquired.fence)
             .await
     });
     let park_pid = waiter(&fixtures, blocker_pid, None)
@@ -70,7 +69,7 @@ async fn resolve_during_park(expire: bool) {
         "expire={expire}: a resolved gate cannot strand its head"
     );
     assert_eq!(
-        next(&fixtures.leases_with_dead_bus(), &runner)
+        next(&fixtures.runs_with_dead_bus(), &runner)
             .await
             .expect("head runnable")
             .event_id,

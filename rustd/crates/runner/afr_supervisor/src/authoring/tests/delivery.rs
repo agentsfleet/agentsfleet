@@ -1,6 +1,6 @@
 //! Unsettled acknowledgements retain one worker and report through private-answer expiry.
 
-use super::{json, lease, result, rig};
+use super::{json, payload, result, rig};
 use crate::{client::Verb, test_support::Rig};
 use af_core::timing::{DAY, STREAM_ANSWER_TIMEOUT};
 use serde_json::Value;
@@ -65,9 +65,9 @@ impl Delivery {
             other => panic!("unexpected authoring authority {other:?}"),
         });
         let lessee = Arc::clone(&rig.lessee);
-        let lease = lease();
+        let run = payload();
         let worker = AbortOnDropHandle::new(tokio::spawn(async move {
-            lessee.author(&lease, CancellationToken::new()).await
+            lessee.author(&run, CancellationToken::new()).await
         }));
         Self {
             rig,

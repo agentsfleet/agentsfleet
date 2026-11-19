@@ -18,8 +18,8 @@ use jiff_sqlx::ToSqlx as _;
 /// the row's own `created_at`, so the two cannot disagree about when.
 pub const INSERT_RUNNER_WITH_EVENT: &str = include_str!("insert_runner_with_event.sql");
 
-/// The lease-type counter a freshly enrolled host starts at.
-const FIRST_LEASE_VERSION: i64 = 0;
+/// The run-type counter a freshly enrolled host starts at.
+const FIRST_RUN_VERSION: i64 = 0;
 
 /// Everything [`INSERT_RUNNER_WITH_EVENT`] needs, by name.
 ///
@@ -38,7 +38,7 @@ const FIRST_LEASE_VERSION: i64 = 0;
 /// orders, and a caller names fields instead of counting slots.
 #[derive(Debug)]
 pub struct RegisterRow<'a> {
-    /// Whether the enrolled runner accepts new durable task leases.
+    /// Whether the enrolled runner accepts new durable task runs.
     pub durable_tasks_enabled: bool,
     /// Complete validated sandbox configuration, including enrollment binds.
     pub sandbox_config_json: &'a str,
@@ -88,7 +88,7 @@ pub struct RegisterRow<'a> {
 impl<'a> RegisterRow<'a> {
     /// Binds this row to [`INSERT_RUNNER_WITH_EVENT`], in `$n` order.
     ///
-    /// The metadata keys (`$15`, `$16`, `$18`) and the opening lease version
+    /// The metadata keys (`$15`, `$16`, `$18`) and the opening run version
     /// (`$12`) are constants rather than caller data, so they are supplied
     /// here and no caller supplies anything positionally.
     pub fn bind(&'a self) -> Bound<'a> {
@@ -104,7 +104,7 @@ impl<'a> RegisterRow<'a> {
             .bind(self.worker_count)
             .bind(self.degraded_reason)
             .bind(self.last_seen_at.to_sqlx())
-            .bind(FIRST_LEASE_VERSION)
+            .bind(FIRST_RUN_VERSION)
             .bind(self.event_id)
             .bind(self.event_type)
             .bind(super::meta::HOST_ID)

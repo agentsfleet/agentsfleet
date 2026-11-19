@@ -21,12 +21,12 @@ async fn saved_call_cap_allows_receipt_replay_but_refuses_another_physical_call(
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let first = calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("accepted first call");
     assert!(!first.replayed);
     let replay = calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("saved receipt");
     assert!(replay.replayed);
@@ -34,7 +34,7 @@ async fn saved_call_cap_allows_receipt_replay_but_refuses_another_physical_call(
     next.dispatch_id = mint().to_string();
     next.call_index = 2;
     let failure = calls
-        .call(&f.runner, &attempt.lease, next)
+        .call(&f.runner, &attempt.run, next)
         .await
         .expect_err("accepted call cap");
     assert!(failure.to_string().contains("bound"));
@@ -56,7 +56,7 @@ async fn an_unreadable_saved_policy_refuses_before_a_provider_effect() {
     let provider = Arc::new(Provider::known());
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let failure = calls
-        .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+        .call(&f.runner, &attempt.run, fixture::request(&attempt))
         .await
         .expect_err("unreadable accepted policy");
     assert_eq!(failure.code(), af_core::error_code::INTERNAL_DB_QUERY);

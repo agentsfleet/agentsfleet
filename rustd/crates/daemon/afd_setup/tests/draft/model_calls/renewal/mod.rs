@@ -10,9 +10,9 @@ use super::super::{attempt::Attempt, fixture::Fixture};
 use af_wire::authoring::{Knowledge, Meter, Renew};
 use jiff::Timestamp;
 
-/// Expires the attempt's lease at database time, the clock the guard reads.
+/// Expires the attempt's run at database time, the clock the guard reads.
 const EXPIRE_NOW: &str = "UPDATE authoring.attempts \
-SET lease_expires_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1";
+SET run_expires_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1";
 
 fn request() -> Renew {
     Renew {
@@ -29,7 +29,7 @@ fn request() -> Renew {
 }
 
 async fn snapshot(f: &Fixture, a: &Attempt) -> (Timestamp, i64, String) {
-    let (expires, runtime, hash): (jiff_sqlx::Timestamp, i64, String) = sqlx::query_as("SELECT lease_expires_at,reported_runtime_ms,model_token_hash FROM authoring.attempts WHERE id=$1")
+    let (expires, runtime, hash): (jiff_sqlx::Timestamp, i64, String) = sqlx::query_as("SELECT run_expires_at,reported_runtime_ms,model_token_hash FROM authoring.attempts WHERE id=$1")
         .bind(&a.id).fetch_one(&mut *f.connection().await).await.expect("renewal snapshot");
     (expires.to_jiff(), runtime, hash)
 }

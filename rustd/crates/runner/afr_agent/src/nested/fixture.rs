@@ -1,5 +1,5 @@
 //! What the nested suites share: two tools that answer at once beside the
-//! six the loop runs, the names a lease here is offered, and how one loop's
+//! six the loop runs, the names a run here is offered, and how one loop's
 //! requests and the run's frames and log are read back.
 
 #![expect(
@@ -18,7 +18,7 @@ use guffbolt::{Chunk, Message};
 
 use crate::fixture::{Canned, Script, Sent, call};
 
-/// What the fixture lease's event asks, which opens the root's conversation.
+/// What the fixture run's event asks, which opens the root's conversation.
 pub(super) const OPENING: &str = "triage the failed run";
 pub(super) const READS: &str = "read a.md and b.md and summarise";
 pub(super) const SUMMARY: &str = "summary";
@@ -67,7 +67,7 @@ pub(super) fn tools() -> Vec<Box<CatalogTool>> {
     ]
 }
 
-/// Every name a lease here is offered: the six, and the two.
+/// Every name a run here is offered: the six, and the two.
 pub(super) fn offered() -> Vec<&'static str> {
     let mut names: Vec<&str> = NESTED.iter().map(|entry| entry.name()).collect();
     names.push(UPDATE_PLAN.name());

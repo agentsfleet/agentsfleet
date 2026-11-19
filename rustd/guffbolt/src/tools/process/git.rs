@@ -10,7 +10,7 @@
 //!
 //! git runs programs of its own accord: hooks, aliases that start with `!`,
 //! and commands named in configuration such as `core.fsmonitor`, set with
-//! `-c` or `git config`. So a lease offered `git` can run what a lease
+//! `-c` or `git config`. So a run offered `git` can run what a run
 //! offered `shell` can, inside the same sandbox and under the same limits,
 //! and nothing here tries to refuse those routes one by one.
 
@@ -70,13 +70,13 @@ impl Handler for Git {
     type Arguments = Invocation;
 
     async fn run(&self, arguments: Invocation, context: Context<'_>) -> ToolOutput {
-        let lease_id = context.run_id;
+        let run_id = context.run_id;
         if let Some(refused) = subcommand(&arguments.args)
             .filter(|subcommand| GIT_REFUSED_SUBCOMMANDS.contains(subcommand))
         {
             let event = EVENT_REFUSED;
             let subcommand = refused;
-            tracing::info!(lease_id, subcommand, event);
+            tracing::info!(run_id, subcommand, event);
             return ToolOutput::failed(
                 code::SUBCOMMAND_NOT_ALLOWED,
                 &format!("git {refused} {REACHES_REMOTE}"),
@@ -93,7 +93,7 @@ impl Handler for Git {
             Some(repository) => spawn.cwd(repository),
             None => spawn,
         };
-        run_to_end(env, spawn, timeout_of(arguments.timeout_ms), lease_id).await
+        run_to_end(env, spawn, timeout_of(arguments.timeout_ms), run_id).await
     }
 }
 

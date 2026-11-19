@@ -32,7 +32,7 @@ export function TaskDetailView({workspaceId, fleetId, task, onChanged, resource,
         {!readOnly ? <TaskGoalAdoption workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={onChanged} /> : null}
         {detail.context.questions.map(({name, question}, index) => <QuestionDetails key={name} number={index + 1} question={{question: question.instructions, criteria: question.criteria}} />)}
       </div>
-      <p className="text-eyebrow text-muted-foreground">{detail.context.usage.leases} of {detail.context.limits.leases} attempts used. {detail.context.checkpoint_id ? "Saved recovery point available." : "No recovery point has been saved."}</p>
+      <p className="text-eyebrow text-muted-foreground">{detail.context.usage.runs} of {detail.context.limits.runs} attempts used. {detail.context.checkpoint_id ? "Saved recovery point available." : "No recovery point has been saved."}</p>
     </> : null}
   </div>;
 }

@@ -1,6 +1,6 @@
 [package]
 name = "afr_supervisor"
-description = "The runner's supervisor: the daemon-facing duties a lease relies on, outside every sandbox."
+description = "The runner's supervisor: the daemon-facing duties a run relies on, outside every sandbox."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -31,7 +31,7 @@ garde.workspace = true
 afr_telemetry.workspace = true
 # The span vocabulary every runner span is written in, beside the daemon's.
 af_observability.workspace = true
-# Identifiers, the lease clock, worker-count clamps, the environment seam and
+# Identifiers, the run clock, worker-count clamps, the environment seam and
 # the registry codes a failure is logged under.
 af_core.workspace = true
 # Activity and renewal batching share allocation-free encoded-size measurements.
@@ -44,7 +44,7 @@ rustix.workspace = true
 af_wire.workspace = true
 # The daemon's own setup validator, so a refused first setup names its field to the model.
 af_fleet_runtime.workspace = true
-# The instants a lease, a renewal and a held sandbox carry; the runner reads
+# The instants a run, a renewal and a held sandbox carry; the runner reads
 # them off the injected clock and waits on the span left until each.
 jiff.workspace = true
 afr_agent.workspace = true
@@ -54,11 +54,11 @@ afr_executor.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.
 afr_memory.workspace = true
 afr_sandbox.workspace = true
-# Which bound repositories a lease checks out, read from its tool policy.
+# Which bound repositories a run checks out, read from its tool policy.
 afr_tools.workspace = true
 # The runner token and every minted credential are held as one `Secret`.
 af_secrets.workspace = true
-# The mint seam a lease's egress guard mints through, which the supervisor
+# The mint seam a run's egress guard mints through, which the supervisor
 # implements over its control plane.
 af_egress.workspace = true
 # `RunnerApi` is `dyn`: production holds the HTTP client, tests a fake.
@@ -70,7 +70,7 @@ backon.workspace = true
 base64.workspace = true
 bytes.workspace = true
 # The fleet's repository, fetched into a host-side mirror over HTTPS and
-# checked out into the lease's workspace.
+# checked out into the run's workspace.
 gix = { workspace = true, features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls", "worktree-mutation"] }
 reqwest.workspace = true
 serde.workspace = true
@@ -83,7 +83,7 @@ zeroize.workspace = true
 # `fs` for recovery objects. `net` for the host resolver an egress allowlist is
 # resolved through.
 tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros", "net"] }
-# The token that stops a run when its lease is refused, and stops the pool at
+# The token that stops a run when its run is refused, and stops the pool at
 # shutdown.
 tokio-util.workspace = true
 # `test_util::Listener`: the loopback listener a fake daemon serves on.
@@ -109,7 +109,7 @@ afr_telemetry = { workspace = true, features = ["test-util"] }
 # `FakeResolver`: the egress suites resolve through the one fake the guarded
 # client's suites use.
 af_egress = { workspace = true, features = ["test-util"] }
-# Stub handlers, so the lease suites admit through a real catalog: a
+# Stub handlers, so the run suites admit through a real catalog: a
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }
 # The fake engine's `Behaviour::Break` answers an executor failure, and the
@@ -125,6 +125,6 @@ guffbolt.workspace = true
 # and a header are proven on the socket rather than assumed by a mock.
 axum = { workspace = true, features = ["json"] }
 af_core = { workspace = true, features = ["test-util"] }
-# The subscriber a lease's spans are exported through in the telemetry suite.
+# The subscriber a run's spans are exported through in the telemetry suite.
 tracing-subscriber = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }

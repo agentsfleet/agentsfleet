@@ -58,10 +58,10 @@ const ONCE_FIRE: &str = "once";
 
 /// The event body a fire of a schedule whose message is `message` stores.
 ///
-/// The schedule's message is the author's plain text, and the lease records
+/// The schedule's message is the author's plain text, and the run records
 /// every event's body into a `jsonb` column (`afd_turns::view::sql`). Stored as it
 /// was, a message that is not itself JSON failed that cast, so the fired run
-/// was admitted and could never be leased. Wrapped as `{"message": …}`, the
+/// was admitted and could never be held. Wrapped as `{"message": …}`, the
 /// shape a steer and a mention store, the runner reads the schedule's words as
 /// the run's first turn.
 pub(crate) fn body(schedule: &Uuid7, target: &FireTarget) -> Result<String> {

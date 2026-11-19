@@ -5,7 +5,7 @@ CREATE TABLE fleet.task_input_receipts (
     workspace_id UUID NOT NULL,
     mode TEXT NOT NULL,
     operation_id UUID NOT NULL,
-    lease_id UUID NOT NULL,
+    run_id UUID NOT NULL,
     fencing_token BIGINT NOT NULL,
     request_digest TEXT NOT NULL,
     response_text TEXT,

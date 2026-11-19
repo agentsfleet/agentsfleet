@@ -98,7 +98,7 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert!(same(plane.authenticator(), &plane.authenticator));
     assert!(same(plane.signup_metadata(), &plane.signup_writeback));
     assert!(same(plane.runners(), &plane.runners));
-    assert!(same(plane.leases(), &plane.leases));
+    assert!(same(plane.runs(), &plane.runs));
     assert!(same(plane.sessions(), &plane.login.logins));
     assert!(same(plane.workspaces(), &plane.tenant.workspaces));
     assert!(same(plane.workspace_directory(), &plane.tenant.workspaces));
@@ -112,13 +112,13 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert!(same(plane.live(), &plane.live));
     assert!(same(plane.analytics(), &plane.analytics));
     assert!(same(plane.steering(), &plane.activity.steering));
-    assert!(same(plane.memories(), &plane.leases.memories));
+    assert!(same(plane.memories(), &plane.runs.memories));
     assert!(same(plane.secrets(), &plane.tenant.secrets));
     assert!(same(plane.billing(), &plane.tenant.billing));
     assert!(same(plane.catalogue(), &plane.tenant.models));
     assert!(same(
-        plane.runner_lease_history(),
-        &plane.admin.runner_lease_history
+        plane.runner_run_history(),
+        &plane.admin.runner_run_history
     ));
     assert!(same(plane.models(), &plane.admin.models));
     assert!(same(plane.platform_keys(), &plane.admin.platform_keys));
@@ -216,7 +216,7 @@ async fn an_api_url_that_cannot_form_a_callback_leaves_a_line_saying_so() {
 /// The wake listener `ServingPlane::new` builds hears the NATS wake ring: a
 /// ring published on a shard's subject (`af.wake.<shard>`) reaches it. This proves
 /// the helper the plane calls, not that the plane hands its result to the
-/// lease store; that hand-off is one line beside it in `plane/mod.rs`.
+/// run store; that hand-off is one line beside it in `plane/mod.rs`.
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_the_wake_queue_hears_the_shared_bus() {

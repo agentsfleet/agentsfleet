@@ -45,7 +45,7 @@ fn test_operation_conflict_code_registered() {
 /// A renewal refused for the retired cumulative shape answers 400, and its
 /// hint names the field the runner should send instead.
 ///
-/// The status is the claim: the runner ends a lease on any 4xx, and this code
+/// The status is the claim: the runner ends a run on any 4xx, and this code
 /// is answered only for a body whose usage can never be recorded.
 #[test]
 fn test_renew_body_malformed_code_registered() {

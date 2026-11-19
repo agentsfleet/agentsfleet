@@ -50,12 +50,12 @@ fn folded(answer: &Value) -> Vec<(String, i64)> {
 
 /// A person's message to `target`, admitted into the conversation the busy
 /// run is in.
-async fn person_message(run: &Scenario, target: &Uuid7) -> Steered {
-    let admissions = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone());
+async fn person_message(scene: &Scenario, target: &Uuid7) -> Steered {
+    let admissions = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
     Steer::new(admissions)
         .append(
             target,
-            &run.workspace,
+            &scene.workspace,
             &steer_actor("user_fixture_person"),
             r#"{"message":"also this"}"#,
             None,
@@ -65,12 +65,12 @@ async fn person_message(run: &Scenario, target: &Uuid7) -> Steered {
 }
 
 /// What the live run's fold claims: each message's event and its sequence.
-async fn folded_by(run: &Scenario, live: &Offered) -> (Value, Vec<(String, i64)>) {
-    let lease = Uuid7::parse(&live.lease_id).expect("a lease id");
-    let answer = run
+async fn folded_by(scene: &Scenario, live: &Offered) -> (Value, Vec<(String, i64)>) {
+    let run = Uuid7::parse(&live.run_id).expect("a run id");
+    let answer = scene
         .native_session()
         .await
-        .folds(&lease, live.fence, 0)
+        .folds(&run, live.fence, 0)
         .await
         .expect("the fold read");
     let claimed = folded(&answer);
@@ -79,32 +79,32 @@ async fn folded_by(run: &Scenario, live: &Offered) -> (Value, Vec<(String, i64)>
 
 /// On a target whose run is live, a person's message in the
 /// same conversation is folded into that run, and a fleet's steer is not: it
-/// is leased as its own event once the run reports.
+/// is held as its own event once the run reports.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.running_sibling("busy-target").await;
-    let (sender_lease, sender_fence) = crew.speaking.lease_seeded().await;
+    let (sender_run, sender_fence) = crew.speaking.run_seeded().await;
     crew.workers(2).await;
-    let run = crew.run();
+    let scene = crew.run();
     let busy =
-        crate::e2e_event::enqueue(&run.booted, &target, &run.workspace, EventType::Chat).await;
-    let live = offered(run, &busy).await;
+        crate::e2e_event::enqueue(&scene.booted, &target, &scene.workspace, EventType::Chat).await;
+    let live = offered(scene, &busy).await;
 
-    let person = person_message(run, &target).await;
+    let person = person_message(scene, &target).await;
     let (status, answer) = crew
-        .steer((&sender_lease, sender_fence), &target, "and this")
+        .steer((&sender_run, sender_fence), &target, "and this")
         .await;
     assert_eq!(status, 202, "{answer}");
     let fleet_event = steered(&answer);
 
-    let (answer, claimed) = folded_by(run, &live).await;
+    let (answer, claimed) = folded_by(scene, &live).await;
     let (_, read_through) = claimed
         .iter()
         .find(|(event, _)| event == &person.event_id)
-        .expect("the person's message is folded into the live run");
+        .expect("the person's message is folded into the live scene");
     let stolen = claimed
         .iter()
         .any(|(event, _)| event == fleet_event.as_str());
@@ -112,12 +112,12 @@ async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
 
     // The run reports the last folded message it read, as a runner does, so
     // the person's message settles with it and only the steer is left.
-    let mut report = crate::wire::report_body(&live.lease_id, &live.event_id, live.fence);
+    let mut report = crate::wire::report_body(&live.run_id, &live.event_id, live.fence);
     report["folded_through_sequence"] = serde_json::json!(read_through);
-    let reported = crate::wire::report(run, &report).await;
-    assert!(reported.is_ok(), "the live run settles: {reported:?}");
-    let own = offered(run, &fleet_event).await;
-    settle(run, &own).await;
+    let reported = crate::wire::report(scene, &report).await;
+    assert!(reported.is_ok(), "the live scene settles: {reported:?}");
+    let own = offered(scene, &fleet_event).await;
+    settle(scene, &own).await;
     crew.finish(supervisor).await;
 }
 
@@ -148,17 +148,17 @@ async fn ring(crew: &Crew) -> (Uuid7, Ring) {
     (a, Ring { names, sends })
 }
 
-/// Sends "pass it on" to each of `targets` from the run `(lease, fence)` of
+/// Sends "pass it on" to each of `targets` from the run `(run, fence)` of
 /// `sender`, noting for each admitted event the line its message must lead with.
 async fn pass_it_on(
     crew: &Crew,
-    run: (&str, u64),
+    scene: (&str, u64),
     sender: (&Uuid7, &str),
     targets: &[Uuid7],
     expected: &mut BTreeMap<String, String>,
 ) {
     for target in targets {
-        let (status, answer) = crew.steer(run, target, "pass it on").await;
+        let (status, answer) = crew.steer(scene, target, "pass it on").await;
         assert_eq!(status, 202, "{answer}");
         expected.insert(
             steered(&answer).to_string(),
@@ -176,21 +176,21 @@ async fn fleet_steer_chain_has_no_limit_and_the_receiver_answers() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let (a, ring) = ring(&crew).await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
     let mut expected: BTreeMap<String, String> = BTreeMap::new();
     let starts = &ring.sends[&a.to_string()];
     pass_it_on(
         &crew,
-        (&lease, fence),
+        (&run, fence),
         (&a, FLEET_NAME),
         starts,
         &mut expected,
     )
     .await;
-    let seeded = crate::wire::report_body(&lease, &crew.run().event_id, fence);
+    let seeded = crate::wire::report_body(&run, &crew.run().event_id, fence);
     assert!(
         crate::wire::report(crew.run(), &seeded).await.is_ok(),
-        "the seeded run settles"
+        "the seeded scene settles"
     );
 
     let mut ran = BTreeSet::from([a.to_string()]);
@@ -210,7 +210,7 @@ async fn fleet_steer_chain_has_no_limit_and_the_receiver_answers() {
             let sends = &ring.sends[&receiver];
             pass_it_on(
                 &crew,
-                (&offer.lease_id, offer.fence),
+                (&offer.run_id, offer.fence),
                 sender,
                 sends,
                 &mut expected,

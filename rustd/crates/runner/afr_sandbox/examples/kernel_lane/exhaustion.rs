@@ -5,7 +5,7 @@ use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
 use afr_executor::Ending;
-use afr_sandbox::{Engine as _, LeaseCgroup, Limits, SANDBOX_LEAF, SandboxRequest, TENANT_LEAF};
+use afr_sandbox::{Engine as _, Limits, RunCgroup, SANDBOX_LEAF, SandboxRequest, TENANT_LEAF};
 use libtest_mimic::Failed;
 
 use crate::lane::Lane;
@@ -32,7 +32,7 @@ const SYS_DEV_BLOCK: &str = "/sys/dev/block";
 const LOOP_DIO: &str = "loop/dio";
 /// What that file holds when direct I/O is on.
 const DIO_ON: &str = "1";
-/// Where a lease's workspace disk is mounted, under its directory.
+/// Where a run's workspace disk is mounted, under its directory.
 const DISK_MOUNT: &str = "workspace";
 /// Twice the default memory limit, written to `/workspace`, past its disk.
 // pin test: literal is the contract
@@ -55,7 +55,7 @@ fn fork_bomb() -> String {
 
 /// Filling `/tmp` ends in `ENOSPC`, the disk's answer, and the sandbox is
 /// still there to run the next command: a tmpfs would have taken the
-/// lease's memory and its first process with it.
+/// run's memory and its first process with it.
 pub(crate) fn full_tmp_answers_enospc(lane: &Lane) -> Result<(), Failed> {
     let limits = Limits {
         disk_bytes: SMALL_DISK,
@@ -149,7 +149,7 @@ pub(crate) fn runaway(lane: &Lane) -> Result<(), Failed> {
 /// reads `out_of_memory`; nothing in the sandbox leaf is killed, and the same
 /// executor runs the next command.
 pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
-    let lease_id = "oomsplit";
+    let run_id = "oomsplit";
     let limits = Limits {
         memory_bytes: SMALL_MEMORY,
         ..Limits::default()
@@ -157,13 +157,13 @@ pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
     let sandbox_events = lane
         .config
         .cgroup_root
-        .join(lease_id)
+        .join(run_id)
         .join(SANDBOX_LEAF)
         .join(MEMORY_EVENTS);
     let (hog, after, events) = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new(lease_id, limits))
+            .prepare(SandboxRequest::new(run_id, limits))
             .await?;
         let hog = run_in(sandbox.executor(), shell(HOG)).await;
         let after = run_in(sandbox.executor(), shell(&format!("echo {OK}"))).await;
@@ -206,19 +206,19 @@ pub(crate) fn tenant_holds_no_cgroup_descriptor(lane: &Lane) -> Result<(), Faile
     )
 }
 
-/// A runner that died after splitting a lease's cgroup leaves both leaves;
-/// the next engine's boot sweep removes them, then the lease's cgroup.
+/// A runner that died after splitting a run's cgroup leaves both leaves;
+/// the next engine's boot sweep removes them, then the run's cgroup.
 pub(crate) fn sweep_removes_both_leaves(lane: &Lane) -> Result<(), Failed> {
-    let lease_id = "leftover";
-    let cgroup = lane.config.cgroup_root.join(lease_id);
-    // What a runner killed here leaves: a split cgroup and the lease's
+    let run_id = "leftover";
+    let cgroup = lane.config.cgroup_root.join(run_id);
+    // What a runner killed here leaves: a split cgroup and the run's
     // directory, with no sandbox to destroy either.
-    drop(LeaseCgroup::create(
+    drop(RunCgroup::create(
         &lane.config.cgroup_root,
-        lease_id,
+        run_id,
         &Limits::default(),
     )?);
-    fs::create_dir_all(lane.lease_dir(lease_id))?;
+    fs::create_dir_all(lane.run_dir(run_id))?;
     expect(
         cgroup.join(SANDBOX_LEAF).is_dir() && cgroup.join(TENANT_LEAF).is_dir(),
         "the split made both leaves",
@@ -231,22 +231,22 @@ pub(crate) fn sweep_removes_both_leaves(lane: &Lane) -> Result<(), Failed> {
         format!("the sweep removed {}", cgroup.display()),
     )?;
     expect(
-        !lane.lease_dir(lease_id).exists(),
-        "the sweep removed the lease's directory",
+        !lane.run_dir(run_id).exists(),
+        "the sweep removed the run's directory",
     )
 }
 
 /// The workspace disk's loop device reads and writes its image past the
 /// host's page cache.
 pub(crate) fn workspace_disk_uses_direct_io(lane: &Lane) -> Result<(), Failed> {
-    let lease_id = "directio";
+    let run_id = "directio";
     let dio = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new(lease_id, Limits::default()))
+            .prepare(SandboxRequest::new(run_id, Limits::default()))
             .await?;
         // Read while the sandbox holds the device: destroy detaches it.
-        let dio = loop_dio(&lane.lease_dir(lease_id).join(DISK_MOUNT));
+        let dio = loop_dio(&lane.run_dir(run_id).join(DISK_MOUNT));
         sandbox.destroy().await?;
         Ok::<_, Failed>(dio?)
     })?;
@@ -275,17 +275,17 @@ fn loop_dio(mounted: &std::path::Path) -> std::io::Result<String> {
 /// not in the out-of-memory killer: the image is cached once, in the
 /// sandbox, rather than again on the host.
 pub(crate) fn disk_fill_under_memory_limit_ends_in_enospc(lane: &Lane) -> Result<(), Failed> {
-    let lease_id = "diskfill";
+    let run_id = "diskfill";
     let tenant_events = lane
         .config
         .cgroup_root
-        .join(lease_id)
+        .join(run_id)
         .join(TENANT_LEAF)
         .join(MEMORY_EVENTS);
     let (filled, events) = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest::new(lease_id, Limits::default()))
+            .prepare(SandboxRequest::new(run_id, Limits::default()))
             .await?;
         let filled = run_in(sandbox.executor(), shell(FILL_PAST_THE_DISK)).await;
         let events = fs::read_to_string(&tenant_events).unwrap_or_default();

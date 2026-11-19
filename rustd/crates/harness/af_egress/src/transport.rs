@@ -1,6 +1,6 @@
 //! What leaves, what comes back, and the seam it crosses.
 //!
-//! An [`Outbound`] is built only by the lease's `Egress`, after admission, so
+//! An [`Outbound`] is built only by the run's `Egress`, after admission, so
 //! a [`Transport`] is handed nothing the policy did not admit. Production
 //! sends through [`Network`](crate::Network); the tool suites hand in a
 //! recording fake, so they prove what reaches the wire without a socket.

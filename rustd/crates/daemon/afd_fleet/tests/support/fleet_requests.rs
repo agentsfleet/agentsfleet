@@ -87,14 +87,14 @@ pub(crate) fn capable() -> CapabilityReport<'static> {
 ///
 /// A builder rather than a literal at each call site, because the shape is
 /// three fields of which two are strings — exactly where a caller binds the
-/// lease id and the integration name the wrong way round and gets a refusal
+/// run id and the integration name the wrong way round and gets a refusal
 /// that looks like a real one.
 pub(crate) fn mint<'a>(
-    lease_id: &'a str,
+    run_id: &'a str,
     integration: &'a str,
 ) -> af_wire::credentials::MintCredentialRequest<'a> {
     af_wire::credentials::MintCredentialRequest {
-        lease_id: lease_id.into(),
+        run_id: run_id.into(),
         integration: integration.into(),
         // No narrowing: the fleet's binding is what scopes a mint, and a scope
         // on the wire would be a second opinion about reach.

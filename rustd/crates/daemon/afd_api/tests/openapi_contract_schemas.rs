@@ -15,7 +15,7 @@
 
 use crate::openapi_contract::{SCHEMA_PREFIX, document};
 
-/// The lease's egress rules and the runner's posture are two schemas.
+/// The run's egress rules and the runner's posture are two schemas.
 ///
 /// Both Rust types are named `NetworkPolicy`, and utoipa keys components by
 /// name alone. Without the aliases the document would say a run's egress rules

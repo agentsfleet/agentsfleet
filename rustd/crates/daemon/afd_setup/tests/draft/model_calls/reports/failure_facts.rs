@@ -26,7 +26,7 @@ async fn reports_cannot_invent_owner_actions_or_an_accounting_only_cancellation(
         accounting.failure_reason = Some(reason);
         assert_eq!(
             f.drafts
-                .report(&f.runner, &a.lease, request)
+                .report(&f.runner, &a.run, request)
                 .await
                 .expect_err("a caller label is not daemon evidence")
                 .code(),
@@ -40,7 +40,7 @@ async fn reports_cannot_invent_owner_actions_or_an_accounting_only_cancellation(
     accounting.outcome = Outcome::Cancelled;
     assert_eq!(
         f.drafts
-            .report(&f.runner, &a.lease, request)
+            .report(&f.runner, &a.run, request)
             .await
             .expect_err("missing saved cancellation fence")
             .code(),
@@ -63,7 +63,7 @@ async fn a_revoked_model_is_durable_and_accounting_cannot_restore_its_answer() {
         .expect("revoke model");
     assert_eq!(
         calls
-            .call(&f.runner, &a.lease, fixture::request(&a))
+            .call(&f.runner, &a.run, fixture::request(&a))
             .await
             .expect_err("current owner model is unavailable")
             .code(),
@@ -80,7 +80,7 @@ async fn a_revoked_model_is_durable_and_accounting_cannot_restore_its_answer() {
     assert_eq!(failure.recovery_action, "choose_authoring_model");
     let ack = f
         .drafts
-        .report(&f.runner, &a.lease, report())
+        .report(&f.runner, &a.run, report())
         .await
         .expect("accounting settles");
     assert!(ack.settled);
@@ -112,7 +112,7 @@ async fn a_forged_capability_cannot_write_failure_evidence_even_after_revocation
     request.capability_token = "b".repeat(43);
     assert_eq!(
         calls
-            .call(&f.runner, &a.lease, request)
+            .call(&f.runner, &a.run, request)
             .await
             .expect_err("capability check precedes model lookup")
             .code(),

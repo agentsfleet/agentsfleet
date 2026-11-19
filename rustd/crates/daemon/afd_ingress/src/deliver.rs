@@ -9,7 +9,7 @@
 //!
 //! Nothing is written to `fleet.events` here, for the reason
 //! `afd_turns::view::steer` states about its own path: the row appears when the
-//! runner leases the event, and a daemon that inserted one at ingress would
+//! runner runs the event, and a daemon that inserted one at ingress would
 //! be racing its own runner to describe the same event.
 //!
 //! # Why the key is `{fleet}:{source}:{provider event id}`

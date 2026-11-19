@@ -1,7 +1,7 @@
 [package]
 name = "agentsfleet_runner"
 autotests = false
-description = "The one runner binary: `run` supervises leases, `probe` reports what the host can enforce, `sandbox` serves the executor inside each sandbox."
+description = "The one runner binary: `run` supervises runs, `probe` reports what the host can enforce, `sandbox` serves the executor inside each sandbox."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -35,7 +35,7 @@ serde.workspace = true
 # The log-level knob both binaries read, declared once, and the stop `run`
 # waits on (`signal`).
 af_core = { workspace = true, features = ["signal"] }
-# The agent loop every lease's turn runs on.
+# The agent loop every run's turn runs on.
 afr_agent.workspace = true
 # Every tool the loop hosts, and the guarded network its egress tools send on.
 afr_tools.workspace = true
@@ -65,15 +65,15 @@ tempfile.workspace = true
 # `MapEnv`, so the log-level fallback is tested without the process environment.
 af_core = { workspace = true, features = ["test-util"] }
 # The `run` suite's fake daemon and collector: real listeners, so the binary
-# leases and exports over the sockets it uses on a host.
+# runs and exports over the sockets it uses on a host.
 axum.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync"] }
 # The routes the fake daemon answers, spelled once.
 af_wire.workspace = true
-# Lease and credential expiries are jiff instants on the wire.
+# Run and credential expiries are jiff instants on the wire.
 jiff.workspace = true
 # The fake daemon answers as the supervisor's own suites' healthy daemon does,
-# over the same fixture lease.
+# over the same fixture run.
 afr_supervisor = { workspace = true, features = ["test-util"] }
 # The span, attribute and knob names the suite reads back, spelled once.
 af_observability.workspace = true

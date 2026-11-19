@@ -59,7 +59,7 @@ pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &Uuid7, token: &str
     .bind(now.to_sqlx())
     .execute(&mut *connection)
     .await
-    .expect("the tenant credential seed must run");
+    .expect("the tenant credential seed must scene");
 }
 
 /// Seals a credential the ACTIVATION ladder admits, under `name`: the same
@@ -117,5 +117,5 @@ async fn seal_named(booted: &Booted, workspace: &Uuid7, name: &str, kind: Option
     .bind(kind.map(|_kind| true))
     .execute(&mut *connection)
     .await
-    .expect("the walk credential seed must run");
+    .expect("the walk credential seed must scene");
 }

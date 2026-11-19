@@ -11,7 +11,7 @@ use super::{EVENT_CHECKPOINT_FAILED, Harness};
 impl Harness<'_, '_> {
     /// The messages a person sent the fleet since the root's last claim,
     /// claimed for this run; a stopped loop claims none, and neither does an
-    /// ask the lease's claim already answered.
+    /// ask the run's claim already answered.
     async fn claim_folded(&mut self) -> Vec<String> {
         if std::mem::take(&mut self.claim_answered) {
             return Vec::new();
@@ -31,7 +31,7 @@ impl Harness<'_, '_> {
             .into_iter()
             .map(|folded| {
                 self.folded_inputs.push(crate::engine::FoldRef {
-                    event_id: af_wire::lease::TurnId(folded.event_id),
+                    event_id: af_wire::run::TurnId(folded.event_id),
                     sequence: folded.sequence,
                 });
                 folded.text
@@ -51,11 +51,11 @@ impl Harness<'_, '_> {
         }
     }
 
-    /// Writes the memory stored so far back, when any is; a stopped lease
+    /// Writes the memory stored so far back, when any is; a stopped run
     /// does not wait for it. A push that fails is logged and the run goes on:
     /// the push before the report carries every entry again.
     pub(super) async fn checkpoint(&self) {
-        let pending: Vec<MemoryDelta<'static>> = (self.shared.lease.memory.lock().await)
+        let pending: Vec<MemoryDelta<'static>> = (self.shared.run.memory.lock().await)
             .pending()
             .into_iter()
             .map(MemoryDelta::into_owned)
@@ -70,9 +70,9 @@ impl Harness<'_, '_> {
         };
         if let Err(failure) = pushed {
             let error_code = failure.code().as_str();
-            let lease_id = self.shared.lease_id;
+            let run_id = self.shared.run_id;
             let event = EVENT_CHECKPOINT_FAILED;
-            tracing::warn!(error_code, lease_id, event);
+            tracing::warn!(error_code, run_id, event);
         }
     }
 }

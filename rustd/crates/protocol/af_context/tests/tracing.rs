@@ -80,7 +80,7 @@ fn assert_span_metadata(
 fn refused_summary_records_one_failure_without_a_false_commit() {
     let task = task();
     let capture = Capture::install();
-    let mut trace = Trace::start("lease-one".into(), Host::Runtime, &task);
+    let mut trace = Trace::start("run-one".into(), Host::Runtime, &task);
     trace.failed(error_code::INTERNAL_OPERATION_FAILED);
     trace.completed(1);
     drop(trace);

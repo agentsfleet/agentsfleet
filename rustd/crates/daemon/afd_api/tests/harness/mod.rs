@@ -26,7 +26,7 @@
 //!
 //! A few stubs survive, and none is a uniform refusal — which is the line:
 //! [`OneWorkspace`] answers ownership honestly so both halves of that matrix
-//! stay reachable, [`NoWork`] answers a lease plane's verbs with success so the
+//! stay reachable, [`NoWork`] answers a run plane's verbs with success so the
 //! runner routes are reachable at all, and [`HarnessProviders`],
 //! [`HarnessTeam`], [`RecordingWriteback`] and [`HarnessIngress`] answer or
 //! record what their suites assert on. Each carries test LOGIC no real store
@@ -68,7 +68,7 @@ use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet_lifecycle::Fleets;
-use afd_fleet_ops::RunnerLeaseHistory;
+use afd_fleet_ops::RunnerRunHistory;
 use afd_memory::Memories;
 use afd_runner::Runners;
 use afd_sse::{Live, StreamLimit};
@@ -252,7 +252,7 @@ pub(crate) struct Fleet {
     authenticator: Planes<Directory, MockCapabilities, MockVerifier>,
     runners: Runners,
     runner_commands: afd_bus::Handle,
-    leases: NoWork,
+    runs: NoWork,
     tasks: afd_fleet::task::Tasks,
     workspaces: Ownership,
     workspace_directory: Workspaces,
@@ -289,7 +289,7 @@ pub(crate) struct Fleet {
     /// The tenant provider store: the same production value, over a pool that
     /// answers nothing and a fixture key that opens nothing.
     providers: HarnessProviders,
-    runner_lease_history: RunnerLeaseHistory,
+    runner_run_history: RunnerRunHistory,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,
     now: Timestamp,

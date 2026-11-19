@@ -1,4 +1,4 @@
-//! Blocked and cancelled SQL cannot strand the native lease or its connection.
+//! Blocked and cancelled SQL cannot strand the native run or its connection.
 
 use std::time::Duration;
 
@@ -6,7 +6,7 @@ use af_core::{error_code, test_util::trace::Capture};
 use af_wire::task::{DecisionAssessment, DecisionReservationInput};
 use afd_db::{Db, config::DbRole};
 use afd_fleet::{
-    lease::Leases,
+    run::Runs,
     task::{TaskLifecycle as _, Tasks},
 };
 use sqlx::Connection as _;
@@ -50,7 +50,7 @@ async fn blocked(case: &Case, capture: &Capture) {
     assert_eq!(fixture.counts().await, (0, 0, 0));
     let result = timeout(
         Duration::from_secs(5),
-        tasks.reserve_decision(case.lease(), &input),
+        tasks.reserve_decision(case.run(), &input),
     )
     .await
     .expect("original fleet slot is usable after cancellation")
@@ -79,7 +79,7 @@ pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
         )
         .await;
     let tasks = Tasks::new(
-        Leases::new(
+        Runs::new(
             database.clone(),
             case.held.fixtures.bus().clone(),
             af_crypto::entropy::Entropy::new(),
@@ -98,7 +98,7 @@ async fn statement_timeout(
 ) {
     let failure = timeout(
         Duration::from_secs(6),
-        tasks.reserve_decision(case.lease(), input),
+        tasks.reserve_decision(case.run(), input),
     )
     .await
     .expect("server deadline bounds source lock wait")
@@ -130,7 +130,7 @@ async fn cancellation(
     assert!(
         timeout(
             Duration::from_millis(200),
-            tasks.reserve_decision(case.lease(), input)
+            tasks.reserve_decision(case.run(), input)
         )
         .await
         .is_err(),

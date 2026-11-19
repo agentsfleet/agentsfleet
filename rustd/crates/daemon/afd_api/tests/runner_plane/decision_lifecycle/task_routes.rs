@@ -48,7 +48,7 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
     let route = path(fixture, "effects");
     let query = format!(
         "{route}?fencing_token={}&task_id={}",
-        fixture.lease.fence,
+        fixture.run.fence,
         task.pointer("/task_id")
             .expect("response field exists")
             .as_str()
@@ -56,11 +56,7 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
     );
     let empty = success(fixture, Method::GET, &query, "", StatusCode::OK).await;
     assert_eq!(empty, json!({"effects":[],"next_cursor":null}));
-    let missing = format!(
-        "{route}/{}?fencing_token={}",
-        mint_id(),
-        fixture.lease.fence
-    );
+    let missing = format!("{route}/{}?fencing_token={}", mint_id(), fixture.run.fence);
     let response = send(
         &fixture.router,
         Method::GET,
@@ -71,7 +67,7 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
     .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     problem(&json_body(response).await, "UZ-DT-001");
-    let publish = json!({"operation_id":mint_id(),"fencing_token":fixture.lease.fence,
+    let publish = json!({"operation_id":mint_id(),"fencing_token":fixture.run.fence,
         "task":task,"source_item_id":item,"covered_input_sequence":0,
         "expected_head":"0".repeat(40),"tested_tree":"1".repeat(40),
         "changes":[{"path":"README.md","contents":"aGk="}]});
@@ -95,10 +91,7 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
 }
 
 fn path(fixture: &Fixture, resource: &str) -> String {
-    format!(
-        "/v1/runners/me/leases/{}/tasks/{resource}",
-        fixture.lease.id
-    )
+    format!("/v1/runners/me/runs/{}/tasks/{resource}", fixture.run.id)
 }
 
 async fn call(
@@ -146,7 +139,7 @@ async fn foreign_and_stale(fixture: &Fixture, route: &str, body: &Value) {
             if token.is_none() {
                 StatusCode::UNAUTHORIZED
             } else {
-                // Native ownership lookup hides leases belonging to another runner.
+                // Native ownership lookup hides runs belonging to another runner.
                 StatusCode::NOT_FOUND
             }
         );
@@ -162,7 +155,7 @@ async fn foreign_and_stale(fixture: &Fixture, route: &str, body: &Value) {
     let mut stale = body.clone();
     *stale
         .get_mut("fencing_token")
-        .expect("fixture field exists") = json!(fixture.lease.fence + 1);
+        .expect("fixture field exists") = json!(fixture.run.fence + 1);
     let refused = call(fixture, Method::POST, route, &stale, StatusCode::CONFLICT).await;
     problem(&refused, "UZ-RUN-005");
 }
@@ -172,7 +165,7 @@ async fn receipts(fixture: &Fixture, binding: &TaskBindingsInput, accepted: &Val
     let inputs = success(
         fixture,
         Method::GET,
-        &format!("{input_path}?fencing_token={}", fixture.lease.fence),
+        &format!("{input_path}?fencing_token={}", fixture.run.fence),
         "",
         StatusCode::OK,
     )
@@ -189,8 +182,8 @@ async fn receipts(fixture: &Fixture, binding: &TaskBindingsInput, accepted: &Val
             .expect("response field exists"),
         &binding.plan_digest
     );
-    let receipt = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_id(),
-        "source_admission_id":fixture.lease.source,"plan_digest":binding.plan_digest,
+    let receipt = json!({"fencing_token":fixture.run.fence,"operation_id":mint_id(),
+        "source_admission_id":fixture.run.source,"plan_digest":binding.plan_digest,
         "item_id":accepted.pointer("/items/0/item_id").expect("response field exists"),"task":task,
         "mode":"answered","response_text":"I will inspect the failed checks."});
     acknowledge(fixture, &receipt).await;

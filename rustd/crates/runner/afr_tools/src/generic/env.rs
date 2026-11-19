@@ -1,5 +1,5 @@
-//! The lease's sandbox as `guffbolt`'s environment: every process and file
-//! call a generic tool makes goes to the executor inside the lease's
+//! The run's sandbox as `guffbolt`'s environment: every process and file
+//! call a generic tool makes goes to the executor inside the run's
 //! bubblewrap sandbox, and none starts a process on the host.
 //!
 //! The executor's own types and refusals are translated one to one, so a
@@ -31,7 +31,7 @@ const ENDING_GRACE: Duration = KILL_GRACE
     .saturating_add(DRAIN_GRACE)
     .saturating_add(REPLY_SLACK);
 const _: () = assert!(
-    TIMEOUT_DEFAULT.saturating_add(ENDING_GRACE).as_nanos() < af_core::timing::LEASE_TTL.as_nanos()
+    TIMEOUT_DEFAULT.saturating_add(ENDING_GRACE).as_nanos() < af_core::timing::RUN_TTL.as_nanos()
 );
 const _: () = assert!(
     CALL_DEADLINE
@@ -57,7 +57,7 @@ const GIT_IDENTITY: [(&str, &str); 4] = [
     ("GIT_COMMITTER_EMAIL", GIT_IDENTITY_EMAIL),
 ];
 
-/// The lease's executor, as a generic tool's environment.
+/// The run's executor, as a generic tool's environment.
 #[derive(Debug, Clone, Copy)]
 pub struct SandboxEnv<'a> {
     executor: &'a dyn Executor,

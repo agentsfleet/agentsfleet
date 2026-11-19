@@ -25,12 +25,12 @@ async fn accepted(fixture: &Decisions<'_>) -> DecisionTaskVersion {
         .expect("complete paid interpretation");
     let result = fixture
         .tasks
-        .interpret(fixture.case.lease(), &input)
+        .interpret(fixture.case.run(), &input)
         .await
         .expect("native API-only goal");
     let task = result
         .current_task
-        .expect("first new goal owns current lease");
+        .expect("first new goal owns current run");
     assert_eq!(task.objective, "Repair");
     assert_eq!(task.questions.len(), 2);
     DecisionTaskVersion {

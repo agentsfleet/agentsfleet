@@ -22,7 +22,7 @@ use crate::support::Fixtures;
 /// this fixture cannot drift from them: the schema holds no list to refuse a stale one.
 const INSERT_RUNNER: &str = "INSERT INTO runner.runners \
     (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
-     registry_allowlist, worker_count, last_seen_at, lease_version, created_at, \
+     registry_allowlist, worker_count, last_seen_at, run_version, created_at, \
      updated_at, tenant_id, platform_owned) \
     VALUES ($1, 'tenant-box', $2, $4, $5, '[]'::jsonb, $6, '[]'::jsonb, 1, $7, 0, \
             now(), now(), $3, $8)";
@@ -67,7 +67,7 @@ impl Fixtures {
             .bind(runner.as_str())
             .bind(tenant)
             .bind(tier_wire(SandboxTier::LandlockFull))
-            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
+            .bind(afd_fleet::run::sql::RUNNER_STATUS_ACTIVE)
             .bind(policy_wire(NetworkPolicy::AllowAll))
             .bind(afd_runner::sql::NEVER_SEEN.to_sqlx())
             .bind(platform_owned)

@@ -30,7 +30,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 |---|---|---|
 | A cluster-only broker is the only datastore | `.orly/LOCAL.md`, `datastore_scaling.md` | M244, done: both pages now name core NATS and Postgres |
 | A runner polls; there is no cancel channel | `runner_fleet.md` | M243 |
-| The lease path is not a general scheduler | `runner_fleet.md` | M243 |
+| The run path is not a general scheduler | `runner_fleet.md` | M243 |
 | Config is never cached | `runner_fleet.md` | M245, done: config is cached by the head revision id the claim reads |
 | Timers have no central deadline scheduler | `concurrency.md` | M245, done: one daemon expiry clock and one runner host timer |
 
@@ -39,9 +39,9 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | Fact | Store | Copies, and how they are repaired |
 |---|---|---|
 | Message accepted, in order | `fleet.admissions` | The runner's pending input, re-read at each model call |
-| Run assigned, and its fence | `runner.fleet_slots`, `runner.leases` | The runner's stream session, rebuilt from Postgres on reconnect |
-| Message folded into a run | `fleet.admissions.input_claim_lease_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
-| Lease deadline | `runner.leases.lease_expires_at`, one clock | None |
+| Run assigned, and its fence | `runner.fleet_slots`, `runner.runs` | The runner's stream session, rebuilt from Postgres on reconnect |
+| Message folded into a run | `fleet.admissions.input_claim_run_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
+| Run deadline | `runner.runs.run_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines` and the billing relay | None |
 | Outbound reply owed | `fleet.obligations` | A NATS ping wakes a worker; a 30 s scan is the backstop |
 | Device-login session, OAuth nonce | Postgres rows (M244) | None |
@@ -54,12 +54,12 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | Milestone | Tables |
 |---|---|
 | M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims on `fleet.admissions`. |
-| M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.leases`. |
+| M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.runs`. |
 | M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.obligations`. |
 | M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
 | M246 | An owner tenant on `runner.runners`, and a receipt table that answers a registration retry. |
 | M251 | The token overlap pair on `runner.runners` and the per-tenant placement setting, as M251_001 designs them. |
-| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `runner.leases`, and six event-owned `runner.turn_*` recovery tables. The prior lease ID is diagnostic data from the claim, not a new predecessor column. |
+| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `runner.runs`, and six event-owned `runner.turn_*` recovery tables. The prior run ID is diagnostic data from the claim, not a new predecessor column. |
 
 ## Recovery and scheduling fairness
 
@@ -97,26 +97,26 @@ The report settles each message that a completed model call read (M242_002), in 
 runner                         agentsfleetd replica                 Postgres
   │ open stream, token once ──────►│ authenticate                       │
   │                                │ read this runner's active and      │
-  │                                │ cancel-marked leases ─────────────►│
-  │◄─ Hello: policy, holds, leases │◄───────────────────────────────────│
+  │                                │ cancel-marked runs ─────────────►│
+  │◄─ Hello: policy, holds, runs │◄───────────────────────────────────│
   │ Ready{credits} ───────────────►│ offers follow credits              │
   │        … connection drops …    │                                    │
   │ reconnect (jitter) ──────────►│ any replica: the same rebuild      │
 ```
 
-A second connection for the same runner supersedes the first. A revoked token closes the stream, and every lease grant re-checks the runner's status.
+A second connection for the same runner supersedes the first. A revoked token closes the stream, and every run grant re-checks the runner's status.
 
 ### Renewal, batched per host
 
 ```
 runner                         agentsfleetd                         Postgres
-  │ RenewBatch{lease ids, slices} ►│ one fenced statement for every     │
-  │                                │ lease, host shared; funds checked  │
+  │ RenewBatch{run ids, slices} ►│ one fenced statement for every     │
+  │                                │ run, host shared; funds checked  │
   │                                │ every third tick ─────────────────►│
-  │◄─ Renewed{per lease: deadline or lost}                              │
+  │◄─ Renewed{per run: deadline or lost}                              │
 ```
 
-A lost lease in the batch never blocks the others. Each answer is fenced, and each lease's runtime line is numbered by its slice's start, read under its own row lock.
+A lost run in the batch never blocks the others. Each answer is fenced, and each run's runtime line is numbered by its slice's start, read under its own row lock.
 
 ### The live tail
 
@@ -128,7 +128,7 @@ browser ◄─ SSE ◄─ replica B ◄─────────────�
           reconnect or slow consumer ─► gap ─► catching_up ─► backfill again
 ```
 
-The lease target is cached per stream session, so a frame costs no Postgres read. A failing subscription sends `catching_up` at once.
+The run target is cached per stream session, so a frame costs no Postgres read. A failing subscription sends `catching_up` at once.
 A bus disconnect sends `catching_up` on reconnect, not at the drop (`afd_bus/src/nats/signals.rs`). While every NATS node is down, a tail shows heartbeats only, and the backfill on reconnect restores what it missed.
 
 ### An outbound reply
@@ -143,12 +143,12 @@ Only the head of each `(provider, workspace)` lane is claimable, so claims never
 ### A host dies mid-turn
 
 ```
-host stops ──┬─► saved lease deadline ─► eligible runner claims E under fence F+1
+host stops ──┬─► saved run deadline ─► eligible runner claims E under fence F+1
              │                           └─► committed checkpoint ─► resume E
              └─► heartbeat silence ─► atomic offline record + automatic cordon
 ```
 
-Lease expiry permits reclaim; automatic quarantine leaves the saved deadline unchanged.
+Run expiry permits reclaim; automatic quarantine leaves the saved deadline unchanged.
 The issued replacement attempts one `run_restarted` publication before its offer.
 Every output carries the daemon's attempt fence, so clients reject delayed output from older attempts.
 
@@ -175,7 +175,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | M242 | One-statement intake; folding with a disposition | One write statement per accepted message; a live run takes a person's mid-run message in its conversation |
 | M243 | One runner stream; the Bus seam | Activity path near 0 statements; no poll; reconnect and revocation tests |
 | M244 | Core NATS behind the Bus; durable jobs in Postgres | Tail p99 and a kill drill on both buses |
-| M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping, lease facts kept by the stream session | About 21 statements per chat, none on pricing after warm-up (Indy set 21, Nov 11, 2026; the history read's fold into the claim follows) |
+| M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping, run facts kept by the stream session | About 21 statements per chat, none on pricing after warm-up (Indy set 21, Nov 11, 2026; the history read's fold into the claim follows) |
 | M246 | Tenant-owned runners, a hard ownership filter | Cross-tenant placement refused; no platform key reaches a tenant runner |
 | M247 | Hold-aware capacity, auto-cordon, checkpoint respawn | A killed host's run restarts elsewhere, settled once |
 
@@ -183,13 +183,13 @@ A partitioned scheduler is not planned. It is built only if measured saturation 
 
 ## Baselines
 
-Measured on Indy's laptop on Nov 06, 2026, with `make bench-lease PROFILE=rig`, each run on a reset rig. Each lane ran three times, and the run with the median headline value is committed in `bench/baselines/`. The lowest and highest values sit beside it.
+Measured on Indy's laptop on Nov 06, 2026, with `make bench-run PROFILE=rig`, each run on a reset rig. Each lane ran three times, and the run with the median headline value is committed in `bench/baselines/`. The lowest and highest values sit beside it.
 
 The api-dev machines re-measure at deployment.
 
-A simulated chat is one lease with a 10 s turn: two renewals and forty activity posts. The drain leases 200 fleets to 8 runners over a pool of 20.
+A simulated chat is one run with a 10 s turn: two renewals and forty activity posts. The drain runs 200 fleets to 8 runners over a pool of 20.
 
-The headline is drain leases per second: 82.51, between 80.43 and 84.08. The median run is committed as `lease.rig.json`.
+The headline is drain runs per second: 82.51, between 80.43 and 84.08. The median run is committed as `run.rig.json`.
 
 | Path | Statements per chat (median run) | Lowest | Highest |
 |---|---|---|---|
@@ -206,15 +206,15 @@ The headline is drain leases per second: 82.51, between 80.43 and 84.08. The med
 | other | 0.08 | 0.075 | 0.08 |
 | total | 115.025 | 114.875 | 115.025 |
 
-The `task` path holds the durable-task reads PR #803 added to issue, renewal and report. A chat also costs 77.2 commits. Lease p95 is 44.1 ms and report p95 is 21.5 ms.
+The `task` path holds the durable-task reads PR #803 added to issue, renewal and report. A chat also costs 77.2 commits. Run p95 is 44.1 ms and report p95 is 21.5 ms.
 
-A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets for 60 s. Runners hold each lease for a 2 s turn. Today each message is a run of its own, so most wait.
+A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets for 60 s. Runners hold each run for a 2 s turn. Today each message is a run of its own, so most wait.
 
-The headline is pickup p95: 54.2 s, between 53.4 s and 54.5 s. The median run is committed as `lease-burst.rig.json`.
+The headline is pickup p95: 54.2 s, between 53.4 s and 54.5 s. The median run is committed as `run-burst.rig.json`.
 
-In it, 29,953 messages were accepted, none were refused, and 29,729 were still unleased at the close. Pickup p50 is 28.5 s and append p95 is 35.7 ms.
+In it, 29,953 messages were accepted, none were refused, and 29,729 were still idle at the close. Pickup p50 is 28.5 s and append p95 is 35.7 ms.
 
-With M242's folding, a live run takes its fleet's messages at each model call. Pickup p95 is 491.5 ms, between 489.0 ms and 491.8 ms, and that median run replaces `lease-burst.rig.json`.
+With M242's folding, a live run takes its fleet's messages at each model call. Pickup p95 is 491.5 ms, between 489.0 ms and 491.8 ms, and that median run replaces `run-burst.rig.json`.
 
 Of 30,000 messages, 4,564 folded and 25,212 still waited at the close, because 8 runners serve 50 fleets. The pickup percentiles count only the messages a run picked up.
 
@@ -313,7 +313,7 @@ The previous broker's self-hosted cluster had no failover of its own: its docume
 
 ### M245: twenty-one statements per chat
 
-Measured on Indy's laptop on Nov 11, 2026, with `make bench-lease PROFILE=rig`. The runs were `main` at `93d66f476` and this branch at `480802c84`, three each, interleaved, each on a reset rig. The median branch run by statements per chat is committed as `lease.rig.json`.
+Measured on Indy's laptop on Nov 11, 2026, with `make bench-run PROFILE=rig`. The runs were `main` at `93d66f476` and this branch at `480802c84`, three each, interleaved, each on a reset rig. The median branch run by statements per chat is committed as `run.rig.json`.
 
 | Path | `main`, median run | Branch, median run | Branch lowest | Branch highest |
 |---|---|---|---|---|
@@ -332,7 +332,7 @@ Measured on Indy's laptop on Nov 11, 2026, with `make bench-lease PROFILE=rig`. 
 
 `main`'s three totals were 74.17, 74.175 and 74.175; the branch's 21.03, 20.99 and 21.015. A chat costs 13.42 commits on the branch against 37.43 on `main`.
 
-Branch lease p95 was 37.2, 42.7 and 28.4 ms, and report p95 was 11.9, 13.7 and 11.7 ms. `main`'s lease p95 was 126.5, 48.0 and 53.2 ms. Drain leases per second: branch 206.9, 197.6 and 211.6; `main` 75.2, 126.7 and 116.2.
+Branch run p95 was 37.2, 42.7 and 28.4 ms, and report p95 was 11.9, 13.7 and 11.7 ms. `main`'s run p95 was 126.5, 48.0 and 53.2 ms. Drain runs per second: branch 206.9, 197.6 and 211.6; `main` 75.2, 126.7 and 116.2.
 
 `main` has no `fold` path: its classifier had no fragment for `claim_inputs.sql`, so those statements sat in `other`. `shared` is the foreign-key and counter-trigger statements Postgres runs inside the writes, about 5 of its 7. The pricing path's 0.035 is the price book's first read per model as the cache warms.
 

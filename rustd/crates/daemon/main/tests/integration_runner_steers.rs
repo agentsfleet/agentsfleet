@@ -42,8 +42,13 @@ const TOKEN: &str = "glsa_fixture_steer_secret";
 
 /// The body a steer of `text` from the scenario's seeded event stores.
 fn expected_body(crew: &Crew, text: &str) -> Value {
-    let run = crew.run();
-    let body = FleetSteerBody::new(text, run.fleet.as_str(), FLEET_NAME, run.event_id.as_str());
+    let scene = crew.run();
+    let body = FleetSteerBody::new(
+        text,
+        scene.fleet.as_str(),
+        FLEET_NAME,
+        scene.event_id.as_str(),
+    );
     serde_json::to_value(&body).expect("the body serializes")
 }
 
@@ -56,8 +61,8 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
-    let text = "run the hourly check";
+    let (run, fence) = crew.speaking.run_seeded().await;
+    let text = "scene the hourly check";
 
     let barrier = Barrier::new(RACERS);
     let (inflight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
@@ -67,7 +72,7 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
             inflight.fetch_add(1, Ordering::SeqCst) + 1,
             Ordering::SeqCst,
         );
-        let answered = crew.steer((&lease, fence), &target, text).await;
+        let answered = crew.steer((&run, fence), &target, text).await;
         inflight.fetch_sub(1, Ordering::SeqCst);
         answered
     }))
@@ -95,7 +100,7 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
         .count();
     assert_eq!(fresh, 1, "{answers:?}");
 
-    let (status, again) = crew.steer((&lease, fence), &target, text).await;
+    let (status, again) = crew.steer((&run, fence), &target, text).await;
     assert_eq!((status, &again["replayed"]), (202, &json!(true)), "{again}");
     assert_eq!(again["event_id"], row.id.as_str());
     crew.finish(supervisor).await;
@@ -110,7 +115,7 @@ async fn fleet_steer_copies_the_sender_reply_destination() {
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
 
-    let (seeded, fence) = crew.speaking.lease_seeded().await;
+    let (seeded, fence) = crew.speaking.run_seeded().await;
     let (status, _) = crew
         .steer((&seeded, fence), &target, "no thread here")
         .await;
@@ -153,11 +158,11 @@ async fn fleet_steer_replays_before_status() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
 
-    let (status, first) = crew.steer((&lease, fence), &target, "open the fix").await;
+    let (status, first) = crew.steer((&run, fence), &target, "open the fix").await;
     assert_eq!(status, 202, "{first}");
-    let (status, again) = crew.steer((&lease, fence), &target, "open the fix").await;
+    let (status, again) = crew.steer((&run, fence), &target, "open the fix").await;
     assert_eq!((status, &again["replayed"]), (202, &json!(true)), "{again}");
     assert_eq!(again["event_id"], first["event_id"]);
 
@@ -166,7 +171,7 @@ async fn fleet_steer_replays_before_status() {
         &target,
     )
     .await;
-    let (status, archived) = crew.steer((&lease, fence), &target, "open the fix").await;
+    let (status, archived) = crew.steer((&run, fence), &target, "open the fix").await;
     assert_eq!(
         (status, &archived["event_id"]),
         (202, &first["event_id"]),
@@ -184,22 +189,18 @@ async fn fleet_steer_body_reaches_the_target_turn() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.running_sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
     let long = "w".repeat(STEER_MESSAGE_MAX_BYTES);
     let (_, short_answer) = crew
-        .steer((&lease, fence), &target, "run the hourly check")
+        .steer((&run, fence), &target, "scene the hourly check")
         .await;
-    let (_, long_answer) = crew.steer((&lease, fence), &target, &long).await;
-    let reported = report(
-        crew.run(),
-        &report_body(&lease, &crew.run().event_id, fence),
-    )
-    .await;
+    let (_, long_answer) = crew.steer((&run, fence), &target, &long).await;
+    let reported = report(crew.run(), &report_body(&run, &crew.run().event_id, fence)).await;
     assert!(reported.is_ok(), "{reported:?}");
 
     let line = af_wire::event::sender_line(FLEET_NAME, crew.run().fleet.as_str());
     for (answer, text) in [
-        (&short_answer, "run the hourly check"),
+        (&short_answer, "scene the hourly check"),
         (&long_answer, long.as_str()),
     ] {
         let turn = offered(crew.run(), &steered(answer)).await;
@@ -242,10 +243,10 @@ async fn fleet_steer_masks_secret_values() {
     )
     .await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
 
     let (status, _) = crew
-        .steer((&lease, fence), &target, &format!("use {TOKEN}"))
+        .steer((&run, fence), &target, &format!("use {TOKEN}"))
         .await;
     assert_eq!(status, 202);
     let rows = crew.admissions(&target).await;
@@ -266,11 +267,11 @@ async fn fleet_steer_has_no_per_run_limit() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("steer-target").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let (run, fence) = crew.speaking.run_seeded().await;
 
     for step in 0..STEPS {
         let (status, answer) = crew
-            .steer((&lease, fence), &target, &format!("step {step}"))
+            .steer((&run, fence), &target, &format!("step {step}"))
             .await;
         assert_eq!(
             (status, &answer["replayed"]),

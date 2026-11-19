@@ -24,22 +24,22 @@ const MAX_CACHED_SEND_GATES: u64 = 1024;
 #[derive(Debug, Clone)]
 pub struct Drafts {
     pub(crate) turn_policy: crate::turn_policy::TurnPolicy,
-    pub(crate) clock: af_core::timing::LeaseClock,
+    pub(crate) clock: af_core::timing::RunClock,
     pub(crate) database: Db,
     pub(crate) entropy: Entropy,
     pub(crate) analytics: Analytics,
     /// Clones share these content-free queues, so hot chats wait outside the
     /// pool. They cache neither authorization nor a database ordering decision.
     pub(crate) senders: Cache<Uuid7, Arc<Mutex<()>>>,
-    /// Moves a setup chat's money: the same biller fleet leases bill through
+    /// Moves a setup chat's money: the same biller fleet runs bill through
     /// (one billing lifecycle behind the `Biller` trait, per
     /// `docs/architecture/billing_and_provider_keys.md`), built once where the
     /// daemon is assembled.
     pub(crate) biller: Arc<dyn Biller>,
     pub(crate) authority: Option<afd_runner::capacity::authority::Authority>,
-    /// Carries the hints a draft lease needs after a commit: the wake that
+    /// Carries the hints a draft run needs after a commit: the wake that
     /// offers an accepted message, the Cancel a Stop or a deletion sends, and
-    /// a setup lease's live answer. `None` publishes nothing; the 5 s probe
+    /// a setup run's live answer. `None` publishes nothing; the 5 s probe
     /// still finds the work.
     pub(crate) bus: Option<afd_bus::Handle>,
 }
@@ -54,7 +54,7 @@ impl Drafts {
 
     /// Uses the deployment clock validated before startup.
     #[must_use]
-    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+    pub fn with_clock(mut self, clock: af_core::timing::RunClock) -> Self {
         self.clock = clock;
         self
     }
@@ -66,7 +66,7 @@ impl Drafts {
     #[must_use]
     pub fn new(database: Db, entropy: Entropy, biller: Arc<dyn Biller>) -> Self {
         Self {
-            clock: af_core::timing::LeaseClock::default(),
+            clock: af_core::timing::RunClock::default(),
             turn_policy: crate::turn_policy::TurnPolicy::default(),
             database,
             entropy,
@@ -86,7 +86,7 @@ impl Drafts {
     }
 
     /// Hints, after the commit that queued a message on `draft`, that a draft
-    /// lease may take it. One wake key names the owner, fleet or draft, by its
+    /// run may take it. One wake key names the owner, fleet or draft, by its
     /// slot's id. Lossy: a lost hint costs one 5 s probe.
     pub(crate) async fn wake_setup(&self, draft: &Uuid7) {
         if let Some(bus) = &self.bus {
@@ -94,16 +94,16 @@ impl Drafts {
         }
     }
 
-    /// Sends Cancel to each runner whose draft lease a commit just killed or
+    /// Sends Cancel to each runner whose draft run a commit just killed or
     /// deleted. A hint: the durable mark or the missing row refuses the
     /// runner's next renewal either way.
     pub(crate) async fn announce_cancelled(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
         let Some(bus) = &self.bus else {
             return;
         };
-        for (runner, lease_id) in cancelled {
+        for (runner, run_id) in cancelled {
             let subject = afd_bus::Subject::RunnerCommand(runner.clone());
-            let publication = afd_bus::Command::Cancel { lease_id }
+            let publication = afd_bus::Command::Cancel { run_id }
                 .publish(bus, &runner)
                 .await;
             afd_bus::observe_notification(&subject, publication);

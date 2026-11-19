@@ -10,7 +10,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 pub(super) async fn model(
-    run: &Scenario,
+    scene: &Scenario,
     base: &str,
     workspace: &Uuid7,
     tenant: &Uuid7,
@@ -19,7 +19,7 @@ pub(super) async fn model(
     let model = mint_id();
     let name = format!("recovery-check-{model}");
     let settings = json!({"api":"chat","base_url":base,"max_output_tokens":1024}).to_string();
-    let mut connection = run.booted.database.acquire().await?;
+    let mut connection = scene.booted.database.acquire().await?;
     ModelSeed::new(&model, "openai-compatible", &name, 32_000)
         .inference(&settings)
         .rates(1_000_000, 0, 1_000_000)
@@ -27,7 +27,7 @@ pub(super) async fn model(
         .await?;
     drop(connection);
     let vault = Vault::new(
-        run.booted.database.clone(),
+        scene.booted.database.clone(),
         Arc::new(Kek::from_hex(crate::e2e::GOOD_KEK)?),
         Entropy::new(),
     );
@@ -41,7 +41,7 @@ pub(super) async fn model(
             af_core::clock::now(),
         )
         .await?;
-    let mut connection = run.booted.database.acquire().await?;
+    let mut connection = scene.booted.database.acquire().await?;
     sqlx::query("INSERT INTO model.tenant_models (id,tenant_id,workspace_id,model_name,secret_ref,created_at,updated_at)
         VALUES ($1,$2,$3,$4,$5,now(),now())")
         .bind(&entry).bind(tenant).bind(workspace).bind(&name).bind("recovery-check")
@@ -69,7 +69,7 @@ pub(super) async fn select(
 }
 
 pub(super) async fn admit(
-    run: &Scenario,
+    scene: &Scenario,
     fleet: &Uuid7,
     workspace: &Uuid7,
     message: &str,
@@ -77,7 +77,7 @@ pub(super) async fn admit(
     let body = json!({"message":message}).to_string();
     let actor = format!("{}recovery-check", afd_turns::view::ACTOR_PREFIX);
     let accepted =
-        afd_turns::Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
+        afd_turns::Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
             .admit(afd_turns::Admission {
                 producer: afd_turns::Producer::Steer,
                 key: afd_turns::Key::Unrepeatable,

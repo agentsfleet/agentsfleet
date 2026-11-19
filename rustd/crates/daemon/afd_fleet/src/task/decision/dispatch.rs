@@ -20,7 +20,7 @@ use super::{
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, transaction},
 };
 
 enum Emission {
@@ -30,7 +30,7 @@ enum Emission {
 
 pub(super) struct Issuance<'a> {
     pub tasks: &'a Tasks,
-    pub lease: TaskLease<'a>,
+    pub run: TaskRun<'a>,
     pub input: &'a garde::Valid<DecisionReservationInput>,
     pub call: &'a Call,
     pub coverage: Coverage,
@@ -39,7 +39,7 @@ pub(super) struct Issuance<'a> {
 
 impl Issuance<'_> {
     pub(super) async fn commit(&self) -> Result<ReservedDecision> {
-        let mut connection = transaction::acquire(self.tasks.leases.pool()).await?;
+        let mut connection = transaction::acquire(self.tasks.runs.pool()).await?;
         let result = self.on(&mut connection).await;
         transaction::recycle(connection);
         match result? {
@@ -50,7 +50,7 @@ impl Issuance<'_> {
 
     async fn on(&self, connection: &mut PgConnection) -> Result<Emission> {
         let mut tx = transaction::begin(connection).await?;
-        let current = verify::on(&mut tx, self.lease, self.input, self.call).await?;
+        let current = verify::on(&mut tx, self.run, self.input, self.call).await?;
         budget::check_on(
             &mut tx,
             &current.current,
@@ -66,8 +66,7 @@ impl Issuance<'_> {
             return Ok(Emission::Existing(Box::new(locked)));
         }
         let required =
-            super::credit::required_on(&mut tx, self.lease.lease_id, self.coverage.headroom)
-                .await?;
+            super::credit::required_on(&mut tx, self.run.run_id, self.coverage.headroom).await?;
         if required > self.coverage.required {
             return Err(TaskRefusal::DecisionUnavailable.into());
         }
@@ -94,8 +93,8 @@ async fn issue_on(connection: &mut PgConnection, call: &Call) -> Result<()> {
         .bind(&call.id)
         .bind(DecisionCallState::Issued.as_str())
         .bind(DecisionCallState::Reserved.as_str())
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
-        .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
+        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
+        .bind(crate::run::sql::FLEET_STATUS_ACTIVE)
         .bind(crate::task::guard::wire(
             &call.profile_snapshot.0.profile.model_id,
         )?)
@@ -103,7 +102,7 @@ async fn issue_on(connection: &mut PgConnection, call: &Call) -> Result<()> {
             &call.profile_snapshot.0.revision_id,
         )?)
         .bind(af_wire::task::TaskState::Running.as_str())
-        .bind(crate::lease::sql::RUNNER_STATUS_ACTIVE)
+        .bind(crate::run::sql::RUNNER_STATUS_ACTIVE)
         .fetch_optional(connection)
         .await
         .map_err(query("commit one native decision credential grant"))?

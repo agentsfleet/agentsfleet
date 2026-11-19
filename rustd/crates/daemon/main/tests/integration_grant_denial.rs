@@ -9,7 +9,7 @@ use af_core::id::Uuid7;
 use af_crypto::{entropy::Entropy, secret::Kek};
 use af_wire::event::EventType;
 use afd_approval::{Decision, Inbox};
-use afd_fleet::lease::Leases;
+use afd_fleet::run::Runs;
 use afd_vault::{SecretBody, SecretName, Vault};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
@@ -18,17 +18,17 @@ use std::sync::Arc;
 const SERVICE: &str = "github";
 const LABEL: &str = "COALESCE(failure_reason, '')";
 
-async fn connect_and_declare(run: &Scenario) {
-    connect_credential(run).await;
+async fn connect_and_declare(scene: &Scenario) {
+    connect_credential(scene).await;
     // Declared the way a person declares it: an Apply selecting a setup that
-    // names the credential. The lease reads the selected revision, never a
+    // names the credential. The run reads the selected revision, never a
     // copy on the fleet row.
-    let mut connection = run.booted.database.acquire().await.expect("connection");
+    let mut connection = scene.booted.database.acquire().await.expect("connection");
     let mut config: serde_json::Value = sqlx::query_scalar::<_, String>(
         "SELECT (r.definition -> 'config')::text FROM fleet.fleets f \
          JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1",
     )
-    .bind(&run.fleet)
+    .bind(&scene.fleet)
     .fetch_one(&mut *connection)
     .await
     .map(|text| serde_json::from_str(&text).expect("stored config JSON"))
@@ -40,59 +40,59 @@ async fn connect_and_declare(run: &Scenario) {
         .insert("credentials".to_owned(), json!([SERVICE]));
     let definition =
         crate::e2e_native::definition(&config.to_string(), crate::e2e_seed::FIXTURE_INSTRUCTIONS);
-    crate::e2e_native::reselect(&mut connection, &run.fleet, &definition).await;
+    crate::e2e_native::reselect(&mut connection, &scene.fleet, &definition).await;
     drop(connection);
     // Prefer this fixture's fleet over unrelated ready marks left by other suites.
-    Leases::new(
-        run.booted.database.clone(),
-        run.booted.bus.clone(),
+    Runs::new(
+        scene.booted.database.clone(),
+        scene.booted.bus.clone(),
         Entropy::new(),
     )
-    .claim(&run.fleet, &run.runner_id, std::time::Duration::ZERO)
+    .claim(&scene.fleet, &scene.runner_id, std::time::Duration::ZERO)
     .await
     .expect("initial affinity claim")
     .expect("new fleet is unclaimed");
 }
 
 /// How many approval cards this fixture's fleet has raised.
-async fn gate_cards(run: &Scenario) -> i64 {
+async fn gate_cards(scene: &Scenario) -> i64 {
     sqlx::query_scalar("SELECT count(*) FROM fleet.approval_gates WHERE fleet_id = $1")
-        .bind(&run.fleet)
-        .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
+        .bind(&scene.fleet)
+        .fetch_one(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
-        .expect("the gate count must run")
+        .expect("the gate count must scene")
 }
 
 /// Wait for the durable outcome while refusing any offer for this fleet.
-async fn wait_without_offer<F, Fut>(run: &Scenario, awaited: &str, mut reached: F)
+async fn wait_without_offer<F, Fut>(scene: &Scenario, awaited: &str, mut reached: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    let observed = crate::wire::wait_without_offer(run, || {
+    let observed = crate::wire::wait_without_offer(scene, || {
         let reached = reached();
         async {
-        sqlx::query(
-            "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval '1 millisecond' \
+            sqlx::query(
+            "UPDATE runner.slots SET run_expires_at = clock_timestamp() - interval '1 millisecond' \
              WHERE fleet_id = $1",
         )
-        .bind(&run.fleet)
-        .execute(&mut *run.booted.database.acquire().await.expect("connection"))
+        .bind(&scene.fleet)
+        .execute(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
         .expect("expire the previous no-work claim");
-        afd_bus::wake::publish(&run.booted.bus, run.fleet.clone()).await;
-        reached.await
+            afd_bus::wake::publish(&scene.booted.bus, scene.fleet.clone()).await;
+            reached.await
         }
     })
     .await;
     assert!(observed, "{awaited}; inspect AFD_TEST_LOG=1");
 }
 
-async fn deny(run: &Scenario) {
+async fn deny(scene: &Scenario) {
     let actions: Vec<Uuid7> =
         sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1")
-            .bind(&run.fleet)
-            .fetch_all(&mut *run.booted.database.acquire().await.expect("connection"))
+            .bind(&scene.fleet)
+            .fetch_all(&mut *scene.booted.database.acquire().await.expect("connection"))
             .await
             .expect("actionable cards");
     assert_eq!(
@@ -101,16 +101,16 @@ async fn deny(run: &Scenario) {
         "a connected workspace gets one fleet approval card"
     );
     Inbox::new(
-        run.booted.database.clone(),
-        run.booted.bus.clone(),
-        afd_turns::Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone()),
+        scene.booted.database.clone(),
+        scene.booted.bus.clone(),
+        afd_turns::Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone()),
     )
     .resolve(
         actions.first().expect("card").as_str(),
         Decision::Denied,
         "fixture",
         "",
-        Some(run.fleet.as_str()),
+        Some(scene.fleet.as_str()),
     )
     .await
     .expect("denial");
@@ -118,50 +118,50 @@ async fn deny(run: &Scenario) {
 
 async fn refusal_drains(preended: bool) {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    connect_and_declare(&run).await;
-    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    let scene = scenario(&mut supervisor).await;
+    connect_and_declare(&scene).await;
+    let beat = crate::wire::heartbeat(&scene, &capable_beat()).await;
     assert!(
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    wait_without_offer(&run, "the gate never saw this fleet", || async {
-        gate_cards(&run).await == 1
+    wait_without_offer(&scene, "the gate never saw this fleet", || async {
+        gate_cards(&scene).await == 1
     })
     .await;
     assert_eq!(
-        gate_cards(&run).await,
+        gate_cards(&scene).await,
         1,
         "the session claim raised its approval card"
     );
-    deny(&run).await;
-    preend(&run, preended).await;
-    wait_without_offer(&run, "the denied admission never settled", || async {
+    deny(&scene).await;
+    preend(&scene, preended).await;
+    wait_without_offer(&scene, "the denied admission never settled", || async {
         sqlx::query_scalar::<_, bool>(
             "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1",
         )
-        .bind(&run.event_id)
-        .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
+        .bind(&scene.event_id)
+        .fetch_one(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
         .expect("admission settlement reads")
     })
     .await;
-    let first_label = event_column(&run, &run.event_id, LABEL).await;
+    let first_label = event_column(&scene, &scene.event_id, LABEL).await;
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
-            .bind(&run.event_id)
-            .fetch_one(&mut *run.booted.database.acquire().await.expect("database"))
+            .bind(&scene.event_id)
+            .fetch_one(&mut *scene.booted.database.acquire().await.expect("database"))
             .await
             .expect("queue state");
-    let second = run.enqueue_event(EventType::Chat).await;
-    wait_without_offer(&run, "the next denied event never settled", || async {
-        event_column(&run, &second, LABEL).await.as_deref()
+    let second = scene.enqueue_event(EventType::Chat).await;
+    wait_without_offer(&scene, "the next denied event never settled", || async {
+        event_column(&scene, &second, LABEL).await.as_deref()
             == Some(af_core::event::label::GRANT_DENIED)
     })
     .await;
-    let second_label = event_column(&run, &second, LABEL).await;
+    let second_label = event_column(&scene, &second, LABEL).await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
     assert_denied_labels(first_label.as_deref(), settled, second_label.as_deref());
 }
 
@@ -177,9 +177,9 @@ async fn terminal_history_is_settled_without_blocking_later_events() {
     refusal_drains(true).await;
 }
 
-async fn connect_credential(run: &Scenario) {
+async fn connect_credential(scene: &Scenario) {
     let vault = Vault::new(
-        run.booted.database.clone(),
+        scene.booted.database.clone(),
         Arc::new(Kek::from_hex(GOOD_KEK).expect("fixture key")),
         Entropy::new(),
     );
@@ -189,23 +189,23 @@ async fn connect_credential(run: &Scenario) {
     .expect("handle JSON");
     vault
         .create(
-            &run.workspace,
+            &scene.workspace,
             &SecretName::parse(SERVICE).expect("secret name"),
             &SecretBody::parse(&raw).expect("handle body"),
-            run.seeded_at,
+            scene.seeded_at,
         )
         .await
         .expect("existing connection");
 }
 
-async fn preend(run: &Scenario, preended: bool) {
+async fn preend(scene: &Scenario, preended: bool) {
     if preended {
         // A pre-existing terminal narrative must settle the queue without executing.
         sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1 AND event_id = $2")
-            .bind(&run.fleet).bind(&run.event_id)
+            .bind(&scene.fleet).bind(&scene.event_id)
             .bind(af_core::event::status::GATE_BLOCKED)
             .bind(af_core::event::label::GRANT_DENIED)
-            .execute(&mut *run.booted.database.acquire().await.expect("database"))
+            .execute(&mut *scene.booted.database.acquire().await.expect("database"))
             .await.expect("terminal narrative");
     }
 }

@@ -24,13 +24,13 @@ async fn uncertain_failure_notice_preserves_cause_and_offers_a_retry_before_and_
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let error = calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect_err("missing authoritative usage");
     assert_eq!(error.code(), error_code::AUTHORING_UNKNOWN);
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request.clone())
+            .call(&f.runner, &attempt.run, request.clone())
             .await
             .expect_err("unsettled usage cannot redispatch")
             .code(),
@@ -38,7 +38,7 @@ async fn uncertain_failure_notice_preserves_cause_and_offers_a_retry_before_and_
     );
     let acknowledged = f
         .drafts
-        .report(&f.runner, &attempt.lease, report())
+        .report(&f.runner, &attempt.run, report())
         .await
         .expect("unknown report acknowledgement");
     assert!(!acknowledged.settled);
@@ -50,7 +50,7 @@ async fn uncertain_failure_notice_preserves_cause_and_offers_a_retry_before_and_
     assert_failure(&f, &attempt, "retry_message").await;
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect_err("Stop never redispatches uncertain work")
             .code(),

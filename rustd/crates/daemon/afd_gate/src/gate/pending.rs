@@ -3,7 +3,7 @@
 //! # No thread waits for a human
 //!
 //! Parking an event writes a durable `fleet.approval_gates` row naming the
-//! action it is waiting on. Every later lease poll finds that row and
+//! action it is waiting on. Every later run poll finds that row and
 //! re-evaluates it. There is no blocking wait, no parked handler, and no timer
 //! — the deadline is the row's `expires_at`, stamped by the database clock
 //! when the gate was raised and compared against that same clock when a poll

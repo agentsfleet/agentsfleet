@@ -1,5 +1,5 @@
 //! A report carrying the run's memory: written before the settle commits,
-//! fenced on the lease's own token as the settle is, cut at the push's byte
+//! fenced on the run's own token as the settle is, cut at the push's byte
 //! cap, and never a reason the answer is lost.
 
 #![cfg(feature = "test-util")]
@@ -15,7 +15,7 @@ use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
 use af_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_fleet::lease::LeaseService;
+use afd_fleet::run::RunService;
 use afd_memory::Memories;
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
@@ -47,7 +47,7 @@ fn learned() -> Vec<MemoryDelta<'static>> {
     deltas(LEARNED.map(|(key, content)| (Cow::Borrowed(key), Cow::Borrowed(content))))
 }
 
-/// A processed report on `held`'s lease presenting `token`, carrying `memory`.
+/// A processed report on `held`'s run presenting `token`, carrying `memory`.
 pub(crate) fn report<'a>(
     held: &'a Held,
     token: u64,
@@ -57,7 +57,7 @@ pub(crate) fn report<'a>(
         folded_through_sequence: None,
         setup: None,
         task: None,
-        lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
+        run_id: Cow::Borrowed(held.issued.run_id.as_str()),
         event_id: Cow::Borrowed(held.event_id.as_str()),
         fencing_token: token,
         outcome: Outcome::Processed,
@@ -135,20 +135,15 @@ async fn test_report_memory_lands_before_the_settle() {
             stored(&held).await,
             held.fixtures.admission_settled(&held.event_id).await,
             settled.completed_at.is_some_and(|at| at >= held.now),
-            published.field("lease_id"),
+            published.field("run_id"),
         ),
-        (
-            remembered(),
-            true,
-            true,
-            Some(held.issued.lease_id.as_str())
-        )
+        (remembered(), true, true, Some(held.issued.run_id.as_str()))
     );
     held.fixtures.cleanup().await;
 }
 
-/// A lease the fleet has moved past writes neither its memory nor its settle:
-/// the capture is fenced on the lease's own token, as the settle is.
+/// A run the fleet has moved past writes neither its memory nor its settle:
+/// the capture is fenced on the run's own token, as the settle is.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_superseded_report_writes_no_memory() {
@@ -235,7 +230,7 @@ async fn test_failed_capture_still_settles() {
     let held = held().await;
     let (entropy, fault) = Entropy::new_mocked();
     fault.fail_next();
-    let forgetful = LeaseService {
+    let forgetful = RunService {
         task_reports: None,
         memories: Memories::new(held.fixtures.database.clone(), entropy),
         ..held.fixtures.plane()
@@ -263,7 +258,7 @@ async fn test_failed_capture_still_settles() {
                     .field("error_code")
                     .is_some_and(|code| code.starts_with("UZ-")),
                 failed.field("fleet_id"),
-                failed.field("lease_id"),
+                failed.field("run_id"),
             ),
             stored(&held).await,
         ),
@@ -272,7 +267,7 @@ async fn test_failed_capture_still_settles() {
             (
                 true,
                 Some(held.fleet.as_str()),
-                Some(held.issued.lease_id.as_str())
+                Some(held.issued.run_id.as_str())
             ),
             Vec::new()
         )
@@ -282,7 +277,7 @@ async fn test_failed_capture_still_settles() {
 }
 
 /// A repeated report, whose first post wrote the run's memory and settled the
-/// lease, skips its capture quietly: the lease is no longer live, the answer
+/// run, skips its capture quietly: the run is no longer live, the answer
 /// is the repeat's, and the store holds the memory once.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -323,16 +318,13 @@ async fn test_a_repeated_report_skips_its_memory_capture() {
     assert_eq!(
         (
             (repeated.repeated, repeated.completed_at),
-            (skipped.field("fleet_id"), skipped.field("lease_id")),
+            (skipped.field("fleet_id"), skipped.field("run_id")),
             failed,
             stored(&held).await,
         ),
         (
             (true, None),
-            (
-                Some(held.fleet.as_str()),
-                Some(held.issued.lease_id.as_str())
-            ),
+            (Some(held.fleet.as_str()), Some(held.issued.run_id.as_str())),
             0,
             remembered(),
         )

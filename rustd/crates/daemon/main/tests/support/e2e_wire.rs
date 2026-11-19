@@ -29,7 +29,7 @@ pub(crate) const UNKNOWN_TOKEN: &str =
 
 /// The memory this run remembers, and the key the shape assertion reads back.
 pub(crate) const MEMORY_KEY: &str = "e2e-observation";
-pub(crate) const MEMORY_CONTENT: &str = "the runner completed a lease against the Rust daemon";
+pub(crate) const MEMORY_CONTENT: &str = "the runner completed a run against the Rust daemon";
 pub(crate) const MEMORY_CATEGORY: &str = "core";
 
 /// Cumulative token counts the report settles against.
@@ -44,7 +44,7 @@ pub(crate) const OUTPUT_TOKENS: u32 = 4_000;
 /// The beat a stock runner sends once its startup probe has answered.
 ///
 /// The capability report is NOT optional decoration. A freshly enrolled row
-/// carries no probe result, so its verdict reads degraded and `Plane::lease`
+/// carries no probe result, so its verdict reads degraded and `Plane::run`
 /// answers no-work with `"the runner's verdict is degraded or unreadable"` —
 /// fail-closed, and correct: a host that has not proven it can enforce the
 /// assigned sandbox must not be handed work. A runner therefore beats its
@@ -65,47 +65,47 @@ pub(crate) fn capable_beat() -> Value {
     })
 }
 
-/// A lease payload's identifier and fence, which every verb after the poll
+/// A run payload's identifier and fence, which every verb after the poll
 /// echoes.
 ///
 /// Read together because they are only ever used together, and a helper that
-/// answered one of them would be a second place for a caller to pair a lease
+/// answered one of them would be a second place for a caller to pair a run
 /// with the wrong fence.
-pub(crate) fn claim(lease: &Value) -> (String, u64) {
+pub(crate) fn claim(run: &Value) -> (String, u64) {
     (
-        field(lease, "lease_id")
+        field(run, "run_id")
             .as_str()
-            .expect("a lease carries its identifier")
+            .expect("a run carries its identifier")
             .to_owned(),
-        field(lease, "fencing_token")
+        field(run, "fencing_token")
             .as_u64()
-            .expect("a lease carries its fence"),
+            .expect("a run carries its fence"),
     )
 }
 
 /// Read the pushed offer for this scenario's event through the production runner downlink.
-pub(crate) async fn wait_for_seeded_offer(run: &Scenario) -> (String, u64) {
-    wait_for_offer(run, &run.event_id).await
+pub(crate) async fn wait_for_seeded_offer(scene: &Scenario) -> (String, u64) {
+    wait_for_offer(scene, &scene.event_id).await
 }
 
-/// Wait for the requested event without issuing another lease request.
-pub(crate) async fn wait_for_offer(run: &Scenario, event_id: &Uuid7) -> (String, u64) {
-    let client = run.native_session().await;
+/// Wait for the requested event without issuing another run request.
+pub(crate) async fn wait_for_offer(scene: &Scenario, event_id: &Uuid7) -> (String, u64) {
+    let client = scene.native_session().await;
     let reading = async {
         let mut elsewhere = Vec::new();
         loop {
             let frame = client.offer().await.expect("the native owner remains live");
             let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
             let af_wire::protocol::Down::Offer {
-                lease: af_wire::lease::TaggedLease::Fleet(lease),
+                run: af_wire::run::TaggedRun::Fleet(run),
             } = message
             else {
                 panic!("this fleet fixture received an authoring offer")
             };
-            if lease.event.event_id == event_id.as_str() {
-                return (lease.lease_id.to_string(), lease.fencing_token);
+            if run.event.event_id == event_id.as_str() {
+                return (run.run_id.to_string(), run.fencing_token);
             }
-            elsewhere.push(lease.event.fleet_id.to_string());
+            elsewhere.push(run.event.fleet_id.to_string());
             assert!(
                 elsewhere.len() <= OFFER_LIMIT,
                 "{}",
@@ -119,10 +119,11 @@ pub(crate) async fn wait_for_offer(run: &Scenario, event_id: &Uuid7) -> (String,
 }
 
 /// Record capability and policy through the native heartbeat command.
-pub(crate) async fn heartbeat(run: &Scenario, body: &Value) -> Value {
+pub(crate) async fn heartbeat(scene: &Scenario, body: &Value) -> Value {
     let bytes = serde_json::to_vec(body).expect("the heartbeat fixture encodes");
     let request = serde_json::from_slice(&bytes).expect("the heartbeat fixture is current");
-    run.native_session()
+    scene
+        .native_session()
         .await
         .heartbeat(&request)
         .await
@@ -130,9 +131,9 @@ pub(crate) async fn heartbeat(run: &Scenario, body: &Value) -> Value {
 }
 
 /// Preserve the native report response or the daemon's coded refusal.
-pub(crate) async fn report(run: &Scenario, body: &Value) -> afr_supervisor::Result<Value> {
+pub(crate) async fn report(scene: &Scenario, body: &Value) -> afr_supervisor::Result<Value> {
     let bytes = serde_json::to_vec(body).expect("the report fixture encodes");
-    let response = run.native_session().await.report(&bytes).await?;
+    let response = scene.native_session().await.report(&bytes).await?;
     Ok(serde_json::to_value(response).expect("the report response encodes"))
 }
 
@@ -157,12 +158,12 @@ fn never_offered(elsewhere: &[String]) -> String {
 }
 
 /// Observe a durable refusal while asserting the runner receives no offer for this fleet.
-pub(crate) async fn wait_without_offer<F, Fut>(run: &Scenario, mut ended: F) -> bool
+pub(crate) async fn wait_without_offer<F, Fut>(scene: &Scenario, mut ended: F) -> bool
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    let client = run.native_session().await;
+    let client = scene.native_session().await;
     let waiting = async {
         loop {
             if ended().await {
@@ -176,8 +177,8 @@ where
         frame = client.offer() => {
             let frame = frame.expect("the native owner remains live");
             let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
-            if let af_wire::protocol::Down::Offer { lease: af_wire::lease::TaggedLease::Fleet(lease) } = message {
-                assert_ne!(lease.event.fleet_id, run.fleet.as_str(), "a refused fleet must not be issued");
+            if let af_wire::protocol::Down::Offer { run: af_wire::run::TaggedRun::Fleet(run) } = message {
+                assert_ne!(run.event.fleet_id, scene.fleet.as_str(), "a refused fleet must not be issued");
             }
             false
         },
@@ -191,15 +192,15 @@ where
 /// sends it TWICE — three literals of eleven fields is three chances for the
 /// cumulative counts to disagree and for the dedup assertion to be measuring a
 /// different report rather than the same one.
-pub(crate) fn report_body(lease_id: &str, event_id: &Uuid7, fence: u64) -> Value {
+pub(crate) fn report_body(run_id: &str, event_id: &Uuid7, fence: u64) -> Value {
     json!({
-        "lease_id": lease_id,
+        "run_id": run_id,
         "event_id": event_id,
         "fencing_token": fence,
         "outcome": "processed",
         "failure_reason": null,
         "failure_detail": "",
-        "response_text": "the fixture run produced this",
+        "response_text": "the fixture scene produced this",
         "tokens": u64::from(INPUT_TOKENS + CACHED_INPUT_TOKENS + OUTPUT_TOKENS),
         "requests": [{
             "seq": 1, "at": af_core::clock::now().to_string(),
@@ -208,14 +209,14 @@ pub(crate) fn report_body(lease_id: &str, event_id: &Uuid7, fence: u64) -> Value
             "output_tokens": OUTPUT_TOKENS,
         }],
         "telemetry": {"time_to_first_token_ms": 42, "wall_ms": 1_500},
-        "checkpoint": {"last_event_id": event_id, "last_response": "the fixture run produced this"},
+        "checkpoint": {"last_event_id": event_id, "last_response": "the fixture scene produced this"},
     })
 }
 
 /// A `GET` carrying the scenario's runner credential.
-pub(crate) async fn get(http: &reqwest::Client, run: &Scenario, path: &str) -> reqwest::Response {
-    http.get(format!("{}{path}", run.base))
-        .bearer_auth(&run.token)
+pub(crate) async fn get(http: &reqwest::Client, scene: &Scenario, path: &str) -> reqwest::Response {
+    http.get(format!("{}{path}", scene.base))
+        .bearer_auth(&scene.token)
         .send()
         .await
         .expect("the booted daemon answers")
@@ -230,12 +231,12 @@ pub(crate) async fn get(http: &reqwest::Client, run: &Scenario, path: &str) -> r
 /// convenience. `serde_json` is already here.
 pub(crate) async fn post(
     http: &reqwest::Client,
-    run: &Scenario,
+    scene: &Scenario,
     path: &str,
     body: &Value,
 ) -> reqwest::Response {
-    http.post(format!("{}{path}", run.base))
-        .bearer_auth(&run.token)
+    http.post(format!("{}{path}", scene.base))
+        .bearer_auth(&scene.token)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(serde_json::to_vec(body).expect("the fixture body serializes"))
         .send()

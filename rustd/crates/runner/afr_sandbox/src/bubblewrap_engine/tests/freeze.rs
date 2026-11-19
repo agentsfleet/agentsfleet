@@ -1,5 +1,5 @@
 //! Freezing and thawing a prepared sandbox: the engine hands both to its
-//! lease cgroup's freezer, off the async runtime.
+//! run cgroup's freezer, off the async runtime.
 #![expect(
     clippy::unwrap_used,
     reason = "a test fails loudly on a fake host it cannot build"
@@ -8,14 +8,14 @@
 use std::fs;
 use std::os::unix::fs::MetadataExt as _;
 
-use super::support::{FakeHost, SLEEPER, request, serve_leases};
+use super::support::{FakeHost, SLEEPER, request, serve_runs};
 use crate::bubblewrap_engine::names::Names;
 use crate::engine::Engine;
 use crate::error::EgressRefusal;
 use crate::network::{Allowlist, Network};
 
-/// The lease the test prepares.
-const LEASE: &str = "lease-21";
+/// The run the test prepares.
+const RUN: &str = "run-21";
 /// Where the kernel reports a settled freeze. The fake host's cgroup is a
 /// plain directory, so the test writes what the kernel would.
 const EVENTS: &str = "cgroup.events";
@@ -23,28 +23,28 @@ const EVENTS: &str = "cgroup.events";
 const FREEZE: &str = "cgroup.freeze";
 
 #[tokio::test]
-async fn test_a_prepared_sandbox_freezes_and_thaws_through_its_lease_cgroup() {
+async fn test_a_prepared_sandbox_freezes_and_thaws_through_its_run_cgroup() {
     let host = FakeHost::new(SLEEPER);
-    let server = serve_leases(host.config.state_dir.clone());
-    let sandbox = host.engine().prepare(request(LEASE)).await.unwrap();
-    let lease_cgroup = host.config.cgroup_root.join(LEASE);
+    let server = serve_runs(host.config.state_dir.clone());
+    let sandbox = host.engine().prepare(request(RUN)).await.unwrap();
+    let run_cgroup = host.config.cgroup_root.join(RUN);
 
-    fs::write(lease_cgroup.join(EVENTS), "populated 1\nfrozen 1\n").unwrap();
+    fs::write(run_cgroup.join(EVENTS), "populated 1\nfrozen 1\n").unwrap();
     let frozen = sandbox.freeze().await;
-    fs::write(lease_cgroup.join("tenant").join(EVENTS), "populated 1\n").unwrap();
+    fs::write(run_cgroup.join("tenant").join(EVENTS), "populated 1\n").unwrap();
     assert!(
         !sandbox.recovery_quiescent().await.unwrap(),
         "a frozen detached process still owns files"
     );
-    fs::write(lease_cgroup.join("tenant").join(EVENTS), "populated 0\n").unwrap();
+    fs::write(run_cgroup.join("tenant").join(EVENTS), "populated 0\n").unwrap();
     assert!(
         sandbox.recovery_quiescent().await.unwrap(),
         "the resident executor alone is allowed"
     );
-    let asked_to_freeze = fs::read_to_string(lease_cgroup.join(FREEZE)).unwrap();
-    fs::write(lease_cgroup.join(EVENTS), "populated 1\nfrozen 0\n").unwrap();
+    let asked_to_freeze = fs::read_to_string(run_cgroup.join(FREEZE)).unwrap();
+    fs::write(run_cgroup.join(EVENTS), "populated 1\nfrozen 0\n").unwrap();
     let thawed = sandbox.thaw().await;
-    let asked_to_thaw = fs::read_to_string(lease_cgroup.join(FREEZE)).unwrap();
+    let asked_to_thaw = fs::read_to_string(run_cgroup.join(FREEZE)).unwrap();
     let _left = sandbox.destroy().await;
     server.abort();
 
@@ -53,7 +53,7 @@ async fn test_a_prepared_sandbox_freezes_and_thaws_through_its_lease_cgroup() {
     assert_eq!(
         (asked_to_freeze.as_str(), asked_to_thaw.as_str()),
         ("1", "0"),
-        "the freeze and the thaw each reach the lease's own cgroup"
+        "the freeze and the thaw each reach the run's own cgroup"
     );
 }
 
@@ -62,8 +62,8 @@ async fn test_a_prepared_sandbox_freezes_and_thaws_through_its_lease_cgroup() {
 #[tokio::test]
 async fn test_a_sandbox_built_to_no_allowlist_refuses_new_addresses() {
     let host = FakeHost::new(SLEEPER);
-    let server = serve_leases(host.config.state_dir.clone());
-    let mut sandbox = host.engine().prepare(request(LEASE)).await.unwrap();
+    let server = serve_runs(host.config.state_dir.clone());
+    let mut sandbox = host.engine().prepare(request(RUN)).await.unwrap();
 
     let refused = sandbox.reallow(&Allowlist::new(Vec::new()).unwrap()).await;
     let _left = sandbox.destroy().await;

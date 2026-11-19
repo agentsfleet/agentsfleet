@@ -19,7 +19,7 @@ async fn foreign_host_wrong_capability_and_attempt_binding_create_no_dispatch() 
     let request = fixture::request(&attempt);
     assert_eq!(
         calls
-            .call(&mint(), &attempt.lease, request.clone())
+            .call(&mint(), &attempt.run, request.clone())
             .await
             .expect_err("foreign runner")
             .code(),
@@ -29,7 +29,7 @@ async fn foreign_host_wrong_capability_and_attempt_binding_create_no_dispatch() 
     wrong.capability_token = "b".repeat(43);
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, wrong)
+            .call(&f.runner, &attempt.run, wrong)
             .await
             .expect_err("wrong capability")
             .code(),
@@ -39,7 +39,7 @@ async fn foreign_host_wrong_capability_and_attempt_binding_create_no_dispatch() 
     wrong.attempt_id = mint().to_string();
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, wrong)
+            .call(&f.runner, &attempt.run, wrong)
             .await
             .expect_err("wrong attempt")
             .code(),
@@ -59,7 +59,7 @@ async fn credential_revocation_denies_completed_result_replay() {
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("saved result");
     sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
@@ -69,7 +69,7 @@ async fn credential_revocation_denies_completed_result_replay() {
         .expect("revoke selected owner model");
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect_err("replay reauthorizes")
             .code(),
@@ -100,7 +100,7 @@ async fn losing_tool_support_after_admission_prevents_physical_dispatch() {
         .await
         .expect("remove proposal tool support after admission");
     let error = calls
-        .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+        .call(&f.runner, &attempt.run, fixture::request(&attempt))
         .await
         .expect_err("the current model must still carry proposals");
     assert_eq!(error.code(), error_code::AUTHORING_MODEL);

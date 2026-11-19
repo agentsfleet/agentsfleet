@@ -5,7 +5,7 @@
 //! once over HTTP ([`HttpRunnerApi`]). [`ControlPlane`] is the typed face the
 //! duties call: it builds each path from `af_wire::paths`, serializes the
 //! body, and hands back the reply as a [`Body`] that decodes on demand into a
-//! wire type borrowing from it, so a lease is parsed without copying a field.
+//! wire type borrowing from it, so a run is parsed without copying a field.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -25,7 +25,7 @@ use crate::error::{self, Result};
 
 mod authoring;
 mod http;
-mod lease_verbs;
+mod run_verbs;
 pub(crate) mod stream;
 mod task;
 mod turn_checkpoint;
@@ -46,7 +46,7 @@ pub(crate) struct Call {
     /// What the request does.
     pub(crate) verb: Verb,
     /// The path under the daemon's base address. A fixed route borrows its
-    /// constant; only a path naming a lease or a fleet is built.
+    /// constant; only a path naming a run or a fleet is built.
     pub(crate) path: Cow<'static, str>,
     /// The JSON body; a read has none.
     pub(crate) body: Option<Bytes>,
@@ -64,10 +64,10 @@ pub(crate) trait RunnerApi: Send + Sync + fmt::Debug {
 
 /// A successful reply, decoded on demand, and zeroed when dropped.
 ///
-/// A lease reply holds the run's policy, the fleet's memory window and its
+/// A run reply holds the run's policy, the fleet's memory window and its
 /// earlier turns in clear, and the run borrows all three from these bytes for
-/// as long as the lease lasts; zeroing them on drop means the copy the runner
-/// owns does not outlive the lease in freed memory. The transport's own
+/// as long as the run lasts; zeroing them on drop means the copy the runner
+/// owns does not outlive the run in freed memory. The transport's own
 /// buffer, handed over here, is the client's and is not covered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Body {
@@ -132,8 +132,8 @@ impl ControlPlane {
     }
 
     /// Posts one body of finished calls' full records, already encoded.
-    pub(crate) async fn tool_calls(&self, lease_id: &Uuid7, body: Bytes) -> Result<()> {
-        let path = lease_path(lease_id, paths::LEASE_TOOL_CALLS_SUFFIX);
+    pub(crate) async fn tool_calls(&self, run_id: &Uuid7, body: Bytes) -> Result<()> {
+        let path = run_path(run_id, paths::RUN_TOOL_CALLS_SUFFIX);
         self.send(Verb::Records, path, Some(body)).await.map(drop)
     }
 
@@ -142,7 +142,7 @@ impl ControlPlane {
         self.send(Verb::Hydrate, memory_path(fleet_id), None).await
     }
 
-    /// Writes a fleet's memory back, fenced by the lease's token.
+    /// Writes a fleet's memory back, fenced by the run's token.
     pub(crate) async fn capture(
         &self,
         fleet_id: &Uuid7,
@@ -153,7 +153,7 @@ impl ControlPlane {
             .map(drop)
     }
 
-    /// Searches a fleet's memory past the window, fenced by the lease's token.
+    /// Searches a fleet's memory past the window, fenced by the run's token.
     pub(crate) async fn recall(
         &self,
         fleet_id: &Uuid7,
@@ -167,7 +167,7 @@ impl ControlPlane {
         self.send_json(Verb::Recall, path, request).await
     }
 
-    /// Mints a scoped credential for a held lease.
+    /// Mints a scoped credential for a held run.
     pub(crate) async fn mint(&self, request: &MintCredentialRequest<'_>) -> Result<Body> {
         let path = Cow::Borrowed(paths::RUNNER_CREDENTIALS_MINT);
         self.send_json(Verb::Mint, path, request).await
@@ -216,9 +216,9 @@ impl ControlPlane {
     }
 }
 
-/// A path under one held lease.
-fn lease_path(lease_id: &Uuid7, suffix: &str) -> Cow<'static, str> {
-    Cow::Owned(format!("{}/{lease_id}/{suffix}", paths::RUNNER_LEASES))
+/// A path under one held run.
+fn run_path(run_id: &Uuid7, suffix: &str) -> Cow<'static, str> {
+    Cow::Owned(format!("{}/{run_id}/{suffix}", paths::RUNNER_RUNS))
 }
 
 /// One fleet's memory.

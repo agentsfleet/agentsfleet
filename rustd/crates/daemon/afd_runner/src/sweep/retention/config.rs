@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::Deserialize;
 
-/// Retains settled history longer than the protocol's maximum lease runtime.
+/// Retains settled history longer than the protocol's maximum run runtime.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct RetentionSettings {
@@ -13,7 +13,7 @@ pub struct RetentionSettings {
     /// Seconds between cycles while a backlog remains.
     #[garde(range(min = 1, max = self.idle_interval_seconds))]
     pub backlog_interval_seconds: u64,
-    /// Whole days retained after settlement; always exceeds the twelve-hour lease ceiling.
+    /// Whole days retained after settlement; always exceeds the twelve-hour run ceiling.
     #[garde(range(min = 1, max = 3650))]
     pub keep_days: u32,
     /// Maximum affected rows in each statement.

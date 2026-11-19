@@ -1,6 +1,6 @@
 //! The spans a run is traced in, in OpenTelemetry's `GenAI` vocabulary and
 //! under the runner's own scope, so a trace says which process opened each
-//! one. They nest inside the supervisor's lease span, which names the runner.
+//! one. They nest inside the supervisor's run span, which names the runner.
 //!
 //! `invoke_agent` is the run, `chat` one model turn and `execute_tool` one
 //! call. The keys are `af_observability::semconv`'s, spelled nowhere else.

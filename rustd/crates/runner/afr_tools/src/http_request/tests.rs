@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use af_core::test_util::trace::Capture;
 use af_egress::error::one_of_each_kind;
-use af_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, LEASE_ID};
+use af_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, RUN_ID};
 use af_egress::testing::{RecordingTransport, Sent, inbound};
 use af_egress::{Inbound, Outbound, RESPONSE_MAX_BYTES, Transport};
 use guffbolt::ToolOutput;
@@ -13,7 +13,7 @@ use super::HttpRequest;
 use crate::egress::SharedTransport;
 use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{HOUR, MINTED, Run, call, replying};
+use crate::testing::{HOUR, MINTED, RunFixture, call, replying};
 
 const REFS: &str = "https://api.github.com/repos/acme/widgets/git/refs";
 /// The body every upstream in this suite answers with.
@@ -34,10 +34,10 @@ async fn request_through(
     transport: SharedTransport,
     arguments: Value,
 ) -> ToolOutput {
-    let run = Run::new(read_only);
+    let run = RunFixture::new(read_only);
     let tool = Generic::sending(HttpRequest, transport);
-    let lease = run.lease();
-    call(tool.as_ref(), &lease, arguments).await
+    let this_run = run.run();
+    call(tool.as_ref(), &this_run, arguments).await
 }
 
 #[tokio::test]
@@ -51,7 +51,7 @@ async fn test_http_request_refuses_unlisted_host() {
     );
     assert_eq!(sent, Vec::new());
     let refused = capture.only("tool_refused");
-    assert_eq!(refused.field("lease_id"), Some(LEASE_ID));
+    assert_eq!(refused.field("run_id"), Some(RUN_ID));
     assert_eq!(refused.field("tool"), Some("http_request"));
     assert_eq!(refused.field("error_code"), Some("host_not_allowed"));
 }
@@ -144,20 +144,20 @@ async fn test_placeholder_substituted_only_in_authorization() {
 #[tokio::test]
 async fn test_mintable_credential_minted_once() {
     let capture = Capture::install();
-    let run = Run::new(false);
+    let run = RunFixture::new(false);
     let (transport, sent) = replying(200, "[]");
     let tool = Generic::sending(HttpRequest, transport);
-    let lease = run.lease();
+    let this_run = run.run();
     let read = json!({"url": "https://api.github.com/repos/acme/widgets/pulls", "headers": {"Authorization": GITHUB_AUTH}});
 
     for _call in 0..3 {
-        let output = call(tool.as_ref(), &lease, read.clone()).await;
+        let output = call(tool.as_ref(), &this_run, read.clone()).await;
         assert_eq!(output.error_code, None);
     }
     assert_eq!(run.mint.asked(), 1);
 
     run.clock.advance(HOUR);
-    let output = call(tool.as_ref(), &lease, read).await;
+    let output = call(tool.as_ref(), &this_run, read).await;
     assert_eq!(output.error_code, None);
     assert_eq!(run.mint.asked(), 2);
     assert_eq!(sent.try_iter().count(), 4);
@@ -168,7 +168,7 @@ async fn test_mintable_credential_minted_once() {
     assert!(
         minted
             .iter()
-            .all(|event| event.field("lease_id") == Some(LEASE_ID))
+            .all(|event| event.field("run_id") == Some(RUN_ID))
     );
     assert!(
         (capture.events().iter()).all(|event| event.fields.values().all(|v| !v.contains(MINTED))),
@@ -210,15 +210,15 @@ async fn should_hand_a_transport_failure_back_as_upstream_unreachable() {
 
 #[tokio::test]
 async fn should_mask_a_minted_token_the_upstream_echoes() {
-    let run = Run::new(false);
+    let run = RunFixture::new(false);
     let (transport, _sent) =
         RecordingTransport::answering(|_outbound| Ok(inbound(200, &format!("token={MINTED}"))));
     let tool = Generic::sending(HttpRequest, Arc::new(transport));
-    let lease = run.lease();
+    let this_run = run.run();
 
     let output = call(
         tool.as_ref(),
-        &lease,
+        &this_run,
         json!({"url": "https://api.github.com/repos/acme/widgets/", "headers": {"Authorization": GITHUB_AUTH}}),
     )
     .await;
@@ -275,7 +275,7 @@ async fn should_refuse_arguments_the_schema_does_not_name() {
 }
 
 /// A transport that says when a request reaches it and answers only when
-/// released, so a test can look at the lease while the request is in flight.
+/// released, so a test can look at the run while the request is in flight.
 #[derive(Debug, Default)]
 struct Gated {
     sending: Notify,
@@ -292,17 +292,17 @@ impl Transport for Gated {
 }
 
 /// The guard is held to admit and mint, never across the send: a slow
-/// upstream leaves every other call of the lease free to admit its own.
+/// upstream leaves every other call of the run free to admit its own.
 #[tokio::test]
 async fn should_leave_the_guard_free_while_a_request_is_in_flight() {
-    let run = Run::new(false);
+    let run = RunFixture::new(false);
     let gated = Arc::new(Gated::default());
     let transport: SharedTransport = Arc::clone(&gated) as SharedTransport;
     let tool = Generic::sending(HttpRequest, transport);
-    let lease = run.lease();
+    let this_run = run.run();
     let probe = async {
         gated.sending.notified().await;
-        let free = lease.egress.try_lock().is_ok();
+        let free = this_run.egress.try_lock().is_ok();
         gated.release.notify_one();
         free
     };
@@ -310,7 +310,7 @@ async fn should_leave_the_guard_free_while_a_request_is_in_flight() {
     let (output, free) = tokio::join!(
         call(
             tool.as_ref(),
-            &lease,
+            &this_run,
             json!({"url": "https://api.github.com/repos/acme/widgets/"})
         ),
         probe

@@ -47,7 +47,7 @@ pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
     } else {
         None
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     guard::scope(&mut tx, &scope).await?;
     let _task: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_TASK)

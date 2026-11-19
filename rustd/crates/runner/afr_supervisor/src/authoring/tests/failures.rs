@@ -1,6 +1,6 @@
 //! Uncertain physical calls are never retried or described as zero-cost success.
 
-use super::{ack, json, lease, result, rig, run};
+use super::{ack, json, payload, result, rig, run};
 use crate::{client::Verb, test_support::Answer};
 
 #[tokio::test]
@@ -10,7 +10,7 @@ async fn an_unavailable_model_route_is_called_once_and_reports_unknown_usage() {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     assert_eq!(
         calls
             .iter()
@@ -39,7 +39,7 @@ async fn a_changed_dispatch_identity_cannot_publish_the_returned_private_text() 
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let configured = lease();
+    let configured = payload();
     let sending = Box::pin(
         rig.lessee
             .author(&configured, tokio_util::sync::CancellationToken::new()),
@@ -90,7 +90,7 @@ async fn proposed(activity: fn() -> Answer) -> (usize, serde_json::Value) {
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (calls, report) = run(&mut rig, lease()).await;
+    let (calls, report) = run(&mut rig, payload()).await;
     let proposals = calls
         .iter()
         .filter(|call| call.verb == Verb::AuthoringActivity)

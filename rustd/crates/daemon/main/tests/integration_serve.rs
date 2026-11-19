@@ -40,7 +40,7 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
-        panic!("{knob} is unset — run these through `make test-integration-rustd`")
+        panic!("{knob} is unset — scene these through `make test-integration-rustd`")
     })
 }
 
@@ -48,7 +48,7 @@ fn lane(knob: &str) -> String {
 fn lane_environment() -> MapEnv {
     lane_environment_on(
         &afd_bus::test_util::lane_url()
-            .expect("the lane's NATS seeds: run through make test-integration-rustd"),
+            .expect("the lane's NATS seeds: scene through make test-integration-rustd"),
     )
 }
 

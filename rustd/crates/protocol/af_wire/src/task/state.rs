@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskState {
-    /// Eligible for one existing admission/lease attempt.
+    /// Eligible for one existing admission/run attempt.
     Ready,
-    /// A current lease is advancing this objective.
+    /// A current run is advancing this objective.
     Running,
     /// An external dependency is recorded and compute has been released.
     Waiting,

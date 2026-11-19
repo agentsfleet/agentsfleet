@@ -134,7 +134,7 @@ async fn report_groups_equal_the_settled_ledger_for_a_seeded_month() {
             ..Filter::default()
         },
         Filter {
-            work_type: Some(work::FLEET_LEASE),
+            work_type: Some(work::FLEET_RUN),
             ..Filter::default()
         },
     ] {

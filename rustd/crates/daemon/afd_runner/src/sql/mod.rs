@@ -1,10 +1,10 @@
 //! Every statement the runner plane runs, and the stored vocabulary it writes.
 //!
 //! `runner.runners` and `runner.events` are this crate's tables. The one
-//! writer OUTSIDE it is `afd_fleet::lease::finalize`, which records a
-//! `lease_released` runner-event when a lease ends — it reads [`meta`] and
+//! writer OUTSIDE it is `afd_fleet::run::finalize`, which records a
+//! `run_released` runner-event when a run ends — it reads [`meta`] and
 //! [`event_type`] from here, because a key spelled inline at a second write
-//! site is how a consumer's `metadata->>'lease_id'` silently stops matching.
+//! site is how a consumer's `metadata->>'run_id'` silently stops matching.
 //!
 //! Each statement is a `.sql` file beside its module, loaded with
 //! `include_str!`, schema-qualified, and stamped by the database's clock.
@@ -12,7 +12,7 @@
 use jiff::Timestamp;
 
 pub use afd_state::sql::{
-    FLEET_STATUS_ACTIVE, LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
+    FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE, RUN_STATUS_EXPIRED, RUN_STATUS_REPORTED,
     RUNNER_STATUS_ACTIVE, RUNNER_STATUS_DRAINED, RUNNER_STATUS_DRAINING,
 };
 
@@ -39,7 +39,7 @@ pub mod sweep;
 pub mod meta {
     /// The non-secret catalogue identity assigned for decision calls.
     pub const DECISION_MODEL_ID: &str = "decision_model_id";
-    /// Whether the stored assignment permits new durable task leases.
+    /// Whether the stored assignment permits new durable task runs.
     pub const DURABLE_TASKS_ENABLED: &str = "durable_tasks_enabled";
     /// The authenticated person who requested an operator mutation.
     pub const ACTOR_ID: &str = "actor_id";
@@ -59,17 +59,17 @@ pub mod meta {
     pub const FROM_STATUS: &str = "from_status";
     /// The status it moved INTO.
     pub const TO_STATUS: &str = "to_status";
-    /// The lease a `lease_acquired` row is about.
-    pub const LEASE_ID: &str = "lease_id";
-    /// The fleet that lease claimed.
+    /// The run a `run_acquired` row is about.
+    pub const RUN_ID: &str = "run_id";
+    /// The fleet that run claimed.
     pub const FLEET_ID: &str = "fleet_id";
-    /// The event the lease is executing.
+    /// The event the run is executing.
     ///
     /// Spelled `event_id` in the metadata even though the enclosing row is
     /// itself a runner EVENT — the key names the agentsfleet event, not this
     /// audit row.
     pub const AGENTSFLEET_EVENT_ID: &str = "event_id";
-    /// Whether the lease was a fresh pull or a reclaim.
+    /// Whether the run was a fresh pull or a reclaim.
     pub const KIND: &str = "kind";
 }
 
@@ -84,21 +84,21 @@ pub mod event_type {
     pub const RUNNER_REGISTERED: &str = "runner_registered";
     /// A runner was seen after being absent, or for the first time.
     pub const RUNNER_ONLINE: &str = "runner_online";
-    /// A runner took a lease.
-    pub const LEASE_ACQUIRED: &str = "lease_acquired";
+    /// A runner took a run.
+    pub const RUN_ACQUIRED: &str = "run_acquired";
     /// A runner stopped beating for longer than it may.
     ///
     /// Written by the liveness sweep, once per stale episode — the row's
     /// `last_seen_at` is unique per runner, so an hour of silence is one row
     /// rather than one row every heartbeat interval.
     pub const RUNNER_OFFLINE: &str = "runner_offline";
-    /// A draining runner finished its last lease.
+    /// A draining runner finished its last run.
     pub const RUNNER_DRAINED: &str = "runner_drained";
-    /// A runner gave a lease back, having reported on it.
+    /// A runner gave a run back, having reported on it.
     ///
-    /// The closing bracket of [`LEASE_ACQUIRED`]: the two are written by the
-    /// two ends of one lease's life, and an operator reading a runner's history
-    /// pairs them. Only the REPORT path writes this — a lease that lapsed is
+    /// The closing bracket of [`RUN_ACQUIRED`]: the two are written by the
+    /// two ends of one run's life, and an operator reading a runner's history
+    /// pairs them. Only the REPORT path writes this — a run that lapsed is
     /// expired by the reclaim sweep and never released.
-    pub const LEASE_RELEASED: &str = "lease_released";
+    pub const RUN_RELEASED: &str = "run_released";
 }

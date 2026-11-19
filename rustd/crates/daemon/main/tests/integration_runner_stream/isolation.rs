@@ -25,6 +25,6 @@ pub(super) async fn open(
     let api = database.api_url();
     let mut settings = vec![("DATABASE_URL_API", api.as_str())];
     settings.extend_from_slice(extra);
-    let run = scenario_with(supervisor, None, &settings, e2e_seed::FLEET_CONFIG_JSON).await;
-    (database, owner, run)
+    let scene = scenario_with(supervisor, None, &settings, e2e_seed::FLEET_CONFIG_JSON).await;
+    (database, owner, scene)
 }

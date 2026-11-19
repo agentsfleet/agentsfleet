@@ -18,13 +18,13 @@ pub(super) struct BeforePublish {
 impl Bus for BeforePublish {
     async fn publish(&self, subject: &Subject, payload: &str) -> Result<()> {
         if matches!(subject, Subject::RunnerCommand(_))
-            && let Ok(Command::Cancel { lease_id }) = serde_json::from_str(payload)
+            && let Ok(Command::Cancel { run_id }) = serde_json::from_str(payload)
         {
             let visible = async {
                 let visible = sqlx::query_scalar(
-                    "SELECT cancel_requested_at IS NOT NULL FROM runner.leases WHERE id = $1",
+                    "SELECT cancel_requested_at IS NOT NULL FROM runner.runs WHERE id = $1",
                 )
-                .bind(lease_id)
+                .bind(run_id)
                 .fetch_one(&mut *self.database.acquire().await?)
                 .await?;
                 Ok::<_, Box<dyn std::error::Error + Send + Sync>>(visible)

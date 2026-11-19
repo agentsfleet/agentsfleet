@@ -1,4 +1,4 @@
-//! One §6 run: the Rust runner's real loop, over the hosted catalog, leasing
+//! One §6 run: the Rust runner's real loop, over the hosted catalog, running
 //! one event of a corpus fleet's scenario until the daemon has settled it.
 //!
 //! The loop's egress client is the HTTPS fake's routed one, so every
@@ -27,7 +27,7 @@ use crate::fake_model::{Asked, FakeModel};
 use crate::https::{Seen, Upstream};
 use crate::reads::event_column;
 
-/// How long one run is given to lease, run and settle its event.
+/// How long one run is given to run, run and settle its event.
 const SETTLE_DEADLINE: Duration = Duration::from_secs(90);
 /// How often the event row is read while waiting.
 const SETTLE_POLL: Duration = Duration::from_millis(250);
@@ -51,19 +51,19 @@ pub(crate) struct Settled {
 /// `model` and every upstream as `upstream`, and stops the runner once the
 /// event settles.
 pub(crate) async fn run_event(
-    run: &Scenario,
+    scene: &Scenario,
     event_id: &Uuid7,
     upstream: &Upstream,
     model: FakeModel,
 ) -> Settled {
-    run_event_from(run, event_id, upstream, model, None).await
+    run_event_from(scene, event_id, upstream, model, None).await
 }
 
 /// [`run_event`], the runner fetching the fleet's bound repositories from
 /// `origin` (a `file://` URL ending in `/`) rather than from GitHub, when one
 /// is given.
 pub(crate) async fn run_event_from(
-    run: &Scenario,
+    scene: &Scenario,
     event_id: &Uuid7,
     upstream: &Upstream,
     model: FakeModel,
@@ -73,7 +73,7 @@ pub(crate) async fn run_event_from(
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = CancellationToken::new();
     let mut runner = tokio::spawn(runner(
-        run,
+        scene,
         home.path(),
         sandboxes.path(),
         upstream.network(),
@@ -81,9 +81,9 @@ pub(crate) async fn run_event_from(
         shutdown.clone(),
     ));
     // A runner that stops on its own before the event settles failed to
-    // boot or to lease; that is the failure to report, not a 90 s silence.
+    // boot or to run; that is the failure to report, not a 90 s silence.
     let status = tokio::select! {
-        status = settled(run, event_id) => status,
+        status = settled(scene, event_id) => status,
         exited = &mut runner => {
             panic!("the runner stopped before event {event_id} settled: {exited:?}")
         }
@@ -95,20 +95,20 @@ pub(crate) async fn run_event_from(
         .expect("the runner stops cleanly on shutdown");
     let status = status
         .unwrap_or_else(|| panic!("event {event_id} did not settle within {SETTLE_DEADLINE:?}"));
-    let answer = answer_of(run, event_id).await.unwrap_or_default();
+    let answer = answer_of(scene, event_id).await.unwrap_or_default();
     Settled { status, answer }
 }
 
 /// What the run answered, or `None` for an event that ended without a run.
-async fn answer_of(run: &Scenario, event_id: &Uuid7) -> Option<String> {
-    let mut connection = run
+async fn answer_of(scene: &Scenario, event_id: &Uuid7) -> Option<String> {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query_scalar(ANSWER)
-        .bind(&run.fleet)
+        .bind(&scene.fleet)
         .bind(event_id)
         .fetch_one(&mut *connection)
         .await
@@ -116,10 +116,10 @@ async fn answer_of(run: &Scenario, event_id: &Uuid7) -> Option<String> {
 }
 
 /// The event's status once it settles, or `None` past the deadline.
-pub(crate) async fn settled(run: &Scenario, event_id: &Uuid7) -> Option<String> {
+pub(crate) async fn settled(scene: &Scenario, event_id: &Uuid7) -> Option<String> {
     let deadline = tokio::time::Instant::now() + SETTLE_DEADLINE;
     while tokio::time::Instant::now() < deadline {
-        let status = event_column(run, event_id, "status").await;
+        let status = event_column(scene, event_id, "status").await;
         if status
             .as_deref()
             .is_some_and(|seen| SETTLED.contains(&seen))
@@ -134,7 +134,7 @@ pub(crate) async fn settled(run: &Scenario, event_id: &Uuid7) -> Option<String> 
 /// The Rust runner's supervisor, pointed at the scenario's daemon, hosting
 /// the real loop over `model`, and fetching from `origin` when one is given.
 pub(crate) fn runner(
-    run: &Scenario,
+    scene: &Scenario,
     home: &std::path::Path,
     sandboxes: &std::path::Path,
     network: af_egress::Network,
@@ -144,16 +144,16 @@ pub(crate) fn runner(
     let home = home.to_string_lossy().into_owned();
     let stream_origin = format!(
         "https://localhost:{}",
-        run.booted.runner_stream_address.port()
+        scene.booted.runner_stream_address.port()
     );
     let root = crate::support::runner_stream::root_file()
         .to_string_lossy()
         .into_owned();
     let env = af_core::env::MapEnv::from_pairs([
-        (ENV_API_URL, run.base.as_str()),
+        (ENV_API_URL, scene.base.as_str()),
         (ENV_STREAM_URL, stream_origin.as_str()),
         (ENV_STREAM_CA, root.as_str()),
-        (ENV_RUNNER_TOKEN, run.token.as_str()),
+        (ENV_RUNNER_TOKEN, scene.token.as_str()),
         (ENV_STORAGE_HOME, home.as_str()),
     ]);
     let (config, home) = afr_supervisor::boot(&env).expect("the scenario's env is valid");

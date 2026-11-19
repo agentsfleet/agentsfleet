@@ -13,7 +13,7 @@ import {
   RUNNER_REFUSAL_SENTENCE,
 } from "@/lib/events/event-summary";
 
-// The runner is the only writer of startup_posture: it ends a lease under that
+// The runner is the only writer of startup_posture: it ends a run under that
 // class when it refuses the run before the fleet starts, and its cause line
 // says why. So every startup failure reads as the runner's refusal.
 const STARTUP_FAILURE_TAG = "startup_posture";

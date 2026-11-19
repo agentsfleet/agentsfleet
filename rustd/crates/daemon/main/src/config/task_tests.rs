@@ -48,7 +48,7 @@ fn task_allowances_refuse_negative_money_and_impossible_active_lifetimes() -> Te
     for (setting, field) in [
         ("model_budget_nanodollars = -1", "model_budget_nanodollars"),
         ("wall_seconds = 60\nrunning_seconds = 61", "running_seconds"),
-        ("max_leases = 0", "max_leases"),
+        ("max_runs = 0", "max_runs"),
         ("max_publication_attempts = 0", "max_publication_attempts"),
         ("max_decision_calls = 0", "max_decision_calls"),
         ("max_fallback_reads = 0", "max_fallback_reads"),

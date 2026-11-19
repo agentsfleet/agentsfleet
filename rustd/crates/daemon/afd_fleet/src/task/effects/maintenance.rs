@@ -27,7 +27,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
     let Some(github) = tasks.dependencies.github.as_ref() else {
         return Ok(EffectMaintenance::default());
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let rows: Vec<Claimed> = sqlx::query_as(include_str!("sql/claim_recovery.sql"))
         .bind(crate::task::row::sql_counter(
@@ -100,7 +100,7 @@ enum Outcome {
 }
 
 async fn expire(tasks: &Tasks, effect: &Effect) -> Result<()> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // State precedes recovery-row deletion, as it does in confirmation.
     sqlx::query(include_str!("sql/expire_recovery.sql"))

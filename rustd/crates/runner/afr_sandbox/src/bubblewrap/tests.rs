@@ -33,8 +33,8 @@ fn with_network(level: Option<&str>, network: NetworkLayout<'_>) -> Vec<String> 
     let entry_args = [OsString::from("sandbox")];
     arguments(&Layout {
         toolbox: Path::new("/srv/toolbox/abc"),
-        workspace: Path::new("/srv/leases/l1/workspace/workspace"),
-        tmp: Path::new("/srv/leases/l1/workspace/tmp"),
+        workspace: Path::new("/srv/runs/l1/workspace/workspace"),
+        tmp: Path::new("/srv/runs/l1/workspace/tmp"),
         entry: Path::new("/usr/local/bin/agentsfleet-runner"),
         entry_args: &entry_args,
         log_level: level.map(OsStr::new),
@@ -124,8 +124,8 @@ fn test_the_toolbox_is_the_read_only_root_and_the_workspace_is_writable() {
         ["--ro-bind", "/srv/toolbox/abc", "/"]
     );
     assert_eq!(
-        after(&argv, "--bind", "/srv/leases/l1/workspace/workspace"),
-        ["--bind", "/srv/leases/l1/workspace/workspace", "/workspace"]
+        after(&argv, "--bind", "/srv/runs/l1/workspace/workspace"),
+        ["--bind", "/srv/runs/l1/workspace/workspace", "/workspace"]
     );
     assert!(
         !argv.iter().any(|part| part.starts_with("/run/")),
@@ -193,8 +193,8 @@ fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
     let argv = argv();
 
     assert_eq!(
-        after(&argv, "--bind", "/srv/leases/l1/workspace/tmp"),
-        ["--bind", "/srv/leases/l1/workspace/tmp", "/tmp"]
+        after(&argv, "--bind", "/srv/runs/l1/workspace/tmp"),
+        ["--bind", "/srv/runs/l1/workspace/tmp", "/tmp"]
     );
     let tmpfs_at_tmp = argv
         .windows(2)
@@ -232,8 +232,8 @@ fn test_the_entry_reads_back_the_descriptors_it_was_named() {
 #[test]
 fn test_bubblewrap_network_flag_per_policy() {
     let allowed = NetworkLayout::Allowed {
-        hosts: Path::new("/srv/leases/l1/hosts"),
-        resolv_conf: Path::new("/srv/leases/l1/resolv.conf"),
+        hosts: Path::new("/srv/runs/l1/hosts"),
+        resolv_conf: Path::new("/srv/runs/l1/resolv.conf"),
     };
     let unshares = |network| {
         with_network(None, network)
@@ -255,24 +255,20 @@ fn test_resolver_files_follow_the_network() {
     let allowed = with_network(
         None,
         NetworkLayout::Allowed {
-            hosts: Path::new("/srv/leases/l1/hosts"),
-            resolv_conf: Path::new("/srv/leases/l1/resolv.conf"),
+            hosts: Path::new("/srv/runs/l1/hosts"),
+            resolv_conf: Path::new("/srv/runs/l1/resolv.conf"),
         },
     );
     let host = with_network(None, NetworkLayout::Host);
     let isolated = with_network(None, NetworkLayout::Isolated);
 
     assert_eq!(
-        after(&allowed, "--ro-bind", "/srv/leases/l1/hosts"),
-        ["--ro-bind", "/srv/leases/l1/hosts", "/etc/hosts"]
+        after(&allowed, "--ro-bind", "/srv/runs/l1/hosts"),
+        ["--ro-bind", "/srv/runs/l1/hosts", "/etc/hosts"]
     );
     assert_eq!(
-        after(&allowed, "--ro-bind", "/srv/leases/l1/resolv.conf"),
-        [
-            "--ro-bind",
-            "/srv/leases/l1/resolv.conf",
-            "/etc/resolv.conf"
-        ]
+        after(&allowed, "--ro-bind", "/srv/runs/l1/resolv.conf"),
+        ["--ro-bind", "/srv/runs/l1/resolv.conf", "/etc/resolv.conf"]
     );
     for path in ["/etc/hosts", "/etc/resolv.conf"] {
         assert_eq!(

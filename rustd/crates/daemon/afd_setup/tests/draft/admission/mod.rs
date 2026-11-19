@@ -1,4 +1,4 @@
-//! Production admission, with pointed fixture selection like the fleet lease suite.
+//! Production admission, with pointed fixture selection like the fleet run suite.
 
 mod capacity;
 mod context;

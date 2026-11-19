@@ -47,7 +47,7 @@ pub struct Enrolled {
 /// `Entropy` is a zero-sized selector over the system source.
 #[derive(Debug, Clone)]
 pub struct Runners {
-    clock: af_core::timing::LeaseClock,
+    clock: af_core::timing::RunClock,
     database: Db,
     entropy: Entropy,
 }
@@ -59,13 +59,13 @@ impl Runners {
         self.clock.heartbeat_interval()
     }
 
-    pub(crate) const fn clock(&self) -> af_core::timing::LeaseClock {
+    pub(crate) const fn clock(&self) -> af_core::timing::RunClock {
         self.clock
     }
 
     /// Uses the deployment clock validated before startup.
     #[must_use]
-    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+    pub fn with_clock(mut self, clock: af_core::timing::RunClock) -> Self {
         self.clock = clock;
         self
     }
@@ -76,7 +76,7 @@ impl Runners {
         Self {
             database,
             entropy,
-            clock: af_core::timing::LeaseClock::DEFAULT,
+            clock: af_core::timing::RunClock::DEFAULT,
         }
     }
 
@@ -124,7 +124,7 @@ impl Runners {
     /// # The initial verdict is reconciled against NO report
     ///
     /// An assignment that demands enforcement therefore opens `degraded` with
-    /// "no capability report", and the lease gate refuses work until the host's
+    /// "no capability report", and the run gate refuses work until the host's
     /// first heartbeat proves the cage. That is deliberate: the alternative is
     /// a fail-OPEN window between minting a token and the first beat.
     ///

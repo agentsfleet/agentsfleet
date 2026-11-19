@@ -19,7 +19,7 @@ async fn a_changed_history_prefix_quotes_the_prior_reply_without_replaying_priva
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let mut request = fixture::request(&attempt);
     let first = calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("native proposal");
     request.call_index = 2;
@@ -34,7 +34,7 @@ async fn a_changed_history_prefix_quotes_the_prior_reply_without_replaying_priva
     });
     compaction::history(&f, &attempt, 1).await;
     let result = calls
-        .call(&f.runner, &attempt.lease, request)
+        .call(&f.runner, &attempt.run, request)
         .await
         .expect("the public continuation remains usable");
     assert_eq!(result.text, "Ready");

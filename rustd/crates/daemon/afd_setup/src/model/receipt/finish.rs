@@ -14,13 +14,13 @@ use crate::{
         raise::{query, stored},
     },
     funnel::Owed,
-    lease::{Status, failure, guard},
+    run::{Status, failure, guard},
 };
 
 pub(in crate::model) async fn finish(
     drafts: &Drafts,
     runner: &Uuid7,
-    lease: &Uuid7,
+    run: &Uuid7,
     request: &garde::Valid<ModelCallInput>,
     counters: &guard::Counters,
     attempt: &guard::Attempt,
@@ -29,7 +29,7 @@ pub(in crate::model) async fn finish(
     Completion {
         drafts,
         runner,
-        lease,
+        run,
         request,
         counters,
         attempt,
@@ -42,7 +42,7 @@ pub(in crate::model) async fn finish(
 struct Completion<'a> {
     drafts: &'a Drafts,
     runner: &'a Uuid7,
-    lease: &'a Uuid7,
+    run: &'a Uuid7,
     request: &'a garde::Valid<ModelCallInput>,
     counters: &'a guard::Counters,
     attempt: &'a guard::Attempt,
@@ -93,12 +93,12 @@ impl Completion<'_> {
         let Self {
             drafts,
             runner,
-            lease,
+            run,
             counters,
             attempt,
             ..
         } = *self;
-        let denied = match drafts.publication(tx, runner, lease, counters).await {
+        let denied = match drafts.publication(tx, runner, run, counters).await {
             Ok(_guarded) => return Ok(None),
             Err(error)
                 if [
@@ -114,7 +114,7 @@ impl Completion<'_> {
         };
         let locked: Option<Uuid7> = sqlx::query_scalar(sql::LOCK_ATTEMPT)
             .bind(&attempt.id)
-            .bind(lease)
+            .bind(run)
             .bind(super::super::dispatch_id(self.request)?)
             .fetch_optional(&mut **tx)
             .await

@@ -1,4 +1,4 @@
-//! What the host's file systems make of a lease: whether the probe and the
+//! What the host's file systems make of a run: whether the probe and the
 //! workspace disk find direct I/O, whether a disk its mount helper mounted
 //! and then failed is undone, and whether the lane's own disk check finds
 //! room. Each trial mounts a file system of its own to stand for a host whose
@@ -63,8 +63,8 @@ const DETACH_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 const DETACH_POLL: std::time::Duration = std::time::Duration::from_millis(10);
 /// Where each trial's file system is mounted, under its own scratch directory.
 const MOUNTED: &str = "mounted";
-/// The lease directory a workspace disk is made in.
-const LEASE: &str = "lease";
+/// The run directory a workspace disk is made in.
+const RUN: &str = "run";
 
 /// A file system mounted for one trial, unmounted when the trial ends, pass
 /// or fail.
@@ -103,14 +103,14 @@ fn on_disk(lane: &Lane) -> Result<&Path, Failed> {
     lane.config
         .state_dir
         .parent()
-        .ok_or_else(|| Failed::from("the leases live under the lane's state"))
+        .ok_or_else(|| Failed::from("the runs live under the lane's state"))
 }
 
-/// How a workspace disk made in a fresh lease directory under `parent` is
+/// How a workspace disk made in a fresh run directory under `parent` is
 /// cached; the disk is released before this returns.
 fn caching_under(parent: &Path) -> Result<Caching, Failed> {
-    let lease = tempfile::tempdir_in(parent)?;
-    let dir = lease.path().join(LEASE);
+    let run = tempfile::tempdir_in(parent)?;
+    let dir = run.path().join(RUN);
     fs::create_dir(&dir)?;
     let (disk, caching) = runtime().block_on(WorkspaceDisk::create(
         &HostTools::default(),
@@ -141,11 +141,11 @@ pub(crate) fn buffered_disk(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// Building a lease's disk starts `mke2fs` and
+/// Building a run's disk starts `mke2fs` and
 /// no other host program; the loop device and the mount are made in-process.
 pub(crate) fn disk_starts_no_mount_program(lane: &Lane) -> Result<(), Failed> {
-    let lease = tempfile::tempdir_in(on_disk(lane)?)?;
-    let dir = lease.path().join(LEASE);
+    let run = tempfile::tempdir_in(on_disk(lane)?)?;
+    let dir = run.path().join(RUN);
     fs::create_dir(&dir)?;
 
     let capture = Capture::install();
@@ -174,8 +174,8 @@ pub(crate) fn disk_starts_no_mount_program(lane: &Lane) -> Result<(), Failed> {
 /// fails the build and leaves nothing: no file in its directory, nothing
 /// mounted, and no loop device on the image.
 pub(crate) fn refused_mount_leaves_nothing(lane: &Lane) -> Result<(), Failed> {
-    let lease = tempfile::tempdir_in(on_disk(lane)?)?;
-    let dir = lease.path().join(LEASE);
+    let run = tempfile::tempdir_in(on_disk(lane)?)?;
+    let dir = run.path().join(RUN);
     fs::create_dir(&dir)?;
     let tools = HostTools {
         mke2fs: PathBuf::from(FORMATS_NOTHING),
@@ -212,7 +212,7 @@ pub(crate) fn refused_mount_leaves_nothing(lane: &Lane) -> Result<(), Failed> {
     )?;
     expect(
         left.is_empty(),
-        format!("the lease's directory is left empty, got {left:?}"),
+        format!("the run's directory is left empty, got {left:?}"),
     )?;
     expect(
         !mounts.contains(&dir.display().to_string()),
@@ -228,8 +228,8 @@ pub(crate) fn refused_mount_leaves_nothing(lane: &Lane) -> Result<(), Failed> {
 /// A disk the build made has a loop device of its own, and its release
 /// frees it: autoclear detaches the device once the unmount lets go.
 pub(crate) fn released_disk_leaves_no_loop_device(lane: &Lane) -> Result<(), Failed> {
-    let lease = tempfile::tempdir_in(on_disk(lane)?)?;
-    let dir = lease.path().join(LEASE);
+    let run = tempfile::tempdir_in(on_disk(lane)?)?;
+    let dir = run.path().join(RUN);
     fs::create_dir(&dir)?;
     let tools = HostTools::default();
 
@@ -311,7 +311,7 @@ pub(crate) fn short_disk(lane: &Lane) -> Result<(), Failed> {
     let short = short_of_disk(&small.point).unwrap_or_default();
     let roomy_fs = Mounted::new(on_disk(lane)?, TMPFS, Some(&tmpfs_size(ROOMY_TMPFS_BYTES)?))?;
     let roomy = short_of_disk(&roomy_fs.point);
-    let unreadable = short_of_disk(&small.point.join(LEASE)).unwrap_or_default();
+    let unreadable = short_of_disk(&small.point.join(RUN)).unwrap_or_default();
 
     expect(
         short.contains("MiB free") && short.contains(&earlier),

@@ -1,4 +1,4 @@
-//! Bounded context crosses the lease boundary; provider authority stays with the daemon.
+//! Bounded context crosses the run boundary; provider authority stays with the daemon.
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -53,18 +53,18 @@ pub struct ModelRequest<D = Value, C = Value, I = Value> {
     pub max_output_tokens: u32,
 }
 
-/// A lease-scoped request; diagnostics deliberately omit the token and context.
+/// A run-scoped request; diagnostics deliberately omit the token and context.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ModelCall<D = Value, C = Value, I = Value> {
-    /// Random 256-bit base64url lease capability; never logged or spooled.
+    /// Random 256-bit base64url run capability; never logged or spooled.
     #[garde(
         length(bytes, min = 43, max = 43),
         custom(af_validate::rules::nul_free)
     )]
     pub capability_token: String,
-    /// Admitted attempt identity, bound to this lease.
+    /// Admitted attempt identity, bound to this run.
     #[garde(length(bytes, min = 36, max = 36))]
     pub attempt_id: String,
     /// Current attempt number. Rejects updates from replaced runners.

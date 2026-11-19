@@ -14,45 +14,45 @@ use std::sync::atomic::Ordering;
 // seam=two production daemons, authenticated HTTP, real Bus and Postgres.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_archive_on_another_replica_cancels_and_settles_the_native_lease() -> TestResult {
+async fn an_archive_on_another_replica_cancels_and_settles_the_native_run() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         let fixture = Fixture::start().await?;
         let mut native = fixture.native(transport).await;
         native.heartbeat().await;
         native.ready().await;
         let held = signals::offer(&mut native).await?;
-        assert_eq!(held.event, fixture.run.event_id);
-        fixture.operator.archive(&fixture.run).await?;
+        assert_eq!(held.event, fixture.scene.event_id);
+        fixture.operator.archive(&fixture.scene).await?;
         signals::cancelled(&mut native, &held).await?;
         assert_marked(&fixture, &held).await?;
-        signals::report(&fixture.run, &mut native, &held, true).await?;
+        signals::report(&fixture.scene, &mut native, &held, true).await?;
         native.close().await;
         fixture.finish().await?;
     }
     Ok(())
 }
 
-// Value: protects=a lost cancel ends only its marked lease at the next native batch;
+// Value: protects=a lost cancel ends only its marked run at the next native batch;
 // fails_when=cancel authority depends on publication or the sibling loses its deadline;
-// why_new=single-lease refusal tests cannot show independent sibling renewal;
+// why_new=single-run refusal tests cannot show independent sibling renewal;
 // seam=real creator mutation and Postgres, with only its runner command dropped.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_lost_cancel_refuses_its_lease_and_renews_its_sibling_in_one_batch() -> TestResult {
+async fn a_lost_cancel_refuses_its_run_and_renews_its_sibling_in_one_batch() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         let mut fixture = Fixture::start().await?;
         let (_, sibling) = fixture.sibling("Pull request review").await;
         let mut native = fixture.native(transport).await;
         let held = pair(&fixture, &mut native).await?;
         let [cancelled, live] = &held;
-        assert_eq!(cancelled.event, fixture.run.event_id);
+        assert_eq!(cancelled.event, fixture.scene.event_id);
         assert_eq!(live.event, sibling);
         lost_archive(&fixture).await?;
         assert_marked(&fixture, cancelled).await?;
         let answers = signals::renew(&mut native, &[cancelled, live], 4).await;
         assert_mixed(&answers, cancelled, live)?;
-        signals::report(&fixture.run, &mut native, cancelled, true).await?;
-        signals::report(&fixture.run, &mut native, live, false).await?;
+        signals::report(&fixture.scene, &mut native, cancelled, true).await?;
+        signals::report(&fixture.scene, &mut native, live, false).await?;
         native.close().await;
         fixture.finish().await?;
     }
@@ -72,19 +72,19 @@ async fn pair(
         )
         .await;
     let mut held = [signals::offer(native).await?, signals::offer(native).await?];
-    held.sort_by_key(|lease| lease.event != fixture.run.event_id);
+    held.sort_by_key(|run| run.event != fixture.scene.event_id);
     Ok(held)
 }
 
 async fn lost_archive(fixture: &Fixture) -> TestResult {
-    let (bus, dropped) = faults::dropping(fixture.bus.clone(), fixture.run.runner_id.clone());
+    let (bus, dropped) = faults::dropping(fixture.bus.clone(), fixture.scene.runner_id.clone());
     let creations = fixture.creations(bus)?;
-    let access = fixture.operator.access(&fixture.run);
-    let current = creations.read(access, &fixture.run.fleet).await?;
+    let access = fixture.operator.access(&fixture.scene);
+    let current = creations.read(access, &fixture.scene.fleet).await?;
     creations
         .patch(
             access,
-            &fixture.run.fleet,
+            &fixture.scene.fleet,
             Some(&current.etag),
             Some("archived"),
             None,
@@ -101,9 +101,9 @@ async fn lost_archive(fixture: &Fixture) -> TestResult {
 
 async fn assert_marked(fixture: &Fixture, held: &signals::Held) -> TestResult {
     let marked: bool =
-        sqlx::query_scalar("SELECT cancel_requested_at IS NOT NULL FROM runner.leases WHERE id=$1")
-            .bind(Uuid7::parse(&held.lease)?)
-            .fetch_one(&mut *fixture.run.booted.database.acquire().await?)
+        sqlx::query_scalar("SELECT cancel_requested_at IS NOT NULL FROM runner.runs WHERE id=$1")
+            .bind(Uuid7::parse(&held.run)?)
+            .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;
     assert!(
         marked,
@@ -117,19 +117,19 @@ fn assert_mixed(
     cancelled: &signals::Held,
     live: &signals::Held,
 ) -> TestResult {
-    let leases = wire::pointer(answers, "/leases")
+    let runs = wire::pointer(answers, "/runs")
         .as_array()
         .ok_or("renewal answers missing")?;
-    assert_eq!(leases.len(), 2);
-    let rejected = answer_for(leases, cancelled)?;
+    assert_eq!(runs.len(), 2);
+    let rejected = answer_for(runs, cancelled)?;
     assert_eq!(
         wire::pointer(rejected, "/answer/error_code"),
-        af_core::error_code::RUN_LEASE_CANCELLED.as_str()
+        af_core::error_code::RUN_CANCELLED.as_str()
     );
     assert_eq!(wire::pointer(rejected, "/answer/retryable"), false);
-    let accepted = answer_for(leases, live)?;
+    let accepted = answer_for(runs, live)?;
     assert_eq!(wire::pointer(accepted, "/answer/status"), "ok");
-    let expires: jiff::Timestamp = wire::pointer(accepted, "/answer/response/lease_expires_at")
+    let expires: jiff::Timestamp = wire::pointer(accepted, "/answer/response/run_expires_at")
         .as_str()
         .ok_or("sibling deadline missing")?
         .parse()?;
@@ -141,11 +141,11 @@ fn assert_mixed(
 }
 
 fn answer_for<'a>(
-    leases: &'a [serde_json::Value],
+    runs: &'a [serde_json::Value],
     held: &signals::Held,
 ) -> TestResult<&'a serde_json::Value> {
-    Ok(leases
+    Ok(runs
         .iter()
-        .find(|row| wire::pointer(row, "/lease_id") == held.lease.as_str())
-        .ok_or("lease answer missing")?)
+        .find(|row| wire::pointer(row, "/run_id") == held.run.as_str())
+        .ok_or("run answer missing")?)
 }

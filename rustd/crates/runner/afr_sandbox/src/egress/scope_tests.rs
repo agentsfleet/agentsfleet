@@ -90,11 +90,11 @@ fn test_a_scope_builds_its_rules_before_its_link() {
     );
 }
 
-/// Every netlink step that fails refuses the lease, naming the step; what was
+/// Every netlink step that fails refuses the run, naming the step; what was
 /// built comes down, and the slot is freed when it did. The log line counts
 /// the names and gives neither them nor their addresses.
 #[test]
-fn test_egress_setup_failures_refuse_the_lease() {
+fn test_egress_setup_failures_refuse_the_run() {
     let cases = [
         // With no netfilter socket, nothing was sent, so the slot is freed.
         (

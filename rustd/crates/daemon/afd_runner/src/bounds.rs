@@ -78,7 +78,7 @@ pub const DETAIL_SELFTEST_ALL_OK_DISAGREES: &str = "all_ok disagrees with the re
 /// A rejection reading [`DETAIL_SELFTEST_UNBOUNDED`] when any cap is exceeded
 /// or any required string is empty, and [`DETAIL_SELFTEST_ALL_OK_DISAGREES`]
 /// when the summary contradicts the checks. That second one is the incident
-/// this exists for: a host reading healthy while every lease dies inside its
+/// this exists for: a host reading healthy while every run dies inside its
 /// sandbox.
 pub fn accept(report: &SelftestReport<'_>) -> Result<()> {
     // Every bound is declared on the wire type, including the per-check ones

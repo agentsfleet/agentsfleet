@@ -1,7 +1,7 @@
 //! `message`: one line said to the thread this run was asked from, before
 //! the answer.
 //!
-//! The text is masked for every token the lease minted before it leaves, and
+//! The text is masked for every token the run minted before it leaves, and
 //! `agentsfleetd` masks the fleet's stored secrets and posts it: the runner
 //! never holds the channel's credential.
 
@@ -42,8 +42,8 @@ impl Handler for Message {
     type Arguments = Say;
 
     async fn run(&self, arguments: Say, context: ToolContext<'_, '_>) -> ToolOutput {
-        let text = egress::masked(context.lease, arguments.text).await;
-        answered_with(context.lease.verbs.message(&text).await, |delivered| {
+        let text = egress::masked(context.run, arguments.text).await;
+        answered_with(context.run.verbs.message(&text).await, |delivered| {
             if delivered {
                 ToolOutput::succeeded(DELIVERED)
             } else {

@@ -106,7 +106,7 @@ impl Engine for Counting {
             tokio::time::sleep(self.delay).await;
         }
         Ok(Box::new(Named {
-            name: request.lease_id.to_owned(),
+            name: request.run_id.to_owned(),
             destroyed: Arc::clone(&self.destroyed),
             panics: self.panics,
             dead: self.dead,

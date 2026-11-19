@@ -9,7 +9,7 @@
 //!
 //! The store suites freeze time at `ENROLLED_AT` because they call verbs
 //! directly and pass the instant in. Here the daemon reads its own clock, so a
-//! frozen seed would place the admission and the lease deadline years
+//! frozen seed would place the admission and the run deadline years
 //! apart and the assignment pass would correctly find nothing. Everything below
 //! is stamped from [`af_core::clock::now`] for that reason, which is also why
 //! nothing here asserts on an absolute instant.
@@ -71,7 +71,7 @@ pub(crate) const PROVIDER: &str = "anthropic";
 /// The model a seeded fleet runs, and the catalogue row that prices it.
 pub(crate) const MODEL: &str = "claude-fixture";
 
-/// The billing posture a seeded lease records.
+/// The billing posture a seeded run records.
 pub(crate) const POSTURE: &str = "platform";
 
 /// The actor every seeded event carries.
@@ -81,7 +81,7 @@ pub(crate) const ACTOR: &str = "fixture:operator";
 ///
 /// `Chat`, not the `steer` the store suites next door spell. `EventType` is a
 /// CLOSED set and the pull path ends any delivery it cannot name — those
-/// suites call `Leases::select` directly and never reach that check, so their
+/// suites call `Runs::select` directly and never reach that check, so their
 /// spelling has never had to be one the daemon executes. A §7 scenario does
 /// reach it, and the ledger this seed admits through takes the type itself,
 /// so a scenario cannot spell one the daemon would end.
@@ -93,7 +93,7 @@ pub(crate) const REQUEST_JSON: &str = r#"{"prompt":"fixture"}"#;
 /// Reads a lane knob, failing with the command that sets it.
 pub(crate) fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
-        panic!("{knob} is unset — run these through `make test-integration-rustd`")
+        panic!("{knob} is unset — scene these through `make test-integration-rustd`")
     })
 }
 
@@ -103,11 +103,11 @@ pub(crate) fn lane(knob: &str) -> String {
 /// typed decoder refuses another UUID version, so fixture IDs use the same
 /// shape as application-minted identities.
 pub(crate) fn unique_ids() -> (Uuid7, Uuid7, Uuid7) {
-    let run = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let scene = SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     let id = |slot: u32| {
         Uuid7::parse(&format!(
-            "0195b4ba-8d3a-7{run:03x}-8abc-{pid:08x}{slot:04x}"
+            "0195b4ba-8d3a-7{scene:03x}-8abc-{pid:08x}{slot:04x}"
         ))
         .expect("a scenario id is a canonical UUIDv7")
     };
@@ -130,7 +130,7 @@ pub(crate) struct Scenario {
     pub(crate) workspace: Uuid7,
     /// Its billing tenant.
     pub(crate) tenant: Uuid7,
-    /// The admission identifier shared by the lease, report, and narrative.
+    /// The admission identifier shared by the run, report, and narrative.
     pub(crate) event_id: Uuid7,
     /// The enrolled runner's durable identifier.
     pub(crate) runner_id: Uuid7,
@@ -285,7 +285,7 @@ impl Scenario {
     /// Retires this scenario's fleet, then closes its pools.
     ///
     /// Retired rather than only unmarked: a fleet left `active` with an open
-    /// lease is re-marked by the next daemon's reclaim sweeper and leased to
+    /// run is re-marked by the next daemon's reclaim sweeper and held to
     /// the next scenario's runner — see `e2e_retire`. Takes `self` so the
     /// pools close with the scenario, and so no test can reach the fleet once
     /// it is retired.

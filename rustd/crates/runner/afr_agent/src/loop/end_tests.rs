@@ -1,5 +1,5 @@
 //! How a turn ended: a turn cut at the output limit runs none of its calls,
-//! and one the lease stopped ends the run.
+//! and one the run stopped ends the run.
 
 #![expect(
     clippy::panic,
@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use super::finish::DETAIL_STOPPED;
 use super::tests::{completions, drive, engine};
 use super::{EVENT_PROVIDER_FAILED, REASON_STOPPED};
-use crate::fixture::{Canned, Script, call, ended, lease, say, unbounded};
+use crate::fixture::{Canned, Script, call, ended, payload, say, unbounded};
 
 /// What the plan tool answers when it runs.
 const RAN: &str = "4";
@@ -49,7 +49,7 @@ async fn test_a_cut_turns_calls_are_answered_and_never_run() {
 
     let (output, frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -87,7 +87,7 @@ async fn test_a_whole_turns_calls_run() {
 
     let (_output, frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -99,17 +99,17 @@ async fn test_a_whole_turns_calls_run() {
     assert_eq!(answered(&script), RAN);
 }
 
-/// A lease stopped before the model answered ends the run as stopped, and the
-/// cut turn is logged as the lease's doing rather than a provider failure.
+/// A run stopped before the model answered ends the run as stopped, and the
+/// cut turn is logged as the run's doing rather than a provider failure.
 #[tokio::test]
-async fn a_lease_stopped_before_the_model_answers_ends_the_run_as_stopped() {
+async fn a_run_stopped_before_the_model_answers_ends_the_run_as_stopped() {
     let capture = Capture::install();
     let script = Script::new([vec![say(RETRIED)]]);
     let engine = engine(Vec::new(), &script);
     let stop = CancellationToken::new();
     stop.cancel();
 
-    let (output, frames) = drive(&engine, &lease(&[], unbounded()), &stop).await;
+    let (output, frames) = drive(&engine, &payload(&[], unbounded()), &stop).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a stopped run is not a completed one");

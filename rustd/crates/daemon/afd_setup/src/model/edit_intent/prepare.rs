@@ -11,14 +11,14 @@ use super::{CONTEXT, ModelCallInput, ModelCalls, Prepared, QUESTION, QUESTION_NA
 use crate::{
     Result,
     error::{ErrorKind, raise::query},
-    lease::guard,
+    run::guard,
 };
 
 impl ModelCalls {
     pub(super) async fn prepare_edit(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &garde::Valid<ModelCallInput>,
         counters: &guard::Counters,
     ) -> Result<Option<Prepared>> {
@@ -26,7 +26,7 @@ impl ModelCalls {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let guarded = self
             .drafts
-            .publication(&mut tx, runner, lease, counters)
+            .publication(&mut tx, runner, run, counters)
             .await?;
         let prepared = self.edit_inputs(&mut tx, runner, request, &guarded).await;
         let prepared = match prepared {

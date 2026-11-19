@@ -52,7 +52,7 @@ A digest is the same fleet reading without steering. `fleet_activity()` lists ev
 - A fleet's target is another fleet in its own workspace, and active.
 - The fleet's `tools` list is the only consent. Nothing lists targets, limits the chain or caps the count.
 - Authority never widens. The target runs under its own revision, grants, gates and budget, and a steer carries text, never policy.
-- A fleet's steer runs as its own run. A resent steer admits once. A runner that lost its lease writes none.
+- A fleet's steer runs as its own run. A resent steer admits once. A runner that lost its run writes none.
 - Prompt injection is accepted, and stated. A fleet that reads untrusted text and holds `fleet_steer` can be told to steer any fleet in its workspace. Each target's own gates and budget bound the damage.
 
 ## 4. Not this feature

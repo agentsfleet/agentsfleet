@@ -6,10 +6,10 @@
 //! A sandboxed child asks its runner for a token mid-run, and the runner
 //! forwards the ask here. The child is the least trusted thing in the system —
 //! it reads whatever a webhook payload said — so the request carries a
-//! `lease_id` and an integration name and nothing else. Which workspace's vault
-//! is opened is resolved SERVER-SIDE from that lease, scoped to the presenting
+//! `run_id` and an integration name and nothing else. Which workspace's vault
+//! is opened is resolved SERVER-SIDE from that run, scoped to the presenting
 //! runner, which leaves a prompt-injected child nothing to forge: a foreign or
-//! stale lease id resolves to no row, never to another tenant's credential.
+//! stale run id resolves to no row, never to another tenant's credential.
 //!
 //! # What this layer does not decide
 //!
@@ -31,7 +31,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
 use crate::handler::malformed;
-use crate::services::{Leasing as _, Services};
+use crate::services::{RunPlane as _, Services};
 
 /// The scoped event a failed mint is logged under.
 const EVENT: &str = "runner_credential_mint_failed";
@@ -71,19 +71,19 @@ pub(crate) async fn handle<D: Services>(
     RunnerIdentity(runner): RunnerIdentity,
     body: Bytes,
 ) -> Response {
-    // Borrowed out of `body`: the lease id and the integration name both go
+    // Borrowed out of `body`: the run id and the integration name both go
     // straight into a statement's parameters, so neither needs owning.
     let Ok(request) = afd_http::handler::read_body::<MintCredentialRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);
     };
-    // Parsed here, so the lease lookup's `::uuid` cast never decides the
-    // answer: a value that cannot name any lease is the caller's mistake.
-    if let Err(refusal) = super::schedule::lease(&request.lease_id) {
+    // Parsed here, so the run lookup's `::uuid` cast never decides the
+    // answer: a value that cannot name any run is the caller's mistake.
+    if let Err(refusal) = super::schedule::run(&request.run_id) {
         return refusal.into_response();
     }
 
     match services
-        .leases()
+        .runs()
         .mint(runner.id(), &request, services.now())
         .await
     {
@@ -119,6 +119,6 @@ mod tests {
             Some(STATE_RECONNECT_REQUIRED)
         );
         assert_eq!(conflict_state(&afd_fleet::Error::mint_unconfigured()), None);
-        assert_eq!(conflict_state(&afd_fleet::Error::lease_not_found()), None);
+        assert_eq!(conflict_state(&afd_fleet::Error::run_not_found()), None);
     }
 }

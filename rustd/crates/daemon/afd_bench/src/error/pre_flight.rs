@@ -51,7 +51,7 @@ impl Error {
             | ErrorKind::InstrumentPoisoned
             | ErrorKind::DatabaseUnavailable { .. }
             | ErrorKind::BusUnavailable { .. }
-            | ErrorKind::LeasePathFaulted { .. }
+            | ErrorKind::RunPathFaulted { .. }
             | ErrorKind::OutboundPathFaulted { .. }
             | ErrorKind::SteerPathFaulted { .. }
             | ErrorKind::LedgerUnreadable { .. }
@@ -67,7 +67,7 @@ impl Error {
             | ErrorKind::CredentialMalformed { .. }
             | ErrorKind::IdentifierRefused { .. }
             | ErrorKind::CeilingRefused { .. }
-            | ErrorKind::LeaseUnreadable { .. }
+            | ErrorKind::RunUnreadable { .. }
             | ErrorKind::AuthoringPathFaulted { .. }
             | ErrorKind::SamplerUnavailable { .. }
             | ErrorKind::LiveSetFaulted { .. }

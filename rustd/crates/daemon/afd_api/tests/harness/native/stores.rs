@@ -1,7 +1,7 @@
 //! Live authoring services share their existing pools, keys and provider boundary with the gateway.
 
 use super::super::*;
-use afd_fleet::lease::{LeaseService, Leases};
+use afd_fleet::run::{RunService, Runs};
 use afd_gateway::{Gateway, GatewayDependencies};
 
 impl Fleet {
@@ -16,12 +16,12 @@ impl Fleet {
             database.clone(),
         ));
         let key = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        let leases = LeaseService {
+        let runs = RunService {
             task_reports: None,
-            turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
+            turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
                 &key,
             )),
-            leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
+            runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
             gates: afd_gate::gate::Gates::new(database.clone(), bus.clone(), Entropy::new()),
             accounts: afd_billing::Accounts::new(database.clone()),
             biller,
@@ -44,7 +44,7 @@ impl Fleet {
             recovery: afd_gateway::RecoverySettings::default(),
             database,
             runners: self.runners.clone(),
-            leases,
+            runs,
             drafts: self.authoring.clone(),
             models: self.authoring_models.clone(),
             creations: self.creations.clone(),
@@ -71,7 +71,7 @@ impl afd_api::services::RunnerStreams for Fleet {
                     .open(runner, request)
                     .await
             }
-            None => self.leases.open(runner, request).await,
+            None => self.runs.open(runner, request).await,
         }
     }
 }

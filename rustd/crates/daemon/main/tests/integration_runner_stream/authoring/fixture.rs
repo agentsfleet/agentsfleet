@@ -1,8 +1,8 @@
-//! A production daemon and native runner share one authoring lease.
+//! A production daemon and native runner share one authoring run.
 
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use af_wire::{authoring as wire, lease::TaggedLease, protocol::Down};
+use af_wire::{authoring as wire, protocol::Down, run::TaggedRun};
 use afd_db::test_util::{OwnedRows, mint_id};
 use afd_runner::{Runners, capacity::authority::Decision};
 use afd_setup::{
@@ -25,7 +25,7 @@ pub(super) struct AuthoringFixture {
     pub(super) token: String,
     pub(super) session: Session,
     pub(super) config: Config,
-    pub(super) lease: wire::Lease<serde_json::Value>,
+    pub(super) run: wire::Run<serde_json::Value>,
     pub(super) drafts: Drafts,
     pub(super) provider: Provider,
     cleanup: OwnedRows,
@@ -69,7 +69,7 @@ impl AuthoringFixture {
                 booted.database.clone(),
             )),
         );
-        let lease = queue(&drafts, &rows, &session).await;
+        let run = queue(&drafts, &rows, &session).await;
         let cleanup = rows.owned_rows(&runner);
         Self {
             booted,
@@ -78,7 +78,7 @@ impl AuthoringFixture {
             token,
             session,
             config,
-            lease,
+            run,
             drafts,
             provider,
             cleanup,
@@ -88,7 +88,7 @@ impl AuthoringFixture {
     }
 
     pub(super) fn id(&self) -> Uuid7 {
-        Uuid7::parse(&self.lease.lease_id).expect("native lease id")
+        Uuid7::parse(&self.run.run_id).expect("native run id")
     }
 
     pub(super) fn access(&self) -> Access<'_> {
@@ -100,9 +100,9 @@ impl AuthoringFixture {
 
     pub(super) fn model(&self) -> wire::ModelCall {
         wire::ModelCall {
-            capability_token: self.lease.model_access.token.clone(),
-            attempt_id: self.lease.attempt_id.clone(),
-            fence: self.lease.fence.clone(),
+            capability_token: self.run.model_access.token.clone(),
+            attempt_id: self.run.attempt_id.clone(),
+            fence: self.run.fence.clone(),
             dispatch_id: mint_id().to_string(),
             call_index: 1,
             request: wire::ModelRequest {
@@ -126,8 +126,8 @@ impl AuthoringFixture {
             "Review incoming support requests.",
         );
         wire::ActivityRequest {
-            fence: self.lease.fence.clone(),
-            sequence: self.lease.sequence.clone(),
+            fence: self.run.fence.clone(),
+            sequence: self.run.sequence.clone(),
             activity_sequence: "1".into(),
             event: wire::ActivityEvent::Proposal {
                 proposal: wire::Proposal::Initialize {
@@ -142,7 +142,7 @@ impl AuthoringFixture {
     pub(super) fn report(&self, calls: u32) -> wire::Report {
         wire::Report::Terminal {
             accounting: wire::Accounting {
-                fence: self.lease.fence.clone(),
+                fence: self.run.fence.clone(),
                 report_id: mint_id().to_string(),
                 outcome: wire::Outcome::Completed,
                 failure_reason: None,
@@ -154,7 +154,7 @@ impl AuthoringFixture {
 
     pub(super) fn renewal(&self, calls: u32) -> wire::Renew {
         wire::Renew {
-            fence: self.lease.fence.clone(),
+            fence: self.run.fence.clone(),
             usage: meter(calls),
         }
     }
@@ -204,7 +204,7 @@ pub(super) fn meter(calls: u32) -> wire::Meter {
     }
 }
 
-async fn queue(drafts: &Drafts, rows: &Rows, session: &Session) -> wire::Lease<serde_json::Value> {
+async fn queue(drafts: &Drafts, rows: &Rows, session: &Session) -> wire::Run<serde_json::Value> {
     let access = Access {
         workspace: &rows.workspace,
         subject: rows.user.as_str(),
@@ -225,13 +225,13 @@ async fn queue(drafts: &Drafts, rows: &Rows, session: &Session) -> wire::Lease<s
         .expect("authoring offer deadline")
         .expect("authoring offer");
     let message: Down<'_> = frame.decode().expect("native offer decode");
-    let lease = match message {
+    let run = match message {
         Down::Offer {
-            lease: TaggedLease::Authoring(lease),
-        } => Some(*lease),
+            run: TaggedRun::Authoring(run),
+        } => Some(*run),
         _ => None,
     }
     .expect("expected authoring offer");
-    assert_eq!(lease.draft_id, created.draft.id.as_str());
-    lease
+    assert_eq!(run.draft_id, created.draft.id.as_str());
+    run
 }

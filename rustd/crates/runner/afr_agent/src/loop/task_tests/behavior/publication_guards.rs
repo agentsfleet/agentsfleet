@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 pub(super) async fn execute(
     script: &Script,
-    native: &dyn LeaseVerbs,
+    native: &dyn RunVerbs,
     inputs: TaskInputsResponse<'static>,
     executor: &ScriptedExecutor,
 ) -> crate::Result<crate::RunOutput> {
@@ -15,7 +15,7 @@ pub(super) async fn execute(
         afr_tools::Catalog::hosted(Arc::new(transport)),
         script.replay(),
     );
-    let lease = assigned_lease(&[afr_tools::catalog::EXEC_COMMAND.name()], 16_384);
+    let this_run = assigned_run(&[afr_tools::catalog::EXEC_COMMAND.name()], 16_384);
     let prepared = PreparedTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
@@ -24,7 +24,7 @@ pub(super) async fn execute(
     engine
         .run(AgentRun {
             recovery: None,
-            lease: &lease,
+            run: &this_run,
             prepared_task: Some(&prepared),
             recovered_task: None,
             recovered_turn: None,

@@ -1,6 +1,6 @@
 //! Operator-facing HTTP adapters.
 //!
-//! Runner inventory, lease history, event projections, and runner mutations
+//! Runner inventory, run history, event projections, and runner mutations
 //! live here so operator views compile independently of the host protocol.
 
 #![deny(unused_crate_dependencies)]
@@ -36,7 +36,7 @@ pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<Metho
         RunnerOpsRoute::Patch => Some(patch(handler::operator::runner_patch::handle::<D>)),
         RunnerOpsRoute::Delete => Some(delete(handler::operator::runner_delete::handle::<D>)),
         RunnerOpsRoute::Events => Some(get(handler::operator::events::list::<D>)),
-        RunnerOpsRoute::Leases => Some(get(handler::operator::leases::list::<D>)),
+        RunnerOpsRoute::Runs => Some(get(handler::operator::runs::list::<D>)),
         RunnerOpsRoute::TenantRegister => {
             Some(post(handler::operator::tenant_runners::register::<D>))
         }

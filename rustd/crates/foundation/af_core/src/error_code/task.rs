@@ -1,4 +1,4 @@
-//! Durable objective refusals, distinct from the current execution lease.
+//! Durable objective refusals, distinct from the current execution run.
 
 use super::ErrorCode;
 

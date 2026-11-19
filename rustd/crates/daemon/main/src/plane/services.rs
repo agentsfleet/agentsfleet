@@ -21,9 +21,9 @@ use af_observability::Analytics;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
-use afd_fleet::lease::LeaseService;
+use afd_fleet::run::RunService;
 use afd_fleet_lifecycle::Fleets;
-use afd_fleet_ops::RunnerLeaseHistory;
+use afd_fleet_ops::RunnerRunHistory;
 use afd_memory::Memories;
 use afd_runner::Runners;
 use afd_sse::Live;
@@ -51,7 +51,7 @@ impl Services for ServingPlane {
     }
     type Auth = Authenticator;
     type SignupMetadata = SignupWriteback;
-    type Leases = LeaseService;
+    type Runs = RunService;
     type RunnerStreams = afd_gateway::Gateway;
 
     fn runner_streams(&self) -> &Self::RunnerStreams {
@@ -87,8 +87,8 @@ impl Services for ServingPlane {
         &self.runner_commands
     }
 
-    fn leases(&self) -> &LeaseService {
-        &self.leases
+    fn runs(&self) -> &RunService {
+        &self.runs
     }
 
     fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
@@ -172,18 +172,18 @@ impl Services for ServingPlane {
         &self.activity.steering
     }
 
-    /// The store the lease plane already holds. ONE `Memories` in this process:
+    /// The store the run plane already holds. ONE `Memories` in this process:
     /// reading what a fleet learned and writing it are two verbs over one table.
     fn memories(&self) -> &Memories {
-        &self.leases.memories
+        &self.runs.memories
     }
 
     fn secrets(&self) -> &SecretVault {
         &self.tenant.secrets
     }
 
-    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
-        &self.admin.runner_lease_history
+    fn runner_run_history(&self) -> &RunnerRunHistory {
+        &self.admin.runner_run_history
     }
 
     /// The admin plane's WRITE of the priced catalogue.

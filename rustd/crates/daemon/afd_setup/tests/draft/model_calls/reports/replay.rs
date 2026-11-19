@@ -13,14 +13,14 @@ async fn concurrent_terminal_retry_and_deleted_accounting_replay_charge_once() {
     let provider = Arc::new(fixture::Provider::known());
     let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
     calls
-        .call(&f.runner, &a.lease, fixture::request(&a))
+        .call(&f.runner, &a.run, fixture::request(&a))
         .await
         .expect("known physical receipt");
     let request = report();
     let before = balance(&f).await;
     let (first, retry) = tokio::join!(
-        f.drafts.report(&f.runner, &a.lease, request.clone()),
-        f.drafts.report(&f.runner, &a.lease, request.clone())
+        f.drafts.report(&f.runner, &a.run, request.clone()),
+        f.drafts.report(&f.runner, &a.run, request.clone())
     );
     let first = first.expect("first terminal acknowledgement");
     let retry = retry.expect("serialized exact acknowledgement");
@@ -51,7 +51,7 @@ async fn concurrent_terminal_retry_and_deleted_accounting_replay_charge_once() {
         .expect("private purge");
     let replay = f
         .drafts
-        .report(&f.runner, &a.lease, accounting(&request))
+        .report(&f.runner, &a.run, accounting(&request))
         .await
         .expect("content-free replay after purge");
     assert!(replay.replayed && replay.settled);
@@ -76,7 +76,7 @@ async fn first_accounting_report_after_deletion_settles_without_creating_private
     let before = balance(&f).await;
     let ack = f
         .drafts
-        .report(&f.runner, &a.lease, request.clone())
+        .report(&f.runner, &a.run, request.clone())
         .await
         .expect("first accounting-only settle");
     assert!(ack.settled && !ack.replayed);
@@ -90,7 +90,7 @@ async fn first_accounting_report_after_deletion_settles_without_creating_private
     }
     assert_eq!(
         f.drafts
-            .report(&f.runner, &a.lease, changed)
+            .report(&f.runner, &a.run, changed)
             .await
             .expect_err("altered accounting conflicts")
             .code(),
@@ -107,7 +107,7 @@ async fn changed_answer_refuses(f: &Fixture, a: &Attempt, request: &af_wire::aut
     }
     assert_eq!(
         f.drafts
-            .report(&f.runner, &a.lease, changed)
+            .report(&f.runner, &a.run, changed)
             .await
             .expect_err("changed answer refuses")
             .code(),
@@ -125,7 +125,7 @@ async fn first_accounting_report_after_private_expiry_charges_its_real_usage_onc
     let provider = Arc::new(fixture::Provider::known());
     let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
     calls
-        .call(&f.runner, &a.lease, fixture::request(&a))
+        .call(&f.runner, &a.run, fixture::request(&a))
         .await
         .expect("a billable dispatch with a known receipt");
     expire_without_a_report(&f, &a).await;
@@ -139,7 +139,7 @@ async fn first_accounting_report_after_private_expiry_charges_its_real_usage_onc
     let request = accounting(&report());
     let first = f
         .drafts
-        .report(&f.runner, &a.lease, request.clone())
+        .report(&f.runner, &a.run, request.clone())
         .await
         .expect("the first report after expiry settles");
     assert!(first.settled && !first.replayed);
@@ -153,7 +153,7 @@ async fn first_accounting_report_after_private_expiry_charges_its_real_usage_onc
     assert_eq!(attempt_status(&f, &a).await, "settled");
     let replay = f
         .drafts
-        .report(&f.runner, &a.lease, request)
+        .report(&f.runner, &a.run, request)
         .await
         .expect("the same report replays");
     assert!(replay.settled && replay.replayed);
@@ -163,15 +163,15 @@ async fn first_accounting_report_after_private_expiry_charges_its_real_usage_onc
     f.cleanup().await;
 }
 
-/// The runner never reported: its lease lapsed and the closed conversation
+/// The runner never reported: its run lapsed and the closed conversation
 /// passed its private retention, so maintenance owns both.
 async fn expire_without_a_report(f: &Fixture, a: &Attempt) {
     let mut connection = f.connection().await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *connection)
         .await
-        .expect("the lease lapses");
+        .expect("the run lapses");
     sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
         .bind(&a.draft.id)
         .execute(&mut *connection)

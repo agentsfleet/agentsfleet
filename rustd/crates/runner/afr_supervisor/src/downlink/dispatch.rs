@@ -5,8 +5,8 @@ use std::{collections::HashSet, sync::Arc};
 use af_core::id::Uuid7;
 use af_stream::OwnedFrame;
 use af_wire::{
-    lease::TaggedLease,
-    protocol::{Down, LEASES_MAX, StreamKind},
+    protocol::{Down, RUNS_MAX, StreamKind},
+    run::TaggedRun,
 };
 use garde::Validate as _;
 use tokio::sync::{mpsc, watch};
@@ -37,7 +37,7 @@ impl Dispatch<'_> {
     pub(crate) fn frame(&mut self, kind: StreamKind, frame: OwnedFrame) -> Result<Progress> {
         let message: Down<'_> = frame.decode()?;
         if matches!(message, Down::TurnCheckpoint { .. }) {
-            af_wire::lease::TurnMessageSize {
+            af_wire::run::TurnMessageSize {
                 bytes: frame.as_bytes().len(),
             }
             .validate()?;
@@ -46,18 +46,18 @@ impl Dispatch<'_> {
             return Err(ErrorKind::StreamProtocol.into());
         }
         match message {
-            Down::Offer { ref lease } => {
-                let id: &str = match lease {
-                    TaggedLease::Fleet(lease) => lease.lease_id.as_ref(),
-                    TaggedLease::Authoring(lease) => lease.lease_id.as_str(),
+            Down::Offer { ref run } => {
+                let id: &str = match run {
+                    TaggedRun::Fleet(run) => run.run_id.as_ref(),
+                    TaggedRun::Authoring(run) => run.run_id.as_str(),
                 };
                 let id = Uuid7::parse(id)?;
                 self.offer(frame, id)?;
             }
-            Down::Cancel { lease_id, .. } => {
-                let id = Uuid7::parse(&lease_id)?;
+            Down::Cancel { run_id, .. } => {
+                let id = Uuid7::parse(&run_id)?;
                 if !self.running.cancel(&id) {
-                    if self.early_cancel.len() == LEASES_MAX && !self.early_cancel.contains(&id) {
+                    if self.early_cancel.len() == RUNS_MAX && !self.early_cancel.contains(&id) {
                         return Ok(Progress::Reconnect);
                     }
                     self.early_cancel.insert(id);
@@ -121,7 +121,7 @@ impl Dispatch<'_> {
     fn offer(&mut self, mut frame: OwnedFrame, id: Uuid7) -> Result<()> {
         let cancelled = self.early_cancel.remove(&id);
         let registration = self.running.offer(id, cancelled)?;
-        // The fixed lease-count bound admits at most one maximum-sized frame per registration.
+        // The fixed run-count bound admits at most one maximum-sized frame per registration.
         frame.try_rebudget(self.offer_budget, StreamKind::Work)?;
         let offer = Offered {
             frame,
@@ -153,7 +153,7 @@ mod tests {
     async fn late_cancellation_overflow_recovers_without_halting_the_runner() -> Result<()> {
         let requests = Requests::new();
         let running = Arc::new(Running::default());
-        let (offers, _receiver) = mpsc::channel(LEASES_MAX);
+        let (offers, _receiver) = mpsc::channel(RUNS_MAX);
         let (assignments, _watching) = watch::channel(None);
         let stop = CancellationToken::new();
         let mut dispatch = Dispatch {
@@ -165,11 +165,11 @@ mod tests {
             stop: &stop,
             early_cancel: HashSet::new(),
         };
-        for index in 1..=LEASES_MAX + 1 {
-            let lease = format!("019f0000-0000-7000-8000-{index:012x}");
+        for index in 1..=RUNS_MAX + 1 {
+            let run = format!("019f0000-0000-7000-8000-{index:012x}");
             let message: Down<'_> = Down::Cancel {
-                lease_id: lease.into(),
-                error_code: af_core::error_code::RUN_LEASE_CANCELLED.as_str().into(),
+                run_id: run.into(),
+                error_code: af_core::error_code::RUN_CANCELLED.as_str().into(),
             };
             let frame = encode(
                 &message,
@@ -180,13 +180,13 @@ mod tests {
             )
             .await?;
             let progress = dispatch.frame(StreamKind::Control, frame)?;
-            if index <= LEASES_MAX {
+            if index <= RUNS_MAX {
                 assert!(matches!(progress, Progress::Continue));
             } else {
                 assert!(matches!(progress, Progress::Reconnect));
             }
         }
-        assert_eq!(dispatch.early_cancel.len(), LEASES_MAX);
+        assert_eq!(dispatch.early_cancel.len(), RUNS_MAX);
         assert!(!stop.is_cancelled());
         Ok(())
     }
@@ -202,7 +202,7 @@ mod tests {
             FakeAgent::new(Behaviour::Answer),
         );
         let requests = Requests::new();
-        let (offers, offered) = mpsc::channel(LEASES_MAX);
+        let (offers, offered) = mpsc::channel(RUNS_MAX);
         let (assignments, _) = watch::channel(None);
         let stop = CancellationToken::new();
         let mut dispatch = Dispatch {
@@ -240,14 +240,14 @@ mod tests {
         dispatch: &mut Dispatch<'_>,
         stop: &CancellationToken,
     ) -> Result<()> {
-        use crate::test_support::{FLEET_ID, LEASE_ID, lease};
+        use crate::test_support::{FLEET_ID, RUN_ID, payload};
         let messages: [Down<'_>; 2] = [
             Down::Cancel {
-                lease_id: LEASE_ID.into(),
-                error_code: af_core::error_code::RUN_LEASE_CANCELLED.as_str().into(),
+                run_id: RUN_ID.into(),
+                error_code: af_core::error_code::RUN_CANCELLED.as_str().into(),
             },
             Down::Offer {
-                lease: TaggedLease::<serde_json::Value>::Fleet(Box::new(lease(LEASE_ID, FLEET_ID))),
+                run: TaggedRun::<serde_json::Value>::Fleet(Box::new(payload(RUN_ID, FLEET_ID))),
             },
         ];
         for message in messages {

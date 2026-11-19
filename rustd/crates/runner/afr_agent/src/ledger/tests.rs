@@ -17,8 +17,8 @@ use af_core::test_util::trace::{Capture, CapturedEvent};
 use super::{EVENT_RECORD_DROPPED, Ledger, Opened};
 use crate::fixture::{Frames, GITHUB_TOKEN, clean_json, scrub};
 
-/// The lease every call here belongs to.
-const LEASE_ID: &str = "lease-1";
+/// The run every call here belongs to.
+const RUN_ID: &str = "run-1";
 /// Calls whose records, at the field cap each, pass the event's budget.
 const LARGE_CALLS: usize = 20;
 
@@ -27,7 +27,7 @@ fn a_run_without_calls_keeps_a_known_trace_and_no_records() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
 
     assert_eq!(
         serde_json::json!(ledger.finish()),
@@ -76,7 +76,7 @@ fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_still_is()
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
 
     for _ in 0..LARGE_CALLS {
         call(&ledger, "x".repeat(DETAIL_FIELD_MAX_BYTES));
@@ -105,12 +105,9 @@ fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_still_is()
         .collect();
     assert_eq!(dropped.len(), LARGE_CALLS - fit, "one per record kept out");
     let warned = |event: &CapturedEvent| {
-        event.level == tracing::Level::WARN && event.field("lease_id") == Some(LEASE_ID)
+        event.level == tracing::Level::WARN && event.field("run_id") == Some(RUN_ID)
     };
-    assert!(
-        dropped.iter().all(warned),
-        "each drop warns under its lease"
-    );
+    assert!(dropped.iter().all(warned), "each drop warns under its run");
     assert_eq!(
         dropped.first().and_then(|event| event.field("call_number")),
         Some((fit + 1).to_string().as_str()),
@@ -132,7 +129,7 @@ async fn every_call_is_counted_by_tool_and_how_it_ended() {
     let (tally, recorded) = Tally::new();
 
     scoped(tally, async {
-        let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+        let ledger = Ledger::new(RUN_ID, &sink, &scrub);
         call(&ledger, "planned".to_owned());
         let made_up = Call {
             id: String::new(),
@@ -204,7 +201,7 @@ fn test_a_calls_start_frame_carries_its_arguments_as_json() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
     let named = serde_json::json!({"path": "a.md", "token": GITHUB_TOKEN});
 
     for arguments in [named.clone(), serde_json::json!("not an object")] {
@@ -242,7 +239,7 @@ fn a_call_opened_inside_another_takes_the_next_number_and_each_ends_once() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
     let (outer, inner) = (planned(), planned());
 
     let outer_open = ledger.open(&outer);
@@ -271,7 +268,7 @@ fn interrupting_a_call_with_one_open_inside_it_ends_both_interrupted() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
     let (outer, inner) = (planned(), planned());
 
     let outer_open = ledger.open(&outer);
@@ -308,7 +305,7 @@ async fn a_call_killed_for_memory_is_counted_and_typed_on_its_span() {
     let (tally, recorded) = Tally::new();
 
     scoped(tally, async {
-        let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+        let ledger = Ledger::new(RUN_ID, &sink, &scrub);
         let killed = ToolOutput {
             exit_code: Some(137),
             error_code: Some(ToolErrorCode::OutOfMemory.into()),

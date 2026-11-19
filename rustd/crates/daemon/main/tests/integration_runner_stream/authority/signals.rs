@@ -1,4 +1,4 @@
-//! Native observations retain coded refusals, lease identity and terminal settlement evidence.
+//! Native observations retain coded refusals, run identity and terminal settlement evidence.
 
 use super::super::raw::Native;
 use super::{PUSH_BOUND, TestResult};
@@ -12,7 +12,7 @@ use tokio::{io::AsyncReadExt as _, time::Instant};
 use tokio_util::sync::CancellationToken;
 
 pub(super) struct Held {
-    pub(super) lease: String,
+    pub(super) run: String,
     pub(super) fence: u64,
     pub(super) event: Uuid7,
     pub(super) fleet: Uuid7,
@@ -21,22 +21,22 @@ pub(super) struct Held {
 
 pub(super) async fn offer(native: &mut Native) -> TestResult<Held> {
     let frame = native.expect(StreamKind::Work, "offer").await;
-    let lease = wire::pointer(&frame, "/lease");
-    let (id, fence) = wire::claim(lease);
+    let run = wire::pointer(&frame, "/run");
+    let (id, fence) = wire::claim(run);
     Ok(Held {
-        lease: id,
+        run: id,
         fence,
         fleet: Uuid7::parse(
-            wire::pointer(lease, "/event/fleet_id")
+            wire::pointer(run, "/event/fleet_id")
                 .as_str()
                 .ok_or("fleet id missing")?,
         )?,
         event: Uuid7::parse(
-            wire::pointer(lease, "/event/event_id")
+            wire::pointer(run, "/event/event_id")
                 .as_str()
                 .ok_or("event id missing")?,
         )?,
-        expires: wire::pointer(lease, "/lease_expires_at")
+        expires: wire::pointer(run, "/run_expires_at")
             .as_str()
             .ok_or("expiry missing")?
             .parse()?,
@@ -44,15 +44,15 @@ pub(super) async fn offer(native: &mut Native) -> TestResult<Held> {
 }
 
 pub(super) async fn renew(native: &mut Native, held: &[&Held], request_id: u64) -> Value {
-    let leases: Vec<_> = held
+    let runs: Vec<_> = held
         .iter()
-        .map(|lease| json!({"lease_id":lease.lease,"request":{"requests":[]}}))
+        .map(|run| json!({"run_id":run.run,"request":{"requests":[]}}))
         .collect();
     native
         .send(
             StreamKind::Control,
             &json!({
-                "type":"renew_batch", "request_id":request_id, "leases":leases,
+                "type":"renew_batch", "request_id":request_id, "runs":runs,
             }),
         )
         .await;
@@ -64,10 +64,10 @@ pub(super) async fn renew(native: &mut Native, held: &[&Held], request_id: u64) 
 pub(super) async fn cancelled(native: &mut Native, held: &Held) -> TestResult {
     let cancel =
         tokio::time::timeout(PUSH_BOUND, native.expect(StreamKind::Control, "cancel")).await?;
-    assert_eq!(wire::pointer(&cancel, "/lease_id"), &held.lease);
+    assert_eq!(wire::pointer(&cancel, "/run_id"), &held.run);
     assert_eq!(
         wire::pointer(&cancel, "/error_code"),
-        af_core::error_code::RUN_LEASE_CANCELLED.as_str()
+        af_core::error_code::RUN_CANCELLED.as_str()
     );
     Ok(())
 }
@@ -83,17 +83,17 @@ pub(super) async fn away(native: &mut Native, code: ErrorCode) -> TestResult {
 }
 
 pub(super) async fn report(
-    run: &Scenario,
+    scene: &Scenario,
     native: &mut Native,
     held: &Held,
     cancelled: bool,
 ) -> TestResult {
-    let mut report = wire::report_body(&held.lease, &held.event, held.fence);
+    let mut report = wire::report_body(&held.run, &held.event, held.fence);
     if cancelled {
         let fields = report.as_object_mut().ok_or("report object missing")?;
         fields.insert("outcome".into(), "fleet_error".into());
         fields.insert("failure_reason".into(), "renewal_terminate".into());
-        fields.insert("failure_detail".into(), "the daemon ended the lease".into());
+        fields.insert("failure_detail".into(), "the daemon ended the run".into());
     }
     native
         .send(
@@ -103,16 +103,16 @@ pub(super) async fn report(
         .await;
     let ack = native.expect(StreamKind::Reports, "report_ack").await;
     assert_eq!(wire::pointer(&ack, "/answer/status"), "ok");
-    assert_settled(run, held, cancelled).await
+    assert_settled(scene, held, cancelled).await
 }
 
-async fn assert_settled(run: &Scenario, held: &Held, cancelled: bool) -> TestResult {
+async fn assert_settled(scene: &Scenario, held: &Held, cancelled: bool) -> TestResult {
     let saved: (String, Option<String>) = sqlx::query_as(
         "SELECT status,failure_reason FROM fleet.events WHERE event_id=$1 AND fleet_id=$2",
     )
     .bind(&held.event)
     .bind(&held.fleet)
-    .fetch_one(&mut *run.booted.database.acquire().await?)
+    .fetch_one(&mut *scene.booted.database.acquire().await?)
     .await?;
     assert_eq!(
         saved.0,
@@ -136,7 +136,7 @@ pub(super) async fn no_offer(native: &mut Native) -> TestResult {
 }
 
 pub(super) async fn opening_refused(
-    run: &Scenario,
+    scene: &Scenario,
     token: &str,
     code: ErrorCode,
     transport: Transport,
@@ -144,7 +144,7 @@ pub(super) async fn opening_refused(
     let stop = CancellationToken::new();
     let endpoint = Endpoint::parse(&format!(
         "https://localhost:{}",
-        run.booted.runner_stream_address.port()
+        scene.booted.runner_stream_address.port()
     ))?;
     let mut connection = Connection::connect(
         transport,

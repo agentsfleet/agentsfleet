@@ -19,22 +19,22 @@ use crate::{
     client::{Call, Verb},
     test_support::{Answer, Behaviour, FakeAgent, FakeEngine, Rig, bounded, json},
 };
-use af_wire::authoring::Lease;
+use af_wire::authoring::Run;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tracing_subscriber::fmt::MakeWriter;
 
-const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";
+const RUN: &str = "01890a5d-ac96-774b-bcce-b302099a8060";
 const ATTEMPT: &str = "01890a5d-ac96-774b-bcce-b302099a8061";
 /// Thirty seconds after the rig clock's zero, as the daemon spells it.
 const GRANTED_UNTIL: &str = "1970-01-01T00:00:30Z";
 /// The attempt's end, five minutes after the rig clock's zero.
 const ATTEMPT_ENDS: &str = "1970-01-01T00:05:00Z";
 
-pub(crate) fn lease() -> Lease<Value> {
+pub(crate) fn payload() -> Run<Value> {
     serde_json::from_value(json!({
-        "lease_id": LEASE, "attempt_id": ATTEMPT, "draft_id": LEASE,
+        "run_id": RUN, "attempt_id": ATTEMPT, "draft_id": RUN,
         "sequence": "1", "fence": "1",
         "expires_at": GRANTED_UNTIL, "deadline": ATTEMPT_ENDS,
         "model": {"ref":"owned", "provider":"openai", "model":"gpt-4.1",
@@ -96,13 +96,13 @@ impl std::io::Write for Logs {
     }
 }
 
-async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
-    let (calls, report, _logs) = run_logged(rig, lease).await;
+async fn run(rig: &mut Rig, run: Run<Value>) -> (Vec<Call>, Value) {
+    let (calls, report, _logs) = run_logged(rig, run).await;
     (calls, report)
 }
 
 /// Runs a turn under a subscriber, as the runner does, so its log lines run and can be read.
-async fn run_logged(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value, String) {
+async fn run_logged(rig: &mut Rig, run: Run<Value>) -> (Vec<Call>, Value, String) {
     let logs = Logs::default();
     let _installed = tracing::subscriber::set_default(
         tracing_subscriber::fmt()
@@ -115,7 +115,7 @@ async fn run_logged(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value, St
     bounded(
         "authoring turn",
         rig.lessee
-            .author(&lease, tokio_util::sync::CancellationToken::new()),
+            .author(&run, tokio_util::sync::CancellationToken::new()),
     )
     .await
     .unwrap();

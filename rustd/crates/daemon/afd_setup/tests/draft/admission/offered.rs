@@ -6,7 +6,7 @@ use super::super::refusal::Refusal;
 use super::fixture::{attempts, fund, funded, queue};
 use super::{Fixture, mint};
 use af_crypto::entropy::Entropy;
-use af_wire::lease::AcceptedKinds;
+use af_wire::run::AcceptedKinds;
 use afd_runner::Runners;
 
 #[tokio::test]
@@ -84,7 +84,7 @@ async fn a_host_choice_that_cannot_be_recorded_rolls_the_admission_back() {
         "runner.runners",
         "choice",
         runner.as_str(),
-        &format!("NEW.id='{runner}'::uuid AND NEW.lease_version<>OLD.lease_version"),
+        &format!("NEW.id='{runner}'::uuid AND NEW.run_version<>OLD.run_version"),
         "RETURN NULL",
     )
     .await

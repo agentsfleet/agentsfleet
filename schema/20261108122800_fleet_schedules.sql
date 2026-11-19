@@ -16,7 +16,7 @@ CREATE TABLE fleet.schedules (
     sync_status            TEXT    NOT NULL,
     resource_version       BIGINT  NOT NULL,
     sync_token             UUID,
-    sync_lease_expires_at  TIMESTAMPTZ(3),
+    sync_run_expires_at  TIMESTAMPTZ(3),
     last_error             TEXT,
     created_at             TIMESTAMPTZ(3)  NOT NULL,
     updated_at             TIMESTAMPTZ(3)  NOT NULL,

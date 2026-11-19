@@ -1,4 +1,4 @@
-//! The lease's egress guard as `guffbolt`'s outbound hook: every request a
+//! The run's egress guard as `guffbolt`'s outbound hook: every request a
 //! generic tool drafts is admitted, sent and masked here.
 //!
 //! `http_request`, `web_fetch` and `pushover` differ only in the request they
@@ -18,7 +18,7 @@ use guffbolt::tools::outbound::{
     Admitted, Outbound, OutboundFuture, Placement as Placing, Redirects, Refused, Request, Response,
 };
 
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 
 /// The event a refused call logs under, fixed because dashboards match on it.
@@ -33,7 +33,7 @@ const CONNECT_METHOD: &str = "GET";
 const _: () =
     assert!(guffbolt::tools::outbound::RESPONSE_MAX_BYTES == af_egress::RESPONSE_MAX_BYTES);
 
-/// The transport every egress tool sends through, shared across leases.
+/// The transport every egress tool sends through, shared across runs.
 pub(crate) type SharedTransport = Arc<dyn Transport>;
 
 impl From<Refusal> for ToolErrorCode {
@@ -54,17 +54,17 @@ impl From<Refusal> for ToolErrorCode {
     }
 }
 
-/// One call's view of the lease's guard and the shared transport.
+/// One call's view of the run's guard and the shared transport.
 #[derive(Debug)]
 pub(crate) struct Egressed<'l, 'run> {
     transport: Option<&'l dyn Transport>,
-    lease: &'l Lease<'run>,
+    run: &'l Run<'run>,
 }
 
 impl<'l, 'run> Egressed<'l, 'run> {
-    /// The guard of `lease`, sending through `transport`.
-    pub(crate) const fn new(transport: Option<&'l dyn Transport>, lease: &'l Lease<'run>) -> Self {
-        Self { transport, lease }
+    /// The guard of `run`, sending through `transport`.
+    pub(crate) const fn new(transport: Option<&'l dyn Transport>, run: &'l Run<'run>) -> Self {
+        Self { transport, run }
     }
 }
 
@@ -86,8 +86,8 @@ impl Outbound for Egressed<'_, '_> {
                 },
             };
             let inbound = match redirects {
-                Redirects::Follow => send_get(tool, transport, self.lease, draft).await,
-                Redirects::Stop => send(tool, transport, self.lease, draft).await,
+                Redirects::Follow => send_get(tool, transport, self.run, draft).await,
+                Redirects::Stop => send(tool, transport, self.run, draft).await,
             }?;
             Ok(Response {
                 status: inbound.status,
@@ -102,7 +102,7 @@ impl Outbound for Egressed<'_, '_> {
     }
 
     fn mask(&self, text: String) -> Pin<Box<dyn Future<Output = String> + Send + '_>> {
-        Box::pin(masked(self.lease, text))
+        Box::pin(masked(self.run, text))
     }
 
     fn secret<'a>(
@@ -112,16 +112,12 @@ impl Outbound for Egressed<'_, '_> {
         field: &'a str,
     ) -> OutboundFuture<'a, String> {
         Box::pin(async move {
-            let statics = self.lease.egress.lock().await.statics();
+            let statics = self.run.egress.lock().await.statics();
             statics
                 .field(name, field)
                 .map(str::to_owned)
                 .ok_or_else(|| {
-                    refused(
-                        tool,
-                        self.lease.lease_id,
-                        &Error::secret_not_found(name, field),
-                    )
+                    refused(tool, self.run.run_id, &Error::secret_not_found(name, field))
                 })
         })
     }
@@ -135,9 +131,8 @@ impl Outbound for Egressed<'_, '_> {
                 body: None,
                 placement: Placement::Nowhere,
             };
-            let prepared = self.lease.egress.lock().await.prepare(draft).await;
-            let outbound =
-                prepared.map_err(|failure| refused(tool, self.lease.lease_id, &failure))?;
+            let prepared = self.run.egress.lock().await.prepare(draft).await;
+            let outbound = prepared.map_err(|failure| refused(tool, self.run.run_id, &failure))?;
             Ok(Admitted {
                 url: outbound.url().to_string(),
                 headers: Vec::new(),
@@ -146,23 +141,23 @@ impl Outbound for Egressed<'_, '_> {
     }
 }
 
-/// `draft`, admitted by the lease's guard and sent through `transport`, its
-/// answer masked for every token the lease minted.
+/// `draft`, admitted by the run's guard and sent through `transport`, its
+/// answer masked for every token the run minted.
 async fn send(
     tool: &str,
     transport: &dyn Transport,
-    lease: &Lease<'_>,
+    run: &Run<'_>,
     draft: Draft,
 ) -> Result<Inbound, Refused> {
     // The guard is held to admit and mint, never across the send, so a slow
-    // upstream holds no other call of the lease.
-    let prepared = lease.egress.lock().await.prepare(draft).await;
-    let outbound = prepared.map_err(|failure| refused(tool, lease.lease_id, &failure))?;
+    // upstream holds no other call of the run.
+    let prepared = run.egress.lock().await.prepare(draft).await;
+    let outbound = prepared.map_err(|failure| refused(tool, run.run_id, &failure))?;
     let mut inbound = transport
         .send(outbound)
         .await
-        .map_err(|failure| refused(tool, lease.lease_id, &failure))?;
-    mask_response(lease, &mut inbound).await;
+        .map_err(|failure| refused(tool, run.run_id, &failure))?;
+    mask_response(run, &mut inbound).await;
     Ok(inbound)
 }
 
@@ -170,20 +165,20 @@ async fn send(
 async fn send_get(
     tool: &str,
     transport: &dyn Transport,
-    lease: &Lease<'_>,
+    run: &Run<'_>,
     draft: Draft,
 ) -> Result<Inbound, Refused> {
-    tokio::time::timeout(REQUEST_TIMEOUT, get_chain(tool, transport, lease, draft))
+    tokio::time::timeout(REQUEST_TIMEOUT, get_chain(tool, transport, run, draft))
         .await
-        .unwrap_or_else(|_expired| Err(read_expired(tool, lease.lease_id)))
+        .unwrap_or_else(|_expired| Err(read_expired(tool, run.run_id)))
 }
 
-fn read_expired(tool: &str, lease_id: &str) -> Refused {
+fn read_expired(tool: &str, run_id: &str) -> Refused {
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = READ_DEADLINE_EXCEEDED;
     {
         let event = &"http_read_deadline_exceeded";
-        tracing::warn!(event, lease_id, tool, error_code, reason);
+        tracing::warn!(event, run_id, tool, error_code, reason);
     };
     Refused::new(
         ToolErrorCode::UpstreamUnreachable.into(),
@@ -194,39 +189,39 @@ fn read_expired(tool: &str, lease_id: &str) -> Refused {
 async fn get_chain(
     tool: &str,
     transport: &dyn Transport,
-    lease: &Lease<'_>,
+    run: &Run<'_>,
     draft: Draft,
 ) -> Result<Inbound, Refused> {
     let headers = draft.headers.clone();
-    let mut outbound = lease
+    let mut outbound = run
         .egress
         .lock()
         .await
         .prepare(draft)
         .await
-        .map_err(|failure| refused(tool, lease.lease_id, &failure))?;
+        .map_err(|failure| refused(tool, run.run_id, &failure))?;
     let mut chain = Chain::new(outbound.url(), headers);
     loop {
         let mut inbound = transport
             .send(outbound.for_redirect_read())
             .await
-            .map_err(|failure| redirect_refused(tool, lease, &chain, &failure))?;
+            .map_err(|failure| redirect_refused(tool, run, &chain, &failure))?;
         let next = chain
             .next(&mut inbound)
             .map_err(|reason| stopped(reason, &chain, &inbound))?;
         let Some(draft) = next else {
-            mask_response(lease, &mut inbound).await;
+            mask_response(run, &mut inbound).await;
             chain.finish();
             return Ok(inbound);
         };
-        // Every target is re-admitted; a network wait never holds this lease guard.
-        outbound = lease
+        // Every target is re-admitted; a network wait never holds this run guard.
+        outbound = run
             .egress
             .lock()
             .await
             .prepare(draft)
             .await
-            .map_err(|failure| redirect_refused(tool, lease, &chain, &failure))?;
+            .map_err(|failure| redirect_refused(tool, run, &chain, &failure))?;
     }
 }
 
@@ -251,11 +246,11 @@ fn stopped(reason: Stop, chain: &Chain, inbound: &Inbound) -> Refused {
     )
 }
 
-fn redirect_refused(tool: &str, lease: &Lease<'_>, chain: &Chain, failure: &Error) -> Refused {
+fn redirect_refused(tool: &str, run: &Run<'_>, chain: &Chain, failure: &Error) -> Refused {
     if !chain.started() {
-        return refused(tool, lease.lease_id, failure);
+        return refused(tool, run.run_id, failure);
     }
-    let code = log_refusal(tool, lease.lease_id, failure);
+    let code = log_refusal(tool, run.run_id, failure);
     Refused::new(
         code.into(),
         format!(
@@ -266,17 +261,17 @@ fn redirect_refused(tool: &str, lease: &Lease<'_>, chain: &Chain, failure: &Erro
     )
 }
 
-async fn mask_response(lease: &Lease<'_>, inbound: &mut Inbound) {
-    inbound.body = masked(lease, std::mem::take(&mut inbound.body)).await;
+async fn mask_response(run: &Run<'_>, inbound: &mut Inbound) {
+    inbound.body = masked(run, std::mem::take(&mut inbound.body)).await;
     if let Some(content_type) = inbound.content_type.take() {
-        inbound.content_type = Some(masked(lease, content_type).await);
+        inbound.content_type = Some(masked(run, content_type).await);
     }
 }
 
-/// `text` with every token the lease minted masked; `text` itself when none
+/// `text` with every token the run minted masked; `text` itself when none
 /// is in it.
-pub(crate) async fn masked(lease: &Lease<'_>, text: String) -> String {
-    let mask = lease.egress.lock().await.mask(&text);
+pub(crate) async fn masked(run: &Run<'_>, text: String) -> String {
+    let mask = run.egress.lock().await.mask(&text);
     let changed = match mask {
         Cow::Owned(masked) => Some(masked),
         Cow::Borrowed(_) => None,
@@ -285,20 +280,20 @@ pub(crate) async fn masked(lease: &Lease<'_>, text: String) -> String {
 }
 
 /// A refusal as the model reads it, its code first and its sentence after,
-/// logged as `tool_refused` under lease `lease_id`. A client that was never
+/// logged as `tool_refused` under run `run_id`. A client that was never
 /// built sends nothing, so it reads as a request that got no answer.
-pub(crate) fn refused(tool: &str, lease_id: &str, failure: &Error) -> Refused {
-    let code = log_refusal(tool, lease_id, failure);
+pub(crate) fn refused(tool: &str, run_id: &str, failure: &Error) -> Refused {
+    let code = log_refusal(tool, run_id, failure);
     Refused::new(code.into(), failure.detail())
 }
 
-fn log_refusal(tool: &str, lease_id: &str, failure: &Error) -> ToolErrorCode {
+fn log_refusal(tool: &str, run_id: &str, failure: &Error) -> ToolErrorCode {
     let code = failure
         .refusal()
         .map_or(ToolErrorCode::UpstreamUnreachable, ToolErrorCode::from);
     let error_code = code.as_str();
     let event = EVENT_TOOL_REFUSED;
-    tracing::info!(lease_id, tool, error_code, event);
+    tracing::info!(run_id, tool, error_code, event);
     code
 }
 

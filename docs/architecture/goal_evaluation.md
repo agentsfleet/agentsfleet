@@ -15,11 +15,11 @@ Recheck endpoint capabilities, rates and resolved model identity before activati
 Keep decision networking in `af_providers`, alongside existing provider connections and guarded transport.
 The agent owns when to ask and how to apply accepted answers; it does not receive provider keys.
 
-Reuse guarded HTTP construction, final request-header validation, native vault resolution, usage reporting and the current lease budget.
+Reuse guarded HTTP construction, final request-header validation, native vault resolution, usage reporting and the current run budget.
 Decision responses use a 64-KiB bound; coding inference retains its existing SDK wire limit.
 
 ```text
-Existing fleet admission -> existing lease -> existing agent loop
+Existing fleet admission -> existing run -> existing agent loop
                                              |
                               DecisionEvaluator::evaluate
                                              |
@@ -33,7 +33,7 @@ Existing fleet admission -> existing lease -> existing agent loop
                                              |
                           native ownership/evidence/budget checks
                                              |
-                                same lease/report/settlement
+                                same run/report/settlement
 ```
 
 One object-safe `DecisionEvaluator` trait exposes one bounded asynchronous `evaluate` call accepting only the validated decision request.
@@ -57,7 +57,7 @@ Existing Rig remains the coding-provider dependency; the decision client reuses 
 ## Configuration per runner
 
 Nullable `decision_model_id` in the existing runner assignment selects reviewed decision metadata from the current model catalogue.
-Runner enrollment, edit and heartbeat carry the catalogue identity; lease issue freezes `DecisionAssignment` in its payload and `runner.leases.decision_snapshot`.
+Runner enrollment, edit and heartbeat carry the catalogue identity; run issue freezes `DecisionAssignment` in its payload and `runner.runs.decision_snapshot`.
 Unconfigured hosts skip the catalogue read.
 
 Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::task::decision`.
@@ -104,10 +104,10 @@ Runner C assignment: decision_model_id -> Cloudflare Clef profile
 Runner D assignment: decision_model_id -> OpenAI Decisions profile
 
 operator PATCH existing runner -> native assignment -> heartbeat
-                                                 -> lease snapshot -> evaluate
+                                                 -> run snapshot -> evaluate
 ```
 
-Apply assignment edits to later leases; an active call retains its recorded profile and physical call identity.
+Apply assignment edits to later runs; an active call retains its recorded profile and physical call identity.
 After the slot lock, a fresh database clock rejects claims that expired during profile lookup or lock waits.
 
 Revocation still prevents new dispatch and native acceptance while preserving measured usage.
@@ -293,7 +293,7 @@ conversation / status / refresh / steer / new_work / clarify
                 answer / read / input receipt / create / clarify
 ```
 
-Run routing within the existing lease or its safe input boundary; no second queue or classification worker is added.
+Run routing within the existing run or its safe input boundary; no second queue or classification worker is added.
 Use trusted DT options plus explicit new-work and unclear outcomes.
 
 Use compact option keys with an immutable native identity map in the state, so sixteen candidates fit the question-size bound.
@@ -434,7 +434,7 @@ Native decision adapters share guarded transport and bounded accounting; existin
 
 ### Billing alongside coding calls
 
-Existing `RequestUsage` carries token counts under one lease-wide coding-model rate; that alone cannot price a different decision provider.
+Existing `RequestUsage` carries token counts under one run-wide coding-model rate; that alone cannot price a different decision provider.
 Add optional `decision_call_id` to renew/report usage references and resolve its immutable profile/rate snapshot from the daemon reservation.
 A decision receipt creates one canonical billing line; PATCH, renew and report reference that identity rather than creating additional charges.
 
@@ -450,14 +450,14 @@ Unknown calls retain their reservation; replacement or task binding cannot charg
 
 ### Native billing integration
 
-Use the original lease's `WorkKey::FleetLease`; binding an intent call to a later task does not create another billing identity.
-The call record retains its runner, original admission/lease, optional task, authorized generation, native usage sequence, immutable profile/price snapshot and reservation.
+Use the original run's `WorkKey::FleetRun`; binding an intent call to a later task does not create another billing identity.
+The call record retains its runner, original admission/run, optional task, authorized generation, native usage sequence, immutable profile/price snapshot and reservation.
 Coding usage keeps `[0, 2^31)`, runtime uses `[2^31, 3 * 2^30)`, and native decision calls use `[3 * 2^30, 2^32)`; both native allocators refuse exhaustion.
 
-Runtime-line counts in `meter_lease.sql` and `bill_expired_slice.sql` must exclude decision sequences.
+Runtime-line counts in `meter_run.sql` and `bill_expired_slice.sql` must exclude decision sequences.
 
 Reuse `afd_billing::price::{PriceBook, Rater}` with frozen decision tiers and platform posture.
-Do not pass decision usage through the coding lease's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
+Do not pass decision usage through the coding run's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
 The existing billing sweeper groups those three attributes with work identity.
 
 Native reservations and PATCH receipts retain original ownership. The source continuation
@@ -487,17 +487,17 @@ The shared operation metrics add `decision_sweep`; recovery attempts and overdue
 
 ### Running task authority and source attribution
 
-A routing call can assess human input B while task A holds the fleet's active lease.
+A routing call can assess human input B while task A holds the fleet's active run.
 The wire task stamp still proves A's current generation, but intent charges remain attributable to B's source admission.
-Only a goal call carries A as its task-budget owner; both retain the issuing lease's original billing work identity.
+Only a goal call carries A as its task-budget owner; both retain the issuing run's original billing work identity.
 
-A source can be that lease's own admission or another eligible human input claimed under the same lease/fence.
+A source can be that run's own admission or another eligible human input claimed under the same run/fence.
 Claiming preserves the original message and does not accept an interpretation.
 Later task binding cannot transfer or duplicate the routing charge.
 
 Up to ten physical calls cover one whole-message assessment and four item assessments, each with at most one permitted retry.
-At two cents each, the conservative source reservation allowance is USD 0.20; smaller fleet, lease and credit limits still win.
-Pending reservations consume capacity; issued calls and unknown outcomes remain counted across replacement leases and later binding.
+At two cents each, the conservative source reservation allowance is USD 0.20; smaller fleet, run and credit limits still win.
+Pending reservations consume capacity; issued calls and unknown outcomes remain counted across replacement runs and later binding.
 
 This ceiling does not permit ten repeated whole-message classifications.
 Each logical assessment has a retained identity, immutable request snapshot and thirty-second deadline.
@@ -511,7 +511,7 @@ Resolve operation replay before rendering current state or reevaluating counters
 Identical issued operations return their existing identity without credentials; changed request content conflicts.
 A reserved operation can complete its first issuance after confirmed funding, with one native compare-and-set winner.
 
-Late receipts authenticate the original runner, lease and fence, even when the current lease/task has changed or disappeared.
+Late receipts authenticate the original runner, run and fence, even when the current run/task has changed or disappeared.
 Accounting and semantic usability remain separate; a stale receipt can settle its original charge but cannot advance work.
 The first unknown failure cannot be rewritten into throttling evidence; authoritative known usage may later reconcile it.
 
@@ -532,7 +532,7 @@ Identical receipts replay; conflicting known usage fails.
 An unknown result creates no zero-cost placeholder that could consume the actual billing sequence.
 Record attributable late usage before rejecting stale work; accounting does not grant current task-transition authority.
 
-Report and sweep release the whole lease hold only after all physical calls are reconciled, including calls whose original lease is no longer active.
+Report and sweep release the whole run hold only after all physical calls are reconciled, including calls whose original run is no longer active.
 The existing whole-hold API conservatively retains excess headroom until then; it cannot lower a live ceiling safely.
 
 ## Concrete repair decision example

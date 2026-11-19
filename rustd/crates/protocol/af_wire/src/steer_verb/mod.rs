@@ -1,4 +1,4 @@
-//! The runner's steer verb: the fleet a lease runs putting work on another
+//! The runner's steer verb: the fleet a run runs putting work on another
 //! fleet in its workspace.
 //!
 //! The text bound is a person's steer bound, so a fleet asks no more than a
@@ -19,15 +19,15 @@ use crate::event::STEER_MESSAGE_MAX_BYTES;
 /// so an oversized field is refused without being read.
 pub const FLEET_ID_BYTES: usize = 36;
 
-/// `POST /v1/runners/me/leases/{lease_id}/steers` request.
+/// `POST /v1/runners/me/runs/{run_id}/steers` request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct FleetSteerRequest<'a> {
-    /// The lease's fencing token; a holder the fleet has superseded is refused.
+    /// The run's fencing token; a holder the fleet has superseded is refused.
     #[garde(skip)]
     pub fencing_token: u64,
-    /// The fleet to steer: another fleet in the lease's workspace.
+    /// The fleet to steer: another fleet in the run's workspace.
     #[serde(borrow)]
     #[cfg_attr(feature = "openapi", schema(min_length = 36, max_length = 36))]
     #[garde(length(bytes, min = FLEET_ID_BYTES, max = FLEET_ID_BYTES))]

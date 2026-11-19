@@ -127,7 +127,7 @@ impl Line {
     pub(super) fn runtime(tenant: &Uuid7, fleet: &Uuid7, money: i64) -> Self {
         Self {
             id: mint_id(),
-            work_type: work::FLEET_LEASE,
+            work_type: work::FLEET_RUN,
             work_id: mint_id(),
             kind: LineKind::Runtime,
             sequence: 0,
@@ -165,8 +165,8 @@ impl Line {
     }
 
     pub(super) fn work(&self) -> WorkKey {
-        if self.work_type == work::FLEET_LEASE {
-            WorkKey::FleetLease(self.work_id.clone())
+        if self.work_type == work::FLEET_RUN {
+            WorkKey::FleetRun(self.work_id.clone())
         } else {
             WorkKey::AuthoringAttempt(self.work_id.clone())
         }

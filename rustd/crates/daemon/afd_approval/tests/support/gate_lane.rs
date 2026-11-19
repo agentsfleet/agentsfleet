@@ -7,7 +7,7 @@
 //!
 //! The crate under test does not depend on the runner plane, so neither does
 //! its suite. Seeding a tenant, a workspace and a fleet is three statements;
-//! borrowing them from `afd_fleet::tests` would put leases, money and policy
+//! borrowing them from `afd_fleet::tests` would put runs, money and policy
 //! behind a test about a person answering a question.
 //!
 //! # One tenant, and a workspace and fleet per test

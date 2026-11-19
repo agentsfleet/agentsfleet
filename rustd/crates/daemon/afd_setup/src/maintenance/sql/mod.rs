@@ -10,7 +10,7 @@ pub(super) const CLOSED_DRAFTS: &str = include_str!("closed_drafts.sql");
 /// `$1` limit.
 pub(super) const RESULTS: &str = include_str!("results.sql");
 
-/// Live attempts whose lease or deadline passed; hints only, rechecked locked.
+/// Live attempts whose run or deadline passed; hints only, rechecked locked.
 ///
 /// The order is `idx_attempts_status_deadline_id`'s, so the scan stops at the
 /// limit without sorting. It names `attempts.id`, the uuid, because a bare

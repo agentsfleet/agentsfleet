@@ -1,0 +1,278 @@
+//! The run's sandbox and its workspace, built beside the turn.
+//!
+//! ```text
+//!   egress ─► checkout plan                    refused here: startup_posture
+//!     ├─► build: thaw or prepare ─► check out ─► fill the slot
+//!     └─► turn:  model call ─► sandbox call waits on the slot ─► …
+//! ```
+//!
+//! Checks that would fail on every run run before any model request, and
+//! refuse it. Then the build and the turn run in one task: the turn's
+//! first model call never waits for the sandbox, and only a sandbox-side call
+//! does. A build that fails leaves the turn going; its sandbox-side calls
+//! answer `sandbox_unavailable`. The sandbox goes back to the run, which
+//! holds it for the fleet's next run or destroys it.
+
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use af_core::error_code::{Coded as _, Logged};
+use af_wire::report::FailureClass;
+use afr_executor::{ExecutorSlot, ExecutorSource as _};
+use afr_memory::Seed;
+use afr_sandbox::Limits;
+use tokio_util::sync::CancellationToken;
+
+use super::build::Build;
+use super::checkout::Plan;
+use super::hold::{Kept, Worked};
+use super::segments::Segment;
+use super::{Run, failed};
+use crate::activity::ActivitySink;
+use crate::egress::Bound;
+use crate::holds::Release;
+use crate::report::Ending;
+
+/// How long a turn that ended processed waits for its build, so the
+/// complete sandbox can be held: long enough for a checkout from a warm
+/// mirror, short against the fleet's next turn, which waits on this run's
+/// report. The answer is already out; past this, the build is told to stop
+/// and the report goes once its current step ends, so a stalled token mint or
+/// a wait on another run's mirror does not hold the run. A step that
+/// cannot hear the stop, such as a fetch stalled inside one network read,
+/// holds it until that step ends.
+pub(super) const BUILD_AFTER_ANSWER: Duration = Duration::from_secs(20);
+/// The event a build stopped because it outlasted its turn is logged under.
+pub(super) const EVENT_BUILD_OUTLASTED: &str = "sandbox_build_outlasted_turn";
+/// What a run whose egress allowlist could not be resolved reports: a host
+/// that does not resolve, resolves to IPv6 alone, or an allowlist past its cap.
+const DETAIL_EGRESS: &str =
+    "the egress allowlist could not be resolved into addresses this runner can admit";
+/// What a run reports when a host the fleet's own `network.allow` names
+/// resolves to a private or reserved address: the fleet's owner fixes this,
+/// so it is told apart from the runner-side failures above.
+const DETAIL_EGRESS_BLOCKED: &str =
+    "the fleet allows an egress host at a private or reserved address";
+const EVENT_EGRESS_REFUSED: &str = "egress_bind_refused";
+
+/// What a run proved before its first model request: the limits its sandbox
+/// enforces (this host's), what it may reach, and what it checks out.
+struct Admitted<'l> {
+    limits: Limits,
+    bound: Bound,
+    plan: Option<Plan<'l>>,
+}
+
+impl Run<'_> {
+    /// Admits the run's sandbox, then runs its build and its turn together
+    /// and hands the sandbox back with the turn's ending. A held sandbox keeps
+    /// the repositories as its last run left them.
+    /// The sandbox cell outlives the build and turn; the executor slot bounds its borrow.
+    /// Sandbox setup timing covers admission through the build's completion.
+    pub(super) async fn sandboxed(
+        &self,
+        memory: Seed<'_>,
+        sink: ActivitySink,
+        prepared_task: Option<&afr_agent::PreparedTask>,
+    ) -> Worked {
+        let setup = self.timeline.start(Segment::Sandbox);
+        let admitted = match self.admitted(prepared_task).await {
+            Ok(admitted) => admitted,
+            Err(refused) => return (*refused).into(),
+        };
+        let key = self.hold_key(admitted.limits, &admitted.bound);
+        let stop = self.interrupt.child_token();
+        let recovery = OnceLock::new();
+        let build = Build {
+            prepared_task,
+            recovery: &recovery,
+            key: &key,
+            limits: admitted.limits,
+            bound: &admitted.bound,
+            plan: admitted.plan.as_ref(),
+            stop: &stop,
+        };
+        let cell = OnceLock::new();
+        let (ending, held) = {
+            let slot = ExecutorSlot::pending();
+            let (capture, owner) = super::recovery_boundary::BoundaryOwner::new(
+                self,
+                super::recovery_boundary::Workspace::Building {
+                    cell: &cell,
+                    recovery: &recovery,
+                },
+            );
+            // Both boxed: side by side, the build's state and the turn's would
+            // sit in the run's own future together, past the large-future
+            // bound.
+            let building = Box::pin(async {
+                self.build(&build, &cell, &slot).await;
+                setup.stop();
+            });
+            let driving = Box::pin(async {
+                if !self.workspace_ready(&slot, prepared_task).await {
+                    return failed(
+                        FailureClass::StartupPosture,
+                        "recovery workspace was not prepared",
+                    );
+                }
+                self.drive(
+                    memory,
+                    &slot,
+                    sink,
+                    prepared_task,
+                    super::drive::Recovered::from(recovery.get()),
+                    &capture,
+                )
+                .await
+            });
+            let ending = owner.beside(self.beside(building, driving, &stop)).await;
+            (ending, slot.held())
+        };
+        self.timeline.waited(held);
+        Worked {
+            ending,
+            kept: cell.into_inner().map(|sandbox| Kept {
+                sandbox,
+                key,
+                recovery: recovery.into_inner(),
+            }),
+        }
+    }
+
+    async fn workspace_ready(
+        &self,
+        slot: &ExecutorSlot<'_>,
+        prepared: Option<&afr_agent::PreparedTask>,
+    ) -> bool {
+        if !prepared.is_some_and(|prepared| prepared.allow_actions)
+            && self.payload.turn_resume.is_none()
+        {
+            return true;
+        }
+        tokio::select! {
+            ready = slot.get() => ready.is_ok(),
+            () = self.interrupt.cancelled() => false,
+        }
+    }
+
+    /// Runs the build and the turn together, and answers the turn's ending
+    /// once both are done. A turn that ended processed and uncut waits up to
+    /// [`BUILD_AFTER_ANSWER`] for the build, so a complete sandbox can be
+    /// held; any other ending, or a build that outlasts the wait, stops the
+    /// build first. Either way the build runs to its end, never dropped
+    /// mid-step.
+    async fn beside(
+        &self,
+        building: impl Future<Output = ()>,
+        driving: impl Future<Output = Ending>,
+        stop: &CancellationToken,
+    ) -> Ending {
+        tokio::pin!(building, driving);
+        tokio::select! {
+            biased;
+            () = &mut building => driving.await,
+            ending = &mut driving => {
+                // Only a sandbox `keep` would hold is worth waiting for, and
+                // only while it still would: an interrupt, or running that
+                // stops mid-wait, ends the wait as surely as the deadline.
+                let waits = ending.processed()
+                    && !self.interrupt.is_cancelled()
+                    && !self.lessee.halt.run_plane().is_cancelled();
+                let built = waits && tokio::select! {
+                    biased;
+                    () = &mut building => true,
+                    () = self.interrupt.cancelled() => false,
+                    () = self.lessee.halt.run_plane().cancelled() => false,
+                    () = tokio::time::sleep(BUILD_AFTER_ANSWER) => {
+                        let run_id = self.ids.run.as_str();
+                        let event = EVENT_BUILD_OUTLASTED;
+                        tracing::info!(run_id, event, "the build outlasted its answered turn");
+                        false
+                    }
+                };
+                if !built {
+                    stop.cancel();
+                    building.await;
+                }
+                ending
+            }
+        }
+    }
+
+    /// Every check whose failure would repeat on each run, made before any
+    /// model request: the egress and the checkout plan. A refusal
+    /// ends the run at startup and releases the fleet's hold.
+    async fn admitted<'p>(
+        &'p self,
+        prepared: Option<&'p afr_agent::PreparedTask>,
+    ) -> Result<Admitted<'p>, Box<Ending>> {
+        let refused = |ending: Box<Ending>| {
+            self.release_hold();
+            ending
+        };
+        let resolving = self.timeline.start(Segment::Egress);
+        let bound = self.bind().await;
+        resolving.stop();
+        let bound = bound.map_err(refused)?;
+        let plan = self.plan(prepared).map_err(refused)?;
+        Ok(Admitted {
+            limits: self.lessee.limits,
+            bound,
+            plan,
+        })
+    }
+
+    /// Releases the fleet's held sandbox for a run refused before a sandbox
+    /// was chosen. Such a run settles with no hold, so the daemon records
+    /// none and answers the fleet's next claim with `resume_hold` false: the
+    /// held sandbox could never be resumed, only wait out its idle window in
+    /// a worker's hold slot.
+    fn release_hold(&self) {
+        self.lessee
+            .holds
+            .release(self.ids.fleet.clone(), Release::Mismatch);
+    }
+
+    /// The run's egress, resolved, or the startup failure that ends the
+    /// run when a host it names cannot be admitted.
+    async fn bind(&self) -> Result<Bound, Box<Ending>> {
+        let fleet = &self.payload.policy.network_policy;
+        let resolver = self.lessee.resolver.as_ref();
+        self.egress
+            .bind(fleet, resolver)
+            .await
+            .map_err(|failure| Box::new(self.egress_refused(&failure)))
+    }
+
+    /// Logs why the run's egress could not be bound, and ends the run at
+    /// startup. The log names the reason and how many hosts were asked for,
+    /// never an address: the reason names a host, and its addresses stay on
+    /// the host that resolved them.
+    fn egress_refused(&self, failure: &crate::error::Error) -> Ending {
+        let blocked = failure.is_egress_blocked();
+        let Logged { error_code, reason } = failure.logged();
+        let run_id = self.ids.run.as_str();
+        let hosts = self.egress.hosts(&self.payload.policy.network_policy).len();
+        let event = EVENT_EGRESS_REFUSED;
+        let detail = if blocked {
+            DETAIL_EGRESS_BLOCKED
+        } else {
+            DETAIL_EGRESS
+        };
+        tracing::warn!(error_code, run_id, reason, hosts, event, detail);
+        failed(FailureClass::StartupPosture, detail)
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/sandbox.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests/egress.rs"]
+mod egress_tests;
+
+#[cfg(test)]
+#[path = "tests/setup_parts.rs"]
+mod parts_tests;

@@ -1,4 +1,4 @@
-//! A holder that cannot lease keeps no fleet closed. A degraded runner is
+//! A holder that cannot run keeps no fleet closed. A degraded runner is
 //! answered no work, and one an operator drained is refused at
 //! authentication, so its hold binds nobody even while its last beat is
 //! recent: another runner's poll is offered the fleet and its claim wins.
@@ -10,7 +10,7 @@
 
 use af_core::id::Uuid7;
 use af_core::timing::SANDBOX_HOLD_IDLE;
-use afd_fleet::lease::sql::RUNNER_STATUS_DRAINED;
+use afd_fleet::run::sql::RUNNER_STATUS_DRAINED;
 use jiff::Timestamp;
 
 use super::{hold, live, slot};
@@ -20,7 +20,7 @@ use crate::support::Fixtures;
 /// Why a fixture runner reads degraded; nothing reads the words.
 const DEGRADED_REASON: &str = "fixture: degraded";
 
-/// What makes a beating holder one that cannot lease.
+/// What makes a beating holder one that cannot run.
 enum Unfit {
     /// Its verdict reads degraded.
     Degraded,
@@ -49,7 +49,7 @@ impl Unfit {
     }
 }
 
-/// Whether another runner's poll leases a fleet whose holder beat at
+/// Whether another runner's poll runs a fleet whose holder beat at
 /// enrolment, held it live, and then became `unfit`; and the slot after.
 async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), Uuid7) {
     let fixtures = Fixtures::create().await;
@@ -58,10 +58,10 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), 
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(
-        &leases,
+        &runs,
         &fixtures,
         &fleet,
         &holder,
@@ -70,7 +70,7 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), 
     .await;
     unfit.apply(&fixtures, &holder).await;
 
-    let found = seed::select_fleet(&leases, &other, &fleet).await;
+    let found = seed::select_fleet(&runs, &other, &fleet).await;
     let after = slot(&fixtures, &fleet).await;
 
     fixtures.cleanup().await;
@@ -79,7 +79,7 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), 
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_degraded_holders_fleet_is_leased_by_another_runner() {
+async fn test_a_degraded_holders_fleet_is_rund_by_another_runner() {
     let (taken, after, other) = taken_from(Unfit::Degraded).await;
 
     assert!(
@@ -95,12 +95,12 @@ async fn test_a_degraded_holders_fleet_is_leased_by_another_runner() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_drained_holders_fleet_is_leased_by_another_runner() {
+async fn test_a_drained_holders_fleet_is_rund_by_another_runner() {
     let (taken, after, other) = taken_from(Unfit::Drained).await;
 
     assert!(
         taken,
-        "a drained holder cannot lease, so its hold binds nobody"
+        "a drained holder cannot run, so its hold binds nobody"
     );
     assert_eq!(
         after,

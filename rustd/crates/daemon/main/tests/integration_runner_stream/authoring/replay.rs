@@ -20,18 +20,18 @@ async fn changed_replay_content_cannot_dispatch_publish_or_charge_again() {
 }
 
 async fn refuse_changed_model(fixture: &AuthoringFixture) {
-    let lease = fixture.id();
+    let run = fixture.id();
     let mut model = fixture.model();
     fixture
         .session
-        .authoring_model(&lease, &model)
+        .authoring_model(&run, &model)
         .await
         .expect("initial model call");
     model.request.max_output_tokens += 1;
     assert_eq!(
         fixture
             .session
-            .authoring_model(&lease, &model)
+            .authoring_model(&run, &model)
             .await
             .expect_err("changed model replay")
             .code(),
@@ -40,11 +40,11 @@ async fn refuse_changed_model(fixture: &AuthoringFixture) {
 }
 
 async fn refuse_changed_proposal(fixture: &AuthoringFixture) {
-    let lease = fixture.id();
+    let run = fixture.id();
     let mut proposal = fixture.proposal();
     fixture
         .session
-        .authoring_activity(&lease, &proposal)
+        .authoring_activity(&run, &proposal)
         .await
         .expect("initial proposal");
     proposal.event = ActivityEvent::Progress {
@@ -53,7 +53,7 @@ async fn refuse_changed_proposal(fixture: &AuthoringFixture) {
     assert_eq!(
         fixture
             .session
-            .authoring_activity(&lease, &proposal)
+            .authoring_activity(&run, &proposal)
             .await
             .expect_err("changed proposal replay")
             .code(),
@@ -62,11 +62,11 @@ async fn refuse_changed_proposal(fixture: &AuthoringFixture) {
 }
 
 async fn refuse_changed_completion(fixture: &AuthoringFixture) {
-    let lease = fixture.id();
+    let run = fixture.id();
     let mut report = fixture.report(1);
     fixture
         .session
-        .authoring_report(&lease, &report)
+        .authoring_report(&run, &report)
         .await
         .expect("initial completion");
     let charged = fixture.charges().await;
@@ -76,7 +76,7 @@ async fn refuse_changed_completion(fixture: &AuthoringFixture) {
     assert_eq!(
         fixture
             .session
-            .authoring_report(&lease, &report)
+            .authoring_report(&run, &report)
             .await
             .expect_err("changed completion replay")
             .code(),
@@ -90,9 +90,9 @@ async fn refuse_changed_completion(fixture: &AuthoringFixture) {
 async fn disconnect_keeps_the_provider_receipt_for_native_reconnect_without_redispatch() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     let model = fixture.model();
-    let (result, ()) = tokio::join!(fixture.session.authoring_model(&lease, &model), async {
+    let (result, ()) = tokio::join!(fixture.session.authoring_model(&run, &model), async {
         fixture.provider.state.arrived().await;
         fixture.session.disconnect();
         fixture.provider.state.resume();
@@ -106,7 +106,7 @@ async fn disconnect_keeps_the_provider_receipt_for_native_reconnect_without_redi
         .await
         .expect("new native connection");
     let saved = replacement
-        .authoring_model(&lease, &model)
+        .authoring_model(&run, &model)
         .await
         .expect("replay after reconnect");
     assert!(saved.replayed);
@@ -114,7 +114,7 @@ async fn disconnect_keeps_the_provider_receipt_for_native_reconnect_without_redi
     assert_eq!(fixture.provider.state.count(), 1);
     assert!(
         replacement
-            .authoring_report(&lease, &fixture.report(1))
+            .authoring_report(&run, &fixture.report(1))
             .await
             .expect("completion after reconnect")
             .settled

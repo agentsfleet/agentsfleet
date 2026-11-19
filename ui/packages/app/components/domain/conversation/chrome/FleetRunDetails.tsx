@@ -8,7 +8,7 @@ import { useFleetScope } from "../stream/FleetScope";
 
 const EventDetailsDialog = nextDynamic(() => import("../../events/EventDetailsDialog").then(module => module.EventDetailsDialog), {ssr: false});
 
-/** Queued admissions have no event record to inspect until a lease promotes them. */
+/** Queued admissions have no event record to inspect until a run promotes them. */
 export function FleetRunDetails({eventId, status}: {eventId: string; status: string}) {
   const scope = useFleetScope();
   const [open, setOpen] = useState(false);

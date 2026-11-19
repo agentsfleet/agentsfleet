@@ -83,13 +83,13 @@ impl Crew {
     }
 
     pub(crate) fn run(&self) -> &Scenario {
-        &self.speaking.run
+        &self.speaking.scene
     }
 
     /// An active fleet named `name` in the scenario's workspace that no
     /// runner is offered: a steer's target that only has to be written to.
     ///
-    /// Unplaced, because the scenario's runner holds one lease at a time, and
+    /// Unplaced, because the scenario's runner holds one run at a time, and
     /// a target it was offered would take that slot from the event the test
     /// waits on next.
     pub(crate) async fn sibling(&self, name: &str) -> Uuid7 {
@@ -114,14 +114,14 @@ impl Crew {
     }
 
     async fn seed_sibling(&self, fleet: &Uuid7, name: &str, status: &str, tag: &str) {
-        let run = self.run();
+        let scene = self.run();
         let seed = Seeded { name, status, tag };
         let now = af_core::clock::now();
         seed_fleet_as(
-            &run.booted,
+            &scene.booted,
             fleet,
-            &run.workspace,
-            &run.tenant,
+            &scene.workspace,
+            &scene.tenant,
             FLEET_CONFIG_JSON,
             now,
             seed,
@@ -156,26 +156,26 @@ impl Crew {
             .expect("the head moves");
     }
 
-    /// Lets the scenario's runner hold `workers` leases at once: its row's
-    /// worker count, which the lease insert counts against, and the session's
+    /// Lets the scenario's runner hold `workers` runs at once: its row's
+    /// worker count, which the run insert counts against, and the session's
     /// own capacity.
     pub(crate) async fn workers(&self, workers: usize) {
-        let run = self.run();
+        let scene = self.run();
         let count = i32::try_from(workers).expect("a small worker count");
-        let mut connection = run.booted.database.acquire().await.expect("a connection");
+        let mut connection = scene.booted.database.acquire().await.expect("a connection");
         sqlx::query("UPDATE runner.runners SET worker_count = $2 WHERE id = $1")
-            .bind(&run.runner_id)
+            .bind(&scene.runner_id)
             .bind(count)
             .execute(&mut *connection)
             .await
             .expect("the worker count moves");
-        run.native_session().await.capacity(workers);
+        scene.native_session().await.capacity(workers);
     }
 
     /// An active fleet in a workspace of its own: one the scenario's fleet
     /// must never reach.
     pub(crate) async fn foreign(&self, name: &str) -> Uuid7 {
-        let run = self.run();
+        let scene = self.run();
         let (fleet, workspace, tenant) = unique_ids();
         let tag = scenario_tag(&fleet);
         let seed = Seeded {
@@ -185,7 +185,7 @@ impl Crew {
         };
         let now = af_core::clock::now();
         seed_fleet_as(
-            &run.booted,
+            &scene.booted,
             &fleet,
             &workspace,
             &tenant,
@@ -198,14 +198,14 @@ impl Crew {
         fleet
     }
 
-    /// Posts a steer from the lease `(lease_id, fence)` to `target`.
+    /// Posts a steer from the run `(run_id, fence)` to `target`.
     pub(crate) async fn steer(
         &self,
-        (lease_id, fence): (&str, u64),
+        (run_id, fence): (&str, u64),
         target: &Uuid7,
         text: &str,
     ) -> (u16, Value) {
-        let path = format!("/v1/runners/me/leases/{lease_id}/steers");
+        let path = format!("/v1/runners/me/runs/{run_id}/steers");
         let body = json!({"fencing_token": fence, "fleet_id": target.as_str(), "text": text});
         self.post(&path, &body).await
     }
@@ -305,7 +305,7 @@ impl Crew {
     /// Retires every fleet this crew seeded, then the scenario.
     pub(crate) async fn finish(self, supervisor: Supervisor) {
         for fleet in self.seeded.lock().await.iter() {
-            crate::e2e_retire::retire_fleet(&self.speaking.run.booted, fleet).await;
+            crate::e2e_retire::retire_fleet(&self.speaking.scene.booted, fleet).await;
         }
         self.speaking.finish(supervisor).await;
     }

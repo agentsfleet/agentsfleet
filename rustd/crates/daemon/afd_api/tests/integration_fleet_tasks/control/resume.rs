@@ -26,7 +26,7 @@ async fn task_resume_queues_one_continuation_and_refuses_foreign_children() {
     assert_eq!(
         queued(&fixture).await,
         1,
-        "retries and same-state requests cannot queue another lease"
+        "retries and same-state requests cannot queue another run"
     );
     foreign_control(&router, &fixture, &ready_tag).await;
     fixture.base.cleanup().await;
@@ -140,7 +140,7 @@ async fn task_resume_retains_exhausted_allowance_and_queues_nothing() {
         .acquire()
         .await
         .expect("exhaustion connection");
-    sqlx::query("UPDATE fleet.tasks SET used_leases=max_leases WHERE id=$1")
+    sqlx::query("UPDATE fleet.tasks SET used_runs=max_runs WHERE id=$1")
         .bind(&fixture.ids[2])
         .execute(&mut *connection)
         .await

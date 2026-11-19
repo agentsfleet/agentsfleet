@@ -107,7 +107,7 @@ fn turns_with_stream(status: u16, generation: Generation) -> Result<(Turns, Arc<
             model,
             settings,
             model_context_tokens: CONTEXT_TOKENS,
-            lease_id: "lease-count".into(),
+            run_id: "run-count".into(),
             provider: PROVIDER.into(),
             counting_key: SecretString::new(KEY.into()),
             counting_transport: transport,

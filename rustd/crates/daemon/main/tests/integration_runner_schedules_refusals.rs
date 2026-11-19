@@ -16,7 +16,7 @@ use agentsfleetd::supervisor::Supervisor;
 use reqwest::Method;
 use serde_json::{Value, json};
 
-use crate::schedules::{Leased, WEEKLY};
+use crate::schedules::{Assigned, WEEKLY};
 use crate::verbs::FakeQStash;
 
 /// A schedule id no fleet holds.
@@ -25,14 +25,14 @@ const UNKNOWN: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
 /// One refusal case: the request, then the status and code it must answer.
 type Case = (Method, String, Option<Value>, u16, &'static str);
 
-/// Boots a lease, sends each of `cases(lease)`, and checks every answer and
+/// Boots a run, sends each of `cases(run)`, and checks every answer and
 /// that the scheduler heard nothing.
-async fn refuses(cases: impl FnOnce(&Leased) -> Vec<Case>) {
+async fn refuses(cases: impl FnOnce(&Assigned) -> Vec<Case>) {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let leased = Leased::boot(&mut supervisor, &qstash).await;
-    for (method, path, body, status, code) in cases(&leased) {
-        let (answered, refusal) = leased.call(method.clone(), &path, body.as_ref()).await;
+    let held = Assigned::boot(&mut supervisor, &qstash).await;
+    for (method, path, body, status, code) in cases(&held) {
+        let (answered, refusal) = held.call(method.clone(), &path, body.as_ref()).await;
         assert_eq!(
             (answered, refusal["error_code"].as_str()),
             (status, Some(code)),
@@ -40,30 +40,30 @@ async fn refuses(cases: impl FnOnce(&Leased) -> Vec<Case>) {
         );
     }
     assert!(qstash.told().is_empty(), "no refusal reached the scheduler");
-    leased.finish(supervisor).await;
+    held.finish(supervisor).await;
 }
 
-/// A lease the path does not name properly, or that is not this runner's.
+/// A run the path does not name properly, or that is not this runner's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_schedules_refuse_a_lease_that_is_not_held() {
-    refuses(|leased| {
+async fn test_schedules_refuse_a_run_that_is_not_held() {
+    refuses(|held| {
         vec![
             (
                 Method::GET,
-                "/v1/runners/me/leases/not-a-lease/schedules?fencing_token=1".to_owned(),
+                "/v1/runners/me/runs/not-a-run/schedules?fencing_token=1".to_owned(),
                 None,
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::GET,
-                format!("/v1/runners/me/leases/{UNKNOWN}/schedules?fencing_token=1"),
+                format!("/v1/runners/me/runs/{UNKNOWN}/schedules?fencing_token=1"),
                 None,
                 404,
                 "UZ-RUN-006",
             ),
-            (Method::GET, leased.path(""), None, 400, "UZ-REQ-001"),
+            (Method::GET, held.path(""), None, 400, "UZ-REQ-001"),
         ]
     })
     .await;
@@ -73,19 +73,19 @@ async fn test_schedules_refuse_a_lease_that_is_not_held() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_body_they_do_not_take() {
-    refuses(|leased| {
-        let fence = leased.fence;
+    refuses(|held| {
+        let fence = held.fence;
         vec![
             (
                 Method::POST,
-                leased.path(""),
+                held.path(""),
                 Some(json!({"fencing_token": fence, "cron": "* * * * * *", "message": "m"})),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::POST,
-                leased.path(""),
+                held.path(""),
                 Some(
                     json!({"fencing_token": fence, "cron": WEEKLY, "message": "m",
                             "fleet_id": "x"}),
@@ -95,21 +95,21 @@ async fn test_schedules_refuse_a_body_they_do_not_take() {
             ),
             (
                 Method::PATCH,
-                leased.path(&format!("/{UNKNOWN}")),
+                held.path(&format!("/{UNKNOWN}")),
                 Some(json!({"fencing_token": fence, "timezone": "Mars/Olympus"})),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::PATCH,
-                leased.path(&format!("/{UNKNOWN}")),
+                held.path(&format!("/{UNKNOWN}")),
                 Some(json!({"fencing_token": fence, "desired_status": "deleting"})),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::POST,
-                leased.path(&format!("/{UNKNOWN}/runs")),
+                held.path(&format!("/{UNKNOWN}/runs")),
                 Some(json!({"fencing_token": fence, "now": true})),
                 400,
                 "UZ-REQ-001",
@@ -124,40 +124,40 @@ async fn test_schedules_refuse_a_body_they_do_not_take() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_schedule_that_is_not_held() {
-    refuses(|leased| {
-        let fence = json!({"fencing_token": leased.fence});
+    refuses(|held| {
+        let fence = json!({"fencing_token": held.fence});
         vec![
             (
                 Method::PATCH,
-                leased.path(&format!("/{UNKNOWN}")),
+                held.path(&format!("/{UNKNOWN}")),
                 Some(fence.clone()),
                 404,
                 "UZ-SCHED-002",
             ),
             (
                 Method::PATCH,
-                leased.path("/not-a-schedule"),
+                held.path("/not-a-schedule"),
                 Some(fence.clone()),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::POST,
-                leased.path(&format!("/{UNKNOWN}/runs")),
+                held.path(&format!("/{UNKNOWN}/runs")),
                 Some(fence.clone()),
                 404,
                 "UZ-SCHED-002",
             ),
             (
                 Method::POST,
-                leased.path("/not-a-schedule/runs"),
+                held.path("/not-a-schedule/runs"),
                 Some(fence),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::GET,
-                leased.fenced(&format!("/{UNKNOWN}/runs")),
+                held.fenced(&format!("/{UNKNOWN}/runs")),
                 None,
                 404,
                 "UZ-SCHED-002",
@@ -171,8 +171,8 @@ async fn test_schedules_refuse_a_schedule_that_is_not_held() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_runs_refuse_a_page_they_do_not_serve() {
-    refuses(|leased| {
-        let runs = leased.fenced(&format!("/{UNKNOWN}/runs"));
+    refuses(|held| {
+        let runs = held.fenced(&format!("/{UNKNOWN}/runs"));
         vec![
             (
                 Method::GET,

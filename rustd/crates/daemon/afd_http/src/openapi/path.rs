@@ -117,20 +117,20 @@ pub struct Runner {
     pub runner_id: String,
 }
 
-/// One lease a runner holds.
+/// One run a runner holds.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct Lease {
-    /// Lease identifier (version 7 universally unique identifier, or UUID).
-    pub lease_id: String,
+pub struct Run {
+    /// Run identifier (version 7 universally unique identifier, or UUID).
+    pub run_id: String,
 }
 
-/// One schedule of the fleet a held lease runs.
+/// One schedule of the fleet a held run runs.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct LeaseSchedule {
-    /// Lease identifier (version 7 universally unique identifier, or UUID).
-    pub lease_id: String,
+pub struct RunSchedule {
+    /// Run identifier (version 7 universally unique identifier, or UUID).
+    pub run_id: String,
     /// Schedule identifier (version 7 universally unique identifier, or UUID).
     pub schedule_id: String,
 }

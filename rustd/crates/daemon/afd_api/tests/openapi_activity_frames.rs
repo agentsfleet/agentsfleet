@@ -12,7 +12,7 @@
 )]
 
 use af_core::id::{ENTROPY_LEN, Uuid7};
-use afd_fleet::lease::activity::{ACTIVITY_VARIANTS, RenderedFrame, Target, rendered_frames};
+use afd_fleet::run::activity::{ACTIVITY_VARIANTS, RenderedFrame, Target, rendered_frames};
 use jiff::Timestamp;
 use serde_json::Value;
 
@@ -25,14 +25,14 @@ const KIND: &str = "kind";
 /// The field a tool frame names its call under.
 const CALL_ID: &str = "call_id";
 
-/// The lease the sample frames are published for.
+/// The run the sample frames are published for.
 fn target() -> Target {
     Target {
         fleet_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [0; ENTROPY_LEN])
             .expect("a fixed identifier encodes"),
         event_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
             .expect("a fixed identifier encodes"),
-        lease_created_at: Timestamp::UNIX_EPOCH,
+        run_created_at: Timestamp::UNIX_EPOCH,
         event_created_at: Timestamp::UNIX_EPOCH,
         timing_eligible: true,
         fence: 1,

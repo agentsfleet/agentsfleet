@@ -31,8 +31,8 @@ const EVENT: &str = "runner_delete_failed";
     operation_id = "delete_platform_runner",
     summary = "Delete a revoked platform runner",
     description = concat!(
-        "Permanently deletes a revoked runner, its leases, and runner events. Revoke it ",
-        "first with a PATCH request setting `action` to `revoke`. Active leases must finish ",
+        "Permanently deletes a revoked runner, its runs, and runner events. Revoke it ",
+        "first with a PATCH request setting `action` to `revoke`. Active runs must finish ",
         "or expire before deletion. Fleets previously assigned to this runner can then use ",
         "another runner.",
     ),

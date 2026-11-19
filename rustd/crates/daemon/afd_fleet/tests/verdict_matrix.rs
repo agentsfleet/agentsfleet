@@ -61,7 +61,7 @@ fn reason_of(verdict: Verdict) -> &'static str {
 ///
 /// This is the fail-CLOSED window: between minting a token and the host's first
 /// beat there is no evidence, and a daemon that assumed the best would hand out
-/// leases to a host that cannot cage them.
+/// runs to a host that cannot cage them.
 #[test]
 fn test_a_cage_tier_with_no_report_is_degraded() {
     let policy = assigned(SandboxTier::LandlockFull, NetworkPolicy::AllowAll);
@@ -202,7 +202,7 @@ fn test_egress_control_is_demanded_by_the_posture_not_the_tier() {
 /// A partial controller set is not resource limits.
 ///
 /// The cage needs every controller it enables, so two out of three is the same
-/// answer as none — a lease that cannot be capped on processes is uncapped.
+/// answer as none — a run that cannot be capped on processes is uncapped.
 #[test]
 fn test_a_partial_controller_set_does_not_prove_resource_limits() {
     let policy = assigned(SandboxTier::ContainerNested, NetworkPolicy::AllowAll);

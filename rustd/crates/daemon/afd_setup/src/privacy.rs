@@ -29,17 +29,17 @@ impl Drafts {
     }
 }
 
-/// Deletes the draft and its active draft leases, answering each deleted
-/// lease's runner and id so the caller can tell the runner to stop.
+/// Deletes the draft and its active draft runs, answering each deleted
+/// run's runner and id so the caller can tell the runner to stop.
 pub(crate) async fn purge(
     connection: &mut PgConnection,
     id: &Uuid7,
 ) -> Result<Vec<(Uuid7, Uuid7)>> {
-    // No foreign key reaches runner.leases from a draft, so its live leases go here;
+    // No foreign key reaches runner.runs from a draft, so its live runs go here;
     // its slot goes with the draft's own cascade.
-    let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_lease::DELETE_LEASES)
+    let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_run::DELETE_RUNS)
         .bind(id)
-        .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
+        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
         .fetch_all(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

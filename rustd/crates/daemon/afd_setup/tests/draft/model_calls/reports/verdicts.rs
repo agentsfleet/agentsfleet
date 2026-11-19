@@ -8,7 +8,7 @@ use afd_setup::types::Source;
 use std::sync::Arc;
 
 /// Moves the attempt's wall-clock deadline behind database time, leaving its
-/// lease live.
+/// run live.
 const PAST_DEADLINE: &str = "UPDATE authoring.attempts \
      SET expires_at=date_trunc('milliseconds',clock_timestamp())-interval '1 second' \
      WHERE id=$1";
@@ -34,7 +34,7 @@ async fn a_timed_out_verdict_settles_only_past_the_attempts_deadline() {
     let _calls = fixture::calls(&f, &a, Arc::new(fixture::Provider::known())).await;
     let early = f
         .drafts
-        .report(&f.runner, &a.lease, timed_out())
+        .report(&f.runner, &a.run, timed_out())
         .await
         .expect_err("the deadline is still ahead");
     assert_eq!(early.code(), error_code::INVALID_REQUEST);
@@ -46,7 +46,7 @@ async fn a_timed_out_verdict_settles_only_past_the_attempts_deadline() {
         .expect("the attempt ran out of wall clock");
     let ack = f
         .drafts
-        .report(&f.runner, &a.lease, timed_out())
+        .report(&f.runner, &a.run, timed_out())
         .await
         .expect("a timeout past the deadline settles");
     assert!(ack.settled);
@@ -74,12 +74,12 @@ async fn a_completed_verdict_cannot_follow_a_failed_dispatch() {
     stub.status = 503;
     let calls = fixture::calls(&f, &a, Arc::new(stub)).await;
     calls
-        .call(&f.runner, &a.lease, fixture::request(&a))
+        .call(&f.runner, &a.run, fixture::request(&a))
         .await
         .expect_err("the provider failed with known usage");
     let refused = f
         .drafts
-        .report(&f.runner, &a.lease, report())
+        .report(&f.runner, &a.run, report())
         .await
         .expect_err("a failed dispatch is no completed answer");
     assert_eq!(refused.code(), error_code::INVALID_REQUEST);
@@ -100,7 +100,7 @@ async fn accounting_under_another_fence_is_refused_without_settling() {
     accounting.fence = "2".into();
     let refused = f
         .drafts
-        .report(&f.runner, &a.lease, request)
+        .report(&f.runner, &a.run, request)
         .await
         .expect_err("the attempt was issued fence 1");
     assert_eq!(refused.code(), error_code::AUTHORING_FENCE);

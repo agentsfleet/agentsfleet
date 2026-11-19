@@ -1,7 +1,7 @@
-//! The runner's fleets verb: the fleet a lease runs reading which fleets its
+//! The runner's fleets verb: the fleet a run runs reading which fleets its
 //! workspace holds, and what one of them did recently.
 //!
-//! Both reads are lease-proven and scoped to the lease's workspace. Another
+//! Both reads are run-proven and scoped to the run's workspace. Another
 //! fleet's words are cut to an excerpt here, so the runner's tool and the
 //! daemon's route agree on how much of them one read carries.
 
@@ -22,7 +22,7 @@ pub fn excerpt(text: &str) -> &str {
     kept
 }
 
-/// One fleet of the lease's workspace.
+/// One fleet of the run's workspace.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FleetItem<'a> {
@@ -43,7 +43,7 @@ pub struct FleetItem<'a> {
     pub events_processed: Cow<'a, str>,
 }
 
-/// One page of the lease's workspace's fleets, newest first.
+/// One page of the run's workspace's fleets, newest first.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FleetsPage<'a> {

@@ -35,8 +35,8 @@ async fn late_reply(delete: bool) {
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
-        let (runner, lease) = (f.runner.clone(), attempt.lease.clone());
-        async move { calls.call(&runner, &lease, request).await }
+        let (runner, run) = (f.runner.clone(), attempt.run.clone());
+        async move { calls.call(&runner, &run, request).await }
     });
     tokio::time::timeout(HANG_BOUND, provider.arrived())
         .await
@@ -103,8 +103,8 @@ async fn retiring_a_runner_during_a_call_keeps_known_usage_without_private_outpu
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
         let (calls, request) = (calls.clone(), request.clone());
-        let (runner, lease) = (f.runner.clone(), attempt.lease.clone());
-        async move { calls.call(&runner, &lease, request).await }
+        let (runner, run) = (f.runner.clone(), attempt.run.clone());
+        async move { calls.call(&runner, &run, request).await }
     });
     tokio::time::timeout(HANG_BOUND, provider.arrived())
         .await
@@ -117,7 +117,7 @@ async fn retiring_a_runner_during_a_call_keeps_known_usage_without_private_outpu
     let saved: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
         .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("usage receipt");
     assert_eq!(saved, (true, "known".into()));
-    tokio::time::timeout(HANG_BOUND, calls.call(&f.runner, &attempt.lease, request))
+    tokio::time::timeout(HANG_BOUND, calls.call(&f.runner, &attempt.run, request))
         .await
         .expect("replay completes")
         .expect_err("retired runner cannot replay private output");

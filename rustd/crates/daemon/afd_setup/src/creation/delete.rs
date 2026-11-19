@@ -2,7 +2,7 @@
 //! transaction.
 //!
 //! A delete takes a fleet in any status, so it can meet one that still holds
-//! setup grants, live leases and a saving draft. An archive already ends
+//! setup grants, live runs and a saving draft. An archive already ends
 //! exactly those; a delete runs that teardown and removes the row under one
 //! lock and one tag check, so a refused or failed delete changes nothing.
 
@@ -15,7 +15,7 @@ use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 impl Creations {
-    /// Ends `fleet`'s setup grants and live leases, returns its saving draft
+    /// Ends `fleet`'s setup grants and live runs, returns its saving draft
     /// to editing and deletes the fleet, all under the tag `expected`.
     ///
     /// Runners hear their Cancel only after the commit, so no runner stops for

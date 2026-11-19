@@ -8,7 +8,7 @@
 )]
 
 use af_core::id::Uuid7;
-use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use af_core::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
 use super::{hold, live, slot};
 use crate::rows::Row;
@@ -42,9 +42,9 @@ async fn lapse_hold(fixtures: &Fixtures, fleet: &Uuid7, holder: &Uuid7, lapse: L
     }
 }
 
-/// Whether another runner's poll leases a fleet whose hold `lapse` ended. The
+/// Whether another runner's poll runs a fleet whose hold `lapse` ended. The
 /// poll reaches the claim only through the candidate scan, so a fleet the scan
-/// filters is never leased.
+/// filters is never held.
 async fn offered_to_another(lapse: Lapse) -> bool {
     let fixtures = Fixtures::create().await;
     let Seeded {
@@ -52,10 +52,10 @@ async fn offered_to_another(lapse: Lapse) -> bool {
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(
-        &leases,
+        &runs,
         &fixtures,
         &fleet,
         &holder,
@@ -64,7 +64,7 @@ async fn offered_to_another(lapse: Lapse) -> bool {
     .await;
     lapse_hold(&fixtures, &fleet, &holder, lapse).await;
 
-    let found = seed::select_fleet(&leases, &other, &fleet).await;
+    let found = seed::select_fleet(&runs, &other, &fleet).await;
 
     fixtures.cleanup().await;
     found.is_some()
@@ -95,10 +95,10 @@ async fn test_another_runners_poll_is_offered_a_silent_holders_fleet() {
 async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(
-        &leases,
+        &runs,
         &fixtures,
         &fleet,
         &holder,
@@ -107,13 +107,12 @@ async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
     .await;
     lapse_hold(&fixtures, &fleet, &holder, Lapse::Deadline).await;
 
-    let claimed = leases
-        .claim(&fleet, &holder, LEASE_TTL)
+    let claimed = runs
+        .claim(&fleet, &holder, RUN_TTL)
         .await
         .expect("answers")
         .expect("the holder wins");
-    leases
-        .release(&fleet, claimed.fence)
+    runs.release(&fleet, claimed.fence)
         .await
         .expect("an empty claim lets go");
 

@@ -6,7 +6,7 @@
 //! this product is a whole number of nanos. One US dollar is
 //! [`NANOS_PER_USD`], which [`af_core::money`] declares because an account
 //! balance is denominated in it too. The rates below are this crate's alone:
-//! the daemon is what charges a lease, and a client renders the charge it was
+//! the daemon is what charges a run, and a client renders the charge it was
 //! served rather than recomputing it, so a bump lands here and nowhere else.
 //!
 //! Authored ceilings are decimal strings of integer nanos. The runtime parser
@@ -28,12 +28,12 @@ pub use af_core::money::NANOS_PER_USD;
 /// What one second of active runtime costs, under either posture.
 ///
 /// $0.0001/sec, about $0.36/hour. Declared once: the daemon is what charges a
-/// lease, and no client recomputes a fee it is served.
+/// run, and no client recomputes a fee it is served.
 pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 
 /// The input-token floor the issue-time estimate is sized against.
 ///
-/// The runner does not know its real token counts at lease time, so the gate
+/// The runner does not know its real token counts at run time, so the gate
 /// prices a deliberately small floor.
 pub const ESTIMATE_FLOOR_INPUT_TOKENS: u32 = 100;
 
@@ -47,7 +47,7 @@ pub const TOKENS_PER_MTOK: i64 = 1_000_000;
 
 /// Milliseconds in the unit [`RUN_NANOS_PER_SEC`] is quoted per.
 ///
-/// `pub` because the lease metering statement converts its elapsed interval
+/// `pub` because the run metering statement converts its elapsed interval
 /// with it, as a bind parameter.
 pub const MS_PER_SEC: i64 = 1_000;
 

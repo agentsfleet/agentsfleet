@@ -11,6 +11,6 @@
 
 use crate::error::Error;
 
-/// A model provider a lease drives: what [`Connect`](crate::Connect) hands
+/// A model provider a run drives: what [`Connect`](crate::Connect) hands
 /// back, and what the loop streams each turn from.
 pub type Provider = dyn guffbolt::Model<Error = Error>;

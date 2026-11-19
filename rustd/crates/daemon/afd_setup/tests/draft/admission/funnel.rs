@@ -18,13 +18,13 @@ fn finished_once(f: &super::Fixture, draft: &Uuid7) -> String {
 async fn should_report_a_terminal_report_finished_once_and_not_on_replay() {
     let f = funded(1).await;
     let draft = queue(&f, "Answer me").await;
-    let lease = claim(&f, &draft).await.expect("admitted");
+    let run = claim(&f, &draft).await.expect("admitted");
     assert!(
         f.reported(FINISHED).is_empty(),
         "admission finishes nothing"
     );
-    let id = Uuid7::parse(&lease.lease_id).expect("lease id");
-    let report = super::stop::finished(&lease);
+    let id = Uuid7::parse(&run.run_id).expect("run id");
+    let report = super::stop::finished(&run);
     for replayed in [false, true] {
         let ack = f
             .drafts
@@ -59,14 +59,14 @@ async fn should_report_a_claim_gate_failure_finished_once() {
 async fn should_report_a_model_lost_before_the_report_finished_once() {
     let f = funded(1).await;
     let draft = queue(&f, "Model goes away mid-turn").await;
-    let lease = claim(&f, &draft).await.expect("admitted");
+    let run = claim(&f, &draft).await.expect("admitted");
     sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
         .bind(&f.model)
         .execute(&mut *f.connection().await)
         .await
         .expect("disable owned entry");
-    let id = Uuid7::parse(&lease.lease_id).expect("lease id");
-    let report = super::stop::finished(&lease);
+    let id = Uuid7::parse(&run.run_id).expect("run id");
+    let report = super::stop::finished(&run);
     for _ in 0..2 {
         f.drafts
             .report(&f.runner, &id, report.clone())

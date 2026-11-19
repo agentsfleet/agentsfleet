@@ -46,7 +46,7 @@ pub(super) async fn apply(
         None => None,
     };
     // Cancellation closes the socket, so a blocked statement holds no lock.
-    let mut connection = super::transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = super::transaction::acquire(tasks.runs.pool()).await?;
     let mut transaction = super::transaction::begin(&mut connection).await?;
     guard::scope(&mut transaction, scope).await?;
     let (changed, previous) = transition(
@@ -170,7 +170,7 @@ async fn publish(
 }
 
 async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Result<Continuation> {
-    let mut connection = tasks.leases.pool().acquire().await?;
+    let mut connection = tasks.runs.pool().acquire().await?;
     let origin: Origin = sqlx::query_as(sql::CONTROL_ORIGIN)
         .bind(task_id)
         .bind(&scope.fleet_id)

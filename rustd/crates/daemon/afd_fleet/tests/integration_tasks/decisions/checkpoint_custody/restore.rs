@@ -20,7 +20,7 @@ pub(super) async fn run(case: &Case) {
     let tasks = storage(&fixture);
     let plan = tasks
         .plan_checkpoint(
-            case.lease(),
+            case.run(),
             &valid(input(
                 &task,
                 case,
@@ -33,7 +33,7 @@ pub(super) async fn run(case: &Case) {
         .expect("plan");
     renew_writer(&tasks, case, &plan, &task).await;
     let bootstrap = CheckpointAuthorizationInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task: task.clone(),
         purpose: CheckpointTransferPurpose::Restore,
         pin_id: None,
@@ -41,7 +41,7 @@ pub(super) async fn run(case: &Case) {
     };
     let failure = tasks
         .checkpoint_authorizations(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(bootstrap.clone()),
         )
@@ -61,13 +61,13 @@ async fn renew_writer(
     task: &af_wire::task::DecisionTaskVersion,
 ) {
     let renew = CheckpointPinInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task: task.clone(),
         resource_version: plan.pin.resource_version,
     };
     let renewed = tasks
         .renew_checkpoint_pin(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &id(&plan.pin.id),
             &valid(renew.clone()),
@@ -81,7 +81,7 @@ async fn renew_writer(
     );
     let failure = tasks
         .renew_checkpoint_pin(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &id(&plan.pin.id),
             &valid(renew),
@@ -112,13 +112,13 @@ async fn read_pages(
     reader: &str,
 ) {
     let query = valid(CheckpointReadQuery {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         pin_id: reader.to_owned(),
         starting_after: None,
     });
     let page = tasks
         .checkpoint_page(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &id(plan.page_ids.first().expect("checkpoint manifest page")),
             &query,
@@ -128,14 +128,14 @@ async fn read_pages(
     assert!(page.entries.is_empty());
     assert_eq!(page.history_objects.len(), 0);
     let objects = tasks
-        .checkpoint_objects(case.lease(), &id(&plan.checkpoint_id), &query)
+        .checkpoint_objects(case.run(), &id(&plan.checkpoint_id), &query)
         .await
         .expect("empty object inventory");
     assert!(objects.items.is_empty());
     assert!(objects.next_cursor.is_none());
     let failure = tasks
         .checkpoint_page(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &afd_db::test_util::mint_id(),
             &query,
@@ -153,7 +153,7 @@ async fn restore_pages(
 ) {
     let restored = tasks
         .checkpoint_authorizations(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(bootstrap.clone()),
         )
@@ -162,7 +162,7 @@ async fn restore_pages(
     assert!(restored.objects.is_empty());
     assert_ne!(restored.plan.pin.id, plan.pin.id);
     let replay = tasks
-        .checkpoint_authorizations(case.lease(), &id(&plan.checkpoint_id), &valid(bootstrap))
+        .checkpoint_authorizations(case.run(), &id(&plan.checkpoint_id), &valid(bootstrap))
         .await
         .expect("restore pin replay");
     assert_eq!(replay.plan.pin.id, restored.plan.pin.id);

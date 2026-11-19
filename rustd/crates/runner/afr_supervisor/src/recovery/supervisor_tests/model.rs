@@ -1,7 +1,7 @@
 //! The model boundary observes restored history, bytes and a successful thaw.
 use super::fixture::{CONTENT, FILE, PREFIX};
 use af_providers::{Connect, Provider};
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use futures_util::{StreamExt as _, stream::BoxStream};
 use guffbolt::{Chunk, End, Message, Request};
 use std::{
@@ -23,7 +23,7 @@ impl Connect for ObservingModel {
     fn admit(&self, _: &af_wire::policy::ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
-    fn connect(&self, _: &LeasePayload<'_>) -> af_providers::Result<Box<Provider>> {
+    fn connect(&self, _: &RunPayload<'_>) -> af_providers::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }

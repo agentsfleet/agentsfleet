@@ -20,7 +20,7 @@ use afd_billing::tenant::Billing;
 use afd_connector::Connectors;
 use afd_credential::provider::Providers;
 use afd_fleet_lifecycle::Fleets;
-use afd_fleet_ops::RunnerLeaseHistory;
+use afd_fleet_ops::RunnerRunHistory;
 use afd_memory::Memories;
 use afd_runner::Runners;
 use afd_sse::Live;
@@ -54,7 +54,7 @@ impl Services for Fleet {
     }
     type Auth = Planes<Directory, MockCapabilities, MockVerifier>;
     type SignupMetadata = RecordingWriteback;
-    type Leases = NoWork;
+    type Runs = NoWork;
     type RunnerStreams = Self;
 
     fn runner_streams(&self) -> &Self::RunnerStreams {
@@ -90,8 +90,8 @@ impl Services for Fleet {
         &self.runner_commands
     }
 
-    fn leases(&self) -> &NoWork {
-        &self.leases
+    fn runs(&self) -> &NoWork {
+        &self.runs
     }
 
     fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
@@ -199,8 +199,8 @@ impl Services for Fleet {
         &self.fleets
     }
 
-    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
-        &self.runner_lease_history
+    fn runner_run_history(&self) -> &RunnerRunHistory {
+        &self.runner_run_history
     }
 
     fn models(&self) -> &AdminModels {

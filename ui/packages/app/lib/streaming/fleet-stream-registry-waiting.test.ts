@@ -17,14 +17,14 @@ setupRegistryTests();
 setupBackfillTests();
 
 const STEER_ID = "evt_steer";
-// The steer's admission instant: its history row carries this, not its lease.
+// The steer's admission instant: its history row carries this, not its run.
 const ADMITTED_AT_MS = Date.UTC(2026, 4, 15, 18, 30, 0);
 // A durable row a minute later, which is where the watermark stands.
 const SEEDED_AT_MS = ADMITTED_AT_MS + 60_000;
 const SEED_ID = "evt_seed";
 
 // Opens the stream, lets a teammate's steer wait on it, then drops and
-// restores the connection: the lease and its frames fall in the gap.
+// restores the connection: the run and its frames fall in the gap.
 function waitThenReconnect(): void {
   const first = sourceAt(0);
   first.open();
@@ -47,7 +47,7 @@ function steerStatus(): string | undefined {
   return getSnapshot(Z_A).events.find((event) => event.id === STEER_ID)?.status;
 }
 
-describe("fleet-stream-registry — a steer leased during an outage", () => {
+describe("fleet-stream-registry — a steer held during an outage", () => {
   it("should reach back to the waiting row's admission and settle it from the recovered row", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([
       row({ event_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() }),

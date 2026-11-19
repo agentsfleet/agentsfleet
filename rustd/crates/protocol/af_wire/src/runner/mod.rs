@@ -80,7 +80,7 @@ pub enum BindMode {
     ReadWrite,
 }
 
-/// One host path bound into every lease's sandbox, in addition to the baseline.
+/// One host path bound into every run's sandbox, in addition to the baseline.
 ///
 /// An operator may ADD a path a host needs; never remove or re-mode one the
 /// sandbox depends on.
@@ -114,7 +114,7 @@ pub const DURABLE_TASKS_DEFAULT_ENABLED: bool = true;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct AssignedPolicy<'a> {
-    /// Permit new durable task leases; existing leases retain their issued mode.
+    /// Permit new durable task runs; existing runs retain their issued mode.
     #[garde(skip)]
     pub durable_tasks_enabled: bool,
     /// Canonical `UUIDv7` of the platform decision model; absent disables decisions.
@@ -143,7 +143,7 @@ pub struct AssignedPolicy<'a> {
     // Clamped, never refused, so it carries no bound: `WorkerCount::clamping`.
     #[garde(skip)]
     pub worker_count: u32,
-    /// Extra host paths bound into every lease's sandbox.
+    /// Extra host paths bound into every run's sandbox.
     #[serde(borrow)]
     #[garde(length(max = EXTRA_BINDS_MAX), dive)]
     pub extra_binds: Vec<ExtraBind<'a>>,
@@ -157,9 +157,9 @@ pub struct AssignedPolicy<'a> {
 pub enum RunnerLiveness {
     /// Minted, never connected.
     Registered,
-    /// Holds a live lease. Takes precedence over `Offline`.
+    /// Holds a live run. Takes precedence over `Offline`.
     Busy,
-    /// Heartbeat fresh, no live lease.
+    /// Heartbeat fresh, no live run.
     Online,
     /// Heartbeat stale beyond the lapse threshold.
     Offline,
@@ -284,7 +284,7 @@ pub struct HeartbeatResponse<'a> {
     /// assignment does — one interval, no second endpoint, no host visit.
     pub selftest_requested: bool,
     /// Fleets among the beat's `holds` the runner should let go of: no longer
-    /// active, or leased by another runner since. The runner destroys their
+    /// active, or held by another runner since. The runner destroys their
     /// sandboxes.
     #[serde(borrow)]
     pub release_holds: Vec<Cow<'a, str>>,

@@ -19,7 +19,7 @@ use afd_ingress::Ingress;
 use super::*;
 
 impl Fleet {
-    /// Runs lease decision routes over a fully configured native task owner.
+    /// Runs run decision routes over a fully configured native task owner.
     pub(crate) fn with_tasks(mut self, tasks: afd_fleet::task::Tasks) -> Self {
         self.tasks = tasks;
         self
@@ -198,17 +198,17 @@ impl Fleet {
         self
     }
 
-    /// A lease plane whose memory verbs and mint answer `refusal`, for a case
+    /// A run plane whose memory verbs and mint answer `refusal`, for a case
     /// that proves how those routes render it.
-    pub(crate) fn with_lease_refusal(mut self, refusal: fn() -> afd_fleet::Error) -> Self {
-        self.leases = NoWork::refusing(refusal);
+    pub(crate) fn with_run_refusal(mut self, refusal: fn() -> afd_fleet::Error) -> Self {
+        self.runs = NoWork::refusing(refusal);
         self
     }
 
-    /// A lease plane whose mint succeeds with `token`, for the case that
+    /// A run plane whose mint succeeds with `token`, for the case that
     /// proves the route writes it into the body and nowhere else.
-    pub(crate) fn with_lease_minting(mut self, token: &'static str, expires_at: Timestamp) -> Self {
-        self.leases = NoWork::minting(token, expires_at);
+    pub(crate) fn with_run_minting(mut self, token: &'static str, expires_at: Timestamp) -> Self {
+        self.runs = NoWork::minting(token, expires_at);
         self
     }
 
@@ -265,10 +265,10 @@ impl Fleet {
         &self.capabilities
     }
 
-    /// The lease plane's poll log, shared with the router this fleet builds,
+    /// The run plane's poll log, shared with the router this fleet builds,
     /// so a case taken before `router` reads what the handler handed it.
-    pub(crate) fn lease_plane(&self) -> NoWork {
-        self.leases.clone()
+    pub(crate) fn run_plane(&self) -> NoWork {
+        self.runs.clone()
     }
 
     /// The live fleet store, for a stream fixture that changes rows directly.

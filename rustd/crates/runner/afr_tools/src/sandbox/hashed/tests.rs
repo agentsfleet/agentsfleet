@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::tag;
 use crate::catalog::{FILE_EDIT_HASHED, FILE_READ_HASHED};
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 
@@ -45,11 +45,11 @@ async fn read_then_edit(
     let selection = catalog
         .select(&[FILE_READ_HASHED.name(), FILE_EDIT_HASHED.name()])
         .unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK}),
     )
     .await;
@@ -59,7 +59,7 @@ async fn read_then_edit(
     let edit = call_in(
         offered(&selection, &FILE_EDIT_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK, TARGET: target, END_TARGET: end_target, NEW_TEXT: new_text}),
     )
     .await;
@@ -99,12 +99,12 @@ async fn a_read_tags_every_line_with_its_number_and_hash() {
     std::fs::write(live.root.join(GREEK), THREE_LINES).unwrap();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_READ_HASHED.name()]).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK}),
     )
     .await;

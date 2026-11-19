@@ -1,11 +1,11 @@
-//! The runner's telemetry end to end: the daemon that ships leases one event,
-//! the runner's real loop runs it with its export configured, and the lease
+//! The runner's telemetry end to end: the daemon that ships runs one event,
+//! the runner's real loop runs it with its export configured, and the run
 //! reaches a collector as one trace of four span kinds that joins the daemon's
 //! event by attribute.
 //!
 //! The runner runs on a thread of its own, on a current-thread runtime, under
 //! a subscriber carrying the runner's span layer. The worker pool spawns each
-//! lease as a task, and a current-thread runtime polls every task on the
+//! run as a task, and a current-thread runtime polls every task on the
 //! thread whose default subscriber that is, so the daemon in the same process
 //! keeps exporting nothing through it.
 //!
@@ -26,7 +26,7 @@ use std::collections::BTreeSet;
 use std::sync::PoisonError;
 
 use af_core::env::MapEnv;
-use af_observability::semconv::{ATTR_EVENT_ID, ATTR_LEASE_ID, SPAN_RUNNER_LEASE};
+use af_observability::semconv::{ATTR_EVENT_ID, ATTR_RUN_ID, SPAN_RUNNER_RUN};
 use afr_telemetry::{Endpoint, Telemetry};
 use agentsfleetd::supervisor::Supervisor;
 use tokio_util::sync::CancellationToken;
@@ -44,10 +44,10 @@ use crate::integration_telemetry::{Received, TRACES, collector};
 const ENDPOINT_KNOB: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 const PROTOCOL_KNOB: &str = "OTEL_EXPORTER_OTLP_PROTOCOL";
 
-/// The four span kinds one lease is traced in.
-const SPAN_KINDS: [&str; 4] = [SPAN_RUNNER_LEASE, "invoke_agent", "chat", "execute_tool"];
+/// The four span kinds one run is traced in.
+const SPAN_KINDS: [&str; 4] = [SPAN_RUNNER_RUN, "invoke_agent", "chat", "execute_tool"];
 
-/// The status a lease the runner ran to its end is settled under.
+/// The status a run the runner ran to its end is settled under.
 const PROCESSED: &str = "processed";
 
 /// One span a trace export carried: its name, its trace, its string attributes.
@@ -116,15 +116,15 @@ fn spans(received: &Received) -> Vec<Exported> {
         .collect()
 }
 
-/// A runner pointed at a collector delivers one lease as one trace with four
-/// span kinds, its root carrying the lease and the daemon's event.
+/// A runner pointed at a collector delivers one run as one trace with four
+/// span kinds, its root carrying the run and the daemon's event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_e2e_runner_lease_trace_reaches_a_collector() {
+async fn test_e2e_runner_run_trace_reaches_a_collector() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
     // A runner on the default egress policy reads degraded and takes no work.
-    allow_all_egress(&run).await;
+    allow_all_egress(&scene).await;
     let (endpoint, received) = collector().await;
     let telemetry = recording(&endpoint);
     let layer = telemetry.layer();
@@ -141,7 +141,7 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
     let shutdown = CancellationToken::new();
     let network = af_egress::Network::new().expect("the production network builds");
     let serving = runner(
-        &run,
+        &scene,
         home.path(),
         sandboxes.path(),
         network,
@@ -149,7 +149,7 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
         shutdown.clone(),
     );
     let thread = std::thread::spawn(move || {
-        // The runner's warnings, captured with the test, so a lease that never
+        // The runner's warnings, captured with the test, so a run that never
         // settles says why.
         let warnings = tracing_subscriber::fmt::layer()
             .with_test_writer()
@@ -163,19 +163,19 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
             .block_on(serving)
     });
 
-    stop_recording(&run, shutdown, thread, telemetry).await;
-    assert_lease_trace(&received, run.event_id.as_str());
+    stop_recording(&scene, shutdown, thread, telemetry).await;
+    assert_run_trace(&received, scene.event_id.as_str());
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 async fn stop_recording(
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     shutdown: CancellationToken,
     thread: std::thread::JoinHandle<afr_supervisor::Result<()>>,
     telemetry: Telemetry,
 ) {
-    let status = settled(run, &run.event_id).await;
+    let status = settled(scene, &scene.event_id).await;
     shutdown.cancel();
     let stopped = tokio::task::spawn_blocking(move || thread.join())
         .await
@@ -188,18 +188,18 @@ async fn stop_recording(
     assert_eq!(status.as_deref(), Some(PROCESSED));
 }
 
-fn assert_lease_trace(received: &Received, event_id: &str) {
+fn assert_run_trace(received: &Received, event_id: &str) {
     let spans = spans(received);
     let root = spans
         .iter()
         .find(|span| {
-            span.name == SPAN_RUNNER_LEASE && span.attribute(ATTR_EVENT_ID) == Some(event_id)
+            span.name == SPAN_RUNNER_RUN && span.attribute(ATTR_EVENT_ID) == Some(event_id)
         })
-        .expect("the lease's root span reached the collector, naming the daemon's event");
+        .expect("the run's root span reached the collector, naming the daemon's event");
     assert!(
-        root.attribute(ATTR_LEASE_ID)
-            .is_some_and(|lease| !lease.is_empty()),
-        "the root names its lease: {root:?}"
+        root.attribute(ATTR_RUN_ID)
+            .is_some_and(|run| !run.is_empty()),
+        "the root names its run: {root:?}"
     );
     let kinds: BTreeSet<&str> = spans
         .iter()
@@ -221,9 +221,9 @@ fn assert_lease_trace(received: &Received, event_id: &str) {
     );
     let roots = spans
         .iter()
-        .filter(|span| span.trace == root.trace && span.name == SPAN_RUNNER_LEASE)
+        .filter(|span| span.trace == root.trace && span.name == SPAN_RUNNER_RUN)
         .count();
-    assert_eq!(roots, 1, "the lease is its own trace");
+    assert_eq!(roots, 1, "the run is its own trace");
 }
 
 fn recording(endpoint: &str) -> Telemetry {

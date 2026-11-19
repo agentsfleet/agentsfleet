@@ -1,4 +1,4 @@
-//! Children share the lease and can only have less: a delegated answer, a
+//! Children share the run and can only have less: a delegated answer, a
 //! spawned round trip, the depth cap, the run's caps, the tool subset, the
 //! context cap, and usage summed into the one report.
 
@@ -22,7 +22,7 @@ use super::fixture::{
     SLOW_CALL, STATUS, SUMMARY, TASK, TIMEOUT_MS, events, offered, parsed, requests_opening_with,
     results, tools,
 };
-use crate::fixture::{Script, Slow, budget, call, lease, say, spent, unbounded};
+use crate::fixture::{Script, Slow, budget, call, payload, say, spent, unbounded};
 use crate::harness::tests::{drive, engine};
 
 /// The window a capped child runs in, and a prompt past its 0.75 stage
@@ -52,9 +52,9 @@ async fn test_delegate_returns_child_answer() {
         ],
     );
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let root = requests_opening_with(&script, OPENING);
     assert_eq!(
@@ -117,9 +117,9 @@ async fn test_spawn_wait_send_round_trip() {
     let engine = engine(tools, &script);
     let mut names = offered();
     names.push(HTTP_REQUEST.name());
-    let lease = lease(&names, unbounded());
+    let run = payload(&names, unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, OK);
     let root = requests_opening_with(&script, OPENING);
@@ -173,9 +173,9 @@ async fn test_nested_depth_capped() {
         ],
     );
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let depth_one = requests_opening_with(&script, "d1");
@@ -227,9 +227,9 @@ async fn reported_usage_does_not_turn_off_child_tools() {
     let engine = engine(tools(), &script);
     let mut names = offered();
     names.push(WEB_SEARCH.name());
-    let lease = lease(&names, budget(0, CAP));
+    let run = payload(&names, budget(0, CAP));
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let child = requests_opening_with(&script, READS);
     assert!(child[0].tools.contains(&UPDATE_PLAN.name().to_owned()));
@@ -258,9 +258,9 @@ async fn test_child_usage_sums_into_report() {
         ],
     );
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.input_tokens, 30);
     assert_eq!(output.result.cached_input_tokens, 4);
@@ -283,9 +283,9 @@ async fn test_input_before_the_first_turn_joins_the_task() {
     ])
     .with_child(TASK, [vec![say(CHILD_DONE)]]);
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, OK);
     let child = requests_opening_with(&script, TASK);

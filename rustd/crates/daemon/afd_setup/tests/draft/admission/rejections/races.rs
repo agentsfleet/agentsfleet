@@ -55,7 +55,7 @@ async fn interrupt(f: &Fixture, draft: &Uuid7, interruption: &Interruption) {
 async fn exercise(interruption: Interruption) {
     let f = funded(2).await;
     let draft = queue(&f, "Credential is rejected after the turn loses authority").await;
-    let lease = claim(&f, &draft).await.expect("admitted");
+    let run = claim(&f, &draft).await.expect("admitted");
     let provider = Arc::new(Blocked {
         entered: Notify::new(),
         release: Notify::new(),
@@ -65,7 +65,7 @@ async fn exercise(interruption: Interruption) {
             body: json!({"error":{"code":401,"message":"Invalid credentials"}}),
         },
     });
-    let reply = Box::pin(call(&f, &lease, Arc::clone(&provider)));
+    let reply = Box::pin(call(&f, &run, Arc::clone(&provider)));
     let interrupted = async {
         provider.entered.notified().await;
         interrupt(&f, &draft.id, &interruption).await;
@@ -82,15 +82,15 @@ async fn exercise(interruption: Interruption) {
         reply.expect_err("late private reply refused").code(),
         expected.0
     );
-    settle(&f, &lease).await;
+    settle(&f, &run).await;
     let finished = only(f.reported(FINISHED), "one real terminal message transition");
     assert_eq!(property(&finished, "state").as_deref(), Some(expected.1));
     f.cleanup().await;
 }
 
-async fn settle(f: &Fixture, lease: &Claimed) {
-    let id = Uuid7::parse(&lease.lease_id).expect("lease");
-    let report = unknown_report(lease, 1);
+async fn settle(f: &Fixture, run: &Claimed) {
+    let id = Uuid7::parse(&run.run_id).expect("run");
+    let report = unknown_report(run, 1);
     let first = f
         .drafts
         .report(&f.runner, &id, report.clone())
@@ -105,8 +105,8 @@ async fn settle(f: &Fixture, lease: &Claimed) {
         .expect("replayed late accounting");
     assert!(duplicate.settled);
     assert!(duplicate.replayed);
-    f.relay(&lease.attempt_id).await;
-    assert_eq!(state(f, lease).await, ("settled".into(), false, 1));
+    f.relay(&run.attempt_id).await;
+    assert_eq!(state(f, run).await, ("settled".into(), false, 1));
 }
 
 // Value: protects=Stop owns the terminal event even when a late provider rejects;

@@ -39,9 +39,9 @@ export const TaskDetailSchema = Schema.Struct({
     questions: Schema.Array(question), covered_input_sequence: count,
     effect_cursor: count, confirmed_effect_watermark: count, checkpoint_id: Schema.NullOr(identity), expires_at: instant,
     limits: Schema.Struct({model_nanos: nanosSchema, wall_seconds: count, running_seconds: count,
-      leases: count, publications: count, decision_calls: count, fallback_reads: count}),
+      runs: count, publications: count, decision_calls: count, fallback_reads: count}),
     usage: Schema.Struct({model_nanos: nanosSchema, reserved_model_nanos: nanosSchema, running_nanos: count,
-      leases: count, publications: count, decision_calls: count, fallback_reads: count}),
+      runs: count, publications: count, decision_calls: count, fallback_reads: count}),
   }),
 });
 export type TaskDetail = typeof TaskDetailSchema.Type;

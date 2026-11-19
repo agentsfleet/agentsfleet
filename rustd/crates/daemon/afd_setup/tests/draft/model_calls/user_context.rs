@@ -38,7 +38,7 @@ async fn every_configured_api_preserves_user_context_without_baked_in_instructio
         let provider = Arc::new(stub);
         let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
         let answer = calls
-            .call(&f.runner, &attempt.lease, fixture::request(&attempt))
+            .call(&f.runner, &attempt.run, fixture::request(&attempt))
             .await
             .expect("configured API completion");
         assert_eq!(answer.text, "Ready");
@@ -139,7 +139,7 @@ async fn proposal_availability_uses_the_locked_draft_even_when_context_claims_ot
             .into(),
         }];
         calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect("one physical completion");
         let proposal_kind = {

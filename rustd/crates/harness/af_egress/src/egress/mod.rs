@@ -1,4 +1,4 @@
-//! One lease's outbound guard: what its tools send passes here first.
+//! One run's outbound guard: what its tools send passes here first.
 
 use std::borrow::Cow;
 
@@ -13,28 +13,28 @@ use crate::mint::Mint;
 use crate::transport::Outbound;
 use crate::vault::Vault;
 
-/// What every call of one lease sends through.
+/// What every call of one run sends through.
 #[derive(Debug)]
 pub struct Egress<'run> {
-    lease_id: &'run str,
+    run_id: &'run str,
     admission: Admission<'run>,
     vault: Vault<'run>,
 }
 
 impl<'run> Egress<'run> {
-    /// The guard for lease `lease_id` under `policy`, minting through
+    /// The guard for run `run_id` under `policy`, minting through
     /// `mint`, its minted tokens expiring against `clock`.
     #[must_use]
     pub fn new(
-        lease_id: &'run str,
+        run_id: &'run str,
         policy: &'run ExecutionPolicy<'run>,
         mint: &'run dyn Mint,
         clock: &'run dyn Clock,
     ) -> Self {
         Self {
-            lease_id,
+            run_id,
             admission: Admission::new(policy),
-            vault: Vault::new(lease_id, mint, clock),
+            vault: Vault::new(run_id, mint, clock),
         }
     }
 
@@ -56,19 +56,19 @@ impl<'run> Egress<'run> {
         })
     }
 
-    /// The lease this guard belongs to, for the lines its tools log.
+    /// The run this guard belongs to, for the lines its tools log.
     #[must_use]
-    pub const fn lease_id(&self) -> &'run str {
-        self.lease_id
+    pub const fn run_id(&self) -> &'run str {
+        self.run_id
     }
 
-    /// `text` with every token this lease minted masked.
+    /// `text` with every token this run minted masked.
     #[must_use]
     pub fn mask<'t>(&self, text: &'t str) -> Cow<'t, str> {
         self.vault.mask(text)
     }
 
-    /// The lease's static credentials, for a tool that reads its own.
+    /// The run's static credentials, for a tool that reads its own.
     #[must_use]
     pub const fn statics(&self) -> StaticSecrets<'run> {
         self.admission.statics()

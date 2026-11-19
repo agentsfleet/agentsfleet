@@ -40,7 +40,7 @@ where
 }
 
 fn work() -> WorkKey {
-    WorkKey::FleetLease(afd_db::test_util::mint_id())
+    WorkKey::FleetRun(afd_db::test_util::mint_id())
 }
 
 fn ask(work: &WorkKey, payer: &Account, next: Nanos) -> Ask {

@@ -23,8 +23,8 @@ CREATE TABLE fleet.tasks (
     reserved_model_nanos    BIGINT NOT NULL CHECK (reserved_model_nanos >= 0),
     max_running_nanos       BIGINT NOT NULL CHECK (max_running_nanos >= 0),
     used_running_nanos      BIGINT NOT NULL CHECK (used_running_nanos >= 0),
-    max_leases              INTEGER NOT NULL CHECK (max_leases > 0),
-    used_leases             INTEGER NOT NULL CHECK (used_leases >= 0),
+    max_runs              INTEGER NOT NULL CHECK (max_runs > 0),
+    used_runs             INTEGER NOT NULL CHECK (used_runs >= 0),
     max_publications        INTEGER NOT NULL CHECK (max_publications > 0),
     used_publications       INTEGER NOT NULL CHECK (used_publications >= 0),
     max_decision_calls      INTEGER NOT NULL CHECK (max_decision_calls > 0),
@@ -83,7 +83,7 @@ CREATE INDEX idx_tasks_dependency_target ON fleet.tasks USING gin (target jsonb_
     WHERE terminal_at IS NULL;
 
 CREATE INDEX idx_tasks_unfinished_attempt_limit ON fleet.tasks (id)
-    WHERE terminal_at IS NULL AND used_leases >= max_leases;
+    WHERE terminal_at IS NULL AND used_runs >= max_runs;
 
 -- Deferred, so an item's task is assigned in the transaction that creates the task.
 ALTER TABLE fleet.task_items

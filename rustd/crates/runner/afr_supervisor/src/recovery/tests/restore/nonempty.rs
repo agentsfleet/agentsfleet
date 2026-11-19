@@ -119,7 +119,7 @@ fn session<'a>(
 ) -> Session<'a> {
     Session {
         plane,
-        lease: identity,
+        run: identity,
         workspace: identity,
         fence: 31,
         task: DecisionTaskVersion {

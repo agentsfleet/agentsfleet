@@ -10,7 +10,7 @@ use super::NativeTurn;
 use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::{
-    lease::{
+    run::{
         TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
         TurnId, TurnScope,
     },

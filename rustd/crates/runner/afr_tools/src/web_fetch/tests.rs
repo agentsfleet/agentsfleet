@@ -8,16 +8,16 @@ use super::{DEFAULT_MAX_CHARS, WebFetch};
 use crate::egress::SharedTransport;
 use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{MINTED, Run, call, replying};
+use crate::testing::{MINTED, RunFixture, call, replying};
 use guffbolt::tools::web::HttpRequest;
 
 const PAGE: &str = "https://demo.es.example/docs";
 
 async fn fetch(transport: SharedTransport, arguments: Value) -> ToolOutput {
-    let run = Run::new(false);
+    let run = RunFixture::new(false);
     let tool = Generic::sending(WebFetch, transport);
-    let lease = run.lease();
-    call(tool.as_ref(), &lease, arguments).await
+    let run = run.run();
+    call(tool.as_ref(), &run, arguments).await
 }
 
 async fn fetched(arguments: Value) -> (ToolOutput, Vec<Sent>) {
@@ -93,15 +93,15 @@ async fn should_read_a_page_as_its_text() {
 
 #[tokio::test]
 async fn should_mask_a_minted_token_a_page_spells_in_entities() {
-    let run = Run::new(false);
-    let lease = run.lease();
+    let run = RunFixture::new(false);
+    let run = run.run();
     let (minting, _sent) = replying(200, "ok");
     let request = Generic::sending(HttpRequest, minting);
     let read = json!({
         "url": "https://api.github.com/repos/acme/widgets/",
         "headers": {"Authorization": "Bearer ${secrets.github.token}"},
     });
-    assert_eq!(call(request.as_ref(), &lease, read).await.error_code, None);
+    assert_eq!(call(request.as_ref(), &run, read).await.error_code, None);
     let (page, _sent) = RecordingTransport::answering(|_outbound| {
         let mut page = inbound(200, &format!("<p>&#103;{}</p>", &MINTED[1..]));
         page.content_type = Some("text/html".to_owned());
@@ -109,7 +109,7 @@ async fn should_mask_a_minted_token_a_page_spells_in_entities() {
     });
     let fetch = Generic::sending(WebFetch, Arc::new(page));
 
-    let output = call(fetch.as_ref(), &lease, json!({"url": PAGE})).await;
+    let output = call(fetch.as_ref(), &run, json!({"url": PAGE})).await;
 
     assert!(
         output.text.contains("«secret:github.token»"),

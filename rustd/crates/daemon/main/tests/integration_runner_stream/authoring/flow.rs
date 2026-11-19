@@ -52,22 +52,22 @@ async fn model_proposal_renewal_and_completion_share_one_native_session() {
 }
 
 async fn invoke_and_renew(fixture: &AuthoringFixture, request: &ModelCall) -> ModelResult {
-    let lease = fixture.id();
-    let (model, ()) = tokio::join!(fixture.session.authoring_model(&lease, request), async {
+    let run = fixture.id();
+    let (model, ()) = tokio::join!(fixture.session.authoring_model(&run, request), async {
         fixture.provider.state.arrived().await;
         let renewed = fixture
             .session
             .authoring_renew(
-                &lease,
+                &run,
                 &Renew {
-                    fence: fixture.lease.fence.clone(),
+                    fence: fixture.run.fence.clone(),
                     usage: meter(1),
                 },
             )
             .await
             .expect("renewal proceeds while provider HTTP is blocked");
         assert!(!renewed.stop_requested);
-        assert!(renewed.expires_at <= fixture.lease.deadline);
+        assert!(renewed.expires_at <= fixture.run.deadline);
         assert_eq!(renewed.expires_at, renewed.model_access_expires_at);
         fixture.provider.state.resume();
     });
@@ -75,17 +75,17 @@ async fn invoke_and_renew(fixture: &AuthoringFixture, request: &ModelCall) -> Mo
 }
 
 async fn proposal_replay(fixture: &AuthoringFixture) {
-    let lease = fixture.id();
+    let run = fixture.id();
     let proposal = fixture.proposal();
     let accepted = fixture
         .session
-        .authoring_activity(&lease, &proposal)
+        .authoring_activity(&run, &proposal)
         .await
         .expect("native proposal");
     assert!(accepted.accepted);
     let replayed = fixture
         .session
-        .authoring_activity(&lease, &proposal)
+        .authoring_activity(&run, &proposal)
         .await
         .expect("proposal receipt replay");
     assert!(replayed.replayed);
@@ -94,11 +94,11 @@ async fn proposal_replay(fixture: &AuthoringFixture) {
 }
 
 async fn completion_replay(fixture: &AuthoringFixture) {
-    let lease = fixture.id();
+    let run = fixture.id();
     let report = fixture.report(1);
     let completed = fixture
         .session
-        .authoring_report(&lease, &report)
+        .authoring_report(&run, &report)
         .await
         .expect("native completion");
     assert!(completed.settled && !completed.replayed);
@@ -109,7 +109,7 @@ async fn completion_replay(fixture: &AuthoringFixture) {
     assert_eq!(charged.get(1).map(|line| (line.1, line.2)), Some((1, 1)));
     let replayed = fixture
         .session
-        .authoring_report(&lease, &report)
+        .authoring_report(&run, &report)
         .await
         .expect("completion replay");
     assert!(replayed.settled && replayed.replayed);

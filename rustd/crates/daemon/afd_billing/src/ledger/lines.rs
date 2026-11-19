@@ -48,7 +48,7 @@ pub async fn log_lines<'e>(
             event_id,
         } => (Some(fleet), Some(fleet_name.as_str()), Some(event_id), None),
         Attribution::SetupChat => (None, None, None, Some(settlement.work.id())),
-        Attribution::SetupLease { message } => {
+        Attribution::SetupRun { message } => {
             (None, None, Some(message), Some(settlement.work.id()))
         }
     };

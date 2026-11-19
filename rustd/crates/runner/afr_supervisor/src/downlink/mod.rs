@@ -14,7 +14,7 @@ pub(crate) mod running;
 use std::{collections::HashSet, sync::Arc};
 
 use af_stream::{Budget, OwnedFrame};
-use af_wire::protocol::{LEASES_MAX, MESSAGE_BYTES_MAX, StreamKind};
+use af_wire::protocol::{MESSAGE_BYTES_MAX, RUNS_MAX, StreamKind};
 use http::header::HeaderValue;
 use tokio::{
     sync::{mpsc, watch},
@@ -34,12 +34,12 @@ use crate::{
 use connect::Connected;
 use dispatch::{Dispatch, Progress};
 use reconnect::{Preference, Recovery, Resume};
-use running::{LeaseRegistration, Running};
+use running::{RunRegistration, Running};
 
 #[derive(Debug)]
 pub(crate) struct Offered {
     pub(crate) frame: OwnedFrame,
-    pub(crate) registration: LeaseRegistration,
+    pub(crate) registration: RunRegistration,
     pub(crate) session: CancellationToken,
 }
 
@@ -68,7 +68,7 @@ impl Downlink {
         authorization.set_sensitive(true);
         let running = Arc::new(Running::default());
         let (current, session) = watch::channel(None);
-        let (offers, offered) = mpsc::channel(af_wire::protocol::LEASES_MAX);
+        let (offers, offered) = mpsc::channel(af_wire::protocol::RUNS_MAX);
         let (assignments, policies) = watch::channel(None);
         let handle = StreamHandle::new(session, Arc::clone(&running), policies);
         Ok((
@@ -81,7 +81,7 @@ impl Downlink {
                 current,
                 running,
                 offers,
-                offer_budget: Budget::new(0, LEASES_MAX * MESSAGE_BYTES_MAX)?,
+                offer_budget: Budget::new(0, RUNS_MAX * MESSAGE_BYTES_MAX)?,
                 assignments,
             },
             offered,

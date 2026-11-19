@@ -29,7 +29,7 @@ use super::tests::{completions, drive, engine};
 use super::{EVENT_TURN_COMPLETED, EVENT_TURN_STARTED};
 use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{
-    API_KEY, Canned, Exits, Frames, GITHUB_TOKEN, Script, call, lease, say, spent, unbounded,
+    API_KEY, Canned, Exits, Frames, GITHUB_TOKEN, Script, call, payload, say, spent, unbounded,
 };
 use crate::ledger::{EVENT_CALL_COMPLETED, EVENT_CALL_STARTED};
 use crate::testing::Discard;
@@ -54,7 +54,7 @@ async fn test_unlisted_tool_refused_run_continues() {
 
     let (output, frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -91,8 +91,12 @@ async fn test_answer_streams_as_chunks() {
     ]]);
     let engine = engine(Vec::new(), &script);
 
-    let (output, frames) =
-        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
+    let (output, frames) = drive(
+        &engine,
+        &payload(&[], unbounded()),
+        &CancellationToken::new(),
+    )
+    .await;
 
     let chunks: Vec<_> = frames
         .iter()
@@ -139,7 +143,7 @@ async fn a_call_whose_process_exits_non_zero_ends_failed() {
 
     let (output, frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -161,7 +165,7 @@ async fn a_call_whose_process_exits_zero_ends_succeeded() {
 
     let (_output, frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -186,11 +190,11 @@ async fn no_secret_value_is_sent_to_the_model_whoever_wrote_it() {
         vec![say("done")],
     ]);
     let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, GITHUB_TOKEN)], &script);
-    let mut leased = lease(&[UPDATE_PLAN.name()], unbounded());
-    leased.event.request_json = format!("{{\"message\":\"use {GITHUB_TOKEN}\"}}").into();
-    leased.instructions = format!("the key is {API_KEY}").into();
+    let mut held = payload(&[UPDATE_PLAN.name()], unbounded());
+    held.event.request_json = format!("{{\"message\":\"use {GITHUB_TOKEN}\"}}").into();
+    held.instructions = format!("the key is {API_KEY}").into();
 
-    let (_output, _frames) = drive(&engine, &leased, &CancellationToken::new()).await;
+    let (_output, _frames) = drive(&engine, &held, &CancellationToken::new()).await;
 
     let sent = format!("{:?}", script.sent());
     assert!(
@@ -212,7 +216,7 @@ async fn every_turn_and_every_call_logs_its_start_and_its_end_once() {
 
     let (_output, _frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -237,10 +241,10 @@ async fn every_turn_and_every_call_logs_its_start_and_its_end_once() {
     assert_eq!(ended.field("status"), Some("Succeeded"));
 }
 
-/// A credential minted for a call is logged under the lease the loop was
+/// A credential minted for a call is logged under the run the loop was
 /// handed, so the operator reading the line finds the run that minted it.
 #[tokio::test]
-async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
+async fn a_credential_minted_during_a_run_is_logged_under_the_runs_run() {
     let capture = Capture::install();
     let script = Script::new([
         vec![call(
@@ -253,10 +257,10 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
     ]);
     let (transport, _sent) = RecordingTransport::replying(200, "[]");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
-    let mut leased = lease(&[], unbounded());
-    leased.lease_id = "lease-77".into();
-    leased.policy = policy(false);
-    leased.policy.tools = vec![HTTP_REQUEST.name().into()];
+    let mut held = payload(&[], unbounded());
+    held.run_id = "run-77".into();
+    held.policy = policy(false);
+    held.policy.tools = vec![HTTP_REQUEST.name().into()];
     let mint = CountingMint::answering(MINTED, HOUR, FixedClock::at(jiff::Timestamp::UNIX_EPOCH));
     let frames = Frames::default();
     let sink = frames.sink();
@@ -267,7 +271,7 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &leased,
+            run: &held,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -284,7 +288,7 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
         .unwrap();
 
     assert_eq!(output.result.content, "done");
-    assert_minted_under_lease(&capture, &frames, leased.lease_id.as_ref());
+    assert_minted_under_run(&capture, &frames, held.run_id.as_ref());
 }
 
 #[tokio::test]
@@ -301,7 +305,7 @@ async fn a_run_is_traced_as_turns_and_calls_inside_one_invocation() {
 
     let (_output, _frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -329,7 +333,7 @@ async fn a_run_is_traced_as_turns_and_calls_inside_one_invocation() {
     assert_eq!(tool.field(ATTR_TOOL_CALL_ID), Some("1"));
 }
 
-fn assert_minted_under_lease(capture: &Capture, frames: &Frames, lease: &str) {
+fn assert_minted_under_run(capture: &Capture, frames: &Frames, run: &str) {
     assert_eq!(
         completions(&frames.taken()),
         [("1".to_owned(), ToolCallStatus::Succeeded)],
@@ -337,7 +341,7 @@ fn assert_minted_under_lease(capture: &Capture, frames: &Frames, lease: &str) {
     );
 
     let minted = capture.only(EVENT_CREDENTIAL_MINTED);
-    assert_eq!(minted.field("lease_id"), Some(lease));
+    assert_eq!(minted.field("run_id"), Some(run));
     assert!(
         (capture.events().iter()).all(|event| event.fields.values().all(|v| !v.contains(MINTED))),
         "no log line carries the minted token"

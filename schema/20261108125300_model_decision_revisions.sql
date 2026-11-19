@@ -1,5 +1,5 @@
 -- Append-only reviewed decision definitions for a catalogue model. `platform_models` selects the
--- current one; lease and call snapshots bind the same revision.
+-- current one; run and call snapshots bind the same revision.
 CREATE TABLE model.decision_revisions (
     id UUID PRIMARY KEY,
     platform_model_id UUID NOT NULL REFERENCES model.platform_models(id) ON DELETE CASCADE,

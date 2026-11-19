@@ -64,7 +64,7 @@ fn a_read_binding_reaches_the_wire_with_its_egress_rules() {
 
     let binding = policy
         .repository_binding
-        .expect("a declared binding reaches the lease");
+        .expect("a declared binding reaches the run");
     assert_eq!(binding.repositories, vec!["acme/widgets"]);
     // A read binding opens no Pull Request, so it names no base — empty is
     // how the wire spells that.
@@ -121,8 +121,8 @@ fn a_configured_endpoint_reaches_the_wire_with_its_provider() {
 fn a_write_binding_with_no_authorised_branch_is_refused() {
     // The egress refusal travels out of the assembly rather than being
     // absorbed into a policy with no rules — a write-bound fleet with an
-    // empty allow-list would look like a working lease that silently
-    // cannot do the thing it was leased for.
+    // empty allow-list would look like a working run that silently
+    // cannot do the thing it was held for.
     let config = config(
         r#","repositories":["acme/payments"],"repository_access":"write",
            "repository_base":"main""#,
@@ -170,7 +170,7 @@ fn explicit_registry_references_cannot_override_resolved_execution_model_details
         let policy = ready(&config, &resolved, &declared);
         assert_eq!(policy.context.model, "provider-native-model");
         assert_eq!(policy.context.context_cap_tokens, cap);
-        let wire = serde_json::to_value(&policy).expect("serialized lease policy");
+        let wire = serde_json::to_value(&policy).expect("serialized run policy");
         assert_eq!(
             wire.get("model_context_tokens"),
             Some(&serde_json::json!(RESOLVED_CAP_TOKENS))

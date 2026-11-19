@@ -41,7 +41,7 @@ async fn configured_http_attempts_cap_physical_sends() {
         })
         .validate()
         .unwrap();
-        let transport = Transport::new(reqwest::Client::new(), "lease", "fake")
+        let transport = Transport::new(reqwest::Client::new(), "run", "fake")
             .with_retry(crate::RetryPolicy::new(&settings));
         let request = rig_http::Request::builder()
             .uri(format!("http://{address}/"))
@@ -76,7 +76,7 @@ async fn serve_chunks(chunks: usize) -> String {
 /// its body still to be read.
 async fn sent_whole(chunks: usize) -> rig_http::Response<rig_http::LazyBody<Bytes>> {
     let url = serve_chunks(chunks).await;
-    let transport = Transport::new(reqwest::Client::new(), "lease-1", "fake");
+    let transport = Transport::new(reqwest::Client::new(), "run-1", "fake");
     let request = rig_http::Request::builder()
         .method(Method::POST)
         .uri(url)
@@ -129,7 +129,7 @@ async fn a_whole_reply_under_the_cap_is_read_whole_at_rigs_buffered_seam() {
 
 #[tokio::test]
 async fn a_multipart_send_is_refused_since_no_wire_uploads_a_file() {
-    let transport = Transport::new(reqwest::Client::new(), "lease-1", "fake");
+    let transport = Transport::new(reqwest::Client::new(), "run-1", "fake");
     let request = rig_http::Request::builder()
         .method(Method::POST)
         .uri("http://127.0.0.1:9/v1/files")
@@ -151,11 +151,11 @@ async fn a_multipart_send_is_refused_since_no_wire_uploads_a_file() {
 
 #[test]
 fn a_transport_prints_whose_sends_it_makes_and_not_its_client() {
-    let transport = Transport::new(reqwest::Client::new(), "lease-1", "fake");
+    let transport = Transport::new(reqwest::Client::new(), "run-1", "fake");
 
     assert_eq!(
         format!("{transport:?}"),
-        r#"Transport { lease_id: "lease-1", provider: "fake", .. }"#
+        r#"Transport { run_id: "run-1", provider: "fake", .. }"#
     );
 }
 
@@ -188,7 +188,7 @@ async fn a_single_attempt_send_returns_the_first_failure_without_retrying() {
         .body(Bytes::new())
         .unwrap();
     let response: rig_http::Response<rig_http::LazyBody<Bytes>> =
-        Transport::new(reqwest::Client::new(), "lease-1", "fake")
+        Transport::new(reqwest::Client::new(), "run-1", "fake")
             .once()
             .http()
             .send(request)

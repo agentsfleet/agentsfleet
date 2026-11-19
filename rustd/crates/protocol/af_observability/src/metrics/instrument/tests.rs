@@ -93,7 +93,7 @@ fn a_histogram_is_built_and_claimed() {
     let outstanding = instruments.unclaimed().len();
 
     let _histogram = instruments
-        .histogram_f64(&fleet::LEASE_HISTORY_BYTES)
+        .histogram_f64(&fleet::RUN_HISTORY_BYTES)
         .expect("the census declares this a histogram in f64");
 
     assert_eq!(

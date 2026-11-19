@@ -11,14 +11,14 @@ use afd_db::test_util::{FleetSeed, mint_id};
 use afd_fleet_lifecycle::FleetStatus;
 use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 
-pub(super) async fn sibling(run: &Scenario, name: &str) -> (Uuid7, Uuid7) {
-    let fleet = seed_sibling(run, name).await;
-    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
+pub(super) async fn sibling(scene: &Scenario, name: &str) -> (Uuid7, Uuid7) {
+    let fleet = seed_sibling(scene, name).await;
+    let admitted = Admissions::for_tests(scene.booted.database.clone(), scene.booted.bus.clone())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,
             fleet: &fleet,
-            workspace: &run.workspace,
+            workspace: &scene.workspace,
             actor: ACTOR,
             event_type: EVENT_TYPE,
             request_json: REQUEST_JSON,
@@ -29,14 +29,14 @@ pub(super) async fn sibling(run: &Scenario, name: &str) -> (Uuid7, Uuid7) {
     (fleet, admitted.stored.id)
 }
 
-async fn seed_sibling(run: &Scenario, name: &str) -> Uuid7 {
+async fn seed_sibling(scene: &Scenario, name: &str) -> Uuid7 {
     let fleet = mint_id();
     let stored = Stored::of(&crate::e2e_native::definition(
         e2e_seed::FLEET_CONFIG_JSON,
         e2e_seed::FIXTURE_INSTRUCTIONS,
     ));
-    let tag = e2e_seed::scenario_tag(&run.fleet);
-    let mut connection = run
+    let tag = e2e_seed::scenario_tag(&scene.fleet);
+    let mut connection = scene
         .booted
         .database
         .acquire()
@@ -44,8 +44,8 @@ async fn seed_sibling(run: &Scenario, name: &str) -> Uuid7 {
         .expect("sibling fixture connection");
     FleetSeed::new(
         &fleet,
-        &run.workspace,
-        &run.tenant,
+        &scene.workspace,
+        &scene.tenant,
         FleetStatus::Active.as_str(),
     )
     .name(name)
@@ -56,7 +56,7 @@ async fn seed_sibling(run: &Scenario, name: &str) -> Uuid7 {
     .await
     .expect("second runnable fleet");
     sqlx::query("UPDATE runner.runners SET worker_count=$2 WHERE id=$1")
-        .bind(&run.runner_id)
+        .bind(&scene.runner_id)
         .bind(2_i32)
         .execute(&mut *connection)
         .await

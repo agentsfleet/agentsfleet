@@ -29,7 +29,7 @@ impl Error {
             | ErrorKind::CapExceeded { .. }
             | ErrorKind::AcknowledgementMissing { .. }
             | ErrorKind::SteerPathFaulted { .. }
-            | ErrorKind::LeasePathFaulted { .. }
+            | ErrorKind::RunPathFaulted { .. }
             | ErrorKind::OutboundPathFaulted { .. }
             | ErrorKind::LedgerUnreadable { .. }
             | ErrorKind::CounterUnreadable { .. }
@@ -58,7 +58,7 @@ impl Error {
             | ErrorKind::CredentialMalformed { .. }
             | ErrorKind::IdentifierRefused { .. }
             | ErrorKind::CeilingRefused { .. }
-            | ErrorKind::LeaseUnreadable { .. }
+            | ErrorKind::RunUnreadable { .. }
             | ErrorKind::UnknownShape { .. }
             | ErrorKind::ShapeNeedsRig { .. }
             | ErrorKind::AuthoringPathFaulted { .. }

@@ -17,7 +17,7 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 use super::{MAX_BATCH_BYTES, channel, encoded_len};
 use crate::client::Verb;
 use crate::error;
-use crate::test_support::{Answer, LEASE_ID, activities, drain};
+use crate::test_support::{Answer, RUN_ID, activities, drain};
 
 /// The tool every frame here names.
 pub(super) const TOOL: &str = "shell";
@@ -101,8 +101,8 @@ pub(super) fn posted_frames(calls: &[crate::client::Call]) -> Vec<Vec<String>> {
 #[tokio::test(start_paused = true)]
 async fn test_activity_sender_drops_past_four_batches() {
     let (plane, _calls) = activities(|_call| Answer::Stall);
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &lease);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let (sink, mut pump) = channel(&plane, &run);
     // Each frame fills more than half a batch, so each rides alone. The burst
     // lands before the poster takes one in flight, so three queue; the fourth
     // fills while it waits and is dropped when the fifth arrives; the fifth,
@@ -139,8 +139,8 @@ async fn test_activity_sender_drops_past_four_batches() {
 #[tokio::test(start_paused = true)]
 async fn test_activity_sender_keeps_filling_a_batch_that_waits() {
     let (plane, _calls) = activities(|_call| Answer::Stall);
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &lease);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let (sink, mut pump) = channel(&plane, &run);
     let tick = super::FLUSH_EVERY * 2;
 
     let (stalled, ()) = tokio::join!(tokio::time::timeout(STALL_BUDGET, pump.run()), async {
@@ -164,14 +164,14 @@ async fn test_activity_sender_keeps_filling_a_batch_that_waits() {
     );
 }
 
-/// After the lease's first frame and first answer have gone, frames ride
+/// After the run's first frame and first answer have gone, frames ride
 /// together on the tick, and the first answer chunk is timed from the run's
 /// start rather than from whichever chunk came last.
 #[tokio::test(start_paused = true)]
 async fn frames_ride_together_and_the_first_answer_chunk_is_timed() {
     let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &lease);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let (sink, mut pump) = channel(&plane, &run);
     sink.emit(tool(TOOL));
     assert_eq!(
         sink.timing().first_chunk,
@@ -203,13 +203,13 @@ async fn frames_ride_together_and_the_first_answer_chunk_is_timed() {
     assert_eq!(pump.dropped, 0);
 }
 
-/// Once the lease's first frame and first answer have gone, a frame after a
+/// Once the run's first frame and first answer have gone, a frame after a
 /// quiet spell waits a full period rather than going on a stale tick.
 #[tokio::test(start_paused = true)]
 async fn a_frame_after_a_quiet_spell_waits_a_full_period_before_it_is_sent() {
     let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &lease);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let (sink, mut pump) = channel(&plane, &run);
 
     let ((), ()) = tokio::join!(pump.run(), async {
         sink.emit(chunk("first".to_owned()));
@@ -247,8 +247,8 @@ fn a_frame_is_measured_as_encoded() {
 async fn a_failed_post_is_only_logged() {
     let (plane, mut calls) =
         activities(|_call| Answer::Fail(error::unavailable(Verb::Activity, 503)));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &lease);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let (sink, mut pump) = channel(&plane, &run);
     sink.emit(tool(TOOL));
     drop(sink);
 
@@ -267,13 +267,13 @@ async fn a_failed_post_is_only_logged() {
 #[tokio::test(start_paused = true)]
 async fn dropping_a_pump_with_a_blocked_writer_counts_its_pending_frames() {
     let (writer, mut calls) = activities(|_| Answer::Stall);
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let (sink, mut pump) = channel(&writer, &lease);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let (sink, mut pump) = channel(&writer, &run);
     sink.emit(tool(TOOL));
     drop(sink);
     let (tally, recorded) = Tally::new();
     scoped(tally, async {
-        tokio::time::timeout(crate::lease_loop::ACTIVITY_DRAIN_WAIT, pump.run())
+        tokio::time::timeout(crate::run_loop::ACTIVITY_DRAIN_WAIT, pump.run())
             .await
             .unwrap_err();
         drop(pump);

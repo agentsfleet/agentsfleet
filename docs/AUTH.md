@@ -157,7 +157,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 | `connector:read` / `connector:write` | read connector status and the catalogue / start, complete, or disconnect a connector — gates the generic `{provider}` connector routes (every registry provider: Slack OAuth, GitHub App install, …); see §"OAuth connectors: a separate surface (M106, generalized by the M108 registry)" |
 | `model:read` / `model:admin` | read the priced model catalogue / create+update+delete catalogue rows |
 | `platform-key:read` / `platform-key:admin` | read the platform default key/model / set+delete it |
-| `runner:read` / `runner:write` | list and read runners, their events and their leases (operator plane) / `PATCH /v1/admin/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy, replace its placement labels) and `DELETE` (retire a revoked runner's record) |
+| `runner:read` / `runner:write` | list and read runners, their events and their runs (operator plane) / `PATCH /v1/admin/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy, replace its placement labels) and `DELETE` (retire a revoked runner's record) |
 
 **Discrete verbs** (no ladder, a distinct action):
 
@@ -175,7 +175,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 
 | Scope | Grants |
 |---|---|
-| `runner:self` | the runner's own plane: `/v1/runners/me/*` (heartbeat, lease and the per-lease routes under it, report, credential-mint, memory). Only the runner-token principal carries it, and it carries *only* this — so a runner cannot reach a tenant route and a user/api-key cannot reach a runner route |
+| `runner:self` | the runner's own plane: `/v1/runners/me/*` (heartbeat, run and the per-run routes under it, report, credential-mint, memory). Only the runner-token principal carries it, and it carries *only* this — so a runner cannot reach a tenant route and a user/api-key cannot reach a runner route |
 
 **Cross-tenant override** (held by almost no one; every use audited):
 
@@ -441,7 +441,7 @@ members with no change to the route.
 
 **A member uses every secret, through fleets**. The role withholds writing a
 secret, not using one. A member who installs or edits a fleet can declare any
-workspace secret, and the runner receives it at lease
+workspace secret, and the runner receives it at run
 (`rustd/crates/daemon/afd_credential/src/secrets/mod.rs`).
 
 An invited member is
@@ -820,17 +820,17 @@ Flows 1–3 all act *on behalf of* a human or a tenant. The **runner token** is 
 A platform operator registers a trusted host with `agentsfleet platform runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
 The CLI authenticates with the operator's existing credential and saves the runner token in an owner-only file.
 
-Registration is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:register` scope.
+Registration is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the runs placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:register` scope.
 
 That scope is a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A caller without it, session token or `agt_t` key alike (a key holds exactly its creator's scopes), is refused `403 UZ-AUTH-022`. An empty scope set fails closed.
 
 There is no open registration token.
 
-The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/admin/runners`, one runner `GET /v1/admin/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/admin/runners/{runner_id}`.
+The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/admin/runners`, one runner `GET /v1/admin/runners/{runner_id}`, and its `/events` and `/runs`; `runner:write` fronts `PATCH` and `DELETE /v1/admin/runners/{runner_id}`.
 
 Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest and returns the replacement `runner_token` once. The old token fails the next authentication read. The response and audit log never expose the old token, and the audit event records the operator subject.
 
-The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model). The operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`. `agentsfleet-runner` checks the `agt_r` prefix at boot (`rustd/crates/runner/afr_supervisor/src/config/mod.rs`) and goes straight to the heartbeat/lease loop.
+The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model). The operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`. `agentsfleet-runner` checks the `agt_r` prefix at boot (`rustd/crates/runner/afr_supervisor/src/config/mod.rs`) and goes straight to the heartbeat/run loop.
 
 No host ever holds a registration-grade credential.
 
@@ -870,15 +870,15 @@ A tenant runner takes only its own tenant's work, and a platform runner takes an
 ```
                               runner's tenant_id
 work of tenant T              NULL (platform)    T          U (another tenant)
-fleet on the platform model   leased             refused    refused
-fleet on T's own model        leased             leased     refused
+fleet on the platform model   held             refused    refused
+fleet on T's own model        held             held     refused
 ```
 
 Five rules hold this table in place.
 
 | Rule | Where it holds |
 |---|---|
-| A tenant runner takes only its own tenant's work | the lease claim and the candidate scan read `runner.runners.tenant_id`; issue reads it again under the host lock and logs `runner_placement_refused` (`UZ-RUN-027`) on a miss |
+| A tenant runner takes only its own tenant's work | the run claim and the candidate scan read `runner.runners.tenant_id`; issue reads it again under the host lock and logs `runner_placement_refused` (`UZ-RUN-027`) on a miss |
 | It never receives the platform model key | a fleet whose revision runs on the platform default model is not offered to it, and issue refuses it too |
 | It has no platform decision model | a check on `runner.runners` refuses `decision_platform_model_id` on a tenant row |
 | Its owner is explicit and never changes | `platform_owned` is stated at registration, a check ties it to `tenant_id`, and a trigger refuses any update of either |
@@ -934,9 +934,9 @@ That lookup is where a cordon, drain, revoke or delete takes effect, because **a
 
 A per-process memo used to front this read, with entries living at most `HEARTBEAT_INTERVAL_MS`. It was removed in M143_001 because it made revocation deterministic only on the machine that served the operator's write: every *other* control-plane machine kept authenticating the runner until its own entry expired. Reading the row every time means a runner taken out of service authenticates **nowhere, immediately**, with no window to reason about and no per-machine state to reconcile.
 
-What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll. It returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER` = 1 s), so an idle runner authenticates about once a second per worker.
+What that costs: one indexed single-row read per runner request. The run verb is not a blocking long poll. It returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER` = 1 s), so an idle runner authenticates about once a second per worker.
 
-The sizing assumes ~100 runners (`runner.runners`, `schema/20261108123100_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
+The sizing assumes ~100 runners (`runner.runners`, `schema/20261108123100_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the run gate never re-reads the row it just authenticated against.
 
 It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner treats as retryable (`Error::is_retryable`, `rustd/crates/runner/afr_supervisor/src/error/mod.rs`), **not** as a token refusal. Only a refused token stops the runner (`rustd/crates/runner/afr_supervisor/src/halt/mod.rs`), so an outage cannot shut a healthy fleet down.
 
@@ -946,7 +946,7 @@ It also means a Postgres outage fails runner auth immediately rather than being 
 - exchange it on the heartbeat for a short-lived signed token
 - verify that token locally with no database read
 
-Any such design MUST re-check `admin_state` inside the lease-grant transaction. That is because a lease delivers the tenant's `secrets_map` and the resolved provider key inline (see *Least privilege* below). A locally-verified token with no state check would let a revoked runner collect fresh secrets for its remaining lifetime.
+Any such design MUST re-check `admin_state` inside the run-grant transaction. That is because a run delivers the tenant's `secrets_map` and the resolved provider key inline (see *Least privilege* below). A locally-verified token with no state check would let a revoked runner collect fresh secrets for its remaining lifetime.
 
 Trigger to revisit: runner count or poll rate making the per-request read measurable, not before.
 
@@ -955,19 +955,19 @@ Trigger to revisit: runner count or poll rate making the per-request read measur
 A runner principal reaches only `/v1/runners/me/*`, and every route there requires `runner:self` (`rustd/crates/daemon/afd_http/src/route/runner.rs`). Those routes are:
 
 - heartbeats
-- leases and the per-lease routes under a held lease (activity, renew, tool calls, schedules, messages)
+- runs and the per-run routes under a held run (activity, renew, tool calls, schedules, messages)
 - reports
 - the credential mint
 - fleet memory
 - a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness)
 
-Each acts for the one runner the token identifies (`me`). A per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route.
+Each acts for the one runner the token identifies (`me`). A per-run route answers 404 for a run another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route.
 
-The runner receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it. That is a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries.
+The runner receives a tenant's `secrets_map` inline in a run only because `agentsfleetd` *placed* that tenant's work on it. That is a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries.
 
 **Secret delivery is placement, not a standing grant**. `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
-The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_observed`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. A tenant's own key is read every time.
+The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per run (`Providers::resolve_observed`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. A tenant's own key is read every time.
 
 The shared platform key may be held decrypted in daemon memory. The cache keys it by the catalogue version, the secret's id and a digest of the stored ciphertext and endpoint. A replaced key therefore misses.
 
@@ -975,9 +975,9 @@ An entry also ends with the price window it matched, never lives past five minut
 
 Eviction runs when the replica serves chats, so that bound holds while it does. An idle replica keeps an expired entry until its next chat.
 
-The delivered key is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
+The delivered key is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.runs` row.
 
-A runner receives the billed provider key only because work was placed on it. Inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/daemon/afd_credential/src/provider/resolved.rs`). The serialized lease body is outside that guarantee.
+A runner receives the billed provider key only because work was placed on it. Inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/daemon/afd_credential/src/provider/resolved.rs`). The serialized run body is outside that guarantee.
 
 Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
 
@@ -997,8 +997,8 @@ The native reservation response delivers a key to its trusted runner once; retri
 
 Parser scratch/error buffers, HTTP headers and transport buffers remain outside those owned-buffer wiping guarantees.
 
-`POST /v1/runners/me/leases/{lease_id}/tasks/decisions` reserves and funds a physical call before resolving its current key.
-`PATCH /v1/runners/me/leases/{lease_id}/tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
+`POST /v1/runners/me/runs/{run_id}/tasks/decisions` reserves and funds a physical call before resolving its current key.
+`PATCH /v1/runners/me/runs/{run_id}/tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
 Handlers live in `rustd/crates/daemon/afd_api_runner/src/handler/runner/decisions.rs`.
 
 The runner prepares intent before durable work and assesses completed action groups through `afr_agent/src/decision/` and `afr_agent/src/loop/task.rs`.
@@ -1009,7 +1009,7 @@ The [decision architecture](architecture/goal_evaluation.md) owns model selectio
 
 ### The token never enters the sandboxed child
 
-`AGENTSFLEET_RUNNER_TOKEN` lives in the **supervisor's** environment: the trusted `agentsfleet-runner` process that speaks the control protocol and runs outside every sandbox ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Process model"). A lease's tool calls run in a bubblewrap sandbox that starts with an empty environment.
+`AGENTSFLEET_RUNNER_TOKEN` lives in the **supervisor's** environment: the trusted `agentsfleet-runner` process that speaks the control protocol and runs outside every sandbox ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Process model"). A run's tool calls run in a bubblewrap sandbox that starts with an empty environment.
 
 The `bwrap` command itself is spawned with `env_clear()` (`rustd/crates/runner/afr_sandbox/src/bubblewrap_engine/parts/mod.rs`). The entry inside gets `--clearenv` plus only the variables set by `--setenv` (`rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs`). Every process the in-sandbox process runner starts gets `env_clear()` plus its plan's own variables (`rustd/crates/runner/afr_executor/src/server/launch/mod.rs`).
 
@@ -1044,8 +1044,8 @@ The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
 
 The setup review is where credential presence matters: it reports each named
 credential and why the setup needs it (`rustd/crates/daemon/afd_setup/src/review/credentials/`).
-Named runtime secret values resolve at lease time inside `agentsfleetd` and
-ride the runner lease envelope described above. Capability comes from the
+Named runtime secret values resolve at run time inside `agentsfleetd` and
+ride the runner run envelope described above. Capability comes from the
 server-built `ExecutionPolicy` and workspace credential grants.
 
 The authoring model's inference credential has a separate path.
@@ -1226,7 +1226,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | Connector per-install handle (`<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, connected_at_ms, label, …}`. (Datadog/Grafana/Fly are not connectors and write no per-install handle — their vendor keys are plain workspace secrets instead, governed by the standard workspace-vault write/read boundary above, not this connector-specific row.) | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`afd_connector`'s `bot_token` for the outbound poster, `afd_vault`'s `Vault::load` for every handle read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` or `{configured, connected, label}`, with an optional public label and no key material) |
 | Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}` and `github-app` → `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`) | secret except public identifiers (`app_id`, `app_slug`, `client_id`); catastrophic secrets are shared across every tenant | until rotated | admin-workspace vault (the workspace `PLATFORM_ADMIN_WORKSPACE_ID` names) · agentsfleetd process memory (connector exchange, token mint, inbound App-signature verify) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · auth logs |
-| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve_reference`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/harness/af_providers/src/connect/mod.rs`, driven by the agent loop in `rustd/crates/runner/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
+| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-run ephemeral (resolved at run, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve_reference`) · inline on the run `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/harness/af_providers/src/connect/mod.rs`, driven by the agent loop in `rustd/crates/runner/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.runs` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
 | `clerk-{dev,prod}` publishable key (`pk_test_…`/`pk_live_…`) | non-credential identifier | until Clerk instance is rotated | client bundle (intentionally shipped via `NEXT_PUBLIC_…`) | (none — this is the "non-secret" one) |
 
 ### The one place a pepper touches disk, and why
@@ -1463,24 +1463,24 @@ Datadog, Grafana and Fly are not connectors and have no `<provider>-app` bag. Ca
 ### Integration-grant gate on every mint (restores M102_001 Invariant 3)
 
 A runner mint requires the requested credential in both its issued setup and the fleet's current setup.
-An added credential becomes available on a new assignment, and removing one withdraws the current lease's mint authority.
+An added credential becomes available on a new assignment, and removing one withdraws the current run's mint authority.
 
-An unreadable setup or missing issued revision withholds the mint. [Scope lookup](../rustd/crates/daemon/afd_fleet/src/lease/scope.rs)
+An unreadable setup or missing issued revision withholds the mint. [Scope lookup](../rustd/crates/daemon/afd_fleet/src/run/scope.rs)
 
-A committed cancellation marker prevents subsequent mint requests, including requests from a lease whose deadline remains in the future.
-The vendor exchange retains its existing allowance for a request already in flight during cancellation. [Mint query](../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_lease_scope_for_mint.sql)
+A committed cancellation marker prevents subsequent mint requests, including requests from a run whose deadline remains in the future.
+The vendor exchange retains its existing allowance for a request already in flight during cancellation. [Mint query](../rustd/crates/daemon/afd_fleet/src/run/sql/run/select_run_scope_for_mint.sql)
 
-A connected integration alone does not authorize a fleet to use it. Every `POST /v1/runners/me/credentials/mint` requires the lease's **fleet** to hold an `approved` row in `connector.integration_grants` for the requested integration. The mint reads that row via the single enforcement module `rustd/crates/daemon/afd_gate/src/gate/grants.rs` **before** the vault handle is loaded.
+A connected integration alone does not authorize a fleet to use it. Every `POST /v1/runners/me/credentials/mint` requires the run's **fleet** to hold an `approved` row in `connector.integration_grants` for the requested integration. The mint reads that row via the single enforcement module `rustd/crates/daemon/afd_gate/src/gate/grants.rs` **before** the vault handle is loaded.
 
-An ungranted request never touches handle bytes. The refusal is 403 `UZ-GRANT-001`, with no token and no upstream call. The same predicate gates lease-issue.
+An ungranted request never touches handle bytes. The refusal is 403 `UZ-GRANT-001`, with no token and no upstream call. The same predicate gates run-issue.
 
-The classifier emits an `ExecutionPolicy.mintable` entry only for approved integrations. An ungranted connector credential is omitted from BOTH `mintable` and `secrets_map` (a static fallthrough would leak the raw handle to the child). A grant revoked mid-lease bites on the fleet's next mint.
+The classifier emits an `ExecutionPolicy.mintable` entry only for approved integrations. An ungranted connector credential is omitted from BOTH `mintable` and `secrets_map` (a static fallthrough would leak the raw handle to the child). A grant revoked mid-run bites on the fleet's next mint.
 
-Grant-read DB failures fail closed at mint (500, no token). They also refuse the lease at issue (delivery stays leasable). The broker itself stays grant-free, because it mints and the boundary authorizes.
+Grant-read DB failures fail closed at mint (500, no token). They also refuse the run at issue (delivery stays leasable). The broker itself stays grant-free, because it mints and the boundary authorizes.
 
 Static pasted secrets (no `integration` field) are not gated.
 
-**The handle is held to what the workspace connected (`rustd/crates/daemon/afd_fleet/src/lease/mint/claim.rs`)**. A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body. So after the vault read and before the exchange, the mint checks two facts the workspace did not write.
+**The handle is held to what the workspace connected (`rustd/crates/daemon/afd_fleet/src/run/mint/claim.rs`)**. A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body. So after the vault read and before the exchange, the mint checks two facts the workspace did not write.
 
 First, an on-demand handle must sit under its own connector's name. The grant gate ran against the requested name, so a GitHub handle filed as `mything` would otherwise mint as an ungranted connector (`UZ-CRED-001`). Second, a GitHub handle's `installation_id` must have a `connector.installs` row for **this** workspace.
 

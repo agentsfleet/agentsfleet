@@ -19,8 +19,8 @@ use super::{
 use crate::{
     Result,
     error::query,
-    lease::Leases,
-    task::{TaskLease, TaskRefusal, TaskScope, TaskSnapshot, guard},
+    run::Runs,
+    task::{TaskRefusal, TaskRun, TaskScope, TaskSnapshot, guard},
 };
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -35,7 +35,7 @@ pub(super) struct Candidate {
 }
 
 pub(super) struct Prepared {
-    pub current: guard::LeaseRow,
+    pub current: guard::RunRow,
     pub assignment: DecisionAssignment,
     pub context: AssessedContext,
     pub request: DecisionRequest,
@@ -45,11 +45,11 @@ pub(super) struct Prepared {
 
 pub(super) async fn on(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
     call: &Uuid7,
 ) -> Result<(Prepared, FrozenQuote)> {
-    let native = super::ownership::NativeContext::load(connection, lease, input).await?;
+    let native = super::ownership::NativeContext::load(connection, run, input).await?;
     native.prepare(connection, input, call).await
 }
 
@@ -69,7 +69,7 @@ impl super::ownership::NativeContext {
             .clone();
         let provider = enabled(connection, &assignment).await?;
         let revision = self.revision(input.assessment.purpose())?;
-        let config = Leases::stored_config_on(
+        let config = Runs::stored_config_on(
             connection,
             &self.current.fleet_id,
             Some(&crate::task::guard::wire(revision)?),

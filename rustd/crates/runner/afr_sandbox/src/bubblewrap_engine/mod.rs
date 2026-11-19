@@ -1,5 +1,5 @@
-//! The bubblewrap engine: one hardened sandbox per lease, built from the
-//! toolbox, the lease's own cgroup and its own workspace disk.
+//! The bubblewrap engine: one hardened sandbox per run, built from the
+//! toolbox, the run's own cgroup and its own workspace disk.
 
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
@@ -13,9 +13,9 @@ use af_core::error_code::{Coded as _, Logged};
 use afr_executor::{Client, Executor};
 
 use crate::bubblewrap::{self, Layout, NetworkLayout};
-use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup};
+use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, RunCgroup};
 use crate::egress::{self, Kernel};
-use crate::engine::{Engine, HostWorkspace, Killed, LeaseName, Limits, Sandbox, SandboxRequest};
+use crate::engine::{Engine, HostWorkspace, Killed, Limits, RunName, Sandbox, SandboxRequest};
 use crate::error::{Result, not_ready, unconfined};
 use crate::network::{Allowlist, Network};
 use crate::probe::HostProbe;
@@ -41,35 +41,35 @@ use self::parts::Parts;
 /// `nobody` and `nogroup` on every Debian-family host, so nothing a sandbox
 /// writes is owned by an account that can log in or holds a privilege.
 pub const SANDBOX_HOST_IDS: (u32, u32) = (65_534, 65_534);
-/// How long a sandbox may take to answer before its lease is refused: the
+/// How long a sandbox may take to answer before its run is refused: the
 /// kernel lane measures executor-ready in tens of milliseconds, so this only
 /// ends a sandbox that will never answer.
 pub const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// A lease's directory: others may pass through to the binds beneath it, but
+/// A run's directory: others may pass through to the binds beneath it, but
 /// not list or write it.
-const LEASE_DIR_MODE: u32 = 0o711;
+const RUN_DIR_MODE: u32 = 0o711;
 /// What the ready probe lists: the workspace, the executor's root.
 const READY_PROBE: &str = ".";
 /// How long a sandbox whose link closed has to exit, so the reason reported
 /// is its own.
 const EXITED_WITHIN: Duration = Duration::from_secs(1);
-/// The event a lease's sandbox start is logged under.
+/// The event a run's sandbox start is logged under.
 const EVENT_PREPARE_STARTED: &str = "sandbox_prepare_started";
 /// The event a ready sandbox is logged under.
 const EVENT_PREPARE_COMPLETED: &str = "sandbox_prepare_completed";
 /// The event a sandbox that could not be built is logged under; the
-/// supervisor, which knows what the lease was for, logs the refusal itself.
+/// supervisor, which knows what the run was for, logs the refusal itself.
 const EVENT_PREPARE_FAILED: &str = "sandbox_prepare_failed";
-/// A lease whose workspace disk the host caches a second time. The host-wide
-/// answer is the boot probe's `workspace_direct_io` check; this names the lease.
+/// A run whose workspace disk the host caches a second time. The host-wide
+/// answer is the boot probe's `workspace_direct_io` check; this names the run.
 const EVENT_DISK_BUFFERED: &str = "sandbox_workspace_buffered";
 /// The event a host that can build no sandbox at all is logged under.
 const EVENT_HOST_REFUSED: &str = "sandbox_host_refused";
 /// Why a sandbox whose cgroup was never made cannot be frozen.
 const NO_CGROUP: &str = "it was never moved into a cgroup of its own";
 
-/// Builds one bubblewrap sandbox per lease.
+/// Builds one bubblewrap sandbox per run.
 #[derive(Debug)]
 pub struct BubblewrapEngine {
     config: BubblewrapConfig,
@@ -141,9 +141,9 @@ impl BubblewrapEngine {
         let name = request.name()?;
         let dir = name.dir_in(&self.config.state_dir);
         fs::create_dir_all(&self.config.state_dir)?;
-        // Fresh, never reused: a directory already there belongs to a lease
+        // Fresh, never reused: a directory already there belongs to a run
         // this one must not inherit, and the boot sweep is what removes it.
-        DirBuilder::new().mode(LEASE_DIR_MODE).create(&dir)?;
+        DirBuilder::new().mode(RUN_DIR_MODE).create(&dir)?;
         let mut parts = Parts::new(name.as_str(), dir);
         match self
             .build(&mut parts, name, request.limits, request.network)
@@ -166,7 +166,7 @@ impl BubblewrapEngine {
     async fn build(
         &self,
         parts: &mut Parts,
-        name: LeaseName<'_>,
+        name: RunName<'_>,
         limits: Limits,
         network: Network<'_>,
     ) -> Result<Client> {
@@ -178,12 +178,12 @@ impl BubblewrapEngine {
         )
         .await?;
         if caching == Caching::Buffered {
-            let lease_id = name.as_str();
+            let run_id = name.as_str();
             let event = EVENT_DISK_BUFFERED;
-            tracing::debug!(lease_id, event);
+            tracing::debug!(run_id, event);
         }
         let device = parts.adopt_disk(disk).device()?;
-        let cgroup = parts.adopt_cgroup(LeaseCgroup::create(
+        let cgroup = parts.adopt_cgroup(RunCgroup::create(
             &self.config.cgroup_root,
             name.as_str(),
             &limits,
@@ -208,7 +208,7 @@ impl BubblewrapEngine {
         Ok(client)
     }
 
-    /// Bubblewrap's command line for the lease `parts` holds.
+    /// Bubblewrap's command line for the run `parts` holds.
     fn arguments(
         &self,
         parts: &Parts,
@@ -257,19 +257,19 @@ impl BubblewrapEngine {
 #[async_trait::async_trait]
 impl Engine for BubblewrapEngine {
     async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
-        let lease_id = request.lease_id;
+        let run_id = request.run_id;
         let event = EVENT_PREPARE_STARTED;
-        tracing::info!(lease_id, event);
+        tracing::info!(run_id, event);
         match self.start(request).await {
             Ok(sandbox) => {
                 let event = EVENT_PREPARE_COMPLETED;
-                tracing::info!(lease_id, event);
+                tracing::info!(run_id, event);
                 Ok(Box::new(sandbox))
             }
             Err(error) => {
                 let Logged { error_code, reason } = error.logged();
                 let event = EVENT_PREPARE_FAILED;
-                tracing::warn!(lease_id, error_code, reason, event);
+                tracing::warn!(run_id, error_code, reason, event);
                 Err(error)
             }
         }
@@ -284,7 +284,7 @@ struct Bubblewrapped {
     /// Who owns the workspace disk's files, as the host names them.
     owner: (u32, u32),
     /// The toolbox it runs on, held until it is destroyed so retention never
-    /// unmounts it from under a lease or a warm slot.
+    /// unmounts it from under a run or a warm slot.
     toolbox: Arc<Toolbox>,
 }
 

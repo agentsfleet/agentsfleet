@@ -1,8 +1,8 @@
 //! A guarded write proves its guard on its own transaction, and one whose
 //! guard no longer holds writes nothing.
 //!
-//! The guard here is a stub that answers a fixed verdict; the lease a runner's
-//! write proves is `afd_fleet::lease::write_fence`, tested against live lease
+//! The guard here is a stub that answers a fixed verdict; the run a runner's
+//! write proves is `afd_fleet::run::write_fence`, tested against live run
 //! rows in `agentsfleetd`'s `integration_runner_schedules_fence`.
 
 #![expect(

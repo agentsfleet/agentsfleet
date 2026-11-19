@@ -86,7 +86,7 @@ fn fixture() -> (tempfile::TempDir, HostPaths, TestBackend) {
     let dir = tempfile::tempdir().unwrap();
     let paths = HostPaths {
         cgroup_root: dir.path().join("delegated"),
-        state_dir: dir.path().join("leases"),
+        state_dir: dir.path().join("runs"),
     };
     fs::create_dir(&paths.cgroup_root).unwrap();
     fs::create_dir(&paths.state_dir).unwrap();

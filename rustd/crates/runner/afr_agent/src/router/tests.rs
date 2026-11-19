@@ -13,9 +13,7 @@ use afr_executor::{
 };
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::{STUB_PATH, Stub};
-use afr_tools::{
-    Catalog, CatalogTool, Entry, Lease, Runtime, Selection, ToolContext, ToolErrorCode,
-};
+use afr_tools::{Catalog, CatalogTool, Entry, Run, Runtime, Selection, ToolContext, ToolErrorCode};
 use bytes::Bytes;
 use guffbolt::Message;
 use guffbolt::{Describe, Tool, ToolFuture, ToolSpec};
@@ -23,7 +21,7 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::Routed;
-use crate::fixture::{Script, call, lease, say, unbounded};
+use crate::fixture::{Script, call, payload, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
 /// An executor that counts the calls that crossed into it.
@@ -93,10 +91,10 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     let selection = catalog.select(&["update_plan", "file_read"]).unwrap();
     let executor = Counting::default();
     let slot = ExecutorSlot::ready(&executor);
-    let (arguments, lease) = (json!({}), Lease::default());
+    let (arguments, run) = (json!({}), Run::default());
 
     let supervised = routed(&selection, &UPDATE_PLAN)
-        .run(&arguments, &slot, &lease)
+        .run(&arguments, &slot, &run)
         .await;
     assert_eq!(supervised.error_code, None);
     assert_eq!(
@@ -106,7 +104,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     );
 
     let sandboxed = routed(&selection, &FILE_READ)
-        .run(&arguments, &slot, &lease)
+        .run(&arguments, &slot, &run)
         .await;
     assert_eq!(sandboxed.error_code, None);
     assert_eq!(sandboxed.text, "file_read");
@@ -120,7 +118,7 @@ async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
 
     let output = routed(&selection, &FILE_READ)
-        .run(&json!({}), &slot, &Lease::default())
+        .run(&json!({}), &slot, &Run::default())
         .await;
 
     assert_eq!(
@@ -130,7 +128,7 @@ async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     assert!(output.text.contains("file_read"));
 }
 
-/// The model calls a tool its lease was not offered, and one the provider
+/// The model calls a tool its run was not offered, and one the provider
 /// hosts but did not run: each reads its own refusal and the run goes on.
 #[tokio::test]
 async fn a_name_not_offered_and_a_hosted_name_are_refused_as_tool_errors() {
@@ -146,9 +144,9 @@ async fn a_name_not_offered_and_a_hosted_name_are_refused_as_tool_errors() {
         vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)],
         &script,
     );
-    let lease = lease(&[UPDATE_PLAN.name(), WEB_SEARCH.name()], unbounded());
+    let run = payload(&[UPDATE_PLAN.name(), WEB_SEARCH.name()], unbounded());
 
-    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, "done");
     let results: Vec<String> = script.sent()[1]
@@ -217,7 +215,7 @@ async fn a_handler_routed_as_the_providers_is_never_run() {
     let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
 
     let output = Routed::new(&counted, Runtime::Provider)
-        .run(&json!({}), &slot, &Lease::default())
+        .run(&json!({}), &slot, &Run::default())
         .await;
 
     assert_eq!(

@@ -33,7 +33,7 @@ acceptance-e2e:  ## Dashboard acceptance (ACCEPTANCE_SCOPE=full|post-deploy|soak
 	cd ui/packages/app && AGENTSFLEET_ACCEPTANCE_SCOPE="$(ACCEPTANCE_SCOPE)" bun run test:e2e:acceptance "$$@"
 	@echo "✓ [app] dashboard acceptance e2e passed"
 
-acceptance-execution:  ## The fleet-execution journey alone (install → lease → execute → observe vs live API). A slice of acceptance-e2e, never its replacement.
+acceptance-execution:  ## The fleet-execution journey alone (install → run → execute → observe vs live API). A slice of acceptance-e2e, never its replacement.
 	@echo "→ [app] Running the fleet-execution journey..."
 	@cd ui/packages/app && bun run test:e2e:acceptance:execution
 	@echo "✓ [app] fleet-execution journey passed"

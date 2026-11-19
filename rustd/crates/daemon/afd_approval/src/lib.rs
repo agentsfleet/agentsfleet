@@ -17,7 +17,7 @@
 //! rows they must be authorised for.
 //!
 //! Keeping them apart is what lets the API's approval surface compile without
-//! the runner plane behind it: `afd_fleet` carries leases, money, policy,
+//! the runner plane behind it: `afd_fleet` carries runs, money, policy,
 //! bundles, sweepers and the vault reader, and none of that is on the path of
 //! showing a person what a fleet wants to do.
 //!

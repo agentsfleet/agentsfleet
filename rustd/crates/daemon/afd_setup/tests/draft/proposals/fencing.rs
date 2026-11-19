@@ -10,14 +10,14 @@ async fn foreign_forged_and_expired_attempts_cannot_publish() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let request = a.initialize(1);
     refuse_foreign_and_forged(&f, &a, &request).await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("expire owned attempt");
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, request.clone())
+            .activity(&f.runner, &a.run, request.clone())
             .await
             .expect_err("expired")
             .code(),
@@ -35,7 +35,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let request = a.initialize(1);
     f.drafts
-        .activity(&f.runner, &a.lease, request.clone())
+        .activity(&f.runner, &a.run, request.clone())
         .await
         .expect("initial proposal");
     f.drafts
@@ -44,7 +44,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
         .expect("Stop wins");
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, request.clone())
+            .activity(&f.runner, &a.run, request.clone())
             .await
             .expect_err("Stop before replay")
             .code(),
@@ -56,7 +56,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
         .expect("private deletion");
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, request)
+            .activity(&f.runner, &a.run, request)
             .await
             .expect_err("deleted private state")
             .code(),
@@ -69,7 +69,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
 async fn refuse_foreign_and_forged(f: &Fixture, a: &Attempt, request: &super::ActivityInput) {
     assert_eq!(
         f.drafts
-            .activity(&mint(), &a.lease, request.clone())
+            .activity(&mint(), &a.run, request.clone())
             .await
             .expect_err("foreign host")
             .code(),
@@ -79,7 +79,7 @@ async fn refuse_foreign_and_forged(f: &Fixture, a: &Attempt, request: &super::Ac
     forged.fence = "2".into();
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, forged)
+            .activity(&f.runner, &a.run, forged)
             .await
             .expect_err("forged fence")
             .code(),
@@ -93,7 +93,7 @@ async fn membership_revocation_is_checked_before_proposal_receipt_replay() {
     let a = Attempt::start(&f, f.member_access(), Source::Blank).await;
     let request = a.initialize(1);
     f.drafts
-        .activity(&f.runner, &a.lease, request.clone())
+        .activity(&f.runner, &a.run, request.clone())
         .await
         .expect("member proposal");
     sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
@@ -104,7 +104,7 @@ async fn membership_revocation_is_checked_before_proposal_receipt_replay() {
         .expect("revoke current membership");
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, request)
+            .activity(&f.runner, &a.run, request)
             .await
             .expect_err("revocation before replay")
             .code(),
@@ -125,14 +125,14 @@ async fn a_progress_hint_commits_no_candidate_and_unknown_usage_fences_the_next_
     };
     let accepted = f
         .drafts
-        .activity(&f.runner, &a.lease, hint.clone())
+        .activity(&f.runner, &a.run, hint.clone())
         .await
         .expect("a progress hint is acknowledged");
     assert!(accepted.accepted && !accepted.replayed);
     assert_eq!(accepted.candidate, None, "a hint changes no candidate");
     let replayed = f
         .drafts
-        .activity(&f.runner, &a.lease, hint.clone())
+        .activity(&f.runner, &a.run, hint.clone())
         .await
         .expect("the same hint replays");
     assert!(replayed.replayed);
@@ -144,7 +144,7 @@ async fn a_progress_hint_commits_no_candidate_and_unknown_usage_fences_the_next_
     hint.activity_sequence = "2".into();
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, hint)
+            .activity(&f.runner, &a.run, hint)
             .await
             .expect_err("unknown usage fences further activity")
             .code(),
@@ -169,7 +169,7 @@ async fn a_model_the_catalogue_changed_fences_the_attempt_that_pinned_it() {
     .expect("the catalogue re-verifies the model's context window");
     assert_eq!(
         f.drafts
-            .activity(&f.runner, &a.lease, a.initialize(1))
+            .activity(&f.runner, &a.run, a.initialize(1))
             .await
             .expect_err("the pinned snapshot no longer matches the live model")
             .code(),

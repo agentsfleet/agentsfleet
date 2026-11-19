@@ -18,7 +18,7 @@ async fn exact_model_retry_returns_the_saved_result_without_another_physical_req
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let first = calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("first physical result");
     assert!(!first.replayed);
@@ -32,7 +32,7 @@ async fn exact_model_retry_returns_the_saved_result_without_another_physical_req
         }
     );
     let replayed = calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("saved result");
     assert!(replayed.replayed);
@@ -43,7 +43,7 @@ async fn exact_model_retry_returns_the_saved_result_without_another_physical_req
     }];
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, changed)
+            .call(&f.runner, &attempt.run, changed)
             .await
             .expect_err("changed body")
             .code(),
@@ -69,7 +69,7 @@ async fn fractional_nanos_round_per_token_class_and_physical_dispatch() {
     next.call_index = 2;
     for request in [first, next] {
         let result = calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect("priced dispatch");
         assert!(
@@ -101,7 +101,7 @@ async fn an_unknown_receipt_refuses_a_retry_the_attempt_flags_would_allow() {
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     calls
-        .call(&f.runner, &attempt.lease, request.clone())
+        .call(&f.runner, &attempt.run, request.clone())
         .await
         .expect("first physical result");
     sqlx::query("UPDATE authoring.dispatches SET status='unknown' WHERE attempt_id=$1")
@@ -112,7 +112,7 @@ async fn an_unknown_receipt_refuses_a_retry_the_attempt_flags_would_allow() {
 
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect_err("an unknown receipt is not a result")
             .code(),

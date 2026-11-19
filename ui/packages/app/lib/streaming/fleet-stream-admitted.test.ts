@@ -67,7 +67,7 @@ describe("a message waiting for a runner", () => {
   });
 
   it("test_late_admitted_frame_keeps_status", () => {
-    // A runner leased the send and announced it before the route published.
+    // A runner held the send and announced it before the route published.
     const rows = fold([received(), admitted()]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });

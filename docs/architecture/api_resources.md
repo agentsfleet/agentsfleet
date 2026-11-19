@@ -12,7 +12,7 @@ executable: false
 
 This reference describes the implemented private setup and shared fleet APIs. The [verification ledger](shared_chat_verification.md#historical-verification-evidence) records observed checks and remaining live proof; implementation alone does not establish deployment success.
 
-Prefixes: `W=/v1/workspaces/{workspace_id}`, `D=W/drafts/{draft_id}`, `F=W/fleets/{fleet_id}`, `G=W/plugins/{plugin_id}`. Workspace, draft, candidate, fleet, revision and lease identifiers are UUIDv7.
+Prefixes: `W=/v1/workspaces/{workspace_id}`, `D=W/drafts/{draft_id}`, `F=W/fleets/{fleet_id}`, `G=W/plugins/{plugin_id}`. Workspace, draft, candidate, fleet, revision and run identifiers are UUIDv7.
 
 Authoring operation identifiers are UUIDv7; fleet-message keys follow C4. Plugin and revision identifiers are UUIDv7. Every Plugin belongs to one account; reads, reuse and mutations enforce that account through the requesting workspace.
 
@@ -121,7 +121,7 @@ Closing sets expiry 30 days later; linked active authoring/setup blocks expiry. 
 
 `Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,save_requested,save_error_code?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`.
 
-Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
+Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal run/attempt IDs are not public turn resources.
 
 Create and Send accept an optional `save` boolean, defaulting to false. The accepted message records `save_requested`; replay includes this choice. Text alone grants no save authority.
 
@@ -260,7 +260,7 @@ No hidden trigger mutation or preview route is retained.
 
 C4 uses the fleet admission ledger, separately from authoring replay receipts. Reuse its key with the same message and sender; omission creates new work on every request.
 
-A message sent while the fleet's run is live folds into that run (`disposition: folded`). The running lease claims it at its next model call, and the run's answer is its reply. A parked (approval-gated) or task-bound message ahead of it is a barrier, so the message queues instead.
+A message sent while the fleet's run is live folds into that run (`disposition: folded`). The running run claims it at its next model call, and the run's answer is its reply. A parked (approval-gated) or task-bound message ahead of it is a barrier, so the message queues instead.
 
 C6 publishes only a draft candidate. Native JSON can initialize that draft; GitHub/template-bundle import and Markdown/bundle export remain unsupported. Account Plugin writes resolve an authorized creator-owned draft candidate and require `plugins:write`.
 
@@ -322,8 +322,8 @@ Both kinds count against the same daemon-enforced worker limit.
 Heartbeats, renewal batches, activity, folded inputs and reports use that session.
 
 Fleet renewal and report messages carry at most 512 provider usage records (`af_wire::usage::LINES_MAX`).
-Each renewal answer includes its lease's `recorded_through` acknowledgement.
-The report carries the remaining records and uses its original lease identity when retried.
+Each renewal answer includes its run's `recorded_through` acknowledgement.
+The report carries the remaining records and uses its original run identity when retried.
 
 The native `folds` request carries `fencing_token` and `after_sequence`, returning at most 32 inputs (`FOLDS_PER_CLAIM_MAX`).
 Only a successful report settles inputs through its `folded_through_sequence`.
@@ -379,8 +379,8 @@ No separate model-call read route or raw provider response exists.
 
 1. Admission creates a random 256-bit token, stores its hash and binds it to the current runner, owner, draft and attempt.
    The binding also covers sequence, fence, generation and pinned model.
-   Issue the capability only in the lease over the authenticated daemon transport; never log it or write it to disk.
-2. The daemon verifies runner identity, token hash/bindings, current membership/model policy, cancellation, and unexpired lease using authoritative database time. Capability expiry follows the lease and cannot exceed the attempt's 300-second deadline; renewal cannot revive expiry.
+   Issue the capability only in the run over the authenticated daemon transport; never log it or write it to disk.
+2. The daemon verifies runner identity, token hash/bindings, current membership/model policy, cancellation, and unexpired run using authoritative database time. Capability expiry follows the run and cannot exceed the attempt's 300-second deadline; renewal cannot revive expiry.
 3. Measure the complete request under subject → attempt locks, release the transaction, and confirm its billed hold. Recheck authority, exact request digest and output allowance under a second transaction. Commit dispatch identity before provider access; no provider request holds these locks.
 
    Concurrent dispatches and unfinished replays return STATE without another provider call. [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) describes the separate billing transactions.
@@ -410,11 +410,11 @@ The runner allows 310 seconds for the native answer and receipt settlement.
 The [shared chat explanation](shared_chat_verification.md#backend-ownership) describes the methods and failure behavior.
 
 The authoring capability grants no runtime tools, memory, schedules, fleet messages or credential minting.
-Fleet runtime credentials retain their separate path through `afd_fleet`'s lease answer and `af_providers`' connect module.
+Fleet runtime credentials retain their separate path through `afd_fleet`'s run answer and `af_providers`' connect module.
 
 `Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown obligation. Unknown usage is never relabeled known by local estimates.
 
-Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon claim and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-leases).
+Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon claim and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-runs).
 
 ### Current task reads
 
@@ -454,7 +454,7 @@ The following codes name the route tables' error categories. Read the operation'
 | POLICY | `UZ-AUTHOR-009` | 409 | Marker or supported setup differs; requires new review. |
 | TOKEN | `UZ-AUTHOR-010` | 422 | Assembled context cannot fit tokenizer/window bounds; record failed message before call. |
 | CURSOR | `UZ-AUTHOR-011` | 400 | Cursor malformed or bound to another query/subject. |
-| FENCE | `UZ-AUTHOR-012` | 409 | Stale, cancelled, expired, or deleted lease attempt cannot publish. |
+| FENCE | `UZ-AUTHOR-012` | 409 | Stale, cancelled, expired, or deleted run attempt cannot publish. |
 | GONE | `UZ-AUTHOR-013` | 410 | Accepted resource was purged; recreation is refused within the original 24-hour replay window. |
 | PROVIDER | `UZ-AUTHOR-014` | 502 | Provider failed with known usage; store bounded failure and permit explicit retry. |
 | UNKNOWN | `UZ-AUTHOR-015` | 409 | Dispatch/usage unresolved; retain its bound. Stop permits a new message beyond its cutoff while accounting remains unresolved. |
@@ -468,5 +468,5 @@ Oversized HTTP envelopes use existing `UZ-REQ-002` with its registered413. Valid
 - [API gaps](../reviews/workspace-setup/api.md)
 - [Definition](fleet_definitions.md#validated-definition)
 - [Creation barrier](data_flow.md#fleet-creation-and-setup-recovery)
-- [Runner behavior](runner_fleet.md#authoring-leases)
+- [Runner behavior](runner_fleet.md#authoring-runs)
 - [Public change handoff](../reviews/workspace-setup/public-changes.md)

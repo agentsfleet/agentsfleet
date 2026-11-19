@@ -6,19 +6,19 @@ use serde_json::{Value, json};
 use super::{MESSAGES_URL, Pushover};
 use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{Run, call, replying};
+use crate::testing::{RunFixture, call, replying};
 
-async fn notify(run: &Run, arguments: Value) -> (ToolOutput, Vec<Sent>) {
+async fn notify(run: &RunFixture, arguments: Value) -> (ToolOutput, Vec<Sent>) {
     let (transport, sent) = replying(200, r#"{"status":1}"#);
     let tool = Generic::sending(Pushover, transport);
-    let lease = run.lease();
-    let output = call(tool.as_ref(), &lease, arguments).await;
+    let run = run.run();
+    let output = call(tool.as_ref(), &run, arguments).await;
     (output, sent.try_iter().collect())
 }
 
 #[tokio::test]
 async fn test_pushover_takes_credentials_from_secrets_map() {
-    let run = Run::new(false);
+    let run = RunFixture::new(false);
 
     let (output, sent) = notify(&run, json!({"message": "deploy finished", "priority": 1})).await;
 
@@ -54,7 +54,7 @@ async fn test_pushover_takes_credentials_from_secrets_map() {
 
 #[tokio::test]
 async fn should_refuse_when_the_fleet_has_no_pushover_secret() {
-    let mut run = Run::new(false);
+    let mut run = RunFixture::new(false);
     run.policy.secrets_map = Some(json!({}));
 
     let (output, sent) = notify(&run, json!({"message": "x"})).await;

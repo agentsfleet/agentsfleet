@@ -200,7 +200,7 @@ impl Peer {
             if matches!(message, Down::Renewed { .. })
                 && self.answers.armed.swap(false, Ordering::SeqCst)
             {
-                // Receiving this answer proves both real lease transactions completed; transport acknowledgements stayed available for the large request.
+                // Receiving this answer proves both real run transactions completed; transport acknowledgements stayed available for the large request.
                 self.answers.lost.fetch_add(1, Ordering::SeqCst);
                 self.info.stop.cancel();
                 return Ok(());

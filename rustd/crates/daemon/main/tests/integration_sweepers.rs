@@ -3,7 +3,7 @@
 //!
 //! A sweeper ticks once at spawn, so seeding before boot is what puts work in
 //! front of that first pass. The rows are ones only a sweeper ends: a usage
-//! line whose fleet lease or setup-chat attempt the process died before
+//! line whose fleet run or setup-chat attempt the process died before
 //! settling, and a replay receipt whose retry window closed. Asserted on the rows rather than on a
 //! log line, because a sibling suite's daemon on the same lane may take the
 //! pass first, and the claim is that the rows end, whichever daemon ends them.
@@ -77,7 +77,7 @@ async fn test_the_first_sweep_settles_orphaned_lines_and_ends_expired_receipts()
         .await
         .expect("the wallet seeds");
     for work_type in [
-        afd_billing::sql::work::FLEET_LEASE,
+        afd_billing::sql::work::FLEET_RUN,
         afd_billing::sql::work::AUTHORING_ATTEMPT,
     ] {
         sqlx::query(INSERT_LINE)

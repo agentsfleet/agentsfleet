@@ -13,7 +13,7 @@ export function taskDetail(): TaskDetail {
     covered_input_sequence: 1, effect_cursor: 1, confirmed_effect_watermark: 0, checkpoint_id: null, expires_at: INSTANT,
     target: {kind: "existing_pr", repository: "agentsfleet/agentsfleet", number: 803, branch: "work", head: HEAD, tree: HEAD,
       url: "https://github.com/agentsfleet/agentsfleet/pull/803", workflows: [{id: 1, path: "check.yml", digest: "digest"}]},
-    limits: {model_nanos: "100", wall_seconds: 100, running_seconds: 100, leases: 2, publications: 2, decision_calls: 2, fallback_reads: 2},
-    usage: {model_nanos: "0", reserved_model_nanos: "0", running_nanos: 0, leases: 1, publications: 0, decision_calls: 1, fallback_reads: 0},
+    limits: {model_nanos: "100", wall_seconds: 100, running_seconds: 100, runs: 2, publications: 2, decision_calls: 2, fallback_reads: 2},
+    usage: {model_nanos: "0", reserved_model_nanos: "0", running_nanos: 0, runs: 1, publications: 0, decision_calls: 1, fallback_reads: 0},
   }};
 }

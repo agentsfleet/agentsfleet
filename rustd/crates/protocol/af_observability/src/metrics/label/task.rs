@@ -79,9 +79,9 @@ closed_set! {
         Accepted => "accepted",
         /// A previously committed receipt was returned unchanged.
         Replayed => "replayed",
-        /// No task or lease is visible in the authorized scope.
+        /// No task or run is visible in the authorized scope.
         NotFound => "not_found",
-        /// Version or lease ownership changed.
+        /// Version or run ownership changed.
         Stale => "stale",
         /// Native target validation refused the proposal.
         Invalid => "invalid",

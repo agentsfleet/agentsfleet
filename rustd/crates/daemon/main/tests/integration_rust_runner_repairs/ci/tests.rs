@@ -30,14 +30,14 @@ mod replay;
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_addressed_repair_reads_evidence_before_draft() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
+    let scene = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let upstream = Upstream::serve(responder_upstream(200)).await;
     let mut reads = ci_evidence_reads();
     reads.extend(head_reads(LINKWARDEN));
     let refused = vec![json!({"url":format!("https://{LOG_READER_HOST}/write"),
         "method":"POST","body":"{}"})];
     let (model, transcript) = FakeModel::deciding(script(LINKWARDEN, reads, refused));
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     assert!(settled.answer.contains(DRAFT_URL));
     let (seen, asked) = (upstream.seen(), transcript.asked());
     assert_eq!(posts(&seen), writes(LINKWARDEN));
@@ -49,12 +49,12 @@ async fn test_addressed_repair_reads_evidence_before_draft() {
             .iter()
             .any(|result| result.starts_with("[method_not_allowed]"))
     );
-    assert_reconciled_for(LINKWARDEN, &branch_for(run.event_id.as_str()), &seen);
-    assert_repaired_on_named_branch(LINKWARDEN, run.event_id.as_str(), &seen, &asked);
+    assert_reconciled_for(LINKWARDEN, &branch_for(scene.event_id.as_str()), &seen);
+    assert_repaired_on_named_branch(LINKWARDEN, scene.event_id.as_str(), &seen, &asked);
     assert_token_stayed_on_the_wire(&seen, &asked);
-    assert_existing_draft_is_returned_without_writes(&run).await;
+    assert_existing_draft_is_returned_without_writes(&scene).await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 fn assert_ci_reads_before_writes(seen: &[Seen]) {
@@ -83,13 +83,13 @@ fn assert_ci_reads_before_writes(seen: &[Seen]) {
     );
 }
 
-async fn assert_existing_draft_is_returned_without_writes(run: &crate::e2e::Scenario) {
-    let second = run.enqueue_event(EventType::Chat).await;
+async fn assert_existing_draft_is_returned_without_writes(scene: &crate::e2e::Scenario) {
+    let second = scene.enqueue_event(EventType::Chat).await;
     let found = branch_for(second.as_str());
     let upstream = Upstream::serve(routes(LINKWARDEN, Some(&found), file_at_head())).await;
     let (model, transcript) =
         FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN), Vec::new()));
-    let settled = run_event(run, &second, &upstream, model).await;
+    let settled = run_event(scene, &second, &upstream, model).await;
     assert!(settled.answer.contains(DRAFT_URL));
     let (seen, asked) = (upstream.seen(), transcript.asked());
     assert_reconciled_for(LINKWARDEN, &found, &seen);
@@ -101,12 +101,12 @@ async fn assert_existing_draft_is_returned_without_writes(run: &crate::e2e::Scen
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_required_ci_log_failure_prevents_all_repair_writes() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
+    let scene = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let upstream = Upstream::serve(responder_upstream(403)).await;
     let mut reads = ci_evidence_reads();
     reads.extend(head_reads(LINKWARDEN));
     let (model, transcript) = FakeModel::deciding(script(LINKWARDEN, reads, Vec::new()));
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     assert_eq!(settled.answer, DIAGNOSIS_ONLY);
     let seen = upstream.seen();
     assert_eq!(posts(&seen), Vec::<String>::new());
@@ -115,5 +115,5 @@ async fn a_required_ci_log_failure_prevents_all_repair_writes() {
         .any(|result| result.starts_with("[upstream_status]") && result.contains("Status: 403")));
     assert_token_stayed_on_the_wire(&seen, &asked);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

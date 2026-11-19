@@ -1,6 +1,6 @@
 [package]
 name = "afr_agent"
-description = "The runner's agent-engine seam: what runs one lease's turn, and where its activity goes."
+description = "The runner's agent-engine seam: what runs one run's turn, and where its activity goes."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -30,7 +30,7 @@ af_core.workspace = true
 # The span vocabulary the loop's turns and calls are traced in.
 af_observability.workspace = true
 af_wire.workspace = true
-# A lease's outbound guard, and the mint seam the supervisor implements.
+# A run's outbound guard, and the mint seam the supervisor implements.
 af_egress.workspace = true
 afr_executor.workspace = true
 # The fleet's memory a run's calls share, and the deltas it pushes.
@@ -54,14 +54,14 @@ serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
-# `select!` races each turn and each call against the lease's stop.
+# `select!` races each turn and each call against the run's stop.
 tokio = { workspace = true, features = ["macros", "time"] }
-# The token that stops a run when its lease ends early.
+# The token that stops a run when its run ends early.
 tokio-util.workspace = true
 tracing.workspace = true
 
 [features]
-# M-TEST-UTIL. The scripted engine the supervisor's lanes drive a lease with:
+# M-TEST-UTIL. The scripted engine the supervisor's lanes drive a run with:
 # a fixed turn whose every frame is known, so a sandbox or wire fault cannot
 # hide behind a model's choices.
 test-util = []

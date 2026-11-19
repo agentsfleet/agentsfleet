@@ -20,10 +20,10 @@ const REMEMBERED: &str = "SELECT content FROM memory.entries WHERE fleet_id = $1
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_responder_reads_exact_ci_evidence() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "ci-responder", &[], None).await;
+    let scene = install_definition(&mut supervisor, "ci-responder", &[], None).await;
     let upstream = Upstream::serve(responder_upstream(200)).await;
     let (model, transcript) = FakeModel::new(responder_turns());
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
         ("processed", DIAGNOSIS)
@@ -37,14 +37,14 @@ async fn test_responder_reads_exact_ci_evidence() {
     assert_ci_sources(&seen, results);
     assert_returned_sources(results);
     assert_token_stayed_on_the_wire(&seen, &asked);
-    assert_eq!(remembered(&run).await.as_deref(), Some(DIAGNOSIS));
-    let trace = stored_trace(&run)
+    assert_eq!(remembered(&scene).await.as_deref(), Some(DIAGNOSIS));
+    let trace = stored_trace(&scene)
         .await
         .expect("the report carried a trace");
     assert_eq!(trace["calls"].as_array().map(Vec::len), Some(10));
     assert_eq!(trace["omitted_call_count"], serde_json::json!(0));
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 fn assert_ci_sources(seen: &[Seen], results: &[String]) {
@@ -129,10 +129,10 @@ fn assert_returned_sources(results: &[String]) {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_responder_stops_on_required_source_gap() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "ci-responder", &[], None).await;
+    let scene = install_definition(&mut supervisor, "ci-responder", &[], None).await;
     let upstream = Upstream::serve(responder_upstream(403)).await;
     let (model, transcript) = FakeModel::new(responder_stopping_turns());
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     assert_eq!(settled.answer, SOURCE_GAP);
     let seen = upstream.seen();
     assert!(
@@ -150,13 +150,13 @@ async fn test_responder_stops_on_required_source_gap() {
         .expect("log result");
     assert!(result.starts_with("[upstream_status]"), "{result}");
     assert!(result.contains("Status: 403"));
-    assert_eq!(remembered(&run).await, None);
-    let trace = stored_trace(&run).await.expect("known trace");
+    assert_eq!(remembered(&scene).await, None);
+    let trace = stored_trace(&scene).await.expect("known trace");
     assert_eq!(trace["calls"].as_array().map(Vec::len), Some(5));
     assert_eq!(trace["calls"][4]["status"], serde_json::json!("failed"));
     assert_token_stayed_on_the_wire(&seen, &asked);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// The runner reports a known empty trace when the scripted model uses no tool.
@@ -164,31 +164,31 @@ async fn test_responder_stops_on_required_source_gap() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_completed_definition_turn_reports_known_zero_tool_calls() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, "github-log-reader", &[], None).await;
+    let scene = install_definition(&mut supervisor, "github-log-reader", &[], None).await;
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, _transcript) = FakeModel::new(vec![vec![say("No operation was requested.")]]);
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
     assert_eq!(settled.answer, "No operation was requested.");
-    let trace = stored_trace(&run)
+    let trace = stored_trace(&scene)
         .await
         .expect("the completed turn has known trace data");
     assert_eq!(trace["calls"], serde_json::json!([]));
     assert_eq!(trace["omitted_call_count"], serde_json::json!(0));
     assert_eq!(upstream.seen().len(), 0);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// What the fleet's durable memory holds under [`MEMORY_KEY`].
-async fn remembered(run: &crate::e2e::Scenario) -> Option<String> {
-    let mut connection = run
+async fn remembered(scene: &crate::e2e::Scenario) -> Option<String> {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     sqlx::query_scalar(REMEMBERED)
-        .bind(&run.fleet)
+        .bind(&scene.fleet)
         .bind(MEMORY_KEY)
         .fetch_optional(&mut *connection)
         .await

@@ -1,4 +1,4 @@
-//! A sandbox engine for the lease tests: sandboxes that count their teardowns
+//! A sandbox engine for the run tests: sandboxes that count their teardowns
 //! and an executor that reports what is written into the workspace.
 
 use std::os::unix::fs::MetadataExt as _;
@@ -33,7 +33,7 @@ pub(crate) enum Freezer {
     ThawsSilent,
     /// Freezes and thaws, but its executor fails every listing after.
     ThawsBroken,
-    /// Freezes, then refuses the addresses its next lease's hosts resolved
+    /// Freezes, then refuses the addresses its next run's hosts resolved
     /// to, as a kernel refusing the swap would.
     RefusesReallow,
     /// A detached tenant process prevents a live workspace snapshot.
@@ -66,7 +66,7 @@ pub(crate) struct FakeEngine {
     /// would take its worker down.
     pub(crate) panic_once: bool,
     /// Cancelled just before that panic, as a shutdown arriving while the
-    /// doomed lease runs; set once the token to cancel exists.
+    /// doomed run runs; set once the token to cancel exists.
     pub(crate) halt_before_panic: Arc<std::sync::OnceLock<tokio_util::sync::CancellationToken>>,
     pub(crate) fail_teardown: bool,
     /// How its sandboxes' kills end.

@@ -75,7 +75,7 @@ pub(super) fn answers_match(
 }
 
 async fn current(tasks: &Tasks, call: &Call) -> Result<bool> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let result = current_on(&mut connection, call).await;
     transaction::recycle(connection);
     result
@@ -85,9 +85,9 @@ pub(super) async fn current_on(connection: &mut PgConnection, call: &Call) -> Re
     let mut tx = transaction::begin(connection).await?;
     let owner: Option<Owner> = sqlx::query_as(sql::SEMANTIC_OWNER)
         .bind(&call.id)
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
-        .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
-        .bind(crate::lease::sql::RUNNER_STATUS_ACTIVE)
+        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
+        .bind(crate::run::sql::FLEET_STATUS_ACTIVE)
+        .bind(crate::run::sql::RUNNER_STATUS_ACTIVE)
         .bind(afd_turns::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())
         .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)

@@ -4,8 +4,8 @@ use super::{ARCHIVED, CONTEXT, Creations, read, reserve::Instance, revision, sou
 use crate::{
     Access, Result, candidate, draft,
     error::{ErrorKind, raise::query},
-    lease::guard::{Attempt, Guarded},
     message, review,
+    run::guard::{Attempt, Guarded},
     types::{DraftState, MessageState, SaveOrigin, SourcePin, Start},
 };
 use af_core::{id::Uuid7, problem::Problem};
@@ -14,7 +14,7 @@ use afd_turns::view::activity::Announcement;
 use sqlx::{Connection as _, PgConnection};
 
 /// The turn a save request rides: its locked draft, its message, and the
-/// report's clock. The attempt path and the draft lease path both build one.
+/// report's clock. The attempt path and the draft run path both build one.
 pub(crate) struct SaveTurn<'a> {
     pub(crate) draft: &'a draft::read::Locked,
     pub(crate) sequence: i64,
@@ -66,10 +66,10 @@ impl Creations {
     ///
     /// # Errors
     /// Refuses invalid fences or report replay and propagates datastore outages.
-    pub async fn report(&self, runner: &Uuid7, lease: &Uuid7, request: Report) -> Result<Reported> {
+    pub async fn report(&self, runner: &Uuid7, run: &Uuid7, request: Report) -> Result<Reported> {
         self.setup
             .drafts
-            .report_with_save(runner, lease, request, Some(self))
+            .report_with_save(runner, run, request, Some(self))
             .await
     }
 

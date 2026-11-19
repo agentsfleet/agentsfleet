@@ -72,14 +72,14 @@ async fn invalid_anchors_can_be_corrected_without_losing_continuation_or_mutatin
     let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
     let mut request = fixture::request(&a);
     let refused = calls
-        .call(&f.runner, &a.lease, request.clone())
+        .call(&f.runner, &a.run, request.clone())
         .await
         .expect("bounded refusal");
     assert_refused(&refused);
     assert_eq!(a.activity_count(&f).await, 0);
     assert_unchanged(&f, &a).await;
     let replay = calls
-        .call(&f.runner, &a.lease, request.clone())
+        .call(&f.runner, &a.run, request.clone())
         .await
         .expect("refusal replay");
     assert!(replay.replayed);
@@ -103,7 +103,7 @@ async fn invalid_anchors_can_be_corrected_without_losing_continuation_or_mutatin
         text: "No changes applied. Copy an exact unique match from instructions_md.".into(),
     });
     let corrected = calls
-        .call(&f.runner, &a.lease, request)
+        .call(&f.runner, &a.run, request)
         .await
         .expect("corrected proposal");
     assert_continuation(&provider);
@@ -152,13 +152,13 @@ async fn apply_once(f: &Fixture, a: &Attempt, result: &ModelCallResult) {
     };
     let accepted = f
         .drafts
-        .activity(&f.runner, &a.lease, activity.clone())
+        .activity(&f.runner, &a.run, activity.clone())
         .await
         .expect("corrected native edit");
     assert!(!accepted.replayed);
     let replay = f
         .drafts
-        .activity(&f.runner, &a.lease, activity)
+        .activity(&f.runner, &a.run, activity)
         .await
         .expect("activity replay");
     assert!(replay.replayed);

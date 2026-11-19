@@ -8,7 +8,7 @@ use af_wire::activity::{
 
 pub(super) async fn emit(
     plane: &ControlPlane,
-    lease: &Uuid7,
+    run: &Uuid7,
     task: &str,
     activity: &str,
     operation: TaskActivityOperation,
@@ -32,7 +32,7 @@ pub(super) async fn emit(
     };
     let _sent = tokio::time::timeout(
         std::time::Duration::from_millis(500),
-        plane.activity(lease, &request),
+        plane.activity(run, &request),
     )
     .await;
 }
@@ -52,7 +52,7 @@ impl super::Session<'_> {
         }
         emit(
             self.plane,
-            self.lease,
+            self.run,
             &self.task.task_id,
             &self.activity_id,
             operation,

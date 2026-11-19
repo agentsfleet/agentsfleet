@@ -19,14 +19,14 @@ pub(super) struct HostLock {
 }
 
 impl HostLock {
-    pub(super) async fn hold(run: &Scenario) -> TestResult<Self> {
+    pub(super) async fn hold(scene: &Scenario) -> TestResult<Self> {
         let mut transaction =
-            Transaction::begin(run.booted.database.acquire().await?, None).await?;
+            Transaction::begin(scene.booted.database.acquire().await?, None).await?;
         // Let admission foreign keys take KEY SHARE before the issue reaches its host lock.
         let blocker = sqlx::query_scalar(
             "SELECT pg_backend_pid() FROM runner.runners WHERE id=$1 FOR NO KEY UPDATE",
         )
-        .bind(&run.runner_id)
+        .bind(&scene.runner_id)
         .fetch_one(&mut *transaction)
         .await?;
         Ok(Self {
@@ -35,7 +35,7 @@ impl HostLock {
         })
     }
 
-    pub(super) async fn blocked(&self, run: &Scenario) -> TestResult<i32> {
+    pub(super) async fn blocked(&self, scene: &Scenario) -> TestResult<i32> {
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
                 // The issue's exclusive host lock, or a host's renewal
@@ -49,7 +49,7 @@ impl HostLock {
                             OR query LIKE '-- One host''s renewals in one statement%') LIMIT 1",
                 )
                 .bind(self.blocker)
-                .fetch_optional(&mut *run.booted.database.acquire().await?)
+                .fetch_optional(&mut *scene.booted.database.acquire().await?)
                 .await?;
                 if let Some(waiter) = waiting {
                     return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(waiter);
@@ -62,7 +62,7 @@ impl HostLock {
 
     pub(super) async fn replace(
         mut self,
-        run: &Scenario,
+        scene: &Scenario,
         replacement: Replacement,
     ) -> TestResult<String> {
         // This transaction deliberately emits no command: the native waiter must
@@ -71,7 +71,7 @@ impl HostLock {
             Replacement::Rotate => {
                 let token = Minted::draw(CredentialKind::RunnerToken, &Entropy::new())?;
                 sqlx::query("UPDATE runner.runners SET token_hash=$2 WHERE id=$1")
-                    .bind(&run.runner_id)
+                    .bind(&scene.runner_id)
                     .bind(token.digest().as_str())
                     .execute(&mut *self.transaction)
                     .await?;
@@ -79,11 +79,11 @@ impl HostLock {
             }
             Replacement::Supersede => {
                 sqlx::query("UPDATE runner.runners SET connection_id=$2 WHERE id=$1")
-                    .bind(&run.runner_id)
+                    .bind(&scene.runner_id)
                     .bind(afd_db::test_util::mint_id())
                     .execute(&mut *self.transaction)
                     .await?;
-                run.token.clone()
+                scene.token.clone()
             }
         };
         self.transaction.commit().await?;
@@ -92,12 +92,12 @@ impl HostLock {
 }
 
 /// An issue's host-lock transaction must have ended before checking its durable effects.
-pub(super) async fn finished(run: &Scenario, backend: i32) -> TestResult {
+pub(super) async fn finished(scene: &Scenario, backend: i32) -> TestResult {
     tokio::time::timeout(Duration::from_secs(3), async {
         loop {
             let ended: bool = sqlx::query_scalar(
                 "SELECT NOT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND xact_start IS NOT NULL)",
-            ).bind(backend).fetch_one(&mut *run.booted.database.acquire().await?).await?;
+            ).bind(backend).fetch_one(&mut *scene.booted.database.acquire().await?).await?;
             if ended { return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(()); }
             tokio::time::sleep(Duration::from_millis(5)).await;
         }

@@ -1,7 +1,7 @@
 WITH inserted AS (
   INSERT INTO runner.runners
     (id, host_id, token_hash, sandbox_tier, status, labels, network_policy,
-     registry_allowlist, worker_count, degraded_reason, last_seen_at, lease_version,
+     registry_allowlist, worker_count, degraded_reason, last_seen_at, run_version,
      decision_platform_model_id, sandbox_config, durable_tasks_enabled, platform_owned, tenant_id,
      created_at, updated_at)
   VALUES ($1, $2::text, $3::text, $4::text, $5::text, $6::jsonb, $7::text,

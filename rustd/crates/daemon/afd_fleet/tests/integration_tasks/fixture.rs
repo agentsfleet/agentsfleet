@@ -1,4 +1,4 @@
-//! Real lease/queue fixtures; only already-accepted plan data is synthetic.
+//! Real run/queue fixtures; only already-accepted plan data is synthetic.
 
 use std::{panic::AssertUnwindSafe, time::Duration};
 
@@ -10,7 +10,7 @@ use af_wire::{
     task::TaskLimits,
 };
 use afd_db::test_util::TestDatabase;
-use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLease, TaskScope, Tasks};
+use afd_fleet::task::{PreparedPlan, PreparedTask, TaskRun, TaskScope, Tasks};
 use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use futures_util::FutureExt as _;
 use serde_json::json;
@@ -76,7 +76,7 @@ impl Case {
             Entropy::new(),
         );
         let tasks = Tasks::new(
-            held.leases.clone(),
+            held.runs.clone(),
             admissions.clone(),
             afd_fleet::task::TaskDependencies::from(&held.fixtures.plane()),
         );
@@ -90,10 +90,10 @@ impl Case {
         }
     }
 
-    pub(super) const fn lease(&self) -> TaskLease<'_> {
-        TaskLease {
+    pub(super) const fn run(&self) -> TaskRun<'_> {
+        TaskRun {
             runner_id: &self.held.runner,
-            lease_id: &self.held.lease_key,
+            run_id: &self.held.run_key,
             fencing_token: self.held.fence.as_u64(),
         }
     }
@@ -167,10 +167,10 @@ impl Case {
 
     pub(super) async fn claim(&self, source: &Uuid7) {
         sqlx::query(
-            "UPDATE fleet.admissions SET input_claim_lease_id=$2,input_claim_fence=$3 WHERE id=$1",
+            "UPDATE fleet.admissions SET input_claim_run_id=$2,input_claim_fence=$3 WHERE id=$1",
         )
         .bind(source)
-        .bind(&self.held.lease_key)
+        .bind(&self.held.run_key)
         .bind(self.held.fence.as_i64())
         .execute(
             &mut *self

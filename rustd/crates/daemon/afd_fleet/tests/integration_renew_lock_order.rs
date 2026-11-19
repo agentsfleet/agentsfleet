@@ -1,5 +1,5 @@
 //! The host's renewal statement takes the host row before any slot, as an
-//! issue and the per-lease renewal do, so the two never wait on each other in
+//! issue and the per-run renewal do, so the two never wait on each other in
 //! a cycle.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs them.
@@ -13,12 +13,12 @@ use std::time::Duration;
 
 use af_wire::report::RenewRequest;
 use afd_db::config::DbRole;
-use afd_fleet::lease::renew::Renewals;
+use afd_fleet::run::renew::Renewals;
 use sqlx::Connection as _;
 
 use crate::report_seed::{Held, held};
 
-/// What an issue holds while it places a lease: the host row, exclusively.
+/// What an issue holds while it places a run: the host row, exclusively.
 const HOLD_HOST: &str = "SELECT pg_backend_pid() FROM runner.runners WHERE id = $1 FOR UPDATE";
 
 /// The backend `$1` is blocking, if any.
@@ -54,8 +54,8 @@ async fn blocked_by(held: &Held, pid: i32) {
 // Value: protects=a renewal frame waiting on a held host row holds no slot;
 // fails_when=the statement locks its slots before the host row, and an issue
 // holding the host and wanting a slot deadlocks against it; why_new=the host
-// batch statement replaced the per-lease path's host-first lock; seam=none;
-// no_claim=the lease rows, which the statement locks after its slots.
+// batch statement replaced the per-run path's host-first lock; seam=none;
+// no_claim=the run rows, which the statement locks after its slots.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_waiting_renewal_holds_no_slot() {
@@ -74,7 +74,7 @@ async fn a_waiting_renewal_holds_no_slot() {
 
     let renewing = plane.renew_batch(Renewals {
         runner_id: &held.runner,
-        leases: vec![(held.issued.lease_id.clone(), RenewRequest::default())],
+        runs: vec![(held.issued.run_id.clone(), RenewRequest::default())],
         funds_due: false,
         now: held.now,
         kept: std::collections::HashMap::new(),

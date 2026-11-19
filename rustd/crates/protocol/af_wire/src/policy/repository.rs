@@ -1,6 +1,6 @@
 //! The GitHub request vocabulary a repository binding compiles into.
 //!
-//! The daemon writes these spellings into a lease's locked request rules
+//! The daemon writes these spellings into a run's locked request rules
 //! (`afd_gate::policy::egress`); the runner reads the same rules back to tell
 //! the model which branch it may publish. One spelling for both ends, so the
 //! rule the daemon compiles and the context the runner renders cannot drift.

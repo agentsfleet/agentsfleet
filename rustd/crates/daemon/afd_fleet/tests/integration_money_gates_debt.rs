@@ -12,7 +12,7 @@
 )]
 
 use afd_billing::Accounts;
-use afd_fleet::lease::admit::{Admission, money_gates};
+use afd_fleet::run::admit::{Admission, money_gates};
 
 use afd_db::test_util::mint_id;
 

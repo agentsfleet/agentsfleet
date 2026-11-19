@@ -1,9 +1,9 @@
 //! The catalog: every published tool and where it runs, the handlers this
-//! runner hosts, and the subset one lease is offered.
+//! runner hosts, and the subset one run is offered.
 //!
 //! The published list is `docs/architecture/runner_execution.md` §"Tool
-//! catalog", one entry per tool. A lease's `ExecutionPolicy.tools` selects from
-//! it; a name with no handler here refuses the lease, never a quieter tool set.
+//! catalog", one entry per tool. A run's `ExecutionPolicy.tools` selects from
+//! it; a name with no handler here refuses the run, never a quieter tool set.
 //! The nested tools need none: the loop runs them itself.
 
 use std::sync::Arc;
@@ -209,7 +209,7 @@ impl Catalog {
 
     /// A catalog hosting every handler this runner carries, its egress tools
     /// sending through `transport`. The generic ones are `guffbolt`'s, each
-    /// lent the lease's sandbox, guard and memory per call.
+    /// lent the run's sandbox, guard and memory per call.
     #[must_use]
     pub fn hosted(transport: Arc<dyn Transport>) -> Self {
         Self::new(vec![
@@ -250,11 +250,11 @@ impl Catalog {
         ])
     }
 
-    /// The tools a lease naming `names` is offered.
+    /// The tools a run naming `names` is offered.
     ///
     /// # Errors
     /// The first name with no handler here, or no published tool at all: the
-    /// lease is refused rather than run without it.
+    /// run is refused rather than run without it.
     pub fn select<S: AsRef<str>>(&self, names: &[S]) -> Result<Selection<'_>> {
         let mut selection = Selection::default();
         for name in names.iter().map(AsRef::as_ref) {

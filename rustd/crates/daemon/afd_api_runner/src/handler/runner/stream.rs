@@ -17,7 +17,7 @@ use std::sync::Arc;
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_stream",
     summary = "Open a runner session stream",
-    description = "Open control first with the runner bearer credential. After prepared, confirm and welcome, open work, reports and activity on that same native connection using the returned session identifier. Bodies contain length-prefixed JSON frames. Requires the configured private HTTP/3 or HTTP/2 listener; ordinary API connections cannot open a session. Reports retain lease-keyed idempotence and take no Idempotency-Key.",
+    description = "Open control first with the runner bearer credential. After prepared, confirm and welcome, open work, reports and activity on that same native connection using the returned session identifier. Bodies contain length-prefixed JSON frames. Requires the configured private HTTP/3 or HTTP/2 listener; ordinary API connections cannot open a session. Reports retain run-keyed idempotence and take no Idempotency-Key.",
     request_body(content = String, content_type = "application/octet-stream"),
     params(
         ("agentsfleet-runner-protocol" = String, Header, description = "Required runner protocol revision", example = json!(af_wire::protocol::VERSION)),

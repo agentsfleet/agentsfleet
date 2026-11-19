@@ -80,7 +80,7 @@ fn test_only_a_refused_token_exits_with_the_no_restart_status() {
         exit_status(error_code::INTERNAL_OPERATION_FAILED),
         EXIT_FAILED
     );
-    assert_eq!(exit_status(error_code::RUN_LEASE_LOST), EXIT_FAILED);
+    assert_eq!(exit_status(error_code::RUN_LOST), EXIT_FAILED);
 }
 
 /// A step `run` cannot go on from is logged under `run_failed` with its code,

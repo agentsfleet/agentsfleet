@@ -16,7 +16,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 
 use crate::{Result, error::ErrorKind};
 
-/// A caller accepts exactly one response variant and, where present, one lease.
+/// A caller accepts exactly one response variant and, where present, one run.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Expected {
     Heartbeat,
@@ -25,12 +25,12 @@ pub(crate) enum Expected {
     Report(af_core::id::Uuid7),
     Folds(af_core::id::Uuid7),
     TurnCheckpoint {
-        lease: af_core::id::Uuid7,
-        operation: af_wire::lease::TurnId,
-        kind: af_wire::lease::TurnCheckpointKind,
+        run: af_core::id::Uuid7,
+        operation: af_wire::run::TurnId,
+        kind: af_wire::run::TurnCheckpointKind,
     },
     AuthoringModel {
-        lease: af_core::id::Uuid7,
+        run: af_core::id::Uuid7,
         dispatch: String,
     },
     AuthoringActivity(af_core::id::Uuid7),
@@ -128,19 +128,19 @@ impl Expected {
         match (self, message) {
             (
                 Self::TurnCheckpoint {
-                    lease,
+                    run,
                     operation,
                     kind,
                 },
                 Down::TurnCheckpoint {
-                    lease_id,
+                    run_id,
                     operation_id,
                     kind: received,
                     answer,
                     ..
                 },
             ) => {
-                lease.as_str() == lease_id
+                run.as_str() == run_id
                     && operation == operation_id
                     && kind == received
                     && match answer {
@@ -149,20 +149,18 @@ impl Expected {
                     }
             }
             (Self::Heartbeat, Down::Heartbeat { .. }) | (Self::Pong, Down::Pong { .. }) => true,
-            (Self::Report(expected), Down::ReportAck { lease_id, .. })
-            | (Self::Folds(expected), Down::Folded { lease_id, .. })
-            | (Self::AuthoringActivity(expected), Down::AuthoringActivityAck { lease_id, .. })
-            | (Self::AuthoringRenew(expected), Down::AuthoringRenewed { lease_id, .. })
-            | (Self::AuthoringReport(expected), Down::AuthoringReportAck { lease_id, .. }) => {
-                expected.as_str() == lease_id
+            (Self::Report(expected), Down::ReportAck { run_id, .. })
+            | (Self::Folds(expected), Down::Folded { run_id, .. })
+            | (Self::AuthoringActivity(expected), Down::AuthoringActivityAck { run_id, .. })
+            | (Self::AuthoringRenew(expected), Down::AuthoringRenewed { run_id, .. })
+            | (Self::AuthoringReport(expected), Down::AuthoringReportAck { run_id, .. }) => {
+                expected.as_str() == run_id
             }
             (
-                Self::AuthoringModel { lease, dispatch },
-                Down::AuthoringModelResult {
-                    lease_id, answer, ..
-                },
+                Self::AuthoringModel { run, dispatch },
+                Down::AuthoringModelResult { run_id, answer, .. },
             ) => {
-                lease.as_str() == lease_id
+                run.as_str() == run_id
                     && match answer {
                         af_wire::protocol::Answer::Ok { response } => {
                             &response.dispatch_id == dispatch
@@ -170,12 +168,12 @@ impl Expected {
                         af_wire::protocol::Answer::Refused { .. } => true,
                     }
             }
-            (Self::Renewed(expected), Down::Renewed { leases, .. }) => {
+            (Self::Renewed(expected), Down::Renewed { runs, .. }) => {
                 let ids: std::collections::HashSet<_> =
-                    leases.iter().map(|entry| entry.lease_id.as_ref()).collect();
-                ids.len() == leases.len()
+                    runs.iter().map(|entry| entry.run_id.as_ref()).collect();
+                ids.len() == runs.len()
                     && ids.len() == expected.len()
-                    && expected.iter().all(|lease| ids.contains(lease.as_str()))
+                    && expected.iter().all(|run| ids.contains(run.as_str()))
             }
             _ => false,
         }

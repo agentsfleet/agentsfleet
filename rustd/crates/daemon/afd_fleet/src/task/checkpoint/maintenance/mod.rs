@@ -20,7 +20,7 @@ pub(in crate::task) async fn maintain(
 ) -> Result<crate::task::CheckpointMaintenance> {
     let mut result = crate::task::CheckpointMaintenance::default();
     let (removed, deferred) = tasks
-        .leases
+        .runs
         .maintain_turn_checkpoints(&mut cursor.turn_after)
         .await?;
     result.owners = removed;
@@ -44,7 +44,7 @@ pub(in crate::task) async fn maintain(
 
 async fn orphans(tasks: &Tasks) -> Result<u64> {
     let mut removed = 0;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/orphans.sql"))
         .bind(super::ORPHAN_SECONDS)
         .bind(super::GC_BATCH)
@@ -67,7 +67,7 @@ async fn orphans(tasks: &Tasks) -> Result<u64> {
 
 async fn erase_orphans(tasks: &Tasks, workspace: &Uuid7, ids: &[Uuid7]) -> Result<u64> {
     let mut removed = 0;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     if lock(&mut tx, workspace).await? {
         // A second statement observes refs committed while the first waited for object locks.

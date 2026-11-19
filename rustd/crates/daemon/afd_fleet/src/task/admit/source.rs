@@ -4,7 +4,7 @@ use af_core::id::Uuid7;
 use afd_turns::Producer;
 use sqlx::PgConnection;
 
-use super::super::{PreparedPlan, TaskLease, TaskRefusal, guard::LeaseRow, sql};
+use super::super::{PreparedPlan, TaskRefusal, TaskRun, guard::RunRow, sql};
 use crate::error::{Result, query};
 
 #[derive(sqlx::FromRow)]
@@ -15,24 +15,24 @@ pub(in crate::task) struct Source {
     pub(in crate::task) request_json: String,
     pub(super) reply_provider: Option<String>,
     pub(super) reply_address: Option<String>,
-    input_claim_lease_id: Option<Uuid7>,
+    input_claim_run_id: Option<Uuid7>,
     input_claim_fence: Option<i64>,
 }
 
 pub(in crate::task) async fn lock(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
-    current: &LeaseRow,
+    run: TaskRun<'_>,
+    current: &RunRow,
     plan: &PreparedPlan,
 ) -> Result<Source> {
     let source = load(connection, current, &plan.source_admission_id).await?;
-    check_claim(&source, lease, current, &plan.source_admission_id)?;
+    check_claim(&source, run, current, &plan.source_admission_id)?;
     Ok(source)
 }
 
 pub(in crate::task) async fn load(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     admission: &af_core::id::Uuid7,
 ) -> Result<Source> {
     let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
@@ -51,11 +51,11 @@ pub(in crate::task) async fn load(
 
 pub(in crate::task) fn check_claim(
     source: &Source,
-    lease: TaskLease<'_>,
-    current: &LeaseRow,
+    run: TaskRun<'_>,
+    current: &RunRow,
     admission: &af_core::id::Uuid7,
 ) -> Result<()> {
-    let owns_claim = source.input_claim_lease_id.as_ref() == Some(lease.lease_id)
+    let owns_claim = source.input_claim_run_id.as_ref() == Some(run.run_id)
         && source.input_claim_fence == Some(current.fence);
     if admission.as_str() != current.source_admission_id && !owns_claim {
         return Err(TaskRefusal::StaleState.into());
@@ -80,7 +80,7 @@ pub(in crate::task) fn check_human(source: &Source) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) -> Result<()> {
+pub(super) fn check(source: &Source, current: &RunRow, plan: &PreparedPlan) -> Result<()> {
     check_human(source)?;
     if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
         return Err(TaskRefusal::StaleState.into());
@@ -148,7 +148,7 @@ mod tests {
             request_json: r#"{"message":"fix it"}"#.to_owned(),
             reply_provider: None,
             reply_address: None,
-            input_claim_lease_id: None,
+            input_claim_run_id: None,
             input_claim_fence: None,
         }
     }

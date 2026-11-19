@@ -13,8 +13,8 @@ use super::*;
 /// The lapse sweep (`afd_setup` maintenance): `$1` status, `$2` limit.
 const ATTEMPT_CANDIDATES: &str = afd_setup::Drafts::EXPIRED_ATTEMPTS_QUERY;
 
-/// The metering sweep (`afd_fleet` lease): `$1` status, `$2` grace, `$3` limit.
-const UNBILLED_LEASES: &str = afd_fleet::lease::billing_sweep::UNBILLED_LEASES_QUERY;
+/// The metering sweep (`afd_fleet` run): `$1` status, `$2` grace, `$3` limit.
+const UNBILLED_RUNS: &str = afd_fleet::run::billing_sweep::UNBILLED_RUNS_QUERY;
 
 /// The plan of `statement`, prepared as `types` and executed with `binds`, a
 /// generic plan with sequential scans priced out.
@@ -68,18 +68,18 @@ async fn test_the_attempt_lapse_sweep_reads_its_deadline_index() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_the_metering_sweep_reads_the_unbilled_lease_index() {
+async fn test_the_metering_sweep_reads_the_unbilled_run_index() {
     let (database, db) = migrated().await;
     let plan = plan(
         &db,
-        UNBILLED_LEASES,
+        UNBILLED_RUNS,
         "text, interval, bigint",
         "'s', '1 second', 1",
     )
     .await;
     assert!(
-        plan.contains("idx_leases_lease_expires_at_unbilled"),
-        "the metering sweep reads no unbilled-lease index:\n{plan}"
+        plan.contains("idx_runs_run_expires_at_unbilled"),
+        "the metering sweep reads no unbilled-run index:\n{plan}"
     );
     db.close().await;
     database.cleanup().await;

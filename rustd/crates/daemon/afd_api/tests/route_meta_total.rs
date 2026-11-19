@@ -56,7 +56,7 @@ const VERB_SPLITS: usize = 1;
 /// plus the two tool-call record routes: the runner's post of each call in
 /// full, and the read of one call — plus the two shared-memory routes: the
 /// runner's recall past its window, and a fleet's memory-access grants — plus
-/// the four lease routes a running fleet manages its own schedules and speaks
+/// the four run routes a running fleet manages its own schedules and speaks
 /// to its thread through: the schedules, one schedule, one schedule's runs, and
 /// the messages.
 ///
@@ -72,7 +72,7 @@ const POST_PORT_ADDITIONS: usize = 17;
 /// its setup-progress stream, and the models a draft may run on; the
 /// workspace's Plugin entries it owns, one entry, an entry's revisions and one
 /// pinned revision; applying a reviewed improvement to a fleet; and the four
-/// runner routes an authoring lease works through: its activity, its model
+/// runner routes an authoring run works through: its activity, its model
 /// calls, its renewal and its report.
 const CHAT_AUTHORING_ADDITIONS: usize = 15;
 
@@ -86,14 +86,14 @@ const AUTHORING_CONTEXT_ADDITIONS: usize = 1;
 /// The first-trigger Svix URL was replaced by the existing per-source route.
 const RETIRED_WEBHOOK_ROUTES: usize = 1;
 
-/// Current-work collection/detail and lease-scoped decision reservation/receipt.
+/// Current-work collection/detail and run-scoped decision reservation/receipt.
 const DURABLE_TASK_ADDITIONS: usize = 16;
 
-/// The lease route a running fleet claims the messages it receives through.
+/// The run route a running fleet claims the messages it receives through.
 const FOLD_ADDITIONS: usize = 1;
 /// Native runner sessions replace the polling routes as the runtime wiring completes.
 const RUNNER_STREAM_ADDITIONS: usize = 1;
-/// Six polling and lease-update routes plus four authoring routes now use native frames.
+/// Six polling and run-update routes plus four authoring routes now use native frames.
 const RETIRED_RUNNER_HTTP_ROUTES: usize = 10;
 
 /// The two platform catalogue routes and the redundant owned collection were retired.
@@ -103,7 +103,7 @@ const RETIRED_CATALOGUE_ROUTES: usize = 3;
 const TENANT_RUNNER_ADDITIONS: usize = 5;
 
 /// A fleet steering another fleet, and reading the workspace's fleets and one
-/// fleet's events, through the lease it runs.
+/// fleet's events, through the run it runs.
 const FLEET_TO_FLEET_ADDITIONS: usize = 3;
 
 /// What this daemon's union must carry.

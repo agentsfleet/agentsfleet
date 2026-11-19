@@ -1,5 +1,5 @@
 SELECT s.fleet_id
 FROM runner.slots s
-JOIN runner.leases l ON l.fleet_id = s.fleet_id
+JOIN runner.runs l ON l.fleet_id = s.fleet_id
 WHERE l.id = $1 AND l.runner_id = $2
 FOR SHARE OF s

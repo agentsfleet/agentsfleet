@@ -14,7 +14,7 @@ use af_core::id::Uuid7;
 use af_observability::Analytics;
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_connector::Dashboard;
-use afd_fleet_ops::RunnerLeaseHistory;
+use afd_fleet_ops::RunnerRunHistory;
 use afd_runner::Runners;
 use afd_sse::Live;
 use jiff::Timestamp;
@@ -23,9 +23,9 @@ use crate::auth::Authenticator;
 
 use super::TenantSurface;
 use super::{
-    DeviceFlow, FleetGrants, FleetMemories, FleetSchedules, FleetSteering, Leasing, SignupMetadata,
-    WebhookIngress, WorkspaceApprovals, WorkspaceConnectors, WorkspaceEvents, WorkspaceFleets,
-    WorkspaceOwnership, WorkspacePreferences, WorkspaceSecrets,
+    DeviceFlow, FleetGrants, FleetMemories, FleetSchedules, FleetSteering, RunPlane,
+    SignupMetadata, WebhookIngress, WorkspaceApprovals, WorkspaceConnectors, WorkspaceEvents,
+    WorkspaceFleets, WorkspaceOwnership, WorkspacePreferences, WorkspaceSecrets,
 };
 
 /// The services one request is served through.
@@ -46,21 +46,21 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// The process-wide publisher retained even when live subscriptions are unavailable.
     fn runner_commands(&self) -> &afd_bus::Handle;
 
-    /// What the lease verb acts through.
+    /// What the run verb acts through.
     ///
     /// An associated type for the reason [`Services::Auth`] is one: the
     /// concrete plane holds a bus connection beside its stores, so a suite
-    /// proving the router's refusal matrix must not need to construct one. The binary supplies `afd_fleet::lease::LeaseService`; a test
+    /// proving the router's refusal matrix must not need to construct one. The binary supplies `afd_fleet::run::RunService`; a test
     /// supplies whatever answers.
-    type Leases: Leasing;
+    type Runs: RunPlane;
 
-    /// The lease verb's plane: claims, gates, money, credentials.
+    /// The run verb's plane: claims, gates, money, credentials.
     ///
     /// Separate from [`Services::runners`] because they are different
     /// questions over different tables — the runner store answers "what is
     /// this host", and this answers "what may it run next". A single accessor
     /// returning both would put the money path behind every heartbeat.
-    fn leases(&self) -> &Self::Leases;
+    fn runs(&self) -> &Self::Runs;
 
     /// The native runner session owner, sharing the same authentication middleware.
     type RunnerStreams: super::RunnerStreams;
@@ -68,12 +68,12 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// Opens or attaches a lane after the common guard proves its principal.
     fn runner_streams(&self) -> &Self::RunnerStreams;
 
-    /// Authoritative task lifecycle over the same fleet lease and admission stores.
+    /// Authoritative task lifecycle over the same fleet run and admission stores.
     fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle;
 
     /// What the device-flow login surface acts through.
     ///
-    /// An associated type for the reason [`Services::Leases`] is one: the
+    /// An associated type for the reason [`Services::Runs`] is one: the
     /// concrete surface holds its store, a pepper and an entropy source, and a
     /// suite proving the router's refusal matrix must not need one.
     type Sessions: DeviceFlow;
@@ -83,8 +83,8 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// What decides whose workspace a request is acting in.
     ///
-    /// A concrete type where [`Services::Leases`] is an associated one, and the
-    /// difference is what each is over: a lease plane holds a bus connection
+    /// A concrete type where [`Services::Runs`] is an associated one, and the
+    /// difference is what each is over: a run plane holds a bus connection
     /// beside its stores, while this holds a Postgres pool, which
     /// `afd_db::Db::unreachable` already lets a suite build without a server.
     /// The seam is inside the type, so it does not also need to be a parameter
@@ -96,7 +96,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// What the workspace fleets surface acts through.
     ///
-    /// An associated type for the reason [`Services::Leases`] is one: a suite
+    /// An associated type for the reason [`Services::Runs`] is one: a suite
     /// proving the refusal matrix in front of these verbs substitutes its own
     /// store and must not need the concrete one.
     type Fleets: WorkspaceFleets;
@@ -202,7 +202,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// What tells the identity provider a new account's tenant.
     ///
-    /// An associated type for the reason [`Services::Leases`] is one: the
+    /// An associated type for the reason [`Services::Runs`] is one: the
     /// concrete writer holds an HTTP client built at boot, and a suite proving
     /// this route's refusal matrix must not need a provider to talk to.
     type SignupMetadata: SignupMetadata;
@@ -254,8 +254,8 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// What both live-stream routes act through.
     ///
-    /// A concrete type where [`Services::Leases`] is an associated one, and the
-    /// difference is what each is over: a lease plane holds a bus connection
+    /// A concrete type where [`Services::Runs`] is an associated one, and the
+    /// difference is what each is over: a run plane holds a bus connection
     /// beside its stores, while this holds a bus handle and a semaphore, and
     /// `afd_sse::Live::detached` already lets a suite build one with no broker
     /// behind it. The seam is inside the type, so it does not also need
@@ -296,7 +296,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// A concrete type for the reason [`Services::analytics`] is one: it holds a
     /// Postgres pool and nothing else, so `afd_db::Db::unreachable` is the
     /// whole of the seam a suite needs.
-    fn runner_lease_history(&self) -> &RunnerLeaseHistory;
+    fn runner_run_history(&self) -> &RunnerRunHistory;
 
     /// Priced-model catalogue administration.
     ///

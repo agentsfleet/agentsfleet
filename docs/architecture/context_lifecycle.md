@@ -96,7 +96,7 @@ After publication, preparation inserts the summary as explicitly untrusted conve
 Current installed instructions and authoritative state remain separate.
 
 Setup chat loads its draft checkpoint during preparation.
-A run keeps its compaction summary in its own state and stores none, so a new runtime lease never inherits another lease's conversation checkpoint.
+A run keeps its compaction summary in its own state and stores none, so a new runtime run never inherits another run's conversation checkpoint.
 
 ## User-visible progress
 
@@ -108,7 +108,7 @@ React announces “Context summarizing…” and, after the checkpoint commits, 
 An unsuccessful operation can announce “Context summarization interrupted.”
 Runtime child summaries remain private; root summaries announce progress without publishing generated notes.
 
-Setup notices recheck the current creator, membership, lease and message before publication and forwarding.
+Setup notices recheck the current creator, membership, run and message before publication and forwarding.
 The browser accepts notices only for a known running message, rejects older generations and clears visible hints on reconnect, cancellation or completion.
 
 Ordinary reply text replaces the interim status. Saved history remains authoritative.
@@ -170,8 +170,8 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
 The checkpoint table is `schema/20261108124800_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
 
-Authoring admission and accounting live in `afd_setup` (lease claim, model budget, dispatch, progress and receipt).
-The runner protocol lives in `af_wire` (authoring model, meter and lease payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
+Authoring admission and accounting live in `afd_setup` (run claim, model budget, dispatch, progress and receipt).
+The runner protocol lives in `af_wire` (authoring model, meter and run payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
 
 Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
 Trusted transport lives in `afr_supervisor`'s authoring turn adapter.
@@ -226,11 +226,11 @@ Freshness verification returns that body after checking authority and source his
 The estimator-work regression measures linear encoding work, while freshness verification still reads and hashes original history.
 
 **Future sandbox work:** Checkpoint storage remains behind the daemon API; the optional PostgreSQL feature keeps database dependencies out of runtime builds.
-Git worktree recovery across leases and a Go/Firecracker backend remain separate proposal and implementation work.
+Git worktree recovery across runs and a Go/Firecracker backend remain separate proposal and implementation work.
 
 **Concurrency:** No global conversation lock or shared mutable history cache. One runtime loop owns its index.
 
-Database writes retain generation checks and live-lease fencing. Cancellation and failed publication retain accounted model work.
+Database writes retain generation checks and live-run fencing. Cancellation and failed publication retain accounted model work.
 
 **Quality ceiling:** Measure work with deterministic counters before claiming throughput improvements. The full browser scenario and real storage races remain required. A native guest engine informed by SPACE needs its own implementation and real-backend evidence.
 
@@ -242,17 +242,17 @@ A new checkpoint-storage crate is conditional on a demonstrated dependency benef
 
 ## Proposed DT handoff and steering
 
-M236 adds an authorized cross-lease handoff through [Durable Task (DT) manifests](durable_tasks.md).
+M236 adds an authorized cross-run handoff through [Durable Task (DT) manifests](durable_tasks.md).
 The manifest binds conversation coverage, source digest, file/Git generation and confirmed effects together.
-Keep current lease-scoped validation until that explicit handoff succeeds.
+Keep current run-scoped validation until that explicit handoff succeeds.
 
-A new chat lease currently carries up to eight finished question/answer turns. They are bounded by 65,536 bytes overall and 16,384 bytes per text. See `afd_fleet`'s lease history and `af_wire`'s lease payload.
+A new chat run currently carries up to eight finished question/answer turns. They are bounded by 65,536 bytes overall and 16,384 bytes per text. See `afd_fleet`'s run history and `af_wire`'s run payload.
 
-That window does not replay every previous tool record or inherit another lease's summary.
+That window does not replay every previous tool record or inherit another run's summary.
 
 ```text
 Current request: instructions + bounded prior chat + newest event
-Within lease:   prepared history + assistant calls + matching tool results
+Within run:   prepared history + assistant calls + matching tool results
 After compact:  instructions + validated summary + retained groups + new input
 DT resume:      compatible handoff + accepted input beyond checkpoint cursor
 ```
@@ -266,7 +266,7 @@ Its `compact.rs` replaces and saves working history through an explicit compacti
 These observations come from source inspection, not a captured request from Indy's desktop session.
 
 A message sent while its fleet's run is live now folds into that run.
-The send answers disposition `folded` with `folded_into_event_id`, and the running lease claims the fold at its next model call (a native `folds` request).
+The send answers disposition `folded` with `folded_into_event_id`, and the running run claims the fold at its next model call (a native `folds` request).
 The folded message's own event receives the run's reply when the run reports succeeded.
 
 Dispositions are `started`, `folded` and `queued`.

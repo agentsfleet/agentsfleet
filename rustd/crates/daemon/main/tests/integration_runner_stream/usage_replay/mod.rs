@@ -1,4 +1,4 @@
-//! Lost renewal answers retain independent per-lease meter cursors across real native recovery.
+//! Lost renewal answers retain independent per-run meter cursors across real native recovery.
 #![cfg(all(feature = "test-util", target_os = "linux"))]
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
@@ -25,12 +25,12 @@ const SECOND: usize = LINES_MAX + 8 + 29;
 async fn renewal_batches_acknowledge_usage_independently_across_reconnect() {
     for carrier in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
-        let run = scenario(&mut supervisor).await;
-        let sibling = fixture::sibling(&run, "Pull request review").await;
-        let relay = relay::Relay::start(run.booted.runner_stream_address).await;
+        let scene = scenario(&mut supervisor).await;
+        let sibling = fixture::sibling(&scene, "Pull request review").await;
+        let relay = relay::Relay::start(scene.booted.runner_stream_address).await;
         let proxy = FaultProxy::start(relay.address, carrier).await;
         let mut session = Arc::new(
-            Session::connect(&fixture::config(&run, &proxy.origin, &relay.root()))
+            Session::connect(&fixture::config(&scene, &proxy.origin, &relay.root()))
                 .await
                 .expect("production native downlink"),
         );
@@ -40,9 +40,9 @@ async fn renewal_batches_acknowledge_usage_independently_across_reconnect() {
             .heartbeat(&serde_json::from_slice(&beat).expect("heartbeat body"))
             .await
             .expect("capable heartbeat");
-        let held = fixture::offers(&session, &run.event_id, &sibling.1).await;
+        let held = fixture::offers(&session, &scene.event_id, &sibling.1).await;
         proxy.assert_initial_carrier(carrier);
-        replay(&run, &relay, &session, &held).await;
+        replay(&scene, &relay, &session, &held).await;
         Arc::get_mut(&mut session)
             .expect("renewal owners joined")
             .close()
@@ -51,13 +51,13 @@ async fn renewal_batches_acknowledge_usage_independently_across_reconnect() {
         proxy.close().await;
         relay.close().await;
         supervisor.shutdown().await;
-        crate::e2e_retire::retire_fleet(&run.booted, &sibling.0).await;
-        run.cleanup().await;
+        crate::e2e_retire::retire_fleet(&scene.booted, &sibling.0).await;
+        scene.cleanup().await;
     }
 }
 
 async fn replay(
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     relay: &relay::Relay,
     session: &Arc<Session>,
     held: &[fixture::Held; 2],
@@ -67,19 +67,19 @@ async fn replay(
     let prefix = RequestLines(meters[1].unrecorded().0.into_iter().take(8).collect());
     let warm = session
         .renew(
-            &held[1].lease,
+            &held[1].run,
             &af_wire::report::RenewRequest { requests: prefix },
         )
         .await
         .expect("warm sibling cursor");
     assert_eq!(warm.recorded_through, Some(7));
     meters[1].recorded_through(7);
-    let before = reads::owner(run).await;
+    let before = reads::owner(scene).await;
     relay.lose_next_renewal();
     let stop = CancellationToken::new();
     let _stop_on_exit = stop.clone().drop_guard();
     let jobs = fixture::keep(session, held, &meters, &stop);
-    reads::wait_lines(run, held, [LINES_MAX, LINES_MAX + 8]).await;
+    reads::wait_lines(scene, held, [LINES_MAX, LINES_MAX + 8]).await;
     assert_eq!(
         [meters[0].backlog(), meters[1].backlog()],
         [FIRST, SECOND - 8],
@@ -87,19 +87,19 @@ async fn replay(
     );
     relay.lost().await;
     relay.resume();
-    reads::changed_owner(run, &before).await;
+    reads::changed_owner(scene, &before).await;
     acknowledged(&meters).await;
     stop.cancel();
     for job in jobs {
         job.await.expect("renewal owner joins");
     }
     final_reports(session, held, &meters).await;
-    reads::settled(run, held, [FIRST, SECOND]).await;
+    reads::settled(scene, held, [FIRST, SECOND]).await;
 }
 
 async fn final_reports(session: &Session, held: &[fixture::Held; 2], meters: &[Arc<Meter>; 2]) {
-    let mut first = wire::report_body(held[0].lease.as_str(), &held[0].event, held[0].fence);
-    let mut second = wire::report_body(held[1].lease.as_str(), &held[1].event, held[1].fence);
+    let mut first = wire::report_body(held[0].run.as_str(), &held[0].event, held[0].fence);
+    let mut second = wire::report_body(held[1].run.as_str(), &held[1].event, held[1].fence);
     (*first
         .pointer_mut("/requests")
         .expect("native response field")) =
@@ -135,5 +135,5 @@ async fn acknowledged(meters: &[Arc<Meter>; 2]) {
         },
     )
     .await
-    .expect("each lease acknowledges its own highest saved sequence after replay");
+    .expect("each run acknowledges its own highest saved sequence after replay");
 }

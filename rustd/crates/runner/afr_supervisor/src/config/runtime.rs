@@ -5,7 +5,7 @@ use garde::Validate;
 use serde::Deserialize;
 use std::time::Duration;
 
-/// Startup knobs bounded by the existing lease and physical cleanup windows.
+/// Startup knobs bounded by the existing run and physical cleanup windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct RuntimeSettings {

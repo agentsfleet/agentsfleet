@@ -32,7 +32,7 @@ async fn with_known_call(f: &Fixture) -> Attempt {
     let a = Attempt::start(f, f.access(), Source::Blank).await;
     let calls = fixture::calls(f, &a, Arc::new(fixture::Provider::known())).await;
     calls
-        .call(&f.runner, &a.lease, fixture::request(&a))
+        .call(&f.runner, &a.run, fixture::request(&a))
         .await
         .expect("known physical receipt");
     a
@@ -43,15 +43,15 @@ async fn with_known_call(f: &Fixture) -> Attempt {
 async fn a_report_racing_the_expiry_sweep_settles_once() {
     let f = Fixture::create().await;
     let a = with_known_call(&f).await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at=clock_timestamp() WHERE id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at=clock_timestamp() WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
-        .expect("the lease is due for the expiry sweep");
+        .expect("the run is due for the expiry sweep");
     let before = balance(&f).await;
     let request = report();
     let (reported, swept) = tokio::join!(
-        f.drafts.report(&f.runner, &a.lease, request.clone()),
+        f.drafts.report(&f.runner, &a.run, request.clone()),
         f.drafts.maintain()
     );
     swept.expect("the expiry sweep runs");
@@ -60,7 +60,7 @@ async fn a_report_racing_the_expiry_sweep_settles_once() {
     if !reported.is_ok_and(|ack| ack.settled) {
         let late = f
             .drafts
-            .report(&f.runner, &a.lease, accounting(&request))
+            .report(&f.runner, &a.run, accounting(&request))
             .await
             .expect("the resent accounting settles");
         assert!(late.settled, "known usage settles on the resend");
@@ -70,7 +70,7 @@ async fn a_report_racing_the_expiry_sweep_settles_once() {
     assert_eq!(balance(&f).await, before - RUNTIME_DEBIT, "charged once");
     let again = f
         .drafts
-        .report(&f.runner, &a.lease, accounting(&request))
+        .report(&f.runner, &a.run, accounting(&request))
         .await
         .expect("a further resend replays");
     assert!(again.settled && again.replayed);
@@ -90,7 +90,7 @@ async fn a_report_logs_its_lines_and_leaves_them_to_the_relay() {
     let before = balance(&f).await;
     let ack = f
         .drafts
-        .report(&f.runner, &a.lease, report())
+        .report(&f.runner, &a.run, report())
         .await
         .expect("the report settles the attempt");
     assert!(ack.settled, "known usage settles the attempt");
@@ -115,7 +115,7 @@ async fn a_reported_attempt_is_settled_on_the_next_pass() {
     let a = with_known_call(&f).await;
     let before = balance(&f).await;
     f.drafts
-        .report(&f.runner, &a.lease, report())
+        .report(&f.runner, &a.run, report())
         .await
         .expect("the report settles the attempt");
 

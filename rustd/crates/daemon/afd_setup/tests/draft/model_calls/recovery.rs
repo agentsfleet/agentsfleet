@@ -19,13 +19,13 @@ async fn late_known_usage_does_not_reopen_an_attempt_marked_uncertain() {
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
-        let (calls, runner, lease, request) = (
+        let (calls, runner, run, request) = (
             calls.clone(),
             f.runner.clone(),
-            attempt.lease.clone(),
+            attempt.run.clone(),
             request.clone(),
         );
-        async move { calls.call(&runner, &lease, request).await }
+        async move { calls.call(&runner, &run, request).await }
     });
     tokio::time::timeout(Duration::from_secs(5), provider.arrived())
         .await
@@ -33,7 +33,7 @@ async fn late_known_usage_does_not_reopen_an_attempt_marked_uncertain() {
     age_intent(&f, &attempt).await;
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request.clone())
+            .call(&f.runner, &attempt.run, request.clone())
             .await
             .expect_err("unfinished old intent")
             .code(),
@@ -51,7 +51,7 @@ async fn late_known_usage_does_not_reopen_an_attempt_marked_uncertain() {
     retained_fence(&f, &attempt).await;
     assert_eq!(
         calls
-            .call(&f.runner, &attempt.lease, request)
+            .call(&f.runner, &attempt.run, request)
             .await
             .expect_err("known usage cannot revive private capability")
             .code(),

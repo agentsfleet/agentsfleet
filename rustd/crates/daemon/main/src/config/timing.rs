@@ -1,6 +1,6 @@
-//! The daemon's file shape resolves into the shared, cross-checked lease clock.
+//! The daemon's file shape resolves into the shared, cross-checked run clock.
 
-use af_core::timing::LeaseSettings;
+use af_core::timing::RunSettings;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -16,7 +16,7 @@ pub(super) struct Health {
 
 impl Default for Health {
     fn default() -> Self {
-        let defaults = LeaseSettings::default();
+        let defaults = RunSettings::default();
         Self {
             heartbeat_interval: defaults.heartbeat_interval_seconds,
             offline_after: defaults.offline_after_seconds,
@@ -34,17 +34,17 @@ pub(super) struct Sandboxes {
 impl Default for Sandboxes {
     fn default() -> Self {
         Self {
-            max_idle_hold_seconds: LeaseSettings::default().sandbox_idle_hold_seconds,
+            max_idle_hold_seconds: RunSettings::default().sandbox_idle_hold_seconds,
         }
     }
 }
 
-pub(super) fn settings(runner: &super::settings::Runner) -> LeaseSettings {
-    let defaults = LeaseSettings::default();
-    LeaseSettings {
-        ttl_seconds: runner.lease.ttl_seconds.unwrap_or(defaults.ttl_seconds),
+pub(super) fn settings(runner: &super::settings::Runner) -> RunSettings {
+    let defaults = RunSettings::default();
+    RunSettings {
+        ttl_seconds: runner.run.ttl_seconds.unwrap_or(defaults.ttl_seconds),
         max_runtime_seconds: runner
-            .lease
+            .run
             .max_runtime_seconds
             .unwrap_or(defaults.max_runtime_seconds),
         heartbeat_interval_seconds: runner.health.heartbeat_interval,
@@ -67,11 +67,11 @@ mod tests {
         let mut file = tempfile::NamedTempFile::new()?;
         write!(
             file,
-            "[runner.lease]\nttl_seconds=40\nmax_runtime_seconds=3600\n\
+            "[runner.run]\nttl_seconds=40\nmax_runtime_seconds=3600\n\
             [runner.health]\nheartbeat_interval_seconds=7\noffline_after_seconds=90\n\
             healthy_before_uncordon_seconds=21\n[runner.sandboxes]\nmax_idle_hold_seconds=45"
         )?;
-        let environment = MapEnv::from_pairs([("AGENTSFLEET_LEASE_TTL_SECONDS", "invalid")]);
+        let environment = MapEnv::from_pairs([("AGENTSFLEET_RUN_TTL_SECONDS", "invalid")]);
         let config = ConfigBuilder::new(&environment)
             .file(Some(file.path()))
             .build()?;
@@ -88,8 +88,8 @@ mod tests {
     #[test]
     fn conflicting_health_runtime_and_hold_settings_refuse_startup() -> Checked {
         for contents in [
-            "[runner.lease]\nmax_runtime_seconds=35",
-            "[runner.lease]\nmax_runtime_seconds=43201",
+            "[runner.run]\nmax_runtime_seconds=35",
+            "[runner.run]\nmax_runtime_seconds=43201",
             "[runner.health]\nheartbeat_interval_seconds=0",
             "[runner.health]\nheartbeat_interval_seconds=53\nhealthy_before_uncordon_seconds=60",
             "[runner.health]\noffline_after_seconds=34",

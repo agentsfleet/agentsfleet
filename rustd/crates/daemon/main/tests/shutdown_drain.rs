@@ -213,7 +213,7 @@ async fn test_shutdown_stops_within_its_bound_when_a_request_will_not_finish() {
     assert_eq!(settled.abandoned, 1, "the unfinished request is reported");
     assert!(
         !settled.is_clean(),
-        "an expired bound is not a clean stop, and the run must say so"
+        "an expired bound is not a clean stop, and the scene must say so"
     );
 
     // The supervisor's token is what actually cuts it — the step the drain

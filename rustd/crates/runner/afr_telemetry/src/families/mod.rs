@@ -54,7 +54,7 @@ pub const PROVIDER_RETRIES: Declared<CounterKind> =
 pub const SANDBOX_START_DURATION: Declared<HistogramKind> =
     Declared::new("agentsfleet_runner_sandbox_start_duration_seconds");
 
-/// How long a sandbox tool call waited for its lease's build, by outcome.
+/// How long a sandbox tool call waited for its run's build, by outcome.
 pub const SANDBOX_WAIT_DURATION: Declared<HistogramKind> =
     Declared::new("agentsfleet_runner_sandbox_wait_duration_seconds");
 
@@ -78,11 +78,11 @@ pub const TOOL_CALL_DURATION: Declared<HistogramKind> =
 pub const TOOL_OUT_OF_MEMORY: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_tool_out_of_memory_total");
 
-/// Lease sandbox builds, by how each ended.
+/// Run sandbox builds, by how each ended.
 pub const SANDBOX_BUILDS: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_sandbox_builds_total");
 
-/// Sandboxes held between a fleet's leases, by what became of them.
+/// Sandboxes held between a fleet's runs, by what became of them.
 pub const SANDBOX_HOLDS: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_sandbox_holds_total");
 
@@ -342,6 +342,6 @@ pub const MODEL_CACHE_READ: Declared<CounterKind> =
 pub const MODEL_CACHE_WRITE: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_model_cache_write_tokens_total");
 
-/// Inline windows and hydration fallback choices, counted once per working lease.
+/// Inline windows and hydration fallback choices, counted once per working run.
 pub const MEMORY_SOURCES: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_memory_sources_total");

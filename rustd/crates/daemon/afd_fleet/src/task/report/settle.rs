@@ -30,12 +30,12 @@ struct Current {
 /// A notice replaces an unverified completion claim in both history and delivery.
 pub(crate) async fn apply(
     connection: &mut PgConnection,
-    lease: &af_core::id::Uuid7,
+    run: &af_core::id::Uuid7,
     runner: &af_core::id::Uuid7,
     settlement: Option<TaskSettlement<'_>>,
 ) -> Result<Option<&'static str>> {
     let current: Option<Current> = sqlx::query_as(include_str!("row.sql"))
-        .bind(lease)
+        .bind(run)
         .bind(runner)
         .bind(TaskEffectState::Confirmed.as_str())
         .bind(TaskEffectState::Refused.as_str())
@@ -91,7 +91,7 @@ pub(crate) async fn apply(
             connection,
             &current,
             TaskState::Exhausted,
-            Some("lease_limit_reached"),
+            Some("run_limit_reached"),
         )
         .await?;
         return Ok(Some(LIMIT));
@@ -116,7 +116,7 @@ pub(crate) async fn apply(
             &plan.tasks,
             connection,
             &current.task_id,
-            &plan.lease_id,
+            &plan.run_id,
             plan.target
                 .as_ref()
                 .ok_or(crate::task::TaskRefusal::InvalidTarget)?,
@@ -154,10 +154,10 @@ async fn action(
     if let Some(call) = &plan.input.decision_call_id {
         let active: Option<Uuid7> = sqlx::query_scalar(include_str!("profile.sql"))
             .bind(crate::task::guard::wire(call)?)
-            .bind(&plan.lease_id)
+            .bind(&plan.run_id)
             .bind(&plan.runner_id)
-            .bind(crate::lease::sql::RUNNER_STATUS_ACTIVE)
-            .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
+            .bind(crate::run::sql::RUNNER_STATUS_ACTIVE)
+            .bind(crate::run::sql::FLEET_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query("recheck native goal profile at final report commit"))?;
@@ -167,7 +167,7 @@ async fn action(
     }
     if let Some(target) = &plan.target {
         let Some(config) =
-            crate::lease::Leases::stored_config_on(connection, &plan.scope.fleet_id, None).await?
+            crate::run::Runs::stored_config_on(connection, &plan.scope.fleet_id, None).await?
         else {
             return Ok(None);
         };
@@ -211,7 +211,7 @@ async fn action(
             let saved = super::checkpoint::CheckpointGuard {
                 checkpoint_id: input.checkpoint_id.as_deref(),
                 task_id: &current.task_id,
-                lease_id: &plan.lease_id,
+                run_id: &plan.run_id,
                 generation: current.generation,
                 stop_generation: current.stop_generation,
                 revision_id: &current.accepted_revision_id,
@@ -261,7 +261,7 @@ async fn transition(
         .bind(state.is_terminal())
         .execute(&mut *connection)
         .await
-        .map_err(query("commit task state before releasing ordinary lease"))?;
+        .map_err(query("commit task state before releasing ordinary run"))?;
     crate::task::continuation::retire(connection, &current.task_id).await?;
     tracing::info!(
         event = "dt_transition",

@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_core::timing::{LEASE_TTL, SANDBOX_HOLD_IDLE};
+use af_core::timing::{RUN_TTL, SANDBOX_HOLD_IDLE};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use jiff::Timestamp;
 
@@ -20,14 +20,14 @@ use crate::report_seed::{Held, SLICE, SLICE_MS, held};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
-/// A processed report on `held`'s lease, asking to hold its sandbox until
+/// A processed report on `held`'s run, asking to hold its sandbox until
 /// `held_until`.
 pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
         setup: None,
         task: None,
-        lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
+        run_id: Cow::Borrowed(held.issued.run_id.as_str()),
         event_id: Cow::Borrowed(held.event_id.as_str()),
         fencing_token: held.fence.as_u64(),
         outcome: Outcome::Processed,
@@ -71,15 +71,14 @@ async fn released(
     runner: &Uuid7,
     asked: Option<Timestamp>,
 ) -> Option<Timestamp> {
-    let leases = fixtures.leases();
-    let claimed = leases
-        .claim(fleet, runner, LEASE_TTL)
+    let runs = fixtures.runs();
+    let claimed = runs
+        .claim(fleet, runner, RUN_TTL)
         .await
         .expect("the claim answers")
         .expect("the runner wins its own fleet");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
-    leases
-        .release_through(&mut connection, fleet, claimed.fence, asked)
+    runs.release_through(&mut connection, fleet, claimed.fence, asked)
         .await
         .expect("the release lands");
     drop(connection);
@@ -121,7 +120,7 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
         .hold
         .expect("the native response names the accepted hold");
     assert_eq!(receipt.expires_at, stored);
-    assert_eq!(receipt.lease_id, held.issued.lease_id.as_str());
+    assert_eq!(receipt.run_id, held.issued.run_id.as_str());
     assert_eq!(receipt.fencing_token, held.fence.as_u64());
     let repeated = plane
         .report_with(
@@ -187,16 +186,16 @@ async fn test_expired_late_report_settles_without_a_new_hold() {
     let held = held().await;
     held.fixtures
         .age(
-            crate::rows::Row::Lease(&held.issued.lease_id),
-            "lease_expires_at",
-            LEASE_TTL.saturating_mul(2),
+            crate::rows::Row::Run(&held.issued.run_id),
+            "run_expires_at",
+            RUN_TTL.saturating_mul(2),
         )
         .await;
     held.fixtures
         .age(
             crate::rows::Row::Slot(&held.fleet),
-            "lease_expires_at",
-            LEASE_TTL.saturating_mul(2),
+            "run_expires_at",
+            RUN_TTL.saturating_mul(2),
         )
         .await;
     let request = processed(

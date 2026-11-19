@@ -42,49 +42,49 @@ pub(super) enum Other<
     RenewBatch {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        leases: Vec<Renewal<'a>>,
+        runs: Vec<Renewal<'a>>,
     },
     AuthoringModel {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         request: Cow<'a, crate::authoring::ModelCall<D, O, I>>,
     },
     AuthoringActivity {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         request: Cow<'a, crate::authoring::ActivityRequest<D, O, I>>,
     },
     AuthoringRenew {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         request: crate::authoring::Renew,
     },
     AuthoringReport {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         request: Cow<'a, crate::authoring::Report>,
     },
     Activity {
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[serde(borrow)]
         request: ActivityRequest<'a>,
     },
     Folds {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         request: FoldRequest,
     },
     TurnCheckpoint {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        request: Cow<'a, crate::lease::TurnCheckpointCommand>,
+        run_id: Cow<'a, str>,
+        request: Cow<'a, crate::run::TurnCheckpointCommand>,
     },
 }
 
@@ -120,36 +120,36 @@ impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O,
                 request
             },
             Ping { request_id },
-            RenewBatch { request_id, leases },
+            RenewBatch { request_id, runs },
             AuthoringModel {
                 request_id,
-                lease_id,
+                run_id,
                 request
             },
             AuthoringActivity {
                 request_id,
-                lease_id,
+                run_id,
                 request
             },
             AuthoringRenew {
                 request_id,
-                lease_id,
+                run_id,
                 request
             },
             AuthoringReport {
                 request_id,
-                lease_id,
+                run_id,
                 request
             },
-            Activity { lease_id, request },
+            Activity { run_id, request },
             Folds {
                 request_id,
-                lease_id,
+                run_id,
                 request
             },
             TurnCheckpoint {
                 request_id,
-                lease_id,
+                run_id,
                 request
             },
         )

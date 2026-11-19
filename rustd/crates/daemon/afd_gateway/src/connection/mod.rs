@@ -18,7 +18,7 @@ mod supervisor;
 use std::{num::NonZeroU64, sync::Arc};
 
 use af_core::id::Uuid7;
-use af_wire::{lease::AcceptedKinds, protocol::Down};
+use af_wire::{protocol::Down, run::AcceptedKinds};
 use afd_auth::principal::Runner;
 use afd_runner::capacity::authority::{Authority, Prepared};
 use afd_sse::StreamPermit;
@@ -113,7 +113,7 @@ pub(crate) struct ConnectionHandle {
     pub(crate) superseded: CancellationToken,
     pub(crate) offers: Notify,
     pub(crate) claims: mpsc::Sender<ClaimRequest>,
-    pub(crate) recovery_scan: Mutex<afd_fleet::lease::RecoveryScan>,
+    pub(crate) recovery_scan: Mutex<afd_fleet::run::RecoveryScan>,
     pub(crate) rechecks: Notify,
     pub(crate) commands: mpsc::Sender<afd_bus::Command>,
 }
@@ -181,7 +181,7 @@ struct ConfirmedConnection {
     runner: Runner,
     hello: Hello,
     authority: Authority,
-    cache: cache::LeaseCache,
+    cache: cache::RunCache,
     attachments: mpsc::Receiver<StreamAttachment>,
     io: StreamIo,
     permit: StreamPermit,
@@ -193,18 +193,18 @@ pub(crate) struct ConnectionServices {
     gateway: Gateway,
     pub(crate) handle: Arc<ConnectionHandle>,
     authority: Authority,
-    leases: afd_fleet::lease::LeaseService,
+    runs: afd_fleet::run::RunService,
     drafts: afd_setup::Drafts,
     models: afd_setup::ModelCalls,
     creations: afd_setup::Creations,
-    cache: cache::LeaseCache,
+    cache: cache::RunCache,
     output: StreamWriters,
     accepted: AcceptedKinds,
-    /// Whether this runner's revision may be offered a draft-owned lease.
-    draft_leases: bool,
+    /// Whether this runner's revision may be offered a draft-owned run.
+    draft_runs: bool,
     checkpoint_verifications: tokio::sync::Semaphore,
     /// Renewal frames this connection has answered, for
-    /// [`afd_fleet::lease::renew::funds_due`]'s cadence.
+    /// [`afd_fleet::run::renew::funds_due`]'s cadence.
     renewal_ticks: std::sync::atomic::AtomicU64,
 }
 

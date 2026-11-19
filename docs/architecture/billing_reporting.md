@@ -32,7 +32,7 @@ The report reads two tables the settle transaction maintains, never the raw ledg
 
 No statement takes an explicit lock, and every settle takes its row locks in the same order.
 
-A run counts once, on the UTC day of its first runtime line, in the transaction that settles that line. Lease runtime slices are numbered by their start, so no smaller slice can arrive later.
+A run counts once, on the UTC day of its first runtime line, in the transaction that settles that line. Run runtime slices are numbered by their start, so no smaller slice can arrive later.
 
 A setup attempt writes one runtime line. Two relays settling different lines of the same run therefore count it once.
 

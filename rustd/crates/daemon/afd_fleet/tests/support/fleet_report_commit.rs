@@ -7,8 +7,8 @@
 //! same run reported the same way.
 
 use af_core::id::Uuid7;
-use afd_fleet::lease::usage::Pricing;
-use afd_fleet::lease::{Reported, Terminal, TerminalReport, Verdict};
+use afd_fleet::run::usage::Pricing;
+use afd_fleet::run::{Reported, Terminal, TerminalReport, Verdict};
 use jiff::Timestamp;
 
 use crate::report_seed::{DEEP_POOL, Held, SLICE_MS};
@@ -40,28 +40,28 @@ pub(crate) const LEDGER_ROWS_BEFORE_SETTLE: i64 = 0;
 /// One usage line: the report's final slice, however often it is re-sent.
 pub(crate) const LEDGER_ROWS_AFTER_SETTLE: i64 = 1;
 
-/// One terminal report over the seeded lease, carrying `response_text`.
+/// One terminal report over the seeded run, carrying `response_text`.
 ///
 /// The verdict is clean on every call: what varies is whether Postgres will
 /// store the answer and whether the claim can still win. Holding everything
 /// else fixed is what makes the wallet assertions read as one run reported
 /// more than once.
 pub(crate) fn report<'a>(
-    lease_id: &'a Uuid7,
+    run_id: &'a Uuid7,
     runner_id: &'a Uuid7,
-    lease: &'a Reported,
+    run: &'a Reported,
     priced: (&'a Uuid7, &'a Pricing),
     response_text: &'a str,
     now: Timestamp,
 ) -> TerminalReport<'a> {
-    let (lease_key, pricing) = priced;
+    let (run_key, pricing) = priced;
     TerminalReport {
         folded_through_sequence: None,
         task_settlement: None,
-        lease_id,
+        run_id,
         runner_id,
-        lease,
-        lease_key,
+        run,
+        run_key,
         requests: &[],
         pricing,
         outcome: Terminal {

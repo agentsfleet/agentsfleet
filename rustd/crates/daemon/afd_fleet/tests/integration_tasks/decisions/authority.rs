@@ -25,7 +25,7 @@ async fn ownership(case: &Case) {
     let sibling = case.sibling().await;
     let foreign = sibling
         .tasks
-        .bind(sibling.lease(), &sibling.plan("other-owner", 1))
+        .bind(sibling.run(), &sibling.plan("other-owner", 1))
         .await
         .expect("real foreign goal");
     let other = foreign
@@ -125,7 +125,7 @@ async fn refused(
             .expect("well-formed refused association");
         let fault = fixture
             .tasks
-            .reserve_decision(fixture.case.lease(), &input)
+            .reserve_decision(fixture.case.run(), &input)
             .await
             .expect_err("current owner and generation are mandatory");
         assert_eq!(fault.code(), expected);
@@ -155,7 +155,7 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
         .expect("distinct admitted source");
     let fault = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), &input)
+        .reserve_decision(fixture.case.run(), &input)
         .await
         .expect_err("another admission cannot own the goal assessment");
     assert_eq!(fault.code(), error_code::TASK_INVALID_TARGET);

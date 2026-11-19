@@ -24,7 +24,7 @@ use af_core::id::Uuid7;
 use af_observability::{Analytics, AuthoringStep, Telemetry};
 use sqlx::PgConnection;
 
-use crate::{Access, Drafts, Result, error::raise::query, lease::guard::Attempt};
+use crate::{Access, Drafts, Result, error::raise::query, run::guard::Attempt};
 
 const CONTEXT: &str = "attribute a private-chat funnel step";
 

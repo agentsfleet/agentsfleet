@@ -41,13 +41,13 @@ pub(super) fn timeout_of(asked: Option<u64>) -> Duration {
         .min(TIMEOUT_MAX)
 }
 
-/// Runs `spawn` to its end under `timeout`, for lease `lease_id`, and answers
+/// Runs `spawn` to its end under `timeout`, for run `run_id`, and answers
 /// with its output and a status line for any ending but a clean exit.
 pub(super) async fn run_to_end(
     env: &dyn Env,
     spawn: Spawn,
     timeout: Duration,
-    lease_id: &str,
+    run_id: &str,
 ) -> ToolOutput {
     let spawn = spawn.timeout(timeout);
     let mut process = match env.spawn(&spawn).await {
@@ -59,17 +59,17 @@ pub(super) async fn run_to_end(
     let ending = collected
         .until(&mut process, Instant::now() + runner_wait)
         .await
-        .unwrap_or_else(|| missing_ending(&mut process, lease_id, timeout, runner_wait));
+        .unwrap_or_else(|| missing_ending(&mut process, run_id, timeout, runner_wait));
     let text = collected.text(output::budget(None));
     let text = match ending {
         Ending::Exited(0) => text,
         Ending::TimedOut => {
-            timed_out(lease_id, timeout);
+            timed_out(run_id, timeout);
             let after = saturating_millis(timeout);
             output::with_line(text, &format!("{} after {after} ms", output::TIMED_OUT))
         }
         Ending::OutOfMemory => {
-            out_of_memory(lease_id);
+            out_of_memory(run_id);
             output::with_line(text, &output::status(ending))
         }
         Ending::Exited(_) | Ending::Signaled(_) | Ending::Interrupted => {
@@ -87,7 +87,7 @@ pub(super) async fn run_to_end(
 
 fn missing_ending(
     process: &mut Process,
-    lease_id: &str,
+    run_id: &str,
     timeout: Duration,
     runner_wait: Duration,
 ) -> Ending {
@@ -100,7 +100,7 @@ fn missing_ending(
         let event = &EVENT_ENDING_DEADLINE;
         tracing::warn!(
             event,
-            lease_id,
+            run_id,
             error_code,
             process_id,
             timeout_ms,
@@ -111,19 +111,19 @@ fn missing_ending(
 }
 
 /// Logs a command the kernel killed because the sandbox's tenant processes
-/// ran out of memory: the model reads the code, the operator the lease. No
+/// ran out of memory: the model reads the code, the operator the run. No
 /// command text, which is the tenant's.
-pub(super) fn out_of_memory(lease_id: &str) {
+pub(super) fn out_of_memory(run_id: &str) {
     let error_code = code::OUT_OF_MEMORY.as_str();
     let event = EVENT_OUT_OF_MEMORY;
-    tracing::warn!(lease_id, error_code, event);
+    tracing::warn!(run_id, error_code, event);
 }
 
 /// Logs a command the executor killed at its timeout: the model reads the
-/// code, the operator reads the lease and how long the command was given.
-fn timed_out(lease_id: &str, timeout: Duration) {
+/// code, the operator reads the run and how long the command was given.
+fn timed_out(run_id: &str, timeout: Duration) {
     let error_code = code::TIMED_OUT.as_str();
     let timeout_ms = saturating_millis(timeout);
     let event = EVENT_TIMED_OUT;
-    tracing::warn!(lease_id, error_code, timeout_ms, event);
+    tracing::warn!(run_id, error_code, timeout_ms, event);
 }

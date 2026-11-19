@@ -16,7 +16,7 @@ mod integration_model_seed;
 mod integration_tasks;
 mod integration_turn_checkpoints;
 mod issue_lifecycle;
-mod lease_renewal;
+mod run_renewal;
 
 #[path = "support/fleet_setup.rs"]
 mod setup;
@@ -25,8 +25,6 @@ mod setup;
 mod billing_lines;
 #[path = "support/fleet_faulty_biller.rs"]
 mod faulty_biller;
-#[path = "support/fleet_lease_reads.rs"]
-mod lease_reads;
 #[path = "support/fleet_queue.rs"]
 mod queue;
 #[path = "support/fleet_recovery_seed.rs"]
@@ -41,7 +39,9 @@ mod report_seed;
 mod requests;
 #[path = "support/fleet_rows.rs"]
 mod rows;
-#[path = "support/fleet_lease_seed.rs"]
+#[path = "support/fleet_run_reads.rs"]
+mod run_reads;
+#[path = "support/fleet_run_seed.rs"]
 mod seed;
 #[path = "support/fleet_fixtures.rs"]
 mod support;
@@ -68,42 +68,6 @@ mod integration_gate_grants;
 mod integration_held_sandbox;
 #[path = "integration_issue_host.rs"]
 mod integration_issue_host;
-#[path = "integration_lease_affinity.rs"]
-mod integration_lease_affinity;
-#[path = "integration_lease_assign.rs"]
-mod integration_lease_assign;
-#[path = "integration_lease_billing_races.rs"]
-mod integration_lease_billing_races;
-#[path = "integration_lease_block.rs"]
-mod integration_lease_block;
-#[path = "integration_lease_caches.rs"]
-mod integration_lease_caches;
-#[path = "integration_lease_claim_race.rs"]
-mod integration_lease_claim_race;
-#[path = "integration_lease_edges.rs"]
-mod integration_lease_edges;
-#[path = "integration_lease_expiry_lock.rs"]
-mod integration_lease_expiry_lock;
-#[path = "integration_lease_fairness.rs"]
-mod integration_lease_fairness;
-mod integration_lease_folds;
-mod integration_lease_gates;
-#[path = "integration_lease_history.rs"]
-mod integration_lease_history;
-#[path = "integration_lease_issue.rs"]
-mod integration_lease_issue;
-#[path = "integration_lease_issue_lock_wait.rs"]
-mod integration_lease_issue_lock_wait;
-#[path = "integration_lease_issue_refusals.rs"]
-mod integration_lease_issue_refusals;
-#[path = "integration_lease_plan.rs"]
-mod integration_lease_plan;
-#[path = "integration_lease_started.rs"]
-mod integration_lease_started;
-#[path = "integration_lease_usage_flush.rs"]
-mod integration_lease_usage_flush;
-#[path = "integration_lease_verbs.rs"]
-mod integration_lease_verbs;
 mod integration_ledger_queue;
 #[path = "integration_ledger_reads.rs"]
 mod integration_ledger_reads;
@@ -144,6 +108,42 @@ mod integration_report_pricing;
 mod integration_report_renewal_lock;
 #[path = "integration_report_statement.rs"]
 mod integration_report_statement;
+#[path = "integration_run_affinity.rs"]
+mod integration_run_affinity;
+#[path = "integration_run_assign.rs"]
+mod integration_run_assign;
+#[path = "integration_run_billing_races.rs"]
+mod integration_run_billing_races;
+#[path = "integration_run_block.rs"]
+mod integration_run_block;
+#[path = "integration_run_caches.rs"]
+mod integration_run_caches;
+#[path = "integration_run_claim_race.rs"]
+mod integration_run_claim_race;
+#[path = "integration_run_edges.rs"]
+mod integration_run_edges;
+#[path = "integration_run_expiry_lock.rs"]
+mod integration_run_expiry_lock;
+#[path = "integration_run_fairness.rs"]
+mod integration_run_fairness;
+mod integration_run_folds;
+mod integration_run_gates;
+#[path = "integration_run_history.rs"]
+mod integration_run_history;
+#[path = "integration_run_issue.rs"]
+mod integration_run_issue;
+#[path = "integration_run_issue_lock_wait.rs"]
+mod integration_run_issue_lock_wait;
+#[path = "integration_run_issue_refusals.rs"]
+mod integration_run_issue_refusals;
+#[path = "integration_run_plan.rs"]
+mod integration_run_plan;
+#[path = "integration_run_started.rs"]
+mod integration_run_started;
+#[path = "integration_run_usage_flush.rs"]
+mod integration_run_usage_flush;
+#[path = "integration_run_verbs.rs"]
+mod integration_run_verbs;
 #[path = "integration_runner_admin.rs"]
 mod integration_runner_admin;
 mod integration_runner_beat;
@@ -171,8 +171,8 @@ mod integration_wall_counters;
 #[path = "verdict_matrix.rs"]
 mod verdict_matrix;
 
-#[path = "integration_lease_issue_capacity.rs"]
-mod integration_lease_issue_capacity;
+#[path = "integration_run_issue_capacity.rs"]
+mod integration_run_issue_capacity;
 
 #[path = "integration_memory_capture_race.rs"]
 mod integration_memory_capture_race;

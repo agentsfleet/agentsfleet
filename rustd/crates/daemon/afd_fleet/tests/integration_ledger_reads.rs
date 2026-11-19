@@ -94,7 +94,7 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
     .bind(&held.tenant)
     .bind(&workspace)
     .bind(DECOY_FLEETS)
-    .bind(afd_billing::sql::work::FLEET_LEASE)
+    .bind(afd_billing::sql::work::FLEET_RUN)
     .bind(DECOY_LINES)
     .bind(&held.fleet)
     .bind(HISTORY_DAYS)

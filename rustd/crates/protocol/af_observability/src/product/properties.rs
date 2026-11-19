@@ -20,7 +20,7 @@ const KEY_TENANT_ID: &str = "tenant_id";
 /// The fleet an event is about.
 const KEY_FLEET_ID: &str = "fleet_id";
 
-/// The stream entry the run was leased from.
+/// The stream entry the run was held from.
 const KEY_EVENT_ID: &str = "event_id";
 
 /// The request this daemon answered, for joining a log line to a funnel step.

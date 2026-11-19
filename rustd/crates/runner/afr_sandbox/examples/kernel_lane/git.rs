@@ -12,7 +12,7 @@ use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 use afr_supervisor::workspace_clone::{Mirrors, Request};
 use afr_tools::catalog::{GIT, SHELL};
 use afr_tools::sandbox::Checkout;
-use afr_tools::{Catalog, Lease, Selection, ToolContext};
+use afr_tools::{Catalog, Run, Selection, ToolContext};
 use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ const REPOSITORY: &str = "acme/widget";
 const OWNER: &str = "acme";
 const NAME: &str = "widget";
 const BASE: &str = "main";
-/// The workspace the lease's fleet belongs to, which keys its mirror.
+/// The workspace the run's fleet belongs to, which keys its mirror.
 const SCOPE: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
 /// A token shaped like an installation token; the fetch presents it, and
 /// nothing inside the sandbox may hold it.
@@ -90,7 +90,7 @@ fn shell(command: &str) -> (&'static str, Value) {
 /// clone, then makes `calls` in order; what each answered.
 fn checked_out(
     lane: &Lane,
-    lease_id: &str,
+    run_id: &str,
     calls: &[(&str, Value)],
 ) -> Result<Vec<ToolOutput>, Failed> {
     let root = tempfile::tempdir()?;
@@ -100,7 +100,7 @@ fn checked_out(
         let catalog = Catalog::hosted(Arc::new(transport));
         let selection = catalog.select(&[GIT.name(), SHELL.name()])?;
         let engine = lane.engine();
-        let request = SandboxRequest::new(lease_id, Limits::default());
+        let request = SandboxRequest::new(run_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let outputs = work(root.path(), &selection, sandbox.as_ref(), calls).await;
         sandbox.destroy().await?;
@@ -137,13 +137,13 @@ async fn work(
     mirrors
         .check_out(request, &CancellationToken::new())
         .await?;
-    let lease = Lease::default().with_checkouts(vec![checkout]);
+    let run = Run::default().with_checkouts(vec![checkout]);
     let mut outputs = Vec::with_capacity(calls.len());
     for (name, arguments) in calls {
         let tool = selection.tool(name).ok_or("the runner hosts it")?;
         let context = ToolContext {
             executor: Some(sandbox.executor()),
-            lease: &lease,
+            run: &run,
         };
         outputs.push(tool.call(arguments, context).await);
     }

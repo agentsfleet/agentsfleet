@@ -20,14 +20,14 @@ async fn invalid_initial_generation_has_no_candidate_or_activity_receipt() {
     };
     let error = f
         .drafts
-        .activity(&f.runner, &a.lease, invalid)
+        .activity(&f.runner, &a.run, invalid)
         .await
         .expect_err("first generation bound");
     assert_eq!(error.code(), INVALID_REQUEST);
     assert_eq!(f.counts().await, (1, 0, 1));
     assert_eq!(a.activity_count(&f).await, 0);
     f.drafts
-        .activity(&f.runner, &a.lease, a.initialize(1))
+        .activity(&f.runner, &a.run, a.initialize(1))
         .await
         .expect("unaccepted sequence remains available");
     assert_eq!(a.activity_count(&f).await, 1);

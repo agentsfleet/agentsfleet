@@ -7,7 +7,7 @@
 //!
 //! The identifier is TEXT, and that is not an encoding detail to route around.
 //! `fleet.events` names a delivery by `(fleet_id, event_id)`; its `id UUID` is a
-//! row key Postgres mints for tool calls and leases to point at, never the
+//! row key Postgres mints for tool calls and runs to point at, never the
 //! event's identifier. Admission mints the key as `<millis>-<sequence>`, because
 //! every surface that renders, sorts or
 //! pages on event ids was written against it. So there is no `Uuid7` in the
@@ -50,7 +50,7 @@ pub const PREFIX: &str = "agentsfleet-repair/";
 /// characters sixteen raw bytes produced.
 pub const MIN_REFERENCE_LEN: usize = 2;
 
-/// The branch a lease authorises for `event_id`.
+/// The branch a run authorises for `event_id`.
 ///
 /// Infallible, and total over any identifier the events table can hold: the
 /// encoding is applied to the bytes it is given rather than to a shape it
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn one_event_always_names_the_same_branch() {
         // `policy::egress` locks this exact string as the only ref the run may
-        // create, and the lease is assembled once per delivery. A name that
+        // create, and the run is assembled once per delivery. A name that
         // varied between two assemblies of one event would lock a branch the
         // run could not push to.
         assert_eq!(branch_for(LEDGER_EVENT), branch_for(LEDGER_EVENT));

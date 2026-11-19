@@ -41,7 +41,7 @@ async fn a_save_message_refuses_what_the_model_proposes_and_replays_the_refusal(
     let calls = fixture::calls(&f, &a, Arc::clone(&provider)).await;
     let request = fixture::request(&a);
     let result = calls
-        .call(&f.runner, &a.lease, request.clone())
+        .call(&f.runner, &a.run, request.clone())
         .await
         .expect("a Save turn's call");
     assert!(
@@ -56,7 +56,7 @@ async fn a_save_message_refuses_what_the_model_proposes_and_replays_the_refusal(
         result.proposal_calls
     );
     let replay = calls
-        .call(&f.runner, &a.lease, request)
+        .call(&f.runner, &a.run, request)
         .await
         .expect("the same dispatch replays");
     assert!(replay.replayed);

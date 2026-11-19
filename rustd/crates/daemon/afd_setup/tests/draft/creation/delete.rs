@@ -5,7 +5,7 @@
 use super::super::mint;
 use super::fixture::Case;
 use super::grants::{cards, requiring_github};
-use super::running_cancellation::{TestResult, assert_cancel, seed_lease};
+use super::running_cancellation::{TestResult, assert_cancel, seed_run};
 use af_core::{error_code, id::Uuid7};
 use afd_bus::Subject;
 use afd_setup::types::DraftState;
@@ -19,15 +19,13 @@ async fn draft_of(c: &Case, fleet: &Uuid7) -> Option<(Uuid7, String)> {
         .expect("draft read")
 }
 
-/// A lease's status and whether a cancel was asked of it.
-async fn lease_state(c: &Case, lease: &Uuid7) -> Option<(String, bool)> {
-    sqlx::query_as(
-        "SELECT status, cancel_requested_at IS NOT NULL FROM runner.leases WHERE id = $1",
-    )
-    .bind(lease)
-    .fetch_optional(&mut *c.base.connection().await)
-    .await
-    .expect("lease read")
+/// A run's status and whether a cancel was asked of it.
+async fn run_state(c: &Case, run: &Uuid7) -> Option<(String, bool)> {
+    sqlx::query_as("SELECT status, cancel_requested_at IS NOT NULL FROM runner.runs WHERE id = $1")
+        .bind(run)
+        .fetch_optional(&mut *c.base.connection().await)
+        .await
+        .expect("run read")
 }
 
 async fn fleet_rows(c: &Case, fleet: &Uuid7) -> i64 {
@@ -45,10 +43,10 @@ async fn a_stale_delete_changes_nothing() -> TestResult {
     c.fund().await;
     let saved = c.save(&mint(), requiring_github(&c).await).await;
     assert_eq!(saved.status, "installing");
-    let lease = seed_lease(&c, &saved.id).await?;
+    let run = seed_run(&c, &saved.id).await?;
     let before = (
         cards(&c, &saved.id).await,
-        lease_state(&c, &lease).await,
+        run_state(&c, &run).await,
         draft_of(&c, &saved.id).await,
         c.creations.read(c.base.access(), &saved.id).await?.status,
     );
@@ -64,13 +62,13 @@ async fn a_stale_delete_changes_nothing() -> TestResult {
 
     let after = (
         cards(&c, &saved.id).await,
-        lease_state(&c, &lease).await,
+        run_state(&c, &run).await,
         draft_of(&c, &saved.id).await,
         c.creations.read(c.base.access(), &saved.id).await?.status,
     );
     assert_eq!(
         after, before,
-        "cards, lease, draft link and fleet are untouched"
+        "cards, run, draft link and fleet are untouched"
     );
     assert_eq!(fleet_rows(&c, &saved.id).await, 1);
     c.cleanup().await;
@@ -84,7 +82,7 @@ async fn a_delete_ends_setup_and_work_then_removes_the_fleet() -> TestResult {
     c.fund().await;
     let saved = c.save(&mint(), requiring_github(&c).await).await;
     assert_eq!(cards(&c, &saved.id).await.len(), 1);
-    let lease = seed_lease(&c, &saved.id).await?;
+    let run = seed_run(&c, &saved.id).await?;
     let (draft, _) = draft_of(&c, &saved.id).await.expect("linked draft");
     let address = Subject::RunnerCommand(c.base.runner.clone());
     let mut commands = c.bus.subscribe(&address).await?;
@@ -98,18 +96,14 @@ async fn a_delete_ends_setup_and_work_then_removes_the_fleet() -> TestResult {
         cards(&c, &saved.id).await.is_empty(),
         "its cards are closed"
     );
-    assert_eq!(
-        lease_state(&c, &lease).await,
-        None,
-        "its live lease is gone"
-    );
+    assert_eq!(run_state(&c, &run).await, None, "its live run is gone");
     let restored: (Option<Uuid7>, String) =
         sqlx::query_as("SELECT fleet_id, status FROM authoring.drafts WHERE id = $1")
             .bind(&draft)
             .fetch_one(&mut *c.base.connection().await)
             .await?;
     assert_eq!(restored, (None, DraftState::Editing.as_str().to_owned()));
-    assert_cancel(&address, &lease, &mut commands).await?;
+    assert_cancel(&address, &run, &mut commands).await?;
     drop(commands);
     c.cleanup().await;
     Ok(())

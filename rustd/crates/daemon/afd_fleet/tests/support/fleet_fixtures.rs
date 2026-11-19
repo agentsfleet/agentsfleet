@@ -13,7 +13,7 @@ use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_fleet::lease::Leases;
+use afd_fleet::run::Runs;
 use afd_gate::gate::Gates;
 use afd_runner::Runners;
 use jiff::Timestamp;
@@ -79,14 +79,14 @@ impl Fixtures {
     /// observed.
     ///
     /// The wall clock rather than a constant, because issuing and renewing a
-    /// lease and counting a host's live leases read the DATABASE's clock. A
-    /// lease stamped from another instant has either lapsed before it was
+    /// run and counting a host's live runs read the DATABASE's clock. A
+    /// run stamped from another instant has either lapsed before it was
     /// written or outlives every sweep, and the meter would charge the distance
-    /// between the two clocks. A suite that needs a lease to lapse ages its row,
+    /// between the two clocks. A suite that needs a run to lapse ages its row,
     /// not its clock.
     ///
-    /// Per fixture, never per binary: a lease lives `LEASE_TTL` past this
-    /// instant. Sharing one instant expires leases taken after that interval.
+    /// Per fixture, never per binary: a run lives `RUN_TTL` past this
+    /// instant. Sharing one instant expires runs taken after that interval.
     pub(crate) const fn enrolled_at(&self) -> Timestamp {
         self.enrolled
     }
@@ -153,14 +153,14 @@ impl Fixtures {
             .expect("the count must run")
     }
 
-    /// The lease store over this fixture's database.
+    /// The run store over this fixture's database.
     ///
-    /// Built per call rather than held: `Leases` is a handle over the same
+    /// Built per call rather than held: `Runs` is a handle over the same
     /// `Arc`-backed pool, so a second one costs a clone and shares the
     /// connections — which is also what makes it honest for a test to hold one
     /// beside [`Fixtures::runners`].
-    pub(crate) fn leases(&self) -> Leases {
-        Leases::new(self.database.clone(), self.bus().clone(), Entropy::new())
+    pub(crate) fn runs(&self) -> Runs {
+        Runs::new(self.database.clone(), self.bus().clone(), Entropy::new())
     }
 
     /// The same store, over a bus that will not answer.
@@ -169,8 +169,8 @@ impl Fixtures {
     /// takes and the only one that proves the publish path degrades rather than
     /// failing the verb. A fixture that took BOTH away would refuse at the
     /// first row read and never reach the publish at all.
-    pub(crate) fn leases_with_dead_bus(&self) -> Leases {
-        Leases::new(
+    pub(crate) fn runs_with_dead_bus(&self) -> Runs {
+        Runs::new(
             self.database.clone(),
             afd_bus::test_util::unreachable(),
             Entropy::new(),
@@ -179,7 +179,7 @@ impl Fixtures {
 
     /// The approval-gate store over this fixture's database.
     ///
-    /// Built per call for the same reason [`Fixtures::leases`] is: a handle
+    /// Built per call for the same reason [`Fixtures::runs`] is: a handle
     /// over the same `Arc`-backed pool.
     pub(crate) fn gates(&self) -> Gates {
         Gates::new(self.database.clone(), self.bus().clone(), Entropy::new())

@@ -32,7 +32,7 @@ use super::fixture::{
     stalling_offered, stalling_tools, started_ids, streamed, tools,
 };
 use crate::engine::{AgentEngine, AgentRun, Meter};
-use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
+use crate::fixture::{Canned, Frames, Script, call, payload, say, unbounded};
 use crate::harness::Loop;
 use crate::harness::tests::{completions, drive, engine};
 use crate::testing::Recording;
@@ -65,9 +65,9 @@ async fn test_child_calls_share_the_run_trace() {
         ],
     );
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(started_ids(&frames), ["1", "2", "3"], "one counter");
     assert_eq!(
@@ -114,9 +114,9 @@ async fn test_trace_cap_counts_child_calls() {
     let script =
         Script::new([parent, vec![say(DONE)]]).with_child(READS, [child, vec![say(SUMMARY)]]);
     let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let run = payload(&offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     let trace = output.trace.unwrap();
     assert_eq!(trace.omitted_call_count, 10);
@@ -143,14 +143,14 @@ async fn test_parent_end_interrupts_children() {
     let engine = engine(tools, &script);
     let mut names = offered();
     names.push(HTTP_REQUEST.name());
-    let lease = lease(&names, unbounded());
+    let run = payload(&names, unbounded());
     let stop = CancellationToken::new();
     let stopper = async {
         tokio::time::sleep(Duration::from_secs(1)).await;
         stop.cancel();
     };
 
-    let ((output, frames), ()) = tokio::join!(drive(&engine, &lease, &stop), stopper);
+    let ((output, frames), ()) = tokio::join!(drive(&engine, &run, &stop), stopper);
 
     let interrupted = ToolCallStatus::Interrupted;
     assert_eq!(
@@ -195,9 +195,9 @@ async fn test_interrupt_and_list_agents() {
     .with_child(SECOND, [vec![say(CHILD_DONE)]])
     .with_child(THIRD, [stall(), vec![say(NEVER)]]);
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let root = requests_opening_with(&script, OPENING);
@@ -245,7 +245,7 @@ async fn test_a_child_writes_no_checkpoint_of_its_own() {
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let every_call = json!({"tool_window": 0, "memory_checkpoint_every": 1,
         "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 0});
-    let lease = lease(&[MEMORY_STORE.name(), DELEGATE.name()], every_call);
+    let run = payload(&[MEMORY_STORE.name(), DELEGATE.name()], every_call);
     let (checkpoint, pushed) = Recording::new();
     let frames = Frames::default();
     let sink = frames.sink();
@@ -256,7 +256,7 @@ async fn test_a_child_writes_no_checkpoint_of_its_own() {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -295,13 +295,13 @@ async fn test_child_run_carries_no_history() {
     ])
     .with_child(READS, [vec![say(SUMMARY)]]);
     let engine = engine(tools(), &script);
-    let mut lease = lease(&offered(), unbounded());
-    lease.history = vec![af_wire::lease::Turn {
+    let mut run = payload(&offered(), unbounded());
+    run.history = vec![af_wire::run::Turn {
         message: "which tests failed?".into(),
         answer: "two".into(),
     }];
 
-    drive(&engine, &lease, &CancellationToken::new()).await;
+    drive(&engine, &run, &CancellationToken::new()).await;
 
     let child_first = script
         .sent()

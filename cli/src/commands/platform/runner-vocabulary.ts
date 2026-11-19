@@ -42,7 +42,7 @@ export enum BindMode {
   ReadWrite = "read_write",
 }
 
-export enum LeaseOutcome {
+export enum RunOutcome {
   Running = "running",
   Succeeded = "succeeded",
   Failed = "failed",
@@ -50,12 +50,12 @@ export enum LeaseOutcome {
   Unknown = "unknown",
 }
 
-export enum LeaseKind {
+export enum RunKind {
   Fresh = "fresh",
   Reclaim = "reclaim",
 }
 
-export enum LeaseDestination {
+export enum RunDestination {
   Available = "available",
   FleetDeleted = "fleet_deleted",
   NotPermitted = "not_permitted",
@@ -63,15 +63,15 @@ export enum LeaseDestination {
 
 export enum RunnerHistory {
   Events = "events",
-  Leases = "leases",
+  Runs = "runs",
 }
 
 export enum RunnerEventType {
   Registered = "runner_registered",
   Online = "runner_online",
   Offline = "runner_offline",
-  LeaseAcquired = "lease_acquired",
-  LeaseReleased = "lease_released",
+  RunAcquired = "run_acquired",
+  RunReleased = "run_released",
   Cordoned = "runner_cordoned",
   Uncordoned = "runner_uncordoned",
   Draining = "runner_draining",

@@ -10,7 +10,7 @@
 //! `RUST_ERROR_STANDARD` asks for one error type per crate, and the reason is
 //! visible here: the failures below are the tenant plane's whole vocabulary —
 //! a name already taken, a login already approved, a credential that must be
-//! revoked before it is deleted. None of them can be raised by a lease, a gate
+//! revoked before it is deleted. None of them can be raised by a run, a gate
 //! or a budget drain, and none of the runner plane's can be raised here. A
 //! shared enum would let each side match on arms the other produces, which is
 //! exactly the coupling splitting the crates was for.

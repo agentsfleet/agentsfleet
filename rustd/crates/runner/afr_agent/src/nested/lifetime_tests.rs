@@ -21,7 +21,7 @@ use super::fixture::{
     STATUS, TASK_KEY, TIMEOUT_MS, events, last_result, parsed, requests_opening_with, results,
     root_requests, spawn_call, stall, stalling_offered, stalling_tools,
 };
-use crate::fixture::{Script, Sent, call, lease, say, unbounded};
+use crate::fixture::{Script, Sent, call, payload, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
 /// The root's delegated child, the grandchild it spawns, and the children
@@ -107,9 +107,9 @@ async fn test_a_child_that_answers_interrupts_its_grandchild_and_frees_its_slot(
     let capture = Capture::install();
     let script = fan_out();
     let engine = engine(stalling_tools(), &script);
-    let lease = lease(&stalling_offered(), unbounded());
+    let run = payload(&stalling_offered(), unbounded());
 
-    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let parent = requests_opening_with(&script, PARENT);

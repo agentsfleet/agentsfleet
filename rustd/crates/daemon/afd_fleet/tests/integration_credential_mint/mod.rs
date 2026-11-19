@@ -3,7 +3,7 @@
 //! What the unit suites prove is each decision in isolation: the outcome-to-code
 //! matrix, the write-gate verdicts, the cache identity. What only a datastore
 //! can prove is the ORDER — that a request refused by the grant gate never
-//! reaches the vault, that a lease belonging to another runner resolves to
+//! reaches the vault, that a run belonging to another runner resolves to
 //! nothing rather than to another tenant's workspace, and that two concurrent
 //! mints cannot spend one approval twice.
 //!
@@ -11,7 +11,7 @@
 //!
 //! Every case uses the `static` connector, whose exchange is the stored handle
 //! itself. That is deliberate: what these prove is the path INTO the exchange,
-//! and a fake HTTP endpoint would add a moving part to tests about lease scope
+//! and a fake HTTP endpoint would add a moving part to tests about run scope
 //! and approvals.
 //! The exchanges themselves are proven against response fixtures in
 //! `credential::github` and `credential::oauth`.
@@ -45,8 +45,8 @@ use afd_db::test_util::{EventKind, FleetEventSeed, mint_id};
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
 
-/// How long the fixture leases, gates and minted credentials stay live.
-const LEASE_WINDOW: std::time::Duration = af_core::timing::LEASE_TTL;
+/// How long the fixture runs, gates and minted credentials stay live.
+const RUN_WINDOW: std::time::Duration = af_core::timing::RUN_TTL;
 
 /// The key every fixture in this lane seals and opens under.
 ///
@@ -60,7 +60,7 @@ const LEASE_WINDOW: std::time::Duration = af_core::timing::LEASE_TTL;
 ///
 /// It was thirty-two zero bytes while nothing here opened an envelope. The
 /// comment that recorded that said the gates "refuse before any credential is
-/// resolved", which stopped being true the moment a test drove the lease verb
+/// resolved", which stopped being true the moment a test drove the run verb
 /// past the event type.
 const FIXTURE_KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -80,24 +80,24 @@ const STATUS_APPROVED: &str = "approved";
 /// wrong-workspace resolution is caught by VALUE and not merely by absence.
 const OWNER_TOKEN: &str = "ghp_owner_workspace_token";
 
-/// The fencing token every fixture lease carries.
+/// The fencing token every fixture run carries.
 const FIXTURE_FENCE: i64 = 5;
 
-/// A fleet, a runner, and a live lease binding them.
+/// A fleet, a runner, and a live run binding them.
 struct Bound {
-    /// The runner presenting the lease.
+    /// The runner presenting the run.
     runner: Uuid7,
-    /// The lease it presents.
-    lease: Uuid7,
-    /// The fleet the lease authorises.
+    /// The run it presents.
+    run: Uuid7,
+    /// The fleet the run authorises.
     fleet: Uuid7,
     /// The workspace the vault is opened in.
     workspace: Uuid7,
-    /// The event the lease is issued against.
+    /// The event the run is issued against.
     event: Uuid7,
 }
 
-/// Seeds a fleet with one runner holding one live lease.
+/// Seeds a fleet with one runner holding one live run.
 async fn bound(fixtures: &Fixtures, config_json: &str) -> Bound {
     let Seeded { runners, fleet, .. } = seeded::<1>(fixtures).await;
     let workspace = workspace_of(fixtures, &fleet).await;
@@ -117,12 +117,12 @@ async fn bound(fixtures: &Fixtures, config_json: &str) -> Bound {
         .entry("credentials")
         .or_insert_with(|| serde_json::json!(["static", "github", "zoho"]));
     set_config(fixtures, &fleet, &config.to_string()).await;
-    let (lease, event) = (mint_id(), mint_id());
+    let (run, event) = (mint_id(), mint_id());
     let [runner] = runners;
-    seed_lease(fixtures, &lease, &runner, &fleet, &workspace, &event).await;
+    seed_run(fixtures, &run, &runner, &fleet, &workspace, &event).await;
     Bound {
         runner,
-        lease,
+        run,
         fleet,
         workspace,
         event,
@@ -148,11 +148,11 @@ async fn set_config(fixtures: &Fixtures, fleet: &Uuid7, config_json: &str) {
     fixtures.native_config(fleet, config_json).await;
 }
 
-/// Writes one live lease binding `runner` to `fleet`, over the fleet's
+/// Writes one live run binding `runner` to `fleet`, over the fleet's
 /// `event`.
-async fn seed_lease(
+async fn seed_run(
     fixtures: &Fixtures,
-    lease: &Uuid7,
+    run: &Uuid7,
     runner: &Uuid7,
     fleet: &Uuid7,
     workspace: &Uuid7,
@@ -171,32 +171,32 @@ async fn seed_lease(
     FleetEventSeed::new(fleet, workspace, event, kind)
         .insert(&mut *connection)
         .await
-        .expect("the leased event row must insert");
+        .expect("the held event row must insert");
     sqlx::query(
-        "INSERT INTO runner.leases
+        "INSERT INTO runner.runs
            (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
             posture, provider, model, last_metered_at,
-            fencing_token, lease_expires_at, status, posted_message_count, setup_revision_id, created_at, updated_at)
+            fencing_token, run_expires_at, status, posted_message_count, setup_revision_id, created_at, updated_at)
          SELECT $1, $2, $3, $4, f.tenant_id, $5, now(),
                 'platform', 'anthropic', 'claude-fixture', now(),
                 $6, now() + $7::interval, $8, 0, f.head_revision_id, now(), now()
          FROM fleet.fleets f WHERE f.id = $3",
     )
-    .bind(lease)
+    .bind(run)
     .bind(runner)
     .bind(fleet)
     .bind(workspace)
     .bind(event)
     .bind(FIXTURE_FENCE)
-    .bind(LEASE_WINDOW)
-    .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
+    .bind(RUN_WINDOW)
+    .bind(afd_state::sql::RUN_STATUS_ACTIVE)
     .execute(&mut *connection)
     .await
-    .expect("the lease row must insert");
+    .expect("the run row must insert");
 }
 
-/// Moves `fleet`'s live sequence past the fixture lease's token, as a reclaim's
-/// claim does, leaving the lease row `active` and unexpired.
+/// Moves `fleet`'s live sequence past the fixture run's token, as a reclaim's
+/// claim does, leaving the run row `active` and unexpired.
 async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
     let mut connection = fixtures
         .database
@@ -205,14 +205,14 @@ async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO runner.slots
-           (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+           (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
             created_at, updated_at)
          VALUES ($1, $1, NULL, $2, now() + $3::interval, NULL, now(), now())
          ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
     )
     .bind(fleet)
     .bind(FIXTURE_FENCE + 1)
-    .bind(LEASE_WINDOW)
+    .bind(RUN_WINDOW)
     .execute(&mut *connection)
     .await
     .expect("the slot row must upsert");
@@ -304,7 +304,7 @@ async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound) -> Uuid7 {
     .bind(&workspace)
     .bind(mint_id())
     .bind(KIND_REPOSITORY_WRITE)
-    .bind(LEASE_WINDOW)
+    .bind(RUN_WINDOW)
     .bind(&owner.event)
     .execute(&mut *connection)
     .await

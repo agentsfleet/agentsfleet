@@ -144,17 +144,14 @@ impl ConnectionServices {
         gateway: crate::Gateway,
         handle: Arc<ConnectionHandle>,
         authority: afd_runner::capacity::authority::Authority,
-        cache: super::cache::LeaseCache,
+        cache: super::cache::RunCache,
         output: super::StreamWriters,
-        accepted: af_wire::lease::AcceptedKinds,
+        accepted: af_wire::run::AcceptedKinds,
         revision: af_wire::protocol::Revision,
     ) -> Self {
         let dependencies = &gateway.inner.dependencies;
         Self {
-            leases: dependencies
-                .leases
-                .clone()
-                .for_connection(authority.clone()),
+            runs: dependencies.runs.clone().for_connection(authority.clone()),
             drafts: dependencies
                 .drafts
                 .clone()
@@ -171,7 +168,7 @@ impl ConnectionServices {
             cache,
             output,
             accepted,
-            draft_leases: revision.offers_draft_leases(),
+            draft_runs: revision.offers_draft_runs(),
             checkpoint_verifications: tokio::sync::Semaphore::new(2),
             renewal_ticks: std::sync::atomic::AtomicU64::new(0),
             handle,
@@ -180,13 +177,13 @@ impl ConnectionServices {
     }
 }
 
-/// A missing lease is cancelled; an unlisted durable lease is left to lapse rather than replaying secrets.
+/// A missing run is cancelled; an unlisted durable run is left to lapse rather than replaying secrets.
 async fn reconcile(services: &ConnectionServices, running: &[af_core::id::Uuid7]) -> Result<()> {
-    for (lease, code) in services.cache.reconciliation(
+    for (run, code) in services.cache.reconciliation(
         running,
         services.gateway.inner.dependencies.wall_clock.now(),
     ) {
-        services.cancel(&lease, code).await?;
+        services.cancel(&run, code).await?;
     }
     Ok(())
 }

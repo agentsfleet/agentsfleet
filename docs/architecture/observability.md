@@ -23,9 +23,9 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Signal paths | 3 | OTLP push through the daemon's collector · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
 | Metric namespace | `agentsfleet_` runtime families; dotted semantic-convention cost families | `docs/metrics.census.tsv` declares every exported name; `test_metric_family_registry_parity` grades the registry against it both ways | §The three signal paths |
-| Runner telemetry | spans and families declared in `docs/metrics.runner.census.tsv`; dev collector installed and first real lease export verified Nov 04, 2026 | traces and metrics through the dedicated host collector; logs stay local; never through `otelcol-{env}` | §`agentsfleet-runner` has a collector of its own |
+| Runner telemetry | spans and families declared in `docs/metrics.runner.census.tsv`; dev collector installed and first real run export verified Nov 04, 2026 | traces and metrics through the dedicated host collector; logs stay local; never through `otelcol-{env}` | §`agentsfleet-runner` has a collector of its own |
 | Library read series | 124 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
-| Trace budget | daemon: none yet, one span per matched request · runner: 256 per lease, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
+| Trace budget | daemon: none yet, one span per matched request · runner: 256 per run, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
 | OTLP loss | drop, never block; no exporter retry | bounded queues; later cumulative metric collections can recover totals while the source process survives | §The Rust daemon's export path, as built |
 | PostHog events | 11 captured, 2 declared-uncaptured | `FleetCompleted` fires only on a report's first settle; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
 | Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
@@ -105,7 +105,7 @@ exporter or pool rather than the workload.
 
 The [Durable Task (DT) read component](durable_tasks.md#status-and-ownership) uses the existing task operation counter and duration measurements.
 Structured failures distinguish the whole-read deadline from server statement cancellation using bounded reason codes.
-Task and lease identifiers belong in traces and structured events; prompts, criteria and private evidence never become metric labels.
+Task and run identifiers belong in traces and structured events; prompts, criteria and private evidence never become metric labels.
 
 Three candidate objectives have metric producers. Their targets remain unproven;
 the table records the available measurements. Backlog age is a diagnostic until
@@ -130,7 +130,7 @@ worse the better the budgets work.
 
 An error budget is a promise about what this control plane controls. `FailureClass` carries eleven
 members and only five of them are ours: `startup_posture`, `runner_crash`, `transport_loss`,
-`lease_expired` and `renewal_terminate`. The other six (`policy_deny`, `landlock_deny`, `oom_kill`,
+`run_expired` and `renewal_terminate`. The other six (`policy_deny`, `landlock_deny`, `oom_kill`,
 `resource_kill`, `budget_breach` and `timeout_kill`) are the workload failing at something the
 platform delivered correctly.
 
@@ -158,7 +158,7 @@ worked is a fair question with a real answer; it just is not a promise.
 A `replayed` admission counts as good for the same reason: the first
 admission's identifier stands, so the producer got the answer it asked for.
 
-`reclaimed` lease grants are excluded from the fleet-start numerator on the
+`reclaimed` run grants are excluded from the fleet-start numerator on the
 mirror of that logic. A reclaim restarts work that was admitted and counted once. Counting the restart would let a flapping runner push the ratio above 1.
 
 An availability figure that improves as the fleet gets less
@@ -187,7 +187,7 @@ Every family the census declares has a producer
 has no census row. What follows is what no family measures yet.
 
 **End-to-end fleet availability has both halves.**
-`agentsfleet_fleet_runs_started_total{kind}` is incremented at the one lease grant point. `agentsfleet_admissions_total{outcome="accepted"}` is the ledger queue's denominator. The retired stream queue labelled the same outcome
+`agentsfleet_fleet_runs_started_total{kind}` is incremented at the one run grant point. `agentsfleet_admissions_total{outcome="accepted"}` is the ledger queue's denominator. The retired stream queue labelled the same outcome
 `appended`, which the table above still records.
 
 **API latency is measured.** `agentsfleet_api_request_duration_seconds`
@@ -247,13 +247,13 @@ Closing that gap is collector configuration rather than a census change.
 
 Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
-Fleet-runtime leases run inside `runner.lease` spans. Private authoring takes a separate path without that span (the `afr_supervisor` worker pool).
+Fleet-runtime runs run inside `runner.run` spans. Private authoring takes a separate path without that span (the `afr_supervisor` worker pool).
 
 A followed tool GET emits `http_redirect_started` and exactly one `http_redirect_completed` or `http_redirect_failed` in the parent tool-call context (`af_egress`). The terminal record carries hop count, upstream status, whether headers were stripped, a fixed safe reason and elapsed milliseconds.
 
 Cancellation and the aggregate deadline end with failure. No destination path, query, signature or response body enters these records; existing `tool_refused` records remain in place.
 
-Completed redirects log at info; failed redirects log at warn with a registered error code. A GET that exhausts its aggregate deadline also emits `http_read_deadline_exceeded` at warn (`afr_tools`), including when it expires before observing a redirect. That record carries only the lease, tool, fixed reason and registered error code.
+Completed redirects log at info; failed redirects log at warn with a registered error code. A GET that exhausts its aggregate deadline also emits `http_read_deadline_exceeded` at warn (`afr_tools`), including when it expires before observing a redirect. That record carries only the run, tool, fixed reason and registered error code.
 
 **What the runner reads.** The runner reads the endpoint, protocol and timeout
 knobs the daemon reads, and no header knob. `OTEL_EXPORTER_OTLP_HEADERS`, a
@@ -262,7 +262,7 @@ a user in the endpoint (`http://user:secret@…`) stops `run`, naming the knob.
 
 A header is how an OTLP exporter carries a credential, and the runner holds
 none. The credential belongs to the runner collector on the host, which a
-lease cannot read. `afr_telemetry` is the runner's only pipeline builder, so no
+run cannot read. `afr_telemetry` is the runner's only pipeline builder, so no
 other runner crate can carry a credential into one.
 
 A compression knob also stops `run`, naming it, because this build compresses
@@ -275,30 +275,30 @@ no telemetry knob, so hardening still sees a single thread.
 
 **What it exports.**
 
-- **Spans:** `runner.lease`, `invoke_agent`, `chat` and `execute_tool`, and
+- **Spans:** `runner.run`, `invoke_agent`, `chat` and `execute_tool`, and
   nothing else. The layer admits only spans under the `agentsfleet-runner`
   target. No library's span leaves the host, and no log record rides a span as
   an event.
 
-  Each lease is its own root trace carrying `agentsfleet.lease.id`
-  and `agentsfleet.event.id`. When the lease concludes, `runner.lease` gains
+  Each run is its own root trace carrying `agentsfleet.run.id`
+  and `agentsfleet.event.id`. When the run concludes, `runner.run` gains
   each segment it reached as `agentsfleet.runner.<segment>_ms`, the values its
-  `lease_completed` line logs. `RUNNER_SEGMENT_KEYS` in `semconv` declares
+  `run_completed` line logs. `RUNNER_SEGMENT_KEYS` in `semconv` declares
   the ten keys, and an unreached segment stays off the span.
 
   The tool span names its tool by the published catalog, or `_other` for anything else. A name the model made up therefore never leaves the host.
 
 - **A fixed span budget** (`afr_telemetry`'s `budget` module): at most
-  `MAX_LEASE_SPANS` (256) spans per lease, its root included. The runner-wide cap is `RUNNER_SPANS_PER_SECOND` (128) per monotonic second. A
-  lease's root is never refused.
+  `MAX_RUN_SPANS` (256) spans per run, its root included. The runner-wide cap is `RUNNER_SPANS_PER_SECOND` (128) per monotonic second. A
+  run's root is never refused.
 
   The root is charged to its second while the second
   has room, and kept uncharged in a second already spent. A second's exports
-  therefore pass 128 only by the roots of leases started after it was spent. A
+  therefore pass 128 only by the roots of runs started after it was spent. A
   span started under a shed span is shed too, so no exported span points at a
   parent the collector never received.
 
-  The budget is a fixed table of lease
+  The budget is a fixed table of run
   slots claimed by compare-and-swap, plus one packed word for the second.
   Admitting a span therefore never waits on another worker. A shed span counts in
   `agentsfleet_runner_spans_suppressed_total`.
@@ -317,14 +317,14 @@ no telemetry knob, so hardening still sees a single thread.
 
   The runner's telemetry records them by implementing that `Observer`, so the
   harness layer depends on no runner crate. Sandbox families cover start, wait
-  and release durations, builds, holds between a fleet's leases, and processes
+  and release durations, builds, holds between a fleet's runs, and processes
   killed for memory.
 
   Other families cover tool-call duration by tool and outcome, dropped
   live-tail frames, failed memory pushes, memory sources and decision-model
   evaluations. Model-call families record duration, first token, tokens, and
   cache reads and writes by model and provider. Frames drop through
-  backpressure, a failed post, or abandonment when a lease stops waiting for a
+  backpressure, a failed post, or abandonment when a run stops waiting for a
   slow daemon.
 
   A provider label uses the shared, bounded public naming registry: compiled
@@ -350,7 +350,7 @@ no telemetry knob, so hardening still sees a single thread.
   hold, and waits no longer than one export's timeout.
 
 - **Never:** logs (stderr, read by the collector from the host's log store),
-  prompts, replies, tool output or credentials. No tenant, fleet, lease or
+  prompts, replies, tool output or credentials. No tenant, fleet, run or
   event identifier rides a metric.
 
 **Decided Oct 04, 2026; traces and metrics installed in dev Nov 04, 2026.**
@@ -384,7 +384,7 @@ BARE-METAL HOST (dev collector installed; log forwarding remains deferred)
   agentsfleet-runner
     ├─ structured stderr ──► journald ─────────► runner collector ──► backends
     ├─ spans + runner families ── OTLP ──────────►┘  (its own; never otelcol-{env})
-    └─ lease / heartbeat / renew / activity / report ──► agentsfleetd
+    └─ run / heartbeat / renew / activity / report ──► agentsfleetd
 
 agentsfleetd (built)
   ├─ runtime metric families ─┐
@@ -418,9 +418,9 @@ rate, sampling and retry limits and its proof.
 |---|---|---|---|
 | runner logs | runner logfmt on stderr; host owns retention | today none off the host; decided: host log store → runner collector → backends | host policy caps disk; the allowlist above; loss never blocks a run |
 | runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
-| runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `docs/metrics.runner.census.tsv`; no tenant, fleet, lease or event identifier |
+| runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `docs/metrics.runner.census.tsv`; no tenant, fleet, run or event identifier |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
-| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per lease, root included, and 128 per second, roots never refused, the rest counted; joins `fleet.delivery` by the `event_id` attribute, and the lease identifier tells a redelivered event's runs apart |
+| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per run, root included, and 128 per second, roots never refused, the rest counted; joins `fleet.delivery` by the `event_id` attribute, and the run identifier tells a redelivered event's runs apart |
 | control-plane logs | structured logger | stderr + OTLP through `otelcol-{env}` to Loki | the SDK batch log processor's queue (2048 records by default); a full queue drops, enqueue never blocks |
 | control-plane metrics | runtime + cost families | one OTLP push; no pull endpoint | fixed labels or explicit caps |
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | no route policy yet: one span per matched request; the 2048-span batch queue drops past its cap without counting |
@@ -436,18 +436,18 @@ rate, sampling and retry limits and its proof.
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `af_observability`'s counting wrapper; `serve/exporting.rs` spawns `otlp_export`, which samples the resident set and runs the shutdown flush |
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`af_observability`'s `producers` module); a family with no producer fails `every_census_family_has_a_producer` |
 | PostHog events | installed, called when configured | `af_observability`'s `product` module; boot opens the client, the supervised `analytics_flush` task drains it before exit |
-| runner export | installed, called when configured | `run` in `agentsfleet-runner`'s `main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime leases run inside a `runner.lease` span; authoring currently has no equivalent lease span |
-| runner collector | installed in dev; real lease spans and provider histogram verified in Grafana Nov 04, 2026 | `deploy/baremetal/otelcol-runner.{yml,nft,service}` and `install-collector.sh`; localhost receiver behind root-only admission; traces and metrics only; actual-sandbox probe pending |
+| runner export | installed, called when configured | `run` in `agentsfleet-runner`'s `main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime runs run inside a `runner.run` span; authoring currently has no equivalent run span |
+| runner collector | installed in dev; real run spans and provider histogram verified in Grafana Nov 04, 2026 | `deploy/baremetal/otelcol-runner.{yml,nft,service}` and `install-collector.sh`; localhost receiver behind root-only admission; traces and metrics only; actual-sandbox probe pending |
 
 ## Metrics stay semantic
 
-`agentsfleetd` updates fixed in-memory state after it accepts heartbeat, lease,
+`agentsfleetd` updates fixed in-memory state after it accepts heartbeat, run,
 and report verbs. One terminal report records five cost samples through the
 report handler's `meter` in `afd_api_runner`. They are one duration, an input
 and an output token count, one cache-read token count, and one settle-class
 credit amount.
 
-Never turn scheduler arms, activity frames, log lines, lease or event identifiers, model text, error text or raw runner identifiers into metric labels. A scheduler metric is justified only as a fixed aggregate (queue depth,
+Never turn scheduler arms, activity frames, log lines, run or event identifiers, model text, error text or raw runner identifiers into metric labels. A scheduler metric is justified only as a fixed aggregate (queue depth,
 fired total, stale-target total).
 
 The runner's own series carry only the facts no verb carries
@@ -464,21 +464,21 @@ accepted terminal report. It does not read the World Wide Web Consortium (W3C)
 request span is therefore a new root, and the header never rejects a request.
 
 The Rust runner exports its spans to the runner collector under a fixed
-per-lease and per-second budget. Its verbs carry no trace field. See §`agentsfleet-runner` has a collector of its own.
+per-run and per-second budget. Its verbs carry no trace field. See §`agentsfleet-runner` has a collector of its own.
 
-Each lease is its own root trace
-carrying `agentsfleet.lease.id` and `agentsfleet.event.id`. It joins
+Each run is its own root trace
+carrying `agentsfleet.run.id` and `agentsfleet.event.id`. It joins
 `fleet.delivery` by attribute, and no W3C context crosses the runner protocol.
 
-**`fleet.delivery` is the chat round trip.** It starts at the event's creation and ends when `event_complete` publishes, both on this daemon's clock. The start is the lease row's `event_created_at`; the end is the publish instant `Plane::announce` reads.
+**`fleet.delivery` is the chat round trip.** It starts at the event's creation and ends when `event_complete` publishes, both on this daemon's clock. The start is the run row's `event_created_at`; the end is the publish instant `Plane::announce` reads.
 
-Beside its identity the span carries one attribute per segment. `agentsfleet.delivery.queue_wait_ms` (event creation to lease issue) and `complete_ms` (report receipt to publish) are measured here. `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms` and `settle_ms` come from the runner's `telemetry.segments`.
+Beside its identity the span carries one attribute per segment. `agentsfleet.delivery.queue_wait_ms` (event creation to run issue) and `complete_ms` (report receipt to publish) are measured here. `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms` and `settle_ms` come from the runner's `telemetry.segments`.
 
-Every runner-reported figure is capped at `MAX_RUN`. For a reclaimed event, `queue_wait_ms` and `event_to_complete` include the earlier attempt, the round trip its owner waited. `runner_lease_issued`'s `queue_wait_ms` counts only fresh entries.
+Every runner-reported figure is capped at `MAX_RUN`. For a reclaimed event, `queue_wait_ms` and `event_to_complete` include the earlier attempt, the round trip its owner waited. `runner_run_issued`'s `queue_wait_ms` counts only fresh entries.
 
 The segments do not partition the round trip; the sandbox wait runs beside the model's time. A start the span cannot place falls back to the end less the reported `wall_ms`. Per-fleet p95 and p99 come from Tempo on `gen_ai.agent.id` (`playbooks/operations/observability/002_round_trip_percentiles.md`).
 
-Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `lease_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
+Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `run_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
 
 **Daemon verb spans name the stages a chat crosses.** A verb builds a stage clock from `af_observability`'s `verb_span` module at its entry. It marks each boundary it reaches and records one root span when it ends, on every exit. The span goes through the global tracer, asked for at record time, as `fleet.delivery` does.
 
@@ -488,7 +488,7 @@ A verb that reaches no stage records nothing. The common case is an offer pass t
 
 Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent. `issue` ends where the offer frame is built, or where the delivery returns without building one, so a refused claim shows `claim`, `admit` and `issue` and no `encode` or `send`.
 
-The spans carry `agentsfleet.event.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.lease` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
+The spans carry `agentsfleet.event.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.run` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
 
 **`fleet.delivery` is a custom control-plane span.** It has its own root
 (`af_observability`'s `delivery` module). `DELIVERY_SPAN_KEYS` in the crate's
@@ -531,18 +531,18 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 |---|---|---|---|
 | Steer admitted (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
 | Wake ring (`afd_bus::wake`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
-| Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_lease}` | `fleet.offer` with its stages; none for an empty pass |
-| Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_lease_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
-| Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease` with its segment attributes, same condition |
-| Report settled (`afd_fleet` lease report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
-| First chunk (`afd_fleet` lease activity) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |
+| Run issued (`afd_fleet` run delivery) | `runner_run_issued` with `queue_wait_ms`; `run_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_run}` | `fleet.offer` with its stages; none for an empty pass |
+| Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_run_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
+| Run (runner `run_loop`) | `run_completed` / `run_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.run` with its segment attributes, same condition |
+| Report settled (`afd_fleet` run report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{run_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
+| First chunk (`afd_fleet` run activity) | none | `delivery_stage{run_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |
 | Automatic quarantine or lift (`afd_runner`) | `runner_cordoned`, `runner_cordon_lifted` after commit | `agentsfleet_runner_cordon_changes_total{change}` with `cordoned` or `lifted` | none |
-| Paired recovery (`afr_supervisor`) | `respawn_checkpoint_committed`, `respawn_checkpoint_restored` with event, lease, fence and checkpoint identity | no checkpoint latency series yet | existing lease span |
+| Paired recovery (`afr_supervisor`) | `respawn_checkpoint_committed`, `respawn_checkpoint_restored` with event, run, fence and checkpoint identity | no checkpoint latency series yet | existing run span |
 
 Built in M233_002, closing the gaps M238 left:
 
 - Every daemon verb records its span with its stages: `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.hydrate` and `fleet.capture` (§1).
-- The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.lease` carries its segments (§2).
+- The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.run` carries its segments (§2).
 - The edge reports its own cost (§3). The steer route answers `Server-Timing: auth;dur=…, upstream;dur=…` after its answer is final, so a status or body never changes. The browser leaves `af:send`, `af:accepted`, `af:first-frame` and `af:complete` marks, each naming the send's operation id in `detail`.
 
 ## M243 runner stream instrumentation
@@ -821,7 +821,7 @@ Labels are bounded at the source:
 | `agentsfleet.execution.posture` | `platform`, `self_managed` | closed set; no overflow value |
 | `agentsfleet.billing.charge.type` | `settle` (one class since every charge settles usage lines through the biller) | closed set; no overflow value |
 | `gen_ai.provider.name` | canonical standard names plus public provider identities from the compiled catalogue and SDK; aliases share one emitted value | private/unrecognized names omit the attribute and count the omission |
-| `gen_ai.request.model` | the saved runtime model's catalogue identity carried by the lease; catalogue updates can add identities, and the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
+| `gen_ai.request.model` | the saved runtime model's catalogue identity carried by the run; catalogue updates can add identities, and the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
 | `surface` (library) | `tenant_models`, `global_models` | closed enum; no overflow value; a third surface is a code change rather than a label |
 | `stage` (library) | `sql`, `serialize` | closed enum; no overflow value |
 | `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `dependency_error`, `internal_error` | closed enum; no overflow value |
@@ -899,7 +899,7 @@ Apply and drift verification cover the whole suite. Attribute omissions are
 separate from exporter loss.
 
 Empty series mean unavailable samples rather than zero.
-The dev runner collector accepted its first real lease on Nov 04, 2026;
+The dev runner collector accepted its first real run on Nov 04, 2026;
 Tempo and Prometheus both received it. Sandbox/tool metrics need actual
 activity, and per-model call and database/scheduler additions require their
 new producers to be deployed.

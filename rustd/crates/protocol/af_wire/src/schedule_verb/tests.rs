@@ -23,7 +23,7 @@ fn a_create_naming_only_the_required_fields_defaults_the_rest() {
     assert!(!parsed.once, "an absent `once` is a recurring schedule");
 }
 
-/// The fleet is the lease's: a body that names one is refused, not ignored.
+/// The fleet is the run's: a body that names one is refused, not ignored.
 #[test]
 fn a_create_naming_a_fleet_is_refused() {
     let body = r#"{"fencing_token":7,"cron":"0 9 * * 1","message":"m","fleet_id":"x"}"#;

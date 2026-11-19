@@ -14,7 +14,7 @@ use super::{
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, execution, guard as task_guard, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, execution, guard as task_guard, transaction},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{
@@ -41,7 +41,7 @@ struct Descriptor<'a> {
 
 pub(in crate::task) async fn uploads(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointUploadsInput>,
 ) -> Result<CheckpointObjectsPage> {
@@ -52,11 +52,11 @@ pub(in crate::task) async fn uploads(
         .collect::<Result<Vec<_>>>()?;
     unique(&ids)?;
     let pin_id = task_guard::wire(&input.pin_id)?;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (_owned, plan, pin) = guard::owned(
         &mut tx,
-        lease,
+        run,
         &input.task,
         checkpoint,
         &pin_id,
@@ -120,7 +120,7 @@ pub(in crate::task) async fn uploads(
 
 pub(in crate::task) async fn authorize(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointAuthorizationInput>,
 ) -> Result<CheckpointAuthorizations> {
@@ -130,12 +130,12 @@ pub(in crate::task) async fn authorize(
         .map(|id| task_guard::wire(id))
         .collect::<Result<Vec<_>>>()?;
     unique(&object_ids)?;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (plan, pin) = if let Some(pin) = &input.pin_id {
         let (_owned, plan, pin) = guard::owned(
             &mut tx,
-            lease,
+            run,
             &input.task,
             checkpoint,
             &task_guard::id(pin, "pin_id")?,
@@ -147,7 +147,7 @@ pub(in crate::task) async fn authorize(
         if input.purpose != CheckpointTransferPurpose::Restore || !input.object_ids.is_empty() {
             return Err(TaskRefusal::CheckpointIncompatible.into());
         }
-        let owned = execution::load(&mut tx, lease, &input.task).await?;
+        let owned = execution::load(&mut tx, run, &input.task).await?;
         let plan = Plan::load(
             &mut tx,
             checkpoint,
@@ -159,7 +159,7 @@ pub(in crate::task) async fn authorize(
         )
         .await?;
         plan.compatible(&owned, CheckpointTransferPurpose::Restore)?;
-        let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, lease, "reader").await?;
+        let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, run, "reader").await?;
         (plan, pin)
     };
     let objects = scoped(&mut tx, &plan, &object_ids).await?;
@@ -183,13 +183,13 @@ pub(in crate::task) async fn authorize(
 
 pub(in crate::task) async fn list(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointReadQuery>,
 ) -> Result<CheckpointObjectsPage> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let owned = super::page::read_authority(&mut tx, lease, checkpoint, &input.pin_id).await?;
+    let owned = super::page::read_authority(&mut tx, run, checkpoint, &input.pin_id).await?;
     let (_current, plan, pin) = owned;
     let after: Option<Uuid7> = input
         .starting_after

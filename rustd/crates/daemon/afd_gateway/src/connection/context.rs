@@ -28,7 +28,7 @@ impl ConnectionServices {
         )
         .await?;
         if matches!(message, Message::TurnCheckpoint { .. }) {
-            af_wire::lease::TurnMessageSize {
+            af_wire::run::TurnMessageSize {
                 bytes: frame.as_bytes().len(),
             }
             .validate()?;
@@ -81,14 +81,10 @@ impl ConnectionServices {
         })
     }
 
-    pub(super) async fn cancel(
-        &self,
-        lease: &af_core::id::Uuid7,
-        code: &'static str,
-    ) -> Result<()> {
-        self.cache.cancel(lease);
+    pub(super) async fn cancel(&self, run: &af_core::id::Uuid7, code: &'static str) -> Result<()> {
+        self.cache.cancel(run);
         self.send(&Message::Cancel {
-            lease_id: lease.as_str().into(),
+            run_id: run.as_str().into(),
             error_code: code.into(),
         })
         .await
@@ -129,8 +125,8 @@ impl ConnectionServices {
                 ),
             )
             .await?;
-        for lease in cancelled {
-            self.cancel(&lease, af_core::error_code::RUN_LEASE_CANCELLED.as_str())
+        for run in cancelled {
+            self.cancel(&run, af_core::error_code::RUN_CANCELLED.as_str())
                 .await?;
         }
         Ok(())

@@ -133,7 +133,7 @@ impl SessionSender {
         );
         let frame = af_stream::encode(message, &self.budget, kind, &self.stop, deadline).await?;
         if matches!(message, Up::TurnCheckpoint { .. }) {
-            af_wire::lease::TurnMessageSize {
+            af_wire::run::TurnMessageSize {
                 bytes: frame.as_bytes().len(),
             }
             .validate()?;

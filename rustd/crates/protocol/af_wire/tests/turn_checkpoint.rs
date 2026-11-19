@@ -1,6 +1,6 @@
 //! Ordinary recovery refuses ambiguous authority and never prints private root contents.
 
-use af_wire::lease::{
+use af_wire::run::{
     TURN_CHECKPOINT_BYTES, TurnCheckpointCommand, TurnCheckpointKind, TurnPrivateRoot,
 };
 use garde::Validate;
@@ -39,16 +39,16 @@ fn begin() -> serde_json::Value {
 #[test]
 fn native_turn_commands_use_reports_and_count_escaped_envelope_bytes() -> Checked {
     use af_wire::{
-        lease::TurnMessageSize,
         protocol::{Down, StreamKind, Up},
+        run::TurnMessageSize,
     };
-    let value = json!({"type":"turn_checkpoint","request_id":2,"lease_id":ID,"request":begin()});
+    let value = json!({"type":"turn_checkpoint","request_id":2,"run_id":ID,"request":begin()});
     let encoded = serde_json::to_string(&value)?;
     let request: Up<'_> = serde_json::from_str(&encoded)?;
     request.validate()?;
     assert_eq!(request.stream_kind(), StreamKind::Reports);
     assert_eq!(request.request_id().map(std::num::NonZeroU64::get), Some(2));
-    let response = json!({"type":"turn_checkpoint","request_id":2,"lease_id":ID,"operation_id":ID,"kind":"abandon",
+    let response = json!({"type":"turn_checkpoint","request_id":2,"run_id":ID,"operation_id":ID,"kind":"abandon",
         "answer":{"status":"ok","response":{"kind":"abandoned"}}});
     let encoded = serde_json::to_string(&response)?;
     let response: Down<'_> = serde_json::from_str(&encoded)?;

@@ -131,8 +131,8 @@ Workers retain pending reports in memory; no report files or spool drains remain
 |---|---|---|---|---|
 | Native connection | `afr_supervisor::run` | Four streams, request correlation, offers and reconnect | Bounded channels, permits and cancellation owners | Remains available while accepted workers settle; cancellation joins its tasks |
 | Heartbeat policy | `afr_supervisor::run`, beside the worker pool | Current assignment | A `watch` channel | Halt → return → joined |
-| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its lease and that lease's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | New offers stop; accepted work has thirty seconds, then five seconds for cleanup before abort and join |
-| hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next lease | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
+| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its run and that run's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | New offers stop; accepted work has thirty seconds, then five seconds for cleanup before abort and join |
+| hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next run | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
 | executor link (one per sandbox) | `afr_executor`'s client | one sandbox's executor connection | owned by the link task | ends with its sandbox |
 
 ---
@@ -191,11 +191,11 @@ constraint. Each is documented at its declaration (C4).
 | child registry | `afr_agent`'s nested `Registry` | one run's children, and the running and started counts that bound them | leaf, held alone |
 | process events | `afr_executor`'s events `Shared` | one process's output state, shared by its two ends | leaf, held alone |
 | admitted toolboxes | `afr_sandbox`'s `Toolboxes` | the images one host has admitted, oldest first | leaf, held alone |
-| lease memory | `afr_tools`'s `Lease::memory` (tokio) | the fleet's memory backend for one lease | held for one read or write, never across a call |
-| lease egress | `afr_tools`'s `Lease::egress` (tokio) | the lease's policy and the credentials it has minted | held to admit or mask, never across a send |
-| exec sessions | `afr_tools`'s `Sessions` | one lease's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
+| run memory | `afr_tools`'s `Run::memory` (tokio) | the fleet's memory backend for one run | held for one read or write, never across a call |
+| run egress | `afr_tools`'s `Run::egress` (tokio) | the run's policy and the credentials it has minted | held to admit or mask, never across a send |
+| exec sessions | `afr_tools`'s `Sessions` | one run's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
 | mirror locks | `afr_supervisor`'s `Mirrors` | the map of one lock per repository mirror | held only to fetch that mirror's tokio lock, which is held across the mirror's fetch and checkout |
-| run clock and lease timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one lease's segment timings | each a leaf, held alone |
+| run clock and run timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one run's segment timings | each a leaf, held alone |
 | private report state | `afr_supervisor`'s authoring spool | clock high-water mark, uncertainty flag and monotonic report deadlines | shared by writes and cleanup; filesystem work runs on the blocking pool |
 | egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf, held alone |
 
@@ -270,7 +270,7 @@ A detached task retains its owned references until it ends. The intended C2 disc
 
 The runner joins its heartbeat, runtime report drain, private report drain and worker pool (`afr_supervisor::run`). Private spool cleanup completes before those components start. After they return, shutdown destroys every held sandbox.
 
-Workers finish their current lease before leaving the pool. Lease deadlines, renewal refusals and the running halt token can interrupt that work.
+Workers finish their current run before leaving the pool. Run deadlines, renewal refusals and the running halt token can interrupt that work.
 
 Handshakes, not sleeps, in every one of these tests: channels, `Notify` and
 `CancellationToken` on both planes. The abandoned-task assertions run under
@@ -307,10 +307,10 @@ map to keep consistent and no generation check to get wrong.
 
 Per-call timeouts stay where they are. Recurring deadline passes are another
 matter: each plane runs them on one clock. The daemon's `sweeper:expiry` runs
-every `maintenance.expired_work.interval_seconds` (2 s by default); startup refuses an interval as long as one lease lifetime.
+every `maintenance.expired_work.interval_seconds` (2 s by default); startup refuses an interval as long as one run lifetime.
 
-It bills expired leases and expires authoring
-attempts in one tick. The runner arms one host timer for its leases' deadlines.
+It bills expired runs and expires authoring
+attempts in one tick. The runner arms one host timer for its runs' deadlines.
 A failed pass logs and waits for the next tick.
 
 ---
@@ -330,13 +330,13 @@ Integration (CI) job runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims hold the runner row while counting live capacity and writing a lease. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each lease's slot and row in fleet order, and samples database time once after them.
+All claims hold the runner row while counting live capacity and writing a run. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each run's slot and row in fleet order, and samples database time once after them.
 
-Renewals never wait on each other. A credential rotation fences every renewal behind it. A lease issue, which holds the row exclusively, waits for an in-flight renewal statement and the reverse.
+Renewals never wait on each other. A credential rotation fences every renewal behind it. A run issue, which holds the row exclusively, waits for an in-flight renewal statement and the reverse.
 
 The funds check reads the wallet without a lock, once per payer every third tick. The setup chat renewal still holds the runner row before extending deadlines.
 
-A setup chat renewal takes draft → attempt → runner instead (`afd_setup`'s lease renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
+A setup chat renewal takes draft → attempt → runner instead (`afd_setup`'s run renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 
 The claim is the one path that holds a host and then asks for a draft. It never waits for the draft (below).
 
@@ -344,7 +344,7 @@ Retiring a revoked runner (`afd_runner`'s `delete_revoked`) is the one opposite 
 
 So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
 
-Runtime reports take the lease row and never the runner, authoring or wallet rows. Only the billing relay writes a wallet row, in its own transactions. It stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
+Runtime reports take the run row and never the runner, authoring or wallet rows. Only the billing relay writes a wallet row, in its own transactions. It stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
 
 Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage counts against nothing until the replay that learns it logs its lines.
 
@@ -366,7 +366,7 @@ The decision sweep defers a candidate whose fleet row is locked to its next pass
 
 ### The setup chat claim never waits on a row
 
-A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_setup`'s lease claim). Each locks the host row, then the creator's user row, then the draft.
+A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_setup`'s run claim). Each locks the host row, then the creator's user row, then the draft.
 
 Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. A claim that waited on a busy draft held its host row throughout, and every tenant behind that draft waited with it:
 
@@ -378,7 +378,7 @@ BEFORE — the claim waits                      AFTER — the claim skips
    ├─ draft A1 (tenant A) ── held by a writer    ├─ draft A1 ── held? NOWAIT refuses
    │     ⏳ waits until the writer commits        │     ↩ savepoint rolls back, A1 skipped
    │     (host row R held, ~1 s per write)       ├─ draft B1 (tenant B) ── free
-   ├─ draft B1 (tenant B) ── never reached       │     ✔ admitted, lease issued
+   ├─ draft B1 (tenant B) ── never reached       │     ✔ admitted, run issued
    │     until A's write ends                    └─ commit; A1 is admitted on a later
    └─ every pass repeats the wait                    pass, once its writer lets go
 ```
@@ -390,8 +390,8 @@ A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back kee
 
 The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every claim pass of the walk. A skipped draft is passed over, not dropped. Its order by age resumes on the first claim pass after the writer commits.
 
-`make bench-lease BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat lease p95 3 006 → 707 ms, 41.7 → 62.7 leases/s.
+`make bench-run BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat run p95 3 006 → 707 ms, 41.7 → 62.7 runs/s.
 
-No lease was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
+No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
 The proofs are `afd_setup`'s `skipping` admission tests. A claim can still be a deadlock victim on a lock it does wait for. That lock is the catalogue its model read shares (the `revalidation` admission tests).

@@ -1,4 +1,4 @@
-//! What the loop's suites share: a lease, a scripted provider that keeps every
+//! What the loop's suites share: a run, a scripted provider that keeps every
 //! request it was sent, and tools whose output or stall a test chooses.
 
 #![expect(
@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use af_wire::activity::ActivityFrame;
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use afr_tools::{CatalogTool, Entry, ToolContext};
 use guffbolt::tools::{NoArguments, Schema};
 use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
@@ -23,20 +23,20 @@ mod model;
 
 /// Why a fixture send cannot fail: the test holds the receiver until it reads.
 pub(crate) const RECEIVER_HELD: &str = "the test holds the receiver for as long as the run";
-/// Where a fixture lease's context knobs sit.
+/// Where a fixture run's context knobs sit.
 const CONTEXT_POINTER: &str = "/policy/context";
-/// The instant the fixture lease expires at and its event was made at.
+/// The instant the fixture run expires at and its event was made at.
 const AT: &str = "1970-01-01T00:00:00.001Z";
 
-/// The provider key every fixture lease carries.
+/// The provider key every fixture run carries.
 pub(crate) const API_KEY: &str = "sk-test-0123456789";
-/// The static credential every fixture lease carries.
+/// The static credential every fixture run carries.
 pub(crate) const GITHUB_TOKEN: &str = "ghp_fixture_token_abcdef";
 
-/// A lease offering `tools`, with `budget` as its context knobs.
-pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'static> {
+/// A run offering `tools`, with `budget` as its context knobs.
+pub(crate) fn payload(tools: &[&str], budget: serde_json::Value) -> RunPayload<'static> {
     let mut document = serde_json::json!({
-        "lease_id": "lease-1", "fencing_token": 7, "lease_expires_at": AT,
+        "run_id": "run-1", "fencing_token": 7, "run_expires_at": AT,
         "event": {"event_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
             "actor": "operator-1", "event_type": "chat",
             "request_json": "{\"message\":\"triage the failed run\"}", "created_at": AT},
@@ -54,9 +54,9 @@ pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'
     serde_json::from_str(text).unwrap()
 }
 
-/// The scrub of a lease carrying the fixture secrets.
+/// The scrub of a run carrying the fixture secrets.
 pub(crate) fn scrub() -> Scrub {
-    Scrub::new(&lease(&[], unbounded()).policy).unwrap()
+    Scrub::new(&payload(&[], unbounded()).policy).unwrap()
 }
 
 /// `text` as the scrub hands it on.

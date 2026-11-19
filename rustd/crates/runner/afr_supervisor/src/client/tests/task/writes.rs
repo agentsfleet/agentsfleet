@@ -26,16 +26,16 @@ async fn typed_bindings_and_receipts_preserve_complete_native_request_and_replay
         request(Method::POST, "input-receipts", receipt(), answered.clone()),
     ])
     .await;
-    let lease = Uuid7::parse(ID).unwrap();
+    let run = Uuid7::parse(ID).unwrap();
     let result = server
         .plane
-        .task_bindings(&lease, &serde_json::from_value(binding()).unwrap())
+        .task_bindings(&run, &serde_json::from_value(binding()).unwrap())
         .await
         .unwrap();
     assert_eq!(serde_json::to_value(result).unwrap(), bound);
     let result = server
         .plane
-        .task_input_receipt(&lease, &serde_json::from_value(receipt()).unwrap())
+        .task_input_receipt(&run, &serde_json::from_value(receipt()).unwrap())
         .await
         .unwrap();
     assert_eq!(serde_json::to_value(result).unwrap(), answered);
@@ -81,9 +81,6 @@ async fn a_native_publication_refusal_is_not_redispatched_or_reinterpreted() {
         .await
         .unwrap_err();
     assert_eq!(failure.refusal_status(), Some(409));
-    assert_eq!(
-        failure.refusal_code(),
-        Some(af_core::error_code::RUN_LEASE_LOST)
-    );
+    assert_eq!(failure.refusal_code(), Some(af_core::error_code::RUN_LOST));
     server.finish();
 }

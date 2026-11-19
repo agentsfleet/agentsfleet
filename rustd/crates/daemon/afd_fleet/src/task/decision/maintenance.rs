@@ -89,7 +89,7 @@ async fn candidates(
 
 async fn scan(tasks: &Tasks, cursor: &DecisionMaintenanceCursor) -> Result<Vec<Candidate>> {
     fetch::rows(
-        tasks.leases.pool(),
+        tasks.runs.pool(),
         sqlx::query_as(sql::EXPIRED_UNISSUED)
             .bind(i64::from(BATCH_LIMIT))
             .bind(
@@ -118,7 +118,7 @@ async fn process(
     };
     swept.expired += 1;
     let decision_call_id = written.call.id.as_str();
-    let original_lease_id = written.call.original_lease_id.as_str();
+    let original_run_id = written.call.original_run_id.as_str();
     {
         let (event, reason, released_reservation_nanos) = (
             &"dt_decision_expired_unissued",
@@ -128,7 +128,7 @@ async fn process(
         tracing::debug!(
             event,
             decision_call_id,
-            original_lease_id,
+            original_run_id,
             reason,
             released_reservation_nanos
         );
@@ -221,10 +221,10 @@ async fn expire(
     receipt: &DecisionReceipt,
     digest: &str,
 ) -> Result<Option<Written>> {
-    let Some(call) = row::peek(tasks.leases.pool(), Lookup::Id(id)).await? else {
+    let Some(call) = row::peek(tasks.runs.pool(), Lookup::Id(id)).await? else {
         return Ok(None);
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let result = expire_on(&mut connection, tasks, &call, receipt, digest).await;
     transaction::recycle(connection);
     result
@@ -251,7 +251,7 @@ async fn expire_on(
         receipt,
         digest,
     }
-    .write(&mut tx, tasks.leases.entropy(), Plan::NotSent)
+    .write(&mut tx, tasks.runs.entropy(), Plan::NotSent)
     .await?;
     tx.commit()
         .await

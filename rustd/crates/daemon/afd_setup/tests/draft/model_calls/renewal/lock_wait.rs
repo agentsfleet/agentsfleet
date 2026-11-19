@@ -2,7 +2,7 @@
 //!
 //! Renewal's lock is the attempt row (money moves through the biller in its
 //! own transactions, so no wallet row is locked here): a renewal that waited on
-//! it must read the clock after the wait, and refuse a lease that expired
+//! it must read the clock after the wait, and refuse a run that expired
 //! meanwhile.
 
 use super::super::fixture::{self, Provider};
@@ -42,7 +42,7 @@ async fn expiry_during_observed_attempt_wait_denies_renewal_without_meter_advanc
             .expect("expiry wins while waiting");
         held.commit().await.expect("release attempt");
     };
-    let (renewed, ()) = tokio::join!(f.drafts.renew(&f.runner, &a.lease, request()), expire);
+    let (renewed, ()) = tokio::join!(f.drafts.renew(&f.runner, &a.run, request()), expire);
     assert_eq!(
         renewed.expect_err("wait cannot revive expiry").code(),
         error_code::AUTHORING_FENCE
@@ -69,17 +69,17 @@ async fn blocked(f: &Fixture, pid: i32) {
     }
 }
 
-/// Leaves the attempt's lease one second live on database time.
+/// Leaves the attempt's run one second live on database time.
 const ONE_SECOND_LEFT: &str = "UPDATE authoring.attempts \
-SET lease_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '1 second' \
+SET run_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '1 second' \
 WHERE id=$1";
 
 // The expiry is read once, before the hold, and the wait compares it with the
 // database clock only: polling `authoring.attempts` while the hold stands would
 // queue behind any other test's DDL on that table, which itself waits on this
 // renewal — a cross-test wait Postgres cannot see as a deadlock.
-const EXPIRES: &str = "SELECT lease_expires_at::text FROM authoring.attempts WHERE id=$1";
-/// Whether the attempt's lease has run out on database time.
+const EXPIRES: &str = "SELECT run_expires_at::text FROM authoring.attempts WHERE id=$1";
+/// Whether the attempt's run has run out on database time.
 const LAPSED: &str = "SELECT $1::timestamptz <= clock_timestamp()";
 
 #[tokio::test]
@@ -92,17 +92,17 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
-        .expect("a lease about to lapse");
+        .expect("a run about to lapse");
     let before = snapshot(&f, &a).await;
     let expires: String = sqlx::query_scalar(EXPIRES)
         .bind(&a.id)
         .fetch_one(&mut *f.connection().await)
         .await
-        .expect("read the lease expiry");
+        .expect("read the run expiry");
     let mut holder = f.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
     // The model check reads the owner's model FOR SHARE, after the guard has
-    // already passed the still-live lease.
+    // already passed the still-live run.
     let pid: i32 = sqlx::query_scalar(
         "SELECT pg_backend_pid() FROM model.tenant_models WHERE id=$1 FOR UPDATE",
     )
@@ -110,13 +110,13 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
     .fetch_one(&mut *held)
     .await
     .expect("hold the owner's model");
-    let (renewed, ()) = tokio::join!(f.drafts.renew(&f.runner, &a.lease, request()), async {
+    let (renewed, ()) = tokio::join!(f.drafts.renew(&f.runner, &a.run, request()), async {
         f.waits_on(pid, 1).await;
         while !sqlx::query_scalar::<_, bool>(LAPSED)
             .bind(expires.as_str())
             .fetch_one(&mut *f.connection().await)
             .await
-            .expect("read the lease")
+            .expect("read the run")
         {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
@@ -125,7 +125,7 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
     drop(holder);
     assert_eq!(
         renewed
-            .expect_err("the lease lapsed before the final clock read")
+            .expect_err("the run lapsed before the final clock read")
             .code(),
         error_code::AUTHORING_FENCE
     );
@@ -171,7 +171,7 @@ async fn test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free() {
         held.commit().await.expect("release the draft");
         host
     };
-    let (renewed, host) = tokio::join!(f.drafts.renew(&f.runner, &a.lease, request()), probe);
+    let (renewed, host) = tokio::join!(f.drafts.renew(&f.runner, &a.run, request()), probe);
     host.expect("the host row was free while the renewal waited");
     renewed.expect("the renewal completes once the draft is free");
     drop(connection);

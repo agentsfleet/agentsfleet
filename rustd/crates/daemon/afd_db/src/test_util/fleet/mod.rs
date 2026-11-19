@@ -1,6 +1,6 @@
 //! The `fleet.fleets` row a suite seeds, spelled once.
 //!
-//! Most integration suites need a fleet to hang leases, events, grants or
+//! Most integration suites need a fleet to hang runs, events, grants or
 //! schedules from. Each used to write its own `INSERT INTO` with
 //! positional binds the compiler cannot check, so dropping one column meant
 //! editing forty-odd suites by hand. They build a [`FleetSeed`] instead and the
@@ -74,7 +74,7 @@ pub struct SetupRevision<'a> {
     pub digest: &'a str,
     /// The policy semantics it was written under.
     pub semantics: &'a str,
-    /// The runtime model it runs, for a fleet the lease path reads.
+    /// The runtime model it runs, for a fleet the run path reads.
     pub model_ref: Option<&'a str>,
 }
 
@@ -152,7 +152,7 @@ impl<'a> FleetSeed<'a> {
         self
     }
 
-    /// The setup revision the fleet selects, which admission and the lease
+    /// The setup revision the fleet selects, which admission and the run
     /// path both require. Numbers it [`FIRST_SETUP_REVISION`] unless
     /// [`FleetSeed::versions`] named one.
     pub const fn setup(mut self, revision: SetupRevision<'a>) -> Self {

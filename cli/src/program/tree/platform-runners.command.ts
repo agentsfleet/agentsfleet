@@ -52,11 +52,11 @@ export const runnersCommand = (kind: RunnerKind, visibility: Visibility) => {
     since: sinceFlag, until: eventTimeFlag("until", false),
   }).pipe(Command.withDescription(`Read runner activity (${readScope})`), guardedHandler(({id, limit, startingAfter, eventType, since, until}) =>
     runnerHistory(id, RunnerHistory.Events, {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
-  const leases = Command.make("leases", {...runnerId, ...platformPagingFlags,
+  const runs = Command.make("runs", {...runnerId, ...platformPagingFlags,
     workspace: requiredIdFlag("workspace", "Filter by workspace").pipe(Flag.optional),
     fleet: requiredTextFlag("fleet", "Filter by fleet ID or exact name").pipe(Flag.optional),
-  }).pipe(Command.withDescription(`Read runner leases (${readScope})`), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
-    runnerHistory(id, RunnerHistory.Leases, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
+  }).pipe(Command.withDescription(`Read runner runs (${readScope})`), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
+    runnerHistory(id, RunnerHistory.Runs, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
 
   // Registering is independent of the read/write ladder: a registrar sees
   // `register` and nothing else unless the server also reported read.
@@ -65,7 +65,7 @@ export const runnersCommand = (kind: RunnerKind, visibility: Visibility) => {
   const write = grants(visibility, writeScope);
   const reads = listedWhen(read);
   const writes = listedWhen(write);
-  const history = kind.history ? [reads(events), reads(leases)] : [];
+  const history = kind.history ? [reads(events), reads(runs)] : [];
   return {
     listed: read || registrable || write,
     command: Command.make("runners").pipe(

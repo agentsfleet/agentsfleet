@@ -16,7 +16,7 @@ pub const BILLING_PERIOD_MONTH: &str = "month";
 pub const BILLING_PERIOD_TODAY: &str = "today";
 /// Seven UTC calendar days ending at the reporting cutoff.
 pub const BILLING_PERIOD_WEEK: &str = "week";
-/// A billed fleet lease, as the reporting API names it.
+/// A billed fleet run, as the reporting API names it.
 pub const BILLING_ACTIVITY_RUNTIME: &str = "runtime";
 /// A private setup attempt, as the reporting API names it.
 pub const BILLING_ACTIVITY_SETUP: &str = "setup";

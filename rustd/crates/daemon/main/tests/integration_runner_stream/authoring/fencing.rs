@@ -11,14 +11,14 @@ use agentsfleetd::supervisor::Supervisor;
 async fn stale_connection_cannot_call_propose_renew_or_complete() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     let previous = fixture.connection().await;
     fixture.replace_authority().await;
     assert_ne!(previous, fixture.connection().await);
     assert_eq!(
         fixture
             .session
-            .authoring_model(&lease, &fixture.model())
+            .authoring_model(&run, &fixture.model())
             .await
             .expect_err("stale model call")
             .code(),
@@ -27,7 +27,7 @@ async fn stale_connection_cannot_call_propose_renew_or_complete() {
     assert_eq!(
         fixture
             .session
-            .authoring_activity(&lease, &fixture.proposal())
+            .authoring_activity(&run, &fixture.proposal())
             .await
             .expect_err("stale proposal")
             .code(),
@@ -36,7 +36,7 @@ async fn stale_connection_cannot_call_propose_renew_or_complete() {
     assert_eq!(
         fixture
             .session
-            .authoring_renew(&lease, &fixture.renewal(0))
+            .authoring_renew(&run, &fixture.renewal(0))
             .await
             .expect_err("stale renewal")
             .code(),
@@ -45,7 +45,7 @@ async fn stale_connection_cannot_call_propose_renew_or_complete() {
     assert_eq!(
         fixture
             .session
-            .authoring_report(&lease, &fixture.report(0))
+            .authoring_report(&run, &fixture.report(0))
             .await
             .expect_err("stale completion")
             .code(),
@@ -63,9 +63,9 @@ async fn stale_connection_cannot_call_propose_renew_or_complete() {
 async fn replacement_during_provider_http_withholds_text_and_keeps_known_usage() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     let model = fixture.model();
-    let (result, ()) = tokio::join!(fixture.session.authoring_model(&lease, &model), async {
+    let (result, ()) = tokio::join!(fixture.session.authoring_model(&run, &model), async {
         fixture.provider.state.arrived().await;
         fixture.replace_authority().await;
         fixture.provider.state.resume();
@@ -92,7 +92,7 @@ async fn replacement_during_provider_http_withholds_text_and_keeps_known_usage()
     };
     assert!(
         replacement
-            .authoring_report(&lease, &report)
+            .authoring_report(&run, &report)
             .await
             .expect("current owner accounts known usage")
             .settled
@@ -109,15 +109,15 @@ async fn replacement_during_provider_http_withholds_text_and_keeps_known_usage()
 async fn cancellation_during_provider_http_preserves_accounting_without_private_answer() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
-    let lease = fixture.id();
+    let run = fixture.id();
     let model = fixture.model();
-    let (result, ()) = tokio::join!(fixture.session.authoring_model(&lease, &model), async {
+    let (result, ()) = tokio::join!(fixture.session.authoring_model(&run, &model), async {
         fixture.provider.state.arrived().await;
         fixture
             .drafts
             .cancel(
                 fixture.access(),
-                &Uuid7::parse(&fixture.lease.draft_id).expect("draft id"),
+                &Uuid7::parse(&fixture.run.draft_id).expect("draft id"),
                 1,
             )
             .await
@@ -143,7 +143,7 @@ async fn cancellation_during_provider_http_preserves_accounting_without_private_
     let report = Report::Accounting { accounting };
     let ack = fixture
         .session
-        .authoring_report(&lease, &report)
+        .authoring_report(&run, &report)
         .await
         .expect("cancelled accounting");
     assert!(ack.settled);

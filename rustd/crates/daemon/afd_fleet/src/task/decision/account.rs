@@ -101,7 +101,7 @@ fn known(call: &Call, usage: DecisionUsage, uncached: u32, digest: &str) -> Resu
     };
     let charged = rated.charged;
     let settlement = Settlement {
-        work: WorkKey::FleetLease(call.original_lease_id.clone()),
+        work: WorkKey::FleetRun(call.original_run_id.clone()),
         payer: Account {
             tenant: call.tenant_id.clone(),
             workspace: call.workspace_id.clone(),

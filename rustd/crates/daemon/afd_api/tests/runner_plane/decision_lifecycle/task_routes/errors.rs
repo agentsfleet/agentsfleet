@@ -57,7 +57,7 @@ async fn refuse_malformed_reads(fixture: &Fixture, checkpoint: &str, page: &str)
             &format!(
                 "{}?fencing_token={}&limit={limit}",
                 path(fixture, "inputs"),
-                fixture.lease.fence
+                fixture.run.fence
             ),
             Some(&fixture.runner.token),
             "",
@@ -75,7 +75,7 @@ async fn refuse_stale_input_read(fixture: &Fixture) {
         &format!(
             "{}?fencing_token={}",
             path(fixture, "inputs"),
-            fixture.lease.fence + 1
+            fixture.run.fence + 1
         ),
         Some(&fixture.runner.token),
         "",
@@ -91,7 +91,7 @@ async fn refuse_stale_input_read(fixture: &Fixture) {
         &format!(
             "{}?fencing_token={}",
             path(fixture, "inputs"),
-            fixture.lease.fence
+            fixture.run.fence
         ),
         "",
         StatusCode::OK,
@@ -99,6 +99,6 @@ async fn refuse_stale_input_read(fixture: &Fixture) {
     .await;
     assert_eq!(
         recovered.get("source_admission_id"),
-        Some(&json!(fixture.lease.source))
+        Some(&json!(fixture.run.source))
     );
 }

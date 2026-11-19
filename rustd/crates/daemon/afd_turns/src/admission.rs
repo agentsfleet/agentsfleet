@@ -98,7 +98,7 @@ pub enum Reply<'a> {
     To {
         /// The connector whose poster delivers the answer. `&'static` on
         /// purpose: only a constant such as `afd_connector::Provider::id()`
-        /// can supply it, so a string resolved at run time — a lease's model
+        /// can supply it, so a string resolved at run time — a run's model
         /// provider, the defect this field exists to end — cannot be recorded
         /// as a destination.
         connector: &'static str,

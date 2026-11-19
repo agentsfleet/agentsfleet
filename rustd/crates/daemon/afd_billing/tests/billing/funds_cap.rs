@@ -65,7 +65,7 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         workspace: lane.workspace.clone(),
     };
     let ask = Ask {
-        work: WorkKey::FleetLease(mint_id()),
+        work: WorkKey::FleetRun(mint_id()),
         payer: payer.clone(),
         next: LINE,
     };

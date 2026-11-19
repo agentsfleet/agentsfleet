@@ -5,7 +5,7 @@
 # installs it). It measures a URL, which is the only thing hey can measure.
 #
 # What the daemon's paths cost is the THROUGHPUT LANES further down —
-# bench-lease, bench-steer, bench-outbound, bench-cardinality, bench-tail. Those are Rust,
+# bench-run, bench-steer, bench-outbound, bench-cardinality, bench-tail. Those are Rust,
 # they drive the production types directly rather than a URL, and they are the
 # agentsfleetd benchmarks.
 # =============================================================================
@@ -61,7 +61,7 @@ bench:  ## Run the Tier-2 hey HTTP loadgen gate against API_BENCH_URL (default: 
 	 echo "✓ [agentsfleetd] Tier-2 hey loadgen passed"
 
 # ── Throughput lanes ─────────────────────────────────────────────────────────
-# What the steer, lease, delivery and cardinality paths sustain, and which
+# What the steer, run, delivery and cardinality paths sustain, and which
 # datastore gives out first. Distinct from the loadgen above in the one way
 # that matters: `hey` measures a URL, and only the steer path IS one — these
 # drive the production types directly, which is the only way to attribute a
@@ -119,7 +119,7 @@ BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 # build profile rather than of the path.
 BENCH_LANE_RUN := cargo run --release --locked --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin
 
-BENCH_LANES := bench-lease bench-steer bench-outbound bench-cardinality bench-tail
+BENCH_LANES := bench-run bench-steer bench-outbound bench-cardinality bench-tail
 
 .PHONY: $(BENCH_LANES) bench-compare
 
@@ -128,7 +128,7 @@ BENCH_LANES := bench-lease bench-steer bench-outbound bench-cardinality bench-ta
 # reset, so `make -j` cannot run the two side by side). The migration gives a
 # fresh worktree the schema its seed needs (`identity.tenants`); the reset clears
 # the unsettled `fleet.admissions` rows the integration suite leaves, which a
-# lease run would otherwise meet as candidates in every idle window. Only an owned rig: a dev
+# run run would otherwise meet as candidates in every idle window. Only an owned rig: a dev
 # or prod profile points at a deployed database, and a rig whose
 # BENCH_TARGET_OWNED is overridden is not this run's to reset (see above), so a
 # bench never resets or migrates either.
@@ -137,19 +137,19 @@ BENCH_LANES := bench-lease bench-steer bench-outbound bench-cardinality bench-ta
 BENCH_RIG_OWNED := $(and $(filter owned,$(BENCH_TARGET_OWNED)),$(filter 1,$(words $(BENCH_TARGET_OWNED))))
 BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_STATE_DEP) _migrate-test-db)
 
-# The lease lane runs two populations: the contended window it always ran, then
-# a drain through the full lease and report verbs, whose idle cost it prints as
+# The run lane runs two populations: the contended window it always ran, then
+# a drain through the full run and report verbs, whose idle cost it prints as
 # `drain_idle_statements=` — the line a reader, or a rubric, greps for.
 #
 # BENCH_SHAPE=saturation drives native gateway offers instead, setup chats and
 # fleets together, with twice as many hosts as the pool has connections unless
-# BENCH_RUNNERS says otherwise. It writes `lease-saturation.rig.json`, never the
+# BENCH_RUNNERS says otherwise. It writes `run-saturation.rig.json`, never the
 # default result, and refuses any profile but the rig: exhausting a deployed
-# pool on purpose is an outage drill, not a measurement. A doubled lease, an
+# pool on purpose is an outage drill, not a measurement. A doubled run, an
 # oversubscribed host or a pool that did not recover exits non-zero.
 BENCH_SHAPE ?= default
 
-bench-lease:  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst|recovery] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
+bench-run:  ## Run throughput, then a drain: rate, p95, statements and commits per run, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst|recovery] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
 bench-steer:  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
 bench-outbound:  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
 bench-cardinality:  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
@@ -158,11 +158,11 @@ bench-cardinality:  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEET
 # others publish to.
 bench-tail:  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
 
-# Only the lease lane has shapes, so it alone is handed BENCH_SHAPE.
-bench-lease: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"
+# Only the run lane has shapes, so it alone is handed BENCH_SHAPE.
+bench-run: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"
 ifeq ($(BENCH_SHAPE),recovery)
 # This shape boots the full daemon. Its harness owns the separate runner processes.
-bench-lease: BENCH_LANE_RUN = cargo bench --profile dist --locked --manifest-path $(RUSTD_DIR)/Cargo.toml -p agentsfleetd --features test-util --bench
+bench-run: BENCH_LANE_RUN = cargo bench --profile dist --locked --manifest-path $(RUSTD_DIR)/Cargo.toml -p agentsfleetd --features test-util --bench
 endif
 
 # One recipe for every lane: the target names the lane binary after `bench-`.
@@ -170,5 +170,5 @@ $(BENCH_LANES): bench-%: _ensure-test-infra $(BENCH_MIGRATE)
 	@echo "→ [$@] profile=$(PROFILE)$(if $(BENCH_LANE_SHAPE), shape=$(BENCH_SHAPE))"
 	@$(BENCH_LANE_SHAPE) $(BENCH_LANE_ENV) $(BENCH_LANE_RUN) $*
 
-bench-compare:  ## Delta between a result and its baseline (LANE=lease PROFILE=rig) — always exit 0
+bench-compare:  ## Delta between a result and its baseline (LANE=run PROFILE=rig) — always exit 0
 	@$(BENCH_LANE_RUN) compare -- "$(LANE)" "$(PROFILE)"

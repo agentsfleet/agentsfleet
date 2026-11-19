@@ -1,4 +1,4 @@
-//! Each tool call's full record: posted by a runner under its lease's fence,
+//! Each tool call's full record: posted by a runner under its run's fence,
 //! kept per call, read by a member one call at a time.
 //!
 //! The router suites prove the guard and the parse with no datastore
@@ -26,7 +26,7 @@ use sqlx::AssertSqlSafe;
 
 use crate::e2e::{Scenario, scenario};
 use crate::integration_tool_trace::tenant_reader;
-use crate::tail::lease;
+use crate::tail::run;
 use crate::wire::{json as body_of, post, report_body};
 
 /// One record of `call_number` whose output is `output`, with no arguments.
@@ -38,23 +38,23 @@ pub(crate) fn record(call_number: u64, output: &str) -> Value {
 /// Posts `calls` under `fence`, answering the status and the body.
 pub(crate) async fn post_records(
     http: &reqwest::Client,
-    run: &Scenario,
-    (lease_id, fence): (&str, u64),
+    scene: &Scenario,
+    (run_id, fence): (&str, u64),
     calls: &[Value],
 ) -> (u16, Value) {
-    let path = format!("/v1/runners/me/leases/{lease_id}/tool-calls");
+    let path = format!("/v1/runners/me/runs/{run_id}/tool-calls");
     let body = json!({"fencing_token": fence, "calls": calls});
-    let response = post(http, run, &path, &body).await;
+    let response = post(http, scene, &path, &body).await;
     let status = response.status().as_u16();
     (status, body_of(response).await)
 }
 
 /// One statement over the scenario's pool, answering its single integer.
-pub(crate) async fn scalar(run: &Scenario, statement: &str, fence: Option<u64>) -> i64 {
-    let mut connection = run.booted.database.acquire().await.expect("a connection");
+pub(crate) async fn scalar(scene: &Scenario, statement: &str, fence: Option<u64>) -> i64 {
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
     let query = sqlx::query_scalar(AssertSqlSafe(statement.to_owned()))
-        .bind(&run.fleet)
-        .bind(&run.event_id);
+        .bind(&scene.fleet)
+        .bind(&scene.event_id);
     let query = match fence {
         Some(fence) => query.bind(i64::try_from(fence).expect("a fence fits")),
         None => query,
@@ -66,9 +66,9 @@ pub(crate) async fn scalar(run: &Scenario, statement: &str, fence: Option<u64>) 
 }
 
 /// How many records the scenario's event keeps.
-pub(crate) async fn rows(run: &Scenario) -> i64 {
+pub(crate) async fn rows(scene: &Scenario) -> i64 {
     scalar(
-        run,
+        scene,
         "SELECT count(*) FROM fleet.tool_calls t \
          JOIN fleet.events e ON e.event_id = t.event_id \
          WHERE t.fleet_id = $1 AND e.event_id = $2",
@@ -78,9 +78,9 @@ pub(crate) async fn rows(run: &Scenario) -> i64 {
 }
 
 /// How many records the scenario's event keeps under `fence`.
-async fn rows_at(run: &Scenario, fence: u64) -> i64 {
+async fn rows_at(scene: &Scenario, fence: u64) -> i64 {
     scalar(
-        run,
+        scene,
         "SELECT count(*) FROM fleet.tool_calls t \
          JOIN fleet.events e ON e.event_id = t.event_id \
          WHERE t.fleet_id = $1 AND e.event_id = $2 AND t.fencing_token = $3",
@@ -90,24 +90,22 @@ async fn rows_at(run: &Scenario, fence: u64) -> i64 {
 }
 
 /// Runs one statement bound to the scenario's fleet and event.
-pub(crate) async fn execute(run: &Scenario, statement: &str) {
-    let mut connection = run.booted.database.acquire().await.expect("a connection");
+pub(crate) async fn execute(scene: &Scenario, statement: &str) {
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query(AssertSqlSafe(statement.to_owned()))
-        .bind(&run.fleet)
-        .bind(&run.event_id)
+        .bind(&scene.fleet)
+        .bind(&scene.event_id)
         .execute(&mut *connection)
         .await
         .expect("the statement runs");
 }
 
-/// Boots a scenario and leases its event.
-pub(crate) async fn leased(
-    supervisor: &mut Supervisor,
-) -> (Scenario, reqwest::Client, String, u64) {
-    let run = scenario(supervisor).await;
+/// Boots a scenario and runs its event.
+pub(crate) async fn held(supervisor: &mut Supervisor) -> (Scenario, reqwest::Client, String, u64) {
+    let scene = scenario(supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&run).await;
-    (run, http, lease_id, fence)
+    let (run_id, fence) = run(&scene).await;
+    (scene, http, run_id, fence)
 }
 
 /// Dimensions 1.1 and 1.3. A valid post stores one row per record, and the
@@ -116,29 +114,29 @@ pub(crate) async fn leased(
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_stored_under_fence() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     let calls = [record(1, "one"), record(2, "two")];
-    let (status, body) = post_records(&http, &run, (&lease_id, fence), &calls).await;
+    let (status, body) = post_records(&http, &scene, (&run_id, fence), &calls).await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body, json!({"stored_count": 2, "skipped_count": 0}));
-    assert_eq!(rows_at(&run, fence).await, 2);
+    assert_eq!(rows_at(&scene, fence).await, 2);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_retry_is_idempotent() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     let calls = [record(1, "one"), record(2, "two")];
     for _attempt in 0..2 {
-        let (status, _) = post_records(&http, &run, (&lease_id, fence), &calls).await;
+        let (status, _) = post_records(&http, &scene, (&run_id, fence), &calls).await;
         assert_eq!(status, 200);
     }
-    assert_eq!(rows(&run).await, 2, "a retried post upserts");
+    assert_eq!(rows(&scene).await, 2, "a retried post upserts");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Dimension 1.2. A holder the fleet has moved past keeps nothing.
@@ -146,18 +144,18 @@ async fn test_tool_call_details_retry_is_idempotent() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_tool_call_details_refused() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     execute(
-        &run,
+        &scene,
         "UPDATE runner.slots SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1 AND $2 IS NOT NULL",
     )
     .await;
-    let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(1, "x")]).await;
+    let (status, _) = post_records(&http, &scene, (&run_id, fence), &[record(1, "x")]).await;
     assert_eq!(status, 409, "the stale holder is refused");
-    assert_eq!(rows(&run).await, 0);
+    assert_eq!(rows(&scene).await, 0);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Dimension 1.4. One record over a bound is skipped; the rest are kept.
@@ -165,16 +163,16 @@ async fn test_stale_fence_tool_call_details_refused() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_over_bound_tool_call_detail_skipped() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     // About 70 KiB: past the 64 KiB field bound.
     let over = "a".repeat(DETAIL_FIELD_MAX_BYTES + DETAIL_FIELD_MAX_BYTES / 16);
     let calls = [record(1, "one"), record(2, &over), record(3, "three")];
-    let (status, body) = post_records(&http, &run, (&lease_id, fence), &calls).await;
+    let (status, body) = post_records(&http, &scene, (&run_id, fence), &calls).await;
     assert_eq!(status, 200);
     assert_eq!(body, json!({"stored_count": 2, "skipped_count": 1}));
-    assert_eq!(rows(&run).await, 2);
+    assert_eq!(rows(&scene).await, 2);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Dimension 1.5. An event keeps at most 1 MiB of records.
@@ -182,19 +180,19 @@ async fn test_over_bound_tool_call_detail_skipped() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_detail_budget_caps_records() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
     // `{}` arguments make each record exactly 64 KiB; three fit a post.
     let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
     let calls: Vec<Value> = (1..=20).map(|n| record(n, &output)).collect();
     let (mut stored, mut skipped) = (0, 0);
     for batch in calls.chunks(3) {
-        let (status, body) = post_records(&http, &run, (&lease_id, fence), batch).await;
+        let (status, body) = post_records(&http, &scene, (&run_id, fence), batch).await;
         assert_eq!(status, 200);
         stored += body["stored_count"].as_u64().expect("a count");
         skipped += body["skipped_count"].as_u64().expect("a count");
     }
     assert_eq!((stored, skipped), (16, 4));
-    assert_eq!(rows(&run).await, 16);
+    assert_eq!(rows(&scene).await, 16);
     let one_post =
         serde_json::to_vec(&json!({"fencing_token": fence, "calls": calls[..4]})).expect("encodes");
     assert!(
@@ -202,14 +200,14 @@ async fn test_event_detail_budget_caps_records() {
         "four would not fit a post"
     );
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
-/// A dead lease's record, as a reclaim would have left it, under `fence`.
-async fn plant_dead_record(run: &Scenario, fence: u64) {
+/// A dead run's record, as a reclaim would have left it, under `fence`.
+async fn plant_dead_record(scene: &Scenario, fence: u64) {
     let dead = afd_db::test_util::mint_id();
     execute(
-        run,
+        scene,
         &format!(
             "INSERT INTO fleet.tool_calls \
              (id, workspace_id, fleet_id, event_id, fencing_token, sequence, arguments, \
@@ -224,39 +222,46 @@ async fn plant_dead_record(run: &Scenario, fence: u64) {
 }
 
 /// Dimension 1.6. Settlement keeps only the settling fence's records, and the
-/// current lease's first post already clears a dead lease's.
+/// current run's first post already clears a dead run's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_settle_drops_dead_lease_details() {
+async fn test_settle_drops_dead_run_details() {
     let mut supervisor = Supervisor::new();
-    let (run, http, lease_id, fence) = leased(&mut supervisor).await;
-    plant_dead_record(&run, fence - 1).await;
-    let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(1, "live")]).await;
+    let (scene, http, run_id, fence) = held(&mut supervisor).await;
+    plant_dead_record(&scene, fence - 1).await;
+    let (status, _) = post_records(&http, &scene, (&run_id, fence), &[record(1, "live")]).await;
     assert_eq!(status, 200);
     assert_eq!(
-        (rows_at(&run, fence - 1).await, rows_at(&run, fence).await),
+        (
+            rows_at(&scene, fence - 1).await,
+            rows_at(&scene, fence).await
+        ),
         (0, 1),
-        "the current lease's post clears the dead lease's record"
+        "the current run's post clears the dead run's record"
     );
 
-    plant_dead_record(&run, fence - 1).await;
-    let settled = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    plant_dead_record(&scene, fence - 1).await;
+    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.event_id, fence)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
-    assert_eq!(rows_at(&run, fence - 1).await, 0, "settlement drops it too");
-    assert_eq!(rows_at(&run, fence).await, 1, "the settling lease's stays");
+    assert_eq!(
+        rows_at(&scene, fence - 1).await,
+        0,
+        "settlement drops it too"
+    );
+    assert_eq!(rows_at(&scene, fence).await, 1, "the settling run's stays");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// GET a tenant path, answering the status and the body.
 async fn tenant_status(
     http: &reqwest::Client,
-    run: &Scenario,
+    scene: &Scenario,
     token: &str,
     path: &str,
 ) -> (u16, Value) {
     let response = http
-        .get(format!("{}{path}", run.base))
+        .get(format!("{}{path}", scene.base))
         .bearer_auth(token)
         .send()
         .await
@@ -271,23 +276,23 @@ async fn tenant_status(
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_member_reads_tool_call_detail() {
     let mut supervisor = Supervisor::new();
-    let (run, token) = tenant_reader(&mut supervisor).await;
+    let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&run).await;
+    let (run_id, fence) = run(&scene).await;
     let lines: Vec<String> = (1..=224).map(|n| format!("line {n}")).collect();
     let output = format!("{}\n", lines.join("\n"));
     let mut kept = record(3, &output);
     kept["arguments"] = json!({"url": "https://example.test/deploys/9312", "method": "GET"});
-    let (status, _) = post_records(&http, &run, (&lease_id, fence), &[kept.clone()]).await;
+    let (status, _) = post_records(&http, &scene, (&run_id, fence), &[kept.clone()]).await;
     assert_eq!(status, 200);
 
     let events = format!(
         "/v1/workspaces/{}/fleets/{}/events",
-        run.workspace, run.fleet
+        scene.workspace, scene.fleet
     );
     for call_id in [format!("{fence}:3"), format!("{fence}%3A3")] {
-        let path = format!("{events}/{}/tool-calls/{call_id}", run.event_id);
-        let (status, body) = tenant_status(&http, &run, &token, &path).await;
+        let path = format!("{events}/{}/tool-calls/{call_id}", scene.event_id);
+        let (status, body) = tenant_status(&http, &scene, &token, &path).await;
         assert_eq!(status, 200, "{path}: {body}");
         assert_eq!(body["call_id"], json!(format!("{fence}:3")));
         assert_eq!(body["output"], json!(output));
@@ -295,31 +300,31 @@ async fn test_member_reads_tool_call_detail() {
         assert_eq!(body["arguments"], kept["arguments"]);
     }
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_absent_is_not_found() {
     let mut supervisor = Supervisor::new();
-    let (run, token) = tenant_reader(&mut supervisor).await;
+    let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&run).await;
-    let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(3, "x")]).await;
+    let (run_id, fence) = run(&scene).await;
+    let (status, _) = post_records(&http, &scene, (&run_id, fence), &[record(3, "x")]).await;
     assert_eq!(status, 200);
 
     let other_fleet = afd_db::test_util::mint_id();
-    let workspace = &run.workspace;
+    let workspace = &scene.workspace;
     for (fleet, call_id) in [
-        (run.fleet.as_str(), format!("{fence}:99")),
+        (scene.fleet.as_str(), format!("{fence}:99")),
         (other_fleet.as_str(), format!("{fence}:3")),
-        (run.fleet.as_str(), "x:y:z".to_owned()),
+        (scene.fleet.as_str(), "x:y:z".to_owned()),
     ] {
         let path = format!(
             "/v1/workspaces/{workspace}/fleets/{fleet}/events/{}/tool-calls/{call_id}",
-            run.event_id
+            scene.event_id
         );
-        let (status, body) = tenant_status(&http, &run, &token, &path).await;
+        let (status, body) = tenant_status(&http, &scene, &token, &path).await;
         assert_eq!(status, 404, "{path}: {body}");
         assert_eq!(
             body["error_code"],
@@ -327,5 +332,5 @@ async fn test_tool_call_detail_absent_is_not_found() {
         );
     }
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

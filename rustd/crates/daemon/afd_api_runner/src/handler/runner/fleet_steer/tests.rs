@@ -11,13 +11,13 @@ use std::collections::BTreeSet;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use afd_fleet::lease::Standing;
+use afd_fleet::run::Standing;
 use afd_turns::view::FleetSteered;
 
 use super::{EVENT_ADMITTED, EVENT_REFUSED, log_admitted, log_refused};
 
-/// A lease, the fleet it runs, the fleet steered, and the event it became.
-const LEASE: &str = "0190d5c2-7e1a-7000-8000-000000000001";
+/// A run, the fleet it runs, the fleet steered, and the event it became.
+const RUN: &str = "0190d5c2-7e1a-7000-8000-000000000001";
 const SENDER: &str = "0190d5c2-7e1a-7000-8000-000000000002";
 const TARGET: &str = "0190d5c2-7e1a-7000-8000-000000000003";
 const EVENT: &str = "0190d5c2-7e1a-7000-8000-000000000004";
@@ -28,9 +28,9 @@ fn id(text: &str) -> Uuid7 {
 
 fn standing() -> Standing {
     Standing {
-        lease_id: id(LEASE),
+        run_id: id(RUN),
         fleet_id: id(SENDER),
-        workspace_id: id(LEASE),
+        workspace_id: id(RUN),
         event_id: id(EVENT),
         actor: "fixture:operator".to_owned(),
     }
@@ -58,7 +58,7 @@ fn fleet_steer_logs_its_refusal_and_its_admission() {
         BTreeSet::from([
             "error_code",
             "event",
-            "lease_id",
+            "run_id",
             "sender_fleet_id",
             "target_fleet_id"
         ])

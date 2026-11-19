@@ -10,7 +10,7 @@ use afr_tools::catalog::{
     APPLY_PATCH, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_EDIT_HASHED, FILE_READ,
     FILE_READ_HASHED, FILE_WRITE, IMAGE, SHELL,
 };
-use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode};
+use afr_tools::{Catalog, Run, ToolContext, ToolErrorCode};
 use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
@@ -56,11 +56,7 @@ type Step = fn(&[ToolOutput]) -> (&'static str, Value);
 
 /// Makes each step's call in order, in one fresh sandbox, through the
 /// handlers the runner's catalog hosts; what each answered.
-fn in_fresh_sandbox(
-    lane: &Lane,
-    lease_id: &str,
-    steps: &[Step],
-) -> Result<Vec<ToolOutput>, Failed> {
+fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<ToolOutput>, Failed> {
     runtime().block_on(async {
         let (transport, _sent) = RecordingTransport::replying(200, "");
         let catalog = Catalog::hosted(Arc::new(transport));
@@ -78,16 +74,16 @@ fn in_fresh_sandbox(
         ];
         let selection = catalog.select(&names)?;
         let engine = lane.engine();
-        let request = SandboxRequest::new(lease_id, Limits::default());
+        let request = SandboxRequest::new(run_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
-        let lease = Lease::default().with_image_input(true);
+        let run = Run::default().with_image_input(true);
         let mut outputs = Vec::with_capacity(steps.len());
         for step in steps {
             let (name, arguments) = step(&outputs);
             let tool = selection.tool(name).ok_or("the runner hosts it")?;
             let context = ToolContext {
                 executor: Some(sandbox.executor()),
-                lease: &lease,
+                run: &run,
             };
             outputs.push(tool.call(&arguments, context).await);
         }

@@ -1,4 +1,4 @@
-//! A replacement lease abandons only an unissued effect whose original owner is fenced.
+//! A replacement run abandons only an unissued effect whose original owner is fenced.
 use super::{
     super::fixture::{Case, exercise, id},
     effect_readback::seed,
@@ -20,7 +20,7 @@ async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() 
         let before = state(case, &effect).await;
         let prepared = fixture
             .tasks
-            .effect(case.lease(), &effect)
+            .effect(case.run(), &effect)
             .await
             .expect("live original issuer retains preparation");
         assert_eq!(prepared.state, TaskEffectState::Prepared);
@@ -38,12 +38,12 @@ async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() 
 async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &Uuid7) {
     let case = fixture.case;
     let original = intent(case, effect).await;
-    let default = super::lease_recovery::support::provider(fixture).await;
-    super::lease_recovery::support::model(fixture, Some(&fixture.model.model.id)).await;
-    let (lease_id, fence) = replacement(case).await;
-    let current = afd_fleet::task::TaskLease {
+    let default = super::run_recovery::support::provider(fixture).await;
+    super::run_recovery::support::model(fixture, Some(&fixture.model.model.id)).await;
+    let (run_id, fence) = replacement(case).await;
+    let current = afd_fleet::task::TaskRun {
         runner_id: &case.held.runner,
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: fence,
     };
     let refused = fixture
@@ -57,7 +57,7 @@ async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &Uuid7) {
     assert!(refused.commit.is_none());
     assert_replay(fixture, current, &refused).await;
     assert_eq!(intent(case, effect).await, original);
-    super::lease_recovery::support::model(fixture, None).await;
+    super::run_recovery::support::model(fixture, None).await;
     drop(default);
 }
 
@@ -98,7 +98,7 @@ async fn assert_unspent(case: &Case, task: &Uuid7) {
 
 async fn assert_replay(
     fixture: &Decisions<'_>,
-    current: afd_fleet::task::TaskLease<'_>,
+    current: afd_fleet::task::TaskRun<'_>,
     refused: &af_wire::task::TaskEffect,
 ) {
     let case = fixture.case;
@@ -116,18 +116,18 @@ async fn assert_replay(
 }
 
 async fn replacement(case: &Case) -> (af_core::id::Uuid7, u64) {
-    super::lease_recovery::support::expire(case).await;
-    let acquired = super::lease_recovery::support::claim(case).await;
-    let lease = super::lease_recovery::reclaimed(case, acquired).await;
-    let lease_id = id(lease
-        .get("lease_id")
+    super::run_recovery::support::expire(case).await;
+    let acquired = super::run_recovery::support::claim(case).await;
+    let run = super::run_recovery::reclaimed(case, acquired).await;
+    let run_id = id(run
+        .get("run_id")
         .and_then(Value::as_str)
-        .expect("replacement lease identifier"));
-    let fence = lease
+        .expect("replacement run identifier"));
+    let fence = run
         .get("fencing_token")
         .and_then(Value::as_u64)
         .expect("native replacement fence");
-    assert_ne!(lease_id, case.held.lease_key);
-    assert!(fence > case.lease().fencing_token);
-    (lease_id, fence)
+    assert_ne!(run_id, case.held.run_key);
+    assert!(fence > case.run().fencing_token);
+    (run_id, fence)
 }

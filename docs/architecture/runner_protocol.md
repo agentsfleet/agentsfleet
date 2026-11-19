@@ -18,7 +18,7 @@ The [certificate guide](../../playbooks/operations/runner_stream_tls/001_playboo
 
 ## Why it exists
 
-The daemon pushes work to available workers, so idle workers send no lease requests.
+The daemon pushes work to available workers, so idle workers send no run requests.
 One authenticated session carries both fleet runs and authoring operations.
 The browser setup chat keeps its existing API and user authentication.
 
@@ -129,7 +129,7 @@ If neither carrier connects, no new history starts, so a daemon restart alone do
 ### Recovery and availability
 
 Reconnect rebuilds live work from Postgres.
-Each running lease keeps its last confirmed expiry and stops when that deadline expires.
+Each running run keeps its last confirmed expiry and stops when that deadline expires.
 A reconnect or report retry cannot extend that deadline.
 
 Fleet work starts stopping nine seconds before expiry.
@@ -139,9 +139,9 @@ This leaves time to stop the engine and reap its processes.
 |---|---|---|
 | Heartbeat | Every 10 seconds | No heartbeat for two intervals closes the session |
 | Ping | Every 15 seconds | An unanswered ping fails after 5 seconds; idle detection can take 20 seconds |
-| Renewal | Every 5 seconds | One frame names every live lease on the host; each answer has its own 5-second deadline |
-| Lease grant | 35 seconds | Includes recovery, another renewal answer and physical cleanup |
-| Offline threshold | 105 seconds | Three missed lease lifetimes mark the host offline |
+| Renewal | Every 5 seconds | One frame names every live run on the host; each answer has its own 5-second deadline |
+| Run grant | 35 seconds | Includes recovery, another renewal answer and physical cleanup |
+| Offline threshold | 105 seconds | Three missed run lifetimes mark the host offline |
 | Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
 | Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and short sessions retain retry history |
 | Stable reset | 60 seconds | A stable session resets reconnect backoff |
@@ -149,7 +149,7 @@ This leaves time to stop the engine and reap its processes.
 | Replica work probe | Every 5 seconds | Finds work after a lost notification |
 
 [Timing constants](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the renewal and recovery relationship.
-Repeated outages can exceed the recovery window; confirmed lease expiry still stops the running lease.
+Repeated outages can exceed the recovery window; confirmed run expiry still stops the running run.
 Reconnect starts renewal immediately; it never waits for the next periodic tick.
 
 An archive or delete saves cancellation before sending its notification.
@@ -175,7 +175,7 @@ The older process receives UZ-RUN-021 and halts; stop the duplicate process befo
 | [UZ-RUN-001](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-001) | Missing, changed or invalid runner token | Set the intended runner's current token; re-register if necessary |
 | [UZ-RUN-009](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-009) | Administrative state blocks access | Check cordon, drain or revocation; re-enroll when required |
 | [UZ-RUN-021](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-021) | A newer connection owns the runner | Stop the duplicate process; keep one intended process per token |
-| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was archived or deleted | Stop that lease and report its final result |
+| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was archived or deleted | Stop that run and report its final result |
 | [UZ-RUN-023](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-023) | Runner and daemon use different protocols | Upgrade the runner and daemon together |
 | [UZ-RUN-024](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-024) | The stream ended or stopped answering | None; the runner reconnects. If it repeats, check UDP and TCP reachability of the stream URL |
 
@@ -195,8 +195,8 @@ The runner writes no report spool and replays no files from an earlier process.
 
 ### First model call
 
-A lease carries `inputs_waiting`, which the claim sets when its conversation holds a later unsettled admission.
-A run whose lease says false skips the fold ask before its first model call. The field is required: a lease without it is refused.
+A run carries `inputs_waiting`, which the claim sets when its conversation holds a later unsettled admission.
+A run whose run says false skips the fold ask before its first model call. The field is required: a run without it is refused.
 
 The ask after every answer is unconditional, so a message landing after the claim folds into the next model call.
 
@@ -246,7 +246,7 @@ The [gateway](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) and [run
 Receive and send pools are separate; each receives half the configured totals.
 Invalid values refuse startup before allocation.
 
-Accepted offers use a separate allowance of up to 128 MiB for 64 leases, so workers holding offers cannot block report acknowledgements.
+Accepted offers use a separate allowance of up to 128 MiB for 64 runs, so workers holding offers cannot block report acknowledgements.
 The 2 MiB frame and 256 pending-request limits remain fixed protocol bounds.
 
 ### Observability

@@ -29,7 +29,7 @@ use af_crypto::entropy::Entropy;
 use af_fleet_runtime::config::FleetConfig;
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::{Accounts, Posture};
-use afd_fleet::lease::admit::{Admission, Request, money_gates};
+use afd_fleet::run::admit::{Admission, Request, money_gates};
 
 use afd_db::test_util::mint_id;
 
@@ -222,8 +222,8 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     fixtures.cleanup().await;
 }
 
-/// Admission moves no money: the gates read, and the lease's usage is the
-/// relay's to charge once the lease runs.
+/// Admission moves no money: the gates read, and the run's usage is the
+/// relay's to charge once the run runs.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admitted_run_is_charged_nothing_at_admission() {
@@ -284,7 +284,7 @@ async fn seed_spend(
                  'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $9, now(), now())",
     )
     .bind(mint_id())
-    .bind(afd_billing::sql::work::FLEET_LEASE)
+    .bind(afd_billing::sql::work::FLEET_RUN)
     .bind(tenant)
     .bind(workspace)
     .bind(fleet)

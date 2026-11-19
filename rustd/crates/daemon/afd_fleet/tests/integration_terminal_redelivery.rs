@@ -19,7 +19,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
         .fixtures
         .plane()
         .claim_fleet_with(
-            &mut afd_fleet::lease::OfferRequest {
+            &mut afd_fleet::run::OfferRequest {
                 runner: &run.spare,
                 held: &[fleet],
                 degraded: false,
@@ -28,7 +28,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
             },
             None,
             &mut af_observability::verb_span::VerbClock::untimed(),
-            |_lease, _metadata| (),
+            |_run, _metadata| (),
         )
         .await
         .expect("poll");
@@ -40,17 +40,16 @@ async fn test_completed_event_redelivery_does_not_execute() {
             .fetch_one(&mut *connection)
             .await
             .expect("queue state");
-    let attempts: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id = $1")
-            .bind(&run.fleet)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("lease count");
+    let attempts: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id = $1")
+        .bind(&run.fleet)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("run count");
     assert!(settled, "the terminal admission leaves the queue");
     assert_eq!(attempts, 1, "no second execution");
     drop(connection);
     assert!(
-        run.leases
+        run.runs
             .select(&run.spare, &[])
             .await
             .expect("next poll")
@@ -69,23 +68,23 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     // The holder stops renewing, and the finished event is claimed again: the
     // claim answers a terminal redelivery.
     run.fixtures
-        .age(Row::Lease(&run.lease_key), "lease_expires_at", LAPSE)
+        .age(Row::Run(&run.run_key), "run_expires_at", LAPSE)
         .await;
     run.fixtures
-        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
+        .age(Row::Slot(&run.fleet), "run_expires_at", LAPSE)
         .await;
-    let again = crate::seed::select_fleet(&run.fixtures.leases(), &run.runner, &run.fleet)
+    let again = crate::seed::select_fleet(&run.fixtures.runs(), &run.runner, &run.fleet)
         .await
         .expect("the finished admission is claimed again");
     assert_eq!(
         again.opened.received.delivery,
-        afd_fleet::lease::Delivery::Terminal
+        afd_fleet::run::Delivery::Terminal
     );
     // A rival supersedes that claim between the claim and its settlement.
     sqlx::query(
         "WITH slot AS (UPDATE runner.slots SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1 RETURNING fencing_token) \
-         UPDATE fleet.admissions SET lease_fence = (SELECT fencing_token FROM slot) WHERE id = $2",
+         UPDATE fleet.admissions SET run_fence = (SELECT fencing_token FROM slot) WHERE id = $2",
     )
     .bind(&run.fleet)
     .bind(&run.event_id)
@@ -104,7 +103,7 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     );
     assert_superseded_claim_retained(&run, again.fence.as_i64() + 1).await;
     run.fixtures
-        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
+        .age(Row::Slot(&run.fleet), "run_expires_at", LAPSE)
         .await;
     let answer = reclaim_terminal(&run).await;
     assert!(
@@ -117,8 +116,8 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
 
 async fn assert_superseded_claim_retained(run: &Held, fence: i64) {
     let state: (bool, Option<i64>, i64, i64) = sqlx::query_as(
-        "SELECT a.settled_at IS NOT NULL,a.lease_fence,s.fencing_token, \
-         (SELECT count(*) FROM runner.leases WHERE fleet_id=a.fleet_id) \
+        "SELECT a.settled_at IS NOT NULL,a.run_fence,s.fencing_token, \
+         (SELECT count(*) FROM runner.runs WHERE fleet_id=a.fleet_id) \
          FROM fleet.admissions a JOIN runner.slots s ON s.fleet_id=a.fleet_id \
          WHERE a.id=$1 AND s.last_runner_id=$2",
     )
@@ -132,10 +131,10 @@ async fn assert_superseded_claim_retained(run: &Held, fence: i64) {
 
 async fn age_original_claim(run: &Held) {
     run.fixtures
-        .age(Row::Lease(&run.issued.lease_id), "lease_expires_at", LAPSE)
+        .age(Row::Run(&run.issued.run_id), "run_expires_at", LAPSE)
         .await;
     run.fixtures
-        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
+        .age(Row::Slot(&run.fleet), "run_expires_at", LAPSE)
         .await;
 }
 
@@ -143,7 +142,7 @@ async fn reclaim_terminal(run: &Held) -> Option<()> {
     run.fixtures
         .plane()
         .claim_fleet_with(
-            &mut afd_fleet::lease::OfferRequest {
+            &mut afd_fleet::run::OfferRequest {
                 runner: &run.spare,
                 held: std::slice::from_ref(&run.fleet),
                 degraded: false,
@@ -152,7 +151,7 @@ async fn reclaim_terminal(run: &Held) -> Option<()> {
             },
             None,
             &mut af_observability::verb_span::VerbClock::untimed(),
-            |_lease, _metadata| (),
+            |_run, _metadata| (),
         )
         .await
         .expect("current claimant suppresses the terminal event")

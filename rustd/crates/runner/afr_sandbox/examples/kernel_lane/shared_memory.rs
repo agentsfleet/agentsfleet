@@ -3,7 +3,7 @@
 //! Shared memory is a `tmpfs`: its pages stay charged to the tenant after the
 //! writer exits, and without swap nothing reclaims them. Sized to the whole
 //! memory limit, one full `/dev/shm` would get every later command in the
-//! lease killed for memory at its first allocation.
+//! run killed for memory at its first allocation.
 
 use afr_executor::Ending;
 use afr_sandbox::{Limits, SandboxRequest};

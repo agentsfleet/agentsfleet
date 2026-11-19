@@ -18,7 +18,7 @@ type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + 
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_streamed_chat_reads_no_lease_target() -> Result<()> {
+async fn a_streamed_chat_reads_no_run_target() -> Result<()> {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
         let fixture = Fixture::open(&mut supervisor).await;
@@ -43,8 +43,8 @@ const ACTIVITY_FRAMES: u64 = 40;
 
 async fn measure_cost(fixture: &Fixture, transport: Transport) -> Result<()> {
     let before = Counts::read(&fixture.owner).await?;
-    let mut tail = Tail::open(&fixture.run).await?;
-    let mut native = Native::connect(&fixture.run, transport).await;
+    let mut tail = Tail::open(&fixture.scene).await?;
+    let mut native = Native::connect(&fixture.scene, transport).await;
     let measured = turn(fixture, &mut native, &mut tail).await;
     native.close().await;
     tail.close().await?;
@@ -58,7 +58,7 @@ async fn measure_cost(fixture: &Fixture, transport: Transport) -> Result<()> {
     assert_eq!(
         after.targets - before.targets,
         0,
-        "{transport:?}: all activity uses the native lease cache"
+        "{transport:?}: all activity uses the native run cache"
     );
     assert_eq!(
         after.report_reads - before.report_reads,
@@ -71,11 +71,11 @@ async fn measure_cost(fixture: &Fixture, transport: Transport) -> Result<()> {
 async fn turn(fixture: &Fixture, native: &mut Native, tail: &mut Tail) -> Result<()> {
     healthy(native, 3).await;
     native.ready().await;
-    let held = offer(&fixture.run, native).await?;
+    let held = offer(&fixture.scene, native).await?;
     renew(native, &held, 4).await;
     for sequence in 0..ACTIVITY_FRAMES {
         native.send(StreamKind::Activity, &json!({
-            "type":"activity", "lease_id":held.id, "request":{"frames":[{
+            "type":"activity", "run_id":held.id, "request":{"frames":[{
                 "fleet_response_chunk":{"text":text(sequence), "text_kind":"answer",
                     "stream_start":sequence == 0, "stream_contiguous":true, "stream_seq":sequence}
             }]}
@@ -97,24 +97,21 @@ async fn renew(native: &mut Native, held: &Held, request_id: u64) {
             StreamKind::Control,
             &json!({
                 "type":"renew_batch", "request_id":request_id,
-                "leases":[{"lease_id":held.id, "request":{"requests":[]}}]
+                "runs":[{"run_id":held.id, "request":{"requests":[]}}]
             }),
         )
         .await;
     let response = native.expect(StreamKind::Control, "renewed").await;
     assert_eq!(response.get("request_id"), Some(&json!(request_id)));
+    assert_eq!(response.pointer("/runs/0/run_id"), Some(&json!(held.id)));
     assert_eq!(
-        response.pointer("/leases/0/lease_id"),
-        Some(&json!(held.id))
-    );
-    assert_eq!(
-        response.pointer("/leases/0/answer/status"),
+        response.pointer("/runs/0/answer/status"),
         Some(&json!("ok"))
     );
 }
 
 async fn report(fixture: &Fixture, native: &mut Native, held: &Held) -> Result<()> {
-    let body = wire::report_body(&held.id, &fixture.run.event_id, held.fence);
+    let body = wire::report_body(&held.id, &fixture.scene.event_id, held.fence);
     native
         .send(
             StreamKind::Reports,
@@ -125,7 +122,7 @@ async fn report(fixture: &Fixture, native: &mut Native, held: &Held) -> Result<(
         .await;
     let response = native.expect(StreamKind::Reports, "report_ack").await;
     assert_eq!(response.get("request_id"), Some(&json!(6)));
-    assert_eq!(response.get("lease_id"), Some(&json!(held.id)));
+    assert_eq!(response.get("run_id"), Some(&json!(held.id)));
     assert_eq!(
         response.pointer("/answer"),
         Some(&json!({"status":"ok","response":{"ok":true}}))
@@ -133,19 +130,19 @@ async fn report(fixture: &Fixture, native: &mut Native, held: &Held) -> Result<(
     let settled: bool = sqlx::query_scalar(
         "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id=$1 AND fleet_id=$2",
     )
-    .bind(&fixture.run.event_id)
-    .bind(&fixture.run.fleet)
+    .bind(&fixture.scene.event_id)
+    .bind(&fixture.scene.fleet)
     .fetch_one(&mut *fixture.owner.acquire().await?)
     .await?;
     assert!(
         settled,
-        "the measured native lease reached durable settlement"
+        "the measured native run reached durable settlement"
     );
     Ok(())
 }
 
 async fn measure_guard(fixture: &Fixture) -> Result<()> {
-    let mut native = Native::connect(&fixture.run, Transport::H2).await;
+    let mut native = Native::connect(&fixture.scene, Transport::H2).await;
     let measured = guarded(fixture, &mut native).await;
     native.close().await;
     measured
@@ -173,7 +170,7 @@ async fn guarded(fixture: &Fixture, native: &mut Native) -> Result<()> {
 
 async fn degrade(fixture: &Fixture) -> Result<()> {
     sqlx::query("UPDATE runner.runners SET degraded_reason=$2 WHERE id=$1")
-        .bind(&fixture.run.runner_id)
+        .bind(&fixture.scene.runner_id)
         .bind("a durable verdict changed after the healthy heartbeat")
         .execute(&mut *fixture.owner.acquire().await?)
         .await?;
@@ -184,7 +181,7 @@ async fn recovered(fixture: &Fixture, native: &mut Native) -> Result<()> {
     healthy(native, 4).await;
     let degraded: bool =
         sqlx::query_scalar("SELECT degraded_reason IS NOT NULL FROM runner.runners WHERE id=$1")
-            .bind(&fixture.run.runner_id)
+            .bind(&fixture.scene.runner_id)
             .fetch_one(&mut *fixture.owner.acquire().await?)
             .await?;
     assert!(
@@ -192,7 +189,7 @@ async fn recovered(fixture: &Fixture, native: &mut Native) -> Result<()> {
         "the healthy heartbeat clears the durable degradation"
     );
     wake(fixture).await?;
-    offer(&fixture.run, native).await?;
+    offer(&fixture.scene, native).await?;
     assert_eq!(
         census(fixture).await?.0,
         1,
@@ -217,19 +214,19 @@ async fn attempted(fixture: &Fixture, before: i64) -> Result<()> {
 async fn census(fixture: &Fixture) -> Result<(i64, i64)> {
     Ok(sqlx::query_as(
         "SELECT \
-        (SELECT count(*) FROM runner.leases WHERE runner_id=$1), \
+        (SELECT count(*) FROM runner.runs WHERE runner_id=$1), \
         (SELECT count(*) FROM fleet.admissions WHERE id=$2 AND fleet_id=$3 AND settled_at IS NULL)",
     )
-    .bind(&fixture.run.runner_id)
-    .bind(&fixture.run.event_id)
-    .bind(&fixture.run.fleet)
+    .bind(&fixture.scene.runner_id)
+    .bind(&fixture.scene.event_id)
+    .bind(&fixture.scene.fleet)
     .fetch_one(&mut *fixture.owner.acquire().await?)
     .await?)
 }
 
 async fn wake(fixture: &Fixture) -> Result<()> {
-    let bus = fixture.run.booted.bus.clone();
-    bus.publish(&Subject::Wake(0), fixture.run.fleet.as_str())
+    let bus = fixture.scene.booted.bus.clone();
+    bus.publish(&Subject::Wake(0), fixture.scene.fleet.as_str())
         .await?;
     bus.shutdown().await?;
     Ok(())

@@ -1,5 +1,5 @@
-//! A runner that takes no new lease ends every hold and tells the daemon at
-//! once, whether leasing alone stopped or the runner is shutting down.
+//! A runner that takes no new run ends every hold and tells the daemon at
+//! once, whether running alone stopped or the runner is shutting down.
 
 #![expect(
     clippy::unwrap_used,
@@ -25,7 +25,7 @@ use crate::halt::Halt;
 use crate::holds::{Holds, Parked, Release};
 use crate::test_support::{Answer, FakeEngine, drain, plane};
 
-/// The beat the daemon answers `stop`, once leasing stopped two beats in.
+/// The beat the daemon answers `stop`, once running stopped two beats in.
 const STOPPED_AT_BEAT: usize = 3;
 /// The beat's field saying the runner's holds list is final.
 pub(super) const CLOSING_FIELD: &str = "closing";
@@ -49,7 +49,7 @@ fn token_refusal() -> crate::Error {
 }
 
 /// Every hold has ended and none can start: the registry lists nothing, and a
-/// sandbox parked now is handed back to its lease rather than held, the
+/// sandbox parked now is handed back to its run rather than held, the
 /// keeper destroying only the hold it ended.
 async fn assert_closed(holds: &Holds, engine: &FakeEngine) {
     let left = holds.fleets().await;
@@ -86,7 +86,7 @@ fn listed(calls: &[Call]) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Leasing stops while the runner serves on: every hold ends, since no lease
+/// Leasing stops while the runner serves on: every hold ends, since no run
 /// could take one, and the next beat goes at once listing none, rather than
 /// at the tick, so the daemon stops routing those fleets here.
 #[tokio::test(start_paused = true)]
@@ -108,14 +108,14 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
     let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
-        halt.leasing().cancel();
+        halt.running().cancel();
     };
     let ((), ()) = tokio::join!(beating, stopping);
     holds.shutdown().await;
 
     assert!(
         started.elapsed() < Duration::from_millis(u64::from(TICK_MS)),
-        "the beat after leasing stopped did not wait out the tick"
+        "the beat after running stopped did not wait out the tick"
     );
     let calls = drain(&mut calls);
     let listed = listed(&calls);
@@ -172,7 +172,7 @@ async fn test_a_shutdown_ends_every_hold_and_says_so_in_a_last_beat() {
 }
 
 /// A beat refused for the token ends every hold at once, and sends no last
-/// beat: the runner stops, so no lease could take a hold, and no call can
+/// beat: the runner stops, so no run could take a hold, and no call can
 /// succeed to say so.
 #[tokio::test(start_paused = true)]
 async fn test_a_refused_runner_ends_its_holds_and_sends_no_last_beat() {
@@ -219,7 +219,7 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
     let stopping = async {
         watching.changed().await.unwrap();
-        halt.leasing().cancel();
+        halt.running().cancel();
     };
     let ((), ()) = tokio::join!(beating, stopping);
     holds.shutdown().await;

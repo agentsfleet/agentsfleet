@@ -2,7 +2,7 @@
 //!
 //! The stream, self-record, credential, memory, message, schedule, fleet steer,
 //! fleets, tool-call, decision and task handlers live here so host protocol
-//! changes compile independently. Heartbeats, leases, renewals, activity and reports
+//! changes compile independently. Heartbeats, runs, renewals, activity and reports
 //! travel on the stream.
 
 #![deny(unused_crate_dependencies)]

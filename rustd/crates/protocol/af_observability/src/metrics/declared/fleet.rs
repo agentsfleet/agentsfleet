@@ -1,6 +1,6 @@
 //! What the runner plane and the background sweepers say about themselves.
 //!
-//! Queue backlog, lease polls, runner activity, and background maintenance.
+//! Queue backlog, run polls, runner activity, and background maintenance.
 
 use crate::metrics::family::{CounterKind, Declared, GaugeKind, HistogramKind};
 
@@ -19,44 +19,44 @@ pub const SIGNUP_FAILED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_signup_failed_total");
 
 /// The denominator for the candidates count below.
-pub const LEASE_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_polls_total");
+pub const RUN_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_run_polls_total");
 
 /// Rate ÷ polls = fan-out per poll.
-pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_poll_candidates_scanned_total");
+pub const RUN_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_run_poll_candidates_scanned_total");
 
-/// Bytes of earlier turns each chat lease carries.
-pub const LEASE_HISTORY_BYTES: Declared<HistogramKind> =
-    Declared::new("agentsfleet_lease_history_bytes");
+/// Bytes of earlier turns each chat run carries.
+pub const RUN_HISTORY_BYTES: Declared<HistogramKind> =
+    Declared::new("agentsfleet_run_history_bytes");
 
-/// Chat leases whose earlier turns a cap cut, by the cap.
-pub const LEASE_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_history_cuts_total");
+/// Chat runs whose earlier turns a cap cut, by the cap.
+pub const RUN_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_run_history_cuts_total");
 
 /// Won claims on a fleet whose slot named a sandbox held live at the claim,
 /// by who won.
-pub const LEASE_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_held_claims_total");
+pub const RUN_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_run_held_claims_total");
 
 /// Accepted steers, by where they went.
 pub const STEER_DISPOSITIONS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_steer_dispositions_total");
 
-/// Lease-path cache lookups; misses over lookups is the read rate a cache
+/// Run-path cache lookups; misses over lookups is the read rate a cache
 /// leaves on its path.
 ///
 /// Labels: `cache`, `outcome`.
-pub const LEASE_CACHE_LOOKUPS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_cache_lookups_total");
+pub const RUN_CACHE_LOOKUPS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_run_cache_lookups_total");
 
 /// Messages live runs took from their fleets, claimed and settled.
-pub const LEASE_FOLDS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_folds_total");
+pub const RUN_FOLDS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_run_folds_total");
 
-/// Chat leases issued without their turns because the thread read failed.
-pub const LEASE_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_history_read_failures_total");
+/// Chat runs issued without their turns because the thread read failed.
+pub const RUN_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_run_history_read_failures_total");
 
-/// Leases granted; fresh ÷ accepted admissions is pickup, a rising reclaimed
+/// Runs granted; fresh ÷ accepted admissions is pickup, a rising reclaimed
 /// share is runners dying mid-run.
 ///
 /// Labels: `kind`.
@@ -65,7 +65,7 @@ pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
 
 /// Time through the fleet delivery path, from server and runner clocks.
 ///
-/// Labels: `stage`. Each stage is recorded once for an active lease attempt
+/// Labels: `stage`. Each stage is recorded once for an active run attempt
 /// that reaches it; a reclaim is a separate attempt on the same event.
 pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
     Declared::new("agentsfleet_fleet_delivery_stage_seconds");
@@ -129,8 +129,7 @@ pub const RUNNER_LAST_SEEN_SECONDS: Declared<GaugeKind> =
 /// Best-effort; self-heals on restart.
 ///
 /// Labels: `runner_id`.
-pub const RUNNER_ACTIVE_LEASES: Declared<GaugeKind> =
-    Declared::new("agentsfleet_runner_active_leases");
+pub const RUNNER_ACTIVE_RUNS: Declared<GaugeKind> = Declared::new("agentsfleet_runner_active_runs");
 
 /// Successful report answers, including idempotent retries.
 pub const RUNNER_REPORT_ANSWERS_TOTAL: Declared<CounterKind> =

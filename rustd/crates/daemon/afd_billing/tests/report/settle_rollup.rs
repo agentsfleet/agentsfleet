@@ -53,7 +53,7 @@ fn settled(f: &Fixture) -> Written {
         usage: vec![
             row(work::AUTHORING_ATTEMPT, None, fixture::MODEL_B, 29, 1),
             row(
-                work::FLEET_LEASE,
+                work::FLEET_RUN,
                 Some(f.fleet.clone()),
                 fixture::MODEL_A,
                 22,
@@ -62,7 +62,7 @@ fn settled(f: &Fixture) -> Written {
         ],
         runs: vec![RunRow {
             day,
-            work_type: work::FLEET_LEASE.to_owned(),
+            work_type: work::FLEET_RUN.to_owned(),
             fleet_id: Some(f.fleet.clone()),
             runs: 1,
         }],

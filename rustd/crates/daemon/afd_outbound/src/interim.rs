@@ -21,9 +21,9 @@
 //!
 //! A repeat attempt asks the thread whether its marker is already there. The
 //! answer's marker names the fleet and the event; each line is stamped as an
-//! interim line and adds its lease and its number there
+//! interim line and adds its run and its number there
 //! (`afd_connector::slack::Part`), so a repeat of a line finds only that line,
-//! a reclaimed lease's first line is not the dead lease's, and a repeat of the
+//! a reclaimed run's first line is not the dead run's, and a repeat of the
 //! answer is never silenced by one.
 //!
 //! # A line is posted as literal text
@@ -44,7 +44,7 @@ use crate::slack::SlackPoster;
 /// Logged once per line, delivered or not; the text is never logged.
 const EVENT_POSTED: &str = "fleet_message_posted";
 
-/// One line, fenced, counted and scrubbed by the lease plane, ready to post.
+/// One line, fenced, counted and scrubbed by the run plane, ready to post.
 ///
 /// Owned, because it is built once from what the plane read and moved into the
 /// job the poster takes. Each attempt still copies the fleet and event into
@@ -61,8 +61,8 @@ pub struct Interim {
     pub fleet_id: Uuid7,
     /// The event whose thread it lands in.
     pub event_id: Uuid7,
-    /// The lease that said it, whose count `part` is.
-    pub lease_id: Uuid7,
+    /// The run that said it, whose count `part` is.
+    pub run_id: Uuid7,
     /// What to say, already scrubbed of the fleet's secret values.
     pub text: String,
     /// Which line of the run this is, from one.
@@ -95,7 +95,7 @@ impl Interjector {
             workspace_id,
             fleet_id,
             event_id,
-            lease_id,
+            run_id,
             text,
             part,
         } = interim;
@@ -112,7 +112,7 @@ impl Interjector {
             slack: Line {
                 slack: &self.slack,
                 part: Part {
-                    lease_id: lease_id.into(),
+                    run_id: run_id.into(),
                     line: part,
                 },
             },

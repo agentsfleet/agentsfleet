@@ -11,7 +11,7 @@
 //! carries that ordering as a pure function; this module is the I/O it composes.
 //!
 //! Cost: one lookup per event, ungated fleets included. It is bought on the
-//! path that issues a lease — a whole model run — so it does not register.
+//! path that issues a run — a whole model run — so it does not register.
 //!
 //! # The anomaly counter is reached only on a FIRST encounter
 //!
@@ -24,7 +24,7 @@
 //! # What the pass never does
 //!
 //! It writes no `fleet.events` row. Every outcome below is a decision the
-//! CALLER applies once — the same discipline [`Admission`](crate::lease::Admission)
+//! CALLER applies once — the same discipline [`Admission`](crate::run::Admission)
 //! states for the money gates, and for the same reason: a refusal that forgot
 //! its row and one that wrote it twice are both unrepresentable when the value
 //! is the only thing that decides.
@@ -114,7 +114,7 @@ pub struct Check<'a> {
     pub actor: &'a str,
     /// Its body, as stored — the conditions' context when it parses.
     pub request_json: &'a str,
-    /// The config resolved for this lease.
+    /// The config resolved for this run.
     pub config: &'a FleetConfig,
 }
 

@@ -3,13 +3,13 @@
 //! Each statement's row is a named `FromRow` struct, so a column is found by
 //! the name the statement gives it and never by a position a later column
 //! could shift. Liveness is derived at the `checked_at` the statement answered
-//! with — the database's clock, the one the live-lease test inside it used.
+//! with — the database's clock, the one the live-run test inside it used.
 
 use std::borrow::Cow;
 
 use af_core::clock;
 use af_core::id::Uuid7;
-use af_core::timing::LeaseClock;
+use af_core::timing::RunClock;
 use af_wire::runner::{
     AssignedPolicy, CapabilityReport, ExtraBind, RunnerLiveness, SelftestCheck, SelftestReport,
 };
@@ -44,7 +44,7 @@ pub(super) struct ItemRow {
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     checked_at: Timestamp,
-    live_lease: bool,
+    live_run: bool,
     network_policy: String,
     registry_allowlist: String,
     worker_count: i32,
@@ -58,12 +58,12 @@ pub(super) struct ItemRow {
 pub(super) struct DetailRow {
     #[sqlx(flatten)]
     item: ItemRow,
-    active_lease_count: i64,
+    active_run_count: i64,
     active_fleet_count: i64,
-    leases_acquired: i64,
-    leases_succeeded: i64,
-    leases_failed: i64,
-    leases_expired: i64,
+    runs_acquired: i64,
+    runs_succeeded: i64,
+    runs_failed: i64,
+    runs_expired: i64,
     selftest_requested_at: Option<jiff_sqlx::Timestamp>,
     selftest_completed_at: Option<jiff_sqlx::Timestamp>,
     selftest_checks: Option<String>,
@@ -84,7 +84,7 @@ pub(super) struct EventRow {
 
 impl ItemRow {
     /// The list row, its identifier, status and stored JSON proven.
-    pub(super) fn parse(self, clock: LeaseClock) -> Result<RunnerItem> {
+    pub(super) fn parse(self, clock: RunClock) -> Result<RunnerItem> {
         let columns = AssignmentColumns {
             durable_tasks_enabled: self.durable_tasks_enabled,
             decision_model_id: self.decision_model_id.map(String::from),
@@ -111,7 +111,7 @@ impl ItemRow {
             sandbox_tier: columns.sandbox_tier.clone(),
             status: af_core::spelling::from_spelling(&self.status)
                 .ok_or_else(admin_state_malformed)?,
-            liveness: derive_liveness(self.last_seen_at, self.live_lease, self.checked_at, clock),
+            liveness: derive_liveness(self.last_seen_at, self.live_run, self.checked_at, clock),
             labels: labels(&self.labels)?,
             last_seen_at: self.last_seen_at,
             created_at: self.created_at,
@@ -125,7 +125,7 @@ impl ItemRow {
 
 impl DetailRow {
     /// The detail row, built on the list row's decode.
-    pub(super) fn parse(self, clock: LeaseClock) -> Result<RunnerDetail> {
+    pub(super) fn parse(self, clock: RunClock) -> Result<RunnerDetail> {
         let selftest = selftest(
             self.selftest_checks,
             self.selftest_sandbox_tier,
@@ -133,12 +133,12 @@ impl DetailRow {
         );
         Ok(RunnerDetail {
             item: self.item.parse(clock)?,
-            active_lease_count: self.active_lease_count,
+            active_run_count: self.active_run_count,
             active_fleet_count: self.active_fleet_count,
-            leases_acquired: self.leases_acquired,
-            leases_succeeded: self.leases_succeeded,
-            leases_failed: self.leases_failed,
-            leases_expired: self.leases_expired,
+            runs_acquired: self.runs_acquired,
+            runs_succeeded: self.runs_succeeded,
+            runs_failed: self.runs_failed,
+            runs_expired: self.runs_expired,
             selftest_requested_at: self
                 .selftest_requested_at
                 .map(jiff_sqlx::Timestamp::to_jiff),
@@ -251,13 +251,13 @@ fn own_check(check: SelftestCheck<'_>) -> SelftestCheck<'static> {
 /// beat stamped after `checked_at` — a skewed clock — reads as fresh.
 pub(super) fn derive_liveness(
     last_seen_at: Timestamp,
-    has_live_lease: bool,
+    has_live_run: bool,
     checked_at: Timestamp,
-    clock: LeaseClock,
+    clock: RunClock,
 ) -> RunnerLiveness {
     if last_seen_at == sql::NEVER_SEEN {
         RunnerLiveness::Registered
-    } else if has_live_lease {
+    } else if has_live_run {
         RunnerLiveness::Busy
     } else if last_seen_at >= clock::before(checked_at, clock.offline_after()) {
         RunnerLiveness::Online

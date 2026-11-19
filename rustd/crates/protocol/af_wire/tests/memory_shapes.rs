@@ -48,7 +48,7 @@ fn test_a_capture_reply_round_trips() {
 /// A fleet with no grant hydrates in the shape every runner already parses.
 ///
 /// `agentsfleet-runner` reads this reply strictly, so a field it does not know
-/// would leave every lease with empty memory. `shared` and `publish` appear
+/// would leave every run with empty memory. `shared` and `publish` appear
 /// only once a grant makes them mean something.
 #[test]
 fn test_a_hydrate_reply_without_grants_keeps_the_shape_runners_parse() {
@@ -123,7 +123,7 @@ fn test_the_published_recall_limit_is_the_proved_range() {
 #[test]
 fn test_a_recall_query_holding_nul_is_malformed() {
     let clean = MemoryRecallRequest {
-        lease_id: Cow::Borrowed("lease-1"),
+        run_id: Cow::Borrowed("run-1"),
         fencing_token: 1,
         query: Cow::Borrowed("deploy"),
         limit: 1,

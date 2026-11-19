@@ -2,12 +2,12 @@
 
 mod loop_boundary;
 
-use super::{FENCING, FencedVerbs, Host, LEASE_ID};
+use super::{FENCING, FencedVerbs, Host, RUN_ID};
 use crate::client::Verb;
 use crate::test_support::{Answer, drain, json, plane};
 use af_core::id::Uuid7;
 use af_wire::task::{DecisionCallState, DecisionReservationInput};
-use afr_agent::{LeaseVerbs as _, Unanswered};
+use afr_agent::{RunVerbs as _, Unanswered};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -72,10 +72,10 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
     if fault == "cancelled" {
         host.stop.cancel();
     }
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -135,10 +135,10 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
     let (plane, mut calls) = plane(receipt_retries(count, saved));
     let host = Host::new();
     host.stop.cancel();
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -166,14 +166,14 @@ async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
     let (plane, mut calls) = plane(|call| {
         assert_eq!(call.verb, Verb::TaskDecisionReserve);
         let mut value = dispatch("typesafe", "goal");
-        *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(LEASE_ID);
+        *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(RUN_ID);
         json(&value)
     });
     let host = Host::new();
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,

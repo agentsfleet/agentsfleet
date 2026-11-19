@@ -65,7 +65,7 @@ fn test_the_lanes_error_is_reported_before_the_sweeps() {
     let lane_failed: Result<Report, Error> = Err(ErrorKind::TaskLost { role: "runner" }.into());
     let sweep_failed: Result<u64, Error> = Err(ErrorKind::InstrumentPoisoned.into());
 
-    let refused = finish(Lane::Lease, Profile::Rig, lane_failed, sweep_failed)
+    let refused = finish(Lane::Run, Profile::Rig, lane_failed, sweep_failed)
         .expect_err("two failures still refuse");
 
     assert!(
@@ -76,11 +76,11 @@ fn test_the_lanes_error_is_reported_before_the_sweeps() {
 
 #[test]
 fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
-    let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Run, Profile::Rig, Provenance::for_test());
     report.fixture.created = 3;
 
     let refused = finish(
-        Lane::Lease,
+        Lane::Run,
         Profile::Rig,
         Ok(report),
         Err(ErrorKind::InstrumentPoisoned.into()),

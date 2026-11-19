@@ -14,7 +14,7 @@ async fn tenant_runner(f: &Fixture, tenant: &Uuid7) -> Uuid7 {
     let runner = mint();
     sqlx::query(
         "INSERT INTO runner.runners (id, host_id, token_hash, sandbox_tier, status, labels, \
-         network_policy, registry_allowlist, worker_count, last_seen_at, lease_version, \
+         network_policy, registry_allowlist, worker_count, last_seen_at, run_version, \
          created_at, updated_at, platform_owned, tenant_id) \
          VALUES ($1, 'tenant-host', $1::text, 'dev_none', 'active', '[]'::jsonb, \
                  'deny_all_egress', '[]'::jsonb, 2, now(), 0, now(), now(), false, $2)",
@@ -80,7 +80,7 @@ async fn authoring_placement_refuses_a_foreign_runner() {
     let logged = captured.only("runner_placement_refused");
     drop(captured);
     assert!(refused.is_none(), "a foreign host claims nothing");
-    assert_eq!(logged.field("lease_type"), Some("authoring"));
+    assert_eq!(logged.field("run_type"), Some("authoring"));
     assert_eq!(logged.field("reason"), Some("foreign_tenant"));
     assert_eq!(
         scalar(

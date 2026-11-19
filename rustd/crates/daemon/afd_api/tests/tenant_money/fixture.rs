@@ -34,7 +34,7 @@ impl Setup {
         .expect("workspace");
         for (index, attempt) in setup.attempts.iter().enumerate() {
             // No runner: an attempt keeps its row after its runner goes (SET NULL).
-            sqlx::query("INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,reported_runtime_ms,last_activity_sequence,created_at,updated_at) VALUES($1,$1,NULL,$2,$3,$4,$5,$6,1,$1,'{\"model\":\"setup-model\",\"platform_managed\":true}','awaiting_accounting',to_timestamp(101),to_timestamp(101),999,true,0,0,31,0,to_timestamp(101),to_timestamp(101))")
+            sqlx::query("INSERT INTO authoring.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,reported_runtime_ms,last_activity_sequence,created_at,updated_at) VALUES($1,$1,NULL,$2,$3,$4,$5,$6,1,$1,'{\"model\":\"setup-model\",\"platform_managed\":true}','awaiting_accounting',to_timestamp(101),to_timestamp(101),999,true,0,0,31,0,to_timestamp(101),to_timestamp(101))")
                 .bind(attempt).bind(&setup.workspace).bind(&owner.tenant).bind(&setup.creator).bind(&setup.draft)
                 .bind(i64::try_from(index).expect("fixture index")).execute(&mut *connection).await.expect("attempt without retained private draft");
         }

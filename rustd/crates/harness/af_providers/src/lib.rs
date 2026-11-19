@@ -1,9 +1,9 @@
 //! The model providers: `guffbolt`'s model seam implemented over every wire
 //! (`docs/architecture/runner_execution.md` §Crates).
 //!
-//! A [`Connect`] picks the route a lease's policy names and builds its
+//! A [`Connect`] picks the route a run's policy names and builds its
 //! [`Provider`]. rig speaks every wire; the runner owns which providers a
-//! lease may reach, the transport under rig (one HTTP client, no redirect,
+//! run may reach, the transport under rig (one HTTP client, no redirect,
 //! bounded retry) and the turn's chunks. The model key lives only here, in
 //! the supervisor: no provider runs inside a sandbox.
 

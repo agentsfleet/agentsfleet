@@ -20,7 +20,7 @@ use af_core::test_util::trace::{Capture, install_subscriber};
 /// The instant the seeded rows carry.
 const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
-/// The status that keeps every lease path off the fixture fleet.
+/// The status that keeps every run path off the fixture fleet.
 const FLEET_ARCHIVED: &str = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
 
 /// The line a lost notification is logged under.

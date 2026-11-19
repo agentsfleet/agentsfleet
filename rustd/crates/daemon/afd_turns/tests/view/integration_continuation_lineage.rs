@@ -4,7 +4,7 @@
 //!
 //! A resolved gate lands a continuation through two independent writers. The
 //! approval path knows the predecessor — the event a person unblocked — and
-//! binds it. The lease path knows nothing about it: a runner polling the fleet
+//! binds it. The run path knows nothing about it: a runner polling the fleet
 //! can pick the continuation up the instant `admit()` marks the fleet ready,
 //! which is BEFORE the approval path writes its row, and its insert binds no
 //! predecessor at all.
@@ -105,14 +105,14 @@ async fn row_count(lane: &EventsLane, event_id: &Uuid7) -> i64 {
     .expect("count answers a bigint")
 }
 
-/// The lease path wins the race; the approval path still records the lineage.
+/// The run path wins the race; the approval path still records the lineage.
 ///
 /// This is the order that lost the link outright before the conflict arm
 /// converged: the runner's insert landed first with no predecessor, and the
 /// approval path's insert was discarded whole.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn lineage_survives_lease_before_approval() {
+async fn lineage_survives_run_before_approval() {
     let lane = EventsLane::open().await;
     let event = afd_db::test_util::mint_id();
 
@@ -131,7 +131,7 @@ async fn lineage_survives_lease_before_approval() {
     lane.cleanup().await;
 }
 
-/// The approval path wins the race; the lease path leaves the lineage alone.
+/// The approval path wins the race; the run path leaves the lineage alone.
 ///
 /// This order always kept the link. It is asserted so that the fix cannot be
 /// read as having traded one order for the other.
@@ -158,7 +158,7 @@ async fn lineage_kept_when_approval_writes_first() {
 
 /// A redelivery that knows no predecessor never clears one already stored.
 ///
-/// The lease path re-runs this statement on every reclaim and every re-poll,
+/// The run path re-runs this statement on every reclaim and every re-poll,
 /// always binding `None`. A conflict arm that overwrote rather than coalesced
 /// would erase the lineage on the first redelivery after the answer.
 #[tokio::test(flavor = "multi_thread")]
@@ -214,7 +214,7 @@ async fn only_a_fresh_insert_reports_inserted() {
 
 /// The event id is the row's key: the insert stores the id it was given on the
 /// fresh arm and keeps the SAME row on the conflict arm, so a caller pointing a
-/// tool call or a lease at the row gets one identity however many times the
+/// tool call or a run at the row gets one identity however many times the
 /// event arrives.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]

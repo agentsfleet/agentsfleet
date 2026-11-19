@@ -8,18 +8,18 @@ use serde_json::json;
 
 use super::EVENT_REFUSED;
 use crate::catalog::{BROWSER, BROWSER_OPEN, FILE_READ, SCREENSHOT};
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call, call_in, hosted, offered};
 
 /// The argument name a file call spells.
 const PATH: &str = "path";
-/// A file the lease's other tools still reach.
+/// A file the run's other tools still reach.
 const PAGE: &str = "page.txt";
 const STILL_HERE: &str = "still here";
 
-/// The tools the refusal log names, in order; every entry names its lease.
+/// The tools the refusal log names, in order; every entry names its run.
 fn refused_tools_logged(capture: &Capture) -> Vec<String> {
     let refusals: Vec<_> = capture
         .events()
@@ -27,9 +27,7 @@ fn refused_tools_logged(capture: &Capture) -> Vec<String> {
         .filter(|event| event.field("event") == Some(EVENT_REFUSED))
         .collect();
     assert!(
-        refusals
-            .iter()
-            .all(|event| event.field("lease_id").is_some()),
+        refusals.iter().all(|event| event.field("run_id").is_some()),
         "{refusals:?}"
     );
     refusals
@@ -53,7 +51,7 @@ async fn test_browser_tools_refuse_until_firecracker() {
             FILE_READ.name(),
         ])
         .unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     let mut refusals = Vec::with_capacity(3);
     for (entry, arguments) in [
@@ -64,13 +62,13 @@ async fn test_browser_tools_refuse_until_firecracker() {
         let tool = offered(&selection, entry);
         refusals.push((
             entry.name(),
-            call_in(tool, &scripted, &lease, arguments).await,
+            call_in(tool, &scripted, &run, arguments).await,
         ));
     }
     let read = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: PAGE}),
     )
     .await;
@@ -90,7 +88,7 @@ async fn test_browser_tools_refuse_until_firecracker() {
         );
     }
     assert!(scripted.spawned().is_empty(), "no process was started");
-    assert_eq!(read.text, STILL_HERE, "the lease's other tools still run");
+    assert_eq!(read.text, STILL_HERE, "the run's other tools still run");
     assert_eq!(
         refused_tools_logged(&capture),
         ["browser_open", "browser", "screenshot"]
@@ -104,7 +102,7 @@ async fn test_browser_tools_refuse_until_firecracker() {
 async fn any_arguments_and_no_sandbox_are_refused_the_same_way() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[BROWSER.name()]).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     for arguments in [
         json!(null),
@@ -112,7 +110,7 @@ async fn any_arguments_and_no_sandbox_are_refused_the_same_way() {
         json!([1, 2]),
         json!({"nested": {"deep": true}}),
     ] {
-        let refused = call(offered(&selection, &BROWSER), &lease, arguments).await;
+        let refused = call(offered(&selection, &BROWSER), &run, arguments).await;
 
         assert_eq!(
             refused.error_code,

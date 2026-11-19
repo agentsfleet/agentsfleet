@@ -25,7 +25,7 @@ use std::time::Duration;
 use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
 use afd_bus::{Received, Subject, Subscription};
-use afd_fleet::lease::Delivery;
+use afd_fleet::run::Delivery;
 use sqlx::Row as _;
 
 use crate::rows::{LAPSE, Row};
@@ -53,7 +53,7 @@ struct Parked {
     counters: FleetCounters,
 }
 
-/// Leases a seeded event and records its receive, which answers the counters
+/// Runs a seeded event and records its receive, which answers the counters
 /// the pull hands the frame — the row is then left open, which is what a
 /// park is from the tail's point of view: nothing closes it.
 async fn parked() -> Parked {
@@ -73,8 +73,8 @@ async fn parked() -> Parked {
         .expect("the tail subscribes");
 
     let now = fixtures.enrolled_at();
-    let leases = fixtures.leases();
-    let held = crate::seed::select_fleet(&leases, &runner, &fleet)
+    let runs = fixtures.runs();
+    let held = crate::seed::select_fleet(&runs, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
     let received = held.opened.received;
@@ -89,7 +89,7 @@ async fn parked() -> Parked {
         counters,
         "the figures the receive carries are the database's"
     );
-    leases.publish_received(&held, now, Some(counters)).await;
+    runs.publish_received(&held, now, Some(counters)).await;
 
     Parked {
         fixtures,
@@ -209,9 +209,9 @@ async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
     // The holder stops renewing; its slot lapses and the admission is claimed
     // again, over the row the first claim opened.
     run.fixtures
-        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
+        .age(Row::Slot(&run.fleet), "run_expires_at", LAPSE)
         .await;
-    let again = crate::seed::select_fleet(&run.fixtures.leases(), &run.runner, &run.fleet)
+    let again = crate::seed::select_fleet(&run.fixtures.runs(), &run.runner, &run.fleet)
         .await
         .expect("the lapsed admission is claimed again")
         .opened

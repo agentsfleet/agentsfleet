@@ -37,7 +37,7 @@ pub enum Proposal<D = Value, C = Value, I = Value> {
     },
 }
 
-/// The only two activity kinds an authoring lease may submit.
+/// The only two activity kinds an authoring run may submit.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]

@@ -90,14 +90,14 @@ pub(crate) fn connect(host: &str, port: u16) -> String {
 }
 
 /// What each of `scripts` printed, trimmed, run in turn in one sandbox for
-/// `lease_id` reaching `network`.
+/// `run_id` reaching `network`.
 fn said_under(
     lane: &Lane,
-    lease_id: &str,
+    run_id: &str,
     network: Network<'_>,
     scripts: &[String],
 ) -> Result<Vec<String>, Failed> {
-    let request = SandboxRequest::new(lease_id, Limits::default()).with_network(network);
+    let request = SandboxRequest::new(run_id, Limits::default()).with_network(network);
     in_sandbox_each(lane, request, scripts).map(said)
 }
 

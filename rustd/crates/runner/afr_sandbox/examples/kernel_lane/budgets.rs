@@ -1,5 +1,5 @@
-//! A lease's start, measured with the page cache cold and then warm, four
-//! leases at once, for the figures the spec records in its Discovery.
+//! A run's start, measured with the page cache cold and then warm, four
+//! runs at once, for the figures the spec records in its Discovery.
 
 use std::fmt;
 use std::fs;
@@ -13,7 +13,7 @@ use libtest_mimic::Failed;
 use crate::lane::Lane;
 use crate::run::{self, expect, runtime};
 
-/// Leases started at once in each measured round.
+/// Runs started at once in each measured round.
 const AT_ONCE: usize = 4;
 /// Rounds measured for each cache state.
 const ROUNDS: usize = 25;
@@ -24,7 +24,7 @@ const PERCENTILES: [usize; 3] = [50, 95, 99];
 /// Where the kernel drops its clean page cache, and what drops all of it.
 const DROP_CACHES: &str = "/proc/sys/vm/drop_caches";
 const DROP_ALL: &str = "3";
-/// The first useful command a lease runs, and what it prints.
+/// The first useful command a run runs, and what it prints.
 const FIRST_COMMAND: &str = "git --version";
 const GIT_VERSION: &str = "git version";
 /// The two cache states, as the figures name them.
@@ -47,16 +47,16 @@ impl fmt::Display for Cache {
     }
 }
 
-/// One lease's figures: the time to executor-ready, then to its first
+/// One run's figures: the time to executor-ready, then to its first
 /// command's end.
 struct Start {
     ready: Duration,
     first_command: Duration,
 }
 
-/// Four leases at once, with the page cache cold and then warm: host staging,
+/// Four runs at once, with the page cache cold and then warm: host staging,
 /// sandbox readiness and the first useful command, at p50, p95 and p99. Every
-/// lease must reach ready and run its command; the figures are the evidence
+/// run must reach ready and run its command; the figures are the evidence
 /// the spec records, not a bound this trial asserts.
 pub(crate) fn start_budgets(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
@@ -69,13 +69,13 @@ pub(crate) fn start_budgets(lane: &Lane) -> Result<(), Failed> {
                 if cache == Cache::Cold {
                     drop_caches()?;
                 }
-                for start in round_of_leases(&*engine, cache, round).await? {
+                for start in round_of_runs(&*engine, cache, round).await? {
                     ready.push(start.ready);
                     first.push(start.first_command);
                 }
             }
             println!(
-                "{cache} cache: host staging p50 of {STAGINGS} {staging:?}; {} leases, {AT_ONCE} at \
+                "{cache} cache: host staging p50 of {STAGINGS} {staging:?}; {} runs, {AT_ONCE} at \
                  once: executor-ready p50/p95/p99 {}; first useful command ({FIRST_COMMAND}) \
                  p50/p95/p99 {}",
                 ready.len(),
@@ -121,8 +121,8 @@ fn drop_caches() -> Result<(), Failed> {
     fs::write(DROP_CACHES, DROP_ALL).map_err(|error| format!("{DROP_CACHES}: {error}").into())
 }
 
-/// Starts `AT_ONCE` leases together and runs each one's first command.
-async fn round_of_leases(
+/// Starts `AT_ONCE` runs together and runs each one's first command.
+async fn round_of_runs(
     engine: &dyn Engine,
     cache: Cache,
     round: usize,
@@ -130,14 +130,14 @@ async fn round_of_leases(
     let ids: Vec<String> = (0..AT_ONCE)
         .map(|number| format!("budget-{cache}-{round}-{number}"))
         .collect();
-    try_join_all(ids.iter().map(|lease_id| one_start(engine, lease_id))).await
+    try_join_all(ids.iter().map(|run_id| one_start(engine, run_id))).await
 }
 
-/// One lease from request to executor-ready, then its first command's end.
-async fn one_start(engine: &dyn Engine, lease_id: &str) -> Result<Start, Failed> {
+/// One run from request to executor-ready, then its first command's end.
+async fn one_start(engine: &dyn Engine, run_id: &str) -> Result<Start, Failed> {
     let started = Instant::now();
     let sandbox = engine
-        .prepare(SandboxRequest::new(lease_id, Limits::default()))
+        .prepare(SandboxRequest::new(run_id, Limits::default()))
         .await?;
     let ready = started.elapsed();
     let began = Instant::now();
@@ -147,7 +147,7 @@ async fn one_start(engine: &dyn Engine, lease_id: &str) -> Result<Start, Failed>
     let said = said?;
     expect(
         said.output.contains(GIT_VERSION),
-        format!("{lease_id}: git answers, got {:?}", said.output),
+        format!("{run_id}: git answers, got {:?}", said.output),
     )?;
     Ok(Start {
         ready,

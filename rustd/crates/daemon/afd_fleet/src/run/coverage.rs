@@ -1,0 +1,364 @@
+//! Whether a run in flight may buy another slice: the tenant's pool, and the
+//! fleet's own ceiling.
+//!
+//! The same two gates the run verb applies at issue, asked again mid-run —
+//! and asked again on purpose. A run admitted an hour ago may have drained the
+//! wallet it was admitted against, and a fleet's author may have lowered its
+//! ceiling since. Both are read LIVE rather than pinned on the run, so
+//! lowering a runaway fleet's budget bites at its next renewal tick instead of
+//! only at its next run.
+//!
+//! # Two faults, two directions, and the reason they differ
+//!
+//! A gate that cannot be READ admits. A metering outage that killed every run
+//! in flight would turn a billing incident into a platform incident, and a run
+//! given one more thirty-second slice is recoverable where a terminated agent
+//! is not.
+//!
+//! A ceiling that cannot be PARSED refuses. It will not fix itself on the next
+//! tick the way an outage will, and a limit this daemon cannot read is not one
+//! it may treat as absent — that reading is what a fleet author would least
+//! expect from a document they wrote to bound their spend.
+//!
+//! [`crate::Error::is_config_permanent`] is what separates the two, so the
+//! distinction is the error's own rather than a `match` re-derived here.
+
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use afd_billing::biller::{Account, Ask, Funds, WorkKey};
+use afd_billing::rates::Estimate;
+use jiff::Timestamp;
+
+use crate::error::{Result, budget_exhausted, renewal_no_credits};
+use crate::run::pull::RunService;
+use crate::run::renew::Renewing;
+use crate::run::usage::Pricing;
+use afd_billing::budget::{self, Verdict};
+
+/// The tenant's pool cannot fund another slice.
+const EVENT_NO_CREDITS: &str = "renew_no_credits";
+
+/// The fleet reached a ceiling its author declared.
+pub(in crate::run) const EVENT_BUDGET_BREACH: &str = "renew_budget_breach";
+
+/// A gate could not be read, and the renewal was admitted anyway.
+const EVENT_GATE_UNREADABLE: &str = "renew_gate_unreadable_admitted";
+
+impl RunService {
+    /// Both money gates, in the order a refusal must not be charged in.
+    ///
+    /// The tenant's pool first, because it is the cheaper read and the more
+    /// common refusal; the fleet's ceiling second. Both must pass — they are
+    /// independent pools, and passing one says nothing about the other.
+    ///
+    /// # Errors
+    /// Refuses with [`renewal_no_credits`](crate::error) when the tenant's
+    /// balance is spent, and [`budget_exhausted`](crate::error) when the
+    /// fleet's own ceiling is reached or its stored ceiling will not parse.
+    pub(super) async fn gate_renewal(
+        &self,
+        run: &Renewing,
+        run_key: &Uuid7,
+        run_id: &str,
+        now: Timestamp,
+    ) -> Result<()> {
+        self.funds_cover(run, run_key, run_id, now).await?;
+        self.budget_covers(run, run_id).await
+    }
+
+    /// Whether the payer can fund one more slice.
+    ///
+    /// The balance, less every line the payer has logged and the relay has not
+    /// yet charged, must cover the same floor the issue gate admits against,
+    /// so issue and renewal share one credit policy. Nothing is set aside: a
+    /// payer whose parallel runs spent past the balance since their last
+    /// renewals carries that as a debt, and this check stops each run at its
+    /// next renewal.
+    ///
+    /// A tenant with no wallet row is admitted, for the reason the issue gate
+    /// admits one. An outage the biller's outage policy admitted answers
+    /// [`Funds::Unconfirmed`] and renews.
+    pub(crate) async fn funds_cover(
+        &self,
+        run: &Renewing,
+        run_key: &Uuid7,
+        run_id: &str,
+        now: Timestamp,
+    ) -> Result<()> {
+        let posture = Pricing::posture_of(&run.posture)?;
+        let estimate = self
+            .accounts
+            .estimate(posture, &run.provider, &run.model, now)
+            .await
+            .map_err(|fault| std::sync::Arc::new(crate::Error::from(fault)));
+        self.funds_cover_at(run, run_key, run_id, estimate).await
+    }
+
+    /// [`Self::funds_cover`] against a floor the caller already priced, as the
+    /// host batch does from its cached book. A floor that could not
+    /// be priced fails open, as an unreadable balance does.
+    pub(crate) async fn funds_cover_at(
+        &self,
+        run: &Renewing,
+        run_key: &Uuid7,
+        run_id: &str,
+        estimate: core::result::Result<Estimate, std::sync::Arc<crate::Error>>,
+    ) -> Result<()> {
+        let estimate = match estimate {
+            Ok(estimate) => estimate,
+            Err(fault) => {
+                admit_unreadable("balance", run, run_id, &fault);
+                return Ok(());
+            }
+        };
+        let ask = Ask {
+            work: WorkKey::FleetRun(run_key.clone()),
+            payer: Account {
+                tenant: run.tenant_id.clone(),
+                workspace: run.workspace_id.clone(),
+            },
+            next: estimate.floor(),
+        };
+        let funds = self.biller.check(&ask).await;
+
+        match funds {
+            Ok(Funds::Covered | Funds::Unconfirmed) => Ok(()),
+            Ok(Funds::Short { .. }) => {
+                let fleet = run.fleet_id.as_str();
+                {
+                    let (fleet_id, event, message) = (
+                        &fleet,
+                        &EVENT_NO_CREDITS,
+                        format_args!(
+                            "the tenant's balance can no longer fund this run; not renewed"
+                        ),
+                    );
+                    tracing::warn!(message, fleet_id, run_id, event);
+                };
+                Err(renewal_no_credits())
+            }
+            Err(fault) if fault.is_wallet_missing() => Ok(()),
+            // Fail OPEN: the balance could not be read at all, which says
+            // nothing about whether it covers the run.
+            Err(fault) => {
+                admit_unreadable("balance", run, run_id, &crate::Error::from(fault));
+                Ok(())
+            }
+        }
+    }
+
+    /// The fleet's own ceiling against what it has already drained.
+    ///
+    /// Read live from the head revision's definition through the same parser that
+    /// accepted the document at ingest, so the ceiling that admits a run and
+    /// the ceiling that stops one can never be read two ways.
+    async fn budget_covers(&self, run: &Renewing, run_id: &str) -> Result<()> {
+        let config = match self.runs.stored_config(&run.fleet_id).await {
+            Ok(Some(config)) => config,
+            // The row is gone only when a purge raced the run. There is no
+            // ceiling left to read; an archived fleet still has one, so it
+            // never reaches this arm.
+            Ok(None) => return Ok(()),
+            // The one CLOSED arm. A stored ceiling this daemon cannot parse is
+            // not a ceiling it may ignore — and unlike the outage below, it
+            // will read the same on every subsequent tick.
+            Err(fault) if fault.is_config_permanent() => {
+                return Err(refuse_unreadable_budget(&run.fleet_id, run_id, &fault));
+            }
+            Err(fault) => {
+                admit_unreadable("budget", run, run_id, &fault);
+                return Ok(());
+            }
+        };
+
+        let spend = match self.accounts.spend(&run.workspace_id, &run.fleet_id).await {
+            Ok(spend) => spend,
+            // Lifted into this crate's error first, so all three gates log
+            // through one shape and the operator greps one event.
+            Err(fault) => {
+                admit_unreadable("spend", run, run_id, &crate::Error::from(fault));
+                return Ok(());
+            }
+        };
+        let verdict = budget::covers(config.budget(), spend);
+        if verdict == Verdict::Admit {
+            return Ok(());
+        }
+
+        let fleet = run.fleet_id.as_str();
+        let which = verdict.as_str();
+        {
+            let (fleet_id, verdict, event, message) = (
+                &fleet,
+                &which,
+                &EVENT_BUDGET_BREACH,
+                format_args!("the fleet reached a ceiling its author declared; not renewed"),
+            );
+            tracing::warn!(message, fleet_id, run_id, verdict, event);
+        };
+        Err(budget_exhausted())
+    }
+}
+
+/// Refuse a renewal whose stored budget will never parse, and say so.
+///
+/// One place for the per-run path and the host batch, so a fleet whose
+/// ceiling cannot be read is refused and logged the same way under either.
+pub(in crate::run) fn refuse_unreadable_budget(
+    fleet_id: &Uuid7,
+    run_id: &str,
+    fault: &crate::Error,
+) -> crate::Error {
+    let fleet = fleet_id.as_str();
+    let Logged { error_code, reason } = fault.logged();
+    {
+        let (fleet_id, event, message) = (
+            &fleet,
+            &EVENT_BUDGET_BREACH,
+            format_args!("the fleet's stored budget cannot be read; not renewed"),
+        );
+        tracing::warn!(message, error_code, fleet_id, run_id, reason, event);
+    };
+    budget_exhausted()
+}
+
+/// Admit a renewal whose gate could not be read, and say so.
+///
+/// One place, so the fail-open posture is applied identically at all three call
+/// sites and an operator greps one event for every instance of it. Logs and
+/// nothing else — each call site states its own `Ok(())` beside it, so the
+/// admission is visible AT the arm that takes it rather than inferred from a
+/// return type three screens further down.
+fn admit_unreadable(gate: &'static str, run: &Renewing, run_id: &str, fault: &crate::Error) {
+    let fleet = run.fleet_id.as_str();
+    let Logged { error_code, reason } = fault.logged();
+    {
+        let (fleet_id, event, message) = (
+            &fleet,
+            &EVENT_GATE_UNREADABLE,
+            format_args!(
+                "a renewal gate could not be read; the run is admitted for one more slice"
+            ),
+        );
+        tracing::warn!(message, error_code, fleet_id, run_id, gate, reason, event);
+    };
+}
+
+/// Admit a fleet's runs whose gate could not be read, and say so.
+///
+/// The host batch reads each fleet's ceiling once for the whole frame, so it
+/// has a fleet and a fault but no single run to name. It logs the same event
+/// the per-run path does, once per fleet, so an operator greps one event for
+/// every instance of the fail-open posture.
+pub(in crate::run) fn admit_unreadable_fleet(
+    gate: &'static str,
+    fleet_id: &Uuid7,
+    fault: &crate::Error,
+) {
+    let fleet = fleet_id.as_str();
+    let Logged { error_code, reason } = fault.logged();
+    {
+        let (fleet_id, event, message) = (
+            &fleet,
+            &EVENT_GATE_UNREADABLE,
+            format_args!(
+                "a renewal gate could not be read; the fleet's runs are admitted for one more slice"
+            ),
+        );
+        tracing::warn!(message, error_code, fleet_id, gate, reason, event);
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use af_core::id::{ENTROPY_LEN, Uuid7};
+    use jiff::Timestamp;
+
+    use super::admit_unreadable;
+    use crate::run::renew::Renewing;
+
+    /// A run for the reporting helper, with three distinct identifiers.
+    ///
+    /// Distinct because the warning names the fleet and the run separately,
+    /// and a fixture that reused one id would let a swapped field pass.
+    fn renewing() -> Result<Renewing, &'static str> {
+        let at = Timestamp::constant(1_767_225_600, 0);
+        let mint = |seed: u8| {
+            Uuid7::encode(at, [seed; ENTROPY_LEN])
+                .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
+        };
+        Ok(Renewing {
+            cancelled: false,
+            tenant_id: mint(1)?,
+            fleet_id: mint(2)?,
+            workspace_id: mint(3)?,
+            posture: "sandboxed".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-opus-5".to_owned(),
+            status: "active".to_owned(),
+        })
+    }
+
+    /// The unreadable-gate admission renders every refusal it can be handed.
+    ///
+    /// The three call sites pass a balance, a budget and a spend failure, and
+    /// each is admitted for one more slice rather than refused — so what there
+    /// is to prove is that the reporting itself survives every error kind. Both
+    /// `fault.to_string()` and `fault.code()` run arbitrary per-kind code at the
+    /// moment a gate has already failed, which is the worst moment for either
+    /// to panic.
+    #[test]
+    fn the_unreadable_gate_admission_renders_every_refusal() -> Result<(), &'static str> {
+        let run = renewing()?;
+
+        for fault in [
+            crate::error::stale_fence(),
+            crate::error::run_not_found(),
+            crate::error::run_lost(),
+            crate::error::run_max_runtime(),
+            crate::error::renewal_no_credits(),
+            crate::error::budget_exhausted(),
+        ] {
+            assert!(
+                !fault.to_string().is_empty(),
+                "the refusal renders to something a reader can act on"
+            );
+            let code = fault.code().as_str();
+            assert!(!code.is_empty(), "{code:?}");
+            admit_unreadable("balance", &run, "run-fixture", &fault);
+            admit_unreadable("budget", &run, "run-fixture", &fault);
+            admit_unreadable("spend", &run, "run-fixture", &fault);
+        }
+        Ok(())
+    }
+
+    /// The batch has a fleet and no single run, and says the same thing.
+    #[test]
+    fn an_unreadable_fleet_ceiling_is_admitted_and_logged_once() -> Result<(), &'static str> {
+        let log = af_core::test_util::trace::Capture::install();
+        let run = renewing()?;
+        let fault = crate::error::query("revision read")(sqlx::Error::PoolTimedOut);
+
+        super::admit_unreadable_fleet("budget", &run.fleet_id, &fault);
+
+        let line = log.only(super::EVENT_GATE_UNREADABLE);
+        assert_eq!(line.field("fleet_id"), Some(run.fleet_id.as_str()));
+        assert_eq!(line.field("gate"), Some("budget"));
+        assert_eq!(line.field("error_code"), Some(fault.code().as_str()));
+        Ok(())
+    }
+
+    #[test]
+    fn an_unreadable_renewal_gate_reason_carries_no_code_prefix() -> Result<(), &'static str> {
+        let log = af_core::test_util::trace::Capture::install();
+        let run = renewing()?;
+        let fault = crate::error::query("balance read")(sqlx::Error::PoolTimedOut);
+
+        admit_unreadable("balance", &run, "run-fixture", &fault);
+
+        let line = log.only(super::EVENT_GATE_UNREADABLE);
+        assert_eq!(line.field("error_code"), Some(fault.code().as_str()));
+        assert_eq!(line.field("reason"), Some(fault.told().as_str()));
+        Ok(())
+    }
+}

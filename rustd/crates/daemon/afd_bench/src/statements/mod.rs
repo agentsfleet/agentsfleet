@@ -16,7 +16,7 @@
 //! counting them would make an explicit transaction look three statements
 //! dearer than the same work in autocommit. They are left out of the statement
 //! sum because the commit count already carries them. Every other utility
-//! statement — the lease path's `SET LOCAL ROLE` among them — does work on a
+//! statement — the run path's `SET LOCAL ROLE` among them — does work on a
 //! round trip of its own and stays in.
 //!
 //! # A new connection is not a commit the lane made

@@ -21,9 +21,9 @@ pub struct SteerRequest<'a> {
     /// Bounded on the decoded bytes, which is what reaches the stream. The
     /// escaped form a client sends is not what counts against the limit.
     //
-    // NUL is refused because the lease casts the stored body to `jsonb`, which
+    // NUL is refused because the run casts the stored body to `jsonb`, which
     // cannot hold `\u0000`: accepted, such a message was answered 202 and then
-    // failed at lease.
+    // failed at run.
     #[serde(borrow)]
     #[garde(
         length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES),

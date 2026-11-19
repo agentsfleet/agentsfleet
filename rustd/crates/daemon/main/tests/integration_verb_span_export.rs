@@ -167,21 +167,21 @@ fn exporting_to(endpoint: &str) -> [(&'static str, &str); 2] {
     ]
 }
 
-/// One seeded event leased through the gateway and reported.
+/// One seeded event held through the gateway and reported.
 async fn one_chat(supervisor: &mut Supervisor, endpoint: &str) -> e2e::Scenario {
-    let run = e2e::scenario_with(
+    let scene = e2e::scenario_with(
         supervisor,
         None,
         &exporting_to(endpoint),
         e2e_seed::FLEET_CONFIG_JSON,
     )
     .await;
-    let (lease_id, fence) = tail::lease(&run).await;
-    let body = wire::report_body(&lease_id, &run.event_id, fence);
-    wire::report(&run, &body)
+    let (run_id, fence) = tail::run(&scene).await;
+    let body = wire::report_body(&run_id, &scene.event_id, fence);
+    wire::report(&scene, &body)
         .await
         .expect("the native report is acknowledged");
-    run
+    scene
 }
 
 /// A clock built before `telemetry::install` still reaches the
@@ -224,8 +224,8 @@ async fn test_event_identity_joins_the_verb_spans() {
     let _owner = SERIAL.lock().await;
     let (endpoint, mut received) = collector().await;
     let mut supervisor = Supervisor::new();
-    let run = one_chat(&mut supervisor, &endpoint).await;
-    let event = run.event_id.to_string();
+    let scene = one_chat(&mut supervisor, &endpoint).await;
+    let event = scene.event_id.to_string();
     let ours = |seen: &Exported, name: &str| {
         seen.named(name)
             .any(|span| attribute(span, semconv::ATTR_EVENT_ID) == Some(event.as_str()))
@@ -235,7 +235,7 @@ async fn test_event_identity_joins_the_verb_spans() {
     })
     .await;
 
-    let fleet = run.fleet.to_string();
+    let fleet = scene.fleet.to_string();
     for (name, stages) in [
         (
             semconv::SPAN_FLEET_OFFER,
@@ -278,7 +278,7 @@ async fn test_event_identity_joins_the_verb_spans() {
         }
     }
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Once the one event is reported, the gateway's later offer passes select
@@ -290,7 +290,7 @@ async fn test_empty_offer_pass_records_no_span() {
     let _owner = SERIAL.lock().await;
     let (endpoint, mut received) = collector().await;
     let mut supervisor = Supervisor::new();
-    let run = one_chat(&mut supervisor, &endpoint).await;
+    let scene = one_chat(&mut supervisor, &endpoint).await;
     tokio::time::sleep(EMPTY_PASSES).await;
     let exported = exported_until(&mut received, |seen| {
         seen.named(semconv::SPAN_FLEET_REPORT).next().is_some()
@@ -304,49 +304,49 @@ async fn test_empty_offer_pass_records_no_span() {
             "an empty pass recorded a span: {offer:?}"
         );
     }
-    let event = run.event_id.to_string();
+    let event = scene.event_id.to_string();
     let ours = offers
         .iter()
         .filter(|offer| attribute(offer, semconv::ATTR_EVENT_ID) == Some(event.as_str()))
         .count();
     assert_eq!(ours, 1, "one offer span names the chat's event: {offers:?}");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// The runner's memory verbs, a capture then a fallback hydrate on a live
-/// lease, each record their span under the fleet with both of their stages.
+/// run, each record their span under the fleet with both of their stages.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_memory_verbs_record_their_spans() {
     let _owner = SERIAL.lock().await;
     let (endpoint, mut received) = collector().await;
     let mut supervisor = Supervisor::new();
-    let run = e2e::scenario_with(
+    let scene = e2e::scenario_with(
         &mut supervisor,
         None,
         &exporting_to(&endpoint),
         e2e_seed::FLEET_CONFIG_JSON,
     )
     .await;
-    let (lease_id, fence) = tail::lease(&run).await;
+    let (run_id, fence) = tail::run(&scene).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let path = format!("/v1/runners/me/memory/{}", run.fleet);
+    let path = format!("/v1/runners/me/memory/{}", scene.fleet);
     let push = serde_json::json!({
-        "lease_id": lease_id,
+        "run_id": run_id,
         "fencing_token": fence,
         "memory": [{"key": "span-probe", "content": "remembered", "category": wire::MEMORY_CATEGORY}],
     });
-    let captured = wire::post(&http, &run, &path, &push).await;
+    let captured = wire::post(&http, &scene, &path, &push).await;
     assert_eq!(captured.status().as_u16(), 200, "the capture lands");
-    let hydrated = wire::get(&http, &run, &path).await;
+    let hydrated = wire::get(&http, &scene, &path).await;
     assert_eq!(hydrated.status().as_u16(), 200, "the hydrate answers");
 
-    let fleet = run.fleet.to_string();
+    let fleet = scene.fleet.to_string();
     let ours = |seen: &Exported, name: &str| {
         seen.named(name)
             .any(|span| attribute(span, semconv::ATTR_AGENT_ID) == Some(fleet.as_str()))
@@ -382,10 +382,10 @@ async fn test_memory_verbs_record_their_spans() {
             );
         }
     }
-    let body = wire::report_body(&lease_id, &run.event_id, fence);
-    wire::report(&run, &body)
+    let body = wire::report_body(&run_id, &scene.event_id, fence);
+    wire::report(&scene, &body)
         .await
         .expect("the native report is acknowledged");
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

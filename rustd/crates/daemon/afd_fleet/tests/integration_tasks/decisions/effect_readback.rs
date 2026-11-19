@@ -37,7 +37,7 @@ fn query(
     cursor: Option<&str>,
 ) -> garde::Valid<TaskEffectsQuery> {
     garde::Unvalidated::new(TaskEffectsQuery {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task_id: task_id.to_owned(),
         ordinal_after: after,
         starting_after: cursor.map(str::to_owned),
@@ -56,7 +56,7 @@ async fn recovery_page(
     fixture
         .tasks
         .effects(
-            fixture.case.lease(),
+            fixture.case.run(),
             &query(fixture.case, task, after, cursor),
         )
         .await
@@ -121,7 +121,7 @@ async fn refusals(fixture: &Decisions<'_>, task: &str) {
         assert_eq!(
             fixture
                 .tasks
-                .effects(case.lease(), &query(case, task, 0, Some(cursor)))
+                .effects(case.run(), &query(case, task, 0, Some(cursor)))
                 .await
                 .expect_err("malformed cursor")
                 .code(),
@@ -131,7 +131,7 @@ async fn refusals(fixture: &Decisions<'_>, task: &str) {
     assert_eq!(
         fixture
             .tasks
-            .effects(case.lease(), &query(case, task, u64::MAX, None))
+            .effects(case.run(), &query(case, task, u64::MAX, None))
             .await
             .expect_err("overflowed watermark")
             .code(),
@@ -140,20 +140,20 @@ async fn refusals(fixture: &Decisions<'_>, task: &str) {
     assert_eq!(
         fixture
             .tasks
-            .effects(case.lease(), &query(case, mint_id().as_str(), 0, None))
+            .effects(case.run(), &query(case, mint_id().as_str(), 0, None))
             .await
             .expect_err("foreign task")
             .code(),
         TaskRefusal::NotFound.code()
     );
-    let mut stale = case.lease();
+    let mut stale = case.run();
     stale.fencing_token += 1;
     assert_eq!(
         fixture
             .tasks
             .effects(stale, &query(case, task, 0, None))
             .await
-            .expect_err("stale lease fence")
+            .expect_err("stale run fence")
             .code(),
         error_code::RUN_STALE_FENCING_TOKEN
     );
@@ -163,7 +163,7 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &Uuid7, second: &U
     let case = fixture.case;
     let refused = fixture
         .tasks
-        .effect(case.lease(), first)
+        .effect(case.run(), first)
         .await
         .expect("terminal refused receipt");
     assert_eq!(refused.state, TaskEffectState::Refused);
@@ -171,7 +171,7 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &Uuid7, second: &U
     assert_eq!(
         fixture
             .tasks
-            .effect(case.lease(), &mint_id())
+            .effect(case.run(), &mint_id())
             .await
             .expect_err("missing receipt")
             .code(),
@@ -181,7 +181,7 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &Uuid7, second: &U
     assert_eq!(
         fixture
             .tasks
-            .effect(case.lease(), second)
+            .effect(case.run(), second)
             .await
             .expect_err("unconfigured GitHub cannot resolve unknown effect")
             .code(),
@@ -189,7 +189,7 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &Uuid7, second: &U
     );
     let page = fixture
         .tasks
-        .effects(case.lease(), &query(case, task, 1, None))
+        .effects(case.run(), &query(case, task, 1, None))
         .await
         .expect("uncertainty retained");
     assert_eq!(
@@ -222,9 +222,9 @@ pub(super) async fn seed(case: &Case, task: &Uuid7, ordinal: i64, state: &str) -
     sqlx::query("UPDATE fleet.tasks SET effect_cursor=GREATEST(effect_cursor,$2),used_publications=used_publications+CASE WHEN $3 IN ('issued','unknown') THEN 1 ELSE 0 END WHERE id=$1")
         .bind(task).bind(ordinal).bind(state).execute(&mut *transaction)
         .await.expect("retain allocation and any issued attempt");
-    sqlx::query("INSERT INTO fleet.task_effects (id,task_id,fleet_id,workspace_id,source_item_id,original_lease_id,original_runner_id,original_fence,task_generation,stop_generation,ordinal,operation_id,covered_input_sequence,expected_head,tested_tree,request_digest,repository_id,installation_id,issuance_expires_at,created_at) SELECT $1,id,fleet_id,workspace_id,originating_task_item_id,$3,$4,$5,generation,stop_generation,$6,$7,0,$8,$9,$10,(target->>'repository_id')::bigint,(target->>'installation_id')::bigint,now()+interval '1 minute',now() FROM fleet.tasks WHERE id=$2")
-        .bind(&effect).bind(task).bind(case.lease().lease_id).bind(case.lease().runner_id)
-        .bind(i64::try_from(case.lease().fencing_token).expect("fixture fence")).bind(ordinal).bind(mint_id())
+    sqlx::query("INSERT INTO fleet.task_effects (id,task_id,fleet_id,workspace_id,source_item_id,original_run_id,original_runner_id,original_fence,task_generation,stop_generation,ordinal,operation_id,covered_input_sequence,expected_head,tested_tree,request_digest,repository_id,installation_id,issuance_expires_at,created_at) SELECT $1,id,fleet_id,workspace_id,originating_task_item_id,$3,$4,$5,generation,stop_generation,$6,$7,0,$8,$9,$10,(target->>'repository_id')::bigint,(target->>'installation_id')::bigint,now()+interval '1 minute',now() FROM fleet.tasks WHERE id=$2")
+        .bind(&effect).bind(task).bind(case.run().run_id).bind(case.run().runner_id)
+        .bind(i64::try_from(case.run().fencing_token).expect("fixture fence")).bind(ordinal).bind(mint_id())
         .bind("0".repeat(40)).bind("1".repeat(40)).bind("a".repeat(64))
         .execute(&mut *transaction).await.expect("preexisting immutable publication intent");
     sqlx::query("INSERT INTO fleet.task_effect_states (task_effect_id,status,issued_at,created_at,updated_at) VALUES ($1,$2,CASE WHEN $2 IN ('issued','unknown') THEN now() END,now(),now())")

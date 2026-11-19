@@ -125,7 +125,7 @@ pub struct TaskBindingsInput {
 }
 
 impl TaskBindingsInput {
-    /// Stable meaning excludes call IDs and lease fences, which grant no replay authority.
+    /// Stable meaning excludes call IDs and run fences, which grant no replay authority.
     #[must_use]
     pub fn interpretation(&self) -> impl Serialize + '_ {
         (
@@ -163,10 +163,10 @@ pub struct TaskItemBinding {
 pub struct TaskBindingsResponse<'a> {
     /// Accepted immutable items in their original order.
     pub items: Vec<TaskItemBinding>,
-    /// Current lease objective after binding, with native target and recovery state.
+    /// Current run objective after binding, with native target and recovery state.
     #[serde(borrow)]
     pub current_task: Option<super::TaskContext<'a>>,
-    /// Current lease's immutable ceiling after native task binding.
+    /// Current run's immutable ceiling after native task binding.
     #[serde(
         default,
         with = "crate::instant::option",

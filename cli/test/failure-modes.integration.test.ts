@@ -9,7 +9,7 @@
 // Surveyed codes used here:
 //   UZ-AUTH-003       (401, token expired)              error_code/auth.rs:34
 //   UZ-AUTH-004       (503, auth service unavailable)   error_code/auth.rs:129
-//   UZ-RUN-011        (runner lost its lease)           error_code/fleet.rs:59
+//   UZ-RUN-011        (runner lost its run)           error_code/fleet.rs:59
 //   UZ-INTERNAL-001   (503, database unavailable)       error_code/request.rs:191
 //   UZ-WORKSPACE-002  (402, workspace paused)           not declared by the
 //                     daemon; its case covers how any 402 envelope reads
@@ -89,7 +89,7 @@ describe("failure modes — workspace surface", () => {
 });
 
 describe("failure modes — runtime / observability surface", () => {
-  test("a running fleet whose runner lost its lease surfaces UZ-RUN-011 through logs", async () => {
+  test("a running fleet whose runner lost its run surfaces UZ-RUN-011 through logs", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         // The fleet was saved and started without complaint; the runner died
@@ -103,7 +103,7 @@ describe("failure modes — runtime / observability surface", () => {
                 actor: "fleet",
                 status: "fleet_error",
                 error_code: "UZ-RUN-011",
-                response_text: "Runner fleet run failed: the runner lost its lease before the run finished",
+                response_text: "Runner fleet run failed: the runner lost its run before the run finished",
               },
             ],
             next_cursor: null,
@@ -123,7 +123,7 @@ describe("failure modes — runtime / observability surface", () => {
         // visible signal. Without it the failure would read as silence.
         const logsText = logsOut.read();
         expect(logsText).toContain("Runner fleet run failed");
-        expect(logsText).toContain("lost its lease");
+        expect(logsText).toContain("lost its run");
       });
     });
   });

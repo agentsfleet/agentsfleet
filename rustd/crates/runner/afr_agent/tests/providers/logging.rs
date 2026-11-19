@@ -7,7 +7,7 @@ use guffbolt::{Message, Request};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 
-use super::support::{Fake, Reply, connector, lease, wires::Wire};
+use super::support::{Fake, Reply, connector, payload, wires::Wire};
 
 const PRIVATE: &str = "private-provider-content-never-log";
 
@@ -18,8 +18,8 @@ async fn recorded(reply: Reply, filtered: bool) -> String {
         Capture::install()
     };
     let fake = Fake::serve(vec![reply]).await;
-    let leased = lease(&Wire::Chat.provider(), &[], "hello");
-    let provider = connector(&fake).connect(&leased).unwrap();
+    let held = payload(&Wire::Chat.provider(), &[], "hello");
+    let provider = connector(&fake).connect(&held).unwrap();
     let messages = [Message::User("hello".into())];
     let request = Request {
         model: "configured-model",
@@ -39,7 +39,7 @@ async fn recorded(reply: Reply, filtered: bool) -> String {
     );
     assert_eq!(
         capture.only("model_turn_started").field("correlation_id"),
-        Some(super::support::LEASE_ID)
+        Some(super::support::RUN_ID)
     );
     format!("{:?}", capture.events())
 }

@@ -39,12 +39,12 @@ impl Error {
     ///   refused, a selection naming a vault row nobody holds) is classified in
     ///   `afd_credential`, with the code that raises it. A credential fault is
     ///   not a fleet DOCUMENT fault, which is the question this answers.
-    /// - **Lease lifecycle** — the six refusals answer a runner about ONE
-    ///   request against ONE lease, and the event behind them stays exactly as
+    /// - **Run lifecycle** — the six refusals answer a runner about ONE
+    ///   request against ONE run, and the event behind them stays exactly as
     ///   leasable as it was. A `true` would write a terminal row for a fleet
     ///   whose only problem was that one runner reported late.
     /// - **Messages and the mask** — a refusal answers one post against one
-    ///   lease, and the mask failing is this process.
+    ///   run, and the mask failing is this process.
     /// - **Corrupt sequence** — nobody edits a fleet document to fix it.
     /// - **Mint** — a tenant's connection, this deployment's own configuration,
     ///   a vendor, or a human's answer; never the fleet's document. A `true`
@@ -99,10 +99,10 @@ impl Error {
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
+            | ErrorKind::RunMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel

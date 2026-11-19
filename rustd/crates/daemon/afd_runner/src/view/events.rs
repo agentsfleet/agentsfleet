@@ -129,7 +129,7 @@ mod tests {
         let filter = RunnerEventFilter::new(
             vec![
                 RunnerEventType::RunnerTokenRotated,
-                RunnerEventType::LeaseAcquired,
+                RunnerEventType::RunAcquired,
             ],
             None,
             None,
@@ -139,7 +139,7 @@ mod tests {
             filter.and_then(|filter| filter.event_type_names()),
             Some(vec![
                 "runner_token_rotated".to_owned(),
-                "lease_acquired".to_owned()
+                "run_acquired".to_owned()
             ])
         );
         let unfiltered = RunnerEventFilter::new(Vec::new(), None, None);

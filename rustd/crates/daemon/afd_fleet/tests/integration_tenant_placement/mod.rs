@@ -10,7 +10,7 @@
 use af_core::id::Uuid7;
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_db::test_util::mint_id;
-use afd_fleet::lease::{Acquired, Billed, Leases};
+use afd_fleet::run::{Acquired, Billed, Runs};
 use afd_runner::Registered;
 
 use crate::requests::{enrolment_tagged, placement_tag};
@@ -112,27 +112,26 @@ async fn platform_runner(fixtures: &Fixtures, tag: &str) -> Uuid7 {
 /// Issues `held` to `runner`, billed to `tenant` under `posture`.
 async fn issue(
     fixtures: &Fixtures,
-    leases: &Leases,
+    runs: &Runs,
     runner: &Uuid7,
     held: &Acquired,
     tenant: &Uuid7,
     posture: &str,
 ) -> bool {
-    leases
-        .issue(
-            runner,
-            held,
-            Billed {
-                tenant_id: tenant,
-                posture,
-                provider: PROVIDER,
-                model: TENANT_MODEL,
-            },
-            fixtures.enrolled_at(),
-        )
-        .await
-        .expect("the issue answers")
-        .is_some()
+    runs.issue(
+        runner,
+        held,
+        Billed {
+            tenant_id: tenant,
+            posture,
+            provider: PROVIDER,
+            model: TENANT_MODEL,
+        },
+        fixtures.enrolled_at(),
+    )
+    .await
+    .expect("the issue answers")
+    .is_some()
 }
 
 async fn scalar(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) -> i64 {
@@ -143,11 +142,11 @@ async fn scalar(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) -> i64
         .expect("the count reads")
 }
 
-/// Leases ever issued to `runner`.
-async fn leases_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
+/// Runs ever issued to `runner`.
+async fn runs_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
     scalar(
         fixtures,
-        "SELECT count(*) FROM runner.leases WHERE runner_id = $1",
+        "SELECT count(*) FROM runner.runs WHERE runner_id = $1",
         runner,
     )
     .await
@@ -167,7 +166,7 @@ async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
 /// `fleet`'s slot as a claim leaves it: its fence, deadline and holder.
 async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>) {
     sqlx::query_as(
-        "SELECT fencing_token, lease_expires_at::text, last_runner_id FROM runner.slots WHERE fleet_id = $1",
+        "SELECT fencing_token, run_expires_at::text, last_runner_id FROM runner.slots WHERE fleet_id = $1",
     )
     .bind(fleet)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
@@ -175,10 +174,10 @@ async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>
     .expect("the slot reads")
 }
 
-/// Lapses `fleet`'s claim, as an expired lease leaves it.
+/// Lapses `fleet`'s claim, as an expired run leaves it.
 async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
     sqlx::query(
-        "UPDATE runner.slots SET lease_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
+        "UPDATE runner.slots SET run_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
     )
     .bind(fleet)
     .execute(&mut *fixtures.database.acquire().await.expect("a connection"))
@@ -188,18 +187,18 @@ async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
 
 /// The claim statement alone, bound as the ledger binds it; whether it claimed.
 async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool {
-    use afd_fleet::lease::sql;
+    use afd_fleet::run::sql;
     use sqlx::Connection as _;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     let mut transaction = connection.begin().await.expect("a claim transaction");
     let claimed = sqlx::query(sql::queue::CLAIM_HEAD)
         .bind(fleet)
         .bind(runner)
-        .bind(af_core::timing::LEASE_TTL)
+        .bind(af_core::timing::RUN_TTL)
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
         .bind(sql::RUNNER_STATUS_ACTIVE)
-        .bind(sql::LEASE_STATUS_ACTIVE)
-        .bind(sql::LEASE_STATUS_EXPIRED)
+        .bind(sql::RUN_STATUS_ACTIVE)
+        .bind(sql::RUN_STATUS_EXPIRED)
         .bind(af_wire::task::CAPABILITY)
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())

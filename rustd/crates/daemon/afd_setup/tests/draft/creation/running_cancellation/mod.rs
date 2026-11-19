@@ -1,4 +1,4 @@
-//! A fleet Archive commits its lease marker before publishing a runner command.
+//! A fleet Archive commits its run marker before publishing a runner command.
 
 mod probe;
 
@@ -15,9 +15,9 @@ use super::{
 
 pub(super) type TestResult<T = ()> = afd_setup::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-const LEASE: &str = "INSERT INTO runner.leases \
+const RUN: &str = "INSERT INTO runner.runs \
     (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
-     posture, provider, model, last_metered_at, fencing_token, lease_expires_at, \
+     posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
      status, posted_message_count, created_at, updated_at) \
     VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8,$9,now(),$10, \
             clock_timestamp() + make_interval(secs => $11),$12,$13,now(),now())";
@@ -25,13 +25,13 @@ const WAIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn archive_marks_running_leases_before_another_replica_receives_the_cancel() -> TestResult {
+async fn archive_marks_running_runs_before_another_replica_receives_the_cancel() -> TestResult {
     let case = Case::create().await;
     case.fund().await;
     let (_, request) = case.request("cancel-running-work", Start::None).await;
     let saved = case.save(&mint(), request).await;
     assert_eq!(saved.status, "active");
-    let lease = seed_lease(&case, &saved.id).await?;
+    let run = seed_run(&case, &saved.id).await?;
     let (observed, mut received) = tokio::sync::mpsc::unbounded_channel();
     let publisher = Handle::new(probe::BeforePublish {
         bus: case.bus.clone(),
@@ -60,7 +60,7 @@ async fn archive_marks_running_leases_before_another_replica_receives_the_cancel
         .await?
         .ok_or("cancel publish was not observed")??;
     assert!(marked, "the marker was committed before publication began");
-    assert_cancel(&address, &lease, &mut commands).await?;
+    assert_cancel(&address, &run, &mut commands).await?;
     drop(commands);
     case.cleanup().await;
     Ok(())
@@ -68,7 +68,7 @@ async fn archive_marks_running_leases_before_another_replica_receives_the_cancel
 
 pub(super) async fn assert_cancel(
     subject: &Subject,
-    lease: &Uuid7,
+    run: &Uuid7,
     commands: &mut Subscription,
 ) -> TestResult {
     tokio::time::timeout(WAIT, async {
@@ -81,7 +81,7 @@ pub(super) async fn assert_cancel(
                     assert_eq!(
                         command,
                         Command::Cancel {
-                            lease_id: lease.clone()
+                            run_id: run.clone()
                         }
                     );
                     return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(());
@@ -92,7 +92,7 @@ pub(super) async fn assert_cancel(
     .await?
 }
 
-pub(super) async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
+pub(super) async fn seed_run(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
     let policy = afd_db::test_util::RunnerPolicy {
         sandbox_tier: "dev_none",
         network_policy: "deny_all_egress",
@@ -104,10 +104,10 @@ pub(super) async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> 
     )
     .insert(&mut *case.base.db.acquire().await?)
     .await?;
-    let lease = mint();
+    let run = mint();
     let event = mint();
-    sqlx::query(LEASE)
-        .bind(&lease)
+    sqlx::query(RUN)
+        .bind(&run)
         .bind(&case.base.runner)
         .bind(fleet)
         .bind(&case.base.workspace)
@@ -117,10 +117,10 @@ pub(super) async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> 
         .bind("fixture-provider")
         .bind("fixture-model")
         .bind(1_i64)
-        .bind(af_core::timing::LEASE_TTL.as_secs_f64())
-        .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
+        .bind(af_core::timing::RUN_TTL.as_secs_f64())
+        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
         .bind(0_i32)
         .execute(&mut *case.base.db.acquire().await?)
         .await?;
-    Ok(lease)
+    Ok(run)
 }

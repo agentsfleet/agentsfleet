@@ -29,7 +29,7 @@ pub(crate) fn vault_data_invalid() -> Error {
 /// Reports a stored fencing sequence that cannot be one.
 ///
 /// Its own kind rather than a saturating read, and the direction is why.
-/// [`Fence::as_u64`](crate::lease::Fence::as_u64) saturates a negative token to
+/// [`Fence::as_u64`](crate::run::Fence::as_u64) saturates a negative token to
 /// ZERO because zero is below every token a claim can mint, so a corrupt row
 /// fences ITSELF out. The live sequence a memory push is checked against runs
 /// the other way: saturating it to zero would put it below every token in

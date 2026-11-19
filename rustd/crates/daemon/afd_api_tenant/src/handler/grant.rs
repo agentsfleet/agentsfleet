@@ -1,7 +1,7 @@
 //! A fleet's integration grants over HTTP: read them, take one back.
 //!
 //! Two verbs, list and revoke. There is no create on this path: a grant is
-//! requested when a saved fleet's setup finds it missing, or by the lease path
+//! requested when a saved fleet's setup finds it missing, or by the run path
 //! the first time a delivery needs it, and a person approves it on the card
 //! that request raises, so no caller of this surface ever names a grant into
 //! being.

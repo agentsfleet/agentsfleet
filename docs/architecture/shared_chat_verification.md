@@ -105,7 +105,7 @@ Sequence numbers expose that loss to the browser.
 
 The browser then relies on durable recovery.
 
-Every publication checks current creator membership, lease, generation and Stop watermark.
+Every publication checks current creator membership, run, generation and Stop watermark.
 The transaction commits and releases its connection before the bus write.
 Publication and final drain each have a two-second bound.
 
@@ -305,7 +305,7 @@ It does not claim that every unchanged operation has a new tracing span.
 
 | Crate | Inspected ownership and library reuse | Result |
 |---|---|---|
-| `afr_agent` | Lease and tool boundaries; typed provider chunks and usage ledger | Known partial usage survives failure; completion remains refused |
+| `afr_agent` | Run and tool boundaries; typed provider chunks and usage ledger | Known partial usage survives failure; completion remains refused |
 | `af_egress` | `vault` and guarded HTTP; reqwest, injected `Mint` and shared `Scrub` | Credential mint records contain identity and expiry, never token values |
 | `afr_executor` | `server/process` lifecycle and `edges` buffers; Tokio, `Bytes`, `Buf`, `VecDeque` and UTF-8 helpers | Existing process records use process identity; no new byte-buffer parser |
 | `afr_memory` | Borrowed memory adapter and cause-preserving refusals | Backend owns I/O; no added accessor logging |
@@ -317,7 +317,7 @@ It does not claim that every unchanged operation has a new tracing span.
 | `afr_tools` | `Handler` and `Typed<H>`; serde and schemars | Shared argument parsing and cached schema; tool-run logs remain with the agent boundary |
 | `agentsfleet_runner` | Boot, shutdown and failure rendering | Existing terminal errors carry registry codes |
 | `af_inference` | Shared provider stream, transport, failure recovery and log filtering | Paired content-free lifecycle and timing records |
-| `afd_setup` | Dispatch, receipt, private publisher and lease guards | Paired private preview traces; no connection held during provider or bus waits |
+| `afd_setup` | Dispatch, receipt, private publisher and run guards | Paired private preview traces; no connection held during provider or bus waits |
 | `af_crypto` | Secret ownership and hex decoding | Existing zeroize and hex implementations; no secret accessor logging |
 | `afd_sse` | Subscription tail and gap handling | Existing bounded hub subscription and coded close record retained |
 | `afd_bus` | Signal publication over core NATS, since M244 | A failed publish logs its error code and reason (`tail_frame_dropped`); no payload logging |
@@ -337,7 +337,7 @@ Whole local acceptance, owner review and current Continuous Integration (CI) res
 | `first_text_arrives_before_the_provider_closes_its_response` | Shared reader yields text while the external response remains open |
 | `fragmented_unicode_and_framing_are_decoded_by_the_sdk` | Native Rig decoding handles byte fragmentation and Unicode |
 | `reasoning_usage_without_text_prevents_reopening_a_truncated_turn` | A real HTTP provider reporting only reasoning usage caused a second send before the fix; the SDK guard now keeps one send and a typed transport failure |
-| Runtime privacy tests | Both reject a controlled deletion of the lease correlation field; SDK warnings remain filtered at trace level |
+| Runtime privacy tests | Both reject a controlled deletion of the run correlation field; SDK warnings remain filtered at trace level |
 | Private progress integration tests | Real Postgres and a real broker; Stop, deletion and membership revocation block later private frames |
 | `idle_private_stream_sends_an_observable_heartbeat_and_still_rechecks_access` | Real HTTP stream received only a comment before the fix; all three stream privacy tests now pass with a named heartbeat and revocation checks |
 | `dispatch_deadline_upgrade_preserves_old_rows_and_old_writers` | Isolated Postgres migrates populated dispatches, preserves bounded deadlines and accepts the previous daemon's column list after upgrade |
@@ -367,7 +367,7 @@ The private-stream survivor replaces one cancellation-or-closure check with an A
 Its changed behavior requires a running message at or below the cancellation cutoff, or a running message in a closed draft.
 Production operations prevent both states under the same draft lock used by observation.
 
-Those operations are `afd_setup`'s message cancel, lease claim selection, draft patch and observe modules.
+Those operations are `afd_setup`'s message cancel, run claim selection, draft patch and observe modules.
 The original defensive checks remain.
 
 The Miri run used nightly commit `1a2c4797ef2570bd76ca5dee34449169bc7dc457`, matching the workflow's dated pin.

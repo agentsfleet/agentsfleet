@@ -68,7 +68,7 @@ async fn replay(
 ) {
     let replay = live
         .calls
-        .call(&f.runner, &attempt.lease, request)
+        .call(&f.runner, &attempt.run, request)
         .await
         .expect("durable final replay");
     assert!(!result.replayed);

@@ -12,7 +12,7 @@
 -- first $7 messages after the run's own are looked at, so the read costs the
 -- same however long the backlog is; a barrier past them reads as clear.
 --
--- $1 fleet · $2 the steer's admission · $3 active lease status ·
+-- $1 fleet · $2 the steer's admission · $3 active run status ·
 -- $4 steer producer · $5 machine actor · $6 person actor pattern ·
 -- $7 messages to look at
 WITH message AS MATERIALIZED (
@@ -26,11 +26,11 @@ WITH message AS MATERIALIZED (
            l.event_id AS run_event_id
     FROM message m
     JOIN runner.slots s ON s.fleet_id = m.fleet_id
-    JOIN runner.leases l
+    JOIN runner.runs l
       ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
      AND l.fencing_token = s.fencing_token AND l.status = $3
     JOIN fleet.admissions head ON head.id = l.event_id
-    WHERE s.lease_expires_at > statement_timestamp()
+    WHERE s.run_expires_at > statement_timestamp()
 )
 SELECT r.run_event_id,
        COALESCE(r.durable_task, false) AS run_durable_task,

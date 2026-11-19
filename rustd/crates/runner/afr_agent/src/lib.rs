@@ -1,12 +1,12 @@
-//! The agent engine: what runs one lease's turn.
+//! The agent engine: what runs one run's turn.
 //!
-//! [`AgentEngine`] is the seam the supervisor drives. It receives the lease,
-//! the hydrated memory, the sandbox's executor when the lease has one, and an
+//! [`AgentEngine`] is the seam the supervisor drives. It receives the run,
+//! the hydrated memory, the sandbox's executor when the run has one, and an
 //! [`EventSink`] its activity goes to; it returns the result the report
 //! carries and the memory to push. Before any of that, [`AgentEngine::admit`]
-//! refuses a lease naming a tool the engine cannot host and says whether the
-//! lease needs a sandbox. [`Loop`] is the engine that runs the model against the
-//! lease's tools: each loop's router runs a call through `guffbolt`'s tool set,
+//! refuses a run naming a tool the engine cannot host and says whether the
+//! run needs a sandbox. [`Loop`] is the engine that runs the model against the
+//! run's tools: each loop's router runs a call through `guffbolt`'s tool set,
 //! a catalog handler where its runtime says. A scripted engine drives the
 //! supervisor's lanes.
 
@@ -47,7 +47,7 @@ pub use self::harness::Loop;
 pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};
 // The seam a run's schedule and message tools reach `agentsfleetd` through,
 // re-exported so the supervisor implements it through the crate it drives.
-pub use afr_tools::{LeaseVerbs, ScheduleCall, Unanswered};
+pub use afr_tools::{RunVerbs, ScheduleCall, Unanswered};
 
 pub use decision::PreparedTask;
 pub use engine::TaskRecovery;

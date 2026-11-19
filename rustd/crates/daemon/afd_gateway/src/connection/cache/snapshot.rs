@@ -2,31 +2,31 @@
 
 use crate::{Result, error::ErrorKind};
 use af_core::id::Uuid7;
-use af_wire::protocol::LEASES_MAX;
+use af_wire::protocol::RUNS_MAX;
 use afd_db::Db;
-use afd_fleet::lease::{Offered, Reported, Target};
+use afd_fleet::run::{Offered, Reported, Target};
 use jiff::Timestamp;
 use std::collections::HashMap;
 
-/// A target exists only for fleet work; a draft's lease names its draft, and an authoring
+/// A target exists only for fleet work; a draft's run names its draft, and an authoring
 /// attempt uses its separate private progress service.
 #[derive(Debug, Clone)]
-pub(super) struct LeaseRecord {
+pub(super) struct RunRecord {
     pub(super) id: Uuid7,
     pub(super) expires_at: Timestamp,
     pub(super) target: Option<Target>,
     pub(super) cancelled: bool,
-    /// What the lease's report reads, kept from the offer.
+    /// What the run's report reads, kept from the offer.
     pub(super) reported: Option<Reported>,
-    /// The draft a draft-owned lease runs a turn of: its renewals, report and
+    /// The draft a draft-owned run runs a turn of: its renewals, report and
     /// live answer take the draft's path.
     pub(super) draft: Option<Uuid7>,
 }
 
-impl From<Offered> for LeaseRecord {
+impl From<Offered> for RunRecord {
     fn from(offered: Offered) -> Self {
         Self {
-            id: offered.lease_id,
+            id: offered.run_id,
             expires_at: offered.expires_at,
             target: offered.target,
             cancelled: false,
@@ -37,8 +37,8 @@ impl From<Offered> for LeaseRecord {
 }
 
 #[derive(sqlx::FromRow)]
-struct LiveLeaseRow {
-    lease_id: Uuid7,
+struct LiveRunRow {
+    run_id: Uuid7,
     expires_at: jiff_sqlx::Timestamp,
     fleet_id: Option<Uuid7>,
     event_id: Option<Uuid7>,
@@ -49,15 +49,15 @@ struct LiveLeaseRow {
     draft_id: Option<Uuid7>,
 }
 
-impl TryFrom<&LiveLeaseRow> for LeaseRecord {
+impl TryFrom<&LiveRunRow> for RunRecord {
     type Error = crate::Error;
 
-    fn try_from(row: &LiveLeaseRow) -> Result<Self> {
+    fn try_from(row: &LiveRunRow) -> Result<Self> {
         let target = match (&row.fleet_id, &row.event_id, &row.event_created_at) {
             (Some(fleet), Some(event), Some(event_created_at)) => Some(Target {
                 fleet_id: fleet.clone(),
                 event_id: event.clone(),
-                lease_created_at: row.created_at.to_jiff(),
+                run_created_at: row.created_at.to_jiff(),
                 event_created_at: event_created_at.to_jiff(),
                 timing_eligible: !row.cancelled,
                 fence: row.fencing_token,
@@ -66,7 +66,7 @@ impl TryFrom<&LiveLeaseRow> for LeaseRecord {
             _ => return Err(ErrorKind::Protocol.into()),
         };
         Ok(Self {
-            id: row.lease_id.clone(),
+            id: row.run_id.clone(),
             expires_at: row.expires_at.to_jiff(),
             target,
             cancelled: row.cancelled,
@@ -78,23 +78,23 @@ impl TryFrom<&LiveLeaseRow> for LeaseRecord {
 
 #[derive(garde::Validate)]
 struct BoundedRows {
-    #[garde(length(max = LEASES_MAX))]
-    rows: Vec<LiveLeaseRow>,
+    #[garde(length(max = RUNS_MAX))]
+    rows: Vec<LiveRunRow>,
 }
 
 /// Constructed only after every row fits the protocol's host bound and typed target shape.
-pub(super) struct LeaseSnapshot(HashMap<Uuid7, LeaseRecord>);
+pub(super) struct RunSnapshot(HashMap<Uuid7, RunRecord>);
 
-impl TryFrom<Vec<LiveLeaseRow>> for LeaseSnapshot {
+impl TryFrom<Vec<LiveRunRow>> for RunSnapshot {
     type Error = crate::Error;
 
-    fn try_from(rows: Vec<LiveLeaseRow>) -> Result<Self> {
+    fn try_from(rows: Vec<LiveRunRow>) -> Result<Self> {
         let rows = garde::Unvalidated::new(BoundedRows { rows }).validate()?;
         let records = rows
             .rows
             .iter()
             .map(|row| {
-                let record = LeaseRecord::try_from(row)?;
+                let record = RunRecord::try_from(row)?;
                 Ok((record.id.clone(), record))
             })
             .collect::<Result<_>>()?;
@@ -102,14 +102,14 @@ impl TryFrom<Vec<LiveLeaseRow>> for LeaseSnapshot {
     }
 }
 
-impl LeaseSnapshot {
+impl RunSnapshot {
     /// Limit plus one detects inconsistent excess rows without truncating valid ownership silently.
     pub(super) async fn load(database: &Db, runner: &Uuid7) -> Result<Self> {
         let rows =
-            sqlx::query_as::<_, LiveLeaseRow>(include_str!("../sql/select_runner_live_leases.sql"))
+            sqlx::query_as::<_, LiveRunRow>(include_str!("../sql/select_runner_live_runs.sql"))
                 .bind(runner)
-                .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
-                .bind(i64::try_from(LEASES_MAX + 1)?)
+                .bind(afd_fleet::run::sql::RUN_STATUS_ACTIVE)
+                .bind(i64::try_from(RUNS_MAX + 1)?)
                 .fetch_all(&mut *database.acquire().await?)
                 .await?;
         rows.try_into()
@@ -123,14 +123,14 @@ impl LeaseSnapshot {
             .collect()
     }
 
-    pub(super) fn into_records(self) -> HashMap<Uuid7, LeaseRecord> {
+    pub(super) fn into_records(self) -> HashMap<Uuid7, RunRecord> {
         self.0
     }
 }
 
 #[cfg(test)]
-impl LeaseSnapshot {
-    pub(super) fn from_records(records: impl IntoIterator<Item = LeaseRecord>) -> Self {
+impl RunSnapshot {
+    pub(super) fn from_records(records: impl IntoIterator<Item = RunRecord>) -> Self {
         Self(
             records
                 .into_iter()

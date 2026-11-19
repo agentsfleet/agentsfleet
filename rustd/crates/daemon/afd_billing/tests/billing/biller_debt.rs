@@ -51,7 +51,7 @@ async fn one_line_lane() -> (Lane, Account) {
 /// A check of `next` for a fresh piece of work.
 fn ask(payer: &Account, next: Nanos) -> Ask {
     Ask {
-        work: WorkKey::FleetLease(mint_id()),
+        work: WorkKey::FleetRun(mint_id()),
         payer: payer.clone(),
         next,
     }
@@ -60,7 +60,7 @@ fn ask(payer: &Account, next: Nanos) -> Ask {
 /// Settles one line that drains the balance to zero, then one that takes it
 /// a line below.
 async fn drain_into_debt(biller: &dyn Biller, lane: &Lane, payer: &Account) {
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     biller
         .settle(&settlement(lane, payer, &work, vec![rated(0)]))
         .await
@@ -131,7 +131,7 @@ async fn exhaustion_follows_the_balance_through_a_top_up() {
     let (lane, payer) = one_line_lane().await;
     let (analytics, recorded) = Analytics::recording();
     let biller = Observed::new(ledger(&lane), analytics);
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     let exhausted = |balance: afd_billing::biller::Balance| balance.exhausted_at.is_some();
     let settle = async |lines| {
         biller
@@ -193,7 +193,7 @@ async fn a_tenant_without_a_wallet_settles_with_nothing_taken() {
         workspace: lane.workspace.clone(),
     };
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
 
     let capture = af_core::test_util::trace::Capture::install();
     let receipt = biller
@@ -204,7 +204,7 @@ async fn a_tenant_without_a_wallet_settles_with_nothing_taken() {
     assert_eq!(warned.field("tenant_id"), Some(payer.tenant.as_str()));
     assert_eq!(
         warned.field("work_type"),
-        Some(afd_billing::sql::work::FLEET_LEASE)
+        Some(afd_billing::sql::work::FLEET_RUN)
     );
     assert_eq!(warned.field("work_id"), Some(work.id().as_str()));
     assert_eq!(
@@ -277,7 +277,7 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
     };
     let biller = ledger(&lane);
     let works: Vec<WorkKey> = (0..PARALLEL_RUNS)
-        .map(|_| WorkKey::FleetLease(mint_id()))
+        .map(|_| WorkKey::FleetRun(mint_id()))
         .collect();
 
     let starts = start_together(&biller, &payer, &works).await;
@@ -333,7 +333,7 @@ async fn racing_settlements_across_zero_report_exhaustion_once() {
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(RACERS));
     let mut racing = tokio::task::JoinSet::new();
     for _ in 0..RACERS {
-        let work = WorkKey::FleetLease(mint_id());
+        let work = WorkKey::FleetRun(mint_id());
         let settlement = settlement(&lane, &payer, &work, vec![rated(0)]);
         let (biller, barrier) = (
             std::sync::Arc::clone(&biller),

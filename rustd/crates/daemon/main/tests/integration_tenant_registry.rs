@@ -98,26 +98,26 @@ pub(crate) async fn provider_granting(scopes: &'static str) -> String {
 async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     let mut supervisor = Supervisor::new();
     let provider_base = provider_listener().await;
-    let run = scenario_with_provider(&mut supervisor, Some(&provider_base)).await;
+    let scene = scenario_with_provider(&mut supervisor, Some(&provider_base)).await;
     let token = mint_tenant_token();
-    seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
-    seed_activatable_key(&run.booted, &run.workspace, WALK_KEY).await;
-    seed_unprojected_key(&run.booted, &run.workspace, UNPROJECTED_KEY).await;
+    seed_tenant_key(&scene.booted, &scene.tenant, &token, scene.seeded_at).await;
+    seed_activatable_key(&scene.booted, &scene.workspace, WALK_KEY).await;
+    seed_unprojected_key(&scene.booted, &scene.workspace, UNPROJECTED_KEY).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
 
-    let entry_id = register_and_refuse_the_repeats(&http, &token, &run).await;
-    let second_id = walk_the_keyset_over_two_entries(&http, &token, &run).await;
-    retarget_over_the_freed_pair(&http, &token, &run, &entry_id, &second_id).await;
-    activate_after_the_ladder_refuses(&http, &token, &run, &entry_id).await;
-    reset_and_remove_what_the_walk_registered(&http, &token, &run, &entry_id).await;
-    sweep_the_seams_the_registry_never_touches(&http, &token, &run).await;
+    let entry_id = register_and_refuse_the_repeats(&http, &token, &scene).await;
+    let second_id = walk_the_keyset_over_two_entries(&http, &token, &scene).await;
+    retarget_over_the_freed_pair(&http, &token, &scene, &entry_id, &second_id).await;
+    activate_after_the_ladder_refuses(&http, &token, &scene, &entry_id).await;
+    reset_and_remove_what_the_walk_registered(&http, &token, &scene, &entry_id).await;
+    sweep_the_seams_the_registry_never_touches(&http, &token, &scene).await;
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// REGISTER the seeded model, then the two row-decided refusals of a repeat.
@@ -126,12 +126,12 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
 async fn register_and_refuse_the_repeats(
     http: &reqwest::Client,
     token: &str,
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
 ) -> String {
     // A tenant that has configured nothing reads the deployment's default as
     // platform mode — the seam pair `selection` + `platform_default`, and the
     // rung that must never be a 404.
-    let view = get_json(http, token, &run.base, "/v1/tenants/me/provider").await;
+    let view = get_json(http, token, &scene.base, "/v1/tenants/me/provider").await;
     assert_eq!(view["mode"], "platform", "no row of its own yet: {view}");
 
     // REGISTER the seeded model on the seeded credential — `add_entry`.
@@ -139,9 +139,9 @@ async fn register_and_refuse_the_repeats(
         http,
         token,
         reqwest::Method::POST,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/models",
-        &json!({ "workspace_id": run.workspace, "model_id": MODEL, "secret_ref": WALK_KEY }),
+        &json!({ "workspace_id": scene.workspace, "model_id": MODEL, "secret_ref": WALK_KEY }),
     )
     .await;
     assert_eq!(status, 201, "the entry stores: {created}");
@@ -156,9 +156,9 @@ async fn register_and_refuse_the_repeats(
         http,
         token,
         reqwest::Method::POST,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/models",
-        &json!({ "workspace_id": run.workspace, "model_id": MODEL, "secret_ref": WALK_KEY }),
+        &json!({ "workspace_id": scene.workspace, "model_id": MODEL, "secret_ref": WALK_KEY }),
     )
     .await;
     assert_eq!(
@@ -169,9 +169,9 @@ async fn register_and_refuse_the_repeats(
         http,
         token,
         reqwest::Method::POST,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/models",
-        &json!({ "workspace_id": run.workspace, "model_id": MODEL, "secret_ref": "never-stored" }),
+        &json!({ "workspace_id": scene.workspace, "model_id": MODEL, "secret_ref": "never-stored" }),
     )
     .await;
     assert_eq!(unknown_ref["error_code"], "UZ-MODELS-002", "{unknown_ref}");
@@ -185,18 +185,18 @@ async fn register_and_refuse_the_repeats(
 async fn walk_the_keyset_over_two_entries(
     http: &reqwest::Client,
     token: &str,
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
 ) -> String {
     // A second catalogued model, a second entry, and a keyset walk across the
     // pair — the daemon-served twin of the store suite's boundary claim.
-    seed_second_model(run).await;
+    seed_second_model(scene).await;
     let (status, second) = send_json(
         http,
         token,
         reqwest::Method::POST,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/models",
-        &json!({ "workspace_id": run.workspace, "model_id": SECOND_MODEL, "secret_ref": WALK_KEY }),
+        &json!({ "workspace_id": scene.workspace, "model_id": SECOND_MODEL, "secret_ref": WALK_KEY }),
     )
     .await;
     assert_eq!(
@@ -208,7 +208,7 @@ async fn walk_the_keyset_over_two_entries(
         .expect("the second entry names itself")
         .to_owned();
 
-    let first_page = get_json(http, token, &run.base, "/v1/tenants/me/models?limit=1").await;
+    let first_page = get_json(http, token, &scene.base, "/v1/tenants/me/models?limit=1").await;
     assert_eq!(first_page["models"].as_array().expect("one row").len(), 1);
     let cursor = first_page["next_cursor"]
         .as_str()
@@ -217,7 +217,7 @@ async fn walk_the_keyset_over_two_entries(
     let second_page = get_json(
         http,
         token,
-        &run.base,
+        &scene.base,
         &format!("/v1/tenants/me/models?limit=1&starting_after={cursor}"),
     )
     .await;
@@ -234,7 +234,7 @@ async fn walk_the_keyset_over_two_entries(
 async fn retarget_over_the_freed_pair(
     http: &reqwest::Client,
     token: &str,
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     entry_id: &str,
     second_id: &str,
 ) {
@@ -243,7 +243,7 @@ async fn retarget_over_the_freed_pair(
         http,
         token,
         reqwest::Method::PATCH,
-        &run.base,
+        &scene.base,
         &format!("/v1/tenants/me/models/{entry_id}"),
         &json!({ "model_id": SECOND_MODEL }),
     )
@@ -256,7 +256,7 @@ async fn retarget_over_the_freed_pair(
         http,
         token,
         reqwest::Method::PATCH,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/models/019329c5-0000-7000-8000-00000000dead",
         &json!({ "model_id": SECOND_MODEL }),
     )
@@ -270,7 +270,7 @@ async fn retarget_over_the_freed_pair(
         http,
         token,
         reqwest::Method::DELETE,
-        &run.base,
+        &scene.base,
         &format!("/v1/tenants/me/models/{second_id}"),
         &Value::Null,
     )
@@ -280,7 +280,7 @@ async fn retarget_over_the_freed_pair(
         http,
         token,
         reqwest::Method::PATCH,
-        &run.base,
+        &scene.base,
         &format!("/v1/tenants/me/models/{entry_id}"),
         &json!({ "model_id": SECOND_MODEL }),
     )
@@ -298,7 +298,7 @@ async fn retarget_over_the_freed_pair(
 async fn activate_after_the_ladder_refuses(
     http: &reqwest::Client,
     token: &str,
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     entry_id: &str,
 ) {
     // The activation ladder's own refusals, before the one that lands.
@@ -306,9 +306,9 @@ async fn activate_after_the_ladder_refuses(
         http,
         token,
         reqwest::Method::PUT,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/provider",
-        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": "never-stored", "model": SECOND_MODEL }),
+        &json!({ "workspace_id": scene.workspace, "mode": "self_managed", "secret_ref": "never-stored", "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(missing["error_code"], "UZ-PROVIDER-002", "{missing}");
@@ -318,9 +318,9 @@ async fn activate_after_the_ladder_refuses(
         http,
         token,
         reqwest::Method::PUT,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/provider",
-        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": UNPROJECTED_KEY, "model": SECOND_MODEL }),
+        &json!({ "workspace_id": scene.workspace, "mode": "self_managed", "secret_ref": UNPROJECTED_KEY, "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(unlabelled["error_code"], "UZ-PROVIDER-003", "{unlabelled}");
@@ -328,9 +328,9 @@ async fn activate_after_the_ladder_refuses(
         http,
         token,
         reqwest::Method::PUT,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/provider",
-        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": WALK_KEY, "model": "not-in-catalogue" }),
+        &json!({ "workspace_id": scene.workspace, "mode": "self_managed", "secret_ref": WALK_KEY, "model": "not-in-catalogue" }),
     )
     .await;
     assert_eq!(
@@ -344,9 +344,9 @@ async fn activate_after_the_ladder_refuses(
         http,
         token,
         reqwest::Method::PUT,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/provider",
-        &json!({ "workspace_id": run.workspace, "mode": "self_managed", "secret_ref": WALK_KEY, "model": SECOND_MODEL }),
+        &json!({ "workspace_id": scene.workspace, "mode": "self_managed", "secret_ref": WALK_KEY, "model": SECOND_MODEL }),
     )
     .await;
     assert_eq!(
@@ -355,7 +355,7 @@ async fn activate_after_the_ladder_refuses(
     );
     assert_eq!(activated["mode"], "self_managed");
     assert_eq!(activated["secret_ref"], WALK_KEY);
-    let own_view = get_json(http, token, &run.base, "/v1/tenants/me/provider").await;
+    let own_view = get_json(http, token, &scene.base, "/v1/tenants/me/provider").await;
     assert_eq!(
         own_view["mode"], "self_managed",
         "a stored row outranks the live default in the composed view"
@@ -365,7 +365,7 @@ async fn activate_after_the_ladder_refuses(
     // The registry page now composes all three reads — the entry, the vault's
     // projection, the catalogue rate — and flags the entry ACTIVE, because the
     // selection just written agrees with it on `(secret_ref, model_id)`.
-    let page = get_json(http, token, &run.base, "/v1/tenants/me/models").await;
+    let page = get_json(http, token, &scene.base, "/v1/tenants/me/models").await;
     let rows = page["models"].as_array().expect("a page carries its rows");
     assert_eq!(rows.len(), 1, "one entry was registered: {page}");
     assert_eq!(rows[0]["id"], entry_id);
@@ -388,7 +388,7 @@ async fn activate_after_the_ladder_refuses(
 async fn reset_and_remove_what_the_walk_registered(
     http: &reqwest::Client,
     token: &str,
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     entry_id: &str,
 ) {
     // Removing the entry the tenant runs on is refused — the row-decided
@@ -398,7 +398,7 @@ async fn reset_and_remove_what_the_walk_registered(
         http,
         token,
         reqwest::Method::DELETE,
-        &run.base,
+        &scene.base,
         &item,
         &Value::Null,
     )
@@ -411,7 +411,7 @@ async fn reset_and_remove_what_the_walk_registered(
         http,
         token,
         reqwest::Method::DELETE,
-        &run.base,
+        &scene.base,
         "/v1/tenants/me/provider",
         &Value::Null,
     )
@@ -426,13 +426,13 @@ async fn reset_and_remove_what_the_walk_registered(
         http,
         token,
         reqwest::Method::DELETE,
-        &run.base,
+        &scene.base,
         &item,
         &Value::Null,
     )
     .await;
     assert_eq!(status, 204, "an idle entry removes");
-    let emptied = get_json(http, token, &run.base, "/v1/tenants/me/models").await;
+    let emptied = get_json(http, token, &scene.base, "/v1/tenants/me/models").await;
     assert!(
         emptied["models"]
             .as_array()
@@ -446,7 +446,7 @@ async fn reset_and_remove_what_the_walk_registered(
 async fn sweep_the_seams_the_registry_never_touches(
     http: &reqwest::Client,
     token: &str,
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
 ) {
     // One request per seam the registry never touches. Each accessor in
     // `plane/services.rs` is three lines that run only when a route needs the
@@ -457,8 +457,8 @@ async fn sweep_the_seams_the_registry_never_touches(
     let connectors = get_json(
         http,
         token,
-        &run.base,
-        &format!("/v1/workspaces/{}/connectors", run.workspace),
+        &scene.base,
+        &format!("/v1/workspaces/{}/connectors", scene.workspace),
     )
     .await;
     assert!(
@@ -468,22 +468,24 @@ async fn sweep_the_seams_the_registry_never_touches(
     let fleets = get_json(
         http,
         token,
-        &run.base,
-        &format!("/v1/workspaces/{}/fleets", run.workspace),
+        &scene.base,
+        &format!("/v1/workspaces/{}/fleets", scene.workspace),
     )
     .await;
     let listed = fleets["items"].as_array().expect("a fleet list answers");
     assert!(
-        listed.iter().any(|fleet| fleet["id"] == run.fleet.as_str()),
+        listed
+            .iter()
+            .any(|fleet| fleet["id"] == scene.fleet.as_str()),
         "the scenario's own fleet is on its workspace wall: {fleets}"
     );
     let schedules = get_json(
         http,
         token,
-        &run.base,
+        &scene.base,
         &format!(
             "/v1/workspaces/{}/fleets/{}/schedules",
-            run.workspace, run.fleet
+            scene.workspace, scene.fleet
         ),
     )
     .await;
@@ -500,7 +502,7 @@ async fn sweep_the_seams_the_registry_never_touches(
         http,
         token,
         reqwest::Method::POST,
-        &run.base,
+        &scene.base,
         "/v1/cli-credentials",
         &json!({ "machine_name": "e2e-walk" }),
     )
@@ -519,8 +521,8 @@ async fn sweep_the_seams_the_registry_never_touches(
 }
 
 /// Publishes the second model beside the scenario's own catalogue row.
-async fn seed_second_model(run: &crate::e2e::Scenario) {
-    let mut connection = run
+async fn seed_second_model(scene: &crate::e2e::Scenario) {
+    let mut connection = scene
         .booted
         .database
         .acquire()

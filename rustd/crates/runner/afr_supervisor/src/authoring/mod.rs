@@ -9,11 +9,11 @@ mod turn;
 pub(crate) mod tests;
 
 use self::{meter::Observed, turn::Turn};
-use crate::{Result, lease_loop::Lessee};
+use crate::{Result, run_loop::Lessee};
 use crate::{client::ControlPlane, halt::Halt, report::delivery::until_acknowledged};
 use af_core::{id::Uuid7, timing::DAY};
 use af_crypto::entropy::Entropy;
-use af_wire::authoring::{Accounting, FailureReason, Lease, Outcome, Report, Reported};
+use af_wire::authoring::{Accounting, FailureReason, Outcome, Report, Reported, Run};
 use serde_json::Value;
 use tokio::time::Instant;
 use zeroize::{Zeroize, Zeroizing};
@@ -69,22 +69,22 @@ impl Ending {
 impl Lessee {
     pub(crate) async fn author(
         &self,
-        lease: &Lease<Value>,
+        run: &Run<Value>,
         interrupt: tokio_util::sync::CancellationToken,
     ) -> Result<()> {
-        let id = Uuid7::parse(&lease.lease_id)?;
+        let id = Uuid7::parse(&run.run_id)?;
         let _busy = self
             .holds
-            .occupy(crate::holds::Occupant::Authoring { lease: id.clone() });
+            .occupy(crate::holds::Occupant::Authoring { run: id.clone() });
         let observed = Observed::new();
         let turn = Turn {
             plane: &self.plane,
-            lease,
+            run,
             id: &id,
             clock: self.clock.as_ref(),
             observed: &observed,
         };
-        let deadline = renew::deadline(lease.deadline, self.clock.as_ref()).min(
+        let deadline = renew::deadline(run.deadline, self.clock.as_ref()).min(
             tokio::time::Instant::now()
                 + std::time::Duration::from_secs(u64::from(af_wire::authoring::WALL_SECONDS_MAX)),
         );
@@ -98,7 +98,7 @@ impl Lessee {
                 Ok(ending) => ending,
                 Err(failure) => { self.halt.stops_on(&failure); observed.uncertain()?; Ending::unknown() },
             },
-            result = renew::keep(&self.plane, &id, lease, self.clock.as_ref(), &observed) => {
+            result = renew::keep(&self.plane, &id, run, self.clock.as_ref(), &observed) => {
                 if let Err(failure) = result { self.halt.stops_on(&failure); }
                 observed.uncertain()?;
                 Ending::unknown()
@@ -107,7 +107,7 @@ impl Lessee {
             () = interrupt.cancelled() => { observed.uncertain()?; Ending::unknown() },
         };
         let accounting = Accounting {
-            fence: lease.fence.clone(),
+            fence: run.fence.clone(),
             report_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
             outcome: ending.outcome,
             failure_reason: ending.reason,
@@ -144,13 +144,13 @@ impl Drop for Pending {
 async fn deliver_report(
     plane: &ControlPlane,
     halt: &Halt,
-    lease: &Uuid7,
+    run: &Uuid7,
     report: Report,
 ) -> Result<()> {
     let mut pending = Pending(report);
     garde::Unvalidated::new(&pending.0).validate()?;
     let private_until = Instant::now() + DAY;
-    let sending = acknowledged_report(plane, halt, lease, &pending.0);
+    let sending = acknowledged_report(plane, halt, run, &pending.0);
     match tokio::time::timeout_at(private_until, sending).await {
         Ok(result) => result.map(drop),
         Err(_expired) => {
@@ -166,7 +166,7 @@ async fn deliver_report(
             pending.0 = Report::Accounting {
                 accounting: pending.0.accounting().clone(),
             };
-            acknowledged_report(plane, halt, lease, &pending.0)
+            acknowledged_report(plane, halt, run, &pending.0)
                 .await
                 .map(drop)
         }
@@ -176,11 +176,11 @@ async fn deliver_report(
 async fn acknowledged_report(
     plane: &ControlPlane,
     halt: &Halt,
-    lease: &Uuid7,
+    run: &Uuid7,
     report: &Report,
 ) -> Result<Reported> {
     until_acknowledged(halt, plane.runtime, || async {
-        let reply = plane.authoring_report(lease, report).await?;
+        let reply = plane.authoring_report(run, report).await?;
         Ok(reply.settled.then_some(reply))
     })
     .await

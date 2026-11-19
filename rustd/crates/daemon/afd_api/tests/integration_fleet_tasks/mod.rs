@@ -124,7 +124,7 @@ async fn detail(router: &axum::Router, fixture: &Tasks<'_>) {
         body.pointer("/context/usage/reserved_model_nanos"),
         Some(&json!("20000000"))
     );
-    assert_eq!(body.pointer("/context/limits/leases"), Some(&json!(12)));
+    assert_eq!(body.pointer("/context/limits/runs"), Some(&json!(12)));
     revision::advance(fixture).await;
     let pinned = send(router, Method::GET, &path, Some(&fixture.base.token), "").await;
     assert_eq!(pinned.status(), StatusCode::OK);

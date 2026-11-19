@@ -1,4 +1,4 @@
-//! Stop racing a send or a claim never doubles a lease or drops an obligation,
+//! Stop racing a send or a claim never doubles a run or drops an obligation,
 //! and the report a runner retained across the Stop settles exactly once.
 
 use super::{Fixture, claim, mint, now, queue};
@@ -64,10 +64,10 @@ async fn states(f: &Fixture, draft: &Draft) -> Vec<(String, String, Option<Strin
 }
 
 /// The terminal report a runner that finished before seeing the Stop retains.
-pub(super) fn finished(lease: &Claimed) -> Report {
+pub(super) fn finished(run: &Claimed) -> Report {
     Report::Terminal {
         accounting: Accounting {
-            fence: lease.fence.clone(),
+            fence: run.fence.clone(),
             report_id: mint().to_string(),
             outcome: Outcome::Completed,
             failure_reason: None,
@@ -106,7 +106,7 @@ async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once()
     assert_eq!(sent.expect("send commits around the Stop").sequence, "2");
     assert_eq!(stopped.expect("Stop commits").cancelled_through, "1");
     let second = match raced {
-        Some(lease) => lease,
+        Some(run) => run,
         None => claim(&f, &draft)
             .await
             .expect("new request can run after Stop"),
@@ -146,11 +146,11 @@ async fn assert_current_turn(f: &Fixture, draft: &Draft) {
 async fn settle_once(f: &Fixture, first: &Claimed) {
     let report = finished(first);
     let before = balance(f).await;
-    let lease = af_core::id::Uuid7::parse(&first.lease_id).expect("lease id");
+    let run = af_core::id::Uuid7::parse(&first.run_id).expect("run id");
     for replayed in [false, true] {
         let ack = f
             .drafts
-            .report(&f.runner, &lease, report.clone())
+            .report(&f.runner, &run, report.clone())
             .await
             .expect("a retained report is answered, not left to retry");
         assert!(ack.settled, "the spool removes only a settled entry");
@@ -184,11 +184,11 @@ async fn claim_racing_stop_keeps_at_most_one_accounting_obligation() {
     assert!(claim(&f, &draft).await.is_none(), "nothing left to admit");
     let second = states(&f, &draft).await;
     assert!(second.contains(&("1:user".into(), "cancelled".into(), Some("Second".into()))));
-    if let Some(lease) = claimed {
-        let id = af_core::id::Uuid7::parse(&lease.lease_id).expect("lease id");
+    if let Some(run) = claimed {
+        let id = af_core::id::Uuid7::parse(&run.run_id).expect("run id");
         let ack = f
             .drafts
-            .report(&f.runner, &id, finished(&lease))
+            .report(&f.runner, &id, finished(&run))
             .await
             .expect("report after Stop");
         assert!(ack.settled);

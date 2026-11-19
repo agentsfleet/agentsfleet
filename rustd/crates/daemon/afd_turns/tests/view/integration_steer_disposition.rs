@@ -2,7 +2,7 @@
 //!
 //! The ledger's one statement reports the facts: whether a run of the fleet is
 //! live, which message began it, and what waits ahead. These seed a live run by
-//! hand, the way a runner leasing a message leaves it, and prove each answer
+//! hand, the way a runner running a message leaves it, and prove each answer
 //! end to end, a retry's included: it is answered from the ledger as it stands
 //! now, and the message that began the live run is `started` however often it
 //! is sent.
@@ -35,17 +35,17 @@ const POLICY: RunnerPolicy<'static> = RunnerPolicy {
     network_policy: "deny_all_egress",
 };
 
-const INSERT_LEASE: &str = "\
-INSERT INTO runner.leases
+const INSERT_RUN: &str = "\
+INSERT INTO runner.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
-   posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status,
+   posture, provider, model, last_metered_at, fencing_token, run_expires_at, status,
    posted_message_count, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, now(),
         'platform', 'test', 'test', now(), 1, now() + interval '1 hour', $7, 0, now(), now())";
 
 const INSERT_SLOT: &str = "\
 INSERT INTO runner.slots
-  (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, created_at, updated_at)
+  (id, fleet_id, last_runner_id, fencing_token, run_expires_at, created_at, updated_at)
 VALUES ($1, $1, $2, 1, now() + interval '1 hour', now(), now())";
 
 /// Sends the person's message, keyed by `operation` when it has one.
@@ -76,7 +76,7 @@ fn placed(disposition: SteerDisposition, joined: Option<&str>) -> Placed {
 }
 
 /// Makes the run `head` began the fleet's live run: a runner, the event the
-/// run serves, an active lease on it and the fleet's slot held under it.
+/// run serves, an active run on it and the fleet's slot held under it.
 async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
     let head = Uuid7::parse(head)?;
     let runner = mint_id();
@@ -92,14 +92,14 @@ async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
     FleetEventSeed::new(&lane.fleet, &lane.workspace, &head, kind)
         .insert(&mut *connection)
         .await?;
-    sqlx::query(INSERT_LEASE)
+    sqlx::query(INSERT_RUN)
         .bind(mint_id())
         .bind(&runner)
         .bind(&lane.fleet)
         .bind(&lane.workspace)
         .bind(&lane.tenant)
         .bind(&head)
-        .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .execute(&mut *connection)
         .await?;
     sqlx::query(INSERT_SLOT)

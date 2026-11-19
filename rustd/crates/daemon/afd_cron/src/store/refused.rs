@@ -21,15 +21,15 @@ pub(crate) const DETAIL_FLEET_CAP: &str =
 /// The sentence a duplicate upstream key earns.
 pub(crate) const DETAIL_DUPLICATE: &str = "This fleet already has a schedule under that key.";
 
-/// The sentence a lease that no longer holds its fleet earns.
+/// The sentence a run that no longer holds its fleet earns.
 pub(crate) const DETAIL_UNHELD: &str =
-    "This lease no longer holds the fleet, so nothing was written.";
+    "This run no longer holds the fleet, so nothing was written.";
 
 /// The `current_state` a refusal at a ceiling names.
 pub(crate) const STATE_AT_CAPACITY: &str = "at_capacity";
 /// The `current_state` a refusal of a key already held names.
 pub(crate) const STATE_KEY_HELD: &str = "key_held";
-/// The `current_state` a write from a superseded lease names.
+/// The `current_state` a write from a superseded run names.
 pub(crate) const STATE_SUPERSEDED: &str = "superseded";
 
 /// Why a create was refused.
@@ -51,11 +51,11 @@ pub enum Refused {
     FleetCapReached,
     /// This fleet already registered that upstream key.
     DuplicateKey,
-    /// The lease a fleet's write came under no longer holds the fleet: a
+    /// The run a fleet's write came under no longer holds the fleet: a
     /// reclaim took it between the caller's check and the write.
     ///
     /// Only a guarded write answers it (`store::guarded`); a person's
-    /// schedule edit holds no lease.
+    /// schedule edit holds no run.
     Unheld,
 }
 

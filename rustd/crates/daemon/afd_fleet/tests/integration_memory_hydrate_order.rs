@@ -1,6 +1,6 @@
-//! Which live lease a hydrate trusts when one runner briefly holds two.
+//! Which live run a hydrate trusts when one runner briefly holds two.
 //!
-//! A reclaim can leave the superseded lease and its successor both live on one
+//! A reclaim can leave the superseded run and its successor both live on one
 //! runner for a moment. The fence a hydrate reads must be the successor's, by
 //! fencing token: tokens rise with every issue, where `created_at` is one
 //! daemon replica's clock, and a replica running behind stamps the successor
@@ -23,17 +23,17 @@ use self::report_seed::held;
 /// How far before its predecessor the successor is stamped: any skew serves.
 const CLOCK_SKEW: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Copies the held lease as its successor — the fleet's next token, stamped
-/// [`CLOCK_SKEW`] before the held lease — and moves the live sequence to it.
+/// Copies the held run as its successor — the fleet's next token, stamped
+/// [`CLOCK_SKEW`] before the held run — and moves the live sequence to it.
 const INSERT_EARLIER_SUCCESSOR: &str = "\
-INSERT INTO runner.leases \
+INSERT INTO runner.runs \
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
    posture, provider, model, last_metered_at, fencing_token, \
-   lease_expires_at, status, posted_message_count, created_at, updated_at) \
+   run_expires_at, status, posted_message_count, created_at, updated_at) \
 SELECT $2, runner_id, fleet_id, workspace_id, tenant_id, event_id, \
    event_created_at, posture, provider, model, last_metered_at, \
-   fencing_token + 1, lease_expires_at, status, 0, created_at - $3::interval, updated_at \
-FROM runner.leases WHERE id = $1 \
+   fencing_token + 1, run_expires_at, status, 0, created_at - $3::interval, updated_at \
+FROM runner.runs WHERE id = $1 \
 RETURNING fencing_token";
 
 #[tokio::test]
@@ -43,11 +43,11 @@ async fn test_hydrate_trusts_the_higher_token_over_the_clock() {
     let fleet_id = run.fleet.clone();
     let plane = run.fixtures.plane();
 
-    // Positive control: the lone held lease hydrates.
+    // Positive control: the lone held run hydrates.
     plane
         .hydrate(&run.runner, &fleet_id)
         .await
-        .expect("the held lease is the live one");
+        .expect("the held run is the live one");
 
     issue_earlier_successor(&run).await;
     plane
@@ -68,15 +68,15 @@ async fn issue_earlier_successor(run: &report_seed::Held) {
         .await
         .expect("a pooled connection");
     let token: i64 = sqlx::query_scalar(INSERT_EARLIER_SUCCESSOR)
-        .bind(&run.issued.lease_id)
+        .bind(&run.issued.run_id)
         .bind(mint_id())
         .bind(CLOCK_SKEW)
         .fetch_one(&mut *connection)
         .await
-        .expect("the successor lease inserts");
+        .expect("the successor run inserts");
     assert!(
         token > run.fence.as_i64(),
-        "the successor must outrank the held lease, or this test proves nothing"
+        "the successor must outrank the held run, or this test proves nothing"
     );
     sqlx::query("UPDATE runner.slots SET fencing_token = $2 WHERE fleet_id = $1")
         .bind(&run.fleet)

@@ -2,7 +2,7 @@
 //!
 //! The list and detail reads answer `statement_timestamp()` beside each row, so
 //! liveness is derived against the database's clock: the same instant the
-//! live-lease test inside the statement used, rather than a second clock read
+//! live-run test inside the statement used, rather than a second clock read
 //! in the daemon a few milliseconds later.
 
 /// The first statement of a page's transaction: every read the page makes
@@ -13,15 +13,15 @@ pub const READ_SNAPSHOT: &str = include_str!("read_snapshot.sql");
 pub const COUNT_RUNNERS: &str = include_str!("count_runners.sql");
 
 /// First runner page, newest first by the composite creation key. `$1` the
-/// active lease status, `$2` the page size.
+/// active run status, `$2` the page size.
 pub const LIST_RUNNERS_FIRST: &str = include_str!("list_runners_first.sql");
 
-/// Runner page strictly after a composite cursor. `$1` the active lease
+/// Runner page strictly after a composite cursor. `$1` the active run
 /// status, `$2` and `$3` the cursor, `$4` the page size.
 pub const LIST_RUNNERS_AFTER: &str = include_str!("list_runners_after.sql");
 
 /// One runner with current work counts and durable lifetime counters. `$1`
-/// runner, `$2` the active lease status.
+/// runner, `$2` the active run status.
 pub const RUNNER_DETAIL: &str = include_str!("runner_detail.sql");
 
 /// Confirms the history owner exists.

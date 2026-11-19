@@ -9,8 +9,13 @@ use afd_setup::types::{MessageQuery, Source};
 async fn an_expired_attempt_is_visible_as_waiting_for_accounting_without_freeing_its_bound() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=30000000,lease_expires_at='epoch' WHERE id=$1")
-        .bind(&a.id).execute(&mut *f.connection().await).await.expect("interrupted worker");
+    sqlx::query(
+        "UPDATE authoring.attempts SET reserved_nanos=30000000,run_expires_at='epoch' WHERE id=$1",
+    )
+    .bind(&a.id)
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("interrupted worker");
     f.drafts
         .maintain()
         .await
@@ -55,7 +60,7 @@ async fn an_expired_attempt_reports_its_message_finished_once_across_passes() {
     use super::super::funnel::{FINISHED, about, only, property};
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(a.id)
         .execute(&mut *f.connection().await)
         .await
@@ -85,7 +90,7 @@ async fn another_workers_sweep_reports_to_the_same_workspace_recorder() {
     let f = Fixture::create().await;
     let worker = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at=to_timestamp(0) WHERE id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at=to_timestamp(0) WHERE id=$1")
         .bind(a.id)
         .execute(&mut *f.connection().await)
         .await
@@ -128,18 +133,18 @@ async fn an_attempt_renewed_while_the_pass_waited_on_its_lock_is_left_running() 
     // this proof's pass must not sweep another proof's.
     let f = Fixture::isolated().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+    sqlx::query("UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1")
         .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
-        .expect("a lapsed lease the pass will find");
+        .expect("a lapsed run the pass will find");
     let mut holder = f.connection().await;
     sqlx::query("BEGIN")
         .execute(&mut *holder)
         .await
         .expect("renewal transaction");
     let pid: i32 = sqlx::query_scalar(
-        "UPDATE authoring.attempts SET lease_expires_at=now()+interval '1 minute' \
+        "UPDATE authoring.attempts SET run_expires_at=now()+interval '1 minute' \
          WHERE id=$1 RETURNING pg_backend_pid()",
     )
     .bind(&a.id)
@@ -172,13 +177,13 @@ async fn an_expired_attempt_whose_message_already_finished_keeps_that_finish() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     sqlx::query(
         "WITH stopped AS (UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$2) \
-         UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1",
+         UPDATE authoring.attempts SET run_expires_at='epoch' WHERE id=$1",
     )
     .bind(&a.id)
     .bind(&a.draft.id)
     .execute(&mut *f.connection().await)
     .await
-    .expect("a stopped message on a lapsed lease");
+    .expect("a stopped message on a lapsed run");
     f.drafts.maintain().await.expect("the pass runs");
     assert_eq!(
         statuses(&f, &a).await,

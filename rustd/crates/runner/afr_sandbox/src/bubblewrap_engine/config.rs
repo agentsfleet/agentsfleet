@@ -21,9 +21,9 @@ pub struct BubblewrapConfig {
     /// The mounted, verified toolbox, shared by every clone of the
     /// configuration and unmounted by its one owner.
     pub toolbox: Arc<Toolbox>,
-    /// The delegated cgroup each lease's cgroup is made under.
+    /// The delegated cgroup each run's cgroup is made under.
     pub cgroup_root: PathBuf,
-    /// Where each lease's directory is made. Swept when the engine is built.
+    /// Where each run's directory is made. Swept when the engine is built.
     pub state_dir: PathBuf,
     /// The binary that hardens and serves inside; `agentsfleet-runner`.
     pub entry: PathBuf,
@@ -33,13 +33,13 @@ pub struct BubblewrapConfig {
     pub sandbox_ids: (u32, u32),
     /// The log level passed to the process inside, when one is set.
     pub log_level: Option<OsString>,
-    /// How long a sandbox may take to answer before the lease is refused.
+    /// How long a sandbox may take to answer before the run is refused.
     pub ready_timeout: Duration,
 }
 
 impl BubblewrapConfig {
     /// What a runner host builds sandboxes from: its admitted `toolbox`, the
-    /// cgroup delegated to it, `state_dir` for each lease's directory, and
+    /// cgroup delegated to it, `state_dir` for each run's directory, and
     /// `entry`, the runner binary every sandbox starts. The log level is the
     /// one `env` names.
     #[must_use]

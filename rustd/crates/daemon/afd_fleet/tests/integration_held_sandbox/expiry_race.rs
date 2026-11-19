@@ -8,7 +8,7 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
-use afd_fleet::lease::{Acquired, Billed, Issued};
+use afd_fleet::run::{Acquired, Billed, Issued};
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{Connection as _, Postgres, Transaction};
 use std::time::Duration;
@@ -43,7 +43,7 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
         .await?;
     let mut blocker = connection.begin().await?;
     let pid = pause_hold(&held, &mut blocker).await?;
-    let expiry = shorten_lease(&held).await?;
+    let expiry = shorten_run(&held).await?;
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(held.fixtures.after(Duration::from_mins(5))));
     let mut clock = af_observability::verb_span::VerbClock::untimed();
@@ -83,10 +83,10 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
 async fn an_expired_report_can_settle_after_another_fleet_takes_the_worker() -> Checked {
     let held = held_in(Fixtures::create_isolated().await).await;
     let next = next_admission(&held).await?;
-    let expiry = shorten_lease(&held).await?;
+    let expiry = shorten_run(&held).await?;
     wait_for_expiry(&held, expiry).await?;
     let issued = issue(&held, &next).await?;
-    assert!(issued.is_some(), "expired lease frees the only worker");
+    assert!(issued.is_some(), "expired run frees the only worker");
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(held.fixtures.after(Duration::from_mins(5))));
     let report = plane
@@ -122,7 +122,7 @@ async fn next_admission(held: &Held) -> Checked<Next> {
         .await?;
     drop(connection);
     fixtures.seed_wallet(&seeded.tenant, DEEP_POOL).await;
-    let acquired = seed::select_fleet(&held.leases, &held.runner, &seeded.fleet)
+    let acquired = seed::select_fleet(&held.runs, &held.runner, &seeded.fleet)
         .await
         .ok_or("second fleet is not provisionally claimable")?;
     Ok(Next {
@@ -141,16 +141,16 @@ async fn pause_hold(held: &Held, blocker: &mut Transaction<'_, Postgres>) -> Che
         .await?)
 }
 
-async fn shorten_lease(held: &Held) -> Checked<jiff_sqlx::Timestamp> {
+async fn shorten_run(held: &Held) -> Checked<jiff_sqlx::Timestamp> {
     let mut connection = held.fixtures.database.acquire().await?;
     let expires: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "UPDATE runner.leases SET lease_expires_at=clock_timestamp()+interval '1400 milliseconds'
-         WHERE id=$1 RETURNING lease_expires_at",
+        "UPDATE runner.runs SET run_expires_at=clock_timestamp()+interval '1400 milliseconds'
+         WHERE id=$1 RETURNING run_expires_at",
     )
-    .bind(&held.issued.lease_id)
+    .bind(&held.issued.run_id)
     .fetch_one(&mut *connection)
     .await?;
-    sqlx::query("UPDATE runner.slots SET lease_expires_at=$2 WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.slots SET run_expires_at=$2 WHERE fleet_id=$1")
         .bind(&held.fleet)
         .bind(expires.to_jiff().to_sqlx())
         .execute(&mut *connection)
@@ -185,7 +185,7 @@ async fn issue_during_report(
 
 async fn issue(held: &Held, next: &Next) -> Checked<Option<Issued>> {
     Ok(held
-        .leases
+        .runs
         .issue(
             &held.runner,
             &next.acquired,

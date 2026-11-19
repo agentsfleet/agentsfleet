@@ -1,4 +1,4 @@
-//! Native tool activity retains its lease-scoped call identity and bounded outcome.
+//! Native tool activity retains its run-scoped call identity and bounded outcome.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
@@ -29,7 +29,7 @@ async fn test_activity_carries_a_required_call_id() {
     assert_eq!(
         field(&frame, "call_id"),
         &json!(format!("{}:{CALL_ID}", tailed.fence)),
-        "the runner call identity is scoped to its lease fence"
+        "the runner call identity is scoped to its run fence"
     );
     for refused in [
         json!({"frames": [{"tool_call_progress": {"name":TOOL_NAME, "elapsed_ms":5}}]}),

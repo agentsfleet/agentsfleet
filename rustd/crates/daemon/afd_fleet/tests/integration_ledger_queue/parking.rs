@@ -29,8 +29,8 @@ async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let acquired = next(&leases, &runner).await.expect("claim");
+    let runs = fixtures.runs_with_dead_bus();
+    let acquired = next(&runs, &runner).await.expect("claim");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let mut connection = fixtures.database.acquire().await.expect("blocker");
     let mut blocker = connection
@@ -43,7 +43,7 @@ async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
         .await
         .expect("fleet slot locked");
     let (parked, ()) = tokio::join!(
-        leases.park(&acquired.fleet_id, &event, acquired.fence),
+        runs.park(&acquired.fleet_id, &event, acquired.fence),
         answer_while_blocked(&fixtures, &action, pid, blocker)
     );
     parked.expect("delayed park completes");
@@ -55,13 +55,13 @@ async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
             .expect("park stamp");
     assert!(!is_parked, "the committed answer prevents a stale park");
     assert_eq!(
-        next(&leases, &runner)
+        next(&runs, &runner)
             .await
-            .expect("answered head leases")
+            .expect("answered head runs")
             .event_id,
         event
     );
-    drop((connection, leases));
+    drop((connection, runs));
     fixtures.cleanup().await;
 }
 
@@ -84,24 +84,23 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let old = next(&leases, &runner).await.expect("first claim");
+    let runs = fixtures.runs_with_dead_bus();
+    let old = next(&runs, &runner).await.expect("first claim");
     seed_gate(&fixtures, &fleet, &workspace).await;
     fixtures
         .age(
             crate::rows::Row::Slot(&fleet),
-            "lease_expires_at",
+            "run_expires_at",
             crate::rows::LAPSE,
         )
         .await;
-    let current = next(&leases, &rival).await.expect("replacement claim");
+    let current = next(&runs, &rival).await.expect("replacement claim");
     assert!(current.fence.as_i64() > old.fence.as_i64());
-    leases
-        .park(&old.fleet_id, &event, old.fence)
+    runs.park(&old.fleet_id, &event, old.fence)
         .await
         .expect("stale park is harmless");
     let state: (bool, Option<i64>, i64) = sqlx::query_as(
-        "SELECT a.parked_at IS NOT NULL, a.lease_fence, s.fencing_token \
+        "SELECT a.parked_at IS NOT NULL, a.run_fence, s.fencing_token \
          FROM fleet.admissions a JOIN runner.slots s ON s.fleet_id=a.fleet_id \
          WHERE a.id=$1 AND s.last_runner_id=$2",
     )
@@ -114,12 +113,11 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
         state,
         (false, Some(current.fence.as_i64()), current.fence.as_i64())
     );
-    leases
-        .park(&current.fleet_id, &event, current.fence)
+    runs.park(&current.fleet_id, &event, current.fence)
         .await
         .expect("the current holder can park");
     assert!(fixtures.slot_is_free(&fleet).await);
-    drop(leases);
+    drop(runs);
     fixtures.cleanup().await;
 }
 

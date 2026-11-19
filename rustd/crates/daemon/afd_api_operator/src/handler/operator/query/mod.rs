@@ -1,8 +1,8 @@
-//! What the operator plane's runner and lease lists read off a query string.
+//! What the operator plane's runner and run lists read off a query string.
 //!
 //! Every `?limit` here is the keyset lists' [`CEILING`], read through
 //! `af_validate::Limit`; each list keeps its own sentence. The two filters
-//! with a bound — `?fleet` on leases and the `?event_type` set on runner
+//! with a bound — `?fleet` on runs and the `?event_type` set on runner
 //! events — are garde structs proved before anything reads them.
 
 use std::collections::HashMap;
@@ -36,7 +36,7 @@ pub(super) struct PageQuery {
     pub(super) limit: u32,
 }
 
-pub(super) struct LeaseQuery {
+pub(super) struct RunQuery {
     pub(super) starting_after: Option<Uuid7>,
     pub(super) workspace: Option<Uuid7>,
     pub(super) fleet: Option<String>,
@@ -49,7 +49,7 @@ pub(super) struct EventQuery {
     pub(super) filter: RunnerEventFilter,
 }
 
-/// The `?fleet` filter on the lease list: an id or a name, bounded.
+/// The `?fleet` filter on the run list: an id or a name, bounded.
 #[derive(garde::Validate)]
 struct FleetFilter<'q> {
     #[garde(inner(length(bytes, min = 1, max = MAX_FLEET_FILTER_LEN)))]
@@ -66,8 +66,8 @@ struct EventTypeTokens<'q> {
     tokens: Vec<&'q str>,
 }
 
-pub(super) const DETAIL_BAD_LEASE_LIMIT: &str = "limit must be an integer between 1 and 100";
-pub(super) const DETAIL_BAD_LEASE_CURSOR: &str = "starting_after must be a lease id held by this runner, and must match workspace_id and fleet when those filters are set";
+pub(super) const DETAIL_BAD_RUN_LIMIT: &str = "limit must be an integer between 1 and 100";
+pub(super) const DETAIL_BAD_RUN_CURSOR: &str = "starting_after must be a run id held by this runner, and must match workspace_id and fleet when those filters are set";
 pub(super) const DETAIL_BAD_WORKSPACE: &str = "workspace_id must be a workspace id";
 pub(super) const DETAIL_BAD_FLEET: &str =
     "fleet must be a fleet id or name, at most 200 characters";
@@ -82,11 +82,11 @@ pub(super) fn page(params: &HashMap<String, String>) -> Result<PageQuery, &'stat
     Ok(PageQuery { cursor, limit })
 }
 
-pub(super) fn leases(params: &HashMap<String, String>) -> Result<LeaseQuery, &'static str> {
-    let limit = requested_limit(params, DETAIL_BAD_LEASE_LIMIT)?;
+pub(super) fn runs(params: &HashMap<String, String>) -> Result<RunQuery, &'static str> {
+    let limit = requested_limit(params, DETAIL_BAD_RUN_LIMIT)?;
     let starting_after = params
         .get(QUERY_STARTING_AFTER)
-        .map(|raw| Uuid7::parse(raw).map_err(|_invalid| DETAIL_BAD_LEASE_CURSOR))
+        .map(|raw| Uuid7::parse(raw).map_err(|_invalid| DETAIL_BAD_RUN_CURSOR))
         .transpose()?;
     let workspace = params
         .get(QUERY_WORKSPACE_ID)
@@ -96,7 +96,7 @@ pub(super) fn leases(params: &HashMap<String, String>) -> Result<LeaseQuery, &'s
         fleet: params.get(QUERY_FLEET).map(String::as_str),
     };
     filter.validate().map_err(|_report| DETAIL_BAD_FLEET)?;
-    Ok(LeaseQuery {
+    Ok(RunQuery {
         starting_after,
         workspace,
         fleet: filter.fleet.map(str::to_owned),

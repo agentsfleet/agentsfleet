@@ -4,7 +4,7 @@ use super::super::{catalog::Catalog, files::Workspace, uploads};
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::{
-    lease::{
+    run::{
         TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnWorkspace,
     },
@@ -68,7 +68,7 @@ impl NativeTurn<'_> {
         &mut self,
         snapshot: TurnSnapshot,
         catalog: Option<Catalog>,
-        plan: &af_wire::lease::TurnCheckpointPlan,
+        plan: &af_wire::run::TurnCheckpointPlan,
         stop: &CancellationToken,
     ) -> Result<TurnResume> {
         let reference = TurnCheckpointRef {
@@ -160,7 +160,7 @@ impl TurnSession<'_, '_> {
                 self.upload_batch(pending).await?;
             }
         }
-        let pages = catalog.pages(Some(&ids), af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)?;
+        let pages = catalog.pages(Some(&ids), af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)?;
         self.write_file_pages(page_ids, pages).await
     }
 
@@ -234,7 +234,7 @@ fn intent(snapshot: &TurnSnapshot, catalog: Option<&Catalog>) -> Result<TurnChec
     let count = catalog
         .map(|catalog| {
             catalog
-                .pages(None, af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)
+                .pages(None, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)
                 .map(|pages| pages.len())
         })
         .transpose()?
@@ -244,7 +244,7 @@ fn intent(snapshot: &TurnSnapshot, catalog: Option<&Catalog>) -> Result<TurnChec
             .previous
             .as_ref()
             .map(|saved| saved.checkpoint_id.clone()),
-        format_version: af_wire::lease::TURN_CHECKPOINT_FORMAT,
+        format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
         workspace: snapshot.scope.workspace.clone(),
         history_digest: af_core::etag::sha256_hex(&snapshot.history),
         page_count: u32::try_from(count)

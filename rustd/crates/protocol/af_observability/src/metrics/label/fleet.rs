@@ -2,7 +2,7 @@
 
 use crate::metrics::label::closed_set;
 
-pub use super::lease_cache::{CacheOutcome, LeaseCache};
+pub use super::run_cache::{CacheOutcome, RunCache};
 
 closed_set! {
     /// Packet counters are cumulative; observers export only the delta.
@@ -201,9 +201,9 @@ closed_set! {
 }
 
 closed_set! {
-    /// Which cap cut a chat lease's earlier turns.
+    /// Which cap cut a chat run's earlier turns.
     HistoryCut {
-        /// More finished turns than a lease carries; the oldest were left.
+        /// More finished turns than a run carries; the oldest were left.
         Turns => "turns",
         /// A message or answer past its text cap was cut.
         Text => "text",
@@ -217,11 +217,11 @@ closed_set! {
     /// the claim. A hold past its deadline is no hold, and counts nothing.
     HeldClaim {
         /// The runner holding the fleet's sandbox, which continues in it.
-        /// Counted when its lease resumes the hold, so a reclaim, which
+        /// Counted when its run resumes the hold, so a reclaim, which
         /// starts clean, counts nothing.
         Holder => "holder",
         /// Another runner, once the holder fell silent or could no longer
-        /// lease: degraded, or no longer active.
+        /// run: degraded, or no longer active.
         OtherAfterLapse => "other_after_lapse",
     }
 }
@@ -259,21 +259,21 @@ impl FleetStatusLabel {
 }
 
 closed_set! {
-    /// One measured boundary between event creation, the lease, the first
+    /// One measured boundary between event creation, the run, the first
     /// streamed chunk, the report and the event's completion.
     DeliveryStage {
-        /// Producer event timestamp to durable lease issue.
-        EventToLease => "event_to_lease",
-        /// Lease issue to the first stream frame received by the daemon.
-        LeaseToFirstChunk => "lease_to_first_chunk",
+        /// Producer event timestamp to durable run issue.
+        EventToAssign => "event_to_assign",
+        /// Run issue to the first stream frame received by the daemon.
+        AssignToFirstChunk => "assign_to_first_chunk",
         /// Producer event timestamp to first stream frame received by the daemon.
         EventToFirstChunk => "event_to_first_chunk",
         /// Execution invocation to its first safe stream chunk, as the runner measured it.
         RunToFirstChunk => "run_to_first_chunk",
         /// Producer event timestamp to the `event_complete` publish: the whole round trip.
         EventToComplete => "event_to_complete",
-        /// Lease issue to the report's arrival at the daemon.
-        LeaseToReport => "lease_to_report",
+        /// Run issue to the report's arrival at the daemon.
+        AssignToReport => "assign_to_report",
         /// The report's arrival to the `event_complete` publish.
         ReportToComplete => "report_to_complete",
     }
@@ -287,7 +287,7 @@ closed_set! {
     RunStart {
         /// An admission claimed for the first time.
         Fresh => "fresh",
-        /// A lapsed holder's event, re-leased under a higher fence.
+        /// A lapsed holder's event, re-held under a higher fence.
         Reclaimed => "reclaimed",
     }
 }
@@ -305,9 +305,9 @@ closed_set! {
 closed_set! {
     /// A successful report response either settled new work or acknowledged its retry.
     ReportAnswer {
-        /// The report first settled its lease.
+        /// The report first settled its run.
         Settled => "settled",
-        /// The lease's existing report was acknowledged again.
+        /// The run's existing report was acknowledged again.
         Repeated => "repeated"
     }
 }

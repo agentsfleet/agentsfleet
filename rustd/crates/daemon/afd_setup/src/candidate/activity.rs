@@ -1,4 +1,4 @@
-//! Lease authorization precedes immutable activity replay and candidate mutation.
+//! Run authorization precedes immutable activity replay and candidate mutation.
 
 use crate::{
     Drafts, Result,
@@ -6,8 +6,8 @@ use crate::{
         ErrorKind,
         raise::{query, stored},
     },
-    lease::{ActivityInput, Event, guard},
     replay,
+    run::{ActivityInput, Event, guard},
 };
 use af_core::id::Uuid7;
 use af_wire::authoring::{ActivityAccepted, ENVELOPE_BYTES_MAX};
@@ -32,7 +32,7 @@ impl Drafts {
     pub async fn activity(
         &self,
         runner: &Uuid7,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: ActivityInput,
     ) -> Result<ActivityAccepted> {
         let mut request = garde::Unvalidated::new(request).validate()?.into_inner();
@@ -46,7 +46,7 @@ impl Drafts {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         // The publication guard refuses an attempt whose usage is unknown.
-        let guarded = self.publication(&mut tx, runner, lease, &counters).await?;
+        let guarded = self.publication(&mut tx, runner, run, &counters).await?;
         if let Some(receipt) =
             receipt::find(&mut tx, &guarded.attempt.id, sequence, &digest).await?
         {
@@ -86,7 +86,7 @@ fn normalize(request: &mut ActivityInput) {
         Event::Progress { text } => *text = crate::message::normalize(text),
         Event::Proposal {
             proposal:
-                crate::lease::Proposal::Edit {
+                crate::run::Proposal::Edit {
                     instruction_edits, ..
                 },
         } => {
@@ -95,7 +95,7 @@ fn normalize(request: &mut ActivityInput) {
             }
         }
         Event::Proposal {
-            proposal: crate::lease::Proposal::Initialize { .. },
+            proposal: crate::run::Proposal::Initialize { .. },
         } => {}
     }
 }

@@ -18,15 +18,15 @@ use crate::profile::Profile;
 pub enum Lane {
     /// What the system accepts, and where a steer costs.
     Steer,
-    /// Leases per second, and the Postgres cost of each.
-    Lease,
+    /// Runs per second, and the Postgres cost of each.
+    Run,
     /// The production poll with more requesters than connections: rate, pool
-    /// wait and hold time, and the lease invariants under that pressure.
-    #[serde(rename = "lease-saturation")]
-    LeaseSaturation,
-    /// Steers paced to busy fleets: how long a message waits for a lease.
-    #[serde(rename = "lease-burst")]
-    LeaseBurst,
+    /// wait and hold time, and the run invariants under that pressure.
+    #[serde(rename = "run-saturation")]
+    RunSaturation,
+    /// Steers paced to busy fleets: how long a message waits for a run.
+    #[serde(rename = "run-burst")]
+    RunBurst,
     /// What one delivery worker sustains, and what a slow destination costs.
     Outbound,
     /// What an idle fleet costs when there are a million of them.
@@ -42,9 +42,9 @@ impl Lane {
     /// so adding a lane is the enum arm and nothing else.
     pub const ALL: [Self; 7] = [
         Self::Steer,
-        Self::Lease,
-        Self::LeaseSaturation,
-        Self::LeaseBurst,
+        Self::Run,
+        Self::RunSaturation,
+        Self::RunBurst,
         Self::Outbound,
         Self::Cardinality,
         Self::Tail,
@@ -55,9 +55,9 @@ impl Lane {
     pub const fn name(self) -> &'static str {
         match self {
             Self::Steer => "steer",
-            Self::Lease => "lease",
-            Self::LeaseSaturation => "lease-saturation",
-            Self::LeaseBurst => "lease-burst",
+            Self::Run => "run",
+            Self::RunSaturation => "run-saturation",
+            Self::RunBurst => "run-burst",
             Self::Outbound => "outbound",
             Self::Cardinality => "cardinality",
             Self::Tail => "tail",
@@ -95,4 +95,4 @@ impl core::str::FromStr for Lane {
 
 /// How the lane names are spelled, for the refusal an unknown one raises.
 const LANE_USAGE: &str =
-    "expected one of steer, lease, lease-saturation, lease-burst, outbound, cardinality, tail";
+    "expected one of steer, run, run-saturation, run-burst, outbound, cardinality, tail";

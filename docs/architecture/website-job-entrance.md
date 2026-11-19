@@ -67,7 +67,7 @@ Mobile uses the same conversation in a bounded viewport.
 Selecting evidence reveals sample excerpts within that viewport; closing restores the preceding chat position.
 
 The example labels sample output and unapplied changes. The incident, regression, and agent examples use real Linkwarden repository sources pinned to an immutable revision; run excerpts stay illustrative.
-The current runtime's access rules, lease behavior, and delivery limits come from the [runtime comparison](../reviews/workspace-setup/runtime-baseline.md).
+The current runtime's access rules, run behavior, and delivery limits come from the [runtime comparison](../reviews/workspace-setup/runtime-baseline.md).
 
 The animation makes no claim that it performs automatic repair, GitHub posting or private draft API calls.
 

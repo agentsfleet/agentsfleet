@@ -109,7 +109,7 @@ async fn the_recording_biller_passes_the_conformance_suite() {
 async fn test_unsettled_lines_count_against_a_check() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     let mut connection = lane.pool.acquire().await.expect("the lane answers");
     log_lines(
         &mut *connection,
@@ -149,7 +149,7 @@ async fn test_unsettled_lines_count_against_a_check() {
 #[tokio::test]
 async fn test_billing_outage_fails_open() {
     let ask = Ask {
-        work: WorkKey::FleetLease(mint_id()),
+        work: WorkKey::FleetRun(mint_id()),
         payer: Account {
             tenant: mint_id(),
             workspace: mint_id(),
@@ -169,7 +169,7 @@ async fn test_billing_outage_fails_open() {
 async fn test_usage_lines_deduplicate_on_sequence() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     let first = settlement(&lane, &payer, &work, vec![rated(0)]);
     biller.settle(&first).await.expect("settles");
     biller.settle(&first).await.expect("settles again");
@@ -203,7 +203,7 @@ async fn test_unsettled_lines_are_resettled() {
         workspace: lane.workspace.clone(),
     };
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     let lines = settlement(&lane, &payer, &work, vec![rated(0)]);
     // The work's transaction logs the line and commits; the settlement never runs.
     let mut connection = lane.pool.acquire().await.expect("the lane answers");
@@ -286,7 +286,7 @@ async fn settled_at(lane: &Lane, work: &WorkKey) -> Vec<Option<String>> {
 async fn a_fleets_spend_is_the_sum_of_its_lines() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     biller
         .settle(&settlement(
             &lane,

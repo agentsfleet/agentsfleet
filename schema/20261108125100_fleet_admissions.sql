@@ -20,19 +20,19 @@ CREATE TABLE fleet.admissions (
     CONSTRAINT uq_admissions_producer_producer_key UNIQUE (producer, producer_key),
     CONSTRAINT ck_admissions_reply_both_or_neither
         CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
-    lease_fence BIGINT,
+    run_fence BIGINT,
     parked_at TIMESTAMPTZ(3),
     settled_at TIMESTAMPTZ(3),
     task_id UUID,
     task_item_id UUID,
-    input_claim_lease_id UUID,
+    input_claim_run_id UUID,
     input_claim_fence BIGINT,
     CONSTRAINT fk_admissions_task_scope FOREIGN KEY (task_id, fleet_id, workspace_id)
         REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE SET NULL (task_id),
     CONSTRAINT fk_admissions_task_item_scope FOREIGN KEY (task_item_id, fleet_id, workspace_id)
         REFERENCES fleet.task_items (id, fleet_id, workspace_id) ON DELETE SET NULL (task_item_id),
     interpreted_at TIMESTAMPTZ(3),
-    -- Frozen separately from the lease fence, and kept when cleanup clears `task_id`.
+    -- Frozen separately from the run fence, and kept when cleanup clears `task_id`.
     task_generation BIGINT CHECK (task_generation > 0)
 );
 

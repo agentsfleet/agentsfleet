@@ -96,7 +96,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     );
 }
 
-/// A continuation the lease path already opened is not announced twice.
+/// A continuation the run path already opened is not announced twice.
 ///
 /// Both writers run `INSERT_FLEET_EVENT` against `(fleet_id, event_id)`, and
 /// the admission ledger hands them the SAME id, because the gate's action is
@@ -142,7 +142,7 @@ async fn a_converged_continuation_announces_nothing() {
     .expect("an approved gate still reports the run it continues");
     assert_eq!(
         continuation, admitted,
-        "the resolve converged on the row the lease path opened, it did not mint a second"
+        "the resolve converged on the row the run path opened, it did not mint a second"
     );
 
     let frame = next_frame(&mut tail)
@@ -195,7 +195,7 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
         .expect("the seeded gate held a run's event");
     let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
 
-    // The lease path, played by hand: the same admission the resolve is about
+    // The run path, played by hand: the same admission the resolve is about
     // to ask for, then the row it would have written. Keyed on the gate's
     // action, so the resolve's own `admit` returns this very id.
     let admitted = Admissions::for_tests(lane.pool.clone(), lane.bus.clone())
@@ -223,7 +223,7 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
         .bind(af_core::event::status::RECEIVED)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))
         .await
-        .expect("the lease path's insert must not fault");
+        .expect("the run path's insert must not fault");
     assert!(landed, "the fixture must be the writer that opened the row");
     admitted.stored.id
 }

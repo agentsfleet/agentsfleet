@@ -14,11 +14,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_state::sql::{LEASE_STATUS_ACTIVE, LEASE_STATUS_REPORTED};
+use afd_state::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_REPORTED};
 use agentsfleetd::supervisor::Supervisor;
 
 use crate::e2e::scenario;
-use crate::tail::lease;
+use crate::tail::run;
 use crate::wire::report_body;
 
 #[path = "integration_rust_runner_overlap.rs"]
@@ -29,24 +29,24 @@ mod tenant;
 /// A key no build of the daemon carries.
 const FUTURE: &str = "future";
 
-/// A report naming an unknown key is refused, and the lease survives to take
+/// A report naming an unknown key is refused, and the run survives to take
 /// the correct one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_a_retired_report_route_cannot_settle_a_lease() {
+async fn test_a_retired_report_route_cannot_settle_a_run() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&run).await;
-    let mut body = report_body(&lease_id, &run.event_id, fence);
+    let (run_id, fence) = run(&scene).await;
+    let mut body = report_body(&run_id, &scene.event_id, fence);
     let report = body.as_object_mut().expect("a report is a JSON object");
     report.insert(FUTURE.to_owned(), serde_json::Value::from(1));
 
-    let refused = crate::wire::post(&http, &run, "/v1/runners/me/reports", &body).await;
+    let refused = crate::wire::post(&http, &scene, "/v1/runners/me/reports", &body).await;
     assert_eq!(
         refused.status().as_u16(),
         404,
@@ -56,39 +56,39 @@ async fn test_a_retired_report_route_cannot_settle_a_lease() {
     body.as_object_mut()
         .expect("a report is a JSON object")
         .remove(FUTURE);
-    let accepted = crate::wire::report(&run, &body).await;
+    let accepted = crate::wire::report(&scene, &body).await;
     assert!(accepted.is_ok(), "native report refused: {accepted:?}");
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// Every pull route the stream replaced answers 404 to an enrolled runner,
-/// even for a live lease, while the runner's own row still answers.
+/// even for a live run, while the runner's own row still answers.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_retired_runner_routes_answer_404() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let (lease_id, _) = lease(&run).await;
+    let (run_id, _) = run(&scene).await;
     let retired = [
         "/v1/runners/me/heartbeats".to_owned(),
-        "/v1/runners/me/leases".to_owned(),
-        format!("/v1/runners/me/leases/{lease_id}/renew"),
-        format!("/v1/runners/me/leases/{lease_id}/activity"),
-        format!("/v1/runners/me/leases/{lease_id}/folds"),
+        "/v1/runners/me/runs".to_owned(),
+        format!("/v1/runners/me/runs/{run_id}/renew"),
+        format!("/v1/runners/me/runs/{run_id}/activity"),
+        format!("/v1/runners/me/runs/{run_id}/folds"),
         "/v1/runners/me/reports".to_owned(),
     ];
     for path in &retired {
-        let answer = crate::wire::post(&http, &run, path, &serde_json::json!({})).await;
+        let answer = crate::wire::post(&http, &scene, path, &serde_json::json!({})).await;
         assert_eq!(answer.status().as_u16(), 404, "POST {path} is retired");
     }
-    let own = crate::wire::get(&http, &run, "/v1/runners/me").await;
+    let own = crate::wire::get(&http, &scene, "/v1/runners/me").await;
     assert_eq!(
         own.status().as_u16(),
         200,
@@ -96,18 +96,18 @@ async fn the_retired_runner_routes_answer_404() {
     );
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 /// How long the runner is given to take, run and settle the seeded event.
 const SETTLE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// How often the lease row is read while waiting for it to settle.
+/// How often the run row is read while waiting for it to settle.
 const SETTLE_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
-/// The newest lease the fleet was issued, by status.
-const LATEST_LEASE_STATUS: &str =
-    "SELECT status FROM runner.leases WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1";
+/// The newest run the fleet was issued, by status.
+const LATEST_RUN_STATUS: &str =
+    "SELECT status FROM runner.runs WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1";
 
 /// The content one fleet memory key holds.
 const REMEMBERED_CONTENT: &str =
@@ -120,19 +120,19 @@ const REMEMBERED_KEY: &str = "rust-runner-roundtrip";
 const TOOL: &str = "shell";
 
 /// What the scripted run says, streamed as its answer.
-const ANSWER: &str = "the scripted run is done";
+const ANSWER: &str = "the scripted scene is done";
 
-/// A lease, end to end, through the Rust runner: it heartbeats, takes the
+/// A run, end to end, through the Rust runner: it heartbeats, takes the
 /// seeded event, runs a scripted turn whose tool call executes through the
 /// executor, streams its frames to the fleet's live tail, pushes memory,
 /// settles the report, and leaves no sandbox behind.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_rust_runner_lease_roundtrip() {
+async fn test_rust_runner_run_roundtrip() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    allow_all_egress(&run).await;
-    let mut tail = crate::tail::tail_of(&run.fleet).await;
+    let scene = scenario(&mut supervisor).await;
+    allow_all_egress(&scene).await;
+    let mut tail = crate::tail::tail_of(&scene.fleet).await;
     crate::tail::settle().await;
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
@@ -140,16 +140,16 @@ async fn test_rust_runner_lease_roundtrip() {
     let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
         .expect("a debug build permits the unsandboxed engine");
     let runner = tokio::spawn(rust_runner(
-        &run,
-        &run.token,
+        &scene,
+        &scene.token,
         home.path(),
         (Box::new(engine), Box::new(scripted())),
         shutdown.clone(),
     ));
 
-    assert_settled(&run).await;
+    assert_settled(&scene).await;
     assert_frames(&mut tail).await;
-    assert_memory_pushed(&run).await;
+    assert_memory_pushed(&scene).await;
 
     shutdown.cancel();
     runner
@@ -159,25 +159,25 @@ async fn test_rust_runner_lease_roundtrip() {
     let left = std::fs::read_dir(sandboxes.path())
         .expect("the engine's sandbox base still exists")
         .count();
-    assert_eq!(left, 0, "no sandbox outlives its lease");
+    assert_eq!(left, 0, "no sandbox outlives its run");
     drop(tail);
     supervisor.shutdown().await;
-    // Retired like every other scenario's fleet: left `active` with its lease,
+    // Retired like every other scenario's fleet: left `active` with its run,
     // the next daemon's reclaim sweeper re-marks it and the scenarios after
     // this one spend their poll budget on it (`e2e_retire`).
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
-/// The lease is reported, and the event carries the scripted turn's outcome
-/// and answer — not merely a lease that left `leased`.
-async fn assert_settled(run: &crate::e2e::Scenario) {
+/// The run is reported, and the event carries the scripted turn's outcome
+/// and answer — not merely a run that left `held`.
+async fn assert_settled(scene: &crate::e2e::Scenario) {
     assert_eq!(
-        settled_status(run).await.as_deref(),
-        Some(LEASE_STATUS_REPORTED)
+        settled_status(scene).await.as_deref(),
+        Some(RUN_STATUS_REPORTED)
     );
-    let status = crate::reads::event_column(run, &run.event_id, "status").await;
+    let status = crate::reads::event_column(scene, &scene.event_id, "status").await;
     assert_eq!(status.as_deref(), Some("processed"));
-    let answer = crate::reads::event_column(run, &run.event_id, "response_text").await;
+    let answer = crate::reads::event_column(scene, &scene.event_id, "response_text").await;
     assert_eq!(answer.as_deref(), Some(ANSWER));
 }
 
@@ -193,17 +193,17 @@ async fn assert_frames(tail: &mut crate::tail::Tail) {
 }
 
 /// The remembered item is in the fleet's durable memory, read from the store:
-/// the runner's own memory read is scoped to a live lease, and this one is
+/// the runner's own memory read is scoped to a live run, and this one is
 /// settled.
-async fn assert_memory_pushed(run: &crate::e2e::Scenario) {
-    let mut connection = run
+async fn assert_memory_pushed(scene: &crate::e2e::Scenario) {
+    let mut connection = scene
         .booted
         .database
         .acquire()
         .await
         .expect("a pooled connection");
     let content: Option<String> = sqlx::query_scalar(REMEMBERED_CONTENT)
-        .bind(&run.fleet)
+        .bind(&scene.fleet)
         .bind(REMEMBERED_KEY)
         .fetch_optional(&mut *connection)
         .await
@@ -216,9 +216,9 @@ async fn assert_memory_pushed(run: &crate::e2e::Scenario) {
 }
 
 /// Reassigns the seeded runner a policy with no egress control: this runner
-/// reports none yet, and the daemon rightly withholds leases from a host that
+/// reports none yet, and the daemon rightly withholds runs from a host that
 /// cannot enforce what its assignment demands.
-pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
+pub(crate) async fn allow_all_egress(scene: &crate::e2e::Scenario) {
     use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
     let policy = AssignedPolicy {
         durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
@@ -230,12 +230,12 @@ pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
         extra_binds: Vec::new(),
     };
     afd_runner::Runners::new(
-        run.booted.database.clone(),
+        scene.booted.database.clone(),
         af_crypto::entropy::Entropy::new(),
     )
     .platform()
     .edit(
-        &run.runner_id,
+        &scene.runner_id,
         afd_runner::RunnerEdit {
             assigned_policy: Some(&policy),
             labels: None,
@@ -255,7 +255,7 @@ type Engines = (
 /// The Rust runner's supervisor, pointed at the scenario's daemon as the runner
 /// `token` names, building with `engine` and running each turn on `agent`.
 fn rust_runner(
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     token: &str,
     home: &std::path::Path,
     (engine, agent): Engines,
@@ -265,13 +265,13 @@ fn rust_runner(
     let home = home.to_string_lossy().into_owned();
     let origin = format!(
         "https://localhost:{}",
-        run.booted.runner_stream_address.port()
+        scene.booted.runner_stream_address.port()
     );
     let root = crate::support::runner_stream::root_file()
         .to_string_lossy()
         .into_owned();
     let env = af_core::env::MapEnv::from_pairs([
-        (ENV_API_URL, run.base.as_str()),
+        (ENV_API_URL, scene.base.as_str()),
         (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
         (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
         (ENV_RUNNER_TOKEN, token),
@@ -316,27 +316,27 @@ fn capable() -> afr_sandbox::HostProbe {
     }
 }
 
-/// The fleet's lease status once it leaves `active`, or `None` past the deadline.
+/// The fleet's run status once it leaves `active`, or `None` past the deadline.
 ///
-/// A lease is born `active`, so a poll that stopped at the first row it saw
+/// A run is born `active`, so a poll that stopped at the first row it saw
 /// passed only when the whole run fit between two reads.
-async fn settled_status(run: &crate::e2e::Scenario) -> Option<String> {
+async fn settled_status(scene: &crate::e2e::Scenario) -> Option<String> {
     let deadline = tokio::time::Instant::now() + SETTLE_DEADLINE;
     while tokio::time::Instant::now() < deadline {
-        let mut connection = run
+        let mut connection = scene
             .booted
             .database
             .acquire()
             .await
             .expect("a pooled connection");
-        let status: Option<String> = sqlx::query_scalar(LATEST_LEASE_STATUS)
-            .bind(&run.fleet)
+        let status: Option<String> = sqlx::query_scalar(LATEST_RUN_STATUS)
+            .bind(&scene.fleet)
             .fetch_optional(&mut *connection)
             .await
-            .expect("the lease table reads");
+            .expect("the run table reads");
         if status
             .as_deref()
-            .is_some_and(|status| status != LEASE_STATUS_ACTIVE)
+            .is_some_and(|status| status != RUN_STATUS_ACTIVE)
         {
             return status;
         }

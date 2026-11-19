@@ -2,7 +2,7 @@
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
 use crate::e2e::Scenario;
-use af_core::timing::{ENGINE_STOP_GRACE, LEASE_TTL, STREAM_ANSWER_TIMEOUT};
+use af_core::timing::{ENGINE_STOP_GRACE, RUN_TTL, STREAM_ANSWER_TIMEOUT};
 use afr_agent::scripted::{ScriptedEngine, Step};
 use guffbolt::Usage;
 use std::{path::Path, time::Duration};
@@ -20,12 +20,12 @@ pub(super) struct Runner {
 }
 
 impl Runner {
-    pub(super) async fn start(run: &Scenario, origin: &str) -> Self {
-        crate::integration_rust_runner::allow_all_egress(run).await;
+    pub(super) async fn start(scene: &Scenario, origin: &str) -> Self {
+        crate::integration_rust_runner::allow_all_egress(scene).await;
         let home = tempfile::tempdir().expect("runner storage home");
         let sandboxes = tempfile::tempdir_in("/tmp").expect("short sandbox base");
         let marker = tempfile::tempdir().expect("external command markers");
-        let config = configuration(run, origin, home.path());
+        let config = configuration(scene, origin, home.path());
         let (config, storage) = afr_supervisor::boot(&config).expect("runner configuration");
         let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
             .expect("test-only sandbox engine");
@@ -82,7 +82,7 @@ impl Runner {
     pub(super) async fn stop(mut self) {
         self.stop.cancel();
         tokio::time::timeout(
-            LEASE_TTL + ENGINE_STOP_GRACE * 2 + STREAM_ANSWER_TIMEOUT,
+            RUN_TTL + ENGINE_STOP_GRACE * 2 + STREAM_ANSWER_TIMEOUT,
             &mut self.task,
         )
         .await
@@ -98,7 +98,7 @@ impl Runner {
     }
 }
 
-fn configuration(run: &Scenario, origin: &str, home: &Path) -> af_core::env::MapEnv {
+fn configuration(scene: &Scenario, origin: &str, home: &Path) -> af_core::env::MapEnv {
     use afr_supervisor::config::{
         ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME, ENV_STREAM_CA, ENV_STREAM_URL,
     };
@@ -106,8 +106,8 @@ fn configuration(run: &Scenario, origin: &str, home: &Path) -> af_core::env::Map
         .to_string_lossy()
         .into_owned();
     af_core::env::MapEnv::from_pairs([
-        (ENV_API_URL, run.base.as_str()),
-        (ENV_RUNNER_TOKEN, run.token.as_str()),
+        (ENV_API_URL, scene.base.as_str()),
+        (ENV_RUNNER_TOKEN, scene.token.as_str()),
         (ENV_STORAGE_HOME, home.to_string_lossy().as_ref()),
         (ENV_STREAM_URL, origin),
         (ENV_STREAM_CA, root.as_str()),

@@ -1,6 +1,6 @@
 //! Live daemon coverage for an operator label edit reaching placement.
 //!
-//! The runner binary never reads its own labels: the daemon's lease poll reads
+//! The runner binary never reads its own labels: the daemon's run poll reads
 //! `runner.runners.labels` afresh on every request and offers a fleet only when
 //! its `required_tags` are a subset of them. So an edit takes effect on the
 //! runner's next polls, with no restart, no re-enrolment and nothing for the
@@ -17,10 +17,10 @@ use std::borrow::Cow;
 const ENROLLED_LABEL: &str = "fixture";
 
 /// Pins the scenario's fleet to `tag`, the tag no runner in the lane carries.
-async fn require_tag(run: &Scenario, tag: &str) {
-    let mut connection = run.booted.database.acquire().await.expect("a connection");
+async fn require_tag(scene: &Scenario, tag: &str) {
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query("UPDATE fleet.fleets SET required_tags = ARRAY[$2::text] WHERE id = $1")
-        .bind(&run.fleet)
+        .bind(&scene.fleet)
         .bind(tag)
         .execute(&mut *connection)
         .await
@@ -29,26 +29,26 @@ async fn require_tag(run: &Scenario, tag: &str) {
 
 /// Replaces the runner's labels through the store verb the operator's
 /// `PATCH /v1/admin/runners/{runner_id}` calls, and checks what it stored.
-async fn edit_labels(run: &Scenario, labels: &[&str]) {
+async fn edit_labels(scene: &Scenario, labels: &[&str]) {
     let labels: Vec<Cow<'_, str>> = labels.iter().map(|label| Cow::Borrowed(*label)).collect();
     let edit = RunnerEdit {
         assigned_policy: None::<&AssignedPolicy<'_>>,
         labels: Some(&labels),
     };
     let stored = Runners::new(
-        run.booted.database.clone(),
+        scene.booted.database.clone(),
         af_crypto::entropy::Entropy::new(),
     )
     .platform()
-    .edit(&run.runner_id, edit, af_core::clock::now())
+    .edit(&scene.runner_id, edit, af_core::clock::now())
     .await
     .expect("an operator may edit a live runner's labels");
     assert_eq!(stored.labels.as_deref(), Some(labels.as_slice()));
 }
 
 /// Spends the whole poll budget asserting the fleet under test is never offered.
-async fn assert_never_offered(run: &Scenario, why: &str) {
-    let ended = wait_without_offer(run, || async { false }).await;
+async fn assert_never_offered(scene: &Scenario, why: &str) {
+    let ended = wait_without_offer(scene, || async { false }).await;
     assert!(!ended, "{why}");
 }
 
@@ -60,33 +60,33 @@ async fn assert_never_offered(run: &Scenario, why: &str) {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
     // `gpu`, made unique to this fleet so another suite's runner on the shared
     // lane can never be the one that matches it.
-    let tag = format!("gpu-{}", run.fleet);
-    require_tag(&run, &tag).await;
+    let tag = format!("gpu-{}", scene.fleet);
+    require_tag(&scene, &tag).await;
 
-    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    let beat = crate::wire::heartbeat(&scene, &capable_beat()).await;
     assert!(
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    assert_never_offered(&run, "a runner without the tag was offered the fleet").await;
+    assert_never_offered(&scene, "a runner without the tag was offered the fleet").await;
 
-    edit_labels(&run, &[ENROLLED_LABEL, &tag]).await;
-    let (lease_id, fence) = wait_for_seeded_offer(&run).await;
-    let report = report_body(&lease_id, &run.event_id, fence);
-    let settled = crate::wire::report(&run, &report).await;
+    edit_labels(&scene, &[ENROLLED_LABEL, &tag]).await;
+    let (run_id, fence) = wait_for_seeded_offer(&scene).await;
+    let report = report_body(&run_id, &scene.event_id, fence);
+    let settled = crate::wire::report(&scene, &report).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
 
-    edit_labels(&run, &[ENROLLED_LABEL]).await;
-    let _next = run.enqueue_event(EVENT_TYPE).await;
+    edit_labels(&scene, &[ENROLLED_LABEL]).await;
+    let _next = scene.enqueue_event(EVENT_TYPE).await;
     assert_never_offered(
-        &run,
+        &scene,
         "a runner whose tag was edited away was offered the fleet again",
     )
     .await;
 
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }

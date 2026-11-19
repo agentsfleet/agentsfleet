@@ -22,7 +22,7 @@ async fn drain_burst(fleets: usize) -> TestResult {
     let completed = Arc::new(Notify::new());
     let mut registrations = Vec::new();
     let mut hosts = JoinSet::new();
-    let maximum = af_wire::protocol::LEASES_MAX;
+    let maximum = af_wire::protocol::RUNS_MAX;
     for number in 1..=fleets.div_ceil(maximum) {
         let connection = ConnectionFixture::new(number)?;
         connection.handle.snapshot.lock().credits = maximum;

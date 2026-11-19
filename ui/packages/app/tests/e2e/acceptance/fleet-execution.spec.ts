@@ -6,7 +6,7 @@ import { executionInstructions } from "./fixtures/definition";
  * Wire: save a fleet from the private chat's inline setup, with instructions
  * that carry a real request → open the workspace wall in a
  * second tab and leave it watching → message the fleet from its own composer →
- * an online runner leases the delivery → the lease reaches the provider and
+ * an online runner runs the delivery → the run reaches the provider and
  * comes back → the thread shows the reply → the wall's tile for THIS fleet
  * carried the activity, over one workspace stream, and a control fleet's tile
  * did not.
@@ -31,14 +31,14 @@ import {
   classifyReportMissing,
   classifyStillRunning,
   classifyTerminalEvent,
-  classifyUnleased,
+  classifyIdle,
   failWith,
-  findLeaseFor,
+  findRunFor,
   JOURNEY_LEG,
-  leaseIsSettled,
+  runIsSettled,
   readTerminalChatTurn,
   type JourneyLeg,
-  type LeaseLocation,
+  type RunLocation,
 } from "./fixtures/execution";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
@@ -54,11 +54,11 @@ const CONTROL_PREFIX = "fleet-exec-control-";
 const SWEEP_PREFIX = EXECUTING_TEMPLATE;
 
 const RENDER_TIMEOUT_MS = 15_000;
-// Delivery → lease is the queue plus the runner heartbeat cadence, the same
-// budget the failed-lease walk documents.
-const LEASE_TIMEOUT_MS = 120_000;
-// Lease → terminal row includes one provider round trip. Sized for a slow
-// model minute, not a stalled one: past this the lease itself is what expired.
+// Delivery → run is the queue plus the runner heartbeat cadence, the same
+// budget the failed-run walk documents.
+const RUN_TIMEOUT_MS = 120_000;
+// Run → terminal row includes one provider round trip. Sized for a slow
+// model minute, not a stalled one: past this the run itself is what expired.
 const EXECUTION_TIMEOUT_MS = 150_000;
 const POLL_INTERVAL_MS = 2_000;
 // Install (60s inside saveFleetViaUI) + the two budgets above + the wall and
@@ -203,14 +203,14 @@ test.describe("fleet execution", () => {
     await composer.getByPlaceholder(/message your fleet/i).fill(`${MESSAGE_PREFIX}${tag}`);
     await composer.getByRole("button", { name: /send/i }).click();
 
-    // ── 1.2 An online runner leases the delivery ──
-    const lease = await pollFor<LeaseLocation>(
-      () => observed(JOURNEY_LEG.lease, () => findLeaseFor(fleetId)),
-      LEASE_TIMEOUT_MS,
+    // ── 1.2 An online runner runs the delivery ──
+    const run = await pollFor<RunLocation>(
+      () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId)),
+      RUN_TIMEOUT_MS,
     );
-    if (lease === null) failWith(classifyUnleased(await anyRunnerLive()));
+    if (run === null) failWith(classifyIdle(await anyRunnerLive()));
 
-    // ── 1.3 The lease finishes and its result reaches the thread ──
+    // ── 1.3 The run finishes and its result reaches the thread ──
     const terminal = await pollFor<EventDetail>(
       () =>
         observed(JOURNEY_LEG.execute, () =>
@@ -219,18 +219,18 @@ test.describe("fleet execution", () => {
       EXECUTION_TIMEOUT_MS,
     );
     if (terminal === null) {
-      // No terminal row inside the budget. A lease that settled without one is
-      // a report that never landed; a lease still running is the provider or
-      // the clock; no lease at all is the runner.
-      const settled = await observed(JOURNEY_LEG.execute, () => findLeaseFor(fleetId));
-      if (settled !== null && leaseIsSettled(settled.outcome)) {
+      // No terminal row inside the budget. A run that settled without one is
+      // a report that never landed; a run still running is the provider or
+      // the clock; no run at all is the runner.
+      const settled = await observed(JOURNEY_LEG.execute, () => findRunFor(fleetId));
+      if (settled !== null && runIsSettled(settled.outcome)) {
         failWith(classifyReportMissing(settled.outcome));
       }
-      // A lease that exists and has NOT settled is still running. Falling
-      // through to `classifyUnleased` here would report "an online runner never
-      // leased the delivery" about a delivery this journey watched get leased.
+      // A run that exists and has NOT settled is still running. Falling
+      // through to `classifyIdle` here would report "an online runner never
+      // held the delivery" about a delivery this journey watched get held.
       if (settled !== null) failWith(classifyStillRunning(settled.outcome));
-      failWith(classifyUnleased(await anyRunnerLive()));
+      failWith(classifyIdle(await anyRunnerLive()));
     }
     await testInfo.attach("terminal-turn", {
       body: JSON.stringify(
@@ -240,7 +240,7 @@ test.describe("fleet execution", () => {
           failure_label: terminal.failure_label,
           failure_detail: terminal.failure_detail,
           reply: terminal.response_text,
-          runner: lease.hostId,
+          runner: run.hostId,
         },
         null,
         2,
@@ -275,7 +275,7 @@ test.describe("fleet execution", () => {
       `/v1/workspaces/${workspaceId}/fleets/${control.id}/messages`,
     );
     expect(controlHistory.items.every(row => row.event_type === ACTIVITY_EVENT)).toBe(true);
-    expect(await findLeaseFor(control.id)).toBeNull();
+    expect(await findRunFor(control.id)).toBeNull();
     expect(streams.workspace, "the wall opens the workspace stream once").toBe(1);
     expect(streams.fleet, "the wall opens no per-fleet stream").toBe(0);
     await wall.close();

@@ -65,9 +65,9 @@ async fn should_keep_intentional_failures_out_of_the_internal_failure_record() {
 }
 
 #[tokio::test(start_paused = true)]
-#[should_panic(expected = "waiting for lease report")]
+#[should_panic(expected = "waiting for run report")]
 async fn should_name_the_stuck_operation_when_the_bound_expires() {
-    bounded("lease report", std::future::pending::<()>()).await;
+    bounded("run report", std::future::pending::<()>()).await;
 }
 
 #[tokio::test(start_paused = true)]

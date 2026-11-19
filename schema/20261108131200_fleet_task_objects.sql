@@ -12,7 +12,7 @@ CREATE TABLE fleet.task_objects (
     -- Includes the fixed authentication tag.
     accounted_bytes BIGINT NOT NULL CHECK (accounted_bytes > 0),
     owner_checkpoint_id UUID NOT NULL,
-    owner_lease_id UUID NOT NULL,
+    owner_run_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL,
     dek_ciphertext BYTEA NOT NULL,
     dek_nonce BYTEA NOT NULL,

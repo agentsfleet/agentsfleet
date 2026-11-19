@@ -1,6 +1,6 @@
 //! The bracket frames — the daemon opens and closes a run on the tail itself.
 //!
-//! `event_received` when lease issuance writes the row, `event_complete` when
+//! `event_received` when run issuance writes the row, `event_complete` when
 //! a report or a refusal closes it. Proven end to end because the property is
 //! the ORDER: the row is written before the frame that names it, so a watcher
 //! reacting to the frame can never find the row missing. Beside the runner's
@@ -20,12 +20,12 @@ use serde_json::json;
 
 use crate::e2e::scenario;
 use crate::reads::event_column;
-use crate::tail::{lease, next_frame, settle};
+use crate::tail::{next_frame, run, settle};
 use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 
 /// The bracket frames — the daemon opens and closes a run on the tail itself.
 ///
-/// `event_received` when lease issuance writes the row, `event_complete` when
+/// `event_received` when run issuance writes the row, `event_complete` when
 /// the report closes it, and the second carries the row as the events list
 /// would serve it plus the fleet's status and pending gate count. Proven end
 /// to end because the property is the ORDER: the row is written before the
@@ -35,54 +35,57 @@ use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_bracket_frames_open_and_close_a_run() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
 
-    // Subscribed BEFORE the lease: the opening bracket is published by the
+    // Subscribed BEFORE the run: the opening bracket is published by the
     // claim itself, and pub/sub keeps nothing for a reader that arrives late.
-    let mut tail = crate::tail::tail_of(&run.fleet).await;
+    let mut tail = crate::tail::tail_of(&scene.fleet).await;
     settle().await;
 
-    let (lease_id, fence) = lease(&run).await;
+    let (run_id, fence) = run(&scene).await;
     let opened = next_frame(&mut tail)
         .await
-        .expect("the lease announces the row it opened");
-    assert_opened(&opened, &run.event_id);
+        .expect("the run announces the row it opened");
+    assert_opened(&opened, &scene.event_id);
 
-    let reported = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    let reported = crate::wire::report(&scene, &report_body(&run_id, &scene.event_id, fence)).await;
     assert!(reported.is_ok(), "native report refused: {reported:?}");
 
     let closed = next_frame(&mut tail)
         .await
         .expect("the report announces the row it closed");
-    assert_completed(&closed, &run.event_id);
+    assert_completed(&closed, &scene.event_id);
 
     drop(tail);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
-/// A lease refused at a gate closes the run on the tail too.
+/// A run refused at a gate closes the run on the tail too.
 ///
 /// An exhausted tenant's admission ends the event `gate_blocked`. The same
 /// claim opens and closes its row, so a tail watcher receives both brackets.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_a_refused_lease_closes_the_run_on_the_tail() {
+async fn test_a_refused_run_closes_the_run_on_the_tail() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let scene = scenario(&mut supervisor).await;
 
-    let mut tail = crate::tail::tail_of(&run.fleet).await;
+    let mut tail = crate::tail::tail_of(&scene.fleet).await;
     settle().await;
 
-    run.drain_wallet().await;
-    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    scene.drain_wallet().await;
+    let beat = crate::wire::heartbeat(&scene, &capable_beat()).await;
     assert!(
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
     // No work may be offered before the durable money-gate refusal is visible.
-    let refused = wait_without_offer(&run, || async {
-        event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
+    let refused = wait_without_offer(&scene, || async {
+        event_column(&scene, &scene.event_id, "status")
+            .await
+            .as_deref()
+            == Some("gate_blocked")
     })
     .await;
     assert!(
@@ -97,11 +100,11 @@ async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let closed = next_frame(&mut tail)
         .await
         .expect("and the refusal closes it on the same tail");
-    assert_refused(&closed, &run.event_id);
+    assert_refused(&closed, &scene.event_id);
 
     drop(tail);
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 fn assert_opened(opened: &serde_json::Value, event: &af_core::id::Uuid7) {
@@ -109,7 +112,7 @@ fn assert_opened(opened: &serde_json::Value, event: &af_core::id::Uuid7) {
     assert_eq!(
         field(opened, "event_id"),
         &json!(event),
-        "the frame names the event the lease was issued for"
+        "the frame names the event the run was issued for"
     );
     assert!(field(opened, "actor").is_string());
     assert!(field(opened, "event_type").is_string());
@@ -143,7 +146,7 @@ fn assert_completed(closed: &serde_json::Value, event: &af_core::id::Uuid7) {
     assert_eq!(
         field(closed, "fleet_status"),
         &json!("active"),
-        "the fleet's status after the run, for the console's lifecycle controls"
+        "the fleet's status after the scene, for the console's lifecycle controls"
     );
     assert_eq!(
         field(closed, "pending_approvals"),
@@ -165,6 +168,6 @@ fn assert_refused(closed: &serde_json::Value, event: &af_core::id::Uuid7) {
     assert_eq!(
         field(closed, "tokens"),
         &json!(null),
-        "a run that never started spent nothing"
+        "a scene that never started spent nothing"
     );
 }

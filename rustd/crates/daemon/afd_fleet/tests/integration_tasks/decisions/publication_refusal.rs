@@ -41,14 +41,14 @@ async fn assert_refusal(tasks: &Tasks, case: &Case, input: TaskEffectInput) {
         .expect("valid publication");
     assert_eq!(
         tasks
-            .publish_effect(case.lease(), &valid)
+            .publish_effect(case.run(), &valid)
             .await
             .expect_err("closed PR cannot publish")
             .code(),
         TaskRefusal::InvalidTarget.code()
     );
     let (receipt, replayed) = tasks
-        .publish_effect(case.lease(), &valid)
+        .publish_effect(case.run(), &valid)
         .await
         .expect("durable refused replay");
     assert!(replayed);
@@ -68,7 +68,7 @@ async fn conflict(tasks: &Tasks, case: &Case, mut input: TaskEffectInput) {
         .expect("different valid request");
     assert_eq!(
         tasks
-            .publish_effect(case.lease(), &valid)
+            .publish_effect(case.run(), &valid)
             .await
             .expect_err("changed request cannot replay the operation")
             .code(),
@@ -90,7 +90,7 @@ async fn stale_inputs(tasks: &Tasks, case: &Case, input: &TaskEffectInput) {
             .expect("well-shaped stale request");
         assert_eq!(
             tasks
-                .publish_effect(case.lease(), &valid)
+                .publish_effect(case.run(), &valid)
                 .await
                 .expect_err("stale source, head, cursor or generation cannot allocate")
                 .code(),
@@ -122,7 +122,7 @@ pub(super) async fn prepared(case: &Case, task: DecisionTaskVersion) -> TaskEffe
     .expect("actual accepted source");
     TaskEffectInput {
         operation_id: mint_id().into(),
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task,
         source_item_id: source.into(),
         covered_input_sequence: u64::try_from(sequence).expect("input sequence"),

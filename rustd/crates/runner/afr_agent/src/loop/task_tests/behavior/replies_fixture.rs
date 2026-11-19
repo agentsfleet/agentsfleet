@@ -16,7 +16,7 @@ pub(super) struct Replies {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Replies {
+impl RunVerbs for Replies {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -137,7 +137,7 @@ pub(super) async fn execute(
     allow_actions: bool,
 ) -> crate::Result<crate::RunOutput> {
     let engine = super::super::super::tests::engine(vec![], script);
-    let lease = assigned_lease(&[], 16_384);
+    let this_run = assigned_run(&[], 16_384);
     let inputs = native
         .inputs
         .lock()
@@ -148,5 +148,5 @@ pub(super) async fn execute(
         inputs,
         allow_actions,
     };
-    run(&engine, &lease, native, &prepared).await
+    run(&engine, &this_run, native, &prepared).await
 }

@@ -61,18 +61,18 @@ pub(crate) const SELECT_FLEET_STATUS: &str = include_str!("select_fleet_status.s
 ///
 /// Every child row cascades from
 /// this one (deletion matrix: Fleet), approval gates included: their table
-/// grants no DELETE, and the cascade runs as the table owner. Runner leases are
-/// the exception: [`DELETE_ACTIVE_LEASES`] runs first, and settled ones stay.
+/// grants no DELETE, and the cascade runs as the table owner. Runner runs are
+/// the exception: [`DELETE_ACTIVE_RUNS`] runs first, and settled ones stay.
 pub(crate) const DELETE_FLEET: &str = include_str!("delete_fleet.sql");
 
-/// Deletes one fleet's live leases inside its purge.
+/// Deletes one fleet's live runs inside its purge.
 ///
-/// `$1` fleet · `$2` the live lease status. `runner.leases` holds no foreign key
-/// to the fleet, so a settled lease outlives the purge for its own retention
+/// `$1` fleet · `$2` the live run status. `runner.runs` holds no foreign key
+/// to the fleet, so a settled run outlives the purge for its own retention
 /// window; a live one would name a fleet that no longer exists, and goes here.
-pub(crate) const DELETE_ACTIVE_LEASES: &str = include_str!("delete_active_leases.sql");
+pub(crate) const DELETE_ACTIVE_RUNS: &str = include_str!("delete_active_runs.sql");
 
-/// Which runnable fleets may read each secret, from the revisions a lease reads.
+/// Which runnable fleets may read each secret, from the revisions a run reads.
 ///
 /// `$1` workspace · `$2` the runnable status. One row per secret name and
 /// fleet, ordered by name; see the statement's note for which revisions count.

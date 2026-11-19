@@ -8,12 +8,12 @@ pub use up::{Renewal, Up};
 
 /// The newest revision, negotiated before the server accepts a runner session.
 ///
-/// It adds draft-owned leases on the common lease path: a v3 runner may be
-/// offered a [`crate::lease::LeasePayload`] whose `owner` names a setup draft.
+/// It adds draft-owned runs on the common run path: a v3 runner may be
+/// offered a [`crate::run::RunPayload`] whose `owner` names a setup draft.
 /// The daemon accepts every [`Revision`] and answers the one the runner sent.
 pub const VERSION: &str = "agentsfleet.runner.v3";
-/// The revision before setup rode the common lease path: its runner is never
-/// offered a draft-owned lease, and keeps the separate authoring lease.
+/// The revision before setup rode the common run path: its runner is never
+/// offered a draft-owned run, and keeps the separate authoring run.
 pub const VERSION_V2: &str = "agentsfleet.runner.v2";
 
 /// One protocol revision a daemon accepts.
@@ -45,9 +45,9 @@ impl Revision {
         }
     }
 
-    /// Whether a runner on this revision may be offered a draft-owned lease.
+    /// Whether a runner on this revision may be offered a draft-owned run.
     #[must_use]
-    pub const fn offers_draft_leases(self) -> bool {
+    pub const fn offers_draft_runs(self) -> bool {
         matches!(self, Self::V3)
     }
 }
@@ -59,8 +59,8 @@ pub const STREAM_KIND_HEADER: &str = "agentsfleet-runner-kind";
 pub const SESSION_HEADER: &str = "agentsfleet-runner-session";
 /// Maximum JSON payload, excluding its four-byte length prefix.
 pub const MESSAGE_BYTES_MAX: usize = 2 * 1024 * 1024;
-/// The host worker bound also limits running leases and renewal entries.
-pub const LEASES_MAX: usize = crate::runner::HOLDS_MAX;
+/// The host worker bound also limits running runs and renewal entries.
+pub const RUNS_MAX: usize = crate::runner::HOLDS_MAX;
 /// Pending request identifiers retained by one session.
 pub const PENDING_MAX: usize = 256;
 

@@ -1,5 +1,5 @@
-//! An authoring lease carries model access and nothing else: the runner that
-//! holds one cannot mint a fleet credential with it, even beside a fleet lease
+//! An authoring run carries model access and nothing else: the runner that
+//! holds one cannot mint a fleet credential with it, even beside a fleet run
 //! that can.
 
 use super::*;
@@ -8,9 +8,9 @@ use afd_db::config::DbRole;
 
 /// A live authoring attempt held by the same runner, in the same workspace.
 const AUTHORING: &str = "\
-INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,
+INSERT INTO authoring.attempts(id,run_id,runner_id,workspace_id,tenant_id,user_id,
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
-lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
+run_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
 SELECT $1,$2,$3,f.workspace_id,f.tenant_id,$1,$1,1,1,$1,'{}',
 $5,now() + $6::interval,now() + $6::interval,0,false,0,0,0,0,now(),now()
@@ -18,7 +18,7 @@ FROM fleet.fleets f WHERE f.id=$4";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
-async fn test_an_authoring_lease_has_no_credential_mint_rights() {
+async fn test_an_authoring_run_has_no_credential_mint_rights() {
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
@@ -42,37 +42,37 @@ async fn test_an_authoring_lease_has_no_credential_mint_rights() {
             now,
         )
         .await
-        .expect_err("an authoring lease is no mint authority");
+        .expect_err("an authoring run is no mint authority");
     assert_eq!(
         refused.code(),
-        afd_fleet::Error::lease_not_found().code(),
-        "the authoring lease reads exactly like a lease that does not exist"
+        afd_fleet::Error::run_not_found().code(),
+        "the authoring run reads exactly like a run that does not exist"
     );
     assert!(
         fixtures
-            .leases()
+            .runs()
             .mint_scope(&owner.runner, &authoring)
             .await
             .expect("the read must succeed")
             .is_none(),
-        "a live authoring lease resolved to a fleet scope"
+        "a live authoring run resolved to a fleet scope"
     );
 
     let minted = plane
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_STATIC),
+            &requests::mint(owner.run.as_str(), CONNECTOR_STATIC),
             now,
         )
         .await
-        .expect("the same runner's fleet lease still mints");
+        .expect("the same runner's fleet run still mints");
     assert_eq!(minted.token.as_str(), OWNER_TOKEN);
 
     remove_authoring(&fixtures, &attempt).await;
     fixtures.cleanup().await;
 }
 
-async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &Uuid7, lease: &Uuid7) {
+async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &Uuid7, run: &Uuid7) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -80,11 +80,11 @@ async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &Uuid7, lea
         .expect("a pooled connection");
     let inserted = sqlx::query(AUTHORING)
         .bind(attempt)
-        .bind(lease)
+        .bind(run)
         .bind(&owner.runner)
         .bind(&owner.fleet)
-        .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
-        .bind(LEASE_WINDOW)
+        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+        .bind(RUN_WINDOW)
         .execute(&mut *connection)
         .await
         .expect("the live authoring attempt must insert");

@@ -18,7 +18,7 @@ use crate::test_support::git;
 #[tokio::test]
 async fn the_token_is_written_nowhere() {
     let fixture = Fixture::new();
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
 
     fixture.check_out(&workspace, BASE).await.unwrap();
 
@@ -42,7 +42,7 @@ async fn a_missing_base_branch_refuses() {
     let fixture = Fixture::new();
 
     let refused = fixture
-        .check_out(&fixture.workspace("lease_1"), "nope")
+        .check_out(&fixture.workspace("run_1"), "nope")
         .await
         .unwrap_err();
 
@@ -65,7 +65,7 @@ async fn a_binding_with_no_base_refuses_a_remote_with_no_default_branch() {
     git(&fixture.remote(), &["checkout", "--quiet", "--detach"]);
 
     let refused = fixture
-        .check_out(&fixture.workspace("lease_1"), "")
+        .check_out(&fixture.workspace("run_1"), "")
         .await
         .unwrap_err();
 
@@ -83,7 +83,7 @@ async fn an_unreadable_mirror_is_replaced() {
     let fixture = Fixture::new();
     fs::create_dir_all(fixture.mirror()).unwrap();
     fs::write(fixture.mirror().join("junk"), "not a repository").unwrap();
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
 
     let fetched = fixture.check_out(&workspace, BASE).await.unwrap();
 
@@ -95,14 +95,14 @@ async fn an_unreadable_mirror_is_replaced() {
 async fn an_unreachable_origin_keeps_the_mirror() {
     let fixture = Fixture::new();
     fixture
-        .check_out(&fixture.workspace("lease_1"), BASE)
+        .check_out(&fixture.workspace("run_1"), BASE)
         .await
         .unwrap();
     let head = git(&fixture.remote(), &["rev-parse", BASE]);
     fs::rename(fixture.remote(), fixture.root.path().join("gone")).unwrap();
 
     let refused = fixture
-        .check_out(&fixture.workspace("lease_2"), BASE)
+        .check_out(&fixture.workspace("run_2"), BASE)
         .await
         .unwrap_err();
 
@@ -114,7 +114,7 @@ async fn an_unreachable_origin_keeps_the_mirror() {
 async fn an_origin_without_fetch_refspecs_refuses_and_keeps_the_mirror() {
     let fixture = Fixture::new();
     fixture
-        .check_out(&fixture.workspace("lease_1"), BASE)
+        .check_out(&fixture.workspace("run_1"), BASE)
         .await
         .unwrap();
     git(
@@ -123,7 +123,7 @@ async fn an_origin_without_fetch_refspecs_refuses_and_keeps_the_mirror() {
     );
 
     let refused = fixture
-        .check_out(&fixture.workspace("lease_2"), BASE)
+        .check_out(&fixture.workspace("run_2"), BASE)
         .await
         .unwrap_err();
 
@@ -168,7 +168,7 @@ async fn a_symlink_with_a_nul_target_refuses_the_checkout() {
     );
 
     let refused = fixture
-        .check_out(&fixture.workspace("lease_1"), BASE)
+        .check_out(&fixture.workspace("run_1"), BASE)
         .await
         .unwrap_err();
 
@@ -232,11 +232,11 @@ async fn a_failed_first_clone_leaves_nothing_a_retry_trips_on() {
     fs::rename(fixture.remote(), &hidden).unwrap();
 
     let refused = fixture
-        .check_out(&fixture.workspace("lease_1"), BASE)
+        .check_out(&fixture.workspace("run_1"), BASE)
         .await
         .unwrap_err();
     fs::rename(&hidden, fixture.remote()).unwrap();
-    let retried = fixture.check_out(&fixture.workspace("lease_2"), BASE).await;
+    let retried = fixture.check_out(&fixture.workspace("run_2"), BASE).await;
 
     assert!(refused.to_string().contains("fetched"), "{refused}");
     assert_eq!(retried.unwrap(), Fetched::Cloned, "the retry clones whole");
@@ -259,7 +259,7 @@ async fn an_interrupted_clone_leaves_nothing_a_retry_trips_on() {
         "X-Unused: 1",
         &AtomicBool::new(true),
     );
-    let retried = fixture.check_out(&fixture.workspace("lease_1"), BASE).await;
+    let retried = fixture.check_out(&fixture.workspace("run_1"), BASE).await;
 
     assert!(
         interrupted.is_err(),
@@ -272,7 +272,7 @@ async fn an_interrupted_clone_leaves_nothing_a_retry_trips_on() {
 async fn an_origin_that_is_not_a_url_fails_the_fetch_and_makes_no_mirror() {
     let fixture = Fixture::new();
     let mirrors = Mirrors::new(fixture.root.path().join("bad"), "https://[::1/");
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
     let request = super::Request {
         scope: SCOPE,
         checkout: afr_tools::sandbox::Checkout {
@@ -313,10 +313,10 @@ async fn an_origin_that_is_not_a_url_fails_the_fetch_and_makes_no_mirror() {
     );
 }
 
-/// A lease stopped while another holds the mirror waits for none of that
+/// A run stopped while another holds the mirror waits for none of that
 /// clone: the interrupt ends the wait, and nothing is fetched.
 #[tokio::test]
-async fn a_stopped_checkout_waits_for_no_other_lease() {
+async fn a_stopped_checkout_waits_for_no_other_run() {
     let fixture = Fixture::new();
     let lock = fixture.mirrors.lock(&fixture.mirror());
     let _held = lock.lock().await;
@@ -325,7 +325,7 @@ async fn a_stopped_checkout_waits_for_no_other_lease() {
 
     let stopped = tokio::time::timeout(
         Duration::from_secs(5),
-        fixture.check_out_under(&fixture.workspace("lease_1"), BASE, &interrupt),
+        fixture.check_out_under(&fixture.workspace("run_1"), BASE, &interrupt),
     )
     .await
     .unwrap();

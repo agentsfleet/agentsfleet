@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::{IMAGE_MAX_BYTES, sniffed};
 use crate::catalog::IMAGE;
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call, call_in, hosted, offered};
@@ -34,16 +34,16 @@ fn bytes_of(kind: ImageKind, length: usize) -> Vec<u8> {
     bytes
 }
 
-/// Calls `image` on `path` through `live`, with a lease whose wire takes
-/// images or not; the answer and what the lease holds after it.
+/// Calls `image` on `path` through `live`, with a run whose wire takes
+/// images or not; the answer and what the run holds after it.
 async fn viewed(live: &Live, path: &str, images: bool) -> (ToolOutput, Option<Image>) {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
-    let lease = Lease::default().with_image_input(images);
+    let run = Run::default().with_image_input(images);
     let answer = call_in(
         offered(&selection, &IMAGE),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: path}),
     )
     .await;
@@ -96,10 +96,10 @@ async fn test_image_refusals_carry_codes() {
     live.stop().await;
 }
 
-/// The bytes wait on the lease; the text the thread keeps names the path,
+/// The bytes wait on the run; the text the thread keeps names the path,
 /// the size and the kind, and none of the bytes.
 #[tokio::test]
-async fn an_image_is_attached_to_the_lease_and_the_text_names_no_bytes() {
+async fn an_image_is_attached_to_the_run_and_the_text_names_no_bytes() {
     let live = Live::start().await;
     let shot = bytes_of(ImageKind::Png, SHOT_BYTES);
     std::fs::write(live.root.join(SHOT), &shot).unwrap();
@@ -177,11 +177,11 @@ async fn a_missing_image_a_path_out_and_no_sandbox_read_their_codes() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
     let tool = offered(&selection, &IMAGE);
-    let lease = Lease::default().with_image_input(true);
+    let run = Run::default().with_image_input(true);
 
-    let missing = call_in(tool, &live.client, &lease, json!({PATH: "absent.png"})).await;
-    let out = call_in(tool, &scripted, &lease, json!({PATH: "../etc/x.png"})).await;
-    let unsandboxed = call(tool, &lease, json!({PATH: SHOT})).await;
+    let missing = call_in(tool, &live.client, &run, json!({PATH: "absent.png"})).await;
+    let out = call_in(tool, &scripted, &run, json!({PATH: "../etc/x.png"})).await;
+    let unsandboxed = call(tool, &run, json!({PATH: SHOT})).await;
 
     assert_eq!(
         missing.error_code,

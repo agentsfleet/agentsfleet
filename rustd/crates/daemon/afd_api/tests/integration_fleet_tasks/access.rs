@@ -1,4 +1,4 @@
-//! A secret's "available to" list is exactly the credential list a lease resolves.
+//! A secret's "available to" list is exactly the credential list a run resolves.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
 use af_wire::task::TaskState;

@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_fleet::lease::sql::{self, queue::CLAIM_HEAD};
+use afd_fleet::run::sql::{self, queue::CLAIM_HEAD};
 use afd_turns::Admissions;
 use sqlx::Connection as _;
 
@@ -31,17 +31,16 @@ async fn deadline_case(first_gate_first: bool) {
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
     let later = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let first = next(&leases, &runner).await.expect("initial head");
+    let runs = fixtures.runs_with_dead_bus();
+    let first = next(&runs, &runner).await.expect("initial head");
     let other = scoped_gate(&fixtures, &fleet, &workspace, &head).await;
     let specific = scoped_gate(&fixtures, &fleet, &workspace, &head).await;
     scoped_gate(&fixtures, &fleet, &workspace, &later).await;
-    leases
-        .park(&first.fleet_id, &head, first.fence)
+    runs.park(&first.fleet_id, &head, first.fence)
         .await
         .expect("park on approvals");
     assert!(
-        next(&leases, &runner).await.is_none(),
+        next(&runs, &runner).await.is_none(),
         "live gates block the head and tail"
     );
     assert_blocked_claim(&fixtures, &fleet, &runner).await;
@@ -52,12 +51,12 @@ async fn deadline_case(first_gate_first: bool) {
     };
     lapse(&fixtures, early).await;
     assert!(
-        next(&leases, &runner).await.is_none(),
+        next(&runs, &runner).await.is_none(),
         "one matching gate is still live"
     );
     assert_blocked_claim(&fixtures, &fleet, &runner).await;
     lapse(&fixtures, last).await;
-    let resumed = next(&leases, &runner)
+    let resumed = next(&runs, &runner)
         .await
         .expect("all matching gates lapsed");
     assert_eq!(
@@ -66,7 +65,7 @@ async fn deadline_case(first_gate_first: bool) {
     );
     assert!(resumed.fence > first.fence);
     assert_answerable(&fixtures, &fleet, &specific).await;
-    drop(leases);
+    drop(runs);
     fixtures.cleanup().await;
 }
 
@@ -111,28 +110,27 @@ async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let first = next(&leases, &runner).await.expect("initial head");
+    let runs = fixtures.runs_with_dead_bus();
+    let first = next(&runs, &runner).await.expect("initial head");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
-    leases
-        .park(&first.fleet_id, &head, first.fence)
+    runs.park(&first.fleet_id, &head, first.fence)
         .await
         .expect("park on access");
     lapse(&fixtures, &action).await;
     assert!(
-        next(&leases, &runner).await.is_none(),
+        next(&runs, &runner).await.is_none(),
         "only an answer resolves access"
     );
     assert_blocked_claim(&fixtures, &fleet, &runner).await;
     approve(&fixtures, &action).await;
     assert_eq!(
-        next(&leases, &runner)
+        next(&runs, &runner)
             .await
             .expect("answered access")
             .event_id,
         head
     );
-    drop(leases);
+    drop(runs);
     fixtures.cleanup().await;
 }
 
@@ -172,11 +170,11 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7
     let row = sqlx::query(CLAIM_HEAD)
         .bind(fleet)
         .bind(runner)
-        .bind(af_core::timing::LEASE_TTL)
+        .bind(af_core::timing::RUN_TTL)
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
         .bind(sql::RUNNER_STATUS_ACTIVE)
-        .bind(sql::LEASE_STATUS_ACTIVE)
-        .bind(sql::LEASE_STATUS_EXPIRED)
+        .bind(sql::RUN_STATUS_ACTIVE)
+        .bind(sql::RUN_STATUS_EXPIRED)
         .bind(af_wire::task::CAPABILITY)
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())

@@ -1,4 +1,4 @@
-//! Native GitHub access shares the lease's grants, binding and credential mint.
+//! Native GitHub access shares the run's grants, binding and credential mint.
 
 #[cfg(test)]
 mod double;
@@ -11,8 +11,8 @@ mod tree;
 mod types;
 mod workflow;
 
-use super::TaskLease;
-use crate::{Result, lease::LeaseService};
+use super::TaskRun;
+use crate::{Result, run::RunService};
 use af_core::clock;
 use af_wire::credentials::MintCredentialRequest;
 use std::borrow::Cow;
@@ -23,7 +23,7 @@ pub(super) use types::{BoundPr, Workflow};
 /// Trusted publisher transport; credentials never reach the coding model.
 #[derive(Debug, Clone)]
 pub struct Github {
-    plane: LeaseService,
+    plane: RunService,
     client: reqwest::Client,
     master: std::sync::Arc<af_crypto::secret::Kek>,
 }
@@ -35,7 +35,7 @@ impl Github {
         installation: u64,
     ) -> Result<()> {
         if !afd_gate::gate::Gates::hold_approved_on(connection, &scope.fleet_id, "github").await?
-            || !crate::lease::Leases::hold_install_on(
+            || !crate::run::Runs::hold_install_on(
                 connection,
                 &scope.workspace_id,
                 &installation.to_string(),
@@ -49,7 +49,7 @@ impl Github {
     /// Reuses the daemon's guarded client and current credential plane.
     #[must_use]
     pub const fn new(
-        plane: LeaseService,
+        plane: RunService,
         client: reqwest::Client,
         master: std::sync::Arc<af_crypto::secret::Kek>,
     ) -> Self {
@@ -73,41 +73,41 @@ impl Github {
         )
     }
 
-    pub(super) async fn session(&self, lease: TaskLease<'_>) -> Result<http::Session<'_>> {
-        self.session_with(lease, None).await
+    pub(super) async fn session(&self, run: TaskRun<'_>) -> Result<http::Session<'_>> {
+        self.session_with(run, None).await
     }
 
     pub(super) async fn read_session(
         &self,
-        lease: TaskLease<'_>,
+        run: TaskRun<'_>,
         repository: &str,
     ) -> Result<http::Session<'_>> {
-        self.session_with(lease, Some(repository)).await
+        self.session_with(run, Some(repository)).await
     }
 
     async fn session_with(
         &self,
-        lease: TaskLease<'_>,
+        run: TaskRun<'_>,
         repository: Option<&str>,
     ) -> Result<http::Session<'_>> {
         let request = MintCredentialRequest {
-            lease_id: Cow::Borrowed(lease.lease_id.as_str()),
+            run_id: Cow::Borrowed(run.run_id.as_str()),
             integration: Cow::Borrowed("github"),
             scope: None,
         };
         let credential = if let Some(repository) = repository {
             self.plane
-                .mint_task_reader(lease.runner_id, &request, clock::now(), repository)
+                .mint_task_reader(run.runner_id, &request, clock::now(), repository)
                 .await?
         } else {
             self.plane
-                .mint_task_publisher(lease.runner_id, &request, clock::now())
+                .mint_task_publisher(run.runner_id, &request, clock::now())
                 .await?
         };
         let scope = self
             .plane
-            .leases
-            .mint_scope(lease.runner_id, lease.lease_id)
+            .runs
+            .mint_scope(run.runner_id, run.run_id)
             .await?
             .ok_or(super::TaskRefusal::StaleState)?;
         let handle = self
@@ -122,7 +122,7 @@ impl Github {
             .ok_or(super::TaskRefusal::InvalidTarget)?;
         if !self
             .plane
-            .leases
+            .runs
             .holds_install(&scope.workspace_id, "github", &installation.to_string())
             .await?
         {

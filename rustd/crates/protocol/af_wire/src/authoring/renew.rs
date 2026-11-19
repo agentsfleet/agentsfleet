@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// Own-lease renewal with cumulative observations.
+/// Own-run renewal with cumulative observations.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -20,14 +20,14 @@ pub struct Renew {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Renewed {
-    /// The lease's extended expiry.
+    /// The run's extended expiry.
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,
     /// Whether the runner must stop private work.
     pub stop_requested: bool,
     /// Output tokens still available across this attempt.
     pub remaining_output_tokens: u64,
-    /// The original capability remains bound to the renewed lease.
+    /// The original capability remains bound to the renewed run.
     #[serde(with = "crate::instant")]
     pub model_access_expires_at: jiff::Timestamp,
 }

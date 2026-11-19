@@ -1,4 +1,4 @@
-//! A task outcome is settled through the existing lease report.
+//! A task outcome is settled through the existing run report.
 
 use super::DecisionTaskVersion;
 use garde::Validate;

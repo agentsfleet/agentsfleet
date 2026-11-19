@@ -14,13 +14,13 @@ use libtest_mimic::Failed;
 use crate::lane::{Lane, SANDBOX_IDS};
 use crate::run::{expect, in_sandbox, run, runtime, shell};
 
-/// The lease the planting trial runs as.
+/// The run the planting trial runs as.
 const PLANT: &str = "plant";
 /// Tries to leave a set-user-ID file in the sandbox's private `/run`, then
 /// says who it runs as and writes one file where it may.
 const PLANT_SCRIPT: &str = "(echo x > /run/planted && chmod u+s /run/planted) \
      2>/dev/null && echo planted || echo sealed; id -u; echo y > /workspace/owned";
-/// Where `/workspace/owned` lands under the lease's directory: the disk mounts
+/// Where `/workspace/owned` lands under the run's directory: the disk mounts
 /// at `workspace/`, and `/workspace` is its `workspace/` directory.
 const OWNED_ON_HOST: &str = "workspace/workspace/owned";
 
@@ -78,8 +78,8 @@ pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
             .prepare(SandboxRequest::new(PLANT, Limits::default()))
             .await?;
         let said = run(sandbox.executor(), shell(PLANT_SCRIPT)).await;
-        let lease = lane.lease_dir(PLANT);
-        let owner = fs::metadata(lease.join(OWNED_ON_HOST)).map(|meta| meta.uid());
+        let run = lane.run_dir(PLANT);
+        let owner = fs::metadata(run.join(OWNED_ON_HOST)).map(|meta| meta.uid());
         sandbox.destroy().await?;
         let said = said?.output;
         expect(

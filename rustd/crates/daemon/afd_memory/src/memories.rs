@@ -2,7 +2,7 @@
 //! each enforces.
 //!
 //! ```text
-//!   lease plane ─┐
+//!   run plane ─┐
 //!   runner route ├─► Memories ─► grants ─► PgStore
 //!   tenant route ┘   (fleet.fleets)
 //! ```
@@ -30,7 +30,7 @@ const EVENT_ACCESS_CHANGED: &str = "memory_access_changed";
 
 /// Every memory verb `agentsfleetd` serves.
 ///
-/// Cheap to clone: one `Arc` (`M-SERVICES-CLONE`), so the lease plane and both
+/// Cheap to clone: one `Arc` (`M-SERVICES-CLONE`), so the run plane and both
 /// route families share one store and one grant directory.
 #[derive(Debug, Clone)]
 pub struct Memories {

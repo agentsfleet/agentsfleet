@@ -1,6 +1,6 @@
 //! `fleet_steer`: work this fleet puts on another fleet in its workspace.
 //!
-//! The text is masked for every token the lease minted before it leaves, and
+//! The text is masked for every token the run minted before it leaves, and
 //! `agentsfleetd` masks the fleet's stored secrets. The tool answers at once:
 //! the other fleet runs on its own, under its own setup and budget, and can
 //! answer with this same tool. Its progress is read with `fleet_activity`.
@@ -47,9 +47,9 @@ impl Handler for FleetSteer {
         let Ok(fleet) = Uuid7::parse(&arguments.fleet_id) else {
             return ToolOutput::failed(ToolErrorCode::InvalidArguments, DETAIL_FLEET_ID);
         };
-        let text = egress::masked(context.lease, arguments.text).await;
+        let text = egress::masked(context.run, arguments.text).await;
         answered_with(
-            context.lease.verbs.fleet_steer(&fleet, &text).await,
+            context.run.verbs.fleet_steer(&fleet, &text).await,
             |accepted| ToolOutput::succeeded(sentence(&fleet, &accepted)),
         )
     }

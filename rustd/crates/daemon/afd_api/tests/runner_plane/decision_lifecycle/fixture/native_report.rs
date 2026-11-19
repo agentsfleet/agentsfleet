@@ -6,14 +6,14 @@ use af_crypto::entropy::Entropy;
 use af_observability::Telemetry;
 use af_wire::protocol::StreamKind;
 use afd_auth::scope::ScopeSet;
-use afd_fleet::lease::Leases;
+use afd_fleet::run::Runs;
 use afd_turns::Admissions;
 use serde_json::{Value, json};
 
 // Value: protects=acknowledged failed native reports emit their completion outcomes;
 // fails_when=the gateway omits observation or loses the fixture's analytics handle;
 // why_new=observer-direct tests cannot prove native dispatch invokes the observer;
-// seam=production native router and real issued fleet leases over existing live stores.
+// seam=production native router and real issued fleet runs over existing live stores.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
@@ -32,8 +32,8 @@ async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
     report(&mut session, &fixture, 2, Some("timeout_kill")).await;
     let bus = harness::bus().await;
     let admissions = Admissions::for_tests(fixture.database.clone(), bus.clone());
-    let leases = Leases::new(fixture.database.clone(), bus, Entropy::new());
-    fixture.lease = acquire(&leases, &admissions, &fixture.owner, &fixture.runner).await;
+    let runs = Runs::new(fixture.database.clone(), bus, Entropy::new());
+    fixture.run = acquire(&runs, &admissions, &fixture.owner, &fixture.runner).await;
     report(&mut session, &fixture, 3, None).await;
     let exits: Vec<_> = recorded
         .events()
@@ -50,16 +50,16 @@ async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
 }
 
 async fn report(session: &mut Session, fixture: &Fixture, request_id: u64, reason: Option<&str>) {
-    let lease = &fixture.lease;
+    let run = &fixture.run;
     session
         .write(
             StreamKind::Reports,
             &json!({"type":"report","request_id":request_id,"request":{
-                "lease_id":lease.id,"event_id":lease.source,"fencing_token":lease.fence,
+                "run_id":run.id,"event_id":run.source,"fencing_token":run.fence,
                 "outcome":"fleet_error","failure_reason":reason,"failure_detail":"",
                 "response_text":"","tokens":0,"requests":[],
                 "telemetry":{"time_to_first_token_ms":0,"wall_ms":1},
-                "checkpoint":{"last_event_id":lease.source,"last_response":""}
+                "checkpoint":{"last_event_id":run.source,"last_response":""}
             }}),
         )
         .await;
@@ -70,7 +70,7 @@ async fn report(session: &mut Session, fixture: &Fixture, request_id: u64, reaso
     let reply: Value = frame.decode().expect("native report acknowledgement JSON");
     assert_eq!(
         reply,
-        json!({"type":"report_ack","request_id":request_id,"lease_id":lease.id,
+        json!({"type":"report_ack","request_id":request_id,"run_id":run.id,
             "answer":{"status":"ok","response":{"ok":true}}})
     );
 }

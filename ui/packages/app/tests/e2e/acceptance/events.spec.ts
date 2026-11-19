@@ -6,7 +6,7 @@
  *   - a workspace credential keyed by `trigger.source` so HMAC verification
  *     can resolve a secret;
  *   - the daemon to admit the delivery to the Postgres admissions ledger,
- *     which a runner then leases.
+ *     which a runner then runs.
  *
  * Both are heavyweight fixture dependencies that the M64_005 harness
  * doesn't yet ship (the `trigger.source` field is unset on seedFleet's

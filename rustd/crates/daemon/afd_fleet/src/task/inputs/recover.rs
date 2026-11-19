@@ -3,7 +3,7 @@
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, guard::LeaseRow, row},
+    task::{TaskRefusal, guard::RunRow, row},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{TaskAcceptedInterpretation, TaskItemBinding, TaskRecoveredItem, TaskState};
@@ -29,7 +29,7 @@ struct InterpretationRow {
 
 pub(super) async fn read(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     sources: &[Uuid7],
 ) -> Result<BTreeMap<Uuid7, TaskAcceptedInterpretation>> {
     let rows: Vec<InterpretationRow> =

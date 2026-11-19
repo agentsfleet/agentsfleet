@@ -16,7 +16,7 @@ impl Harness<'_, '_> {
             .ok_or_else(unavailable)?
             .task_id
             .to_string();
-        let verbs = self.shared.lease.verbs;
+        let verbs = self.shared.run.verbs;
         // Each task has a cumulative publication limit. The bounded page walk
         // includes refused attempts as well as confirmations and uncertainties.
         for page_number in 0..64 {

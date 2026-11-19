@@ -164,8 +164,8 @@ const FAILURE_PRESENTATION: Record<string, EventFailurePresentation> = {
   runner_crash: { label: "The runner crashed", guidance: null },
   transport_loss: { label: "The response was interrupted", guidance: null },
   landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
-  lease_expired: { label: "The run's lease expired", guidance: null },
-  renewal_terminate: { label: "Stopped by lease renewal policy", guidance: null },
+  run_expired: { label: "The run's run expired", guidance: null },
+  renewal_terminate: { label: "Stopped by run renewal policy", guidance: null },
 };
 
 export function failurePresentationFor(tag: string): EventFailurePresentation {

@@ -9,9 +9,9 @@
 
 use super::*;
 
-pub(super) async fn assert_unknown_credential_is_refused(http: &reqwest::Client, run: &Scenario) {
+pub(super) async fn assert_unknown_credential_is_refused(http: &reqwest::Client, scene: &Scenario) {
     let unknown = http
-        .get(format!("{}/v1/runners/me", run.base))
+        .get(format!("{}/v1/runners/me", scene.base))
         .bearer_auth(UNKNOWN_TOKEN)
         .send()
         .await
@@ -23,10 +23,10 @@ pub(super) async fn assert_unknown_credential_is_refused(http: &reqwest::Client,
     );
 }
 
-pub(super) async fn assert_unsupported_event_ends(run: &Scenario) {
-    let unsupported = run.enqueue_unsupported_event("future_event_type").await;
-    let ended = wait_without_offer(run, || async {
-        event_column(run, &unsupported, "status").await.as_deref() == Some("gate_blocked")
+pub(super) async fn assert_unsupported_event_ends(scene: &Scenario) {
+    let unsupported = scene.enqueue_unsupported_event("future_event_type").await;
+    let ended = wait_without_offer(scene, || async {
+        event_column(scene, &unsupported, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;
     assert!(
@@ -37,14 +37,14 @@ pub(super) async fn assert_unsupported_event_ends(run: &Scenario) {
 
 pub(super) async fn assert_credential_and_duplicate_refusals(
     http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
+    scene: &Scenario,
+    run_id: &str,
 ) {
     let mint = post(
         http,
-        run,
+        scene,
         "/v1/runners/me/credentials/mint",
-        &json!({"lease_id": lease_id, "integration": "anthropic", "scope": null}),
+        &json!({"run_id": run_id, "integration": "anthropic", "scope": null}),
     )
     .await;
     assert_eq!(mint.status().as_u16(), 404);
@@ -54,10 +54,10 @@ pub(super) async fn assert_credential_and_duplicate_refusals(
         "a provider credential is not silently treated as a mintable connector"
     );
 
-    run.native_session().await.capacity(2);
+    scene.native_session().await.capacity(2);
     assert!(
-        !wait_without_offer(run, || async { false }).await,
+        !wait_without_offer(scene, || async { false }).await,
         "a second free worker must not receive the same fleet's active admission"
     );
-    assert_eq!(lease_rows(run).await, 1);
+    assert_eq!(run_rows(scene).await, 1);
 }

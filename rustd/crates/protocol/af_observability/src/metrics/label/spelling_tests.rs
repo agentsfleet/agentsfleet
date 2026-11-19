@@ -41,7 +41,7 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::fleet::SignupFailure),
         set!(crate::metrics::label::fleet::HistoryCut),
         set!(crate::metrics::label::fleet::HeldClaim),
-        set!(crate::metrics::label::fleet::LeaseCache),
+        set!(crate::metrics::label::fleet::RunCache),
         set!(crate::metrics::label::fleet::CacheOutcome),
         set!(crate::metrics::label::fleet::AdmissionOutcome),
         set!(crate::metrics::label::http::Signal),

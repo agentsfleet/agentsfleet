@@ -18,9 +18,9 @@ use std::{sync::Arc, time::Duration};
 /// check to be queued behind the lock before the row lapses.
 const LAPSES_IN: Duration = Duration::from_millis(500);
 
-/// Moves the attempt's lease deadline to `$2` past database time.
-const LEASE_LAPSES: &str = "UPDATE authoring.attempts \
-SET lease_expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
+/// Moves the attempt's run deadline to `$2` past database time.
+const RUN_LAPSES: &str = "UPDATE authoring.attempts \
+SET run_expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
 WHERE id = $1";
 
 /// Closes the draft with its retention deadline `$2` past database time.
@@ -35,9 +35,9 @@ const LOCK_ATTEMPT: &str =
 /// Takes the draft row's lock and writes nothing.
 const LOCK_DRAFT: &str = "SELECT pg_backend_pid() FROM authoring.drafts WHERE id = $1 FOR UPDATE";
 
-/// Whether the attempt's lease is still live on database time.
-const LEASE_LIVE: &str =
-    "SELECT lease_expires_at > clock_timestamp() FROM authoring.attempts WHERE id = $1";
+/// Whether the attempt's run is still live on database time.
+const RUN_LIVE: &str =
+    "SELECT run_expires_at > clock_timestamp() FROM authoring.attempts WHERE id = $1";
 
 /// Whether the draft's retention deadline is still ahead on database time.
 const DRAFT_LIVE: &str =
@@ -141,7 +141,7 @@ fn terminal() -> Report {
             failure_reason: None,
             usage: meter(1),
         },
-        answer: Some("An answer the lapsed lease may not publish.\n".into()),
+        answer: Some("An answer the lapsed run may not publish.\n".into()),
     }
 }
 
@@ -152,36 +152,36 @@ async fn test_expiry_checks_read_clock_after_lock() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     calls
-        .call(&f.runner, &a.lease, fixture::request(&a))
+        .call(&f.runner, &a.run, fixture::request(&a))
         .await
         .expect("known physical receipt");
-    let lease = Row {
+    let run = Row {
         id: &a.id,
         lock: LOCK_ATTEMPT,
-        live: LEASE_LIVE,
+        live: RUN_LIVE,
     };
     let mut held = f.connection().await;
 
-    // Lease renew.
+    // Run renew.
     let mut tx = held.begin().await.expect("holder transaction");
-    let pid = lapse_and_lock(&f, &mut tx, LEASE_LAPSES, &lease).await;
+    let pid = lapse_and_lock(&f, &mut tx, RUN_LAPSES, &run).await;
     let (renewed, ()) = tokio::join!(
-        f.drafts.renew(&f.runner, &a.lease, renewal()),
-        hold_past_deadline(&f, tx, pid, &lease)
+        f.drafts.renew(&f.runner, &a.run, renewal()),
+        hold_past_deadline(&f, tx, pid, &run)
     );
     assert_eq!(
         renewed
-            .expect_err("a lease that lapsed in the wait is not renewed")
+            .expect_err("a run that lapsed in the wait is not renewed")
             .code(),
         error_code::AUTHORING_FENCE
     );
 
     // Report fence: the accounting settles, the answer is not published.
     let mut tx = held.begin().await.expect("holder transaction");
-    let pid = lapse_and_lock(&f, &mut tx, LEASE_LAPSES, &lease).await;
+    let pid = lapse_and_lock(&f, &mut tx, RUN_LAPSES, &run).await;
     let (reported, ()) = tokio::join!(
-        f.drafts.report(&f.runner, &a.lease, terminal()),
-        hold_past_deadline(&f, tx, pid, &lease)
+        f.drafts.report(&f.runner, &a.run, terminal()),
+        hold_past_deadline(&f, tx, pid, &run)
     );
     assert!(reported.expect("the accounting settles").settled);
     let answers: i64 = sqlx::query_scalar(ANSWERS)
@@ -191,7 +191,7 @@ async fn test_expiry_checks_read_clock_after_lock() {
         .expect("count answer receipts");
     assert_eq!(
         answers, 0,
-        "a lease that lapsed in the wait publishes no answer"
+        "a run that lapsed in the wait publishes no answer"
     );
 
     // Draft read under lock.

@@ -88,7 +88,7 @@ pub(crate) struct Admitted {
     pub(crate) body: Option<String>,
 }
 
-/// One lease's network policy, read where each request consults it.
+/// One run's network policy, read where each request consults it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Admission<'p> {
     network: &'p NetworkPolicy<'p>,
@@ -108,7 +108,7 @@ impl<'p> Admission<'p> {
         }
     }
 
-    /// The lease's static credentials.
+    /// The run's static credentials.
     pub(crate) const fn statics(self) -> StaticSecrets<'p> {
         self.statics
     }

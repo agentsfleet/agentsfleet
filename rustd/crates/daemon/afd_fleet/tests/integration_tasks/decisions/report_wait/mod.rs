@@ -96,7 +96,7 @@ async fn capture(fixture: &Decisions<'_>, task: &DecisionTaskVersion) -> (String
     let storage = checkpoint::storage(fixture);
     let plan = storage
         .plan_checkpoint(
-            case.lease(),
+            case.run(),
             &checkpoint::valid(checkpoint::input(
                 task,
                 case,
@@ -110,7 +110,7 @@ async fn capture(fixture: &Decisions<'_>, task: &DecisionTaskVersion) -> (String
     let base = checkpoint::complete(&storage, case, task, &plan).await;
     let plan = storage
         .plan_checkpoint(
-            case.lease(),
+            case.run(),
             &checkpoint::valid(checkpoint::input(
                 task,
                 case,

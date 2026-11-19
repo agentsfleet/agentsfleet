@@ -6,7 +6,7 @@
 //!
 //! # Why the statements are public and the reads are not
 //!
-//! A write here binds a caller's domain type — an [`Acquired`] lease, a gate's
+//! A write here binds a caller's domain type — an [`Acquired`] run, a gate's
 //! `Refusal`, a runner's verdict — and those types belong to the runner plane.
 //! Moving the binding down here would drag them with it and invert the
 //! layering, so the writers keep their `bind` chains and this module owns the
@@ -30,7 +30,7 @@
 /// The conflict arm on `event_id` is the idempotence boundary for
 /// redelivery: the same event arriving twice holds one row, so a retrying
 /// producer cannot double-run a fleet. It is also what makes the reclaim path
-/// safe — a re-leased event finds its row already there — and what makes a
+/// safe — a re-held event finds its row already there — and what makes a
 /// retried approval resolve continue its run exactly once.
 ///
 /// The arm converges rather than doing nothing, because two writers race for
@@ -64,7 +64,7 @@ pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_acti
 ///
 /// A thread page merges history with the ledger's waiting steers on one key,
 /// `(created_at, event_id)`, and a waiting steer sits at its admission time.
-/// Stamped at lease, the same message jumped above a page cursor already
+/// Stamped at run, the same message jumped above a page cursor already
 /// handed out. Stamped at admission, the row keeps the key it was listed under.
 ///
 /// The instant is the admission row's stored `created_at`, looked up by its
@@ -76,7 +76,7 @@ pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_acti
 ///
 /// `$1`–`$8` as [`INSERT_FLEET_EVENT`], then `$9` the admission row's id, or
 /// NULL when the event id is not one, `$10` the steer producer.
-pub const INSERT_LEASED_FLEET_EVENT: &str = include_str!("insert_leased_fleet_event.sql");
+pub const INSERT_RUND_FLEET_EVENT: &str = include_str!("insert_rund_fleet_event.sql");
 
 /// End an event at a gate, naming what refused it.
 ///
@@ -122,7 +122,7 @@ pub const UPDATE_FLEET_EVENT_RESULT: &str = include_str!("update_fleet_event_res
 
 /// Open, as received, the event of each message a run folded, in one
 /// statement: `$1` fleet, `$2` the messages' ids, `$3` the run's event, `$4`
-/// [`status::RECEIVED`]. See [`INSERT_LEASED_FLEET_EVENT`] for one message.
+/// [`status::RECEIVED`]. See [`INSERT_RUND_FLEET_EVENT`] for one message.
 pub const OPEN_FOLDED_EVENTS: &str = include_str!("open_folded_events.sql");
 
 /// [`UPDATE_FLEET_EVENT_RESULT`] for many events in one statement: `$2` is

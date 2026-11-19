@@ -594,7 +594,7 @@ App status lines use 13px sans-serif text, tabular digits, and keyboard-accessib
 Runner cards show host identity, status, last seen, and an Open action. Create runner belongs in the page header.
 Runner detail places actions beside the title and status beneath it.
 
-Leases and Activity tabs sit directly above their content.
+Runs and Activity tabs sit directly above their content.
 A checks badge reports the result; a separate View checks button makes inspection discoverable.
 Fleet activity belongs in its conversation.
 

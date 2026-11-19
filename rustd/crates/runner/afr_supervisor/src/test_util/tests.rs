@@ -14,7 +14,7 @@ use af_wire::report::RenewRequest;
 use af_wire::runner::{AssignedPolicy, HeartbeatRequest, NetworkPolicy, SandboxTier};
 use bytes::Bytes;
 
-use super::{FLEET_ID, Healthy, LEASE_ID};
+use super::{FLEET_ID, Healthy, RUN_ID};
 use crate::test_support::{drain, json, plane};
 
 /// A daemon assigning a deny-all posture, beating every half second.
@@ -40,8 +40,8 @@ fn healthy() -> Healthy {
 async fn test_each_route_answers_as_its_verb() {
     let answers = healthy();
     let (plane, mut calls) = plane(move |call| json(&answers.to(Some(call.verb))));
-    let (lease, fleet) = (
-        Uuid7::parse(LEASE_ID).unwrap(),
+    let (run, fleet) = (
+        Uuid7::parse(RUN_ID).unwrap(),
         Uuid7::parse(FLEET_ID).unwrap(),
     );
     let beat = HeartbeatRequest {
@@ -51,29 +51,29 @@ async fn test_each_route_answers_as_its_verb() {
         closing: false,
     };
     let push = MemoryPushRequest {
-        lease_id: LEASE_ID.into(),
+        run_id: RUN_ID.into(),
         fencing_token: 1,
         memory: Vec::new(),
     };
     let recall = MemoryRecallRequest {
-        lease_id: LEASE_ID.into(),
+        run_id: RUN_ID.into(),
         fencing_token: 1,
         query: Cow::Borrowed("q"),
         limit: 1,
     };
 
     plane.heartbeat(&beat).await.unwrap();
-    plane.renew(&lease, &RenewRequest::default()).await.unwrap();
+    plane.renew(&run, &RenewRequest::default()).await.unwrap();
     plane.hydrate(&fleet).await.unwrap();
     plane.capture(&fleet, &push).await.unwrap();
     plane.recall(&fleet, &recall).await.unwrap();
     plane.me().await.unwrap();
-    plane.tool_calls(&lease, Bytes::new()).await.unwrap();
+    plane.tool_calls(&run, Bytes::new()).await.unwrap();
     plane
         .report(&crate::test_support::report_body())
         .await
         .unwrap();
-    plane.folds(&lease, 1, 0).await.unwrap();
+    plane.folds(&run, 1, 0).await.unwrap();
 
     assert_routes(&drain(&mut calls));
 }
@@ -84,7 +84,7 @@ async fn the_native_fixture_authenticates_both_transports()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut daemon = super::NativeDaemon::serve(
         healthy(),
-        serde_json::from_str(super::LEASE_JSON)?,
+        serde_json::from_str(super::RUN_JSON)?,
         |_frame| async {},
     )
     .await?;

@@ -4,8 +4,8 @@
 const POST: &str = "POST";
 const FENCING_FIELD: &str = "fencing_token";
 
-use af_wire::paths::{LEASE_SCHEDULES_SUFFIX, RUNNER_LEASES, RUNNER_MEMORY, SCHEDULE_RUNS_SUFFIX};
-use afr_supervisor::test_util::{FENCING, LEASE_ID};
+use af_wire::paths::{RUN_SCHEDULES_SUFFIX, RUNNER_MEMORY, RUNNER_RUNS, SCHEDULE_RUNS_SUFFIX};
+use afr_supervisor::test_util::{FENCING, RUN_ID};
 use libtest_mimic::Failed;
 use serde_json::json;
 
@@ -66,14 +66,14 @@ fn fenced(observed: &Observed) -> Result<(), Failed> {
                 request.method == POST
                     && request
                         .path
-                        .starts_with(&format!("{RUNNER_LEASES}/{LEASE_ID}/")),
-                format!("mutation bound to the fixture lease: {}", request.path),
+                        .starts_with(&format!("{RUNNER_RUNS}/{RUN_ID}/")),
+                format!("mutation bound to the fixture run: {}", request.path),
             )?;
         }
         if is_report(request) {
             expect(
                 request.body.pointer("/request/fencing_token") == Some(&json!(FENCING)),
-                "native report retains its lease fence",
+                "native report retains its run fence",
             )?;
         }
         if mutation || request.method == POST && request.path.starts_with(RUNNER_MEMORY) {
@@ -162,12 +162,12 @@ fn schedules_sent(observed: &Observed) -> Result<(), Failed> {
         "the created schedule identifier reaches the model",
     )?;
     let path = format!(
-        "{RUNNER_LEASES}/{LEASE_ID}/{LEASE_SCHEDULES_SUFFIX}/{SCHEDULE_ID}/{SCHEDULE_RUNS_SUFFIX}"
+        "{RUNNER_RUNS}/{RUN_ID}/{RUN_SCHEDULES_SUFFIX}/{SCHEDULE_ID}/{SCHEDULE_RUNS_SUFFIX}"
     );
     let run = received(observed, &path)?;
     expect(
         run.method == POST && run.body == json!({FENCING_FIELD: FENCING}),
-        "run-now targets the created schedule with the lease's fence",
+        "run-now targets the created schedule with the run's fence",
     )?;
     expect(
         observed.output("run")?.contains(SCHEDULE_EVENT_ID),

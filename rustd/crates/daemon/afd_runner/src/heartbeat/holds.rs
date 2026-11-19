@@ -40,7 +40,7 @@ pub fn fleets(holds: &Valid<HeldFleets<'_>>) -> Vec<Uuid7> {
 
 /// Clears every hold `runner`'s slots record that `holds` leaves out, and
 /// answers which listed fleets the runner should release: any that is no
-/// longer active, or that another runner has leased since. No proved list
+/// longer active, or that another runner has held since. No proved list
 /// holds nothing. A `closing` runner's list is final: a hold written inside
 /// the last beat interval is cleared too, rather than left to a next beat.
 pub(super) async fn reconcile(

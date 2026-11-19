@@ -240,13 +240,13 @@ async fn a_push_under_a_lost_fence_changes_nothing() {
         .expect("an unheld schedule is claimable");
 
     // A second syncer takes it while the first is mid-push.
-    lane.expire_lease(&held.schedule_id).await;
+    lane.expire_run(&held.schedule_id).await;
     let winner = CronLane::token();
     lane.store
         .claim_current(&lane.fleet_id(), &held.schedule_id, &winner)
         .await
         .expect("the lane's Postgres must answer")
-        .expect("an expired lease is reclaimable");
+        .expect("an expired run is reclaimable");
 
     let reconciled = against_live(&lane, url, token)
         .reconcile(&held, &loser)

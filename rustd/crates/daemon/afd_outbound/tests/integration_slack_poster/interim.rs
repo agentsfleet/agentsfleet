@@ -10,8 +10,8 @@ use super::*;
 /// The line a run says before it answers.
 const LINE: &str = "fix pushed as a draft";
 
-/// The lease the fixture line was said under.
-const LEASE: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
+/// The run the fixture line was said under.
+const RUN: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
 
 /// The line the fixture job's thread is owed, numbered `part`.
 fn interim(fixture: &Fixture, part: u32) -> Interim {
@@ -22,7 +22,7 @@ fn interim(fixture: &Fixture, part: u32) -> Interim {
         workspace_id: job.workspace_id,
         fleet_id: job.fleet_id,
         event_id: job.event_id,
-        lease_id: Uuid7::parse(LEASE).expect("the fixture lease is canonical"),
+        run_id: Uuid7::parse(RUN).expect("the fixture run is canonical"),
         text: LINE.to_owned(),
         part,
     }
@@ -51,7 +51,7 @@ async fn an_interim_line_posts_under_its_own_part() {
     );
     assert_eq!(
         stamped("/metadata/event_payload/part"),
-        Some(serde_json::json!({"lease_id": LEASE, "line": 2}))
+        Some(serde_json::json!({"run_id": RUN, "line": 2}))
     );
     assert_eq!(slack.reads(), 0, "a first attempt reads no thread");
     fixture.cleanup().await;
@@ -124,7 +124,7 @@ async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
         fleet_id: landed.fleet_id.clone().into(),
         event_id: landed.event_id.clone().into(),
         part: Some(afd_connector::slack::Part {
-            lease_id: LEASE.to_owned(),
+            run_id: RUN.to_owned(),
             line: 4,
         }),
     };

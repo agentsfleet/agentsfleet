@@ -7,7 +7,7 @@ use super::{
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, execution, guard as task_guard, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, execution, guard as task_guard, transaction},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{
@@ -28,7 +28,7 @@ pub(super) struct Page {
 
 pub(in crate::task) async fn write(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     page: &Uuid7,
     input: &garde::Valid<CheckpointPageInput>,
@@ -37,11 +37,11 @@ pub(in crate::task) async fn write(
     if af_core::etag::sha256_hex(&body) != input.digest {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (_owned, plan, pin) = guard::owned(
         &mut tx,
-        lease,
+        run,
         &input.task,
         checkpoint,
         &task_guard::id(&input.pin_id, "pin_id")?,
@@ -82,14 +82,14 @@ pub(in crate::task) async fn write(
 
 pub(in crate::task) async fn read(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     page: &Uuid7,
     input: &garde::Valid<CheckpointReadQuery>,
 ) -> Result<CheckpointPage> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let (_owned, plan, _pin) = read_authority(&mut tx, lease, checkpoint, &input.pin_id).await?;
+    let (_owned, plan, _pin) = read_authority(&mut tx, run, checkpoint, &input.pin_id).await?;
     let page = selected(&mut tx, &plan, page).await?;
     let body = page.body.ok_or(TaskRefusal::CheckpointIncompatible)?;
     if page.digest.as_deref() != Some(af_core::etag::sha256_hex(&body).as_str()) {
@@ -105,15 +105,15 @@ pub(in crate::task) async fn read(
 
 pub(super) async fn read_authority(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     pin: &str,
 ) -> Result<(execution::Owned, Plan, Pin)> {
-    let current = task_guard::lease(connection, lease).await?;
+    let current = task_guard::run(connection, run).await?;
     let owned = execution::attached(connection, current).await?;
     guard::with_execution(
         connection,
-        lease,
+        run,
         owned,
         checkpoint,
         &task_guard::id(pin, "pin_id")?,

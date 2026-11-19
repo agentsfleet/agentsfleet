@@ -1,6 +1,6 @@
-//! Serializes fleet and authoring leases on the physical host's assigned limit.
+//! Serializes fleet and authoring runs on the physical host's assigned limit.
 //!
-//! Callers retain the transaction through the guarded lease write. The census
+//! Callers retain the transaction through the guarded run write. The census
 //! is a separate statement after the host lock: a statement snapshot acquired
 //! before waiting for that lock could miss the preceding claimant's commit.
 
@@ -44,7 +44,7 @@ pub struct Capacity {
     held: i64,
     claims_allowed: bool,
     renewals_allowed: bool,
-    lease_version: i64,
+    run_version: i64,
     decision_selected: bool,
     ownership: Ownership,
 }
@@ -65,13 +65,13 @@ impl Capacity {
     }
 
     /// Whether this locked host selected a decision model. Unconfigured hosts
-    /// need no catalogue read on the ordinary lease path.
+    /// need no catalogue read on the ordinary run path.
     #[must_use]
     pub const fn decision_selected(self) -> bool {
         self.decision_selected
     }
 
-    /// Whether one additional lease fits the currently assigned worker limit.
+    /// Whether one additional run fits the currently assigned worker limit.
     #[must_use]
     pub fn can_claim(self) -> bool {
         self.claims_allowed && self.occupied + self.held < i64::from(self.workers)
@@ -92,7 +92,7 @@ struct Host {
     status: String,
     degraded: bool,
     cordon_reason: Option<String>,
-    lease_version: i64,
+    run_version: i64,
     decision_selected: bool,
     #[sqlx(flatten)]
     ownership: Ownership,
@@ -108,12 +108,12 @@ struct Census {
 }
 
 /// The host row as [`lock_host`] holds it: what the claim checks before the
-/// guarded lease insert counts the host's census itself.
+/// guarded run insert counts the host's census itself.
 #[derive(Debug, Clone, Copy)]
 pub struct Held {
     claims_allowed: bool,
     continuations_allowed: bool,
-    lease_version: i64,
+    run_version: i64,
     decision_selected: bool,
     ownership: Ownership,
 }
@@ -149,8 +149,8 @@ impl Held {
 
     /// The placement choice's revision, which the insert advances.
     #[must_use]
-    pub const fn lease_version(self) -> i64 {
-        self.lease_version
+    pub const fn run_version(self) -> i64 {
+        self.run_version
     }
 
     /// Whether the host has a decision profile selected.
@@ -201,7 +201,7 @@ async fn held<'a>(
                 && host.cordon_reason.is_none()
                 && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
             continuations_allowed: !host.degraded && renewable_state(&host.status),
-            lease_version: host.lease_version,
+            run_version: host.run_version,
             decision_selected: host.decision_selected,
             ownership: host.ownership,
         }))
@@ -236,7 +236,7 @@ async fn locked<'g>(
 ///
 /// `None` means the authenticated host was removed. Cordoned/draining hosts
 /// may finish current work but cannot claim more; revoked/degraded hosts do
-/// neither. Lease-specific original-expiry/fence checks remain mandatory.
+/// neither. Run-specific original-expiry/fence checks remain mandatory.
 ///
 /// # Errors
 /// Preserves statement and column failures with their query context.
@@ -252,7 +252,7 @@ pub async fn lock<'a>(
     };
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
         .bind(&runner_id)
-        .bind(crate::sql::LEASE_STATUS_ACTIVE)
+        .bind(crate::sql::RUN_STATUS_ACTIVE)
         .bind(match claimant {
             Claimant::Fleet(fleet) => Some(fleet),
             Claimant::Authoring | Claimant::Existing => None,
@@ -270,7 +270,7 @@ pub async fn lock<'a>(
             && host.cordon_reason.is_none()
             && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
         renewals_allowed: !host.degraded && renewable_state(&host.status),
-        lease_version: host.lease_version,
+        run_version: host.run_version,
         decision_selected: host.decision_selected,
         ownership: host.ownership,
     }))
@@ -321,7 +321,7 @@ impl PlacementRefusal {
 
 /// Logs a refused placement. Any occurrence means the claim's filter has a hole,
 /// so it is an error with its registry code, never a debug line.
-pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, lease_type: &str) {
+pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, run_type: &str) {
     let runner_id = runner.as_str();
     let reason = refusal.as_str();
     let error_code = af_core::error_code::RUNNER_PLACEMENT_REFUSED.as_str();
@@ -329,7 +329,7 @@ pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, lease_type: 
         error_code,
         runner_id,
         reason,
-        lease_type,
+        run_type,
         event = "runner_placement_refused",
         "issue refused a placement the claim should have filtered"
     );

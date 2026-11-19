@@ -18,10 +18,10 @@ impl Default for RequestSlots {
     fn default() -> Self {
         Self {
             control: Arc::new(Semaphore::new(
-                PENDING_MAX - af_wire::protocol::LEASES_MAX - 24,
+                PENDING_MAX - af_wire::protocol::RUNS_MAX - 24,
             )),
             reports: Arc::new(Semaphore::new(8)),
-            work: Arc::new(Semaphore::new(af_wire::protocol::LEASES_MAX)),
+            work: Arc::new(Semaphore::new(af_wire::protocol::RUNS_MAX)),
             activity: Arc::new(Semaphore::new(16)),
         }
     }

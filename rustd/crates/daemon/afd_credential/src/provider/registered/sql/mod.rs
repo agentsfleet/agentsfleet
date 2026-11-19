@@ -37,7 +37,7 @@ pub(super) const ENTRY: &str = include_str!("entry.sql");
 ///
 /// Beside the resolution it answers what the key cache needs: the catalogue
 /// version, the secret's id, a digest of the ciphertext and the endpoint
-/// stored with it (the same expression the lease claim computes, so a hit on
+/// stored with it (the same expression the run claim computes, so a hit on
 /// the claim's witnesses is a hit on this read's), and the milliseconds the
 /// matched price window has left, from the statement's own clock reading.
 ///

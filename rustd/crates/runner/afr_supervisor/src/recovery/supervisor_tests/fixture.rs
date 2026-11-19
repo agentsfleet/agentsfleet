@@ -6,8 +6,8 @@ use af_crypto::{
     secret::SecretBytes,
 };
 use af_wire::{
-    lease::{
-        LeasePayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
+    run::{
+        RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
         TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnScope,
     },
     task::{
@@ -33,17 +33,18 @@ pub(super) const PREFIX: &str = "conversation saved before the interruption";
 pub(super) type Checked<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub(super) fn checkpoint(
-    lease: &LeasePayload<'_>,
+    run: &RunPayload<'_>,
     scope: TurnScope,
     expiry: jiff::Timestamp,
     page: &CheckpointPage,
 ) -> Checked<TurnCheckpointRead> {
     let private = json!({
-        "format":1,"scope":scope,"model":lease.policy.context.model,"provider":lease.policy.provider,
+        "format":1,"scope":scope,"model":run.policy.context.model,"provider":run.policy.provider,
         "root":{"messages":[{"User":PREFIX}],"driver":{"answers":[],"completed_turns":0},
         "children":{"next":0,"started":0,"children":[]},
         "memory":{"pending":[],"superseded":[],"misses":0},"pinned":0,"folds":[]}
-    }).to_string();
+    })
+    .to_string();
     let root = TurnPrivateRoot { history: private };
     let page_digest = sha256_hex(&serde_json::to_vec(page)?);
     Ok(TurnCheckpointRead {

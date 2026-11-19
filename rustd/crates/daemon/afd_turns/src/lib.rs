@@ -52,7 +52,7 @@ pub struct Admitted {
 /// What a steer's disposition is named from: [`Admissions::run_facts`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunFacts {
-    /// The run holding the fleet's slot, when its lease has not expired.
+    /// The run holding the fleet's slot, when its run has not expired.
     pub live_run: Option<LiveRun>,
     /// Whether a message waits that this one must not pass: with no live
     /// run, any earlier unsettled admission; with one, an earlier message in
@@ -124,7 +124,7 @@ impl Admissions {
     }
 
     /// The live tails over this ledger's queue, for a producer announcing
-    /// what it admitted — the handle the lease plane's `streams()` is too.
+    /// what it admitted — the handle the run plane's `streams()` is too.
     #[must_use]
     pub fn streams(&self) -> Handle {
         self.bus.clone()

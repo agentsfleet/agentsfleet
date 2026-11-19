@@ -66,7 +66,7 @@ async fn hard_stop_releases_a_report_waiting_for_a_lost_acknowledgement() {
 
 /// Stopping work and draining the caller both preserve its final receipt path.
 #[tokio::test]
-async fn lease_cancellation_and_soft_shutdown_allow_the_final_acknowledgement() -> Result<()> {
+async fn run_cancellation_and_soft_shutdown_allow_the_final_acknowledgement() -> Result<()> {
     for shutdown in [false, true] {
         let caller = CancellationToken::new();
         let halt = Halt::new(caller.clone());

@@ -110,7 +110,7 @@ async fn a_foreign_line_is_skipped_by_the_read_and_the_pass() {
 async fn an_unreadable_debt_fails_the_pass() {
     let (lane, database) = private_log().await;
     for _ in 0..2 {
-        seed(&database, afd_billing::sql::work::FLEET_LEASE, false).await;
+        seed(&database, afd_billing::sql::work::FLEET_RUN, false).await;
     }
     sqlx::query("UPDATE billing.usage_lines SET charged_nanos = 9223372036854775807")
         .execute(&mut *database.acquire().await.expect("a private connection"))
@@ -138,7 +138,7 @@ async fn an_unreadable_debt_fails_the_pass() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_malformed_price_reference_refuses_the_read() {
     let (lane, database) = private_log().await;
-    seed(&database, afd_billing::sql::work::FLEET_LEASE, true).await;
+    seed(&database, afd_billing::sql::work::FLEET_RUN, true).await;
 
     let mut connection = database.acquire().await.expect("a private connection");
     let refused = unsettled(&mut *connection, READ_LIMIT, None)
@@ -160,7 +160,7 @@ async fn a_read_resumes_after_a_full_batch_and_then_laps() {
     const BATCH: i64 = 3;
     let (lane, database) = private_log().await;
     for _ in 0..=BATCH {
-        seed(&database, afd_billing::sql::work::FLEET_LEASE, false).await;
+        seed(&database, afd_billing::sql::work::FLEET_RUN, false).await;
     }
 
     let mut connection = database.acquire().await.expect("a private connection");

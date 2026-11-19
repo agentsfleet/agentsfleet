@@ -5,7 +5,7 @@ use af_wire::inference::{InferenceApi, ModelInference};
 use futures_util::StreamExt as _;
 use guffbolt::{Message, Request};
 
-use super::support::{Fake, lease, wires::Wire};
+use super::support::{Fake, payload, wires::Wire};
 
 const CONTEXT: u32 = 32_768;
 const MODEL: &str = "workspace/configured-model";
@@ -17,9 +17,9 @@ fn estimated(raw: &[u8]) -> u64 {
 }
 
 fn provider(fake: &Fake, wire: Wire, budget: u32) -> Box<Provider> {
-    let mut lease = lease(&wire.provider(), &[], "hello");
-    lease.policy.context.context_cap_tokens = budget;
-    lease.policy.inference = Some(ModelInference {
+    let mut run = payload(&wire.provider(), &[], "hello");
+    run.policy.context.context_cap_tokens = budget;
+    run.policy.inference = Some(ModelInference {
         api: match wire {
             Wire::Chat => InferenceApi::Chat,
             Wire::Messages => InferenceApi::Messages,
@@ -29,13 +29,13 @@ fn provider(fake: &Fake, wire: Wire, budget: u32) -> Box<Provider> {
         dialect: None,
         max_output_tokens: CONTEXT,
     });
-    // The lease wire carries the saved physical limit separately from its operating budget.
-    let mut document = serde_json::to_value(&lease).unwrap();
+    // The run wire carries the saved physical limit separately from its operating budget.
+    let mut document = serde_json::to_value(&run).unwrap();
     document["policy"]["model_context_tokens"] = CONTEXT.into();
     let encoded = document.to_string();
-    let lease = serde_json::from_str(&encoded).unwrap();
+    let run = serde_json::from_str(&encoded).unwrap();
     Connector::with_client(fake.client.clone())
-        .connect(&lease)
+        .connect(&run)
         .unwrap()
 }
 

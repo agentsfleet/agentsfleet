@@ -20,9 +20,9 @@
 pub const CLEAR_DROPPED_HOLDS: &str = include_str!("clear_dropped_holds.sql");
 
 /// The listed fleets `$1` should let go of: every one that is not both active
-/// and last leased by `$1`.
+/// and last held by `$1`.
 ///
-/// A fleet another runner has leased since, or one halted or deleted, gives
+/// A fleet another runner has held since, or one halted or deleted, gives
 /// the same answer as one this runner never held, so the reply says nothing
 /// about fleets outside the runner's own slots. `$1` runner, `$2` listed fleet
 /// ids, `$3` the active fleet status.

@@ -1,4 +1,4 @@
-//! Receipt replay, lease completion and sweeping preserve one original charge.
+//! Receipt replay, run completion and sweeping preserve one original charge.
 
 use af_core::id::Uuid7;
 use std::time::Duration;
@@ -14,7 +14,7 @@ use af_wire::{
 };
 use afd_billing::ledger::LedgerBiller;
 use afd_fleet::{
-    lease::billing_sweep::{BillingSwept, GRACE, sweep},
+    run::billing_sweep::{BillingSwept, GRACE, sweep},
     task::{TaskLifecycle as _, Tasks},
 };
 use serde_json::Value;
@@ -59,7 +59,7 @@ async fn recovery(case: &Case) {
             },
         )
         .await;
-    let fee = completed_lease(&fixture).await;
+    let fee = completed_run(&fixture).await;
     age_recovery(&fixture, &id(&request(&first).call_id)).await;
     assert_eq!(financials(&fixture).await, expected(balance, 0, 1, 1));
     assert_eq!(
@@ -86,20 +86,20 @@ async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {
         Faults { settle: true },
     );
     let down = Tasks::new(
-        fixture.case.held.leases.clone(),
+        fixture.case.held.runs.clone(),
         fixture.case.admissions.clone(),
         dependencies,
     );
     let request = request(body);
     let input = garde::Unvalidated::new(DecisionReceiptInput {
-        fencing_token: fixture.case.lease().fencing_token,
+        fencing_token: fixture.case.run().fencing_token,
         receipt: known(&request),
     })
     .validate()
     .expect("complete provider receipt");
     let capture = Capture::install();
     let recorded = down
-        .record_decision(fixture.case.lease(), &id(&request.call_id), &input)
+        .record_decision(fixture.case.run(), &id(&request.call_id), &input)
         .await
         .expect("receipt commits before the failed financial transport");
     assert_receipt(&recorded, DecisionRecordDisposition::Current);
@@ -107,7 +107,7 @@ async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {
         !capture
             .events()
             .iter()
-            .any(|event| event.field("event") == Some("lease_settle_deferred"))
+            .any(|event| event.field("event") == Some("run_settle_deferred"))
     );
     drop(capture);
     let replay = fixture
@@ -151,7 +151,7 @@ fn assert_receipt(receipt: &DecisionReceiptResult, disposition: DecisionRecordDi
     );
 }
 
-async fn completed_lease(fixture: &Decisions<'_>) -> i64 {
+async fn completed_run(fixture: &Decisions<'_>) -> i64 {
     let held = &fixture.case.held;
     let capture = Capture::install();
     let saved = held
@@ -171,16 +171,16 @@ async fn completed_lease(fixture: &Decisions<'_>) -> i64 {
         !capture
             .events()
             .iter()
-            .any(|event| event.field("event") == Some("lease_release_deferred"))
+            .any(|event| event.field("event") == Some("run_release_deferred"))
     );
     assert!(held.fixtures.admission_settled(&held.event_id).await);
-    // What the report charged: every line of the lease that is not a decision
+    // What the report charged: every line of the run that is not a decision
     // call's, which the receipts charged on their own.
     sqlx::query_scalar(
         "SELECT COALESCE(sum(charged_nanos), 0)::bigint FROM billing.usage_lines \
          WHERE work_id = $1 AND kind <> $2",
     )
-    .bind(&held.lease_key)
+    .bind(&held.run_key)
     .bind(LineKind::Decision.as_str())
     .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
     .await
@@ -211,7 +211,7 @@ async fn age_recovery(fixture: &Decisions<'_>, first: &Uuid7) {
         )
         .await;
     held.fixtures
-        .age(Row::Lease(&held.lease_key), "updated_at", elapsed)
+        .age(Row::Run(&held.run_key), "updated_at", elapsed)
         .await;
 }
 
@@ -262,8 +262,8 @@ const fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64) -> Fina
 }
 
 async fn financials(fixture: &Decisions<'_>) -> Financials {
-    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_cost FROM runner.leases l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1")
-        .bind(&fixture.case.held.lease_key).bind(LineKind::Decision.as_str())
+    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_cost FROM runner.runs l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1")
+        .bind(&fixture.case.held.run_key).bind(LineKind::Decision.as_str())
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original financial state"))
         .await.expect("complete original wallet and immutable usage")
 }
@@ -279,12 +279,12 @@ async fn swept(fixture: &Decisions<'_>) -> BillingSwept {
 async fn original_attribution(fixture: &Decisions<'_>) {
     let held = &fixture.case.held;
     let actual: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('seq',seq,'work_id',work_id,'tenant_id',tenant_id,'workspace_id',workspace_id,'fleet_id',fleet_id,'event_id',event_id,'provider',provider,'model',model,'charged_nanos',charged_nanos,'settled',settled_at IS NOT NULL) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
-        .bind(&held.lease_key).bind(LineKind::Decision.as_str())
+        .bind(&held.run_key).bind(LineKind::Decision.as_str())
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("original decision lines"))
         .await.expect("both original attributions remain available");
     let expected = [0_u32, 1].map(|seq| {
         serde_json::json!({
-            "seq":seq,"work_id":held.lease_key.as_str(),"tenant_id":held.tenant,
+            "seq":seq,"work_id":held.run_key.as_str(),"tenant_id":held.tenant,
             "workspace_id":fixture.case.scope.workspace_id.as_str(),"fleet_id":held.fleet,
         "event_id":held.event_id,"provider":"typesafe","model":fixture.model.model.model_name,
             "charged_nanos":3,"settled":true

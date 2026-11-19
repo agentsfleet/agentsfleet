@@ -1,6 +1,6 @@
 //! The policy every egress suite admits under, this crate's and the tools'.
 //!
-//! Shaped like the `ci-repairer` bundle's lease: GitHub minted and bound by
+//! Shaped like the `ci-repairer` bundle's run: GitHub minted and bound by
 //! origin rules that lock the repair branch and the draft, Grafana and Elastic
 //! static with their own hosts, an Elastic query path `read_only` admits, and
 //! the Pushover credential its handler reads for itself. Built from the wire's
@@ -28,8 +28,8 @@ use crate::refusal::Refusal;
 pub const START: Timestamp = Timestamp::constant(1_700_000_000, 0);
 /// A minted token's lifetime.
 pub const TOKEN_LIFETIME: Duration = Duration::from_hours(1);
-/// The lease every suite's guard belongs to.
-pub const LEASE_ID: &str = "lease-1";
+/// The run every suite's guard belongs to.
+pub const RUN_ID: &str = "run-1";
 /// The bound repository.
 pub const REPOSITORY: &str = "acme/widgets";
 /// The branch the daemon named.

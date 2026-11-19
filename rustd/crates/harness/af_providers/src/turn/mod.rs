@@ -44,12 +44,12 @@ use af_wire::policy::ExecutionPolicy;
 /// The log line a turn opened again writes.
 const EVENT_REOPENED: &str = "provider_turn_reopened";
 
-/// One lease's provider: a rig model and the wire it speaks.
+/// One run's provider: a rig model and the wire it speaks.
 pub(crate) struct Turns {
     model: DynModel<Completion>,
     settings: ModelInference,
     model_context_tokens: u32,
-    lease_id: Box<str>,
+    run_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
     counting_key: SecretString,
@@ -62,26 +62,26 @@ impl fmt::Debug for Turns {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Turns")
             .field("wire", &self.settings.api)
-            .field("lease_id", &self.lease_id)
+            .field("run_id", &self.run_id)
             .finish_non_exhaustive()
     }
 }
 
 impl Turns {
-    /// Lease `lease_id`'s provider, `provider` as the policy spells it,
+    /// Run `run_id`'s provider, `provider` as the policy spells it,
     /// using the selected model's persisted inference and context settings.
     pub(crate) fn new(
         model: DynModel<Completion>,
         settings: &ModelInference,
         policy: &ExecutionPolicy<'_>,
-        lease_id: &str,
+        run_id: &str,
         counting_transport: HttpTransport,
     ) -> Self {
         Self {
             model,
             settings: settings.clone(),
             model_context_tokens: policy.model_context_tokens,
-            lease_id: lease_id.into(),
+            run_id: run_id.into(),
             provider: policy.provider.as_ref().into(),
             counting_key: SecretString::new(policy.api_key.to_string()),
             counting_transport,
@@ -148,7 +148,7 @@ impl Turns {
                 );
                 observe::model_tokens(&observed_model, observed_provider, timing.tokens);
             })),
-            correlation_id: self.lease_id.clone().into(),
+            correlation_id: self.run_id.clone().into(),
             ..Default::default()
         };
         let mut count = route
@@ -174,11 +174,11 @@ impl Turns {
             ProviderLabel::of(&self.provider),
             RetryReason::StreamReopened,
         );
-        let lease_id = &*self.lease_id;
+        let run_id = &*self.run_id;
         let reason = raise::code(failure);
         let event = EVENT_REOPENED;
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-        tracing::warn!(lease_id, attempt, reason, event, error_code);
+        tracing::warn!(run_id, attempt, reason, event, error_code);
     }
 }
 

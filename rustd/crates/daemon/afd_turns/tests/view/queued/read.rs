@@ -35,7 +35,7 @@ async fn test_thread_read_includes_queued_steers() {
 /// longer waiting.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_thread_read_dedupes_leased_steer() {
+async fn test_thread_read_dedupes_rund_steer() {
     let lane = EventsLane::open().await;
     let steered = Steer::new(lane.admissions())
         .append(&lane.fleet, &lane.workspace, ACTOR, BODY, None)
@@ -49,7 +49,7 @@ async fn test_thread_read_dedupes_leased_steer() {
         .bind(&lane.fleet)
         .execute(&mut *connection)
         .await
-        .expect("the lease's delivery stamp lands");
+        .expect("the run's delivery stamp lands");
     drop(connection);
     lane.seed_event(&uuid(&steered.event_id), admitted_at).await;
 

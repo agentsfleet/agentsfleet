@@ -1,12 +1,12 @@
-//! The budget's two counters: a fixed table of lease slots, and one packed
+//! The budget's two counters: a fixed table of run slots, and one packed
 //! word for the current second.
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-/// A slot no lease holds.
+/// A slot no run holds.
 const VACANT: u64 = 0;
 
-/// One lease's slot: whose it is, and how many spans it has kept.
+/// One run's slot: whose it is, and how many spans it has kept.
 #[derive(Debug, Default)]
 pub(super) struct Slot {
     key: AtomicU64,
@@ -14,8 +14,8 @@ pub(super) struct Slot {
 }
 
 impl Slot {
-    /// Counts one more span against this lease, when it has room under
-    /// `limit`. Never wraps: a full lease stays full.
+    /// Counts one more span against this run, when it has room under
+    /// `limit`. Never wraps: a full run stays full.
     pub(super) fn reserve(&self, limit: u32) -> bool {
         self.spans
             .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
@@ -30,16 +30,16 @@ impl Slot {
     }
 }
 
-/// A fixed set of lease slots, claimed and freed by compare-and-swap.
+/// A fixed set of run slots, claimed and freed by compare-and-swap.
 ///
 /// Probed from the slot a key hashes to, so the common lookup touches one
 /// slot; a full scan is the worst case and the table is a few hundred words.
 #[derive(Debug)]
-pub(super) struct LeaseTable {
+pub(super) struct RunTable {
     slots: Box<[Slot]>,
 }
 
-impl LeaseTable {
+impl RunTable {
     /// A table of `capacity` vacant slots.
     pub(super) fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -78,7 +78,7 @@ impl LeaseTable {
         }
     }
 
-    /// How many slots a lease holds.
+    /// How many slots a run holds.
     #[cfg(test)]
     pub(super) fn held(&self) -> usize {
         self.slots

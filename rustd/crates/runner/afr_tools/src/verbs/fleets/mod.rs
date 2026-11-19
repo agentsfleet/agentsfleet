@@ -48,7 +48,7 @@ impl Handler for FleetActivity {
                 limit: arguments.limit,
                 starting_after,
             };
-            return answered(context.lease.verbs.fleets(call).await);
+            return answered(context.run.verbs.fleets(call).await);
         };
         let Ok(fleet) = Uuid7::parse(raw) else {
             return ToolOutput::failed(ToolErrorCode::InvalidArguments, DETAIL_FLEET_ID);
@@ -58,7 +58,7 @@ impl Handler for FleetActivity {
             limit: arguments.limit,
             starting_after,
         };
-        answered(context.lease.verbs.fleets(call).await)
+        answered(context.run.verbs.fleets(call).await)
     }
 }
 

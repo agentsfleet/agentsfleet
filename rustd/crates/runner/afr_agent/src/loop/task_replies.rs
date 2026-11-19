@@ -1,4 +1,4 @@
-//! Original-source reply obligations do not depend on which lease read the input.
+//! Original-source reply obligations do not depend on which run read the input.
 
 use super::Harness;
 use af_wire::task::{DecisionTaskVersion, TaskInputAction, TaskInputMode, TaskInputReceiptInput};
@@ -9,8 +9,8 @@ impl Harness<'_, '_> {
             return Ok(());
         };
         let intake = crate::decision::Intake {
-            lease: self.shared.payload,
-            verbs: self.shared.lease.verbs,
+            run: self.shared.payload,
+            verbs: self.shared.run.verbs,
             provider: self.shared.provider,
             meter: self.shared.meter,
             stop: &self.stop,

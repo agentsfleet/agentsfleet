@@ -1,6 +1,6 @@
 [package]
 name = "afr_memory"
-description = "One run's memory: what the fleet remembered at lease start, and what the run stores, recalls and forgets before the push."
+description = "One run's memory: what the fleet remembered at run start, and what the run stores, recalls and forgets before the push."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,7 +20,7 @@ serde.workspace = true
 af_secrets.workspace = true
 # Recall's case-insensitive key match, with no copy of each key.
 aho-corasick.workspace = true
-# `MemoryBackend` is `dyn`: the backend is chosen per lease, at run time.
+# `MemoryBackend` is `dyn`: the backend is chosen per run, at run time.
 async-trait.workspace = true
 # `error_shell!` and the registry codes a refused store carries.
 af_core.workspace = true

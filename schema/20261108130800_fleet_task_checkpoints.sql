@@ -24,7 +24,7 @@ CREATE TABLE fleet.task_checkpoints (
     history_digest TEXT,
     covered_input_sequence BIGINT NOT NULL CHECK (covered_input_sequence >= 0),
     effect_watermark BIGINT NOT NULL CHECK (effect_watermark >= 0),
-    owner_lease_id UUID NOT NULL,
+    owner_run_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL,
     expires_at TIMESTAMPTZ(3) NOT NULL,
     transfer_expires_at TIMESTAMPTZ(3) NOT NULL,

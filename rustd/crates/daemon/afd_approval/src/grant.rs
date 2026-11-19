@@ -3,7 +3,7 @@
 //! # Why this is here and not in `afd_gate`
 //!
 //! `afd_gate::gate::grants` reads the same table and asks a different question.
-//! A runner asks "may this fleet mint against this service", once per lease,
+//! A runner asks "may this fleet mint against this service", once per run,
 //! and the only answer it can act on is `approved` — absent, pending and
 //! revoked are one word to it. An operator browses every row a fleet holds,
 //! including the ones the runner is blind to, and answers them.

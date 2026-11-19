@@ -131,7 +131,7 @@ pub struct CheckpointPage {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointPageInput {
-    /// Existing lease fence.
+    /// Existing run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current task version.

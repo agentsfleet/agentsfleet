@@ -16,7 +16,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Bus connections | R at boot | one NATS connection per replica, shared by publishers, the hub and the outbound worker | §Connection budget after the cutover |
-| Idle discovery volume | One query per replica every five seconds | Daemon recovery probe; runners send no lease requests | §Idle request volume |
+| Idle discovery volume | One query per replica every five seconds | Daemon recovery probe; runners send no run requests | §Idle request volume |
 | Recovery interval | `OFFER_FALLBACK_TICK` = 5 seconds | Recovers missed disposable wake notifications | §Idle request volume |
 | Candidate result ceiling | `MAX_CANDIDATES_PER_POLL` = 64 | bounds returned fleet identifiers and claim attempts; discovery still examines eligible active fleets | §Candidate and claim bounds |
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Idle request volume |
@@ -24,7 +24,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Server-Sent Events (SSE) ceiling | `SSE_MAX_STREAMS` = 256 per replica, bound by file descriptors | async response bodies own semaphore permits; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
 | Bus publish deadline | `publish_deadline_ms` = 250 (`afd_bus::nats::Tuning`) | a publish or flush that misses it fails and is owed a gap marker; an outage costs a caller this, not a hang | §Tuneup knobs |
 | Bus connect timeout | `connect_timeout_ms` = 5000 (`afd_bus::nats::Tuning`) | a seed that does not answer inside it refuses boot as `UZ-STARTUP-004` | §Tuneup knobs |
-| Lease TTL | `LEASE_TTL` = 35000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
+| Run TTL | `RUN_TTL` = 35000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
 | Admission ceiling | `DEFAULT_MAX_IN_FLIGHT` = 256, api-class only | compiled default; operational and stream routes use separate handling | §Tuneup knobs |
 | The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
@@ -38,7 +38,7 @@ Every row is extracted from the sections below; the owner column names the secti
 The ten sizing anti-patterns are the trap list. Read §Anti-patterns (do NOT do these) before any sizing conversation. Three more live elsewhere:
 
 - Statement count alone hides server work: measure discovery latency at the intended active fleet count (§Idle request volume).
-- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a claim increase and a fan-out regression look identical (§Candidate and claim bounds).
+- Metric ratios need their denominator: without `agentsfleet_run_polls_total`, a claim increase and a fan-out regression look identical (§Candidate and claim bounds).
 - Fleet-memory load still sorts, and correctly so. An index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
 
 ## Topology
@@ -65,7 +65,7 @@ Everything below is the full reference. Headings are stable because specs cite t
 
 The per-fleet dedicated datastore connection is gone. An offer pass reads Postgres and never waits on the bus.
 
-The binding constraint is now `agentsfleetd` API replicas plus Postgres write throughput on the lease/report hot path, both horizontally scalable.
+The binding constraint is now `agentsfleetd` API replicas plus Postgres write throughput on the run/report hot path, both horizontally scalable.
 Idle database cost follows the **replica count**, one recovery probe per replica every 5 s, rather than fleet population.
 
 Every current number is in the Facts table at the top of this page.
@@ -111,14 +111,14 @@ A committed steer wakes the gateway, which pushes an offer to an eligible connec
 |---|---|
 | API receives a steer or webhook | Validate identity, access and backlog budget |
 | API accepts the event | Commit `fleet.admissions`, then publish a best-effort `af.wake.<shard>` notification |
-| Gateway handles a wake or available capacity | Claim an eligible ledger head and its fleet slot, then push the lease over the native session |
-| Runner runs the lease | Prepare its sandbox and run the fleet instructions |
+| Gateway handles a wake or available capacity | Claim an eligible ledger head and its fleet slot, then push the run over the native session |
+| Runner runs the run | Prepare its sandbox and run the fleet instructions |
 
 Healthy notifications start an offer pass immediately.
 Available capacity, gates and datastore work determine when the runner can start.
 A missed wake is recovered by the next per-replica five-second database probe.
 
-**Live-tail cadence.** The runner attempts immediate posting for a lease's first frame and first response chunk.
+**Live-tail cadence.** The runner attempts immediate posting for a run's first frame and first response chunk.
 Later frames batch toward 64 KiB; partial batches flush every 250 ms.
 The first response does not wait for that timer when the posting queue has room.
 
@@ -141,11 +141,11 @@ Fleet and viewer counts add no connections: the hub keeps one native subscriptio
 
 ### Idle request volume
 
-Runners keep one native session per host and send no idle lease requests. Each host announces free capacity as credits ([push scheduler](push_scheduler.md)).
+Runners keep one native session per host and send no idle run requests. Each host announces free capacity as credits ([push scheduler](push_scheduler.md)).
 The gateway reacts to wake notifications and increased capacity.
 
 A separate daemon recovery timer queries Postgres once every five seconds per replica (`OFFER_FALLBACK_TICK`), even when no work is waiting.
-The probe is one statement, `select_waiting_work.sql` (`afd_fleet/src/lease/waiting.rs`), run from `afd_gateway/src/scheduler/recovery/mod.rs`.
+The probe is one statement, `select_waiting_work.sql` (`afd_fleet/src/run/waiting.rs`), run from `afd_gateway/src/scheduler/recovery/mod.rs`.
 For `R` replicas, that is `R / 5` discovery statements per second.
 
 This backstop repairs missed disposable notifications; it remains database polling.
@@ -154,7 +154,7 @@ A probe that finds pending work starts an offer pass. Wake traffic never resets 
 A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.wake.<shard>` (`afd_turns/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
 
 Before the pass, the same statement names each connected tenant runner whose tenant has nothing waiting.
-The pass skips those runners, since a tenant runner takes only its tenant's work and a claim on one could not lease.
+The pass skips those runners, since a tenant runner takes only its tenant's work and a claim on one could not run.
 A recovery pass skips no one.
 
 The pass walks the ready streams that hold credits, those holding a woken fleet first. It claims from Postgres for each stream until a claim comes back empty or the pass spends its budget (`afd_gateway/src/scheduler/mod.rs`).
@@ -172,7 +172,7 @@ Measure that cost separately from the number of statements.
 
 ### Candidate and claim bounds
 
-Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers, declared in `afd_fleet`'s lease assignment module.
+Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers, declared in `afd_fleet`'s run assignment module.
 The query first checks for any unsettled admission. It then checks placement labels and the oldest unsettled admission of each eligible fleet before applying that limit.
 
 The partial `(fleet_id, sequence)` admission index serves each head lookup; the limit bounds returned candidates and subsequent claim attempts.
@@ -181,7 +181,7 @@ It does not bound the number of active fleets examined inside Postgres.
 An isolated plan probe with 20,001 active fleets and no admissions performed zero fleet scans after the empty-ledger check.
 The single local samples took 19.702 ms before and 0.079 ms after. These are query-plan observations, not throughput or chat-latency measurements.
 
-The real-database test in `afd_fleet`'s lease-plan suite asserts that every fleet scan has zero actual loops.
+The real-database test in `afd_fleet`'s run-plan suite asserts that every fleet scan has zero actual loops.
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
 An absent or stale notification cannot strand work, because the 5 s recovery probe still queries Postgres.
@@ -195,10 +195,10 @@ It checks fleet and event index bounds, deadline bounds for event approvals, and
 The claim locks the slot and exact head, stamps their fence, and commits before returning it.
 An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.
 
-The historical `agentsfleet_lease_polls_total` counter now counts gateway claim attempts.
+The historical `agentsfleet_run_polls_total` counter now counts gateway claim attempts.
 Divide the candidate counter by those attempts to measure claim fan-out.
 
-Statement cost comes from `pg_stat_statements` in `make bench-lease`, which counts what every crate sends.
+Statement cost comes from `pg_stat_statements` in `make bench-run`, which counts what every crate sends.
 Use query latency and query plans alongside these ratios: one slow discovery statement still counts as one statement.
 
 #### Which recurring Postgres reads are index-served
@@ -210,8 +210,8 @@ Each table's own index slot closes that. Every recurring control-plane read belo
 | Recurring read | Was | Now |
 |---|---|---|
 | Liveness sweep, due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `afd_runner`'s `SELECT_DUE_RUNNERS` orders by `updated_at, id` under its batch `LIMIT`, and slot 1800 leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
-| Liveness sweep, affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | The runner's active leases, then each slot by its key; `idx_fleet_slots_last_runner_id` covers the `ON DELETE SET NULL` foreign key |
-| Reclaim, prior active lease | Scan of `runner.leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
+| Liveness sweep, affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | The runner's active runs, then each slot by its key; `idx_fleet_slots_last_runner_id` covers the `ON DELETE SET NULL` foreign key |
+| Reclaim, prior active run | Scan of `runner.runs` on an unindexed `ON DELETE CASCADE` foreign key | `idx_runs_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
 | Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
 | Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_events_fleet_id_created_at_event_id` walked in order, because `stx_events_workspace_id_fleet_id` (slot 1700) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |
 | Fleet list page | Unserved: the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
@@ -223,7 +223,7 @@ Each table's own index slot closes that. Every recurring control-plane read belo
 
 For an unbounded fetch, a bitmap scan plus sort beats an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
 
-**One anti-pattern this replaced,** worth stating because it reads as an optimisation. The operator runner list resolved each row's lease-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner.leases` table once per request: 6 472 buffer hits against a 200 000-row lease table.
+**One anti-pattern this replaced,** worth stating because it reads as an optimisation. The operator runner list resolved each row's run-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner.runs` table once per request: 6 472 buffer hits against a 200 000-row run table.
 
 Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is usually one whole-table build, not one lookup per row.
 
@@ -236,15 +236,15 @@ Resolving liveness over the surviving page instead costs 79. When per-row work s
 | `publish_deadline_ms` (`afd_bus::nats::Tuning`) | 250 | What a bus outage costs each publisher: a publish or flush that misses it fails and is owed a gap marker. | A compiled default today: no environment variable or file sets it yet (`Config::with_tuning` exists for one). Raising it buys no delivery, because the marker recovers the frame. |
 | `connect_timeout_ms` (`afd_bus::nats::Tuning`) | 5000 | Time for a seed to answer at boot; a seed that misses it refuses boot as `UZ-STARTUP-004`. | A compiled default, as above. Raise only where a seed is measurably slower to answer than 4 s. |
 | `OFFER_FALLBACK_TICK` | 5 seconds | One recovery query per daemon replica | Compiled recovery interval; measure missed-wake latency and database cost before changing it. |
-| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one claim. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s lease assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per claim. |
-| `LEASE_TTL` | 35000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`afr_supervisor`'s renew module and `af_core`'s timing module). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
+| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one claim. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s run assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per claim. |
+| `RUN_TTL` | 35000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`afr_supervisor`'s renew module and `af_core`'s timing module). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
 | `SSE_MAX_STREAMS` | 256 | Concurrent asynchronous SSE bodies per replica; shared by fleet, workspace and draft-progress tails. Zero is rejected at boot. Each stream holds a socket. The daemon neither raises `RLIMIT_NOFILE` nor checks the knob against it. About 300 descriptors go to admitted requests, Postgres and NATS first, so a stock 1,024 soft limit leaves room for 256. | Raise only on a host whose descriptor limit is raised to match, after measuring stream refusals, memory, CPU, and proxy capacity. The tail itself held 4,096 streams inside every bound (below). Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
 | `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | The daemon's `serve` boot passes this constant (declared in `afd_http`'s admission module) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
-| `agentsfleetd` API replica count | deployment-driven | HTTP requests per second (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
+| `agentsfleetd` API replica count | deployment-driven | HTTP requests per second (user surface + `/v1/runners`) + run/report throughput + SSE fan-in | Run/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
 | Runner count | operator-driven | Compute throughput and native session count | Add hosts for available compute; size daemon memory and stream permits for their sessions. |
-| assigned `worker_count` (per-runner, dashboard) | 1 | Concurrent leased fleets **per host**: the runner worker-pool size (M88_002), assigned on the runner row (M148) and delivered with the heartbeat. N workers each run the lease→run→report unit; the per-fleet `affinity.claim` keeps two workers off the same fleet. | A host has spare cores/memory while one long fleet run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more fleets per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain**: one host loss drops N in-flight runs, not 1 (all re-leased by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. At the ceiling (`MAX_WORKERS` = 64 in `af_core`'s limits module) and the 2-core sandbox default, any host under 128 cores is oversubscribed. |
+| assigned `worker_count` (per-runner, dashboard) | 1 | Concurrent held fleets **per host**: the runner worker-pool size (M88_002), assigned on the runner row (M148) and delivered with the heartbeat. N workers each run the run→run→report unit; the per-fleet `affinity.claim` keeps two workers off the same fleet. | A host has spare cores/memory while one long fleet run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more fleets per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain**: one host loss drops N in-flight runs, not 1 (all re-held by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. At the ceiling (`MAX_WORKERS` = 64 in `af_core`'s limits module) and the 2-core sandbox default, any host under 128 cores is oversubscribed. |
 
-The lease path never waits on the bus.
+The run path never waits on the bus.
 The outbound worker, owned by `afd_outbound`, sleeps until a ping, a finished lane or its 30 s `CLAIM_PASS`.
 An idle replica therefore runs one claim statement every 30 s; include it when measuring idle request volume.
 
@@ -256,11 +256,11 @@ Once bus traffic and Postgres request volume fit their machines, the next bottle
 
 ### 1. `agentsfleetd` API replicas + Postgres write throughput (the usual answer now)
 
-The lease/report hot path does the durable writes the worker used to do. Those are `INSERT fleet.events`, the usage logged on each `/renew`, the terminal `UPDATE`, `INSERT telemetry` and the checkpoint `UPSERT`. The `runner.leases`/`runner.fleet_slots` bookkeeping rides the same path, and the biller settles the usage afterwards.
+The run/report hot path does the durable writes the worker used to do. Those are `INSERT fleet.events`, the usage logged on each `/renew`, the terminal `UPDATE`, `INSERT telemetry` and the checkpoint `UPSERT`. The `runner.runs`/`runner.fleet_slots` bookkeeping rides the same path, and the biller settles the usage afterwards.
 
 At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
 
-Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock contention on the `fleet` tables. Fix: more `agentsfleetd` replicas + Postgres sizing in the deployment runbook.
+Symptom: run/report p99 climbs; Postgres connection saturation or write-lock contention on the `fleet` tables. Fix: more `agentsfleetd` replicas + Postgres sizing in the deployment runbook.
 
 ### 2. Pub/sub fan-out on activity (unchanged in shape)
 
@@ -297,7 +297,7 @@ The committed result sits beside each row in `bench/baselines/`.
 Absolute rates move with hardware; the shapes below do not. A baseline that moves takes its row here with it in the same commit.
 
 The steer and delivery rows were re-measured at `774f99cbd`.
-The lease rows quote `lease.rig.json` as committed at `c82badcb5`, and the M241 baselines below replace that file.
+The run rows quote `run.rig.json` as committed at `c82badcb5`, and the M241 baselines below replace that file.
 The live-tail rows come from `e2d250172`, the revision the tail lane was built on.
 
 Latency columns moved with host load between runs on this shared machine; the counts beside them did not.
@@ -308,13 +308,13 @@ Statement and commit counts are Postgres's own: `pg_stat_statements` calls (tran
 
 | Path | What it costs | The number that decides |
 |------|---------------|-------------------------|
-| Stream comparison: contended lease | 1 928 leases/s; 2.4 Postgres round trips per issued lease by the poll's own tally, which M241_001 found undercounts; 27.8% of polls find nothing; p95 7.8 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | A lease costs about two round trips under contention, down from 11.3 at `e2d250172`. |
-| Stream comparison: lease through report (drain) | 50.0 Postgres statements and 26.8 commits per lease issued, counting the polls that missed and the report. Throughput was 172 leases/s, with lease p95 56.5 ms and report p95 21.5 ms. All 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-lease`), measured before M225. An interim M225_001 build, since replaced by the wake ring, measured lease p95 48.1 ms, report p95 16.9 ms and 176.9 leases/s. The wake-ring build is not yet re-measured. | What one event costs the scheduler and the ledger end to end through `Plane::lease` and `Plane::report`, counted by Postgres rather than by the lane. |
+| Stream comparison: contended run | 1 928 runs/s; 2.4 Postgres round trips per issued run by the poll's own tally, which M241_001 found undercounts; 27.8% of polls find nothing; p95 7.8 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | A run costs about two round trips under contention, down from 11.3 at `e2d250172`. |
+| Stream comparison: run through report (drain) | 50.0 Postgres statements and 26.8 commits per run issued, counting the polls that missed and the report. Throughput was 172 runs/s, with run p95 56.5 ms and report p95 21.5 ms. All 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-run`), measured before M225. An interim M225_001 build, since replaced by the wake ring, measured run p95 48.1 ms, report p95 16.9 ms and 176.9 runs/s. The wake-ring build is not yet re-measured. | What one event costs the scheduler and the ledger end to end through `Plane::run` and `Plane::report`, counted by Postgres rather than by the lane. |
 | Stream comparison: steer ingress | 1.003 Postgres statements per steer and 2 191 accepted a second at p95 9.52 ms (8 submitters, 50 fleets), the median of three runs at `43d828970`; the base `6ce61641d` measured 4.004 statements and 1 260 a second. One fleet with 16 senders takes 933 a second, against 342 on the base ([push scheduler](push_scheduler.md#m242-one-statement-intake)) | Intake is one autocommit statement that locks the fleet row only for its own duration, so a busy fleet admits about 2.7 times as many messages a second. |
 | Historical serial delivery, healthy | 49.6 jobs/s per worker with one 250 ms destination in sixteen | Ten times the five-per-second estimate the refactor argument was made from, but see the next row. |
 | Historical serial delivery, head-of-line | the OTHER fifteen destinations' p95 3 752 ms against the slow one's 3 758 ms | With 6% of jobs slow, the healthy 94% wait exactly as long. One stream, one worker, one queue position at a time. |
 | Historical serial delivery, retry | 95.9% of the window in the ladder with two refusing destinations in sixteen (not re-measured at `774f99cbd`: the default run refuses nothing, and that baseline now carries a retry occupancy of 0) | Eight jobs that never resolve cost every job behind them the whole ladder. |
-| Setup chat claim under saturation | Before → after the claim stopped waiting on a held draft, medians of three runs each. Sampled open-transaction age p95 959 → 17 ms; chat lease p95 3 006 → 707 ms; any-lease p95 3 207 → 745 ms. Pool wait p95 28 → 13 ms; 41.7 → 62.7 leases/s. All six runs doubled no lease, overran no host and recovered the pool. Shape: 40 hosts × 4 workers, a 20-connection pool, 5 chat tenants × 8 drafts and 200 fleets. One writer holds a tenant's drafts 1 s of every 1.25 s (`make bench-lease BENCH_SHAPE=saturation`). The baseline `lease-saturation.rig.json` is the before set's reset-rig run. | One busy draft used to hold its claim's host row for the whole write, so every tenant behind it waited. Skipped instead, the claim's transaction lasts only its own work. The chat tail left is the held tenant's drafts waiting for the writer's gaps. |
+| Setup chat claim under saturation | Before → after the claim stopped waiting on a held draft, medians of three runs each. Sampled open-transaction age p95 959 → 17 ms; chat run p95 3 006 → 707 ms; any-run p95 3 207 → 745 ms. Pool wait p95 28 → 13 ms; 41.7 → 62.7 runs/s. All six runs doubled no run, overran no host and recovered the pool. Shape: 40 hosts × 4 workers, a 20-connection pool, 5 chat tenants × 8 drafts and 200 fleets. One writer holds a tenant's drafts 1 s of every 1.25 s (`make bench-run BENCH_SHAPE=saturation`). The baseline `run-saturation.rig.json` is the before set's reset-rig run. | One busy draft used to hold its claim's host row for the whole write, so every tenant behind it waited. Skipped instead, the claim's transaction lasts only its own work. The chat tail left is the held tenant's drafts waiting for the writer's gaps. |
 | Live tail fan-out | 3.05–3.06 allocations per delivered frame with 1 024 viewers on one fleet, flat from 200 B to 64 KiB (3.12–3.14 at 256, 3.45–3.52 at 64, 31–36 at one); 8.3 / 10.2 / 20.0 µs of runtime busy time per delivered frame and publish-to-receive p95 3.1 / 4.1 / 7.4 ms at 1 024 viewers for 200 B / 4 KiB / 64 KiB; every frame delivered, no lag notice (`make bench-tail`) | About three allocations per viewer per frame: the hub's per-reader copy of the message and the SSE frame built from it. Fan-out cost grows with viewers × frames, and with payload size through the copy. |
 | Live tail streams | 13.5 KB of heap per open, idle per-fleet stream, flat from 64 to 4 096 streams (13 800 / 13 494 / 13 521 / 13 529 B), so 4 096 streams hold about 53 MiB; one frame sent to every stream arrives at p95 0.18 / 0.14 / 0.14 / 0.13 ms, none lost (`make bench-tail`, after the hub shared each frame; 21.7 KB per stream before) | Flat per stream: at the `SSE_MAX_STREAMS` default of 256 that is 3.3 MiB. Memory and latency bind nothing up to 4 096 streams; file descriptors bind first. |
 
@@ -333,31 +333,31 @@ The rig measures one process against local datastores, which is a floor and not 
 
 ### Push scheduler baselines
 
-M241_001 replaced `lease.rig.json` and added `lease-burst.rig.json` on Nov 06, 2026.
+M241_001 replaced `run.rig.json` and added `run-burst.rig.json` on Nov 06, 2026.
 Each lane ran three times on a reset rig, and the committed file is the median run.
 [Push scheduler](push_scheduler.md#baselines) lists the statements per chat by path.
 
 | Lane | Median run | Lowest | Highest |
 | --- | --- | --- | --- |
-| Drain, leases per second (200 fleets, 8 runners, a 10 s chat per lease) | 82.51 | 80.43 | 84.08 |
+| Drain, runs per second (200 fleets, 8 runners, a 10 s chat per run) | 82.51 | 80.43 | 84.08 |
 | Drain, Postgres statements per chat | 115.025 | 114.875 | 115.025 |
 | Drain, commits per chat | 77.185 | 76.97 | 77.185 |
 | Burst, pickup p95 (50 fleets, 10 messages a second each, 60 s, 8 runners) | 491.5 ms | 489.0 ms | 491.8 ms |
 
 The burst row counts only the messages a run picked up: 25,212 of 30,000 still waited at the close.
-The drain now sends a whole chat per lease: two renewals and forty activity posts.
-The older rows above sent only the lease and its report.
+The drain now sends a whole chat per run: two renewals and forty activity posts.
+The older rows above sent only the run and its report.
 
-PR #803 also added six durable-task reads per lease.
-So statements per lease rose from 50.0 to 115.0, and leases per second fell from 172 to 82.5.
+PR #803 also added six durable-task reads per run.
+So statements per run rose from 50.0 to 115.0, and runs per second fell from 172 to 82.5.
 
 ### Core NATS baselines (M244)
 
 M244 re-measured every lane on core NATS at `2bea47c3d`, on Nov 10, 2026, with `make bench-<lane> PROFILE=rig`.
 Outbound and cardinality each ran three times, and the committed file is the median run.
-The lease shapes and steer ran once.
+The run shapes and steer ran once.
 
-The drain ran three more times at `6b0caea35`, after M243's runner stream merged: 83.00, 91.97 and 86.54 leases per second, at 74.16, 74.16 and 74.165 statements per chat. The median run, 86.54, is committed as `lease.rig.json`.
+The drain ran three more times at `6b0caea35`, after M243's runner stream merged: 83.00, 91.97 and 86.54 runs per second, at 74.16, 74.16 and 74.165 statements per chat. The median run, 86.54, is committed as `run.rig.json`.
 Each run's idle window cost 0 statements, and a chat's activity path cost 0.
 
 | Lane | Number | Before M244 | On core NATS |
@@ -367,10 +367,10 @@ Each run's idle window cost 0 statements, and a chat's activity path cost 0.
 | Cardinality, 10,000 fleets | candidate query | 0.54 ms with no ledger rows | 25.45 ms with 10,000 unsettled admissions |
 | Steer | Postgres statements per steer | 1.003 | 2.002 |
 | Steer | accepted per second, p95 | 2,191, 9.52 ms | 2,868, 4.33 ms |
-| Lease drain | statements per chat, lease p95 | 115.0, 44.1 ms | 74.2, 64.2 ms on the runner stream (`6b0caea35`) |
-| Lease drain, idle host | statements in the idle window; activity statements per chat | not measured | 0; 0 |
-| Lease saturation | lease p95 | 3,207 ms | 550 ms |
-| Lease burst | pickup p95 | 491.5 ms | 494.6 ms |
+| Run drain | statements per chat, run p95 | 115.0, 44.1 ms | 74.2, 64.2 ms on the runner stream (`6b0caea35`) |
+| Run drain, idle host | statements in the idle window; activity statements per chat | not measured | 0; 0 |
+| Run saturation | run p95 | 3,207 ms | 550 ms |
+| Run burst | pickup p95 | 491.5 ms | 494.6 ms |
 
 Outbound delivers about 30% slower than the stream reader it replaced.
 The likely cause is unmeasured. The worker claims only lane heads from `fleet.obligations`, so each busy-lane delivery may wait one claim round trip.
@@ -384,14 +384,14 @@ Steer now costs two Postgres statements where it cost one, and the second statem
 
 ### Admissions ledger measurements
 
-The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1`.
+The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-run PROFILE=rig KEEP_TEST_STATE=1`.
 The canonical coverage run reset the owned rig before measurement; benchmarks reused those migrated services and swept their own fixtures.
 Each row is the median of three runs on the shared development machine, with pool size 20.
 
 All 15 runs completed: 1,500 drain events, zero failures, zero unsettled admissions and 9,240 of 9,240 fixture records swept.
 These are production claim and report transactions, including admission settlement.
 
-| Fleets / events | Drain statements per event | Drain commits per event | Completed events / second | Claim round trips per lease | Idle discovery statements per poll |
+| Fleets / events | Drain statements per event | Drain commits per event | Completed events / second | Claim round trips per run | Idle discovery statements per poll |
 | --- | --- | --- | --- | --- | --- |
 | 20 | 63.650 | 38.800 | 90.23 | 11.550 | 1.000 |
 | 40 | 57.025 | 29.600 | 108.18 | 7.475 | 1.000 |
@@ -403,7 +403,7 @@ The 20-to-200 event increase used 8.28 times as many drain statements for ten ti
 This measures client statement volume; it does not establish a bound on database rows examined or server CPU.
 The empty-ledger precheck skips fleet scans; nonempty discovery still examines eligible fleets.
 
-At 200 events the median lease and report p95 were 43.679 ms and 33.695 ms.
+At 200 events the median run and report p95 were 43.679 ms and 33.695 ms.
 The raw claim `rate_per_second` counts polls, including misses; the table uses the drain's explicit completed-event rate.
 
 The measured source was `ab66bb2ec992c87f0158470672a33bab30a58f38`, with integrated base `124c2bce303c95533745312c1ec725092bb604cb`.
@@ -451,17 +451,17 @@ Step 1: Bus connection budget (no per-fleet, no per-viewer term)
 
 Step 2: Idle recovery work
   recovery_statements_per_second = R / probe_s
-  Runners send no lease requests while idle.
+  Runners send no run requests while idle.
   Size Postgres using recovery and claim query latency at the target fleet count Z.
 
 Step 3: Hot-path throughput (the real wall)
-  lease_report_qps = peak events/sec across the fleet
-  size R + Postgres so lease/report p99 stays within budget under lease_report_qps
+  run_report_qps = peak events/sec across the fleet
+  size R + Postgres so run/report p99 stays within budget under run_report_qps
   (PG connection pooler assumed; sizing in the deployment runbook)
 
 Step 4: Emit configuration
   OFFER_FALLBACK_TICK   = 5 s     (compiled daemon recovery interval)
-  LEASE_TTL             = 35000   (compile-time; renewal carries long runs)
+  RUN_TTL             = 35000   (compile-time; renewal carries long runs)
   agentsfleetd_replicas         = <step 3 result>
   runner_hosts             = N
 ```
@@ -469,9 +469,9 @@ Step 4: Emit configuration
 ### Anti-patterns (do NOT do these)
 
 1. **Size bus connections by fleet or viewer count.** Each replica holds one NATS connection, with one native subscription per watched subject.
-2. **Tune runner polling.** Runners no longer poll for leases. Account for the daemon recovery probe separately.
+2. **Tune runner polling.** Runners no longer poll for runs. Account for the daemon recovery probe separately.
 3. **Shorten the claim pass for faster replies.** A report pings the workers when it commits; the 30 s pass covers only a lost ping.
-4. **Add runners to fix lease/report latency.** Runners add compute, not control-plane throughput. Scale `agentsfleetd` replicas + Postgres for hot-path latency.
+4. **Add runners to fix run/report latency.** Runners add compute, not control-plane throughput. Scale `agentsfleetd` replicas + Postgres for hot-path latency.
 5. **Raise `publish_deadline_ms` to ride out an outage.** The deadline is what an outage costs each publisher. A longer wait buys no delivery, because the gap marker recovers the frame.
 6. **Open a native subscription per viewer.** The hub keeps one per subject and fans out locally. A viewer costs a broadcast receiver, not a subscription.
 7. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
@@ -485,24 +485,24 @@ Step 4: Emit configuration
 
 ### Runner host loss
 
-A runner that dies holds no datastore or bus connection to leak and no subscription to reclaim. Its in-flight lease expires at `lease_expires_at`.
+A runner that dies holds no datastore or bus connection to leak and no subscription to reclaim. Its in-flight run expires at `run_expires_at`.
 
-The next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected lease expires before another runner can claim it; the recovery probe finds work after missed notifications.
+The next runner's `run` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected run expires before another runner can claim it; the recovery probe finds work after missed notifications.
 
 Surviving hosts keep their existing sessions; the gateway pushes newly available work.
-[Automatic quarantine](runner_fleet.md#automatic-quarantine-and-return) blocks new work on silent hosts without shortening their lease deadlines.
+[Automatic quarantine](runner_fleet.md#automatic-quarantine-and-return) blocks new work on silent hosts without shortening their run deadlines.
 
-[Workspace recovery](runner_execution.md#workspace-between-leases) resumes the last complete checkpoint when one exists.
+[Workspace recovery](runner_execution.md#workspace-between-runs) resumes the last complete checkpoint when one exists.
 Transfer size, checkpoint age and eligible spare capacity affect recovery time; no measured checkpoint percentile is promised.
 
-**Failure domain scales with the assigned `worker_count`**. A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one. Each lease expires and re-leases independently (no batch coupling), so no work is lost, but N runs restart instead of one.
+**Failure domain scales with the assigned `worker_count`**. A host running a pool of N concurrent runs (M88_002) drops **N** in-flight runs on loss, not one. Each run expires and re-runs independently (no batch coupling), so no work is lost, but N runs restart instead of one.
 
 This is the cost of running more fleets per host; `worker_count=1` keeps the failure domain at one run. Operators size N against this tradeoff.
 
 ### Runner host add
 
 A newly enrolled runner opens its native session and advertises capacity.
-Existing leases retain their owners; the gateway can offer waiting work to the new host.
+Existing runs retain their owners; the gateway can offer waiting work to the new host.
 
 ### Datastore failover (primary swap)
 
@@ -516,5 +516,5 @@ Measure provider-specific failover and command-error behavior on the intended de
 - **Adaptive connection pooling.** The Rust command path uses a multiplexed connection, so the retired pool knobs do not apply.
 - **The datastore's own target design.** [Datastore scaling](./datastore_scaling.md) is canonical for it and wins over this page. Postgres holds every fact, and the bus is core NATS in one region: three nodes in production, two in development. This page sizes the runtime that runs on top.
 - **Postgres scaling.** Pgbouncer + plan sizing are covered in the deployment runbook, not here. After the cutover it is the **primary** scaling axis, so the runbook carries more weight than it did.
-- **Placement.** Label checks and shared host-capacity admission are implemented ([runner protocol](runner_fleet.md#authoring-leases)). Autoscaling and fairness stay outside this sizing page.
+- **Placement.** Label checks and shared host-capacity admission are implemented ([runner protocol](runner_fleet.md#authoring-runs)). Autoscaling and fairness stay outside this sizing page.
 - **Multi-region topology.** Follow [datastore scaling](./datastore_scaling.md); provider-specific latency and limits require measurements on the selected deployment.

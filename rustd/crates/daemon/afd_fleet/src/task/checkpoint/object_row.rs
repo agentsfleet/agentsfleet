@@ -25,7 +25,7 @@ pub(crate) struct Object {
     pub kind: String,
     pub format_version: i32,
     pub owner_checkpoint_id: Uuid7,
-    pub owner_lease_id: Uuid7,
+    pub owner_run_id: Uuid7,
     pub owner_fence: i64,
     pub bucket_reference: String,
     pub ciphertext_digest: Option<String>,
@@ -41,12 +41,12 @@ pub(crate) struct Object {
 
 impl Object {
     pub(super) fn own(&self, plan: &Plan) -> bool {
-        self.belongs(&plan.id, &plan.owner_lease_id, plan.owner_fence)
+        self.belongs(&plan.id, &plan.owner_run_id, plan.owner_fence)
     }
 
-    pub(crate) fn belongs(&self, checkpoint: &Uuid7, lease: &Uuid7, fence: i64) -> bool {
+    pub(crate) fn belongs(&self, checkpoint: &Uuid7, run: &Uuid7, fence: i64) -> bool {
         self.owner_checkpoint_id == *checkpoint
-            && self.owner_lease_id == *lease
+            && self.owner_run_id == *run
             && self.owner_fence == fence
     }
 
@@ -118,7 +118,7 @@ impl Object {
             storage,
             &plan.workspace_id,
             &plan.repository,
-            (&plan.id, &plan.owner_lease_id, plan.owner_fence),
+            (&plan.id, &plan.owner_run_id, plan.owner_fence),
         )
     }
 

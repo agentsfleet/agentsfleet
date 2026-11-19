@@ -17,7 +17,7 @@
 //!
 //! # Where the SQL lives
 //!
-//! In [`lease::sql`], beside the plane that runs it, per RULE SQLMOD. That
+//! In [`run::sql`], beside the plane that runs it, per RULE SQLMOD. That
 //! module says why each plane keeps its own rather than sharing one for the
 //! crate.
 
@@ -30,7 +30,7 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;
-pub mod lease;
+pub mod run;
 pub mod task;
 #[cfg(feature = "test-util")]
 pub mod test_util;

@@ -48,7 +48,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   const errors: string[] = [];
   const row = eventRow(createdAt);
   // The daemon inlines the settled answer on the completion frame
-  // (afd_fleet lease/bracket.rs `publish_completion`); the browser shows it
+  // (afd_fleet run/bracket.rs `publish_completion`); the browser shows it
   // without a detail read.
   const complete = { ...row, fleet_status: STATUS.ACTIVE, pending_approvals: 0, final_reply: LIVE_MARKER };
   const overlap: EventRow = { ...row, fleet_id: fleet.id, workspace_id: workspaceId };

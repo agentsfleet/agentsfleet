@@ -1,7 +1,7 @@
 //! Transaction start order must not move new work ahead of an unfinished run.
 
 use af_core::id::Uuid7;
-use afd_fleet::lease::{Acquired, Kind, Leases};
+use afd_fleet::run::{Acquired, Kind, Runs};
 use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use sqlx::Connection as _;
 
@@ -15,7 +15,7 @@ const ORDER: &str = "SELECT claimed.sequence < delayed.sequence \
 
 // Value: protects=unfinished work survives an older transaction committing later;
 // fails_when=created_at outranks serialized insertion order; why_new=real producer
-// transactions invert timestamp order; seam=Postgres plus admission and lease stores.
+// transactions invert timestamp order; seam=Postgres plus admission and run stores.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
@@ -42,10 +42,10 @@ async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
         .admit(input(&fleet, &workspace))
         .await
         .expect("newer commits first");
-    let leases = fixtures.leases_with_dead_bus();
-    let first = next(&leases, &holder).await.expect("first claim");
+    let runs = fixtures.runs_with_dead_bus();
+    let first = next(&runs, &holder).await.expect("first claim");
     assert_eq!(first.event_id, claimed.stored.id);
-    let issued = issue(&fixtures, &leases, &first, &holder, &tenant).await;
+    let issued = issue(&fixtures, &runs, &first, &holder, &tenant).await;
     let delayed = admissions
         .stage(&mut tx, delayed)
         .await
@@ -59,26 +59,26 @@ async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
         .expect("actual transaction order");
     assert!(inverted, "the old query would select the new admission");
     fixtures.lapse_holder(&issued, &fleet).await;
-    assert_reclaimed(&fixtures, &leases, &poller, &first, &issued).await;
-    drop((connection, leases, admissions));
+    assert_reclaimed(&fixtures, &runs, &poller, &first, &issued).await;
+    drop((connection, runs, admissions));
     fixtures.cleanup().await;
 }
 
 async fn assert_reclaimed(
     fixtures: &Fixtures,
-    leases: &Leases,
+    runs: &Runs,
     poller: &Uuid7,
     first: &Acquired,
     issued: &Uuid7,
 ) {
-    let recovered = next(leases, poller).await.expect("recover unfinished run");
+    let recovered = next(runs, poller).await.expect("recover unfinished run");
     assert_eq!(recovered.event_id, first.event_id);
     assert!(recovered.redelivered);
     assert!(recovered.fence > first.fence);
     assert_eq!(recovered.kind, Kind::Reclaim);
     assert_eq!(
-        fixtures.text(Row::Lease(issued), "status").await.as_deref(),
-        Some(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
+        fixtures.text(Row::Run(issued), "status").await.as_deref(),
+        Some(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
     );
 }
 
@@ -163,8 +163,8 @@ async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
     .await
     .expect("both sequences");
     assert!(later, "the waiter draws the later sequence");
-    let leases = fixtures.leases_with_dead_bus();
-    let first = next(&leases, &runner).await.expect("the claim");
+    let runs = fixtures.runs_with_dead_bus();
+    let first = next(&runs, &runner).await.expect("the claim");
     assert_eq!(
         first.event_id, staged.stored.id,
         "the staged row is claimed first"

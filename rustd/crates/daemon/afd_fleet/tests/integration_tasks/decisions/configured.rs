@@ -1,7 +1,7 @@
 //! Saved runner policy gates new placement without revoking issued task authority.
 
 use af_wire::task::DecisionAssessment;
-use afd_fleet::{lease::Acquired, task::TaskLifecycle as _};
+use afd_fleet::{run::Acquired, task::TaskLifecycle as _};
 
 use super::{
     super::fixture::{Case, exercise},
@@ -49,7 +49,7 @@ async fn configured_off_preserves_ordinary_chat_placement() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn configured_edit_after_claim_is_rechecked_before_issuing_a_source_lease() {
+async fn configured_edit_after_claim_is_rechecked_before_issuing_a_source_run() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         expire(case).await;
@@ -66,7 +66,7 @@ async fn configured_edit_after_claim_is_rechecked_before_issuing_a_source_lease(
 }
 
 async fn refuse_after_edit(case: &Case, acquired: &Acquired) {
-    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id=$1")
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id=$1")
         .bind(&case.held.fleet)
         .fetch_one(
             &mut *case
@@ -78,10 +78,10 @@ async fn refuse_after_edit(case: &Case, acquired: &Acquired) {
                 .expect("observer"),
         )
         .await
-        .expect("lease count");
+        .expect("run count");
     set(case, false).await;
     assert!(issue(case, acquired).await.is_none());
-    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id=$1")
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE fleet_id=$1")
         .bind(&case.held.fleet)
         .fetch_one(
             &mut *case
@@ -93,10 +93,10 @@ async fn refuse_after_edit(case: &Case, acquired: &Acquired) {
                 .expect("observer"),
         )
         .await
-        .expect("lease count");
+        .expect("run count");
     assert_eq!(
         after, before,
-        "no lease survives a rejected final eligibility proof"
+        "no run survives a rejected final eligibility proof"
     );
 }
 
@@ -109,7 +109,7 @@ async fn configured_off_blocks_queued_continuations_without_consuming_them() {
 async fn continuation(case: &Case) {
     let binding = case
         .tasks
-        .bind(case.lease(), &case.plan("queued-policy", 2))
+        .bind(case.run(), &case.plan("queued-policy", 2))
         .await
         .expect("real task continuation");
     let queued = binding

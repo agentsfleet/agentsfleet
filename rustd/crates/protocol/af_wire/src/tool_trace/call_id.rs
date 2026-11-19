@@ -11,7 +11,7 @@ pub const CALL_ID_SEPARATOR: char = ':';
 /// A runner's call id as the daemon publishes and stores it:
 /// `{fence}:{call_id}`.
 ///
-/// Fenced because a reclaimed lease re-runs the same event and its runner
+/// Fenced because a reclaimed run re-runs the same event and its runner
 /// numbers calls from 1 again; the fence, distinct per claim, keeps the two
 /// runs' call 1 apart.
 #[must_use]

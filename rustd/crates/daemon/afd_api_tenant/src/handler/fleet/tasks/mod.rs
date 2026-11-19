@@ -1,4 +1,4 @@
-//! Fleet task reads share native workspace ownership and lease lifecycle state.
+//! Fleet task reads share native workspace ownership and run lifecycle state.
 
 pub(crate) mod control;
 mod input;

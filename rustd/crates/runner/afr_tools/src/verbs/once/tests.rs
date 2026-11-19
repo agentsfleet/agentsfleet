@@ -15,7 +15,7 @@ use serde_json::json;
 use super::{DETAIL_AT, DETAIL_PAST, DETAIL_TOO_FAR, ScheduleOnce, minute_of};
 use crate::handler::Typed;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{Asked, OwnedCall, RecordingVerbs, call, lease_with};
+use crate::testing::{Asked, OwnedCall, RecordingVerbs, call, run_with};
 
 /// The instant every pure case is measured from: 2026-10-05T00:00:00Z.
 const NOW: Timestamp = Timestamp::constant(1_791_158_400, 0);
@@ -118,10 +118,10 @@ fn an_unreadable_moment_is_refused() {
 async fn test_schedule_tool_is_once() {
     let tomorrow = clock::after(clock::now(), DAY).to_string();
     let verbs = RecordingVerbs::answering(Ok("{}".to_owned()), Ok(true));
-    let lease = lease_with(&verbs);
+    let run = run_with(&verbs);
     let output = call(
         Typed::boxed(ScheduleOnce).as_ref(),
-        &lease,
+        &run,
         json!({"at": tomorrow, "message": "re-check the error rate"}),
     )
     .await;
@@ -146,10 +146,10 @@ async fn test_schedule_tool_is_once() {
 #[tokio::test]
 async fn a_refused_moment_sends_nothing() {
     let verbs = RecordingVerbs::answering(Ok("{}".to_owned()), Ok(true));
-    let lease = lease_with(&verbs);
+    let run = run_with(&verbs);
     let output = call(
         Typed::boxed(ScheduleOnce).as_ref(),
-        &lease,
+        &run,
         json!({"at": "2000-01-01T00:00:00Z", "message": "too late"}),
     )
     .await;

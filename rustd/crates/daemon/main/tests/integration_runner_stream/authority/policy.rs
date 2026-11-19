@@ -34,7 +34,7 @@ async fn operator_revocation_and_rotation_close_the_previous_native_owner() -> T
 async fn operator_transition(fixture: &Fixture, transport: Transport, action: &str) -> TestResult {
     let mut native = fixture.native(transport).await;
     native.heartbeat().await;
-    let answer = fixture.operator.runner(&fixture.run, action).await?;
+    let answer = fixture.operator.runner(&fixture.scene, action).await?;
     let code = if action == "revoke" {
         RUN_ADMIN_STATE_BLOCKED
     } else {
@@ -42,7 +42,7 @@ async fn operator_transition(fixture: &Fixture, transport: Transport, action: &s
     };
     signals::away(&mut native, code).await?;
     signals::no_offer(&mut native).await?;
-    signals::opening_refused(&fixture.run, &fixture.run.token, code, transport).await?;
+    signals::opening_refused(&fixture.scene, &fixture.scene.token, code, transport).await?;
     if action == "rotate" {
         rotated(fixture, &answer, transport).await?;
     }
@@ -63,8 +63,8 @@ async fn rotated(
     current.heartbeat().await;
     current.ready().await;
     let held = signals::offer(&mut current).await?;
-    assert_eq!(held.event, fixture.run.event_id);
-    signals::report(&fixture.run, &mut current, &held, false).await?;
+    assert_eq!(held.event, fixture.scene.event_id);
+    signals::report(&fixture.scene, &mut current, &held, false).await?;
     current.close().await;
     Ok(())
 }
@@ -88,12 +88,11 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
             offered.is_err(),
             "revoked cached capacity offered work: {offered:?}"
         );
-        let leases: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE event_id=$1")
-                .bind(&fixture.run.event_id)
-                .fetch_one(&mut *fixture.run.booted.database.acquire().await?)
-                .await?;
-        assert_eq!(leases, 0, "revoked cached capacity must not issue a lease");
+        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.runs WHERE event_id=$1")
+            .bind(&fixture.scene.event_id)
+            .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
+            .await?;
+        assert_eq!(runs, 0, "revoked cached capacity must not issue a run");
         heartbeat_refused(&mut native).await?;
         signals::no_offer(&mut native).await?;
         native.close().await;
@@ -103,18 +102,18 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
 }
 
 async fn revoke_without_delivery(fixture: &Fixture) -> TestResult {
-    afd_runner::Runners::new(fixture.run.booted.database.clone(), Entropy::new())
+    afd_runner::Runners::new(fixture.scene.booted.database.clone(), Entropy::new())
         .platform()
         .transition(
-            &fixture.run.runner_id,
+            &fixture.scene.runner_id,
             serde_json::from_value(json!("revoke"))?,
             crate::e2e::ACTOR,
             clock::now(),
         )
         .await?;
-    let (bus, dropped) = faults::dropping(fixture.bus.clone(), fixture.run.runner_id.clone());
+    let (bus, dropped) = faults::dropping(fixture.bus.clone(), fixture.scene.runner_id.clone());
     bus.publish_frame(
-        &Subject::RunnerCommand(fixture.run.runner_id.clone()),
+        &Subject::RunnerCommand(fixture.scene.runner_id.clone()),
         &Command::Recheck,
     )
     .await?;
@@ -149,7 +148,7 @@ async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers
     for transport in [Transport::H2, Transport::H3] {
         let fixture = Fixture::start().await?;
         status(&fixture, "archived").await?;
-        let mut old = Native::connect(&fixture.run, transport).await;
+        let mut old = Native::connect(&fixture.scene, transport).await;
         old.heartbeat().await;
         old.ready().await;
         let mut current = fixture.native(transport).await;
@@ -160,8 +159,8 @@ async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers
         current.heartbeat().await;
         current.ready().await;
         let held = signals::offer(&mut current).await?;
-        assert_eq!(held.event, fixture.run.event_id);
-        signals::report(&fixture.run, &mut current, &held, false).await?;
+        assert_eq!(held.event, fixture.scene.event_id);
+        signals::report(&fixture.scene, &mut current, &held, false).await?;
         current.close().await;
         old.close().await;
         fixture.finish().await?;
@@ -171,9 +170,9 @@ async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers
 
 async fn status(fixture: &Fixture, status: &str) -> TestResult {
     sqlx::query("UPDATE fleet.fleets SET status=$2 WHERE id=$1")
-        .bind(&fixture.run.fleet)
+        .bind(&fixture.scene.fleet)
         .bind(status)
-        .execute(&mut *fixture.run.booted.database.acquire().await?)
+        .execute(&mut *fixture.scene.booted.database.acquire().await?)
         .await?;
     Ok(())
 }

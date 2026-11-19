@@ -2,8 +2,8 @@
 
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
-use af_wire::lease::{
-    LeasePayload, TurnCheckpointAction as Action, TurnCheckpointRead, TurnCheckpointRef,
+use af_wire::run::{
+    RunPayload, TurnCheckpointAction as Action, TurnCheckpointRead, TurnCheckpointRef,
     TurnCheckpointResponse as Response, TurnId, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
@@ -15,7 +15,7 @@ use zeroize::Zeroizing;
 impl NativeTurn<'_> {
     pub(crate) async fn restore(
         &self,
-        offer: &LeasePayload<'_>,
+        offer: &RunPayload<'_>,
         workspace: TurnWorkspace,
         destination: Option<(PathBuf, (u32, u32))>,
         stop: &CancellationToken,
@@ -96,7 +96,7 @@ fn require_empty_manifest(saved: &TurnCheckpointRead) -> Result<()> {
 
 fn validate(
     saved: &TurnCheckpointRead,
-    offer: &LeasePayload<'_>,
+    offer: &RunPayload<'_>,
     workspace: &TurnWorkspace,
 ) -> Result<()> {
     saved.validate()?;

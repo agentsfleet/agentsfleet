@@ -64,7 +64,7 @@ impl Providers {
     }
 
     /// What a platform read observes now, for a test to compare with what the
-    /// lease claim read beside the slot.
+    /// run claim read beside the slot.
     ///
     /// # Errors
     /// As [`Self::resolve_reference`], for the statements before the credential

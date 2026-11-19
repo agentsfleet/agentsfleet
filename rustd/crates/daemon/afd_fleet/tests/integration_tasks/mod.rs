@@ -1,4 +1,4 @@
-//! Complete native task transitions under the fleet's ordinary lease and queue.
+//! Complete native task transitions under the fleet's ordinary run and queue.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "scenario prerequisites fail loudly")]
 

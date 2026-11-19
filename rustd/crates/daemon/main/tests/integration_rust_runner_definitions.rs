@@ -1,5 +1,5 @@
 //! The read-bound fleets, end to end: each installed from the corpus into a
-//! real daemon, leased by the Rust runner's real loop, the model a script, and
+//! real daemon, held by the Rust runner's real loop, the model a script, and
 //! its calls sent through the production egress to HTTPS fakes or run in the
 //! unsandboxed engine's workspace, on a repository the runner checked out.
 //!
@@ -40,32 +40,32 @@ mod redirect;
 async fn test_definition_run_trace_is_readable() {
     let mut supervisor = Supervisor::new();
     let provider = provider_listener().await;
-    let run = install_definition(&mut supervisor, "ci-responder", &[], Some(&provider)).await;
+    let scene = install_definition(&mut supervisor, "ci-responder", &[], Some(&provider)).await;
     let token = mint_tenant_token();
-    seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
+    seed_tenant_key(&scene.booted, &scene.tenant, &token, scene.seeded_at).await;
     let upstream = Upstream::serve(responder_upstream(200)).await;
     let (model, _transcript) = FakeModel::new(vec![
-        vec![github_get("run", RUN)],
+        vec![github_get("scene", RUN)],
         vec![say("Run 101 failed.")],
     ]);
 
-    let settled = run_event(&run, &run.event_id, &upstream, model).await;
+    let settled = run_event(&scene, &scene.event_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
-    assert_readable_trace(&run, &token).await;
+    assert_readable_trace(&scene, &token).await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
-async fn assert_readable_trace(run: &crate::e2e::Scenario, token: &str) {
+async fn assert_readable_trace(scene: &crate::e2e::Scenario, token: &str) {
     let http = afd_identity::direct(std::time::Duration::from_secs(10))
         .build()
         .expect("tenant client");
     let event = format!(
         "/v1/workspaces/{}/fleets/{}/events/{}",
-        run.workspace, run.fleet, run.event_id
+        scene.workspace, scene.fleet, scene.event_id
     );
-    let detail = tenant_get(&http, run, token, &event).await;
+    let detail = tenant_get(&http, scene, token, &event).await;
     let calls = detail["tool_calls"]["calls"]
         .as_array()
         .expect("the event contains its known calls");
@@ -75,16 +75,22 @@ async fn assert_readable_trace(run: &crate::e2e::Scenario, token: &str) {
         (Some("http_request"), Some("succeeded"))
     );
     let call_id = calls[0]["call_id"].as_str().expect("a call id");
-    assert_readable_record(&http, run, token, &format!("{event}/tool-calls/{call_id}")).await;
+    assert_readable_record(
+        &http,
+        scene,
+        token,
+        &format!("{event}/tool-calls/{call_id}"),
+    )
+    .await;
 }
 
 async fn assert_readable_record(
     http: &reqwest::Client,
-    run: &crate::e2e::Scenario,
+    scene: &crate::e2e::Scenario,
     token: &str,
     path: &str,
 ) {
-    let record = tenant_get(http, run, token, path).await;
+    let record = tenant_get(http, scene, token, path).await;
     assert!(
         record["output"]
             .as_str()
@@ -108,13 +114,13 @@ async fn assert_readable_record(
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_code_running_definition_roundtrip() {
     let mut supervisor = Supervisor::new();
-    let run = install_definition(&mut supervisor, FLEET, &[], None).await;
+    let scene = install_definition(&mut supervisor, FLEET, &[], None).await;
     let origins = tempfile::tempdir().expect("an origin directory");
     let origin = greeter_origin(origins.path());
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, transcript) = FakeModel::new(fixer_turns());
 
-    let settled = run_event_from(&run, &run.event_id, &upstream, model, Some(origin)).await;
+    let settled = run_event_from(&scene, &scene.event_id, &upstream, model, Some(origin)).await;
 
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
@@ -122,9 +128,9 @@ async fn test_code_running_definition_roundtrip() {
     );
     let asked = transcript.asked();
     assert_code_results(&asked);
-    assert_code_trace(&run).await;
+    assert_code_trace(&scene).await;
     supervisor.shutdown().await;
-    run.cleanup().await;
+    scene.cleanup().await;
 }
 
 fn assert_code_results(asked: &[Asked]) {
@@ -152,8 +158,10 @@ fn assert_code_results(asked: &[Asked]) {
     assert!(results[3].contains(SUBJECT), "{results:#?}");
 }
 
-async fn assert_code_trace(run: &crate::e2e::Scenario) {
-    let trace = stored_trace(run).await.expect("the report carried a trace");
+async fn assert_code_trace(scene: &crate::e2e::Scenario) {
+    let trace = stored_trace(scene)
+        .await
+        .expect("the report carried a trace");
     let calls = trace["calls"]
         .as_array()
         .expect("the trace lists its calls");

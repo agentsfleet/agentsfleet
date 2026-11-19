@@ -11,7 +11,7 @@ use af_core::event::status;
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Ran, Window};
-use afd_fleet::lease::{Acquired, Delivery, Leases};
+use afd_fleet::run::{Acquired, Delivery, Runs};
 
 use crate::rows::{LAPSE, Row};
 use crate::seed::{Seeded, seeded, select_fleet};
@@ -19,7 +19,7 @@ use crate::support::Fixtures;
 
 /// The admission's stamped fence and delivery, its slot's token, and how
 /// many event rows it has.
-const DELIVERY: &str = "SELECT a.lease_fence, a.delivered_at IS NOT NULL, s.fencing_token, \
+const DELIVERY: &str = "SELECT a.run_fence, a.delivered_at IS NOT NULL, s.fencing_token, \
     (SELECT count(*) FROM fleet.events e WHERE e.event_id = a.id) \
     FROM fleet.admissions a LEFT JOIN runner.slots s ON s.fleet_id = a.fleet_id \
     WHERE a.id = $1";
@@ -38,12 +38,12 @@ async fn counted() -> (Fixtures, afd_db::Db) {
 /// The runner's claim on `fleet`, and every statement it sent.
 async fn claim_counted(
     owner: &afd_db::Db,
-    leases: &Leases,
+    runs: &Runs,
     runner: &Uuid7,
     fleet: &Uuid7,
 ) -> (Option<Acquired>, Ran) {
     let window = Window::open(owner).await;
-    let acquired = select_fleet(leases, runner, fleet).await;
+    let acquired = select_fleet(runs, runner, fleet).await;
     (acquired, window.close().await)
 }
 
@@ -68,9 +68,9 @@ async fn claim_opens_event_and_stamps_delivery() {
         event_id,
         tenant,
     } = seeded::<1>(&fixtures).await;
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
 
-    let (acquired, ran) = claim_counted(&owner, &leases, &runner, &fleet).await;
+    let (acquired, ran) = claim_counted(&owner, &runs, &runner, &fleet).await;
     let acquired = acquired.expect("the seeded fleet is claimed");
 
     assert_eq!(acquired.event_id, event_id);
@@ -95,7 +95,7 @@ async fn claim_opens_event_and_stamps_delivery() {
         "the scan and the claim: {:?}",
         ran.statements()
     );
-    drop(leases);
+    drop(runs);
     owner.close().await;
     fixtures.cleanup().await;
 }
@@ -121,19 +121,19 @@ async fn claim_on_archived_fleet_takes_nothing() {
         .execute(&mut *fixtures.database.acquire().await.expect("operator"))
         .await
         .expect("the operator archives the fleet");
-    let claimed = sqlx::query(afd_fleet::lease::sql::queue::CLAIM_HEAD)
+    let claimed = sqlx::query(afd_fleet::run::sql::queue::CLAIM_HEAD)
         .bind(&fleet)
         .bind(&runner)
-        .bind(af_core::timing::LEASE_TTL)
+        .bind(af_core::timing::RUN_TTL)
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-        .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-        .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
-        .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
+        .bind(afd_fleet::run::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_fleet::run::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
         .bind(af_wire::task::CAPABILITY)
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
-        .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+        .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
         .bind(status::RECEIVED)
         .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
@@ -164,17 +164,17 @@ async fn claim_redelivery_reports_repeat_in_one_statement() {
         event_id,
         ..
     } = seeded::<1>(&fixtures).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let first = select_fleet(&leases, &runner, &fleet)
+    let runs = fixtures.runs_with_dead_bus();
+    let first = select_fleet(&runs, &runner, &fleet)
         .await
         .expect("the first claim");
     assert_eq!(first.opened.received.delivery, Delivery::First);
 
-    // The holder stops renewing: a lapsed lease's admission is claimed again.
+    // The holder stops renewing: a lapsed run's admission is claimed again.
     fixtures
-        .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
+        .age(Row::Slot(&fleet), "run_expires_at", LAPSE)
         .await;
-    let (repeat, ran) = claim_counted(&owner, &leases, &runner, &fleet).await;
+    let (repeat, ran) = claim_counted(&owner, &runs, &runner, &fleet).await;
     let repeat = repeat.expect("the lapsed admission is claimed again");
     assert_eq!(repeat.event_id, event_id);
     assert_eq!(repeat.opened.received.delivery, Delivery::Repeat);
@@ -193,13 +193,13 @@ async fn claim_redelivery_reports_repeat_in_one_statement() {
         .await
         .expect("the event row finishes");
     fixtures
-        .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
+        .age(Row::Slot(&fleet), "run_expires_at", LAPSE)
         .await;
-    let (terminal, ran) = claim_counted(&owner, &leases, &runner, &fleet).await;
+    let (terminal, ran) = claim_counted(&owner, &runs, &runner, &fleet).await;
     let terminal = terminal.expect("the finished admission is claimed again");
     assert_eq!(terminal.opened.received.delivery, Delivery::Terminal);
     assert_eq!(ran.total(), 2, "no third statement: {:?}", ran.statements());
-    drop(leases);
+    drop(runs);
     owner.close().await;
     fixtures.cleanup().await;
 }
@@ -229,9 +229,9 @@ async fn claim_counters_include_its_own_event() {
     .execute(&mut *fixtures.database.acquire().await.expect("observer"))
     .await
     .expect("three earlier events");
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
 
-    let claimed = select_fleet(&leases, &runner, &fleet)
+    let claimed = select_fleet(&runs, &runner, &fleet)
         .await
         .expect("the seeded fleet is claimed");
     let counters = claimed

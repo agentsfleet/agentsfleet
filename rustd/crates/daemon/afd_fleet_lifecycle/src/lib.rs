@@ -3,7 +3,7 @@
 //! # Why this is its own crate
 //!
 //! It is the lifecycle AROUND a fleet, where `afd_fleet` is the runner plane
-//! that acts on one — leases, gates, budgets, memory. The two never call each
+//! that acts on one — runs, gates, budgets, memory. The two never call each
 //! other; they meet at `fleet.fleets`, one writing the row and the other reading
 //! it, which is a table and not a dependency.
 //!
@@ -49,8 +49,8 @@ use afd_db::Db;
 pub mod purge_statements {
     /// See `crate::sql::DELETE_FLEET`.
     pub const DELETE_FLEET: &str = crate::sql::DELETE_FLEET;
-    /// See `crate::sql::DELETE_ACTIVE_LEASES`.
-    pub const DELETE_ACTIVE_LEASES: &str = crate::sql::DELETE_ACTIVE_LEASES;
+    /// See `crate::sql::DELETE_ACTIVE_RUNS`.
+    pub const DELETE_ACTIVE_RUNS: &str = crate::sql::DELETE_ACTIVE_RUNS;
 }
 
 pub use self::access::{SecretAccess, SecretFleet};

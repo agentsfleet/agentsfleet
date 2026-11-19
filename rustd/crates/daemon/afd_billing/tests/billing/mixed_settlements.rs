@@ -1,4 +1,4 @@
-//! One lease retains independent model headers across lost settlements.
+//! One run retains independent model headers across lost settlements.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
 use std::{panic::AssertUnwindSafe, time::Duration};
@@ -109,7 +109,7 @@ async fn recovery(database: &Db, payer: &Account, fleet: &Uuid7) {
     assert_eq!(
         after.balance.as_i64(),
         BALANCE.as_i64() - 87_000,
-        "six unique lines across two leases charge once"
+        "six unique lines across two runs charge once"
     );
     assert_eq!(
         resettle(database, &biller, None)
@@ -159,7 +159,7 @@ async fn reconstruct(database: &Db, payer: &Account, expected: &mut [Settlement;
             .await
             .expect("all stored settlement headers reconstruct");
         assert!(resume.is_none(), "the complete page ends this lap");
-        assert_eq!(actual.len(), 5, "four model groups plus another lease");
+        assert_eq!(actual.len(), 5, "four model groups plus another run");
         for group in expected.iter() {
             assert!(
                 actual.contains(group),
@@ -178,7 +178,7 @@ async fn reconstruct(database: &Db, payer: &Account, expected: &mut [Settlement;
 }
 
 fn groups(payer: &Account, fleet: &Uuid7) -> [Settlement; 5] {
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     let attribution = Attribution::Fleet {
         fleet: fleet.clone(),
         fleet_name: FLEET_NAME.to_owned(),
@@ -201,7 +201,7 @@ fn groups(payer: &Account, fleet: &Uuid7) -> [Settlement; 5] {
         Posture::Platform,
         vec![line(0, 25_000)],
     );
-    other.work = WorkKey::FleetLease(mint_id());
+    other.work = WorkKey::FleetRun(mint_id());
     [
         group(
             "openai",

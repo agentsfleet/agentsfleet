@@ -101,7 +101,7 @@ fn every_list_route() -> Vec<ListRoute> {
             INVALID_REQUEST,
         ),
         ListRoute::new(
-            format!("/v1/admin/runners/{RUNNER}/leases"),
+            format!("/v1/admin/runners/{RUNNER}/runs"),
             100,
             INVALID_REQUEST,
         ),
