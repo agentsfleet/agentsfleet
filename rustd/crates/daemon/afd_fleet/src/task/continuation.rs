@@ -95,3 +95,7 @@ pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &Uuid7) ->
         ))?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "continuation_tests.rs"]
+mod tests;

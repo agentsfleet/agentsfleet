@@ -184,3 +184,25 @@ fn assert_fence(call: &crate::client::Call) {
         assert_eq!(query.get("fencing_token").unwrap(), &FENCING.to_string());
     }
 }
+
+#[tokio::test]
+async fn an_effect_identifier_that_is_not_a_uuid_is_refused_without_a_call() {
+    let (plane, mut calls) = plane(|_call| Answer::Fail(error::config("unexpected effect read")));
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let host = Host::new();
+    let verbs = FencedVerbs::new(
+        &plane,
+        &lease,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
+    assert_eq!(
+        verbs.task_effect("not-an-effect").await.err(),
+        Some(Unanswered::Refused(Some(
+            error_code::INTERNAL_OPERATION_FAILED
+        )))
+    );
+    assert_eq!(crate::test_support::drain(&mut calls).len(), 0);
+}

@@ -251,3 +251,41 @@ async fn test_every_code_answers_its_registered_status() {
         assert_eq!(json["error_code"], problem.code().as_str());
     }
 }
+
+/// A publication conflict carries the saved effect beside the base envelope.
+///
+/// A worker recovering an uncertain publication reads the effect identity off
+/// the refusal rather than issuing another write.
+#[tokio::test]
+async fn test_an_effect_conflict_carries_the_saved_effect() {
+    let effect = af_wire::task::TaskEffect {
+        effect_id: "019f0000-0000-7000-8000-000000000001".to_owned(),
+        ordinal: 3,
+        state: af_wire::task::TaskEffectState::Unknown,
+        expected_head: "a".repeat(40),
+        tested_tree: "b".repeat(40),
+        commit: None,
+        pull_request_url: "https://github.com/acme/widgets/pull/7".to_owned(),
+    };
+    let (status, content_type, json) = render(ProblemResponse::effect_conflict(
+        error_code::AUTH_UNAUTHORIZED,
+        "the publication is uncertain",
+        "req-effect",
+        effect.clone(),
+    ))
+    .await;
+
+    assert_eq!(status, 401, "the code owns its status, not the call site");
+    assert_eq!(content_type, CONTENT_TYPE_PROBLEM_JSON);
+    assert_eq!(json["detail"], "the publication is uncertain");
+    assert_eq!(json["request_id"], "req-effect");
+    assert_eq!(
+        json["effect"],
+        serde_json::to_value(&effect).expect("an effect serialises")
+    );
+    assert_eq!(json["effect"]["state"], "unknown");
+    assert!(
+        json.get("current_state").is_none(),
+        "an effect conflict carries no other extension"
+    );
+}

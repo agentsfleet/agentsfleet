@@ -127,3 +127,8 @@ fn should_read_a_future_date_as_the_wait_until_it() {
         "{wait:?}"
     );
 }
+
+#[test]
+fn the_default_retry_policy_is_the_existing_provider_behavior() {
+    assert_eq!(super::RetryPolicy::default(), super::RetryPolicy::DEFAULT);
+}

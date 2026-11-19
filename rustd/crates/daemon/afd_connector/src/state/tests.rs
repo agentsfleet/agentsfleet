@@ -260,3 +260,19 @@ fn every_rejection_carries_its_own_word_for_the_log() {
         assert!(!later.contains(one), "`{one}` is reused");
     }
 }
+
+/// The debug view names the workspace and never the starter's tag or the nonce.
+#[test]
+fn a_verified_state_prints_only_its_workspace() {
+    let verified = Verified {
+        authenticated_subject: Some(STARTER.to_owned()),
+        workspace: WORKSPACE.to_owned(),
+        subject_tag: "private-subject-tag".to_owned(),
+        nonce: NONCE.to_owned(),
+    };
+
+    assert_eq!(
+        format!("{verified:?}"),
+        format!("Verified {{ workspace: {WORKSPACE:?}, .. }}")
+    );
+}

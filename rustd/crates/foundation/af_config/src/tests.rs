@@ -164,3 +164,16 @@ fn file_access_failure_preserves_its_io_source() -> TestResult {
     assert!(source.is::<std::io::Error>());
     Ok(())
 }
+
+#[test]
+fn the_debug_view_names_the_selected_file_and_not_its_overlays() {
+    assert_eq!(
+        format!("{:?}", ConfigBuilder::default()),
+        "ConfigBuilder { file: None, .. }"
+    );
+    let selected = ConfigBuilder::default().file(Some(Path::new("agentsfleet.toml")));
+    assert_eq!(
+        format!("{selected:?}"),
+        r#"ConfigBuilder { file: Some("agentsfleet.toml"), .. }"#
+    );
+}

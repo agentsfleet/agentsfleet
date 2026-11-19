@@ -165,3 +165,7 @@ pub(super) fn path(parts: &[&str]) -> Result<String> {
         .extend(parts);
     Ok(url.path().to_owned())
 }
+
+#[cfg(test)]
+#[path = "http_tests.rs"]
+mod tests;

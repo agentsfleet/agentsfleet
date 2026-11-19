@@ -102,3 +102,7 @@ fn complete(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "manifest_tests.rs"]
+mod tests;

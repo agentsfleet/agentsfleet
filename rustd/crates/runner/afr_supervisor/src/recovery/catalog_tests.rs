@@ -180,3 +180,51 @@ fn chunk_diagnostics_never_include_the_private_history_buffer() -> crate::Result
     assert!(!description.contains("private accepted repair history"));
     Ok(())
 }
+
+fn refused_as(result: crate::Result<impl std::fmt::Debug>, expected: &str) -> crate::Result<()> {
+    let Err(failure) = result else {
+        return Err(crate::error::config(
+            "an incomplete registration was accepted",
+        ));
+    };
+    assert!(
+        matches!(failure.kind(), crate::error::ErrorKind::Config { detail } if *detail == expected),
+        "{failure:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn history_without_registered_objects_cannot_name_a_root_or_a_page() -> crate::Result<()> {
+    let catalog = Catalog::build(
+        None,
+        Zeroizing::new(b"private history".to_vec()),
+        vec![],
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    let unregistered = BTreeMap::new();
+    refused_as(
+        catalog.history_root(&unregistered),
+        "checkpoint history registration is incomplete",
+    )?;
+    refused_as(
+        catalog.pages(Some(&unregistered), af_wire::task::CHECKPOINT_PAGE_BYTES),
+        "checkpoint history registration is incomplete",
+    )
+}
+
+#[test]
+fn a_file_without_registered_objects_cannot_name_a_page() -> crate::Result<()> {
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join("data"), b"contents")?;
+    let catalog = Catalog::build(
+        Some(&Arc::new(Workspace::open(root.path())?)),
+        Zeroizing::new(Vec::new()),
+        Vec::new(),
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    refused_as(
+        catalog.pages(Some(&BTreeMap::new()), af_wire::task::CHECKPOINT_PAGE_BYTES),
+        "checkpoint file registration is incomplete",
+    )
+}

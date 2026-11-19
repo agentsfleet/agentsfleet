@@ -115,3 +115,35 @@ fn inconsistent_keys_and_unbounded_recall_state_cannot_restore() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn an_overlay_larger_than_one_push_is_refused_by_its_bound() -> TestResult {
+    use garde::Validate as _;
+    let content = "a".repeat(af_wire::memory::MAX_CONTENT_LEN);
+    let pending = (0..17)
+        .map(|index| entry(&format!("k{index:02}"), &content))
+        .collect();
+    let Err(report) = MemoryRecovery::new(pending, vec![], 0).validate() else {
+        return Err("seventeen full entries fit one push".into());
+    };
+    assert!(
+        report
+            .iter()
+            .any(|(_, error)| error.message() == "the memory overlay exceeds one push"),
+        "{report}"
+    );
+    Ok(())
+}
+
+#[test]
+fn the_debug_view_counts_the_overlay_without_printing_it() {
+    let recovery = MemoryRecovery::new(
+        vec![entry("private-key", "private content")],
+        vec!["hidden".to_owned()],
+        2,
+    );
+    assert_eq!(
+        format!("{recovery:?}"),
+        "MemoryRecovery { pending_count: 1, hidden_count: 1, recall_misses: 2 }"
+    );
+}

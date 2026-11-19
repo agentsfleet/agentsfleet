@@ -174,3 +174,7 @@ impl Session<'_> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "status_tests.rs"]
+mod tests;
