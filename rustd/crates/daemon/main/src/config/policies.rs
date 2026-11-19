@@ -11,7 +11,7 @@ pub(super) fn read(
         .map_err(|report| invalid(format!("fleet.tasks: {report}")))?;
     let authoring = garde::Unvalidated::new(settings.authoring.turn)
         .validate()
-        .map_err(|report| invalid(format!("setup.turn: {report}")))?;
+        .map_err(|report| invalid(format!("authoring.turn: {report}")))?;
     Ok(OperationalSettings {
         outbound_retries: afd_outbound::retry::RetryPolicy::new(
             &garde::Unvalidated::new(settings.outbound.retries)
@@ -92,14 +92,14 @@ mod tests {
             "provider_timeout_seconds=301",
         ] {
             let mut file = tempfile::NamedTempFile::new()?;
-            write!(file, "[setup.turn]\n{setting}")?;
+            write!(file, "[authoring.turn]\n{setting}")?;
             let environment = MapEnv::default();
             let failure = ConfigBuilder::new(&environment)
                 .file(Some(file.path()))
                 .build()
                 .err()
                 .ok_or("invalid authoring policy must refuse startup")?;
-            assert!(failure.to_string().contains("setup.turn"));
+            assert!(failure.to_string().contains("authoring.turn"));
         }
         Ok(())
     }
