@@ -6,7 +6,7 @@ Each scenario follows one user outcome from its trigger to its result. Each page
 |---|---|
 | [`slack-incident-responder.md`](./slack-incident-responder.md) | A mention in a failed Continuous Integration (CI) run's Slack thread reaches exactly one fleet, which answers in that thread with GitHub and Grafana evidence; asked to, the channel's repairer opens one draft fix Pull Request (PR). Zero, one, and several fleets per channel. Built in M206; the live drill is pending. |
 | [`durable-repair.md`](./durable-repair.md) | One three-PR repair scenario: ordinary chat and steering, one active lease, exact-head CI, worker replacement, and controlled Grafana/Slack outcomes. Source exists; combined live acceptance remains unfinished. |
-| [`chief-of-staff.md`](./chief-of-staff.md) | Proposed: a person reaches a fleet by its name in the chat, the command line and Slack, and a fleet steers another fleet by id, hears back, and reads other fleets' status and answers with no API key. M252_001 owns the proofs. |
+| [`chief-of-staff.md`](./chief-of-staff.md) | A person reaches a fleet by its name in the chat, the command line and Slack, and a fleet steers another fleet by id, hears back, and reads other fleets' status and answers with no API key. M252_001 owns the proofs. |
 
 The durable-repair scenario extends the current manual Slack/draft path; it does not mark that extension shipped.
 Production launch follows written M23x specifications and demonstrated development autonomy.

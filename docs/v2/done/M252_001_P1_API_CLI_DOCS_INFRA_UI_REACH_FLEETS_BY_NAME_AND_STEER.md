@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 19, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, a person relays work between fleets and copies UUIDs to talk to them, and a chief-of-staff fleet cannot exist
 
@@ -64,7 +64,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/active/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md` | EDIT, then MOVE to `docs/v2/done/` | this spec |
+| `docs/v2/done/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md` | EDIT, then MOVE to `docs/v2/done/` | this spec |
 | `docs/architecture/scenarios/chief-of-staff.md`; `docs/architecture/scenarios/README.md`; `docs/architecture/data_flow.md`; `docs/architecture/README.md` | EDIT (spec commit) | the one scenario page and its pointers; "proposed" removed at close |
 | `docs/architecture/runner_execution.md`; `docs/architecture/scenarios/slack-incident-responder.md`; `docs/architecture/api_resources.md` | EDIT (with the code) | the two tools in §"Tool catalog"; the Slack routing name; the list route's `name` filter |
 | `tests/fixtures/fleet-address/cases.json`; `tests/fixtures/fleets/chief-of-staff/definition.json`; `tests/fixtures/fleets/runner-link-watch/definition.json`; `tests/fixtures/fleets/fleet-to-fleet/cases.json` | CREATE (spec commit) | the address case table; the two fleets of the live test; the hand-graded eval cases. No test reads them by enumeration |
@@ -86,6 +86,10 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `ui/packages/app/components/domain/conversation/delivery/useFleetMessageDelivery.ts`; `delivery/useFleetMessageDelivery.test.tsx`; `conversation/thread/FleetThread.tsx`; `conversation/composer/useFleetUploadPreviews.ts` | EDIT | an addressed send resolves, posts to the named fleet and opens its chat; the context gains the open fleet's name and a way to open a fleet |
 | `ui/packages/app/lib/events/event-summary.ts`; `lib/events/event-summary.test.ts`; `lib/events/sender-names.ts`; `lib/events/sender-names.test.ts` | EDIT | a `fleet:` row is a user-side turn labelled "Another fleet" |
 | `ui/packages/app/tests/e2e/fleet-address.spec.ts`; `tests/e2e/fleet-steer-row.spec.ts`; `tests/e2e/fixtures/chat-address-probe.tsx`; `tests/e2e/fixtures/chat-browser-probe.tsx` | CREATE / EDIT | the two dry-lane scenarios and the probe that mounts the real delivery hook |
+| `docs/architecture/scenarios/github-pr-reviewer.md`; `production-deploy-repair.md`; `two-fleets-github-slack.md` | DELETE | the three stale scenario pages the owner removed |
+| `docs/AUTH.md`; `docs/architecture/lease_flow.md`; `sandbox_evaluation.md`; `user_flow.md`; `docs/reviews/workspace-setup/*`; `docs/v2/reviews/m102-doc-shape-review.md`; `docs/v2/evidence/M249_PLUGIN_PRODUCT_REASSESSMENT.md` | EDIT | the links to the removed pages, and the pointer from the M239 quote to this spec |
+| `.orly/orly.json`; `.orly/standards/domains/sql.md` | EDIT | the orly 0.60.2 update, in this Pull Request by the owner's instruction |
+| `docs/metrics.runner.census.tsv`; `rustd/crates/daemon/afd_api/src/openapi/stability/mod.rs` | EDIT | the tool-call series ceiling 120 to 126; the new response schemas declared beta |
 | `playbooks/operations/acceptance/baselines/M252_001-<sha>.md` | CREATE (after merge) | the live test's evidence ledger |
 | `~/Projects/docs`: the runner routes, the tools page, the `fleet steer` command page, the fleets list reference, the Slack page, the changelog entry | EDIT | on its own branch after this repository's Pull Request merges |
 
@@ -137,6 +141,7 @@ Two reads behind the lease, with no new statement. Both prove the lease through 
 - **Dimension 1.3** — DONE — no live lease, no read → Test `fleets_read_refuses_a_lease_the_runner_does_not_hold` (integration): a settled lease id → 404 `UZ-RUN-006`; another runner's lease id → 404 `UZ-RUN-006`; a stale `fencing_token` → 409 `UZ-RUN-005` whose body carries `current_state` `superseded`.
 - **Dimension 1.4** — DONE — the excerpt is bounded → Test `fleets_read_excerpt_is_bounded` (unit): a 10 KiB answer with a three-byte character spanning byte 1024 → an excerpt of 1022 bytes ending before that character.
 - **Dimension 1.5** — DONE — undeclared, unoffered → Test `fleet_tools_are_offered_only_when_declared` (unit): `Catalog::select` over a `tools` list without the two names offers neither, and over a list with them offers both; `PUBLISHED` holds 41 entries and `every_published_handler_entry_is_hosted` passes.
+- **Dimension 1.6** — DONE — the reads page, bound and cut → Tests `fleets_read_walks_its_pages`, `events_read_walks_its_pages_and_cuts_answers` and `fleets_reads_refuse_a_bad_bound_cursor_and_missing_fence` (integration): four fleets walk in two pages of two with no cursor on the last; three events walk in a page of two and a page of one, the longest answer cut before the character that straddles 1,024 bytes; `limit=0`, `limit=26`, a `starting_after` of `garbage` and a read with no `fencing_token` are each 400 with the route's sentence.
 
 ### §2 — `fleet_steer`: put work on a fleet by id through the steer admission
 
@@ -156,7 +161,7 @@ The handler composes `Services` as the schedule create handler does, with no new
 
 **Implementation default:** the key hashes the masked text, because only the model retries a verb, and a hash taken after masking holds nothing derived from a secret. The same words to the same fleet in one event return the first run; different words are new work. **Implementation default:** the text bound is `STEER_MESSAGE_MAX_BYTES` (8192), a person's bound. **Implementation default:** the guard takes a shared lock on the lease row, as `WriteFence` does for a schedule write, and the statement then locks the target's fleet row; nothing in the transaction updates the lease row. **Implementation default:** a conflict means a person sent that operation id to the target first, or the sender was renamed between the send and its resend, since the stored body holds the sender's name.
 
-- **Dimension 2.1** — DONE — once per text, under the fleet actor, to any fleet in the workspace → Test `fleet_steer_admits_once_under_the_fleet_actor` (integration): two active fleets with no relation to each other, the second seeded by the new helper; 20 concurrent calls from one to the other with one text → one `fleet.admissions` row; producer `steer`; actor `fleet:<sender>`; `event_type` `chat`; `request_json` equals the expected `FleetSteerBody`; every caller reads that `event_id`, exactly one of them with `replayed` false; a later resend reads that `event_id` with `replayed` true.
+- **Dimension 2.1** — DONE — once per text, under the fleet actor, to any fleet in the workspace → Test `fleet_steer_admits_once_under_the_fleet_actor` (integration): two active fleets with no relation to each other, the second seeded by the new helper; 100 calls from one to the other with one text, released together from a `tokio::sync::Barrier` with a peak in flight above one, → one `fleet.admissions` row; producer `steer`; actor `fleet:<sender>`; `event_type` `chat`; `request_json` equals the expected `FleetSteerBody`; every caller reads that `event_id`, exactly one of them with `replayed` false; a later resend reads that `event_id` with `replayed` true.
 - **Dimension 2.2** — DONE — the answer lands where the sender was asked → Test `fleet_steer_copies_the_sender_reply_destination` (integration): sender event with a Slack destination → target admission carries the same `reply_provider` and `reply_address`; sender with none → target carries none; `an_inherited_destination_is_copied_from_the_named_row` (`afd_admission/tests/receipts/lookups.rs`) and `continuation_inherits_the_resumed_destination` (`afd_fleet/tests/integration_reply_destination.rs`) still pass.
 - **Dimension 2.3** — DONE — the wrong target is refused with nothing written → Test `fleet_steer_refuses_self_other_workspace_and_inactive_targets` (integration): the sender's own id → 409 `UZ-AGT-018` `current_state` `self`; a fleet in another workspace → 404 `UZ-AGT-009`; an archived fleet → 409 `UZ-AGT-012` `current_state` `archived`; an installing fleet → 409 `UZ-AGT-012` `current_state` `installing`; a fleet whose setup needs review → 409 `UZ-AUTHOR-009`; zero admission rows after each.
 - **Dimension 2.4** — DONE — a fleet's steer is not a person's → Test `fleet_steer_is_not_a_person_steer_to_onboarding_and_filters` (integration): after a fleet steer, onboarding's first-steer read stays false and `actor_prefix=steer:` returns no row for it.
@@ -172,6 +177,11 @@ The handler composes `Services` as the schedule create handler does, with no new
 - **Dimension 2.14** — DONE — nothing limits the count → Test `fleet_steer_has_no_per_run_limit` (integration): one lease sends 20 steers with distinct texts to one target → 20 admission rows, each a 202 with `replayed` false.
 - **Dimension 2.15** — DONE — a sender that is no longer installed steers nothing → Test `fleet_steer_refuses_a_sender_that_is_no_longer_installed` (integration): the sender fleet is archived while its lease is live, then it steers → 404 `UZ-RUN-006`, zero rows.
 - **Dimension 2.16** — DONE — each outcome logs once, with no text → Test `fleet_steer_logs_its_refusal_and_its_admission` (unit, beside the handler): the two log functions, called under `af_core`'s per-thread trace `Capture` and filtered on their event names, emit one `runner_fleet_steer_refused` and one `runner_fleet_steer_admitted`, each with exactly the properties Metrics allows.
+- **Dimension 2.17** — DONE — a lease that settled steers nothing → Test `fleet_steer_refuses_a_settled_lease` (integration): the seeded run reports, then a steer under that lease and fence → 404 `UZ-RUN-006`, zero rows.
+- **Dimension 2.18** — DONE — the route says what is wrong with a body → Test `fleet_steer_refuses_bad_bodies_with_the_route_sentences` (integration): a target that is not an id, an empty text, a NUL, an unknown field and a body with no fence are each 400 with `fleet_id must be a valid UUIDv7`, `text must be 1 to 8192 bytes with no NUL` or `Malformed steer body`, and nothing is written.
+- **Dimension 2.19** — DONE — a refusal inside the guarded transaction writes nothing → Test `guarded_admission_writes_nothing_when_the_fleet_is_not_runnable` (integration, in `afd_admission/tests/receipts/guarded.rs`): `admit_runnable_guarded` with a guard that holds, on an archived fleet → `NotRunnable` with `Archived` and zero rows. The deployment ceiling refuses through the same verdict, which the crate's unit tests cover; the live lane cannot lower it.
+- **Dimension 2.20** — DONE — a reply destination is inherited only inside its own workspace → Test `inherit_copies_a_destination_only_inside_its_own_workspace` (integration, in `afd_admission/tests/receipts/inherit.rs`): an admission naming an event of the same workspace takes that event's destination; one naming an event of another workspace is admitted with none.
+- **Dimension 2.21** — DONE — a fleet's steer reaches the live tail with its sender line → Test `a_fleet_steer_shows_its_sender_line_and_has_no_person_bound` (unit, in `afd_fleet/src/lease/bracket.rs`): a `fleet:` actor's message is the sender line then the words, at the person bound it is still shown, and a body that does not parse shows nothing and warns once without its text.
 
 ### §3 — A fleet's name finds it: the list filter, the address rule and the command line
 
@@ -317,19 +327,19 @@ No product analytics event changes. The message route and the mention route log 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A fleet lists its workspace's fleets and one fleet's events, and nothing beyond the workspace (§1) | `make test-integration-rustd` | exit 0; Dimensions 1.1 to 1.3 pass | P0 | |
-| R2 | A fleet steer admits once under `fleet:<id>`, answers in the sender's thread, tells the target who asked, and nothing limits the chain or the count (§2) | `make test-integration-rustd` | exit 0; Dimensions 2.1, 2.2, 2.7, 2.8, 2.9, 2.13 and 2.14 pass | P0 | |
-| R3 | Self, cross-workspace, inactive, lost-lease, uninstalled-sender and key-collision steers write nothing (§2) | `make test-integration-rustd` | exit 0; Dimensions 2.3, 2.4, 2.5, 2.11, 2.12 and 2.15 pass | P0 | |
-| R4 | A fleet is found by its saved name through the list and through Slack, inside its workspace and channel only (§3, §5) | `make test-integration-rustd` | exit 0; Dimensions 3.1, 3.3, 5.1 and 5.3 pass | P0 | |
-| R5 | The command line reaches a fleet by `@name`; the parsers, bounds, tools, routes, code, label and logs hold (§1 to §6) | `make test-unit-all` | exit 0; Dimensions 1.4, 1.5, 2.6, 2.10, 2.16, 3.2, 3.4 to 3.7, 5.2 and 6.1 to 6.3 pass | P0 | |
-| R6 | The dashboard sends an addressed message to the named fleet and shows a fleet-steered row (§4, §6) | `make dry-app` | exit 0; Dimensions 4.1 to 4.7 and 6.4 pass | P1 | |
-| R7 | The chief of staff and `runner-link-watch` talk on `api-dev` (§7) | Manual: Dimension 7.1; evidence in `playbooks/operations/acceptance/baselines/M252_001-<sha>.md` | all four steps observed | P1 | |
-| S1 | Declared lint | `make lint-all` | exit 0 | P0 | |
-| S2 | Declared unit | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Declared integration | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Declared version | `make check-version` | exit 0 | P0 | |
-| S5 | Required Pull Request gate | `orly gate pr` | exit 0 at the pushed head | P0 | |
-| S6 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| R1 | A fleet lists its workspace's fleets and one fleet's events, and nothing beyond the workspace (§1) | `make test-integration-rustd` | exit 0; Dimensions 1.1 to 1.3 and 1.6 pass | P0 | ✅ `✓ [rustd] integration suite — 1846 passed` (+ exclusive: 2 passed) |
+| R2 | A fleet steer admits once under `fleet:<id>`, answers in the sender's thread, tells the target who asked, and nothing limits the chain or the count (§2) | `make test-integration-rustd` | exit 0; Dimensions 2.1, 2.2, 2.7, 2.8, 2.9, 2.13, 2.14 and 2.20 pass | P0 | ✅ `✓ [rustd] integration suite — 1846 passed` (+ exclusive: 2 passed) |
+| R3 | Self, cross-workspace, inactive, lost-lease, uninstalled-sender and key-collision steers write nothing (§2) | `make test-integration-rustd` | exit 0; Dimensions 2.3, 2.4, 2.5, 2.11, 2.12, 2.15, 2.17, 2.18 and 2.19 pass | P0 | ✅ `✓ [rustd] integration suite — 1846 passed` (+ exclusive: 2 passed) |
+| R4 | A fleet is found by its saved name through the list and through Slack, inside its workspace and channel only (§3, §5) | `make test-integration-rustd` | exit 0; Dimensions 3.1, 3.3, 5.1 and 5.3 pass | P0 | ✅ `✓ [rustd] integration suite — 1846 passed` (+ exclusive: 2 passed) |
+| R5 | The command line reaches a fleet by `@name`; the parsers, bounds, tools, routes, code, label and logs hold (§1 to §6) | `make test-unit-all` | exit 0; Dimensions 1.4, 1.5, 2.6, 2.10, 2.16, 2.21, 3.2, 3.4 to 3.7, 5.2 and 6.1 to 6.3 pass | P0 | ✅ `✓ All unit lanes passed` (Rust: 5555 passed, 0 failed) |
+| R6 | The dashboard sends an addressed message to the named fleet and shows a fleet-steered row (§4, §6) | `make dry-app` | exit 0; Dimensions 4.1 to 4.7 and 6.4 pass | P1 | ✅ `142 passed (3.4m)`; the app package is unchanged since that run |
+| R7 | The chief of staff and `runner-link-watch` talk on `api-dev` (§7) | Manual: Dimension 7.1; evidence in `playbooks/operations/acceptance/baselines/M252_001-<sha>.md` | all four steps observed | P1 | ⏳ after merge, by the owner's quote in Discovery |
+| S1 | Declared lint | `make lint-all` | exit 0 | P0 | the final `orly gate pr` run, in the Pull Request Session Notes |
+| S2 | Declared unit | `make test-unit-all` | exit 0 | P0 | the final `orly gate pr` run, in the Pull Request Session Notes |
+| S3 | Declared integration | `make test-integration-rustd` | exit 0 | P0 | the final `orly gate pr` run, in the Pull Request Session Notes |
+| S4 | Declared version | `make check-version` | exit 0 | P0 | the final `orly gate pr` run, in the Pull Request Session Notes |
+| S5 | Required Pull Request gate | `orly gate pr` | exit 0 at the pushed head | P0 | the final `orly gate pr` run, in the Pull Request Session Notes |
+| S6 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | the final `orly gate pr` run, in the Pull Request Session Notes |
 
 R7 is graded after merge and does not hold this spec in `active/`: Indy ruled on Nov 19 that the live test runs once M247 and M252 are both on `main` and the dev database is rebuilt, and that it "shoudlnt deter the M252 to be moved to done" (Discovery, SPEC-SHIP).
 
@@ -342,7 +352,7 @@ R7 is graded after merge and does not hold this spec in `active/`: Indy ruled on
 
 ## Dead Code Sweep
 
-N/A: no files deleted.
+Three scenario pages are deleted, each by the owner's instruction below, and every link to them is removed in the same commit: `docs/architecture/scenarios/github-pr-reviewer.md`, `production-deploy-repair.md` and `two-fleets-github-slack.md`. `docs/architecture/scenarios/fleet-to-fleet.md` is renamed `chief-of-staff.md`. No source file is deleted.
 
 ## Out of Scope
 
@@ -382,6 +392,7 @@ N/A: no files deleted.
 - **Model reviews** — Elephant-Goldfish Model (EGM) implementation-readiness and codebase-details Goldfish (Claude Fable 5.2, Nov 19, 2026), six reviewer runs across the two drafts this spec merges: 7 blockers, 36 majors and 36 nits in total, all fixed or retired with the limits and the Slack `@` form Indy removed; one nit declined as changing nothing. The merged text has had no model review.
 - **Agent choices for Indy** — the steer proves the lease with the existing write guard inside the admission's transaction; `fleet_activity`'s list carries no last-event fields, which saves a statement; the dashboard opens the named fleet's chat after an addressed send and shows its existing refused notice for an unknown name; Slack matches the saved name; the live test's `runner-link-watch` fixture is a copy of the teaser with `fleet_steer` and one report-back rule added, and the original folder is untouched.
 - **Open blockers** — none.
+- **Review (Nov 19, 2026)** — Claude Fable 5.2 reviewers on the pushed diff: Testing, Maintainability, Security, Performance, API Contract, Design, Simplification, State Machines, Red Team, an adversarial pass, and the orly standards reviewer. Fixed: the committed `next-env.d.ts`, milestone and dimension tokens in code, files and functions over the size caps, the exactly-once proof at 100 callers, the untested paging, bound, cursor, settled-lease, route-sentence, reply-scope and `fleet:` frame paths, the stability class of the new response fields, a doubled failure log, the unused `SteerSender.name`, the repeated events limit and two over-long sentences. Accepted and named in the Pull Request: `select_fleet_by_name.sql` repeats the page statement's columns; the dashboard routes on `senderLabel`, which equals the saved name today; a viewer who leaves a chat while an addressed send resolves is moved to the addressed fleet; a sender renamed between a send and its retry reads the retry as a conflict; a person's operation id can pre-claim a fleet steer's key only by guessing both an event id and the digest of its words.
 - **Build departures (Nov 19, 2026)** — files outside Files Changed, each for a stated reason:
   - `afd_events/src/steer/fleet.rs` holds the fleet steer, because `steer/mod.rs` sits at 343 lines.
   - `afd_events/src/lib.rs` re-exports `afd_admission::Unheld`, because `afd_http` does not depend on `afd_admission`.
@@ -393,6 +404,7 @@ N/A: no files deleted.
   - `afd_api/tests/integration_slack_mention/fixture.rs` gains `fleet_saved_as`, for a saved name the definition does not carry.
   - `cli/src/commands/fleet/steer-target.ts` holds the name lookup, because `steer.ts` sits at its length cap.
   - `useFleetMessageDelivery.address.test.tsx` holds the delivery address tests, because the existing test file sits at 349 lines.
+  - The steer's offer-reading helpers sit in `main/tests/support/e2e_steer_offers.rs`, and `afr_tools/src/testing.rs` became `testing/mod.rs` and `testing/recorded.rs`, to hold the size caps; `afd_api_runner/src/lib.rs` aliases its checkpoint handler path for the same reason.
   - `fleet_activity`'s list takes the shared list ceiling, default 50; its events read takes 20 by default and 25 at most.
   - `docs/metrics.runner.census.tsv` raises `agentsfleet_runner_tool_call_duration_seconds` from `fixed:120` to `fixed:126`: the two tools add 2 × 3 outcomes to its closed label product, as `3f103a306` raised it from 108.
 - **Deferrals and transfers** — R7, the live test, is deferred to after merge by Indy's quote below.
@@ -408,5 +420,8 @@ N/A: no files deleted.
 > Owner (Indy, Nov 19, 2026, time not recorded): "Donot cap any steers, i assume this is a configurable toml?" — context: no per-run cap; no configuration key is added.
 > Owner (Indy, Nov 19, 2026, time not recorded): "Yes workspace is fine for now, account or tenant is out of scope" — context: the scope.
 > Owner (Indy, Nov 19, 2026, time not recorded): "I want to do the easist option to implement now. I want the spec to be realized and implemented in this PR as well." — context: the implementation lands in this Pull Request.
+> Owner (Indy, Nov 19, 2026, time not recorded): "Okay remove the production-deploy-repair.md, two-fleets-github-slack.md, github-pr-reviewer.md" — context: the three scenario pages are deleted in this Pull Request.
+> Owner (Indy, Nov 19, 2026, time not recorded): "i think orly 0.60.2 must go in this PR and explain ascii flow pictorial" — context: `.orly/orly.json` and `.orly/standards/domains/sql.md` ride this Pull Request.
+> Owner (Indy, Nov 19, 2026, time not recorded): "Yes start on the M252_001, ideally i want both of them in one 1PR, along with any orly updates rename the fleet-to-fleet to chief-of-staff.md and go" — context: one Pull Request holds the spec, the docs, the fixtures, the code and the orly update.
 > Owner (Indy, Nov 19, 2026, time not recorded): "live crew test is after the PR is merged -  you can note that down on the spec, this shoudlnt deter the M252 to be moved to done. Since the db needs to teardown after M247 is pushed and yours and tested in one go." — context: R7 and Dimension 7.1 are graded after merge and do not block the move to `done/`.
 > Owner (Indy, Nov 19, 2026, time not recorded): "review both specs before you start and the scenario to see if we can merge to one spec we test all? not three? since i have a simple /Users/kishore/Projects/agentsfleet-fleets/runner-link-watch teasor to start my testing, do you think we move that teasor into the scnearios too? I want the docs to be simple" — context: one spec, one scenario page, and the teaser as the live test (§7).

@@ -1,8 +1,8 @@
 # Scenario — Chief of staff: reach any fleet by name, and let one fleet run the others
 
-> Parent: [`README.md`](./README.md) · Spec: `docs/v2/active/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md`
+> Parent: [`README.md`](./README.md) · Spec: `docs/v2/done/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md`
 
-> **Proposed.** The spec owns the proofs; this page owns the shape.
+> M252_001 owns the proofs; this page owns the shape.
 
 **Outcome under test:** a person reaches any fleet by its name, and a fleet hands work to any fleet in its workspace and hears back. Nobody copies a UUID, and nobody relays between fleets.
 
@@ -43,7 +43,7 @@ runner-link-watch   runs under its own grants and budget
 chief-of-staff      wakes for a second run:  "runner-link-watch: no action needed"
 ```
 
-A digest is the same fleet reading without steering: `fleet_activity()` lists every fleet with its status, and one more read per fleet gives its latest result.
+A digest is the same fleet reading without steering. `fleet_activity()` lists every fleet with its status, and one more read per fleet gives its latest result.
 
 ## 3. The rules that bound it
 
@@ -53,7 +53,7 @@ A digest is the same fleet reading without steering: `fleet_activity()` lists ev
 - The fleet's `tools` list is the only consent. Nothing lists targets, limits the chain or caps the count.
 - Authority never widens. The target runs under its own revision, grants, gates and budget, and a steer carries text, never policy.
 - A fleet's steer runs as its own run. A resent steer admits once. A runner that lost its lease writes none.
-- Prompt injection is accepted, and stated. A fleet that reads untrusted text and holds `fleet_steer` can be told to steer any fleet in its workspace; each target's own gates and budget bound the damage.
+- Prompt injection is accepted, and stated. A fleet that reads untrusted text and holds `fleet_steer` can be told to steer any fleet in its workspace. Each target's own gates and budget bound the damage.
 
 ## 4. Not this feature
 

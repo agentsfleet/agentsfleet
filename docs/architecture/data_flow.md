@@ -493,7 +493,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 
        actor         steer:<user> | steer:api | webhook:<source> | github-app
                      | cron:<schedule_id> | continuation:<event_id> | slack:<user>
-                     | fleet:<fleet_id>  (proposed, scenarios/chief-of-staff.md)
+                     | fleet:<fleet_id>  (scenarios/chief-of-staff.md)
        type          chat | webhook | cron | continuation
        workspace_id  <uuid>
        request       <opaque JSON — the message + metadata>
@@ -513,7 +513,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                  A folded message is claimed by the live run at its next
                  model call and its event gets the run's reply.
 
-   FLEET      proposed (scenarios/chief-of-staff.md): a fleet's run calls
+   FLEET      (scenarios/chief-of-staff.md): a fleet's run calls
    STEER        fleet_steer → POST /v1/runners/me/leases/{lease_id}/steers
                → the same INSERT: actor=fleet:<sender_fleet_id>  type=chat
                  key <target_fleet_id>:<sender_event_id>:<text digest>

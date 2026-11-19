@@ -96,7 +96,7 @@ AgentPhone can therefore be a fleet. The phone number remains a resource; the pr
 A real-time voice path needs appropriate provider or audio support whichever product label is chosen.
 
 A dedicated fleet makes sense for an independent purpose, context, ownership, budget or schedule. Another fleet also brings communication, routing and coordination work.
-The [fleet-to-fleet discussion](../active/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md) is an alternative to capability composition, not evidence that composition is required.
+The [fleet-to-fleet discussion](../done/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md) is an alternative to capability composition, not evidence that composition is required.
 
 If the existing fleet only needs another permitted action or input channel, a connector and tools might already suffice.
 A Plugin earns an additional concept only when reusable packaging, scoped resources, event routing or versioned distribution improves that experience.
@@ -225,6 +225,8 @@ Recorded November 11, 2026 during the app refresh review. This note adds context
 >
 > Owner: "Flow 2: apply capabilities to an existing fleet. What is this exactly a plugin, and existing fleet how will this use this capability and when. Will the original fleet may be mention the plugin like `@deploy_status` to ...? is that the case? or what. I dont want to build this, but note it down with the elephant context details somewhere in our usual spot so we could revisit this when we pickup the spec docs/v2/pending/M239_001_P1_API_DOCS_INFRA_UI_FLEET_TO_FLEET_STEER_AND_ACTIVITY.md"
 
+The spec that quote names is now [M252_001](../done/M252_001_P1_API_CLI_DOCS_INFRA_UI_REACH_FLEETS_BY_NAME_AND_STEER.md).
+
 **Current decision:** rename Fleet library to Plugins while retaining reuse of complete fleet setups, their immutable revisions, and current account access.
 Selecting a Plugin starts a new private setup. Saving creates an independent fleet; it does not attach a capability to an existing fleet.
 Do not add capability composition, plugin invocation, or plugin-to-fleet bindings during the refresh.
@@ -292,4 +294,4 @@ Source references checked during this discussion:
 - `schema/1400_authoring_library_entries.sql`: ownership is account-based, with a separate platform visibility model.
 - `rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs`: Definitions carry no credentials, grants, or runtime authority.
 
-This decision is also saved in the project's context checkpoints under the title “Flow 1 approved; Flow 2 deferred to M239”.
+This decision is also saved in the project's context checkpoints under the title “Flow 1 approved; Flow 2 deferred to M239”. M239 was renumbered M252.
