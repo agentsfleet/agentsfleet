@@ -234,9 +234,9 @@ impl Fixture {
                 Option<String>,
             ),
         >(
-            "SELECT fleet_id, actor, event_type, request_json, reply_provider, \
+            "SELECT thread_id, actor, kind, request_json::text, reply_provider, \
                     reply_address \
-             FROM fleet.admissions WHERE producer = $1 AND producer_key = $2",
+             FROM thread.turns WHERE producer = $1 AND producer_key = $2",
         )
         .bind(Producer::SlackMention.as_str())
         .bind(key)
@@ -259,7 +259,7 @@ impl Fixture {
     pub(super) async fn admissions(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM fleet.admissions \
+            "SELECT COUNT(*) FROM thread.turns \
              WHERE producer = $1 AND producer_key LIKE $2 || ':%'",
         )
         .bind(Producer::SlackMention.as_str())

@@ -234,8 +234,8 @@ impl Crew {
             .await
             .expect("a connection");
         let rows: Vec<Columns> = sqlx::query_as(
-            "SELECT id, producer, actor, event_type, request_json, reply_provider, reply_address \
-             FROM fleet.admissions WHERE fleet_id = $1 ORDER BY sequence",
+            "SELECT id, producer, actor, kind, request_json::text, reply_provider, reply_address \
+             FROM thread.turns WHERE thread_id = $1 AND producer IS NOT NULL ORDER BY sequence",
         )
         .bind(fleet)
         .fetch_all(&mut *connection)
@@ -287,10 +287,10 @@ impl Crew {
             .await
             .expect("a connection");
         sqlx::query(
-            "INSERT INTO fleet.events (fleet_id, workspace_id, event_id, actor, event_type, status, \
-             request_json, response_text, created_at, updated_at) \
+            "INSERT INTO thread.turns (thread_id, workspace_id, id, actor, kind, status, \
+             request_json, answer_text, opened_at, settled_at, created_at, updated_at) \
              VALUES ($1, $2, $3, 'steer:fixture', 'chat', 'processed', '{\"message\":\"asked\"}'::jsonb, \
-             $4, now(), now())",
+             $4, now(), now(), now(), now())",
         )
         .bind(fleet)
         .bind(&self.run().workspace)

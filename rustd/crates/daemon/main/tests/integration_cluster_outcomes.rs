@@ -12,7 +12,7 @@
 //! arm names the hazard it closes, and each is a failure that shows up only at
 //! run time and looks like nothing in a log:
 //!
-//! - a second admission must be a second event in the `fleet.admissions`
+//! - a second admission must be a second turn in the `thread.turns`
 //!   ledger, not a replay of the first;
 //! - an admission rings the wake ring (`af.wake.<shard>`) and the scheduler
 //!   reads the ledger's candidates, so an offer that never arrives is a runner
@@ -97,7 +97,7 @@ async fn a_second_admission_is_a_second_event(scene: &Scenario) -> Uuid7 {
 /// # The hazard
 ///
 /// Readiness is the Postgres admissions ledger: an admission commits a row in
-/// `fleet.admissions`, then rings the NATS wake ring for the fleet's shard,
+/// `thread.turns`, then rings the NATS wake ring for the fleet's shard,
 /// and the scheduler reads the ledger's candidates and pushes an offer down
 /// the runner's stream. A scheduler that never heard the ring, or read a
 /// ledger that did not hold the row, offers nothing, and a runner idling

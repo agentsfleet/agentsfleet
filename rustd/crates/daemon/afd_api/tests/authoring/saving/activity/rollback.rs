@@ -43,7 +43,8 @@ async fn refused_setup_saved_receipt_rolls_back_allocation_and_retries_once() {
     assert_eq!(replay.status(), StatusCode::CREATED);
     assert_eq!(json_body(replay).await["id"], first["id"]);
     let receipts: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.events WHERE workspace_id=$1 AND event_type='activity'",
+        "SELECT count(*) FROM thread.turns \
+         WHERE workspace_id=$1 AND kind='activity' AND opened_at IS NOT NULL",
     )
     .bind(&case.base.workspace)
     .fetch_one(&mut *case.base.db.acquire().await.expect("receipt connection"))

@@ -25,17 +25,19 @@ mod recovery_page;
 mod settlement;
 
 const WITHIN: Duration = Duration::from_secs(10);
-const INSERT: &str = "INSERT INTO fleet.admissions \
-    (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, \
-     request_json, event_created_at, created_at, updated_at) \
+const INSERT: &str = "INSERT INTO thread.turns \
+    (id, thread_id, workspace_id, producer, producer_key, payload_digest, actor, kind, status, \
+     request_json, created_at, updated_at) \
     VALUES ($1, $2, $3, $4, $1, 'fixture-digest', 'fixture:steer', \
-            $5, '{\"prompt\":\"fixture\"}', $6, $6, $6)";
-const PARK: &str = "UPDATE fleet.admissions SET parked_at = CASE WHEN $2 THEN now() END \
+            $5, $7, '{\"prompt\":\"fixture\"}', $6, $6)";
+const PARK: &str = "UPDATE thread.turns SET parked_at = CASE WHEN $2 THEN now() END \
     WHERE id = $1";
-const FINISH: &str = "UPDATE fleet.admissions SET settled_at = now() WHERE id = $1";
-const STAMPS: &str = "SELECT a.run_fence, s.fencing_token FROM fleet.admissions a \
-    LEFT JOIN thread.threads s ON s.fleet_id = a.fleet_id WHERE a.id = $1";
-const LOCK: &str = "SELECT id FROM fleet.admissions WHERE id = $1 FOR UPDATE";
+const FINISH: &str = "UPDATE thread.turns SET settled_at = now() WHERE id = $1";
+const STAMPS: &str = "SELECT a.run_fence, s.fencing_token FROM thread.turns a \
+    LEFT JOIN thread.threads s ON s.fleet_id = a.thread_id WHERE a.id = $1";
+const LOCK: &str = "SELECT id FROM thread.turns WHERE id = $1 FOR UPDATE";
+/// The fence a fleet's thread holds before its first claim.
+const UNCLAIMED: Option<i64> = Some(0);
 
 async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7 {
     let id = afd_db::test_util::mint_id();
@@ -46,6 +48,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7
         .bind(afd_turns::Producer::Steer.as_str())
         .bind(af_wire::event::EventType::Chat.as_str())
         .bind(fixtures.enrolled_at().to_sqlx())
+        .bind(af_core::event::status::QUEUED)
         .execute(
             &mut *fixtures
                 .database
@@ -106,7 +109,7 @@ async fn test_fleet_rows_run_in_order_behind_a_park() {
         next(&runs, &runner).await.is_none(),
         "park holds later rows"
     );
-    assert_eq!(stamps(&fixtures, head).await, (None, None));
+    assert_eq!(stamps(&fixtures, head).await, (None, UNCLAIMED));
     sqlx::query(PARK)
         .bind(head)
         .bind(false)
@@ -161,7 +164,7 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
     assert!(next(&runs, &runner).await.is_none());
     assert_eq!(
         stamps(&fixtures, &head).await,
-        (None, None),
+        (None, UNCLAIMED),
         "empty claim rolls the slot back"
     );
     transaction.rollback().await.expect("unlock head");
@@ -187,7 +190,7 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
         .acquire()
         .await
         .expect("runtime connection");
-    sqlx::query("UPDATE fleet.admissions SET event_created_at = 'infinity' WHERE id = $1")
+    sqlx::query("UPDATE thread.turns SET created_at = 'infinity' WHERE id = $1")
         .bind(&event)
         .execute(&mut *connection)
         .await
@@ -201,8 +204,8 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
         refused.to_string().contains("admissions ledger claim"),
         "{refused}"
     );
-    assert_eq!(stamps(&fixtures, &event).await, (None, None));
-    sqlx::query("UPDATE fleet.admissions SET event_created_at = $2 WHERE id = $1")
+    assert_eq!(stamps(&fixtures, &event).await, (None, UNCLAIMED));
+    sqlx::query("UPDATE thread.turns SET created_at = $2 WHERE id = $1")
         .bind(&event)
         .bind(fixtures.enrolled_at().to_sqlx())
         .execute(&mut *connection)

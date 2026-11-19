@@ -100,8 +100,8 @@ impl Threads {
             .await
             .expect("seeding a fleet event");
         sqlx::query(
-            "UPDATE fleet.events SET request_json = $2::jsonb, response_text = $3 \
-             WHERE event_id = $1",
+            "UPDATE thread.turns SET request_json = $2::jsonb, answer_text = $3 \
+             WHERE id = $1",
         )
         .bind(event_id)
         .bind(serde_json::json!({ "message": message }).to_string())
@@ -115,8 +115,8 @@ impl Threads {
     async fn label(&self, database: &Db, fleet: &Uuid7, event_id: &Uuid7, label: &str) {
         let mut connection = database.acquire().await.expect("a connection");
         sqlx::query(
-            "UPDATE fleet.events SET failure_reason = $3
-             WHERE fleet_id = $1 AND event_id = $2",
+            "UPDATE thread.turns SET failure_reason = $3
+             WHERE thread_id = $1 AND id = $2",
         )
         .bind(fleet)
         .bind(event_id)

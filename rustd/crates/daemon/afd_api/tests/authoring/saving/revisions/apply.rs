@@ -22,8 +22,8 @@ async fn an_applied_revision_records_its_origin_once() {
         assert_eq!(replay.status(), StatusCode::CREATED);
         assert_eq!(json_body(replay).await["setup_revision"], "2");
         let receipt: serde_json::Value = sqlx::query_scalar(
-            "SELECT request_json::jsonb FROM fleet.events WHERE fleet_id=$1 \
-             AND event_type='activity' AND request_json::jsonb->>'kind'='setup_saved' \
+            "SELECT request_json FROM thread.turns WHERE thread_id=$1 \
+             AND kind='activity' AND request_json::jsonb->>'kind'='setup_saved' \
              AND request_json::jsonb->>'revision'='2'",
         )
         .bind(crate::authoring::id_field(&fleet.saved["id"]))

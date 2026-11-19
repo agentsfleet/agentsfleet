@@ -33,16 +33,19 @@ WITH inserted_runners AS (
       ($7, $17, $19, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
        1, 0, '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00', true)
 ), inserted_events AS (
-    INSERT INTO fleet.events
-      (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms,
-       failure_reason, failure_detail, created_at, updated_at)
+    INSERT INTO thread.turns
+      (thread_id, workspace_id, id, actor, kind, status, request_json, wall_ms,
+       failure_reason, failure_detail, opened_at, settled_at, created_at, updated_at)
     VALUES
       ($4, $2, $13, 'user:a', 'chat', 'processed', '{}'::jsonb, 999,
-       NULL, NULL, '2025-10-09 08:00:00.050+00', '2025-10-09 08:00:00.050+00'),
+       NULL, NULL, '2025-10-09 08:00:00.050+00', '2025-10-09 08:00:00.050+00',
+       '2025-10-09 08:00:00.050+00', '2025-10-09 08:00:00.050+00'),
       ($5, $3, $14, 'user:b', 'webhook', 'fleet_error', '{}'::jsonb, 2000,
-       'provider_error', 'upstream refused', '2025-10-09 08:00:00.051+00', '2025-10-09 08:00:00.051+00'),
+       'provider_error', 'upstream refused', '2025-10-09 08:00:00.051+00', '2025-10-09 08:00:00.051+00',
+       '2025-10-09 08:00:00.051+00', '2025-10-09 08:00:00.051+00'),
       ($5, $3, $15, 'user:c', 'chat', 'received', '{}'::jsonb, NULL,
-       NULL, NULL, '2025-10-09 08:00:00.052+00', '2025-10-09 08:00:00.052+00')
+       NULL, NULL, '2025-10-09 08:00:00.052+00', '2025-10-09 08:00:00.052+00',
+       '2025-10-09 08:00:00.052+00', '2025-10-09 08:00:00.052+00')
 
 )
 INSERT INTO thread.runs

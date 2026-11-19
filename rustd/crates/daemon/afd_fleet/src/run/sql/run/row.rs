@@ -39,7 +39,7 @@ use crate::{Result, error::query};
 /// was billed to the dead run when it expired.
 ///
 /// The run stores no copy of the event body: the reclaim path reads it by
-/// joining `fleet.events` on its `event_id` key, so the
+/// joining `thread.turns` on the run's `event_id`, so the
 /// hottest write in the system stops duplicating the largest value in it.
 pub const INSERT_RUN_WITH_EVENT: &str = include_str!("insert_run_with_event.sql");
 
@@ -64,8 +64,8 @@ pub struct RunRow<'a> {
     pub workspace_id: &'a Uuid7,
     /// The tenant whose wallet was gated and debited.
     pub tenant_id: &'a Uuid7,
-    /// The event being held, as the admission ledger names it. The statement
-    /// resolves it to the `fleet.events` row the run references.
+    /// The event being held: the turn's id. The statement resolves it to the
+    /// `thread.turns` row the run references.
     pub event_id: &'a Uuid7,
     /// When the event was raised, by the producer's clock; what the run bills
     /// against.

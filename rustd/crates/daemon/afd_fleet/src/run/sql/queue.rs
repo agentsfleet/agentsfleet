@@ -8,9 +8,9 @@ pub const SELECT_WAITING_WORK: &str = include_str!("run/select_waiting_work.sql"
 
 /// Claim the slot and its oldest admission, and open the delivery.
 ///
-/// One statement stamps the admission, expires any prior run, reads the
-/// active fleet and its setup, opens the `fleet.events` row, stamps
-/// `delivered_at` and returns the fleet's counters. Selecting the head before SKIP LOCKED prevents exposing a later row. The
+/// One statement stamps the turn's fence and opens its event in the same
+/// update, expires any prior run, reads the active fleet and its setup, and
+/// returns the fleet's counters. Selecting the head before SKIP LOCKED prevents exposing a later row. The
 /// runnable check follows that lock; the caller rolls the slot and admission
 /// back together when the head is blocked or gone. A fleet that is not active
 /// claims nothing: no fence moves and no row opens.

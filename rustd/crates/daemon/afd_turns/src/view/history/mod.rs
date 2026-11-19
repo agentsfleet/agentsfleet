@@ -78,7 +78,7 @@ pub const THREAD_MAX_LIMIT: i64 = 25;
 /// as much as the payload's: it executes once per returned row.
 pub const MAX_LIMIT: i64 = 200;
 
-/// The operator's read side of `fleet.events`.
+/// The operator's read side of a fleet's opened `thread.turns` events.
 #[derive(Debug, Clone)]
 pub struct History {
     database: Db,
@@ -183,7 +183,6 @@ impl History {
                     crate::Producer::ScheduleFire.as_str(),
                 ][..],
             )
-            .bind(status::QUEUED)
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_THREAD))?;

@@ -204,8 +204,8 @@ async fn assert_values(scene: &Scenario, run_id: &str) {
 
 async fn assert_settled_in_the_ledger(scene: &Scenario) {
     let settled: bool = sqlx::query_scalar(
-        "SELECT run_fence IS NOT NULL AND delivered_at IS NOT NULL AND settled_at IS NOT NULL \
-         FROM fleet.admissions WHERE id = $1 AND fleet_id = $2",
+        "SELECT run_fence IS NOT NULL AND opened_at IS NOT NULL AND settled_at IS NOT NULL \
+         FROM thread.turns WHERE id = $1 AND thread_id = $2",
     )
     .bind(&scene.event_id)
     .bind(&scene.fleet)

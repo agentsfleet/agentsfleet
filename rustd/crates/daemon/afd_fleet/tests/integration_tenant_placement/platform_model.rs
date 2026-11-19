@@ -96,7 +96,7 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
     assert!(issue(&fixtures, &runs, &t_runner, &first, &t.tenant, SELF_MANAGED).await);
     execute(
         &fixtures,
-        "UPDATE fleet.admissions SET settled_at = clock_timestamp() WHERE id = $1",
+        "UPDATE thread.turns SET settled_at = clock_timestamp() WHERE id = $1",
         &first.event_id,
     )
     .await;

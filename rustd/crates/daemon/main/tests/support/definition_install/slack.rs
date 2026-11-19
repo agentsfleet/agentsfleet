@@ -105,7 +105,7 @@ impl Producer {
             .await
             .expect("the scoped pool");
         let rows: Vec<(Uuid7, Uuid7, Uuid7, String)> = sqlx::query_as(
-            "SELECT id, fleet_id, workspace_id, request_json FROM fleet.admissions WHERE producer=$1 AND producer_key=$2")
+            "SELECT id, thread_id, workspace_id, request_json::text FROM thread.turns WHERE producer=$1 AND producer_key=$2")
             .bind(afd_turns::Producer::SlackMention.as_str()).bind(format!("{}:EvSameSignedRepair", self.team))
             .fetch_all(&mut *connection).await.expect("the admission reads");
         assert_eq!(rows.len(), 1);

@@ -48,8 +48,8 @@ async fn test_schedule_run_now_admits_one_event() {
 
     let mut connection = assigned.connection().await;
     let row = sqlx::query(
-        "SELECT count(*), min(event_type) FROM fleet.admissions \
-         WHERE fleet_id = $1 AND actor = $2",
+        "SELECT count(*), min(kind) FROM thread.turns \
+         WHERE thread_id = $1 AND actor = $2 AND producer IS NOT NULL",
     )
     .bind(&assigned.scene.fleet)
     .bind(format!("{ACTOR_PREFIX}{schedule}"))
@@ -84,8 +84,8 @@ async fn test_scheduled_run_is_assigned_with_its_message() {
 
     let mut connection = assigned.connection().await;
     let message: String = sqlx::query_scalar(
-        "SELECT request_json->>'message' FROM fleet.events \
-         WHERE fleet_id = $1 AND event_id = $2",
+        "SELECT request_json->>'message' FROM thread.turns \
+         WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
     )
     .bind(&assigned.scene.fleet)
     .bind(&event)

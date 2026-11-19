@@ -82,7 +82,7 @@ af_core = { workspace = true, features = ["sqlx"] }
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
 scopeguard.workspace = true
-# `fleet.events`. The table's statements moved out of this crate's
+# `thread.turns`. The event statements moved out of this crate's
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on runs, money, policy and four sweepers.
 afd_turns.workspace = true

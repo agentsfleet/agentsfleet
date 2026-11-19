@@ -120,7 +120,7 @@ impl Case {
     }
 
     pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<Uuid7> {
-        sqlx::query_scalar("SELECT id FROM fleet.admissions WHERE fleet_id=$1 ORDER BY sequence")
+        sqlx::query_scalar("SELECT id FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1 ORDER BY sequence")
             .bind(fleet)
             .fetch_all(&mut *self.base.connection().await)
             .await

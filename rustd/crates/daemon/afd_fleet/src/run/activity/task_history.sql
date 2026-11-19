@@ -12,9 +12,9 @@ WITH slot AS MATERIALIZED (
       AND l.status = $7 AND l.run_expires_at > statement_timestamp()
     FOR UPDATE OF l SKIP LOCKED
 ), held AS MATERIALIZED (
-    SELECT e.event_id, e.task_activity, e.task_activity_sequence, e.task_activity_truncated
-    FROM fleet.events e JOIN run l ON l.event_id = e.event_id
-    WHERE e.fleet_id = $1 AND e.event_id = $2
+    SELECT e.id, e.task_activity, e.task_activity_sequence, e.task_activity_truncated
+    FROM thread.turns e JOIN run l ON l.event_id = e.id
+    WHERE e.thread_id = $1 AND e.id = $2 AND e.opened_at IS NOT NULL
     FOR UPDATE OF e SKIP LOCKED
 ), combined AS (
     SELECT item, COALESCE((item->'progress'->>'sequence')::bigint, ordinal::bigint) AS position
@@ -37,9 +37,9 @@ WITH slot AS MATERIALIZED (
 ), retained AS (
     SELECT item, position FROM bounded WHERE bytes <= $9
 )
-UPDATE fleet.events e SET
+UPDATE thread.turns e SET
     task_activity = COALESCE((SELECT jsonb_agg(item ORDER BY position) FROM retained), jsonb_build_array()),
     task_activity_sequence = held.task_activity_sequence + jsonb_array_length($3::jsonb),
     task_activity_truncated = held.task_activity_truncated OR (SELECT count(*) FROM newest) > (SELECT count(*) FROM retained)
-FROM held WHERE e.event_id = held.event_id
+FROM held WHERE e.id = held.id
 RETURNING jsonb_build_object('items', e.task_activity, 'truncated', e.task_activity_truncated)

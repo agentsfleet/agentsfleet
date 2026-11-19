@@ -250,15 +250,15 @@ impl Fixture {
 
     /// How many continuations resumed `event`.
     ///
-    /// Counted by `resumes_event_id` rather than over the fleet's whole
+    /// Counted by `resumes_turn_id` rather than over the fleet's whole
     /// history: a fleet accumulates events for reasons that have nothing to do
     /// with an approval, and a count over all of them would pass on the wrong
     /// row.
     pub(super) async fn continuations(&self, event: &Uuid7) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM fleet.events \
-             WHERE resumes_event_id = $1 AND event_type = $2",
+            "SELECT COUNT(*) FROM thread.turns \
+             WHERE resumes_turn_id = $1 AND kind = $2 AND opened_at IS NOT NULL",
         )
         .bind(event)
         .bind(EVENT_CONTINUATION)

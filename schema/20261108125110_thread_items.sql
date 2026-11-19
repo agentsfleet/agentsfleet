@@ -1,10 +1,10 @@
--- `fleet_id` and `workspace_id` copy the event's scope, written once with it, so the detail
--- endpoint authorizes without joining the event. `sequence` orders calls within one run.
+-- `fleet_id` and `workspace_id` copy the turn's scope, written once with it, so the detail
+-- endpoint authorizes without joining the turn. `sequence` orders calls within one run.
 CREATE TABLE thread.items (
     id                   UUID PRIMARY KEY,
     workspace_id         UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     fleet_id             UUID    NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
-    event_id             UUID    NOT NULL REFERENCES fleet.events(event_id) ON DELETE CASCADE,
+    turn_id              UUID    NOT NULL,
     fencing_token        BIGINT  NOT NULL,
     sequence             BIGINT  NOT NULL,
     arguments            JSONB   NOT NULL,
@@ -15,8 +15,11 @@ CREATE TABLE thread.items (
     byte_count           BIGINT  NOT NULL,
     created_at           TIMESTAMPTZ(3)  NOT NULL,
     updated_at           TIMESTAMPTZ(3)  NOT NULL,
-    CONSTRAINT uq_items_event_id_fencing_token_sequence
-        UNIQUE (event_id, fencing_token, sequence)
+    -- An item is the record of one turn's run, so it goes with the turn.
+    CONSTRAINT fk_items_turn_id FOREIGN KEY (turn_id)
+        REFERENCES thread.turns (id) ON DELETE CASCADE,
+    CONSTRAINT uq_items_turn_id_fencing_token_sequence
+        UNIQUE (turn_id, fencing_token, sequence)
 );
 
 CREATE INDEX idx_items_workspace_id ON thread.items (workspace_id);

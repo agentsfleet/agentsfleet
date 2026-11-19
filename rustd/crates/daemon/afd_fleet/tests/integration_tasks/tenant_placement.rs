@@ -104,7 +104,7 @@ async fn queued_continuation(case: &Case) -> Uuid7 {
         .expect("its task");
     execute(case, SETTLE, &case.held.event_id).await;
     lapse(case).await;
-    sqlx::query_scalar("SELECT id FROM fleet.admissions WHERE task_id = $1 AND settled_at IS NULL")
+    sqlx::query_scalar("SELECT id FROM thread.turns WHERE task_id = $1 AND settled_at IS NULL")
         .bind(&task)
         .fetch_one(
             &mut *case
@@ -137,7 +137,7 @@ async fn execute(case: &Case, statement: &'static str, id: &Uuid7) {
 }
 
 /// Marks one admission settled, as its report leaves it.
-const SETTLE: &str = "UPDATE fleet.admissions SET settled_at = clock_timestamp() WHERE id = $1";
+const SETTLE: &str = "UPDATE thread.turns SET settled_at = clock_timestamp() WHERE id = $1";
 
 /// Lapses the fleet's claim and its run, as an expired holder leaves them.
 async fn lapse(case: &Case) {

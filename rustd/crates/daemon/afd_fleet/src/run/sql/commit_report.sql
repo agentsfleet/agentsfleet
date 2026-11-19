@@ -1,5 +1,5 @@
--- The fleet's report: `shared/settle_run.sql` with the fleet's usage lines, admission,
--- event, delivery, session and tool records in the same statement. A change to the
+-- The fleet's report: `shared/settle_run.sql` with the fleet's usage lines, turn,
+-- delivery, session and tool records in the same statement. A change to the
 -- shared bookkeeping belongs in both.
 --
 -- A terminal report in one statement: every write the report's
@@ -85,8 +85,8 @@ WITH scope AS MATERIALIZED (
     AND p.posture = $11 AND p.provider = $12 AND p.model = $13
     AND ($14::bigint IS NULL OR (SELECT resource_version FROM catalogue) = $14::bigint)
     AND EXISTS (
-        SELECT 1 FROM fleet.admissions a
-        WHERE a.id = p.event_id AND a.fleet_id = p.fleet_id
+        SELECT 1 FROM thread.turns a
+        WHERE a.id = p.event_id AND a.thread_id = p.fleet_id
           AND a.run_fence = p.fencing_token AND a.settled_at IS NULL)
 ), measured AS MATERIALIZED (
   -- Capped at the longest runtime one line may claim ($48), which is where the
@@ -160,12 +160,26 @@ WITH scope AS MATERIALIZED (
             m.run_expires_at, m.slot_expires_at, m.hold_authorized,
             (SELECT checked_at FROM instant) AS checked_at
 ), settled AS (
-  UPDATE fleet.admissions a
-  SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
+  -- Settles the turn and, while its event is still open, closes it with the run's answer:
+  -- one update, since one statement may change a row once. An event already closed keeps
+  -- its result.
+  UPDATE thread.turns a
+  SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now(),
+      status = CASE WHEN a.status = $35 THEN $28 ELSE a.status END,
+      answer_text = CASE WHEN a.status = $35 THEN $29 ELSE a.answer_text END,
+      token_count = CASE WHEN a.status = $35 THEN $30 ELSE a.token_count END,
+      wall_ms = CASE WHEN a.status = $35 THEN $31 ELSE a.wall_ms END,
+      failure_reason = CASE WHEN a.status = $35 THEN $32 ELSE a.failure_reason END,
+      failure_detail = CASE WHEN a.status = $35 THEN $33 ELSE a.failure_detail END,
+      tool_calls = CASE WHEN a.status = $35 THEN $34::jsonb ELSE a.tool_calls END
   FROM moved m
-  WHERE a.id = m.event_id AND a.fleet_id = m.fleet_id
+  WHERE a.id = m.event_id AND a.thread_id = m.fleet_id
     AND a.run_fence = m.fencing_token AND a.settled_at IS NULL
-  RETURNING a.reply_provider, a.reply_address
+  RETURNING WITH (OLD AS prior)
+            a.reply_provider, a.reply_address, prior.status = $35 AS closed,
+            a.thread_id AS fleet_id, a.id AS event_id, a.workspace_id, a.actor,
+            a.kind AS event_type, a.status, a.token_count, a.wall_ms, a.failure_reason,
+            a.failure_detail, a.resumes_turn_id AS resumes_event_id, a.created_at, a.updated_at
 ), tally AS (
   INSERT INTO runner.lifetime_counters AS c
     (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
@@ -178,19 +192,12 @@ WITH scope AS MATERIALIZED (
          failed_count    = c.failed_count + EXCLUDED.failed_count,
          updated_at      = now()
 ), closed AS (
-  UPDATE fleet.events e
-  SET status = $28, response_text = $29, token_count = $30, wall_ms = $31, updated_at = now(),
-      failure_reason = $32, failure_detail = $33, tool_calls = $34::jsonb
-  FROM moved m
-  WHERE e.fleet_id = m.fleet_id AND e.event_id = m.event_id AND e.status = $35
-  RETURNING e.fleet_id, e.event_id, e.workspace_id, e.actor, e.event_type, e.status,
-            e.token_count, e.wall_ms, e.failure_reason, e.failure_detail,
-            e.resumes_event_id, e.created_at, e.updated_at
+  SELECT * FROM settled WHERE closed
 ), dropped AS (
   -- A reclaimed run's records are of a run whose answer does not stand.
   DELETE FROM thread.items t
   USING moved m
-  WHERE t.fleet_id = m.fleet_id AND t.event_id = m.event_id AND t.fencing_token <> m.fencing_token
+  WHERE t.fleet_id = m.fleet_id AND t.turn_id = m.event_id AND t.fencing_token <> m.fencing_token
 ), released AS (
   -- The thread's resume context rides the same update that releases the run,
   -- since one statement may change a row once.

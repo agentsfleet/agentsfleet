@@ -10,19 +10,19 @@
 WITH probe AS (
     SELECT (
         EXISTS (
-            SELECT 1 FROM fleet.admissions a
+            SELECT 1 FROM thread.turns a
             WHERE a.settled_at IS NULL
               AND ($5::boolean OR NOT EXISTS (
-                  SELECT 1 FROM fleet.admissions saved
-                  JOIN runner.turn_recovery recovery ON recovery.event_id = saved.id
-                  WHERE saved.fleet_id = a.fleet_id AND saved.sequence <= a.sequence
+                  SELECT 1 FROM thread.turns saved
+                  JOIN runner.turn_recovery recovery ON recovery.turn_id = saved.id
+                  WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
                     AND saved.settled_at IS NULL AND saved.task_id IS NULL
                     AND saved.task_generation IS NULL
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
               AND NOT EXISTS (
                   SELECT 1 FROM thread.threads s
-                  WHERE s.fleet_id = a.fleet_id AND s.run_expires_at > statement_timestamp()
+                  WHERE s.fleet_id = a.thread_id AND s.run_expires_at > statement_timestamp()
               )
         ) OR EXISTS (
             -- A setup draft waiting for a turn: a queued message, or a running one a lapsed
@@ -55,19 +55,19 @@ SELECT
         WHERE r.id = ANY($4) AND r.tenant_id IS NOT NULL
           AND NOT EXISTS (
               SELECT 1 FROM fleet.fleets f
-              JOIN fleet.admissions a ON a.fleet_id = f.id
+              JOIN thread.turns a ON a.thread_id = f.id
               WHERE f.tenant_id = r.tenant_id AND a.settled_at IS NULL
               AND ($5::boolean OR NOT EXISTS (
-                  SELECT 1 FROM fleet.admissions saved
-                  JOIN runner.turn_recovery recovery ON recovery.event_id = saved.id
-                  WHERE saved.fleet_id = a.fleet_id AND saved.sequence <= a.sequence
+                  SELECT 1 FROM thread.turns saved
+                  JOIN runner.turn_recovery recovery ON recovery.turn_id = saved.id
+                  WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
                     AND saved.settled_at IS NULL AND saved.task_id IS NULL
                     AND saved.task_generation IS NULL
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
                 AND NOT EXISTS (
                     SELECT 1 FROM thread.threads s
-                    WHERE s.fleet_id = a.fleet_id AND s.run_expires_at > statement_timestamp()
+                    WHERE s.fleet_id = a.thread_id AND s.run_expires_at > statement_timestamp()
                 )
           )
           -- The setup branch above, narrowed to the runner's tenant, and re-pointed with it.

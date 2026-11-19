@@ -3,7 +3,7 @@
 //!
 //! # Why this is not a module inside `afd_fleet`
 //!
-//! `fleet.events` had no owner. Its statements lived in `afd_fleet::sql`,
+//! The event table had no owner. Its statements lived in `afd_fleet::sql`,
 //! beside runs, money, policy, bundles and four sweepers — so a crate wanting
 //! ten lines of SQL had to depend on 25,500 lines of runner plane to get them.
 //! `afd_approval` proved the cost: rather than pay it, it carried a

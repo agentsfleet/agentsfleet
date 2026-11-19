@@ -10,13 +10,13 @@ use afd_db::{Migrator, config::DbRole, test_util::TestDatabase};
 /// Type, nullability, default and timestamp precision of each added column.
 const COLUMNS: &str = "SELECT column_name::text, data_type::text, is_nullable::text, \
     column_default::text, datetime_precision FROM information_schema.columns \
-    WHERE table_schema = 'fleet' AND table_name = 'admissions' \
+    WHERE table_schema = 'thread' AND table_name = 'turns' \
       AND column_name = ANY($1) ORDER BY column_name";
 /// The actual index expression, including its column order and partial predicate.
 const INDEX: &str = "SELECT indexdef FROM pg_indexes \
-    WHERE schemaname = 'fleet' AND indexname = 'idx_admissions_unsettled'";
+    WHERE schemaname = 'thread' AND indexname = 'idx_turns_thread_id_sequence_unsettled'";
 /// A zero-row update still checks privileges for all three new columns.
-const UPDATE: &str = "UPDATE fleet.admissions \
+const UPDATE: &str = "UPDATE thread.turns \
     SET run_fence = 1, parked_at = now(), settled_at = now() WHERE false";
 
 #[derive(sqlx::FromRow)]
@@ -67,7 +67,7 @@ async fn test_admissions_queue_migration_bootstraps() {
         .await
         .expect("partial queue index");
     assert!(
-        index.contains("(fleet_id, sequence) WHERE (settled_at IS NULL)"),
+        index.contains("(thread_id, sequence) WHERE (settled_at IS NULL)"),
         "{index}"
     );
     sqlx::query(UPDATE)

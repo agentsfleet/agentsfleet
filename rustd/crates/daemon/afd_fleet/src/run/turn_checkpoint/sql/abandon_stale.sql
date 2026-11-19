@@ -1,7 +1,7 @@
 WITH locked AS MATERIALIZED (
     SELECT id, owner_run_id, owner_fence, expires_at
     FROM runner.turn_checkpoints
-    WHERE event_id = $1 AND ready_at IS NULL AND abandoned_at IS NULL
+    WHERE turn_id = $1 AND ready_at IS NULL AND abandoned_at IS NULL
     ORDER BY generation
     FOR UPDATE
 ), checked AS MATERIALIZED (

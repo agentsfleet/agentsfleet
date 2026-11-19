@@ -3,9 +3,9 @@
 -- so it runs after that statement; the event, the session and an answer still
 -- owed then carry the notice instead.
 WITH event AS (
-  UPDATE fleet.events SET response_text = $3, updated_at = now()
-  WHERE fleet_id = $1 AND event_id = $2
-  RETURNING event_id
+  UPDATE thread.turns SET answer_text = $3, updated_at = now()
+  WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL
+  RETURNING id
 ), session AS (
   UPDATE thread.threads SET resume_context = $4::jsonb, updated_at = now()
   WHERE id = $1
@@ -17,10 +17,10 @@ WITH event AS (
   INSERT INTO thread.deliveries AS o
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)
-  SELECT $5, a.fleet_id, a.workspace_id, a.reply_provider, a.reply_address, a.id,
+  SELECT $5, a.thread_id, a.workspace_id, a.reply_provider, a.reply_address, a.id,
          $3, $6, clock_timestamp(), NULL, 0, now(), now()
-  FROM fleet.admissions a
-  WHERE a.fleet_id = $1 AND a.id = $2 AND a.reply_provider = ANY($7::text[])
+  FROM thread.turns a
+  WHERE a.thread_id = $1 AND a.id = $2 AND a.reply_provider = ANY($7::text[])
   ON CONFLICT ON CONSTRAINT uq_deliveries_fleet_id_event_id
   DO UPDATE SET answer = EXCLUDED.answer, updated_at = now()
   WHERE o.delivered_at IS NULL

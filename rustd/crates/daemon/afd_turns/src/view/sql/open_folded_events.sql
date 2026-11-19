@@ -1,18 +1,12 @@
--- Opens, as received, the event of each message a run folded, joined to the
--- run whose answer it takes: insert_assigned_fleet_event.sql for many messages
--- in one statement. Each event's instant is its message's own while the
--- ledger has not stamped the message delivered. An event the message already
--- has keeps its history and learns the run it joined if it named none.
+-- Opens, as received, the event of each admitted turn a run took in, joined to the run
+-- whose answer it takes. A turn keeps its own instant, so a thread page that listed it
+-- waiting lists it at the same place. A turn already opened keeps its history and learns
+-- the run it joined if it named none.
 --
--- $1 fleet · $2 the folded messages' ids · $3 the run's event · $4 received status
-INSERT INTO fleet.events
-  (fleet_id, event_id, workspace_id, actor, event_type,
-   status, request_json, resumes_event_id, created_at, updated_at)
-SELECT a.fleet_id, a.id, a.workspace_id, a.actor, a.event_type,
-       $4, a.request_json::jsonb, $3,
-       CASE WHEN a.delivered_at IS NULL THEN a.created_at ELSE now() END, now()
-FROM fleet.admissions a
-WHERE a.fleet_id = $1 AND a.id = ANY($2)
-ON CONFLICT (event_id) DO UPDATE SET
-    resumes_event_id = COALESCE(fleet.events.resumes_event_id,
-                                EXCLUDED.resumes_event_id)
+-- $1 fleet · $2 the turns' ids · $3 the run's turn · $4 received status
+UPDATE thread.turns t
+SET status = CASE WHEN t.opened_at IS NULL THEN $4 ELSE t.status END,
+    resumes_turn_id = COALESCE(t.resumes_turn_id, $3),
+    updated_at = now(),
+    opened_at = COALESCE(t.opened_at, now())
+WHERE t.thread_id = $1 AND t.id = ANY($2)

@@ -126,7 +126,9 @@ async fn cohort(
         sqlx::query(
             "INSERT INTO thread.threads
                 (id, fleet_id, fencing_token, run_expires_at, created_at, updated_at)
-             VALUES ($1, $1, 0, clock_timestamp()-interval '1 second', now(), now())",
+             VALUES ($1, $1, 0, clock_timestamp()-interval '1 second', now(), now())
+             ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token,
+                 run_expires_at = EXCLUDED.run_expires_at",
         )
         .bind(&fleet)
         .execute(&mut *connection)

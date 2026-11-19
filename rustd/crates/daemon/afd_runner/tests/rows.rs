@@ -44,7 +44,10 @@ INSERT INTO thread.threads
   (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
    created_at, updated_at)
 VALUES ($1, $1, $2, 1, $3::timestamptz, $4::timestamptz,
-        coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))";
+        coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))
+ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, fencing_token = 1,
+    run_expires_at = EXCLUDED.run_expires_at, hold_expires_at = EXCLUDED.hold_expires_at,
+    created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at";
 
 const INSERT_ATTEMPT: &str = "\
 INSERT INTO authoring.attempts

@@ -41,7 +41,7 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
     );
     assert_storage(&files, &object, true).await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp()-interval '8 days',updated_at=now() WHERE id=$1")
+    sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp()-interval '8 days',updated_at=now() WHERE id=$1")
         .bind(&files.case.acquired.event_id).execute(&mut *connection).await?;
     drop(connection);
     let mut cursor = CheckpointMaintenanceCursor::default();

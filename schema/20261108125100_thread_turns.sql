@@ -1,0 +1,142 @@
+-- One row per input on a thread: what came in, where its answer goes, the run that took it and
+-- what the fleet answered. Intake writes the row `queued`, keyed by its producer so a retry
+-- cannot duplicate work; the claim that first runs it opens it (`opened_at`) as the fleet's
+-- event, and its report settles it. A history-only receipt (an activity, a model change) is
+-- written opened and settled, with no producer. The reply columns are frozen at intake because
+-- the source may change. Design and foreign-key reasons: docs/architecture/thread_model.md.
+CREATE TABLE thread.turns (
+    id                UUID PRIMARY KEY,
+    -- Ascending in intake order across every thread; a thread's turns run in this order.
+    sequence          BIGINT GENERATED ALWAYS AS IDENTITY,
+    thread_id         UUID   NOT NULL,
+    workspace_id      UUID   NOT NULL,
+    kind              TEXT   NOT NULL,
+    actor             TEXT   NOT NULL,
+    status            TEXT   NOT NULL,
+    -- Who sent an admitted input and its retry key, NULL together on a history-only receipt.
+    producer          TEXT,
+    producer_key      TEXT,
+    payload_digest    TEXT,
+    request_json      JSONB  NOT NULL,
+    reply_provider    TEXT,
+    reply_address     TEXT,
+    answer_text       TEXT,
+    -- A compact summary; full arguments and output live in `thread.items`.
+    tool_calls        JSONB,
+    token_count       BIGINT,
+    wall_ms           BIGINT,
+    failure_reason    TEXT,
+    failure_detail    TEXT,
+    resumes_turn_id   UUID,
+    -- The fence of the claim that took this turn as its run's head, and of the run whose
+    -- conversation folded it in.
+    run_fence           BIGINT,
+    input_claim_run_id  UUID,
+    input_claim_fence   BIGINT,
+    -- When the fleet's event opened: the history and the activity counter read only opened turns.
+    opened_at         TIMESTAMPTZ(3),
+    parked_at         TIMESTAMPTZ(3),
+    interpreted_at    TIMESTAMPTZ(3),
+    settled_at        TIMESTAMPTZ(3),
+    task_id           UUID,
+    task_item_id      UUID,
+    -- Frozen separately from the run fence, and kept when cleanup clears `task_id`.
+    task_generation   BIGINT,
+    -- Public task progress, kept apart from private recovery so it survives reconnects.
+    task_activity            JSONB   NOT NULL DEFAULT jsonb_build_array(),
+    task_activity_sequence   BIGINT  NOT NULL DEFAULT 0,
+    task_activity_truncated  BOOLEAN NOT NULL DEFAULT false,
+    created_at        TIMESTAMPTZ(3) NOT NULL,
+    updated_at        TIMESTAMPTZ(3) NOT NULL,
+    CONSTRAINT fk_turns_thread_id FOREIGN KEY (thread_id)
+        REFERENCES thread.threads (id) ON DELETE CASCADE,
+    CONSTRAINT fk_turns_workspace_id FOREIGN KEY (workspace_id)
+        REFERENCES identity.workspaces (id) ON DELETE CASCADE,
+    CONSTRAINT fk_turns_resumes_turn_id FOREIGN KEY (resumes_turn_id)
+        REFERENCES thread.turns (id) ON DELETE SET NULL,
+    CONSTRAINT fk_turns_task_id_scope FOREIGN KEY (task_id, thread_id, workspace_id)
+        REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE SET NULL (task_id),
+    CONSTRAINT fk_turns_task_item_id_scope FOREIGN KEY (task_item_id, thread_id, workspace_id)
+        REFERENCES fleet.task_items (id, fleet_id, workspace_id) ON DELETE SET NULL (task_item_id),
+    CONSTRAINT uq_turns_producer_producer_key UNIQUE (producer, producer_key),
+    CONSTRAINT uq_turns_thread_id_sequence UNIQUE (thread_id, sequence),
+    CONSTRAINT ck_turns_producer_all_or_none
+        CHECK (num_nulls(producer, producer_key, payload_digest) IN (0, 3)),
+    CONSTRAINT ck_turns_reply_both_or_neither
+        CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
+    CONSTRAINT ck_turns_task_generation_positive CHECK (task_generation > 0),
+    CONSTRAINT ck_turns_task_activity_sequence_nonnegative CHECK (task_activity_sequence >= 0),
+    -- jsonb_array_length also rejects non-arrays. 120000 bytes leaves room for metadata within
+    -- the 128 KiB public history ceiling.
+    CONSTRAINT ck_turns_task_activity_bound CHECK (jsonb_array_length(task_activity) <= 128
+        AND octet_length(task_activity::text) <= 120000)
+);
+
+-- History pages, newest first: a thread's, one actor's on a thread, one kind's on a thread,
+-- and the workspace's, which also serves the workspace foreign key.
+CREATE INDEX idx_turns_thread_id_created_at_id
+    ON thread.turns (thread_id, created_at DESC, id DESC);
+
+CREATE INDEX idx_turns_thread_id_actor_created_at_id
+    ON thread.turns (thread_id, actor, created_at DESC, id DESC);
+
+CREATE INDEX idx_turns_thread_id_kind_created_at_id
+    ON thread.turns (thread_id, kind, created_at DESC, id DESC);
+
+CREATE INDEX idx_turns_workspace_id_created_at_id
+    ON thread.turns (workspace_id, created_at DESC, id DESC);
+
+CREATE INDEX idx_turns_resumes_turn_id
+    ON thread.turns (resumes_turn_id) WHERE resumes_turn_id IS NOT NULL;
+
+-- Assignment: a thread's oldest unsettled turn, and the next ones in one conversation.
+CREATE INDEX idx_turns_thread_id_sequence_unsettled
+    ON thread.turns (thread_id, sequence)
+    WHERE settled_at IS NULL;
+
+CREATE INDEX idx_turns_thread_id_reply_sequence_unsettled
+    ON thread.turns (thread_id, reply_provider, reply_address, sequence)
+    WHERE settled_at IS NULL;
+
+CREATE INDEX idx_turns_task_item_id ON thread.turns (task_item_id)
+    WHERE task_item_id IS NOT NULL;
+
+CREATE INDEX idx_turns_task_id_task_generation_settled_at_sequence
+    ON thread.turns (task_id, task_generation, settled_at, sequence)
+    WHERE task_id IS NOT NULL;
+
+-- A thread lives in exactly one workspace, so the planner must not multiply the two
+-- selectivities when a query filters on both.
+CREATE STATISTICS thread.stx_turns_workspace_id_thread_id (dependencies)
+    ON thread_id, workspace_id FROM thread.turns;
+
+-- SECURITY DEFINER: api_runtime writes turns but holds no write grant on the counters, so the
+-- count cannot be set by hand. A turn counts once, when its event opens; a setup draft's turn
+-- never opens one and matches no fleet.
+CREATE FUNCTION thread.turns_count_opened() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO pg_catalog, fleet
+AS $$
+BEGIN
+    INSERT INTO fleet.activity_counters
+        (fleet_id, event_count, budget_used_nanos, created_at, updated_at)
+    SELECT f.id, 1, 0, f.created_at, NEW.updated_at
+      FROM fleet.fleets f WHERE f.id = NEW.thread_id
+    ON CONFLICT (fleet_id) DO UPDATE
+       SET event_count = fleet.activity_counters.event_count + 1,
+           updated_at = GREATEST(fleet.activity_counters.updated_at, EXCLUDED.updated_at);
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_turns_count_inserted_opened
+    AFTER INSERT ON thread.turns
+    FOR EACH ROW WHEN (NEW.opened_at IS NOT NULL)
+    EXECUTE FUNCTION thread.turns_count_opened();
+
+CREATE TRIGGER trg_turns_count_opened
+    AFTER UPDATE OF opened_at ON thread.turns
+    FOR EACH ROW WHEN (OLD.opened_at IS NULL AND NEW.opened_at IS NOT NULL)
+    EXECUTE FUNCTION thread.turns_count_opened();
+
+GRANT SELECT, INSERT, UPDATE ON thread.turns TO api_runtime;

@@ -173,7 +173,7 @@ async fn many_daemons_receiving_one_retry_together_append_once() {
 /// The admissions this lane's fleet holds.
 async fn admissions(lane: &CronLane) -> i64 {
     let mut connection = lane.connection().await;
-    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
+    sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE thread_id = $1")
         .bind(lane.fleet_id())
         .fetch_one(&mut *connection)
         .await

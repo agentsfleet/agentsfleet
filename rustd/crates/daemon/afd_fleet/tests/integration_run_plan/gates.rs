@@ -11,12 +11,12 @@ const HISTORY: &str = "INSERT INTO fleet.approval_gates \
     (id,fleet_id,workspace_id,event_id,action_id,tool_name,action_name,gate_type, \
      proposed_action,evidence,blast_radius,expires_at,status,detail,resolved_at, \
      created_at,updated_at) \
-    SELECT uuidv7(),a.fleet_id,a.workspace_id, \
+    SELECT uuidv7(),a.thread_id,a.workspace_id, \
       CASE WHEN n%3=0 THEN uuidv7() ELSE a.id END, \
       uuidv7(),'git','push','repository_write','fixture','{}','fixture', \
       clock_timestamp()+CASE WHEN n%3=1 THEN interval '-1 hour' ELSE interval '1 hour' END, \
       $4,'',CASE WHEN n%3=2 THEN now() END,now(),now() \
-    FROM fleet.admissions a,generate_series($2::int,$3::int) n WHERE a.id=$1";
+    FROM thread.turns a,generate_series($2::int,$3::int) n WHERE a.id=$1";
 
 // Value: protects=approval work stays bounded as history grows; fails_when=a gate
 // probe filters unrelated or expired rows; why_new=parked-head deadline lookup;
@@ -31,7 +31,7 @@ async fn parked_head_probes_skip_unrelated_and_expired_approval_history() {
     let mut connection = owner.acquire().await.expect("plan owner");
     let mut tx = connection.begin().await.expect("isolated plan transaction");
     prepared::prepare(&mut tx).await;
-    sqlx::query("UPDATE fleet.admissions SET parked_at=now() WHERE id=$1")
+    sqlx::query("UPDATE thread.turns SET parked_at=now() WHERE id=$1")
         .bind(&seeded.event_id)
         .execute(&mut *tx)
         .await

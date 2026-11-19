@@ -73,7 +73,7 @@ async fn one_slack_request_is_one_attempt() {
 
     let mut connection = fixtures.database.acquire().await.expect("database");
     let states: Vec<(bool,)> = sqlx::query_as(
-        "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1 ORDER BY created_at, sequence"
+        "SELECT run_fence IS NOT NULL FROM thread.turns WHERE thread_id = $1 ORDER BY created_at, sequence"
     ).bind(&fleet).fetch_all(&mut *connection).await.expect("queue state");
     assert_eq!(states, [(true,), (false,)], "one delivered, one waiting");
     drop(connection);

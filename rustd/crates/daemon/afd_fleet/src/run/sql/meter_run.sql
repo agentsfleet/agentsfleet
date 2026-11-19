@@ -1,5 +1,5 @@
 -- The fleet's per-run renewal: `shared/extend_run.sql` with the durable task's limits
--- and the admission's fence checked in the same statement. A change to the shared
+-- and the turn's fence checked in the same statement. A change to the shared
 -- bookkeeping belongs in both.
 WITH locked_slot AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.run_expires_at
@@ -51,8 +51,8 @@ WITH locked_slot AS MATERIALIZED (
           AND task_execution_deadline_at > checked_at
           AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
       AND EXISTS (
-          SELECT 1 FROM fleet.admissions a
-          WHERE a.id = metered.event_id AND a.fleet_id = metered.fleet_id
+          SELECT 1 FROM thread.turns a
+          WHERE a.id = metered.event_id AND a.thread_id = metered.fleet_id
             AND a.run_fence = metered.fencing_token AND a.settled_at IS NULL
       )
 ), moved AS (

@@ -64,8 +64,9 @@ async fn rejects_incomplete(stores: &Datastores, parameters: run::Parameters) {
     sqlx::raw_sql(
         "CREATE FUNCTION fleet.refuse_bench_event() RETURNS trigger LANGUAGE plpgsql AS \
          $$ BEGIN RAISE EXCEPTION 'injected event-write refusal'; END $$; \
-         CREATE TRIGGER refuse_bench_event BEFORE INSERT ON fleet.events \
-         FOR EACH ROW EXECUTE FUNCTION fleet.refuse_bench_event()",
+         CREATE TRIGGER refuse_bench_event BEFORE UPDATE OF opened_at ON thread.turns \
+         FOR EACH ROW WHEN (OLD.opened_at IS NULL AND NEW.opened_at IS NOT NULL) \
+         EXECUTE FUNCTION fleet.refuse_bench_event()",
     )
     .execute(&mut *connection)
     .await

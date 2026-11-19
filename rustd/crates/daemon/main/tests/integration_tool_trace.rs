@@ -57,8 +57,8 @@ pub(crate) fn report_with(run_id: &str, scene: &Scenario, fence: u64, tool_calls
 /// read are NULL exactly when the case passes.
 async fn nullable_column(scene: &Scenario, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM fleet.events \
-         WHERE fleet_id = $1 AND event_id = $2"
+        "SELECT {column}::text FROM thread.turns \
+         WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL"
     ));
     let mut connection = scene.booted.database.acquire().await.expect("a connection");
     let row = sqlx::query(statement)
@@ -103,7 +103,7 @@ async fn test_report_writes_tool_calls_with_result() {
 
     assert_eq!(stored_trace(&scene).await, Some(fenced(&sent, fence)));
     assert_eq!(
-        event_column(&scene, &scene.event_id, "response_text")
+        event_column(&scene, &scene.event_id, "answer_text")
             .await
             .as_deref(),
         Some("the fixture scene produced this"),
@@ -170,7 +170,7 @@ async fn test_fenced_report_writes_no_tool_calls() {
     );
     assert_eq!(stored_trace(&scene).await, None, "no trace was written");
     assert_eq!(
-        nullable_column(&scene, "response_text").await,
+        nullable_column(&scene, "answer_text").await,
         None,
         "and no answer"
     );

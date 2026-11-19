@@ -1,5 +1,6 @@
-//! The words `fleet.events` stores in its `status` and `failure_reason`
-//! columns (`failure_reason` reaches the wire as `failure_label`).
+//! The words a fleet's `thread.turns` row stores in its `status` and
+//! `failure_reason` columns (`failure_reason` reaches the wire as
+//! `failure_label`).
 //!
 //! # Why here and not in `af_wire`
 //!
@@ -23,12 +24,12 @@
 //! `afd_approval` — a second and third spelling at a second and third write
 //! site, which is a row one plane writes that another cannot recognise.
 
-/// The stored spellings of `fleet.events.status`.
+/// The stored spellings of a fleet turn's `thread.turns.status`.
 pub mod status {
     /// A history receipt only; never runnable or included in model context.
     pub const RECORDED: &str = "recorded";
 
-    /// The status an event opens in.
+    /// The status an event opens in, when a run first takes its turn.
     ///
     /// The report flips it to [`PROCESSED`] or [`FLEET_ERROR`], the gate pass
     /// to [`GATE_BLOCKED`], and the lapse cap to [`FLEET_ERROR`]. Each reads
@@ -54,15 +55,15 @@ pub mod status {
     /// report it.
     pub const FLEET_ERROR: &str = "fleet_error";
 
-    /// A thread row for a message admitted and waiting for a runner.
+    /// The status intake writes a turn in, admitted and waiting for a runner.
     ///
-    /// Never stored: `fleet.events` gains the row only at run. The
-    /// thread read derives it from the admission ledger's undelivered rows,
-    /// so a screen opened while a message waits shows it waiting.
+    /// The turn's event is not open yet (`opened_at` is NULL), so the history
+    /// reads skip it; the thread read lists a waiting steer under it, so a
+    /// screen opened while a message waits shows it waiting.
     pub const QUEUED: &str = "queued";
 }
 
-/// Why the daemon ended an event itself, as `fleet.events.failure_reason`: a
+/// Why the daemon ended an event itself, as `thread.turns.failure_reason`: a
 /// gate's refusal, or runs that kept lapsing.
 ///
 /// One ownership site (RULE UFS) — the webhook path, the steer path and the

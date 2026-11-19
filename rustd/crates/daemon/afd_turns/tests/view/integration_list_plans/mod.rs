@@ -73,20 +73,25 @@ WITH workspaces AS (
            '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspaces, generate_series(1, $4) f
     RETURNING id, workspace_id
+), threads AS (
+    INSERT INTO thread.threads (id, fleet_id, fencing_token, run_expires_at, created_at, updated_at)
+    SELECT id, id, 0, $2::timestamptz, $2::timestamptz, $2::timestamptz FROM fleets
 )
-INSERT INTO fleet.events
-  (fleet_id, workspace_id, event_id, actor, event_type, status, request_json,
-   created_at, updated_at)
+INSERT INTO thread.turns
+  (thread_id, workspace_id, id, actor, kind, status, request_json,
+   opened_at, settled_at, created_at, updated_at)
 SELECT fleets.id, fleets.workspace_id, uuidv7(),
        CASE WHEN e % 4 = 0 THEN 'cron:' || fleets.id || ':' || (e % 8) ELSE 'steer:api' END,
        CASE WHEN e % 8 = 0 THEN 'activity' ELSE 'chat' END, 'completed', '{}'::jsonb,
+       $2::timestamptz + e * interval '1 millisecond',
+       $2::timestamptz + e * interval '1 millisecond',
        $2::timestamptz + e * interval '1 millisecond',
        $2::timestamptz + e * interval '1 millisecond'
   FROM fleets, generate_series(1, $5) e";
 
 /// Refreshes the statistics every plan here is costed from, the dependency
 /// statistics among them.
-const ANALYZE_EVENTS: &str = "ANALYZE fleet.events";
+const ANALYZE_EVENTS: &str = "ANALYZE thread.turns";
 
 /// Runs one statement that returns nothing worth reading.
 async fn run(connection: &mut PgConnection, statement: &'static str) {
@@ -193,7 +198,7 @@ fn assert_walks_the_index(name: &str, plan: &str, index: &str, bounds: &[&str]) 
     let walk = lines.next().unwrap_or_default();
     let condition = lines.next().unwrap_or_default();
     assert!(
-        walk.contains(&format!("Index Scan using {index} on events "))
+        walk.contains(&format!("Index Scan using {index} on turns "))
             && bounds.iter().all(|bound| condition.contains(bound))
             && (name.starts_with("thread page") || !plan.contains("Sort")),
         "{name} does not walk {index} in order with its bounds:\n{plan}"

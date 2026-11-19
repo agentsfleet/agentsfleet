@@ -138,7 +138,7 @@ async fn refusal_drains(preended: bool) {
     preend(&scene, preended).await;
     wait_without_offer(&scene, "the denied admission never settled", || async {
         sqlx::query_scalar::<_, bool>(
-            "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1",
+            "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1",
         )
         .bind(&scene.event_id)
         .fetch_one(&mut *scene.booted.database.acquire().await.expect("connection"))
@@ -148,7 +148,7 @@ async fn refusal_drains(preended: bool) {
     .await;
     let first_label = event_column(&scene, &scene.event_id, LABEL).await;
     let settled: bool =
-        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
             .bind(&scene.event_id)
             .fetch_one(&mut *scene.booted.database.acquire().await.expect("database"))
             .await
@@ -201,7 +201,7 @@ async fn connect_credential(scene: &Scenario) {
 async fn preend(scene: &Scenario, preended: bool) {
     if preended {
         // A pre-existing terminal narrative must settle the queue without executing.
-        sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1 AND event_id = $2")
+        sqlx::query("UPDATE thread.turns SET status = $3, failure_reason = $4 WHERE thread_id = $1 AND id = $2")
             .bind(&scene.fleet).bind(&scene.event_id)
             .bind(af_core::event::status::GATE_BLOCKED)
             .bind(af_core::event::label::GRANT_DENIED)

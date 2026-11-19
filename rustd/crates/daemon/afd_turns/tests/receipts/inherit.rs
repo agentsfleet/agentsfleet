@@ -23,7 +23,7 @@ type Destination = (Option<String>, Option<String>);
 
 async fn destination(lane: &Lane, id: &Uuid7) -> Fallible<Destination> {
     Ok(
-        sqlx::query_as("SELECT reply_provider, reply_address FROM fleet.admissions WHERE id = $1")
+        sqlx::query_as("SELECT reply_provider, reply_address FROM thread.turns WHERE id = $1")
             .bind(id)
             .fetch_one(&mut *lane.database.acquire().await?)
             .await?,

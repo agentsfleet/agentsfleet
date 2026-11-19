@@ -66,8 +66,8 @@ async fn an_admission_insert_the_ledger_refuses_rolls_the_activation_back() {
     for statement in [
         "CREATE FUNCTION public.refuse_admission() RETURNS trigger LANGUAGE plpgsql AS $$ \
          BEGIN RAISE EXCEPTION 'fixture refusal'; END $$",
-        "CREATE TRIGGER refuse_admission BEFORE INSERT ON fleet.admissions \
-         FOR EACH ROW EXECUTE FUNCTION public.refuse_admission()",
+        "CREATE TRIGGER refuse_admission BEFORE INSERT ON thread.turns \
+         FOR EACH ROW WHEN (NEW.producer IS NOT NULL) EXECUTE FUNCTION public.refuse_admission()",
     ] {
         sqlx::query(statement)
             .execute(&mut owner)

@@ -208,7 +208,8 @@ async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
            (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
             created_at, updated_at)
          VALUES ($1, $1, NULL, $2, now() + $3::interval, NULL, now(), now())
-         ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
+         ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token,
+             run_expires_at = EXCLUDED.run_expires_at",
     )
     .bind(fleet)
     .bind(FIXTURE_FENCE + 1)

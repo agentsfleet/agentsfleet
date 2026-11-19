@@ -1,16 +1,16 @@
-SELECT fleet_id, event_id, workspace_id,
-       actor, event_type, status, token_count, wall_ms,
-       failure_reason, failure_detail, resumes_event_id,
+SELECT thread_id AS fleet_id, id AS event_id, workspace_id,
+       actor, kind AS event_type, status, token_count, wall_ms,
+       failure_reason, failure_detail, resumes_turn_id AS resumes_event_id,
        created_at, updated_at,
        (SELECT SUM(charge.charged_nanos)::bigint
           FROM billing.usage_lines charge
-         WHERE charge.event_id = fleet.events.event_id
-           AND charge.fleet_id = fleet.events.fleet_id) AS cost_nanos,
-       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
-FROM fleet.events
-WHERE workspace_id = $1
-  AND fleet_id = $2
-  AND (created_at, event_id) < ($3::timestamptz, $4)
+         WHERE charge.event_id = thread.turns.id
+           AND charge.fleet_id = thread.turns.thread_id) AS cost_nanos,
+       request_json::text AS request_json, answer_text AS response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
+FROM thread.turns
+WHERE workspace_id = $1 AND opened_at IS NOT NULL
+  AND thread_id = $2
+  AND (created_at, id) < ($3::timestamptz, $4)
   AND status IN ($5, $6)
-ORDER BY created_at DESC, event_id DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $7

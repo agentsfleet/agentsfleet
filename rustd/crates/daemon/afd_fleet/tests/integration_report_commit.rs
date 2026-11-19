@@ -220,7 +220,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Event(&held.fleet, &held.event_id), "response_text")
+            .text(Row::Event(&held.fleet, &held.event_id), "answer_text")
             .await,
         None,
         "and the earlier delivery's row is left exactly as it was — a terminal row is \
@@ -237,7 +237,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
 
 async fn assert_all_four_landed(held: &Held, slice: i64) {
     let settled: bool =
-        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
             .bind(&held.event_id)
             .fetch_one(&mut *held.fixtures.database.acquire().await.expect("database"))
             .await
@@ -278,7 +278,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Event(&held.fleet, &held.event_id), "response_text")
+            .text(Row::Event(&held.fleet, &held.event_id), "answer_text")
             .await,
         Some(RESPONSE_ACCEPTED.to_owned()),
         "and it is the answer the accepted report carried"

@@ -1,8 +1,8 @@
 //! The claim's delivery writes roll back together and coexist with producer
 //! budget locks.
 //!
-//! One statement claims the slot, opens the `fleet.events` row and stamps
-//! `delivered_at`, so a fault in any of them leaves none behind.
+//! One statement claims the slot and, in one update of the turn, stamps its
+//! fence and opens its event, so a fault in any of them leaves none behind.
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
@@ -11,15 +11,15 @@ use afd_fleet::run::Delivery;
 use afd_turns::{Admission, Admissions, Key, Producer, Reply};
 use sqlx::Connection as _;
 
-use super::{STAMPS, WITHIN, enqueue, next};
+use super::{STAMPS, UNCLAIMED, WITHIN, enqueue, next};
 use crate::{seed::seeded_parts, support::Fixtures};
 
 const FAIL_DELIVERY: &str = "CREATE FUNCTION fleet.refuse_delivery() RETURNS trigger \
     LANGUAGE plpgsql AS $$ BEGIN \
       RAISE EXCEPTION 'injected delivery failure'; END $$; \
-    CREATE TRIGGER refuse_delivery BEFORE UPDATE OF delivered_at ON fleet.admissions \
+    CREATE TRIGGER refuse_delivery BEFORE UPDATE OF run_fence ON thread.turns \
     FOR EACH ROW EXECUTE FUNCTION fleet.refuse_delivery()";
-const RESTORE_DELIVERY: &str = "DROP TRIGGER refuse_delivery ON fleet.admissions; \
+const RESTORE_DELIVERY: &str = "DROP TRIGGER refuse_delivery ON thread.turns; \
     DROP FUNCTION fleet.refuse_delivery()";
 
 // Value: protects=atomic delivery; fails_when=a stamp fault leaves a moved fence,
@@ -49,7 +49,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
     assert_eq!(delivery_state(&fixtures, &event).await, (0, false));
     assert_eq!(
         fence(&fixtures, &event).await,
-        (None, None),
+        (None, UNCLAIMED),
         "no fence moved"
     );
     assert_eq!(
@@ -73,7 +73,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
     assert_eq!(
         acquired.opened.received.counters,
         Some(after),
-        "the claim answers the counters its own insert moved"
+        "the claim answers the counters its own opening moved"
     );
     drop((connection, runs));
     owner.close().await;
@@ -124,8 +124,8 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
 
 async fn delivery_state(fixtures: &Fixtures, event: &Uuid7) -> (i64, bool) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM fleet.events WHERE event_id=$1), \
-        delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1",
+        "SELECT (SELECT count(*) FROM thread.turns WHERE id=$1 AND opened_at IS NOT NULL), \
+        run_fence IS NOT NULL FROM thread.turns WHERE id=$1",
     )
     .bind(event)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
@@ -133,7 +133,7 @@ async fn delivery_state(fixtures: &Fixtures, event: &Uuid7) -> (i64, bool) {
     .expect("delivery state")
 }
 
-/// The admission's stamped fence and its slot's token.
+/// The turn's stamped fence and its slot's token.
 async fn fence(fixtures: &Fixtures, event: &Uuid7) -> (Option<i64>, Option<i64>) {
     sqlx::query_as(STAMPS)
         .bind(event)

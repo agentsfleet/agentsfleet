@@ -156,10 +156,16 @@ async fn test_an_internal_setup_event_is_not_an_admission_head() -> Checked {
     let workspace = workspace_of(&held).await?;
     let before = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert!(before.run.live_run.is_some());
-    // Moves the run and its event row to an event id no admission holds.
+    // Moves the run to a history-only copy of its event: a turn no admission
+    // wrote, opened and settled at birth, with no producer.
     let changed = sqlx::query(
-        "WITH moved AS (UPDATE fleet.events e SET event_id = $2 FROM thread.runs l \
-         WHERE l.id = $1 AND e.event_id = l.event_id RETURNING e.event_id) \
+        "WITH moved AS (INSERT INTO thread.turns \
+           (id, thread_id, workspace_id, actor, kind, status, request_json, \
+            opened_at, settled_at, created_at, updated_at) \
+         SELECT $2, e.thread_id, e.workspace_id, e.actor, e.kind, e.status, e.request_json, \
+                now(), now(), now(), now() \
+         FROM thread.runs l JOIN thread.turns e ON e.id = l.event_id \
+         WHERE l.id = $1 RETURNING id) \
          UPDATE thread.runs SET event_id = $2 WHERE id = $1 AND EXISTS (SELECT 1 FROM moved)",
     )
     .bind(&held.run_key)

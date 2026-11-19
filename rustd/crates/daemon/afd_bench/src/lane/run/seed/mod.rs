@@ -198,7 +198,7 @@ pub(crate) async fn rows(
 /// One event of `event_type` admitted onto the fleet, through the ledger's own
 /// write path.
 ///
-/// `Admissions::admit` is what ingress runs: it commits the `fleet.admissions`
+/// `Admissions::admit` is what ingress runs: it commits the `thread.turns`
 /// row, then publishes a best-effort wake on the Bus. Seeding through it
 /// leaves exactly the state ingress leaves, so the run path's delivery stamp
 /// meets a real row, as in production.

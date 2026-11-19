@@ -119,12 +119,11 @@ async fn retention_collects_a_second_owner_while_the_first_head_is_locked() -> C
     };
     let mut connection = older.case.fixtures.database.acquire().await?;
     let mut held = connection.begin().await?;
-    let locked: Uuid7 = sqlx::query_scalar(
-        "SELECT event_id FROM runner.turn_recovery WHERE event_id=$1 FOR UPDATE",
-    )
-    .bind(&older.case.acquired.event_id)
-    .fetch_one(&mut *held)
-    .await?;
+    let locked: Uuid7 =
+        sqlx::query_scalar("SELECT turn_id FROM runner.turn_recovery WHERE turn_id=$1 FOR UPDATE")
+            .bind(&older.case.acquired.event_id)
+            .fetch_one(&mut *held)
+            .await?;
     assert_eq!(locked, older.case.acquired.event_id);
 
     let tasks = newer.case.tasks();
@@ -200,7 +199,7 @@ async fn age_source(files: &Files) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     assert_eq!(
         sqlx::query(
-            "UPDATE fleet.admissions
+            "UPDATE thread.turns
              SET settled_at=clock_timestamp()-interval '8 days', updated_at=now() WHERE id=$1",
         )
         .bind(&files.case.acquired.event_id)
@@ -212,11 +211,10 @@ async fn age_source(files: &Files) -> Checked {
     Ok(())
 }
 
-async fn public_source(files: &Files) -> Checked<(String, String)> {
+async fn public_source(files: &Files) -> Checked<String> {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    Ok(sqlx::query_as(
-        "SELECT to_jsonb(e)::text, to_jsonb(a)::text
-         FROM fleet.events e JOIN fleet.admissions a ON a.id=e.event_id WHERE e.event_id=$1",
+    Ok(sqlx::query_scalar(
+        "SELECT to_jsonb(t)::text FROM thread.turns t WHERE t.id=$1 AND t.opened_at IS NOT NULL",
     )
     .bind(&files.case.acquired.event_id)
     .fetch_one(&mut *connection)
@@ -227,8 +225,8 @@ async fn private_rows(files: &Files) -> Checked<(i64, i64, i64)> {
     let mut connection = files.case.fixtures.database.acquire().await?;
     Ok(sqlx::query_as(
         "SELECT
-         (SELECT count(*) FROM runner.turn_recovery WHERE event_id=$1),
-         (SELECT count(*) FROM runner.turn_checkpoints WHERE event_id=$1),
+         (SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1),
+         (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
          (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE event_id=$1)",
     )
     .bind(&files.case.acquired.event_id)

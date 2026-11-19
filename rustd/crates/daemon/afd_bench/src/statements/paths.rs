@@ -108,7 +108,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Report,
     ),
     (
-        "WITH event AS ( UPDATE fleet.events SET response_text",
+        "WITH event AS ( UPDATE thread.turns SET answer_text",
         Path::Report,
     ),
     (
@@ -128,11 +128,14 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // Fold: `claim_inputs.sql`.
     ("head.sequence AS head_sequence", Path::Fold),
     // Claim: the candidate scan, the slot-and-head claim (which
-    // opens the event and stamps delivery itself), the admission lock and
-    // the counters read.
+    // opens the event and stamps the fence itself), the turn lock, the
+    // folded turns' opening and the counters read.
     ("eligible AS MATERIALIZED", Path::Claim),
     ("FOR UPDATE OF s SKIP LOCKED", Path::Claim),
-    ("INSERT INTO fleet.events (fleet_id, event_id", Path::Claim),
+    (
+        "UPDATE thread.turns t SET status = CASE WHEN t.opened_at IS NULL",
+        Path::Claim,
+    ),
     ("WITH slot AS MATERIALIZED", Path::Claim),
     (
         "SELECT COALESCE((SELECT k.event_count FROM fleet.activity_counters",
@@ -179,7 +182,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // carries (`select_thread_finished_before.sql`): both ride the delivery.
     ("SET LOCAL ROLE memory_runtime", Path::Issue),
     (
-        "SELECT fleet_id, event_id, workspace_id, actor, event_type, status, token_count, wall_ms, failure_reason",
+        "SELECT thread_id AS fleet_id, id AS event_id, workspace_id, actor, kind AS event_type, status",
         Path::Issue,
     ),
     // Host: the capacity lock, its census and the run-type record.
@@ -219,9 +222,9 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "l.tenant_id, l.event_id, e.actor, l.posture, l.provider",
         Path::Report,
     ),
-    ("WITH closed AS ( UPDATE fleet.events", Path::Report),
+    ("WITH closed AS ( UPDATE thread.turns", Path::Report),
     (
-        "SELECT reply_provider, reply_address FROM fleet.admissions",
+        "SELECT reply_provider, reply_address FROM thread.turns",
         Path::Report,
     ),
     ("INSERT INTO runner.history (id, runner_id", Path::Report),

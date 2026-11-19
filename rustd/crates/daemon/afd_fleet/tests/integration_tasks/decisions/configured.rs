@@ -119,7 +119,7 @@ async fn continuation(case: &Case) {
         .task_id
         .as_ref()
         .expect("task");
-    sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp() WHERE id=$1")
+    sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp() WHERE id=$1")
         .bind(&case.held.event_id)
         .execute(
             &mut *case

@@ -50,7 +50,7 @@ pub(crate) struct Seeded<const N: usize> {
     pub(crate) runners: [Uuid7; N],
     /// The LOGICAL event id the fixture admitted under.
     ///
-    /// `Acquired::event_id`, `fleet.events` and `billing.usage_lines` share it.
+    /// `Acquired::event_id`, the `thread.turns` id and `billing.usage_lines` share it.
     pub(crate) event_id: Uuid7,
     /// The fleet holding the event.
     pub(crate) fleet: Uuid7,

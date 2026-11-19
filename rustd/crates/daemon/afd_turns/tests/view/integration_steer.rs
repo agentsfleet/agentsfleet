@@ -35,9 +35,9 @@ async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
         .expect("admitted");
     let mut connection = lane.connection().await;
     let row = sqlx::query_as::<_, Envelope>(
-        "SELECT id, actor, event_type, workspace_id AS workspace,
-                request_json, event_created_at AS created_at
-           FROM fleet.admissions WHERE fleet_id = $1 AND settled_at IS NULL",
+        "SELECT id, actor, kind AS event_type, workspace_id AS workspace,
+                request_json::text AS request_json, created_at
+           FROM thread.turns WHERE thread_id = $1 AND settled_at IS NULL",
     )
     .bind(&lane.fleet)
     .fetch_one(&mut *connection)
@@ -47,7 +47,11 @@ async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
     assert_eq!(row.actor, ACTOR_MACHINE);
     assert_eq!(row.event_type, EventType::Chat.as_str());
     assert_eq!(row.workspace, lane.workspace);
-    assert_eq!(row.request_json, REQUEST_JSON);
+    // JSONB keeps the body's meaning, not its bytes.
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&row.request_json).expect("a JSON body"),
+        serde_json::from_str::<serde_json::Value>(REQUEST_JSON).expect("the fixture body"),
+    );
     assert_eq!(Some(row.created_at), accepted.admitted_at);
     drop(connection);
     lane.cleanup().await;

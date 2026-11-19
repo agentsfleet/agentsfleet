@@ -116,7 +116,7 @@ pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
         )
     );
     let live: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.admissions WHERE task_id=$1 AND settled_at IS NULL",
+        "SELECT count(*) FROM thread.turns WHERE task_id=$1 AND settled_at IS NULL",
     )
     .bind(task)
     .fetch_one(
@@ -146,16 +146,16 @@ async fn chat_source(case: &Case) {
         .acquire()
         .await
         .expect("native event fixture");
-    let admission =
-        sqlx::query("UPDATE fleet.admissions SET event_type=$2 WHERE id=$1 AND event_type='steer'")
-            .bind(&case.held.event_id)
-            .bind(af_wire::event::EventType::Chat.as_str())
-            .execute(&mut *connection)
-            .await
-            .expect("native human admission kind");
-    assert_eq!(admission.rows_affected(), 1);
-    let event = sqlx::query("UPDATE fleet.events SET event_type=$3 WHERE fleet_id=$1 AND event_id=$2 AND event_type='steer'")
-        .bind(&case.held.fleet).bind(&case.held.event_id).bind(af_wire::event::EventType::Chat.as_str())
-        .execute(&mut *connection).await.expect("same native history kind");
-    assert_eq!(event.rows_affected(), 1);
+    // One turn row holds both the admission and its history, so one update
+    // moves the kind for both.
+    let turn = sqlx::query(
+        "UPDATE thread.turns SET kind=$3 WHERE thread_id=$1 AND id=$2 AND kind='steer'",
+    )
+    .bind(&case.held.fleet)
+    .bind(&case.held.event_id)
+    .bind(af_wire::event::EventType::Chat.as_str())
+    .execute(&mut *connection)
+    .await
+    .expect("native human turn kind");
+    assert_eq!(turn.rows_affected(), 1);
 }

@@ -40,8 +40,8 @@ const CURSOR_AHEAD: &str = "UPDATE thread.runs \
 
 /// Ends the held event before its report lands, as a redelivery's first
 /// report would have.
-const FINISH_EVENT: &str = "UPDATE fleet.events SET status = $3 \
-     WHERE fleet_id = $1 AND event_id = $2";
+const FINISH_EVENT: &str = "UPDATE thread.turns SET status = $3 \
+     WHERE thread_id = $1 AND id = $2";
 
 /// A finished event's status.
 const PROCESSED: &str = "processed";

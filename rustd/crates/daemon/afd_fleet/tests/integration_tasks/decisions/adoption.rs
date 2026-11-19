@@ -160,7 +160,7 @@ fn assert_adopted(before: &TaskSnapshot, after: &TaskSnapshot, revision: &Uuid7)
 
 async fn assert_receipt(case: &Case, task: &Uuid7) {
     let stored: (i64, i64) = sqlx::query_as(
-        "SELECT (SELECT count(*) FROM fleet.task_adoptions WHERE task_id=$1), (SELECT count(*) FROM fleet.admissions WHERE task_id=$1 AND task_generation=2 AND settled_at IS NULL)",
+        "SELECT (SELECT count(*) FROM fleet.task_adoptions WHERE task_id=$1), (SELECT count(*) FROM thread.turns WHERE task_id=$1 AND task_generation=2 AND settled_at IS NULL)",
     ).bind(task)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("receipt connection"))
         .await.expect("committed adoption and continuation");

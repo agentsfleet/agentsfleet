@@ -137,12 +137,12 @@ impl Fixture {
         for ordinal in 0..4 {
             let id = mint_id();
             sqlx::query(
-                "INSERT INTO fleet.admissions \
-                (id,fleet_id,workspace_id,producer,producer_key,payload_digest,actor,event_type, \
-                 request_json,event_created_at,created_at,updated_at,delivered_at,settled_at) \
-                VALUES ($1,$2,$3,$4,$1,'fixture','fixture',$5,'{}', \
-                  now()-interval '5 minutes',now()-interval '5 minutes',now(), \
-                  CASE WHEN $6 THEN now() END, CASE WHEN $7 THEN now() END)",
+                "INSERT INTO thread.turns \
+                (id,thread_id,workspace_id,producer,producer_key,payload_digest,actor,kind,status, \
+                 request_json,created_at,updated_at,run_fence,settled_at) \
+                VALUES ($1,$2,$3,$4,$1,'fixture','fixture',$5,$8,'{}', \
+                  now()-interval '5 minutes',now(), \
+                  CASE WHEN $6 THEN 1 END, CASE WHEN $7 THEN now() END)",
             )
             .bind(&id)
             .bind(&self.fleets.first().expect("seeded fleet").0)
@@ -151,6 +151,7 @@ impl Fixture {
             .bind(af_wire::event::EventType::Chat.as_str())
             .bind(ordinal == 1)
             .bind(ordinal == 3)
+            .bind(af_core::event::status::QUEUED)
             .execute(&mut *connection)
             .await
             .expect("backlog fixture");

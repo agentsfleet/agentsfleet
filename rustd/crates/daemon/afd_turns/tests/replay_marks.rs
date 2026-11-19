@@ -193,11 +193,13 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
         [fleet.fleet.as_str()],
         "the retry publishes again"
     );
-    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
-        .bind(&fleet.fleet)
-        .fetch_one(&mut *fleet.database.acquire().await.expect("a pooled connection"))
-        .await
-        .expect("counting the fleet's admissions");
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
+    )
+    .bind(&fleet.fleet)
+    .fetch_one(&mut *fleet.database.acquire().await.expect("a pooled connection"))
+    .await
+    .expect("counting the fleet's admissions");
     assert_eq!(rows, 1, "the retry adds no queue state");
     fleet.cleanup().await;
 }

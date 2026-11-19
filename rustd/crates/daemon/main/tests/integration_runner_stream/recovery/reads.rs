@@ -113,7 +113,7 @@ pub(super) async fn assert_settled_once(scene: &Scenario) {
         Some(af_core::event::status::PROCESSED)
     );
     assert_eq!(
-        crate::reads::event_column(scene, &scene.event_id, "response_text")
+        crate::reads::event_column(scene, &scene.event_id, "answer_text")
             .await
             .as_deref(),
         Some(super::runner::ANSWER)

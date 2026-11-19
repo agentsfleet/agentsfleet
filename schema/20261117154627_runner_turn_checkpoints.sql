@@ -1,7 +1,7 @@
 -- Private root state and a matching full workspace publish in one transaction.
 CREATE TABLE runner.turn_checkpoints (
     id UUID PRIMARY KEY,
-    event_id UUID NOT NULL REFERENCES runner.turn_recovery (event_id) ON DELETE CASCADE,
+    turn_id UUID NOT NULL REFERENCES runner.turn_recovery (turn_id) ON DELETE CASCADE,
     fleet_id UUID NOT NULL REFERENCES fleet.fleets (id) ON DELETE CASCADE,
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,
     setup_revision_id UUID NOT NULL,
@@ -34,9 +34,9 @@ CREATE TABLE runner.turn_checkpoints (
     abandoned_at TIMESTAMPTZ(3),
     created_at TIMESTAMPTZ(3) NOT NULL,
     updated_at TIMESTAMPTZ(3) NOT NULL,
-    CONSTRAINT uq_turn_checkpoint_event UNIQUE (id, event_id),
+    CONSTRAINT uq_turn_checkpoint_event UNIQUE (id, turn_id),
     CONSTRAINT uq_turn_checkpoint_workspace UNIQUE (id, workspace_id),
-    CONSTRAINT uq_turn_checkpoint_generation UNIQUE (event_id, generation),
+    CONSTRAINT uq_turn_checkpoint_generation UNIQUE (turn_id, generation),
     CONSTRAINT ck_turn_checkpoint_api_only CHECK (has_workspace OR (
         page_count = 0 AND logical_bytes = 0 AND entry_count = 0 AND upload_budget_bytes = 0)),
     CONSTRAINT ck_turn_checkpoint_pages CHECK (cardinality(page_ids) = page_count),
@@ -52,11 +52,11 @@ CREATE TABLE runner.turn_checkpoints (
     CONSTRAINT ck_turn_checkpoint_disposition CHECK (ready_at IS NULL OR abandoned_at IS NULL)
 );
 
-CREATE UNIQUE INDEX uq_turn_checkpoint_pending ON runner.turn_checkpoints (event_id)
+CREATE UNIQUE INDEX uq_turn_checkpoint_pending ON runner.turn_checkpoints (turn_id)
     WHERE ready_at IS NULL AND abandoned_at IS NULL;
 CREATE INDEX idx_turn_checkpoints_workspace ON runner.turn_checkpoints (workspace_id, id);
 CREATE INDEX idx_turn_checkpoints_fleet ON runner.turn_checkpoints (fleet_id);
-CREATE INDEX idx_turn_checkpoints_ready ON runner.turn_checkpoints (event_id, generation)
+CREATE INDEX idx_turn_checkpoints_ready ON runner.turn_checkpoints (turn_id, generation)
     WHERE ready_at IS NOT NULL;
 CREATE INDEX idx_turn_checkpoints_expiry ON runner.turn_checkpoints (expires_at, id)
     WHERE ready_at IS NULL;
@@ -64,5 +64,5 @@ CREATE INDEX idx_turn_checkpoints_expiry ON runner.turn_checkpoints (expires_at,
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.turn_checkpoints TO api_runtime;
 
 ALTER TABLE runner.turn_recovery ADD CONSTRAINT fk_turn_recovery_head
-    FOREIGN KEY (head_turn_checkpoint_id, event_id) REFERENCES runner.turn_checkpoints (id, event_id)
+    FOREIGN KEY (head_turn_checkpoint_id, turn_id) REFERENCES runner.turn_checkpoints (id, turn_id)
     ON DELETE SET NULL (head_turn_checkpoint_id) DEFERRABLE INITIALLY DEFERRED;

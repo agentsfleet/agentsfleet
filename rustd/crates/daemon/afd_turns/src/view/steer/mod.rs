@@ -7,8 +7,8 @@
 //!
 //! It is not a row this daemon inserts and then hopes a runner notices. It
 //! goes through the admission ledger every other producer — webhook, cron,
-//! continuation — already goes through, and the `fleet.events` row
-//! appears when the runner runs it. That is what makes a steer
+//! continuation — already goes through, and the turn's event opens
+//! when the runner runs it. That is what makes a steer
 //! indistinguishable from every other way a run starts, and it is why there
 //! is no synthetic-event injection anywhere behind this.
 //!

@@ -1,6 +1,6 @@
 //! `thread.threads.resume_context`: the context a fleet's next run resumes from.
 //!
-//! Split from the event statements when `fleet.events` moved to
+//! Split from the event statements when the event table moved to
 //! `afd_turns`. This is a DIFFERENT table with a different lifetime: an event
 //! row records that work happened, this row records where the conversation got
 //! to, and only the one report statement writes it. It stayed here

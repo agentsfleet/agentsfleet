@@ -1,9 +1,9 @@
 //! The lane's database, a connection to the lane's NATS, and the rows every
 //! event hangs from.
 //!
-//! `fleet.events` has foreign keys into `fleet.fleets` and
+//! `thread.turns` has foreign keys into the fleet's `thread.threads` row and
 //! `identity.workspaces`, so no history test can seed a single row without first
-//! seeding a tenant, a workspace and a fleet. That chain is here rather than in
+//! seeding a tenant, a workspace and a fleet (which writes its thread). That chain is here rather than in
 //! each suite, because getting it wrong fails with a constraint violation that
 //! names a table the test never mentions.
 //!
@@ -87,7 +87,9 @@ impl EventsLane {
             .expect("the lane database must hand over a connection")
     }
 
-    /// Writes one `fleet.events` row, as a runner's report leaves it.
+    /// Writes one opened and settled `thread.turns` event, as a runner's report
+    /// leaves it. Under an admitted turn's id it opens that turn in place,
+    /// once; any other id is a fresh row with no producer.
     ///
     /// `created_at` is a parameter rather than a clock read: every claim these
     /// suites make about a `since` window is a claim about ROW TIMESTAMPS, and
@@ -95,12 +97,15 @@ impl EventsLane {
     pub(crate) async fn seed_event(&self, event_id: &Uuid7, created_at: Timestamp) {
         let mut connection = self.connection().await;
         sqlx::query(
-            "INSERT INTO fleet.events
-               (fleet_id, workspace_id, event_id, actor, event_type, status,
-                request_json, created_at, updated_at)
+            "INSERT INTO thread.turns AS t
+               (thread_id, workspace_id, id, actor, kind, status,
+                request_json, opened_at, settled_at, created_at, updated_at)
              VALUES ($1, $2, $3, 'steer:api', 'chat', 'completed',
-                     '{}'::jsonb, $4, $4)
-             ON CONFLICT (event_id) DO NOTHING",
+                     '{}'::jsonb, $4, $4, $4, $4)
+             ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status,
+                 opened_at = EXCLUDED.opened_at, settled_at = EXCLUDED.settled_at,
+                 created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at
+             WHERE t.opened_at IS NULL",
         )
         .bind(&self.fleet)
         .bind(&self.workspace)
@@ -115,8 +120,8 @@ impl EventsLane {
     pub(crate) async fn has_event(&self, event_id: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         let count: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM fleet.events
-             WHERE fleet_id = $1 AND event_id = $2",
+            "SELECT count(*) FROM thread.turns
+             WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
         )
         .bind(&self.fleet)
         .bind(event_id)

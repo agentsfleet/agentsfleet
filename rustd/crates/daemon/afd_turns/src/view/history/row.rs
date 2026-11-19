@@ -62,7 +62,7 @@ pub struct EventRow {
     pub cost_nanos: Option<i64>,
 }
 
-/// The row as `fleet.events` spells it.
+/// The row as the history reads spell a `thread.turns` event.
 #[derive(sqlx::FromRow)]
 pub(crate) struct Stored {
     fleet_id: Uuid7,

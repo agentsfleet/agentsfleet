@@ -25,8 +25,6 @@ struct Stamps {
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     updated_at: Timestamp,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    event_created_at: Timestamp,
     sequence: i64,
 }
 
@@ -50,8 +48,8 @@ pub(super) async fn admit(admissions: &Admissions, admission: Admission<'_>) -> 
 
 async fn stamps(lane: &Lane, id: &Uuid7) -> Fallible<Stamps> {
     Ok(sqlx::query_as(
-        "SELECT created_at, updated_at, event_created_at, sequence \
-         FROM fleet.admissions WHERE id = $1",
+        "SELECT created_at, updated_at, sequence \
+         FROM thread.turns WHERE id = $1",
     )
     .bind(id)
     .fetch_one(&mut *lane.database.acquire().await?)
@@ -70,7 +68,7 @@ async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
     let first = admit(&admissions, steer(&lane, key.as_str(), ReplyTo::None)).await?;
     let retried = admit(&admissions, steer(&lane, key.as_str(), ReplyTo::None)).await?;
 
-    let row: Uuid7 = sqlx::query_scalar("SELECT id FROM fleet.admissions WHERE producer_key = $1")
+    let row: Uuid7 = sqlx::query_scalar("SELECT id FROM thread.turns WHERE producer_key = $1")
         .bind(key.as_str())
         .fetch_one(&mut *lane.database.acquire().await?)
         .await?;
@@ -84,8 +82,8 @@ async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
     Ok(())
 }
 
-/// Every instant on the row is the database's: one `now()` for all three, and
-/// the one the producer was answered with.
+/// Every instant on the row is the database's: one `now()` for both, and the
+/// one the producer was answered with.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
@@ -95,7 +93,6 @@ async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
     let admitted = admit(&admissions, steer(&lane, mint_id().as_str(), ReplyTo::None)).await?;
     let row = stamps(&lane, &admitted.stored.id).await?;
 
-    assert_eq!(row.created_at, row.event_created_at);
     assert!(
         row.updated_at >= row.created_at,
         "the ledger timestamps do not move backwards"
@@ -141,7 +138,7 @@ async fn two_admissions_in_one_instant_order_by_their_sequence() -> Fallible {
         "the sequence keeps insertion order"
     );
     let ordered: Vec<Uuid7> = sqlx::query_scalar(
-        "SELECT id FROM fleet.admissions WHERE fleet_id = $1 \
+        "SELECT id FROM thread.turns WHERE thread_id = $1 AND producer IS NOT NULL \
          ORDER BY created_at, sequence",
     )
     .bind(&lane.fleet)

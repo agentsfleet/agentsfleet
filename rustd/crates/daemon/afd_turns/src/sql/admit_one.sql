@@ -6,10 +6,12 @@
 -- $7 actor · $8 event type · $9 request JSON · $10 deployment ceiling ·
 -- $11 current deployment estimate · $12/$13 reply connector and address ·
 -- $14 earlier admission in this workspace to copy a reply from ·
--- $15 this build's setup policy stamp · $16 runnable status, or NULL for any.
+-- $15 this build's setup policy stamp · $16 runnable status, or NULL for any ·
+-- $17 the status a new turn waits in.
 
 -- 1. Lock the fleet row. One message per fleet is written at a time, so a
---    later sender draws a later sequence. MATERIALIZED: runs once, first.
+--    later sender draws a later sequence. MATERIALIZED: runs once, first. The
+--    fleet's thread was written with the fleet, so the turn always has one.
 WITH locked_fleet AS MATERIALIZED (
     SELECT f.id, f.status,
            COALESCE(setup.policy_semantics = $15, false) AS setup_current
@@ -21,23 +23,23 @@ WITH locked_fleet AS MATERIALIZED (
 ),
 -- 2. Was this key sent before? Read only for a fleet the caller owns.
 already_sent AS (
-    SELECT a.id AS id, a.payload_digest AS digest, a.fleet_id AS fleet, a.created_at
-    FROM fleet.admissions a, locked_fleet
+    SELECT a.id AS id, a.payload_digest AS digest, a.thread_id AS fleet, a.created_at
+    FROM thread.turns a, locked_fleet
     WHERE a.producer = $4 AND a.producer_key = $5
 ),
 -- 3 and 4. Write the message only when every check passes. A twin that
 --    committed while this one waited on the lock is returned, not duplicated.
 new_message AS (
-    INSERT INTO fleet.admissions
-      (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
-       actor, event_type, request_json, event_created_at,
+    INSERT INTO thread.turns
+      (id, thread_id, workspace_id, producer, producer_key, payload_digest,
+       actor, kind, status, request_json,
        reply_provider, reply_address, created_at, updated_at)
-    SELECT $1, locked_fleet.id, $3, $4, $5, $6, $7, $8, $9, now(),
+    SELECT $1, locked_fleet.id, $3, $4, $5, $6, $7, $8, $17, $9::jsonb,
            COALESCE($12::text, earlier.reply_provider),
            COALESCE($13::text, earlier.reply_address),
            now(), now()
     FROM locked_fleet
-    LEFT JOIN fleet.admissions earlier
+    LEFT JOIN thread.turns earlier
       ON earlier.id = $14 AND earlier.workspace_id = $3
      AND earlier.reply_provider IS NOT NULL
     WHERE NOT EXISTS (SELECT 1 FROM already_sent)
@@ -46,7 +48,7 @@ new_message AS (
       AND $11::bigint < $10::bigint
     ON CONFLICT (producer, producer_key) DO UPDATE SET updated_at = EXCLUDED.updated_at
     RETURNING (xmax = 0) AS inserted, id, payload_digest AS digest,
-              fleet_id AS fleet, created_at
+              thread_id AS fleet, created_at
 )
 -- 5. Exactly one answer row, whatever happened above.
 SELECT EXISTS (SELECT 1 FROM locked_fleet) AS fleet_found,

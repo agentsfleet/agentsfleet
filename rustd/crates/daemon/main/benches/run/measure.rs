@@ -98,7 +98,7 @@ async fn checkpoint(run: &Scenario, fleets: &[Fleet], model: &mut Model) -> Chec
     }
     let events: Vec<_> = fleets.iter().map(|f| f.event.clone()).collect();
     let mut conn = run.booted.database.acquire().await?;
-    let heads: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.event_id=ANY($1::uuid[]) AND p.ready_at IS NOT NULL AND p.root_secret_ciphertext IS NOT NULL")
+    let heads: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.turn_id=ANY($1::uuid[]) AND p.ready_at IS NOT NULL AND p.root_secret_ciphertext IS NOT NULL")
         .bind(&events).fetch_one(&mut *conn).await?;
     if usize::try_from(heads)? != fleets.len() {
         return Err("source cohort lacks a committed root".into());
@@ -172,7 +172,7 @@ async fn outcomes(
     let began = tokio::time::Instant::now();
     loop {
         let mut conn = run.booted.database.acquire().await?;
-        let rows:Vec<(Uuid7,i64,i64,Option<i64>,String)>=sqlx::query_as("SELECT l.fleet_id,l.fencing_token,(extract(epoch from l.created_at)*1000)::bigint,(extract(epoch from a.settled_at)*1000)::bigint,l.status FROM thread.runs l JOIN fleet.admissions a ON a.id=l.event_id WHERE l.event_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[]) ORDER BY l.fleet_id,l.fencing_token")
+        let rows:Vec<(Uuid7,i64,i64,Option<i64>,String)>=sqlx::query_as("SELECT l.fleet_id,l.fencing_token,(extract(epoch from l.created_at)*1000)::bigint,(extract(epoch from a.settled_at)*1000)::bigint,l.status FROM thread.runs l JOIN thread.turns a ON a.id=l.event_id WHERE l.event_id=ANY($1::uuid[]) AND l.runner_id=ANY($2::uuid[]) ORDER BY l.fleet_id,l.fencing_token")
             .bind(&events).bind(hosts).fetch_all(&mut *conn).await?;
         if rows.iter().filter(|r| r.3.is_some()).count() >= expected
             || began.elapsed() > Duration::from_secs(10)

@@ -88,8 +88,8 @@ pub enum HeadKind {
 
 /// The fleet the claim statement read, and the event row it opened.
 ///
-/// One statement claims the slot, reads the fleet and its setup, opens the
-/// `fleet.events` row and stamps delivery, so nothing after the
+/// One statement claims the slot, reads the fleet and its setup, and stamps
+/// and opens the turn's event, so nothing after the
 /// claim reads any of these again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Opened {

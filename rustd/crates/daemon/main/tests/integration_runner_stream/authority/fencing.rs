@@ -66,7 +66,7 @@ async fn assert_unissued(fixture: &Fixture, replacement: Replacement) -> TestRes
         .await?;
     assert_eq!(issued, 0, "a stale issue wrote a run: {replacement:?}");
     let pending: bool =
-        sqlx::query_scalar("SELECT settled_at IS NULL FROM fleet.admissions WHERE id=$1")
+        sqlx::query_scalar("SELECT settled_at IS NULL FROM thread.turns WHERE id=$1")
             .bind(&fixture.scene.event_id)
             .fetch_one(&mut *fixture.scene.booted.database.acquire().await?)
             .await?;

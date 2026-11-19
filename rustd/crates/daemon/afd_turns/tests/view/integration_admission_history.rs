@@ -1,4 +1,4 @@
-//! Dimension 4.9 — an admitted event is named by its `fleet.admissions` row id,
+//! Dimension 4.9 — an admitted event is named by its `thread.turns` row id,
 //! and the history keyset `(created_at, event_id)` reads two such events in one
 //! millisecond newest-first, each once, across a page boundary. An id no
 //! admission minted names nothing.

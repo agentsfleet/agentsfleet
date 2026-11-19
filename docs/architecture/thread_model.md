@@ -52,47 +52,56 @@ Publishing a draft creates a new fleet, so the fleet gets its own thread. The dr
 
 ## thread.turns
 
-One row per input on a thread. It replaces `fleet.admissions`, `fleet.events` and `authoring.messages`, which today split one input across three rows.
+One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows (`schema/20261108125100_thread_turns.sql`). `setup.messages` folds in next.
+
+Intake writes the turn `queued`. The claim that first runs it stamps its fence and opens its event in one update, and the report settles it and closes the event in one update, since one statement may change a row once. A history-only receipt, such as an activity or a model change, is written opened and settled, with no producer, so no claim takes it.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
-| `id` | `UUID` PK | no | `admissions.id` = `events.event_id`; `messages.id` | the turn id |
-| `thread_id` | `UUID` | no | `fleet_id` / `draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
-| `workspace_id` | `UUID` | no | `admissions.workspace_id` | FK `identity.workspaces(id)` ON DELETE CASCADE |
-| `sequence` | `BIGINT` | no | `admissions.sequence`, `messages.sequence` | order on the thread; unique with `thread_id` |
-| `kind` | `TEXT` | no | `event_type` | `message`, `schedule`, `webhook`, `continuation`, `task` |
+| `id` | `UUID` PK | no | `admissions.id` = `events.event_id` | the turn id; the wire still calls it `event_id` |
+| `sequence` | `BIGINT` identity | no | `admissions.sequence` | intake order; unique with `thread_id`; a history-only receipt draws one too |
+| `thread_id` | `UUID` | no | `fleet_id` | FK `thread.threads(id)` ON DELETE CASCADE |
+| `workspace_id` | `UUID` | no | `workspace_id` | FK `identity.workspaces(id)` ON DELETE CASCADE |
+| `kind` | `TEXT` | no | `event_type` | `chat`, `webhook`, `schedule`, `continuation`, `activity`, and the rest of the event type vocabulary |
 | `actor` | `TEXT` | no | `actor` | who sent it |
-| `status` | `TEXT` | no | see the status map below | `queued`, `running`, `waiting`, `answered`, `failed`, `cancelled`, `recorded` |
-| `producer`, `producer_key` | `TEXT` | no | `admissions.producer`, `producer_key`; `messages.operation_id` | retry dedup: unique together, so a resent input writes nothing |
-| `payload_digest` | `TEXT` | no | `admissions.payload_digest` | a resend with another body is refused |
-| `request_json` | `JSONB` | no | `admissions.request_json`, `events.request_json`, `messages.user_text` | the input itself |
-| `answer_text` | `TEXT` | yes | `events.response_text`, `messages.answer_text` | the answer |
+| `status` | `TEXT` | no | `events.status`, and `queued` before the event opens | see the status map below |
+| `producer`, `producer_key`, `payload_digest` | `TEXT` | yes, all or none | `admissions` | retry dedup, unique `(producer, producer_key)`; a resend with another body is refused. NULL on a history-only receipt |
+| `request_json` | `JSONB` | no | `admissions.request_json`, `events.request_json` | the input itself; readers that decode a string select `request_json::text` |
 | `reply_provider`, `reply_address` | `TEXT` | yes | `admissions.reply_*` | where a connector answer goes; both or neither |
-| `run_id` | `UUID` | yes | `lease_fence`, `input_claim_lease_id`, `input_claim_fence` | FK `thread.runs(id)` ON DELETE SET NULL: the run serving this turn, shared by every turn one run serves |
+| `answer_text` | `TEXT` | yes | `events.response_text` | the answer |
+| `tool_calls` | `JSONB` | yes | `events.tool_calls` | the compact trace summary the thread page reads; full detail is in `thread.items` |
+| `token_count`, `wall_ms` | `BIGINT` | yes | `events` | usage shown on the turn; NULL until a run reports |
+| `failure_reason`, `failure_detail` | `TEXT` | yes | `events` | why a turn failed |
 | `resumes_turn_id` | `UUID` | yes | `events.resumes_event_id` | FK `thread.turns(id)` ON DELETE SET NULL: a continuation names the turn it resumes |
+| `run_fence`, `input_claim_run_id`, `input_claim_fence` | `BIGINT`, `UUID`, `BIGINT` | yes | `admissions` | the fence of the claim that took the turn as its head, and of the run whose conversation folded it in. No foreign key: a fence outlives its run |
+| `opened_at` | `TIMESTAMPTZ(3)` | yes | new | when the fleet's event opened; history reads and the activity counter read only opened turns |
 | `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions` | waiting on an approval; read by a task; finished |
-| `token_count`, `wall_ms` | `BIGINT` | no | `events` | usage shown on the turn |
-| `failure_reason`, `failure_detail` | `TEXT` | yes | `events`, `messages.failure_reason` | why a turn failed |
-| `task_id`, `task_item_id`, `task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs to `fleet.tasks` and `fleet.task_items` ON DELETE SET NULL on the id column, as today |
+| `task_id`, `task_item_id`, `task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(task_id, thread_id, workspace_id)` to `fleet.tasks` and `(task_item_id, thread_id, workspace_id)` to `fleet.task_items`, ON DELETE SET NULL on the id column, as today |
 | `task_activity`, `task_activity_sequence`, `task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
-| `tenant_model_id` | `UUID` | yes | `messages` | FK `model.tenant_models(id)` ON DELETE SET NULL: the model a setup turn chose |
-| `candidate_id` | `UUID` | yes | `messages` | FK `setup.candidates(id)` ON DELETE SET NULL: the candidate a setup turn wrote |
-| `save_requested`, `save_error_code` | `BOOLEAN`, `TEXT` | no, yes | `messages` | a setup turn that saves the head |
 
-Indexes: `(thread_id, sequence)` unique; `(thread_id, created_at, id)` for history pages; `(workspace_id, created_at, id)` for the workspace stream; `(thread_id, sequence) WHERE settled_at IS NULL` for assignment; `(task_id, task_generation, settled_at, sequence)` for tasks.
+Indexes: `(thread_id, sequence)` unique; `(producer, producer_key)` unique; `(thread_id, created_at, id)`, `(thread_id, actor, created_at, id)` and `(thread_id, kind, created_at, id)` for history pages; `(workspace_id, created_at, id)` for the workspace stream; `(thread_id, sequence) WHERE settled_at IS NULL` for assignment; `(thread_id, reply_provider, reply_address, sequence) WHERE settled_at IS NULL` for one conversation's next turns; `(task_id, task_generation, settled_at, sequence)` for tasks; `task_item_id` and `resumes_turn_id` for their foreign keys.
 
-`admissions.delivered_at` is dropped, because `thread.deliveries` is the one record of delivery.
+Two triggers, `trg_turns_count_inserted_opened` and `trg_turns_count_opened`, bump `fleet.activity_counters.event_count` once per turn, when its event opens.
+
+The fleet's thread is written with the fleet, so a turn always has one. A turn's `created_at` is its intake instant, so a webhook's event now sorts at intake rather than at its first claim.
+
+`admissions.delivered_at` is dropped: a redelivery is a turn whose `run_fence` is already set, and `thread.deliveries` is the one record of delivery. `admissions.event_created_at` is dropped, because it always equalled `created_at`.
+
+Still to come, from the design: the setup columns `tenant_model_id`, `candidate_id`, `save_requested` and `save_error_code` with `setup.messages`; one `run_id` replacing `run_fence` and the input claim pair; and the status renames below, which wait for the public-surface rename because the stored words reach the wire.
 
 ### Status map
 
-| Old value | Table | New status |
-|-----------|-------|------------|
-| `received` | events | `queued` |
-| `recorded` | events | `recorded`: a history-only input that never gets a run |
-| `gate_blocked` | events | `waiting`, with `parked_at` set |
-| `processed` | events | `answered` |
-| `fleet_error` | events | `failed` |
-| `queued`, `running`, `completed`, `failed`, `cancelled` | messages | `queued`, `running`, `answered`, `failed`, `cancelled` |
+The stored words are the event words today, plus `queued`. The rename column is the target.
+
+| Stored today | Meaning | Target |
+|--------------|---------|--------|
+| `queued` | admitted, event not opened | `queued` |
+| `received` | event opened, a run holds it | `running` |
+| `recorded` | a history-only input that never gets a run | `recorded` |
+| `gate_blocked` | refused at a gate, or waiting with `parked_at` set | `waiting` |
+| `processed` | answered | `answered` |
+| `fleet_error` | failed | `failed` |
+| `queued`, `running`, `completed`, `failed`, `cancelled` on `setup.messages` | a setup draft's turn | `queued`, `running`, `answered`, `failed`, `cancelled` |
 
 ## thread.runs
 
@@ -165,8 +174,9 @@ It replaces `runner.events`, column for column, except that `event_type` becomes
 
 | Table | Old column | New column and FK |
 |-------|------------|-------------------|
-| `runner.turn_recovery` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE |
-| `runner.turn_checkpoints`, `turn_checkpoint_pins`, `turn_checkpoint_operations`, `turn_checkpoint_refs` | `event_id`, `lease_id` | `turn_id`, `run_id`, FKs ON DELETE CASCADE |
+| `runner.turn_recovery` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done) |
+| `runner.turn_checkpoints`, `turn_checkpoint_pins`, `turn_checkpoint_operations`, `turn_checkpoint_refs` | `event_id`, `lease_id` | `turn_id`, `run_id`, FKs ON DELETE CASCADE; `turn_checkpoints.event_id`, which points at `turn_recovery`, is `turn_id` now |
+| `thread.items` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done; the file moved to `20261108125110` to follow `thread.turns`) |
 | `fleet.approval_gates` | `event_id` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE, null for an install grant card, which has no turn |
 | `billing.usage_lines` | `event_id`, `authoring_attempt_id`, `work_type` | `turn_id`, `run_id`, `work_type` values `turn`, `stage`, `setup` |
 | `runner.decision_calls` | `lease_id` | `run_id` |

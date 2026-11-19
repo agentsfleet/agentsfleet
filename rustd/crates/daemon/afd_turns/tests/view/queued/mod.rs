@@ -2,9 +2,9 @@
 //!
 //! A steer is admitted and put on the fleet's queue; no runner takes it. The
 //! first page of the thread carries it as a `queued` row with its body. Once a
-//! run stamps the admission delivered and writes the history row, the same
-//! event appears once, as the history row. The waiting read is planned against
-//! a private database, so its index is the one the statement was written for.
+//! run stamps the turn's fence and opens its event, the same turn appears once,
+//! as the history row. The waiting read is planned against a private database,
+//! so its index is the one the statement was written for.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -29,21 +29,22 @@ use crate::support::EventsLane;
 /// A person's actor, as a steer records it.
 const ACTOR: &str = "steer:user_waiting";
 
-/// What they typed, as the route stores it.
-const BODY: &str = r#"{"message":"wait for me"}"#;
+/// What they typed, spelled as `jsonb` prints it back, so the stored body reads
+/// back byte for byte.
+const BODY: &str = r#"{"message": "wait for me"}"#;
 
 /// A first page's size, as the dashboard asks for it.
 const PAGE: i64 = 26;
 
-/// What a run writes to the admission when a runner takes it.
-const MARK_DELIVERED: &str = "UPDATE fleet.admissions SET delivered_at = now() \
-     WHERE fleet_id = $1 AND delivered_at IS NULL";
+/// What a claim writes to the turn when a runner takes it: its fence.
+const MARK_DELIVERED: &str = "UPDATE thread.turns SET run_fence = 1 \
+     WHERE thread_id = $1 AND run_fence IS NULL";
 
-/// The two indexes that hold only undelivered admissions, keyed on the fleet
-/// and the admission order (`schema/20261108125100_fleet_admissions.sql`).
-const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_admissions_delivery_lookup"];
+/// The index the thread read walks, waiting turns and opened ones alike: the
+/// thread's turns newest first (`schema/20261108125100_thread_turns.sql`).
+const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_turns_thread_id_created_at_id"];
 
-/// Ledger history, most of it delivered, across many fleets of one workspace:
+/// Ledger history, most of it delivered and settled, across many fleets of one workspace:
 /// `$1` tenant, `$2` instant, `$3` fleets, `$4` admissions per fleet. Each
 /// admission is a millisecond after the one before it.
 const SEED_LEDGER: &str = "
@@ -60,16 +61,17 @@ WITH workspace AS (
            '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspace, generate_series(1, $3) f
     RETURNING id, workspace_id
+), threads AS (
+    INSERT INTO thread.threads (id, fleet_id, fencing_token, run_expires_at, created_at, updated_at)
+    SELECT id, id, 0, $2::timestamptz, $2::timestamptz, $2::timestamptz FROM fleets
 )
-INSERT INTO fleet.admissions
-  (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor,
-   event_type, request_json, event_created_at, delivered_at,
+INSERT INTO thread.turns
+  (id, thread_id, workspace_id, producer, producer_key, payload_digest, actor,
+   kind, status, request_json, run_fence,
    settled_at, created_at, updated_at)
 SELECT uuidv7(), fleets.id, fleets.workspace_id, 'steer', fleets.id || ':' || a,
-       'digest', 'steer:api', 'chat', '{}',
-       $2::timestamptz + a * interval '1 millisecond',
-       CASE WHEN a % 50 = 0 THEN NULL
-            ELSE $2::timestamptz + a * interval '1 millisecond' END,
+       'digest', 'steer:api', 'chat', 'queued', '{}',
+       CASE WHEN a % 50 = 0 THEN NULL ELSE 1 END,
        CASE WHEN a % 50 = 0 THEN NULL
             ELSE $2::timestamptz + a * interval '1 millisecond' END,
        $2::timestamptz + a * interval '1 millisecond',

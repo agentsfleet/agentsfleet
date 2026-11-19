@@ -10,7 +10,7 @@ use crate::{rows::Row, seed::seeded_parts, support::Fixtures};
 
 const ORDER: &str = "SELECT claimed.sequence < delayed.sequence \
     AND delayed.created_at < claimed.created_at \
-    FROM fleet.admissions claimed, fleet.admissions delayed \
+    FROM thread.turns claimed, thread.turns delayed \
     WHERE claimed.id=$1 AND delayed.id=$2";
 
 // Value: protects=unfinished work survives an older transaction committing later;
@@ -154,7 +154,7 @@ async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
         .expect("the waiting send's task")
         .expect("the waiting send admits");
     let later: bool = sqlx::query_scalar(
-        "SELECT w.sequence > s.sequence FROM fleet.admissions w, fleet.admissions s \
+        "SELECT w.sequence > s.sequence FROM thread.turns w, thread.turns s \
          WHERE w.id = $1 AND s.id = $2",
     )
     .bind(&behind.stored.id)

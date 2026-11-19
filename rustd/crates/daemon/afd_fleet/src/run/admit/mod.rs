@@ -100,7 +100,7 @@ pub struct Billed {
 /// Why an event was ended, and what an operator is told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Refusal {
-    /// The `fleet.events.failure_label` value.
+    /// The `thread.turns.failure_reason` value, on the wire as `failure_label`.
     pub label: &'static str,
 }
 

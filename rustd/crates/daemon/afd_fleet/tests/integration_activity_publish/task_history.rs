@@ -34,7 +34,7 @@ fn progress(id: &str, completed: u32) -> TaskActivity {
 async fn saved(run: &Held) -> TaskActivityHistory {
     let Json(history) = sqlx::query_scalar::<_, Json<TaskActivityHistory>>(
         "SELECT jsonb_build_object('items', task_activity, 'truncated', task_activity_truncated) \
-         FROM fleet.events WHERE fleet_id=$1 AND event_id=$2",
+         FROM thread.turns WHERE thread_id=$1 AND id=$2",
     )
     .bind(&run.fleet)
     .bind(&run.event_id)
@@ -173,7 +173,7 @@ async fn contended_event_drops_progress_without_waiting_or_consuming_sequence() 
     let mut tx = sqlx::Connection::begin(&mut *connection)
         .await
         .expect("lock transaction");
-    sqlx::query("SELECT event_id FROM fleet.events WHERE fleet_id=$1 AND event_id=$2 FOR UPDATE")
+    sqlx::query("SELECT id FROM thread.turns WHERE thread_id=$1 AND id=$2 FOR UPDATE")
         .bind(&run.fleet)
         .bind(&run.event_id)
         .fetch_one(&mut *tx)

@@ -64,7 +64,7 @@ async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_claim() 
     ).bind(Uuid7::parse(&reference.pin_id.0)?).fetch_one(&mut *connection).await?;
     let mut held = connection.begin().await?;
     let controller: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM fleet.admissions WHERE id=$1 FOR UPDATE")
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM thread.turns WHERE id=$1 FOR UPDATE")
             .bind(Uuid7::parse(&fold.event_id.0)?)
             .fetch_one(&mut *held)
             .await?;
@@ -234,6 +234,6 @@ struct Claim {
 
 async fn claim(files: &Files, fold: &FoldRef) -> Checked<Claim> {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    Ok(sqlx::query_as("SELECT input_claim_run_id AS owner,input_claim_fence AS fence,settled_at IS NOT NULL AS settled FROM fleet.admissions WHERE id=$1")
+    Ok(sqlx::query_as("SELECT input_claim_run_id AS owner,input_claim_fence AS fence,settled_at IS NOT NULL AS settled FROM thread.turns WHERE id=$1")
         .bind(Uuid7::parse(&fold.event_id.0)?).fetch_one(&mut *connection).await?)
 }

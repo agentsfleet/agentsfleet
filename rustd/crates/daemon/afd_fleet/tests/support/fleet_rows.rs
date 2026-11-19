@@ -31,11 +31,12 @@ pub(crate) enum Row<'a> {
     Slot(&'a Uuid7),
     /// A fleet's `thread.threads` row, by fleet id.
     Session(&'a Uuid7),
-    /// A `fleet.admissions` row, by its id, which is the logical event id.
+    /// A `thread.turns` row, by its id, which is the logical event id.
     Admission(&'a Uuid7),
     /// An `setup.attempts` row, by attempt id.
     Attempt(&'a Uuid7),
-    /// A `fleet.events` row, by fleet id and event id.
+    /// A fleet's opened `thread.turns` row, its event, by fleet id and turn
+    /// id. The answer column is `answer_text`.
     Event(&'a Uuid7, &'a Uuid7),
     /// A `model` usage line, by event id and the runner's request number.
     ModelLine(&'a Uuid7, &'a str),
@@ -75,11 +76,11 @@ impl<'a> Row<'a> {
             Self::Run(id) => ("thread.runs", "id = $1", id, None),
             Self::Slot(fleet) => ("thread.threads", "fleet_id = $1", fleet, None),
             Self::Session(fleet) => ("thread.threads", "id = $1", fleet, None),
-            Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
+            Self::Admission(id) => ("thread.turns", "id = $1", id, None),
             Self::Attempt(id) => ("setup.attempts", "id = $1", id, None),
             Self::Event(fleet, event) => (
-                "fleet.events",
-                "fleet_id = $1 AND event_id = $2",
+                "thread.turns",
+                "thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
                 fleet,
                 Some(Second::Id(event)),
             ),

@@ -1,7 +1,7 @@
 -- The fleet's claim. Its `slot` step is `../shared/claim_slot.sql` and its `prior_run`,
 -- `bumped` and `tally` steps are `../shared/expire_prior_run.sql`, fused here with the
--- fleet's admission and event so a chat's claim stays one round trip: a change to the
--- bookkeeping belongs in both.
+-- fleet's turn, which the claim stamps and opens as the fleet's event in one update, so a
+-- chat's claim stays one round trip: a change to the bookkeeping belongs in both.
 WITH fleet AS MATERIALIZED (
   SELECT f.id, f.workspace_id, f.tenant_id, f.name, f.status, f.head_revision_id,
          f.memory_reads_workspace, f.memory_publishes_workspace
@@ -47,16 +47,16 @@ WITH fleet AS MATERIALIZED (
             prior.hold_expires_at > (SELECT checked_at FROM instant) AS held,
             prior.last_runner_id AS holder
 ), first_head AS MATERIALIZED (
-  SELECT a.id, a.task_id, host.platform_owned AS host_platform FROM fleet.admissions a
-  JOIN fleet f ON f.id = a.fleet_id AND f.workspace_id = a.workspace_id
+  SELECT a.id, a.task_id, host.platform_owned AS host_platform FROM thread.turns a
+  JOIN fleet f ON f.id = a.thread_id AND f.workspace_id = a.workspace_id
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
   JOIN runner.runners host ON host.id = $2
-  WHERE a.fleet_id = $1 AND a.settled_at IS NULL AND host.cordon_reason IS NULL
+  WHERE a.thread_id = $1 AND a.settled_at IS NULL AND host.cordon_reason IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR EXISTS (
       SELECT 1 FROM fleet.tasks t JOIN runner.runners r ON r.id = $2
-      WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.fleet_id AND t.workspace_id = a.workspace_id
+      WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.thread_id AND t.workspace_id = a.workspace_id
         AND r.durable_tasks_enabled AND r.capability_report @> jsonb_build_object($8::text, true)
         AND t.status IN ($9, $10) AND t.terminal_at IS NULL
         AND t.expires_at > (SELECT checked_at FROM instant) AND t.used_runs < t.max_runs
@@ -76,38 +76,42 @@ WITH fleet AS MATERIALIZED (
       AND r.id = COALESCE(
         (SELECT t.accepted_revision_id FROM fleet.tasks t WHERE t.id = h.task_id AND t.fleet_id = f.id),
         f.head_revision_id)
-      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $16::text)
+      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $15::text)
 ), locked AS (
-  SELECT a.id FROM fleet.admissions a
+  SELECT a.id FROM thread.turns a
   JOIN head h ON h.id = a.id
   CROSS JOIN slot
   WHERE a.settled_at IS NULL
-    AND ($15::boolean OR a.task_id IS NOT NULL OR NOT EXISTS (
+    AND ($14::boolean OR a.task_id IS NOT NULL OR NOT EXISTS (
       SELECT 1 FROM runner.turn_recovery recovery
-      WHERE recovery.event_id = a.id AND recovery.head_turn_checkpoint_id IS NOT NULL
+      WHERE recovery.turn_id = a.id AND recovery.head_turn_checkpoint_id IS NOT NULL
     ))
   FOR UPDATE OF a SKIP LOCKED
 ), stamped AS (
-  UPDATE fleet.admissions a
+  -- Stamps the fence and, the first time a run takes the turn, opens its event: one
+  -- update, since one statement may change a row once.
+  UPDATE thread.turns a
   SET run_fence = slot.fencing_token,
-      delivered_at = COALESCE(a.delivered_at, clock_timestamp()),
+      status = CASE WHEN a.opened_at IS NULL THEN $13 ELSE a.status END,
+      opened_at = COALESCE(a.opened_at, now()),
       updated_at = now()
   FROM locked l, slot
   WHERE a.id = l.id AND a.settled_at IS NULL
     AND (a.parked_at IS NULL OR NOT EXISTS (
       (SELECT 1 FROM fleet.approval_gates g
-      WHERE g.fleet_id = a.fleet_id AND g.resolved_at IS NULL
+      WHERE g.fleet_id = a.thread_id AND g.resolved_at IS NULL
         AND g.event_id IS NULL LIMIT 1)
       UNION ALL
       (SELECT 1 FROM fleet.approval_gates g
-      WHERE g.fleet_id = a.fleet_id AND g.resolved_at IS NULL
+      WHERE g.fleet_id = a.thread_id AND g.resolved_at IS NULL
         AND g.event_id = a.id
         AND g.expires_at > (SELECT checked_at FROM instant) LIMIT 1)))
   RETURNING WITH (OLD AS prior)
-            a.id, a.workspace_id, a.actor, a.event_type, a.request_json,
-            a.event_created_at, a.producer, a.created_at, a.task_id, a.task_generation,
-            a.sequence, a.reply_provider, a.reply_address,
-            prior.delivered_at IS NOT NULL AS redelivered
+            a.id, a.workspace_id, a.actor, a.kind AS event_type, a.request_json::text AS request_json,
+            a.created_at, a.task_id, a.task_generation,
+            a.sequence, a.reply_provider, a.reply_address, a.status,
+            prior.run_fence IS NOT NULL AS redelivered,
+            prior.opened_at IS NULL AS inserted
 ), prior_run AS MATERIALIZED (
   SELECT l.id, l.runner_id, l.tenant_id, l.posture, l.model
   FROM thread.runs l JOIN stamped a ON a.id = l.event_id
@@ -118,21 +122,10 @@ WITH fleet AS MATERIALIZED (
   UPDATE thread.runs l SET status = $7, updated_at = now()
   FROM prior_run p WHERE l.id = p.id AND l.status = $6
   RETURNING l.runner_id
-), opened AS (
-  INSERT INTO fleet.events AS e
-    (fleet_id, event_id, workspace_id, actor, event_type,
-     status, request_json, resumes_event_id, created_at, updated_at)
-  SELECT $1, a.id, a.workspace_id, a.actor, a.event_type, $13, a.request_json::jsonb, NULL,
-         CASE WHEN a.producer = $14 AND NOT a.redelivered THEN a.created_at ELSE now() END,
-         now()
-  FROM stamped a
-  ON CONFLICT (event_id) DO UPDATE SET
-      resumes_event_id = COALESCE(e.resumes_event_id, EXCLUDED.resumes_event_id)
-  RETURNING (e.xmax = 0) AS inserted, e.created_at, e.status
 ), counters AS (
-  SELECT COALESCE(k.event_count, 0) + CASE WHEN o.inserted THEN 1 ELSE 0 END AS event_count,
+  SELECT COALESCE(k.event_count, 0) + CASE WHEN a.inserted THEN 1 ELSE 0 END AS event_count,
          COALESCE(k.budget_used_nanos, 0) AS budget_used_nanos
-  FROM opened o
+  FROM stamped a
   LEFT JOIN fleet.activity_counters k ON k.fleet_id = $1
 ), installed AS (
   SELECT r.definition::text AS definition, r.runtime_model_ref, s.resume_context::text AS context_json,
@@ -169,7 +162,7 @@ WITH fleet AS MATERIALIZED (
     SET expired_count = c.expired_count + 1, updated_at = now()
 )
 SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
-       a.request_json, a.event_created_at, a.redelivered,
+       a.request_json, a.created_at AS event_created_at, a.redelivered,
        slot.fencing_token, slot.run_expires_at,
        COALESCE(slot.held, false) AS held, slot.holder,
        b.id AS predecessor_run_id, b.id IS NOT NULL AS reclaimed,
@@ -181,7 +174,7 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        f.memory_reads_workspace, f.memory_publishes_workspace,
        i.definition, i.runtime_model_ref, i.context_json, i.policy_semantics,
        i.revision_id, i.task_generation, i.current_definition,
-       o.inserted, o.created_at AS opened_at, o.status AS event_status,
+       a.inserted, a.created_at AS opened_at, a.status AS event_status,
        k.event_count, k.budget_used_nanos,
        (SELECT resource_version FROM catalogue) AS catalogue_version,
        pl.platform_secret_id, pl.platform_secret_digest,
@@ -195,19 +188,18 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        -- task's inbox stays closed, so its run says false.
        a.task_id IS NULL AND CASE
          WHEN a.reply_provider IS NOT NULL THEN EXISTS (
-           SELECT 1 FROM fleet.admissions w
-           WHERE w.fleet_id = $1 AND w.reply_provider = a.reply_provider
+           SELECT 1 FROM thread.turns w
+           WHERE w.thread_id = $1 AND w.reply_provider = a.reply_provider
              AND w.reply_address = a.reply_address
              AND w.settled_at IS NULL AND w.sequence > a.sequence)
          ELSE EXISTS (
-           SELECT 1 FROM fleet.admissions w
-           WHERE w.fleet_id = $1 AND w.reply_provider IS NULL AND w.reply_address IS NULL
+           SELECT 1 FROM thread.turns w
+           WHERE w.thread_id = $1 AND w.reply_provider IS NULL AND w.reply_address IS NULL
              AND w.settled_at IS NULL AND w.sequence > a.sequence)
        END AS inputs_waiting
 FROM stamped a CROSS JOIN slot
 LEFT JOIN prior_run b ON true
 CROSS JOIN fleet f
-CROSS JOIN opened o
 CROSS JOIN counters k
 CROSS JOIN installed i
 LEFT JOIN platform pl ON true

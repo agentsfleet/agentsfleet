@@ -9,7 +9,8 @@ use axum::{Router, response::Response};
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
-const ADMISSIONS: &str = "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1";
+const ADMISSIONS: &str =
+    "SELECT count(*) FROM thread.turns WHERE thread_id=$1 AND producer IS NOT NULL";
 /// The first run every Save-and-run case asks for.
 const RUN_NOW: &str = "Investigate the failed build.";
 

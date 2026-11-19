@@ -7,12 +7,10 @@ use sqlx::PgConnection;
 const READ_CALLS: &str = "SELECT COALESCE(sum(calls),0)::bigint FROM pg_stat_statements \
     WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) \
       AND userid=(SELECT oid FROM pg_roles WHERE rolname='agentsfleet_api') \
-      AND query ILIKE '%fleet.%'";
-const DELIVER: &str = "WITH landed AS (INSERT INTO fleet.events \
-    (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,created_at,updated_at) \
-    SELECT fleet_id,workspace_id,id,actor,event_type,$2,request_json::jsonb,event_created_at,now() \
-    FROM fleet.admissions WHERE id=$1 RETURNING event_id) \
-    UPDATE fleet.admissions SET delivered_at=now() WHERE id IN (SELECT event_id FROM landed)";
+      AND query ILIKE '%thread.turns%'";
+/// A claim's delivered state: the turn stamped with a fence and its event opened, in place.
+const DELIVER: &str = "UPDATE thread.turns \
+    SET status=$2, opened_at=now(), run_fence=1, updated_at=now() WHERE id=$1";
 
 // Value: protects=one snapshot per page; fails_when=history assembles two reads;
 // why_new=sequential identity tests miss split snapshots; seam=none;
@@ -38,7 +36,7 @@ async fn thread_pages_use_one_statement_snapshot_before_and_after_delivery() {
         .await
         .expect("one queued head");
     let (workspace, fleet, event): (Uuid7, Uuid7, Uuid7) = sqlx::query_as(
-        "SELECT workspace_id,fleet_id,id FROM fleet.admissions WHERE delivered_at IS NULL",
+        "SELECT workspace_id,thread_id,id FROM thread.turns WHERE settled_at IS NULL",
     )
     .fetch_one(&mut *owner)
     .await

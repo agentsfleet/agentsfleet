@@ -32,11 +32,13 @@ impl Lane {
 
     /// How many events this lane's fleet holds.
     pub(crate) async fn event_count(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id = $1")
-            .bind(&self.fleet)
-            .fetch_one(&mut *self.connection().await)
-            .await
-            .expect("the count must run")
+        sqlx::query_scalar(
+            "SELECT count(*) FROM thread.turns WHERE thread_id = $1 AND opened_at IS NOT NULL",
+        )
+        .bind(&self.fleet)
+        .fetch_one(&mut *self.connection().await)
+        .await
+        .expect("the count must run")
     }
 
     /// One column of one event row, as text.
@@ -45,9 +47,16 @@ impl Lane {
     /// is parsed here so the read binds the `uuid` the column holds.
     pub(crate) async fn event_column(&self, event: &str, column: &str) -> Option<String> {
         let event = Uuid7::parse(event).expect("an event id is a UUIDv7");
+        // The callers name the event's wire columns; the turn spells three of them anew.
+        let column = match column {
+            "event_type" => "kind",
+            "resumes_event_id" => "resumes_turn_id",
+            "response_text" => "answer_text",
+            other => other,
+        };
         let statement = sqlx::AssertSqlSafe(format!(
-            "SELECT {column}::text FROM fleet.events \
-             WHERE fleet_id = $1 AND event_id = $2"
+            "SELECT {column}::text FROM thread.turns \
+             WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL"
         ));
         sqlx::query_scalar::<_, Option<String>>(statement)
             .bind(&self.fleet)
@@ -62,7 +71,7 @@ impl Lane {
     pub(crate) async fn continuation_is_unsettled(&self, action: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         sqlx::query_scalar::<_, bool>(
-            "SELECT settled_at IS NULL FROM fleet.admissions \
+            "SELECT settled_at IS NULL FROM thread.turns \
              WHERE producer = $1 AND producer_key = $2",
         )
         .bind(afd_turns::Producer::GateContinuation.as_str())

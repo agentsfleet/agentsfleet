@@ -59,7 +59,7 @@ pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
     let key = [lane.fleet.as_str(), operation].join(KEY_SEPARATOR);
     let mut connection = lane.connection().await;
     sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.admissions WHERE producer = $1 AND producer_key = $2",
+        "SELECT count(*) FROM thread.turns WHERE producer = $1 AND producer_key = $2",
     )
     .bind(PRODUCER_STEER)
     .bind(key)
@@ -71,8 +71,8 @@ pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
 pub(crate) async fn queued_ids(lane: &EventsLane) -> Vec<Uuid7> {
     let mut connection = lane.connection().await;
     sqlx::query_scalar(
-        "SELECT id FROM fleet.admissions
-         WHERE fleet_id = $1 AND settled_at IS NULL ORDER BY created_at, sequence",
+        "SELECT id FROM thread.turns
+         WHERE thread_id = $1 AND settled_at IS NULL ORDER BY created_at, sequence",
     )
     .bind(&lane.fleet)
     .fetch_all(&mut *connection)

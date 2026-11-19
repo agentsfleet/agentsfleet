@@ -181,8 +181,8 @@ async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> Option<
         .expect("every gate verdict is a decision, not a fault")
 }
 
-/// The status and failure label one `fleet.events` row carries, if the
-/// pass got far enough to open one.
+/// The status and failure label one turn's event carries, if the pass got
+/// far enough to open one.
 ///
 /// Every stop answers identical bytes — `pull.rs`'s module note says so — so
 /// the ANSWER cannot tell one ending from another. The row can.
@@ -198,7 +198,7 @@ async fn terminal_of(
         .expect("a pooled connection");
     let row = sqlx::query(
         "SELECT status, COALESCE(failure_reason, '') \
-           FROM fleet.events WHERE fleet_id = $1 AND event_id = $2",
+           FROM thread.turns WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
     )
     .bind(fleet)
     .bind(event)

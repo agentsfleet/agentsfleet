@@ -177,7 +177,7 @@ async fn assert_settled(scene: &crate::e2e::Scenario) {
     );
     let status = crate::reads::event_column(scene, &scene.event_id, "status").await;
     assert_eq!(status.as_deref(), Some("processed"));
-    let answer = crate::reads::event_column(scene, &scene.event_id, "response_text").await;
+    let answer = crate::reads::event_column(scene, &scene.event_id, "answer_text").await;
     assert_eq!(answer.as_deref(), Some(ANSWER));
 }
 

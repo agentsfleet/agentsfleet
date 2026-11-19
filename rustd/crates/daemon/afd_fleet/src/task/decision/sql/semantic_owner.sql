@@ -4,7 +4,7 @@ JOIN thread.runs l ON l.id = c.original_run_id AND l.runner_id = c.original_runn
 JOIN runner.runners r ON r.id = l.runner_id AND r.status = $4
 JOIN thread.threads s ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
 JOIN fleet.fleets f ON f.id = c.fleet_id AND f.workspace_id = c.workspace_id
-JOIN fleet.admissions a ON a.id = c.source_admission_id AND a.fleet_id = f.id
+JOIN thread.turns a ON a.id = c.source_admission_id AND a.thread_id = f.id
                        AND a.workspace_id = c.workspace_id AND a.settled_at IS NULL
 JOIN model.platform_models m ON m.id = c.platform_model_id
                             AND m.decision_enabled

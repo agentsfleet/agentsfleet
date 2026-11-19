@@ -1,4 +1,5 @@
-//! `fleet.events` — every statement that writes the table, in one place.
+//! A turn's event — every statement that opens, records or closes one on
+//! `thread.turns`, in one place.
 //!
 //! Each is a `.sql` file beside this module, schema-qualified (RULE NSQ), and
 //! checked against the rebuilt schema by `afd_db`'s
@@ -21,27 +22,29 @@
 //! # The database owns every stamp
 //!
 //! `created_at` and `updated_at` are written by `now()`; no writer binds an
-//! instant. An event is named by its `event_id`, the table's key.
+//! instant. An event is named by its turn's `id`, the table's key, which the
+//! wire still calls `event_id`.
 //!
 //! [`Acquired`]: https://docs.rs/afd_fleet
 
-/// Record an inbound event.
+/// Record a history-only event, or open an admitted turn's event.
 ///
-/// The conflict arm on `event_id` is the idempotence boundary for
-/// redelivery: the same event arriving twice holds one row, so a retrying
-/// producer cannot double-run a fleet. It is also what makes the reclaim path
-/// safe — a re-held event finds its row already there — and what makes a
-/// retried approval resolve continue its run exactly once.
+/// The conflict arm on `id` is the idempotence boundary for redelivery: the
+/// same event arriving twice holds one row, so a retrying producer cannot
+/// double-run a fleet. A fresh row has no admission behind it, so it is
+/// written opened and settled: a receipt no claim takes. A conflict meets the
+/// admitted turn intake wrote and opens its event, once, which is also what
+/// makes a retried approval resolve continue its run exactly once.
 ///
 /// The arm converges rather than doing nothing, because two writers race for
 /// this row and only one of them knows the predecessor. `COALESCE` keeps a
 /// predecessor whichever writer arrives with it, and never overwrites one
 /// already stored, so a redelivery that knows nothing cannot clear one.
 ///
-/// `(xmax = 0)` is how a caller tells the arms apart: it is true only for a
-/// fresh insert. The fleet's activity counter does not move on the conflict
-/// arm either way: `trg_events_bump_count` is `AFTER INSERT` alone
-/// (`schema/20261108123000_fleet_activity_counters.sql`).
+/// `inserted` is true when THIS call opened the event: a fresh row, or a
+/// conflict that met a turn not yet opened. The fleet's activity counter
+/// moves on exactly those (`trg_turns_count_inserted_opened` and
+/// `trg_turns_count_opened`, `schema/20261108125100_thread_turns.sql`).
 ///
 /// The `DO UPDATE` is deliberately UNCONDITIONAL. A filtered `DO UPDATE` that
 /// matches no row updates nothing, `RETURNING` then yields nothing, and both
@@ -49,34 +52,14 @@
 /// redelivery into `RowNotFound` — on the receive path, which decides whether
 /// a fleet has already paid.
 ///
-/// `$1` fleet, `$2` event, `$3` workspace, `$4` actor, `$5` type, `$6` body,
-/// `$7` resumes-event, `$8` status.
+/// `$1` fleet, `$2` turn, or NULL to mint one, `$3` workspace, `$4` actor,
+/// `$5` type, `$6` body, `$7` the turn it resumes, `$8` status.
 /// Bind `$6` with `sqlx::types::Json`: cached statements retain that parameter's
 /// database type, so mixing text and JSONB binary encodings corrupts later writes.
 pub const INSERT_FLEET_EVENT: &str = include_str!("insert_fleet_event.sql");
 
 /// Access receipts: workspace, required service, actor, type, status, metadata.
 pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_activity.sql");
-
-/// [`INSERT_FLEET_EVENT`] as the task-input answer path runs it: a steer's row
-/// is stamped with the instant it was ADMITTED, not the instant a runner took
-/// it.
-///
-/// A thread page merges history with the ledger's waiting steers on one key,
-/// `(created_at, event_id)`, and a waiting steer sits at its admission time.
-/// Stamped at run, the same message jumped above a page cursor already
-/// handed out. Stamped at admission, the row keeps the key it was listed under.
-///
-/// The instant is the admission row's stored `created_at`, looked up by its
-/// primary key — an admitted event's id IS that row's id — while the ledger
-/// has not yet stamped it delivered, which a first delivery always matches:
-/// the stamp follows this insert. Anything else — a webhook, a schedule, an id
-/// that is not a UUID (bound as NULL) — keeps `now()`. It returns nothing: the
-/// caller needs the row, not an answer about it.
-///
-/// `$1`–`$8` as [`INSERT_FLEET_EVENT`], then `$9` the admission row's id, or
-/// NULL when the event id is not one, `$10` the steer producer.
-pub const INSERT_ASSIGNED_FLEET_EVENT: &str = include_str!("insert_assigned_fleet_event.sql");
 
 /// End an event at a gate, naming what refused it.
 ///
@@ -120,9 +103,12 @@ pub const UPDATE_FLEET_EVENT_FAILURE: &str = include_str!("update_fleet_event_fa
 /// pending, `$11` the run's tool trace as JSON text, or NULL.
 pub const UPDATE_FLEET_EVENT_RESULT: &str = include_str!("update_fleet_event_result.sql");
 
-/// Open, as received, the event of each message a run folded, in one
-/// statement: `$1` fleet, `$2` the messages' ids, `$3` the run's event, `$4`
-/// [`status::RECEIVED`]. See [`INSERT_ASSIGNED_FLEET_EVENT`] for one message.
+/// Open, as received, the event of each admitted turn a run took in.
+///
+/// One statement however many: `$1` fleet, `$2` the turns' ids, `$3` the
+/// run's turn, `$4` [`status::RECEIVED`]. A turn keeps the instant intake gave
+/// it, so a thread page that listed it waiting keeps it under the same cursor
+/// key.
 pub const OPEN_FOLDED_EVENTS: &str = include_str!("open_folded_events.sql");
 
 /// [`UPDATE_FLEET_EVENT_RESULT`] for many events in one statement: `$2` is
@@ -132,7 +118,7 @@ pub const CLOSE_FOLDED_EVENTS: &str = include_str!("close_folded_events.sql");
 /// A fleet's activity counters as the database has them, by primary key.
 ///
 /// Answers exactly one row for any fleet id, zeros for a fleet with no counter
-/// row: the trigger that maintains the row creates it on the first event, so a
+/// row: the trigger that maintains the row creates it on the first opened event, so a
 /// fleet that has never run has none. Two correlated subselects rather than a
 /// join, and never an inner one: an inner join drops a fleet that has never
 /// run, and `LEFT JOIN` plans as a hash join over every counter row.

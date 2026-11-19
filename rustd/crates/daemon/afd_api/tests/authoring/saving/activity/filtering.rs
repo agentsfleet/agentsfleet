@@ -47,15 +47,28 @@ async fn busy_fleets_keep_exact_receipts_across_filtered_pages() {
             StatusCode::OK
         );
     }
-    sqlx::query("INSERT INTO fleet.events
-        (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,response_text,created_at,updated_at)
+    sqlx::query(
+        "INSERT INTO thread.turns
+        (thread_id,workspace_id,id,actor,kind,status,request_json,answer_text,
+         opened_at,settled_at,created_at,updated_at)
         SELECT $1,$2,uuidv7(),'steer:api','chat','processed',
-          jsonb_build_object('message',repeat('runtime body ',5000)),'Runtime reply',now(),now()
-        FROM generate_series(1,33) n")
-        .bind(&saved.fleet)
-        .bind(&saved.case.base.workspace)
-        .execute(&mut *saved.case.base.db.acquire().await.expect("busy fleet connection"))
-        .await.expect("runtime rows newer than receipts");
+          jsonb_build_object('message',repeat('runtime body ',5000)),'Runtime reply',
+          now(),now(),now(),now()
+        FROM generate_series(1,33) n",
+    )
+    .bind(&saved.fleet)
+    .bind(&saved.case.base.workspace)
+    .execute(
+        &mut *saved
+            .case
+            .base
+            .db
+            .acquire()
+            .await
+            .expect("busy fleet connection"),
+    )
+    .await
+    .expect("runtime rows newer than receipts");
     let first = saved.get("/messages?event_type=activity&limit=25").await;
     assert_eq!(first["items"].as_array().expect("first page").len(), 25);
     let mut identities = BTreeSet::new();

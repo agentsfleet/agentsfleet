@@ -61,7 +61,7 @@ async fn an_inherited_destination_is_copied_from_the_named_row() -> Fallible {
     let later = admit(&admissions, steer(&lane, mint_id().as_str(), inherited)).await?;
 
     let copied: (Option<String>, Option<String>) =
-        sqlx::query_as("SELECT reply_provider, reply_address FROM fleet.admissions WHERE id = $1")
+        sqlx::query_as("SELECT reply_provider, reply_address FROM thread.turns WHERE id = $1")
             .bind(&later.stored.id)
             .fetch_one(&mut *lane.database.acquire().await?)
             .await?;

@@ -1,4 +1,4 @@
-//! Claim a slot and its exact oldest unsettled admission in one transaction.
+//! Claim a slot and its exact oldest unsettled turn in one transaction.
 
 use af_core::id::Uuid7;
 
@@ -57,7 +57,7 @@ struct MemoryScope {
     memory_publishes_workspace: bool,
 }
 
-/// The event row the claim's insert opened or met, and the fleet's counters.
+/// The event the claim opened or met on the turn, and the fleet's counters.
 #[derive(Debug, sqlx::FromRow)]
 struct OpenedRow {
     inserted: bool,
@@ -160,7 +160,6 @@ impl Runs {
             .bind(crate::task::DECISION_POLICY_PATH)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(af_core::event::status::RECEIVED)
-            .bind(afd_turns::Producer::Steer.as_str())
             .bind(self.checkpoint_resume_enabled())
             .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_optional(&mut *transaction)
@@ -213,8 +212,8 @@ impl Admission {
         } else {
             Kind::Fresh
         };
-        // A false `inserted` is the insert's conflict arm: the row was already
-        // there, and its stored status says whether it is still running.
+        // A false `inserted` is a turn an earlier writer already opened: its
+        // stored status says whether it is still running.
         let delivery = self.opened.delivery();
         let OpenedRow {
             inserted,

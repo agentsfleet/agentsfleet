@@ -103,7 +103,7 @@ impl Fixtures {
     /// Whether the admission can still be claimed after a report attempt.
     pub(crate) async fn admission_settled(&self, event: &Uuid7) -> bool {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
             .bind(event)
             .fetch_one(&mut *connection)
             .await
@@ -118,8 +118,8 @@ impl Fixtures {
     pub(crate) async fn end_event(&self, fleet: &Uuid7, event: &Uuid7, status: &str) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(
-            "UPDATE fleet.events SET status = $3::text \
-             WHERE fleet_id = $1 AND event_id = $2",
+            "UPDATE thread.turns SET status = $3::text \
+             WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
         )
         .bind(fleet)
         .bind(event)

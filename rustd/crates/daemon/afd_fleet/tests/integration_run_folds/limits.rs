@@ -120,7 +120,7 @@ async fn a_retained_task_generation_stops_the_ordinary_fold_prefix() -> Checked 
     let barrier = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     let later = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     let mut connection = held.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE fleet.admissions SET task_generation=1 WHERE id=$1 AND task_id IS NULL")
+    sqlx::query("UPDATE thread.turns SET task_generation=1 WHERE id=$1 AND task_id IS NULL")
         .bind(&barrier.id)
         .execute(&mut *connection)
         .await?;
@@ -132,7 +132,7 @@ async fn a_retained_task_generation_stops_the_ordinary_fold_prefix() -> Checked 
     assert_eq!(claim_as_holder(&held, earlier.sequence).await?, Vec::new());
     let mut connection = held.fixtures.database.acquire().await?;
     let untouched: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.admissions WHERE id=ANY($1::uuid[])
+        "SELECT count(*) FROM thread.turns WHERE id=ANY($1::uuid[])
         AND input_claim_run_id IS NULL AND input_claim_fence IS NULL AND settled_at IS NULL",
     )
     .bind([barrier.id, later.id].as_slice())

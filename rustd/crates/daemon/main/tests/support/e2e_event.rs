@@ -83,11 +83,10 @@ async fn insert_admission(
     )
     .expect("a version-7 id");
     sqlx::query(
-        "INSERT INTO fleet.admissions
-           (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
-            actor, event_type, request_json, event_created_at,
-            created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $1, $5, $6, $7, $8, $9, $9, $9)",
+        "INSERT INTO thread.turns
+           (id, thread_id, workspace_id, producer, producer_key, payload_digest,
+            actor, kind, status, request_json, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $1, $5, $6, $7, $10, $8::jsonb, $9, $9)",
     )
     .bind(&row_id)
     .bind(fleet)
@@ -98,6 +97,7 @@ async fn insert_admission(
     .bind(event_type)
     .bind(REQUEST_JSON)
     .bind(now.to_sqlx())
+    .bind(af_core::event::status::QUEUED)
     .execute(
         &mut *booted
             .database

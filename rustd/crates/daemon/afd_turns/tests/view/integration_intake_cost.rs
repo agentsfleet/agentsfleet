@@ -102,12 +102,12 @@ impl Private {
     }
 
     async fn rows(&self) -> Result<i64, Box<dyn Error>> {
-        Ok(
-            sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
-                .bind(&self.fleet)
-                .fetch_one(&mut *self.owner.acquire().await?)
-                .await?,
+        Ok(sqlx::query_scalar(
+            "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
         )
+        .bind(&self.fleet)
+        .fetch_one(&mut *self.owner.acquire().await?)
+        .await?)
     }
 
     async fn close(self) {

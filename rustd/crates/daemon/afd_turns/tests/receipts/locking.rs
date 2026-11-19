@@ -87,10 +87,12 @@ async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_po
         af_core::error_code::AUTHORING_POLICY,
         "{refused}"
     );
-    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
-        .bind(&lane.fleet)
-        .fetch_one(&mut *lane.database.acquire().await?)
-        .await?;
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *lane.database.acquire().await?)
+    .await?;
     assert_eq!(rows, 0, "nothing lands under the old policy");
     std::sync::Arc::into_inner(lane)
         .ok_or("the admission task released the lane")?
@@ -181,10 +183,12 @@ async fn a_send_behind_a_held_fleet_row_times_out() -> Fallible {
     assert!(timed_out_on_a_lock(&refused), "{refused}");
     holder.rollback().await?;
     drop(connection);
-    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
-        .bind(&lane.fleet)
-        .fetch_one(&mut *lane.database.acquire().await?)
-        .await?;
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *lane.database.acquire().await?)
+    .await?;
     assert_eq!(rows, 0, "a timed-out send records nothing");
     lane.cleanup().await;
     Ok(())

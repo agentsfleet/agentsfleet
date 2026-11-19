@@ -20,7 +20,7 @@
 //!
 //! # A resolved gate never reopens the row it blocked
 //!
-//! Nothing here writes back to `fleet.events`. The blocked row is
+//! Nothing here writes back to the blocked turn. The blocked row is
 //! terminal by design: a resolved gate lands a NEW event carrying
 //! `actor=continuation:<original>`, so the history keeps both the run that was
 //! stopped and the run that followed from the answer. Re-opening the first

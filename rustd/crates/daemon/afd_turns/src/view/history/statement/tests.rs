@@ -11,19 +11,19 @@ use super::*;
 /// spells them. Written out here rather than read from one of the files, so a
 /// file edited on its own disagrees with this and fails.
 const ROW_COLUMNS: &str = "\
-SELECT fleet_id, event_id, workspace_id,
-       actor, event_type, status, token_count, wall_ms,
-       failure_reason, failure_detail, resumes_event_id,
+SELECT thread_id AS fleet_id, id AS event_id, workspace_id,
+       actor, kind AS event_type, status, token_count, wall_ms,
+       failure_reason, failure_detail, resumes_turn_id AS resumes_event_id,
        created_at, updated_at,
        (SELECT SUM(charge.charged_nanos)::bigint
           FROM billing.usage_lines charge
-         WHERE charge.event_id = fleet.events.event_id
-           AND charge.fleet_id = fleet.events.fleet_id) AS cost_nanos";
+         WHERE charge.event_id = thread.turns.id
+           AND charge.fleet_id = thread.turns.thread_id) AS cost_nanos";
 
 /// The bodies the detail and thread reads append after the row.
 const BODY_COLUMNS: &str = ",
-       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
-FROM fleet.events";
+       request_json::text AS request_json, answer_text AS response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
+FROM thread.turns";
 
 /// The texts outside the listing grid.
 const THREADS: [&str; 7] = [

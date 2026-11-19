@@ -204,7 +204,7 @@ async fn assert_input(case: &Case, task: &Uuid7, action: TaskInputAction) {
             1
         )]
     );
-    let state: (String, i64, i64, i64) = sqlx::query_as("SELECT status,generation,input_sequence,(SELECT count(*) FROM fleet.admissions WHERE fleet_id=$2) FROM fleet.tasks WHERE id=$1")
+    let state: (String, i64, i64, i64) = sqlx::query_as("SELECT status,generation,input_sequence,(SELECT count(*) FROM thread.turns WHERE thread_id=$2) FROM fleet.tasks WHERE id=$1")
         .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *connection).await.expect("same execution");
     assert_eq!(state, ("running".to_owned(), 1, 1, 2));
     let saved: serde_json::Value = sqlx::query_scalar(

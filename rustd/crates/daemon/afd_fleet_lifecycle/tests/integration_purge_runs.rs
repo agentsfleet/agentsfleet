@@ -28,11 +28,11 @@ WITH runner AS (
     VALUES ($4, $8, $9, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress',
             '[]'::jsonb, 1, 0, now(), now(), now(), true)
 ), event AS (
-    INSERT INTO fleet.events
-      (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms,
-       failure_reason, failure_detail, created_at, updated_at)
+    INSERT INTO thread.turns
+      (thread_id, workspace_id, id, actor, kind, status, request_json, wall_ms,
+       failure_reason, failure_detail, opened_at, settled_at, created_at, updated_at)
     VALUES ($3, $2, $7, 'user:a', 'chat', 'processed', '{}'::jsonb, 900,
-            NULL, NULL, now(), now())
+            NULL, NULL, now(), now(), now(), now())
 )
 INSERT INTO thread.runs
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,

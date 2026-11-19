@@ -108,7 +108,8 @@ pub(super) async fn report(
 
 async fn assert_settled(scene: &Scenario, held: &Held, cancelled: bool) -> TestResult {
     let saved: (String, Option<String>) = sqlx::query_as(
-        "SELECT status,failure_reason FROM fleet.events WHERE event_id=$1 AND fleet_id=$2",
+        "SELECT status,failure_reason FROM thread.turns \
+         WHERE id=$1 AND thread_id=$2 AND opened_at IS NOT NULL",
     )
     .bind(&held.event)
     .bind(&held.fleet)

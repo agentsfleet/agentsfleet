@@ -11,16 +11,16 @@
 //! names it, in order, as an unfiltered text walks its scope's.
 
 /// The index a fleet-scoped read walks.
-const FLEET_INDEX: &str = "idx_events_fleet_id_created_at_event_id";
+const FLEET_INDEX: &str = "idx_turns_thread_id_created_at_id";
 /// The index a workspace-scoped read walks.
-const WORKSPACE_INDEX: &str = "idx_events_workspace_id_created_at_event_id";
-/// The index one actor's read in a fleet walks (`schema/20261108122400_fleet_events.sql`).
-const ACTOR_INDEX: &str = "idx_events_fleet_id_actor_created_at_event_id";
+const WORKSPACE_INDEX: &str = "idx_turns_workspace_id_created_at_id";
+/// The index one actor's read in a fleet walks (`schema/20261108125100_thread_turns.sql`).
+const ACTOR_INDEX: &str = "idx_turns_thread_id_actor_created_at_id";
 /// Equality-filtered event types keep the cursor on the same ordered index.
-const TYPE_INDEX: &str = "idx_events_fleet_id_event_type_created_at_event_id";
+const TYPE_INDEX: &str = "idx_turns_thread_id_kind_created_at_id";
 
 /// Each bound as Postgres prints it in a plan.
-const FLEET: &str = "fleet_id = $2";
+const FLEET: &str = "thread_id = $2";
 const WORKSPACE: &str = "workspace_id = $1";
 
 /// `(name, the index an unfiltered text walks in order, its bounds)`.
@@ -41,7 +41,7 @@ pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 15] = [
         &[
             FLEET,
             "created_at >= COALESCE($5",
-            "ROW(created_at, event_id) < ROW($3, $4)",
+            "ROW(created_at, id) < ROW($3, $4)",
         ],
     ),
     (
@@ -50,7 +50,7 @@ pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 15] = [
         &[
             FLEET,
             "created_at >= COALESCE($6",
-            "ROW(created_at, event_id) < ROW($3, $4)",
+            "ROW(created_at, id) < ROW($3, $4)",
         ],
     ),
     (
@@ -69,7 +69,7 @@ pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 15] = [
         &[
             WORKSPACE,
             "created_at >= COALESCE($4",
-            "ROW(created_at, event_id) < ROW($2, $3)",
+            "ROW(created_at, id) < ROW($2, $3)",
         ],
     ),
     (
@@ -78,33 +78,25 @@ pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 15] = [
         &[
             WORKSPACE,
             "created_at >= COALESCE($5",
-            "ROW(created_at, event_id) < ROW($2, $3)",
+            "ROW(created_at, id) < ROW($2, $3)",
         ],
     ),
     ("thread page", Some(FLEET_INDEX), &[FLEET]),
-    (
-        "thread filtered",
-        Some(TYPE_INDEX),
-        &[FLEET, "event_type = $3"],
-    ),
+    ("thread filtered", Some(TYPE_INDEX), &[FLEET, "kind = $3"]),
     (
         "thread filtered after",
         Some(TYPE_INDEX),
-        &[
-            FLEET,
-            "event_type = $3",
-            "ROW(created_at, event_id) < ROW($4, $5)",
-        ],
+        &[FLEET, "kind = $3", "ROW(created_at, id) < ROW($4, $5)"],
     ),
     (
         "thread page after",
         Some(FLEET_INDEX),
-        &[FLEET, "ROW(created_at, event_id) < ROW($3, $4)"],
+        &[FLEET, "ROW(created_at, id) < ROW($3, $4)"],
     ),
     (
         "thread finished before",
         Some(FLEET_INDEX),
-        &[FLEET, "ROW(created_at, event_id) < ROW($3, $4)"],
+        &[FLEET, "ROW(created_at, id) < ROW($3, $4)"],
     ),
     (
         "fleet page of actor",
@@ -114,10 +106,6 @@ pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 15] = [
     (
         "fleet page of actor after",
         Some(ACTOR_INDEX),
-        &[
-            FLEET,
-            "actor = $5",
-            "ROW(created_at, event_id) < ROW($3, $4)",
-        ],
+        &[FLEET, "actor = $5", "ROW(created_at, id) < ROW($3, $4)"],
     ),
 ];

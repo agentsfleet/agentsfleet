@@ -42,7 +42,10 @@ impl Case {
         let cold = required(seed::select_fleet(&runs, &runner, &cold_fleet).await)?;
         sqlx::query("INSERT INTO thread.threads
             (id,fleet_id,last_runner_id,fencing_token,run_expires_at,hold_expires_at,created_at,updated_at)
-            VALUES ($1,$1,$2,1,clock_timestamp(),clock_timestamp()+interval '60 seconds',now(),now())")
+            VALUES ($1,$1,$2,1,clock_timestamp(),clock_timestamp()+interval '60 seconds',now(),now())
+            ON CONFLICT (id) DO UPDATE SET last_runner_id=EXCLUDED.last_runner_id,
+                fencing_token=EXCLUDED.fencing_token, run_expires_at=EXCLUDED.run_expires_at,
+                hold_expires_at=EXCLUDED.hold_expires_at")
             .bind(&warm).bind(&runner).execute(&mut *connection).await?;
         drop(connection);
         Ok(Self {
@@ -152,7 +155,7 @@ async fn a_failed_task_source_attach_restores_the_exact_idle_hold_and_issue_tall
     let before = case.stamp().await?;
     let mut connection = case.fixtures.database.acquire().await?;
     // Deleting a task clears its foreign key while retaining its claimed generation.
-    sqlx::query("UPDATE fleet.admissions SET task_generation=1 WHERE id=$1")
+    sqlx::query("UPDATE thread.turns SET task_generation=1 WHERE id=$1")
         .bind(&warm.event_id)
         .execute(&mut *connection)
         .await?;
@@ -162,7 +165,7 @@ async fn a_failed_task_source_attach_restores_the_exact_idle_hold_and_issue_tall
         before,
         "attach refusal rolls back the consumed hold, run, choice and counters"
     );
-    sqlx::query("UPDATE fleet.admissions SET task_generation=NULL WHERE id=$1")
+    sqlx::query("UPDATE thread.turns SET task_generation=NULL WHERE id=$1")
         .bind(&warm.event_id)
         .execute(&mut *connection)
         .await?;

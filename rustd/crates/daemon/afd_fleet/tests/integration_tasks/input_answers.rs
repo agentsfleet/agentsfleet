@@ -145,7 +145,7 @@ async fn assert_pending(case: &Case, source: &Uuid7) {
         .await
         .expect("completion observer");
     let state: (bool, i64, i64) = sqlx::query_as(
-        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM fleet.events WHERE fleet_id=$2 AND event_id=$1), (SELECT count(*) FROM thread.deliveries WHERE fleet_id=$2 AND event_id=$1) FROM fleet.admissions WHERE id=$1"
+        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM thread.turns WHERE thread_id=$2 AND id=$1 AND opened_at IS NOT NULL), (SELECT count(*) FROM thread.deliveries WHERE fleet_id=$2 AND event_id=$1) FROM thread.turns WHERE id=$1"
     ).bind(source).bind(&case.scope.fleet_id).fetch_one(&mut *connection).await.expect("incomplete source");
     assert_eq!(
         state,
@@ -163,7 +163,7 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
         .await
         .expect("completed source observer");
     let events: Vec<Value> = sqlx::query_scalar(
-        "SELECT to_jsonb(e) FROM fleet.events e WHERE fleet_id=$1 AND event_id=$2",
+        "SELECT to_jsonb(e) FROM thread.turns e WHERE thread_id=$1 AND id=$2 AND opened_at IS NOT NULL",
     )
     .bind(&case.scope.fleet_id)
     .bind(source)
@@ -174,7 +174,7 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
     let event = events.first().expect("one completed event");
     assert_event(event);
     let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL AND parked_at IS NULL FROM fleet.admissions WHERE id=$1",
+        "SELECT settled_at IS NOT NULL AND parked_at IS NULL FROM thread.turns WHERE id=$1",
     )
     .bind(source)
     .fetch_one(&mut *connection)
@@ -250,15 +250,12 @@ fn assert_event(event: &Value) {
         event.get("request_json"),
         Some(&json!({"message": GOALS.join("; ")}))
     );
-    assert_eq!(
-        event.get("event_type"),
-        Some(&json!(EventType::Chat.as_str()))
-    );
+    assert_eq!(event.get("kind"), Some(&json!(EventType::Chat.as_str())));
     assert_eq!(
         event.get("status"),
         Some(&json!(af_core::event::status::PROCESSED))
     );
-    assert_eq!(event.get("response_text"), Some(&json!(ANSWER)));
+    assert_eq!(event.get("answer_text"), Some(&json!(ANSWER)));
     assert_eq!(event.get("token_count"), Some(&json!(0)));
     assert_eq!(event.get("wall_ms"), Some(&json!(0)));
 }
@@ -266,7 +263,7 @@ fn assert_event(event: &Value) {
 async fn interpreted(case: &Case, source: &Uuid7) {
     // PreparedPlan::from_parts supplies accepted meaning without a paid model call.
     // Its original source must also carry the persisted interpretation boundary.
-    let updated = sqlx::query("UPDATE fleet.admissions SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_claim_run_id=$2 AND interpreted_at IS NULL")
+    let updated = sqlx::query("UPDATE thread.turns SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_claim_run_id=$2 AND interpreted_at IS NULL")
         .bind(source).bind(&case.held.run_key)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("accepted interpretation fixture"))
         .await.expect("accepted source interpretation boundary");

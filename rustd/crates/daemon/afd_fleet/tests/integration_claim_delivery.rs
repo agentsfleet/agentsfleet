@@ -1,5 +1,5 @@
 //! The claim opens the delivery: one statement claims the slot,
-//! reads the fleet, opens the `fleet.events` row, stamps `delivered_at` and
+//! reads the fleet, stamps the turn's fence and opens its event, and
 //! answers the fleet's counters, so the claim path costs the scan and the
 //! claim, and nothing after it reads the delivery again.
 #![expect(
@@ -17,11 +17,11 @@ use crate::rows::{LAPSE, Row};
 use crate::seed::{Seeded, seeded, select_fleet};
 use crate::support::Fixtures;
 
-/// The admission's stamped fence and delivery, its slot's token, and how
-/// many event rows it has.
-const DELIVERY: &str = "SELECT a.run_fence, a.delivered_at IS NOT NULL, s.fencing_token, \
-    (SELECT count(*) FROM fleet.events e WHERE e.event_id = a.id) \
-    FROM fleet.admissions a LEFT JOIN thread.threads s ON s.fleet_id = a.fleet_id \
+/// The turn's stamped fence and whether a claim delivered it, its slot's
+/// token, and whether its event is open.
+const DELIVERY: &str = "SELECT a.run_fence, a.run_fence IS NOT NULL, s.fencing_token, \
+    (SELECT count(*) FROM thread.turns e WHERE e.id = a.id AND e.opened_at IS NOT NULL) \
+    FROM thread.turns a LEFT JOIN thread.threads s ON s.fleet_id = a.thread_id \
     WHERE a.id = $1";
 
 /// What [`DELIVERY`] answers.
@@ -80,10 +80,10 @@ async fn claim_opens_event_and_stamps_delivery() {
         "the payer rides the claim"
     );
     let (fence, delivered, token, rows) = delivery(&fixtures, &event_id).await;
-    assert!(delivered, "delivered_at is stamped");
-    assert_eq!(rows, 1, "the event row is open");
+    assert!(delivered, "the claim stamped the fence");
+    assert_eq!(rows, 1, "the event is open");
     assert_eq!(fence, token, "the admission carries the slot's fence");
-    let status: String = sqlx::query_scalar("SELECT status FROM fleet.events WHERE event_id = $1")
+    let status: String = sqlx::query_scalar("SELECT status FROM thread.turns WHERE id = $1")
         .bind(&event_id)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
         .await
@@ -135,7 +135,6 @@ async fn claim_on_archived_fleet_takes_nothing() {
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
         .bind(status::RECEIVED)
-        .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *fixtures.database.acquire().await.expect("claimer"))
@@ -185,8 +184,8 @@ async fn claim_redelivery_reports_repeat_in_one_statement() {
     assert!(repeat.redelivered);
     assert_eq!(ran.total(), 2, "no third statement: {:?}", ran.statements());
 
-    // The event row finished while its admission was still unsettled.
-    sqlx::query("UPDATE fleet.events SET status = $2 WHERE event_id = $1")
+    // The event finished while its turn was still unsettled.
+    sqlx::query("UPDATE thread.turns SET status = $2 WHERE id = $1")
         .bind(&event_id)
         .bind(status::PROCESSED)
         .execute(&mut *fixtures.database.acquire().await.expect("observer"))
@@ -219,9 +218,10 @@ async fn claim_counters_include_its_own_event() {
     } = seeded::<1>(&fixtures).await;
     // Three finished events; the counting trigger moves the counter to 3.
     sqlx::query(
-        "INSERT INTO fleet.events (fleet_id, workspace_id, event_id, actor, event_type, status, \
-         request_json, created_at, updated_at) \
-         SELECT f.id, f.workspace_id, uuidv7(), 'fixture:steer', 'chat', $2, '{}', now(), now() \
+        "INSERT INTO thread.turns (thread_id, workspace_id, id, actor, kind, status, \
+         request_json, opened_at, settled_at, created_at, updated_at) \
+         SELECT f.id, f.workspace_id, uuidv7(), 'fixture:steer', 'chat', $2, '{}', now(), now(), \
+         now(), now() \
          FROM fleet.fleets f, generate_series(1, 3) WHERE f.id = $1",
     )
     .bind(&fleet)

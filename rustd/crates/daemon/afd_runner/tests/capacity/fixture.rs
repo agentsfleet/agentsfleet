@@ -126,7 +126,10 @@ impl Fixture {
             "INSERT INTO thread.threads \
              (id, fleet_id, last_runner_id, fencing_token, run_expires_at, \
               hold_expires_at, created_at, updated_at) \
-             VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now())",
+             VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now()) \
+             ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, \
+               fencing_token = 1, run_expires_at = EXCLUDED.run_expires_at, \
+               hold_expires_at = EXCLUDED.hold_expires_at, updated_at = now()",
         )
         .bind(&fleet)
         .bind(&self.runner)

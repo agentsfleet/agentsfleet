@@ -29,7 +29,7 @@ async fn an_empty_ledger_skips_fleet_scans_at_twenty_thousand_idle_fleets() {
         .await
         .expect("idle population");
     assert_eq!(inserted.rows_affected(), POPULATION as u64);
-    for table in ["fleet.fleets", "fleet.admissions"] {
+    for table in ["fleet.fleets", "thread.turns"] {
         run(&mut tx, &format!("ANALYZE {table}")).await;
     }
     let plan = head_plan(&mut tx, &runner).await;

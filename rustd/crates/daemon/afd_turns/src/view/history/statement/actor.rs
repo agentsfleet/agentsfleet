@@ -1,8 +1,8 @@
 //! One actor's events in one fleet, the texts behind a schedule's run list.
 //! Split from [`super`] at its length cap; they carry its column list.
 //!
-//! An equality, never a pattern. `idx_events_fleet_id_actor_created_at_event_id`
-//! keys `(fleet_id, actor, created_at DESC, event_id DESC)`, so the fleet and
+//! An equality, never a pattern. `idx_turns_thread_id_actor_created_at_id`
+//! keys `(thread_id, actor, created_at DESC, id DESC)`, so the fleet and
 //! the actor are index conditions and the order comes off the index however
 //! sparse the actor is in the fleet's history. A bound LIKE pattern cannot seek
 //! that index under a generic plan, and one schedule's runs are sparse: a page

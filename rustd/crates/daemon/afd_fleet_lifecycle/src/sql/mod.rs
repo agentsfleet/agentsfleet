@@ -18,7 +18,7 @@
 //!
 //! `event_count` and `budget_used_nanos` come from the one-to-one
 //! `fleet.activity_counters` row its triggers maintain, never from a subselect
-//! over `fleet.events`.
+//! over `thread.turns`.
 //!
 //! A page reaches that row by PRIMARY-KEY lookup per fleet rather than by
 //! joining, and the difference is measured: `LEFT JOIN` plans as a hash join

@@ -53,7 +53,7 @@ pub(crate) enum ErrorKind {
     },
 
     /// A row came back in a shape this build cannot read.
-    #[error("fleet.events.{column} is not readable")]
+    #[error("thread.turns.{column} is not readable")]
     RowMalformed {
         column: &'static str,
         #[source]

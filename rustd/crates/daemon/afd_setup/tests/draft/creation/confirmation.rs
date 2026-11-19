@@ -96,12 +96,12 @@ async fn a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answ
     let retained = Retained::create("confirm-missing").await;
     retained.pending(retained.event.as_str()).await;
     let mut connection = retained.case.base.connection().await;
-    let key: String = sqlx::query_scalar("SELECT producer_key FROM fleet.admissions WHERE id=$1")
+    let key: String = sqlx::query_scalar("SELECT producer_key FROM thread.turns WHERE id=$1")
         .bind(&retained.event)
         .fetch_one(&mut *connection)
         .await
         .expect("initial producer key");
-    sqlx::query("UPDATE fleet.admissions SET producer_key=$2 WHERE id=$1")
+    sqlx::query("UPDATE thread.turns SET producer_key=$2 WHERE id=$1")
         .bind(&retained.event)
         .bind(mint().to_string())
         .execute(&mut *connection)
@@ -110,7 +110,7 @@ async fn a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answ
     retained
         .retry(&retained.case.creations, false, retained.event.as_str())
         .await;
-    sqlx::query("UPDATE fleet.admissions SET producer_key=$2 WHERE id=$1")
+    sqlx::query("UPDATE thread.turns SET producer_key=$2 WHERE id=$1")
         .bind(&retained.event)
         .bind(key)
         .execute(&mut *connection)

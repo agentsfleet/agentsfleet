@@ -183,7 +183,8 @@ async fn a_parked_event_moves_no_budget() {
     assert_eq!(after, run.counters, "nothing moved since the receive");
 
     let status: String = sqlx::query(
-        "SELECT status FROM fleet.events WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1",
+        "SELECT status FROM thread.turns WHERE thread_id = $1 AND opened_at IS NOT NULL \
+         ORDER BY created_at DESC LIMIT 1",
     )
     .bind(&fleet)
     .fetch_one(&mut *connection)

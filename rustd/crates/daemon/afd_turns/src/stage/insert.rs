@@ -52,6 +52,7 @@ impl Admissions {
             .bind(reply.inherited.as_ref())
             .bind(af_fleet_runtime::definition::POLICY_SEMANTICS)
             .bind(runnable.map(FleetStatus::as_str))
+            .bind(af_core::event::status::QUEUED)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_ADMIT))?;

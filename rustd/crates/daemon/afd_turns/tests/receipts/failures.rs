@@ -27,7 +27,7 @@ async fn a_refused_notification_is_logged_and_leaves_one_queued_row() -> Fallibl
         "notification failure",
     );
     let queued: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1 AND settled_at IS NULL",
+        "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1 AND settled_at IS NULL",
     )
     .bind(&lane.fleet)
     .fetch_one(&mut *lane.database.acquire().await?)
@@ -81,10 +81,12 @@ async fn an_invalid_fleet_scope_records_nothing_and_sends_no_notification() -> F
     assert!(refused.is_fleet_absent(), "{refused}");
     assert!(!refused.is_over_capacity());
     assert_eq!(rings.taken().await?, Vec::<String>::new());
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1")
-        .bind(&lane.fleet)
-        .fetch_one(&mut *lane.database.acquire().await?)
-        .await?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *lane.database.acquire().await?)
+    .await?;
     assert_eq!(count, 0);
     lane.cleanup().await;
     Ok(())

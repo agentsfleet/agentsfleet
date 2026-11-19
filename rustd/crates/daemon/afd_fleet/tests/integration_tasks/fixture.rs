@@ -167,7 +167,7 @@ impl Case {
 
     pub(super) async fn claim(&self, source: &Uuid7) {
         sqlx::query(
-            "UPDATE fleet.admissions SET input_claim_run_id=$2,input_claim_fence=$3 WHERE id=$1",
+            "UPDATE thread.turns SET input_claim_run_id=$2,input_claim_fence=$3 WHERE id=$1",
         )
         .bind(source)
         .bind(&self.held.run_key)
@@ -186,7 +186,7 @@ impl Case {
     }
 
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1), (SELECT count(*) FROM fleet.task_items WHERE fleet_id=$1), (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1)")
+        sqlx::query_as("SELECT (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1), (SELECT count(*) FROM fleet.task_items WHERE fleet_id=$1), (SELECT count(*) FROM thread.turns WHERE thread_id=$1)")
             .bind(&self.scope.fleet_id)
             .fetch_one(&mut *self.held.fixtures.database.acquire().await.expect("count connection"))
             .await.expect("all residual state is readable")

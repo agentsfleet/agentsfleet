@@ -7,7 +7,7 @@
 //! sender retrying late still deduplicates, and it commits with the delivery
 //! it protects.
 //!
-//! Nothing is written to `fleet.events` here, for the reason
+//! No event is opened on `thread.turns` here, for the reason
 //! `afd_turns::view::steer` states about its own path: the row appears when the
 //! runner runs the event, and a daemon that inserted one at ingress would
 //! be racing its own runner to describe the same event.

@@ -19,9 +19,9 @@ use crate::lane::sweep;
 /// An index clear of every lane's population, so this fleet is this test's.
 const LIVE_INDEX: u64 = 0x2000_0000;
 
-/// The fleet's admission rows, with whether each carries its receipt.
+/// The fleet's admitted turns, with whether a claim has taken each.
 const SELECT_ADMISSIONS: &str =
-    "SELECT id, delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1";
+    "SELECT id, run_fence IS NOT NULL FROM thread.turns WHERE thread_id = $1";
 
 #[test]
 fn test_an_identifier_passes_the_schemas_version_check() {
@@ -95,7 +95,7 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     drop(connection);
     assert_delivery_receipts(&database, &bus, &prefix, admission).await;
     let delivered: bool =
-        sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
+        sqlx::query_scalar("SELECT run_fence IS NOT NULL FROM thread.turns WHERE id=$1")
             .bind(admission)
             .fetch_one(&mut *database.acquire().await.expect("connection"))
             .await

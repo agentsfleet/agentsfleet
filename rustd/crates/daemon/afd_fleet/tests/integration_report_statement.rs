@@ -47,15 +47,13 @@ pub(crate) async fn reported(held: &Held) -> Reported {
 
 /// The seeded admission asks for its answer back on a Slack thread.
 async fn owe_to_slack(held: &Held) {
-    sqlx::query(
-        "UPDATE fleet.admissions SET reply_provider = $2, reply_address = $3 WHERE id = $1",
-    )
-    .bind(&held.event_id)
-    .bind(afd_connector::Provider::Slack.id())
-    .bind(THREAD)
-    .execute(&mut *held.fixtures.database.acquire().await.expect("producer"))
-    .await
-    .expect("the admission names a destination");
+    sqlx::query("UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1")
+        .bind(&held.event_id)
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(THREAD)
+        .execute(&mut *held.fixtures.database.acquire().await.expect("producer"))
+        .await
+        .expect("the admission names a destination");
 }
 
 async fn scalar(held: &Held, statement: &'static str, id: &Uuid7) -> i64 {

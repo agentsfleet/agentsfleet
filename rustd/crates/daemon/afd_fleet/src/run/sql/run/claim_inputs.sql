@@ -10,7 +10,7 @@
 -- messages.
 --
 -- It reads one claim's worth of the conversation, oldest first, through
--- idx_admissions_pending_conversation, so its cost is the claim's own however
+-- idx_turns_thread_id_reply_sequence_unsettled, so its cost is the claim's own however
 -- long the fleet's backlog is. The cursor ($5) is the run's own record of what
 -- it read: a claim starts after it.
 --
@@ -27,8 +27,9 @@ WITH run AS MATERIALIZED (
     JOIN thread.threads s
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
      AND s.fencing_token = l.fencing_token
-    JOIN fleet.admissions head
-      ON head.id = l.event_id AND head.fleet_id = l.fleet_id
+    -- An admitted turn: a run on a history-only receipt has no conversation.
+    JOIN thread.turns head
+      ON head.id = l.event_id AND head.thread_id = l.fleet_id AND head.producer IS NOT NULL
     WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
       AND l.task_id IS NULL AND l.task_generation IS NULL AND head.task_generation IS NULL
@@ -42,16 +43,16 @@ WITH run AS MATERIALIZED (
     FROM run
     CROSS JOIN LATERAL (
         (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.task_generation, a.producer, a.actor, a.workspace_id
-         FROM fleet.admissions a
-         WHERE run.reply_provider IS NOT NULL AND a.fleet_id = run.fleet_id
+         FROM thread.turns a
+         WHERE run.reply_provider IS NOT NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider = run.reply_provider AND a.reply_address = run.reply_address
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
          ORDER BY a.sequence
          LIMIT $6)
         UNION ALL
         (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.task_generation, a.producer, a.actor, a.workspace_id
-         FROM fleet.admissions a
-         WHERE run.reply_provider IS NULL AND a.fleet_id = run.fleet_id
+         FROM thread.turns a
+         WHERE run.reply_provider IS NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider IS NULL AND a.reply_address IS NULL
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
          ORDER BY a.sequence
@@ -71,11 +72,11 @@ WITH run AS MATERIALIZED (
         FROM ahead
     ) f
 ), claimed AS (
-    UPDATE fleet.admissions a
+    UPDATE thread.turns a
     SET input_claim_run_id = $1, input_claim_fence = $3, updated_at = now()
     FROM judged
     WHERE a.id = judged.id AND judged.clear AND a.settled_at IS NULL
       AND (a.input_claim_fence IS NULL OR a.input_claim_fence <= $3)
-    RETURNING a.id, a.sequence, a.request_json
+    RETURNING a.id, a.sequence, a.request_json::text AS request_json
 )
 SELECT id, sequence, request_json FROM claimed ORDER BY sequence

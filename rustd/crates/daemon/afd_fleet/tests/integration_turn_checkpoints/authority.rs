@@ -163,14 +163,14 @@ async fn witness(files: &Files) -> Checked<(serde_json::Value, serde_json::Value
     Ok(sqlx::query_as(
         "SELECT
         jsonb_build_object(
-          'head', (SELECT to_jsonb(r) FROM runner.turn_recovery r WHERE event_id=$1),
+          'head', (SELECT to_jsonb(r) FROM runner.turn_recovery r WHERE turn_id=$1),
           'plans', (SELECT jsonb_agg(jsonb_build_array(id,ready_at,abandoned_at,generation) ORDER BY id)
-                    FROM runner.turn_checkpoints WHERE event_id=$1),
+                    FROM runner.turn_checkpoints WHERE turn_id=$1),
           'pins', (SELECT jsonb_agg(jsonb_build_array(p.id,p.resource_version) ORDER BY p.id)
                    FROM runner.turn_checkpoint_pins p JOIN runner.turn_checkpoints c
-                   ON c.id=p.turn_checkpoint_id WHERE c.event_id=$1)),
+                   ON c.id=p.turn_checkpoint_id WHERE c.turn_id=$1)),
         (SELECT jsonb_agg(jsonb_build_array(id,run_fence,input_claim_run_id,input_claim_fence) ORDER BY id)
-         FROM fleet.admissions WHERE fleet_id=$2)",
+         FROM thread.turns WHERE thread_id=$2)",
     ).bind(&files.case.acquired.event_id).bind(&files.case.acquired.fleet_id)
       .fetch_one(&mut *files.case.fixtures.database.acquire().await?).await?)
 }

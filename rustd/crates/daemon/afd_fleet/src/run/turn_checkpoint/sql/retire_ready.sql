@@ -1,7 +1,7 @@
 WITH candidate AS MATERIALIZED (
     SELECT p.id
     FROM runner.turn_checkpoints p
-    WHERE p.event_id = $1 AND p.id IS DISTINCT FROM $2 AND p.ready_at IS NOT NULL
+    WHERE p.turn_id = $1 AND p.id IS DISTINCT FROM $2 AND p.ready_at IS NOT NULL
     ORDER BY p.generation
     LIMIT 1
     FOR UPDATE OF p

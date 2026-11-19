@@ -1,5 +1,5 @@
 -- The fleet's host-wide renewal: `shared/extend_run.sql` for every run a frame names,
--- with the fleet's ceilings, admissions and usage lines. A change to the shared
+-- with the fleet's ceilings, turns and usage lines. A change to the shared
 -- bookkeeping belongs in both.
 --
 -- One host's renewals in one statement: every live run the runner
@@ -126,8 +126,8 @@ WITH asked AS (
                       AND COALESCE(sp.month_nanos, 0) >= a.monthly_ceiling))
              AS over_budget,
          EXISTS (SELECT 1 FROM census) AS host_renews,
-         EXISTS (SELECT 1 FROM fleet.admissions ad
-                 WHERE ad.id = p.event_id AND ad.fleet_id = p.fleet_id
+         EXISTS (SELECT 1 FROM thread.turns ad
+                 WHERE ad.id = p.event_id AND ad.thread_id = p.fleet_id
                    AND ad.run_fence = p.fencing_token AND ad.settled_at IS NULL)
              AS admitted
   FROM probe p

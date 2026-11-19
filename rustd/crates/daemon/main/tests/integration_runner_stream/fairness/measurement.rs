@@ -8,7 +8,7 @@ use afd_db::Db;
 const PROBES: &str = "SELECT calls FROM pg_stat_statements \
     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
       AND query LIKE $1";
-const PROBE_PATTERN: &str = "%FROM fleet.admissions a%FROM setup.drafts d%";
+const PROBE_PATTERN: &str = "%FROM thread.turns a%FROM setup.drafts d%";
 
 #[derive(Debug, Default)]
 pub(super) struct Witness {
@@ -75,7 +75,7 @@ pub(super) async fn progress(
         next = offered(scene).await;
     }
     let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1 AND fleet_id = $2",
+        "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1 AND thread_id = $2",
     )
     .bind(&scene.event_id)
     .bind(&scene.fleet)

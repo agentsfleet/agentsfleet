@@ -31,12 +31,12 @@ use crate::reads::event_column;
 const SETTLE_DEADLINE: Duration = Duration::from_secs(90);
 /// How often the event row is read while waiting.
 const SETTLE_POLL: Duration = Duration::from_millis(250);
-/// The statuses an event ends in (`schema/800_fleet_events.sql`).
+/// The statuses an event ends in (`af_core::event::status`).
 const SETTLED: [&str; 3] = ["processed", "fleet_error", "gate_blocked"];
 
 /// A settled event's answer, NULL when no run produced one.
-const ANSWER: &str = "SELECT response_text FROM fleet.events \
-                      WHERE fleet_id = $1 AND event_id = $2";
+const ANSWER: &str = "SELECT answer_text FROM thread.turns \
+                      WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL";
 
 /// How one run's event ended.
 #[derive(Debug)]

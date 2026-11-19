@@ -65,7 +65,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// Every product table, the role that reaches it, and what that role may do, as
 /// the slots grant it. No row grants `TRUNCATE`. `connector.channels` grants
 /// UPDATE on its rebind columns only, which a whole-row probe does not reach.
-const GRANTS: [(&str, &str, &[Verb]); 88] = [
+const GRANTS: [(&str, &str, &[Verb]); 87] = [
     ("identity.tenants", "api_runtime", READ_WRITE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", READ_WRITE),
@@ -121,9 +121,8 @@ const GRANTS: [(&str, &str, &[Verb]); 88] = [
     ("connector.person_links", "api_runtime", READ_WRITE),
     ("connector.oauth_nonces", "api_runtime", WRITE_ONCE),
     ("connector.channels", "api_runtime", APPEND_ONLY),
-    ("fleet.events", "api_runtime", KEPT),
+    ("thread.turns", "api_runtime", KEPT),
     ("thread.items", "api_runtime", READ_WRITE),
-    ("fleet.admissions", "api_runtime", KEPT),
     ("fleet.approval_gates", "api_runtime", KEPT),
     ("thread.deliveries", "api_runtime", KEPT),
     ("fleet.schedules", "api_runtime", READ_WRITE),

@@ -87,8 +87,8 @@ async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
     }]);
     let mut connection = lane.connection().await;
     sqlx::query(
-        "UPDATE fleet.events SET task_activity = $3, task_activity_sequence = 2, \
-                 task_activity_truncated = true WHERE fleet_id = $1 AND event_id = $2",
+        "UPDATE thread.turns SET task_activity = $3, task_activity_sequence = 2, \
+                 task_activity_truncated = true WHERE thread_id = $1 AND id = $2",
     )
     .bind(&lane.fleet)
     .bind(&event)

@@ -16,9 +16,9 @@
 -- $4 steer producer · $5 machine actor · $6 person actor pattern ·
 -- $7 messages to look at
 WITH message AS MATERIALIZED (
-    SELECT a.fleet_id, a.sequence
-    FROM fleet.admissions a
-    WHERE a.id = $2 AND a.fleet_id = $1
+    SELECT a.thread_id AS fleet_id, a.sequence
+    FROM thread.turns a
+    WHERE a.id = $2 AND a.thread_id = $1
 ), live_run AS MATERIALIZED (
     SELECT l.task_id IS NOT NULL AS durable_task,
            head.sequence AS head_sequence,
@@ -29,21 +29,23 @@ WITH message AS MATERIALIZED (
     JOIN thread.runs l
       ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
      AND l.fencing_token = s.fencing_token AND l.status = $3
-    JOIN fleet.admissions head ON head.id = l.event_id
+    -- An admitted turn: a run on a history-only receipt has no conversation.
+    JOIN thread.turns head ON head.id = l.event_id AND head.thread_id = l.fleet_id
+     AND head.producer IS NOT NULL
     WHERE s.run_expires_at > statement_timestamp()
 )
 SELECT r.run_event_id,
        COALESCE(r.durable_task, false) AS run_durable_task,
        COALESCE(r.unaddressed, false) AS same_conversation,
        CASE WHEN r.run_event_id IS NULL THEN EXISTS (
-                SELECT 1 FROM fleet.admissions a
-                WHERE a.fleet_id = m.fleet_id AND a.settled_at IS NULL
+                SELECT 1 FROM thread.turns a
+                WHERE a.thread_id = m.fleet_id AND a.settled_at IS NULL
                   AND a.sequence < m.sequence)
             ELSE EXISTS (
                 SELECT 1 FROM (
                     SELECT a.parked_at, a.task_id, a.producer, a.actor
-                    FROM fleet.admissions a
-                    WHERE a.fleet_id = m.fleet_id
+                    FROM thread.turns a
+                    WHERE a.thread_id = m.fleet_id
                       AND a.reply_provider IS NULL AND a.reply_address IS NULL
                       AND a.settled_at IS NULL
                       AND a.sequence > r.head_sequence AND a.sequence < m.sequence

@@ -14,11 +14,11 @@ WITH instant AS MATERIALIZED (
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     -- Table-wide: an empty ledger answers before any fleet is read.
-    AND EXISTS (SELECT 1 FROM fleet.admissions WHERE settled_at IS NULL)
+    AND EXISTS (SELECT 1 FROM thread.turns WHERE settled_at IS NULL)
     -- Per fleet: only fleets with unsettled work reach the joins below, so the
     -- scan grows with the backlog rather than with the active fleets.
     AND EXISTS (
-      SELECT 1 FROM fleet.admissions u WHERE u.fleet_id = z.id AND u.settled_at IS NULL)
+      SELECT 1 FROM thread.turns u WHERE u.thread_id = z.id AND u.settled_at IS NULL)
     AND (s.run_expires_at IS NULL OR s.run_expires_at < instant.read_at)
     AND (s.hold_expires_at IS NULL
          OR s.hold_expires_at <= instant.read_at
@@ -34,14 +34,14 @@ WITH instant AS MATERIALIZED (
         (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
          FROM runner.runners WHERE id = $2)) AS e)
 )
-SELECT z.id AS fleet_id, head.id AS admission_id, head.event_created_at
+SELECT z.id AS fleet_id, head.id AS admission_id, head.created_at AS event_created_at
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.id, a.parked_at, a.event_created_at, a.task_id
-  FROM fleet.admissions a
-  WHERE a.fleet_id = z.id AND a.settled_at IS NULL
+  SELECT a.id, a.parked_at, a.created_at, a.task_id
+  FROM thread.turns a
+  WHERE a.thread_id = z.id AND a.settled_at IS NULL
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR (z.task_capable AND EXISTS (
-      SELECT 1 FROM fleet.tasks t WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.fleet_id
+      SELECT 1 FROM fleet.tasks t WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.thread_id
         AND t.workspace_id = a.workspace_id AND t.status IN ($9, $10) AND t.terminal_at IS NULL
         AND t.expires_at > z.read_at AND t.used_runs < t.max_runs
         AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
@@ -64,13 +64,13 @@ JOIN LATERAL (
         (SELECT t.accepted_revision_id FROM fleet.tasks t WHERE t.id = head.task_id AND t.fleet_id = z.id),
         z.head_revision_id)
       AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $16::text))
-WHERE ($13::timestamptz IS NULL OR (head.event_created_at, head.id)>($13, $14::uuid))
+WHERE ($13::timestamptz IS NULL OR (head.created_at, head.id)>($13, $14::uuid))
   AND ($15::boolean OR head.task_id IS NOT NULL OR NOT EXISTS (
     SELECT 1 FROM runner.turn_recovery recovery
-    WHERE recovery.event_id = head.id AND recovery.head_turn_checkpoint_id IS NOT NULL
+    WHERE recovery.turn_id = head.id AND recovery.head_turn_checkpoint_id IS NOT NULL
   ))
 -- Recovery pages keep the oldest eligible head per fleet and ignore locality.
-ORDER BY CASE WHEN $12 THEN head.event_created_at END,
+ORDER BY CASE WHEN $12 THEN head.created_at END,
          CASE WHEN $12 THEN head.id END,
          CASE WHEN NOT $12 THEN z.id = ANY($6) END DESC,
          CASE WHEN NOT $12 THEN z.id = $7 END DESC NULLS LAST,

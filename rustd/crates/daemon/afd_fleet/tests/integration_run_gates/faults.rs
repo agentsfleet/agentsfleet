@@ -88,11 +88,13 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
             .expect("unchanged counters"),
         before
     );
-    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE event_id=$1")
-        .bind(&seeded.event_id)
-        .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
-        .await
-        .expect("one narrative");
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE id=$1 AND opened_at IS NOT NULL",
+    )
+    .bind(&seeded.event_id)
+    .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
+    .await
+    .expect("one narrative");
     assert_eq!(rows, 1);
     fixtures.cleanup().await;
 }
@@ -108,8 +110,10 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     let claimed = claim(&fixtures, &seeded).await;
     let owner = fixtures.open(afd_db::config::DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
-    // The claim opened the row; the gate ending that would close it is refused.
-    sqlx::raw_sql("CREATE FUNCTION fleet.refuse_narrative() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected narrative failure'; END $$; CREATE TRIGGER refuse_narrative BEFORE UPDATE ON fleet.events FOR EACH ROW EXECUTE FUNCTION fleet.refuse_narrative()")
+    // The claim opened the event; the gate ending that would close it is refused.
+    // Only a status change: the turn's other writes, settling it among them, are
+    // not the narrative.
+    sqlx::raw_sql("CREATE FUNCTION fleet.refuse_narrative() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected narrative failure'; END $$; CREATE TRIGGER refuse_narrative BEFORE UPDATE OF status ON thread.turns FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION fleet.refuse_narrative()")
         .execute(&mut *connection).await.expect("inject narrative failure");
     drop(connection);
     let log = Capture::install();

@@ -126,10 +126,10 @@ impl Case {
         let mut connection = self.fixtures.database.acquire().await?;
         Ok(sqlx::query_as(
             "SELECT
-            (SELECT count(*) FROM runner.turn_checkpoints WHERE event_id=$1),
+            (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
             (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE event_id=$1),
-            (SELECT next_generation FROM runner.turn_recovery WHERE event_id=$1),
-            (SELECT head_turn_checkpoint_id FROM runner.turn_recovery WHERE event_id=$1)",
+            (SELECT next_generation FROM runner.turn_recovery WHERE turn_id=$1),
+            (SELECT head_turn_checkpoint_id FROM runner.turn_recovery WHERE turn_id=$1)",
         )
         .bind(&self.acquired.event_id)
         .fetch_one(&mut *connection)
@@ -193,7 +193,7 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
     );
     assert_eq!(case.counts().await?, (1, 1, 2, None));
     let mut connection = case.fixtures.database.acquire().await?;
-    sqlx::query("DELETE FROM runner.turn_checkpoints WHERE id=$1 AND event_id=$2")
+    sqlx::query("DELETE FROM runner.turn_checkpoints WHERE id=$1 AND turn_id=$2")
         .bind(Uuid7::parse(&saved.checkpoint_id.0)?)
         .bind(&case.acquired.event_id)
         .execute(&mut *connection)
@@ -238,7 +238,7 @@ async fn a_foreign_runner_or_wrong_fence_allocates_no_checkpoint() -> Checked {
     );
     let mut connection = case.fixtures.database.acquire().await?;
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE event_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1")
             .bind(&case.acquired.event_id)
             .fetch_one(&mut *connection)
             .await?;
@@ -253,7 +253,7 @@ async fn a_parked_or_settled_source_cannot_begin_recovery() -> Checked {
     for parked in [true, false] {
         let mut connection = case.fixtures.database.acquire().await?;
         sqlx::query(
-            "UPDATE fleet.admissions SET
+            "UPDATE thread.turns SET
             parked_at=CASE WHEN $2 THEN clock_timestamp() ELSE NULL END,
             settled_at=CASE WHEN $2 THEN NULL ELSE clock_timestamp() END WHERE id=$1",
         )
@@ -303,7 +303,7 @@ async fn a_revoked_drained_or_degraded_host_cannot_allocate_a_checkpoint() -> Ch
         );
         let mut connection = case.fixtures.database.acquire().await?;
         let count: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE event_id=$1")
+            sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1")
                 .bind(&case.acquired.event_id)
                 .fetch_one(&mut *connection)
                 .await?;

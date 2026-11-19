@@ -8,11 +8,9 @@ use serde_json::{Value, json};
 use super::fixture::*;
 use crate::support::CronLane;
 
-const DELIVER: &str = "WITH landed AS (INSERT INTO fleet.events \
-    (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,created_at,updated_at) \
-    SELECT fleet_id,workspace_id,id,actor,event_type,$2,request_json::jsonb,event_created_at,now() \
-    FROM fleet.admissions WHERE id=$1 RETURNING event_id) \
-    UPDATE fleet.admissions SET delivered_at=now() WHERE id IN (SELECT event_id FROM landed)";
+/// A claim's delivered state: the turn stamped with a fence and its event opened, in place.
+const DELIVER: &str = "UPDATE thread.turns \
+    SET status=$2, opened_at=now(), run_fence=1, updated_at=now() WHERE id=$1";
 
 // Value: protects=one accepted fire is readable offline and remains one row after delivery;
 // fails_when=queued history excludes schedule_fire or retry rewrites its first payload;

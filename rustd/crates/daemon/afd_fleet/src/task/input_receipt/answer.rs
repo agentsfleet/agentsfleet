@@ -15,13 +15,6 @@ use af_wire::task::TaskInputReceiptInput;
 use afd_outbound::delivery::Delivery;
 use sqlx::PgConnection;
 
-#[derive(sqlx::FromRow)]
-struct Source {
-    actor: String,
-    event_type: String,
-    request_json: String,
-}
-
 pub(super) struct Completion {
     closed: Option<afd_turns::view::Closed>,
     owed: Option<Uuid7>,
@@ -72,7 +65,7 @@ async fn complete_history(
     input: &TaskInputReceiptInput,
     answer: &str,
 ) -> Result<Option<afd_turns::view::Closed>> {
-    let source: Source = sqlx::query_as(include_str!("sql/source.sql"))
+    let source: Uuid7 = sqlx::query_scalar(include_str!("sql/source.sql"))
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
@@ -80,18 +73,13 @@ async fn complete_history(
         .await
         .map_err(query("lock original accepted reply source"))?
         .ok_or(TaskRefusal::NotFound)?;
-    // Same event owner and received/terminal writers as an ordinary run report.
-    sqlx::query(afd_turns::view::sql::INSERT_ASSIGNED_FLEET_EVENT)
+    // Same event owner and received/terminal writers as an ordinary run report: the
+    // turn keeps the instant intake gave it, so a thread page lists it in place.
+    sqlx::query(afd_turns::view::sql::OPEN_FOLDED_EVENTS)
         .bind(&current.fleet_id)
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
-        .bind(&current.workspace_id)
-        .bind(source.actor)
-        .bind(source.event_type)
-        .bind(source.request_json)
-        .bind(Some(&current.source_admission_id))
+        .bind(std::slice::from_ref(&source))
+        .bind(&current.source_admission_id)
         .bind(af_core::event::status::RECEIVED)
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
-        .bind(afd_turns::Producer::Steer.as_str())
         .execute(&mut *connection)
         .await
         .map_err(query("open accepted input history before completing it"))?;

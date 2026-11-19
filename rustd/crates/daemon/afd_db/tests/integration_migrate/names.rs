@@ -84,7 +84,8 @@ fn test_singular_reads_the_pointer_name_a_table_takes() {
 }
 
 /// Scope dimensions repeat their target only inside a composite reference.
-/// The sole primary-id role below closes the task/checkpoint ownership cycle.
+/// The sole primary-id role below closes the task/checkpoint ownership cycle,
+/// and a turn's thread stands for the fleet that owns it.
 fn key_names_match(
     table: &str,
     column: &str,
@@ -97,15 +98,18 @@ fn key_names_match(
             && (column.ends_with(&format!("{}_id", singular(target)))
                 || ROLE_NAMED.contains(&(column, target)))
     } else {
-        // `fleet.events` is keyed by `event_id`, and a row that points at one
-        // carries that same name.
-        (arity == 1 && target_column == "event_id" && column == target_column)
+        // `runner.turn_recovery` is keyed by `turn_id`, and a row that points at
+        // one carries that same name.
+        (arity == 1 && target_column == "turn_id" && column == target_column)
             || (arity > 1
                 && (column == target_column
                     || (table == "tasks"
                         && column == "id"
                         && target == "task_checkpoints"
-                        && target_column == "task_id")))
+                        && target_column == "task_id")
+                    // A fleet's thread is keyed by the fleet's id, so a turn
+                    // scopes its task by `thread_id`.
+                    || (table == "turns" && column == "thread_id" && target_column == "fleet_id")))
     }
 }
 
@@ -159,6 +163,20 @@ fn composite_scope_columns_preserve_target_identity() {
         "task_checkpoints",
         "other_task_id",
         4
+    ));
+    assert!(key_names_match(
+        "turns",
+        "thread_id",
+        "tasks",
+        "fleet_id",
+        3
+    ));
+    assert!(!key_names_match(
+        "turns",
+        "thread_id",
+        "tasks",
+        "fleet_id",
+        1
     ));
     assert!(!key_names_match("members", "email", "users", "email", 1));
     assert!(!key_names_match(

@@ -26,7 +26,8 @@ async fn save_provenance_is_recorded_once_and_bound_to_the_accepted_operation() 
         });
         assert_eq!(c.save(&key, request).await.id, saved.id);
         let receipts: Vec<String> = sqlx::query_scalar(
-            "SELECT request_json::text FROM fleet.events WHERE fleet_id=$1 AND event_type=$2",
+            "SELECT request_json::text FROM thread.turns \
+             WHERE thread_id=$1 AND kind=$2 AND opened_at IS NOT NULL",
         )
         .bind(&saved.id)
         .bind(afd_turns::view::activity::EVENT_TYPE_ACTIVITY)

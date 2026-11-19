@@ -35,7 +35,7 @@ const THREAD_B: &str =
     r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000200"}"#;
 
 /// The check slot 918 names.
-const BOTH_OR_NEITHER: &str = "ck_admissions_reply_both_or_neither";
+const BOTH_OR_NEITHER: &str = "ck_turns_reply_both_or_neither";
 
 /// Every producer that owns no reply surface, which is every one but the
 /// continuation.
@@ -142,7 +142,7 @@ async fn reply_destination_is_both_or_neither() {
         .acquire()
         .await
         .expect("a pooled connection");
-    let refused = sqlx::query("UPDATE fleet.admissions SET reply_address = NULL WHERE id = $1")
+    let refused = sqlx::query("UPDATE thread.turns SET reply_address = NULL WHERE id = $1")
         .bind(&admitted.stored.id)
         .execute(&mut *connection)
         .await
@@ -258,7 +258,7 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
         .await
         .expect("a pooled connection");
     let stored: String =
-        sqlx::query_scalar("SELECT payload_digest FROM fleet.admissions WHERE id = $1")
+        sqlx::query_scalar("SELECT payload_digest FROM thread.turns WHERE id = $1")
             .bind(&first.stored.id)
             .fetch_one(&mut *connection)
             .await

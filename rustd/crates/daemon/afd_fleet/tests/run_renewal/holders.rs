@@ -14,8 +14,8 @@ const LIVE_HOLDERS: &str = "\
 SELECT id FROM thread.runs
 WHERE fleet_id = $1 AND status = $2 AND run_expires_at > clock_timestamp()";
 const EVENT_RUNS: &str = "\
-SELECT count(*) FROM thread.runs l JOIN fleet.events e ON e.event_id = l.event_id
-WHERE l.fleet_id = $1 AND e.event_id = $2";
+SELECT count(*) FROM thread.runs l JOIN thread.turns e ON e.id = l.event_id
+WHERE l.fleet_id = $1 AND e.id = $2";
 const HOST_OCCUPANCY: &str = "\
 SELECT r.worker_count::bigint,
   (SELECT count(*) FROM thread.runs l WHERE l.runner_id = r.id AND l.status = $2

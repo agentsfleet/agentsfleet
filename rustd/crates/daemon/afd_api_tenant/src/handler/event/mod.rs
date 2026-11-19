@@ -72,7 +72,7 @@ const DETAIL_EVENT_NOT_FOUND: &str = "Event not found";
 
 /// The longest event identifier this surface will look up.
 ///
-/// `EVENT_ID_MAX_LEN`, mirrored. `event_id` is TEXT on `fleet.events` and
+/// `EVENT_ID_MAX_LEN`, mirrored. `event_id` is the producer's key on `thread.turns` and
 /// arrives on the wire from the producer rather than being minted here, so
 /// there is no shape to validate. This bound only refuses an identifier long
 /// enough to be an attack on the index rather than a lookup.

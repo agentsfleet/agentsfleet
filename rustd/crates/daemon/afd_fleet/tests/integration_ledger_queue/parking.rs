@@ -48,7 +48,7 @@ async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
     );
     parked.expect("delayed park completes");
     let is_parked: bool =
-        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
+        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM thread.turns WHERE id=$1")
             .bind(&event)
             .fetch_one(&mut *connection)
             .await
@@ -101,7 +101,7 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
         .expect("stale park is harmless");
     let state: (bool, Option<i64>, i64) = sqlx::query_as(
         "SELECT a.parked_at IS NOT NULL, a.run_fence, s.fencing_token \
-         FROM fleet.admissions a JOIN thread.threads s ON s.fleet_id=a.fleet_id \
+         FROM thread.turns a JOIN thread.threads s ON s.fleet_id=a.thread_id \
          WHERE a.id=$1 AND s.last_runner_id=$2",
     )
     .bind(&event)

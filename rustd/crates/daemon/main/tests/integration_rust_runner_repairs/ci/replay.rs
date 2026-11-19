@@ -124,14 +124,15 @@ async fn assert_one_execution(scene: &crate::e2e::Scenario, event: &Uuid7) {
         .acquire()
         .await
         .expect("the scoped pool");
-    let events: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id=$1 AND event_id=$2")
-            .bind(&scene.fleet)
-            .bind(event)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the event count");
-    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs l JOIN fleet.events e ON e.event_id=l.event_id WHERE e.fleet_id=$1 AND e.event_id=$2")
+    let events: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE thread_id=$1 AND id=$2 AND opened_at IS NOT NULL",
+    )
+    .bind(&scene.fleet)
+    .bind(event)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the event count");
+    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs l JOIN thread.turns e ON e.id=l.event_id WHERE e.thread_id=$1 AND e.id=$2")
         .bind(&scene.fleet).bind(event).fetch_one(&mut *connection).await.expect("the run count");
     assert_eq!((events, runs), (1, 1));
 }

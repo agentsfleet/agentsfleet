@@ -23,7 +23,7 @@
 //!
 //! # What the pass never does
 //!
-//! It writes no `fleet.events` row. Every outcome below is a decision the
+//! It writes no `thread.turns` row. Every outcome below is a decision the
 //! CALLER applies once — the same discipline [`Admission`](crate::run::Admission)
 //! states for the money gates, and for the same reason: a refusal that forgot
 //! its row and one that wrote it twice are both unrepresentable when the value

@@ -271,7 +271,7 @@ pub(super) async fn extra_unissued(fixture: &Decisions<'_>) -> Uuid7 {
     let call = unissued(fixture, &input).await;
     // Input settlement remains separate work. Seed its completed-source state
     // so this financial fixture preserves FIFO ordering.
-    let finished = sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND input_claim_run_id=$2 AND input_claim_fence=$3 AND settled_at IS NULL")
+    let finished = sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND input_claim_run_id=$2 AND input_claim_fence=$3 AND settled_at IS NULL")
         .bind(source).bind(&fixture.case.held.run_key).bind(fixture.case.held.fence.as_i64())
         .execute(&mut *fixture.case.held.fixtures.database.acquire().await.expect("owned completed input"))
         .await.expect("preceding claimed input finishes before the next source");

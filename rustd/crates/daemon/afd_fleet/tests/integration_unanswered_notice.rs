@@ -109,7 +109,7 @@ async fn a_failed_run_that_wrote_nothing_owes_its_thread_the_notice() {
     assert_eq!(
         stage
             .fixtures
-            .text(Row::Event(&stage.fleet, &event), "response_text")
+            .text(Row::Event(&stage.fleet, &event), "answer_text")
             .await,
         Some(String::new()),
         "the event keeps what the run said, which was nothing"

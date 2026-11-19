@@ -138,7 +138,7 @@ fn item(
 }
 
 async fn source_snapshot(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(a) FROM fleet.admissions a WHERE a.id=$1")
+    sqlx::query_scalar("SELECT to_jsonb(a) FROM thread.turns a WHERE a.id=$1")
         .bind(source)
         .fetch_one(
             &mut *fixture

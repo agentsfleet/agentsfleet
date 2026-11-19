@@ -171,7 +171,9 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
 
     sqlx::query(
         "INSERT INTO thread.threads (id, fleet_id, fencing_token, run_expires_at, resume_context, created_at, updated_at)
-         VALUES ($1, $1, 0, now(), '{}'::jsonb, now(), now())",
+         VALUES ($1, $1, 0, now(), '{}'::jsonb, now(), now())
+         ON CONFLICT (id) DO UPDATE SET fencing_token = 0, run_expires_at = now(),
+             resume_context = EXCLUDED.resume_context, updated_at = now()",
     )
     .bind(fleet)
     .execute(&mut *connection)

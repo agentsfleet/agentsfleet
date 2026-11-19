@@ -45,12 +45,12 @@ impl Refusal {
             .expect("serialize fixture DDL");
         let trigger = if at_commit {
             format!(
-                "CREATE CONSTRAINT TRIGGER {} AFTER INSERT ON fleet.events DEFERRABLE INITIALLY DEFERRED",
+                "CREATE CONSTRAINT TRIGGER {} AFTER INSERT ON thread.turns DEFERRABLE INITIALLY DEFERRED",
                 guard.name
             )
         } else {
             format!(
-                "CREATE TRIGGER {} BEFORE INSERT ON fleet.events",
+                "CREATE TRIGGER {} BEFORE INSERT ON thread.turns",
                 guard.name
             )
         };
@@ -69,7 +69,7 @@ impl Refusal {
             ),
             format!(
                 "{trigger} FOR EACH ROW
-                WHEN (NEW.workspace_id = '{1}'::uuid AND NEW.event_type = 'activity'
+                WHEN (NEW.workspace_id = '{1}'::uuid AND NEW.kind = 'activity'
                 AND NEW.request_json->>'kind' = '{2}') EXECUTE FUNCTION public.{0}()",
                 guard.name,
                 workspace.as_str(),
@@ -134,7 +134,7 @@ async fn remove(url: &str, name: &str) -> sqlx::Result<()> {
         .execute(&mut *tx)
         .await?;
     for statement in [
-        format!("DROP TRIGGER IF EXISTS {name} ON fleet.events"),
+        format!("DROP TRIGGER IF EXISTS {name} ON thread.turns"),
         format!("DROP FUNCTION IF EXISTS public.{name}()"),
         format!("DROP SEQUENCE IF EXISTS public.{name}_hits"),
     ] {

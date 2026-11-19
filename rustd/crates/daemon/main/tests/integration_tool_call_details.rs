@@ -70,8 +70,8 @@ pub(crate) async fn rows(scene: &Scenario) -> i64 {
     scalar(
         scene,
         "SELECT count(*) FROM thread.items t \
-         JOIN fleet.events e ON e.event_id = t.event_id \
-         WHERE t.fleet_id = $1 AND e.event_id = $2",
+         JOIN thread.turns e ON e.id = t.turn_id \
+         WHERE t.fleet_id = $1 AND e.id = $2",
         None,
     )
     .await
@@ -82,8 +82,8 @@ async fn rows_at(scene: &Scenario, fence: u64) -> i64 {
     scalar(
         scene,
         "SELECT count(*) FROM thread.items t \
-         JOIN fleet.events e ON e.event_id = t.event_id \
-         WHERE t.fleet_id = $1 AND e.event_id = $2 AND t.fencing_token = $3",
+         JOIN thread.turns e ON e.id = t.turn_id \
+         WHERE t.fleet_id = $1 AND e.id = $2 AND t.fencing_token = $3",
         Some(fence),
     )
     .await
@@ -210,12 +210,12 @@ async fn plant_dead_record(scene: &Scenario, fence: u64) {
         scene,
         &format!(
             "INSERT INTO thread.items \
-             (id, workspace_id, fleet_id, event_id, fencing_token, sequence, arguments, \
+             (id, workspace_id, fleet_id, turn_id, fencing_token, sequence, arguments, \
               truncated_arguments, output, output_line_count, truncated, byte_count, \
               created_at, updated_at) \
-             SELECT '{dead}'::uuid, workspace_id, fleet_id, event_id, {fence}, 1, '{{}}'::jsonb, \
+             SELECT '{dead}'::uuid, workspace_id, thread_id, id, {fence}, 1, '{{}}'::jsonb, \
                     false, 'dead', 1, false, 256, now(), now() \
-             FROM fleet.events WHERE fleet_id = $1 AND event_id = $2"
+             FROM thread.turns WHERE thread_id = $1 AND id = $2"
         ),
     )
     .await;

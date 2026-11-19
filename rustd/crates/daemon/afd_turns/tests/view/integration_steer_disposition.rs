@@ -46,7 +46,9 @@ VALUES ($1, $2, $3, $4, $5, $6, now(),
 const INSERT_SLOT: &str = "\
 INSERT INTO thread.threads
   (id, fleet_id, last_runner_id, fencing_token, run_expires_at, created_at, updated_at)
-VALUES ($1, $1, $2, 1, now() + interval '1 hour', now(), now())";
+VALUES ($1, $1, $2, 1, now() + interval '1 hour', now(), now())
+ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, fencing_token = 1,
+    run_expires_at = EXCLUDED.run_expires_at, updated_at = now()";
 
 /// Sends the person's message, keyed by `operation` when it has one.
 async fn send(
@@ -113,7 +115,7 @@ async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
 /// Parks `admission`, so a send behind it must wait for it.
 async fn park(lane: &EventsLane, admission: &str) -> Outcome {
     let admission = Uuid7::parse(admission)?;
-    sqlx::query("UPDATE fleet.admissions SET parked_at = now() WHERE id = $1")
+    sqlx::query("UPDATE thread.turns SET parked_at = now() WHERE id = $1")
         .bind(&admission)
         .execute(&mut *lane.connection().await)
         .await?;

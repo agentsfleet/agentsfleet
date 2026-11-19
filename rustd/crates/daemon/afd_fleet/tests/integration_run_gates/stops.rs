@@ -135,7 +135,7 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
 }
 
 async fn assert_expired_settlement(fixtures: &Fixtures, event: &Uuid7, action: &Uuid7) {
-    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM fleet.admissions a JOIN fleet.approval_gates g ON g.fleet_id=a.fleet_id WHERE a.id=$1 AND g.action_id=$2")
+    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM thread.turns a JOIN fleet.approval_gates g ON g.fleet_id=a.thread_id WHERE a.id=$1 AND g.action_id=$2")
         .bind(event).bind(action)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("settlement observer"))
         .await.expect("settled admission and answerable approval");
@@ -158,7 +158,7 @@ async fn send(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7, event_type:
 
 async fn parked(fixtures: &Fixtures, event: &Uuid7) -> bool {
     let mut connection = fixtures.database.acquire().await.expect("database");
-    sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+    sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM thread.turns WHERE id = $1")
         .bind(event)
         .fetch_one(&mut *connection)
         .await

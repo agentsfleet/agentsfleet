@@ -120,10 +120,12 @@ impl Saved {
     async fn seed_event_and_grant(&self, grant: &Uuid7) {
         let mut connection = self.case.base.db.acquire().await.expect("a connection");
         sqlx::query(
-            "INSERT INTO fleet.events (fleet_id, workspace_id, event_id, actor, event_type, \
-             status, request_json, response_text, token_count, wall_ms, created_at, updated_at) \
+            "INSERT INTO thread.turns (thread_id, workspace_id, id, actor, kind, \
+             status, request_json, answer_text, token_count, wall_ms, opened_at, settled_at, \
+             created_at, updated_at) \
              VALUES ($1, $2, $3, 'steer:api', 'chat', 'completed', \
              '{\"prompt\":\"ship\"}', 'done', 7, 12, \
+             '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.011Z', \
              '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.011Z')",
         )
         .bind(&self.fleet)

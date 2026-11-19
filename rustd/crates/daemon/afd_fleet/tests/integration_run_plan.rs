@@ -52,10 +52,10 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
         let ids: Vec<_> = (previous..size)
             .map(|_| afd_db::test_util::mint_id())
             .collect();
-        sqlx::query("INSERT INTO fleet.admissions (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, request_json, event_created_at, created_at, updated_at) SELECT id,$1,$2,'steer',id,'fixture','fixture','chat','{}',now(),now(),now() FROM unnest($3) id")
+        sqlx::query("INSERT INTO thread.turns (id, thread_id, workspace_id, producer, producer_key, payload_digest, actor, kind, status, request_json, created_at, updated_at) SELECT id,$1,$2,'steer',id,'fixture','fixture','chat','queued','{}',now(),now() FROM unnest($3) id")
             .bind(&fleet).bind(&workspace).bind(&ids).execute(&mut *tx).await.expect("grow backlog");
         let plan = head_plan(&mut tx, &runner).await;
-        let scans = relation_scans(&plan, "admissions");
+        let scans = relation_scans(&plan, "turns");
         assert_eq!(
             scans.len(),
             3,
@@ -66,7 +66,7 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
             .filter(|scan| {
                 scan["Index Cond"]
                     .as_str()
-                    .is_some_and(|s| s.contains("fleet_id"))
+                    .is_some_and(|s| s.contains("thread_id"))
             })
             .collect();
         assert_eq!(
@@ -77,16 +77,16 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
         assert!(
             fleet_scoped
                 .iter()
-                .any(|scan| scan["Index Name"] == "idx_admissions_unsettled"),
+                .any(|scan| scan["Index Name"] == "idx_turns_thread_id_sequence_unsettled"),
             "the fleet head reads in sequence order: {plan}"
         );
         for scan in fleet_scoped {
             // Any partial index of unsettled rows that leads on the fleet serves the
-            // work check; the head's order needs `idx_admissions_unsettled`.
+            // work check; the head's order needs `idx_turns_thread_id_sequence_unsettled`.
             assert!(
                 scan["Index Name"]
                     .as_str()
-                    .is_some_and(|name| name.starts_with("idx_admissions_")),
+                    .is_some_and(|name| name.starts_with("idx_turns_")),
                 "{plan}"
             );
             assert!(

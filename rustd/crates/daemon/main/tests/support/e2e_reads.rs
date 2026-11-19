@@ -148,8 +148,8 @@ pub(crate) async fn event_column_of(
     column: &str,
 ) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM fleet.events \
-         WHERE fleet_id = $1 AND event_id = $2"
+        "SELECT {column}::text FROM thread.turns \
+         WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL"
     ));
     let mut connection = scene
         .booted

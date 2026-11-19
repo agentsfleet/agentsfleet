@@ -263,8 +263,8 @@ impl Assigned {
     pub(crate) async fn run_woken_by_schedule(&self) {
         let mut connection = self.connection().await;
         sqlx::query(
-            "UPDATE fleet.events SET actor = $2 \
-             WHERE event_id = (SELECT event_id FROM thread.runs WHERE id = $1)",
+            "UPDATE thread.turns SET actor = $2 \
+             WHERE id = (SELECT event_id FROM thread.runs WHERE id = $1)",
         )
         .bind(&self.run_id)
         .bind(format!(
@@ -299,7 +299,8 @@ impl Assigned {
     pub(crate) async fn admitted(&self, schedule: &str) -> i64 {
         let mut connection = self.connection().await;
         sqlx::query_scalar(
-            "SELECT count(*) FROM fleet.admissions WHERE workspace_id = $1 AND actor = $2",
+            "SELECT count(*) FROM thread.turns \
+             WHERE workspace_id = $1 AND actor = $2 AND producer IS NOT NULL",
         )
         .bind(&self.scene.workspace)
         .bind(format!("{ACTOR_PREFIX}{schedule}"))

@@ -22,7 +22,7 @@ async fn test_event_delete_cascades_tool_call_details() {
     assert_eq!(status, 200);
     execute(
         &scene,
-        "DELETE FROM fleet.events WHERE fleet_id = $1 AND event_id = $2",
+        "DELETE FROM thread.turns WHERE thread_id = $1 AND id = $2",
     )
     .await;
     assert_eq!(rows(&scene).await, 0);

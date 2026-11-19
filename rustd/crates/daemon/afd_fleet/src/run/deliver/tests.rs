@@ -193,8 +193,8 @@ fn config(access: Option<&str>) -> FleetConfig {
 }
 
 /// An event identifier in the spelling the admission ledger mints: the
-/// admission instant and the sequence, which is what `fleet.events` stores
-/// in its TEXT key.
+/// admission instant and the sequence, which is what a producer's event key
+/// carries as TEXT.
 ///
 /// It read `0197a4ba-8d3a-7f13-8abc-123456789abc` — a canonical v7, and a shape
 /// the ledger has never produced. Every test below passed against it while the

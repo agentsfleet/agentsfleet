@@ -32,7 +32,7 @@ const FIRST_LABEL: &str = "balance_exhausted";
 /// A different label, so a reopened row is distinguishable from a held one.
 const SECOND_LABEL: &str = "approval_denied";
 
-/// Two columns of one `fleet.events` row, as text.
+/// The status and failure columns of one opened `thread.turns` event.
 async fn failure_of(fixtures: &Fixtures, fleet: &Uuid7, event: &Uuid7) -> (String, Option<String>) {
     let mut connection = fixtures
         .database
@@ -41,7 +41,7 @@ async fn failure_of(fixtures: &Fixtures, fleet: &Uuid7, event: &Uuid7) -> (Strin
         .expect("a pooled connection");
     let row = sqlx::query(
         "SELECT status, failure_reason, failure_detail
-           FROM fleet.events WHERE fleet_id = $1 AND event_id = $2",
+           FROM thread.turns WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
     )
     .bind(fleet)
     .bind(event)

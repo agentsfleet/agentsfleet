@@ -97,7 +97,9 @@ async fn checkpoint_while_finalizer_waits(
         .expect("bound the lock wait");
     let written = sqlx::query(
         "INSERT INTO thread.threads (id,fleet_id,fencing_token,run_expires_at,resume_context,created_at,updated_at) \
-        VALUES ($1,$1,0,now(),$2,now(),now())",
+        VALUES ($1,$1,0,now(),$2,now(),now()) \
+        ON CONFLICT (id) DO UPDATE SET fencing_token=0,run_expires_at=now(), \
+        resume_context=EXCLUDED.resume_context,updated_at=now()",
     )
     .bind(&lane.fleet)
     .bind(sqlx::types::Json(

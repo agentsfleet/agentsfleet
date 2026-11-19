@@ -11,9 +11,9 @@ use crate::{seed::seeded_parts, support::Fixtures};
 
 const PAUSE_PARK: &str = "CREATE FUNCTION fleet.pause_park() RETURNS trigger \
     LANGUAGE plpgsql AS $$ BEGIN \
-      PERFORM pg_advisory_xact_lock(hashtextextended(NEW.fleet_id::text, 0)); \
+      PERFORM pg_advisory_xact_lock(hashtextextended(NEW.thread_id::text, 0)); \
       RETURN NEW; END $$; \
-    CREATE TRIGGER pause_park AFTER UPDATE OF parked_at ON fleet.admissions \
+    CREATE TRIGGER pause_park AFTER UPDATE OF parked_at ON thread.turns \
     FOR EACH ROW WHEN (NEW.parked_at IS NOT NULL) EXECUTE FUNCTION fleet.pause_park()";
 const LOCK: &str = "SELECT pg_advisory_lock(hashtextextended($1,0))";
 const UNLOCK: &str = "SELECT pg_advisory_unlock(hashtextextended($1,0))";
@@ -59,7 +59,7 @@ async fn resolve_during_park(expire: bool) {
     parking.await.expect("park task").expect("park commits");
     resolving.await.expect("resolution task");
     let parked: bool =
-        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
+        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM thread.turns WHERE id=$1")
             .bind(&event)
             .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
             .await

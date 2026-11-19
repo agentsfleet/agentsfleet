@@ -45,12 +45,12 @@ WITH instant AS MATERIALIZED (
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, max_runtime_seconds,
    fencing_token, run_expires_at, status, posted_message_count, decision_snapshot, setup_revision_id, created_at, updated_at)
-  SELECT $1, $2, $3, $4, $5, e.event_id, $15,
+  SELECT $1, $2, $3, $4, $5, e.id, $15,
          $7, $8, $9, a.checked_at, $23,
          $10, h.run_expires_at, $11, 0, $16, $20::uuid, a.checked_at, a.checked_at
   FROM held h
   CROSS JOIN after_lock a
-  JOIN fleet.events e ON e.fleet_id = $3 AND e.event_id = $6
+  JOIN thread.turns e ON e.thread_id = $3 AND e.id = $6
   -- The scope proof thread.runs holds no foreign key for: a workspace or
   -- tenant that is not the fleet's writes no run, so the caller issues none.
   JOIN fleet.fleets f ON f.id = $3 AND f.workspace_id = $4 AND f.tenant_id = $5

@@ -113,8 +113,8 @@ impl Chat {
             .await
             .expect("seeding a finished test_run");
         sqlx::query(
-            "UPDATE fleet.events SET request_json = $2::jsonb, response_text = $3 \
-             WHERE event_id = $1",
+            "UPDATE thread.turns SET request_json = $2::jsonb, answer_text = $3 \
+             WHERE id = $1",
         )
         .bind(&later)
         .bind(serde_json::json!({ "message": message }).to_string())

@@ -1,4 +1,4 @@
--- LEFT JOINs: a settled run outlives its fleet and its event (thread.runs
+-- LEFT JOINs: a settled run outlives its fleet and its turn (thread.runs
 -- holds no foreign key to either), so a purged fleet's history still lists,
 -- with the fleet and event columns null.
 SELECT l.id,
@@ -8,7 +8,7 @@ SELECT l.id,
        l.workspace_id,
        l.tenant_id,
        l.event_id,
-       e.event_type,
+       e.kind AS event_type,
        e.actor,
        l.status AS run_status,
        l.run_expires_at,
@@ -31,7 +31,7 @@ SELECT l.id,
        ) AS is_reclaim
 FROM thread.runs l
 LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
-LEFT JOIN fleet.events e ON e.event_id = l.event_id
+LEFT JOIN thread.turns e ON e.id = l.event_id AND e.thread_id = l.fleet_id AND e.opened_at IS NOT NULL
 -- The tokens the run's usage lines record: one index range per run row.
 LEFT JOIN LATERAL (
     SELECT sum(input_token_count) AS input_tokens,

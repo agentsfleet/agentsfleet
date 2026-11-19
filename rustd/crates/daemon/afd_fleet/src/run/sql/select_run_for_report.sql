@@ -6,5 +6,5 @@ SELECT l.fleet_id, l.workspace_id,
        -- on it.
        (SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1) AS catalogue_version
 FROM thread.runs l
-JOIN fleet.events e ON e.event_id = l.event_id
+JOIN thread.turns e ON e.id = l.event_id AND e.thread_id = l.fleet_id
 WHERE l.id = $1 AND l.runner_id = $2

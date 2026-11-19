@@ -128,7 +128,7 @@ async fn report(fixture: &Fixture, native: &mut Native, held: &Held) -> Result<(
         Some(&json!({"status":"ok","response":{"ok":true}}))
     );
     let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id=$1 AND fleet_id=$2",
+        "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id=$1 AND thread_id=$2",
     )
     .bind(&fixture.scene.event_id)
     .bind(&fixture.scene.fleet)
@@ -215,7 +215,7 @@ async fn census(fixture: &Fixture) -> Result<(i64, i64)> {
     Ok(sqlx::query_as(
         "SELECT \
         (SELECT count(*) FROM thread.runs WHERE runner_id=$1), \
-        (SELECT count(*) FROM fleet.admissions WHERE id=$2 AND fleet_id=$3 AND settled_at IS NULL)",
+        (SELECT count(*) FROM thread.turns WHERE id=$2 AND thread_id=$3 AND settled_at IS NULL)",
     )
     .bind(&fixture.scene.runner_id)
     .bind(&fixture.scene.event_id)

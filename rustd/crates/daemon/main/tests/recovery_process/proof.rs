@@ -42,7 +42,7 @@ pub(super) async fn checkpoint(scene: &Scenario, covered: &Uuid7) -> Checked<Uui
     let mut connection = scene.booted.database.acquire().await?;
     let (id, ready, sealed, folds): (Uuid7, bool, bool, Vec<Uuid7>) = sqlx::query_as(
         "SELECT p.id,p.ready_at IS NOT NULL,p.root_secret_ciphertext IS NOT NULL,p.covered_fold_ids
-        FROM runner.turn_recovery h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.event_id=$1")
+        FROM runner.turn_recovery h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.turn_id=$1")
         .bind(&scene.event_id).fetch_one(&mut *connection).await?;
     assert!(ready && sealed);
     assert_eq!(folds, vec![covered.clone()]);
@@ -124,7 +124,7 @@ pub(super) async fn replacement(
 pub(super) async fn adopted(scene: &Scenario, winner: &Winner, ids: &[Uuid7]) -> Checked {
     let mut connection = scene.booted.database.acquire().await?;
     let claims: Vec<(Uuid7, i64, bool)> = sqlx::query_as(
-        "SELECT input_claim_run_id,input_claim_fence,settled_at IS NOT NULL FROM fleet.admissions WHERE id=ANY($1::uuid[])")
+        "SELECT input_claim_run_id,input_claim_fence,settled_at IS NOT NULL FROM thread.turns WHERE id=ANY($1::uuid[])")
         .bind(ids).fetch_all(&mut *connection).await?;
     assert_eq!(claims.len(), 2);
     assert!(
@@ -140,7 +140,7 @@ pub(super) async fn settled(scene: &Scenario, winner: &Winner, folds: &[Uuid7]) 
         loop {
             let mut connection = scene.booted.database.acquire().await?;
             let result: Option<String> = sqlx::query_scalar(
-                "SELECT response_text FROM fleet.events WHERE event_id=$1 AND status=$2",
+                "SELECT answer_text FROM thread.turns WHERE id=$1 AND status=$2",
             )
             .bind(&scene.event_id)
             .bind(af_core::event::status::PROCESSED)
@@ -157,7 +157,7 @@ pub(super) async fn settled(scene: &Scenario, winner: &Winner, folds: &[Uuid7]) 
     assert_eq!(outcome, format!("{ACCEPTED}\n\n{COMPLETED}"));
     let mut connection = scene.booted.database.acquire().await?;
     let responses: Vec<String> = sqlx::query_scalar(
-        "SELECT response_text FROM fleet.events WHERE event_id=ANY($1::uuid[]) AND status=$2",
+        "SELECT answer_text FROM thread.turns WHERE id=ANY($1::uuid[]) AND status=$2",
     )
     .bind(folds)
     .bind(af_core::event::status::PROCESSED)

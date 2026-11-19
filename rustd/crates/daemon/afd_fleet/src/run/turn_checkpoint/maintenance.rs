@@ -11,7 +11,7 @@ const PLANS_PER_OWNER: i64 = 64;
 
 #[derive(sqlx::FromRow)]
 struct Candidate {
-    #[sqlx(rename = "event_id")]
+    #[sqlx(rename = "turn_id")]
     event: Uuid7,
     #[sqlx(rename = "fleet_id")]
     fleet: Option<Uuid7>,

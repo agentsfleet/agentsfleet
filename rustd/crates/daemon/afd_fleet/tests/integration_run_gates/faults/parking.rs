@@ -13,13 +13,13 @@ use super::super::*;
 const FAIL_STAMP: &str = "CREATE FUNCTION fleet.refuse_park() RETURNS trigger \
     LANGUAGE plpgsql AS $$ BEGIN \
       RAISE EXCEPTION 'injected park failure'; END $$; \
-    CREATE TRIGGER refuse_park BEFORE UPDATE OF parked_at ON fleet.admissions \
+    CREATE TRIGGER refuse_park BEFORE UPDATE OF parked_at ON thread.turns \
     FOR EACH ROW WHEN (NEW.parked_at IS NOT NULL) \
     EXECUTE FUNCTION fleet.refuse_park()";
 const FAIL_RELEASE: &str = "CREATE FUNCTION fleet.refuse_park() RETURNS trigger \
     LANGUAGE plpgsql AS $$ BEGIN \
-      IF EXISTS (SELECT 1 FROM fleet.admissions \
-        WHERE fleet_id = NEW.fleet_id AND parked_at IS NOT NULL) THEN \
+      IF EXISTS (SELECT 1 FROM thread.turns \
+        WHERE thread_id = NEW.fleet_id AND parked_at IS NOT NULL) THEN \
         RAISE EXCEPTION 'injected park failure'; \
       END IF; RETURN NEW; END $$; \
     CREATE TRIGGER refuse_park BEFORE UPDATE OF run_expires_at ON thread.threads \
@@ -97,7 +97,7 @@ fn assert_original_park_error(failure: &afd_fleet::Error) {
 async fn admission_state(fixtures: &Fixtures, event: &Uuid7) -> (bool, bool, Option<i64>) {
     sqlx::query_as(
         "SELECT parked_at IS NOT NULL, settled_at IS NOT NULL, run_fence \
-        FROM fleet.admissions WHERE id = $1",
+        FROM thread.turns WHERE id = $1",
     )
     .bind(event)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))

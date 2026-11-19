@@ -6,7 +6,7 @@
 //! never whose.
 //!
 //! The identifier is TEXT, and that is not an encoding detail to route around.
-//! `fleet.events` names a delivery by `(fleet_id, event_id)`; its `id UUID` is a
+//! `thread.turns` names a delivery by `(thread_id, id)`; its `id UUID` is a
 //! row key Postgres mints for tool calls and runs to point at, never the
 //! event's identifier. Admission mints the key as `<millis>-<sequence>`, because
 //! every surface that renders, sorts or
@@ -75,7 +75,7 @@ mod tests {
     use super::{MIN_REFERENCE_LEN, PREFIX, branch_for};
 
     /// An event identifier in the shape admission actually mints: the admission
-    /// instant and the sequence, which is what `fleet.events` stores.
+    /// instant and the sequence, which is what the event id carries.
     const LEDGER_EVENT: &str = "1900000000000-1";
 
     #[test]
@@ -118,7 +118,7 @@ mod tests {
         // The regression. This took `&Uuid7`, so the call site parsed the event
         // id as one and dropped the branch when that failed — which it always
         // did, because the id is `<millis>-<sequence>` text and never a v7.
-        // `fleet.events` holds other shapes too: an approval's
+        // `thread.turns` holds other shapes too: an approval's
         // continuation, and every event predating the ledger. Each must get its
         // own branch rather than none.
         for id in [

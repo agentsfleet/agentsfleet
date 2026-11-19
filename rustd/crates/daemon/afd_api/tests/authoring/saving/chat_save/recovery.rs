@@ -71,7 +71,8 @@ async fn restore_membership(case: &Case) {
 
 async fn state(case: &Case) -> (Uuid7, String, i64) {
     sqlx::query_as(
-        "SELECT f.id,f.status,(SELECT count(*) FROM fleet.events e WHERE e.fleet_id=f.id)
+        "SELECT f.id,f.status,(SELECT count(*) FROM thread.turns e
+        WHERE e.thread_id=f.id AND e.opened_at IS NOT NULL)
         FROM fleet.fleets f WHERE f.workspace_id=$1",
     )
     .bind(&case.base.workspace)

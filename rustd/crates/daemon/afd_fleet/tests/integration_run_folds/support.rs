@@ -158,7 +158,7 @@ pub(super) async fn send_as(
         RunFacts::default()
     };
     let mut connection = held.fixtures.database.acquire().await?;
-    let sequence = sqlx::query_scalar("SELECT sequence FROM fleet.admissions WHERE id = $1")
+    let sequence = sqlx::query_scalar("SELECT sequence FROM thread.turns WHERE id = $1")
         .bind(&admitted.stored.id)
         .fetch_one(&mut *connection)
         .await?;
@@ -173,7 +173,7 @@ pub(super) async fn send_as(
 /// would have.
 pub(super) async fn stamp_claim(held: &Held, admission: &Uuid7, fence: i64) -> Checked {
     let mut connection = held.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE fleet.admissions SET input_claim_fence = $2 WHERE id = $1")
+    sqlx::query("UPDATE thread.turns SET input_claim_fence = $2 WHERE id = $1")
         .bind(admission)
         .bind(fence)
         .execute(&mut *connection)
@@ -195,7 +195,7 @@ async fn change(held: &Held, statement: &'static str, admission: &Uuid7) -> Chec
 pub(super) async fn park(held: &Held, admission: &Uuid7) -> Checked {
     change(
         held,
-        "UPDATE fleet.admissions SET parked_at = now() WHERE id = $1",
+        "UPDATE thread.turns SET parked_at = now() WHERE id = $1",
         admission,
     )
     .await
@@ -205,7 +205,7 @@ pub(super) async fn park(held: &Held, admission: &Uuid7) -> Checked {
 pub(super) async fn settle_directly(held: &Held, admission: &Uuid7) -> Checked {
     change(
         held,
-        "UPDATE fleet.admissions SET settled_at = now() WHERE id = $1",
+        "UPDATE thread.turns SET settled_at = now() WHERE id = $1",
         admission,
     )
     .await
@@ -256,13 +256,13 @@ pub(super) async fn claim_as_holder(held: &Held, after: i64) -> Checked<Vec<Clai
 pub(super) async fn settled(held: &Held, admission: &Uuid7) -> Checked<Settlement> {
     let mut connection = held.fixtures.database.acquire().await?;
     let settled =
-        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
             .bind(admission)
             .fetch_one(&mut *connection)
             .await?;
     let event = sqlx::query_as(
-        "SELECT status, response_text, resumes_event_id FROM fleet.events \
-         WHERE fleet_id = $1 AND event_id = $2",
+        "SELECT status, answer_text AS response_text, resumes_turn_id AS resumes_event_id \
+         FROM thread.turns WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
     )
     .bind(&held.fleet)
     .bind(admission)
@@ -304,14 +304,12 @@ pub(super) async fn report_read_through(
 /// Makes the held run's own message a reply in `address`, a Slack thread.
 pub(super) async fn address_head(held: &Held, address: &str) -> Checked {
     let mut connection = held.fixtures.database.acquire().await?;
-    sqlx::query(
-        "UPDATE fleet.admissions SET reply_provider = $2, reply_address = $3 WHERE id = $1",
-    )
-    .bind(&held.event_id)
-    .bind(afd_connector::Provider::Slack.id())
-    .bind(address)
-    .execute(&mut *connection)
-    .await?;
+    sqlx::query("UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1")
+        .bind(&held.event_id)
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(address)
+        .execute(&mut *connection)
+        .await?;
     Ok(())
 }
 
