@@ -191,11 +191,10 @@ impl PoolConfig {
 
     /// Shortens the handshake budget, for a test that means to exhaust it.
     ///
-    /// The production value is a constant because a handshake budget is not an
-    /// operator's decision — it is how long a TCP connection to a Postgres that
-    /// accepts and then says nothing may hold boot open. Proving that timeout
-    /// fires means waiting it out, and ten seconds per test is a lane nobody
-    /// runs. Behind `test-util` so no deployment can shorten it.
+    /// A deployment sets this budget as `connect_timeout_ms` in its profile: how
+    /// long a TCP connection to a Postgres that accepts and then says nothing may
+    /// hold boot open. Proving that timeout fires means waiting it out, so a test
+    /// shortens it here instead of writing a profile.
     #[cfg(feature = "test-util")]
     #[must_use]
     pub const fn with_connect_timeout(mut self, timeout: Duration) -> Self {

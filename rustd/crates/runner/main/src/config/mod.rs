@@ -35,7 +35,8 @@ pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
 }
 
 fn load(env: &impl EnvSource) -> af_config::Result<garde::Valid<Profile>> {
-    let file = env.get(ENV_CONFIG_FILE).map(PathBuf::from);
+    // Blank means unset, as for the daemon's AGENTSFLEET_CONFIG_FILE.
+    let file = af_core::env::optional(env, ENV_CONFIG_FILE).map(|path| PathBuf::from(&*path));
     af_config::ConfigBuilder::default()
         .file(file.as_deref())
         .build::<Profile>()

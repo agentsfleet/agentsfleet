@@ -28,6 +28,18 @@ fn installed_runner_profile_preserves_defaults() -> Checked {
 }
 
 #[test]
+fn a_blank_profile_variable_selects_the_defaults() -> Checked {
+    let selected = read(&MapEnv::from_pairs([(ENV_CONFIG_FILE, "  ")]))
+        .map_err(|status| format!("blank profile variable refused: {status:?}"))?;
+    assert_eq!(selected.inference, af_inference::Timeouts::DEFAULT);
+    assert_eq!(
+        selected.supervisor,
+        afr_supervisor::config::RuntimePolicy::DEFAULT
+    );
+    Ok(())
+}
+
+#[test]
 fn custom_profile_reaches_component_policies() -> Checked {
     let mut file = tempfile::NamedTempFile::new()?;
     write!(

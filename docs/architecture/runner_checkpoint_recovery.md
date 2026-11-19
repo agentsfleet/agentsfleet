@@ -140,7 +140,7 @@ The loader reports overridden environment variable names and their winning sourc
 These diagnostics contain no setting values.
 
 The Fly application files live beside their respective `fly.toml` files.
-Fly writes the selected file at `/etc/agentsfleet/agentsfleetd.toml`.
+The image carries both at `/etc/agentsfleet/config/dev.toml` and `prod.toml`, and each `fly.toml` selects its own through `AGENTSFLEET_CONFIG_FILE`.
 
 Both deployment files set `runner.recovery.resume_from_checkpoint = false`.
 A configuration change takes effect when each daemon replica restarts.

@@ -1,5 +1,5 @@
 //! One clock for every deadline pass: every
-//! [`af_core::timing::EXPIRY_TICK`] this task bills the last slice of each
+//! `maintenance.expired_work.interval_seconds` this task bills the last slice of each
 //! fleet lease that expired unreported, and moves each setup attempt past its
 //! deadline to accounting recovery. Both were riders on other clocks: the
 //! billing relay's and authoring's privacy pass.

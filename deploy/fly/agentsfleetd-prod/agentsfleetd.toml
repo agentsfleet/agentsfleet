@@ -105,12 +105,15 @@ max_batches = 8
 [maintenance.outbound_delivery]
 interval_seconds = 30
 
-# Physical provider connection and stream inactivity limits; earlier turn deadlines win.
+# Inline vendor sends per answer, the first included; once exhausted, a later
+# claim of the durable obligation retries the delivery.
 [outbound.retries]
 max_attempts = 3
 initial_backoff_ms = 200
 max_backoff_ms = 800
 
+# Provider connection and stream inactivity limits for authoring requests this
+# daemon sends; earlier turn deadlines win. Fleet runs use the runner's profile.
 [inference]
 connect_timeout_seconds = 10
 stream_idle_timeout_seconds = 300

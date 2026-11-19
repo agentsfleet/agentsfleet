@@ -42,10 +42,6 @@ pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 /// window.
 pub const RENEWAL_TICK: Duration = Duration::from_secs(5);
 
-/// How often `sweeper:expiry` bills expired leases and expires lapsed setup
-/// attempts: one clock for every deadline pass.
-pub const EXPIRY_TICK: Duration = Duration::from_secs(2);
-
 /// Hard ceiling on one lease's total wall-clock, measured from the lease row's
 /// `created_at`.
 ///
@@ -123,11 +119,6 @@ const _: () = assert!(
 const _: () = assert!(
     HEARTBEAT_INTERVAL.saturating_mul(2).as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
     "a session silent for two heartbeats must close before a fleet read derives its host offline"
-);
-
-const _: () = assert!(
-    EXPIRY_TICK.as_nanos() < LEASE_TTL.as_nanos(),
-    "a lapsed lease must be found and billed within one lease lifetime of lapsing"
 );
 
 const _: () = assert!(

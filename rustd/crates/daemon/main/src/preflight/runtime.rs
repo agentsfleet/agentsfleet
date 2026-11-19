@@ -61,24 +61,33 @@ struct Readings {
     requests: NonZeroUsize,
     #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
     fallback_seconds: u64,
+    /// A lapsed lease must be found and billed within one lease lifetime of lapsing.
+    #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
+    expired_work_interval_seconds: u64,
 }
 
 #[cfg(test)]
 pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, Refusal> {
-    let operations = OperationalSettings {
+    let operations = operations(crate::config::maintenance::Maintenance::default())?;
+    configured(env, operations, LeaseSettings::default())
+}
+
+/// Default operational policy around the given maintenance settings.
+#[cfg(test)]
+pub(crate) fn operations(
+    maintenance: crate::config::maintenance::Maintenance,
+) -> Result<OperationalSettings, Refusal> {
+    Ok(OperationalSettings {
         tasks: afd_fleet::task::policy::TaskPolicy::default(),
         authoring: afd_authoring::turn_policy::TurnPolicy::default(),
         inference: af_inference::Timeouts::DEFAULT,
         outbound_retries: afd_outbound::retry::RetryPolicy::DEFAULT,
-        maintenance: crate::config::maintenance::MaintenancePolicy::resolve(
-            crate::config::maintenance::Maintenance::default(),
-        )
-        .map_err(|report| refused("maintenance", report.to_string()))?,
+        maintenance: crate::config::maintenance::MaintenancePolicy::resolve(maintenance)
+            .map_err(|report| refused("maintenance", report.to_string()))?,
         telemetry: garde::Unvalidated::new(af_otlp::PipelineSettings::default())
             .validate()
             .map_err(|report| refused("telemetry.otlp", report.to_string()))?,
-    };
-    configured(env, operations, LeaseSettings::default())
+    })
 }
 
 pub(crate) fn configured(
@@ -108,6 +117,7 @@ pub(crate) fn configured(
             "AGENTSFLEET_OFFER_FALLBACK_SECONDS",
             defaults.offer_fallback.as_secs(),
         )?,
+        expired_work_interval_seconds: operations.maintenance.loops.expired_work.interval_seconds,
     })
     .validate()
     .map_err(|report| refused("runtime", report.to_string()))?;

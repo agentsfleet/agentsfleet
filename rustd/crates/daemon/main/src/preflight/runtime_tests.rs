@@ -33,6 +33,32 @@ fn validated_clock_edges_accept_a_strictly_shorter_fallback() -> TestResult {
 }
 
 #[test]
+fn an_expired_work_interval_must_be_shorter_than_one_lease_lifetime() -> TestResult {
+    use crate::config::maintenance::{ExpiredWork, Maintenance};
+    use af_core::timing::LeaseSettings;
+    let with_interval = |interval_seconds| {
+        super::runtime::operations(Maintenance {
+            expired_work: ExpiredWork { interval_seconds },
+            ..Maintenance::default()
+        })
+    };
+    let lease = LeaseSettings::default;
+    let accepted = super::runtime::configured(&MapEnv::default(), with_interval(34)?, lease())?;
+    assert_eq!(accepted.clock.ttl(), Duration::from_secs(35));
+    for interval in [35, 3600] {
+        let refusal =
+            super::runtime::configured(&MapEnv::default(), with_interval(interval)?, lease())
+                .err()
+                .ok_or("an expired-work interval as long as a lease lifetime was accepted")?;
+        assert!(
+            format!("{refusal:?}").contains("expired_work_interval_seconds"),
+            "the refusal names the interval: {refusal:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn configured_clock_and_budget_reach_the_typed_settings() -> TestResult {
     let settings = read(&MapEnv::from_pairs([
         ("AGENTSFLEET_LEASE_TTL_SECONDS", "40"),

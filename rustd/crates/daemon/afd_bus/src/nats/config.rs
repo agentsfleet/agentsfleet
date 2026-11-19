@@ -75,7 +75,7 @@ impl Config {
         })
     }
 
-    /// Replace the default limits, such as from a configuration file.
+    /// Replace the default limits; only test fixtures call this today.
     ///
     /// # Errors
     /// `UZ-STARTUP-001` when a limit is outside its range.

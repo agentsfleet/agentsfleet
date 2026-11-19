@@ -60,7 +60,7 @@ impl RetryPolicy {
         interval: Duration::from_secs(1),
     };
 
-    /// A bound a test can wait out, for the contention proofs.
+    /// A bound from the profile's `[database.migration]`, or one a test can wait out.
     #[must_use]
     pub const fn new(attempts: u32, interval: Duration) -> Self {
         Self { attempts, interval }

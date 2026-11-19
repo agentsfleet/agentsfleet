@@ -16,9 +16,11 @@ max_retry_after_seconds = 60
 [supervisor]
 # Five total sends = the original first send plus four retries.
 daemon_max_attempts = 5
+# These pauses also pace reconnects and owed reports, which retry until
+# cancellation or their deadline, without a count limit.
 daemon_initial_backoff_ms = 250
 daemon_max_backoff_ms = 30_000
-# Reconnect and owed reports retry until cancellation/deadline, without a count limit.
+# Batched lease renewal cadence; the daemon advertises the heartbeat interval.
 renewal_interval_ms = 5000
 authoring_renewal_interval_ms = 10_000
 authoring_renewal_retry_ms = 250

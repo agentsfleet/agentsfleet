@@ -37,7 +37,7 @@ impl Drafts {
     }
 
     /// Moves every live attempt past its deadline to accounting recovery:
-    /// what `sweeper:expiry` runs every [`af_core::timing::EXPIRY_TICK`], beside
+    /// what `sweeper:expiry` runs every `maintenance.expired_work.interval_seconds`, beside
     /// the lease expiry pass.
     ///
     /// # Errors
