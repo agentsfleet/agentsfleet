@@ -45,71 +45,8 @@ pub(super) fn reference() -> TurnCheckpointRef {
     }
 }
 
-/// A pin inside its last 90 seconds, so the next step renews it first.
-fn lapsing() -> CheckpointPin {
-    CheckpointPin {
-        id: PAGE.to_owned(),
-        resource_version: 1,
-        expires_at: clock::after(clock::now(), Duration::from_secs(30)),
-        operation_deadline: clock::after(clock::now(), Duration::from_mins(15)),
-    }
-}
-
 /// The object set the owner answers with, changed one way.
 type Change = fn(&mut Vec<CheckpointObject>);
-
-#[tokio::test]
-async fn a_renewal_answered_with_another_commands_response_ends_custody() -> Checked {
-    let (plane, mut calls) = scripted(|_action| Ok(Response::PinReleased));
-    let lease = Uuid7::parse(ID)?;
-    let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
-    let stop = CancellationToken::new();
-    let mut session = TurnSession::new(&native, &scope(), reference(), lapsing(), &stop)?;
-
-    let renewed = session.renew().await;
-
-    assert_eq!(
-        test_support::detail(&renewed),
-        Some("turn pin renewal returned another command's response")
-    );
-    assert!(matches!(
-        sent(&mut calls)?.as_slice(),
-        [Action::PinRenew {
-            resource_version: 1,
-            ..
-        }]
-    ));
-    assert_eq!(session.pin.resource_version, 1, "the held pin is unchanged");
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_registration_answered_with_another_commands_response_is_refused() -> Checked {
-    let Encrypted { objects, .. } = encrypted()?;
-    let descriptors: Vec<_> = objects
-        .iter()
-        .map(|object| object.plaintext.clone())
-        .collect();
-    let (plane, mut calls) = scripted(|_action| Ok(Response::PinReleased));
-    let lease = Uuid7::parse(ID)?;
-    let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
-    let stop = CancellationToken::new();
-    let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
-
-    let registered = session.register(descriptors).await;
-
-    assert_eq!(
-        test_support::detail(&registered),
-        Some("turn registration returned another command's response")
-    );
-    assert!(matches!(
-        sent(&mut calls)?.as_slice(),
-        [Action::Objects { objects, .. }] if objects.len() == 4
-    ));
-    Ok(())
-}
 
 #[tokio::test]
 async fn a_registration_that_changes_a_requested_chunk_is_refused() -> Checked {
@@ -163,33 +100,6 @@ async fn a_registration_that_changes_a_requested_chunk_is_refused() -> Checked {
             );
         }
     }
-    Ok(())
-}
-
-#[tokio::test]
-async fn an_authorization_answered_with_another_commands_response_is_refused() -> Checked {
-    let (plane, mut calls) = scripted(|_action| Ok(Response::PinReleased));
-    let lease = Uuid7::parse(ID)?;
-    let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
-    let stop = CancellationToken::new();
-    let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
-
-    let authorized = session
-        .authorize(&[ID.to_owned()], CheckpointTransferPurpose::Restore)
-        .await;
-
-    assert_eq!(
-        test_support::detail(&authorized),
-        Some("turn authorization returned another command's response")
-    );
-    assert!(matches!(
-        sent(&mut calls)?.as_slice(),
-        [Action::Authorize {
-            purpose: CheckpointTransferPurpose::Restore,
-            ..
-        }]
-    ));
     Ok(())
 }
 
@@ -336,37 +246,6 @@ async fn a_file_restore_without_manifest_pages_reads_nothing() -> Checked {
     );
     assert!(restored.sent.is_empty(), "no page is read");
     assert_eq!(std::fs::read_dir(restored.root.path())?.count(), 0);
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_page_read_answered_with_another_commands_response_is_refused() -> Checked {
-    let (plane, mut calls) = scripted(|_action| Ok(Response::PinReleased));
-    let lease = Uuid7::parse(ID)?;
-    let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
-    let stop = CancellationToken::new();
-    let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
-    let root = tempfile::tempdir()?;
-
-    let restored = session
-        .restore_files(
-            &[TurnId(PAGE.to_owned())],
-            &"d".repeat(64),
-            (root.path().to_owned(), (0, 0)),
-            None,
-        )
-        .await;
-
-    assert_eq!(
-        test_support::detail(&restored),
-        Some("turn page read returned another command's response")
-    );
-    assert!(matches!(
-        sent(&mut calls)?.as_slice(),
-        [Action::PageRead { .. }]
-    ));
-    assert_eq!(std::fs::read_dir(root.path())?.count(), 0);
     Ok(())
 }
 

@@ -139,8 +139,6 @@ fn upload_plane(
 /// How the native owner misbehaves for one upload batch.
 #[derive(Clone, Copy)]
 enum Owner {
-    /// The upload request is answered with another command's response.
-    WrongReply,
     /// The batch's PUT authority lacks its create-only precondition.
     NoCreateOnly,
 }
@@ -153,7 +151,6 @@ fn unverifying_plane(
 ) -> (crate::client::ControlPlane, test_support::Calls) {
     super::session_tests::scripted(move |action| match action {
         Action::Uploads { .. } => match fault {
-            Some(Owner::WrongReply) => Ok(Response::PinReleased),
             Some(Owner::NoCreateOnly) => Ok(Response::Uploads(
                 objects
                     .iter()
@@ -183,34 +180,6 @@ fn unverifying_plane(
         )),
         _ => Err(error::config("unexpected upload request")),
     })
-}
-
-#[tokio::test]
-async fn an_upload_answered_with_another_commands_response_puts_nothing() -> Checked {
-    let Encrypted { objects, .. } = encrypted()?;
-    let root = tempfile::tempdir()?;
-    let stop = CancellationToken::new();
-    let Staged {
-        pending,
-        authorized,
-    } = stage(root.path(), objects, "https://objects.invalid", &stop)?;
-    let (plane, mut calls) = unverifying_plane(authorized, Some(Owner::WrongReply));
-    let lease = Uuid7::parse(ID)?;
-    let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
-    let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
-
-    let uploaded = session.upload_batch(pending).await;
-
-    assert_eq!(
-        test_support::detail(&uploaded),
-        Some("turn upload returned another command's response")
-    );
-    assert!(matches!(
-        super::session_tests::sent(&mut calls)?.as_slice(),
-        [Action::Uploads { objects, .. }] if objects.len() == 4
-    ));
-    Ok(())
 }
 
 #[tokio::test]

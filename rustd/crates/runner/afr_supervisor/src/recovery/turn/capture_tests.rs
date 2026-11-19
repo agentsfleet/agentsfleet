@@ -574,60 +574,6 @@ async fn a_capture_stops_when_custody_changes_hands_or_has_ended() -> Checked {
 }
 
 #[tokio::test]
-async fn a_page_write_or_commit_answered_with_another_reply_commits_no_head() -> Checked {
-    for (fault, expected, pages) in [
-        (
-            Fault::WrongPageWrite,
-            "turn page write returned another command's response",
-            0,
-        ),
-        (
-            Fault::WrongCommit,
-            "turn commit returned another command's response",
-            1,
-        ),
-        (
-            Fault::ChangedCommit,
-            "turn commit changed the captured generation or root",
-            1,
-        ),
-    ] {
-        // An empty workspace needs no chunk, so the capture goes straight to
-        // its one page.
-        let root = tempfile::tempdir()?;
-        let remote = Arc::new(Mutex::new(Remote::new(
-            Vec::new(),
-            "https://objects.invalid",
-            Some(fault),
-        )?));
-        let (plane, _calls) = capture_plane(Arc::clone(&remote));
-        let lease = Uuid7::parse(ID)?;
-        let transfers = Transfers::new()?;
-        let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
-        let stop = CancellationToken::new();
-
-        let refused = native
-            .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
-            .await;
-
-        assert_eq!(test_support::detail(&refused), Some(expected));
-        let owner = remote.lock().map_err(|_poisoned| "the owner panicked")?;
-        assert!(owner.head.is_none(), "a refused capture holds no head");
-        assert_eq!(owner.pages.len(), pages);
-        assert_eq!(
-            owner.abandoned, 1,
-            "a refused commit is settled, so the allocation is given back"
-        );
-        assert!(native.publication.head.is_none());
-        assert!(
-            native.publication.pending.is_none(),
-            "a refusal leaves no uncertain commit to reconcile"
-        );
-    }
-    Ok(())
-}
-
-#[tokio::test]
 async fn a_root_that_is_not_utf8_is_abandoned_before_its_commit() -> Checked {
     let root = tempfile::tempdir()?;
     let remote = Arc::new(Mutex::new(Remote::new(

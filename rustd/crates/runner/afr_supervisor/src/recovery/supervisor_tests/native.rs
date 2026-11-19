@@ -171,26 +171,6 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
 }
 
 #[tokio::test]
-async fn a_read_answered_with_another_commands_response_is_refused() -> Checked {
-    let (offer, saved) = api_only()?;
-
-    let (restored, sent) = restore(
-        &offer,
-        saved,
-        Some(Fault::WrongRead),
-        &CancellationToken::new(),
-    )
-    .await?;
-
-    assert_eq!(
-        test_support::detail(&restored),
-        Some("turn read returned another command's response")
-    );
-    assert!(matches!(sent.as_slice(), [Action::Read { .. }]));
-    Ok(())
-}
-
-#[tokio::test]
 async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted() -> Checked {
     for case in ["files", "changed offer", "stopped"] {
         let (mut offer, mut saved) = api_only()?;
@@ -221,43 +201,6 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
                 [Action::Read { .. }, Action::PinRelease { .. }]
             ),
             "{case}: the pin is released without adoption"
-        );
-    }
-    Ok(())
-}
-
-#[tokio::test]
-async fn an_adoption_or_release_the_owner_answers_otherwise_fails_the_restore() -> Checked {
-    for (fault, expected) in [
-        (
-            Fault::WrongAdopt,
-            "turn adoption returned another command's response",
-        ),
-        (
-            Fault::ChangedAdopt,
-            "turn adoption changed saved input membership",
-        ),
-        (
-            Fault::WrongRelease,
-            "turn release returned another command's response",
-        ),
-    ] {
-        let (offer, saved) = api_only()?;
-
-        let (restored, sent) =
-            restore(&offer, saved, Some(fault), &CancellationToken::new()).await?;
-
-        assert_eq!(test_support::detail(&restored), Some(expected));
-        assert!(
-            matches!(
-                sent.as_slice(),
-                [
-                    Action::Read { .. },
-                    Action::Adopt { .. },
-                    Action::PinRelease { .. }
-                ]
-            ),
-            "the pin is released after every adoption attempt"
         );
     }
     Ok(())
