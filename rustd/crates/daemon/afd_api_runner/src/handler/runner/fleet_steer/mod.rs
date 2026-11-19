@@ -190,8 +190,14 @@ fn settled(
             ))
         }
         Err(error) => {
-            log_refused(standing, target, error.code());
-            Err(refusal_of(error))
+            // A server failure is logged once, by the refusal that renders it;
+            // only a refusal the caller earned is logged here as one.
+            let code = error.code();
+            let refusal = refusal_of(error);
+            if refusal.status().is_client_error() {
+                log_refused(standing, target, code);
+            }
+            Err(refusal)
         }
     }
 }

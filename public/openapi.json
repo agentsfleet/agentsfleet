@@ -26399,42 +26399,50 @@
         "properties": {
           "actor": {
             "type": "string",
-            "description": "Who or what produced it: `steer:<user>`, `fleet:<fleet_id>`, `cron:<id>`."
+            "description": "Who or what produced it: `steer:<user>`, `fleet:<fleet_id>`, `cron:<id>`. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "When it was admitted."
+            "description": "When it was admitted. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "event_id": {
             "type": "string",
-            "description": "The event's identifier."
+            "description": "The event's identifier. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "event_type": {
             "type": "string",
-            "description": "How it entered: `chat`, `webhook`, `cron` or `continuation`."
+            "description": "How it entered: `chat`, `webhook`, `cron` or `continuation`. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "failure_label": {
             "type": [
               "string",
               "null"
             ],
-            "description": "What refused or failed the run. Omitted on a clean one."
+            "description": "What refused or failed the run. Omitted on a clean one. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "request_excerpt": {
             "type": "string",
-            "description": "What it was asked, cut to [`EXCERPT_MAX_BYTES`]."
+            "description": "What it was asked, cut to [`EXCERPT_MAX_BYTES`]. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "response_excerpt": {
             "type": [
               "string",
               "null"
             ],
-            "description": "What it answered, cut to [`EXCERPT_MAX_BYTES`]. Omitted until it answers."
+            "description": "What it answered, cut to [`EXCERPT_MAX_BYTES`]. Omitted until it answers. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "status": {
             "type": "string",
-            "description": "Where its run got to; `queued` while it waits for a runner."
+            "description": "Where its run got to; `queued` while it waits for a runner. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           }
         }
       },
@@ -26450,14 +26458,16 @@
             "items": {
               "$ref": "#/components/schemas/FleetEventItem"
             },
-            "description": "The events on this page."
+            "description": "The events on this page. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "next_cursor": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Pass back as `starting_after` for the next page; null on the last one."
+            "description": "Pass back as `starting_after` for the next page; null on the last one. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "total": {
             "type": [
@@ -26465,8 +26475,9 @@
               "null"
             ],
             "format": "int64",
-            "description": "Unknown without a separate count; always null.",
-            "minimum": 0
+            "description": "Unknown without a separate count; always null. Beta: this field may change shape before it is stable.",
+            "minimum": 0,
+            "x-stability": "beta"
           }
         }
       },
@@ -26485,23 +26496,28 @@
               "string",
               "null"
             ],
-            "description": "What it is for, from its saved setup. Omitted while it has none."
+            "description": "What it is for, from its saved setup. Omitted while it has none. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "events_processed": {
             "type": "string",
-            "description": "How many events it has processed, as a decimal string."
+            "description": "How many events it has processed, as a decimal string. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "fleet_id": {
             "type": "string",
-            "description": "The fleet's identifier: what `fleet_steer` and the events read take."
+            "description": "The fleet's identifier: what `fleet_steer` and the events read take. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "name": {
             "type": "string",
-            "description": "Its saved name in this workspace."
+            "description": "Its saved name in this workspace. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "status": {
             "type": "string",
-            "description": "Where it stands: `installing`, `active` or `archived`."
+            "description": "Where it stands: `installing`, `active` or `archived`. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           }
         }
       },
@@ -26627,11 +26643,13 @@
         "properties": {
           "event_id": {
             "type": "string",
-            "description": "The event the steer became on the target fleet."
+            "description": "The event the steer became on the target fleet. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "replayed": {
             "type": "boolean",
-            "description": "Whether an earlier send of the same words from the same event already\nadmitted it. When `true`, `event_id` is that send's event."
+            "description": "Whether an earlier send of the same words from the same event already\nadmitted it. When `true`, `event_id` is that send's event. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           }
         }
       },
@@ -26736,14 +26754,16 @@
             "items": {
               "$ref": "#/components/schemas/FleetItem"
             },
-            "description": "The fleets on this page."
+            "description": "The fleets on this page. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "next_cursor": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Pass back as `starting_after` for the next page; null on the last one."
+            "description": "Pass back as `starting_after` for the next page; null on the last one. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "total": {
             "type": [
@@ -26751,8 +26771,9 @@
               "null"
             ],
             "format": "int64",
-            "description": "Unknown without a separate count; always null.",
-            "minimum": 0
+            "description": "Unknown without a separate count; always null. Beta: this field may change shape before it is stable.",
+            "minimum": 0,
+            "x-stability": "beta"
           }
         }
       },

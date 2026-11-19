@@ -41,8 +41,6 @@ const CONTEXT_COUNT: &str = "count interim message";
 /// so the stored request, the live frame and the key all read the same text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SteerSender {
-    /// The sender fleet's saved name.
-    pub name: String,
     /// The text, with the sender fleet's declared static secrets masked.
     pub text: String,
     /// The sender line, a newline, then `text`: what the target reads.
@@ -142,7 +140,6 @@ impl LeaseService {
         let request_json = serde_json::to_string(&body).map_err(af_core::json::Unreadable::from)?;
         let message = body.message.into_owned();
         Ok(SteerSender {
-            name: installed.name,
             text,
             message,
             request_json,

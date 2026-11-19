@@ -166,7 +166,7 @@ async fn a_body_that_is_not_json_is_refused_before_the_store() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// M252 Dimension 3.2. A name outside the saved-name bound is refused with a
+/// A name outside the saved-name bound is refused with a
 /// sentence naming `name`, before the store is reached.
 #[tokio::test]
 async fn fleet_list_refuses_a_name_outside_its_bound() {

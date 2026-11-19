@@ -256,7 +256,7 @@ fn every_published_handler_entry_is_hosted() {
     );
 }
 
-/// Dimension 1.5: the two fleet tools are offered only to a lease whose
+/// The two fleet tools are offered only to a lease whose
 /// policy names them, and both are hosted here.
 #[test]
 fn fleet_tools_are_offered_only_when_declared() {

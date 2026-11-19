@@ -1,4 +1,4 @@
-//! M252 §2 — a running fleet puts work on another fleet in its workspace,
+//! A running fleet puts work on another fleet in its workspace,
 //! once per text, under its own actor, in the thread it was asked from.
 //!
 //! The refusals are in `integration_runner_steers_refusals`, the busy target
@@ -18,15 +18,21 @@
 use af_wire::event::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Barrier;
 
 use crate::definition_install::seal;
 use crate::e2e_seed::FLEET_NAME;
-use crate::steers::{Crew, offered, settle, steered};
+use crate::offers::{offered, settle, steered};
+use crate::steers::Crew;
 use crate::verbs::enqueue_from_thread;
 use crate::wire::{report, report_body, wait_for_offer};
 
-/// How many identical steers race for one admission.
-const RACERS: usize = 20;
+/// How many identical steers race for one admission, released together.
+const RACERS: usize = 100;
+
+/// How many different steers one run sends in a row.
+const STEPS: usize = 20;
 
 /// A sender fleet that declares the `grafana` credential, for the mask.
 const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["grafana"],"budget":{"daily_nanos":"1000000000"}}}"#;
@@ -41,9 +47,9 @@ fn expected_body(crew: &Crew, text: &str) -> Value {
     serde_json::to_value(&body).expect("the body serializes")
 }
 
-/// Dimension 2.1. Twenty racing steers with one text admit one row, under the
-/// fleet's actor and the person's producer; every caller reads its event, and
-/// a later resend is answered as a repeat.
+/// A hundred steers with one text, released together from a barrier, admit one
+/// row, under the fleet's actor and the person's producer; every caller reads
+/// its event, and a later resend is answered as a repeat.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_admits_once_under_the_fleet_actor() {
@@ -53,10 +59,24 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
     let (lease, fence) = crew.speaking.lease_seeded().await;
     let text = "run the hourly check";
 
-    let answers = futures_util::future::join_all(
-        (0..RACERS).map(|_racer| crew.steer((&lease, fence), &target, text)),
-    )
+    let barrier = Barrier::new(RACERS);
+    let (inflight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
+    let answers = futures_util::future::join_all((0..RACERS).map(|_racer| async {
+        barrier.wait().await;
+        peak.fetch_max(
+            inflight.fetch_add(1, Ordering::SeqCst) + 1,
+            Ordering::SeqCst,
+        );
+        let answered = crew.steer((&lease, fence), &target, text).await;
+        inflight.fetch_sub(1, Ordering::SeqCst);
+        answered
+    }))
     .await;
+    assert!(
+        peak.load(Ordering::SeqCst) > 1,
+        "the callers overlapped: peak in flight {}",
+        peak.load(Ordering::SeqCst)
+    );
     let rows = crew.admissions(&target).await;
     assert_eq!(rows.len(), 1, "{answers:?}");
     let row = &rows[0];
@@ -81,7 +101,7 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.2. A steer from a Slack thread's event answers in that thread;
+/// A steer from a Slack thread's event answers in that thread;
 /// one from an event with no thread carries none.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -125,7 +145,7 @@ async fn fleet_steer_copies_the_sender_reply_destination() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.7. A resend is answered with the first event before the
+/// A resend is answered with the first event before the
 /// target's status is read, still one row.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -156,7 +176,7 @@ async fn fleet_steer_replays_before_status() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.8. The target's run reads the sender line, then the words,
+/// The target's run reads the sender line, then the words,
 /// at a short text and at the bound; and the next run reads it as a prior turn.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -205,7 +225,7 @@ async fn fleet_steer_body_reaches_the_target_turn() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.9. A value of the sender's stored secret never reaches the
+/// A value of the sender's stored secret never reaches the
 /// stored body.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -239,7 +259,7 @@ async fn fleet_steer_masks_secret_values() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.14. Nothing caps how many steers one run sends.
+/// Nothing caps how many steers one run sends.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_has_no_per_run_limit() {
@@ -248,7 +268,7 @@ async fn fleet_steer_has_no_per_run_limit() {
     let target = crew.sibling("steer-target").await;
     let (lease, fence) = crew.speaking.lease_seeded().await;
 
-    for step in 0..RACERS {
+    for step in 0..STEPS {
         let (status, answer) = crew
             .steer((&lease, fence), &target, &format!("step {step}"))
             .await;
@@ -258,6 +278,6 @@ async fn fleet_steer_has_no_per_run_limit() {
             "{answer}"
         );
     }
-    assert_eq!(crew.admissions(&target).await.len(), RACERS);
+    assert_eq!(crew.admissions(&target).await.len(), STEPS);
     crew.finish(supervisor).await;
 }

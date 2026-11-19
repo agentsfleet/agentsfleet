@@ -5,9 +5,9 @@
 //! a line that landed and lost its answer would post twice, so the model, not
 //! a retry loop, decides whether to try again.
 
-use af_core::id::Uuid7;
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use af_wire::message_verb::MessagePosted;
 use af_wire::steer_verb::FleetSteerAccepted;
 use afr_agent::{ScheduleCall, Unanswered};

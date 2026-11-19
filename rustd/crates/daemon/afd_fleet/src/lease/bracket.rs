@@ -184,6 +184,40 @@ mod tests {
         );
     }
 
+    /// A fleet's steer shows its composed message: the sender line, then the
+    /// words, with none of a person's bound. A body that does not parse is
+    /// warned once, without its text, and shows nothing.
+    #[test]
+    fn a_fleet_steer_shows_its_sender_line_and_has_no_person_bound() {
+        use af_wire::event::FleetSteerBody;
+
+        let log = Capture::install();
+        let sender = "0190d5c2-7e1a-7000-8000-000000000002";
+        let event = "0190d5c2-7e1a-7000-8000-000000000004";
+        let actor = format!("fleet:{sender}");
+        let compose = |text: &str| {
+            let body = FleetSteerBody::new(text, sender, "agentmay", event);
+            serde_json::to_string(&body).unwrap_or_default()
+        };
+
+        let short = leased(&actor, &compose("run the check"));
+        let brief = steer_message(&short).unwrap_or_default();
+        assert!(brief.ends_with("\nrun the check"), "{brief}");
+        assert!(brief.starts_with("[from fleet agentmay"), "{brief}");
+
+        let words = "w".repeat(STEER_MESSAGE_MAX_BYTES);
+        let heavy = leased(&actor, &compose(&words));
+        let full = steer_message(&heavy).unwrap_or_default();
+        assert!(full.len() > STEER_MESSAGE_MAX_BYTES, "{}", full.len());
+
+        assert_eq!(steer_message(&leased(&actor, "{")), None);
+        let line = log.only(EVENT_STEER_BODY_UNREADABLE).fields;
+        assert!(
+            line.values().all(|value| !value.contains('{')),
+            "the unreadable body never reaches the log: {line:?}"
+        );
+    }
+
     #[test]
     fn test_event_received_without_parsable_body() {
         let log = Capture::install();

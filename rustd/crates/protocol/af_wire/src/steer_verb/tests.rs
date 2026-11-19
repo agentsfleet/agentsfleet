@@ -24,31 +24,42 @@ fn request(fleet_id: &str, text: String) -> FleetSteerRequest<'static> {
     }
 }
 
-/// Dimension 2.6, the bound half: a text at the cap passes; one byte more, an
-/// empty text and a NUL are refused; an unknown field is refused by the
-/// strict body before `garde` ever runs.
+/// The fields a refused request names, in the order `garde` reports them.
+fn refused_fields(request: &FleetSteerRequest<'_>) -> Vec<String> {
+    request.validate().err().map_or_else(Vec::new, |report| {
+        report.iter().map(|(path, _)| path.to_string()).collect()
+    })
+}
+
+/// The bound half: a text at the cap passes; one byte more, an
+/// empty text and a NUL are refused on `text`, a short id on `fleet_id`; an
+/// unknown field is refused by the strict body before `garde` ever runs.
 #[test]
 fn fleet_steer_request_refuses_bad_bodies() {
     request(FLEET, "a".repeat(STEER_MESSAGE_MAX_BYTES))
         .validate()
         .expect("a text at the cap passes");
-    let _over = request(FLEET, "a".repeat(STEER_MESSAGE_MAX_BYTES + 1))
-        .validate()
-        .expect_err("8193 bytes are refused");
-    let _empty = request(FLEET, String::new())
-        .validate()
-        .expect_err("an empty text is refused");
-    let _nul = request(FLEET, "a\0b".to_owned())
-        .validate()
-        .expect_err("a NUL is refused");
-    let _short_id = request("not-a-uuid", "hi".to_owned())
-        .validate()
-        .expect_err("a fleet id of the wrong length is refused");
+    for (text, why) in [
+        ("a".repeat(STEER_MESSAGE_MAX_BYTES + 1), "8193 bytes"),
+        (String::new(), "an empty text"),
+        ("a\0b".to_owned(), "a NUL"),
+    ] {
+        assert_eq!(refused_fields(&request(FLEET, text)), ["text"], "{why}");
+    }
+    assert_eq!(
+        refused_fields(&request("not-a-uuid", "hi".to_owned())),
+        ["fleet_id"],
+        "a fleet id of the wrong length"
+    );
     let unknown = format!(
         r#"{{"fencing_token":7,"fleet_id":"{FLEET}","text":"hi","policy":{{"tools":["shell"]}}}}"#
     );
-    let _policy = serde_json::from_str::<FleetSteerRequest<'_>>(&unknown)
+    let refused = serde_json::from_str::<FleetSteerRequest<'_>>(&unknown)
         .expect_err("a field the verb does not read is refused");
+    assert!(
+        refused.to_string().contains("unknown field `policy`"),
+        "{refused}"
+    );
     assert_eq!(FLEET.len(), FLEET_ID_BYTES);
 }
 

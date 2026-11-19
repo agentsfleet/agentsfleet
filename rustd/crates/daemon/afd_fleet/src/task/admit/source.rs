@@ -153,7 +153,7 @@ mod tests {
         }
     }
 
-    /// Dimension 2.10: a fleet's steer carries the steer producer, and still
+    /// A fleet's steer carries the steer producer, and still
     /// cannot start a durable task, which only a person's message may.
     #[test]
     fn check_human_refuses_a_fleet_actor() {

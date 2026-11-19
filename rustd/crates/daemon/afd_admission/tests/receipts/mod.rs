@@ -7,6 +7,7 @@ mod budgets;
 mod confirmation;
 mod failures;
 mod guarded;
+mod inherit;
 mod lane;
 mod ledger;
 mod locking;

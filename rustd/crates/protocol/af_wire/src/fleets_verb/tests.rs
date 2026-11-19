@@ -7,7 +7,7 @@
 
 use super::{EXCERPT_MAX_BYTES, FleetsPage, excerpt};
 
-/// Dimension 1.4: a 10 KiB answer whose three-byte character starts at byte
+/// A 10 KiB answer whose three-byte character starts at byte
 /// 1022, spanning byte 1024, is cut before that character, never inside it.
 #[test]
 fn fleets_read_excerpt_is_bounded() {

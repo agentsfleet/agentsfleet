@@ -1,4 +1,4 @@
-//! M252 §2 — the steers that write nothing: the wrong target, a key a person
+//! The steers that write nothing: the wrong target, a key a person
 //! took, and a sender no longer installed; and a fleet's steer is never read
 //! as a person's.
 //!
@@ -27,7 +27,7 @@ const PERSON: &str = "user_fixture_person";
 /// How many characters of the digest a fleet's operation id keeps.
 const KEY_DIGEST_HEX: usize = 32;
 
-/// Dimension 2.3. The sender itself, a fleet of another workspace, an archived
+/// The sender itself, a fleet of another workspace, an archived
 /// or installing fleet, and one whose setup needs review are each refused,
 /// with no admission written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -72,7 +72,7 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.4. Onboarding's first-steer read stays false after a fleet's
+/// Onboarding's first-steer read stays false after a fleet's
 /// steer, and the person-steer filter returns no row for it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -105,7 +105,7 @@ async fn fleet_steer_is_not_a_person_steer_to_onboarding_and_filters() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.12. A person who took the operation id a fleet's steer derives
+/// A person who took the operation id a fleet's steer derives
 /// keeps it: the steer is a conflict, and the one row is the person's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -144,7 +144,7 @@ async fn fleet_steer_refuses_a_key_a_person_took() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 2.15. A sender archived while its lease is live steers nothing.
+/// A sender archived while its lease is live steers nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_refuses_a_sender_that_is_no_longer_installed() {
@@ -165,6 +165,50 @@ async fn fleet_steer_refuses_a_sender_that_is_no_longer_installed() {
         (404, &json!("UZ-RUN-006")),
         "{refused}"
     );
+    let rows = crew.admissions(&target).await;
+    assert!(rows.is_empty(), "{rows:?}");
+    crew.finish(supervisor).await;
+}
+
+/// The route says what is wrong with a body: a target that is not an id, an
+/// empty text, a field it does not know and a body with no fence are each a
+/// 400 with their own sentence, and nothing is written.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn fleet_steer_refuses_bad_bodies_with_the_route_sentences() {
+    let mut supervisor = Supervisor::new();
+    let crew = Crew::boot(&mut supervisor).await;
+    let target = crew.sibling("steer-target").await;
+    let (lease, fence) = crew.speaking.lease_seeded().await;
+    let path = format!("/v1/runners/me/leases/{lease}/steers");
+    let id = target.as_str();
+
+    for (body, sentence) in [
+        (
+            json!({"fencing_token": fence, "fleet_id": "docs-bot", "text": "hi"}),
+            "fleet_id must be a valid UUIDv7",
+        ),
+        (
+            json!({"fencing_token": fence, "fleet_id": id, "text": ""}),
+            "text must be 1 to 8192 bytes with no NUL",
+        ),
+        (
+            json!({"fencing_token": fence, "fleet_id": id, "text": "a\u{0}b"}),
+            "text must be 1 to 8192 bytes with no NUL",
+        ),
+        (
+            json!({"fencing_token": fence, "fleet_id": id, "text": "hi", "extra": 1}),
+            "Malformed steer body",
+        ),
+        (
+            json!({"fleet_id": id, "text": "hi"}),
+            "Malformed steer body",
+        ),
+    ] {
+        let (status, refused) = crew.post(&path, &body).await;
+        assert_eq!(status, 400, "{body}: {refused}");
+        assert_eq!(refused["detail"], sentence, "{body}: {refused}");
+    }
     let rows = crew.admissions(&target).await;
     assert!(rows.is_empty(), "{rows:?}");
     crew.finish(supervisor).await;

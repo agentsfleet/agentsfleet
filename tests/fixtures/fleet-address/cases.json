@@ -1,5 +1,5 @@
 {
-  "$comment": "The fleet address parity table (M252_001 §3). The command line (cli/src/lib/fleet-address.ts) and the dashboard (ui/packages/app/lib/chat-address.ts) each read every case and must agree. A case is an address, with the lower-cased `name` and the `rest` that is the message, or it is `not_an_address` and is sent as ordinary words. Slack does not use this rule.",
+  "$comment": "The fleet address parity table. The command line (cli/src/lib/fleet-address.ts) and the dashboard (ui/packages/app/lib/chat-address.ts) each read every case and must agree. A case is an address, with the lower-cased `name` and the `rest` that is the message, or it is `not_an_address` and is sent as ordinary words. Slack does not use this rule.",
   "schema_version": 1,
   "cases": [
     {

@@ -1,4 +1,4 @@
-//! M252 §1 — a running fleet reads which fleets its workspace holds, and what
+//! A running fleet reads which fleets its workspace holds, and what
 //! one of them did, through the lease it runs.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
@@ -11,6 +11,7 @@
               indexes the JSON it was answered"
 )]
 
+use af_core::id::Uuid7;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
@@ -32,43 +33,35 @@ fn ids(page: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Dimension 1.1. The list names every fleet in the lease's workspace,
-/// archived and installing ones with their status, and none from another;
-/// one fleet's events include a message still waiting for a runner.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn fleets_read_lists_workspace_fleets_for_a_live_lease() {
-    let mut supervisor = Supervisor::new();
-    let crew = Crew::boot(&mut supervisor).await;
-    let archived = crew.sibling_as("archived-fleet", ARCHIVED).await;
-    let installing = crew.sibling_as("installing-fleet", INSTALLING).await;
-    let foreign = crew.foreign("other-workspace-fleet").await;
-    let (lease, fence) = crew.speaking.lease_seeded().await;
+/// The fleets read under `lease`, presenting `fence`.
+async fn read_fleets(crew: &Crew, lease: &str, fence: u64) -> (u16, Value) {
+    crew.read(&format!(
+        "/v1/runners/me/leases/{lease}/fleets?fencing_token={fence}"
+    ))
+    .await
+}
 
-    let (status, page) = crew
-        .read(&format!(
-            "/v1/runners/me/leases/{lease}/fleets?fencing_token={fence}"
-        ))
-        .await;
-    assert_eq!(status, 200, "{page}");
-    let listed = ids(&page);
-    assert_eq!(listed.len(), 3, "{page}");
-    for fleet in [&crew.run().fleet, &archived, &installing] {
-        assert!(
-            listed.contains(&fleet.as_str().to_owned()),
-            "{fleet} missing: {page}"
-        );
-    }
-    assert!(!listed.contains(&foreign.as_str().to_owned()), "{page}");
-    assert!(page["total"].is_null(), "{page}");
-    let archived_item = page["items"]
+/// Asserts a read was refused with `status` and the registry code `code`.
+fn assert_refused((status, body): (u16, Value), expected: u16, code: &str) {
+    assert_eq!(
+        (status, &body["error_code"]),
+        (expected, &json!(code)),
+        "{body}"
+    );
+}
+
+/// The item of `page` that names `fleet`.
+fn item_of<'a>(page: &'a Value, fleet: &Uuid7) -> &'a Value {
+    page["items"]
         .as_array()
-        .expect("items")
+        .expect("a page carries items")
         .iter()
-        .find(|item| item["fleet_id"] == archived.as_str())
-        .expect("the archived fleet is listed");
-    assert_eq!(archived_item["status"], "archived");
+        .find(|item| item["fleet_id"] == fleet.as_str())
+        .expect("the fleet is listed")
+}
 
+/// A message waiting for a runner reads as queued, with no answer excerpt.
+async fn assert_waiting_message_is_queued(crew: &Crew, lease: &str, fence: u64) {
     let waiting = crew
         .run()
         .enqueue_event(af_wire::event::EventType::Chat)
@@ -88,10 +81,40 @@ async fn fleets_read_lists_workspace_fleets_for_a_live_lease() {
         .expect("the waiting message is listed");
     assert_eq!(queued["status"], "queued");
     assert!(queued.get("response_excerpt").is_none(), "{queued}");
+}
+
+/// The list names every fleet in the lease's workspace, archived and
+/// installing ones with their status, and none from another; one fleet's
+/// events include a message still waiting for a runner.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn fleets_read_lists_workspace_fleets_for_a_live_lease() {
+    let mut supervisor = Supervisor::new();
+    let crew = Crew::boot(&mut supervisor).await;
+    let archived = crew.sibling_as("archived-fleet", ARCHIVED).await;
+    let installing = crew.sibling_as("installing-fleet", INSTALLING).await;
+    let foreign = crew.foreign("other-workspace-fleet").await;
+    let (lease, fence) = crew.speaking.lease_seeded().await;
+
+    let (status, page) = read_fleets(&crew, &lease, fence).await;
+    assert_eq!(status, 200, "{page}");
+    let listed = ids(&page);
+    assert_eq!(listed.len(), 3, "{page}");
+    for fleet in [&crew.run().fleet, &archived, &installing] {
+        assert!(
+            listed.contains(&fleet.to_string()),
+            "{fleet} missing: {page}"
+        );
+    }
+    assert!(!listed.contains(&foreign.to_string()), "{page}");
+    assert!(page["total"].is_null(), "{page}");
+    assert_eq!(item_of(&page, &archived)["status"], "archived");
+
+    assert_waiting_message_is_queued(&crew, &lease, fence).await;
     crew.finish(supervisor).await;
 }
 
-/// Dimension 1.2. A fleet of another workspace reads as one that does not
+/// A fleet of another workspace reads as one that does not
 /// exist, and a path segment that is not an id is a bad request.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -123,7 +146,7 @@ async fn fleets_read_refuses_a_fleet_from_another_workspace() {
     crew.finish(supervisor).await;
 }
 
-/// Dimension 1.3. A settled lease, another runner's lease, and a holder a
+/// A settled lease, another runner's lease, and a holder a
 /// reclaim superseded read nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -131,34 +154,13 @@ async fn fleets_read_refuses_a_lease_the_runner_does_not_hold() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let (settled, fence) = crew.speaking.lease_seeded().await;
-    let reported = report(
-        crew.run(),
-        &report_body(&settled, &crew.run().event_id, fence),
-    )
-    .await;
+    let body = report_body(&settled, &crew.run().event_id, fence);
+    let reported = report(crew.run(), &body).await;
     assert!(reported.is_ok(), "the seeded lease settles: {reported:?}");
-    let (status, refused) = crew
-        .read(&format!(
-            "/v1/runners/me/leases/{settled}/fleets?fencing_token={fence}"
-        ))
-        .await;
-    assert_eq!(
-        (status, &refused["error_code"]),
-        (404, &json!("UZ-RUN-006")),
-        "{refused}"
-    );
+    assert_refused(read_fleets(&crew, &settled, fence).await, 404, "UZ-RUN-006");
 
     let unknown = "0190d5c2-7e1a-7000-8000-00000000dead";
-    let (status, refused) = crew
-        .read(&format!(
-            "/v1/runners/me/leases/{unknown}/fleets?fencing_token={fence}"
-        ))
-        .await;
-    assert_eq!(
-        (status, &refused["error_code"]),
-        (404, &json!("UZ-RUN-006")),
-        "{refused}"
-    );
+    assert_refused(read_fleets(&crew, unknown, fence).await, 404, "UZ-RUN-006");
 
     let next = crew
         .run()
@@ -166,15 +168,8 @@ async fn fleets_read_refuses_a_lease_the_runner_does_not_hold() {
         .await;
     let (live, fence) = wait_for_offer(crew.run(), &next).await;
     crew.speaking.supersede().await;
-    let (status, refused) = crew
-        .read(&format!(
-            "/v1/runners/me/leases/{live}/fleets?fencing_token={fence}"
-        ))
-        .await;
-    assert_eq!(
-        (status, &refused["error_code"], &refused["current_state"]),
-        (409, &json!("UZ-RUN-005"), &json!("superseded")),
-        "{refused}"
-    );
+    let answered = read_fleets(&crew, &live, fence).await;
+    assert_eq!(answered.1["current_state"], "superseded", "{}", answered.1);
+    assert_refused(answered, 409, "UZ-RUN-005");
     crew.finish(supervisor).await;
 }

@@ -97,10 +97,7 @@ impl Healthy {
                 | Verb::Open,
             ) => Value::Null,
             Some(Verb::Heartbeat) => self.heartbeat(),
-            Some(Verb::Renew) => value(&RenewResponse {
-                lease_expires_at: self.granted_until,
-                recorded_through: None,
-            }),
+            Some(Verb::Renew) => self.renewed(),
             Some(Verb::Hydrate) => value(&MemoryHydrateResponse {
                 memory: Vec::new(),
                 shared: Vec::new(),
@@ -138,6 +135,14 @@ impl Healthy {
             )
             | None => value(&ReportResponse { ok: true }),
         }
+    }
+
+    /// A renewal: the instant this daemon granted, with nothing recorded.
+    fn renewed(&self) -> Value {
+        value(&RenewResponse {
+            lease_expires_at: self.granted_until,
+            recorded_through: None,
+        })
     }
 
     /// A healthy beat: the assignment and the cadence this daemon was given.

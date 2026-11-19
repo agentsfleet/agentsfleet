@@ -26,9 +26,6 @@ fn test_route_templates_compose_from_their_segments() {
         ("schedule", paths::LEASE_SCHEDULE),
         ("schedule_runs", paths::LEASE_SCHEDULE_RUNS),
         ("messages", paths::LEASE_MESSAGES),
-        ("steers", paths::LEASE_STEERS),
-        ("fleets", paths::LEASE_FLEETS),
-        ("fleet_events", paths::LEASE_FLEET_EVENTS),
         ("task_inputs", paths::LEASE_TASK_INPUTS),
         ("task_effects", paths::LEASE_TASK_EFFECTS),
         ("task_effect", paths::LEASE_TASK_EFFECT),
@@ -54,9 +51,6 @@ fn test_route_templates_compose_from_their_segments() {
     schedule         /v1/runners/me/leases/{lease_id}/schedules/{schedule_id}
     schedule_runs    /v1/runners/me/leases/{lease_id}/schedules/{schedule_id}/runs
     messages         /v1/runners/me/leases/{lease_id}/messages
-    steers           /v1/runners/me/leases/{lease_id}/steers
-    fleets           /v1/runners/me/leases/{lease_id}/fleets
-    fleet_events     /v1/runners/me/leases/{lease_id}/fleets/{fleet_id}/events
     task_inputs      /v1/runners/me/leases/{lease_id}/tasks/inputs
     task_effects     /v1/runners/me/leases/{lease_id}/tasks/effects
     task_effect      /v1/runners/me/leases/{lease_id}/tasks/effects/{effect_id}
@@ -82,15 +76,25 @@ fn test_a_joined_lease_route_matches_its_template() {
     );
 }
 
-/// Dimension 6.1: the three fleet-to-fleet routes sit under one held lease,
-/// so a runner can only reach them through a lease it proves.
+/// The three fleet-to-fleet routes sit under one held lease, so a runner
+/// reaches them only through a lease it proves.
 #[test]
 fn runner_routes_snapshot_lists_the_three_fleet_routes() {
-    let lease = "/v1/runners/me/leases/{lease_id}";
-    assert_eq!(paths::LEASE_STEERS, format!("{lease}/steers"));
-    assert_eq!(paths::LEASE_FLEETS, format!("{lease}/fleets"));
-    assert_eq!(
-        paths::LEASE_FLEET_EVENTS,
-        format!("{lease}/fleets/{{fleet_id}}/events")
-    );
+    let routes = [
+        ("steers", paths::LEASE_STEERS),
+        ("fleets", paths::LEASE_FLEETS),
+        ("fleet_events", paths::LEASE_FLEET_EVENTS),
+    ];
+    let rendered = routes
+        .iter()
+        .fold(String::new(), |mut out, (name, template)| {
+            // Writing to a `String` cannot fail.
+            let _ = writeln!(out, "{name:<12} {template}");
+            out
+        });
+    insta::assert_snapshot!(rendered, @r"
+    steers       /v1/runners/me/leases/{lease_id}/steers
+    fleets       /v1/runners/me/leases/{lease_id}/fleets
+    fleet_events /v1/runners/me/leases/{lease_id}/fleets/{fleet_id}/events
+    ");
 }

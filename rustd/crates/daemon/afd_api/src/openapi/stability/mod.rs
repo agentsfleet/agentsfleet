@@ -58,6 +58,34 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // runner release that reads the claim.
     ("FoldResponse", &["inputs"]),
     ("FoldedInput", &["event_id", "sequence", "text"]),
+    // The fleet-to-fleet verbs are new, and so is the runner release that
+    // calls them; their replies may still reshape.
+    (
+        "FleetItem",
+        &[
+            "description",
+            "events_processed",
+            "fleet_id",
+            "name",
+            "status",
+        ],
+    ),
+    (
+        "FleetEventItem",
+        &[
+            "actor",
+            "created_at",
+            "event_id",
+            "event_type",
+            "failure_label",
+            "request_excerpt",
+            "response_excerpt",
+            "status",
+        ],
+    ),
+    ("FleetSteerAccepted", &["event_id", "replayed"]),
+    ("FleetsPage", &["items", "next_cursor", "total"]),
+    ("FleetEventsPage", &["items", "next_cursor", "total"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.

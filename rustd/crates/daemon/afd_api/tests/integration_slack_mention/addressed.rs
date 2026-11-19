@@ -57,7 +57,18 @@ async fn a_named_fleet_takes_the_mention_over_its_neighbour() {
     fixture.cleanup().await;
 }
 
-/// M252 Dimension 5.1. The saved name is the address: a fleet saved as
+/// Delivers one mention of the bot saying `words`, and expects Slack's 200.
+async fn mention_said(fixture: &Fixture, router: &axum::Router, event: &str, words: &str) {
+    let body = mention(
+        &fixture.team,
+        event,
+        PERSON,
+        &format!("<@{BOT_USER}> {words}"),
+    );
+    assert_eq!(deliver(router, &body).await.status(), StatusCode::OK);
+}
+
+/// The saved name is the address: a fleet saved as
 /// `ci-dev-repairer` from a definition named `ci-repairer` takes a mention
 /// that opens with its saved name, and one opening with its definition's name
 /// admits nothing and earns the notice that asks to address it.
@@ -75,13 +86,13 @@ async fn mention_routes_by_the_saved_fleet_name() {
         .await;
     let router = fixture.router();
 
-    let saved = mention(
-        &fixture.team,
+    mention_said(
+        &fixture,
+        &router,
         "EvSaved01",
-        PERSON,
-        &format!("<@{BOT_USER}> ci-dev-repairer: open the fix"),
-    );
-    assert_eq!(deliver(&router, &saved).await.status(), StatusCode::OK);
+        "ci-dev-repairer: open the fix",
+    )
+    .await;
     let admitted = fixture
         .admission(&key(&fixture.team, "EvSaved01"))
         .await
@@ -94,13 +105,7 @@ async fn mention_routes_by_the_saved_fleet_name() {
         Some("open the fix")
     );
 
-    let defined = mention(
-        &fixture.team,
-        "EvDefined01",
-        PERSON,
-        &format!("<@{BOT_USER}> ci-repairer open the fix"),
-    );
-    assert_eq!(deliver(&router, &defined).await.status(), StatusCode::OK);
+    mention_said(&fixture, &router, "EvDefined01", "ci-repairer open the fix").await;
     assert!(
         fixture
             .admission(&key(&fixture.team, "EvDefined01"))
@@ -119,7 +124,7 @@ async fn mention_routes_by_the_saved_fleet_name() {
     fixture.cleanup().await;
 }
 
-/// M252 Dimension 5.3. A fleet the channel does not subscribe stays
+/// A fleet the channel does not subscribe stays
 /// unreachable by name, and the channel's write-bound fleet is not addressed.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

@@ -52,15 +52,22 @@ pub(super) const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 /// The refusal a fleets page size outside the shared band earns.
 const DETAIL_LIMIT: &str = PagingRefusal::Limit.detail();
 
+/// The most events one read serves: the thread read's own cap, since each row
+/// is read with its bodies.
+const EVENTS_MAX: u32 = 25;
+
+/// The events a read serves when it names no `limit`.
+const EVENTS_DEFAULT: u32 = 20;
+
 /// The refusal an events page size outside its band earns.
-const DETAIL_EVENTS_LIMIT: &str = "limit must be between 1 and 25";
+const DETAIL_EVENTS_LIMIT: &str =
+    const_format::concatcp!("limit must be between 1 and ", EVENTS_MAX);
 
 /// The refusal a `starting_after` this daemon never issued earns.
 const DETAIL_CURSOR: &str = "The cursor is not valid";
 
-/// One fleet's events: 20 unless asked, at most 25, the thread read's own
-/// cap, since each row is read with its bodies.
-const EVENTS_CEILING: Ceiling = Ceiling::new(25, 20);
+/// One fleet's events: [`EVENTS_DEFAULT`] unless asked, at most [`EVENTS_MAX`].
+const EVENTS_CEILING: Ceiling = Ceiling::new(EVENTS_MAX, EVENTS_DEFAULT);
 
 /// Lists the fleets of the leased fleet's workspace, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(

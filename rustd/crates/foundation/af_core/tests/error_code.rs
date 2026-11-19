@@ -199,7 +199,7 @@ fn test_logged_carries_the_code_and_reason_under_their_field_names() {
     assert_eq!(reason, failure.told());
 }
 
-/// Dimension 6.2: the fleet steer's one new code reads back to its constant,
+/// The fleet steer's one new code reads back to its constant,
 /// and its problem entry answers 409 with a title and a hint.
 #[test]
 fn registry_round_trips_the_self_steer_code() {

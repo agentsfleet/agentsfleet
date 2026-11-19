@@ -199,7 +199,7 @@ fn unattached_and_unreadable_rows_are_told_apart() {
     );
 }
 
-/// Dimension 5.2: a fleet saved under a name its document does not carry is
+/// A fleet saved under a name its document does not carry is
 /// addressed by the saved name, the one the dashboard and the command line
 /// show, so one fleet answers to one name on every surface.
 #[test]

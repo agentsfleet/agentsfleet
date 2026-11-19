@@ -53,6 +53,8 @@ mod e2e_retire;
 mod e2e_seed;
 #[path = "support/e2e_seed_keys.rs"]
 mod e2e_seed_keys;
+#[path = "support/e2e_steer_offers.rs"]
+mod offers;
 #[path = "support/e2e_steers.rs"]
 mod steers;
 use af_egress::testing::upstream as https;
@@ -101,6 +103,8 @@ mod integration_runner_brackets;
 mod integration_runner_e2e;
 #[path = "integration_runner_fleets.rs"]
 mod integration_runner_fleets;
+#[path = "integration_runner_fleets_paging.rs"]
+mod integration_runner_fleets_paging;
 #[path = "integration_runner_messages.rs"]
 mod integration_runner_messages;
 #[path = "integration_runner_messages_fence.rs"]

@@ -5,10 +5,9 @@ use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::AdmissionOutcome;
 use af_observability::producers::fleet::admission as metrics;
+use afd_db::Precondition;
 use afd_fleet_lifecycle::FleetStatus;
 use jiff::Timestamp;
-
-use afd_db::Precondition;
 
 use crate::error::{Error, Result, query};
 use crate::stage::insert::Gates;

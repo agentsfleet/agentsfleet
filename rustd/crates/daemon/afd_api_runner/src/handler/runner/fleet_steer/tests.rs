@@ -1,4 +1,4 @@
-//! M252 Dimension 2.16: each steer outcome logs once, with its code or its
+//! Each steer outcome logs once, with its code or its
 //! event and both fleets, and never the words.
 
 #![expect(

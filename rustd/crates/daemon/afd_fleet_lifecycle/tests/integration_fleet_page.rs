@@ -96,7 +96,7 @@ async fn walk(lane: &Lane) -> Vec<FleetRow> {
     walked
 }
 
-/// M252 Dimension 3.3. An archived fleet is still found by its saved name,
+/// An archived fleet is still found by its saved name,
 /// and the same name asked from another workspace finds nothing.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]

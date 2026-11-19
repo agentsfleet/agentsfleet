@@ -103,7 +103,7 @@ const RETIRED_CATALOGUE_ROUTES: usize = 3;
 const TENANT_RUNNER_ADDITIONS: usize = 5;
 
 /// A fleet steering another fleet, and reading the workspace's fleets and one
-/// fleet's events, through the lease it runs (M252).
+/// fleet's events, through the lease it runs.
 const FLEET_TO_FLEET_ADDITIONS: usize = 3;
 
 /// What this daemon's union must carry.
