@@ -35,9 +35,6 @@ pub const RUNNER_STREAM: &str = concatcp!(RUNNER_SELF, "/stream");
 /// Collection prefix for fenced per-lease operations; the collection accepts no POST.
 pub const RUNNER_LEASES: &str = concatcp!(RUNNER_SELF, "/leases");
 
-/// An authoring lease has no runtime tools, credentials or event capabilities.
-pub const AUTHORING_LEASE: &str = concatcp!(RUNNER_SELF, "/authoring-leases/{lease_id}/");
-
 /// `GET`/`POST /v1/runners/me/memory/{fleet_id}` — durable fleet memory.
 ///
 /// Collection prefix; the caller appends the `{fleet_id}` segment.

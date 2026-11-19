@@ -8,7 +8,6 @@ const CHEVRON_CLASS_NAME = "ml-2 shrink-0 opacity-60";
 import { CaretDownIcon, CheckIcon } from "@phosphor-icons/react/ssr";
 
 export const Select = SelectPrimitive.Root;
-export const SelectGroup = SelectPrimitive.Group;
 export const SelectValue = SelectPrimitive.Value;
 
 export type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & { appearance?: "default" | "composer" };
@@ -127,29 +126,5 @@ export function SelectItem({ className, children, ref, ...props }: SelectItemPro
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
-  );
-}
-
-export type SelectLabelProps = ComponentProps<typeof SelectPrimitive.Label>;
-
-export function SelectLabel({ className, ref, ...props }: SelectLabelProps) {
-  return (
-    <SelectPrimitive.Label
-      ref={ref}
-      className={cn("px-2 py-1.5 text-xs font-medium text-muted-foreground", className)}
-      {...props}
-    />
-  );
-}
-
-export type SelectSeparatorProps = ComponentProps<typeof SelectPrimitive.Separator>;
-
-export function SelectSeparator({ className, ref, ...props }: SelectSeparatorProps) {
-  return (
-    <SelectPrimitive.Separator
-      ref={ref}
-      className={cn("-mx-1 my-1 h-px bg-border", className)}
-      {...props}
-    />
   );
 }

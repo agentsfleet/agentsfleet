@@ -188,8 +188,6 @@ export {
   type SelectTriggerProps,
   type SelectContentProps,
   type SelectItemProps,
-  type SelectLabelProps,
-  type SelectSeparatorProps,
 } from "./Select";
 export { Time, TimeRange, useClientTimeReady, type TimeProps } from "./Time";
 export {

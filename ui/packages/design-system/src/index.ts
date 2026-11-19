@@ -190,8 +190,6 @@ export {
   type SelectTriggerProps,
   type SelectContentProps,
   type SelectItemProps,
-  type SelectLabelProps,
-  type SelectSeparatorProps,
   Time,
   TimeRange,
   useClientTimeReady,

@@ -8,6 +8,7 @@ import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
 import { readDecisionPolicy } from "@/lib/api/decision-policy";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
+import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
 import { DRAFT, FLEET, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 const FIXTURE: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
@@ -94,6 +95,21 @@ it("shows proposed and saved questions in the primary setup screen using the mat
     expect(screen.queryByText(changed)).toBeNull();
     rendered.rerender(<FleetSetup client={client} view={{...view, inaccessible: true}} workspace={WORKSPACE} />);
     expect(screen.queryByText(`1. ${QUESTION}`)).toBeNull();
+  } finally { client.dispose(); }
+});
+
+it("keeps the setup headings in order: the questions take level 2 when the save heading is not shown", () => {
+  const client = new DraftClient({account: "owner", workspace: WORKSPACE, subject: "creator"});
+  const base = {...EMPTY_DRAFT_VIEW, fleet: {...FLEET, setup_revision: "7", definition: definition(FIXTURE)}};
+  const recorded = {event_id: "setup:seven", event_type: "activity", status: "recorded",
+    request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "7"}), created_at: "1970-01-01T00:00:01Z"};
+  try {
+    const view = render(<FleetSetup client={client} view={base} workspace={WORKSPACE} />);
+    expect(screen.getByRole("heading", {level: 2})).toBeTruthy();
+    expect(screen.getByRole("heading", {name: "What counts as done?", level: 3})).toBeTruthy();
+    view.rerender(<FleetSetup client={client} view={{...base, activities: [recorded]}} workspace={WORKSPACE} />);
+    expect(screen.queryByRole("heading", {level: 3})).toBeNull();
+    expect(screen.getByRole("heading", {name: "What counts as done?", level: 2})).toBeTruthy();
   } finally { client.dispose(); }
 });
 
