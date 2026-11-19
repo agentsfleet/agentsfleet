@@ -152,7 +152,7 @@ impl Handler for WriteStdin {
             return not_open(id);
         };
         // Held across the yield: a second call on this session waits its
-        // turn, and a call on another session never waits on this one.
+        // step, and a call on another session never waits on this one.
         let mut process = shared.lock().await;
         let mut collected = Collected::default();
         let mut refused: Option<&'static str> = None;

@@ -2,9 +2,9 @@
 
 `guffbolt` is an agent harness for Rust. It is used by [agentsfleet](https://github.com/agentsfleet/agentsfleet), whose runner drives every agent run through it.
 
-`guffbolt` runs an agent loop's turns in a fixed order. You supply the model, the conversation's input and window, and the tools.
+`guffbolt` runs an agent loop's steps in a fixed order. You supply the model, the conversation's input and window, and the tools.
 
-`guffbolt` makes each model call, reads the turn, runs its calls and keeps the transcript. It decides when each step runs and when the loop ends, and how a tool call is looked up and refused. It tells your observer as each model call and tool call starts and ends.
+`guffbolt` makes each model call, reads the step, runs its calls and keeps the transcript. It decides when each step runs and when the loop ends, and how a tool call is looked up and refused. It tells your observer as each model call and tool call starts and ends.
 
 ## Prerequisites
 
@@ -23,16 +23,16 @@ guffbolt = { git = "https://github.com/agentsfleet/agentsfleet" }
 ```text
 drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped | Waiting
 
-every turn:  take input ─► before_model ─► window ─► model call ─► after_turn
-no calls:    on_answer ─► remember ─► take input again; new input runs one more turn
+every step:  take input ─► before_model ─► window ─► model call ─► after_step
+no calls:    on_answer ─► remember ─► take input again; new input runs one more step
 calls:       run them ─► remember ─► after_group
 ```
 
 A message that arrives while the model works joins the next model call. `guffbolt` never cuts a call short for it.
 
-Before each model call, your `window` says what that call sends of the transcript. `guffbolt` makes the model call itself. It sends your `request` to your `Model` and reads the stream into a `Turn`.
+Before each model call, your `window` says what that call sends of the transcript. `guffbolt` makes the model call itself. It sends your `request` to your `Model` and reads the stream into a `Step`.
 
-`remember` puts the turn and its results into the `Transcript`. Your `scrub` runs first and hides what must not reach a model again.
+`remember` puts the step and its results into the `Transcript`. Your `scrub` runs first and hides what must not reach a model again.
 
 ## A plain chat with one tool
 
@@ -210,7 +210,7 @@ async fn main() {
 }
 ```
 
-`take_input` runs before every model call and once after an answer. A message sent while a tool runs reaches the next call. One sent while the model writes its answer runs one more turn, and reaches the model after that answer.
+`take_input` runs before every model call and once after an answer. A message sent while a tool runs reaches the next call. One sent while the model writes its answer runs one more step, and reaches the model after that answer.
 
 Cancel the token `stop` returns to stop the loop. `guffbolt` races each model call and each tool call against it. `called` runs after each call that answered, and defaults to doing nothing.
 
@@ -260,9 +260,9 @@ impl<F> Observe<F> for Watch {
 
 | Event | When it runs | What an embedder does there |
 |---|---|---|
-| `turn_started` | before each model call builds its request | log it, and open the span its stream is read in |
+| `step_started` | before each model call builds its request | log it, and open the span its stream is read in |
 | `text` and `usage` | as each chunk of the stream arrives | stream the text live and meter the spend |
-| `turn_ended` | once the turn is read, fails or is stopped | count it, and record what it spent |
+| `step_ended` | once the step is read, fails or is stopped | count it, and record what it spent |
 | `call_started` | before each tool call runs or is refused | number it, and open the span it runs in |
 | `call_ended` | once per call, however it ended | record how it ended, and mask what the model must not read |
 | `loop_ended` | when `drive` returns | read how the loop ended |
@@ -323,14 +323,14 @@ async fn run_task<C: Conversation>(conversation: &mut C, added: Receiver<String>
 
 | Hook | When it runs | What a task can do there |
 |---|---|---|
-| `budget` | once, before the first turn | bound the whole run's time |
+| `budget` | once, before the first step | bound the whole run's time |
 | `before_model` | before every model call | read the task's new inputs, or end the run |
-| `after_turn` | when a model turn arrives, before its tools run | refuse a turn, such as one cut at its output limit |
+| `after_step` | when a model step arrives, before its tools run | refuse a step, such as one cut at its output limit |
 | `on_answer` | when the model answers without calling a tool | accept, end the run, or send the model back to work |
-| `after_group` | after a turn's tool calls ran | check the goal after each batch of work |
+| `after_group` | after a step's tool calls ran | check the goal after each batch of work |
 | `budget_spent` | when the budget runs out | drop what the run can no longer finish |
 
-`DriveState` carries the accepted answers and the completed turns from one run of a loop to the next. Save it with the transcript to resume a task later. A run of no special kind installs `Plain`.
+`DriveState` carries the accepted answers and the completed steps from one run of a loop to the next. Save it with the transcript to resume a task later. A run of no special kind installs `Plain`.
 
 ## Tools
 
@@ -338,7 +338,7 @@ A tool implements `Describe`, which gives the model its name, description and pa
 
 `Tools` holds one loop's tools, offers them to the model in order and dispatches a call by name. A call to a name it holds no tool for is answered `[tool_not_offered]`. `Tools::hold` keeps a tool callable without offering it.
 
-A tool answers with a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` to show the model and a question it asks the person. `guffbolt` answers a call from a turn cut at the output limit with `ToolOutput::cut`, `[output_limit_reached]`, and never runs it.
+A tool answers with a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` to show the model and a question it asks the person. `guffbolt` answers a call from a step cut at the output limit with `ToolOutput::cut`, `[output_limit_reached]`, and never runs it.
 
 ## Sub-agents
 
@@ -566,11 +566,11 @@ A `Pause` holds new children back, and is granted only while no child runs, unwi
 
 ## Media
 
-`guffbolt::input` types a message as text plus image, audio, video or document parts. Your `MediaReader` turns each part into text the model reads. `Unread` names each part to the model until you read that kind.
+`guffbolt::input` types a message as text plus image, audio, video or document parts. Your `MediaReader` steps each part into text the model reads. `Unread` names each part to the model until you read that kind.
 
 ## Asking the person
 
-A call that answers `ToolOutput::asks` asks the person a question. The loop runs the rest of that turn's calls, then ends `Ending::Waiting` with the asking call's id and its question, and nothing waits inside the run. Deliver the question however your product reaches people. When the answer arrives, `DriveState::resume` makes it that call's result, and the next `drive` goes on from there. A state saved while waiting resumes the same way later, in another process.
+A call that answers `ToolOutput::asks` asks the person a question. The loop runs the rest of that step's calls, then ends `Ending::Waiting` with the asking call's id and its question, and nothing waits inside the run. Deliver the question however your product reaches people. When the answer arrives, `DriveState::resume` makes it that call's result, and the next `drive` goes on from there. A state saved while waiting resumes the same way later, in another process.
 
 ```rust
 use guffbolt::{Conversation, DriveState, Ending, Plain, drive};
@@ -736,7 +736,7 @@ A run with many tools, such as every tool of several MCP servers, can hold most 
 
 The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `jiff` for `current_time`, `thiserror` for the vendored `apply_patch` parser, and Tokio's process, file and runtime features for `LocalEnv`.
 
-A provider's record of a turn rides it as an opaque `Replay`. `guffbolt` saves it and hands it back unopened to the provider that wrote it.
+A provider's record of a step rides it as an opaque `Replay`. `guffbolt` saves it and hands it back unopened to the provider that wrote it.
 
 ## License
 

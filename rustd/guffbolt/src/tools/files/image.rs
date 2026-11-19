@@ -1,4 +1,4 @@
-//! `image`: a file the model looks at on its next turn.
+//! `image`: a file the model looks at on its next step.
 //!
 //! Codex's `view_image` (`codex-rs/core/src/tools/handlers/view_image.rs`)
 //! reads the file and answers the call with image content. Here the bytes
@@ -69,7 +69,7 @@ impl Handler for ImageTool {
     const NAME: &'static str = "image";
     const DESCRIPTION: &'static str = "Look at an image file in the workspace: PNG, JPEG, GIF \
         or WebP, at most 5 MiB. The image is shown to you with this call's result on your next \
-        turn.";
+        step.";
     type Arguments = Named;
 
     async fn run(&self, arguments: Named, context: Context<'_>) -> ToolOutput {
@@ -104,7 +104,7 @@ async fn view(context: Context<'_>, path: &str) -> Answer {
     })?;
     let bytes = fetched.data.len();
     let attached = ToolOutput::succeeded(format!(
-        "Attached {path} ({bytes} bytes, {}) for your next turn",
+        "Attached {path} ({bytes} bytes, {}) for your next step",
         kind.media_type()
     ));
     Ok(attached.with_image(Image {

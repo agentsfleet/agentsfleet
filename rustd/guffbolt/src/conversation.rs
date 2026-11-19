@@ -15,7 +15,7 @@ use crate::window::{Fitted, Window};
 /// hides.
 ///
 /// [`crate::drive`] calls these in a fixed order and decides nothing about
-/// their content. It makes the model call itself, reads the turn, runs its
+/// their content. It makes the model call itself, reads the step, runs its
 /// calls and keeps the [`Transcript`]; the embedder holds the transcript and
 /// hears the work through its [`Observe`]r. A failure is the embedder's own
 /// type, so the loop links no model client, no tool and no secret store. An
@@ -64,7 +64,7 @@ pub trait Conversation: Send + Sync {
     fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a>;
 
     /// Hides from the transcript what must never reach a model again, such
-    /// as a secret the model wrote, before a turn's text and calls enter it.
+    /// as a secret the model wrote, before a step's text and calls enter it.
     /// The calls already ran with the arguments as the model wrote them.
     fn scrub(&self, _text: &mut String, _calls: &mut [Call]) {}
 
@@ -73,8 +73,8 @@ pub trait Conversation: Send + Sync {
     /// [`crate::CallOutcome::Interrupted`].
     fn stop(&self) -> &CancellationToken;
 
-    /// The failure a blank first turn is: a model that answered nothing,
-    /// `cut` when its turn stopped at the output limit.
+    /// The failure a blank first step is: a model that answered nothing,
+    /// `cut` when its step stopped at the output limit.
     fn silent(&self, cut: bool) -> Self::Failure;
 
     /// After each call that answered, before the next one runs.

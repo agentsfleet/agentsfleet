@@ -1,7 +1,7 @@
 //! The conversation a loop's model calls read: its messages, the tool calls
 //! and provider records they carry, and where the latest action group began.
 //!
-//! The loop keeps it: input joins it before a call, and each turn enters it
+//! The loop keeps it: input joins it before a call, and each step enters it
 //! with its calls' results once they ran. The embedder holds it, so its own
 //! steps, such as a task's inputs or a saved copy, read and extend the same
 //! messages.
@@ -25,14 +25,14 @@ pub struct Call {
     pub arguments: Value,
 }
 
-/// What a provider needs back on the next turn to continue its own reasoning:
+/// What a provider needs back on the next step to continue its own reasoning:
 /// thinking blocks with their signatures, a reasoning trace, the identity of
 /// an output item.
 ///
 /// The provider's own record, opaque to the loop, which keeps it with the
-/// turn that produced it and hands it back unopened. It serializes as the
+/// step that produced it and hands it back unopened. It serializes as the
 /// record itself, so a saved conversation holds exactly what the provider
-/// wrote. A turn no provider recorded holds none.
+/// wrote. A step no provider recorded holds none.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Replay(Value);
@@ -57,16 +57,16 @@ impl Replay {
     }
 }
 
-/// One message of the conversation a turn continues.
+/// One message of the conversation a step continues.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Message {
     /// What the model was asked.
     User(String),
     /// What the model answered and which tools it called.
     Assistant {
-        /// The answer text of the turn, possibly empty.
+        /// The answer text of the step, possibly empty.
         text: String,
-        /// The calls the turn asked for.
+        /// The calls the step asked for.
         calls: Vec<Call>,
         /// What the provider needs back to continue its own reasoning.
         replay: Replay,
@@ -83,7 +83,7 @@ pub enum Message {
 }
 
 /// One loop's conversation, in order, and where the action group its latest
-/// turn started begins.
+/// step started begins.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Transcript {
     messages: Vec<Message>,
@@ -92,7 +92,7 @@ pub struct Transcript {
 }
 
 impl Transcript {
-    /// A conversation opening with `messages`; the first turn's group begins
+    /// A conversation opening with `messages`; the first step's group begins
     /// after them.
     #[must_use]
     pub fn new(messages: Vec<Message>) -> Self {
@@ -113,7 +113,7 @@ impl Transcript {
         &self.messages
     }
 
-    /// The current group's messages: what its turn said and called, its
+    /// The current group's messages: what its step said and called, its
     /// calls' results, and whatever joined the conversation since.
     #[must_use]
     pub fn group(&self) -> &[Message] {
@@ -136,7 +136,7 @@ impl Transcript {
         }
     }
 
-    /// Marks where the group the next turn starts begins.
+    /// Marks where the group the next step starts begins.
     pub(crate) const fn begin_group(&mut self) {
         self.group = self.messages.len();
     }

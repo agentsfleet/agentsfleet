@@ -1,7 +1,7 @@
 //! Runtime effects retain the shared ordering and the run's real usage meter.
 use super::super::shared::Shared;
 use af_context::{Checkpoint, CheckpointStore, Compaction, PortFuture, Summarizer, Summary};
-use guffbolt::{Message, Request, Turn};
+use guffbolt::{Message, Request, Step};
 use tracing::Instrument as _;
 
 mod progress;
@@ -56,7 +56,7 @@ impl Summarizer for Model<'_, '_> {
             let turn = tokio::select! {
                 biased;
                 () = self.stop.cancelled() => return Err(af_context::Error::cancelled()),
-                turn = Turn::read(self.shared.provider.stream(request), self.shared.meter) => turn.map_err(af_context::Error::boundary)?,
+                step = Step::read(self.shared.provider.stream(request), self.shared.meter) => step.map_err(af_context::Error::boundary)?,
             };
             if turn.cut
                 || !turn.finished

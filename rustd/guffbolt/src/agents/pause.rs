@@ -1,5 +1,5 @@
 //! A pause: proof that a run's children are quiet, and a hold that keeps
-//! them so, for an embedder that saves the run between turns.
+//! them so, for an embedder that saves the run between steps.
 //!
 //! Only the root's poller knows whether a child's future is still unwinding
 //! or a start is queued, so a loop asks it for a pause, and the poller grants

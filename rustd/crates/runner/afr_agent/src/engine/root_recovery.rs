@@ -47,7 +47,7 @@ impl RootRecovery {
             ));
         }
         if self.pinned > self.messages.len()
-            || self.driver.completed_turns() > self.messages.len() as u64
+            || self.driver.completed_steps() > self.messages.len() as u64
             || self
                 .driver
                 .answers()

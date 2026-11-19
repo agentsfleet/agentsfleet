@@ -97,7 +97,7 @@ impl Harness<'_, '_> {
     }
 
     pub(super) async fn save_boundary(&mut self, driver: &DriveState) -> Option<Ending> {
-        if self.depth != 0 || driver.completed_turns() == 0 {
+        if self.depth != 0 || driver.completed_steps() == 0 {
             return None;
         }
         let sink = self.shared.recovery?;

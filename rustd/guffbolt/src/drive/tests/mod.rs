@@ -15,14 +15,14 @@ mod recovery;
 mod script;
 
 use crate::extension::Plain;
-use crate::turn::Ending;
+use crate::step::Ending;
 
 use self::fixture::{FITTED_LIMIT, Scripted, answered};
-use self::script::{Failure, Step, answer, called, calling, result, said, user};
+use self::script::{Cue, Failure, answer, called, calling, result, said, user};
 use super::{ANSWER_JOIN, drive};
 
 #[tokio::test]
-async fn a_run_with_no_input_answers_after_its_one_turn() {
+async fn a_run_with_no_input_answers_after_its_one_step() {
     let mut run = Scripted::new([answer("Deployed.")]);
     let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("Deployed."));
@@ -44,7 +44,7 @@ async fn a_message_sent_mid_stream_is_read_by_the_next_call_and_never_cuts_this_
 }
 
 #[tokio::test]
-async fn a_correction_sent_while_the_answer_is_written_runs_one_more_turn() {
+async fn a_correction_sent_while_the_answer_is_written_runs_one_more_step() {
     let mut run = Scripted::new([
         answer("Deployed to prod."),
         answer("Rolled back; staging now."),
@@ -129,7 +129,7 @@ async fn messages_sent_while_tools_run_are_read_by_the_next_call() {
 
 #[tokio::test]
 async fn a_model_that_fails_ends_the_run_failed_and_leaves_late_input_unread() {
-    let mut run = Scripted::new([calling(1), Step::Fail]);
+    let mut run = Scripted::new([calling(1), Cue::Fail]);
     run.during.insert(2, vec!["are you there?"]);
     let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
     assert!(
@@ -157,7 +157,7 @@ async fn a_stop_during_the_tools_keeps_their_results_so_far_and_ends_stopped() {
 
 #[tokio::test]
 async fn a_stop_during_the_model_call_ends_stopped() {
-    let mut run = Scripted::new([Step::Stop]);
+    let mut run = Scripted::new([Cue::Stop]);
     assert!(matches!(
         drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await,
         Ending::Stopped
@@ -201,7 +201,7 @@ async fn each_call_sends_the_window_fitted_for_it_and_the_transcript_keeps_every
 }
 
 #[tokio::test]
-async fn a_blank_first_turn_is_a_failure_not_an_answer() {
+async fn a_blank_first_step_is_a_failure_not_an_answer() {
     let mut run = Scripted::new([answer("   ")]);
     assert!(matches!(
         drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await,
@@ -242,20 +242,20 @@ async fn no_answer_ignores_input_that_arrived_before_it() {
     const SAYINGS: [&str; 4] = ["first", "second", "third", "fourth"];
     for seed in 0..200 {
         let mut dice = Seeded(seed);
-        let turns = 1 + dice.below(5);
-        let mut steps: Vec<Step> = (1..turns)
+        let count = 1 + dice.below(5);
+        let mut steps: Vec<Cue> = (1..count)
             .map(|_| calling(1 + usize::from(dice.below(2))))
             .collect();
         // Enough answers that every arrival can be read: one per arrival, plus one.
         steps.extend((0..=SAYINGS.len()).map(|_| answer("Done.")));
         match dice.below(10) {
-            0 => steps.insert(usize::from(dice.below(turns)), Step::Fail),
-            1 => steps.insert(usize::from(dice.below(turns)), Step::Stop),
+            0 => steps.insert(usize::from(dice.below(count)), Cue::Fail),
+            1 => steps.insert(usize::from(dice.below(count)), Cue::Stop),
             _ => {}
         }
         let mut run = Scripted::new(steps);
         for saying in SAYINGS {
-            let at = u64::from(1 + dice.below(turns + 1));
+            let at = u64::from(1 + dice.below(count + 1));
             match dice.below(3) {
                 0 => run.during.entry(at).or_default().push(saying),
                 1 => run.during_calls.entry(at).or_default().push(saying),

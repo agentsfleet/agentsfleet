@@ -3,20 +3,20 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::step::Waiting;
 use crate::transcript::{Message, Transcript};
-use crate::turn::Waiting;
 
-/// The answers a loop accepted and the turns it completed, carried from one
+/// The answers a loop accepted and the steps it completed, carried from one
 /// run of a conversation to the run that resumes it.
 ///
 /// Model calls are numbered within one run: a resumed loop numbers its calls
 /// from 1 again, so an extension's first-call step still runs even when the
-/// loop completed turns before.
+/// loop completed steps before.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DriveState {
     pub(super) answers: Vec<String>,
-    completed_turns: u64,
+    completed_steps: u64,
     /// The question the run waits on; absent from a saved state that waits
     /// on none, so a state saved before a run could wait reads the same.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -38,10 +38,10 @@ impl DriveState {
         }
     }
 
-    /// How many turns the loop remembered, tool groups and answers alike.
+    /// How many steps the loop remembered, tool groups and answers alike.
     #[must_use]
-    pub const fn completed_turns(&self) -> u64 {
-        self.completed_turns
+    pub const fn completed_steps(&self) -> u64 {
+        self.completed_steps
     }
 
     /// The question the run waits on, if any.
@@ -69,6 +69,6 @@ impl DriveState {
     }
 
     pub(super) const fn completed(&mut self) {
-        self.completed_turns = self.completed_turns.saturating_add(1);
+        self.completed_steps = self.completed_steps.saturating_add(1);
     }
 }

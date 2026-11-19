@@ -9,12 +9,12 @@ use std::sync::atomic::{AtomicU64, AtomicUsize};
 
 use tokio_util::sync::CancellationToken;
 
-use super::script::{Failure, Script, Step, lock, user};
+use super::script::{Cue, Failure, Script, lock, user};
 use crate::conversation::Conversation;
 use crate::model::Request;
+use crate::step::Ending;
 use crate::tool::{ToolFuture, ToolOutput, ToolSpec};
 use crate::transcript::{Call, Message, Transcript};
-use crate::turn::Ending;
 use crate::window::{Fitted, Window};
 
 /// The output limit a fitted window sets.
@@ -55,7 +55,7 @@ pub(super) struct Scripted {
 }
 
 impl Scripted {
-    pub(super) fn new(steps: impl IntoIterator<Item = Step>) -> Self {
+    pub(super) fn new(steps: impl IntoIterator<Item = Cue>) -> Self {
         let stop = CancellationToken::new();
         Self {
             model: Script {

@@ -3,7 +3,7 @@
 
 use futures_util::StreamExt as _;
 use futures_util::stream;
-use guffbolt::{Chunk, End, Replay, Turn, Usage};
+use guffbolt::{Chunk, End, Replay, Step, Usage};
 
 use super::Meter;
 
@@ -24,7 +24,7 @@ async fn usage_is_recorded_once_even_when_the_next_chunk_fails() {
         Err(af_providers::Error::lost(std::io::Error::other("reset"))),
     ])
     .boxed();
-    let error = Turn::read(source, &meter)
+    let error = Step::read(source, &meter)
         .await
         .expect_err("the next chunk failed");
     assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
@@ -44,7 +44,7 @@ async fn a_successful_turn_does_not_record_usage_twice() {
     ])
     .boxed();
     assert_eq!(
-        Turn::read(source, &meter)
+        Step::read(source, &meter)
             .await
             .expect("completed turn")
             .usage,
@@ -60,7 +60,7 @@ async fn dropping_the_consumer_after_usage_keeps_the_request_line() {
     let source = stream::iter([Ok::<_, af_providers::Error>(Chunk::Usage(SPENT))])
         .chain(stream::pending())
         .boxed();
-    let mut reading = Box::pin(Turn::read(source, &meter));
+    let mut reading = Box::pin(Step::read(source, &meter));
     assert!(futures_util::poll!(&mut reading).is_pending());
     drop(reading);
     assert_eq!(meter.read(), SPENT);

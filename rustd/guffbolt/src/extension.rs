@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::DriveState;
 use crate::conversation::Conversation;
-use crate::turn::{Ending, Turn};
+use crate::step::{Ending, Step};
 
 /// What becomes of an answer the model gave without a call.
 #[derive(Debug)]
@@ -54,8 +54,8 @@ pub trait Extension<C: Conversation + ?Sized>: Send {
         async { None }
     }
 
-    /// A turn arrived, before its calls run or its answer is read.
-    fn after_turn(&mut self, _conversation: &C, _turn: &Turn) -> Option<Ending<C::Failure>> {
+    /// A step arrived, before its calls run or its answer is read.
+    fn after_step(&mut self, _conversation: &C, _step: &Step) -> Option<Ending<C::Failure>> {
         None
     }
 

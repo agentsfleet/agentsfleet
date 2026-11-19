@@ -120,7 +120,7 @@ fn incomplete_or_unknown_history_never_becomes_an_empty_successful_resume() -> c
 fn rich_history_retains_driver_answers_and_pinned_input_index() -> crate::Result<()> {
     let text = format!("retained answer {}", crate::fixture::API_KEY);
     let driver =
-        serde_json::from_value(serde_json::json!({"answers": [text], "completed_turns": 1}))?;
+        serde_json::from_value(serde_json::json!({"answers": [text], "completed_steps": 1}))?;
     let root = RootRecovery {
         messages: vec![
             Message::User("request".to_owned()),
@@ -143,7 +143,7 @@ fn rich_history_retains_driver_answers_and_pinned_input_index() -> crate::Result
         "provider",
         &crate::fixture::scrub(),
     )?;
-    assert_eq!(recovered.driver.completed_turns(), 1);
+    assert_eq!(recovered.driver.completed_steps(), 1);
     assert_eq!(recovered.pinned, 1);
     assert_eq!(recovered.driver.answers().len(), 1);
     assert!(

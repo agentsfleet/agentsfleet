@@ -19,7 +19,7 @@ pub(super) struct Start<S> {
     pub(super) stop: CancellationToken,
     /// The tools the child holds: its parent's, narrowed.
     pub(super) tools: S,
-    /// What its parent sends it, read on its next turn.
+    /// What its parent sends it, read on its next step.
     pub(super) inbox: mpsc::UnboundedReceiver<String>,
 }
 

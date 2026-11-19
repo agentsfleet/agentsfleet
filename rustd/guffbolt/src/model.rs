@@ -1,9 +1,9 @@
-//! The model seam: what one turn asks, the chunks its stream sends back, and
+//! The model seam: what one step asks, the chunks its stream sends back, and
 //! the [`Model`] an embedder streams them from.
 //!
 //! The types are provider-neutral. Each provider maps them onto its own wire,
 //! so the loop never knows which provider it drives. The one provider-owned
-//! value the loop carries is a turn's [`Replay`], which it hands back
+//! value the loop carries is a step's [`Replay`], which it hands back
 //! unopened.
 
 use std::fmt;
@@ -34,7 +34,7 @@ impl Hosted {
     }
 }
 
-/// What one turn asks the model.
+/// What one step asks the model.
 #[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
     /// The model to run.
@@ -50,14 +50,14 @@ pub struct Request<'a> {
     /// The key the provider files the conversation's prompt cache under, so
     /// every request sharing it shares a cache.
     pub cache_key: &'a str,
-    /// The most the turn may write, further clipped by the model's own limit.
+    /// The most the step may write, further clipped by the model's own limit.
     pub max_output_tokens: Option<u32>,
-    /// Opened once: a turn that fails after it began is never opened again,
+    /// Opened once: a step that fails after it began is never opened again,
     /// so a request that may have reached the provider is not repeated.
     pub single_attempt: bool,
 }
 
-/// Tokens one turn spent, or a run summed over its turns.
+/// Tokens one step spent, or a run summed over its steps.
 ///
 /// Each prompt token is counted once, in exactly one of five places: read
 /// fresh, read from the provider's cache, or written to it under one of three
@@ -82,7 +82,7 @@ pub struct Usage {
 }
 
 impl Usage {
-    /// Every token the turn spent: the whole prompt and the completion.
+    /// Every token the step spent: the whole prompt and the completion.
     #[must_use]
     pub const fn total(self) -> u64 {
         self.prompt().saturating_add(self.output)
@@ -126,17 +126,17 @@ pub enum TextKind {
     Reasoning,
 }
 
-/// How a turn ended, once every chunk of it was sent.
+/// How a step ended, once every chunk of it was sent.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct End {
-    /// What the provider needs back on the next turn.
+    /// What the provider needs back on the next step.
     pub replay: Replay,
-    /// The turn stopped at its output limit: a call it made may have been
+    /// The step stopped at its output limit: a call it made may have been
     /// cut mid-argument and must not run.
     pub cut: bool,
 }
 
-/// One piece of a streamed turn.
+/// One piece of a streamed step.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chunk {
     /// Text, as the answer or the model's reasoning.
@@ -148,16 +148,16 @@ pub enum Chunk {
     },
     /// A complete tool call.
     Call(Call),
-    /// What the turn spent.
+    /// What the step spent.
     Usage(Usage),
-    /// How the turn ended; the last chunk of a turn that ended.
+    /// How the step ended; the last chunk of a step that ended.
     End(End),
 }
 
-/// A model a loop drives: one turn streamed as chunks, failing with the
+/// A model a loop drives: one step streamed as chunks, failing with the
 /// embedder's own error.
 pub trait Model: Send + Sync + fmt::Debug {
-    /// Why a turn, or a measure, failed.
+    /// Why a step, or a measure, failed.
     type Error;
 
     /// The input tokens `request` would cost, measured as the provider counts
@@ -167,7 +167,7 @@ pub trait Model: Send + Sync + fmt::Debug {
     /// The request cannot be encoded for the provider.
     fn measure(&self, request: Request<'_>) -> Result<u64, Self::Error>;
 
-    /// Streams one turn. The stream ends when the turn does; an error ends it
+    /// Streams one step. The stream ends when the step does; an error ends it
     /// early, and the run with it.
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk, Self::Error>>;
 

@@ -5,7 +5,7 @@
 //! while their parent does, so the registry is shared: the book of open
 //! sessions sits behind a lock held only to look up, add or remove, and each
 //! process behind its own, held by the one call reading it across its yield.
-//! Two calls on one session take turns; calls on two sessions never wait on
+//! Two calls on one session take steps; calls on two sessions never wait on
 //! each other. A session's start and end are logged here, on every path a
 //! session leaves by, and only by the path that removed it, so the pair is
 //! complete and single by construction.

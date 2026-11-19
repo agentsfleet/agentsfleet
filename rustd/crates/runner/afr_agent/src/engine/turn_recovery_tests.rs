@@ -32,7 +32,7 @@ fn root() -> crate::Result<RootRecovery> {
             },
         ],
         driver: serde_json::from_value(serde_json::json!({
-            "answers": [format!("accepted A {}", crate::fixture::API_KEY)], "completed_turns": 1
+            "answers": [format!("accepted A {}", crate::fixture::API_KEY)], "completed_steps": 1
         }))?,
         pinned: 1,
         folds: vec![FoldRef {
@@ -79,7 +79,7 @@ fn ordinary_state_restores_answers_input_membership_and_current_secret_scrubbing
     let (run, recovered) = fixture()?;
     let root = recovered.restore(&run, TurnWorkspace::ApiOnly, &crate::fixture::scrub())?;
     assert_eq!(root.pinned, 1);
-    assert_eq!(root.driver.completed_turns(), 1);
+    assert_eq!(root.driver.completed_steps(), 1);
     assert_eq!(root.folds, recovered.adopted);
     assert!(
         root.driver

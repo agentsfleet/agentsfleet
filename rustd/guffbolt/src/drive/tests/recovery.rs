@@ -17,7 +17,7 @@ impl Extension<Scripted> for Boundary {
         number: u64,
         state: &DriveState,
     ) -> impl Future<Output = Option<Ending<Failure>>> {
-        self.calls.push((number, state.completed_turns()));
+        self.calls.push((number, state.completed_steps()));
         std::future::ready((number == 2).then_some(Ending::Stopped))
     }
 }
@@ -39,7 +39,7 @@ async fn recovered_driver_preserves_accepted_answers_and_first_attempt_reconcili
     replacement.transcript = first.transcript;
     let ending = drive(&mut replacement, &mut Plain, &mut state).await;
     assert_eq!(answered(&ending), Some("Answer A\n\nAnswer B"));
-    assert_eq!(state.completed_turns(), 2);
+    assert_eq!(state.completed_steps(), 2);
     assert_eq!(state.answers(), ["Answer A", "Answer B"]);
     // A new extension receives number one with the saved completed count.
     let mut next = Scripted::new([answer("Answer C")]);

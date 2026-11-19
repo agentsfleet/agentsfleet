@@ -4,7 +4,7 @@
 
 use super::{Ending, Harness};
 use af_wire::task::{TaskDisposition, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
-use guffbolt::{Budget, Turn};
+use guffbolt::{Budget, Step};
 
 /// What becomes of a task's answer, a failure being the provider's.
 type Answer = guffbolt::Answer<af_providers::Error>;
@@ -67,10 +67,10 @@ impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for Task {
         root.save_boundary(state).await
     }
 
-    fn after_turn(&mut self, _root: &Harness<'s, 'run>, turn: &Turn) -> Option<Ending> {
-        // A task never acts on a turn its stream did not finish, or one cut at
+    fn after_step(&mut self, _root: &Harness<'s, 'run>, step: &Step) -> Option<Ending> {
+        // A task never acts on a step its stream did not finish, or one cut at
         // its output limit.
-        (!turn.finished || turn.cut).then_some(Ending::Stopped)
+        (!step.finished || step.cut).then_some(Ending::Stopped)
     }
 
     async fn on_answer(&mut self, root: &mut Harness<'s, 'run>, answer: &str) -> Answer {

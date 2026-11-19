@@ -66,7 +66,7 @@ impl<'a> State<'a> {
 /// Whether a message for a child was taken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Accepted {
-    /// Whether the child reads it on its next turn; one that ended never
+    /// Whether the child reads it on its next step; one that ended never
     /// does.
     pub accepted: bool,
 }

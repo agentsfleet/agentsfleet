@@ -39,7 +39,7 @@ tools = [
 # An image a call read, shared by the output and the result that carries it,
 # and serialized with the conversation.
 bytes = { workspace = true, features = ["serde"] }
-# A model turn streams as a `futures` stream of chunks.
+# A model step streams as a `futures` stream of chunks.
 futures-util.workspace = true
 # An embedder saves the transcript and the loop's progress through these.
 serde = { workspace = true, features = ["derive"] }
@@ -52,7 +52,7 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "sync", "time"] }
 # The token a loop is stopped by.
 tokio-util.workspace = true
-# The loop's own records, at `debug`: every turn is a hot path (LOG-HOT). An
+# The loop's own records, at `debug`: every step is a hot path (LOG-HOT). An
 # observer's span is what a model call and a tool call run in.
 tracing.workspace = true
 # `web_fetch` reads a page's text, never its markup.

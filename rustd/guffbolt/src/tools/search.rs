@@ -24,7 +24,7 @@ const LIMIT_MAX: usize = 20;
 /// What a search that found nothing reads back.
 const FOUND_NOTHING: &str = "no deferred tool matches";
 /// What a search that loaded tools reads back last.
-const LOADED: &str = "These tools are offered from your next turn.";
+const LOADED: &str = "These tools are offered from your next step.";
 
 /// The tools a run holds unoffered, and which of them a search loaded.
 #[derive(Debug, Default)]
@@ -131,7 +131,7 @@ impl Handler for ToolSearch {
     const NAME: &'static str = "tool_search";
     const DESCRIPTION: &'static str = "Search the tools this run holds but has not offered you, \
         by what you need them to do, and load the best matches: each is named with what it \
-        does, and offered to you from your next turn.";
+        does, and offered to you from your next step.";
     type Arguments = Query;
 
     fn run(

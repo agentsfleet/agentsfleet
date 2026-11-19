@@ -6,12 +6,12 @@ use std::time::Duration;
 
 use crate::DriveState;
 use crate::extension::{Budget, Extension, Plain};
+use crate::step::Ending;
 use crate::transcript::Message;
-use crate::turn::Ending;
 
 use super::drive;
 use super::fixture::Scripted;
-use super::script::{Step, answer, calling};
+use super::script::{Cue, answer, calling};
 
 /// An extension that adds only its budget.
 struct Bounded(Budget);
@@ -23,20 +23,20 @@ impl Extension<Scripted> for Bounded {
 }
 
 #[tokio::test]
-async fn every_turn_and_call_is_heard_from_its_start_to_its_end_in_order() {
+async fn every_step_and_call_is_heard_from_its_start_to_its_end_in_order() {
     let mut run = Scripted::new([calling(2), answer("Done.")]);
     drive(&mut run, &mut Plain, &mut DriveState::default()).await;
     assert_eq!(
         run.heard(),
         [
-            "turn 1 started",
-            "turn 1 read",
+            "step 1 started",
+            "step 1 read",
             "call call-1-0 started",
             "call call-1-0 Succeeded",
             "call call-1-1 started",
             "call call-1-1 Succeeded",
-            "turn 2 started",
-            "turn 2 read",
+            "step 2 started",
+            "step 2 read",
             "loop answered after 2",
         ]
     );
@@ -51,8 +51,8 @@ async fn a_call_the_stop_cuts_short_ends_interrupted_and_the_next_never_starts()
     assert_eq!(
         run.heard(),
         [
-            "turn 1 started",
-            "turn 1 read",
+            "step 1 started",
+            "step 1 read",
             "call call-1-0 started",
             "call call-1-0 Succeeded",
             "call call-1-1 started",
@@ -73,8 +73,8 @@ async fn a_call_still_running_when_the_budget_runs_out_ends_interrupted() {
     assert_eq!(
         run.heard(),
         [
-            "turn 1 started",
-            "turn 1 read",
+            "step 1 started",
+            "step 1 read",
             "call call-1-0 started",
             "call call-1-0 Interrupted",
             "loop stopped after 1",
@@ -83,8 +83,8 @@ async fn a_call_still_running_when_the_budget_runs_out_ends_interrupted() {
 }
 
 #[tokio::test]
-async fn a_cut_turns_call_ends_failed_without_running() {
-    let mut run = Scripted::new([Step::Cut(1), answer("Shorter, then.")]);
+async fn a_cut_steps_call_ends_failed_without_running() {
+    let mut run = Scripted::new([Cue::Cut(1), answer("Shorter, then.")]);
     drive(&mut run, &mut Plain, &mut DriveState::default()).await;
     let heard = run.heard();
     assert!(
@@ -99,19 +99,19 @@ async fn a_cut_turns_call_ends_failed_without_running() {
 }
 
 #[tokio::test]
-async fn a_turn_that_fails_or_is_stopped_is_heard_so_and_ends_the_loop() {
-    let mut failing = Scripted::new([Step::Fail]);
+async fn a_step_that_fails_or_is_stopped_is_heard_so_and_ends_the_loop() {
+    let mut failing = Scripted::new([Cue::Fail]);
     drive(&mut failing, &mut Plain, &mut DriveState::default()).await;
     assert_eq!(
         failing.heard(),
-        ["turn 1 started", "turn 1 failed", "loop failed after 1"]
+        ["step 1 started", "step 1 failed", "loop failed after 1"]
     );
 
-    let mut stopping = Scripted::new([Step::Stop]);
+    let mut stopping = Scripted::new([Cue::Stop]);
     drive(&mut stopping, &mut Plain, &mut DriveState::default()).await;
     assert_eq!(
         stopping.heard(),
-        ["turn 1 started", "turn 1 stopped", "loop stopped after 1"]
+        ["step 1 started", "step 1 stopped", "loop stopped after 1"]
     );
 }
 

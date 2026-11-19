@@ -1,26 +1,26 @@
-//! An agent harness: the order one loop's turns run in, the window each model
+//! An agent harness: the order one loop's steps run in, the window each model
 //! call sends, the transcript the loop keeps, the tools it offers the model,
 //! and the children a run starts.
 //!
 //! ```text
 //!  embedder: a service, a command-line tool, a test
-//!    │ implements Model: one turn streamed as chunks
+//!    │ implements Model: one step streamed as chunks
 //!    │ implements Conversation: input, the window, the request, what a call is lent, the stop
 //!    │ implements Observe: each model call and tool call as it starts and ends
 //!    │ installs an Extension: what a run of its kind adds, or Plain
 //!    │ implements Raise: the loop each child of the run runs, polled beside the root
 //!    ▼
 //!  drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped | Waiting
-//!    every turn:  take input ─► before_model ─► window ─► model call ─► after_turn
-//!    no calls:    on_answer ─► remember ─► take input again: more input runs another turn
+//!    every step:  take input ─► before_model ─► window ─► model call ─► after_step
+//!    no calls:    on_answer ─► remember ─► take input again: more input runs another step
 //!    calls:       run them ─► remember ─► after_group
 //! ```
 //!
 //! The harness decides when each step runs and when the loop ends. What a run
 //! is for, where its tools run and what the model may read stay with the
-//! embedder. Input reaches the model at one place, the top of every turn, and
+//! embedder. Input reaches the model at one place, the top of every step, and
 //! once more after an answer: a message that arrives while the model writes
-//! its answer is read before the loop ends, the way Codex continues a turn
+//! its answer is read before the loop ends, the way Codex continues a step
 //! while input is pending. A model call in flight is never cut short for new
 //! input; the call after it reads it.
 //!
@@ -30,10 +30,10 @@
 //! [`Transcript`], so fitting a window never loses one.
 //!
 //! The loop makes each model call itself: it sends the embedder's
-//! [`Request`] to its [`Model`], reads the stream into a [`Turn`] while the
-//! embedder hears it ([`Listen`]), runs the turn's calls and keeps the turn
+//! [`Request`] to its [`Model`], reads the stream into a [`Step`] while the
+//! embedder hears it ([`Listen`]), runs the step's calls and keeps the step
 //! and its results in the [`Transcript`], scrubbed by the embedder first. What
-//! a provider needs back to continue its reasoning rides each turn as an
+//! a provider needs back to continue its reasoning rides each step as an
 //! opaque [`Replay`].
 //!
 //! The embedder's [`Observe`]r hears each model call and each tool call start
@@ -53,7 +53,7 @@
 //! [`Describe`] is what the model is told of a tool, and [`Tool`] runs one
 //! call with whatever the embedder lends that call: the state its calls
 //! share, or the loop itself. [`Tools`] is the set one loop holds. A call to a
-//! name it holds no tool for, and a call from a turn cut at the output limit,
+//! name it holds no tool for, and a call from a step cut at the output limit,
 //! read the harness's own refusals ([`ToolOutput`]).
 //!
 //! A run's children are [`agents`]: loops a tool call starts, each the
@@ -61,7 +61,7 @@
 //! them in its own future, so they end with it, and each ends once.
 //!
 //! A call that asks the person a question ([`ToolOutput::asks`]) ends the
-//! loop [`Ending::Waiting`] once its turn's other calls ran; nothing waits
+//! loop [`Ending::Waiting`] once its step's other calls ran; nothing waits
 //! inside the run, and [`DriveState::resume`] answers it later.
 //!
 //! The `tools` feature adds `tools`: commands, files, patches, the web,
@@ -79,23 +79,23 @@ mod extension;
 pub mod input;
 mod model;
 mod observe;
+mod step;
 mod tool;
 #[cfg(feature = "tools")]
 pub mod tools;
 mod transcript;
-mod turn;
 mod window;
 
 pub use self::conversation::Conversation;
 pub use self::drive::{ANSWER_JOIN, DriveState, drive};
 pub use self::extension::{Answer, Budget, Extension, Plain};
 pub use self::model::{Chunk, End, Hosted, Model, Request, TextKind, Usage};
-pub use self::observe::{CallEnd, CallOutcome, Observe, TurnEnd, TurnOutcome, Unobserved};
+pub use self::observe::{CallEnd, CallOutcome, Observe, StepEnd, StepOutcome, Unobserved};
+pub use self::step::{Ending, Listen, Step, Waiting};
 pub use self::tool::{
     Describe, ErrorCode, Image, ImageKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools,
 };
 pub use self::transcript::{Call, Message, Replay, Transcript};
-pub use self::turn::{Ending, Listen, Turn, Waiting};
 pub use self::window::{Fitted, Window};
 
 /// The README's examples, compiled and run as doctests by the unit lane, so

@@ -4,7 +4,7 @@
 
 use afr_telemetry::labels::TurnOutcome as TurnLabel;
 use afr_telemetry::record;
-use guffbolt::{Call, CallEnd, Listen, Observe, TextKind, TurnEnd, TurnOutcome, Usage};
+use guffbolt::{Call, CallEnd, Listen, Observe, StepEnd, StepOutcome, TextKind, Usage};
 use tracing::Span;
 
 use super::{
@@ -37,7 +37,7 @@ impl Listen for Harness<'_, '_> {
 impl Observe<af_providers::Error> for Harness<'_, '_> {
     type Call = Opened;
 
-    fn turn_started(&self, number: u64) -> Span {
+    fn step_started(&self, number: u64) -> Span {
         let shared = self.shared;
         let run_id = shared.run_id;
         let depth = self.depth;
@@ -46,14 +46,14 @@ impl Observe<af_providers::Error> for Harness<'_, '_> {
         spans::chat(shared.model)
     }
 
-    fn turn_ended(&self, end: TurnEnd<'_, af_providers::Error>) {
+    fn step_ended(&self, end: StepEnd<'_, af_providers::Error>) {
         let shared = self.shared;
         record::turn(shared.provider_label, label(&end.outcome), end.duration);
         let run_id = shared.run_id;
         let depth = self.depth;
         let number = end.number;
         match end.outcome {
-            TurnOutcome::Read(done) => {
+            StepOutcome::Read(done) => {
                 let input_tokens = done.usage.prompt();
                 let output_tokens = done.usage.output;
                 spans::spent(end.span, done.usage);
@@ -69,12 +69,12 @@ impl Observe<af_providers::Error> for Harness<'_, '_> {
                     event
                 );
             }
-            TurnOutcome::Failed(failure) => {
+            StepOutcome::Failed(failure) => {
                 let code = failure.code().as_str();
                 let event = EVENT_PROVIDER_FAILED;
                 tracing::warn!(error_code = code, run_id, depth, turn = number, event);
             }
-            TurnOutcome::Stopped => {
+            StepOutcome::Stopped => {
                 let reason = REASON_STOPPED;
                 let event = EVENT_PROVIDER_FAILED;
                 tracing::debug!(run_id, depth, turn = number, reason, event);
@@ -98,10 +98,10 @@ impl Observe<af_providers::Error> for Harness<'_, '_> {
 }
 
 /// How a turn ended, as the turn-duration family labels it.
-const fn label(outcome: &TurnOutcome<'_, af_providers::Error>) -> TurnLabel {
+const fn label(outcome: &StepOutcome<'_, af_providers::Error>) -> TurnLabel {
     match outcome {
-        TurnOutcome::Read(_answered) => TurnLabel::Completed,
-        TurnOutcome::Failed(_failed) => TurnLabel::Failed,
-        TurnOutcome::Stopped => TurnLabel::Stopped,
+        StepOutcome::Read(_answered) => TurnLabel::Completed,
+        StepOutcome::Failed(_failed) => TurnLabel::Failed,
+        StepOutcome::Stopped => TurnLabel::Stopped,
     }
 }

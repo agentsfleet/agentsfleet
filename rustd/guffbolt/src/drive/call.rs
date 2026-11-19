@@ -12,7 +12,7 @@ use crate::observe::{CallEnd, Observe};
 use crate::tool::{ToolFuture, ToolOutput};
 use crate::transcript::Call;
 
-/// Runs `call`, or answers it unrun when its turn was `cut` at the output
+/// Runs `call`, or answers it unrun when its step was `cut` at the output
 /// limit, its arguments possibly incomplete. `None` when the loop was
 /// stopped before the call started or while it ran.
 pub(super) async fn run<C: Conversation + ?Sized>(

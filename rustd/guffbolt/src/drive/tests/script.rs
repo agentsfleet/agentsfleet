@@ -28,9 +28,9 @@ pub(super) enum Failure {
 
 /// What one model call does.
 #[derive(Debug)]
-pub(super) enum Step {
+pub(super) enum Cue {
     /// Answers `text` and calls `calls` tools.
-    Turn { text: &'static str, calls: usize },
+    Reply { text: &'static str, calls: usize },
     /// Calls this many tools and stops at the output limit.
     Cut(usize),
     /// Fails.
@@ -41,12 +41,12 @@ pub(super) enum Step {
     Hang,
 }
 
-pub(super) fn answer(text: &'static str) -> Step {
-    Step::Turn { text, calls: 0 }
+pub(super) fn answer(text: &'static str) -> Cue {
+    Cue::Reply { text, calls: 0 }
 }
 
-pub(super) fn calling(calls: usize) -> Step {
-    Step::Turn { text: "", calls }
+pub(super) fn calling(calls: usize) -> Cue {
+    Cue::Reply { text: "", calls }
 }
 
 /// The user saying `text`.
@@ -98,7 +98,7 @@ pub(super) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// each call was sent.
 #[derive(Debug, Default)]
 pub(super) struct Script {
-    pub(super) steps: Mutex<VecDeque<Step>>,
+    pub(super) steps: Mutex<VecDeque<Cue>>,
     /// The messages each call was sent.
     pub(super) sent: Mutex<Vec<Vec<Message>>>,
     /// The output limit each call was sent.
@@ -123,7 +123,7 @@ impl Model for Script {
         lock(&self.limits).push(request.max_output_tokens);
         let step = lock(&self.steps).pop_front();
         match step {
-            Some(Step::Turn { text, calls }) => {
+            Some(Cue::Reply { text, calls }) => {
                 let said = (!text.is_empty()).then(|| Chunk::Text {
                     kind: TextKind::Answer,
                     text: text.to_owned(),
@@ -135,7 +135,7 @@ impl Model for Script {
                     .chain([Chunk::End(End::default())]);
                 stream::iter(chunks.map(Ok)).boxed()
             }
-            Some(Step::Cut(calls)) => {
+            Some(Cue::Cut(calls)) => {
                 let calls = (0..calls).map(move |index| Chunk::Call(call(number, index)));
                 let cut = End {
                     cut: true,
@@ -143,13 +143,13 @@ impl Model for Script {
                 };
                 stream::iter(calls.chain([Chunk::End(cut)]).map(Ok)).boxed()
             }
-            Some(Step::Fail) | None => stream::iter([Err(Failure::Model)]).boxed(),
+            Some(Cue::Fail) | None => stream::iter([Err(Failure::Model)]).boxed(),
             // The stream never ends, so only the stop ends the call.
-            Some(Step::Stop) => {
+            Some(Cue::Stop) => {
                 self.stop.cancel();
                 stream::pending().boxed()
             }
-            Some(Step::Hang) => stream::pending().boxed(),
+            Some(Cue::Hang) => stream::pending().boxed(),
         }
     }
 

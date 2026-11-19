@@ -4,18 +4,18 @@
 use std::time::Duration;
 
 use crate::extension::{Answer, Budget, Extension};
-use crate::turn::{Ending, Turn};
+use crate::step::{Ending, Step};
 
 use super::drive;
 use super::fixture::{Scripted, answered};
-use super::script::{Failure, Step, answer, calling, said, user};
+use super::script::{Cue, Failure, answer, calling, said, user};
 
 /// An extension that records when each hook ran, and ends or continues on cue.
 #[derive(Default)]
 struct Recording {
     seen: Vec<String>,
     end_before: Option<u64>,
-    end_after_turn: bool,
+    end_after_step: bool,
     continue_once: Option<&'static str>,
     end_answer: Option<&'static str>,
     end_after_group: bool,
@@ -45,9 +45,9 @@ impl Extension<Scripted> for Recording {
         )
     }
 
-    fn after_turn(&mut self, _conversation: &Scripted, turn: &Turn) -> Option<Ending<Failure>> {
-        self.seen.push(format!("turn {}", turn.calls.len()));
-        self.end_after_turn.then_some(Ending::Stopped)
+    fn after_step(&mut self, _conversation: &Scripted, step: &Step) -> Option<Ending<Failure>> {
+        self.seen.push(format!("step {}", step.calls.len()));
+        self.end_after_step.then_some(Ending::Stopped)
     }
 
     fn on_answer(
@@ -81,10 +81,10 @@ async fn an_extension_hears_every_point_in_order() {
         extension.seen,
         [
             "before 1",
-            "turn 1",
+            "step 1",
             "group",
             "before 2",
-            "turn 0",
+            "step 0",
             "answer Done."
         ]
     );
@@ -103,17 +103,17 @@ async fn an_extension_that_ends_before_the_model_makes_no_call() {
 }
 
 #[tokio::test]
-async fn an_extension_can_refuse_a_turn_before_its_calls_run() {
+async fn an_extension_can_refuse_a_step_before_its_calls_run() {
     let mut run = Scripted::new([calling(2)]);
     let mut extension = Recording {
-        end_after_turn: true,
+        end_after_step: true,
         ..Recording::default()
     };
     assert!(matches!(
         drive(&mut run, &mut extension, &mut crate::DriveState::default()).await,
         Ending::Stopped
     ));
-    assert_eq!(run.results(), 0, "no call of a refused turn runs");
+    assert_eq!(run.results(), 0, "no call of a refused step runs");
 }
 
 #[tokio::test]
@@ -180,7 +180,7 @@ async fn a_spent_budget_stops_the_loop_before_any_call() {
 
 #[tokio::test(start_paused = true)]
 async fn a_budget_that_runs_out_mid_call_stops_the_loop_and_says_so() {
-    let mut run = Scripted::new([Step::Hang]);
+    let mut run = Scripted::new([Cue::Hang]);
     let mut extension = Recording {
         budget: Some(Budget::Within(Duration::from_secs(30))),
         ..Recording::default()

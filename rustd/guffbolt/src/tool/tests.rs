@@ -1,6 +1,6 @@
 //! A loop's tools, lent a context per call: a call reaches the tool it names,
 //! offered or held, and a name the loop holds no tool for, or a call from a
-//! cut turn, reads the harness's refusal.
+//! cut step, reads the harness's refusal.
 
 use std::future::ready;
 
@@ -105,7 +105,7 @@ fn a_cut_call_names_the_output_limit_and_runs_nothing() {
     assert_eq!(cut.error_code, Some(ErrorCode::OUTPUT_LIMIT_REACHED));
     assert_eq!(
         cut.text,
-        "[output_limit_reached] file_write was not run: the turn reached the model's output \
+        "[output_limit_reached] file_write was not run: the step reached the model's output \
          limit and its arguments may be incomplete; call it again with shorter arguments"
     );
 }

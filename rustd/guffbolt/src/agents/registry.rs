@@ -121,7 +121,7 @@ impl<S> Agents<S> {
         Some(ended.unwrap_or_else(|| watched.borrow().clone()))
     }
 
-    /// Queues `message` for child `id`'s next turn; whether it was taken,
+    /// Queues `message` for child `id`'s next step; whether it was taken,
     /// which a child that has ended never does. `None` for an id no child
     /// has.
     #[must_use]

@@ -17,8 +17,8 @@ use serde_json::Value;
 
 /// What a call to a tool the loop does not hold reads, after its name.
 const NOT_OFFERED: &str = "is not one of this run's tools";
-/// What a call from a turn cut at the output limit reads, after its name.
-const CUT: &str = "was not run: the turn reached the model's output limit and its \
+/// What a call from a step cut at the output limit reads, after its name.
+const CUT: &str = "was not run: the step reached the model's output limit and its \
                    arguments may be incomplete; call it again with shorter arguments";
 
 /// One call's work, as a tool hands it to the loop.
@@ -35,7 +35,7 @@ pub struct ErrorCode(&'static str);
 impl ErrorCode {
     /// The model called a tool the loop does not hold.
     pub const NOT_OFFERED: Self = Self("tool_not_offered");
-    /// The model's turn stopped at its output limit, so the call may have
+    /// The model's step stopped at its output limit, so the call may have
     /// been cut mid-argument and was not run.
     pub const OUTPUT_LIMIT_REACHED: Self = Self("output_limit_reached");
     /// What the call waited on ended before it answered.
@@ -49,7 +49,7 @@ impl ErrorCode {
     pub const CHILD_NOT_FOUND: Self = Self("child_not_found");
     /// The child ended on a failure of its own, which the output carries.
     pub const CHILD_FAILED: Self = Self("child_failed");
-    /// Another call of the same turn already asked the person a question.
+    /// Another call of the same step already asked the person a question.
     pub const QUESTION_PENDING: Self = Self("question_pending");
 
     /// The code spelled `spelling`.
@@ -121,7 +121,7 @@ pub struct ToolOutput {
     /// The image the call read, which rides its result alone.
     pub image: Option<Image>,
     /// The question a call asks the person: the loop ends
-    /// [`crate::Ending::Waiting`] once the turn's other calls ran, and the
+    /// [`crate::Ending::Waiting`] once the step's other calls ran, and the
     /// call's result is the answer the run is resumed with.
     pub asks: Option<String>,
 }
@@ -168,13 +168,13 @@ impl ToolOutput {
     }
 
     /// A call to `name`, which the loop holds no tool for. The model reads
-    /// it as a tool error and the next turn still runs.
+    /// it as a tool error and the next step still runs.
     #[must_use]
     pub fn not_offered(name: &str) -> Self {
         Self::failed(ErrorCode::NOT_OFFERED, &format!("{name} {NOT_OFFERED}"))
     }
 
-    /// A call to `name` from a turn the provider cut at its output limit:
+    /// A call to `name` from a step the provider cut at its output limit:
     /// its arguments may be incomplete, so it is never run.
     #[must_use]
     pub fn cut(name: &str) -> Self {

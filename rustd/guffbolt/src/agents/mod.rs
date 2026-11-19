@@ -47,7 +47,7 @@ mod pause;
 mod registry;
 mod start;
 
-/// A child's loop, from its first turn to its end: the status it ended on.
+/// A child's loop, from its first step to its end: the status it ended on.
 pub type ChildFuture<'s> = Pin<Box<dyn Future<Output = Status> + Send + 's>>;
 
 /// How far one run's children may go.

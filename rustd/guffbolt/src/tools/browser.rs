@@ -113,7 +113,7 @@ impl Handler for Screenshot {
                     let bytes = image.data.len();
                     let kind = image.kind.media_type();
                     ToolOutput::succeeded(format!(
-                        "Attached a screenshot ({bytes} bytes, {kind}) for your next turn"
+                        "Attached a screenshot ({bytes} bytes, {kind}) for your next step"
                     ))
                     .with_image(image)
                 }

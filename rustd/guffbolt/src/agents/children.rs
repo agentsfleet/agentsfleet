@@ -2,7 +2,7 @@
 //!
 //! A child's loop borrows what the run shares, so it cannot be handed to the
 //! runtime as a task of its own; it is a future the root polls whenever its
-//! own work waits, on a turn, a call or a checkpoint. A loop anywhere in the
+//! own work waits, on a step, a call or a checkpoint. A loop anywhere in the
 //! run asks for a child through the registry, and the root starts it here, so
 //! a child's children are polled the same way. Ending the set drops every
 //! future, and each child and each call it held open end interrupted on the
@@ -17,7 +17,7 @@ use futures_util::stream::FuturesUnordered;
 use super::start::Start;
 use super::{Agents, ChildFuture, Pause, Raise, Requests, Seat, Status};
 
-/// One child's loop, from its first turn to its guard's end.
+/// One child's loop, from its first step to its guard's end.
 type Running<'s> = Pin<Box<dyn Future<Output = ()> + Send + 's>>;
 
 /// Every child a run started and has not ended, `S` being the tools a child

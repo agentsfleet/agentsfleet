@@ -1,6 +1,6 @@
 //! `ask_user`: a question for the person, which the run waits on.
 //!
-//! The call answers [`ToolOutput::asks`]; the loop runs the turn's other
+//! The call answers [`ToolOutput::asks`]; the loop runs the step's other
 //! calls, then ends [`crate::Ending::Waiting`] with the call's id and the
 //! question. How the question reaches the person is the embedder's: a chat
 //! message, a notification, an approval card. Nothing waits inside the run,

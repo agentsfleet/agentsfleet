@@ -1,4 +1,4 @@
-//! A turn read from its stream: the answer kept, every piece heard as it
+//! A step read from its stream: the answer kept, every piece heard as it
 //! arrives, and what it spent heard once whatever ends the stream.
 
 use std::sync::Mutex;
@@ -7,7 +7,7 @@ use futures_util::StreamExt as _;
 use futures_util::stream;
 use serde_json::json;
 
-use super::{Listen, Turn};
+use super::{Listen, Step};
 use crate::model::{Chunk, End, TextKind, Usage};
 use crate::transcript::{Call, Replay};
 
@@ -66,7 +66,7 @@ fn text(kind: TextKind, text: &str) -> Chunk {
 }
 
 #[tokio::test]
-async fn a_turn_keeps_its_answer_and_calls_and_is_heard_whole() {
+async fn a_step_keeps_its_answer_and_calls_and_is_heard_whole() {
     let call = Call {
         id: "call-1".to_owned(),
         name: "read".to_owned(),
@@ -85,12 +85,12 @@ async fn a_turn_keeps_its_answer_and_calls_and_is_heard_whole() {
         }),
     ];
     let heard = Heard::default();
-    let read = Turn::read(stream::iter(chunks.map(Ok::<_, Reset>)).boxed(), &heard).await;
-    let turn = read.unwrap_or_default();
-    assert_eq!(turn.text, "Reading it.", "reasoning is heard, never kept");
-    assert_eq!(turn.calls, [call]);
-    assert_eq!((turn.usage, turn.replay), (SPENT, replay));
-    assert!(turn.cut && turn.finished);
+    let read = Step::read(stream::iter(chunks.map(Ok::<_, Reset>)).boxed(), &heard).await;
+    let step = read.unwrap_or_default();
+    assert_eq!(step.text, "Reading it.", "reasoning is heard, never kept");
+    assert_eq!(step.calls, [call]);
+    assert_eq!((step.usage, step.replay), (SPENT, replay));
+    assert!(step.cut && step.finished);
     assert_eq!(
         heard.lines(),
         [
@@ -107,7 +107,7 @@ async fn a_turn_keeps_its_answer_and_calls_and_is_heard_whole() {
 async fn usage_is_heard_once_even_when_the_next_chunk_fails() {
     let heard = Heard::default();
     let chunks = stream::iter([Ok(Chunk::Usage(SPENT)), Err(Reset)]).boxed();
-    let read = Turn::read(chunks, &heard).await;
+    let read = Step::read(chunks, &heard).await;
     assert_eq!(read.err(), Some(Reset));
     assert_eq!(
         heard.lines(),
@@ -119,9 +119,9 @@ async fn usage_is_heard_once_even_when_the_next_chunk_fails() {
 #[tokio::test]
 async fn a_stream_with_no_end_is_unfinished() {
     let chunks = stream::iter([Ok::<_, Reset>(text(TextKind::Answer, "partial"))]).boxed();
-    let turn = Turn::read(chunks, &Heard::default())
+    let step = Step::read(chunks, &Heard::default())
         .await
         .unwrap_or_default();
-    assert!(!turn.finished && !turn.cut);
-    assert!(turn.replay.is_empty(), "no provider recorded the turn");
+    assert!(!step.finished && !step.cut);
+    assert!(step.replay.is_empty(), "no provider recorded the step");
 }

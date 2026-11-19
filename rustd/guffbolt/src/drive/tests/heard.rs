@@ -6,9 +6,9 @@ use std::sync::atomic::Ordering;
 
 use tracing::Span;
 
-use crate::observe::{CallEnd, Observe, TurnEnd, TurnOutcome};
+use crate::observe::{CallEnd, Observe, StepEnd, StepOutcome};
+use crate::step::{Ending, Listen};
 use crate::transcript::Call;
-use crate::turn::{Ending, Listen};
 
 use super::fixture::Scripted;
 use super::script::{Failure, lock};
@@ -25,23 +25,23 @@ impl Listen for Scripted {}
 impl Observe<Failure> for Scripted {
     type Call = ();
 
-    fn turn_started(&self, number: u64) -> Span {
+    fn step_started(&self, number: u64) -> Span {
         self.sampling.store(number, Ordering::Relaxed);
         self.ran.store(0, Ordering::Relaxed);
         // Input sent while the model streams arrives now: it waits outside
         // the conversation, so only the next call can read it.
         self.arrive(&self.during, number);
-        self.note(format!("turn {number} started"));
+        self.note(format!("step {number} started"));
         Span::none()
     }
 
-    fn turn_ended(&self, end: TurnEnd<'_, Failure>) {
+    fn step_ended(&self, end: StepEnd<'_, Failure>) {
         let how = match end.outcome {
-            TurnOutcome::Read(_turn) => "read",
-            TurnOutcome::Failed(_failure) => "failed",
-            TurnOutcome::Stopped => "stopped",
+            StepOutcome::Read(_step) => "read",
+            StepOutcome::Failed(_failure) => "failed",
+            StepOutcome::Stopped => "stopped",
         };
-        self.note(format!("turn {} {how}", end.number));
+        self.note(format!("step {} {how}", end.number));
     }
 
     fn call_started(&self, call: &Call) -> ((), Span) {
@@ -63,7 +63,7 @@ impl Observe<Failure> for Scripted {
         }
     }
 
-    fn loop_ended(&self, turns: u64, ending: &Ending<Failure>) {
-        self.note(format!("loop {} after {turns}", ending.kind()));
+    fn loop_ended(&self, steps: u64, ending: &Ending<Failure>) {
+        self.note(format!("loop {} after {steps}", ending.kind()));
     }
 }

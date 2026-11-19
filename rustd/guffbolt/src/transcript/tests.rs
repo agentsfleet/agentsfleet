@@ -69,7 +69,7 @@ fn a_provider_record_is_saved_as_the_provider_wrote_it() {
 }
 
 #[test]
-fn a_turn_no_provider_recorded_holds_no_record() {
+fn a_step_no_provider_recorded_holds_no_record() {
     assert!(Replay::default().is_empty());
     assert!(!Replay::new(json!({"content": []})).is_empty());
 }

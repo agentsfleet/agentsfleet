@@ -3,7 +3,7 @@
 //! its end, and the loop's own end.
 //!
 //! ```text
-//!  turn_started ─► text and usage, chunk by chunk (Listen) ─► turn_ended
+//!  step_started ─► text and usage, chunk by chunk (Listen) ─► step_ended
 //!  call_started ─► the call runs in the span its start returned ─► call_ended
 //!  loop_ended
 //! ```
@@ -18,15 +18,15 @@ use std::time::Duration;
 
 use tracing::Span;
 
+use crate::step::{Ending, Listen, Step};
 use crate::tool::{ErrorCode, ToolOutput};
 use crate::transcript::Call;
-use crate::turn::{Ending, Listen, Turn};
 
 /// How one model call ended, `F` being the embedder's failure.
 #[derive(Debug)]
-pub enum TurnOutcome<'a, F> {
-    /// Its stream was read to its end, into this turn.
-    Read(&'a Turn),
+pub enum StepOutcome<'a, F> {
+    /// Its stream was read to its end, into this step.
+    Read(&'a Step),
     /// Its stream failed.
     Failed(&'a F),
     /// The loop was stopped before the stream ended.
@@ -35,7 +35,7 @@ pub enum TurnOutcome<'a, F> {
 
 /// One model call's end, as the loop tells its observer.
 #[derive(Debug)]
-pub struct TurnEnd<'a, F> {
+pub struct StepEnd<'a, F> {
     /// The call's number within the loop, from 1.
     pub number: u64,
     /// The span its stream was read in.
@@ -43,7 +43,7 @@ pub struct TurnEnd<'a, F> {
     /// How long it took, from its start to its end.
     pub duration: Duration,
     /// How it ended.
-    pub outcome: TurnOutcome<'a, F>,
+    pub outcome: StepOutcome<'a, F>,
 }
 
 /// How one tool call ended.
@@ -113,12 +113,12 @@ pub trait Observe<F>: Listen + Sync {
 
     /// Model call `number` starts, before its request is built. Its stream
     /// is read inside the span this returns.
-    fn turn_started(&self, _number: u64) -> Span {
+    fn step_started(&self, _number: u64) -> Span {
         Span::none()
     }
 
     /// A model call ended.
-    fn turn_ended(&self, _end: TurnEnd<'_, F>) {}
+    fn step_ended(&self, _end: StepEnd<'_, F>) {}
 
     /// The model's `call` starts, before it runs or is refused. Returns what
     /// the observer keeps until the call ends, and the span the call runs in.
@@ -128,9 +128,9 @@ pub trait Observe<F>: Listen + Sync {
     /// here exactly once.
     fn call_ended(&self, kept: Self::Call, end: CallEnd<'_>);
 
-    /// The loop ended after `turns` model calls, as `ending` says. A loop
+    /// The loop ended after `steps` model calls, as `ending` says. A loop
     /// whose own future is dropped never ends here.
-    fn loop_ended(&self, _turns: u64, _ending: &Ending<F>) {}
+    fn loop_ended(&self, _steps: u64, _ending: &Ending<F>) {}
 }
 
 /// An observer that hears nothing, for a loop no one watches.
