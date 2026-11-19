@@ -13,7 +13,7 @@ use super::*;
 const ROW_COLUMNS: &str = "\
 SELECT thread_id AS fleet_id, id AS turn_id, workspace_id,
        actor, kind AS event_type, status, token_count, wall_ms,
-       failure_reason, failure_detail, resumes_turn_id AS resumes_turn_id,
+       failure_reason, failure_detail, resumes_turn_id,
        created_at, updated_at,
        (SELECT SUM(charge.charged_nanos)::bigint
           FROM billing.usage_lines charge
