@@ -125,7 +125,6 @@ pub async fn run_starting_in<S: Sweep>(sweeper: S, token: CancellationToken, fir
             () = token.cancelled() => break,
             () = tokio::time::sleep(delay) => {}
         }
-        delay = sweeper.interval();
         match sweeper.sweep().await {
             Ok(swept) if swept.is_worth_reporting() => {
                 let (sweeper, scanned, changed, event, message) = (
@@ -154,6 +153,7 @@ pub async fn run_starting_in<S: Sweep>(sweeper: S, token: CancellationToken, fir
                 };
             }
         }
+        delay = sweeper.interval();
     }
 
     tracing::debug!(sweeper = name, event = EVENT_STOPPED, "a sweeper stopped");
