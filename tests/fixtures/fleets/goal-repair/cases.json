@@ -40,7 +40,7 @@
   "required_evidence_for_every_case": [
     "Case identifier, attempt, frozen fixture digest and exact source/build revisions",
     "Resolved workspace, fleet, setup, policy, model version and reviewed grants",
-    "Native message/event/task/lease identities and before/after state",
+    "Native message/event/task/run identities and before/after state",
     "Complete tool inventory with argument/output completeness; explicit empty inventory when no tools run",
     "Decision disposition, revision bindings and physical usage/accounting receipts",
     "Visible result and evidence references, with secrets and private internal reasoning excluded",
@@ -399,11 +399,11 @@
       "required_evidence": [
         "Notification identities and order",
         "Independent reads",
-        "Wait transitions and lease counts",
+        "Wait transitions and run counts",
         "Unchanged-poll call inventory"
       ],
       "forbidden_effects": [
-        "duplicate_lease",
+        "duplicate_run",
         "stale_completion",
         "investigation_on_unchanged_poll"
       ]
@@ -425,7 +425,7 @@
         "Control requests and served revisions",
         "Wake disposition",
         "Before/after budget, deadline and attempts",
-        "Lease history"
+        "Run history"
       ],
       "forbidden_effects": [
         "work_while_paused",
@@ -437,7 +437,7 @@
       "case_id": "cancellation_fences_late_work",
       "tier": "manual",
       "preconditions": [
-        "A task has a current lease and one recorded in-flight effect."
+        "A task has a current run and one recorded in-flight effect."
       ],
       "input": null,
       "steps": [
@@ -514,14 +514,14 @@
       "case_id": "deadline_stops_new_work",
       "tier": "manual",
       "preconditions": [
-        "A task has a frozen task deadline and lease deadline."
+        "A task has a frozen task deadline and run deadline."
       ],
       "input": null,
       "steps": [
         "Reach the deadline during a controlled action; allow late replies and a wake."
       ],
       "expected_outcome": "Stop new actions, preserve known outcomes and refuse the late wake.",
-      "expected_authority": "No renewed lease extends the original task deadline.",
+      "expected_authority": "No renewed run extends the original task deadline.",
       "expected_completion": "Only a confirmed saved generation is called recoverable.",
       "required_evidence": [
         "Deadlines and action timestamps",
