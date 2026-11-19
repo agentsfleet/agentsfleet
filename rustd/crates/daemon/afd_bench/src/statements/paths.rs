@@ -196,7 +196,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     // Meter.
     (
-        "s.fencing_token, s.run_expires_at FROM runner.slots s JOIN thread.runs",
+        "s.fencing_token, s.run_expires_at FROM thread.threads s JOIN thread.runs",
         Path::Meter,
     ),
     ("INSERT INTO billing.usage_lines", Path::Meter),
@@ -212,11 +212,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // sending lands in `other`, which every drain reports.
     // Report.
     (
-        "UPDATE runner.slots SET run_expires_at = clock_timestamp() - interval",
-        Path::Report,
-    ),
-    (
-        "INSERT INTO fleet.sessions (fleet_id, context_json",
+        "UPDATE thread.threads SET run_expires_at = clock_timestamp() - interval",
         Path::Report,
     ),
     (

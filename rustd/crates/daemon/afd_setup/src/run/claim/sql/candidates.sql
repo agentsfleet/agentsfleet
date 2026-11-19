@@ -21,7 +21,7 @@ SELECT d.id AS id,
                             LIMIT 1) latest
                     WHERE latest.status <> ALL($3::text[]))
    -- Nor one a draft run holds: a live slot's id is its draft's.
-   AND NOT EXISTS (SELECT 1 FROM runner.slots s
+   AND NOT EXISTS (SELECT 1 FROM thread.threads s
                     WHERE s.id = d.id AND s.run_expires_at > statement_timestamp())
  GROUP BY d.id
  ORDER BY min(m.created_at), d.id

@@ -27,7 +27,7 @@ BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended(NEW.fleet_id::text, 0));
     RETURN NEW;
 END $$;
-CREATE TRIGGER pause_hold_fixture BEFORE UPDATE OF hold_expires_at ON runner.slots
+CREATE TRIGGER pause_hold_fixture BEFORE UPDATE OF hold_expires_at ON thread.threads
 FOR EACH ROW WHEN (NEW.hold_expires_at IS NOT NULL)
 EXECUTE FUNCTION runner.pause_hold_fixture()";
 
@@ -150,7 +150,7 @@ async fn shorten_run(held: &Held) -> Checked<jiff_sqlx::Timestamp> {
     .bind(&held.issued.run_id)
     .fetch_one(&mut *connection)
     .await?;
-    sqlx::query("UPDATE runner.slots SET run_expires_at=$2 WHERE fleet_id=$1")
+    sqlx::query("UPDATE thread.threads SET run_expires_at=$2 WHERE fleet_id=$1")
         .bind(&held.fleet)
         .bind(expires.to_jiff().to_sqlx())
         .execute(&mut *connection)

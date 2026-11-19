@@ -7,10 +7,10 @@ WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), prior AS (
   SELECT s.hold_expires_at > instant.checked_at AS held, s.last_runner_id
-  FROM runner.slots s, instant
+  FROM thread.threads s, instant
   WHERE s.id = COALESCE($1::uuid, $2::uuid)
 )
-INSERT INTO runner.slots AS s
+INSERT INTO thread.threads AS s
   (id, fleet_id, draft_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
    created_at, updated_at)
 SELECT COALESCE($1::uuid, $2::uuid), $1::uuid, $2::uuid, $3, 1,

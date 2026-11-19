@@ -1,4 +1,4 @@
-//! `fleet.sessions` — the cursor a fleet resumes from.
+//! `thread.threads.resume_context`: the context a fleet's next run resumes from.
 //!
 //! Split from the event statements when `fleet.events` moved to
 //! `afd_turns`. This is a DIFFERENT table with a different lifetime: an event

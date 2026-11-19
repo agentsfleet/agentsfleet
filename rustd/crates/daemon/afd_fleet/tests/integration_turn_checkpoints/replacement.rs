@@ -9,7 +9,7 @@ impl Case {
         let mut connection = self.fixtures.database.acquire().await?;
         sqlx::query("UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
             .bind(&self.issued.run_id).execute(&mut *connection).await?;
-        sqlx::query("UPDATE runner.slots SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
+        sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
             .bind(&self.acquired.fleet_id).execute(&mut *connection).await?;
         let tenant: Uuid7 = sqlx::query_scalar("SELECT tenant_id FROM fleet.fleets WHERE id=$1")
             .bind(&self.acquired.fleet_id)

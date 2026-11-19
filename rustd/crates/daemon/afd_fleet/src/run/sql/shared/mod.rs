@@ -1,5 +1,5 @@
 //! The run bookkeeping both kinds share: claim, issue, renew, meter, settle
-//! and reclaim on `runner.slots` and `thread.runs`, keyed by a slot's or a
+//! and reclaim on `thread.threads` and `thread.runs`, keyed by a slot's or a
 //! run's id and blind to whose work it is.
 //!
 //! A slot's id is its owner's ([`crate::run::RunOwner`]), and a run

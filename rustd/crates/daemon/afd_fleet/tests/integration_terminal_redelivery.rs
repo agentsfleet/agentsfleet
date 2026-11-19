@@ -82,7 +82,7 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     );
     // A rival supersedes that claim between the claim and its settlement.
     sqlx::query(
-        "WITH slot AS (UPDATE runner.slots SET fencing_token = fencing_token + 1 \
+        "WITH slot AS (UPDATE thread.threads SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1 RETURNING fencing_token) \
          UPDATE fleet.admissions SET run_fence = (SELECT fencing_token FROM slot) WHERE id = $2",
     )
@@ -118,7 +118,7 @@ async fn assert_superseded_claim_retained(run: &Held, fence: i64) {
     let state: (bool, Option<i64>, i64, i64) = sqlx::query_as(
         "SELECT a.settled_at IS NOT NULL,a.run_fence,s.fencing_token, \
          (SELECT count(*) FROM thread.runs WHERE fleet_id=a.fleet_id) \
-         FROM fleet.admissions a JOIN runner.slots s ON s.fleet_id=a.fleet_id \
+         FROM fleet.admissions a JOIN thread.threads s ON s.fleet_id=a.fleet_id \
          WHERE a.id=$1 AND s.last_runner_id=$2",
     )
     .bind(&run.event_id)

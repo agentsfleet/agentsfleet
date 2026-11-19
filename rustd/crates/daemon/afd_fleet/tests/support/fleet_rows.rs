@@ -27,9 +27,9 @@ pub(crate) enum Row<'a> {
     Runner(&'a Uuid7),
     /// A `thread.runs` row, by run id.
     Run(&'a Uuid7),
-    /// A fleet's `runner.slots` row, by fleet id.
+    /// A fleet's `thread.threads` row, by fleet id.
     Slot(&'a Uuid7),
-    /// A fleet's `fleet.sessions` row, by fleet id.
+    /// A fleet's `thread.threads` row, by fleet id.
     Session(&'a Uuid7),
     /// A `fleet.admissions` row, by its id, which is the logical event id.
     Admission(&'a Uuid7),
@@ -73,8 +73,8 @@ impl<'a> Row<'a> {
         match self {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
             Self::Run(id) => ("thread.runs", "id = $1", id, None),
-            Self::Slot(fleet) => ("runner.slots", "fleet_id = $1", fleet, None),
-            Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
+            Self::Slot(fleet) => ("thread.threads", "fleet_id = $1", fleet, None),
+            Self::Session(fleet) => ("thread.threads", "id = $1", fleet, None),
             Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
             Self::Attempt(id) => ("setup.attempts", "id = $1", id, None),
             Self::Event(fleet, event) => (

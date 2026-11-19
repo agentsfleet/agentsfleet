@@ -1,4 +1,4 @@
-//! `runner.slots.hold_expires_at` as a runner's beat reconciles it.
+//! `thread.threads.hold_expires_at` as a runner's beat reconciles it.
 //!
 //! Both statements are scoped to the beating runner: a hold is cleared only on
 //! a slot whose `last_runner_id` is that runner, and a fleet counts as still

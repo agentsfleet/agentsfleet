@@ -11,7 +11,7 @@ JOIN fleet.revisions r ON r.id = f.head_revision_id AND r.fleet_id = f.id
 LEFT JOIN fleet.tasks task ON task.id = l.task_id AND task.fleet_id = f.id
 LEFT JOIN fleet.revisions issued
   ON issued.id = COALESCE(task.accepted_revision_id, l.setup_revision_id) AND issued.fleet_id = f.id
-LEFT JOIN runner.slots a ON a.fleet_id = l.fleet_id
+LEFT JOIN thread.threads a ON a.fleet_id = l.fleet_id
 WHERE l.id = $1 AND l.runner_id = $2
   AND l.status = $3 AND l.cancel_requested_at IS NULL AND l.run_expires_at > instant.read_at
   AND l.fencing_token >= COALESCE(a.fencing_token, l.fencing_token)

@@ -129,14 +129,14 @@ async fn one_statement_report_commits_every_write() {
     );
     assert!(owed.is_some(), "the answer is owed to its thread");
     let checkpoint: String =
-        sqlx::query_scalar("SELECT context_json::text FROM fleet.sessions WHERE fleet_id = $1")
+        sqlx::query_scalar("SELECT resume_context::text FROM thread.threads WHERE id = $1")
             .bind(&held.fleet)
             .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
             .await
             .expect("the session is checkpointed");
     assert!(checkpoint.contains(crate::report_commit::RESUME_RESPONSE));
     let released: bool =
-        sqlx::query_scalar("SELECT run_expires_at < now() FROM runner.slots WHERE fleet_id = $1")
+        sqlx::query_scalar("SELECT run_expires_at < now() FROM thread.threads WHERE fleet_id = $1")
             .bind(&held.fleet)
             .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
             .await

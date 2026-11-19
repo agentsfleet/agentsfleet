@@ -3,7 +3,7 @@
 //! A fleet's conversation turn and a draft's setup turn run under one
 //! bookkeeping. A slot's `id` is its owner's id, and a slot and every run
 //! issued against it name that owner in exactly one of `fleet_id` and
-//! `draft_id` (`ck_slots_one_owner`, `ck_runs_one_owner`). So the statements
+//! `draft_id` (`ck_threads_one_owner`, `ck_runs_one_owner`). So the statements
 //! both kinds share ([`crate::run::sql::shared`]) address a slot by its
 //! owner's id and reach it from a run through `COALESCE(fleet_id, draft_id)`,
 //! and only an owner's own statements read `fleet_id` or `draft_id` alone.

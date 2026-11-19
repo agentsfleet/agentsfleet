@@ -3,7 +3,7 @@ FROM fleet.task_effects e
 WHERE s.task_effect_id = e.id AND e.id = $1 AND s.status = $3
   AND (e.issuance_expires_at <= clock_timestamp() OR NOT EXISTS (
       SELECT 1 FROM thread.runs l
-      JOIN runner.slots slot ON slot.fleet_id = l.fleet_id
+      JOIN thread.threads slot ON slot.fleet_id = l.fleet_id
       JOIN fleet.tasks t ON t.id = e.task_id AND t.fleet_id = e.fleet_id AND t.workspace_id = e.workspace_id
       WHERE l.id = e.original_run_id AND l.runner_id = e.original_runner_id
         AND l.fencing_token = e.original_fence AND l.status = $4

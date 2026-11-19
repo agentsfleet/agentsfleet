@@ -40,7 +40,7 @@ impl Case {
         let warm = extra_fleet(&fixtures, &active, &seeded.tenant).await;
         let cold_fleet = extra_fleet(&fixtures, &active, &seeded.tenant).await;
         let cold = required(seed::select_fleet(&runs, &runner, &cold_fleet).await)?;
-        sqlx::query("INSERT INTO runner.slots
+        sqlx::query("INSERT INTO thread.threads
             (id,fleet_id,last_runner_id,fencing_token,run_expires_at,hold_expires_at,created_at,updated_at)
             VALUES ($1,$1,$2,1,clock_timestamp(),clock_timestamp()+interval '60 seconds',now(),now())")
             .bind(&warm).bind(&runner).execute(&mut *connection).await?;
@@ -78,7 +78,7 @@ impl Case {
             (SELECT count(*) FROM thread.runs l WHERE l.runner_id=$1 AND l.status='active') AS active,
             (SELECT count(*) FROM runner.history e WHERE e.runner_id=$1) AS events,
             r.run_version AS choice, COALESCE(c.acquired_count,0) AS acquired
-            FROM runner.slots s JOIN runner.runners r ON r.id=$1
+            FROM thread.threads s JOIN runner.runners r ON r.id=$1
             LEFT JOIN runner.lifetime_counters c ON c.runner_id=r.id WHERE s.fleet_id=$2")
             .bind(&self.runner).bind(&self.warm).fetch_one(&mut *connection).await?)
     }

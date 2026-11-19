@@ -20,13 +20,13 @@ WITH instant AS MATERIALIZED (
           WHERE a.runner_id = $2 AND a.status = $11
             AND a.run_expires_at > i.checked_at)
       -- Every other owner's live hold on this host, fleet or draft: a slot's id is its owner's.
-      + (SELECT count(*) FROM runner.slots s
+      + (SELECT count(*) FROM thread.threads s
           WHERE s.last_runner_id = $2 AND s.id <> $3
             AND s.hold_expires_at IS NOT NULL
             AND s.hold_expires_at > i.checked_at)
       < r.worker_count
 ), held AS (
-  UPDATE runner.slots
+  UPDATE thread.threads
   SET hold_expires_at = NULL, updated_at = now()
   WHERE fleet_id = $3 AND fencing_token = $10
     AND run_expires_at > (SELECT checked_at FROM instant)

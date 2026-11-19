@@ -38,7 +38,7 @@ SELECT d.id AS id, d.workspace_id AS workspace_id, d.tenant_id AS tenant_id,
    -- the fleet claim's head does (`afd_fleet/.../claim_admission_head.sql`).
    AND (h.platform_owned OR head.tenant_model_id IS NOT NULL)
    -- One live run per draft: its slot's id is the draft's.
-   AND NOT EXISTS (SELECT 1 FROM runner.slots s
+   AND NOT EXISTS (SELECT 1 FROM thread.threads s
                     WHERE s.id = d.id AND s.run_expires_at > statement_timestamp())
    -- Setup turns the authoring path still runs; this term goes with setup.attempts.
    AND NOT EXISTS (SELECT 1 FROM setup.attempts a

@@ -3,7 +3,7 @@
 -- bookkeeping belongs in both.
 WITH locked_slot AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.run_expires_at
-    FROM runner.slots s JOIN thread.runs l ON l.fleet_id = s.fleet_id
+    FROM thread.threads s JOIN thread.runs l ON l.fleet_id = s.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF s
 ), probe AS (
@@ -63,7 +63,7 @@ WITH locked_slot AS MATERIALIZED (
     FROM guard g WHERE l.id = g.id
     RETURNING l.run_expires_at AS capped
 ), slot AS (
-    UPDATE runner.slots a
+    UPDATE thread.threads a
     SET run_expires_at = g.capped,
         updated_at = now()
     FROM guard g WHERE a.fleet_id = g.fleet_id

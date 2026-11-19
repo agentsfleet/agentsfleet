@@ -7,8 +7,8 @@ WITH event AS (
   WHERE fleet_id = $1 AND event_id = $2
   RETURNING event_id
 ), session AS (
-  UPDATE fleet.sessions SET context_json = $4::jsonb, updated_at = now()
-  WHERE fleet_id = $1
+  UPDATE thread.threads SET resume_context = $4::jsonb, updated_at = now()
+  WHERE id = $1
 ), owed AS (
   -- An answer still owed carries the notice instead, a failed run's
   -- unanswered notice included. A clean run that answered nothing owed none,

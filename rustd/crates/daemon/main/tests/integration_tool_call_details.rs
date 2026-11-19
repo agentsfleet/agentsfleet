@@ -147,7 +147,7 @@ async fn test_stale_fence_tool_call_details_refused() {
     let (scene, http, run_id, fence) = held(&mut supervisor).await;
     execute(
         &scene,
-        "UPDATE runner.slots SET fencing_token = fencing_token + 1 \
+        "UPDATE thread.threads SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1 AND $2 IS NOT NULL",
     )
     .await;

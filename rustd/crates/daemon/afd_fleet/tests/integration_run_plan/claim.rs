@@ -44,7 +44,7 @@ async fn prior_run_lookup_probes_the_run_event_index_for_fresh_and_reclaimed_hea
         run(&mut tx, &format!("ANALYZE {table}")).await;
     }
     sqlx::query(
-        "UPDATE runner.slots SET run_expires_at=now()-interval '1 second' WHERE fleet_id=$1",
+        "UPDATE thread.threads SET run_expires_at=now()-interval '1 second' WHERE fleet_id=$1",
     )
     .bind(&held.fleet)
     .execute(&mut *tx)

@@ -9,7 +9,7 @@
 -- $6 the most a run may run
 WITH locked_slot AS MATERIALIZED (
     SELECT s.id, s.fencing_token, s.run_expires_at
-    FROM runner.slots s JOIN thread.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
+    FROM thread.threads s JOIN thread.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF s
 ), probe AS MATERIALIZED (
@@ -43,7 +43,7 @@ WITH locked_slot AS MATERIALIZED (
     WHERE l.id = g.id
     RETURNING l.run_expires_at
 ), slot AS (
-    UPDATE runner.slots s
+    UPDATE thread.threads s
     SET run_expires_at = g.capped, updated_at = now()
     FROM guard g
     WHERE s.id = g.slot_id

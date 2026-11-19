@@ -150,7 +150,7 @@ async fn test_fenced_report_writes_no_tool_calls() {
     // that bump without the reclaim, so the report is the stale holder's.
     let mut connection = scene.booted.database.acquire().await.expect("a connection");
     sqlx::query(AssertSqlSafe(
-        "UPDATE runner.slots SET fencing_token = fencing_token + 1 \
+        "UPDATE thread.threads SET fencing_token = fencing_token + 1 \
          WHERE fleet_id = $1"
             .to_owned(),
     ))

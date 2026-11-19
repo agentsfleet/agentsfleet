@@ -13,7 +13,7 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), timed AS MATERIAL
       AND l.task_id IS NULL AND l.fleet_id = t.fleet_id AND l.workspace_id = t.workspace_id
     RETURNING l.id, t.id AS task_id, l.fleet_id, l.fencing_token, l.run_expires_at
 ), slot AS (
-    UPDATE runner.slots s SET run_expires_at = b.run_expires_at, updated_at = now()
+    UPDATE thread.threads s SET run_expires_at = b.run_expires_at, updated_at = now()
     FROM bound b WHERE s.fleet_id = b.fleet_id AND s.fencing_token = b.fencing_token
     RETURNING s.fleet_id
 )

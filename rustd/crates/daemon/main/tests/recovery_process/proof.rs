@@ -53,7 +53,7 @@ pub(super) async fn deadline(scene: &Scenario) -> Checked<jiff::Timestamp> {
     let mut connection = scene.booted.database.acquire().await?;
     let expiry: jiff_sqlx::Timestamp = sqlx::query_scalar(
         "SELECT GREATEST(l.run_expires_at,s.run_expires_at) FROM thread.runs l
-        JOIN runner.slots s ON s.fleet_id=l.fleet_id
+        JOIN thread.threads s ON s.fleet_id=l.fleet_id
         WHERE l.event_id=$1 AND l.runner_id=$2 ORDER BY l.created_at DESC LIMIT 1",
     )
     .bind(&scene.event_id)

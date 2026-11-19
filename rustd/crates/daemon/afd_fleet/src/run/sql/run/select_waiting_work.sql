@@ -21,7 +21,7 @@ WITH probe AS (
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
               AND NOT EXISTS (
-                  SELECT 1 FROM runner.slots s
+                  SELECT 1 FROM thread.threads s
                   WHERE s.fleet_id = a.fleet_id AND s.run_expires_at > statement_timestamp()
               )
         ) OR EXISTS (
@@ -42,7 +42,7 @@ WITH probe AS (
                     AND t.run_expires_at > statement_timestamp() AND t.expires_at > statement_timestamp()
               )
               AND NOT EXISTS (
-                  SELECT 1 FROM runner.slots s
+                  SELECT 1 FROM thread.threads s
                   WHERE s.id = d.id AND s.run_expires_at > statement_timestamp()
               )
         )
@@ -66,7 +66,7 @@ SELECT
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
                 AND NOT EXISTS (
-                    SELECT 1 FROM runner.slots s
+                    SELECT 1 FROM thread.threads s
                     WHERE s.fleet_id = a.fleet_id AND s.run_expires_at > statement_timestamp()
                 )
           )
@@ -86,7 +86,7 @@ SELECT
                       AND t.run_expires_at > statement_timestamp() AND t.expires_at > statement_timestamp()
                 )
                 AND NOT EXISTS (
-                    SELECT 1 FROM runner.slots s
+                    SELECT 1 FROM thread.threads s
                     WHERE s.id = d.id AND s.run_expires_at > statement_timestamp()
                 )
           )

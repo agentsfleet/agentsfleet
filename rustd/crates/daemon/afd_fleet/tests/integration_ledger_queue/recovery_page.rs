@@ -19,7 +19,7 @@ async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -
     let mut connection = fixtures.database.acquire().await?;
     let mut lock = connection.begin().await?;
     let held: Vec<Uuid7> = sqlx::query_scalar(
-        "SELECT fleet_id FROM runner.slots WHERE fleet_id=ANY($1::uuid[]) FOR UPDATE",
+        "SELECT fleet_id FROM thread.threads WHERE fleet_id=ANY($1::uuid[]) FOR UPDATE",
     )
     .bind(&fleets)
     .fetch_all(&mut *lock)
@@ -70,7 +70,7 @@ async fn unlocked_older_heads_return_while_newer_work_stays_ready() -> Checked {
     let mut connection = fixtures.database.acquire().await?;
     let mut lock = connection.begin().await?;
     let held: Vec<Uuid7> = sqlx::query_scalar(
-        "SELECT fleet_id FROM runner.slots WHERE fleet_id=ANY($1::uuid[]) FOR UPDATE",
+        "SELECT fleet_id FROM thread.threads WHERE fleet_id=ANY($1::uuid[]) FOR UPDATE",
     )
     .bind(&fleets)
     .fetch_all(&mut *lock)
@@ -124,7 +124,7 @@ async fn cohort(
         fixtures.seed_fleet(&fleet, workspace, tenant, &tag).await;
         let event = enqueue(fixtures, &fleet, workspace).await;
         sqlx::query(
-            "INSERT INTO runner.slots
+            "INSERT INTO thread.threads
                 (id, fleet_id, fencing_token, run_expires_at, created_at, updated_at)
              VALUES ($1, $1, 0, clock_timestamp()-interval '1 second', now(), now())",
         )

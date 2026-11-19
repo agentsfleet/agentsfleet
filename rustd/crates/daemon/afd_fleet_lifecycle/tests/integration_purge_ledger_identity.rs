@@ -13,7 +13,7 @@
 //!
 //! The second test is the other half, and the more important one: an erasure
 //! this spec RELAXES must be shown not to have relaxed anything else. Memory,
-//! approval gates, integration grants and sessions are counted after the purge
+//! approval gates, integration grants and threads are counted after the purge
 //! and every count must be zero.
 //!
 //! `#[ignore]`d; `make test-integration-rustd` runs it.
@@ -50,7 +50,7 @@ pub(crate) const SEEDED: [(&str, i64); 4] = [
     ("memory.entries", 1),
     ("fleet.approval_gates", 2),
     ("connector.integration_grants", 1),
-    ("fleet.sessions", 1),
+    ("thread.threads", 1),
 ];
 
 /// Writes one usage line against a fleet, capturing the name the way the
@@ -170,13 +170,13 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
     .expect("seeding an integration grant");
 
     sqlx::query(
-        "INSERT INTO fleet.sessions (fleet_id, context_json, created_at, updated_at)
-         VALUES ($1, '{}'::jsonb, now(), now())",
+        "INSERT INTO thread.threads (id, fleet_id, fencing_token, run_expires_at, resume_context, created_at, updated_at)
+         VALUES ($1, $1, 0, now(), '{}'::jsonb, now(), now())",
     )
     .bind(fleet)
     .execute(&mut *connection)
     .await
-    .expect("seeding a session");
+    .expect("seeding a thread");
     drop(connection);
     owner.close().await;
 }

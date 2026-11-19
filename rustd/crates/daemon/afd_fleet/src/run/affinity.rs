@@ -1,4 +1,4 @@
-//! `runner.slots` — the per-fleet run SLOT: the atomic claim, the
+//! `thread.threads` — the per-fleet run SLOT: the atomic claim, the
 //! monotonic fencing source, and the sticky-routing hint, all on one row.
 //!
 //! The GUARANTEE is that exactly one of N racing runners wins a fleet, and the

@@ -19,7 +19,7 @@ const PAUSE_CLAIMS: &str = "CREATE FUNCTION fleet.pause_claim() RETURNS trigger
       FROM pg_database WHERE datname = current_database();
       RETURN NEW;
     END $$;
-    CREATE TRIGGER pause_claim BEFORE INSERT ON runner.slots
+    CREATE TRIGGER pause_claim BEFORE INSERT ON thread.threads
     FOR EACH ROW EXECUTE FUNCTION fleet.pause_claim()";
 const HOLD_CLAIMS: &str = "SELECT pg_backend_pid() FROM pg_database,
     LATERAL pg_advisory_xact_lock(oid::bigint) WHERE datname = current_database()";

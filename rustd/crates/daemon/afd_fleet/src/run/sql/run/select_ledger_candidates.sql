@@ -6,7 +6,7 @@ WITH instant AS MATERIALIZED (
   FROM fleet.fleets z
   CROSS JOIN instant
   JOIN runner.runners host ON host.id = $2
-  LEFT JOIN runner.slots s ON s.fleet_id = z.id
+  LEFT JOIN thread.threads s ON s.fleet_id = z.id
   LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
   WHERE z.status = $1 AND host.cordon_reason IS NULL
     -- A tenant's runner takes only its tenant's work; the claim enforces it.

@@ -11,7 +11,7 @@ WITH run AS MATERIALIZED (
       AND run.fencing_token = $3 AND run.status = $4
       AND run.run_expires_at > clock_timestamp()
       AND run.fencing_token >= COALESCE(
-            (SELECT a.fencing_token FROM runner.slots a WHERE a.fleet_id = run.fleet_id),
+            (SELECT a.fencing_token FROM thread.threads a WHERE a.fleet_id = run.fleet_id),
             run.fencing_token)
 )
 UPDATE thread.runs l

@@ -88,7 +88,7 @@ async fn hold_slot(scene: &Scenario, run: &str) -> (Transaction<'static, Postgre
         .expect("owned blocker identity");
     let run = af_core::id::Uuid7::parse(run).expect("the offer names a run");
     let _held: af_core::id::Uuid7 = sqlx::query_scalar(
-        "SELECT s.fleet_id FROM runner.slots s JOIN thread.runs l ON l.fleet_id = s.fleet_id \
+        "SELECT s.fleet_id FROM thread.threads s JOIN thread.runs l ON l.fleet_id = s.fleet_id \
          WHERE l.id = $1 FOR UPDATE OF s",
     )
     .bind(&run)

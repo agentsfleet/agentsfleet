@@ -38,7 +38,7 @@ impl Held {
             .await
             .expect("a pooled connection");
         let live: i64 = sqlx::query_scalar(
-            "UPDATE runner.slots SET fencing_token = fencing_token + 1
+            "UPDATE thread.threads SET fencing_token = fencing_token + 1
              WHERE fleet_id = $1 RETURNING fencing_token",
         )
         .bind(&self.fleet)

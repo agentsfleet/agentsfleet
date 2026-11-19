@@ -101,7 +101,7 @@ impl Speaking {
             .await
             .expect("a connection");
         sqlx::query(
-            "UPDATE runner.slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
+            "UPDATE thread.threads SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
         )
         .bind(&self.scene.fleet)
         .execute(&mut *connection)

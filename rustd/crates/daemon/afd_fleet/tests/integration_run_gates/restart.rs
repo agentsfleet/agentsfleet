@@ -127,7 +127,7 @@ async fn expire(chat: &Chat) -> Checked {
     let mut connection = chat.fixtures.database.acquire().await?;
     sqlx::query("UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(chat.fleet()).execute(&mut *connection).await?;
-    sqlx::query("UPDATE runner.slots SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
+    sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(chat.fleet()).execute(&mut *connection).await?;
     Ok(())
 }

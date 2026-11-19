@@ -22,7 +22,7 @@ WITH hold_host AS MATERIALIZED (
 ), locked_slot AS MATERIALIZED (
   SELECT s.id, s.fencing_token, s.run_expires_at AS slot_expires_at,
          h.id IS NOT NULL AS hold_authorized
-  FROM runner.slots s
+  FROM thread.threads s
   JOIN thread.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
   LEFT JOIN hold_host h ON h.id = l.runner_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
@@ -69,7 +69,7 @@ WITH hold_host AS MATERIALIZED (
          failed_count    = c.failed_count + EXCLUDED.failed_count,
          updated_at      = now()
 ), released AS (
-  UPDATE runner.slots s
+  UPDATE thread.threads s
   SET run_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
       hold_expires_at = CASE WHEN m.run_expires_at > m.checked_at
                              AND m.slot_expires_at > m.checked_at

@@ -196,7 +196,7 @@ async fn expire(scene: &Scenario, fleet: &Uuid7, run: &Uuid7) -> Proof {
     let mut connection = scene.booted.database.acquire().await?;
     sqlx::query("UPDATE thread.runs SET run_expires_at=statement_timestamp()-interval '1 second' WHERE id=$1")
         .bind(run).execute(&mut *connection).await?;
-    sqlx::query("UPDATE runner.slots SET run_expires_at=statement_timestamp()-interval '1 second' WHERE fleet_id=$1")
+    sqlx::query("UPDATE thread.threads SET run_expires_at=statement_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(fleet).execute(&mut *connection).await?;
     Ok(())
 }

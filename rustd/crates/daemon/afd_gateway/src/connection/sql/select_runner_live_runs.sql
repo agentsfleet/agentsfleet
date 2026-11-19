@@ -9,7 +9,7 @@ SELECT l.id AS run_id, l.run_expires_at AS expires_at,
        l.fencing_token, l.cancel_requested_at IS NOT NULL AS cancelled, l.draft_id
 FROM thread.runs l
 -- A slot's id is its owner's, fleet or draft.
-JOIN runner.slots s ON s.id = COALESCE(l.fleet_id, l.draft_id)
+JOIN thread.threads s ON s.id = COALESCE(l.fleet_id, l.draft_id)
 WHERE l.runner_id = $1 AND l.status = $2
   AND l.run_expires_at > statement_timestamp()
   AND s.last_runner_id = l.runner_id AND s.fencing_token = l.fencing_token

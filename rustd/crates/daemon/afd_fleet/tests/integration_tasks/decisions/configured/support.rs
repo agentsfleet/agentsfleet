@@ -33,7 +33,7 @@ pub(super) async fn expire(case: &Case) {
         .acquire()
         .await
         .expect("fixture clock");
-    sqlx::query("UPDATE runner.slots SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
+    sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("slot elapsed");
     sqlx::query("UPDATE thread.runs SET status='expired' WHERE id=$1")
         .bind(&case.held.run_key)

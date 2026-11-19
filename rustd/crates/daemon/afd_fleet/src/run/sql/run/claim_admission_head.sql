@@ -12,13 +12,13 @@ WITH fleet AS MATERIALIZED (
     -- below is never written, so a foreign claim changes nothing.
     AND (placed.platform_owned OR placed.tenant_id = f.tenant_id)
 ), locked_slot AS MATERIALIZED (
-  SELECT s.fleet_id FROM runner.slots s
+  SELECT s.fleet_id FROM thread.threads s
   WHERE s.fleet_id = $1
   FOR UPDATE OF s SKIP LOCKED
 ), instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM locked_slot) locked
 ), slot AS (
-  INSERT INTO runner.slots AS s
+  INSERT INTO thread.threads AS s
     (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
      created_at, updated_at)
   SELECT $1, $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
@@ -26,7 +26,7 @@ WITH fleet AS MATERIALIZED (
   WHERE EXISTS (SELECT 1 FROM fleet)
     AND EXISTS (SELECT 1 FROM runner.runners host WHERE host.id = $2 AND host.cordon_reason IS NULL)
     AND (EXISTS (SELECT 1 FROM locked_slot)
-         OR NOT EXISTS (SELECT 1 FROM runner.slots WHERE fleet_id = $1))
+         OR NOT EXISTS (SELECT 1 FROM thread.threads WHERE fleet_id = $1))
   ON CONFLICT (id) DO UPDATE
     SET last_runner_id = EXCLUDED.last_runner_id,
         fencing_token = s.fencing_token + 1,
@@ -135,7 +135,7 @@ WITH fleet AS MATERIALIZED (
   FROM opened o
   LEFT JOIN fleet.activity_counters k ON k.fleet_id = $1
 ), installed AS (
-  SELECT r.definition::text AS definition, r.runtime_model_ref, s.context_json::text AS context_json,
+  SELECT r.definition::text AS definition, r.runtime_model_ref, s.resume_context::text AS context_json,
          r.policy_semantics, r.id AS revision_id, t.generation AS task_generation,
          current.definition::text AS current_definition
   FROM stamped a
@@ -144,7 +144,7 @@ WITH fleet AS MATERIALIZED (
   LEFT JOIN fleet.revisions r ON r.id = COALESCE(t.accepted_revision_id, f.head_revision_id)
    AND r.fleet_id = f.id
   LEFT JOIN fleet.revisions current ON current.id = f.head_revision_id AND current.fleet_id = f.id
-  LEFT JOIN fleet.sessions s ON s.fleet_id = f.id
+  LEFT JOIN thread.threads s ON s.id = f.id
 ), catalogue AS MATERIALIZED (
   SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
 ), platform AS MATERIALIZED (

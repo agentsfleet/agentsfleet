@@ -56,7 +56,7 @@ WITH scope AS MATERIALIZED (
 ), locked_slot AS MATERIALIZED (
   SELECT s.fleet_id, s.fencing_token, s.run_expires_at AS slot_expires_at,
          h.id IS NOT NULL AS hold_authorized
-  FROM runner.slots s
+  FROM thread.threads s
   JOIN scope sc ON sc.id = s.fleet_id
   JOIN thread.runs l ON l.fleet_id = s.fleet_id
   LEFT JOIN hold_host h ON h.id = l.runner_id
@@ -191,14 +191,12 @@ WITH scope AS MATERIALIZED (
   DELETE FROM thread.items t
   USING moved m
   WHERE t.fleet_id = m.fleet_id AND t.event_id = m.event_id AND t.fencing_token <> m.fencing_token
-), checkpointed AS (
-  INSERT INTO fleet.sessions (fleet_id, context_json, created_at, updated_at)
-  SELECT m.fleet_id, $37::jsonb, now(), now() FROM moved m
-  ON CONFLICT (fleet_id) DO UPDATE
-    SET context_json = EXCLUDED.context_json, updated_at = now()
 ), released AS (
-  UPDATE runner.slots s
+  -- The thread's resume context rides the same update that releases the run,
+  -- since one statement may change a row once.
+  UPDATE thread.threads s
   SET run_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
+      resume_context = $37::jsonb,
       hold_expires_at = CASE WHEN m.run_expires_at > m.checked_at AND m.slot_expires_at > m.checked_at
                              AND m.hold_authorized
                              AND $38::timestamptz > clock_timestamp()

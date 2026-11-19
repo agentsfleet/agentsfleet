@@ -18,7 +18,7 @@ async fn accepted_replays_share_slot_and_run_read_locks() {
             .expect("accepted plan");
         let mut connection = case.held.fixtures.database.acquire().await.expect("reader");
         let mut reader = connection.begin().await.expect("authority read");
-        sqlx::query("SELECT fleet_id FROM runner.slots WHERE fleet_id=$1 FOR SHARE")
+        sqlx::query("SELECT fleet_id FROM thread.threads WHERE fleet_id=$1 FOR SHARE")
             .bind(&case.held.fleet)
             .fetch_one(&mut *reader)
             .await
@@ -56,7 +56,7 @@ async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
         let mut connection = case.held.fixtures.database.acquire().await.expect("writer");
         let mut writer = connection.begin().await.expect("authority write");
         let pid: i32 = sqlx::query_scalar(
-            "SELECT pg_backend_pid() FROM runner.slots WHERE fleet_id=$1 FOR UPDATE",
+            "SELECT pg_backend_pid() FROM thread.threads WHERE fleet_id=$1 FOR UPDATE",
         )
         .bind(&case.held.fleet)
         .fetch_one(&mut *writer)
@@ -64,11 +64,13 @@ async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
         .expect("exclusive slot lock");
         let change = async {
             waiting(case, pid).await;
-            sqlx::query("UPDATE runner.slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1")
-                .bind(&case.held.fleet)
-                .execute(&mut *writer)
-                .await
-                .expect("new authority fence");
+            sqlx::query(
+                "UPDATE thread.threads SET fencing_token=fencing_token+1 WHERE fleet_id=$1",
+            )
+            .bind(&case.held.fleet)
+            .execute(&mut *writer)
+            .await
+            .expect("new authority fence");
             writer.commit().await.expect("release writer");
         };
         let (replay, ()) = tokio::join!(case.tasks.bind(case.run(), &plan), change);

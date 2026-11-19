@@ -23,7 +23,7 @@ WITH origin AS MATERIALIZED (
             OR (a.input_claim_run_id = $9 AND a.input_claim_fence = $10)
             OR NOT EXISTS (
                 SELECT 1 FROM thread.runs claimed
-                JOIN runner.slots s ON s.fleet_id = claimed.fleet_id
+                JOIN thread.threads s ON s.fleet_id = claimed.fleet_id
                 WHERE claimed.id = a.input_claim_run_id
                   AND claimed.fencing_token = a.input_claim_fence
                   AND claimed.status = $11 AND claimed.run_expires_at > clock_timestamp()

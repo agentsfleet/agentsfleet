@@ -58,9 +58,9 @@ fn an_earlier_reading_past_the_later_one_saturates_rather_than_wraps() {
 
 /// A table of three fragments, the third overlapping the first's statement.
 const TABLE: &[(&str, Path)] = &[
-    ("FROM runner.slots", Path::Claim),
+    ("FROM thread.threads", Path::Claim),
     ("FROM billing.wallets", Path::Gates),
-    ("runner.slots", Path::Report),
+    ("thread.threads", Path::Report),
 ];
 
 fn cost(query: &str, calls: u64) -> QueryCost {
@@ -73,9 +73,9 @@ fn cost(query: &str, calls: u64) -> QueryCost {
 #[test]
 fn statements_by_path_sum_to_total() {
     let costs = [
-        cost("SELECT 1 FROM runner.slots WHERE x", 10),
+        cost("SELECT 1 FROM thread.threads WHERE x", 10),
         cost("SELECT 1 FROM billing.wallets", 15),
-        cost("UPDATE runner.slots SET y", 5),
+        cost("UPDATE thread.threads SET y", 5),
     ];
     let totals = by_path_with(TABLE, &costs);
     let per = per_run(&totals, 10);
@@ -102,7 +102,7 @@ fn unmatched_statement_counts_as_other() {
 #[test]
 fn shared_statement_counts_in_its_first_path() {
     // Both the Claim and the Report fragment match; the earlier entry wins.
-    let totals = by_path_with(TABLE, &[cost("SELECT * FROM runner.slots", 4)]);
+    let totals = by_path_with(TABLE, &[cost("SELECT * FROM thread.threads", 4)]);
 
     assert_eq!(
         (

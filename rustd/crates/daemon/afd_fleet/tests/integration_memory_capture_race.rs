@@ -74,7 +74,7 @@ async fn change_authority(
     supersede: bool,
 ) {
     if supersede {
-        sqlx::query("UPDATE runner.slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1")
+        sqlx::query("UPDATE thread.threads SET fencing_token=fencing_token+1 WHERE fleet_id=$1")
             .bind(&run.fleet)
             .execute(&mut *connection)
             .await

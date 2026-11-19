@@ -1,4 +1,4 @@
-//! The fleet kind's own run statements on `runner.slots` and
+//! The fleet kind's own run statements on `thread.threads` and
 //! `thread.runs`: the claim, the fence, and the row that records who owns a
 //! fleet's work. The slot verbs every kind runs are [`super::shared`].
 //!
@@ -14,7 +14,7 @@
 //! one no-work reply rather than counting retries.
 //!
 //! A fleet's slot is keyed by the fleet's id, so the fleet's statements here
-//! read `runner.slots.fleet_id` and `thread.runs.fleet_id`, which a draft's
+//! read `thread.threads.fleet_id` and `thread.runs.fleet_id`, which a draft's
 //! rows leave NULL and so never match.
 
 mod row;

@@ -11,7 +11,7 @@ use crate::support::CronLane;
 
 const WAIT_BUDGET: Duration = Duration::from_secs(5);
 const LOCK_SCHEDULE: &str = "SELECT pg_backend_pid() FROM fleet.schedules WHERE id=$1 FOR UPDATE";
-const READ_SESSION: &str = "SELECT context_json FROM fleet.sessions WHERE fleet_id=$1";
+const READ_SESSION: &str = "SELECT resume_context FROM thread.threads WHERE id=$1";
 
 // Value: protects=history waits permit a first session's real foreign-key check;
 // fails_when=the parent lock conflicts with KEY SHARE and the insert times out;
@@ -96,8 +96,8 @@ async fn checkpoint_while_finalizer_waits(
         .await
         .expect("bound the lock wait");
     let written = sqlx::query(
-        "INSERT INTO fleet.sessions (fleet_id,context_json,created_at,updated_at) \
-        VALUES ($1,$2,now(),now())",
+        "INSERT INTO thread.threads (id,fleet_id,fencing_token,run_expires_at,resume_context,created_at,updated_at) \
+        VALUES ($1,$1,0,now(),$2,now(),now())",
     )
     .bind(&lane.fleet)
     .bind(sqlx::types::Json(

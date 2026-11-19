@@ -132,7 +132,7 @@ impl Fixture {
 
     async fn slot_is_expired(&self, fleet: &Uuid7) -> bool {
         self.scalar(
-            "SELECT run_expires_at < statement_timestamp() FROM runner.slots WHERE fleet_id = $1",
+            "SELECT run_expires_at < statement_timestamp() FROM thread.threads WHERE fleet_id = $1",
             fleet,
         )
         .await

@@ -36,7 +36,7 @@ use jiff_sqlx::ToSqlx as _;
 use sqlx::{AssertSqlSafe, PgConnection, Row as _};
 
 /// The index under test.
-const HELD_INDEX: &str = "idx_slots_last_runner_id_held";
+const HELD_INDEX: &str = "idx_threads_last_runner_id_held";
 
 /// The spreads the plan is asked against, as `(runners, slots per runner, one
 /// slot in this many held)`: a small fleet and a larger one, because the
@@ -75,7 +75,7 @@ WITH workspace AS (
 ), slots AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS n FROM fleets
 )
-INSERT INTO runner.slots
+INSERT INTO thread.threads
   (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
    created_at, updated_at)
 SELECT slots.id, slots.id, ranked.id, 1, $2,
@@ -84,7 +84,7 @@ SELECT slots.id, slots.id, ranked.id, 1, $2,
   FROM slots JOIN ranked ON ranked.rank = slots.n % $3";
 
 /// Refreshes the statistics the plan is costed from.
-const ANALYZE_SLOTS: &str = "ANALYZE runner.slots";
+const ANALYZE_SLOTS: &str = "ANALYZE thread.threads";
 
 /// Plans every prepared statement once for all binds, as a cached plan does.
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";

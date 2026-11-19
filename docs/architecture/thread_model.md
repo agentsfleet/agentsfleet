@@ -38,17 +38,15 @@ One row per fleet and one per draft. It replaces `runner.slots` and `fleet.sessi
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
 | `id` | `UUID` PK | no | slot id | equals the fleet's or draft's id, so no lookup maps one to the other |
-| `kind` | `TEXT` | no | new | `fleet` or `draft` |
 | `fleet_id` | `UUID` | yes | `runner.slots.fleet_id` | FK `fleet.fleets(id)` ON DELETE CASCADE: a thread dies with its fleet |
 | `draft_id` | `UUID` | yes | `runner.slots.draft_id` | FK `setup.drafts(id)` ON DELETE CASCADE: a thread dies with its draft |
-| `workspace_id` | `UUID` | no | new | FK `identity.workspaces(id)` ON DELETE CASCADE: reads authorize without a join |
 | `fencing_token` | `BIGINT` | no | `runner.slots.fencing_token` | raised once per assignment |
-| `runner_id` | `UUID` | yes | `runner.slots.last_runner_id` | FK `runner.runners(id)` ON DELETE SET NULL: a deleted runner leaves the thread free |
+| `last_runner_id` | `UUID` | yes | `runner.slots.last_runner_id` | FK `runner.runners(id)` ON DELETE SET NULL: the sticky runner a warm sandbox waits on; a deleted runner leaves the thread free |
 | `run_expires_at` | `TIMESTAMPTZ(3)` | yes | `runner.slots.lease_expires_at` | the live run's expiry |
 | `hold_expires_at` | `TIMESTAMPTZ(3)` | yes | `runner.slots.hold_expires_at` | how long the runner keeps the warm sandbox |
 | `resume_context` | `JSONB` | yes | `fleet.sessions.context_json` | the conversation state a fleet's next run resumes from |
 
-Checks: exactly one of `fleet_id` and `draft_id` is set, and `id` equals the one that is set. Indexes: `fleet_id` and `draft_id` partial, and `(runner_id, hold_expires_at)` for the hold sweep.
+Checks: exactly one of `fleet_id` and `draft_id` is set, and `id` equals the one that is set, so which one is set is the thread's kind. Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set for the hold sweep. The report sets `resume_context` in the same update that releases the run.
 
 Publishing a draft creates a new fleet, so the fleet gets its own thread. The draft's thread stays with the draft until the draft is deleted.
 
