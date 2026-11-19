@@ -603,3 +603,43 @@ async fn a_root_that_is_not_utf8_is_abandoned_before_its_commit() -> Checked {
     assert_eq!(owner.abandoned, 1);
     Ok(())
 }
+
+/// A commit receipt of the right kind that names another generation is
+/// refused: the capture keeps no head and leaves no uncertain commit behind.
+#[tokio::test]
+async fn a_commit_receipt_naming_another_generation_commits_no_head() -> Checked {
+    // An empty workspace needs no chunk, so the capture goes straight to its
+    // one page and then its commit.
+    let root = tempfile::tempdir()?;
+    let remote = Arc::new(Mutex::new(Remote::new(
+        Vec::new(),
+        "https://objects.invalid",
+        Some(Fault::ChangedCommit),
+    )?));
+    let (plane, _calls) = capture_plane(Arc::clone(&remote));
+    let lease = Uuid7::parse(ID)?;
+    let transfers = Transfers::new()?;
+    let mut native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let stop = CancellationToken::new();
+
+    let refused = native
+        .capture(snapshot(scope()), Some(root.path().to_owned()), &stop)
+        .await;
+
+    assert_eq!(
+        test_support::detail(&refused),
+        Some("turn commit changed the captured generation or root")
+    );
+    let (head, pages) = {
+        let owner = remote.lock().map_err(|_poisoned| "the owner panicked")?;
+        (owner.head.clone(), owner.pages.len())
+    };
+    assert!(head.is_none(), "the owner recorded no head");
+    assert_eq!(pages, 1, "the one page was written");
+    assert!(native.publication.head.is_none(), "no head is kept");
+    assert!(
+        native.publication.pending.is_none(),
+        "a refused receipt leaves no uncertain commit to reconcile"
+    );
+    Ok(())
+}

@@ -205,3 +205,35 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
     }
     Ok(())
 }
+
+/// An adoption receipt naming other saved inputs than the checkpoint holds
+/// fails the restore, and the pin is still released.
+#[tokio::test]
+async fn an_adoption_naming_other_saved_inputs_fails_the_restore() -> Checked {
+    let (offer, saved) = api_only()?;
+
+    let (restored, sent) = restore(
+        &offer,
+        saved,
+        Some(Fault::ChangedAdopt),
+        &CancellationToken::new(),
+    )
+    .await?;
+
+    assert_eq!(
+        test_support::detail(&restored),
+        Some("turn adoption changed saved input membership")
+    );
+    assert!(
+        matches!(
+            sent.as_slice(),
+            [
+                Action::Read { .. },
+                Action::Adopt { .. },
+                Action::PinRelease { .. }
+            ]
+        ),
+        "the pin is released after the refused adoption"
+    );
+    Ok(())
+}
