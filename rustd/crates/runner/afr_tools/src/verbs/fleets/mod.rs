@@ -13,7 +13,8 @@ use super::fleet_steer::DETAIL_FLEET_ID;
 use super::{FleetsCall, answered};
 use crate::catalog::{Entry, FLEET_ACTIVITY};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
+use guffbolt::ToolOutput;
 
 /// `fleet_activity`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]

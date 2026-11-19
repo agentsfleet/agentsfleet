@@ -5,8 +5,9 @@ use serde_json::json;
 
 use super::FleetActivity;
 use crate::handler::Typed;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Asked, OwnedFleetsCall, RecordingVerbs, call, lease_with};
+use guffbolt::ToolOutput;
 
 const FLEET: &str = "0190d5c2-7e1a-7000-8000-00000000f0f3";
 
@@ -49,6 +50,9 @@ async fn fleet_activity_reads_one_fleets_events() {
 #[tokio::test]
 async fn fleet_activity_refuses_a_fleet_id_that_is_not_one() {
     let (output, asked) = read(json!({"fleet_id": "docs-bot"})).await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     assert!(asked.is_empty(), "{asked:?}");
 }

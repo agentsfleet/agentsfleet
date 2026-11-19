@@ -14,7 +14,8 @@ use super::answered_with;
 use crate::catalog::{Entry, FLEET_STEER};
 use crate::egress;
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{ToolContext, ToolErrorCode};
+use guffbolt::ToolOutput;
 
 /// What a fleet id that is not one reads back.
 pub(super) const DETAIL_FLEET_ID: &str = "fleet_id must be a fleet's id, as fleet_activity lists it or a message from that fleet names it";
