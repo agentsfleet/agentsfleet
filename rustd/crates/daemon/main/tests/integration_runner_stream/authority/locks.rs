@@ -46,7 +46,7 @@ impl HostLock {
                     "SELECT pid FROM pg_stat_activity \
                      WHERE $1=ANY(pg_blocking_pids(pid)) \
                        AND ((query LIKE '%AS authorized%' AND query LIKE '%FOR UPDATE%') \
-                            OR query LIKE '-- One host''s renewals in one statement%') LIMIT 1",
+                            OR query LIKE '-- The fleet''s host-wide renewal%') LIMIT 1",
                 )
                 .bind(self.blocker)
                 .fetch_optional(&mut *scene.booted.database.acquire().await?)

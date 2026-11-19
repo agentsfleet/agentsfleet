@@ -15,7 +15,8 @@ use afd_auth::directory::Digest;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
-    ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+    ApiKeySeed, FleetSeed, SEEDED_TURN, TenantSeed, TestDatabase, TurnSeed, UserSeed,
+    WorkspaceSeed, mint_id,
 };
 
 use crate::integration_workspace_approvals::SUBJECT;
@@ -104,6 +105,10 @@ impl Fixture {
         .insert(&mut *connection)
         .await
         .expect("the approval fleet seeds");
+        TurnSeed::new(&self.fleet, &self.workspace, &self.event, SEEDED_TURN)
+            .insert(&mut *connection)
+            .await
+            .expect("the gated turn seeds");
         sqlx::query(
             "INSERT INTO fleet.approval_gates \
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
@@ -146,7 +151,13 @@ impl Fixture {
     /// The same, under a fleet the caller names.
     pub(crate) async fn seed_gate_for(&self, fleet: &Uuid7, kind: &str, created_at: i64) -> String {
         let second = mint_id();
+        let turn = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
+        // The gate held a run for a turn, which the approval's continuation resumes.
+        TurnSeed::new(fleet, &self.workspace, &turn, SEEDED_TURN)
+            .insert(&mut *connection)
+            .await
+            .expect("the gated turn seeds");
         sqlx::query(
             "INSERT INTO fleet.approval_gates \
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
@@ -161,7 +172,7 @@ impl Fixture {
         .bind(fleet)
         .bind(&self.workspace)
         .bind(mint_id())
-        .bind(mint_id())
+        .bind(&turn)
         .bind(GATE_EXPIRES_AT)
         .bind(kind)
         .bind(created_at)

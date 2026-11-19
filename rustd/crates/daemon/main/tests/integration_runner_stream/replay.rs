@@ -20,7 +20,7 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
         let mut first = Native::connect(&scene, transport).await;
         first.heartbeat().await;
         first.ready().await;
-        let offer = first.expect(StreamKind::Work, "offer").await;
+        let offer = first.expect(StreamKind::Work, "run").await;
         let run = offer.pointer("/run").expect("native response field");
         let (id, fence) = wire::claim(run);
         assert_eq!(

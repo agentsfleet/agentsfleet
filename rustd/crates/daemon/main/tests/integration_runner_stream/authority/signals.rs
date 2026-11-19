@@ -20,7 +20,7 @@ pub(super) struct Held {
 }
 
 pub(super) async fn offer(native: &mut Native) -> TestResult<Held> {
-    let frame = native.expect(StreamKind::Work, "offer").await;
+    let frame = native.expect(StreamKind::Work, "run").await;
     let run = wire::pointer(&frame, "/run");
     let (id, fence) = wire::claim(run);
     Ok(Held {

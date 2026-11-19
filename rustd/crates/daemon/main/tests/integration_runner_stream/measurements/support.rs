@@ -59,7 +59,7 @@ pub(super) async fn healthy(native: &mut Native, request_id: u64) {
 }
 
 pub(super) async fn offer(scene: &Scenario, native: &mut Native) -> Result<Held> {
-    let response = native.expect(StreamKind::Work, "offer").await;
+    let response = native.expect(StreamKind::Work, "run").await;
     let run = response
         .get("run")
         .ok_or("the native offer lacks its run")?;

@@ -82,15 +82,13 @@ async fn checkpoint_while_finalizer_waits(
 ) {
     let mut observer = lane.connection().await;
     wait_for_blocked_finalizer(&mut observer, pid).await;
+    // Fleet creation writes the thread, so the first save fills its context.
     let absent: Option<Value> = sqlx::query_scalar(READ_SESSION)
         .bind(&lane.fleet)
-        .fetch_optional(&mut *observer)
+        .fetch_one(&mut *observer)
         .await
-        .expect("inspect the first session");
-    assert_eq!(
-        absent, None,
-        "this insert must run the parent foreign-key check"
-    );
+        .expect("inspect the fleet's thread");
+    assert_eq!(absent, None, "the thread holds no saved context yet");
     sqlx::query("SET LOCAL lock_timeout = '1s'")
         .execute(&mut *held)
         .await

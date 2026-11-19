@@ -13,7 +13,7 @@ pub(super) async fn prepare(connection: &mut PgConnection) {
     run(connection, &format!("PREPARE gate_candidates (text,uuid,bigint,interval,text,uuid[],uuid,text,text,text,text[],boolean,timestamptz,uuid,boolean,text) AS {SELECT_CANDIDATES}")).await;
     run(
         connection,
-        &format!("PREPARE gate_claim (uuid,uuid,interval,interval,text,text,text,text,text,text,text[],text,text,text,boolean,text) AS {CLAIM_HEAD}"),
+        &format!("PREPARE gate_claim (uuid,uuid,interval,interval,text,text,text,text,text,text,text[],text,text,boolean,text) AS {CLAIM_HEAD}"),
     )
     .await;
 }
@@ -45,9 +45,8 @@ pub(super) async fn claim(
     let task = task_parameters();
     let fleet_active = sql::FLEET_STATUS_ACTIVE;
     let received = af_core::turn::status::RECEIVED;
-    let steer = afd_turns::Producer::Steer.as_str();
     let model = afd_credential::provider::PLATFORM_MODEL_REF;
-    explain(connection, &format!("gate_claim('{fleet}','{runner}','{ttl} seconds','{offline} seconds','{runner_active}','{active}','{expired}',{task},'{fleet_active}','{received}','{steer}',true,'{model}')")).await
+    explain(connection, &format!("gate_claim('{fleet}','{runner}','{ttl} seconds','{offline} seconds','{runner_active}','{active}','{expired}',{task},'{fleet_active}','{received}',true,'{model}')")).await
 }
 
 async fn explain(connection: &mut PgConnection, invocation: &str) -> serde_json::Value {

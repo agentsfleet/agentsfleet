@@ -136,7 +136,7 @@ impl Native {
             }
             assert_eq!(
                 (*crate::wire::pointer(&value, "/type")),
-                "assignment",
+                "policy",
                 "unexpected native frame"
             );
         }
@@ -175,7 +175,7 @@ impl Native {
             while let Ok(Some(frame)) = read(&mut pipe.reader).await {
                 assert_eq!(
                     crate::wire::pointer(&frame, "/type"),
-                    "assignment",
+                    "policy",
                     "unexpected frame before native close: {frame:?}"
                 );
             }

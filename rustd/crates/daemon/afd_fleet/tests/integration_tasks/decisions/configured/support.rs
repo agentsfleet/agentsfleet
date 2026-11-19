@@ -87,7 +87,6 @@ pub(super) async fn claimable(case: &Case) -> bool {
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::turn::status::RECEIVED)
-        .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *tx)

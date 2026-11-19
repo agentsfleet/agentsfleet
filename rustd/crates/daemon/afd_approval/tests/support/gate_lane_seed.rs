@@ -9,6 +9,7 @@
 use af_core::id::Uuid7;
 use std::time::Duration;
 
+use afd_db::test_util::{SEEDED_TURN, TurnSeed};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
@@ -76,6 +77,15 @@ impl Lane {
         action
     }
 
+    /// Seeds the turn a gate held a run for: a continuation resumes it, and
+    /// `fk_turns_resumes_turn_id` refuses a continuation of no turn.
+    pub(crate) async fn seed_turn(&self, turn: &Uuid7) {
+        TurnSeed::new(&self.fleet, &self.workspace, turn, SEEDED_TURN)
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("the gated turn must insert");
+    }
+
     /// Inserts one pending gate row: what every seeder above writes through.
     ///
     /// The deadline is `now()` plus or minus [`WINDOW`], on the clock the
@@ -88,6 +98,9 @@ impl Lane {
         created_at: Timestamp,
         turn_id: Option<Uuid7>,
     ) {
+        if let Some(turn) = &turn_id {
+            self.seed_turn(turn).await;
+        }
         sqlx::query(
             "INSERT INTO fleet.approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,

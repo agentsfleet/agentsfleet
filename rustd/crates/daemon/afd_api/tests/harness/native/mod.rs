@@ -104,7 +104,7 @@ async fn exchange(
         assert!(
             matches!(
                 (*reply.pointer("/type").expect("native response field")).as_str(),
-                Some("assignment" | "cancel")
+                Some("policy" | "cancel")
             ),
             "unexpected unsolicited native frame: {reply}"
         );

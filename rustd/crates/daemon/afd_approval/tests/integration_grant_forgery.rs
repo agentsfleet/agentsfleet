@@ -56,9 +56,6 @@ const SERVICE: &str = "github";
 /// Who the fixture records as answering a card.
 const REVIEWER: &str = "operator@fixture";
 
-/// An event id, which every rules-path card carries and no grant card does.
-const FORGED_EVENT: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
-
 /// The card a fleet-authored rule of this kind would produce.
 ///
 /// `REQUEST_GRANT`'s own column list, so a row that is accepted or refused here
@@ -98,7 +95,9 @@ async fn raise_honest_grant(lane: &Lane) {
 /// can be driven from here, it is whether the RESOLVE would honour such a row —
 /// so the row is written in its most favourable form and the resolve is asked.
 async fn insert_forged_card(lane: &Lane, action: &Uuid7) {
-    let forged_event = Uuid7::parse(FORGED_EVENT).expect("the forged event id is a UUIDv7");
+    // A turn id, which every rules-path card carries and no grant card does.
+    let forged_event = mint();
+    lane.seed_turn(&forged_event).await;
     sqlx::query(FORGED_CARD)
         .bind(mint())
         .bind(&lane.fleet)

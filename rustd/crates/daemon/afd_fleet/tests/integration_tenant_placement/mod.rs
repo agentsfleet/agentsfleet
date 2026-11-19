@@ -152,11 +152,12 @@ async fn runs_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
     .await
 }
 
-/// Whether `fleet` has a slot row, which only a winning claim writes.
+/// Whether a claim took `fleet`'s thread: creation writes it at fence 0, and
+/// only a winning claim raises the fence.
 async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
     scalar(
         fixtures,
-        "SELECT count(*) FROM thread.threads WHERE fleet_id = $1",
+        "SELECT count(*) FROM thread.threads WHERE fleet_id = $1 AND fencing_token > 0",
         fleet,
     )
     .await
@@ -205,7 +206,6 @@ async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool 
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .bind(sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::turn::status::RECEIVED)
-        .bind(afd_turns::Producer::Steer.as_str())
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *transaction)

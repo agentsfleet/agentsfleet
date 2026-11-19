@@ -162,11 +162,13 @@ async fn changed_or_removed_history_withholds_late_notes_but_settles_known_usage
         } else {
             "UPDATE thread.turns SET answer_text='changed-private-history' WHERE thread_id=$1 AND sequence=1"
         };
+        let owner = f.as_owner().await;
         sqlx::query(mutation)
             .bind(&attempt.draft.id)
-            .execute(&mut *f.connection().await)
+            .execute(&mut *owner.acquire().await.expect("the owner connects"))
             .await
             .expect("change only this private history while its model is waiting");
+        owner.close().await;
         finish(&live, SUMMARY).await;
         assert_eq!(
             live.context().await.progress.state,

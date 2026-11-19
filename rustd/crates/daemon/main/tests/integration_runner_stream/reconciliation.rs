@@ -146,7 +146,7 @@ async fn reconcile(transport: Transport) -> Proof {
     expire(&case.scene, omitted_fleet, &omitted.id).await?;
     let bus = case.scene.booted.bus.clone();
     afd_bus::wake::publish(&bus, omitted_fleet.clone()).await;
-    let offered = current.expect(StreamKind::Work, "offer").await;
+    let offered = current.expect(StreamKind::Work, "run").await;
     assert_eq!(
         wire::pointer(&offered, "/run/event/turn_id"),
         omitted_event.as_str()

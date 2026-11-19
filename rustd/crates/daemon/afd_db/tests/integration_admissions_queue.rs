@@ -44,9 +44,10 @@ async fn test_admissions_queue_migration_bootstraps() {
         .fetch_all(&mut *connection)
         .await
         .expect("runtime sees queue columns");
+    // In `ORDER BY column_name` order.
     let expected = [
-        ("run_fence", "bigint", None),
         ("parked_at", "timestamp with time zone", Some(3)),
+        ("run_fence", "bigint", None),
         ("settled_at", "timestamp with time zone", Some(3)),
     ];
     assert_eq!(columns.len(), expected.len());

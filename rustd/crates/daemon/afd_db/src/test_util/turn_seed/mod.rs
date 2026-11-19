@@ -37,6 +37,14 @@ pub struct TurnFacts<'a> {
     pub status: &'a str,
 }
 
+/// The facts of a turn a fixture needs only to exist: a gate's held turn, or
+/// the turn a seeded run answers.
+pub const SEEDED_TURN: TurnFacts<'static> = TurnFacts {
+    actor: "test",
+    event_type: "chat",
+    status: "received",
+};
+
 /// One event row under a fleet.
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]

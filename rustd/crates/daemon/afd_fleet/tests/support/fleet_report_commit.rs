@@ -101,7 +101,7 @@ pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Session(&held.fleet), "context_json")
+            .text(Row::Session(&held.fleet), "resume_context::text")
             .await,
         None,
         "{why}: no cursor was written — a session pointing past a run that did not finish \

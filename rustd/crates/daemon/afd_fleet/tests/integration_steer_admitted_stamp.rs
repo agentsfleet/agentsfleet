@@ -116,10 +116,11 @@ async fn test_steer_assigned_between_pages_stays_on_the_resumed_page() {
     fixtures.cleanup().await;
 }
 
-/// Only a steer moves: a webhook's row keeps the instant the run passed.
+/// A webhook's row keeps its admission instant too: every turn sits in its
+/// thread where it was received, so no producer's row moves at the claim.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_webhook_row_keeps_the_run_instant() {
+async fn test_webhook_row_keeps_its_admission_instant() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let key = producer_key(&fleet, "run-instant");
@@ -132,14 +133,20 @@ async fn test_webhook_row_keeps_the_run_instant() {
     let (acquired, run_window) = fixtures
         .clock_around(select_fleet(&runs, &runner, &fleet))
         .await;
-    let received = acquired
-        .expect("the fleet holding the webhook is leasable")
-        .opened
-        .received;
+    let acquired = acquired.expect("the fleet holding the webhook is leasable");
+    let admitted_at = fixtures
+        .instant(Row::Admission(&acquired.turn_id), "created_at")
+        .await;
+    let received = acquired.opened.received;
     assert_eq!(received.delivery, Delivery::First);
+    assert_eq!(
+        Some(received.opened_at),
+        admitted_at,
+        "the webhook's row carries its admission instant"
+    );
     assert!(
-        run_window.contains(&received.opened_at),
-        "the webhook's row carries the run's own instant: {} outside {run_window:?}",
+        !run_window.contains(&received.opened_at),
+        "the claim does not restamp the row: {} inside {run_window:?}",
         received.opened_at
     );
 

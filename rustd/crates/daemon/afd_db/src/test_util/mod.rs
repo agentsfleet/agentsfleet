@@ -81,7 +81,7 @@ pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::platform_model::ModelSeed;
 pub use self::rows::OwnedRows;
 pub use self::runner::{RunnerPolicy, RunnerSeed};
-pub use self::turn_seed::{TurnFacts, TurnSeed};
+pub use self::turn_seed::{SEEDED_TURN, TurnFacts, TurnSeed};
 pub use self::unreachable::unreachable_db;
 
 /// The fixed instant fixtures stamp on the rows they seed: one millisecond past

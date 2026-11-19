@@ -55,7 +55,12 @@ async fn test_select_assigns_a_ready_fleets_event() {
     );
     assert_eq!(acquired.actor, ACTOR);
     assert_eq!(acquired.event_type, EVENT_TYPE);
-    assert_eq!(acquired.request_json, REQUEST_JSON);
+    // `thread.turns.request_json` is JSONB, so the run carries the sender's
+    // body as Postgres renders it: the same value, not the same bytes.
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&acquired.request_json).ok(),
+        serde_json::from_str::<serde_json::Value>(REQUEST_JSON).ok()
+    );
     assert_eq!(acquired.turn_created_at, fixtures.enrolled_at());
     assert_eq!(
         acquired.fence.as_i64(),

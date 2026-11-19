@@ -141,6 +141,12 @@ impl Fixture {
         self.db.acquire().await.expect("fixture database answers")
     }
 
+    /// The lane as its owner, for a test that removes history: `api_runtime`
+    /// holds no DELETE on `thread.turns`, because no runtime path deletes a turn.
+    pub(super) async fn as_owner(&self) -> Db {
+        self.lane.open(DbRole::Migrator, &[]).await
+    }
+
     /// Appends a copy of `draft`'s head candidate as an older daemon would have
     /// written it, under policy semantics this daemon no longer enforces, and
     /// moves the head to it. Answers the new candidate.

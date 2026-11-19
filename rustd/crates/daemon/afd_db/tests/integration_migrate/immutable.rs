@@ -8,11 +8,6 @@ use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
 const IMMUTABLE: [&str; 24] = [
-    "setup.activity_receipts",
-    "setup.answer_receipts",
-    "setup.candidates",
-    "setup.plugin_revisions",
-    "setup.replay_receipts",
     "billing.authoring_report_receipts",
     "connector.oauth_nonces",
     "fleet.revisions",
@@ -32,6 +27,11 @@ const IMMUTABLE: [&str; 24] = [
     "runner.registration_receipts",
     "runner.turn_checkpoint_operations",
     "runner.turn_checkpoint_refs",
+    "setup.activity_receipts",
+    "setup.answer_receipts",
+    "setup.candidates",
+    "setup.plugin_revisions",
+    "setup.replay_receipts",
 ];
 
 /// Every runtime role, none of which may update an immutable table.

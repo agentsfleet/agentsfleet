@@ -18,7 +18,8 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
-    ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+    ApiKeySeed, FleetSeed, SEEDED_TURN, TenantSeed, TestDatabase, TurnSeed, UserSeed,
+    WorkspaceSeed, mint_id,
 };
 use afd_vault::{SecretBody, SecretName};
 
@@ -181,6 +182,16 @@ impl Fixture {
     /// One pending gate on each fleet, differing in nothing but identifiers.
     async fn seed_gates(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
+        // Each gate held a run for a turn, which an approval's continuation resumes.
+        for (fleet, workspace, turn) in [
+            (&self.fleet, &self.workspace, &self.event),
+            (&self.other_fleet, &self.other_workspace, &self.other_event),
+        ] {
+            TurnSeed::new(fleet, workspace, turn, SEEDED_TURN)
+                .insert(&mut *connection)
+                .await
+                .expect("the gated turn seeds");
+        }
         sqlx::query(
             "INSERT INTO fleet.approval_gates \
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
