@@ -20,8 +20,10 @@ impl Worker {
         use afr_supervisor::config::{
             ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME, ENV_STREAM_CA, ENV_STREAM_URL,
         };
+        // A failed cohort keeps diagnostics; kill() explicitly removes completed workers.
         let home = tempfile::Builder::new()
             .prefix("afr-recovery-")
+            .disable_cleanup(true)
             .tempdir_in("/tmp")?;
         let log = std::fs::File::create(home.path().join("runner.log"))?;
         let child = Command::new(binary)

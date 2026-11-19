@@ -12,4 +12,3 @@ CREATE INDEX idx_turn_recovery_head ON runner.turn_recovery (head_turn_checkpoin
     WHERE head_turn_checkpoint_id IS NOT NULL;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.turn_recovery TO api_runtime;
-

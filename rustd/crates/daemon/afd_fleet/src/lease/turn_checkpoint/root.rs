@@ -63,11 +63,10 @@ pub(super) fn validate(
     folds: &[FoldRef],
     origin: Option<(&str, &str)>,
 ) -> Result<()> {
-    root.validate().map_err(invalid("root byte bounds"))?;
-    let saved: History = serde_json::from_str(&root.history).map_err(invalid("root JSON"))?;
-    saved
+    let root = garde::Unvalidated::new(root)
         .validate()
-        .map_err(invalid("root header and fold bounds"))?;
+        .map_err(invalid("root byte bounds"))?;
+    let saved = history(&root)?;
     if &saved.scope != scope
         || saved.root.folds != folds
         || origin
@@ -94,6 +93,13 @@ pub(super) fn validate(
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
     Ok(())
+}
+
+fn history(root: &garde::Valid<&TurnPrivateRoot>) -> Result<garde::Valid<History>> {
+    let saved: History = serde_json::from_str(&root.history).map_err(invalid("root JSON"))?;
+    garde::Unvalidated::new(saved)
+        .validate()
+        .map_err(invalid("root header and fold bounds"))
 }
 
 pub(super) fn seal(

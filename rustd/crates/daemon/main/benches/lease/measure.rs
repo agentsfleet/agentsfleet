@@ -28,12 +28,17 @@ pub(super) async fn run(n: usize) -> Checked {
     let run = e2e::scenario(&mut daemon).await;
     let mut model = Model::start().await?;
     let fleets = cohort::population(&run, &model, n).await?;
+    eprintln!("recovery benchmark: {n} source fleets prepared");
     let (source, source_ids) = cohort::hosts(&run, &model, n).await?;
+    eprintln!("recovery benchmark: source runners connected");
     let interrupted = checkpoint(&run, &fleets, &mut model).await?;
+    eprintln!("recovery benchmark: all source checkpoints committed");
     let (survivors, survivor_ids) = cohort::hosts(&run, &model, n).await?;
+    eprintln!("recovery benchmark: replacement runners connected");
     tokio::time::sleep(af_core::timing::OFFER_FALLBACK_TICK).await;
     let _logs = try_join_all(source.into_iter().map(Worker::kill)).await?;
     let eligible = eligibility(&run, &fleets, &source_ids).await?;
+    eprintln!("recovery benchmark: source runners killed; expiry observation begins");
     drop(interrupted);
     let resumed = observe(&mut model, &eligible).await?;
     let mut raw = Vec::new();

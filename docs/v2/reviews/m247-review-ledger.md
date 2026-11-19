@@ -24,6 +24,72 @@ This move does not grade the remaining acceptance checks as passed.
 R13 benchmarks, R14 greater-than-99% coverage, final automated acceptance and the SQL repairs below remain open.
 The review closures are pushed at `2a88201a9`, including merge `b4c2d789c` of M246 main.
 
+### Current shipping checks
+
+The latest runtime-policy unit run passed 5,791 Rust checks: 1,834 runner, 203 daemon and 3,754 daemon-library checks.
+Application coverage reached 100% across 529 production files before the latest main reconciliation.
+This does not establish Rust coverage or coverage of the final patch.
+
+Indy changed the execution order: "I feel you can go straight to this and have the CI gate run this and hence push the PR".
+The selected work was "refreshed benchmarks, SQL performance comparison".
+Full repository verification, acceptance and greater-than-99% coverage remain required before merge readiness.
+
+The optimized recovery build at `4ff9ee21b` ended before benchmark execution.
+The compiler processes exited with signal 9; its cause is unconfirmed.
+That attempt contributes no timing sample or recovery verdict.
+
+The refreshed harness uses purpose-driven fleet names and prints preparation stages.
+Failed cohorts preserve runner diagnostics; explicitly stopped workers still remove their temporary directories.
+Record its new harness hash alongside the historical fixture hashes; the timing boundaries and recovery assertions remain unchanged.
+
+Main revision `055aef441` is reconciled in `228a3d31f`.
+The merge retains three protocol constants used by the new task policy: `ITEMS_MAX`, `OBJECTIVE_MAX_BYTES` and `TITLE_MAX_BYTES`.
+
+### Populated SQL comparison
+
+The [recorded plans](../../../bench/baselines/sql-final.rig.json) compare old query text from `16efc0112` with repaired queries at `4ff9ee21b`.
+Both variants ran against the same synthetic PostgreSQL 19rc2 database under their runtime roles.
+The compiler was paused during measurement.
+
+The database contains 1,000 workspaces and fleets, 100,000 secrets, admissions, obligations, leases, revisions, events and tasks.
+It includes 16,000 unfinished tasks, 1,000 active ordinary leases and slots, 10,000 authoring attempts, and 100,900 memory entries.
+Mutating measurements roll back their transactions.
+
+| Query | Old median | Repaired median | Interpretation |
+| --- | --- | --- | --- |
+| Lease credential scope | 0.362 ms | 0.527 ms | Additional current-authority checks cost 0.165 ms in this fixture |
+| Authoring attempt lock | 0.217 ms | 0.229 ms | Additional authority joins cost 0.012 ms in this fixture |
+| Memory fleet serialization | No equivalent | 0.297 ms | New locking step |
+| Memory capture and grant lock | No equivalent | 0.197 ms | New locking step |
+| Existing memory entry upsert | Unmeasured | 0.908 ms | Existing-entry update only |
+| Memory cap scan | Unmeasured | 1.188 ms | At the cap; no rows evicted |
+
+Repair medians use nine measured repetitions after one warmup.
+These repairs strengthen authorization and serialization; this run demonstrates a small cost, without demonstrating a speedup.
+The separate recovery comparison still uses frozen production baseline `d4823563e80829b97589846a1c7997964fdf0274`.
+
+| Current hot path | Median | Main plan |
+| --- | --- | --- |
+| Vault single envelope | 0.164 ms | Index scan; four shared hits |
+| Vault projections | 0.642 ms | Sort; 107 shared hits |
+| Vault four named envelopes | 0.110 ms | Index scan; ten shared hits |
+| Vault shared generations | 0.681 ms | Locked rows; 18 shared hits |
+| Vault 100 scoped descriptors | 1.064 ms | Nested loop; 304 shared hits |
+| Populated workspace deletion | 148.319 ms | Cascades over this richer fixture |
+| Insert 100 admissions | 10.461 ms | Includes current indexes and references |
+
+Hot-path medians use five repetitions.
+The populated deletion result is not comparable with earlier fixtures lacking tasks and revisions.
+No index or foreign-key alternative was applied in this run.
+
+Three restricted-role vault-read probes returned SQLSTATE `42501`.
+The API query's workspace filter returned one row from one workspace.
+Synthetic ciphertext does not prove decryption, and query plans do not prove concurrent race safety.
+
+The saved source hashes match the repaired credential, authoring, memory and vault queries after the main reconciliation.
+All thirteen subsequent audit-stamp statements prepared successfully under `api_runtime`; their exact hashes are retained in the artifact.
+This artifact does not claim every SQL statement received an execution plan.
+
 ### Post-M246 verification
 
 The [coverage run at `2a88201a9`](https://github.com/agentsfleet/agentsfleet/actions/runs/44309414436) failed.

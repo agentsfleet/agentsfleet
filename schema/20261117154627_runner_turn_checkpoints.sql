@@ -66,4 +66,3 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON runner.turn_checkpoints TO api_runtime;
 ALTER TABLE runner.turn_recovery ADD CONSTRAINT fk_turn_recovery_head
     FOREIGN KEY (head_turn_checkpoint_id, event_id) REFERENCES runner.turn_checkpoints (id, event_id)
     ON DELETE SET NULL (head_turn_checkpoint_id) DEFERRABLE INITIALLY DEFERRED;
-

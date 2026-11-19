@@ -21,4 +21,3 @@ CREATE INDEX idx_turn_operations_event_retention ON runner.turn_checkpoint_opera
     (event_id, created_at, turn_checkpoint_id);
 
 GRANT SELECT, INSERT, DELETE ON runner.turn_checkpoint_operations TO api_runtime;
-

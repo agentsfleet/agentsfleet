@@ -21,4 +21,3 @@ CREATE UNIQUE INDEX uq_turn_pin_operation ON runner.turn_checkpoint_pins
 CREATE INDEX idx_turn_pins_expiry ON runner.turn_checkpoint_pins (expires_at, id)
     WHERE released_at IS NULL;
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.turn_checkpoint_pins TO api_runtime;
-

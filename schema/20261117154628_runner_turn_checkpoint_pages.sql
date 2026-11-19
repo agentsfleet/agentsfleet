@@ -24,4 +24,3 @@ CREATE TRIGGER trg_turn_checkpoint_pages_freeze BEFORE UPDATE ON runner.turn_che
     FOR EACH ROW EXECUTE FUNCTION runner.turn_checkpoint_pages_freeze();
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.turn_checkpoint_pages TO api_runtime;
-

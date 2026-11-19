@@ -26,16 +26,19 @@ pub(super) struct Settings {
 }
 
 pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
-    let file = env.get(ENV_CONFIG_FILE).map(PathBuf::from);
-    let profile = af_config::ConfigBuilder::default()
-        .file(file.as_deref())
-        .build::<Profile>()
-        .map_err(|error| super::refused(&error))?;
+    let profile = load(env).map_err(|error| super::refused(&error))?;
     Ok(Settings {
         inference: af_inference::Timeouts::new(&checked(profile.inference)?),
         provider_retries: af_providers::RetryPolicy::new(&checked(profile.provider_retries)?),
         supervisor: afr_supervisor::config::RuntimePolicy::new(&checked(profile.supervisor)?),
     })
+}
+
+fn load(env: &impl EnvSource) -> af_config::Result<garde::Valid<Profile>> {
+    let file = env.get(ENV_CONFIG_FILE).map(PathBuf::from);
+    af_config::ConfigBuilder::default()
+        .file(file.as_deref())
+        .build::<Profile>()
 }
 
 fn checked<T: Validate<Context = ()>>(raw: T) -> Result<garde::Valid<T>, ExitCode> {

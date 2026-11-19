@@ -4,7 +4,8 @@
 connect_timeout_seconds = 10
 stream_idle_timeout_seconds = 300
 
-# Independent limits: at most 3 HTTP sends per opening and 3 eligible openings.
+# Independent limits: at most 3 generation sends per opening and 3 eligible openings.
+# Native token counting is a separate single-send request for an eligible opening.
 # A paid attempt, known usage or visible output prevents automatic reopening.
 [provider_retries]
 max_attempts = 3

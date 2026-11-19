@@ -16,6 +16,7 @@ mod progress;
 #[cfg(test)]
 mod progress_tests;
 mod restore;
+mod restore_manifest;
 mod session;
 #[cfg(test)]
 mod supervisor_tests;

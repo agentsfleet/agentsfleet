@@ -6,4 +6,4 @@ INSERT INTO runner.turn_checkpoints
      created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
         0, $16, $17, $18, clock_timestamp() + make_interval(secs => $19),
-        clock_timestamp(), clock_timestamp())
+        now(), now())

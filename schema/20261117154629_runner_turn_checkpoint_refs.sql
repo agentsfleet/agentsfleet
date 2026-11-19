@@ -19,4 +19,3 @@ CREATE TRIGGER trg_turn_checkpoint_refs_refuse_update BEFORE UPDATE ON runner.tu
     FOR EACH ROW EXECUTE FUNCTION runner.turn_checkpoint_refs_refuse_update();
 
 GRANT SELECT, INSERT, DELETE ON runner.turn_checkpoint_refs TO api_runtime;
-
