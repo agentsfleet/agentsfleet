@@ -14,11 +14,12 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
     let mut issued = 0;
     let answer = test_dead::plane()
         .claim_fleet_with(
-            crate::lease::OfferRequest {
+            &mut crate::lease::OfferRequest {
                 runner: &test_dead::id(9),
                 held: &[],
                 degraded: true,
                 now: test_dead::AT,
+                recovery: None,
             },
             None,
             &mut af_observability::verb_span::VerbClock::untimed(),

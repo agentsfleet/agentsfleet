@@ -1,7 +1,7 @@
 //! Private conversation bytes bind to the same native task and file generation.
 
+use super::RootRecovery;
 use crate::Result;
-use af_providers::{Message, Replay};
 use af_wire::task::TaskContext;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
@@ -32,7 +32,7 @@ struct History {
     goal_digest: String,
     model: String,
     provider: String,
-    messages: Vec<Message>,
+    root: RootRecovery,
 }
 
 impl TaskRecovery {
@@ -40,18 +40,21 @@ impl TaskRecovery {
         task: TaskContext<'static>,
         model: &str,
         provider: &str,
-        messages: Vec<Message>,
+        root: RootRecovery,
     ) -> Result<Self> {
+        root.check()?;
         let history = History {
-            format: 1,
+            format: 2,
             task_id: task.task_id.to_string(),
             goal_digest: task.goal_digest.to_string(),
             model: model.to_owned(),
             provider: provider.to_owned(),
-            messages,
+            root,
         };
         if !af_wire::decision::serialized_within(&history, 64 * 1024 * 1024) {
-            return Err(crate::decision::unavailable());
+            return Err(crate::error::recovery_invalid(
+                "private task history exceeds its byte limit",
+            ));
         }
         let history = Zeroizing::new(serde_json::to_vec(&history)?);
         Ok(Self { task, history })
@@ -63,13 +66,24 @@ impl TaskRecovery {
         model: &str,
         provider: &str,
         scrub: &af_secrets::Scrub,
-    ) -> Result<Vec<Message>> {
+    ) -> Result<RootRecovery> {
         if bytes.len() > 64 * 1024 * 1024 {
-            return Err(crate::decision::unavailable());
+            return Err(crate::error::recovery_invalid(
+                "private task history exceeds its byte limit",
+            ));
         }
-        let mut history: History = serde_json::from_slice(bytes)?;
-        if history.format != 1 || history.task_id != task.task_id {
-            return Err(crate::decision::unavailable());
+        let mut history: History = serde_json::from_slice(bytes)
+            .map_err(|source| crate::error::recovery_source("private task history", source))?;
+        if history.format != 2 || history.task_id != task.task_id {
+            return Err(crate::error::recovery_invalid(
+                "private task history version or identity differs",
+            ));
+        }
+        history.root.check()?;
+        if !history.root.folds.is_empty() {
+            return Err(crate::error::recovery_invalid(
+                "native task history cannot contain ordinary fold claims",
+            ));
         }
         // Goal adoption changes authority, not the identity of authenticated
         // past work. The opening instructions and next goal assessment come
@@ -77,31 +91,7 @@ impl TaskRecovery {
         let changed = history.model != model
             || history.provider != provider
             || history.goal_digest != task.goal_digest;
-        for message in &mut history.messages {
-            match message {
-                Message::User(text) | Message::ToolResult { output: text, .. } => {
-                    *text = scrub.text(text).into_owned();
-                }
-                Message::Assistant {
-                    text,
-                    calls,
-                    replay,
-                } => {
-                    *text = scrub.text(text).into_owned();
-                    for call in calls {
-                        call.arguments = scrub
-                            .clean_json(std::mem::take(&mut call.arguments))
-                            .into_inner();
-                    }
-                    // Signed replay cannot be edited. Drop it when the current
-                    // secret policy would change its private contents.
-                    let encoded = Zeroizing::new(serde_json::to_string(&*replay)?);
-                    if changed || scrub.text(&encoded).as_ref() != encoded.as_str() {
-                        *replay = Replay::default();
-                    }
-                }
-            }
-        }
-        Ok(history.messages)
+        history.root.scrub(scrub, changed)?;
+        Ok(history.root)
     }
 }

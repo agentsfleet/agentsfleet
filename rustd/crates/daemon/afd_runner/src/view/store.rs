@@ -122,7 +122,7 @@ impl RunnerScope<'_> {
         let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
-            .map(ItemRow::parse)
+            .map(|row| row.parse(self.runners.clock()))
             .collect::<Result<Vec<_>>>()?;
         Ok(RunnerPage {
             next_cursor: page_cursor(&items, more),
@@ -146,7 +146,7 @@ impl RunnerScope<'_> {
             .await
             .map_err(query(CONTEXT_RUNNER_DETAIL))?
             .ok_or_else(runner_not_found)?
-            .parse()
+            .parse(self.runners.clock())
     }
 }
 

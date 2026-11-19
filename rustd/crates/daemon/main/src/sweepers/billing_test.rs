@@ -21,14 +21,14 @@ fn a_lap_clears_the_read_position_on_its_last_tick() {
     let resume = std::sync::Mutex::new(Some(7_u8));
     let mut ticks = 0;
     for _ in 1..LAP_TICKS {
-        lap(&mut ticks, &resume);
+        lap(&mut ticks, &resume, LAP_TICKS);
     }
     assert_eq!(
         resume.lock().map(|at| *at).ok(),
         Some(Some(7)),
         "kept within the lap"
     );
-    lap(&mut ticks, &resume);
+    lap(&mut ticks, &resume, LAP_TICKS);
     assert_eq!(
         resume.lock().map(|at| *at).ok(),
         Some(None),
@@ -40,7 +40,9 @@ fn a_lap_clears_the_read_position_on_its_last_tick() {
 /// refused lines are retried and progress through newer lines is kept.
 #[test]
 fn the_read_restarts_at_the_oldest_line_once_a_lap() {
-    let restarted: Vec<u64> = (1..=LAP_TICKS * 2).filter(|tick| restarts(*tick)).collect();
+    let restarted: Vec<u64> = (1..=LAP_TICKS * 2)
+        .filter(|tick| restarts(*tick, LAP_TICKS))
+        .collect();
     assert_eq!(restarted, [LAP_TICKS, LAP_TICKS * 2]);
 }
 
@@ -57,6 +59,7 @@ async fn a_tick_runs_passes_until_one_leaves_nothing_waiting() {
             async move { answer }
         },
         &CancellationToken::new(),
+        DRAIN_PASSES,
     )
     .await;
     assert_eq!(ran, 3);
@@ -66,7 +69,7 @@ async fn a_tick_runs_passes_until_one_leaves_nothing_waiting() {
 /// tick.
 #[tokio::test]
 async fn a_tick_stops_at_the_drain_cap() {
-    let ran = drain(|| async { true }, &CancellationToken::new()).await;
+    let ran = drain(|| async { true }, &CancellationToken::new(), DRAIN_PASSES).await;
     assert_eq!(ran, DRAIN_PASSES);
 }
 
@@ -81,6 +84,7 @@ async fn a_cancelled_tick_starts_no_ledger_pass() {
             async { true }
         },
         &stop,
+        DRAIN_PASSES,
     )
     .await;
     assert_eq!(ran, 0);
@@ -98,6 +102,7 @@ async fn cancellation_during_a_pass_starts_no_following_pass() {
             async { true }
         },
         &stop,
+        DRAIN_PASSES,
     )
     .await;
     assert_eq!(ran, 1);

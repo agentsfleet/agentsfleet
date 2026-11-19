@@ -241,6 +241,33 @@ mod tests {
         );
     }
 
+    /// A caller's credential, its role, a missing row and a slow dependency
+    /// each keep the outcome their status names.
+    #[test]
+    fn each_mapped_caller_and_timeout_status_keeps_its_own_outcome() {
+        let cases = [
+            (
+                Refusal::unauthorized("the session expired"),
+                ReadOutcome::Unauthorized,
+            ),
+            (
+                Refusal::forbidden("operator access is required"),
+                ReadOutcome::Forbidden,
+            ),
+            (
+                Refusal::coded(error_code::TASK_NOT_FOUND, "no such task"),
+                ReadOutcome::NotFound,
+            ),
+            (
+                Refusal::coded(error_code::AUTHORING_TIMEOUT, "the attempt timed out"),
+                ReadOutcome::Timeout,
+            ),
+        ];
+        for (refusal, outcome) in cases {
+            assert_eq!(library_outcome(&refusal), outcome, "{}", refusal.status());
+        }
+    }
+
     /// A closed request type, the shape every wire type now has.
     #[derive(Debug, serde::Deserialize)]
     #[serde(deny_unknown_fields)]

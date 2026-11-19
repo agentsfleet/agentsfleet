@@ -111,6 +111,14 @@ impl LeaseService {
             .mint_scope(runner_id, &crate::error::wire_lease(&request.lease_id)?)
             .await?
             .ok_or_else(lease_not_found)?;
+        if purpose == Purpose::Runner
+            && !scope
+                .runner_credentials
+                .iter()
+                .any(|name| name.as_str() == request.integration)
+        {
+            return Err(crate::error::integration_not_connected());
+        }
         if purpose == Purpose::TaskPublish
             && !scope.binding.as_ref().is_some_and(|binding| {
                 binding.publication() == af_fleet_runtime::config::RepositoryPublication::ExistingPr

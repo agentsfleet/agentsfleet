@@ -12,7 +12,9 @@ mod header_key;
 mod json;
 mod logs;
 pub mod stream;
+mod timeouts;
 pub mod transport;
+pub use timeouts::{TimeoutSettings, Timeouts};
 
 pub use budget::input_tokens;
 pub use count::InputCount;

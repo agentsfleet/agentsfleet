@@ -28,6 +28,7 @@ async fn test_a_poll_accepting_both_kinds_places_the_owed_authoring_turn() {
                 held: &[],
                 degraded: false,
                 now: running.now,
+                recovery: None,
             },
             AcceptedKinds::ALL,
             &mut af_observability::verb_span::VerbClock::untimed(),

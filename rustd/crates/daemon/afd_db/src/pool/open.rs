@@ -14,7 +14,6 @@ use crate::config::{DbRole, PoolConfig};
 use crate::error::{Result, classify_acquire, unreachable_datastore};
 
 use super::observed::pool_role;
-use super::{IDLE_TIMEOUT, MAX_LIFETIME, PING_AFTER_IDLE};
 
 /// Drops every advisory lock a returned connection still holds.
 const UNLOCK_ALL: &str = include_str!("sql/unlock_all.sql");
@@ -45,6 +44,7 @@ pub(super) async fn probe(config: &PoolConfig) -> Result<()> {
 /// the migrator alone — the advisory-lock backstop.
 pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
     let role = config.role();
+    let ping_after_idle = config.ping_after_idle();
     let builder = PgPoolOptions::new()
         .max_connections(config.max_connections())
         // The warm floor. A lazy pool gets no background bootstrap from sqlx
@@ -54,16 +54,16 @@ pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
         .min_connections(config.min_connections())
         .acquire_timeout(config.acquire_timeout())
         // Pinned, not defaulted: see the constants for what turns on them.
-        .idle_timeout(IDLE_TIMEOUT)
-        .max_lifetime(MAX_LIFETIME)
+        .idle_timeout(config.idle_timeout())
+        .max_lifetime(config.max_lifetime())
         // The ping moves into `before_acquire`, gated on idle time: see
-        // [`PING_AFTER_IDLE`]. A failed ping answers `Err`, which sqlx treats
+        // [`super::PING_AFTER_IDLE`]. A failed ping answers `Err`, which sqlx treats
         // as its own ping failing: the connection closes hard and the checkout
         // takes or opens another.
         .test_before_acquire(false)
         .before_acquire(move |connection, meta| {
             Box::pin(async move {
-                if !due_for_ping(meta.idle_for) {
+                if !due_for_ping(meta.idle_for, ping_after_idle) {
                     return Ok(true);
                 }
                 af_observability::producers::database::pinged(pool_role(role));
@@ -89,27 +89,29 @@ pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
 }
 
 /// Whether a checkout tests a connection that sat idle for `idle_for`.
-fn due_for_ping(idle_for: std::time::Duration) -> bool {
-    idle_for >= PING_AFTER_IDLE
+fn due_for_ping(idle_for: std::time::Duration, after: std::time::Duration) -> bool {
+    idle_for >= after
 }
 
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use super::{PING_AFTER_IDLE, due_for_ping};
+    use super::due_for_ping;
+    use crate::pool::PING_AFTER_IDLE;
 
     #[test]
     fn a_connection_used_inside_the_window_goes_out_untested() {
-        assert!(!due_for_ping(Duration::ZERO));
+        assert!(!due_for_ping(Duration::ZERO, PING_AFTER_IDLE));
         assert!(!due_for_ping(
-            PING_AFTER_IDLE.saturating_sub(Duration::from_millis(1))
+            PING_AFTER_IDLE.saturating_sub(Duration::from_millis(1)),
+            PING_AFTER_IDLE
         ));
     }
 
     #[test]
     fn a_connection_idle_for_the_window_is_tested() {
-        assert!(due_for_ping(PING_AFTER_IDLE));
-        assert!(due_for_ping(PING_AFTER_IDLE * 60));
+        assert!(due_for_ping(PING_AFTER_IDLE, PING_AFTER_IDLE));
+        assert!(due_for_ping(PING_AFTER_IDLE * 60, PING_AFTER_IDLE));
     }
 }

@@ -149,6 +149,7 @@ impl Rig {
             clock: clock(),
             halt: Halt::new(shutdown.clone()),
             whoami: Whoami::default(),
+            recovery: crate::recovery::RecoveryResources::new().unwrap(),
         });
         let (runs, peak, prepared, destroyed) = counters;
         // No agent lends through this one: its sender is gone, so it reads
@@ -235,6 +236,7 @@ pub(crate) fn daemon(
         Verb::Activity,
         Verb::Report,
         Verb::Folds,
+        Verb::TurnCheckpoint,
     ]
     .into_iter()
     .map(|verb| {
@@ -244,6 +246,9 @@ pub(crate) fn daemon(
     .collect();
     move |call| {
         special(call).unwrap_or_else(|| {
+            if call.verb == Verb::Report {
+                return acknowledge_report(call);
+            }
             let body = replies.get(&call.verb).unwrap_or_else(|| {
                 panic!(
                     "unexpected fake daemon request: {} {}",
@@ -253,6 +258,25 @@ pub(crate) fn daemon(
             Answer::Reply(body.clone())
         })
     }
+}
+
+fn acknowledge_report(call: &Call) -> Answer {
+    let request: af_wire::report::ReportRequest<'_> =
+        serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+    Answer::Reply(
+        serde_json::to_vec(&af_wire::report::ReportResponse {
+            ok: true,
+            hold: request
+                .held_until
+                .map(|expires_at| af_wire::report::AcceptedHold {
+                    lease_id: request.lease_id.to_string(),
+                    fencing_token: request.fencing_token,
+                    expires_at,
+                }),
+        })
+        .unwrap()
+        .into(),
+    )
 }
 
 /// The body of the last report the daemon received.

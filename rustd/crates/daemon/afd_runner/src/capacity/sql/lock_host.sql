@@ -1,4 +1,4 @@
-SELECT worker_count, status, degraded_reason IS NOT NULL AS degraded, lease_version,
+SELECT worker_count, status, cordon_reason, degraded_reason IS NOT NULL AS degraded, lease_version,
        decision_platform_model_id IS NOT NULL AS decision_selected,
        -- Whether this host may take the work's tenant ($4). A tenant row always names
        -- its tenant, so this is never NULL; locked for no work, a tenant host reads false.

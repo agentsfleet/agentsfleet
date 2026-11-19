@@ -7,7 +7,7 @@ pub use down::{Answer, Down, RenewalAnswer};
 pub use up::{Renewal, Up};
 
 /// Negotiated before the server accepts a runner session.
-pub const VERSION: &str = "agentsfleet.runner.v1";
+pub const VERSION: &str = "agentsfleet.runner.v2";
 /// Application version; independent of the negotiated HTTP version.
 pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.

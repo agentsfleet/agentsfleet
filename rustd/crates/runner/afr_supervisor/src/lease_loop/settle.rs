@@ -6,7 +6,6 @@ use af_wire::tool_detail::ToolCallRecord;
 use zeroize::Zeroizing;
 
 use super::{LeaseRun, hold::Fate, segments::Stopwatch};
-use crate::client::retrying;
 use crate::report::{Ending, delivery::until_acknowledged, report};
 use crate::{Result, error, memory::CapturedMemory, records, renew};
 
@@ -57,10 +56,26 @@ impl LeaseRun<'_> {
         request.memory = memory.views();
         request.telemetry.segments = Some(self.timeline.reported(settling.elapsed()));
         let bytes = Zeroizing::new(serde_json::to_vec(&request).map_err(error::encode)?);
-        until_acknowledged(&self.lessee.halt, || async {
+        let response = until_acknowledged(&self.lessee.halt, self.lessee.plane.runtime, || async {
             self.lessee.plane.report(&bytes).await.map(Some)
         })
-        .await
+        .await?;
+        let accepted = response.hold.as_ref().is_some_and(|hold| {
+            hold.lease_id == self.ids.lease.as_str()
+                && hold.fencing_token == self.lease.fencing_token
+                && hold.expires_at > self.lessee.clock.now()
+                && fate
+                    .held_until()
+                    .is_some_and(|requested| hold.expires_at <= requested)
+        });
+        if let Some(hold) = response.hold.filter(|_| accepted) {
+            self.lessee
+                .holds
+                .accept(self.ids.lease.clone(), hold.expires_at);
+        } else {
+            self.lessee.holds.supersede(self.ids.lease.clone());
+        }
+        Ok(())
     }
 
     /// Posts each finished call's full record before the report, so "show
@@ -73,7 +88,9 @@ impl LeaseRun<'_> {
         let plane = &self.lessee.plane;
         let posted: crate::Result<()> = async {
             for body in records::bodies(self.lease.fencing_token, records)? {
-                retrying(|| plane.tool_calls(&self.ids.lease, body.clone())).await?;
+                plane
+                    .retrying(|| plane.tool_calls(&self.ids.lease, body.clone()))
+                    .await?;
             }
             Ok(())
         }

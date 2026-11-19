@@ -210,8 +210,9 @@ pub(crate) fn open_telemetry(
     crate::telemetry::announce(&otlp, installed, &instruments);
 
     let database = database.clone();
+    let period = Duration::from_secs(otlp.pipeline().metrics_export_interval_seconds);
     supervisor.spawn(crate::OTLP_EXPORT, async move |token| {
-        sample_until_stopped(&database, &token).await;
+        sample_until_stopped(&database, &token, period).await;
         // The last thing that happens to telemetry. Every signal the process
         // still holds is delivered here, before the pools it described are
         // dropped — which is the same ordering the analytics flush has, and
@@ -225,10 +226,14 @@ pub(crate) fn open_telemetry(
 }
 
 /// Keep both boot-owned gauges on the exporter's existing collection cadence.
-async fn sample_until_stopped(database: &afd_db::Db, token: &tokio_util::sync::CancellationToken) {
+async fn sample_until_stopped(
+    database: &afd_db::Db,
+    token: &tokio_util::sync::CancellationToken,
+    period: Duration,
+) {
     // The resident-set sampler, on the reader's own cadence so the gauge
     // the callback loads is never older than one collection.
-    let mut sampler = tokio::time::interval(crate::telemetry::COLLECT_INTERVAL);
+    let mut sampler = tokio::time::interval(period);
     sampler.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {

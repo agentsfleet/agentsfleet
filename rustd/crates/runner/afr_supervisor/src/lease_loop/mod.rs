@@ -45,9 +45,13 @@ mod drive;
 mod hold;
 mod lessee;
 mod recovery;
+mod recovery_boundary;
+mod recovery_capture;
 mod refusal;
 mod segments;
 mod settle;
+mod task_workspace;
+mod turn_recovery;
 mod work;
 mod workspace;
 
@@ -151,7 +155,10 @@ impl Lessee {
             started: Instant::now(),
             timeline: Timeline::default(),
         };
-        let _busy = self.holds.occupy(run.ids.fleet.clone());
+        let _busy = self.holds.occupy(crate::holds::Occupant::Fleet {
+            lease: run.ids.lease.clone(),
+            fleet: run.ids.fleet.clone(),
+        });
         let lease_id = run.ids.lease.as_str();
         let event = EVENT_ACQUIRED;
         tracing::info!(lease_id, event);

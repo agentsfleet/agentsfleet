@@ -7,6 +7,12 @@ valid:
           - run: |
               flyctl secrets set \
                 AGENTSFLEET_LOG_LEVEL="info"
+  - |
+    jobs:
+      d:
+        steps:
+          - run: |
+              flyctl secrets set DATABASE_URL_API="$DATABASE_URL_API"
 invalid:
   - |
     jobs:

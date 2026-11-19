@@ -109,10 +109,10 @@ a name, or a sweeper that quietly went back to a bare spawn, is a failing test.
 | NATS hub pump (one per subject with readers, `afd_bus::nats`'s hub) | `Bus::subscribe`, for a subject's first local reader | that subject's one native subscription: frames out to every local reader, and an `Af-Gap` marker turned into `Gap` | the channel map under its own mutex; the pump never takes it to forward a frame | the last reader's drop aborts the pump, which unsubscribes; `Bus::shutdown` aborts and joins every pump |
 | NATS gap watcher (`afd_bus::nats`'s signals watcher) | `afd_bus::nats::connect`, once per process | client events (reconnect, slow consumer), the publish debt, and the `af.bus.gap` broadcast | the debt under a short mutex the client's event callback also takes; the callback only sets flags and wakes the watcher | `Bus::shutdown` aborts and joins it before the client drains; the supervised `bus_shutdown` calls that shutdown on cancellation |
 | runner wake listeners (sixteen, `afd_bus::wake`) | `Wake::listen`, from the gateway scheduler (`afd_gateway/src/scheduler/subscriptions.rs`) | one `af.wake.<shard>` subscription each; one shared queue of at most 64 fleet IDs by default | leaf mutex; never held across an await | the stop token, or a closed subscription; the scheduler then resubscribes with backoff |
-| liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
-| retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
-| fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through its own pool handle, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
-| authoring, billing, task and task-storage sweepers (`sweeper:authoring`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`) | the daemon's sweepers module | Postgres through its own pool handle | none shared | as above |
+| liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
+| retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
+| fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
+| authoring, billing, task and task-storage sweepers (`sweeper:authoring`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`) | the daemon's sweepers module | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
 | telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises twelve tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
@@ -307,7 +307,7 @@ map to keep consistent and no generation check to get wrong.
 
 Per-call timeouts stay where they are. Recurring deadline passes are another
 matter: each plane runs them on one clock. The daemon's `sweeper:expiry` runs
-every `EXPIRY_TICK` (2 s).
+every `maintenance.expired_work.interval_seconds` (2 s by default); startup refuses an interval as long as one lease lifetime.
 
 It bills expired leases and expires authoring
 attempts in one tick. The runner arms one host timer for its leases' deadlines.

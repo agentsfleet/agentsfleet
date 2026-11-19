@@ -1,7 +1,6 @@
 -- A role change is a delete plus an insert, so rows never change.
 CREATE TABLE identity.memberships (
     id          UUID PRIMARY KEY,
-    CONSTRAINT ck_memberships_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id   UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     user_id     UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
     role        TEXT NOT NULL,

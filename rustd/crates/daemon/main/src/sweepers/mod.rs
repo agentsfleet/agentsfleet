@@ -26,6 +26,7 @@ mod authoring;
 mod billing;
 mod checkpoints;
 mod expiry;
+mod schedule;
 mod tasks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
@@ -65,27 +66,104 @@ pub fn spawn(
     database: &Db,
     analytics: &Analytics,
     tasks: afd_fleet::task::Tasks,
+    runtime: &crate::preflight::RuntimeSettings,
 ) {
-    let liveness = Liveness::new(database.clone(), Entropy::new());
-    supervisor.spawn(LIVENESS, move |token| sweep::run(liveness, token));
+    let policy = runtime.operations.maintenance;
+    let startup = schedule::Startup::new(policy.loops.startup_spread_ms);
+    spawn_runner_maintenance(supervisor, database, runtime, &startup);
+    tasks::spawn(
+        supervisor,
+        tasks.clone(),
+        &startup,
+        policy.loops.durable_tasks,
+    );
+    checkpoints::spawn(
+        supervisor,
+        tasks.clone(),
+        &startup,
+        policy.loops.checkpoint_storage,
+    );
+    spawn_financial_maintenance(
+        supervisor,
+        database,
+        analytics,
+        tasks,
+        &startup,
+        &policy.loops,
+    );
+}
 
-    let retention = Retention::new(database.clone());
-    supervisor.spawn(RETENTION, move |token| sweep::run(retention, token));
+fn spawn_runner_maintenance(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    runtime: &crate::preflight::RuntimeSettings,
+    startup: &schedule::Startup,
+) {
+    let policy = runtime.operations.maintenance;
+    let liveness = Liveness::new(database.clone(), Entropy::new())
+        .with_clock(runtime.clock)
+        .with_settings(&policy.liveness);
+    let delay = startup.delayed_first_pass(
+        LIVENESS,
+        std::time::Duration::from_secs(policy.liveness.interval_seconds),
+    );
+    supervisor.spawn(LIVENESS, move |token| {
+        sweep::run_starting_in(liveness, token, delay)
+    });
+
+    let retention = Retention::new(database.clone()).with_settings(&policy.retention);
+    let delay = startup.delayed_first_pass(
+        RETENTION,
+        std::time::Duration::from_secs(policy.retention.idle_interval_seconds),
+    );
+    supervisor.spawn(RETENTION, move |token| {
+        sweep::run_starting_in(retention, token, delay)
+    });
 
     // Reads only: the fleet count the dashboard draws, sampled from the table
     // that owns it rather than moved on every transition.
-    let census = Census::new(database.clone());
-    supervisor.spawn(FLEET_CENSUS, move |token| sweep::run(census, token));
+    let period = std::time::Duration::from_secs(policy.loops.fleet_census.interval_seconds);
+    let census = Census::new(database.clone()).with_interval(period);
+    let delay = startup.delayed_first_pass(FLEET_CENSUS, period);
+    supervisor.spawn(FLEET_CENSUS, move |token| {
+        sweep::run_starting_in(census, token, delay)
+    });
+}
 
+fn spawn_financial_maintenance(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    analytics: &Analytics,
+    tasks: afd_fleet::task::Tasks,
+    startup: &schedule::Startup,
+    settings: &crate::config::maintenance::Maintenance,
+) {
     // One biller for every sweeper that moves money, so they share one
     // counted, failing-open path and report through the same analytics.
     let biller = crate::billing::biller(database.clone(), analytics.clone());
-    authoring::spawn(supervisor, database, analytics, Arc::clone(&biller));
+    authoring::spawn(
+        supervisor,
+        database,
+        analytics,
+        Arc::clone(&biller),
+        startup,
+        settings.authoring_cleanup,
+    );
 
-    // Usage logged without its settlement: money the request path owes and
-    // could not finish.
-    tasks::spawn(supervisor, tasks.clone());
-    checkpoints::spawn(supervisor, tasks.clone());
-    billing::spawn(supervisor, database, tasks, Arc::clone(&biller));
-    expiry::spawn(supervisor, database, analytics, biller);
+    billing::spawn(
+        supervisor,
+        database,
+        tasks,
+        Arc::clone(&biller),
+        startup,
+        settings.billing,
+    );
+    expiry::spawn(
+        supervisor,
+        database,
+        analytics,
+        biller,
+        startup,
+        settings.expired_work,
+    );
 }

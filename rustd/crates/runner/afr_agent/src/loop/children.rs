@@ -12,10 +12,9 @@ use std::pin::Pin;
 
 use futures_util::StreamExt as _;
 use futures_util::stream::FuturesUnordered;
-use tokio::sync::mpsc;
 
 use super::shared::Shared;
-use crate::nested::{self, Guard, Start};
+use crate::nested::{self, CapturePermit, Guard, Requests};
 
 /// One child's loop, from its first turn to its guard's end.
 type Running<'s> = Pin<Box<dyn Future<Output = ()> + Send + 's>>;
@@ -23,12 +22,12 @@ type Running<'s> = Pin<Box<dyn Future<Output = ()> + Send + 's>>;
 /// Every child the run has started and not ended.
 pub(super) struct Children<'s, 'run> {
     running: FuturesUnordered<Running<'s>>,
-    requests: mpsc::UnboundedReceiver<Start<'run>>,
+    requests: Requests<'run>,
 }
 
 impl<'s, 'run: 's> Children<'s, 'run> {
     /// No child yet; `requests` is where the registry asks for one.
-    pub(super) fn new(requests: mpsc::UnboundedReceiver<Start<'run>>) -> Self {
+    pub(super) fn new(requests: Requests<'run>) -> Self {
         Self {
             running: FuturesUnordered::new(),
             requests,
@@ -48,8 +47,14 @@ impl<'s, 'run: 's> Children<'s, 'run> {
             let asked = tokio::select! {
                 biased;
                 out = &mut driven => return out,
-                Some(start) = self.requests.recv() => Some(start),
+                Some(start) = self.requests.starts.recv() => Some(start),
                 Some(()) = self.running.next(), if !self.running.is_empty() => None,
+                Some(reply) = self.requests.captures.recv() => {
+                    let permit = shared.registry.try_capture(||
+                        self.running.is_empty() && self.requests.starts.is_empty());
+                    let _receiver_gone = reply.send(permit);
+                    None
+                }
             };
             if let Some(start) = asked {
                 // Guarded from here, so a child dropped before its first poll
@@ -62,7 +67,18 @@ impl<'s, 'run: 's> Children<'s, 'run> {
     }
 
     /// Drops every child still running.
-    pub(super) fn end_all(&mut self) {
+    pub(super) fn end_all(&mut self, shared: &Shared<'run>) -> Option<CapturePermit> {
+        self.requests.starts.close();
+        self.requests.captures.close();
         self.running.clear();
+        while let Ok(start) = self.requests.starts.try_recv() {
+            shared.registry.ended(start.id, nested::Status::Interrupted);
+        }
+        while let Ok(reply) = self.requests.captures.try_recv() {
+            let _receiver_gone = reply.send(None);
+        }
+        shared
+            .registry
+            .try_capture(|| self.running.is_empty() && self.requests.starts.is_empty())
     }
 }

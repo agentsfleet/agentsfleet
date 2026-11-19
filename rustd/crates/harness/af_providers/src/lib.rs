@@ -31,6 +31,7 @@ pub use self::image_input::{ImageInput, ImageKind};
 pub use self::provider::{
     Call, Chunk, End, Hosted, Message, Provider, Replay, Request, ToolSpec, Usage,
 };
+pub use self::retry::settings::{RetryPolicy, RetrySettings};
 pub use af_inference::log_filter;
 pub use af_inference::transport::REPLY_MAX_BYTES;
 pub use af_wire::inference::InferenceApi as Wire;

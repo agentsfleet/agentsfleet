@@ -30,6 +30,70 @@
 use std::time::Duration;
 
 use backon::ExponentialBuilder;
+use garde::Validate;
+use serde::Deserialize;
+
+/// Inline delivery attempts; a durable obligation remains claimable after exhaustion.
+#[derive(Debug, Clone, Copy, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub struct RetrySettings {
+    /// Total sends, including the first send.
+    #[garde(range(min = 1, max = 10))]
+    pub max_attempts: usize,
+    /// Initial jittered exponential pause.
+    #[garde(range(min = 1, max = self.max_backoff_ms))]
+    pub initial_backoff_ms: u64,
+    /// Exponential ceiling before jitter; cancellation and claim loss still win.
+    #[garde(range(min = 1, max = 30_000))]
+    pub max_backoff_ms: u64,
+}
+
+impl Default for RetrySettings {
+    fn default() -> Self {
+        Self {
+            max_attempts: DELIVERY_ATTEMPTS,
+            initial_backoff_ms: 200,
+            max_backoff_ms: 800,
+        }
+    }
+}
+
+/// Checked inline retry policy, independent of the durable claim scan cadence.
+#[derive(Debug, Clone, Copy)]
+pub struct RetryPolicy {
+    attempts: usize,
+    first: Duration,
+    maximum: Duration,
+}
+
+impl RetryPolicy {
+    /// Existing delivery behavior.
+    pub const DEFAULT: Self = Self {
+        attempts: DELIVERY_ATTEMPTS,
+        first: FIRST_DELAY,
+        maximum: MAX_DELAY,
+    };
+
+    /// Accepts only finite positive startup settings.
+    #[must_use]
+    pub fn new(settings: &garde::Valid<RetrySettings>) -> Self {
+        Self {
+            attempts: settings.max_attempts,
+            first: Duration::from_millis(settings.initial_backoff_ms),
+            maximum: Duration::from_millis(settings.max_backoff_ms),
+        }
+    }
+
+    /// The standard library schedule with total attempts translated to retries.
+    #[must_use]
+    pub const fn schedule(self) -> ExponentialBuilder {
+        ExponentialBuilder::new()
+            .with_min_delay(self.first)
+            .with_max_delay(self.maximum)
+            .with_max_times(self.attempts - 1)
+            .with_jitter()
+    }
+}
 
 /// How many times one answer is offered before it is given up on.
 ///
@@ -55,9 +119,5 @@ const MAX_DELAY: Duration = Duration::from_millis(800);
 /// comment beside it promises one more try.
 #[must_use]
 pub const fn delivery_schedule() -> ExponentialBuilder {
-    ExponentialBuilder::new()
-        .with_min_delay(FIRST_DELAY)
-        .with_max_delay(MAX_DELAY)
-        .with_max_times(DELIVERY_ATTEMPTS - 1)
-        .with_jitter()
+    RetryPolicy::DEFAULT.schedule()
 }

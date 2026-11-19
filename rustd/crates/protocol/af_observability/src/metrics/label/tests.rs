@@ -218,8 +218,12 @@ fn http_products() -> [(&'static str, usize); 2] {
     ]
 }
 
-fn fleet_products() -> [(&'static str, usize); 9] {
+fn fleet_products() -> [(&'static str, usize); 10] {
     [
+        (
+            fleet::RUNNER_CORDON_CHANGES_TOTAL.wire_name(),
+            fleet_labels::CordonChange::ALL.len(),
+        ),
         (
             fleet::LEASE_CACHE_LOOKUPS_TOTAL.wire_name(),
             fleet_labels::LeaseCache::ALL.len() * fleet_labels::CacheOutcome::ALL.len(),

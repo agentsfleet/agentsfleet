@@ -25,8 +25,9 @@ use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
     DELIMITER, KillParams, MAX_FRAME_BYTES, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL,
-    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
-    ReadParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams, decoded, line,
+    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE,
+    METHOD_WRITE_FILE, PathParams, ReadParams, RecoveryParams, SpawnParams, SpawnResult,
+    WriteFileParams, WriteParams, decoded, line,
 };
 
 /// A line that is not JSON-RPC at all.
@@ -150,6 +151,13 @@ impl Session {
     fn route(&mut self, request: &Request<'_>) {
         let id = request.id.clone().into_owned();
         match request.method.as_ref() {
+            METHOD_RECOVERY_IDLE => {
+                let idle = params::<RecoveryParams>(request).map(|_params| {
+                    while self.calls.try_join_next().is_some() {}
+                    self.calls.is_empty()
+                });
+                self.answer(id, idle);
+            }
             METHOD_SPAWN => self.spawn(id, params::<SpawnParams<'static>>(request)),
             METHOD_WRITE => {
                 let written = params::<WriteParams>(request)
@@ -281,6 +289,10 @@ impl Session {
         post(&self.outbound, refusal(id, code, detail));
     }
 }
+
+#[cfg(test)]
+#[path = "recovery_tests.rs"]
+mod recovery_tests;
 
 /// A request's parameters, decoded through the object-only gate: whatever is
 /// on the other end of the socket is not trusted.

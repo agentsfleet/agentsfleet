@@ -10,7 +10,7 @@ use super::{
     Error, ErrorKind, acquire_stalled, classify_acquire, invalid_bool_knob, query,
     unreachable_datastore,
 };
-use crate::config::DbRole;
+use crate::config::{DbRole, PoolOverrides};
 
 /// A slot the samples name: the first schema slot.
 const SAMPLE_SLOT: i64 = 1000;
@@ -26,6 +26,24 @@ const SAMPLE_UNKNOWN_SLOT: i64 = 9999;
 /// These are the values the production paths build, constructed directly.
 #[must_use]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let mut samples = configuration();
+    samples.extend(runtime());
+    samples.extend(migration());
+    for (label, value) in [
+        ("invalid pool number", "not-a-number"),
+        ("invalid pool budget", "0"),
+    ] {
+        let env = af_core::env::MapEnv::from_pairs([("DATABASE_POOL_SIZE", value)]);
+        samples.extend(
+            crate::config::PoolSettings::resolve(&env, DbRole::Api, PoolOverrides::default())
+                .err()
+                .map(|error| (label, error)),
+        );
+    }
+    samples
+}
+
+fn configuration() -> Vec<(&'static str, Error)> {
     vec![
         (
             "missing url",
@@ -49,6 +67,11 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             }),
         ),
         ("invalid bool knob", invalid_bool_knob("MIGRATE_ON_START")),
+    ]
+}
+
+fn runtime() -> Vec<(&'static str, Error)> {
+    vec![
         (
             "pool capacity",
             Error::new(ErrorKind::PoolCapacity {
@@ -76,6 +99,11 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "query",
             query("migrate.read_ledger", sqlx::Error::PoolClosed),
         ),
+    ]
+}
+
+fn migration() -> Vec<(&'static str, Error)> {
+    vec![
         (
             "migration failed",
             Error::new(ErrorKind::MigrationFailed {

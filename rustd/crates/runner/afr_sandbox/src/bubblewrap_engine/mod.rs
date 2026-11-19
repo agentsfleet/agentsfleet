@@ -313,6 +313,10 @@ impl Sandbox for Bubblewrapped {
         settle(self.parts.freezer(), Freezer::freeze).await
     }
 
+    async fn recovery_quiescent(&self) -> Result<bool> {
+        self.parts.tenant_empty()
+    }
+
     async fn thaw(&self) -> Result<()> {
         settle(self.parts.freezer(), Freezer::thaw).await
     }

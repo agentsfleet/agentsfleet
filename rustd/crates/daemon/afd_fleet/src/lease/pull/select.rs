@@ -19,7 +19,7 @@ impl LeaseService {
     /// Preserves selection, policy, billing and durable issue failures.
     pub async fn claim_fleet_with<T, F>(
         &self,
-        request: OfferRequest<'_>,
+        request: &mut OfferRequest<'_>,
         ticket: Option<Ticket>,
         clock: &mut VerbClock<OfferStage>,
         mut emit: F,
@@ -36,7 +36,15 @@ impl LeaseService {
             );
             return Ok(None);
         }
-        let Some(acquired) = self.leases.select(request.runner, request.held).await? else {
+        let Some(acquired) = self
+            .leases
+            .select_ordered(
+                request.runner,
+                request.held,
+                request.recovery.as_deref_mut(),
+            )
+            .await?
+        else {
             no_work(request.runner, "no leasable work");
             return Ok(None);
         };

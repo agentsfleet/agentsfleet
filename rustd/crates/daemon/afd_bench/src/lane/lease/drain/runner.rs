@@ -109,7 +109,7 @@ impl Tally {
 pub(super) async fn drive(
     mut session: Session,
     shared: &Shared,
-    mut generations: tokio::sync::watch::Receiver<u64>,
+    mut generations: tokio::sync::watch::Receiver<afd_bus::wake::Generation>,
 ) -> Result<(Tally, Session)> {
     let mut tally = Tally::new()?;
     let abort = shared.abort.token();

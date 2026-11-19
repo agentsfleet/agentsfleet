@@ -1,10 +1,11 @@
 //! Claim a slot and its exact oldest unsettled admission in one transaction.
 
 use af_core::id::Uuid7;
-use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
+
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
 use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 
 use super::{MAX_CANDIDATES_PER_POLL, PollCost, started};
@@ -13,6 +14,7 @@ use crate::lease::affinity::{self, Fence};
 use crate::lease::envelope::{Acquired, HeadKind, Kind, Opened};
 use crate::lease::event::{Delivery, Received};
 use crate::lease::installed::FleetWithSession;
+use crate::lease::offer::{RecoveryKey, RecoveryScan};
 use crate::lease::sql::{self, queue};
 use crate::lease::store::Leases;
 use afd_credential::provider::cache::PlatformKeyKey;
@@ -23,6 +25,7 @@ const CONTEXT: &str = "admissions ledger claim";
 /// The admission row whose slot and fence the transaction just won.
 #[derive(Debug, sqlx::FromRow)]
 struct Admission {
+    predecessor_lease_id: Option<Uuid7>,
     event_id: Uuid7,
     workspace_id: Uuid7,
     actor: String,
@@ -70,15 +73,23 @@ struct OpenedRow {
     tasked: bool,
 }
 
+#[derive(sqlx::FromRow)]
+struct Candidate {
+    fleet_id: Uuid7,
+    admission_id: Uuid7,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    event_created_at: Timestamp,
+}
+
 impl Leases {
     /// A bounded candidate scan followed by atomic slot-and-head claims.
     pub(super) async fn ledger_counted(
         &self,
         runner: &Uuid7,
         held: &[Uuid7],
+        recovery: Option<&mut RecoveryScan>,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        let recovery = self.wake().recovery();
         let hint = if recovery.is_some() {
             None
         } else {
@@ -86,11 +97,12 @@ impl Leases {
         };
         let held: Vec<&Uuid7> = held.iter().collect();
         let mut connection = self.pool().acquire().await?;
-        let candidates: Vec<Uuid7> = sqlx::query_scalar(queue::SELECT_CANDIDATES)
+        let after = recovery.as_ref().and_then(|scan| scan.after.as_ref());
+        let candidates: Vec<Candidate> = sqlx::query_as(queue::SELECT_CANDIDATES)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(runner)
             .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(&held)
             .bind(hint.as_ref())
@@ -99,20 +111,29 @@ impl Leases {
             .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
             .bind(recovery.is_some())
+            .bind(after.map(|key| key.created.to_sqlx()))
+            .bind(after.map(|key| &key.admission))
+            .bind(self.checkpoint_resume_enabled())
             .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
         cost.candidates_scanned = u64::try_from(candidates.len()).unwrap_or(u64::MAX);
-        for fleet in candidates {
-            if let Some(acquired) = self.ledger_claim(&mut connection, &fleet, runner).await? {
-                if let Some(recovery) = recovery {
-                    self.wake().recovered(recovery);
+        for candidate in &candidates {
+            if let Some(acquired) = self
+                .ledger_claim(&mut connection, &candidate.fleet_id, runner)
+                .await?
+            {
+                if let Some(scan) = recovery {
+                    record_claim(scan);
                 }
                 producers::fleet::run_started(started(acquired.kind));
                 affinity::count_resumed(&acquired);
                 return Ok(Some(acquired));
             }
+        }
+        if let Some(scan) = recovery {
+            record_page_end(scan, candidates);
         }
         Ok(None)
     }
@@ -128,8 +149,8 @@ impl Leases {
         let row: Option<Admission> = sqlx::query_as(queue::CLAIM_HEAD)
             .bind(fleet)
             .bind(runner)
-            .bind(LEASE_TTL)
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock().ttl())
+            .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_EXPIRED)
@@ -140,6 +161,7 @@ impl Leases {
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(af_core::event::status::RECEIVED)
             .bind(afd_admission::Producer::Steer.as_str())
+            .bind(self.checkpoint_resume_enabled())
             .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_optional(&mut *transaction)
             .await
@@ -158,6 +180,29 @@ impl Leases {
     }
 }
 
+fn record_claim(scan: &mut RecoveryScan) {
+    if scan.after.is_some() {
+        scan.claims_after_skip += 1;
+        if scan.claims_after_skip >= MAX_CANDIDATES_PER_POLL {
+            *scan = RecoveryScan::default();
+        }
+    }
+}
+
+fn record_page_end(scan: &mut RecoveryScan, mut candidates: Vec<Candidate>) {
+    if candidates.len() == MAX_CANDIDATES_PER_POLL
+        && let Some(last) = candidates.pop()
+    {
+        scan.after = Some(RecoveryKey {
+            created: last.event_created_at,
+            admission: last.admission_id,
+        });
+        scan.deferred = true;
+    } else {
+        *scan = RecoveryScan::default();
+    }
+}
+
 impl Admission {
     /// Build the same downstream envelope from the committed ledger payload.
     fn acquired(self, fleet: &Uuid7, runner: &Uuid7) -> Acquired {
@@ -170,10 +215,10 @@ impl Admission {
         };
         // A false `inserted` is the insert's conflict arm: the row was already
         // there, and its stored status says whether it is still running.
+        let delivery = self.opened.delivery();
         let OpenedRow {
             inserted,
             opened_at,
-            event_status,
             event_count,
             budget_used_nanos,
             catalogue_version,
@@ -181,17 +226,11 @@ impl Admission {
             platform_secret_digest,
             inputs_waiting,
             tasked,
+            ..
         } = self.opened;
         let platform_key = platform_secret_id
             .zip(platform_secret_digest)
             .map(|(secret, digest)| PlatformKeyKey::observed(catalogue_version, secret, digest));
-        let delivery = if inserted {
-            Delivery::First
-        } else if event_status == af_core::event::status::RECEIVED {
-            Delivery::Repeat
-        } else {
-            Delivery::Terminal
-        };
         let opened = Opened {
             received: Received {
                 delivery,
@@ -217,6 +256,7 @@ impl Admission {
             setup: self.setup,
         };
         Acquired {
+            predecessor_lease_id: self.predecessor_lease_id,
             fleet_id: fleet.clone(),
             fence: Fence::from_i64(self.fencing_token),
             leased_until: self.lease_expires_at,
@@ -231,6 +271,18 @@ impl Admission {
             redelivered: self.redelivered,
             earlier_leases: self.earlier_leases,
             opened,
+        }
+    }
+}
+
+impl OpenedRow {
+    fn delivery(&self) -> Delivery {
+        if self.inserted {
+            Delivery::First
+        } else if self.event_status == af_core::event::status::RECEIVED {
+            Delivery::Repeat
+        } else {
+            Delivery::Terminal
         }
     }
 }

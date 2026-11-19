@@ -107,6 +107,50 @@ impl Fixture {
         .await;
     }
 
+    /// A hold is a slot deadline, independent of the preceding lease's status.
+    pub(super) async fn hold(&self, until: Timestamp) -> Uuid7 {
+        use jiff_sqlx::ToSqlx as _;
+        let mut connection = self.owner.acquire().await.expect("hold seed connection");
+        let fleet = mint_id();
+        FleetSeed::new(
+            &fleet,
+            &self.workspace,
+            &self.tenant,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
+        )
+        .name("Hold capacity")
+        .insert(&mut *connection)
+        .await
+        .expect("seed a fleet distinct from the live lease");
+        sqlx::query(
+            "INSERT INTO runner.slots \
+             (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, \
+              hold_expires_at, created_at, updated_at) \
+             VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now())",
+        )
+        .bind(&fleet)
+        .bind(&self.runner)
+        .bind(until.to_sqlx())
+        .execute(&mut *connection)
+        .await
+        .expect("seed this fleet's hold");
+        fleet
+    }
+
+    pub(super) async fn capacity(
+        &self,
+        claimant: afd_runner::capacity::Claimant<'_>,
+    ) -> afd_runner::capacity::Capacity {
+        let mut connection = self.db.acquire().await.expect("capacity connection");
+        let mut tx = connection.begin().await.expect("capacity transaction");
+        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, claimant, None)
+            .await
+            .expect("locked census")
+            .expect("seeded host exists");
+        tx.rollback().await.expect("release capacity lock");
+        capacity
+    }
+
     /// Moves this host's runtime lease to lapse `after` from now on the
     /// database clock, the clock the census compares against.
     pub(super) async fn lapse_runtime_in(&self, after: Duration) {
@@ -127,10 +171,15 @@ impl Fixture {
     pub(super) async fn try_claim(&self) -> bool {
         let mut connection = self.db.acquire().await.expect("claim connection");
         let mut tx = connection.begin().await.expect("claim transaction");
-        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, None)
-            .await
-            .expect("lock host")
-            .expect("isolated host exists");
+        let capacity = afd_runner::capacity::lock(
+            &mut tx,
+            &self.runner,
+            afd_runner::capacity::Claimant::Authoring,
+            None,
+        )
+        .await
+        .expect("lock host")
+        .expect("isolated host exists");
         let accepted = capacity.can_claim();
         if accepted {
             self.authoring(&mut tx, clock::after(capacity.now(), LIVE_FOR))

@@ -134,3 +134,21 @@ fn receipt_peer(
         )
     })
 }
+
+#[test]
+fn the_debug_view_counts_retained_receipts_without_printing_them() -> crate::Result<()> {
+    let pending = PendingDecisions::default();
+    assert_eq!(
+        format!("{pending:?}"),
+        "PendingDecisions { pending: 0, .. }"
+    );
+    let _retained = pending.retain(
+        Uuid7::parse("019f0000-0000-7000-8000-000000000001")?,
+        receipt(),
+    )?;
+    assert_eq!(
+        format!("{pending:?}"),
+        "PendingDecisions { pending: 1, .. }"
+    );
+    Ok(())
+}

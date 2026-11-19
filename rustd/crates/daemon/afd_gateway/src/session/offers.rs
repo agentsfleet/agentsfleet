@@ -8,15 +8,34 @@ use crate::{
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use tokio::{sync::oneshot, time::Instant};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OfferMode {
+    Ordinary,
+    Recovery,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OfferOutcome {
+    Issued,
+    Empty,
+    Deferred,
+}
+
+#[derive(Debug)]
+pub(crate) struct ClaimRequest {
+    pub(crate) mode: OfferMode,
+    pub(crate) reply: oneshot::Sender<OfferOutcome>,
+}
+
 pub(super) enum OfferTrigger {
     Ready,
-    Pass(oneshot::Sender<bool>),
+    Pass(ClaimRequest),
 }
 
 impl SessionHandle {
-    pub(crate) async fn claim(&self) -> Result<bool> {
+    pub(crate) async fn claim(&self, mode: OfferMode) -> Result<OfferOutcome> {
         if self.stop.is_cancelled() || self.drain.is_cancelled() || self.superseded.is_cancelled() {
-            return Ok(false);
+            return Ok(OfferOutcome::Empty);
         }
         let (reply, answer) = oneshot::channel();
         within(
@@ -24,7 +43,10 @@ impl SessionHandle {
             Instant::now() + STREAM_ANSWER_TIMEOUT,
             Operation::Offer,
             async {
-                self.claims.send(reply).await.map_err(closed_send)?;
+                self.claims
+                    .send(ClaimRequest { mode, reply })
+                    .await
+                    .map_err(closed_send)?;
                 Ok(answer.await?)
             },
         )

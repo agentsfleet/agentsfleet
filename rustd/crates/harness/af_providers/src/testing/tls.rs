@@ -55,3 +55,16 @@ pub fn client(root: reqwest::Certificate, address: SocketAddr) -> io::Result<req
         .build()
         .map_err(io::Error::other)
 }
+
+/// A separate fixture process trusts the same public issuer as its parent.
+///
+/// # Errors
+/// Preserves file, certificate and client construction failures.
+pub fn client_from_file(
+    root: &std::path::Path,
+    address: SocketAddr,
+) -> io::Result<reqwest::Client> {
+    let bytes = std::fs::read(root)?;
+    let certificate = reqwest::Certificate::from_pem(&bytes).map_err(io::Error::other)?;
+    client(certificate, address)
+}

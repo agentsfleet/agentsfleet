@@ -45,6 +45,7 @@ impl KeysetCursor {
 /// One operator list row. Authentication material is unrepresentable here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunnerItem {
+    cordon: Option<afd_api_wire::operator::RunnerCordon>,
     /// Canonical runner identifier.
     id: Uuid7,
     /// The tenant that registered this runner; `None` for a platform runner.
@@ -74,6 +75,12 @@ pub struct RunnerItem {
 }
 
 impl RunnerItem {
+    /// Automatic quarantine, independent of the operator's status.
+    #[must_use]
+    pub const fn cordon(&self) -> Option<&afd_api_wire::operator::RunnerCordon> {
+        self.cordon.as_ref()
+    }
+
     /// Canonical runner identifier.
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {

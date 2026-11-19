@@ -19,7 +19,7 @@ use tokio::time::Instant;
 use af_core::test_util::trace::Capture;
 use tokio_util::sync::CancellationToken;
 
-use super::{EVENT_FAILED, Sweep, Swept, run};
+use super::{EVENT_FAILED, Sweep, Swept, run, run_starting_in};
 use crate::error::{Result, query};
 
 /// A sweeper that records how often it ran and answers what it was told to.
@@ -29,6 +29,7 @@ struct Counting {
     passes: AtomicU64,
     /// Whether each pass fails.
     fails: bool,
+    adaptive: bool,
 }
 
 impl Counting {
@@ -37,6 +38,7 @@ impl Counting {
         Arc::new(Self {
             passes: AtomicU64::new(0),
             fails,
+            adaptive: false,
         })
     }
 
@@ -55,7 +57,11 @@ impl Sweep for Arc<Counting> {
     /// costs nothing, and an hour is long enough that a loop which waited it
     /// out instead of selecting against cancellation shows on that clock.
     fn interval(&self) -> Duration {
-        INTERVAL
+        if self.adaptive && self.passes() == 1 {
+            Duration::from_secs(60)
+        } else {
+            INTERVAL
+        }
     }
 
     fn sweep(&self) -> impl Future<Output = Result<Swept>> + Send {
@@ -86,6 +92,49 @@ const INTERVAL: Duration = Duration::from_hours(1);
 /// Twelve intervals and a half: enough passes that one failed pass stopping
 /// the loop shows as a count of one.
 const SEVERAL_INTERVALS: Duration = Duration::from_mins(12 * 60 + 30);
+
+#[tokio::test(start_paused = true)]
+async fn a_staggered_first_pass_keeps_the_subsequent_cadence() {
+    let sweeper = Counting::new(false);
+    let token = CancellationToken::new();
+    let task = tokio::spawn(run_starting_in(
+        Arc::clone(&sweeper),
+        token.clone(),
+        Duration::from_secs(5),
+    ));
+    tokio::task::yield_now().await;
+    tokio::time::advance(Duration::from_secs(4)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 0);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    tokio::time::advance(INTERVAL.saturating_sub(Duration::from_secs(1))).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 2);
+    token.cancel();
+    task.await.expect(CANCELLED_RETURNS);
+}
+
+#[tokio::test(start_paused = true)]
+async fn startup_staggering_cannot_delay_the_first_pass_beyond_its_cadence() {
+    let sweeper = Counting::new(false);
+    let token = CancellationToken::new();
+    let task = tokio::spawn(run_starting_in(
+        Arc::clone(&sweeper),
+        token.clone(),
+        INTERVAL * 2,
+    ));
+    tokio::task::yield_now().await;
+    tokio::time::advance(INTERVAL).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    token.cancel();
+    task.await.expect(CANCELLED_RETURNS);
+}
 
 #[tokio::test(start_paused = true)]
 async fn a_cancelled_sweeper_stops_without_waiting_out_its_interval() {
@@ -160,4 +209,45 @@ async fn a_failed_sweep_reason_carries_no_code_prefix() {
         assert_eq!(line.field("error"), None, "the reason moved to `reason`");
         assert_eq!(line.field("sweeper"), Some("counting"));
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_completed_pass_changes_the_immediately_following_wait() {
+    let sweeper = Arc::new(Counting {
+        passes: AtomicU64::new(0),
+        fails: false,
+        adaptive: true,
+    });
+    let token = CancellationToken::new();
+    let task = tokio::spawn(run_starting_in(
+        Arc::clone(&sweeper),
+        token.clone(),
+        Duration::from_secs(5),
+    ));
+    tokio::task::yield_now().await;
+    tokio::time::advance(Duration::from_secs(5)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    tokio::time::advance(Duration::from_secs(59)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 1);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(
+        sweeper.passes(),
+        2,
+        "the first backlog waits one minute rather than another hour"
+    );
+    tokio::time::advance(Duration::from_secs(3599)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(
+        sweeper.passes(),
+        2,
+        "a drained pass restores the hourly wait immediately"
+    );
+    tokio::time::advance(Duration::from_secs(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(sweeper.passes(), 3);
+    token.cancel();
+    task.await.expect(CANCELLED_RETURNS);
 }

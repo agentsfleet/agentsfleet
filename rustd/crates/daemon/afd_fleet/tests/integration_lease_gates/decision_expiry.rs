@@ -101,11 +101,16 @@ async fn expire_while_blocked(
         }
         tokio::task::yield_now().await;
     }
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=date_trunc('milliseconds', clock_timestamp())+$2::interval WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.slots SET lease_expires_at=date_trunc('milliseconds', clock_timestamp())+$2::interval WHERE fleet_id=$1")
         .bind(fleet).bind(EXPIRY_GRACE).execute(&mut *probe).await.expect("expire after the issue-time capacity read");
     loop {
-        let expired: bool = sqlx::query_scalar("SELECT lease_expires_at <= clock_timestamp() FROM runner.fleet_slots WHERE fleet_id=$1")
-            .bind(fleet).fetch_one(&mut *probe).await.expect("observe actual database expiry");
+        let expired: bool = sqlx::query_scalar(
+            "SELECT lease_expires_at <= clock_timestamp() FROM runner.slots WHERE fleet_id=$1",
+        )
+        .bind(fleet)
+        .fetch_one(&mut *probe)
+        .await
+        .expect("observe actual database expiry");
         if expired {
             break;
         }

@@ -50,7 +50,7 @@ impl PendingDecisions {
         call: &Uuid7,
         input: &DecisionReceiptInput,
     ) -> Result<DecisionReceiptResult> {
-        let result = until_acknowledged(halt, || async {
+        let result = until_acknowledged(halt, plane.runtime, || async {
             let result = plane.task_decision_record(lease, call, input).await?;
             if result.call_id != call.as_str() {
                 return Err(error::config(

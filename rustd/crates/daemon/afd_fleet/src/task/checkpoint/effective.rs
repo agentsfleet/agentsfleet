@@ -160,3 +160,7 @@ impl Tree {
         Ok(resolved)
     }
 }
+
+#[cfg(test)]
+#[path = "effective_tests.rs"]
+mod tests;

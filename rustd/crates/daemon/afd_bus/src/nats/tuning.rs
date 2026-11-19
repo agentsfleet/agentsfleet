@@ -1,5 +1,6 @@
-//! Every NATS adapter limit in one deserialisable value, so a configuration
-//! file can set any of them; an absent field keeps its default.
+//! Every NATS adapter limit in one validated value. Deployments run the
+//! defaults: the daemon profile's `[nats]` section exposes none of them, and
+//! only tests replace them through `Config::with_tuning`.
 
 use std::time::Duration;
 

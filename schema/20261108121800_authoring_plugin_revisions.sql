@@ -2,7 +2,6 @@
 -- rather than a reference-counted sweep.
 CREATE TABLE authoring.plugin_revisions (
     id                UUID PRIMARY KEY,
-    CONSTRAINT ck_plugin_revisions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     plugin_entry_id  UUID   NOT NULL REFERENCES authoring.plugin_entries(id) ON DELETE CASCADE,
     revision          BIGINT NOT NULL,
     definition        JSONB  NOT NULL,

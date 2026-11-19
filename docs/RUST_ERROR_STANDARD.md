@@ -137,6 +137,7 @@ property their row names.
 | Crate | Owns an `Error` | Hull | Notes |
 |---|---|---|---|
 | `af_core` | ✅ | `error_shell!` + `error_lifts!` | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS. Also DECLARES both macros |
+| `af_config` | ✅ | `error_shell!` | Generic loading faults carry the file path with typed I/O, TOML and garde sources. Contextual errors are raised where their path and field are known. The daemon maps their safe display into its startup refusal. |
 | `af_crypto`, `afd_bus`, `afd_mail`, `afd_tenant` | ✅ | `error_shell!` + `error_lifts!` | same shape; each foreign source lifts through the macro |
 | `afd_db` | ✅ | `error_shell!` | same shape; composes no foreign error through `From` |
 | `afd_fleet` | ✅ | `error_shell!` + `error_lifts!` | same shape; its sources lift through the macro in `error/lift.rs` |

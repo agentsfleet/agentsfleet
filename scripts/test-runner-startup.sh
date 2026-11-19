@@ -89,7 +89,9 @@ cleanup() {
 trap cleanup EXIT
 cp "$BINARY" "$WORK/agentsfleet-runner"
 cp "$0" "$WORK/startup.sh"
+cp "$(dirname "$TEMPLATE")/agentsfleet-runner.toml" "$WORK/agentsfleet-runner.toml"
 chmod 755 "$WORK" "$WORK/agentsfleet-runner" "$WORK/startup.sh"
+chmod 644 "$WORK/agentsfleet-runner.toml"
 printf 'Startup host: '
 cat /etc/os-release
 systemctl --version | head -1
@@ -129,6 +131,7 @@ EnvironmentFile=
 Environment=AGENTSFLEET_API_URL=http://127.0.0.1:9
 Environment=AGENTSFLEET_RUNNER_STREAM_URL=https://localhost:9
 Environment=AGENTSFLEET_RUNNER_TOKEN=agt_r_startup_suite
+Environment=AGENTSFLEET_RUNNER_CONFIG_FILE=$WORK/agentsfleet-runner.toml
 Environment=RUNNER_STORAGE_HOME=$STORAGE
 Environment=HOME=/run/$NAME
 RuntimeDirectory=

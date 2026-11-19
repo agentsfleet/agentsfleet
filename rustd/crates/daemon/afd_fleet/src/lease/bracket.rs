@@ -94,6 +94,22 @@ fn unreadable(acquired: &Acquired) -> Option<Cow<'static, str>> {
 }
 
 impl Leases {
+    /// One best-effort announcement after a replacement issue commits.
+    pub(crate) async fn publish_restarted(
+        &self,
+        acquired: &Acquired,
+        issued: &crate::lease::Issued,
+    ) {
+        let frame = TailFrame::RunRestarted {
+            event_id: Cow::Borrowed(acquired.event_id.as_str()),
+            fencing_token: Cow::Owned(acquired.fence.as_i64().to_string()),
+            restarted_at: issued.created_at,
+        };
+        let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+        let publication = self.streams().publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
+    }
+
     /// Announce that `acquired`'s narrative log opened, stamped `opened_at`:
     /// the row's own `created_at`, which for a steer is its admission instant.
     ///
@@ -160,6 +176,7 @@ mod tests {
     /// A leased event raised by `actor` with the body `request_json`.
     fn leased(actor: &str, request_json: &str) -> Acquired {
         Acquired {
+            predecessor_lease_id: None,
             actor: actor.to_owned(),
             request_json: request_json.to_owned(),
             ..test_dead::acquired()

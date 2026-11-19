@@ -15,7 +15,6 @@ use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
 use af_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_db::test_util::unreachable_db;
 use afd_fleet::lease::LeaseService;
 use afd_memory::Memories;
 
@@ -233,9 +232,11 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_failed_capture_still_settles() {
     let held = held().await;
+    let (entropy, fault) = Entropy::new_mocked();
+    fault.fail_next();
     let forgetful = LeaseService {
         task_reports: None,
-        memories: Memories::new(unreachable_db(), Entropy::new()),
+        memories: Memories::new(held.fixtures.database.clone(), entropy),
         ..held.fixtures.plane()
     };
     let log = Capture::install();

@@ -8,21 +8,22 @@ WITH fleet AS MATERIALIZED (
     -- below is never written, so a foreign claim changes nothing.
     AND (placed.platform_owned OR placed.tenant_id = f.tenant_id)
 ), locked_slot AS MATERIALIZED (
-  SELECT s.fleet_id FROM runner.fleet_slots s
+  SELECT s.fleet_id FROM runner.slots s
   WHERE s.fleet_id = $1
   FOR UPDATE OF s SKIP LOCKED
 ), instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM locked_slot) locked
 ), slot AS (
-  INSERT INTO runner.fleet_slots AS s
-    (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+  INSERT INTO runner.slots AS s
+    (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
      created_at, updated_at)
-  SELECT $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
+  SELECT $1, $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
   FROM instant
   WHERE EXISTS (SELECT 1 FROM fleet)
+    AND EXISTS (SELECT 1 FROM runner.runners host WHERE host.id = $2 AND host.cordon_reason IS NULL)
     AND (EXISTS (SELECT 1 FROM locked_slot)
-         OR NOT EXISTS (SELECT 1 FROM runner.fleet_slots WHERE fleet_id = $1))
-  ON CONFLICT (fleet_id) DO UPDATE
+         OR NOT EXISTS (SELECT 1 FROM runner.slots WHERE fleet_id = $1))
+  ON CONFLICT (id) DO UPDATE
     SET last_runner_id = EXCLUDED.last_runner_id,
         fencing_token = s.fencing_token + 1,
         lease_expires_at = clock_timestamp() + $3::interval,
@@ -46,7 +47,7 @@ WITH fleet AS MATERIALIZED (
   JOIN fleet f ON f.id = a.fleet_id AND f.workspace_id = a.workspace_id
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
   JOIN runner.runners host ON host.id = $2
-  WHERE a.fleet_id = $1 AND a.settled_at IS NULL
+  WHERE a.fleet_id = $1 AND a.settled_at IS NULL AND host.cordon_reason IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR EXISTS (
@@ -71,12 +72,16 @@ WITH fleet AS MATERIALIZED (
       AND r.id = COALESCE(
         (SELECT t.accepted_revision_id FROM fleet.tasks t WHERE t.id = h.task_id AND t.fleet_id = f.id),
         f.head_revision_id)
-      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $15::text)
+      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $16::text)
 ), locked AS (
   SELECT a.id FROM fleet.admissions a
   JOIN head h ON h.id = a.id
   CROSS JOIN slot
   WHERE a.settled_at IS NULL
+    AND ($15::boolean OR a.task_id IS NOT NULL OR NOT EXISTS (
+      SELECT 1 FROM runner.turn_recovery recovery
+      WHERE recovery.event_id = a.id AND recovery.head_turn_checkpoint_id IS NOT NULL
+    ))
   FOR UPDATE OF a SKIP LOCKED
 ), stamped AS (
   UPDATE fleet.admissions a
@@ -163,7 +168,7 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        a.request_json, a.event_created_at, a.redelivered,
        slot.fencing_token, slot.lease_expires_at,
        COALESCE(slot.held, false) AS held, slot.holder,
-       b.id IS NOT NULL AS reclaimed,
+       b.id AS predecessor_lease_id, b.id IS NOT NULL AS reclaimed,
        -- The leases this event was issued before this claim. A report settles
        -- its admission, so each one is a run that lapsed without reporting.
        (SELECT count(*) FROM runner.leases x

@@ -3,6 +3,39 @@
 use super::*;
 
 #[tokio::test(start_paused = true)]
+async fn configured_stream_silence_and_an_earlier_turn_deadline_both_stop_reads() {
+    let settings = garde::Unvalidated::new(crate::TimeoutSettings {
+        connect_timeout_seconds: 1,
+        stream_idle_timeout_seconds: 2,
+    })
+    .validate()
+    .unwrap();
+    let timeouts = crate::Timeouts::new(&settings);
+    assert_eq!(timeouts.connect(), Duration::from_secs(1));
+    for absolute in [None, Some(Duration::from_secs(1))] {
+        let (_tx, body) = channel();
+        let started = Instant::now();
+        let (mut turn, physical) = open(
+            body,
+            TurnControl {
+                timeouts,
+                deadline: absolute.map(|duration| started + duration),
+                ..TurnControl::default()
+            },
+        );
+        assert!(matches!(
+            turn.next().await,
+            Some(Err(FailureCause::Deadline))
+        ));
+        assert_eq!(
+            started.elapsed(),
+            absolute.unwrap_or(Duration::from_secs(2))
+        );
+        assert_eq!(physical.sends.load(Ordering::Relaxed), 1);
+    }
+}
+
+#[tokio::test(start_paused = true)]
 async fn cancelled_next_poll_preserves_the_original_inactivity_deadline() {
     let (_tx, body) = channel();
     let started = Instant::now();

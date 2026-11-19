@@ -233,6 +233,7 @@ check_env_file() {
 
 sync_env() {
   install -D -m 0644 "$HOST_STREAM_CA_FILE" "$UNIT_STREAM_CA_FILE"
+  install -D -m 0644 "$(dirname "${BASH_SOURCE[0]}")/agentsfleet-runner.toml" "$UNIT_CONFIG_FILE"
   install -m 0600 "$HOST_ENV_FILE" "$UNIT_ENV_FILE"
   log "Synced .env → ${UNIT_ENV_FILE}"
 }
@@ -249,6 +250,7 @@ check_deploy_inputs() {
     || die "the toolbox under $toolbox_dir is not one complete set"
   check_env_file "$env_file"
   [[ -s "${4:-$HOST_STREAM_CA_FILE}" ]] || die "missing runner stream public CA certificate"
+  [[ -s "$(dirname "${BASH_SOURCE[0]}")/agentsfleet-runner.toml" ]] || die "missing runner TOML profile"
 }
 
 # Stages the toolbox under `src` where the runner reads it at boot: under the

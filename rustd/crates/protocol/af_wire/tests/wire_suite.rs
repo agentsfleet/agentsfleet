@@ -37,6 +37,7 @@ mod strictness;
 mod task_owned;
 mod task_progress;
 mod task_validation;
+mod turn_checkpoint;
 // Declared bounds at their exact limits, the steer request's own rows, and a
 // seeded mutation corpus the parser must survive without panicking.
 #[path = "validation.rs"]

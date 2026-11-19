@@ -1,7 +1,6 @@
 -- Preassigned identities become immutable after their first complete body.
 CREATE TABLE fleet.task_checkpoint_pages (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_checkpoint_page_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     task_checkpoint_id UUID NOT NULL REFERENCES fleet.task_checkpoints (id) ON DELETE CASCADE,
     page_number INTEGER NOT NULL CHECK (page_number >= 0),
     digest TEXT,

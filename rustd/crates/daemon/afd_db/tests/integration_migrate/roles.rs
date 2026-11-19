@@ -64,7 +64,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// Every product table, the role that reaches it, and what that role may do, as
 /// the slots grant it. No row grants `TRUNCATE`. `connector.channels` grants
 /// UPDATE on its rebind columns only, which a whole-row probe does not reach.
-const GRANTS: [(&str, &str, &[Verb]); 83] = [
+const GRANTS: [(&str, &str, &[Verb]); 89] = [
     ("identity.tenants", "api_runtime", READ_WRITE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", READ_WRITE),
@@ -132,10 +132,20 @@ const GRANTS: [(&str, &str, &[Verb]); 83] = [
     ("runner.leases", "api_runtime", READ_WRITE),
     ("runner.decision_calls", "api_runtime", KEPT),
     ("runner.decision_payloads", "api_runtime", READ_WRITE),
-    ("runner.fleet_slots", "api_runtime", KEPT),
+    ("runner.slots", "api_runtime", KEPT),
     ("runner.events", "api_runtime", WRITE_ONCE),
     ("runner.lifetime_counters", "api_runtime", KEPT),
     ("runner.registration_receipts", "api_runtime", APPEND_ONLY),
+    ("runner.turn_recovery", "api_runtime", READ_WRITE),
+    ("runner.turn_checkpoints", "api_runtime", READ_WRITE),
+    ("runner.turn_checkpoint_pages", "api_runtime", READ_WRITE),
+    ("runner.turn_checkpoint_refs", "api_runtime", WRITE_ONCE),
+    ("runner.turn_checkpoint_pins", "api_runtime", READ_WRITE),
+    (
+        "runner.turn_checkpoint_operations",
+        "api_runtime",
+        WRITE_ONCE,
+    ),
     ("authoring.drafts", "api_runtime", READ_WRITE),
     ("authoring.candidates", "api_runtime", WRITE_ONCE),
     ("authoring.messages", "api_runtime", READ_WRITE),

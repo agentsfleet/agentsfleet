@@ -36,6 +36,7 @@ impl ModelCalls {
                 .invocation(&mut tx, runner, lease, counters)
                 .await?;
             capability::check(&guarded.attempt, request)?;
+            guarded.attempt.policy.admit_call(request.call_index)?;
             guard::current_model(&mut tx, &guarded).await?;
             if i64::from(request.call_index) != i64::from(guarded.attempt.call_count) + 1 {
                 return Ok(None);
@@ -90,6 +91,7 @@ impl Funding {
         };
         let route =
             af_inference::Configured::new(&self.prepared.inference, self.prepared.context_tokens)?;
+        let timeouts = physical.timeouts();
         let transport =
             af_inference::transport::HttpTransport::new(Arc::new(super::provider::Once {
                 physical,
@@ -97,6 +99,7 @@ impl Funding {
             }));
         let model = &attempt.model_snapshot.model;
         let control = af_inference::stream::TurnControl {
+            timeouts,
             correlation_id: attempt.id.to_string().into(),
             ..Default::default()
         };
@@ -125,7 +128,7 @@ impl Funding {
     fn ceiling(&self, attempt: &guard::Attempt) -> Result<i64> {
         let model = &attempt.model_snapshot;
         let input = input_hold(model, self.prepared.input_tokens)?;
-        Ok(budget::bound(model)?
+        Ok(budget::bound(model, attempt.policy)?
             .checked_add(self.spent)
             .and_then(|value| value.checked_add(input))
             .ok_or(ErrorKind::Balance)?

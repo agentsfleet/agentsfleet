@@ -3,7 +3,6 @@
 -- and are scrubbed (set NULL) at `private_expires_at` or at once on erasure.
 CREATE TABLE authoring.dispatches (
     id                  UUID PRIMARY KEY,
-    CONSTRAINT ck_dispatches_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     attempt_id          UUID    NOT NULL REFERENCES authoring.attempts(id) ON DELETE CASCADE,
     sequence            INTEGER NOT NULL,
     request_digest      TEXT    NOT NULL,

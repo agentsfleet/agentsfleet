@@ -46,6 +46,9 @@ async fn test_migrate_refuses_without_its_own_role() {
                 "the operator is told which knob to set"
             );
         }
+        MigrateFailure::Settings(error) => {
+            panic!("default public settings must validate before resolving the URL: {error}")
+        }
         MigrateFailure::Run(error) => {
             panic!("migrate must refuse before connecting, got a run failure: {error}")
         }
@@ -109,4 +112,25 @@ fn test_the_summary_names_versions_not_counts() {
         summarise(&current).contains("already current"),
         "a no-op run says so plainly"
     );
+}
+
+#[tokio::test]
+async fn migration_validates_a_selected_file_before_resolving_its_database() {
+    use std::{error::Error as _, io::Write as _};
+    let mut file = tempfile::NamedTempFile::new().expect("temporary configuration");
+    writeln!(file, "[runner.lease]\nttl_seconds = 32").expect("unsafe lease settings");
+    let environment = MapEnv::from_pairs([(
+        "AGENTSFLEET_CONFIG_FILE",
+        file.path().to_str().expect("UTF-8 fixture path"),
+    )]);
+    let failure = agentsfleetd::migrate(&environment)
+        .await
+        .expect_err("invalid public settings refuse first");
+    assert!(failure.source().is_some());
+    match failure {
+        MigrateFailure::Settings(refusal) => {
+            assert_eq!(refusal.knobs(), ["AGENTSFLEET_CONFIG_FILE"]);
+        }
+        other => panic!("expected the selected file's refusal, got {other}"),
+    }
 }

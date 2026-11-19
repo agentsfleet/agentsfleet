@@ -50,7 +50,7 @@ mod open;
 /// defaults to zero (never closed), so nothing on the pooler side reaps under
 /// this reaper; the checkout ping ([`PING_AFTER_IDLE`]) covers a backend that
 /// went away anyway.
-const IDLE_TIMEOUT: Duration = Duration::from_mins(10);
+pub(crate) const IDLE_TIMEOUT: Duration = Duration::from_mins(10);
 
 /// How long a connection sits idle before a checkout tests it.
 ///
@@ -72,7 +72,7 @@ const _: () = assert!(
 /// sqlx's default, pinned for the reason [`IDLE_TIMEOUT`] gives. Thirty
 /// minutes bounds how long a backend that a failover or a resize left behind
 /// keeps being reused.
-const MAX_LIFETIME: Duration = Duration::from_mins(30);
+pub(crate) const MAX_LIFETIME: Duration = Duration::from_mins(30);
 
 /// One role's connection pool.
 #[derive(Debug, Clone)]

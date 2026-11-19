@@ -1,4 +1,4 @@
-//! `runner.fleet_slots` — the per-fleet lease SLOT: the atomic claim, the
+//! `runner.slots` — the per-fleet lease SLOT: the atomic claim, the
 //! monotonic fencing source, and the sticky-routing hint, all on one row.
 //!
 //! The GUARANTEE is that exactly one of N racing runners wins a fleet, and the
@@ -20,8 +20,6 @@
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-#[cfg(any(test, feature = "test-util"))]
-use af_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
 #[cfg(any(test, feature = "test-util"))]
@@ -150,7 +148,7 @@ impl Leases {
             .bind(fleet_id)
             .bind(runner_id)
             .bind(ttl)
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
@@ -248,7 +246,7 @@ impl Leases {
             .bind(fleet_id)
             .bind(fence.as_i64())
             .bind(asked_hold.map(jiff_sqlx::ToSqlx::to_sqlx))
-            .bind(SANDBOX_HOLD_IDLE)
+            .bind(self.clock().sandbox_idle_hold())
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE))?;

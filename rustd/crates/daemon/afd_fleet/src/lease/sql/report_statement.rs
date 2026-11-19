@@ -53,6 +53,9 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) tool_calls: Option<&'a str>,
     pub(crate) checkpoint: &'a str,
     pub(crate) held_until: Option<Timestamp>,
+    pub(crate) sandbox_idle_hold: std::time::Duration,
+    pub(crate) host_digest: Option<&'a str>,
+    pub(crate) host_connection: Option<&'a Uuid7>,
     pub(crate) obligation_id: &'a Uuid7,
     pub(crate) obligation_receipt: &'a Uuid7,
     pub(crate) audit_id: &'a Uuid7,
@@ -97,7 +100,7 @@ impl<'a> ReportStatement<'a> {
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(self.checkpoint)
             .bind(self.held_until.map(jiff::Timestamp::to_sqlx))
-            .bind(af_core::timing::SANDBOX_HOLD_IDLE)
+            .bind(self.sandbox_idle_hold)
             .bind(self.obligation_id)
             .bind(self.obligation_receipt)
             .bind(
@@ -115,6 +118,12 @@ impl<'a> ReportStatement<'a> {
             .bind(af_wire::usage::LineKind::Runtime.as_str())
             .bind(i64::MAX)
             .bind(self.unanswered_notice)
+            .bind(self.host_digest)
+            .bind(self.host_connection)
+            .bind(
+                self.held_until
+                    .map(|_| afd_runner::capacity::renewable_states()),
+            )
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -160,6 +169,7 @@ impl<'a> ReportStatement<'a> {
 #[derive(Debug, sqlx::FromRow)]
 struct AnswerRow {
     claimed: i64,
+    accepted_hold: Option<jiff_sqlx::Timestamp>,
     lease_status: Option<String>,
     held_posture: Option<String>,
     held_provider: Option<String>,
@@ -195,6 +205,7 @@ pub(crate) enum ReportAnswer {
 /// A settled report's answers.
 #[derive(Debug)]
 pub(crate) struct SettledReport {
+    pub(crate) accepted_hold: Option<Timestamp>,
     /// Whether the lease runs a durable task, whose usage and settlement
     /// follow in the same transaction.
     pub(crate) has_task: bool,
@@ -227,6 +238,7 @@ impl ReportAnswer {
         };
         let tokens = tokens_of(&answer, lease_id);
         Ok(Self::Settled(Box::new(SettledReport {
+            accepted_hold: answer.accepted_hold.map(Into::into),
             has_task: answer.has_task.unwrap_or(false),
             closed,
             owed: answer.owed_id,

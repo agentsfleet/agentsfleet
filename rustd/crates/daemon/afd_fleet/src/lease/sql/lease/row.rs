@@ -52,6 +52,8 @@ pub const INSERT_LEASE_WITH_EVENT: &str = include_str!("insert_lease_with_event.
 /// it: the `$n` order is written ONCE, here, beside the text it orders.
 #[derive(Debug)]
 pub struct LeaseRow<'a> {
+    /// Immutable total runtime chosen when this lease is issued.
+    pub max_runtime: std::time::Duration,
     /// The lease's durable identifier.
     pub lease_id: &'a Uuid7,
     /// The runner taking the work.
@@ -137,6 +139,7 @@ impl LeaseRow<'_> {
             .bind(self.setup_revision)
             .bind(af_wire::task::CAPABILITY)
             .bind(crate::task::DECISION_POLICY_PATH)
+            .bind(i64::try_from(self.max_runtime.as_secs()).unwrap_or(i64::MAX))
             .fetch_optional(connection)
             .await
             .map_err(query(

@@ -23,6 +23,8 @@ const MAX_CACHED_SEND_GATES: u64 = 1024;
 /// Native private setup service, shared by browser and terminal chat.
 #[derive(Debug, Clone)]
 pub struct Drafts {
+    pub(crate) turn_policy: crate::turn_policy::TurnPolicy,
+    pub(crate) clock: af_core::timing::LeaseClock,
     pub(crate) database: Db,
     pub(crate) entropy: Entropy,
     pub(crate) analytics: Analytics,
@@ -38,6 +40,20 @@ pub struct Drafts {
 }
 
 impl Drafts {
+    /// Applies checked limits to newly admitted attempts; saved attempts retain their own policy.
+    #[must_use]
+    pub fn with_turn_policy(mut self, policy: crate::turn_policy::TurnPolicy) -> Self {
+        self.turn_policy = policy;
+        self
+    }
+
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
     /// Shares the daemon's pool and its `biller`; private drafts hold no
     /// provider keys.
     ///
@@ -45,6 +61,8 @@ impl Drafts {
     #[must_use]
     pub fn new(database: Db, entropy: Entropy, biller: Arc<dyn Biller>) -> Self {
         Self {
+            clock: af_core::timing::LeaseClock::default(),
+            turn_policy: crate::turn_policy::TurnPolicy::default(),
             database,
             entropy,
             analytics: Analytics::silent(),
@@ -67,13 +85,14 @@ impl Drafts {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &Uuid7,
+        claimant: afd_runner::capacity::Claimant<'_>,
         work_tenant: Option<&Uuid7>,
     ) -> Result<Option<afd_runner::capacity::Capacity>> {
         Ok(match &self.authority {
             Some(authority) => {
-                afd_runner::capacity::lock(tx, (runner, authority), work_tenant).await?
+                afd_runner::capacity::lock(tx, (runner, authority), claimant, work_tenant).await?
             }
-            None => afd_runner::capacity::lock(tx, runner, work_tenant).await?,
+            None => afd_runner::capacity::lock(tx, runner, claimant, work_tenant).await?,
         })
     }
 
@@ -85,7 +104,7 @@ impl Drafts {
     ) -> Result<()> {
         if self.authority.is_some() {
             let host = self
-                .lock_host_capacity(tx, runner, None)
+                .lock_host_capacity(tx, runner, afd_runner::capacity::Claimant::Existing, None)
                 .await?
                 .ok_or(crate::error::ErrorKind::Hidden)?;
             if !host.can_renew() {

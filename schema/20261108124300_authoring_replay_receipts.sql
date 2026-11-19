@@ -3,7 +3,6 @@
 -- a key must outlive erasure of what it created, or a late retry would create it again.
 CREATE TABLE authoring.replay_receipts (
     id              UUID PRIMARY KEY,
-    CONSTRAINT ck_replay_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id    UUID   NOT NULL,
     user_id         UUID   NOT NULL,
     scope           TEXT   NOT NULL,

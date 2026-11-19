@@ -6,9 +6,9 @@ WITH instant AS MATERIALIZED (
   FROM fleet.fleets z
   CROSS JOIN instant
   JOIN runner.runners host ON host.id = $2
-  LEFT JOIN runner.fleet_slots s ON s.fleet_id = z.id
+  LEFT JOIN runner.slots s ON s.fleet_id = z.id
   LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
-  WHERE z.status = $1
+  WHERE z.status = $1 AND host.cordon_reason IS NULL
     -- A tenant's runner takes only its tenant's work; the claim enforces it.
     AND (host.platform_owned OR host.tenant_id = z.tenant_id)
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
@@ -34,7 +34,7 @@ WITH instant AS MATERIALIZED (
         (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
          FROM runner.runners WHERE id = $2)) AS e)
 )
-SELECT z.id
+SELECT z.id AS fleet_id, head.id AS admission_id, head.event_created_at
 FROM eligible z
 JOIN LATERAL (
   SELECT a.id, a.parked_at, a.event_created_at, a.task_id
@@ -63,9 +63,13 @@ JOIN LATERAL (
       AND r.id = COALESCE(
         (SELECT t.accepted_revision_id FROM fleet.tasks t WHERE t.id = head.task_id AND t.fleet_id = z.id),
         z.head_revision_id)
-      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $13::text))
--- The independent recovery generation must reach old work even while a hot
--- fleet keeps replacing every disposable hint. Notifications retain locality.
+      AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $16::text))
+WHERE ($13::timestamptz IS NULL OR (head.event_created_at, head.id)>($13, $14::uuid))
+  AND ($15::boolean OR head.task_id IS NOT NULL OR NOT EXISTS (
+    SELECT 1 FROM runner.turn_recovery recovery
+    WHERE recovery.event_id = head.id AND recovery.head_turn_checkpoint_id IS NOT NULL
+  ))
+-- Recovery pages keep the oldest eligible head per fleet and ignore locality.
 ORDER BY CASE WHEN $12 THEN head.event_created_at END,
          CASE WHEN $12 THEN head.id END,
          CASE WHEN NOT $12 THEN z.id = ANY($6) END DESC,

@@ -23,6 +23,7 @@
 
 #[path = "config.rs"]
 mod config;
+mod config_budget;
 #[path = "config_tls.rs"]
 mod config_tls;
 #[path = "config_tls_cert_files.rs"]

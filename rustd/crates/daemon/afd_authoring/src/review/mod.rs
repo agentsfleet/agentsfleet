@@ -88,7 +88,7 @@ pub(crate) async fn build(
     let requirements = Requirements::of(&candidate.definition);
     authority::observe(connection, draft, &mut observed).await?;
     let reference = model::observe(connection, draft, candidate, &mut observed).await?;
-    wallet::observe(connection, draft, &mut observed).await?;
+    wallet::observe(setup.drafts.clock, connection, draft, &mut observed).await?;
     credentials::observe(
         setup,
         connection,

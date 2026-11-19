@@ -21,6 +21,8 @@ pub enum Operation {
     Report,
     /// Read fenced pending inputs.
     Folds,
+    /// Capture or restore ordinary event-owned recovery state.
+    TurnCheckpoint,
     /// Write and flush a complete frame.
     Write,
     /// Finish accepted requests and close the session.
@@ -40,6 +42,7 @@ impl Operation {
             Self::Activity => "activity",
             Self::Report => "report",
             Self::Folds => "folds",
+            Self::TurnCheckpoint => "turn_checkpoint",
             Self::Model => "model",
             Self::Write => "write",
             Self::Drain => "drain",
@@ -58,6 +61,7 @@ impl std::fmt::Display for Operation {
             Self::Activity => "publishing progress",
             Self::Report => "settling a report",
             Self::Folds => "reading pending inputs",
+            Self::TurnCheckpoint => "saving or restoring a turn checkpoint",
             Self::Write => "sending a response",
             Self::Model => "calling the authoring model",
             Self::Drain => "closing the runner session",

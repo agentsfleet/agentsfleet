@@ -83,3 +83,18 @@ function waitingRow(frame: AdmittedFrame, message: string): FleetEvent {
     status: AGENTSFLEET_EVENT_STATUS.QUEUED,
   };
 }
+
+// The row at `index` re-stamped with the daemon's instant, or `prev` itself
+// when the frame carried none or the row already has it.
+export function adoptInstant(
+  prev: FleetEvent[],
+  index: number,
+  existing: FleetEvent,
+  createdAt: number | null,
+): FleetEvent[] {
+  if (createdAt === null) return prev;
+  if (existing.createdAt.getTime() === createdAt && !existing.clientTimestamp) return prev;
+  const updated = [...prev];
+  updated[index] = { ...existing, createdAt: new Date(createdAt), clientTimestamp: false };
+  return updated;
+}

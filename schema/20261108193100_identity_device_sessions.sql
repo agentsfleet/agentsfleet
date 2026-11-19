@@ -2,7 +2,7 @@
 -- daemon never holds, and `verification_code_hmac` is keyed by a pepper held only in memory.
 -- Nothing deletes an expired row; every read refuses it by `expires_at`.
 CREATE TABLE identity.device_sessions (
-    id UUID PRIMARY KEY CONSTRAINT ck_device_sessions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    id UUID PRIMARY KEY,
     status TEXT NOT NULL,
     cli_public_key TEXT NOT NULL,
     token_name TEXT NOT NULL,

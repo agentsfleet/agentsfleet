@@ -3,7 +3,6 @@
 -- and the receipt must outlive it.
 CREATE TABLE authoring.activity_receipts (
     id              UUID PRIMARY KEY,
-    CONSTRAINT ck_activity_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     attempt_id      UUID   NOT NULL REFERENCES authoring.attempts(id) ON DELETE CASCADE,
     sequence        BIGINT NOT NULL,
     request_digest  TEXT   NOT NULL,

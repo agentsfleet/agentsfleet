@@ -191,7 +191,28 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
             lease_id,
             request,
         } => folds_reply(api, request_id, &lease_id, &request).await?,
+        Up::TurnCheckpoint {
+            request_id,
+            lease_id,
+            request,
+        } => checkpoint_reply(api, request_id, &lease_id, request.as_ref()).await?,
         Up::RenewBatch { request_id, leases } => renewals(api, request_id, leases).await?,
+        message @ (Up::AuthoringModel { .. }
+        | Up::AuthoringActivity { .. }
+        | Up::AuthoringRenew { .. }
+        | Up::AuthoringReport { .. }) => authoring_reply(api, message).await?,
+        Up::Ping { request_id } => json!({"type":"pong", "request_id":request_id}),
+        Up::Activity { request, .. } => return activity_reply(api, &request).await,
+        Up::Ready { .. } => return Ok(None),
+        Up::Hello { .. } | Up::Confirm { .. } => {
+            panic!("opening is tested by the native connection fixtures")
+        }
+    };
+    Ok(Some(reply))
+}
+
+async fn authoring_reply(api: &dyn RunnerApi, message: Up<'_>) -> Result<Value> {
+    Ok(match message {
         Up::AuthoringModel {
             request_id,
             lease_id,
@@ -216,14 +237,25 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
             request,
         } => json!({"type":"authoring_report_ack", "request_id":request_id,
             "lease_id":lease_id, "answer":answer(api, Verb::AuthoringReport, &request).await?}),
-        Up::Ping { request_id } => json!({"type":"pong", "request_id":request_id}),
-        Up::Activity { request, .. } => return activity_reply(api, &request).await,
-        Up::Ready { .. } => return Ok(None),
-        Up::Hello { .. } | Up::Confirm { .. } => {
-            panic!("opening is tested by the native connection fixtures")
-        }
-    };
-    Ok(Some(reply))
+        _ => panic!("an authoring reply requires an authoring request"),
+    })
+}
+
+async fn checkpoint_reply(
+    api: &dyn RunnerApi,
+    request_id: std::num::NonZeroU64,
+    lease_id: &str,
+    request: &af_wire::lease::TurnCheckpointCommand,
+) -> Result<Value> {
+    let mut reply = answer(api, Verb::TurnCheckpoint, request).await?;
+    if reply.get("response").is_some_and(Value::is_null) {
+        reply = json!({"status":"refused","error_code":af_core::error_code::RUN_CHECKPOINT_UNAVAILABLE.as_str(),
+            "detail":"This scripted peer has no durable checkpoint store.","retryable":false});
+    }
+    Ok(
+        json!({"type":"turn_checkpoint","request_id":request_id,"lease_id":lease_id,
+        "operation_id":request.operation_id,"kind":request.action.kind(),"answer":reply}),
+    )
 }
 
 async fn answer(api: &dyn RunnerApi, verb: Verb, request: &impl Serialize) -> Result<Value> {

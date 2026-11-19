@@ -205,6 +205,7 @@ impl afr_agent::Inbox for FencedVerbs<'_> {
                             .inputs
                             .into_iter()
                             .map(|input| afr_agent::Folded {
+                                event_id: input.event_id.into_owned(),
                                 sequence: input.sequence,
                                 text: input.text.into_owned(),
                             })

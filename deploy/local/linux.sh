@@ -84,6 +84,7 @@ acceptance_proxy() {
 }
 
 acceptance_runner_stream_environment() {
+  printf 'AGENTSFLEET_RUNNER_CONFIG_FILE=/etc/agentsfleet/agentsfleet-runner.toml\n'
   printf 'AGENTSFLEET_RUNNER_STREAM_URL=https://%s:%s\n' \
     "$LOCAL_ACCEPTANCE_RUNNER_STREAM_HOST" "$LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT"
   printf 'AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=/acceptance-ca.crt\n'
@@ -96,6 +97,7 @@ start_runner() {
   local args=(--init --name "$acceptance_runner_container" --privileged --cgroupns=private --network host
     --mount "type=bind,src=$DEV_ROOT/dist/acceptance/agentsfleet-runner,dst=/usr/local/bin/agentsfleet-runner,readonly"
     --mount "type=bind,src=$DEV_ROOT/deploy/local/linux-runner.sh,dst=/usr/local/bin/acceptance-runner,readonly"
+    --mount "type=bind,src=$DEV_ROOT/deploy/baremetal/agentsfleet-runner.toml,dst=/etc/agentsfleet/agentsfleet-runner.toml,readonly"
     --mount "type=bind,src=$ACCEPTANCE_LOCAL_TOOLBOX_DIR,dst=/toolbox,readonly"
     --mount "type=bind,src=$LOCAL_ACCEPTANCE_CA,dst=/acceptance-ca.crt,readonly"
     --env-file "$LOCAL_ACCEPTANCE_STATE/runner.env")

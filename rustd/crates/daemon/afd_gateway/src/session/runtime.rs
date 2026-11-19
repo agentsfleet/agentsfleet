@@ -80,17 +80,20 @@ impl ConfirmedSession {
     fn handle(
         &self,
         commands: mpsc::Sender<afd_bus::Command>,
-        claims: mpsc::Sender<tokio::sync::oneshot::Sender<bool>>,
+        claims: mpsc::Sender<super::ClaimRequest>,
     ) -> SessionHandle {
         SessionHandle {
             runner: self.runner.id().clone(),
             connection: self.authority.connection().clone(),
             stop: self.context.native.stop.clone(),
             drain: CancellationToken::new(),
-            liveness: super::liveness::Liveness::default(),
+            liveness: super::liveness::Liveness::new(
+                self.gateway.inner.dependencies.runners.heartbeat_interval(),
+            ),
             superseded: CancellationToken::new(),
             offers: Notify::new(),
             claims,
+            recovery_scan: parking_lot::Mutex::default(),
             rechecks: Notify::new(),
             commands,
             snapshot: parking_lot::Mutex::new(SchedulingState {
@@ -102,6 +105,7 @@ impl ConfirmedSession {
                 ready_revision: None,
                 held: Vec::new(),
                 last_offer: tokio::time::Instant::now(),
+                recovery_pending: None,
             }),
         }
     }
@@ -111,7 +115,9 @@ impl ConfirmedSession {
         let welcome = Message::Welcome {
             request_id: self.hello.request_id,
             connection_id: self.authority.connection().as_str().into(),
-            heartbeat_interval_ms: opening::interval_millis()?,
+            heartbeat_interval_ms: opening::interval_millis(
+                &self.gateway.inner.dependencies.runners,
+            )?,
         };
         let frame = af_stream::encode(
             &welcome,
@@ -163,6 +169,7 @@ impl SessionServices {
             cache,
             output,
             accepted,
+            checkpoint_verifications: tokio::sync::Semaphore::new(2),
             renewal_ticks: std::sync::atomic::AtomicU64::new(0),
             handle,
             gateway,

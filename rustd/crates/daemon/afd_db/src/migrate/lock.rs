@@ -60,16 +60,17 @@ impl RetryPolicy {
         interval: Duration::from_secs(1),
     };
 
-    /// A bound a test can wait out, for the contention proofs.
+    /// A bound from the profile's `[database.migration]`, or one a test can wait out.
     #[must_use]
     pub const fn new(attempts: u32, interval: Duration) -> Self {
         Self { attempts, interval }
     }
 
-    /// The longest this policy can wait, which is what the failure reports.
+    /// Planned sleep budget between polls; database request time is additional.
     #[must_use]
     pub const fn budget(&self) -> Duration {
-        self.interval.saturating_mul(self.attempts)
+        self.interval
+            .saturating_mul(self.attempts.saturating_sub(1))
     }
 }
 

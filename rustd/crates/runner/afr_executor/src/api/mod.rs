@@ -249,6 +249,14 @@ pub struct FileContent {
 /// symbolic link, is refused.
 #[async_trait::async_trait]
 pub trait Executor: Send + Sync + fmt::Debug {
+    /// Proves every previously accepted file operation has finished.
+    ///
+    /// # Errors
+    /// Unsupported or unreachable executors cannot authorize a checkpoint.
+    async fn recovery_idle(&self) -> Result<bool> {
+        Err(file_calls_unsupported())
+    }
+
     /// Starts a process and returns the channel its events arrive on.
     async fn spawn(&self, spawn: &Spawn) -> Result<Process>;
 

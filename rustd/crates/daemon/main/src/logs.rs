@@ -16,9 +16,10 @@
 //!
 //! # Why a slot rather than one subscriber built at boot
 //!
-//! The process-wide default can be set once. It is set in `main`, before a
-//! knob is read, so a preflight refusal has somewhere to go; the exporter
-//! those knobs describe is built several hundred milliseconds later. A
+//! The process-wide default can be set once. Command dispatch installs it
+//! after resolving the file overlay. The fatal renderer reaches stderr even
+//! when loading that file fails before subscriber installation. The exporter
+//! those settings describe is built several hundred milliseconds later. A
 //! reloadable layer is how the second half arrives without a second
 //! `set_global_default` — and it is what lets a deployment with no collector
 //! leave the slot empty forever, paying one `Option` per event.
@@ -115,7 +116,7 @@ pub fn signals() -> Option<&'static Signals> {
 /// Answers whether it took. `false` means something installed one first:
 /// ordinary in a test binary, a bug at boot, and in neither case a reason to
 /// refuse to serve. The slot it leaves behind is [`signals`].
-pub fn install(env: &dyn EnvSource) -> bool {
+pub fn install(env: &(impl EnvSource + ?Sized)) -> bool {
     let level = af_core::env::log_level(env, DEFAULT_LEVEL);
     let (slot, handle) = reload::Layer::new(Attached::None);
     // The slot is layered FIRST, so what it holds is a layer over the bare

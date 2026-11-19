@@ -1,3 +1,7 @@
+export enum CordonReason {
+  MissedHeartbeats = "missed_heartbeats",
+}
+
 export enum RunnerState {
   Active = "active",
   Cordoned = "cordoned",
@@ -69,6 +73,7 @@ export enum RunnerEventType {
   LeaseAcquired = "lease_acquired",
   LeaseReleased = "lease_released",
   Cordoned = "runner_cordoned",
+  Uncordoned = "runner_uncordoned",
   Draining = "runner_draining",
   Drained = "runner_drained",
   Revoked = "runner_revoked",

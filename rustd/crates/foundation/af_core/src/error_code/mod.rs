@@ -75,7 +75,7 @@ pub trait Coded: std::error::Error {
     fn logged(&self) -> Logged {
         Logged {
             error_code: self.code().as_str(),
-            reason: self.told(),
+            reason: self.told().split_whitespace().collect::<Vec<_>>().join(" "),
         }
     }
 }
@@ -88,7 +88,7 @@ pub trait Coded: std::error::Error {
 pub struct Logged {
     /// The registry code, as the `error_code` field spells it.
     pub error_code: &'static str,
-    /// [`Coded::told`]: the failure's sentence, then each cause beneath it.
+    /// [`Coded::told`] rendered as one line, retaining each cause's words.
     pub reason: String,
 }
 
@@ -251,6 +251,10 @@ pub const REGISTRY: &[ErrorCode] = &[
     RUNNER_REGISTRATION_KEY_REUSED,
     RUNNER_TENANT_MANAGED,
     RUNNER_PLACEMENT_REFUSED,
+    RUN_CHECKPOINT_INCOMPATIBLE,
+    RUN_CHECKPOINT_CONFLICT,
+    RUN_CHECKPOINT_UNAVAILABLE,
+    RUN_CHECKPOINT_LIMIT,
     AGENTSFLEET_CREDENTIAL_MISSING,
     AGENTSFLEET_NAME_EXISTS,
     AGENTSFLEET_INVALID_CONFIG,

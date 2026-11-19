@@ -1381,7 +1381,7 @@
           {
             "name": "event_type",
             "in": "query",
-            "description": "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request.",
+            "description": "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_uncordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request.",
             "required": false,
             "schema": {
               "type": "string"
@@ -8385,7 +8385,7 @@
             "schema": {
               "type": "string"
             },
-            "example": "agentsfleet.runner.v1"
+            "example": "agentsfleet.runner.v2"
           },
           {
             "name": "agentsfleet-runner-kind",
@@ -15090,7 +15090,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `task_changed`: committed `task_id` and `resource_version`. Read the task collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- `task_decision_started`, `task_decision_completed`, and `task_transfer_progress`: `event_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. Event details retain up to 128 steps in `task_activity`; `truncated` marks an incomplete history. These observations never establish task completion or expose private recovery contents.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
+        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `task_changed`: committed `task_id` and `resource_version`. Read the task collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `run_restarted`: a replacement attempt committed, with `event_id`, decimal-string `fencing_token`, and `restarted_at`. It is best-effort and may be lost.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Every attempt output includes a decimal-string `fencing_token`; discard lower attempts and reset provisional output once on a greater attempt. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- `task_decision_started`, `task_decision_completed`, and `task_transfer_progress`: `event_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. Event details retain up to 128 steps in `task_activity`; `truncated` marks an incomplete history. These observations never establish task completion or expose private recovery contents.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -22402,6 +22402,13 @@
           }
         }
       },
+      "CordonReason": {
+        "type": "string",
+        "description": "Why the daemon has stopped offering new work to an operator-active host.",
+        "enum": [
+          "missed_heartbeats"
+        ]
+      },
       "CreateDraftRequest": {
         "type": "object",
         "description": "Atomically create a private draft and optional first message.",
@@ -27352,11 +27359,29 @@
             "type": "boolean",
             "description": "True when the runner can reuse its latest held sandbox for a new event. Reassigned\nevents and expired or outdated sandboxes require a fresh sandbox."
           },
+          "setup_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Immutable setup proved and retained by the issue transaction."
+          },
           "task": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/TaskContext",
                 "description": "Native task ownership and saved recovery cursors, frozen at issuance."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turn_resume": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TurnResume",
+                "description": "Exact committed ordinary-turn state; private bytes require a fenced native read."
               },
               {
                 "type": "null"
@@ -29780,6 +29805,25 @@
         },
         "additionalProperties": false
       },
+      "RunnerCordon": {
+        "type": "object",
+        "description": "Automatic quarantine; operator status remains independently visible.",
+        "required": [
+          "reason",
+          "cordoned_at"
+        ],
+        "properties": {
+          "cordoned_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Committed quarantine instant."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CordonReason",
+            "description": "Trigger that blocks new work."
+          }
+        }
+      },
       "RunnerDetail": {
         "allOf": [
           {
@@ -29903,6 +29947,7 @@
           "lease_acquired",
           "lease_released",
           "runner_cordoned",
+          "runner_uncordoned",
           "runner_draining",
           "runner_drained",
           "runner_revoked",
@@ -29970,6 +30015,17 @@
           "assigned_policy": {
             "$ref": "#/components/schemas/AssignedPolicy",
             "description": "Policy currently assigned to the host."
+          },
+          "cordon": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunnerCordon",
+                "description": "Automatic quarantine; absent when the daemon permits new work."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "type": "string",
@@ -33154,6 +33210,127 @@
             "description": "The event's message, as `event::message_of` reads it."
           }
         }
+      },
+      "TurnId": {
+        "type": "string",
+        "description": "A canonical stored identifier; domain code converts it once to its native UUID type."
+      },
+      "TurnResume": {
+        "type": "object",
+        "description": "Offers carry only this descriptor. A fenced read supplies private state and a pin.",
+        "required": [
+          "checkpoint_id",
+          "generation",
+          "format_version",
+          "scope",
+          "manifest_root",
+          "history_digest"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "$ref": "#/components/schemas/TurnId",
+            "description": "Immutable event-owned generation identity."
+          },
+          "format_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Unsupported formats refuse before any model or tool call.",
+            "minimum": 0
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Allocated monotonically, including failed and retired generations.",
+            "minimum": 0
+          },
+          "history_digest": {
+            "type": "string",
+            "description": "Digest of the exact root bytes returned by the native reader."
+          },
+          "manifest_root": {
+            "type": "string",
+            "description": "Digest of the complete ordered manifest."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/TurnScope",
+            "description": "Scope and setup the frozen files and private root authenticate."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TurnScope": {
+        "type": "object",
+        "description": "Immutable compatibility witnesses from the issued lease and its capture owner.",
+        "required": [
+          "workspace_id",
+          "fleet_id",
+          "event_id",
+          "setup_revision_id",
+          "workspace"
+        ],
+        "properties": {
+          "event_id": {
+            "$ref": "#/components/schemas/TurnId",
+            "description": "Stable root event across every replacement lease."
+          },
+          "fleet_id": {
+            "$ref": "#/components/schemas/TurnId",
+            "description": "Fleet owning the stable event."
+          },
+          "setup_revision_id": {
+            "$ref": "#/components/schemas/TurnId",
+            "description": "Setup frozen during lease issuance, independent of the later fleet head."
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/TurnWorkspace",
+            "description": "API-only or complete files; a building workspace has no saved variant."
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/TurnId",
+            "description": "Workspace containing the event and encrypted objects."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TurnWorkspace": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "No sandbox was needed or built for this run.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "api_only"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A complete supported workspace captured under this toolbox.",
+            "required": [
+              "toolbox_digest",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "files"
+                ]
+              },
+              "toolbox_digest": {
+                "type": "string",
+                "description": "Verified host-local toolbox; its bytes are excluded from the snapshot."
+              }
+            }
+          }
+        ],
+        "description": "An API-only run explicitly owns no workspace files."
       },
       "UpdateModelEntryRequest": {
         "type": "object",

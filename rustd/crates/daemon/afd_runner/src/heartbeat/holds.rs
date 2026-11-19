@@ -10,7 +10,6 @@
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use af_core::timing::HEARTBEAT_INTERVAL;
 use af_wire::runner::HeldFleets;
 use garde::{Unvalidated, Valid};
 use sqlx::PgConnection;
@@ -49,13 +48,14 @@ pub(super) async fn reconcile(
     runner: &Uuid7,
     holds: Option<&Valid<HeldFleets<'_>>>,
     closing: bool,
+    heartbeat_interval: std::time::Duration,
 ) -> Vec<String> {
     let held = holds.map_or_default(fleets);
     let listed: Vec<&Uuid7> = held.iter().collect();
     let clear = sqlx::query(sql::holds::CLEAR_DROPPED_HOLDS)
         .bind(runner)
         .bind(&listed)
-        .bind(HEARTBEAT_INTERVAL)
+        .bind(heartbeat_interval)
         .bind(closing);
     best_effort(clear, connection, EVENT_HOLDS_RECONCILE, runner).await;
     if listed.is_empty() {

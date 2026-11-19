@@ -269,6 +269,7 @@ async fn test_a_sandbox_that_will_not_freeze_is_destroyed() {
 #[tokio::test(start_paused = true)]
 async fn test_another_fleets_lease_leaves_the_hold_alone() {
     let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    rig.lessee.holds.resize(3);
 
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
     rig.run(&lease(NEXT_LEASE_ID, OTHER_FLEET)).await.unwrap();
@@ -292,8 +293,12 @@ async fn test_another_fleets_lease_leaves_the_hold_alone() {
 async fn test_a_lease_on_the_last_free_worker_releases_other_holds() {
     let capture = Capture::install();
     let (rig, _counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    rig.lessee.holds.resize(3);
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-    let _other_worker = rig.lessee.holds.occupy(Uuid7::parse(BUSY_FLEET).unwrap());
+    let _other_worker = rig.lessee.holds.occupy(crate::holds::Occupant::Fleet {
+        lease: Uuid7::parse(BUSY_FLEET).unwrap(),
+        fleet: Uuid7::parse(BUSY_FLEET).unwrap(),
+    });
 
     rig.run(&lease(NEXT_LEASE_ID, OTHER_FLEET)).await.unwrap();
     let held = rig.lessee.holds.fleets().await;

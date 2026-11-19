@@ -3,7 +3,6 @@
 -- The insert proves scope, and a purge deletes the fleet's active leases itself.
 CREATE TABLE runner.leases (
     id                          UUID PRIMARY KEY,
-    CONSTRAINT ck_leases_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     runner_id                   UUID    NOT NULL REFERENCES runner.runners(id) ON DELETE CASCADE,
     fleet_id                    UUID    NOT NULL,
     workspace_id                UUID    NOT NULL,
@@ -18,6 +17,8 @@ CREATE TABLE runner.leases (
     last_metered_at             TIMESTAMPTZ(3)  NOT NULL,
     fencing_token               BIGINT  NOT NULL,
     lease_expires_at            TIMESTAMPTZ(3)  NOT NULL,
+    -- Captured at issue; a later deployment profile cannot extend this lease.
+    max_runtime_seconds         INTEGER NOT NULL DEFAULT 43200,
     -- Durable Kill decision; a missed notification cannot restore authority.
     cancel_requested_at         TIMESTAMPTZ(3),
     status                      TEXT    NOT NULL,
@@ -29,7 +30,11 @@ CREATE TABLE runner.leases (
     -- Non-secret snapshot of the decision revision this lease delivered. No foreign key:
     -- settled history must survive catalogue removal.
     decision_snapshot JSONB,
-    -- Task ownership frozen at grant, and the lease's own task-runtime metering cursor.
+    -- Opaque immutable setup selected at issue; a resumed ordinary root must
+    -- match this witness. No foreign key: settled leases survive fleet purge.
+    setup_revision_id UUID,
+    -- The lease freezes semantic ownership and meters its own task-running delta.
+    -- Opaque task_id already outlives task deletion; these add no privacy owner FK.
     task_generation BIGINT CHECK (task_generation > 0),
     task_stop_generation BIGINT CHECK (task_stop_generation >= 0),
     task_started_at TIMESTAMPTZ(3),

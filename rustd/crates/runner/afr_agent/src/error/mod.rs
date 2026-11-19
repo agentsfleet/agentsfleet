@@ -5,17 +5,13 @@
 //! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
 //! the `[CODE]` rendering and the self-skipping `source()` are generated.
 //!
-//! # Which codes, and why none are new
-//!
-//! A runner failure is read by an operator on the host's journal, never by a
-//! tenant or an API client, so it reuses the registry's existing codes the way
-//! `afd_bench` does (`docs/RUST_ERROR_STANDARD.md`); the `event` field on the
-//! log line says which failure it was. Minting a `UZ-RUN-*` code would publish
-//! it in `public/openapi.json` for a condition no client can observe.
+//! Recovery refusals use the shared checkpoint codes; other engine failures
+//! retain their source's code or the existing internal-operation classification.
 
 use af_core::error_code::{self, Coded, ErrorCode};
 
 mod raise;
+pub(crate) use raise::{recovery_invalid, recovery_source};
 
 af_core::error_shell!(
     /// An agent-engine failure, with the backtrace of where it was raised.
@@ -25,6 +21,28 @@ af_core::error_shell!(
 /// Every way this crate fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    /// A private root cannot be restored without changing its meaning.
+    #[error("run recovery is incompatible: {reason}")]
+    RecoveryInvalid { reason: &'static str },
+    /// Present private bytes cannot be decoded, with the original failure retained.
+    #[error("run recovery is unreadable: {context}")]
+    RecoverySource {
+        context: &'static str,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    /// A restored root breaks its declared bounds.
+    #[error("run recovery state breaks a declared bound")]
+    RecoveryBounds {
+        #[source]
+        source: garde::Report,
+    },
+    /// Current memory grants or overlay validation refuse a saved root.
+    #[error("run recovery memory cannot be restored")]
+    RecoveryMemory {
+        #[source]
+        source: afr_memory::Error,
+    },
     /// No authoritative, bounded task decision is available at this boundary.
     #[error("durable task preparation could not establish current authority")]
     TaskDecision,
@@ -122,6 +140,10 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
+            ErrorKind::RecoverySource { .. }
+            | ErrorKind::RecoveryInvalid { .. }
+            | ErrorKind::RecoveryBounds { .. }
+            | ErrorKind::RecoveryMemory { .. } => error_code::RUN_CHECKPOINT_INCOMPATIBLE,
             ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
@@ -147,6 +169,10 @@ impl Error {
     #[must_use]
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
         match self.kind() {
+            ErrorKind::RecoverySource { .. }
+            | ErrorKind::RecoveryInvalid { .. }
+            | ErrorKind::RecoveryBounds { .. }
+            | ErrorKind::RecoveryMemory { .. } => None,
             ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => None,
             ErrorKind::TaskNative { .. }
             | ErrorKind::TaskJson { .. }

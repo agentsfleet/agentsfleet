@@ -1,7 +1,7 @@
 //! The lease-side writes and the row chain a claim needs to exist.
 //!
 //! `fleet_fixtures.rs` reads columns of any row through [`Row`]; these stage
-//! `runner.leases`, `runner.fleet_slots`, and the tenant → workspace → fleet
+//! `runner.leases`, `runner.slots`, and the tenant → workspace → fleet
 //! chain underneath them, through the shared `afd_db` seeds where one exists.
 #![expect(
     clippy::expect_used,
@@ -20,10 +20,10 @@ use crate::support::Fixtures;
 /// dollar a day. Suites that need another install their own over it.
 const SEEDED_NATIVE_CONFIG: &str = r#"{"name":"seeded","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
-/// The `runner.fleet_slots` column a claim's expiry lives in.
+/// The `runner.slots` column a claim's expiry lives in.
 pub(crate) const COLUMN_LEASED_UNTIL: &str = "lease_expires_at";
 
-/// The `runner.fleet_slots` sticky hint: which runner last leased the fleet.
+/// The `runner.slots` sticky hint: which runner last leased the fleet.
 pub(crate) const COLUMN_LAST_RUNNER: &str = "last_runner_id";
 
 /// The `runner.leases` column a lease's runtime meter last advanced to.

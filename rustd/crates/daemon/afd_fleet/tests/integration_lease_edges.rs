@@ -258,6 +258,7 @@ async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
                 held: &[],
                 degraded: false,
                 now: held.now,
+                recovery: None,
             },
             AcceptedKinds::ALL,
             &mut af_observability::verb_span::VerbClock::untimed(),

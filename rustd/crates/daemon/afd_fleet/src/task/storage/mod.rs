@@ -2,10 +2,11 @@
 
 mod backend;
 mod bounded;
+pub(crate) mod registration;
 mod signing;
 mod transfer;
 
-pub(in crate::task) use transfer::StorageSession;
+pub(crate) use transfer::StorageSession;
 
 use af_core::id::Uuid7;
 use af_crypto::secret::Kek;
@@ -41,7 +42,7 @@ pub struct R2CheckpointStore {
     bucket_reference: String,
     admin_workspace: Uuid7,
     vault: Vault,
-    pub(super) master: Arc<Kek>,
+    pub(crate) master: Arc<Kek>,
     client: reqwest::Client,
     verified: Arc<tokio::sync::OnceCell<()>>,
 }
@@ -53,12 +54,12 @@ impl std::fmt::Debug for R2CheckpointStore {
 }
 
 impl R2CheckpointStore {
-    pub(in crate::task) fn bucket_reference(&self) -> &str {
+    pub(crate) fn bucket_reference(&self) -> &str {
         &self.bucket_reference
     }
 
     /// One vault read and SDK client per bounded transfer batch.
-    pub(in crate::task) async fn session(&self) -> crate::Result<StorageSession<'_>> {
+    pub(crate) async fn session(&self) -> crate::Result<StorageSession<'_>> {
         Ok(StorageSession {
             store: self,
             backend: self.backend().await?,

@@ -80,6 +80,12 @@ pub(super) enum Other<
         lease_id: Cow<'a, str>,
         request: FoldRequest,
     },
+    TurnCheckpoint {
+        request_id: NonZeroU64,
+        #[serde(borrow)]
+        lease_id: Cow<'a, str>,
+        request: Cow<'a, crate::lease::TurnCheckpointCommand>,
+    },
 }
 
 // Both enums carry the same fields; forwarding stays exhaustive as variants change.
@@ -137,6 +143,11 @@ impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O,
             },
             Activity { lease_id, request },
             Folds {
+                request_id,
+                lease_id,
+                request
+            },
+            TurnCheckpoint {
                 request_id,
                 lease_id,
                 request

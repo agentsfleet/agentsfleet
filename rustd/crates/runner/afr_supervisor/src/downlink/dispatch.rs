@@ -8,6 +8,7 @@ use af_wire::{
     lease::TaggedLease,
     protocol::{Down, LEASES_MAX, StreamKind},
 };
+use garde::Validate as _;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
@@ -35,6 +36,12 @@ pub(crate) enum Progress {
 impl Dispatch<'_> {
     pub(crate) fn frame(&mut self, kind: StreamKind, frame: OwnedFrame) -> Result<Progress> {
         let message: Down<'_> = frame.decode()?;
+        if matches!(message, Down::TurnCheckpoint { .. }) {
+            af_wire::lease::TurnMessageSize {
+                bytes: frame.as_bytes().len(),
+            }
+            .validate()?;
+        }
         if message.stream_kind() != kind {
             return Err(ErrorKind::StreamProtocol.into());
         }

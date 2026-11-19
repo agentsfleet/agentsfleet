@@ -23,6 +23,20 @@ const DETAIL_PANIC: &str = "the agent engine panicked";
 const EVENT_ENGINE_FAILED: &str = "engine_run_failed";
 const EVENT_ENGINE_PANICKED: &str = "engine_panicked";
 
+pub(super) struct Recovered<'a> {
+    pub(super) task: Option<&'a afr_agent::TaskRecovery>,
+    pub(super) turn: Option<&'a afr_agent::TurnRecovery>,
+}
+
+impl<'a> From<Option<&'a super::recovery::State>> for Recovered<'a> {
+    fn from(state: Option<&'a super::recovery::State>) -> Self {
+        Self {
+            task: state.and_then(|state| state.history.as_ref()),
+            turn: state.and_then(|state| state.turn.as_ref()),
+        }
+    }
+}
+
 /// An inbox that claims nothing.
 ///
 /// A durable task reads what people send it as task inputs, and the daemon's
@@ -56,7 +70,8 @@ impl LeaseRun<'_> {
         executor: &dyn ExecutorSource,
         sink: ActivitySink,
         prepared_task: Option<&afr_agent::PreparedTask>,
-        recovered_task: Option<&afr_agent::TaskRecovery>,
+        recovered: Recovered<'_>,
+        recovery: &dyn afr_agent::RecoveryBoundarySink,
     ) -> Ending {
         let mint = LeaseMint::new(&self.lessee.plane, &self.ids.lease);
         let checkpoint = LeaseCheckpoint::new(&self.lessee.plane, &self.ids.fleet, self.lease);
@@ -69,7 +84,9 @@ impl LeaseRun<'_> {
             &self.decisions,
         );
         let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
-            recovered_task,
+            recovery: Some(recovery),
+            recovered_task: recovered.task,
+            recovered_turn: recovered.turn,
             prepared_task,
             lease: self.lease,
             memory,
@@ -149,6 +166,7 @@ mod tests {
     impl Inbox for Waiting {
         async fn claim(&self, _after_sequence: i64) -> Vec<Folded> {
             vec![Folded {
+                event_id: "019f0000-0000-7000-8000-000000000001".to_owned(),
                 sequence: 1,
                 text: "use staging".to_owned(),
             }]

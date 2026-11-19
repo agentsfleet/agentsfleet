@@ -1,6 +1,7 @@
 //! Trusted frozen-workspace recovery over the existing native checkpoint resources.
 
 mod activity;
+mod admission;
 mod capture;
 mod catalog;
 #[cfg(test)]
@@ -8,20 +9,31 @@ mod catalog_tests;
 mod files;
 #[cfg(test)]
 mod files_tests;
+mod inventory;
+mod layout;
 mod links;
 mod progress;
 #[cfg(test)]
 mod progress_tests;
 mod restore;
+mod restore_manifest;
 mod session;
+#[cfg(test)]
+mod supervisor_tests;
 #[cfg(test)]
 mod tests;
 mod transfer;
 #[cfg(test)]
 mod transfer_tests;
+mod turn;
+mod uploads;
+mod window;
 
+pub(crate) use admission::RecoveryResources;
 pub(super) use capture::Capture;
 pub(super) use restore::Restore;
+pub(crate) use transfer::Transfers;
+pub(super) use turn::NativeTurn;
 
 #[cfg(test)]
 pub(crate) use transfer::http_tests::server::Server as TestHttpsServer;
@@ -29,9 +41,6 @@ pub(crate) use transfer::http_tests::server::Server as TestHttpsServer;
 use crate::client::ControlPlane;
 use af_core::id::Uuid7;
 use af_wire::task::{CheckpointPlan, DecisionTaskVersion};
-
-/// Four maximum-size ciphertexts, or one native page of smaller objects.
-const UPLOAD_BATCH_BYTES: u64 = 4 * (files::CHUNK + af_crypto::TAG_LEN as u64);
 
 /// One native pin owner. It never extends the original capture/restore deadline.
 #[derive(Debug)]

@@ -176,7 +176,7 @@ async fn report_after_preparation_deadline(
     // slice; holding the slot holds the report there.
     let mut held = connection.begin().await.expect("slot barrier");
     let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE",
+        "SELECT pg_backend_pid() FROM runner.slots WHERE fleet_id=$1 FOR UPDATE",
     )
     .bind(&case.scope.fleet_id)
     .fetch_one(&mut *held)

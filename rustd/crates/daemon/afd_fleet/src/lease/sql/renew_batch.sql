@@ -60,7 +60,7 @@ WITH asked AS (
   -- CTE runs when first read, and an issue holds the host row and then a slot.
   -- A host that may not renew locks nothing, and every lease answers lost.
   SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
-  FROM runner.fleet_slots s
+  FROM runner.slots s
   JOIN runner.leases l ON l.fleet_id = s.fleet_id
   JOIN asked a ON a.lease_id = l.id
   CROSS JOIN census h
@@ -70,7 +70,7 @@ WITH asked AS (
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token,
          l.created_at, l.lease_expires_at, l.last_metered_at, l.posture, l.provider,
-         l.model, l.task_id, l.cancel_requested_at IS NOT NULL AS cancelled,
+         l.model, l.task_id, l.max_runtime_seconds, l.cancel_requested_at IS NOT NULL AS cancelled,
          s.fencing_token AS live_fence, s.lease_expires_at AS slot_expires_at
   FROM runner.leases l
   JOIN locked_slot s ON s.fleet_id = l.fleet_id
@@ -103,11 +103,11 @@ WITH asked AS (
   GROUP BY c.fleet_id
 ), judged AS MATERIALIZED (
   SELECT p.*, a.runtime_price, a.runtime_line_id, i.checked_at,
-         LEAST(i.checked_at + $28::interval, p.created_at + $29::interval) AS capped,
+         LEAST(i.checked_at + $28::interval, p.created_at + LEAST($29::interval, make_interval(secs => p.max_runtime_seconds))) AS capped,
          GREATEST(p.last_metered_at, LEAST(i.checked_at, p.lease_expires_at)) AS metered_until,
          p.fencing_token = p.live_fence AND p.lease_expires_at > i.checked_at
              AND p.slot_expires_at > i.checked_at AS fence_holds,
-         p.created_at + $29::interval > i.checked_at AS below_cap,
+         p.created_at + LEAST($29::interval, make_interval(secs => p.max_runtime_seconds)) > i.checked_at AS below_cap,
          p.posture = a.posture AND p.provider = a.provider AND p.model = a.model
              AND (a.catalogue_version IS NULL
                   OR a.catalogue_version = (SELECT resource_version FROM catalogue))
@@ -156,7 +156,7 @@ WITH asked AS (
   WHERE l.id = g.id
   RETURNING l.id, l.lease_expires_at
 ), slot AS (
-  UPDATE runner.fleet_slots s
+  UPDATE runner.slots s
   SET lease_expires_at = g.capped, updated_at = now()
   FROM guard g
   WHERE s.fleet_id = g.fleet_id AND s.fencing_token = g.fencing_token

@@ -92,3 +92,7 @@ impl From<TaskRefusal> for Error {
         Self::from(ErrorKind::TaskRefused { reason })
     }
 }
+
+#[cfg(test)]
+#[path = "refusal_tests.rs"]
+mod tests;

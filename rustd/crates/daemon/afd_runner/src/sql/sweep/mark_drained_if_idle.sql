@@ -1,10 +1,20 @@
-WITH updated AS (
+WITH locked AS MATERIALIZED (
+  SELECT id FROM runner.runners WHERE id = $1 AND status = $3::text FOR UPDATE
+), instant AS MATERIALIZED (
+  SELECT clock_timestamp() AS at FROM (SELECT count(*) FROM locked) observed
+), updated AS (
   UPDATE runner.runners r
   SET status = $2::text, updated_at = now()
   WHERE r.id = $1 AND r.status = $3::text
+    AND EXISTS (SELECT 1 FROM locked)
     AND NOT EXISTS (
       SELECT 1 FROM runner.leases l
       WHERE l.runner_id = r.id AND l.status = $4::text
+        AND l.lease_expires_at > (SELECT at FROM instant)
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM authoring.attempts a WHERE a.runner_id = r.id AND a.status = $4::text
+        AND a.lease_expires_at > (SELECT at FROM instant)
     )
   RETURNING r.id
 ), inserted AS (

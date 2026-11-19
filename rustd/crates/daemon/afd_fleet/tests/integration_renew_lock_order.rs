@@ -25,7 +25,7 @@ const HOLD_HOST: &str = "SELECT pg_backend_pid() FROM runner.runners WHERE id = 
 const BLOCKED_BY: &str = "SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
 
 /// A slot lock that refuses to wait: it fails while another holds the slot.
-const TRY_SLOT: &str = "SELECT 1 FROM runner.fleet_slots WHERE fleet_id = $1 FOR UPDATE NOWAIT";
+const TRY_SLOT: &str = "SELECT 1 FROM runner.slots WHERE fleet_id = $1 FOR UPDATE NOWAIT";
 
 /// How long a wait may take before the test calls it a hang.
 const WAIT_LIMIT: Duration = Duration::from_secs(10);

@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use crate::DriveState;
 use crate::conversation::Conversation;
 use crate::turn::Ending;
 
@@ -48,6 +49,7 @@ pub trait Extension<C: Conversation + ?Sized>: Send {
         &mut self,
         _conversation: &mut C,
         _number: u64,
+        _state: &DriveState,
     ) -> impl Future<Output = Option<Ending<C::Failure>>> + Send {
         async { None }
     }

@@ -19,6 +19,16 @@ mod tests;
 use crate::metrics::label::fleet::Fault;
 use crate::semconv;
 
+/// Counts a committed automatic change with a closed, two-value label set.
+pub fn cordon_changed(change: crate::metrics::label::fleet::CordonChange) {
+    if let Some(producers) = installed() {
+        producers
+            .fleet
+            .cordon_changes
+            .add(1, &[KeyValue::new(semconv::LABEL_CHANGE, change.as_str())]);
+    }
+}
+
 /// Records one runner's failed run.
 ///
 /// Two families move, because a failed run is both a failure and a finished

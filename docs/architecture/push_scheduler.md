@@ -59,22 +59,15 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
 | M246 | An owner tenant on `runner.runners`, and a receipt table that answers a registration retry. |
 | M251 | The token overlap pair on `runner.runners` and the per-tenant placement setting, as M251_001 designs them. |
-| M247 | Cordon reason and time on `runner.runners`, and a predecessor link on `runner.leases`. |
+| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `runner.leases`, and six event-owned `runner.turn_*` recovery tables. The prior lease ID is diagnostic data from the claim, not a new predecessor column. |
 
 ## Recovery and scheduling fairness
 
-The Bus keeps one bounded wake queue shared by producers and the gateway.
-A dropped notification or periodic database probe marks a recovery generation.
-That mark survives later locality hints and hosts with no free capacity.
+The Bus keeps bounded fleet reminders and publishes independent ordinary and recovery generations. Ordinary admission and steering ring immediately. The replica-wide five-second database probe repairs a lost wake.
 
-The five-second probe repairs a crash after admission commits but before its disposable wake is published.
-Normal admission and steering publish a wake immediately and do not wait for that probe.
+A recovery generation starts one bounded round-robin drain across credited native sessions. The database orders eligible admissions by durable time and ID. An unclaimable full page advances the session cursor, which wraps after a short empty page or 64 later claims.
 
-During recovery, admission selection orders by durable creation time and identifier across eligible fleets.
-It ignores fleet-locality hints until a durable claim covers that recovery generation.
-A claim for an older generation cannot clear a newer probe.
-
-Normal hints resume after recovery, preserving locality without starving an older unhinted fleet.
+The drain acknowledges its starting generation after bounded work and preserves any newer request. Ordinary rings keep their successful-issue budget and locality throughout recovery. [Recovery scheduler and burst proof](runner_checkpoint_recovery.md#how-a-recovery-burst-drains)
 
 ## Sequences
 
@@ -150,12 +143,18 @@ Only the head of each `(provider, workspace)` lane is claimable, so claims never
 ### A host dies mid-turn
 
 ```
-host stops ─► heartbeats stop ─► host cordoned with its offline record
-lease deadline passes ─► another runner claims the same event under a higher fence
-             └─► loads the current turn's last checkpoint ─► run_restarted on the tail
+host stops ──┬─► saved lease deadline ─► eligible runner claims E under fence F+1
+             │                           └─► committed checkpoint ─► resume E
+             └─► heartbeat silence ─► atomic offline record + automatic cordon
 ```
 
-Lease expiry is the only respawn trigger. The new run settles the admission once, and no input is dropped or replayed.
+Lease expiry permits reclaim; automatic quarantine leaves the saved deadline unchanged.
+The issued replacement attempts one `run_restarted` publication before its offer.
+Every output carries the daemon's attempt fence, so clients reject delayed output from older attempts.
+
+The replacement restores the last complete checkpoint and adopts its covered inputs before the next model call.
+Unsaved work can repeat; external effects have no exactly-once guarantee.
+[Runner recovery](runner_fleet.md#failure-recovery-model) owns eligibility, attempt limits and the no-checkpoint path.
 
 ## When a signal is lost
 

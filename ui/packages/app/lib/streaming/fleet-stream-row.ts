@@ -111,6 +111,10 @@ export type FleetEvent = {
   reasoningEndedAtMs?: number;
   /** The streamed draft awaits the durable final event detail. */
   replyRecovering?: boolean;
+  /** A replacement attempt has started; its final saved reply remains authoritative. */
+  runRestarted?: true;
+  /** Identifies the observed restart so a polite notice is spoken once per attempt. */
+  restartAttempt?: string;
   contextProgress?: ContextProgress;
   taskActivity?: TaskActivityHistory;
   contextProgressHidden?: true;

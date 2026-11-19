@@ -2,7 +2,7 @@
 //!
 //! Every string literal in a CHECK, an index predicate, a column default or a
 //! trigger function is read out of the catalog and held to the structural
-//! allowlist: the UUID version nibble, `TG_OP` values, and exception text no
+//! allowlist: `TG_OP` values and exception text no
 //! caller matches on. A literal outside it is a value the application also
 //! names, and that pair drifts silently.
 
@@ -46,11 +46,7 @@ SELECT 'function ' || p.proname, p.prosrc
  WHERE n.nspname = ANY($1)";
 
 /// The literals nothing in the application names.
-const STRUCTURAL: [&str; 2] = [
-    // The UUID version nibble every `ck_*_id_uuidv7` CHECK compares.
-    "7", // A trigger's own operation, which is Postgres's vocabulary, not ours.
-    "INSERT",
-];
+const STRUCTURAL: [&str; 1] = ["INSERT"];
 
 /// The approval-gate guard's refusal. No caller matches on it.
 const GATE_REFUSAL: &str = "approval_gates resolved row is immutable";

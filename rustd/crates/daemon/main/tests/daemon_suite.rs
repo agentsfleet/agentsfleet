@@ -86,7 +86,7 @@ mod binary;
 mod cli;
 #[path = "daemon.rs"]
 mod daemon;
-#[path = "integration_cli.rs"]
+#[path = "integration_cli/mod.rs"]
 mod integration_cli;
 #[path = "integration_cluster_outcomes.rs"]
 mod integration_cluster_outcomes;
@@ -170,6 +170,7 @@ mod preflight;
 mod preflight_optional;
 #[path = "presentation.rs"]
 mod presentation;
+mod recovery_process;
 #[path = "serve.rs"]
 mod serve;
 mod shutdown_drain;

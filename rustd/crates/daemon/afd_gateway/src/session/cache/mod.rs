@@ -8,6 +8,7 @@ use afd_db::Db;
 use afd_fleet::lease::{Offered, Reported, Target};
 use jiff::Timestamp;
 use parking_lot::RwLock;
+use std::collections::hash_map::Entry;
 
 use crate::{Result, error::ErrorKind};
 use snapshot::{LeaseRecord, LeaseSnapshot};
@@ -21,11 +22,34 @@ struct CachedLeases {
 }
 
 impl CachedLeases {
-    fn insert(&mut self, record: LeaseRecord) -> Result<()> {
-        if self.records.len() >= LEASES_MAX || self.records.contains_key(&record.id) {
-            return Err(ErrorKind::Protocol.into());
+    /// A recheck may load a lease from its committed issue before the offer
+    /// records it. The same identifier is the same durable lease, so the offer
+    /// merges: its report facts join the loaded row, and a confirmed cancel or
+    /// later deadline stays. Only a new lease counts against the host bound.
+    ///
+    /// The durable issuer granted this lease under the host's bound, so a full
+    /// cache holds a lapsed lease the next refresh has not dropped yet; those
+    /// go first. A cache full of live leases is still refused.
+    fn insert(&mut self, record: LeaseRecord, now: Timestamp) -> Result<()> {
+        if self.records.len() >= LEASES_MAX && !self.records.contains_key(&record.id) {
+            self.records.retain(|_, held| held.expires_at > now);
         }
-        self.records.insert(record.id.clone(), record);
+        let held = self.records.len();
+        match self.records.entry(record.id.clone()) {
+            Entry::Occupied(mut loaded) => {
+                let loaded = loaded.get_mut();
+                loaded.expires_at = loaded.expires_at.max(record.expires_at);
+                loaded.cancelled |= record.cancelled;
+                loaded.target = record.target.or_else(|| loaded.target.take());
+                loaded.reported = record.reported.or_else(|| loaded.reported.take());
+            }
+            Entry::Vacant(_) if held >= LEASES_MAX => {
+                return Err(ErrorKind::Protocol.into());
+            }
+            Entry::Vacant(slot) => {
+                slot.insert(record);
+            }
+        }
         self.revision = self.revision.wrapping_add(1);
         Ok(())
     }
@@ -86,9 +110,9 @@ impl LeaseCache {
         current.revision = current.revision.wrapping_add(1);
     }
 
-    /// The durable issuer enforces capacity; a conflicting cache entry is an explicit error.
-    pub(super) fn insert(&self, offered: Offered) -> Result<()> {
-        self.0.write().insert(LeaseRecord::from(offered))
+    /// The durable issuer enforces capacity; a lease past the host bound is an explicit error.
+    pub(super) fn insert(&self, offered: Offered, now: Timestamp) -> Result<()> {
+        self.0.write().insert(LeaseRecord::from(offered), now)
     }
 
     /// Expired and cancelled targets never authorize publication, regardless of connection health.

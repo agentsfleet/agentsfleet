@@ -78,7 +78,7 @@ async fn issue_earlier_successor(run: &report_seed::Held) {
         token > run.fence.as_i64(),
         "the successor must outrank the held lease, or this test proves nothing"
     );
-    sqlx::query("UPDATE runner.fleet_slots SET fencing_token = $2 WHERE fleet_id = $1")
+    sqlx::query("UPDATE runner.slots SET fencing_token = $2 WHERE fleet_id = $1")
         .bind(&run.fleet)
         .bind(token)
         .execute(&mut *connection)

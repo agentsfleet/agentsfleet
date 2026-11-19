@@ -1,123 +1,26 @@
 #![expect(
     clippy::unwrap_used,
-    clippy::indexing_slicing,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
 use af_egress::testing::{CountingMint, RecordingTransport};
-use af_providers::{Chunk, Message};
-use af_wire::memory::{MemoryDelta, PINNED_CATEGORY};
+use af_providers::Chunk;
+use af_wire::memory::MemoryDelta;
 use afr_tools::Catalog;
-use afr_tools::catalog::{MEMORY_FORGET, MEMORY_LIST, MEMORY_RECALL, MEMORY_STORE};
+use afr_tools::catalog::{MEMORY_LIST, MEMORY_STORE};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::{EVENT_CHECKPOINT_FAILED, Loop};
 use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter, RunOutput};
-use crate::fixture::{Frames, Script, call, lease, say, unbounded};
+use crate::fixture::{Frames, Script, call, lease, say};
 use crate::testing::{Discard, Recording};
 
 const HANGING_CHECKPOINT_BOUND: Duration = Duration::from_secs(60);
-
-/// What each call of the run read back, in call order.
-fn read_back(messages: &[Message]) -> Vec<&str> {
-    messages
-        .iter()
-        .filter_map(|message| match message {
-            Message::ToolResult { output, .. } => Some(output.as_str()),
-            _other => None,
-        })
-        .collect()
-}
-
-#[tokio::test]
-async fn test_memory_tools_round_trip_through_push() {
-    let hydrated = [MemoryDelta {
-        key: Cow::Borrowed("incident:41"),
-        content: Cow::Borrowed("escalated to the on-call"),
-        category: Cow::Borrowed(PINNED_CATEGORY),
-        visibility: af_wire::memory::Visibility::Fleet,
-    }];
-    let script = Script::new([
-        vec![call(
-            "m1",
-            MEMORY_STORE.name(),
-            json!({"key": "incident:42", "content": "deploy 812 broke iad", "category": "daily"}),
-        )],
-        vec![call(
-            "m2",
-            MEMORY_RECALL.name(),
-            json!({"query": "incident"}),
-        )],
-        vec![call(
-            "m3",
-            MEMORY_FORGET.name(),
-            json!({"key": "incident:41"}),
-        )],
-        vec![call("m4", MEMORY_LIST.name(), json!({}))],
-        vec![say("incident 42 is new")],
-    ]);
-    let (transport, _sent) = RecordingTransport::replying(200, "");
-    let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
-    let names = [MEMORY_STORE, MEMORY_RECALL, MEMORY_FORGET, MEMORY_LIST].map(|entry| entry.name());
-    let lease = lease(&names, unbounded());
-    let frames = Frames::default();
-    let sink = frames.sink();
-
-    let output = engine
-        .run(AgentRun {
-            recovered_task: None,
-            prepared_task: None,
-            lease: &lease,
-            memory: afr_memory::Seed::window(&hydrated),
-            executor: &afr_executor::ExecutorSlot::unavailable(
-                afr_executor::Unavailable::NoSandbox,
-            ),
-            mint: &CountingMint::never(),
-            verbs: &afr_tools::CLOSED,
-            checkpoint: &Discard,
-            inbox: &crate::testing::NoInbox,
-            events: &sink,
-            meter: &Meter::default(),
-            stop: &CancellationToken::new(),
-        })
-        .await
-        .unwrap();
-    frames.taken();
-
-    let sent = script.sent();
-    let read = read_back(&sent[4].messages);
-    assert_eq!(read[0], "stored incident:42");
-    assert_eq!(
-        read[1],
-        "incident:42 (daily): deploy 812 broke iad\nincident:41 (core): escalated to the on-call",
-        "a store is recalled in the same run, ahead of what was hydrated"
-    );
-    assert!(
-        read[2].starts_with("incident:41 is forgotten"),
-        "{}",
-        read[2]
-    );
-    assert_eq!(
-        read[3], "incident:42 (daily)",
-        "a forget holds for the rest of the run"
-    );
-    assert_eq!(
-        output.memory,
-        [MemoryDelta {
-            key: Cow::Borrowed("incident:42"),
-            content: Cow::Borrowed("deploy 812 broke iad"),
-            category: Cow::Borrowed("daily"),
-            visibility: af_wire::memory::Visibility::Fleet,
-        }],
-        "the push carries what the run stored, and nothing it only read"
-    );
-}
 
 /// The keys each checkpoint carried, in push order.
 fn keys<'p>(pushes: &'p [Vec<MemoryDelta<'static>>]) -> Vec<Vec<&'p str>> {
@@ -148,7 +51,9 @@ async fn the_memory_is_checkpointed_every_n_calls() {
 
     engine
         .run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
@@ -227,7 +132,9 @@ async fn store_then_answer(checkpoint: &dyn Checkpoint) -> RunOutput {
 
     let output = engine
         .run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
@@ -302,7 +209,9 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
     let ran = tokio::time::timeout(
         HANGING_CHECKPOINT_BOUND,
         engine.run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
@@ -337,7 +246,9 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
 
     engine
         .run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),

@@ -29,6 +29,7 @@ pub mod error;
 pub mod admin;
 pub mod bounds;
 pub mod capacity;
+mod cordon;
 mod decision;
 mod decision_profile;
 pub mod edit;

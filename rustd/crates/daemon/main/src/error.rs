@@ -236,6 +236,9 @@ impl BootFailure {
 /// underlying failure survives as a `source()` for the fatal renderer to walk.
 #[derive(Debug, thiserror::Error)]
 pub enum MigrateFailure {
+    /// Public application settings were refused before opening the database.
+    #[error("agentsfleetd cannot migrate: application settings are invalid")]
+    Settings(#[from] Refusal),
     /// The migrator role's URL is unset, blank, or not a Postgres URL.
     #[error("agentsfleetd cannot migrate: {knob} is unset or unusable")]
     Configuration {

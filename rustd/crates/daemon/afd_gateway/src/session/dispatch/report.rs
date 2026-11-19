@@ -37,7 +37,10 @@ impl SessionServices {
                     crate::Gateway::observe(&error.into(), Operation::Report);
                 }
                 self.cache.forget(&id);
-                Ok(ReportResponse { ok: true })
+                Ok(ReportResponse {
+                    ok: true,
+                    hold: settled.hold,
+                })
             })
             .await;
         let acknowledged = self

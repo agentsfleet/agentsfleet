@@ -171,10 +171,10 @@ function startPhasedStub() {
       send(FRAME.gate, { event_id: EVENT_ID, pending_approvals: 1 });
       send(FRAME.received, { event_id: EVENT_ID });
       send(FRAME.complete, null);
-      send(FRAME.chunk, { event_id: EVENT_ID, text: null });
-      send(FRAME.chunk, { event_id: UNRELATED_EVENT_ID, text: UNRELATED_CHUNK });
+      send(FRAME.chunk, { event_id: EVENT_ID, fencing_token: "1", text_kind: "answer", text: null });
+      send(FRAME.chunk, { event_id: UNRELATED_EVENT_ID, fencing_token: "1", text_kind: "answer", text: UNRELATED_CHUNK });
       send(FRAME.complete, { event_id: UNRELATED_EVENT_ID, status: STATUS_FLEET_ERROR });
-      send(FRAME.chunk, { event_id: EVENT_ID, text: LIVE_CHUNK });
+      send(FRAME.chunk, { event_id: EVENT_ID, fencing_token: "1", text_kind: "answer", text: LIVE_CHUNK });
       return jsonResponse({ event_id: EVENT_ID }, HTTP_ACCEPTED);
     }
     if (kind === "detail") {

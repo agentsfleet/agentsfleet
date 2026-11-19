@@ -1,13 +1,13 @@
 //! Typed event selection is separate from session decisions, following Exonum's handler pattern.
 
-use super::offers::OfferTrigger;
+use super::offers::{ClaimRequest, OfferTrigger};
 use super::{io::IncomingFrame, streams::StreamReceivers, supervisor::SessionSupervisor};
 use crate::{Result, error::ErrorKind};
 use af_wire::protocol::StreamKind;
 use afd_bus::Command;
 use std::ops::ControlFlow;
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::mpsc,
     task::{JoinError, JoinSet},
 };
 
@@ -45,7 +45,7 @@ pub(super) trait EventHandler {
 pub(super) struct EventSource {
     pub(super) frames: StreamReceivers,
     pub(super) commands: mpsc::Receiver<Command>,
-    pub(super) claims: mpsc::Receiver<oneshot::Sender<bool>>,
+    pub(super) claims: mpsc::Receiver<ClaimRequest>,
 }
 
 impl EventSource {

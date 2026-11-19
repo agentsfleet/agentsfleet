@@ -36,7 +36,13 @@ The turn stops at eight calls or the admitted output allowance (`afr_supervisor/
 
 When every proposal in the response is accepted, the turn returns the review-ready answer. Save remains a separate human action.
 
-Unknown provider usage ends the turn without another dispatch. Renewal runs every ten seconds, retries retryable failures after 250 milliseconds, and stops at the live deadline (`afr_supervisor/src/authoring/renew.rs`). The attempt also has a 300-second maximum.
+Unknown provider usage ends the turn without another dispatch.
+Private authoring renewal defaults to ten seconds, with a 250-millisecond pause after retryable failure (`afr_supervisor/src/authoring/renew.rs`).
+The runner profile can shorten both intervals; the accepted attempt deadline still wins.
+
+The daemon snapshots the selected call, wall-time, correction and provider-timeout limits with each issued attempt.
+Compiled compatibility ceilings remain eight calls, 300 seconds and one correction.
+Changing a deployment profile affects newly issued attempts.
 
 ## Private content and report retention
 
@@ -198,13 +204,47 @@ A lease carries the selected model's saved inference settings: API format, base 
 
 `rig-core` and `rig-http` speak the three supported API formats, at the version `rustd/Cargo.toml` pins. The transport under rig is the runner's: one HTTP client per runner that follows no redirect. So a turn and its key reach the admitted host and no other.
 
-A bounded retry honours `Retry-After`. A turn that fails before anything visible went out is opened again under the same bound.
+A bounded HTTP retry honours `Retry-After`.
+A separate reopening budget applies before visible output or known spend.
+The defaults allow three generation sends per opening and three eligible openings.
+
+Native token-count requests remain separate and send once per opening.
+Paid authoring dispatches and native decisions retain their single-send rule.
 
 The reasoning a provider signs goes back with the turn that made it. A call from a turn cut at the output limit is answered `output_limit_reached` and never runs.
 
 A call whose arguments are not JSON reaches its tool as the text the model wrote. The tool refuses it with a reason.
 
 rig traces every request and reply whole, before the scrub. So the shared log filter (`af_inference::log_filter`), installed by daemon and runner, holds rig to its warnings at any level. It also turns off the one warning that repeats a provider's error message.
+
+### Startup profiles
+
+Each binary owns its profile types and resolves them through the shared `af_config` loader.
+The loader depends on parsing and validation libraries, without depending on either binary.
+
+```text
+daemon TOML -> af_config -> checked daemon policies
+                            |-- stores and accepted attempt snapshots
+                            |-- maintenance and telemetry clocks
+                            `-- provider pool; storage keeps its own timeout policy
+
+runner TOML -> af_config -> checked runner policies
+                            |-- shared guarded provider pool and retry budgets
+                            |-- native renewal cadence and daemon retries
+                            `-- shared file-operation admission
+```
+
+The runner selects its optional file with `AGENTSFLEET_RUNNER_CONFIG_FILE`.
+Managed host deployment installs `deploy/baremetal/agentsfleet-runner.toml` under `/etc/agentsfleet`; local acceptance mounts the same profile read-only.
+Without a selected file, the runner retains its existing defaults.
+
+Retry counts include the first send.
+The daemon pause ceiling bounds the exponential component before jitter; connection recovery also retains its compiled 30-second final clamp.
+Connection recovery and owed reports remain cancellable, without a retry-count limit.
+
+The shared file-operation default remains two across the whole runner.
+Required restores queue while renewal continues; optional captures skip a busy boundary before freezing.
+The existing four-transfer window and checkpoint wire ceilings remain compiled bounds.
 
 The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the event's message and the model's own earlier turns.
 
@@ -760,33 +800,17 @@ M237_001 and M237_002 built the Nov 02, 2026 decision's five steps, and four sta
 
 What follows is decided and not built.
 
-Workspace snapshots, when they are built, carry a workspace disk's contents and never the toolbox. Every host of a release already holds the toolbox by digest.
+Workspace snapshots carry the recovery workspace and its matching root state; hosts share the toolbox by its verified digest.
 
-A restore writes into the new lease's disk through the host's mount, inside the background build. It takes checkout's place for each repository it restores, so checkout never overwrites restored work. A save reads the disk only after a kill that settled.
+A restore writes into the new lease's disk through the host's mount, inside the background build. It takes checkout's place for each repository it restores, so checkout never overwrites restored work. A live save requires an exclusive safe boundary, confirmed freeze and an empty tenant process group.
 
 An engine whose disk the host cannot mount, such as Firecracker, reports no host workspace. Its restore and checkout must run inside the guest, or write into the disk image before it attaches.
 
 ## Workspace between leases
 
-The [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
+Platform runners restore a complete committed generation before starting the model or tools. Native tasks and ordinary turns have separate durable owners.
 
-The workspace is the fleet's, not the lease's. Holding a sandbox between messages is built. Workspace snapshots are the target: nothing saves or restores one yet, and the bullets that describe them are marked *Target, not built*.
-
-- **Bytes in R2, the record in Postgres**. *Target, not built.* Snapshots live in an R2 bucket under their own prefix, named by content hash.
-
-  A Postgres row points at the latest. Any S3-compatible store would work through one `object_store` client with a different endpoint.
-
-- **Only the supervisor moves bytes.** *Target, not built.* `agentsfleetd` mints short-lived presigned URLs per lease, fenced the way the memory push is. The `object_store` crate already implements presigning for S3, and the sandbox never sees a URL.
-
-- **Small snapshots.** *Target, not built.* A snapshot holds local commits as a git bundle. It also holds uncommitted edits, untracked files, output files and the lease transcript. Objects re-fetchable from the origin stay out.
-
-- **Never saved.** No credential enters a sandbox. *Target, not built:* every snapshot is leak-scanned before upload.
-
-- **Read as hostile.** The supervisor treats `/workspace` as the tenant's. Restore and save never follow a symbolic link out of it. No git command the supervisor runs uses the workspace's configuration, hooks or helpers, including when `propose_change` reads the fleet's commits.
-
-  A read-only toolbox does nothing against a privileged restore that follows a link.
-
-- **One writer.** *Target, not built.* The fleet's affinity slot and fencing token already make one lease the live holder. A stale holder's snapshot is refused.
+The recovery page owns capture boundaries, file safety, fencing, and runner-wide transfer admission. [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) · [Durable repair scenario](scenarios/durable-repair.md)
 
 - **Held between messages.** A lease that ends processed leaves its sandbox held (`afr_supervisor/src/holds/mod.rs`). The lease cgroup is frozen through `cgroup.freeze` and settled on `frozen 1`. The hold is keyed by fleet, workspace, limits and policy (network policy plus repository binding).
 
@@ -802,7 +826,7 @@ The workspace is the fleet's, not the lease's. Holding a sandbox between message
 
   - a failed thaw, or the deadline;
 
-  - the cap of one hold per worker (oldest first), or the runner's last free worker taking a lease;
+  - the keeper retiring oldest holds to preserve a free worker across fleet and authoring work;
 
   - the runner stopping leasing for any cause, or shutting down;
 
@@ -822,11 +846,9 @@ lease ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per work
    fleet halted or deleted
 ```
 
-- **Retention.** *Target, not built.* The last three snapshots per fleet, a lifecycle rule on the prefix, and a purge when the fleet is deleted.
-
-- **Continuity.** Reports save a checkpoint to `fleet.sessions`, but no lease carries it. Chat leases carry recent thread turns (§Crates).
-
-Files a fleet saves for the user live beside the snapshots. The user downloads them through a presigned URL the daemon authorises.
+The compact session checkpoint in `fleet.sessions` remains a separate semantic record.
+It grants no file-restore or run authority.
+New chat events still load recent finished thread turns; a replacement of the same event reads its committed recovery state.
 
 ## Credentials
 

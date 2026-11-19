@@ -67,13 +67,14 @@ impl LeaseRun<'_> {
     /// Admits the lease's sandbox, then runs its build and its turn together
     /// and hands the sandbox back with the turn's ending. A held sandbox keeps
     /// the repositories as its last lease left them.
+    /// The sandbox cell outlives the build and turn; the executor slot bounds its borrow.
+    /// Sandbox setup timing covers admission through the build's completion.
     pub(super) async fn sandboxed(
         &self,
         memory: Seed<'_>,
         sink: ActivitySink,
         prepared_task: Option<&afr_agent::PreparedTask>,
     ) -> Worked {
-        // Timed from here to the build's end, whichever way it ends.
         let setup = self.timeline.start(Segment::Sandbox);
         let admitted = match self.admitted(prepared_task).await {
             Ok(admitted) => admitted,
@@ -91,11 +92,16 @@ impl LeaseRun<'_> {
             plan: admitted.plan.as_ref(),
             stop: &stop,
         };
-        // The cell outlives the build that fills it and the turn that borrows
-        // its executor through the slot; the slot's scope ends the borrow.
         let cell = OnceLock::new();
         let (ending, held) = {
             let slot = ExecutorSlot::pending();
+            let (capture, owner) = super::recovery_boundary::BoundaryOwner::new(
+                self,
+                super::recovery_boundary::Workspace::Building {
+                    cell: &cell,
+                    recovery: &recovery,
+                },
+            );
             // Both boxed: side by side, the build's state and the turn's would
             // sit in the lease's own future together, past the large-future
             // bound.
@@ -104,30 +110,23 @@ impl LeaseRun<'_> {
                 setup.stop();
             });
             let driving = Box::pin(async {
-                if prepared_task.is_some_and(|prepared| prepared.allow_actions) {
-                    let ready = tokio::select! {
-                        ready = slot.get() => ready.is_ok(),
-                        () = self.interrupt.cancelled() => false,
-                    };
-                    if !ready {
-                        return failed(
-                            FailureClass::StartupPosture,
-                            "durable task workspace was not recovered",
-                        );
-                    }
+                if !self.workspace_ready(&slot, prepared_task).await {
+                    return failed(
+                        FailureClass::StartupPosture,
+                        "recovery workspace was not prepared",
+                    );
                 }
                 self.drive(
                     memory,
                     &slot,
                     sink,
                     prepared_task,
-                    recovery
-                        .get()
-                        .and_then(|state: &super::recovery::State| state.history.as_ref()),
+                    super::drive::Recovered::from(recovery.get()),
+                    &capture,
                 )
                 .await
             });
-            let ending = self.beside(building, driving, &stop).await;
+            let ending = owner.beside(self.beside(building, driving, &stop)).await;
             (ending, slot.held())
         };
         self.timeline.waited(held);
@@ -138,6 +137,22 @@ impl LeaseRun<'_> {
                 key,
                 recovery: recovery.into_inner(),
             }),
+        }
+    }
+
+    async fn workspace_ready(
+        &self,
+        slot: &ExecutorSlot<'_>,
+        prepared: Option<&afr_agent::PreparedTask>,
+    ) -> bool {
+        if !prepared.is_some_and(|prepared| prepared.allow_actions)
+            && self.lease.turn_resume.is_none()
+        {
+            return true;
+        }
+        tokio::select! {
+            ready = slot.get() => ready.is_ok(),
+            () = self.interrupt.cancelled() => false,
         }
     }
 

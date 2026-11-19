@@ -83,6 +83,7 @@ fn policy() -> ExecutionPolicy<'static> {
 /// live.
 fn rendered(resume_hold: bool) -> Value {
     let acquired = Acquired {
+        predecessor_lease_id: None,
         resume_hold,
         ..test_dead::acquired()
     };
@@ -95,6 +96,7 @@ fn rendered(resume_hold: bool) -> Value {
         &installed,
         policy(),
         Context {
+            turn_resume: None,
             history: Vec::new(),
             memory: None,
             decision: None,

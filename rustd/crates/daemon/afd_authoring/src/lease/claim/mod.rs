@@ -76,7 +76,12 @@ impl Drafts {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(sql::CONTEXT))?;
         let Some(host) = self
-            .lock_host_capacity(&mut tx, runner, Some(&hint.tenant_id))
+            .lock_host_capacity(
+                &mut tx,
+                runner,
+                afd_runner::capacity::Claimant::Authoring,
+                Some(&hint.tenant_id),
+            )
             .await?
         else {
             return Ok(Placement::Busy);

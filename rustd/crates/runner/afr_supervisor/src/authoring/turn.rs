@@ -9,14 +9,9 @@ use af_wire::authoring::{
     ProposalRejection,
 };
 use serde_json::Value;
+use std::ops::ControlFlow;
 
-/// The corrected proposals one message may send after a refusal (owner, Nov 16, 2026).
-///
-/// A refusal that says the message asks for no change is not one: the right
-/// reply is a sentence, which a typed Save and every question need, so those
-/// refusals spend only the call allowance.
-const CORRECTIONS_MAX: u32 = 1;
-
+/// One accepted private attempt and the authority it may call.
 pub(super) struct Turn<'a> {
     pub(super) plane: &'a ControlPlane,
     pub(super) lease: &'a Lease<Value>,
@@ -25,107 +20,165 @@ pub(super) struct Turn<'a> {
     pub(super) observed: &'a Observed,
 }
 
+struct Progress {
+    messages: Vec<ModelMessage>,
+    activity_sequence: u64,
+    accepted_any: bool,
+    corrections: u32,
+}
+
 impl Turn<'_> {
     pub(super) async fn run(&self) -> Result<Ending> {
-        let mut messages = self.context()?;
-        let mut activity_sequence = 1;
-        let mut accepted_any = false;
-        let mut corrections = 0;
-        let max_calls = u32::try_from(self.lease.limits.max_calls.min(8))
-            .map_err(|source| error::boundary("the authoring call allowance is invalid", source))?;
+        let mut progress = Progress {
+            messages: self.context()?,
+            activity_sequence: 1,
+            accepted_any: false,
+            corrections: 0,
+        };
+        let max_calls = u32::try_from(
+            self.lease
+                .limits
+                .max_calls
+                .min(i64::from(af_wire::authoring::MODEL_CALLS_MAX)),
+        )
+        .map_err(|source| error::boundary("the authoring call allowance is invalid", source))?;
         for call_index in 1..=max_calls {
-            let meter = self.observed.snapshot()?;
-            let budget = u64::try_from(self.lease.limits.output_per_turn).map_err(|source| {
-                error::boundary("the authoring output allowance is invalid", source)
-            })?;
-            let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
-            if remaining == 0 {
-                ended(call_index - 1, "output_budget");
-                return Ok(settled(accepted_any));
-            }
-            let request = ModelCall {
-                capability_token: self.lease.model_access.token.clone(),
-                attempt_id: self.lease.attempt_id.clone(),
-                fence: self.lease.fence.clone(),
-                dispatch_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
-                call_index,
-                request: ModelRequest {
-                    messages: messages.clone(),
-                    max_output_tokens: u32::try_from(remaining).map_err(|source| {
-                        error::boundary(
-                            "the authoring output allowance exceeds the wire bound",
-                            source,
-                        )
-                    })?,
-                },
+            let Some(request) = self.request(&progress, call_index)? else {
+                return Ok(settled(progress.accepted_any));
             };
-            let result = self.plane.authoring_model(self.id, &request).await?;
-            if result.dispatch_id != request.dispatch_id || result.call_index != call_index {
-                return Err(error::config(
-                    "the daemon returned a different authoring dispatch",
-                ));
-            }
-            self.observed.accept(&result.usage)?;
-            record_call(call_index, &result);
-            if matches!(result.usage, af_wire::authoring::ModelUsage::Unknown) {
-                return Ok(Ending::unknown());
-            }
-            if result.compacted {
-                continue;
-            }
-            if result.cut {
-                ended(call_index, "cut");
-                return Ok(settled(accepted_any));
-            }
-            if result.proposal_calls.is_empty() {
-                ended(call_index, "answered");
-                return Ok(Ending::completed(Some(result.text)));
-            }
-            let answer = result.text.clone();
-            messages.push(ModelMessage::Assistant {
-                text: result.text,
-                proposal_calls: result.proposal_calls.clone(),
-            });
-            // The one call after an accepted setup asks for its sentence and ends the turn.
-            let closing = accepted_any;
-            let asked_for_an_answer = result.proposal_calls.iter().all(|call| {
-                matches!(
-                    call,
-                    ProposalCall::Refused {
-                        reason: ProposalRejection::EditNotRequested,
-                        ..
-                    }
-                )
-            });
-            let mut all_accepted = true;
-            for call in result.proposal_calls {
-                let (message, accepted) =
-                    proposal::apply(self.plane, self.id, self.lease, activity_sequence, &call)
-                        .await?;
-                messages.push(message);
-                activity_sequence += u64::from(accepted);
-                all_accepted &= accepted;
-                accepted_any |= accepted;
-            }
-            if all_accepted && !answer.trim().is_empty() {
-                ended(call_index, "proposed_and_answered");
-                return Ok(Ending::completed(Some(answer)));
-            }
-            if closing {
-                // Its text may describe a change that was just refused, so none is kept.
-                ended(call_index, "proposed");
-                return Ok(Ending::completed(None));
-            }
-            if !accepted_any && !asked_for_an_answer {
-                if corrections == CORRECTIONS_MAX {
-                    ended(call_index, "corrections_exhausted");
-                    return Ok(Ending::incomplete());
-                }
-                corrections += 1;
+            let result = self.invoke(&request).await?;
+            if let ControlFlow::Break(ending) = self.fold(&mut progress, call_index, result).await?
+            {
+                return Ok(ending);
             }
         }
         ended(max_calls, "calls_exhausted");
-        Ok(settled(accepted_any))
+        Ok(settled(progress.accepted_any))
+    }
+
+    fn request(&self, progress: &Progress, call_index: u32) -> Result<Option<ModelCall>> {
+        let meter = self.observed.snapshot()?;
+        let budget = u64::try_from(self.lease.limits.output_per_turn).map_err(|source| {
+            error::boundary("the authoring output allowance is invalid", source)
+        })?;
+        let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
+        if remaining == 0 {
+            ended(call_index - 1, "output_budget");
+            return Ok(None);
+        }
+        Ok(Some(ModelCall {
+            capability_token: self.lease.model_access.token.clone(),
+            attempt_id: self.lease.attempt_id.clone(),
+            fence: self.lease.fence.clone(),
+            dispatch_id: Entropy::new().uuid7(self.clock.now())?.to_string(),
+            call_index,
+            request: ModelRequest {
+                messages: progress.messages.clone(),
+                max_output_tokens: u32::try_from(remaining).map_err(|source| {
+                    error::boundary(
+                        "the authoring output allowance exceeds the wire bound",
+                        source,
+                    )
+                })?,
+            },
+        }))
+    }
+
+    async fn invoke(&self, request: &ModelCall) -> Result<ModelResult> {
+        let result = self.plane.authoring_model(self.id, request).await?;
+        if result.dispatch_id != request.dispatch_id || result.call_index != request.call_index {
+            return Err(error::config(
+                "the daemon returned a different authoring dispatch",
+            ));
+        }
+        self.observed.accept(&result.usage)?;
+        record_call(request.call_index, &result);
+        Ok(result)
+    }
+
+    async fn fold(
+        &self,
+        progress: &mut Progress,
+        call_index: u32,
+        result: ModelResult,
+    ) -> Result<ControlFlow<Ending>> {
+        if matches!(result.usage, af_wire::authoring::ModelUsage::Unknown) {
+            return Ok(ControlFlow::Break(Ending::unknown()));
+        }
+        if result.compacted {
+            return Ok(ControlFlow::Continue(()));
+        }
+        if result.cut {
+            ended(call_index, "cut");
+            return Ok(ControlFlow::Break(settled(progress.accepted_any)));
+        }
+        if result.proposal_calls.is_empty() {
+            ended(call_index, "answered");
+            return Ok(ControlFlow::Break(Ending::completed(Some(result.text))));
+        }
+        self.proposals(progress, call_index, result).await
+    }
+
+    /// Refused changes spend corrections; requests for an answer spend only calls.
+    async fn proposals(
+        &self,
+        progress: &mut Progress,
+        call_index: u32,
+        result: ModelResult,
+    ) -> Result<ControlFlow<Ending>> {
+        let answer = result.text.clone();
+        progress.messages.push(ModelMessage::Assistant {
+            text: result.text,
+            proposal_calls: result.proposal_calls.clone(),
+        });
+        let closing = progress.accepted_any;
+        let asked_for_an_answer = result.proposal_calls.iter().all(|call| {
+            matches!(
+                call,
+                ProposalCall::Refused {
+                    reason: ProposalRejection::EditNotRequested,
+                    ..
+                }
+            )
+        });
+        let mut all_accepted = true;
+        for call in result.proposal_calls {
+            let (message, accepted) = proposal::apply(
+                self.plane,
+                self.id,
+                self.lease,
+                progress.activity_sequence,
+                &call,
+            )
+            .await?;
+            progress.messages.push(message);
+            progress.activity_sequence += u64::from(accepted);
+            all_accepted &= accepted;
+            progress.accepted_any |= accepted;
+        }
+        if all_accepted && !answer.trim().is_empty() {
+            ended(call_index, "proposed_and_answered");
+            return Ok(ControlFlow::Break(Ending::completed(Some(answer))));
+        }
+        if closing {
+            // Its text may describe a refused change, so none is retained.
+            ended(call_index, "proposed");
+            return Ok(ControlFlow::Break(Ending::completed(None)));
+        }
+        if !progress.accepted_any && !asked_for_an_answer {
+            if progress.corrections
+                >= self
+                    .lease
+                    .limits
+                    .max_proposal_corrections
+                    .min(af_wire::authoring::PROPOSAL_CORRECTIONS_MAX)
+            {
+                ended(call_index, "corrections_exhausted");
+                return Ok(ControlFlow::Break(Ending::incomplete()));
+            }
+            progress.corrections += 1;
+        }
+        Ok(ControlFlow::Continue(()))
     }
 
     fn context(&self) -> Result<Vec<ModelMessage>> {

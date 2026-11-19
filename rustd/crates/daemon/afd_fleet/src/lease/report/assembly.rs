@@ -88,6 +88,7 @@ pub(super) fn reconciled(
     completed_at: Option<Timestamp>,
 ) -> Reconciled {
     Reconciled {
+        hold: None,
         tokens,
         fleet_id: lease.fleet_id,
         workspace_id: lease.workspace_id,

@@ -19,7 +19,7 @@ impl LeaseService {
     pub async fn claim_with<T, F>(
         &self,
         drafts: &afd_authoring::Drafts,
-        request: OfferRequest<'_>,
+        mut request: OfferRequest<'_>,
         accepted: AcceptedKinds,
         clock: &mut VerbClock<OfferStage>,
         mut emit: F,
@@ -58,7 +58,7 @@ impl LeaseService {
                 }
                 LeaseKind::Fleet => {
                     if let Some(body) = self
-                        .claim_fleet_with(request, Some(ticket), clock, |lease, metadata| {
+                        .claim_fleet_with(&mut request, Some(ticket), clock, |lease, metadata| {
                             emit(TaggedLease::Fleet(Box::new(lease)), metadata)
                         })
                         .await?

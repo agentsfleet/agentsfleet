@@ -15,6 +15,9 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# Recovery overlays are validated, serialized and scrubbed under current policy.
+serde.workspace = true
+af_secrets.workspace = true
 # Recall's case-insensitive key match, with no copy of each key.
 aho-corasick.workspace = true
 # `MemoryBackend` is `dyn`: the backend is chosen per lease, at run time.
@@ -30,6 +33,8 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# Exercise the same private serialization that the root snapshot embeds.
+serde_json.workspace = true
 # The instant a shared entry was last written, in the fakes.
 jiff.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }

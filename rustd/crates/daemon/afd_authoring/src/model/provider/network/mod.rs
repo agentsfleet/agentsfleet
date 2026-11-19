@@ -9,6 +9,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct Network {
     client: reqwest::Client,
+    timeouts: af_inference::Timeouts,
     #[cfg(feature = "test-util")]
     boundary: Option<(reqwest::Client, reqwest::Url)>,
 }
@@ -25,15 +26,24 @@ impl Network {
     /// # Errors
     /// Reports a client/TLS initialization failure.
     pub fn new() -> Result<Self, reqwest::Error> {
+        Self::configured(af_inference::Timeouts::DEFAULT)
+    }
+
+    /// Builds a guarded provider pool with checked connection and inactivity limits.
+    ///
+    /// # Errors
+    /// Reports a client/TLS initialization failure.
+    pub fn configured(timeouts: af_inference::Timeouts) -> Result<Self, reqwest::Error> {
         let client = afd_identity::direct(super::super::budget::PROVIDER_TIMEOUT)
-            .connect_timeout(af_inference::stream::CONNECT_TIMEOUT)
-            .read_timeout(af_inference::stream::READ_TIMEOUT)
+            .connect_timeout(timeouts.connect())
+            .read_timeout(timeouts.stream_idle())
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
             .dns_resolver(Arc::new(Guarded))
             .build()?;
         Ok(Self {
             client,
+            timeouts,
             #[cfg(feature = "test-util")]
             boundary: None,
         })
@@ -65,6 +75,10 @@ impl Network {
 
 #[async_trait::async_trait]
 impl Transport for Network {
+    fn timeouts(&self) -> af_inference::Timeouts {
+        self.timeouts
+    }
+
     async fn send(&self, request: ProviderRequest) -> Result<ProviderResponse> {
         let mut outbound = reqwest::Request::try_from(request.request)?;
         *outbound.timeout_mut() = Some(request.timeout);

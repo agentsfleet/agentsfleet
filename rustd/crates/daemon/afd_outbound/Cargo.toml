@@ -27,6 +27,7 @@ test-util = [
 ]
 
 [dependencies]
+garde.workspace = true
 # The registry codes a failed delivery is logged under, and the identifiers a
 # job names.
 af_core = { workspace = true, features = ["sqlx"] }

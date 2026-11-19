@@ -1,6 +1,5 @@
 CREATE TABLE identity.user_preferences (
     id            UUID PRIMARY KEY,
-    CONSTRAINT ck_user_preferences_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     user_id       UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
     workspace_id  UUID NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,

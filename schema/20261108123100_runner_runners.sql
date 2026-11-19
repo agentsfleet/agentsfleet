@@ -3,14 +3,10 @@
 -- lease type, so a stale poll cannot overwrite the alternation another daemon set.
 CREATE TABLE runner.runners (
     id                       UUID PRIMARY KEY,
-    CONSTRAINT ck_runners_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     host_id                  TEXT    NOT NULL,
     token_hash               TEXT    NOT NULL,
     -- One native runner session owns grants and renewals until replaced.
     connection_id            UUID,
-    CONSTRAINT ck_runners_connection_uuidv7 CHECK (
-        connection_id IS NULL OR uuid_extract_version(connection_id) IS NOT DISTINCT FROM 7
-    ),
     sandbox_tier             TEXT    NOT NULL,
     status                   TEXT    NOT NULL,
     labels                   JSONB   NOT NULL,
@@ -21,6 +17,13 @@ CREATE TABLE runner.runners (
     capability_report        JSONB,
     degraded_reason          TEXT,
     last_seen_at             TIMESTAMPTZ(3)  NOT NULL,
+    -- Automatic quarantine is independent of operator status. Capacity and
+    -- operator readers inspect reason/time; proved heartbeats own healthy_since.
+    cordon_reason            TEXT,
+    cordoned_at              TIMESTAMPTZ(3),
+    cordon_healthy_since_at      TIMESTAMPTZ(3),
+    CONSTRAINT ck_runners_cordon_pair CHECK ((cordon_reason IS NULL) = (cordoned_at IS NULL)),
+    CONSTRAINT ck_runners_cordon_health CHECK (cordon_healthy_since_at IS NULL OR cordon_reason IS NOT NULL),
     selftest_requested_at    TIMESTAMPTZ(3),
     selftest_completed_at    TIMESTAMPTZ(3),
     -- NULL means no self-test yet, which is distinct from a failed one.

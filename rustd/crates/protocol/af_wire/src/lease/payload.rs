@@ -40,6 +40,12 @@ pub struct LeasePayload<'a> {
     pub lease_id: Cow<'a, str>,
     /// Monotonic guard a report must echo.
     pub fencing_token: u64,
+    /// Immutable setup proved and retained by the issue transaction.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub setup_revision_id: Option<Cow<'a, str>>,
+    /// Exact committed ordinary-turn state; private bytes require a fenced native read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_resume: Option<super::TurnResume>,
     /// The instant after which the event becomes reclaimable.
     #[serde(with = "crate::instant")]
     pub lease_expires_at: jiff::Timestamp,

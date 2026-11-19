@@ -110,7 +110,7 @@ async fn offered(session: &Session) -> Proof<Lease> {
 async fn opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work()
 -> Proof {
     for transport in [Transport::H2, Transport::H3] {
-        reconcile(transport).await?;
+        Box::pin(reconcile(transport)).await?;
     }
     Ok(())
 }
@@ -195,7 +195,7 @@ async fn expire(run: &Scenario, fleet: &Uuid7, lease: &Uuid7) -> Proof {
     let mut connection = run.booted.database.acquire().await?;
     sqlx::query("UPDATE runner.leases SET lease_expires_at=statement_timestamp()-interval '1 second' WHERE id=$1")
         .bind(lease).execute(&mut *connection).await?;
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=statement_timestamp()-interval '1 second' WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.slots SET lease_expires_at=statement_timestamp()-interval '1 second' WHERE fleet_id=$1")
         .bind(fleet).execute(&mut *connection).await?;
     Ok(())
 }

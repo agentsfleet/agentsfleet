@@ -92,6 +92,8 @@ pub(crate) enum Verb {
     FleetSteer,
     /// The messages a person sent while the run works, claimed for it.
     Folds,
+    /// Native event-owned recovery command.
+    TurnCheckpoint,
     /// Complete native human input and recovered meaning.
     TaskInputs,
     /// One complete immutable human interpretation.
@@ -130,7 +132,7 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 42] = [
+    pub(crate) const ALL: [Self; 43] = [
         Self::Open,
         Self::Heartbeat,
         Self::AuthoringModel,
@@ -157,6 +159,7 @@ impl Verb {
         Self::FleetEvents,
         Self::FleetSteer,
         Self::Folds,
+        Self::TurnCheckpoint,
         Self::TaskInputs,
         Self::TaskBindings,
         Self::TaskInputReceipt,
@@ -212,6 +215,7 @@ impl Verb {
             | Self::Message
             | Self::FleetSteer
             | Self::Folds
+            | Self::TurnCheckpoint
             | Self::TaskBindings
             | Self::TaskInputReceipt
             | Self::TaskDecisionReserve
@@ -252,6 +256,7 @@ impl Verb {
             Self::FleetEvents => "fleet_events",
             Self::FleetSteer => "fleet_steer",
             Self::Folds => "folds",
+            Self::TurnCheckpoint => "turn_checkpoint",
             Self::TaskInputs => "task_inputs",
             Self::TaskBindings => "task_bindings",
             Self::TaskInputReceipt => "task_input_receipt",
@@ -298,6 +303,7 @@ impl Verb {
             | Self::FleetEvents
             | Self::FleetSteer
             | Self::Folds
+            | Self::TurnCheckpoint
             | Self::TaskInputs
             | Self::TaskBindings
             | Self::TaskInputReceipt

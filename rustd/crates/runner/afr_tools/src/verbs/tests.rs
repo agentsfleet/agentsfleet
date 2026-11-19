@@ -5,10 +5,10 @@ use af_core::error_code::{self, ErrorCode};
 use super::{CLOSED, LeaseVerbs as _, ScheduleCall, Unanswered, answered};
 use crate::runtime::ToolErrorCode;
 
-/// The four codes a model acts on differently each name their own tool error.
+/// The five codes a model acts on differently each name their own tool error.
 #[test]
 fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
-    let cases: [(ErrorCode, ToolErrorCode); 4] = [
+    let cases: [(ErrorCode, ToolErrorCode); 5] = [
         (
             error_code::SCHEDULE_CAP_REACHED,
             ToolErrorCode::ScheduleCapReached,
@@ -16,6 +16,10 @@ fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
         (
             error_code::SCHEDULE_NOT_FLEET_OWNED,
             ToolErrorCode::ScheduleNotFleetOwned,
+        ),
+        (
+            error_code::SCHEDULE_NOT_RUNNABLE,
+            ToolErrorCode::ScheduleNotRunnable,
         ),
         (
             error_code::MESSAGE_NO_CHANNEL,
@@ -89,4 +93,94 @@ async fn closed_verbs_answer_nothing() {
         Err(Unanswered::Unreachable)
     );
     assert_eq!(CLOSED.message("hello").await, Err(Unanswered::Unreachable));
+}
+
+const ID: &str = "019f0000-0000-7000-8000-000000000001";
+
+fn task_version() -> af_wire::task::DecisionTaskVersion {
+    af_wire::task::DecisionTaskVersion {
+        task_id: ID.to_owned(),
+        generation: 1,
+    }
+}
+
+/// A verbs implementation that names only the two required verbs refuses every task verb.
+#[tokio::test]
+async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
+    use af_wire::task::{
+        DecisionAssessment, DecisionReservationInput, TaskBindingsInput, TaskEffectInput,
+        TaskEffectsQuery, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery,
+    };
+    let refused = Some(Unanswered::Refused(None));
+    let inputs = TaskInputsQuery {
+        fencing_token: 1,
+        starting_after: None,
+        after_input_sequence: None,
+        limit: 1,
+    };
+    assert_eq!(CLOSED.task_inputs(inputs).await.err(), refused);
+    let bindings = TaskBindingsInput {
+        fencing_token: 1,
+        source_admission_id: ID.to_owned(),
+        accepted_revision_id: ID.to_owned(),
+        plan_digest: "0".repeat(64),
+        message_decision_call_id: ID.to_owned(),
+        items: Vec::new(),
+    };
+    assert_eq!(CLOSED.task_bindings(bindings).await.err(), refused);
+    let receipt = TaskInputReceiptInput {
+        fencing_token: 1,
+        operation_id: ID.to_owned(),
+        source_admission_id: ID.to_owned(),
+        plan_digest: "0".repeat(64),
+        item_id: ID.to_owned(),
+        task: None,
+        mode: TaskInputMode::Queued,
+        response_text: None,
+    };
+    assert_eq!(CLOSED.task_input_receipt(receipt).await.err(), refused);
+    let decision = DecisionReservationInput {
+        operation_id: ID.to_owned(),
+        fencing_token: 1,
+        source_admission_id: ID.to_owned(),
+        assessment: DecisionAssessment::Message,
+        task: Some(task_version()),
+        retry_of: None,
+        evidence: serde_json::Value::Null,
+    };
+    assert_eq!(CLOSED.task_decision(decision).await.err(), refused);
+    let publish = TaskEffectInput {
+        operation_id: ID.to_owned(),
+        fencing_token: 1,
+        task: task_version(),
+        source_item_id: ID.to_owned(),
+        covered_input_sequence: 0,
+        expected_head: "0".repeat(40),
+        tested_tree: "0".repeat(40),
+        changes: Vec::new(),
+    };
+    assert_eq!(CLOSED.task_publish(publish).await.err(), refused);
+    assert_eq!(CLOSED.task_effect(ID).await.err(), refused);
+    let effects = TaskEffectsQuery {
+        fencing_token: 1,
+        task_id: ID.to_owned(),
+        ordinal_after: 0,
+        starting_after: None,
+        limit: 1,
+    };
+    assert_eq!(CLOSED.task_effects(effects).await.err(), refused);
+}
+
+/// A decision's debug view says whether a receipt exists without printing it.
+#[test]
+fn a_decision_evaluation_debug_view_omits_the_recorded_receipt() {
+    let evaluation = super::DecisionEvaluation {
+        call_id: ID.to_owned(),
+        state: af_wire::task::DecisionCallState::Unknown,
+        recorded: None,
+    };
+    assert_eq!(
+        format!("{evaluation:?}"),
+        format!("DecisionEvaluation {{ call_id: {ID:?}, state: Unknown, recorded: false }}")
+    );
 }

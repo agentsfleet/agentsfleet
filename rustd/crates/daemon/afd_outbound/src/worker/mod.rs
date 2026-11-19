@@ -66,6 +66,7 @@ pub struct Worker<S> {
     entropy: Entropy,
     pass: Duration,
     renew: Duration,
+    retries: crate::retry::RetryPolicy,
 }
 
 impl<S: Deliver + 'static> Worker<S> {
@@ -79,6 +80,7 @@ impl<S: Deliver + 'static> Worker<S> {
             entropy,
             pass: CLAIM_PASS,
             renew: obligation::CLAIM_RENEW,
+            retries: crate::retry::RetryPolicy::DEFAULT,
         }
     }
 
@@ -87,6 +89,13 @@ impl<S: Deliver + 'static> Worker<S> {
     #[must_use]
     pub const fn with_claim_pass(mut self, pass: Duration) -> Self {
         self.pass = pass;
+        self
+    }
+
+    /// Applies the checked inline retry budget to every delivery lane.
+    #[must_use]
+    pub const fn with_retries(mut self, retries: crate::retry::RetryPolicy) -> Self {
+        self.retries = retries;
         self
     }
 
@@ -108,13 +117,14 @@ impl<S: Deliver + 'static> Worker<S> {
             entropy,
             pass,
             renew,
+            retries,
         } = self;
         let mut wake = bus
             .subscribe(&Subject::OutboundWake)
             .await
             .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
             .ok();
-        let lanes = Lanes::renewing_every(posters, database.clone(), token.clone(), renew);
+        let lanes = Lanes::configured(posters, database.clone(), token.clone(), renew, retries);
         let mut via = Via::Scan;
         while !token.is_cancelled() {
             // With no room, the next finished job rings the loop.

@@ -24,8 +24,8 @@
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_fleet_runtime::Definition;
 use af_fleet_runtime::config::RepositoryBinding;
+use af_fleet_runtime::{CredentialName, Definition, FleetConfig};
 
 use crate::error::{Result, query};
 use crate::lease::sql;
@@ -54,6 +54,8 @@ pub struct MintScope {
     pub event_id: Box<str>,
     /// How far a repository-scoped token may reach, if the fleet declared it.
     pub binding: Option<RepositoryBinding>,
+    /// Credentials present in both the assignment and current setup.
+    pub(crate) runner_credentials: Vec<CredentialName>,
 }
 
 impl Leases {
@@ -85,11 +87,32 @@ impl Leases {
             return Ok(None);
         };
 
+        let current = config_of(&found.definition);
+        let previous = found.issued_definition.as_deref().and_then(config_of);
+        let issued = if found.issued_is_current {
+            current.as_ref()
+        } else {
+            previous.as_ref()
+        };
+        let runner_credentials = match (current.as_ref(), issued) {
+            (Some(current), Some(issued)) => issued
+                .credentials()
+                .iter()
+                .filter(|name| current.credentials().contains(name))
+                .filter(|name| {
+                    name.as_str() != "github"
+                        || current.repository_binding() == issued.repository_binding()
+                })
+                .cloned()
+                .collect(),
+            _ => Vec::new(),
+        };
         Ok(Some(MintScope {
             workspace_id: found.workspace_id.clone(),
             fleet_id: found.fleet_id.clone(),
             event_id: found.event_id.into(),
-            binding: binding_of(&found.definition),
+            binding: current.and_then(|config| config.repository_binding().cloned()),
+            runner_credentials,
         }))
     }
 
@@ -142,16 +165,16 @@ impl Leases {
 /// fleet declared no reach this mint may honour — but only one of them is worth
 /// a diagnostic, because a config that will not parse is an operator's problem
 /// and a fleet that simply declared no repositories is not.
-fn binding_of(definition: &str) -> Option<RepositoryBinding> {
+fn config_of(definition: &str) -> Option<FleetConfig> {
     match Definition::parse(definition) {
-        Ok(definition) => definition.runtime().repository_binding().cloned(),
+        Ok(definition) => Some(definition.runtime().clone()),
         Err(unreadable) => {
             let Logged { error_code, reason } = unreadable.logged();
             {
                 let (event, message) = (
                     &EVENT_CONFIG_UNPARSED,
                     format_args!(
-                        "a fleet's stored config would not parse; a repository-scoped mint will refuse"
+                        "a fleet's stored config would not parse; runner credential authority is unavailable"
                     ),
                 );
                 tracing::warn!(message, event, error_code, reason);
@@ -161,24 +184,26 @@ fn binding_of(definition: &str) -> Option<RepositoryBinding> {
     }
 }
 
-/// [`sql::lease::SELECT_LEASE_SCOPE_FOR_MINT`]'s row, ids still as stored text.
+/// The mint's current and issued setup, with typed identifiers.
 #[derive(sqlx::FromRow)]
 struct ScopeRow {
     workspace_id: Uuid7,
     fleet_id: Uuid7,
     definition: String,
+    issued_definition: Option<String>,
+    issued_is_current: bool,
     event_id: Uuid7,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{EVENT_CONFIG_UNPARSED, binding_of};
+    use super::{EVENT_CONFIG_UNPARSED, config_of};
 
     #[test]
     fn an_unparsed_scope_config_reason_carries_no_code_prefix() {
         let log = af_core::test_util::trace::Capture::install();
 
-        assert!(binding_of("not a document").is_none());
+        assert!(config_of("not a document").is_none());
 
         let line = log.only(EVENT_CONFIG_UNPARSED);
         let reason = line.field("reason").unwrap_or_default();

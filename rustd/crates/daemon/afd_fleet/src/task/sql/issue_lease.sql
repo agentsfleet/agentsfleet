@@ -18,6 +18,6 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), started AS (
     FROM started s WHERE l.id = $1
     RETURNING l.fleet_id, l.fencing_token, l.lease_expires_at
 )
-UPDATE runner.fleet_slots s SET lease_expires_at = b.lease_expires_at, updated_at = now()
+UPDATE runner.slots s SET lease_expires_at = b.lease_expires_at, updated_at = now()
 FROM bound b WHERE s.fleet_id = b.fleet_id AND s.fencing_token = b.fencing_token
 RETURNING s.lease_expires_at

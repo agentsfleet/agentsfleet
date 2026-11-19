@@ -99,11 +99,12 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
     let answer = fixtures
         .plane()
         .claim_fleet_with(
-            OfferRequest {
+            &mut OfferRequest {
                 runner: &seeded.runner,
                 held: std::slice::from_ref(&seeded.fleet),
                 degraded: false,
                 now: fixtures.enrolled_at(),
+                recovery: None,
             },
             None,
             &mut clock,

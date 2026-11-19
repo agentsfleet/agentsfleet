@@ -93,7 +93,7 @@ pub(super) async fn read(
         .bind(&attempt.id)
         .bind(i64::from(request.call_index))
         .bind(dispatch_status::COMPLETED)
-        .bind(super::budget::MAX_CALLS)
+        .bind(attempt.policy.calls())
         .fetch_all(connection)
         .await
         .map_err(query(CONTEXT))?;

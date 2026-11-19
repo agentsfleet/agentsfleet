@@ -12,6 +12,8 @@ export class ToolActivityPrinter {
 
   constructor(print: (line: string) => void) { this.#print = print; }
 
+  reset(): void { this.#seen.clear(); }
+
   frame(kind: string, payload: Record<string, unknown>): boolean {
     if (!KINDS.has(kind)) return false;
     const name = payload["name"];

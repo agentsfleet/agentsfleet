@@ -144,8 +144,8 @@ fn minted_seed() -> u32 {
 /// An identifier [`af_core::id::Uuid7`] refuses.
 ///
 /// The version nibble is `7`, but the variant nibble is `0` instead of an RFC
-/// variant. Runner constraints reject it; older tenant fixtures exercise how
-/// the directory refuses a malformed identifier admitted by a weaker check.
+/// variant. PostgreSQL stores it as a UUID; the directory's typed decoder
+/// refuses it before returning a credential identity.
 pub(crate) fn identifier_with_bad_variant(seed: u32) -> String {
     format!(
         "01900000-0000-7000-0000-{:06x}{seed:06x}",

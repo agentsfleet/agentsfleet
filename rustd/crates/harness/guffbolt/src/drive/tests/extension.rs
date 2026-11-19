@@ -35,6 +35,7 @@ impl Extension<Scripted> for Recording {
         &mut self,
         _conversation: &mut Scripted,
         number: u64,
+        _state: &crate::DriveState,
     ) -> impl Future<Output = Option<Ending<Failure>>> + Send {
         self.seen.push(format!("before {number}"));
         std::future::ready(
@@ -74,7 +75,7 @@ impl Extension<Scripted> for Recording {
 async fn an_extension_hears_every_point_in_order() {
     let mut run = Scripted::new([calling(1), answer("Done.")]);
     let mut extension = Recording::default();
-    drive(&mut run, &mut extension).await;
+    drive(&mut run, &mut extension, &mut crate::DriveState::default()).await;
     assert_eq!(
         extension.seen,
         [
@@ -95,7 +96,7 @@ async fn an_extension_that_ends_before_the_model_makes_no_call() {
         end_before: Some(1),
         ..Recording::default()
     };
-    let ending = drive(&mut run, &mut extension).await;
+    let ending = drive(&mut run, &mut extension, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("from the extension"));
     assert_eq!(run.sent.len(), 0, "no call is made");
 }
@@ -108,7 +109,7 @@ async fn an_extension_can_refuse_a_turn_before_its_calls_run() {
         ..Recording::default()
     };
     assert!(matches!(
-        drive(&mut run, &mut extension).await,
+        drive(&mut run, &mut extension, &mut crate::DriveState::default()).await,
         Ending::Stopped
     ));
     assert_eq!(run.results(), 0, "no call of a refused turn runs");
@@ -121,7 +122,7 @@ async fn a_continued_answer_stays_in_the_conversation_and_the_model_is_told_why(
         continue_once: Some("The goal remains incomplete."),
         ..Recording::default()
     };
-    let ending = drive(&mut run, &mut extension).await;
+    let ending = drive(&mut run, &mut extension, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("Finished."));
     assert_eq!(
         run.sent.get(1),
@@ -140,7 +141,7 @@ async fn an_extension_can_end_the_loop_in_place_of_an_answer() {
         end_answer: Some("The extension's own ending."),
         ..Recording::default()
     };
-    let ending = drive(&mut run, &mut extension).await;
+    let ending = drive(&mut run, &mut extension, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("The extension's own ending."));
     assert!(
         !run.messages
@@ -157,7 +158,7 @@ async fn an_extension_can_end_the_loop_after_a_group() {
         ..Recording::default()
     };
     assert!(matches!(
-        drive(&mut run, &mut extension).await,
+        drive(&mut run, &mut extension, &mut crate::DriveState::default()).await,
         Ending::Stopped
     ));
     assert_eq!(run.sent.len(), 1);
@@ -171,7 +172,7 @@ async fn a_spent_budget_stops_the_loop_before_any_call() {
         ..Recording::default()
     };
     assert!(matches!(
-        drive(&mut run, &mut extension).await,
+        drive(&mut run, &mut extension, &mut crate::DriveState::default()).await,
         Ending::Stopped
     ));
     assert_eq!(run.sent.len(), 0, "no call is made");
@@ -185,7 +186,7 @@ async fn a_budget_that_runs_out_mid_call_stops_the_loop_and_says_so() {
         ..Recording::default()
     };
     assert!(matches!(
-        drive(&mut run, &mut extension).await,
+        drive(&mut run, &mut extension, &mut crate::DriveState::default()).await,
         Ending::Stopped
     ));
     assert!(extension.spent, "the extension hears its budget ran out");
@@ -198,7 +199,7 @@ async fn a_loop_that_ends_within_its_budget_ends_as_it_would_unbounded() {
         budget: Some(Budget::Within(Duration::from_secs(30))),
         ..Recording::default()
     };
-    let ending = drive(&mut run, &mut extension).await;
+    let ending = drive(&mut run, &mut extension, &mut crate::DriveState::default()).await;
     assert_eq!(answered(&ending), Some("Done."));
     assert!(!extension.spent, "the budget did not run out");
 }

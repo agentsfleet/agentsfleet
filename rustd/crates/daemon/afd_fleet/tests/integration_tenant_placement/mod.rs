@@ -157,7 +157,7 @@ async fn leases_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
 async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
     scalar(
         fixtures,
-        "SELECT count(*) FROM runner.fleet_slots WHERE fleet_id = $1",
+        "SELECT count(*) FROM runner.slots WHERE fleet_id = $1",
         fleet,
     )
     .await
@@ -167,7 +167,7 @@ async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
 /// `fleet`'s slot as a claim leaves it: its fence, deadline and holder.
 async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>) {
     sqlx::query_as(
-        "SELECT fencing_token, lease_expires_at::text, last_runner_id FROM runner.fleet_slots WHERE fleet_id = $1",
+        "SELECT fencing_token, lease_expires_at::text, last_runner_id FROM runner.slots WHERE fleet_id = $1",
     )
     .bind(fleet)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
@@ -178,7 +178,7 @@ async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>
 /// Lapses `fleet`'s claim, as an expired lease leaves it.
 async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
     sqlx::query(
-        "UPDATE runner.fleet_slots SET lease_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
+        "UPDATE runner.slots SET lease_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
     )
     .bind(fleet)
     .execute(&mut *fixtures.database.acquire().await.expect("a connection"))
@@ -207,6 +207,7 @@ async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool 
         .bind(sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::event::status::RECEIVED)
         .bind(afd_admission::Producer::Steer.as_str())
+        .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *transaction)
         .await

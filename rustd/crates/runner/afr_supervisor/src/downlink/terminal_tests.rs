@@ -277,3 +277,52 @@ async fn superseded() -> af_stream::Result<af_stream::OwnedFrame> {
     )
     .await
 }
+
+#[test]
+fn a_runner_credential_no_header_can_carry_is_refused_before_any_opening() -> Proof {
+    let config = Config::from_env(&MapEnv::from_pairs([
+        (ENV_API_URL, "http://127.0.0.1:1"),
+        (ENV_STREAM_URL, "https://localhost:1"),
+        (ENV_RUNNER_TOKEN, "agt_r_terminal\nfixture"),
+    ]))?;
+    let failure = Downlink::new(&config)
+        .err()
+        .ok_or("a credential with a line break was carried in a header")?;
+    assert!(matches!(
+        failure.kind(),
+        ErrorKind::Boundary { detail, .. }
+            if *detail == "the runner credential cannot be carried in a header"
+    ));
+    Ok(())
+}
+
+#[test]
+fn a_drained_connection_retries_without_stopping_the_runner() -> Proof {
+    let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
+    let config = configured("https://localhost:1", &identity.root())?;
+    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let halt = Halt::new(CancellationToken::new());
+    let mut outage = super::observation::Outage::new();
+    downlink.retry(
+        &halt,
+        &tracing::Span::none(),
+        &mut outage,
+        Ok(Progress::Reconnect),
+    )?;
+    assert!(!halt.serving().is_cancelled());
+    assert!(!halt.running().is_cancelled());
+    assert!(!halt.token_refused());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_runner_stopped_before_its_first_attempt_opens_no_session() -> Proof {
+    let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
+    let config = configured("https://localhost:1", &identity.root())?;
+    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let halt = Halt::new(CancellationToken::new());
+    halt.stop();
+    downlink.sessions(&halt).await?;
+    assert!(downlink.current.borrow().is_none());
+    Ok(())
+}

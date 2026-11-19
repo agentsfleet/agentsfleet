@@ -24,6 +24,7 @@ readonly HOST_ENV_FILE="$HOST_ROOT/.env"
 readonly UNIT_ENV_FILE="/etc/default/agentsfleet-runner"
 readonly HOST_STREAM_CA_FILE="$HOST_ROOT/runner-stream-trust.pem"
 readonly UNIT_STREAM_CA_FILE="/etc/agentsfleet/runner-stream-trust.pem"
+readonly UNIT_CONFIG_FILE="/etc/agentsfleet/agentsfleet-runner.toml"
 
 readonly BINARY_NAME="agentsfleet-runner"
 readonly INSTALL_DIR="/usr/local/bin"
@@ -42,4 +43,5 @@ readonly HOST_DEPLOY_FILES=(
   "toolbox.sh:644"
   "service.sh:644"
   "$SERVICE_NAME:644"
+  "agentsfleet-runner.toml:644"
 )

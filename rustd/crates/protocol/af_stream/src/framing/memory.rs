@@ -11,6 +11,19 @@ pub const CONTROL_MEMORY_ENV: &str = "AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB";
 /// Total work, report and activity frame memory for receive and send, in mebibytes.
 pub const DATA_MEMORY_ENV: &str = "AGENTSFLEET_RUNNER_DATA_MEMORY_MIB";
 const MIB: usize = 1024 * 1024;
+/// Total control-frame bytes for both directions across one daemon replica.
+pub const CONTROL_BUFFER_BYTES_ENV: &str = "AGENTSFLEET_RUNNER_CONTROL_BUFFER_BYTES";
+/// Total work, report and activity bytes for both directions across one daemon replica.
+pub const DATA_BUFFER_BYTES_ENV: &str = "AGENTSFLEET_RUNNER_DATA_BUFFER_BYTES";
+const MIN_BYTES: usize = 12 * MIB;
+const MAX_BYTES: usize = 512 * MIB;
+
+#[derive(Validate)]
+struct BufferBytes {
+    #[garde(range(min = MIN_BYTES, max = MAX_BYTES))]
+    bytes: usize,
+}
+
 const DEFAULT_CONTROL_MIB: usize = 16;
 const DEFAULT_DATA_MIB: usize = 48;
 // A default is a valid configuration, never a replacement for a failed parse.
@@ -67,17 +80,48 @@ impl TryFrom<MemorySettings> for MemoryLimits {
 }
 
 impl MemoryLimits {
+    /// Smallest budget that can hold a maximum frame and its copy in each direction.
+    pub const MIN_BUFFER_BYTES: usize = MIN_BYTES;
+    /// Largest supported frame-buffer budget across both directions.
+    pub const MAX_BUFFER_BYTES: usize = MAX_BYTES;
+
     /// Resolve once at boot; an invalid configured value is a startup fault.
     ///
     /// # Errors
     /// Names a nonnumeric setting or refuses an unsafe memory budget before allocation.
     pub fn from_env(env: &(impl EnvSource + ?Sized)) -> Result<Self> {
-        MemorySettings {
-            control_mib: read(env, CONTROL_MEMORY_ENV, DEFAULT_CONTROL_MIB)?,
-            data_mib: read(env, DATA_MEMORY_ENV, DEFAULT_DATA_MIB)?,
-        }
-        .try_into()
+        Ok(Self {
+            control_bytes: read_bytes(
+                env,
+                CONTROL_BUFFER_BYTES_ENV,
+                CONTROL_MEMORY_ENV,
+                DEFAULT_CONTROL_MIB,
+            )?,
+            data_bytes: read_bytes(
+                env,
+                DATA_BUFFER_BYTES_ENV,
+                DATA_MEMORY_ENV,
+                DEFAULT_DATA_MIB,
+            )?,
+        })
     }
+}
+
+fn read_bytes(
+    env: &(impl EnvSource + ?Sized),
+    byte_setting: &'static str,
+    legacy_setting: &'static str,
+    fallback_mib: usize,
+) -> Result<usize> {
+    let bytes = match env.get(byte_setting) {
+        Some(raw) => raw.parse().map_err(|source| ErrorKind::MemorySetting {
+            setting: byte_setting,
+            source,
+        })?,
+        None => read(env, legacy_setting, fallback_mib)?.saturating_mul(MIB),
+    };
+    let count = Unvalidated::new(BufferBytes { bytes }).validate()?;
+    Ok(count.bytes)
 }
 
 fn read(env: &(impl EnvSource + ?Sized), setting: &'static str, default: usize) -> Result<usize> {
@@ -161,14 +205,66 @@ mod tests {
 
     /// A non-numeric value names its setting rather than falling back to a default.
     #[test]
-    fn a_nonnumeric_setting_is_refused_by_name() {
-        let env = af_core::env::MapEnv::from_pairs([(super::DATA_MEMORY_ENV, "lots")]);
-        let refused = MemoryLimits::from_env(&env).err();
-        assert!(
-            refused.as_ref().is_some_and(|error| error
-                .to_string()
-                .contains("Set AGENTSFLEET_RUNNER_DATA_MEMORY_MIB to a whole number of mebibytes")),
-            "{refused:?}"
+    fn a_nonnumeric_setting_is_refused_by_name() -> crate::Result<()> {
+        for setting in [
+            super::DATA_MEMORY_ENV,
+            super::CONTROL_BUFFER_BYTES_ENV,
+            super::DATA_BUFFER_BYTES_ENV,
+        ] {
+            let env = af_core::env::MapEnv::from_pairs([(setting, "lots")]);
+            let refused = MemoryLimits::from_env(&env)
+                .err()
+                .ok_or(crate::error::ErrorKind::Protocol)?;
+            assert_eq!(
+                refused.code(),
+                af_core::error_code::INTERNAL_OPERATION_FAILED
+            );
+            assert!(
+                refused
+                    .to_string()
+                    .contains(&format!("Set {setting} to a whole number."))
+            );
+            assert!(
+                std::error::Error::source(&refused)
+                    .is_some_and(<dyn std::error::Error>::is::<std::num::ParseIntError>)
+            );
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod byte_tests {
+    use super::{CONTROL_BUFFER_BYTES_ENV, DATA_BUFFER_BYTES_ENV, MemoryLimits};
+    use af_core::env::MapEnv;
+
+    #[test]
+    fn buffer_settings_retain_the_exact_configured_byte_count() -> crate::Result<()> {
+        let env = MapEnv::from_pairs([
+            (CONTROL_BUFFER_BYTES_ENV, "16777216"),
+            (DATA_BUFFER_BYTES_ENV, "50331648"),
+            (super::CONTROL_MEMORY_ENV, "invalid"),
+        ]);
+        let limits = MemoryLimits::from_env(&env)?;
+        assert_eq!(limits.control_bytes, 16_777_216);
+        assert_eq!(limits.data_bytes, 50_331_648);
+        let (incoming, outgoing) = crate::Budget::duplex(limits);
+        assert_eq!(
+            incoming.available(af_wire::protocol::StreamKind::Control),
+            8_388_608
         );
+        assert_eq!(
+            outgoing.available(af_wire::protocol::StreamKind::Work),
+            25_165_824
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn byte_settings_refuse_impossible_and_overflowing_values() {
+        for value in ["0", "12582911", "536870913", "18446744073709551615", "bad"] {
+            let env = MapEnv::from_pairs([(CONTROL_BUFFER_BYTES_ENV, value)]);
+            assert!(MemoryLimits::from_env(&env).is_err(), "{value}");
+        }
     }
 }

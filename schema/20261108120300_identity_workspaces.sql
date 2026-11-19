@@ -2,7 +2,6 @@
 -- foreign keys prove a workspace belongs to the tenant named beside it.
 CREATE TABLE identity.workspaces (
     id          UUID PRIMARY KEY,
-    CONSTRAINT ck_workspaces_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id   UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     name        TEXT,
     created_at  TIMESTAMPTZ(3) NOT NULL,

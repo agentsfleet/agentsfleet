@@ -248,6 +248,7 @@ async fn nonempty_file_restore_preserves_exact_bytes_and_owner_only_executable_m
         .restore_files(
             Some((root.path().to_owned(), (metadata.uid(), metadata.gid()))),
             entries,
+            None,
         )
         .await?;
     assert_eq!(std::fs::read(root.path().join("repo/run.sh"))?, CONTENT);

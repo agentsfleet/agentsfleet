@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import {BindMode, LeaseDestination, LeaseKind, LeaseOutcome, RunnerEventType, RunnerLiveness, RunnerNetworkPolicy, RunnerState, SandboxTier} from "./runner-vocabulary.ts";
+import {CordonReason, BindMode, LeaseDestination, LeaseKind, LeaseOutcome, RunnerEventType, RunnerLiveness, RunnerNetworkPolicy, RunnerState, SandboxTier} from "./runner-vocabulary.ts";
 import { instant } from "../../lib/instant.ts";
 
 const text = Schema.String.check(Schema.isMinLength(1));
@@ -23,6 +23,7 @@ const capability = Schema.Struct({
 const runner = Schema.Struct({
   id: text, host_id: text, sandbox_tier: Schema.Enum(SandboxTier), status,
   liveness: Schema.Enum(RunnerLiveness),
+  cordon: Schema.optionalKey(Schema.Struct({reason: Schema.Enum(CordonReason), cordoned_at: instant})),
   labels: Schema.Array(Schema.String), last_seen_at: instant, created_at: instant,
   assigned_policy: RunnerPolicySchema, achievable: Schema.NullOr(capability),
   degraded: Schema.Boolean, degraded_reason: Schema.NullOr(Schema.String),

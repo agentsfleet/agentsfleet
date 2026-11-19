@@ -33,6 +33,8 @@ pub mod test_util;
 
 /// Boot-selected handles; no service opens another pool or broker connection here.
 pub struct GatewayDependencies {
+    /// Recovery budgets resolved before registering native sessions.
+    pub recovery: RecoverySettings,
     /// Existing shared pool for gateway-owned recovery, cache and session registration SQL.
     pub database: afd_db::Db,
     /// Host policy, liveness and guarded connection ownership.
@@ -59,6 +61,25 @@ pub struct GatewayDependencies {
     pub analytics: af_observability::Analytics,
 }
 
+/// Bounded daemon scheduler work; one session still owns one claim at a time.
+#[derive(Debug, Clone, Copy)]
+pub struct RecoverySettings {
+    /// Maximum active claims across credited hosts.
+    pub max_concurrent_claims: std::num::NonZeroUsize,
+    /// Independent lost-notification probe cadence.
+    pub offer_fallback: std::time::Duration,
+}
+
+impl Default for RecoverySettings {
+    fn default() -> Self {
+        const CLAIMS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
+        Self {
+            max_concurrent_claims: CLAIMS,
+            offer_fallback: af_core::timing::OFFER_FALLBACK_TICK,
+        }
+    }
+}
+
 impl std::fmt::Debug for GatewayDependencies {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GatewayDependencies")
@@ -72,6 +93,7 @@ pub(crate) struct Inner {
     output_budget: Budget,
     registry: Arc<registry::Registry>,
     tasks: TaskTracker,
+    checkpoint_verifications: tokio::sync::Semaphore,
     accounting_stop: CancellationToken,
 }
 
@@ -105,6 +127,7 @@ impl Gateway {
                 output_budget,
                 registry: Arc::new(registry::Registry::default()),
                 tasks: TaskTracker::new(),
+                checkpoint_verifications: tokio::sync::Semaphore::new(8),
                 accounting_stop: CancellationToken::new(),
             }),
         }

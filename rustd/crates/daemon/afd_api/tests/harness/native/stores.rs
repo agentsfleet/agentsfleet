@@ -18,6 +18,9 @@ impl Fleet {
         let key = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         let leases = LeaseService {
             task_reports: None,
+            turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
+                &key,
+            )),
             leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
             gates: afd_gate::gate::Gates::new(database.clone(), bus.clone(), Entropy::new()),
             accounts: afd_billing::Accounts::new(database.clone()),
@@ -38,6 +41,7 @@ impl Fleet {
             thread: Arc::new(self.events.clone()),
         };
         Gateway::new(GatewayDependencies {
+            recovery: afd_gateway::RecoverySettings::default(),
             database,
             runners: self.runners.clone(),
             leases,

@@ -184,6 +184,7 @@ pub(crate) fn vault(database: Db) -> SecretVault {
 /// Uses the same native billing and vault facilities as the live router.
 pub(crate) fn task_dependencies(database: Db) -> afd_fleet::task::TaskDependencies {
     afd_fleet::task::TaskDependencies {
+        policy: afd_fleet::task::policy::TaskPolicy::default(),
         admin_workspace: None,
         github: None,
         storage: None,

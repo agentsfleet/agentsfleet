@@ -159,11 +159,11 @@ export function sameValues(a: unknown, b: unknown): boolean {
 // An operator turn always answers in its own row, so the wait state and the
 // reply's parts sit on one assistant message from the first frame — no remount
 // when the first word lands. An integration turn earns a reply row only once
-// the fleet produced something; until then its tick carries the state.
+// the fleet produced something or restarted; its reply then carries the state.
 function hasReplyRow(event: FleetEvent): boolean {
   if (event.role === "assistant") return false;
   if (event.role === "user") return true;
-  return event.reply.trim().length > 0
+  return event.runRestarted === true || event.reply.trim().length > 0
     || (event.reasoning?.length ?? 0) > 0
     || (event.tools?.length ?? 0) > 0;
 }

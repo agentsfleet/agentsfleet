@@ -2,7 +2,6 @@
 -- their own frozen copy. `head_revision_id` is the current revision (deferred foreign key).
 CREATE TABLE authoring.plugin_entries (
     id                  UUID PRIMARY KEY,
-    CONSTRAINT ck_plugin_entries_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id           UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     name                TEXT   NOT NULL,
     description         TEXT   NOT NULL,

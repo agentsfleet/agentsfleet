@@ -27,7 +27,7 @@ import {
 import { applyToolFrame } from "./fleet-stream-tool-frames";
 import { applyContextProgress } from "./fleet-stream-context";
 import { interruptOpenCalls, settleTools } from "./fleet-stream-tool-trace";
-import { applyEventAdmitted, receivedUpdate, startWaiting } from "./fleet-stream-admitted";
+import { adoptInstant, applyEventAdmitted, receivedUpdate, startWaiting } from "./fleet-stream-admitted";
 
 // Pure frame-transform helpers shared by the streaming registry: how each
 // live frame folds into the timeline, and how a page of durable rows merges
@@ -129,21 +129,6 @@ function applyEventReceived(
       status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
     },
   ];
-}
-
-// The row at `index` re-stamped with the daemon's instant, or `prev` itself
-// when the frame carried none or the row already has it.
-function adoptInstant(
-  prev: FleetEvent[],
-  index: number,
-  existing: FleetEvent,
-  createdAt: number | null,
-): FleetEvent[] {
-  if (createdAt === null) return prev;
-  if (existing.createdAt.getTime() === createdAt && !existing.clientTimestamp) return prev;
-  const updated = [...prev];
-  updated[index] = { ...existing, createdAt: new Date(createdAt), clientTimestamp: false };
-  return updated;
 }
 
 function applyChunk(
@@ -305,6 +290,7 @@ export function mergeBackfill(
       text: reconciled.text.length > 0 ? reconciled.text : e.text,
       reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
       taskActivity: mergeTaskActivity(e.taskActivity, reconciled.taskActivity),
+      runRestarted: e.runRestarted,
       reasoning: e.reasoning,
       reasoningStartedAtMs: e.reasoningStartedAtMs,
       reasoningEndedAtMs: e.reasoningEndedAtMs,
@@ -312,7 +298,7 @@ export function mergeBackfill(
       thinking: e.thinking === undefined ? undefined : false,
       custom: reconciled.text.length > 0 ? reconciled.custom : e.custom,
     }, nowMs);
-    const settled = settleTools(withBodies, e);
+    const settled = settleTools(withBodies, e, "tool_calls" in replacement);
     // A page restating a row this thread already settled leaves its object alone.
     return sameEvent(settled, e) ? e : settled;
   });

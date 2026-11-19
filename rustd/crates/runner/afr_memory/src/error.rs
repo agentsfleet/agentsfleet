@@ -45,6 +45,10 @@ pub(crate) enum ErrorKind {
     )]
     NotGranted,
 
+    /// A private overlay has inconsistent keys or ordering.
+    #[error("the recovery memory overlay is inconsistent")]
+    RecoveryInvalid,
+
     /// `agentsfleetd` did not answer a recall past the window.
     #[error("agentsfleetd did not answer the recall ({code})")]
     Unanswered {
@@ -69,9 +73,10 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Malformed { .. } | ErrorKind::Query { .. } | ErrorKind::NotGranted => {
-                error_code::INVALID_REQUEST
-            }
+            ErrorKind::Malformed { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::NotGranted
+            | ErrorKind::RecoveryInvalid => error_code::INVALID_REQUEST,
             ErrorKind::Full { .. } => error_code::PAYLOAD_TOO_LARGE,
             ErrorKind::Unanswered { code } => *code,
         }
@@ -108,6 +113,7 @@ impl Error {
             other @ (ErrorKind::Query { .. }
             | ErrorKind::Full { .. }
             | ErrorKind::NotGranted
+            | ErrorKind::RecoveryInvalid
             | ErrorKind::Unanswered { .. }) => other.to_string(),
         }
     }
@@ -121,4 +127,9 @@ pub(crate) fn full(needed: usize) -> Error {
 /// A share from a fleet that may not publish.
 pub(crate) fn not_granted() -> Error {
     ErrorKind::NotGranted.into()
+}
+
+/// A private overlay cannot be restored without changing its meaning.
+pub(crate) fn recovery_invalid() -> Error {
+    ErrorKind::RecoveryInvalid.into()
 }

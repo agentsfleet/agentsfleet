@@ -2,7 +2,6 @@
 -- allocated under the task row's lock. NULL `answered_at` means not yet answered.
 CREATE TABLE fleet.task_inputs (
     id                  UUID PRIMARY KEY,
-    CONSTRAINT ck_task_inputs_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     task_id             UUID NOT NULL,
     fleet_id            UUID NOT NULL,
     workspace_id        UUID NOT NULL,

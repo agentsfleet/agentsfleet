@@ -3,7 +3,6 @@
 -- reviewed settings, and there is no routing fallback.
 CREATE TABLE model.platform_models (
     id                           UUID PRIMARY KEY,
-    CONSTRAINT ck_platform_models_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     model_name                   TEXT    NOT NULL,
     provider                     TEXT    NOT NULL,
     display_name                 TEXT    NOT NULL,

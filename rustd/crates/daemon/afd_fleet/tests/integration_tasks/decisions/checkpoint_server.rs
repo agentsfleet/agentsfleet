@@ -12,9 +12,9 @@ mod delete;
 mod protocol;
 mod tls;
 
-pub(super) const HOST: &str = "00000000000000000000000000000000.r2.cloudflarestorage.com";
+pub(crate) const HOST: &str = "00000000000000000000000000000000.r2.cloudflarestorage.com";
 
-pub(super) struct Server {
+pub(crate) struct Server {
     pub client: reqwest::Client,
     pub objects: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     stop: Option<oneshot::Sender<()>>,
@@ -22,7 +22,7 @@ pub(super) struct Server {
 }
 
 impl Server {
-    pub(super) async fn start() -> Self {
+    pub(crate) async fn start() -> Self {
         let socket = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("private object listener");
@@ -53,7 +53,7 @@ impl Server {
         }
     }
 
-    pub(super) async fn finish(mut self) {
+    pub(crate) async fn finish(mut self) {
         self.stop
             .take()
             .expect("stop handle")

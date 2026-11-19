@@ -2,7 +2,6 @@
 -- endpoint authorizes without joining the event. `sequence` orders calls within one lease.
 CREATE TABLE fleet.tool_calls (
     id                   UUID PRIMARY KEY,
-    CONSTRAINT ck_tool_calls_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id         UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     fleet_id             UUID    NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     event_id             UUID    NOT NULL REFERENCES fleet.events(event_id) ON DELETE CASCADE,

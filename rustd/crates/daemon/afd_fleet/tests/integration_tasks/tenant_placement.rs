@@ -143,7 +143,7 @@ const SETTLE: &str = "UPDATE fleet.admissions SET settled_at = clock_timestamp()
 async fn lapse(case: &Case) {
     execute(
         case,
-        "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval '1 second', \
+        "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval '1 second', \
          hold_expires_at = NULL WHERE fleet_id = $1",
         &case.held.fleet,
     )

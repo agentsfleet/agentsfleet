@@ -15,6 +15,7 @@
 pub mod error;
 
 mod hydrated;
+mod recovery;
 mod seed;
 
 use std::fmt;
@@ -23,6 +24,7 @@ use af_wire::memory::MemoryDelta;
 
 pub use self::error::{Error, Result};
 pub use self::hydrated::Hydrated;
+pub use self::recovery::MemoryRecovery;
 pub use self::seed::{RECALL_MISS_CAP, Recall, Recalled, Seed};
 
 /// What a forget did.
@@ -86,11 +88,20 @@ pub trait MemoryBackend: Send + Sync + fmt::Debug {
     /// The entries the final push would carry, as they stand: what a mid-run
     /// checkpoint writes back while the run keeps its memory.
     fn pending(&self) -> Vec<MemoryDelta<'_>>;
+
+    /// Captures the complete local overlay without granting any saved permission.
+    ///
+    /// # Errors
+    /// Recovery is unsupported or the overlay exceeds its declared bounds.
+    fn snapshot(&self) -> Result<MemoryRecovery>;
 }
 
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod recovery_tests;
 
 #[cfg(test)]
 #[path = "shared_tests.rs"]

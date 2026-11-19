@@ -100,9 +100,9 @@ impl Inbox {
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
         if let Some(row) = won {
-            return Ok(Resolution::Resolved(
-                self.won(&mut connection, row, outcome).await?,
-            ));
+            drop(connection);
+            let resolved = self.won(row).await?;
+            return Ok(Resolution::Resolved(resolved));
         }
 
         // Nothing updated: either somebody answered first, or there was never
@@ -115,6 +115,7 @@ impl Inbox {
             .await
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
+        drop(connection);
         Ok(match existing {
             Some(row) => Resolution::AlreadyResolved(self.stood(row.into()).await?),
             None => Resolution::NotFound,
@@ -129,18 +130,13 @@ impl Inbox {
     /// it even when the run could not be restarted — the count on the frame
     /// is the one the statement read, and an error from the continuation is
     /// reported after the tail has heard.
-    async fn won(
-        &self,
-        connection: &mut sqlx::PgConnection,
-        row: StoredWin,
-        outcome: Decision,
-    ) -> Result<Resolved> {
+    async fn won(&self, row: StoredWin) -> Result<Resolved> {
         let pending_approvals = row.pending_approvals;
         let mut resolved = Resolved::from(row.resolution);
         // The continuation is part of RESOLVING, not something a caller
         // remembers to do afterwards: an approval that landed without one is
         // a run a person unblocked and nothing restarted.
-        let continuation = if outcome.continues_the_run()
+        let continuation = if resolved.status == status::APPROVED
             && let Some(event_id) = resolved.event_id.clone()
         {
             self.continue_from(&resolved, &event_id).await
@@ -150,11 +146,8 @@ impl Inbox {
             self.wake_parked_delivery(&resolved.fleet_id).await;
             Ok(None)
         };
-        // After the continuation, so an approval's frame carries the count the
-        // continued run's own row moved — on the connection the resolve still
-        // holds, so the announcement costs no acquire of its own.
         let counters =
-            afd_events::fleet_counters_best_effort_on(connection, &resolved.fleet_id).await;
+            afd_events::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
         self.announce(Answer {
             fleet_id: &resolved.fleet_id,
             gate_id: resolved.gate_id.as_str(),

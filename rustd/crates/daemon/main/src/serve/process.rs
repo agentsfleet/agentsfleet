@@ -1,9 +1,8 @@
 //! The process owns booted pools until supervised shutdown has joined their borrowers.
 
-use af_core::env::EnvSource;
-
-use super::{BootFailure, Booted, boot};
+use super::{BootFailure, Booted, boot_configured};
 use crate::daemon::{Daemon, Outcome};
+use crate::preflight::BootConfig;
 use crate::supervisor::Supervisor;
 
 /// Runs the daemon to completion, then drops what it borrowed.
@@ -20,15 +19,11 @@ use crate::supervisor::Supervisor;
 /// Returns the boot stage that could not complete: an environment naming every
 /// fault at once, a datastore that would not answer, or a port that would not
 /// bind. Serving never starts in any of those cases.
-pub async fn run<E: EnvSource + ?Sized + Sync, F>(
-    env: &E,
-    port: u16,
-    signal: F,
-) -> Result<Outcome, BootFailure>
+pub async fn run<F>(config: BootConfig, port: u16, signal: F) -> Result<Outcome, BootFailure>
 where
     F: Future<Output = ()> + Send,
 {
-    let (supervisor, booted) = boot_supervised(env, port).await?;
+    let (supervisor, booted) = boot_supervised(config, port).await?;
     show_banner(&booted);
 
     // A failed native listener must stop the process rather than leave a healthy public API
@@ -49,8 +44,8 @@ where
 /// # Errors
 /// Returns the boot failure, after the supervisor holding whatever boot had
 /// already spawned has been shut down.
-async fn boot_supervised<E: EnvSource + ?Sized + Sync>(
-    env: &E,
+async fn boot_supervised(
+    config: BootConfig,
     port: u16,
 ) -> Result<(Supervisor, Booted), BootFailure> {
     let mut supervisor = Supervisor::new();
@@ -62,7 +57,7 @@ async fn boot_supervised<E: EnvSource + ?Sized + Sync>(
     //
     // `shutdown` consumes the supervisor, which is why this is a match: the
     // borrow `boot` held has to end before the move.
-    let booted = match boot(env, port, &mut supervisor).await {
+    let booted = match boot_configured(config, port, &mut supervisor).await {
         Ok(booted) => booted,
         Err(failure) => {
             let report = supervisor.shutdown().await;

@@ -184,6 +184,10 @@ pub(super) const FLEET: &[Problem] = &[
         hint: "Issue refused work the claim should have filtered for this runner. Report it: the placement filter has a hole.",
         user_message: None,
     },
+    super::checkpoint::INCOMPATIBLE,
+    super::checkpoint::CONFLICT,
+    super::checkpoint::UNAVAILABLE,
+    super::checkpoint::LIMIT,
     Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424: the fleet's own request is well-formed; what is missing is a

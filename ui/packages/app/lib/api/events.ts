@@ -160,7 +160,7 @@ export type FleetCountersSnapshot = {
   budget_used_nanos?: string;
 };
 
-export type ActivityLiveFrame =
+export type ActivityLiveFrame = (
   | {kind: typeof FRAME_KIND.TASK_CHANGED; task_id: string; resource_version: number}
   // A person's message, accepted and waiting for a runner: the id the send's
   // 202 names, who sent it, and what they typed. Fields past the identifier
@@ -204,6 +204,7 @@ export type ActivityLiveFrame =
       call_id: string;
     }
 
+  | { kind: typeof FRAME_KIND.RUN_RESTARTED; event_id: string; restarted_at?: string }
   | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
   | {kind: typeof FRAME_KIND.TASK_DECISION_STARTED | typeof FRAME_KIND.TASK_DECISION_COMPLETED | typeof FRAME_KIND.TASK_TRANSFER_PROGRESS; event_id: string; progress: unknown}
   | ({ kind: typeof FRAME_KIND.CONTEXT_PROGRESS; event_id: string } & ContextProgress)
@@ -254,7 +255,7 @@ export type ActivityLiveFrame =
       resolved_by: string;
       pending_approvals: number;
     } & FleetCountersSnapshot)
-;
+) & { fencing_token?: string };
 
 export type WorkspaceHelloFrame = {
   kind: typeof FRAME_KIND.HELLO;

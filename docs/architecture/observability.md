@@ -536,6 +536,8 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 | Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease` with its segment attributes, same condition |
 | Report settled (`afd_fleet` lease report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
 | First chunk (`afd_fleet` lease activity) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |
+| Automatic quarantine or lift (`afd_runner`) | `runner_cordoned`, `runner_cordon_lifted` after commit | `agentsfleet_runner_cordon_changes_total{change}` with `cordoned` or `lifted` | none |
+| Paired recovery (`afr_supervisor`) | `respawn_checkpoint_committed`, `respawn_checkpoint_restored` with event, lease, fence and checkpoint identity | no checkpoint latency series yet | existing lease span |
 
 Built in M233_002, closing the gaps M238 left:
 

@@ -3,7 +3,6 @@
 -- every deletion. NULL `runner_id` means the runner was removed, never that none ran it.
 CREATE TABLE authoring.attempts (
     id                      UUID PRIMARY KEY,
-    CONSTRAINT ck_attempts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     lease_id                UUID    NOT NULL,
     runner_id               UUID    REFERENCES runner.runners(id) ON DELETE SET NULL (runner_id),
     workspace_id            UUID    NOT NULL,
@@ -18,6 +17,11 @@ CREATE TABLE authoring.attempts (
     lease_expires_at        TIMESTAMPTZ(3)  NOT NULL,
     expires_at              TIMESTAMPTZ(3)  NOT NULL,
     reserved_nanos          BIGINT  NOT NULL,
+    -- Accepted once at issue; replica profile changes do not reset an attempt.
+    max_model_calls         INTEGER NOT NULL DEFAULT 8,
+    max_wall_seconds        INTEGER NOT NULL DEFAULT 300,
+    max_proposal_corrections INTEGER NOT NULL DEFAULT 1,
+    provider_timeout_seconds INTEGER NOT NULL DEFAULT 300,
     usage_unknown           BOOLEAN NOT NULL,
     call_count              INTEGER NOT NULL,
     output_token_count      BIGINT  NOT NULL,

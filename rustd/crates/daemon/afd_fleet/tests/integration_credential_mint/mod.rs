@@ -28,6 +28,7 @@
 // through `super::`, so it must stay nested here. The path is relative
 // to THIS file's directory, which the aggregator does not change.
 mod authoring;
+mod authority;
 mod cases;
 mod claims;
 mod rotation;
@@ -100,9 +101,22 @@ struct Bound {
 async fn bound(fixtures: &Fixtures, config_json: &str) -> Bound {
     let Seeded { runners, fleet, .. } = seeded::<1>(fixtures).await;
     let workspace = workspace_of(fixtures, &fleet).await;
-    if config_json != "{}" {
-        set_config(fixtures, &fleet, config_json).await;
-    }
+    let config_json = if config_json == "{}" {
+        af_fleet_runtime::test_util::FIXTURE_CONFIG
+    } else {
+        config_json
+    };
+    let mut config: serde_json::Value = serde_json::from_str(config_json).expect("fixture config");
+    config
+        .as_object_mut()
+        .expect("config object")
+        .entry("x-agentsfleet")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .expect("runtime block")
+        .entry("credentials")
+        .or_insert_with(|| serde_json::json!(["static", "github", "zoho"]));
+    set_config(fixtures, &fleet, &config.to_string()).await;
     let (lease, event) = (mint_id(), mint_id());
     let [runner] = runners;
     seed_lease(fixtures, &lease, &runner, &fleet, &workspace, &event).await;
@@ -162,10 +176,10 @@ async fn seed_lease(
         "INSERT INTO runner.leases
            (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
             posture, provider, model, last_metered_at,
-            fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at)
+            fencing_token, lease_expires_at, status, posted_message_count, setup_revision_id, created_at, updated_at)
          SELECT $1, $2, $3, $4, f.tenant_id, $5, now(),
                 'platform', 'anthropic', 'claude-fixture', now(),
-                $6, now() + $7::interval, $8, 0, now(), now()
+                $6, now() + $7::interval, $8, 0, f.head_revision_id, now(), now()
          FROM fleet.fleets f WHERE f.id = $3",
     )
     .bind(lease)
@@ -190,11 +204,11 @@ async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "INSERT INTO runner.fleet_slots
-           (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+        "INSERT INTO runner.slots
+           (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
             created_at, updated_at)
-         VALUES ($1, NULL, $2, now() + $3::interval, NULL, now(), now())
-         ON CONFLICT (fleet_id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
+         VALUES ($1, $1, NULL, $2, now() + $3::interval, NULL, now(), now())
+         ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
     )
     .bind(fleet)
     .bind(FIXTURE_FENCE + 1)

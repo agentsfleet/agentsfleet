@@ -12,8 +12,8 @@ use afd_db::migrate::RetryPolicy;
 fn test_production_policy_is_bounded_and_reported() {
     assert_eq!(
         RetryPolicy::PRODUCTION.budget(),
-        Duration::from_secs(30),
-        "thirty polls a second apart — the number the failure reports"
+        Duration::from_secs(29),
+        "thirty polls have twenty-nine pauses; query time is additional"
     );
 }
 
@@ -22,6 +22,10 @@ fn test_production_policy_is_bounded_and_reported() {
 fn test_a_zero_attempt_policy_never_waits() {
     let policy = RetryPolicy::new(0, Duration::from_secs(1));
     assert_eq!(policy.budget(), Duration::ZERO);
+    assert_eq!(
+        RetryPolicy::new(1, Duration::from_secs(1)).budget(),
+        Duration::ZERO
+    );
 }
 
 /// The reported wait cannot overflow into a nonsense number, which is what an

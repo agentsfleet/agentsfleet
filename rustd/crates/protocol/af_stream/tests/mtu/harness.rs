@@ -35,7 +35,7 @@ pub(super) const STALL_DEADLINE: Duration = Duration::from_secs(3);
 pub(super) const LOSS_EVERY: NonZeroUsize = NonZeroUsize::MIN.saturating_add(6);
 
 /// What each endpoint sends or accepts when it holds no ceiling of its own, to model a build that
-/// lacks one. Only the test hooks can set either.
+/// lacks one. The fixture selects the larger send and receive ceilings.
 #[derive(Clone, Copy)]
 pub(super) struct Builds {
     daemon_sends: Option<usize>,

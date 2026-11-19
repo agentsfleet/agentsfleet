@@ -13,6 +13,8 @@ use crate::{
 };
 
 pub(super) struct PolicyRow {
+    pub(super) witness: serde_json::Value,
+    pub(super) authority: Option<Authority>,
     pub(super) assignment: AssignmentColumns,
     pub(super) stored: StoredVerdict,
     pub(super) capability_report_json: Option<String>,
@@ -21,6 +23,7 @@ pub(super) struct PolicyRow {
 
 #[derive(sqlx::FromRow)]
 struct PolicyColumns {
+    policy_witness: Json<serde_json::Value>,
     durable_tasks_enabled: bool,
     decision_model_id: Option<Uuid7>,
     sandbox_tier: String,
@@ -45,6 +48,8 @@ struct ConnectionColumns {
 impl From<PolicyColumns> for PolicyRow {
     fn from(row: PolicyColumns) -> Self {
         Self {
+            witness: row.policy_witness.0,
+            authority: None,
             assignment: AssignmentColumns {
                 durable_tasks_enabled: row.durable_tasks_enabled,
                 decision_model_id: row.decision_model_id.map(String::from),
@@ -98,6 +103,10 @@ pub(super) async fn read(
                 },
             ..
         }) => Decision::Refused(Refusal::Superseded),
-        Some(row) => Decision::Allowed(row.into()),
+        Some(row) => {
+            let mut policy = PolicyRow::from(row);
+            policy.authority = authority.cloned();
+            Decision::Allowed(policy)
+        }
     })
 }

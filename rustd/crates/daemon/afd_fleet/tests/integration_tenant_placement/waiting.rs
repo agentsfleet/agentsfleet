@@ -24,6 +24,7 @@ async fn the_probe_names_only_the_tenant_runners_with_nothing_waiting() {
     let found = waiting(
         &mut connection,
         &[busy_runner.clone(), quiet_runner.clone(), platform],
+        true,
     )
     .await
     .expect("the probe reads");
@@ -43,7 +44,7 @@ async fn the_probe_without_runners_names_none_idle() {
     let fixtures = Fixtures::create().await;
     Owner::new().fleet(&fixtures, TENANT_MODEL).await;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
-    let found = waiting(&mut connection, &[])
+    let found = waiting(&mut connection, &[], true)
         .await
         .expect("the probe reads");
     assert!(found.pending());

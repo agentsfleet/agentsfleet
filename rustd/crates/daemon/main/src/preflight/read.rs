@@ -329,8 +329,8 @@ pub(super) fn frame_memory<E: EnvSource + ?Sized>(
     classify(
         faults,
         true,
-        "AGENTSFLEET_RUNNER_FRAME_MEMORY",
-        "control and data frame budgets between 12 and 512 MiB",
+        "runner.stream",
+        "control.max_buffered_bytes and data.max_buffered_bytes require valid byte budgets",
         af_stream::MemoryLimits::from_env(env),
     )
 }

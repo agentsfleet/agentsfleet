@@ -96,3 +96,16 @@ fn test_a_sandbox_with_nothing_to_watch_counts_as_running() {
 
     assert!(super::Sandbox::is_running(&mut sandbox));
 }
+
+#[tokio::test]
+async fn an_engine_without_recovery_proof_refuses_capture() {
+    let sandbox = Watchless;
+    assert!(
+        super::Sandbox::recovery_quiescent(&sandbox)
+            .await
+            .is_err_and(|failure| matches!(
+                failure.kind(),
+                crate::error::ErrorKind::Unconfined { .. }
+            ))
+    );
+}

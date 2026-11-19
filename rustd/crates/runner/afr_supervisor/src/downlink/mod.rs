@@ -45,6 +45,7 @@ pub(crate) struct Offered {
 
 #[derive(Debug)]
 pub(crate) struct Downlink {
+    runtime: crate::config::RuntimePolicy,
     handle: StreamHandle,
     config: crate::config::StreamConfig,
     authorization: HeaderValue,
@@ -73,6 +74,7 @@ impl Downlink {
         Ok((
             handle.clone(),
             Self {
+                runtime: config.runtime(),
                 handle,
                 config: config.stream().clone(),
                 authorization,
@@ -88,7 +90,11 @@ impl Downlink {
 
     pub(crate) async fn run(self, halt: &Halt) -> Result<()> {
         let stop = CancellationToken::new();
-        let renewing = self.handle.renewing.run(&self.handle, stop.clone());
+        let renewing = self.handle.renewing.run_with_interval(
+            &self.handle,
+            stop.clone(),
+            std::time::Duration::from_millis(self.runtime.settings().renewal_interval_ms),
+        );
         let sessions = self.sessions(halt);
         tokio::pin!(renewing, sessions);
         tokio::select! {
@@ -101,7 +107,7 @@ impl Downlink {
         let (input, output) = Budget::duplex(af_stream::MemoryLimits::default());
         let mut resume = Resume::default();
         let mut preference = Preference::default();
-        let mut retries = Recovery::new(crate::client::backoff());
+        let mut retries = Recovery::new(self.runtime.backoff());
         let mut outage = observation::Outage::new();
         loop {
             if halt.serving().is_cancelled() {

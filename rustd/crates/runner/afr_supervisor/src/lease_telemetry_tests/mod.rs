@@ -173,6 +173,7 @@ fn scripted_lessee(home: &StorageHome) -> Lessee {
         clock: clock(),
         halt: Halt::new(CancellationToken::new()),
         whoami: Whoami::default(),
+        recovery: crate::recovery::RecoveryResources::new().unwrap(),
     }
 }
 

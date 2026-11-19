@@ -6,7 +6,7 @@
 mod admit;
 mod adoption;
 mod bindings;
-mod checkpoint;
+pub(crate) mod checkpoint;
 mod continuation;
 mod control;
 mod decision;
@@ -23,6 +23,7 @@ pub(crate) mod lease;
 mod lifecycle;
 mod list;
 mod observe;
+pub mod policy;
 mod prepared;
 mod read;
 mod refusal;

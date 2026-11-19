@@ -151,7 +151,7 @@ impl std::fmt::Debug for CheckpointTransfer {
 
 /// Registration projection; temporary keys remain outside model/sandbox state.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CheckpointObject {
     /// Native random object identity.
     pub object_id: String,

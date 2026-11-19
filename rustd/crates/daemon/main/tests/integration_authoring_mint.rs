@@ -9,7 +9,7 @@
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
-use crate::e2e::{Scenario, scenario};
+use crate::e2e::{Scenario, scenario, scenario_with};
 use crate::wire::{field, json, post};
 use af_core::error_code::{GRANT_NOT_FOUND, INVALID_REQUEST, RUN_LEASE_NOT_FOUND};
 use af_core::id::Uuid7;
@@ -19,6 +19,8 @@ use serde_json::{Value, json};
 
 const MINT: &str = "/v1/runners/me/credentials/mint";
 const INTEGRATION: &str = "github";
+/// The runtime control declares the integration whose standing grant is absent.
+const FLEET_CONFIG: &str = r#"{"name":"credential-isolation","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["github"],"budget":{"daily_nanos":"1000000000"}}}"#;
 /// The bound on every request a case makes to the daemon it booted.
 const DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 /// Longer than any identifier the daemon issues, short of the body ceiling.
@@ -35,10 +37,11 @@ VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,'{}'::jsonb,
 const RUNTIME: &str = "\
 INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,
 event_created_at,posture,provider,model,last_metered_at,fencing_token,
-lease_expires_at,status,
+lease_expires_at,status,setup_revision_id,
 posted_message_count,created_at,updated_at)
 VALUES($1,$2,$3,$4,$5,$6,now(),'platform','test',
-'test',now(),1,now()+interval '1 minute','active',0,now(),now())";
+'test',now(),1,now()+interval '1 minute','active',
+(SELECT head_revision_id FROM fleet.fleets WHERE id=$3),0,now(),now())";
 
 /// The event the runtime lease executes: a chat a person sent, received.
 const EVENT: EventKind<'static> = EventKind {
@@ -81,7 +84,7 @@ async fn mint(http: &reqwest::Client, run: &Scenario, lease: &str) -> (u16, Valu
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
     let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
+    let run = scenario_with(&mut supervisor, None, &[], FLEET_CONFIG).await;
     let http = client();
     let (attempt, authoring_lease, runtime_lease) = (mint_id(), mint_id(), mint_id());
     seed_leases(&run, &attempt, &authoring_lease, &runtime_lease).await;

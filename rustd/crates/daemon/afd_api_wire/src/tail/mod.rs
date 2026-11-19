@@ -146,6 +146,16 @@ pub struct FleetCounters {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TailFrame<'a> {
+    /// A committed replacement attempt; later fenced output repairs a lost hint.
+    RunRestarted {
+        /// Stable admission/event receiving the replacement attempt.
+        event_id: Cow<'a, str>,
+        /// Complete decimal slot fence, safe for JavaScript comparison.
+        fencing_token: Cow<'a, str>,
+        /// Issue commit's stored timestamp.
+        #[serde(with = "af_wire::instant")]
+        restarted_at: jiff::Timestamp,
+    },
     /// A committed task change invalidates the fleet's authenticated work read.
     TaskChanged {
         /// The task within the fleet named by this channel.

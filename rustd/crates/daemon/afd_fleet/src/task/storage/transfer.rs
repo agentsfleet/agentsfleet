@@ -17,7 +17,7 @@ use std::{collections::BTreeMap, time::Duration};
 
 /// Transfer material is supervisor-only, never model-visible activity.
 #[derive(Serialize)]
-pub(in crate::task) struct Authorization {
+pub(crate) struct Authorization {
     pub url: String,
     pub headers: BTreeMap<String, String>,
 }
@@ -28,7 +28,7 @@ impl std::fmt::Debug for Authorization {
     }
 }
 
-pub(in crate::task) struct StorageSession<'a> {
+pub(crate) struct StorageSession<'a> {
     pub(super) store: &'a R2CheckpointStore,
     pub(super) backend: AmazonS3,
 }
@@ -100,7 +100,7 @@ impl StorageSession<'_> {
         .await
     }
 
-    pub(in crate::task) async fn upload(
+    pub(crate) async fn upload(
         &self,
         workspace: &Uuid7,
         repository: &Uuid7,
@@ -133,7 +133,7 @@ impl StorageSession<'_> {
         .await
     }
 
-    pub(in crate::task) async fn download(
+    pub(crate) async fn download(
         &self,
         workspace: &Uuid7,
         repository: &Uuid7,
@@ -157,7 +157,7 @@ impl StorageSession<'_> {
         .await
     }
 
-    pub(in crate::task) async fn read_object(
+    pub(crate) async fn read_object(
         &self,
         workspace: &Uuid7,
         repository: &Uuid7,
@@ -183,7 +183,7 @@ impl StorageSession<'_> {
         .await
     }
 
-    pub(in crate::task) async fn delete(
+    pub(crate) async fn delete(
         &self,
         workspace: &Uuid7,
         repository: &Uuid7,

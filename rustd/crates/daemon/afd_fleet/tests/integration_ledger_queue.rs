@@ -21,6 +21,7 @@ mod ordering;
 mod parking;
 mod parking_commit;
 mod reclaim;
+mod recovery_page;
 mod settlement;
 
 const WITHIN: Duration = Duration::from_secs(10);
@@ -33,7 +34,7 @@ const PARK: &str = "UPDATE fleet.admissions SET parked_at = CASE WHEN $2 THEN no
     WHERE id = $1";
 const FINISH: &str = "UPDATE fleet.admissions SET settled_at = now() WHERE id = $1";
 const STAMPS: &str = "SELECT a.lease_fence, s.fencing_token FROM fleet.admissions a \
-    LEFT JOIN runner.fleet_slots s ON s.fleet_id = a.fleet_id WHERE a.id = $1";
+    LEFT JOIN runner.slots s ON s.fleet_id = a.fleet_id WHERE a.id = $1";
 const LOCK: &str = "SELECT id FROM fleet.admissions WHERE id = $1 FOR UPDATE";
 
 async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7 {
@@ -230,10 +231,15 @@ async fn a_locked_slot_is_skipped_without_changing_the_admission() {
     let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &runner).await.expect("first claim");
     let mut connection = fixtures.database.acquire().await.expect("database");
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at = now()-interval '1 second' WHERE fleet_id=$1")
-        .bind(&fleet).execute(&mut *connection).await.expect("expire slot");
+    sqlx::query(
+        "UPDATE runner.slots SET lease_expires_at = now()-interval '1 second' WHERE fleet_id=$1",
+    )
+    .bind(&fleet)
+    .execute(&mut *connection)
+    .await
+    .expect("expire slot");
     let mut lock = connection.begin().await.expect("lock transaction");
-    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE")
+    sqlx::query("SELECT fleet_id FROM runner.slots WHERE fleet_id=$1 FOR UPDATE")
         .bind(&fleet)
         .execute(&mut *lock)
         .await

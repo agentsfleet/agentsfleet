@@ -62,7 +62,7 @@ pub(super) async fn open_runtime(
 ) -> Result<Runtime, BootFailure> {
     // First, before a socket opens: a client that will not build is a defect
     // in the build, and nothing below should be opened only to be abandoned.
-    let clients = Clients::open()?;
+    let clients = Clients::open()?.with_inference(config.runtime.operations.inference)?;
     let authoring_transport = clients.authoring;
     #[cfg(feature = "test-util")]
     let authoring_transport = config.authoring_transport().unwrap_or(authoring_transport);
@@ -84,6 +84,7 @@ pub(super) async fn open_runtime(
         broker,
         live,
         authoring_transport,
+        storage_client: clients.storage,
         vendor_client: clients.plane,
         schedule_client: clients.schedule,
     });
@@ -212,6 +213,7 @@ pub(super) async fn spawn_background(
         ),
         outbound_client,
         config.slack_api_base().to_owned(),
+        &config.runtime.operations,
     );
 }
 

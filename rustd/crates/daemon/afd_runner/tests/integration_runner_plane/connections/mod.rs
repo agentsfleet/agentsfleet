@@ -42,9 +42,14 @@ async fn acquire(
 async fn can_claim(fixture: &Fixture, authority: &Authority) -> TestResult<bool> {
     let mut connection = fixture.database.acquire().await?;
     let mut transaction = connection.begin().await?;
-    let available = capacity::lock(&mut transaction, authority, None)
-        .await?
-        .is_some_and(capacity::Capacity::can_claim);
+    let available = capacity::lock(
+        &mut transaction,
+        authority,
+        afd_runner::capacity::Claimant::Authoring,
+        None,
+    )
+    .await?
+    .is_some_and(capacity::Capacity::can_claim);
     transaction.commit().await?;
     Ok(available)
 }
@@ -139,7 +144,7 @@ async fn a_connection_proof_never_authorizes_another_host_and_debug_omits_its_di
     assert!(!format!("{guard:?}").contains(digest.as_str()));
     assert!(!format!("{authority:?}").contains(digest.as_str()));
     assert!(
-        capacity::lock(&mut transaction, guard, None)
+        capacity::lock(&mut transaction, guard, capacity::Claimant::Existing, None)
             .await?
             .is_none()
     );

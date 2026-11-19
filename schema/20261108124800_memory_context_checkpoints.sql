@@ -2,8 +2,6 @@
 -- document's generation and is written with it in the same statement.
 CREATE TABLE memory.context_checkpoints (
     id                  UUID PRIMARY KEY,
-    CONSTRAINT ck_context_checkpoints_id_uuidv7
-        CHECK (substring(id::text from 15 for 1) = '7'),
     draft_id            UUID NOT NULL REFERENCES authoring.drafts(id) ON DELETE CASCADE,
     resource_version    BIGINT NOT NULL,
     document            JSONB NOT NULL,

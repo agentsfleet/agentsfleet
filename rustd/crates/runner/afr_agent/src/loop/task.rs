@@ -38,7 +38,12 @@ impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for Task {
         root.task_report = None;
     }
 
-    async fn before_model(&mut self, root: &mut Harness<'s, 'run>, number: u64) -> Option<Ending> {
+    async fn before_model(
+        &mut self,
+        root: &mut Harness<'s, 'run>,
+        number: u64,
+        state: &guffbolt::DriveState,
+    ) -> Option<Ending> {
         if root.incorporate_task_inputs().await.is_err()
             || root.reconcile_task_effects().await.is_err()
             || root.answer_task_inputs().await.is_err()
@@ -61,7 +66,7 @@ impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for Task {
                     .unwrap_or(Ending::Stopped),
             );
         }
-        None
+        root.save_boundary(state).await
     }
 
     fn after_turn(&mut self, _root: &Harness<'s, 'run>, turn: &Turn) -> Option<Ending> {

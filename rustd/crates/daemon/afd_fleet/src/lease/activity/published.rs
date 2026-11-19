@@ -14,6 +14,22 @@ use serde_json::value::RawValue;
 
 use super::Target;
 
+/// Every output frame carries a daemon-owned fence, including future variants.
+#[derive(Debug, Serialize)]
+pub(super) struct Published<'a> {
+    #[serde(flatten)]
+    frame: Frame<'a>,
+    #[serde(serialize_with = "decimal")]
+    fencing_token: i64,
+}
+
+fn decimal<S: serde::Serializer, T: std::fmt::Display>(
+    value: &T,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(value)
+}
+
 /// One frame as the dashboard reads it.
 ///
 /// Tagged by `kind`, which is the discriminator `events.ts` switches on. The
@@ -21,7 +37,7 @@ use super::Target;
 /// change.
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(super) enum Published<'a> {
+enum Frame<'a> {
     TaskDecisionStarted {
         event_id: &'a Uuid7,
         progress: &'a af_wire::activity::TaskActivity,
@@ -98,33 +114,33 @@ impl<'a> Published<'a> {
     ) -> Result<Self, serde_json::Error> {
         let event_id = &target.event_id;
         let call_id = |call: &str| fenced_call_id(target.fence, call);
-        Ok(match frame {
+        let frame = match frame {
             ActivityFrame::TaskDecisionStarted(progress) => {
-                Self::TaskDecisionStarted { event_id, progress }
+                Frame::TaskDecisionStarted { event_id, progress }
             }
             ActivityFrame::TaskDecisionCompleted(progress) => {
-                Self::TaskDecisionCompleted { event_id, progress }
+                Frame::TaskDecisionCompleted { event_id, progress }
             }
             ActivityFrame::TaskTransferProgress(progress) => {
-                Self::TaskTransferProgress { event_id, progress }
+                Frame::TaskTransferProgress { event_id, progress }
             }
-            ActivityFrame::ContextProgress(progress) => Self::ContextProgress {
+            ActivityFrame::ContextProgress(progress) => Frame::ContextProgress {
                 event_id,
                 progress: *progress,
             },
-            ActivityFrame::ToolCallStarted(body) => Self::ToolCallStarted {
+            ActivityFrame::ToolCallStarted(body) => Frame::ToolCallStarted {
                 event_id,
                 name: &body.name,
                 args_redacted: serde_json::from_str(&body.args_redacted)?,
                 call_id: call_id(&body.call_id),
             },
-            ActivityFrame::ToolCallProgress(body) => Self::ToolCallProgress {
+            ActivityFrame::ToolCallProgress(body) => Frame::ToolCallProgress {
                 event_id,
                 name: &body.name,
                 elapsed_ms: body.elapsed_ms,
                 call_id: call_id(&body.call_id),
             },
-            ActivityFrame::FleetResponseChunk(body) => Self::Chunk {
+            ActivityFrame::FleetResponseChunk(body) => Frame::Chunk {
                 event_id,
                 text: &body.text,
                 text_kind: body.text_kind,
@@ -132,7 +148,7 @@ impl<'a> Published<'a> {
                 stream_contiguous: body.stream_contiguous && target.timing_eligible,
                 stream_seq: body.stream_seq,
             },
-            ActivityFrame::ToolCallCompleted(body) => Self::ToolCallCompleted {
+            ActivityFrame::ToolCallCompleted(body) => Frame::ToolCallCompleted {
                 event_id,
                 name: &body.name,
                 ms: body.ms,
@@ -143,6 +159,10 @@ impl<'a> Published<'a> {
                 output_line_count: body.output_line_count,
                 exit_code: body.exit_code,
             },
+        };
+        Ok(Self {
+            frame,
+            fencing_token: target.fence,
         })
     }
 }

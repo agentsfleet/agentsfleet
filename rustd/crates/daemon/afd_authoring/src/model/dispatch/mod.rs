@@ -68,7 +68,7 @@ impl Intent {
             dispatch_id: dispatch_id.into(),
             key,
             body: prepared.body,
-            timeout: remaining.min(budget::PROVIDER_TIMEOUT),
+            timeout: remaining.min(attempt.policy.provider_timeout()),
             inference: prepared.inference,
             model: attempt.model_snapshot.model.clone(),
             context_tokens: prepared.context_tokens,
@@ -211,6 +211,7 @@ impl ModelCalls {
         digest: &str,
         held: Result<Option<funding::Funding>>,
     ) -> Result<Decision> {
+        guarded.attempt.policy.admit_call(request.call_index)?;
         if guarded.attempt.call_count.checked_add(1).map(i64::from)
             != Some(i64::from(request.call_index))
         {

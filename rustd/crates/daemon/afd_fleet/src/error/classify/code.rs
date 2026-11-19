@@ -81,6 +81,8 @@ impl Error {
             ErrorKind::TaskMutation { ref source, .. } => source.code(),
             ErrorKind::TaskControlConflict { .. } => error_code::TASK_STALE_STATE,
             ErrorKind::TaskRefused { reason } => reason.code(),
+            ErrorKind::TurnCheckpointRefused { reason }
+            | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.code(),
             ErrorKind::TaskTargetCounter { .. } => error_code::TASK_INVALID_TARGET,
             ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
             ErrorKind::Mint { .. }

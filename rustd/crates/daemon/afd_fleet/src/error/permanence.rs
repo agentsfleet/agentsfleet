@@ -81,6 +81,8 @@ impl Error {
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::TurnCheckpointRefused { .. }
+            | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }

@@ -7,7 +7,7 @@
 //! the client's own guard refused the name: that resolves the same way every
 //! time. A 4xx is a refusal no retry changes (RULE ECL). Nothing is retried once a stream has
 //! started, since its chunks have already gone out live. A wait the provider
-//! asks for past [`WAIT_CEILING`] is not waited: the lease would spend its time
+//! asks for past the configured wait ceiling is not waited: the lease would spend its time
 //! asleep, so the turn ends with the status instead.
 //!
 //! The last answer, a refusal included, is handed back as it arrived, so the
@@ -20,13 +20,8 @@ use backon::{ExponentialBuilder, Retryable as _};
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 use reqwest::{RequestBuilder, Response, StatusCode};
 
-/// Sends per turn, the first included.
-pub(crate) const ATTEMPTS: usize = 3;
-/// The wait before the second send when the provider names none; it grows
-/// for each send after, jittered.
-const BACKOFF: Duration = Duration::from_secs(1);
-/// The longest wait honoured; a provider asking for more ends the turn.
-pub(crate) const WAIT_CEILING: Duration = Duration::from_secs(60);
+pub(crate) mod settings;
+use settings::RetryPolicy;
 
 /// One retry about to happen, for the caller's log line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,14 +65,14 @@ impl Unanswered {
 
     /// The wait before the next send: the provider's, or else the backoff's.
     /// `None` stops: the attempts are spent, or the provider asked for more
-    /// than [`WAIT_CEILING`].
-    fn wait(&self, backoff: Option<Duration>) -> Option<Duration> {
+    /// than the configured wait ceiling.
+    fn wait(&self, backoff: Option<Duration>, ceiling: Duration) -> Option<Duration> {
         let backoff = backoff?;
         let wait = match self {
             Self::Status { retry_after, .. } => retry_after.unwrap_or(backoff),
             Self::Transport(_) => backoff,
         };
-        (wait <= WAIT_CEILING).then_some(wait)
+        (wait <= ceiling).then_some(wait)
     }
 
     fn status(&self) -> Option<u16> {
@@ -105,16 +100,17 @@ impl Unanswered {
 pub(crate) async fn send(
     build: impl Fn() -> RequestBuilder + Sync,
     mut retrying: impl FnMut(Retrying) + Send,
+    settings: RetryPolicy,
 ) -> reqwest::Result<Response> {
     let policy = ExponentialBuilder::default()
-        .with_min_delay(BACKOFF)
-        .with_max_times(ATTEMPTS - 1)
+        .with_min_delay(settings.backoff)
+        .with_max_times(settings.attempts - 1)
         .with_jitter();
     let mut attempt = 0;
     let sent = (async || answered(build().send().await))
         .retry(policy)
         .when(Unanswered::retryable)
-        .adjust(Unanswered::wait)
+        .adjust(|failure, delay| failure.wait(delay, settings.wait_ceiling))
         .notify(|unanswered, wait| {
             attempt += 1;
             let status = unanswered.status();

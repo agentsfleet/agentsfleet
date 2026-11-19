@@ -40,7 +40,7 @@ import {
 type SteerFrame = Parameters<typeof eventStream>[0][number];
 
 const chunkFrame = (eventId: string, text: string): SteerFrame =>
-  ({ id: null, type: KIND_CHUNK, data: { event_id: eventId, text } });
+  ({ id: null, type: KIND_CHUNK, data: { event_id: eventId, text, fencing_token: "1" } });
 const completeFrame = (eventId: string): SteerFrame =>
   ({ id: null, type: KIND_EVENT_COMPLETE, data: { event_id: eventId, status: EVENT_STATUS.PROCESSED } });
 

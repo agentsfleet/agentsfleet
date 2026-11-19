@@ -12,8 +12,6 @@ use std::{
 };
 
 pub(super) const CHUNK: u64 = 8 * 1024 * 1024;
-const MAX_BYTES: u64 = 24 * 1024 * 1024 * 1024;
-const MAX_ENTRIES: usize = 200_000;
 
 /// Metadata pinned while the sandbox is frozen, verified again on the opened file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +24,7 @@ pub(super) struct Identity {
 }
 
 impl Identity {
-    fn of(metadata: &std::fs::Metadata) -> Self {
+    pub(super) fn of(metadata: &std::fs::Metadata) -> Self {
         Self {
             device: metadata.dev(),
             inode: metadata.ino(),
@@ -138,82 +136,7 @@ impl Workspace {
         &self,
         stop: &tokio_util::sync::CancellationToken,
     ) -> Result<BTreeMap<String, Entry>> {
-        let mut entries = BTreeMap::new();
-        let mut pending = vec![String::new()];
-        let mut total = 0_u64;
-        let mut names = 0_usize;
-        while let Some(path) = pending.pop() {
-            let directory = self.directory(&path)?;
-            for entry in directory.entries()? {
-                if stop.is_cancelled() {
-                    return Err(error::config("checkpoint inventory cancelled"));
-                }
-                let entry = entry?;
-                let name = entry
-                    .file_name()
-                    .to_str()
-                    .map(str::to_owned)
-                    .ok_or_else(|| error::config("checkpoint path is not UTF-8"))?;
-                let relative = if path.is_empty() {
-                    name.clone()
-                } else {
-                    format!("{path}/{name}")
-                };
-                valid_path(&relative)?;
-                names = names
-                    .checked_add(relative.len() + 128)
-                    .ok_or_else(|| error::config("checkpoint path budget overflow"))?;
-                if names > 64 * 1024 * 1024 {
-                    return Err(error::config("checkpoint path budget exceeded"));
-                }
-                if entries.len() >= MAX_ENTRIES {
-                    return Err(error::config("checkpoint entry allowance exceeded"));
-                }
-                let metadata = directory.symlink_metadata(&name)?;
-                let kind = if metadata.is_dir() {
-                    pending.push(relative.clone());
-                    Entry::Directory
-                } else if metadata.is_symlink() {
-                    let target = directory
-                        .read_link(&name)?
-                        .into_os_string()
-                        .to_str()
-                        .map(str::to_owned)
-                        .ok_or_else(|| error::config("checkpoint link is not UTF-8"))?;
-                    valid_link(&relative, &target)?;
-                    names = names
-                        .checked_add(target.len())
-                        .ok_or_else(|| error::config("checkpoint link budget overflow"))?;
-                    if names > 64 * 1024 * 1024 {
-                        return Err(error::config("checkpoint path budget exceeded"));
-                    }
-                    Entry::Symlink { target }
-                } else if metadata.is_file() {
-                    let file = regular(&directory, &name)?;
-                    let stat = file.metadata()?;
-                    total = total
-                        .checked_add(stat.len())
-                        .ok_or_else(|| error::config("checkpoint size overflow"))?;
-                    if total > MAX_BYTES {
-                        return Err(error::config("checkpoint expanded allowance exceeded"));
-                    }
-                    Entry::File {
-                        identity: Identity::of(&stat),
-                        executable: stat.mode() & 0o111 != 0,
-                    }
-                } else {
-                    return Err(error::config("checkpoint contains a special file"));
-                };
-                if entries.insert(relative, kind).is_some() {
-                    return Err(error::config("checkpoint path repeated"));
-                }
-            }
-        }
-        super::links::validate(entries.iter().filter_map(|(path, entry)| match entry {
-            Entry::Symlink { target } => Some((path.as_str(), target.as_str())),
-            Entry::File { .. } | Entry::Directory => None,
-        }))?;
-        Ok(entries)
+        super::inventory::scan(self, stop)
     }
 
     pub(super) fn chunk(
@@ -243,7 +166,7 @@ impl Workspace {
         Ok(bytes)
     }
 
-    fn directory(&self, path: &str) -> Result<Dir> {
+    pub(super) fn directory(&self, path: &str) -> Result<Dir> {
         let mut directory = self.root.try_clone()?;
         if path.is_empty() {
             return Ok(directory);
@@ -305,7 +228,7 @@ pub(super) const fn size(entry: &Entry) -> u64 {
     }
 }
 
-fn regular(directory: &Dir, name: &str) -> Result<File> {
+pub(super) fn regular(directory: &Dir, name: &str) -> Result<File> {
     let fd = rustix::fs::openat(
         directory,
         name,
@@ -320,7 +243,7 @@ fn regular(directory: &Dir, name: &str) -> Result<File> {
     Ok(file)
 }
 
-fn valid_path(path: &str) -> Result<()> {
+pub(super) fn valid_path(path: &str) -> Result<()> {
     garde::Validate::validate(&PathText { value: path })?;
     if path.split('/').any(|part| matches!(part, "" | "." | "..")) {
         return Err(error::config("checkpoint path is not a safe relative path"));

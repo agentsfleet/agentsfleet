@@ -13,6 +13,7 @@ mod heartbeat;
 mod progress;
 mod renewal;
 mod report;
+mod turn_checkpoint;
 
 impl SessionServices {
     #[tracing::instrument(
@@ -28,6 +29,12 @@ impl SessionServices {
         requests: &Arc<super::requests::RequestTracker>,
     ) -> Result<()> {
         let message: super::Request<'_> = incoming.frame.decode()?;
+        if matches!(message, Up::TurnCheckpoint { .. }) {
+            af_wire::lease::TurnMessageSize {
+                bytes: incoming.frame.as_bytes().len(),
+            }
+            .validate()?;
+        }
         message.validate()?;
         if message.stream_kind() != incoming.kind {
             return Err(ErrorKind::Protocol.into());
@@ -43,6 +50,23 @@ impl SessionServices {
         drop(span);
         drop(registration);
         result
+    }
+
+    fn availability(
+        &self,
+        credits: usize,
+        revision: std::num::NonZeroU64,
+        observed_offers: u64,
+    ) -> Result<()> {
+        let increased =
+            self.handle
+                .snapshot
+                .lock()
+                .availability(credits, revision, observed_offers)?;
+        if increased {
+            self.handle.request_offer();
+        }
+        Ok(())
     }
 
     async fn handle(&self, message: Request<'_>) -> Result<()> {
@@ -62,20 +86,21 @@ impl SessionServices {
                 lease_id,
                 request,
             } => self.folds(request_id, &lease_id, &request).await?,
+            Up::TurnCheckpoint {
+                request_id,
+                lease_id,
+                request,
+            } => {
+                self.turn_checkpoint(request_id, &lease_id, request.as_ref())
+                    .await?;
+            }
             Up::Activity { lease_id, request } => self.progress(&lease_id, &request).await?,
             Up::Ready {
                 credits,
                 revision,
                 observed_offers,
             } => {
-                let increased =
-                    self.handle
-                        .snapshot
-                        .lock()
-                        .availability(credits, revision, observed_offers)?;
-                if increased {
-                    self.handle.request_offer();
-                }
+                self.availability(credits, revision, observed_offers)?;
             }
             Up::AuthoringModel {
                 request_id,
@@ -120,6 +145,7 @@ fn operation(message: &Request<'_>) -> &'static str {
         Up::RenewBatch { .. } => "renewal",
         Up::Report { .. } => "report",
         Up::Folds { .. } => "folds",
+        Up::TurnCheckpoint { .. } => "turn_checkpoint",
         Up::Activity { .. } => "activity",
         Up::Ready { .. } => "ready",
         Up::AuthoringModel { .. } => "authoring_model",

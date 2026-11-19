@@ -199,3 +199,39 @@ async fn host_batch_extends_live_refuses_fenced() {
     owner.close().await;
     held.fixtures.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn single_and_batch_renewals_obey_the_saved_runtime_cap()
+-> Result<(), Box<dyn std::error::Error>> {
+    let held = crate::report_seed::held().await;
+    let lease = &held.issued.lease_id;
+    sqlx::query("UPDATE runner.leases SET max_runtime_seconds=60, created_at=clock_timestamp()-interval '50 seconds' WHERE id=$1")
+        .bind(lease).execute(&mut *held.fixtures.database.acquire().await?).await?;
+    let started = held
+        .fixtures
+        .instant(Row::Lease(lease), "created_at")
+        .await
+        .ok_or("saved lease creation time")?;
+    let expected = af_core::clock::after(started, std::time::Duration::from_secs(60));
+    let renewed = crate::integration_renew_clamp::extend(
+        &held.leases,
+        lease,
+        &held.runner,
+        (&held.lease_key, &held.pricing),
+        held.now,
+    )
+    .await?;
+    assert_eq!(
+        crate::integration_renew_clamp::deadline(&renewed),
+        Some(expected)
+    );
+    let batch = crate::integration_renew_batch::frame(&held, &[lease], false)
+        .await
+        .into_iter()
+        .next()
+        .ok_or("one batch answer")??;
+    assert_eq!(batch, expected);
+    held.fixtures.cleanup().await;
+    Ok(())
+}

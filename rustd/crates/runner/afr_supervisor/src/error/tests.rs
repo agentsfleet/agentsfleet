@@ -166,3 +166,24 @@ fn transport_loss_and_protocol_breaks_log_different_codes_and_retry_differently(
     assert_eq!(busy.refusal_status(), None);
     assert_eq!(Verb::Open.to_string(), "stream_open");
 }
+
+#[test]
+fn a_checkpoint_transfer_failure_names_its_operation_and_logs_as_internal() {
+    let unbuildable = reqwest::Client::builder()
+        .user_agent("\n")
+        .build()
+        .unwrap_err();
+    let failure = raise::checkpoint_transfer("upload")(unbuildable);
+    assert!(matches!(
+        failure.kind(),
+        super::ErrorKind::CheckpointTransfer { operation, .. } if *operation == "upload"
+    ));
+    assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert!(!failure.is_retryable());
+    assert!(
+        failure
+            .to_string()
+            .contains("checkpoint upload did not complete"),
+        "{failure}"
+    );
+}

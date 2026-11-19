@@ -53,52 +53,23 @@ pub(super) async fn read(
     input: &garde::Valid<TaskInputsQuery>,
 ) -> Result<TaskInputsResponse<'static>> {
     let after = cursor(input.starting_after.as_deref())?;
-    let limit =
-        usize::try_from(input.limit).map_err(|_overflow| rejected("Invalid task input limit"))?;
+    let limit = usize::try_from(input.limit)
+        .map_err(|_overflow| rejected("Invalid task input limit"))?
+        .min(tasks.dependencies.policy.input_batch());
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::lease(&mut tx, lease).await?;
     let current_task = guard::context(&mut tx, &current).await?;
-    let source =
-        super::admit::source::load(&mut tx, &current, &current.source_admission_id).await?;
-    let current_message = if super::admit::source::check_human(&source).is_ok() {
-        Some(source.message()?.into_owned())
-    } else {
-        None
-    };
-    let accepted_inputs = accepted(&mut tx, &current, input).await?;
-    let mut humans: Vec<Human> = sqlx::query_as(include_str!("../sql/pending_inputs.sql"))
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .bind(&current.source_admission_id)
-        .bind(afd_admission::Producer::Steer.as_str())
-        .bind(afd_events::ACTOR_MACHINE)
-        .bind(format!("{}%", afd_events::ACTOR_PREFIX))
-        .bind(after)
-        .bind(i64::from(input.limit) + 1)
-        .bind(lease.lease_id)
-        .bind(current.fence)
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
-        .bind(None::<&str>.map(crate::task::guard::wire).transpose()?)
-        .bind(true)
-        .bind(afd_admission::Producer::SlackMention.as_str())
-        .bind(afd_connector::Provider::Slack.id())
-        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
-        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(query("read complete eligible human inputs"))?;
-    let more = humans.len() > limit;
-    if more {
-        humans.pop();
-    }
-    let next_cursor = more.then(|| humans.last()).flatten().map(|last| {
-        Cursor::Text {
-            value: last.sequence.to_string(),
-            id: last.id.clone().into(),
-        }
-        .to_string()
-    });
+    let current_message = current_message(&mut tx, &current).await?;
+    let accepted_inputs = accepted(
+        &mut tx,
+        &current,
+        input,
+        tasks.dependencies.policy.input_batch(),
+    )
+    .await?;
+    let humans = pending_humans(&mut tx, &current, after, limit, lease).await?;
+    let (humans, next_cursor) = human_page(humans, limit);
     let sources: Vec<_> = humans
         .iter()
         .map(|human| human.id.clone())
@@ -107,18 +78,7 @@ pub(super) async fn read(
     let mut recovered = recover::read(&mut tx, &current, &sources).await?;
     let current_interpretation = recovered.remove(&current.source_admission_id);
     let candidates = candidates(&mut tx, &current).await?;
-    let inputs = humans
-        .into_iter()
-        .map(|source| {
-            Ok(TaskHumanInput {
-                accepted: recovered.remove(&source.id),
-                source_admission_id: source.id.into(),
-                sequence: row::counter(source.sequence, "input sequence")?,
-                message: super::admit::source::message_for(&source.producer, &source.request_json)?
-                    .into_owned(),
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let inputs = human_inputs(humans, &mut recovered)?;
     let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id).await?;
     tx.commit().await.map_err(query("finish task input read"))?;
     transaction::recycle(connection);
@@ -157,15 +117,13 @@ async fn accepted(
     connection: &mut sqlx::PgConnection,
     current: &guard::LeaseRow,
     input: &TaskInputsQuery,
+    batch: usize,
 ) -> Result<Vec<TaskAcceptedInput>> {
     let accepted: Vec<InputRow> = sqlx::query_as(include_str!("../sql/accepted_inputs.sql"))
         .bind(&current.task_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(row::sql_counter(
-            af_wire::task::INPUT_BATCH_MAX,
-            "input batch limit",
-        )?)
+        .bind(row::sql_counter(batch, "input batch limit")?)
         .bind(
             input
                 .after_input_sequence
@@ -178,33 +136,38 @@ async fn accepted(
         .map_err(query(
             "recover accepted inputs beyond the incorporated cursor",
         ))?;
-    let accepted_inputs = accepted
+    accepted
         .into_iter()
-        .map(|item| {
-            Ok(TaskAcceptedInput {
-                source_admission_id: item.source_admission_id.into(),
-                plan_digest: item.plan_digest,
-                item_id: item.item_id.into(),
-                task: DecisionTaskVersion {
-                    task_id: item.task_id.into(),
-                    generation: row::counter(item.generation, "task generation")?,
-                },
-                sequence: row::counter(item.sequence, "input sequence")?,
-                action: serde::Deserialize::deserialize(serde::de::value::StrDeserializer::new(
-                    item.action.as_str(),
-                ))
-                .map_err(|source: serde::de::value::Error| {
-                    crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
-                })?,
-                original_message: item.original_message,
-                accepted_text: item.accepted_text,
-                interpretation: item.interpretation,
-                applied: item.applied,
-                response_text: item.response_text,
-            })
+        .map(TaskAcceptedInput::try_from)
+        .collect()
+}
+
+impl TryFrom<InputRow> for TaskAcceptedInput {
+    type Error = crate::Error;
+
+    fn try_from(item: InputRow) -> Result<Self> {
+        Ok(Self {
+            source_admission_id: item.source_admission_id.into(),
+            plan_digest: item.plan_digest,
+            item_id: item.item_id.into(),
+            task: DecisionTaskVersion {
+                task_id: item.task_id.into(),
+                generation: row::counter(item.generation, "task generation")?,
+            },
+            sequence: row::counter(item.sequence, "input sequence")?,
+            action: serde::Deserialize::deserialize(serde::de::value::StrDeserializer::new(
+                item.action.as_str(),
+            ))
+            .map_err(|source: serde::de::value::Error| {
+                crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
+            })?,
+            original_message: item.original_message,
+            accepted_text: item.accepted_text,
+            interpretation: item.interpretation,
+            applied: item.applied,
+            response_text: item.response_text,
         })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(accepted_inputs)
+    }
 }
 
 async fn candidates(
@@ -233,4 +196,83 @@ async fn candidates(
         })
         .collect::<Result<Vec<_>>>()?;
     Ok(candidates)
+}
+
+async fn pending_humans(
+    connection: &mut sqlx::PgConnection,
+    current: &guard::LeaseRow,
+    after: i64,
+    limit: usize,
+    lease: TaskLease<'_>,
+) -> Result<Vec<Human>> {
+    let humans: Vec<Human> = sqlx::query_as(include_str!("../sql/pending_inputs.sql"))
+        .bind(&current.fleet_id)
+        .bind(&current.workspace_id)
+        .bind(&current.source_admission_id)
+        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(afd_events::ACTOR_MACHINE)
+        .bind(format!("{}%", afd_events::ACTOR_PREFIX))
+        .bind(after)
+        .bind(row::sql_counter(limit, "input batch limit")? + 1)
+        .bind(lease.lease_id)
+        .bind(current.fence)
+        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
+        .bind(None::<&str>.map(crate::task::guard::wire).transpose()?)
+        .bind(true)
+        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
+        .fetch_all(connection)
+        .await
+        .map_err(query("read complete eligible human inputs"))?;
+    Ok(humans)
+}
+
+fn human_page(mut humans: Vec<Human>, limit: usize) -> (Vec<Human>, Option<String>) {
+    let more = humans.len() > limit;
+    if more {
+        humans.pop();
+    }
+    let next_cursor = more.then(|| humans.last()).flatten().map(|last| {
+        Cursor::Text {
+            value: last.sequence.to_string(),
+            id: last.id.clone().into(),
+        }
+        .to_string()
+    });
+    (humans, next_cursor)
+}
+
+fn human_inputs(
+    humans: Vec<Human>,
+    recovered: &mut std::collections::BTreeMap<Uuid7, af_wire::task::TaskAcceptedInterpretation>,
+) -> Result<Vec<TaskHumanInput>> {
+    let inputs = humans
+        .into_iter()
+        .map(|source| {
+            Ok(TaskHumanInput {
+                accepted: recovered.remove(&source.id),
+                source_admission_id: source.id.into(),
+                sequence: row::counter(source.sequence, "input sequence")?,
+                message: super::admit::source::message_for(&source.producer, &source.request_json)?
+                    .into_owned(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(inputs)
+}
+
+async fn current_message(
+    connection: &mut sqlx::PgConnection,
+    current: &guard::LeaseRow,
+) -> Result<Option<String>> {
+    let source =
+        super::admit::source::load(connection, current, &current.source_admission_id).await?;
+    let message = if super::admit::source::check_human(&source).is_ok() {
+        Some(source.message()?.into_owned())
+    } else {
+        None
+    };
+    Ok(message)
 }
