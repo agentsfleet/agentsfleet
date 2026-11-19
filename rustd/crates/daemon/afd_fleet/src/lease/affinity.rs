@@ -20,7 +20,6 @@
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-#[cfg(any(test, feature = "test-util"))]
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
 #[cfg(any(test, feature = "test-util"))]
