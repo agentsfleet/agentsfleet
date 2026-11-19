@@ -40,7 +40,8 @@ impl SessionServices {
             });
         };
         let frame = encoder.finish()?;
-        self.cache.insert(offered)?;
+        self.cache
+            .insert(offered, self.gateway.inner.dependencies.wall_clock.now())?;
         self.handle.snapshot.lock().issued()?;
         let sent = self
             .output

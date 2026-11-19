@@ -82,8 +82,26 @@ The one-fleet replacement settled at 4.052 seconds; all ten replacements in the 
 Each row represents one run, with an API-only checkpoint and no workspace file transfer.
 
 The hundred-fleet attempt reached connected source runners and one hundred active leases, with no ready checkpoint when preparation timed out.
-Its exact cause remains unverified; no scale success or recovery latency follows from that failed preparation.
+Its cause is diagnosed below; no scale success or recovery latency follows from that failed preparation.
 These measurements precede the subsequent adaptive-maintenance repair and do not establish final-tree performance.
+
+### Hundred-fleet preparation diagnosis
+
+The preparation failure was a session defect in the gateway's lease cache, reproduced on Nov 19, 2026 with daemon logs.
+A heartbeat's live-lease refresh loaded a lease between its issue commit and the offer's own cache insert.
+The insert treated that identifier as a conflict and ended the runner's session with `UZ-REQ-001`.
+
+The stranded lease expired unrenewed, and its fleet was offered to the same full host again.
+The cache still held the expired record, so the sixty-four-record bound refused the new lease and ended the session a second time.
+The harness waits for every fleet's first model request, so one stranded fleet stalled the whole cohort.
+
+`CachedLeases::insert` now merges an offer into a lease a refresh already loaded, and drops lapsed records before refusing a full host.
+Three regressions cover the merge, the lapsed record and the live-lease bound; the first two failed before their repair.
+With the repair, a diagnostic build prepared one hundred fleets and all one hundred resumed with fence two.
+
+That run used the `fast-profile` build on a MacBook, so its timings are not comparable with the rig's `dist` samples.
+Its nearest-rank median was 5.590 seconds, and its last fleet resumed 6.277 seconds after lease expiry.
+A matched `dist` run on the rig remains due.
 
 ### Maintenance and fixture follow-up
 
