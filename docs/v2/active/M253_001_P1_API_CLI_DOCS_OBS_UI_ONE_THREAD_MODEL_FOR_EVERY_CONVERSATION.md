@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 19, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, every person and operator reads a conversation through these nouns
 
@@ -99,7 +99,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `docs/ux.html` | EDIT | the Stop button in the conversation composer |
 | `bench/baselines/thread-recovery.rig.json`, `thread-sql.rig.json` | CREATE | §9's measurements |
 | `docs/architecture/*.md`, `docs/AUTH.md` | EDIT | every page in the new words |
-| `docs/v2/pending/M253_001_P1_API_CLI_DOCS_OBS_UI_ONE_THREAD_MODEL_FOR_EVERY_CONVERSATION.md` | CREATE | this spec, moved to `active/` then `done/` |
+| `docs/v2/active/M253_001_P1_API_CLI_DOCS_OBS_UI_ONE_THREAD_MODEL_FOR_EVERY_CONVERSATION.md` | CREATE | this spec, moved to `done/` at close |
 | `CHANGELOG.md` | EDIT | the breaking vocabulary change |
 | `~/Projects/docs` branch `chore/m253-one-thread-model-changelog` | EDIT | API and CLI pages and changelog; API pages are committed after merge |
 
