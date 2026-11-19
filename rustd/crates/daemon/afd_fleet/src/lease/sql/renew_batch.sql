@@ -1,3 +1,7 @@
+-- The fleet's host-wide renewal: `shared/extend_lease.sql` for every lease a frame names,
+-- with the fleet's ceilings, admissions and usage lines. A change to the shared
+-- bookkeeping belongs in both.
+--
 -- One host's renewals in one statement: every live lease the runner
 -- names, extended and metered together, each under its own fence. A lease that
 -- fails a check extends nothing and changes no other lease's answer.
@@ -52,6 +56,7 @@ WITH asked AS (
   CROSS JOIN (SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM host) held) i
   WHERE (SELECT count(*) FROM runner.leases l
           WHERE l.runner_id = $1 AND l.status = $25 AND l.lease_expires_at > i.checked_at)
+      -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
       + (SELECT count(*) FROM authoring.attempts a
           WHERE a.runner_id = $1 AND a.status = $25 AND a.lease_expires_at > i.checked_at)
       <= h.worker_count

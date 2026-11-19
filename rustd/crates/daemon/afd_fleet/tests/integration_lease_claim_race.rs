@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
-use afd_fleet::lease::sql::lease::CLAIM_FLEET_SLOT;
+use afd_fleet::lease::sql::shared::CLAIM_SLOT;
 use sqlx::Connection as _;
 
 use crate::seed::{Seeded, seeded};
@@ -53,8 +53,9 @@ async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
         .fetch_one(&mut *claiming)
         .await
         .expect("the session names itself");
-    sqlx::query(CLAIM_FLEET_SLOT)
+    sqlx::query(CLAIM_SLOT)
         .bind(&fleet)
+        .bind(None::<Uuid7>)
         .bind(&second)
         .bind(LEASE_TTL)
         .bind(RUNNER_OFFLINE_AFTER)

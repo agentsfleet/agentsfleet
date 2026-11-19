@@ -1,3 +1,7 @@
+-- The fleet's issue: `../shared/insert_lease.sql` with the fleet's scope and setup proof
+-- inside the insert, so the issue stays one statement. A change to the shared bookkeeping
+-- belongs in both.
+--
 -- The caller holds the host row (`lock_host.sql`) through this transaction, so
 -- this statement's snapshot, taken after that lock, sees every earlier
 -- claimant's commit: the census below counts them. A full host, a moved slot
@@ -11,11 +15,13 @@ WITH instant AS MATERIALIZED (
     AND (SELECT count(*) FROM runner.leases l
           WHERE l.runner_id = $2 AND l.status = $11
             AND l.lease_expires_at > i.checked_at)
+      -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
       + (SELECT count(*) FROM authoring.attempts a
           WHERE a.runner_id = $2 AND a.status = $11
             AND a.lease_expires_at > i.checked_at)
+      -- Every other owner's live hold on this host, fleet or draft: a slot's id is its owner's.
       + (SELECT count(*) FROM runner.slots s
-          WHERE s.last_runner_id = $2 AND s.fleet_id <> $3
+          WHERE s.last_runner_id = $2 AND s.id <> $3
             AND s.hold_expires_at IS NOT NULL
             AND s.hold_expires_at > i.checked_at)
       < r.worker_count

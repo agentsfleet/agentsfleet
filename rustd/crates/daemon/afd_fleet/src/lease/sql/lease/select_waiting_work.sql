@@ -25,6 +25,8 @@ WITH probe AS (
                   WHERE s.fleet_id = a.fleet_id AND s.lease_expires_at > statement_timestamp()
               )
         ) OR EXISTS (
+            -- Setup turns the authoring path still runs: a queued message with no live
+            -- attempt. This branch reads the draft kind's slot instead once authoring.attempts goes.
             SELECT 1 FROM authoring.drafts d
             JOIN authoring.messages m ON m.draft_id = d.id
             WHERE d.status = $2 AND m.status = $3 AND m.sequence > d.cancelled_through_sequence
@@ -58,6 +60,7 @@ SELECT
                     WHERE s.fleet_id = a.fleet_id AND s.lease_expires_at > statement_timestamp()
                 )
           )
+          -- The setup branch above, narrowed to the runner's tenant, and re-pointed with it.
           AND NOT EXISTS (
               SELECT 1 FROM authoring.drafts d
               JOIN authoring.messages m ON m.draft_id = d.id

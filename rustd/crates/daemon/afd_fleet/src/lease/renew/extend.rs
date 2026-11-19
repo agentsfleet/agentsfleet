@@ -61,7 +61,7 @@ impl Extension<'_> {
         let Some(capacity) = capacity.filter(|capacity| capacity.can_renew()) else {
             return self.refuse(transaction, Renewed::Lost).await;
         };
-        let cancelled: Option<bool> = sqlx::query_scalar(sql::renew::LOCK_CANCELLED)
+        let cancelled: Option<bool> = sqlx::query_scalar(sql::shared::LOCK_CANCELLED)
             .bind(self.lease.lease_id)
             .bind(self.lease.runner_id)
             .fetch_optional(&mut *transaction)

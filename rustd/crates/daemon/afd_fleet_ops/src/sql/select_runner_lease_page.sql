@@ -40,7 +40,7 @@ LEFT JOIN LATERAL (
     FROM billing.usage_lines
     WHERE work_type = $7 AND work_id = l.id
 ) u ON true
-WHERE l.runner_id = $1
+WHERE l.runner_id = $1 AND l.fleet_id IS NOT NULL
   AND (l.workspace_id = $2 OR $2 IS NULL)
   AND ($3::text IS NULL OR l.fleet_id = $8 OR lower(f.name) = lower($3::text))
   AND (l.created_at, l.id) < (COALESCE($5::timestamptz, 'infinity'::timestamptz), $6)

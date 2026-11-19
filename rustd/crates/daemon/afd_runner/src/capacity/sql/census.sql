@@ -6,6 +6,7 @@ SELECT instant.checked_at,
        (SELECT count(*) FROM runner.leases l
          WHERE l.runner_id = $1 AND l.status = $2
            AND l.lease_expires_at > instant.checked_at)
+     -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
      + (SELECT count(*) FROM authoring.attempts a
          WHERE a.runner_id = $1 AND a.status = $2
            AND a.lease_expires_at > instant.checked_at) AS occupied,
@@ -13,5 +14,6 @@ SELECT instant.checked_at,
          WHERE $4::boolean AND s.last_runner_id = $1
            AND s.hold_expires_at IS NOT NULL
            AND s.hold_expires_at > instant.checked_at
-           AND ($3::uuid IS NULL OR s.fleet_id <> $3::uuid)) AS held
+           -- Every other owner's hold, fleet or draft: a slot's id is its owner's.
+           AND ($3::uuid IS NULL OR s.id <> $3::uuid)) AS held
 FROM instant

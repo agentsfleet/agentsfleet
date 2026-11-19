@@ -1,5 +1,6 @@
 //! Every statement the operator projections run: `runner.leases` joined to the
-//! `fleet.events` and `fleet.fleets` rows it names.
+//! `fleet.events` and `fleet.fleets` rows it names. A setup draft's leases name
+//! no fleet, so each one reads fleet leases only (`fleet_id IS NOT NULL`).
 //!
 //! Each is a `.sql` file beside this module, schema-qualified (RULE NSQ), and
 //! checked against the rebuilt schema by `afd_db`'s

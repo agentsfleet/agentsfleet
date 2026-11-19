@@ -1,3 +1,7 @@
+-- The fleet's report: `shared/settle_lease.sql` with the fleet's usage lines, admission,
+-- event, obligation, session and tool records in the same statement. A change to the
+-- shared bookkeeping belongs in both.
+--
 -- A terminal report in one statement: every write the report's
 -- transaction made under the lease's own lock. A potential sandbox hold
 -- shares the host lock through commit to serialize with worker placement.

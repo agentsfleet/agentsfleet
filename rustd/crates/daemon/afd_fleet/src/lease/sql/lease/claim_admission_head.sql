@@ -1,3 +1,7 @@
+-- The fleet's claim. Its `slot` step is `../shared/claim_slot.sql` and its `prior_lease`,
+-- `bumped` and `tally` steps are `../shared/expire_prior_lease.sql`, fused here with the
+-- fleet's admission and event so a chat's claim stays one round trip: a change to the
+-- bookkeeping belongs in both.
 WITH fleet AS MATERIALIZED (
   SELECT f.id, f.workspace_id, f.tenant_id, f.name, f.status, f.head_revision_id,
          f.memory_reads_workspace, f.memory_publishes_workspace

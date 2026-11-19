@@ -1,3 +1,6 @@
+-- The fleet's per-lease renewal: `shared/extend_lease.sql` with the durable task's limits
+-- and the admission's fence checked in the same statement. A change to the shared
+-- bookkeeping belongs in both.
 WITH locked_slot AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
     FROM runner.slots s JOIN runner.leases l ON l.fleet_id = s.fleet_id

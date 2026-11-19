@@ -33,7 +33,7 @@ impl Leases {
                 .execute(&mut *transaction)
                 .await
                 .map_err(query(CONTEXT))?;
-            sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
+            sqlx::query(sql::shared::RELEASE_UNLEASED_SLOT)
                 .bind(fleet)
                 .bind(fence.as_i64())
                 .execute(&mut *transaction)

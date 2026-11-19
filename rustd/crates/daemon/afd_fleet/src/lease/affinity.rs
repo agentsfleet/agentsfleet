@@ -7,7 +7,8 @@
 //! rather than as a second variant a caller must remember to match. The verbs
 //! are methods on [`Leases`], which owns the pool and keeps it `pub(crate)`, so
 //! nothing outside this crate can run a statement that is not in
-//! [`crate::lease::sql`].
+//! [`crate::lease::sql`]. They run the slot statements every kind shares
+//! ([`crate::lease::sql::shared`]); a fleet's slot is keyed by the fleet's id.
 //!
 //! # Why the token is a type
 //!
@@ -31,6 +32,8 @@ use std::time::Duration;
 
 use crate::error::{Result, query};
 use crate::lease::envelope::Acquired;
+#[cfg(any(test, feature = "test-util"))]
+use crate::lease::owner::LeaseOwner;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -104,7 +107,7 @@ pub struct Claimed {
 }
 
 #[cfg(any(test, feature = "test-util"))]
-/// What [`sql::lease::CLAIM_FLEET_SLOT`] answers when the claim wins: the new
+/// What [`sql::shared::CLAIM_SLOT`] answers when the claim wins: the new
 /// fence, the slot's deadline on the database clock, and whether the slot's
 /// prior hold was still live and whose it was.
 #[derive(Debug, sqlx::FromRow)]
@@ -143,9 +146,11 @@ impl Leases {
         runner_id: &Uuid7,
         ttl: Duration,
     ) -> Result<Option<Claimed>> {
+        let owner = LeaseOwner::Fleet(fleet_id.clone());
         let mut connection = self.pool().acquire().await?;
-        let won: Option<Won> = sqlx::query_as(sql::lease::CLAIM_FLEET_SLOT)
-            .bind(fleet_id)
+        let won: Option<Won> = sqlx::query_as(sql::shared::CLAIM_SLOT)
+            .bind(owner.fleet_id())
+            .bind(owner.draft_id())
             .bind(runner_id)
             .bind(ttl)
             .bind(self.clock().offline_after())
@@ -185,7 +190,8 @@ impl Leases {
     /// Reports a datastore that would not answer.
     pub async fn release(&self, fleet_id: &Uuid7, fence: Fence) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
+        // A fleet's slot is keyed by the fleet's id.
+        sqlx::query(sql::shared::RELEASE_UNLEASED_SLOT)
             .bind(fleet_id)
             .bind(fence.as_i64())
             .execute(&mut *connection)
@@ -242,7 +248,7 @@ impl Leases {
         fence: Fence,
         asked_hold: Option<Timestamp>,
     ) -> Result<()> {
-        sqlx::query(sql::lease::RELEASE_FLEET_SLOT)
+        sqlx::query(sql::shared::RELEASE_SLOT)
             .bind(fleet_id)
             .bind(fence.as_i64())
             .bind(asked_hold.map(jiff_sqlx::ToSqlx::to_sqlx))

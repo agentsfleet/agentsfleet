@@ -83,7 +83,7 @@ impl LeaseService {
     ) -> Result<Option<af_wire::report::AcceptedHold>> {
         let mut connection = self.leases.pool().acquire().await?;
         let row: Option<(i64, jiff_sqlx::Timestamp)> =
-            sqlx::query_as(include_str!("../sql/lease/report_hold.sql"))
+            sqlx::query_as(crate::lease::sql::shared::REPORT_HOLD)
                 .bind(lease)
                 .bind(runner)
                 .bind(crate::lease::sql::LEASE_STATUS_REPORTED)

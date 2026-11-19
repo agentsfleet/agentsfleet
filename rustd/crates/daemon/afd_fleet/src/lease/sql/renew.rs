@@ -28,9 +28,6 @@
 /// `$1` lease, `$2` runner.
 pub const SELECT_LEASE_FOR_RENEW: &str = include_str!("select_lease_for_renew.sql");
 
-/// Slot then lease lock order, retained until the renewal commits or is refused.
-pub const LOCK_CANCELLED: &str = include_str!("select_lease_cancelled.sql");
-
 /// A host's leases before its renewal statement: pricing facts, payer, task,
 /// cancel mark, start, head revision and catalogue version.
 pub const SELECT_RENEWALS: &str = include_str!("select_renewals.sql");

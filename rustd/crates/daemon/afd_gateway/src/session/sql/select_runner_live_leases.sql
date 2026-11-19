@@ -11,6 +11,7 @@ WHERE l.runner_id = $1 AND l.status = $2
   AND s.last_runner_id = l.runner_id AND s.fencing_token = l.fencing_token
   AND s.lease_expires_at > statement_timestamp()
 UNION ALL
+-- Setup turns the authoring path still runs; this branch goes with authoring.attempts.
 SELECT a.lease_id, LEAST(a.lease_expires_at, a.expires_at),
        NULL, NULL, a.created_at, NULL, a.fencing_token, false
 FROM authoring.attempts a

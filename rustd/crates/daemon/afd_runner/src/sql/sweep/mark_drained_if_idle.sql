@@ -12,6 +12,7 @@ WITH locked AS MATERIALIZED (
       WHERE l.runner_id = r.id AND l.status = $4::text
         AND l.lease_expires_at > (SELECT at FROM instant)
     )
+    -- Setup turns the authoring path still runs; this term goes with authoring.attempts.
     AND NOT EXISTS (
       SELECT 1 FROM authoring.attempts a WHERE a.runner_id = r.id AND a.status = $4::text
         AND a.lease_expires_at > (SELECT at FROM instant)
