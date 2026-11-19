@@ -154,10 +154,10 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108123000_fleet_activity_counters.sql"),
     migration!("20261108123100_runner_runners.sql"),
     migration!("20261108123200_runner_leases.sql"),
-    migration!("20261108123300_runner_fleet_slots.sql"),
     migration!("20261108123400_runner_events.sql"),
     migration!("20261108123500_runner_lifetime_counters.sql"),
     migration!("20261108123600_authoring_drafts.sql"),
+    migration!("20261108123650_runner_slots.sql"),
     migration!("20261108123700_authoring_candidates.sql"),
     migration!("20261108123800_authoring_messages.sql"),
     migration!("20261108123900_authoring_attempts.sql"),
@@ -206,6 +206,12 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108193000_connector_oauth_nonces.sql"),
     migration!("20261108193100_identity_device_sessions.sql"),
     migration!("20261117084100_runner_registration_receipts.sql"),
+    migration!("20261117154626_runner_turn_recovery.sql"),
+    migration!("20261117154627_runner_turn_checkpoints.sql"),
+    migration!("20261117154628_runner_turn_checkpoint_pages.sql"),
+    migration!("20261117154629_runner_turn_checkpoint_refs.sql"),
+    migration!("20261117154630_runner_turn_checkpoint_pins.sql"),
+    migration!("20261117154631_runner_turn_checkpoint_operations.sql"),
 ];
 
 /// Derives the version from the filename during constant evaluation: its UTC

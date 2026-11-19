@@ -25,6 +25,8 @@ const CAUSE_FIELD: &str = "cause";
 /// Caller-owned cancellation and total deadline; neither causes a second attempt.
 #[derive(Clone, Default)]
 pub struct TurnControl {
+    /// Checked transport and semantic inactivity policy for this caller.
+    pub timeouts: crate::Timeouts,
     /// Caller-owned dispatch identity; never a prompt, URL or credential.
     pub correlation_id: Arc<str>,
     /// The caller's absolute attempt deadline, when it has one.
@@ -54,6 +56,7 @@ pub type TurnObserver = Arc<dyn Fn(TurnObservation) + Send + Sync>;
 impl std::fmt::Debug for TurnControl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TurnControl")
+            .field("timeouts", &self.timeouts)
             .field("deadline", &self.deadline)
             .finish_non_exhaustive()
     }
@@ -208,7 +211,7 @@ impl StreamTurn {
     /// An internal ownership invariant is violated; public calls cannot consume the fields early.
     pub async fn next(&mut self) -> Option<Result<StreamEvent, FailureCause>> {
         while !self.ended {
-            let inactivity = self.last_event + READ_TIMEOUT;
+            let inactivity = self.last_event + self.control.timeouts.stream_idle();
             let deadline = self
                 .control
                 .deadline

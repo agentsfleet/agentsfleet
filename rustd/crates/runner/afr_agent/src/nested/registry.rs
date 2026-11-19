@@ -7,13 +7,19 @@
 //! running to its end, and `wait_agent` watches it.
 
 use std::collections::BTreeMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use afr_tools::{Selection, ToolErrorCode};
-use serde::{Serialize, Serializer};
-use tokio::sync::{mpsc, watch};
+use garde::Validate;
+use serde::{Deserialize, Serialize, Serializer};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
+
+#[path = "recovery.rs"]
+mod recovery;
+pub(crate) use recovery::{CapturePermit, ChildRecovery};
 
 /// How deep a child may be: the root is 0, and a child this deep is offered
 /// no nested tool.
@@ -24,13 +30,13 @@ pub(crate) const CHILDREN_RUNNING_MAX: usize = 4;
 pub(crate) const CHILDREN_PER_RUN_MAX: u64 = 16;
 
 /// Where a child is.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub(crate) enum Status {
     Running,
     /// Ended on its answer.
-    Done(String),
+    Done(#[garde(length(bytes, max = 65_536))] String),
     /// Ended on a failure of its own, with its detail.
-    Failed(String),
+    Failed(#[garde(length(bytes, max = 65_536))] String),
     /// Ended before its answer: by `interrupt_agent`, or with its parent.
     Interrupted,
 }
@@ -129,17 +135,34 @@ struct Book {
 pub(crate) struct Registry<'run> {
     book: Mutex<Book>,
     requests: mpsc::UnboundedSender<Start<'run>>,
+    captures: mpsc::UnboundedSender<oneshot::Sender<Option<CapturePermit>>>,
+    capturing: Arc<AtomicBool>,
+}
+
+/// Child starts and boundary requests share the root coordinator's lifetime.
+pub(crate) struct Requests<'run> {
+    pub(crate) starts: mpsc::UnboundedReceiver<Start<'run>>,
+    pub(crate) captures: mpsc::UnboundedReceiver<oneshot::Sender<Option<CapturePermit>>>,
 }
 
 impl<'run> Registry<'run> {
     /// No child yet, and where the root loop reads each one to start.
-    pub(crate) fn new() -> (Self, mpsc::UnboundedReceiver<Start<'run>>) {
-        let (requests, asked) = mpsc::unbounded_channel();
+    pub(crate) fn new() -> (Self, Requests<'run>) {
+        let (requests, starts) = mpsc::unbounded_channel();
+        let (captures, capture_requests) = mpsc::unbounded_channel();
         let registry = Self {
             book: Mutex::default(),
             requests,
+            captures,
+            capturing: Arc::new(AtomicBool::new(false)),
         };
-        (registry, asked)
+        (
+            registry,
+            Requests {
+                starts,
+                captures: capture_requests,
+            },
+        )
     }
 
     /// Reserves a child at `depth` over `task` holding `selection`, ending
@@ -155,7 +178,10 @@ impl<'run> Registry<'run> {
         parent: &CancellationToken,
     ) -> Result<u64, ToolErrorCode> {
         let mut book = self.book();
-        if book.running >= CHILDREN_RUNNING_MAX || book.started >= CHILDREN_PER_RUN_MAX {
+        if self.capturing.load(Ordering::Acquire)
+            || book.running >= CHILDREN_RUNNING_MAX
+            || book.started >= CHILDREN_PER_RUN_MAX
+        {
             return Err(ToolErrorCode::ChildCapReached);
         }
         book.running += 1;
@@ -175,7 +201,7 @@ impl<'run> Registry<'run> {
                 calls: 0,
             },
         );
-        drop(book);
+        // Sending under the same lock lets capture prove there are no queued starts.
         // The root loop holds the receiver for as long as any loop of the run
         // runs, so a request reaches it; one sent after the run ended has no
         // loop left to serve it and goes with the run.
@@ -189,6 +215,7 @@ impl<'run> Registry<'run> {
                 input: inbox,
             },
         });
+        drop(book);
         Ok(id)
     }
 

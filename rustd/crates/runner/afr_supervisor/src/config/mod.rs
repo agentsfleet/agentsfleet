@@ -13,7 +13,9 @@ use url::Url;
 
 use crate::error::{self, Result};
 
+mod runtime;
 mod stream;
+pub use runtime::{RuntimePolicy, RuntimeSettings};
 pub use stream::{ENV_STREAM_CA, ENV_STREAM_URL, StreamConfig};
 
 /// The daemon's base address.
@@ -43,6 +45,7 @@ pub struct Config {
     token: Secret,
     storage_home: PathBuf,
     stream: StreamConfig,
+    runtime: RuntimePolicy,
 }
 
 impl Config {
@@ -75,6 +78,7 @@ impl Config {
             token: Secret::new(token),
             storage_home,
             stream: StreamConfig::from_env(env)?,
+            runtime: RuntimePolicy::DEFAULT,
         })
     }
 
@@ -95,6 +99,19 @@ impl Config {
     #[must_use]
     pub const fn stream(&self) -> &StreamConfig {
         &self.stream
+    }
+
+    /// Applies one checked runner-local snapshot before opening a connection.
+    #[must_use]
+    pub const fn with_runtime(mut self, runtime: RuntimePolicy) -> Self {
+        self.runtime = runtime;
+        self
+    }
+
+    /// Runner-local settings; worker capacity is assigned by the daemon.
+    #[must_use]
+    pub const fn runtime(&self) -> RuntimePolicy {
+        self.runtime
     }
 
     /// The host-local storage root.

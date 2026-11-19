@@ -22,7 +22,7 @@ const FAIL_RELEASE: &str = "CREATE FUNCTION fleet.refuse_park() RETURNS trigger 
         WHERE fleet_id = NEW.fleet_id AND parked_at IS NOT NULL) THEN \
         RAISE EXCEPTION 'injected park failure'; \
       END IF; RETURN NEW; END $$; \
-    CREATE TRIGGER refuse_park BEFORE UPDATE OF lease_expires_at ON runner.fleet_slots \
+    CREATE TRIGGER refuse_park BEFORE UPDATE OF lease_expires_at ON runner.slots \
     FOR EACH ROW EXECUTE FUNCTION fleet.refuse_park()";
 
 // Value: protects=failed park releases claim; fails_when=park error escapes cleanup;

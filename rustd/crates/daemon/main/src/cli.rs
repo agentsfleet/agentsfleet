@@ -37,7 +37,7 @@ pub const FAILURE: u8 = 1;
 /// `about` is spelled out rather than taken from the package `description`:
 /// that string describes the crate to a Rust developer reading a manifest, and
 /// this one is read by an operator deciding what to type next.
-#[derive(Debug, Clone, Copy, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(
     name = "agentsfleetd",
     version,
@@ -46,6 +46,9 @@ pub const FAILURE: u8 = 1;
     before_help = crate::nameplate::for_help(),
 )]
 pub struct Cli {
+    /// Application TOML file; falls back to `AGENTSFLEET_CONFIG_FILE`.
+    #[arg(long, global = true, value_name = "FILE")]
+    pub config: Option<std::path::PathBuf>,
     /// What to do. Omitted, the environment is checked and reported.
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -79,11 +82,9 @@ pub enum Command {
         #[arg(
             long,
             value_name = "PORT",
-            env = PORT_KNOB,
-            default_value_t = DEFAULT_PORT,
             value_parser = clap::value_parser!(u16).range(1..),
         )]
-        port: u16,
+        port: Option<u16>,
     },
     /// Apply every migration this binary carries, report what moved, exit.
     Migrate,
@@ -114,18 +115,69 @@ where
     E: EnvSource + ?Sized + Sync,
     F: Future<Output = ()> + Send,
 {
+    #[cfg(feature = "openapi")]
+    if matches!(cli.command, Some(Command::Openapi)) {
+        return openapi();
+    }
+    let port = match cli.command {
+        Some(Command::Serve { port }) => port,
+        _ => None,
+    };
+    let source = match crate::config::ConfigBuilder::new(env)
+        .file(cli.config.as_deref())
+        .overrides(crate::config::ConfigOverrides { port })
+        .build()
+    {
+        Ok(source) => source,
+        Err(refusal) => {
+            crate::fatal::die(&refusal);
+            return FAILURE;
+        }
+    };
+    let env = source.environment();
+    let _installed = crate::logs::install(env);
+    source.announce();
     match cli.command.as_ref() {
-        Some(&Command::Serve { port }) => on_runtime(runtime, serve(env, port, signal)),
-        Some(&Command::Migrate) => on_runtime(runtime, migrate(env)),
+        Some(&Command::Serve { port }) => {
+            let port = match configured_port(env, port) {
+                Ok(port) => port,
+                Err(refusal) => {
+                    crate::fatal::die(&refusal);
+                    return FAILURE;
+                }
+            };
+            on_runtime(runtime, serve(&source, port, signal))
+        }
+        Some(&Command::Migrate) => on_runtime(runtime, migrate(&source)),
         #[cfg(feature = "openapi")]
         Some(&Command::Openapi) => openapi(),
         // No subcommand: preflight only. Useful as a container healthcheck and
         // as the thing an operator runs to find out what is missing before
         // taking the trouble to start anything.
-        None => check(env),
+        None => check(&source),
     }
 }
 
+fn configured_port(
+    env: &(impl EnvSource + ?Sized),
+    explicit: Option<u16>,
+) -> Result<u16, crate::Refusal> {
+    explicit.map_or_else(
+        || {
+            env.get(PORT_KNOB).map_or(Ok(DEFAULT_PORT), |raw| {
+                raw.parse::<std::num::NonZeroU16>()
+                    .map(std::num::NonZeroU16::get)
+                    .map_err(|_invalid| {
+                        crate::Refusal::new(vec![crate::Fault::Invalid {
+                            knob: PORT_KNOB,
+                            why: "requires a TCP port between 1 and 65535".to_owned(),
+                        }])
+                    })
+            })
+        },
+        Ok,
+    )
+}
 /// How long a finished process waits on blocking work nothing can cancel.
 ///
 /// Dropping a runtime WAITS for every running blocking operation, and a
@@ -170,12 +222,19 @@ where
 }
 
 /// Boots, serves until `signal`, and reports how the fleet stopped.
-pub async fn serve<E, F>(env: &E, port: u16, signal: F) -> u8
+pub async fn serve<E, F>(config: &crate::config::Config<'_, E>, port: u16, signal: F) -> u8
 where
     E: EnvSource + ?Sized + Sync,
     F: Future<Output = ()> + Send,
 {
-    match crate::serve::run(env, port, signal).await {
+    let boot = match config.preflight() {
+        Ok(boot) => boot,
+        Err(failure) => {
+            crate::fatal::die(&failure);
+            return FAILURE;
+        }
+    };
+    match crate::serve::run(boot, port, signal).await {
         Ok(outcome) => status_for(&outcome),
         Err(failure) => {
             crate::fatal::die(&failure);
@@ -212,8 +271,8 @@ pub fn status_for(outcome: &Outcome) -> u8 {
 /// — so a summary on stdout was the one part of this path that could not be
 /// queried beside the events it summarises. The contract this command answers
 /// on is its EXIT STATUS, which is unchanged and is what the lane asserts.
-pub async fn migrate<E: EnvSource + ?Sized + Sync>(env: &E) -> u8 {
-    match crate::migrate::migrate(env).await {
+pub async fn migrate<E: EnvSource + ?Sized + Sync>(config: &crate::config::Config<'_, E>) -> u8 {
+    match config.migrate().await {
         Ok(applied) => {
             // Hoisted per §8A — the `log` bridge duplicates field expressions
             // and llvm-cov scores the dead copy.
@@ -260,8 +319,9 @@ pub fn openapi_to(out: &mut impl std::io::Write) -> u8 {
 }
 
 /// Resolves the environment and reports it, without opening anything.
-pub fn check<E: EnvSource + ?Sized>(env: &E) -> u8 {
-    match crate::preflight::preflight(env) {
+#[must_use]
+pub fn check<E: EnvSource + ?Sized>(config: &crate::config::Config<'_, E>) -> u8 {
+    match config.preflight() {
         Ok(config) => {
             let roles = [format!("postgres:{}", config.api_pool().role().tag())];
             crate::banner::show(env!("CARGO_PKG_VERSION"), &roles, std::process::id());

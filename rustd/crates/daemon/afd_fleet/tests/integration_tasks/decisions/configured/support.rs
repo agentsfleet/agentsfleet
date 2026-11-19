@@ -33,7 +33,7 @@ pub(super) async fn expire(case: &Case) {
         .acquire()
         .await
         .expect("fixture clock");
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
+    sqlx::query("UPDATE runner.slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("slot elapsed");
     sqlx::query("UPDATE runner.leases SET status='expired' WHERE id=$1")
         .bind(&case.held.lease_key)
@@ -88,6 +88,7 @@ pub(super) async fn claimable(case: &Case) -> bool {
         .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::event::status::RECEIVED)
         .bind(afd_admission::Producer::Steer.as_str())
+        .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *tx)
         .await

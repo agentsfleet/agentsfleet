@@ -1,20 +1,49 @@
 //! This is the spec's backstop, not runner polling: at most one query per replica per tick.
 
+mod drain;
+
+use crate::registry::Registry;
 use crate::{Gateway, Operation, Result, error::within};
-use af_core::{
-    id::Uuid7,
-    timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT},
-};
+use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use afd_bus::wake::Wake;
 use afd_fleet::lease::waiting::{Waiting, waiting};
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
+pub(super) async fn notifications(
+    registry: &Registry,
+    wake: &Wake,
+    claims: usize,
+    stop: &CancellationToken,
+) -> Result<()> {
+    let mut generations = wake.generations();
+    loop {
+        let observed = generations.borrow_and_update().recovery();
+        if let Some(recovery) = observed {
+            registry.request_recovery(recovery);
+            let credited = registry.candidates(
+                &std::collections::HashSet::new(),
+                &std::collections::HashSet::new(),
+            );
+            drain::drain(credited, claims, stop).await;
+            wake.recovered(recovery);
+        }
+        tokio::select! {
+            biased;
+            () = stop.cancelled() => return Ok(()),
+            changed = generations.changed() => if changed.is_err() { return Ok(()); },
+        }
+    }
+}
+
 /// Notifications never reset this timer. A hot fleet cannot postpone lost-work recovery.
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
-    probe_ticks(&gateway.inner.dependencies.wake, &stop, || async {
-        Ok(waiting_work(&gateway, &stop, &[]).await?.pending())
-    })
+    probe_ticks(
+        &gateway.inner.dependencies.wake,
+        &stop,
+        gateway.inner.dependencies.recovery.offer_fallback,
+        || async { Ok(waiting_work(&gateway, &stop, &[]).await?.pending()) },
+    )
     .await;
     Ok(())
 }
@@ -22,10 +51,10 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
 async fn probe_ticks<F: Future<Output = Result<bool>>>(
     wake: &Wake,
     stop: &CancellationToken,
+    interval: std::time::Duration,
     mut probe: impl FnMut() -> F,
 ) {
-    let mut tick =
-        tokio::time::interval_at(Instant::now() + OFFER_FALLBACK_TICK, OFFER_FALLBACK_TICK);
+    let mut tick = tokio::time::interval_at(Instant::now() + interval, interval);
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
         tokio::select! {
@@ -55,7 +84,17 @@ pub(super) async fn waiting_work(
         Operation::Recheck,
         async {
             let mut connection = gateway.inner.dependencies.database.acquire().await?;
-            Ok(waiting(&mut connection, runners).await?)
+            Ok(waiting(
+                &mut connection,
+                runners,
+                gateway
+                    .inner
+                    .dependencies
+                    .leases
+                    .leases
+                    .checkpoint_resume_enabled(),
+            )
+            .await?)
         },
     )
     .await

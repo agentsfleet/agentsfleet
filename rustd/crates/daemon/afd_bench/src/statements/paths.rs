@@ -196,7 +196,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     // Meter.
     (
-        "s.fencing_token, s.lease_expires_at FROM runner.fleet_slots s JOIN runner.leases",
+        "s.fencing_token, s.lease_expires_at FROM runner.slots s JOIN runner.leases",
         Path::Meter,
     ),
     ("INSERT INTO billing.usage_lines", Path::Meter),
@@ -212,7 +212,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // sending lands in `other`, which every drain reports.
     // Report.
     (
-        "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval",
+        "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval",
         Path::Report,
     ),
     (

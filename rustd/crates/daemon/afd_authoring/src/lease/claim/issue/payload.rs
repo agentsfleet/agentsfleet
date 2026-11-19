@@ -46,9 +46,10 @@ pub(super) fn build(
         limits: Limits {
             input_per_call: i64::from(model.context_window_tokens),
             output_per_turn: budget::output_limit(model),
-            max_calls: budget::MAX_CALLS,
-            wall_seconds: seconds(budget::WALL),
-            provider_timeout_seconds: seconds(budget::PROVIDER_TIMEOUT),
+            max_calls: placement.policy.calls(),
+            wall_seconds: seconds(placement.policy.wall()),
+            provider_timeout_seconds: seconds(placement.policy.provider_timeout()),
+            max_proposal_corrections: placement.policy.settings().max_proposal_corrections,
         },
     };
     let bytes = serde_json::to_vec(&payload).map_err(stored)?;

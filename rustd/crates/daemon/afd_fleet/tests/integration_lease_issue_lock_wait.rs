@@ -26,8 +26,7 @@ use crate::support::Fixtures;
 const HELD_FOR: Duration = Duration::from_millis(400);
 
 /// Takes the fleet's slot row lock and writes nothing.
-const LOCK_SLOT: &str =
-    "SELECT pg_backend_pid() FROM runner.fleet_slots WHERE fleet_id = $1 FOR UPDATE";
+const LOCK_SLOT: &str = "SELECT pg_backend_pid() FROM runner.slots WHERE fleet_id = $1 FOR UPDATE";
 
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =

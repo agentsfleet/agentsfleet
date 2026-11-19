@@ -2,7 +2,6 @@
 -- first acknowledgement. Append-only.
 CREATE TABLE billing.authoring_report_receipts (
     id                 UUID PRIMARY KEY,
-    CONSTRAINT ck_authoring_report_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     attempt_id         UUID   NOT NULL REFERENCES authoring.attempts(id) ON DELETE CASCADE,
     report_id          UUID   NOT NULL,
     accounting_digest  TEXT   NOT NULL,

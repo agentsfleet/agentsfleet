@@ -149,6 +149,29 @@ async fn test_a_retryable_destination_is_offered_the_budget_and_no_more() {
     );
 }
 
+#[tokio::test]
+async fn configured_inline_attempt_count_controls_physical_deliveries() {
+    let settings = garde::Unvalidated::new(afd_outbound::retry::RetrySettings {
+        max_attempts: 1,
+        ..afd_outbound::retry::RetrySettings::default()
+    })
+    .validate()
+    .expect("one total send is valid");
+    let posters = Posters {
+        slack: Scripted::new(&[Verdict::Retryable]),
+    };
+    let verdict = afd_outbound::poster::deliver_with_policy(
+        &posters,
+        &job(),
+        &never_cancelled(),
+        Attempt::First,
+        afd_outbound::retry::RetryPolicy::new(&settings),
+    )
+    .await;
+    assert_eq!(verdict, Verdict::Retryable);
+    assert_eq!(posters.slack.attempts(), 1);
+}
+
 /// A destination that recovers mid-budget is delivered, and the remaining
 /// attempts are not spent.
 #[tokio::test]

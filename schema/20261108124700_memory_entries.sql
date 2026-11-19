@@ -3,7 +3,6 @@
 -- memory_runtime has no grant on `fleet.fleets`.
 CREATE TABLE memory.entries (
     id                 UUID PRIMARY KEY,
-    CONSTRAINT ck_entries_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     fleet_id           UUID    NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     workspace_id       UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     key                TEXT    NOT NULL,

@@ -36,6 +36,7 @@ impl Arriving {
         locked(&self.scheduled).push((
             claim,
             Folded {
+                event_id: format!("019f0000-0000-7000-8000-{sequence:012}"),
                 sequence,
                 text: text.to_owned(),
             },
@@ -94,6 +95,7 @@ impl Inbox for Interrupted {
         self.stop.cancel();
         tokio::task::yield_now().await;
         vec![Folded {
+            event_id: "019f0000-0000-7000-8000-000000000003".to_owned(),
             sequence: 3,
             text: "too late".to_owned(),
         }]
@@ -109,7 +111,9 @@ pub(super) async fn run_with(
     let engine = engine(vec![Canned::boxed(&HTTP_REQUEST, "deployed")], script);
     engine
         .run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: payload,
             memory: afr_memory::Seed::default(),

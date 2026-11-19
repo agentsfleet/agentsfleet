@@ -183,13 +183,23 @@ async fn test_expired_hold_is_destroyed() {
 async fn test_saturation_releases_holds() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
+    let (holds, _clock) = holds(3);
     hold(&holds, &engine, FLEET_A).await;
     hold(&holds, &engine, FLEET_B).await;
 
-    let _first = holds.occupy(id(FLEET_C));
-    assert_eq!(fleets(&holds).await.len(), 2, "one worker is still free");
-    let _last = holds.occupy(id(FLEET_D));
+    let _first = holds.occupy(super::Occupant::Fleet {
+        lease: id(FLEET_C),
+        fleet: id(FLEET_C),
+    });
+    assert_eq!(
+        fleets(&holds).await,
+        [FLEET_B],
+        "one free worker stays reserved"
+    );
+    let _last = holds.occupy(super::Occupant::Fleet {
+        lease: id(FLEET_D),
+        fleet: id(FLEET_D),
+    });
     let told = tokio::time::timeout(PROMPT, holds.saturated().notified()).await;
 
     let left = fleets(&holds).await;
@@ -207,12 +217,18 @@ async fn test_saturation_releases_holds() {
 #[tokio::test]
 async fn test_the_last_free_worker_keeps_the_hold_of_the_fleet_it_serves() {
     let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
+    let (holds, _clock) = holds(3);
     hold(&holds, &engine, FLEET_A).await;
     hold(&holds, &engine, FLEET_B).await;
 
-    let _first = holds.occupy(id(FLEET_C));
-    let _last = holds.occupy(id(FLEET_A));
+    let _first = holds.occupy(super::Occupant::Fleet {
+        lease: id(FLEET_A),
+        fleet: id(FLEET_A),
+    });
+    let _last = holds.occupy(super::Occupant::Fleet {
+        lease: id(FLEET_C),
+        fleet: id(FLEET_C),
+    });
 
     assert_eq!(fleets(&holds).await, [FLEET_A]);
 }
@@ -220,20 +236,30 @@ async fn test_the_last_free_worker_keeps_the_hold_of_the_fleet_it_serves() {
 #[tokio::test]
 async fn test_a_finished_lease_frees_its_worker() {
     let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
+    let (holds, _clock) = holds(3);
     hold(&holds, &engine, FLEET_A).await;
 
-    drop(holds.occupy(id(FLEET_C)));
-    let _only = holds.occupy(id(FLEET_D));
+    drop(holds.occupy(super::Occupant::Fleet {
+        lease: id(FLEET_C),
+        fleet: id(FLEET_C),
+    }));
+    let _only = holds.occupy(super::Occupant::Fleet {
+        lease: id(FLEET_D),
+        fleet: id(FLEET_D),
+    });
 
-    assert_eq!(fleets(&holds).await, [FLEET_A], "one of two workers busy");
+    assert_eq!(
+        fleets(&holds).await,
+        [FLEET_A],
+        "the completed worker leaves room for the hold"
+    );
 }
 
 #[tokio::test]
 async fn test_holds_capped_oldest_first() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
+    let (holds, _clock) = holds(3);
 
     for fleet in [FLEET_A, FLEET_B, FLEET_C] {
         hold(&holds, &engine, fleet).await;
@@ -247,12 +273,12 @@ async fn test_holds_capped_oldest_first() {
 async fn test_fewer_workers_release_the_oldest_holds() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
-    let (holds, _clock) = holds(3);
+    let (holds, _clock) = holds(4);
     for fleet in [FLEET_A, FLEET_B, FLEET_C] {
         hold(&holds, &engine, fleet).await;
     }
 
-    holds.resize(1);
+    holds.resize(2);
 
     assert_eq!(fleets(&holds).await, [FLEET_C]);
     assert_eq!(
@@ -281,7 +307,7 @@ async fn test_a_second_park_for_one_fleet_replaces_the_first() {
 async fn test_release_ends_one_fleets_hold_for_the_reason_given() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
-    let (holds, _clock) = holds(2);
+    let (holds, _clock) = holds(3);
     hold(&holds, &engine, FLEET_A).await;
     hold(&holds, &engine, FLEET_B).await;
 

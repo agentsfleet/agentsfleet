@@ -61,7 +61,7 @@ Role names come from the repository's connection configuration, never from anoth
 - **Why:** SQL cannot import an application constant, and a drifted trigger predicate or setting name stops guarding without failing.
 
 `RAISE EXCEPTION` text a caller matches on counts too, and where SQL must spell an application name, such as a role, a test pins the pair.
-Structural literals nothing in the application names stay: `'{}'::jsonb`, the Universally Unique Identifier (UUID) version nibble `'7'`, `TG_OP` values.
+Structural literals nothing in the application names stay, including `'{}'::jsonb` and PostgreSQL's `TG_OP` values.
 
 ### NSQ — SQL names every table with its schema and holds no magic numbers.
 - **Applies to:** `**/migrations/*.sql`, statement files (`**/src/**/*.sql`)
@@ -181,12 +181,17 @@ A non-secret projection of encrypted content and a scope copy a restricted role 
 
 ## Identity and time
 
-### SQL-ID — A table has one identity column, `id`, holding a UUID version 7 (UUIDv7) the application minted.
+Applications mint Universally Unique Identifiers (UUIDs) as version 7 (UUIDv7).
+
+### SQL-ID — A table has one UUID primary key named `id`, minted as UUIDv7 by the application.
 - **Applies to:** `CREATE TABLE` in `**/migrations/*.sql`, and the Rust that inserts rows
 - **Checked by:** review
-- **Bad:** `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, or a `BIGSERIAL` key
-- **Good:** `id UUID PRIMARY KEY` with `CONSTRAINT ck_workspaces_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7')`, minted by `app_core::id`
-- **Why:** the owner chose one identity shape (Jul 31, 2026), and the check refuses any other UUID version.
+- **Bad:** `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, a `BIGSERIAL` key, or a database constraint that rechecks the UUID version
+- **Good:** `id UUID PRIMARY KEY`, minted and decoded through the application's UUIDv7 type
+- **Why:** the application owns UUID generation and version validation; PostgreSQL owns the UUID type, uniqueness and references.
+
+Do not add UUID-version `CHECK` constraints, text slicing or a UUID-version domain.
+An identifier inserted through SQL with another version fails application decoding.
 
 Exceptions are stated in their slot. A row that exists once per parent is keyed by the parent, as `planning.settings` is.
 A pinned-integer singleton and a natural key every statement addresses (`model.platform_defaults` by `provider`) are the others.

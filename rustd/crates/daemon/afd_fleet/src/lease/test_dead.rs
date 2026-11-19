@@ -57,6 +57,7 @@ pub(crate) fn plane() -> LeaseService {
     let kek = Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN]));
     LeaseService {
         task_reports: None,
+        turn_checkpoints: crate::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
         leases: leases(),
         gates: Gates::new(database(), bus(), Entropy::new()),
         accounts: Accounts::new(database()),
@@ -97,6 +98,7 @@ pub(crate) static CACHE_LOOKUPS: tokio::sync::Mutex<()> = tokio::sync::Mutex::co
 /// reads after it.
 pub(crate) fn acquired_installed() -> Acquired {
     Acquired {
+        predecessor_lease_id: None,
         opened: crate::lease::envelope::Opened::installed(id(2), id(3), id(7)),
         ..acquired()
     }
@@ -104,6 +106,7 @@ pub(crate) fn acquired_installed() -> Acquired {
 
 pub(crate) fn acquired() -> Acquired {
     Acquired {
+        predecessor_lease_id: None,
         fleet_id: id(1),
         fence: Fence::from_i64(3),
         leased_until: af_core::clock::after(AT, af_core::timing::LEASE_TTL),

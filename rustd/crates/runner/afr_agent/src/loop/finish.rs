@@ -57,7 +57,11 @@ impl Harness<'_, '_> {
     /// outcome, the answer and the tokens spent, with the calls and the memory
     /// the run leaves for the supervisor to post. The root's end; a child
     /// concludes instead.
-    pub(super) async fn finish(mut self, mut ending: Ending) -> RunOutput {
+    pub(super) async fn finish(
+        mut self,
+        mut ending: Ending,
+        permit: Option<&crate::nested::CapturePermit>,
+    ) -> RunOutput {
         self.close_sessions().await;
         if matches!(ending, Ending::Answered(_))
             && let Err(failure) = self.finish_task_replies().await
@@ -72,24 +76,7 @@ impl Harness<'_, '_> {
             ending = Ending::Answered(self.combined_task_answer(text));
         }
         self.record_answer(&ending);
-        let recovery_task = self
-            .task
-            .as_ref()
-            .filter(|task| task.allow_actions)
-            .and_then(|task| task.inputs.current_task.clone());
-        let recovery = recovery_task.and_then(|task| match crate::TaskRecovery::capture(task, self.shared.model, &self.shared.payload.policy.provider, std::mem::take(&mut self.messages)) {
-                Ok(recovery) => Some(recovery),
-                Err(failure) => {
-                    tracing::warn!(event = "task_history_capture_failed", error_code = %failure.code());
-                    // A previous goal call must not survive a failed history
-                    // save, including DONE which need not carry a checkpoint.
-                    self.task_report = None;
-                    if matches!(ending, Ending::Answered(_)) {
-                        ending = Ending::Answered("The task is blocked because its private history could not be saved. No continuation or completion was authorized.".to_owned());
-                    }
-                    None
-                }
-            });
+        let recovery = self.final_recovery(&mut ending, permit).await;
         let folded_through_sequence = self
             .folded_through()
             .filter(|_| matches!(ending, Ending::Answered(_)));
@@ -137,6 +124,32 @@ impl Harness<'_, '_> {
             trace: Some(trace),
             records,
             folded_through_sequence,
+        }
+    }
+
+    async fn final_recovery(
+        &mut self,
+        ending: &mut Ending,
+        permit: Option<&crate::nested::CapturePermit>,
+    ) -> Option<crate::TaskRecovery> {
+        let recovery_task = self
+            .task
+            .as_ref()
+            .filter(|task| task.allow_actions)
+            .and_then(|task| task.inputs.current_task.clone());
+        match recovery_task {
+            None => None,
+            Some(task) => match self.capture_task_root(task, permit).await {
+                Ok(recovery) => Some(recovery),
+                Err(failure) => {
+                    tracing::warn!(event = "task_history_capture_failed", error_code = %failure.code());
+                    self.task_report = None;
+                    if matches!(*ending, Ending::Answered(_)) {
+                        *ending = Ending::Answered("The task is blocked because its private history could not be saved. No continuation or completion was authorized.".to_owned());
+                    }
+                    None
+                }
+            },
         }
     }
 

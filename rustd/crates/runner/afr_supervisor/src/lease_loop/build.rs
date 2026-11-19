@@ -151,6 +151,7 @@ impl LeaseRun<'_> {
             // A held sandbox keeps the repositories its last lease left.
             Some(plan)
                 if !held
+                    && self.lease.turn_resume.is_none()
                     && build
                         .prepared_task
                         .and_then(|prepared| prepared.inputs.current_task.as_ref())
@@ -188,7 +189,7 @@ impl LeaseRun<'_> {
     /// watch records when it drops, so a refused build is timed too.
     async fn acquire(&self, build: &Build<'_>) -> Result<(Box<dyn Sandbox>, bool), Ended> {
         let _preparing = self.timeline.start(Segment::Prepare);
-        let held = if build.prepared_task.is_some() {
+        let held = if build.prepared_task.is_some() || self.lease.turn_resume.is_some() {
             // Durable state has one restore owner; an unrelated warm workspace
             // cannot silently replace the native checkpoint generation.
             self.lessee

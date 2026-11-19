@@ -8,7 +8,7 @@ use sqlx::Connection as _;
 use super::{WITHIN, enqueue, next};
 use crate::{seed::seeded_parts, support::Fixtures};
 
-const HOLD: &str = "SELECT pg_backend_pid() FROM runner.fleet_slots
+const HOLD: &str = "SELECT pg_backend_pid() FROM runner.slots
     WHERE fleet_id = $1 FOR UPDATE";
 const BLOCKED: &str = "SELECT EXISTS (SELECT 1 FROM pg_stat_activity
     WHERE $1 = ANY(pg_blocking_pids(pid)))";
@@ -102,7 +102,7 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
         .expect("stale park is harmless");
     let state: (bool, Option<i64>, i64) = sqlx::query_as(
         "SELECT a.parked_at IS NOT NULL, a.lease_fence, s.fencing_token \
-         FROM fleet.admissions a JOIN runner.fleet_slots s ON s.fleet_id=a.fleet_id \
+         FROM fleet.admissions a JOIN runner.slots s ON s.fleet_id=a.fleet_id \
          WHERE a.id=$1 AND s.last_runner_id=$2",
     )
     .bind(&event)

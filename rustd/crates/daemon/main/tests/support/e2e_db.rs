@@ -76,6 +76,8 @@ pub(crate) fn daemon_environment(
                     .as_str(),
             ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
+            // Recovery scenarios explicitly exercise the rollout's enabled path.
+            ("AGENTSFLEET_RESUME_FROM_CHECKPOINT", "true"),
         ]
         .into_iter()
         // Required at boot, and resolved rather than used: this lane boots the

@@ -1,7 +1,6 @@
 -- Moving a team to another workspace rebinds the row in place; that is the only UPDATE it takes.
 CREATE TABLE connector.channels (
     id                   UUID PRIMARY KEY,
-    CONSTRAINT ck_channels_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     provider             TEXT   NOT NULL,
     external_account_id  TEXT   NOT NULL,
     external_channel_id  TEXT   NOT NULL,

@@ -2,7 +2,6 @@
 -- workspace was removed; the model row is kept for history.
 CREATE TABLE model.tenant_models (
     id          UUID PRIMARY KEY,
-    CONSTRAINT ck_tenant_models_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id   UUID   NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     workspace_id UUID,
     model_name  TEXT   NOT NULL,

@@ -27,7 +27,7 @@ pub(crate) enum Row<'a> {
     Runner(&'a Uuid7),
     /// A `runner.leases` row, by lease id.
     Lease(&'a Uuid7),
-    /// A fleet's `runner.fleet_slots` row, by fleet id.
+    /// A fleet's `runner.slots` row, by fleet id.
     Slot(&'a Uuid7),
     /// A fleet's `fleet.sessions` row, by fleet id.
     Session(&'a Uuid7),
@@ -73,7 +73,7 @@ impl<'a> Row<'a> {
         match self {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
             Self::Lease(id) => ("runner.leases", "id = $1", id, None),
-            Self::Slot(fleet) => ("runner.fleet_slots", "fleet_id = $1", fleet, None),
+            Self::Slot(fleet) => ("runner.slots", "fleet_id = $1", fleet, None),
             Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
             Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
             Self::Attempt(id) => ("authoring.attempts", "id = $1", id, None),

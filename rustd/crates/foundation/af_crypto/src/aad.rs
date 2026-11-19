@@ -31,6 +31,31 @@ const SEPARATOR: u8 = 0x1f;
 pub struct Aad(Vec<u8>);
 
 impl Aad {
+    /// Private turn history is bound to its owner, generation and restore format.
+    #[must_use]
+    pub fn turn_recovery(
+        workspace: &af_core::id::Uuid7,
+        fleet: &af_core::id::Uuid7,
+        event: &af_core::id::Uuid7,
+        generation: u64,
+        format: u32,
+        wrapping_version: i32,
+    ) -> Self {
+        let mut bytes = b"\0agentsfleet.turn-recovery.v1\0".to_vec();
+        for field in [
+            workspace.as_str().to_owned(),
+            fleet.as_str().to_owned(),
+            event.as_str().to_owned(),
+            generation.to_string(),
+            format.to_string(),
+            wrapping_version.to_string(),
+        ] {
+            bytes.extend_from_slice(field.as_bytes());
+            bytes.push(0);
+        }
+        Self(bytes)
+    }
+
     /// Separately wrapped content-identity key; repository bytes are length-safe hex.
     #[must_use]
     pub fn checkpoint_identity(

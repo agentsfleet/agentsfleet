@@ -109,3 +109,35 @@ async fn test_a_settled_message_is_not_claimed_again() -> Checked {
     held.fixtures.cleanup().await;
     Ok(())
 }
+
+/// Privacy cleanup can remove the task reference while retaining its generation.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_retained_task_generation_stops_the_ordinary_fold_prefix() -> Checked {
+    let held = held().await;
+    let workspace = workspace_of(&held).await?;
+    let earlier = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    let barrier = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    let later = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    let mut connection = held.fixtures.database.acquire().await?;
+    sqlx::query("UPDATE fleet.admissions SET task_generation=1 WHERE id=$1 AND task_id IS NULL")
+        .bind(&barrier.id)
+        .execute(&mut *connection)
+        .await?;
+    drop(connection);
+    assert_eq!(
+        claim_as_holder(&held, 0).await?,
+        [earlier.claimed(STEER_TEXT)]
+    );
+    assert_eq!(claim_as_holder(&held, earlier.sequence).await?, Vec::new());
+    let mut connection = held.fixtures.database.acquire().await?;
+    let untouched: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM fleet.admissions WHERE id=ANY($1::uuid[])
+        AND input_claim_lease_id IS NULL AND input_claim_fence IS NULL AND settled_at IS NULL",
+    )
+    .bind([barrier.id, later.id].as_slice())
+    .fetch_one(&mut *connection)
+    .await?;
+    assert_eq!(untouched, 2);
+    Ok(())
+}

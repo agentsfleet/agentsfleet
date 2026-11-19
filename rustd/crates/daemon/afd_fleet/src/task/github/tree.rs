@@ -136,3 +136,7 @@ async fn regular(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tree_tests.rs"]
+mod tests;

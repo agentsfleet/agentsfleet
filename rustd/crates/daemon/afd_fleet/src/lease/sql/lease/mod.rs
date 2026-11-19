@@ -1,4 +1,4 @@
-//! `runner.fleet_slots` and `runner.leases` — the claim, the fence,
+//! `runner.slots` and `runner.leases` — the claim, the fence,
 //! and the row that records who owns a fleet's work.
 //!
 //! # The claim is the whole concurrency design

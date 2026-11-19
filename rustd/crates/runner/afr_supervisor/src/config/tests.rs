@@ -100,3 +100,34 @@ fn each_missing_or_malformed_setting_refuses_by_name() {
         assert!(refusal.contains(expected), "{refusal}");
     }
 }
+
+#[test]
+fn a_stream_origin_that_is_not_bare_https_refuses_by_name() {
+    for origin in [
+        "http://runner.example.test:4443",
+        "https://runner.example.test:4443/path",
+    ] {
+        let refusal = Config::from_env(&MapEnv::from_pairs([
+            (ENV_API_URL, URL),
+            (ENV_RUNNER_TOKEN, TOKEN),
+            (super::ENV_STREAM_URL, origin),
+        ]))
+        .unwrap_err();
+        assert!(
+            matches!(
+                refusal.kind(),
+                crate::error::ErrorKind::Boundary { detail, .. }
+                    if detail.starts_with("AGENTSFLEET_RUNNER_STREAM_URL must be an HTTPS origin")
+            ),
+            "{origin}: {refusal}"
+        );
+    }
+}
+
+#[test]
+fn the_default_runtime_policy_is_the_existing_runner_behavior() {
+    assert_eq!(
+        super::RuntimePolicy::default(),
+        super::RuntimePolicy::DEFAULT
+    );
+}

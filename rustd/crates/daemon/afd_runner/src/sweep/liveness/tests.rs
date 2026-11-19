@@ -44,7 +44,7 @@ fn a_runner_that_has_never_connected_is_not_stale() {
     // never connected is not one that stopped; it is one that has not started,
     // and that is a different word to an operator and a different row on a
     // dashboard.
-    assert!(!seen_at(sql::NEVER_SEEN).is_stale());
+    assert!(!seen_at(sql::NEVER_SEEN).is_stale(af_core::timing::LeaseClock::default()));
 }
 
 #[test]
@@ -52,10 +52,16 @@ fn a_runner_is_stale_only_once_it_is_past_the_threshold() {
     let threshold = clock::before(NOW, RUNNER_OFFLINE_AFTER);
     // Exactly at the threshold is not past it: the comparison is strict, so a
     // runner whose beat is due this instant gets the instant.
-    assert!(!seen_at(threshold).is_stale());
-    assert!(seen_at(clock::before(threshold, ONE_MILLISECOND)).is_stale());
+    assert!(!seen_at(threshold).is_stale(af_core::timing::LeaseClock::default()));
+    assert!(
+        seen_at(clock::before(threshold, ONE_MILLISECOND))
+            .is_stale(af_core::timing::LeaseClock::default())
+    );
     // And one that beat a moment ago is plainly alive.
-    assert!(!seen_at(clock::before(NOW, ONE_MILLISECOND)).is_stale());
+    assert!(
+        !seen_at(clock::before(NOW, ONE_MILLISECOND))
+            .is_stale(af_core::timing::LeaseClock::default())
+    );
 }
 
 #[test]
@@ -64,5 +70,8 @@ fn a_clock_that_went_backwards_does_not_make_a_runner_stale() {
     // between two database replicas produces. It reads as no time elapsed —
     // the safe direction, because the alternative reports a live runner
     // offline and releases the slots it is actively using.
-    assert!(!seen_at(clock::after(NOW, RUNNER_OFFLINE_AFTER)).is_stale());
+    assert!(
+        !seen_at(clock::after(NOW, RUNNER_OFFLINE_AFTER))
+            .is_stale(af_core::timing::LeaseClock::default())
+    );
 }

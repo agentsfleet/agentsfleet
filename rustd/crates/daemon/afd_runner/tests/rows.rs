@@ -40,10 +40,10 @@ VALUES ($1, $2, $3, $4, $5, $6,
         coalesce($9::timestamptz, now()))";
 
 const INSERT_SLOT: &str = "\
-INSERT INTO runner.fleet_slots
-  (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+INSERT INTO runner.slots
+  (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
    created_at, updated_at)
-VALUES ($1, $2, 1, $3::timestamptz, $4::timestamptz,
+VALUES ($1, $1, $2, 1, $3::timestamptz, $4::timestamptz,
         coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))";
 
 const INSERT_ATTEMPT: &str = "\

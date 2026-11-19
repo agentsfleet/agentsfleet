@@ -36,6 +36,16 @@ pub(crate) fn config(detail: &'static str) -> Error {
     ErrorKind::Config { detail }.into()
 }
 
+/// Keep a local snapshot bound distinct from invalid authority and failed cleanup.
+pub(crate) fn capture_limit(detail: &'static str) -> Error {
+    ErrorKind::CaptureLimit { detail }.into()
+}
+
+/// Another live writer prevents this boundary from saving without stopping its run.
+pub(crate) fn capture_unavailable(detail: &'static str) -> Error {
+    ErrorKind::CaptureUnavailable { detail }.into()
+}
+
 /// Reports an HTTP client that could not be built.
 pub(crate) fn client(source: reqwest::Error) -> Error {
     ErrorKind::Client { source }.into()

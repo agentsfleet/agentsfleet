@@ -198,3 +198,7 @@ fn read_permissions(value: Option<&Value>) -> bool {
             })
     })
 }
+
+#[cfg(test)]
+#[path = "workflow_tests.rs"]
+mod tests;

@@ -1,5 +1,5 @@
 //! One clock for every deadline pass: every
-//! [`af_core::timing::EXPIRY_TICK`] this task bills the last slice of each
+//! `maintenance.expired_work.interval_seconds` this task bills the last slice of each
 //! fleet lease that expired unreported, and moves each setup attempt past its
 //! deadline to accounting recovery. Both were riders on other clocks: the
 //! billing relay's and authoring's privacy pass.
@@ -27,6 +27,8 @@ pub(super) fn spawn(
     database: &Db,
     analytics: &Analytics,
     biller: Arc<dyn Biller>,
+    startup: &super::schedule::Startup,
+    settings: crate::config::maintenance::ExpiredWork,
 ) {
     let passes = Passes {
         database: database.clone(),
@@ -35,15 +37,17 @@ pub(super) fn spawn(
         drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
             .with_analytics(analytics.clone()),
     };
+    let mut interval = startup.interval(
+        super::EXPIRY,
+        std::time::Duration::from_secs(settings.interval_seconds),
+    );
     supervisor.spawn(super::EXPIRY, async move |stop| {
-        let mut interval = tokio::time::interval(af_core::timing::EXPIRY_TICK);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
-            passes.tick().await;
+            tokio::select! { () = stop.cancelled() => return, _ticked = passes.tick() => {} }
         }
     });
 }

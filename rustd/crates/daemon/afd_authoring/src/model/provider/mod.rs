@@ -79,6 +79,11 @@ impl std::fmt::Debug for ProviderResponse {
 /// Sends once. Retries and redirects are forbidden; the destination comes from the persisted model.
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync + std::fmt::Debug {
+    /// Inactivity limits used by the physical transport and parsed stream reader.
+    fn timeouts(&self) -> af_inference::Timeouts {
+        af_inference::Timeouts::DEFAULT
+    }
+
     /// Performs one physical request and returns its response before collecting the body.
     ///
     /// # Errors

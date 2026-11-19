@@ -1,6 +1,6 @@
 //! Readiness is a current observation; wallet balances never enter review identity.
 
-use af_core::timing::LEASE_TTL;
+use af_core::timing::LeaseClock;
 use sqlx::PgConnection;
 
 use super::{Context, Observed};
@@ -14,13 +14,14 @@ use crate::{
 /// renewal asks again. Read on the caller's transaction, never a second pooled
 /// connection.
 pub(super) async fn observe(
+    clock: LeaseClock,
     connection: &mut PgConnection,
     draft: &Context,
     observed: &mut Observed,
 ) -> Result<()> {
     let ready = match afd_billing::ledger::balance(&mut *connection, &draft.tenant_id).await {
         Ok(balance) => {
-            let interval = i64::try_from(LEASE_TTL.as_secs())
+            let interval = i64::try_from(clock.ttl().as_secs())
                 .ok()
                 .and_then(|seconds| afd_billing::RUN_NANOS_PER_SEC.checked_mul(seconds));
             interval.is_some_and(|interval| balance.left().as_i64() >= interval)

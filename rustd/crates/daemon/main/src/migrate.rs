@@ -29,18 +29,32 @@ pub use crate::error::MigrateFailure;
 /// or a statement will not apply. Nothing is partially reported: [`Applied`]
 /// comes back only when the run completed.
 pub async fn migrate<E: EnvSource + ?Sized + Sync>(env: &E) -> Result<Applied, MigrateFailure> {
+    crate::config::ConfigBuilder::new(env)
+        .build()?
+        .migrate()
+        .await
+}
+
+pub(crate) async fn configured<E: EnvSource + ?Sized + Sync>(
+    env: &E,
+    settings: &garde::Valid<afd_db::config::PoolSettings>,
+    retry: afd_db::migrate::RetryPolicy,
+) -> Result<Applied, MigrateFailure> {
     let knob = DbRole::Migrator.url_knob();
-    let config = PoolConfig::resolve(env, DbRole::Migrator)
+    let config = PoolConfig::configured(env, DbRole::Migrator, settings)
         .map_err(|source| MigrateFailure::Configuration { knob, source })?;
 
     let database = Db::connect(&config).await?;
-    let applied = Migrator::new().run(&database).await?;
+    let applied = Migrator::new()
+        .with_retry_policy(retry)
+        .run(&database)
+        .await;
 
     // Closed before the pool is dropped, not left to the drop: a migration job
     // exits immediately after this, and a pool torn down by process exit can
     // leave the advisory-lock session hanging until the server times it out.
     database.close().await;
-    Ok(applied)
+    Ok(applied?)
 }
 
 /// Renders what a run did, for an operator reading a job log.

@@ -25,7 +25,7 @@ impl Registry {
         database: &afd_db::Db,
     ) -> Result<Registration> {
         let mut tx = sqlx::Transaction::begin(database.acquire().await?, None).await?;
-        if afd_runner::capacity::lock(&mut tx, (&session.runner, authority), None)
+        if afd_runner::capacity::lock_host(&mut tx, (&session.runner, authority), None)
             .await?
             .is_none()
         {
@@ -56,6 +56,13 @@ impl Registry {
             runner,
             connection,
         })
+    }
+
+    /// Busy hosts retain the request until returned capacity completes a recovery scan.
+    pub(crate) fn request_recovery(&self, recovery: afd_bus::wake::Recovery) {
+        for session in &self.sessions {
+            session.snapshot.lock().recovery_pending = Some(recovery);
+        }
     }
 
     /// Every connected runner, for the probe that names the idle tenant ones.

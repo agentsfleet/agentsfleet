@@ -135,13 +135,12 @@ async fn one_statement_report_commits_every_write() {
             .await
             .expect("the session is checkpointed");
     assert!(checkpoint.contains(crate::report_commit::RESUME_RESPONSE));
-    let released: bool = sqlx::query_scalar(
-        "SELECT lease_expires_at < now() FROM runner.fleet_slots WHERE fleet_id = $1",
-    )
-    .bind(&held.fleet)
-    .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
-    .await
-    .expect("the slot reads");
+    let released: bool =
+        sqlx::query_scalar("SELECT lease_expires_at < now() FROM runner.slots WHERE fleet_id = $1")
+            .bind(&held.fleet)
+            .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
+            .await
+            .expect("the slot reads");
     assert!(released, "the slot is released");
     let lines: i64 = scalar(
         &held,

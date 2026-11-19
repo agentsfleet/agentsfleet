@@ -112,6 +112,7 @@ impl Problem {
 
 mod auth;
 mod authoring;
+mod checkpoint;
 mod fleet;
 mod integration;
 mod invite;

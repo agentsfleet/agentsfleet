@@ -152,7 +152,7 @@ pub async fn sweep(
 }
 
 /// Bills the last slice of every lease expired past [`GRACE`]: what
-/// `sweeper:expiry` runs every [`af_core::timing::EXPIRY_TICK`].
+/// `sweeper:expiry` runs every `maintenance.expired_work.interval_seconds`.
 ///
 /// # Errors
 /// Reports a datastore that would not answer the candidate read.

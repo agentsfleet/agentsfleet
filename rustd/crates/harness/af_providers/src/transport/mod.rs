@@ -22,7 +22,7 @@ const EVENT_RETRY: &str = "provider_retry";
 pub(crate) struct Transport {
     client: reqwest::Client,
     whose: Arc<Whose>,
-    retry: bool,
+    retry: Option<crate::RetryPolicy>,
 }
 
 /// Whose sends a transport makes, for its retry line and its retry count.
@@ -67,7 +67,7 @@ impl Transport {
         Self {
             client,
             whose: Arc::new(whose),
-            retry: true,
+            retry: Some(crate::RetryPolicy::DEFAULT),
         }
     }
 
@@ -77,7 +77,12 @@ impl Transport {
     }
 
     pub(crate) const fn once(mut self) -> Self {
-        self.retry = false;
+        self.retry = None;
+        self
+    }
+
+    pub(crate) const fn with_retry(mut self, policy: crate::RetryPolicy) -> Self {
+        self.retry = Some(policy);
         self
     }
 
@@ -94,8 +99,8 @@ impl Transport {
                 .headers(parts.headers.clone())
                 .body(body.clone())
         };
-        if self.retry {
-            retry::send(build, |retry| self.retrying(retry)).await
+        if let Some(policy) = self.retry {
+            retry::send(build, |retry| self.retrying(retry), policy).await
         } else {
             build().send().await
         }

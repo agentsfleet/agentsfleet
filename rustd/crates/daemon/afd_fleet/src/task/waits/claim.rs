@@ -36,6 +36,50 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
     let Some(owner) = owner(&mut tx, &candidate.id).await? else {
         return Ok(None);
     };
+    let Some((tx, owner)) = ready(tx, owner).await? else {
+        return Ok(None);
+    };
+    let fallback = owner.fallback();
+    let Some((mut tx, binding)) = checked_authority(tx, &owner).await? else {
+        return Ok(None);
+    };
+    let claim = tasks.leases.entropy().uuid7(clock::now())?;
+    let until = reserve(&mut tx, &owner, &claim, fallback).await?;
+    tx.commit()
+        .await
+        .map_err(query("commit wait read intent before network access"))?;
+    transaction::recycle(connection);
+    let permit = read_permit(scope, &owner, binding, until);
+    Ok(Some(Claimed {
+        owner,
+        claim,
+        permit,
+    }))
+}
+
+fn read_permit(
+    scope: crate::task::TaskScope,
+    owner: &Wait,
+    binding: af_fleet_runtime::config::RepositoryBinding,
+    until: jiff_sqlx::Timestamp,
+) -> ReadPermit {
+    ReadPermit {
+        scope: MintScope {
+            workspace_id: scope.workspace_id,
+            fleet_id: scope.fleet_id,
+            event_id: owner.id.clone().into(),
+            binding: Some(binding),
+            runner_credentials: Vec::new(),
+        },
+        installation: owner.target.installation_id,
+        deadline: until.to_jiff().min(owner.expires_at),
+    }
+}
+
+async fn ready(
+    mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
+    owner: Wait,
+) -> Result<Option<(sqlx::Transaction<'_, sqlx::Postgres>, Wait)>> {
     if !owner.current() {
         super::cancel(&mut tx, &owner.task_id).await?;
         tx.commit()
@@ -63,13 +107,25 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
     {
         return Ok(None);
     }
-    let binding = match authority(&mut tx, &owner).await {
+    Ok(Some((tx, owner)))
+}
+
+async fn checked_authority<'c>(
+    mut tx: sqlx::Transaction<'c, sqlx::Postgres>,
+    owner: &Wait,
+) -> Result<
+    Option<(
+        sqlx::Transaction<'c, sqlx::Postgres>,
+        af_fleet_runtime::config::RepositoryBinding,
+    )>,
+> {
+    let binding = match authority(&mut tx, owner).await {
         Ok(binding) => binding,
         Err(fault) if fault.is_datastore_unavailable() => return Err(fault),
         Err(fault) => {
             stop(
                 &mut tx,
-                &owner,
+                owner,
                 TaskState::Blocked,
                 "dependency_access_unavailable",
             )
@@ -81,42 +137,31 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
             return Ok(None);
         }
     };
-    let claim = tasks.leases.entropy().uuid7(clock::now())?;
+    Ok(Some((tx, binding)))
+}
+
+async fn reserve(
+    connection: &mut PgConnection,
+    owner: &Wait,
+    claim: &Uuid7,
+    fallback: bool,
+) -> Result<jiff_sqlx::Timestamp> {
     if fallback {
         sqlx::query(include_str!("sql/charge.sql"))
             .bind(&owner.task_id)
             .bind("dependency_read_limit")
-            .execute(&mut *tx)
+            .execute(&mut *connection)
             .await
             .map_err(query("charge one bounded dependency observation"))?;
     }
-    let until: jiff_sqlx::Timestamp = sqlx::query_scalar(include_str!("sql/claim.sql"))
+    sqlx::query_scalar(include_str!("sql/claim.sql"))
         .bind(&owner.id)
-        .bind(&claim)
+        .bind(claim)
         .bind(CLAIM_TTL)
         .bind(i32::from(fallback))
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *connection)
         .await
-        .map_err(query("reserve bounded native wait read"))?;
-    tx.commit()
-        .await
-        .map_err(query("commit wait read intent before network access"))?;
-    transaction::recycle(connection);
-    let permit = ReadPermit {
-        scope: MintScope {
-            workspace_id: scope.workspace_id,
-            fleet_id: scope.fleet_id,
-            event_id: owner.id.clone().into(),
-            binding: Some(binding),
-        },
-        installation: owner.target.installation_id,
-        deadline: until.to_jiff().min(owner.expires_at),
-    };
-    Ok(Some(Claimed {
-        owner,
-        claim,
-        permit,
-    }))
+        .map_err(query("reserve bounded native wait read"))
 }
 
 pub(super) async fn owner(connection: &mut PgConnection, id: &Uuid7) -> Result<Option<Wait>> {

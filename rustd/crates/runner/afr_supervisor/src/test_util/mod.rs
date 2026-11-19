@@ -93,6 +93,7 @@ impl Healthy {
                 | Verb::TaskCheckpointUploads
                 | Verb::TaskCheckpointAuthorizations
                 | Verb::TaskCheckpointPin
+                | Verb::TurnCheckpoint
                 // The native opening is a stream, never an HTTP fixture route.
                 | Verb::Open,
             ) => Value::Null,
@@ -133,7 +134,7 @@ impl Healthy {
                 | Verb::ScheduleRuns
                 | Verb::Message,
             )
-            | None => value(&ReportResponse { ok: true }),
+            | None => value(&ReportResponse { ok: true, hold: None }),
         }
     }
 

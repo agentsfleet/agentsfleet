@@ -1462,6 +1462,14 @@ Datadog, Grafana and Fly are not connectors and have no `<provider>-app` bag. Ca
 
 ### Integration-grant gate on every mint (restores M102_001 Invariant 3)
 
+A runner mint requires the requested credential in both its issued setup and the fleet's current setup.
+An added credential becomes available on a new assignment, and removing one withdraws the current lease's mint authority.
+
+An unreadable setup or missing issued revision withholds the mint. [Scope lookup](../rustd/crates/daemon/afd_fleet/src/lease/scope.rs)
+
+A committed cancellation marker prevents subsequent mint requests, including requests from a lease whose deadline remains in the future.
+The vendor exchange retains its existing allowance for a request already in flight during cancellation. [Mint query](../rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_lease_scope_for_mint.sql)
+
 A connected integration alone does not authorize a fleet to use it. Every `POST /v1/runners/me/credentials/mint` requires the lease's **fleet** to hold an `approved` row in `connector.integration_grants` for the requested integration. The mint reads that row via the single enforcement module `rustd/crates/daemon/afd_gate/src/gate/grants.rs` **before** the vault handle is loaded.
 
 An ungranted request never touches handle bytes. The refusal is 403 `UZ-GRANT-001`, with no token and no upstream call. The same predicate gates lease-issue.

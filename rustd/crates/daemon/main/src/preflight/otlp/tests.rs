@@ -21,7 +21,7 @@ const CREDENTIAL: &str = "Basic Zml4dHVyZS1ub3QtYS1jcmVkZW50aWFs";
 /// Resolves `pairs`, asserting nothing was faulted.
 fn resolved<'a>(pairs: impl IntoIterator<Item = (&'a str, &'a str)>) -> super::OtlpConfig {
     let mut faults = Vec::new();
-    let config = otlp(&MapEnv::from_pairs(pairs), &mut faults)
+    let config = otlp(&MapEnv::from_pairs(pairs), &mut faults, None)
         .expect("an endpoint is configured, so telemetry resolves");
     assert!(faults.is_empty(), "unexpected faults: {faults:?}");
     config
@@ -44,7 +44,7 @@ fn header(config: &super::OtlpConfig, name: &str) -> Option<String> {
 #[test]
 fn no_endpoint_is_no_export_and_no_fault() {
     let mut faults = Vec::new();
-    assert!(otlp(&MapEnv::from_pairs([]), &mut faults).is_none());
+    assert!(otlp(&MapEnv::from_pairs([]), &mut faults, None).is_none());
     assert!(faults.is_empty(), "an absent collector is not a fault");
 }
 
@@ -105,6 +105,7 @@ fn a_malformed_pair_faults_without_dropping_its_neighbours() {
             (OTEL_HEADERS_KNOB, "a=1,,no-equals-sign, b=x=y,"),
         ]),
         &mut faults,
+        None,
     )
     .expect("an endpoint is configured");
 
@@ -182,7 +183,7 @@ fn an_unusable_knob_is_a_fault_that_names_itself() {
         } else {
             vec![(OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT), (knob, value)]
         };
-        let _config = otlp(&MapEnv::from_pairs(pairs), &mut faults);
+        let _config = otlp(&MapEnv::from_pairs(pairs), &mut faults, None);
         assert_eq!(
             faults.iter().map(super::Fault::knob).collect::<Vec<_>>(),
             vec![knob],
@@ -240,6 +241,7 @@ fn every_bad_knob_faults_in_one_pass() {
             (OTEL_TIMEOUT_KNOB, "0"),
         ]),
         &mut faults,
+        None,
     );
 
     assert!(config.is_none());

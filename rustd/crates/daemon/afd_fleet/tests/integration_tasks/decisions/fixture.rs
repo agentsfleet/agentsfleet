@@ -261,7 +261,7 @@ pub(super) async fn lock_slot(connection: &mut sqlx::PgConnection, case: &Case) 
         .fetch_one(&mut *connection)
         .await
         .expect("owned blocker identity");
-    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE")
+    sqlx::query("SELECT fleet_id FROM runner.slots WHERE fleet_id=$1 FOR UPDATE")
         .bind(&case.held.fleet)
         .execute(connection)
         .await

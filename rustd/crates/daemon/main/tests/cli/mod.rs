@@ -81,7 +81,7 @@ fn test_the_port_is_given_in_either_spelling() {
     ] {
         let parsed = parse(&argv);
         assert!(
-            matches!(parsed.command, Some(Command::Serve { port: 8080 })),
+            matches!(parsed.command, Some(Command::Serve { port: Some(8080) })),
             "{argv:?} names port 8080, got {:?}",
             parsed.command
         );
@@ -285,6 +285,8 @@ fn test_migrate_refuses_a_database_that_will_not_answer() {
 
     assert_eq!(status, FAILURE, "a migration that could not run exits 1");
 }
+
+mod configuration;
 
 #[cfg(feature = "openapi")]
 mod openapi;

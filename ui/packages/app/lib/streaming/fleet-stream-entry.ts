@@ -50,6 +50,10 @@ export type Listener = () => void;
 export type Entry = {
   workspaceId: string;
   snapshot: FleetStreamSnapshot;
+  /** Greatest daemon-owned attempt observed for each event. */
+  replyAttempts: Map<string, string>;
+  /** A committed completion closes activity before asynchronous decoding finishes. */
+  completedReplies: Set<string>;
   replyStreams: Map<string, ReplyStream>;
   replyGaps: Set<string>;
   replyRecoveries: Set<string>;
@@ -108,6 +112,8 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
       approvalsSeq: 0,
       latest: latestFigures(events),
     },
+    replyAttempts: new Map(),
+    completedReplies: new Set(),
     replyStreams: new Map(),
     replyGaps: new Set(),
     replyRecoveries: new Set(),

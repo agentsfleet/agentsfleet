@@ -69,6 +69,7 @@ KillMode=mixed
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
 # `agt_r` for this host. Until that's done, DEV_RUNNER_READY stays `false`.
 EnvironmentFile=-/etc/default/agentsfleet-runner
+Environment=AGENTSFLEET_RUNNER_CONFIG_FILE=/etc/agentsfleet/agentsfleet-runner.toml
 
 # Each host publishes its own metric series: the exported resource carries
 # service.instance.id, and %H is this host's name.

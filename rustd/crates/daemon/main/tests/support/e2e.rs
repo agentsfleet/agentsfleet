@@ -99,9 +99,9 @@ pub(crate) fn lane(knob: &str) -> String {
 
 /// A fleet, workspace and tenant no other scenario in this lane will name.
 ///
-/// Process id and a counter, in a version-7 spelling because every one of these
-/// columns CHECKs the version nibble — a random UUID is refused by the schema
-/// rather than by the code under test.
+/// Process id and a counter spell canonical `UUIDv7` values. The application's
+/// typed decoder refuses another UUID version, so fixture IDs use the same
+/// shape as application-minted identities.
 pub(crate) fn unique_ids() -> (Uuid7, Uuid7, Uuid7) {
     let run = SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();

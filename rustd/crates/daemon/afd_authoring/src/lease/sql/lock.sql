@@ -17,7 +17,8 @@ SELECT id,
        reserved_nanos,
        created_at,
        reported_runtime_ms,
-       failure_reason
+       failure_reason,
+       max_model_calls, max_wall_seconds, max_proposal_corrections, provider_timeout_seconds
   FROM authoring.attempts
  WHERE lease_id = $1 AND runner_id = $2
    FOR UPDATE

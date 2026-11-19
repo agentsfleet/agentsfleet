@@ -24,10 +24,12 @@
 pub mod rules;
 pub mod spans;
 
+mod checkpoint_links;
 mod limit;
 mod sentences;
 mod serialized;
 
+pub use self::checkpoint_links::checkpoint_links;
 pub use self::limit::{Ceiling, Limit, LimitBreak};
 pub use self::rules::{ascii_digits, charset, finite, not_relative, nul_free};
 pub use self::sentences::{PathTable, Sentences};

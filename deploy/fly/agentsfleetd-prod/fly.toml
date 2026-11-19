@@ -12,15 +12,15 @@ primary_region = "iad"
 # worker thread per core: four on this machine size. A request and an event
 # stream are each a task, so neither pins a thread while it waits on Postgres,
 # the bus or the client, and the runner lease is a single non-blocking poll
-# (docs/architecture/scaling.md). The core count sizes the runtime, and no
-# environment knob changes it. Watch saturation via the exported runtime families in Grafana; the
+# (docs/architecture/scaling.md). The core count sizes the runtime by default.
+# TOKIO_WORKER_THREADS can override it. Watch saturation via the exported runtime families in Grafana; the
 # next lever is more replicas (the binding constraint per scaling.md).
 #
 # Backpressure:
 #   In-flight request ceiling — 256 per instance, `DEFAULT_MAX_IN_FLIGHT` in
 #                      rustd/crates/daemon/afd_http/src/admission/mod.rs, installed at
 #                      boot by rustd/crates/daemon/main/src/serve/mod.rs. It is a
-#                      constant: no environment knob sets it. API-class routes
+#                      deployment setting in agentsfleetd.toml. API-class routes
 #                      only: /healthz and /readyz are ops-class and are NEVER
 #                      shed (an overload must not blind the operators), and the
 #                      SSE stream is gated by its own cap below, not this one.
@@ -51,16 +51,7 @@ primary_region = "iad"
 # server can give does not serve more traffic — it answers 503 to the request
 # that needed connection eighteen.
 [env]
-  AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR = "[::]:4443"
-  AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE = "/etc/agentsfleet/runner-stream/server-chain.pem"
-  AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE = "/etc/agentsfleet/runner-stream/server.key"
-  DATABASE_POOL_SIZE_API = "5"
-  # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
-  # not a credential — so it lives here rather than in the 1Password-staged
-  # secrets list. agentsfleetd builds `{CLERK_API_BASE}/users/{id}` directly
-  # (afd_identity/src/provider.rs) with no version segment inserted for it,
-  # so the value has to carry `/v1` itself.
-  CLERK_API_BASE = "https://api.clerk.com/v1"
+  AGENTSFLEET_CONFIG_FILE = "/etc/agentsfleet/config/prod.toml"
 
 [[vm]]
   # Fly applies this size to every machine during a rolling deploy. The release

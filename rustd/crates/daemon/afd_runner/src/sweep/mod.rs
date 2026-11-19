@@ -102,6 +102,13 @@ impl Swept {
 /// datastore it touches has been proven to answer by then, but the rows it
 /// reads may still be mid-migration.
 pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
+    let first = sweeper.interval();
+    run_starting_in(sweeper, token, first).await;
+}
+
+/// Runs maintenance with a first delay no longer than its ordinary cadence.
+/// Subsequent passes retain the sweeper's adaptive interval.
+pub async fn run_starting_in<S: Sweep>(sweeper: S, token: CancellationToken, first: Duration) {
     let name = sweeper.name();
     let interval_ms = sweeper.interval().as_millis();
     {
@@ -109,13 +116,14 @@ pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
         tracing::debug!(message, sweeper, interval_ms, event);
     };
 
+    let mut delay = first.min(sweeper.interval());
     loop {
         // Read EVERY tick, not once at start-up: retention shortens its own
         // interval while a backlog drains, and the loop learns that by asking
         // rather than by knowing anything about retention.
         tokio::select! {
             () = token.cancelled() => break,
-            () = tokio::time::sleep(sweeper.interval()) => {}
+            () = tokio::time::sleep(delay) => {}
         }
         match sweeper.sweep().await {
             Ok(swept) if swept.is_worth_reporting() => {
@@ -145,6 +153,7 @@ pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
                 };
             }
         }
+        delay = sweeper.interval();
     }
 
     tracing::debug!(sweeper = name, event = EVENT_STOPPED, "a sweeper stopped");

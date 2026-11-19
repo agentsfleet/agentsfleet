@@ -12,13 +12,13 @@ use zeroize::Zeroizing;
 
 const MAX_BYTES: u64 = super::files::CHUNK + af_crypto::TAG_LEN as u64;
 
-#[derive(Debug)]
-pub(super) struct Transfers {
+#[derive(Debug, Clone)]
+pub(crate) struct Transfers {
     client: reqwest::Client,
 }
 
 impl Transfers {
-    pub(super) fn new() -> Result<Self> {
+    pub(crate) fn new() -> Result<Self> {
         #[expect(
             clippy::disallowed_methods,
             reason = "supervisor-only native presigned object URLs; no daemon or tenant credentials, no redirects or physical retries"

@@ -2,15 +2,15 @@ WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), prior AS (
   SELECT s.hold_expires_at > instant.checked_at AS held, s.last_runner_id
-  FROM runner.fleet_slots s, instant
+  FROM runner.slots s, instant
   WHERE s.fleet_id = $1
 )
-INSERT INTO runner.fleet_slots AS s
-  (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+INSERT INTO runner.slots AS s
+  (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
    created_at, updated_at)
-SELECT $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
+SELECT $1, $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
 FROM instant
-ON CONFLICT (fleet_id) DO UPDATE
+ON CONFLICT (id) DO UPDATE
   SET last_runner_id   = EXCLUDED.last_runner_id,
       fencing_token    = s.fencing_token + 1,
       lease_expires_at = EXCLUDED.lease_expires_at,

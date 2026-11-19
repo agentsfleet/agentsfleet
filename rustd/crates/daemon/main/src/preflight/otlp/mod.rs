@@ -32,11 +32,15 @@ const WHY_HEADERS: &str = "comma-joined `key=value` pairs; a pair with no `=` \
 /// Every knob is read even when an earlier one faulted, so one restart can fix
 /// all of them; the endpoint itself is graded by `af_otlp`, the one place an
 /// endpoint becomes a configuration.
-pub(super) fn otlp<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<OtlpConfig> {
+pub(super) fn otlp<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+    override_timeout: Option<Duration>,
+) -> Option<OtlpConfig> {
     let (endpoint, source) = endpoint(env)?;
     let headers = headers(env, faults);
     let encoding = encoding(env, faults);
-    let timeout = timeout(env, faults);
+    let timeout = override_timeout.unwrap_or_else(|| timeout(env, faults));
     match OtlpConfig::new(&endpoint, source) {
         Ok(config) => Some(
             config

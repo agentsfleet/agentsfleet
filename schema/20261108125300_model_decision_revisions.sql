@@ -2,7 +2,6 @@
 -- current one; lease and call snapshots bind the same revision.
 CREATE TABLE model.decision_revisions (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_decision_revisions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     platform_model_id UUID NOT NULL REFERENCES model.platform_models(id) ON DELETE CASCADE,
     revision TEXT NOT NULL,
     definition JSONB NOT NULL,

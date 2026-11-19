@@ -1,5 +1,7 @@
 //! Native GitHub access shares the lease's grants, binding and credential mint.
 
+#[cfg(test)]
+mod double;
 mod http;
 mod preflight;
 mod publish;

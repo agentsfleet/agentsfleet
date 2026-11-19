@@ -160,12 +160,9 @@ impl ServingPlane {
                 slack_api_base: parts.slack_api_base,
             },
         );
-        // Before the gateway clones it: a chat save registers its trigger
-        // schedules through the scheduler the schedule routes push through.
-        authoring.creations = authoring
-            .creations
-            .with_scheduler(Arc::clone(&outbound.scheduler));
+        attach_schedules(&mut authoring, &outbound);
         let native = construction::NativeInputs {
+            runtime: parts.runtime,
             database: &database,
             kek,
             providers: common.providers,
@@ -207,6 +204,15 @@ impl ServingPlane {
     }
 }
 
+// Attach before the gateway clones the authoring services so chat saves use
+// the same trigger scheduler as the schedule routes.
+fn attach_schedules(authoring: &mut surfaces::Authoring, outbound: &surfaces::Outbound) {
+    authoring.creations = authoring
+        .creations
+        .clone()
+        .with_scheduler(Arc::clone(&outbound.scheduler));
+}
+
 fn authenticator(
     database: afd_db::Db,
     capabilities: Capabilities,
@@ -240,6 +246,7 @@ fn lease_plane(
     let activity_streams = bus.clone();
     LeaseService {
         task_reports: None,
+        turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
         leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
@@ -283,6 +290,7 @@ fn task_plane(
     storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
     master: Arc<af_crypto::secret::Kek>,
     client: reqwest::Client,
+    policy: afd_fleet::task::policy::TaskPolicy,
 ) -> afd_fleet::task::Tasks {
     let storage = storage_config
         .zip(admin_workspace.clone())
@@ -295,10 +303,15 @@ fn task_plane(
                 client.clone(),
             )
         });
+    leases.turn_checkpoints = leases
+        .turn_checkpoints
+        .clone()
+        .with_storage(storage.clone());
     let tasks = afd_fleet::task::Tasks::new(
         leases.leases.clone(),
         admissions,
         afd_fleet::task::TaskDependencies {
+            policy,
             admin_workspace,
             storage,
             github: Some(afd_fleet::task::Github::new(leases.clone(), client, master)),

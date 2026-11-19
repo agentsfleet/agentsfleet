@@ -38,6 +38,8 @@ impl Error {
             | ErrorKind::StreamTimeout { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
+            | ErrorKind::CaptureLimit { .. }
+            | ErrorKind::CaptureUnavailable { .. }
             | ErrorKind::Config { .. }
             | ErrorKind::Boundary { .. }
             | ErrorKind::Address { .. }
@@ -73,6 +75,8 @@ impl Error {
             | ErrorKind::StreamTimeout { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
+            | ErrorKind::CaptureLimit { .. }
+            | ErrorKind::CaptureUnavailable { .. }
             | ErrorKind::Config { .. }
             | ErrorKind::Boundary { .. }
             | ErrorKind::Address { .. }
@@ -128,6 +132,8 @@ impl Error {
             | ErrorKind::StreamProtocolSource { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
+            | ErrorKind::CaptureLimit { .. }
+            | ErrorKind::CaptureUnavailable { .. }
             | ErrorKind::Config { .. }
             | ErrorKind::Boundary { .. }
             | ErrorKind::Address { .. }
@@ -157,6 +163,8 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
+            ErrorKind::CaptureLimit { .. } => error_code::RUN_CHECKPOINT_LIMIT,
+            ErrorKind::CaptureUnavailable { .. } => error_code::RUN_CHECKPOINT_UNAVAILABLE,
             ErrorKind::Stream { source } => source.code(),
             ErrorKind::StreamRefused { code, .. }
             | ErrorKind::Refused {

@@ -208,6 +208,17 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// stopped. A sandbox that will not freeze is destroyed, never held.
     async fn freeze(&self) -> Result<()>;
 
+    /// Proves no tenant process remains after a confirmed freeze.
+    /// The resident executor may remain; its memory is never captured.
+    ///
+    /// # Errors
+    /// The engine cannot prove quiescence. Unsupported engines fail closed.
+    async fn recovery_quiescent(&self) -> Result<bool> {
+        Err(crate::error::unconfined(
+            "this engine cannot prove recovery quiescence",
+        ))
+    }
+
     /// Lets every process a [`Sandbox::freeze`] stopped run on; returns once
     /// none is still stopped.
     ///

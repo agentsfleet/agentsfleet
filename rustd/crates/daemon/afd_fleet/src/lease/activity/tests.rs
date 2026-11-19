@@ -132,6 +132,12 @@ fn tool_frames_republish_their_call_id_and_a_chunk_names_none() {
         let value = published(&frame);
         let expected = frame.call_id().map(|_named| fenced.clone());
         assert_eq!(value.get("call_id").cloned(), expected, "{value}");
+        assert_eq!(
+            value
+                .get("fencing_token")
+                .and_then(serde_json::Value::as_str),
+            Some(FENCE.to_string().as_str())
+        );
     }
 }
 

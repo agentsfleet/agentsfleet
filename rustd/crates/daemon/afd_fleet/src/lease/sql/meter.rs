@@ -58,13 +58,13 @@ pub struct Metering<'a> {
 
 impl<'a> Metering<'a> {
     /// [`METER_LEASE`] with every parameter bound, in `$n` order.
-    pub(crate) fn bind(&self) -> Bound<'a> {
+    pub(crate) fn bind(&self, clock: af_core::timing::LeaseClock) -> Bound<'a> {
         sqlx::query(METER_LEASE)
             .bind(self.lease_id)
             .bind(self.runner_id)
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(super::LEASE_STATUS_ACTIVE)
-            .bind(af_core::timing::LEASE_TTL)
+            .bind(clock.ttl())
             .bind(af_core::timing::MAX_RUNTIME)
             .bind(af_wire::task::TaskState::Running.as_str())
     }

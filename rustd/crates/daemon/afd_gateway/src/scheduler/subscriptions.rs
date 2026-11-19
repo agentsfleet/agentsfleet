@@ -2,7 +2,7 @@
 
 use crate::{Gateway, Operation, Result, error::ErrorKind};
 use af_core::error_code::{Coded as _, Logged};
-use af_core::timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT};
+use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use tokio_util::sync::CancellationToken;
 
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
@@ -35,7 +35,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             }
             Err(source) => timed_out(source),
         }
-        // One outage transition requests one pass. The independent five-second probe covers the outage.
+        // One outage transition requests one pass. The independent probe covers the outage.
         if !lost {
             wake.recheck();
             lost = true;
@@ -45,7 +45,10 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             () = stop.cancelled() => return Ok(()),
             () = tokio::time::sleep(retry) => {}
         }
-        retry = retry.saturating_mul(2).min(OFFER_FALLBACK_TICK);
+        // Use the configured probe cadence as the subscription-repair backoff ceiling too.
+        retry = retry
+            .saturating_mul(2)
+            .min(gateway.inner.dependencies.recovery.offer_fallback);
     }
 }
 

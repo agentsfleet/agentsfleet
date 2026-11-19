@@ -8,10 +8,9 @@
 //! # Three things happen to a runner that went quiet
 //!
 //! It is recorded offline, ONCE per stale episode; the affinity slots it still
-//! holds are released, so the fleets it was running become leasable again; and
+//! takes no new work through a separate automatic cordon; and
 //! if an operator asked it to drain, the drain is finished now that its last
-//! lease is gone. The three are separate statements because they are separate
-//! facts, and a runner can need any subset of them.
+//! live lease is gone. Reclaim still waits for the original lease deadline.
 //!
 //! # A never-seen runner is `registered`, not offline
 //!
@@ -27,27 +26,26 @@ use std::time::Duration;
 use af_core::clock;
 use af_core::id::Uuid7;
 use af_core::spelling;
-use af_core::timing::{HEARTBEAT_INTERVAL, RUNNER_OFFLINE_AFTER};
+use af_core::timing::HEARTBEAT_INTERVAL;
 use af_crypto::entropy::Entropy;
 use afd_api_wire::admin::AdminState;
 use afd_db::Db;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
-use sqlx::Acquire as _;
 
 use crate::error::{Result, query};
 
 use crate::sql;
 use crate::sweep::{Sweep, Swept};
 
+mod config;
+pub use config::LivenessSettings;
+
 /// Statement name, for the context a query failure carries.
 const CONTEXT_DUE: &str = "liveness due runners";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_OFFLINE: &str = "liveness offline event";
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_SLOTS: &str = "liveness slot expiry";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_DRAINED: &str = "liveness drain completion";
@@ -62,13 +60,6 @@ const EVENT_UNMODELLED_STATE: &str = "runner_status_unmodelled";
 /// least-recently-touched order, so none is starved. An unbounded pass would
 /// hold a connection for as long as the trouble lasted.
 const BATCH_LIMIT: i64 = 100;
-
-/// How far into the past an expiring slot is stamped.
-///
-/// One millisecond, so the slot reads as already expired to every comparison
-/// rather than as expiring exactly now — a `>` and a `>=` elsewhere would
-/// otherwise disagree about a slot stamped at the current instant.
-const EXPIRE_PAST: Duration = Duration::from_millis(1);
 
 /// One runner the pass has to look at.
 #[derive(Debug)]
@@ -96,9 +87,9 @@ impl Due {
     /// Dimension 6.3 against, and a fetch widened later must not silently make
     /// a never-seen runner offline. Judged at the database's clock, the same
     /// instant the fetch's own staleness test used.
-    fn is_stale(&self) -> bool {
+    fn is_stale(&self, clock: af_core::timing::LeaseClock) -> bool {
         self.last_seen_at != sql::NEVER_SEEN
-            && self.last_seen_at < clock::before(self.checked_at, RUNNER_OFFLINE_AFTER)
+            && self.last_seen_at < clock::before(self.checked_at, clock.offline_after())
     }
 }
 
@@ -132,17 +123,37 @@ impl DueRow {
 /// The liveness pass, over the api-role pool.
 #[derive(Debug, Clone)]
 pub struct Liveness {
+    settings: LivenessSettings,
     /// Where the rows are.
+    clock: af_core::timing::LeaseClock,
     database: Db,
     /// The identifiers the event rows are minted from.
     entropy: Entropy,
 }
 
 impl Liveness {
+    /// Uses deployment limits checked before startup opens the stores.
+    #[must_use]
+    pub fn with_settings(mut self, settings: &garde::Valid<LivenessSettings>) -> Self {
+        self.settings = **settings;
+        self
+    }
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::LeaseClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
     /// A sweeper reading and writing through `database`.
     #[must_use]
     pub const fn new(database: Db, entropy: Entropy) -> Self {
-        Self { database, entropy }
+        Self {
+            settings: LivenessSettings::DEFAULT,
+            database,
+            entropy,
+            clock: af_core::timing::LeaseClock::DEFAULT,
+        }
     }
 
     /// A fresh identifier for one event row.
@@ -155,11 +166,11 @@ impl Liveness {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query_as::<_, DueRow>(sql::sweep::SELECT_DUE_RUNNERS)
             .bind(sql::NEVER_SEEN.to_sqlx())
-            .bind(RUNNER_OFFLINE_AFTER)
+            .bind(self.clock.offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::RUNNER_STATUS_DRAINING)
-            .bind(BATCH_LIMIT)
+            .bind(self.settings.batch_size)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_DUE))?;
@@ -169,12 +180,10 @@ impl Liveness {
     /// Everything one due runner needs done, and nothing it does not.
     async fn visit(&self, runner: &Due) -> Result<u64> {
         let mut changed = 0;
-        if runner.is_stale() {
+        if runner.is_stale(self.clock) {
             changed += self.record_offline(runner).await?;
         }
-        // A runner an operator has taken out of service holds no slots, whether
-        // or not it is still beating: cordoned and revoked are as final as
-        // dead, from the fleet's side.
+        // Operator state remains independent of liveness and automatic quarantine.
         let Some(status) = runner.status else {
             // A state this daemon does not model. The runner is left exactly as
             // it is and the pass CARRIES ON: abandoning the batch would let one
@@ -186,57 +195,42 @@ impl Liveness {
             );
             return Ok(changed);
         };
-        if status != AdminState::Active {
-            changed += self.release_slots(&runner.id).await?;
-        }
         if status == AdminState::Draining {
             changed += self.finish_drain(&runner.id).await?;
         }
         Ok(changed)
     }
 
-    /// Records the runner offline and releases what it was holding.
-    ///
-    /// One transaction, because the two must not disagree: an event saying a
-    /// runner went offline while its slots stay held would leave a fleet
-    /// unrunnable with a history that says the cause was handled.
-    ///
-    /// The slots are released only when the event was NEWLY inserted — a
-    /// re-observed stale runner has already had them released, and the guard is
-    /// what keeps the pass from re-doing work every ten seconds for the whole
-    /// time a host is down.
+    /// Silence is rechecked after taking the host lock; audit and cordon share
+    /// one statement, so neither can commit without the other.
     async fn record_offline(&self, runner: &Due) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_OFFLINE))?;
-
-        let event_id = self.event_id()?;
-        let inserted: i64 = sqlx::query_scalar(sql::sweep::INSERT_OFFLINE_EVENT)
-            .bind(event_id)
+        let (changed, cordoned): (i64, bool) = sqlx::query_as(sql::sweep::CORDON_SILENT_RUNNER)
             .bind(&runner.id)
+            .bind(sql::NEVER_SEEN.to_sqlx())
+            .bind(self.clock.offline_after())
+            .bind(self.event_id()?)
             .bind(sql::event_type::RUNNER_OFFLINE)
             .bind(sql::meta::LAST_SEEN_AT)
-            .bind(runner.last_seen_at.to_sqlx())
-            .fetch_one(&mut *transaction)
+            .bind(crate::cordon::REASON)
+            .bind(sql::RUNNER_STATUS_ACTIVE)
+            .bind(self.event_id()?)
+            .bind(crate::cordon::CORDONED)
+            .bind("reason")
+            .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_OFFLINE))?;
-        if inserted == 0 {
-            return Ok(0);
+        if cordoned {
+            af_observability::producers::fleet::runner::cordon_changed(
+                af_observability::metrics::label::fleet::CordonChange::Cordoned,
+            );
+            tracing::info!(
+                event = "runner_cordoned",
+                runner_id = runner.id.as_str(),
+                reason = crate::cordon::REASON
+            );
         }
-
-        let expired = expire_slots(&mut *transaction, &runner.id).await?;
-        transaction.commit().await.map_err(query(CONTEXT_OFFLINE))?;
-        Ok(u64::try_from(expired).unwrap_or(0).saturating_add(1))
-    }
-
-    /// Releases the slots a runner holds without recording anything.
-    ///
-    /// The path for a runner an operator took out of service, which is not an
-    /// offline EPISODE and gets no event: the operator already knows, having
-    /// done it.
-    async fn release_slots(&self, runner_id: &Uuid7) -> Result<u64> {
-        let mut connection = self.database.acquire().await?;
-        let expired = expire_slots(&mut *connection, runner_id).await?;
-        Ok(u64::try_from(expired).unwrap_or(0))
+        Ok(u64::try_from(changed).unwrap_or(0))
     }
 
     /// Finishes a drain, if the runner's last lease is gone.
@@ -259,24 +253,6 @@ impl Liveness {
     }
 }
 
-/// Releases one runner's slots through whatever connection the caller holds.
-///
-/// Takes the executor rather than acquiring its own, which is what lets the
-/// offline path run it INSIDE its transaction and the operator path run it
-/// alone. Two copies of the statement is how the two would come to differ.
-async fn expire_slots<'a, E>(executor: E, runner_id: &Uuid7) -> Result<i64>
-where
-    E: sqlx::Executor<'a, Database = sqlx::Postgres>,
-{
-    sqlx::query_scalar(sql::sweep::EXPIRE_ACTIVE_LEASE_SLOTS)
-        .bind(runner_id)
-        .bind(sql::LEASE_STATUS_ACTIVE)
-        .bind(EXPIRE_PAST)
-        .fetch_one(executor)
-        .await
-        .map_err(query(CONTEXT_SLOTS))
-}
-
 impl Sweep for Liveness {
     fn name(&self) -> &'static str {
         "liveness"
@@ -289,7 +265,7 @@ impl Sweep for Liveness {
     /// the plane noticing is bounded by the threshold plus one tick, rather
     /// than by twice the threshold.
     fn interval(&self) -> Duration {
-        HEARTBEAT_INTERVAL
+        Duration::from_secs(self.settings.interval_seconds)
     }
 
     async fn sweep(&self) -> Result<Swept> {

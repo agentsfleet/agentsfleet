@@ -1,7 +1,6 @@
 -- Base metadata survives deletion of the task that first captured it.
 CREATE TABLE fleet.task_base_pages (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_base_page_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     task_base_id UUID NOT NULL REFERENCES fleet.task_bases (id) ON DELETE CASCADE,
     page_number INTEGER NOT NULL CHECK (page_number >= 0),
     digest TEXT,

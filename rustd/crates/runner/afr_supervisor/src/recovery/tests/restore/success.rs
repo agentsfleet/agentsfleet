@@ -10,6 +10,8 @@ async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() ->
     let task = task();
     let restored = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -30,20 +32,9 @@ async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() ->
     assert_restored_files(&destination)?;
     assert_eq!(restored.plan.pin.resource_version, 2);
     let requests = drain(&mut calls).await;
-    assert_eq!(
-        requests
-            .iter()
-            .filter(|call| call.verb == Verb::TaskCheckpointPin)
-            .count(),
-        1
-    );
-    assert_eq!(
-        requests
-            .iter()
-            .filter(|call| call.verb == Verb::TaskCheckpointPage)
-            .count(),
-        2
-    );
+    let requests_for = |verb| requests.iter().filter(|call| call.verb == verb).count();
+    assert_eq!(requests_for(Verb::TaskCheckpointPin), 1);
+    assert_eq!(requests_for(Verb::TaskCheckpointPage), 2);
     assert_eq!(
         phases(&requests).last().map(String::as_str),
         Some("restored")
@@ -62,6 +53,8 @@ async fn retained_base_inspection_returns_verified_paths_without_restoring_histo
     let task = task();
     let paths = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,

@@ -94,7 +94,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | `rustd/crates/daemon/afd_runner/src/rotate.rs`, `sql/runner/rotate_runner_token.sql` | EDIT | §3: overlap rotation |
 | `rustd/crates/daemon/afd_gateway/src/session/context.rs` and the connection re-check it calls | EDIT | §3: re-check by the digest that opened the connection |
 | `rustd/crates/runner/afr_supervisor/src/config/mod.rs`, `config/tests.rs`, `client/`, `halt/mod.rs`, `rustd/crates/runner/main/src/main.rs`, `af_core/src/signal.rs`, `agentsfleet_runner/tests/fake_daemon.rs`, `tests/fixtures/runner/help.txt` | EDIT | §3: token file, SIGHUP and 401 reload |
-| `rustd/crates/foundation/af_core/src/timing.rs` | EDIT | §3, §4: `RUNNER_TOKEN_OVERLAP`, `PLATFORM_FALLBACK_AFTER` |
+| `rustd/crates/foundation/af_core/src/timing/mod.rs` | EDIT | §3, §4: `RUNNER_TOKEN_OVERLAP`, `PLATFORM_FALLBACK_AFTER` |
 | `rustd/crates/daemon/afd_runner/src/placement/` (`mod.rs`, `tests.rs`, `sql/*.sql`) | CREATE | §4: setting names, rule table, settings read and write |
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`, `claim_admission_head.sql`, `lease/pull/mod.rs`; `afd_authoring/src/lease/claim/sql/candidates.sql` | EDIT | §4, §5: the setting joins the predicate; the posture refusal becomes the proxy |
 | `rustd/crates/daemon/afd_http/src/route/tenant.rs`, `route/runner.rs`, `services/leasing/mod.rs`; `afd_api_tenant/src/handler/tenant/runner/placement.rs`; `afd_api_wire/src/tenant/runners.rs` | CREATE, EDIT | §4, §5: the placement route and the model-call route |

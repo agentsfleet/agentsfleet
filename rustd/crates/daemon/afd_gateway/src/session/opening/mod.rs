@@ -4,7 +4,6 @@ mod confirmation;
 mod control;
 mod request;
 
-use af_core::timing::HEARTBEAT_INTERVAL;
 use afd_auth::principal::Runner;
 use afd_runner::capacity::authority::Decision;
 use axum::{body::Body, extract::Request, response::Response};
@@ -53,6 +52,6 @@ pub(crate) fn allowed<T>(decision: Decision<T>) -> Result<T> {
 }
 
 /// One source defines the heartbeat cadence advertised in welcome and policy replies.
-pub(super) fn interval_millis() -> Result<u32> {
-    Ok(u32::try_from(HEARTBEAT_INTERVAL.as_millis())?)
+pub(super) fn interval_millis(runners: &afd_runner::Runners) -> Result<u32> {
+    Ok(u32::try_from(runners.heartbeat_interval().as_millis())?)
 }

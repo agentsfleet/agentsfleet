@@ -93,39 +93,56 @@ async fn test_only_an_active_runner_is_live() {
     fixtures.cleanup().await;
 }
 
-/// A malformed runner identifier is refused before it can corrupt the directory.
+/// A UUID with another version or variant fails typed credential decoding.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_malformed_runner_identifier_is_rejected_by_the_schema() {
+async fn test_a_malformed_runner_identifier_is_unavailable() {
     let fixtures = Fixtures::create().await;
     let digest = digest_of("agt_r_fixture_corrupt_id");
     let id = identifier(40);
     fixtures.runner(&id, &digest, ACTIVE, false).await;
-    let malformed = sqlx::types::Uuid::parse_str(&identifier_with_bad_variant(40))
-        .expect("the fault has valid UUID syntax but a forbidden variant");
+    let directory = Credentials::new(fixtures.database().clone());
+    let original = sqlx::types::Uuid::parse_str(id.as_str())
+        .expect("the fixture ID has canonical UUID syntax");
+    let wrong_version = id.as_str().replacen("-7", "-4", 1);
+    for text in [identifier_with_bad_variant(40), wrong_version] {
+        let malformed =
+            sqlx::types::Uuid::parse_str(&text).expect("the fault has valid UUID syntax");
+        rewrite_runner_id(&fixtures, original, malformed).await;
+
+        let error = directory
+            .resolve(CredentialKind::RunnerToken, &digest)
+            .await
+            .expect_err("the typed decoder refuses the malformed identifier");
+        assert_eq!(error, afd_auth::error::Unavailable);
+
+        rewrite_runner_id(&fixtures, malformed, original).await;
+        let answer = directory
+            .resolve(CredentialKind::RunnerToken, &digest)
+            .await;
+        assert!(
+            matches!(answer, Ok(Some(CredentialRecord::Machine { runner, .. })) if runner == id)
+        );
+    }
+
+    fixtures.cleanup().await;
+}
+
+async fn rewrite_runner_id(
+    fixtures: &Fixtures,
+    current: sqlx::types::Uuid,
+    next: sqlx::types::Uuid,
+) {
     let mut connection = fixtures
         .database()
         .acquire()
         .await
         .expect("fixture connection");
-    let error = sqlx::query("UPDATE runner.runners SET id = $2 WHERE id = $1")
-        .bind(&id)
-        .bind(malformed)
+    let changed = sqlx::query("UPDATE runner.runners SET id = $2 WHERE id = $1")
+        .bind(current)
+        .bind(next)
         .execute(&mut *connection)
         .await
-        .expect_err("the runner schema must refuse a non-RFC UUID variant");
-    assert_eq!(
-        error
-            .as_database_error()
-            .and_then(|cause| cause.constraint()),
-        Some("ck_runners_id_uuidv7")
-    );
-    drop(connection);
-    let answer = Credentials::new(fixtures.database().clone())
-        .resolve(CredentialKind::RunnerToken, &digest)
-        .await;
-
-    assert!(matches!(answer, Ok(Some(CredentialRecord::Machine { runner, .. })) if runner == id));
-
-    fixtures.cleanup().await;
+        .expect("PostgreSQL accepts another UUID version or variant");
+    assert_eq!(changed.rows_affected(), 1);
 }

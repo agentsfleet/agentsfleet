@@ -2,7 +2,7 @@
 
 mod payload;
 
-use af_core::{clock, error_code, id::Uuid7, timing::LEASE_TTL};
+use af_core::{clock, error_code, id::Uuid7};
 use af_wire::authoring::FailureReason;
 use afd_credential::provider::RegisteredModel;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -35,6 +35,7 @@ pub(super) struct Placement {
     pub(super) until: Timestamp,
     pub(super) deadline: Timestamp,
     pub(super) reserved: i64,
+    pub(super) policy: crate::turn_policy::TurnPolicy,
 }
 
 pub(super) async fn admit(
@@ -45,7 +46,7 @@ pub(super) async fn admit(
     selected: Selected,
     owed: &mut Owed,
 ) -> Result<Option<Claimed>> {
-    let prepared = prepare(connection, hint, &selected).await;
+    let prepared = prepare(drafts, connection, hint, &selected).await;
     let gate = Gate {
         hint,
         selected: &selected,
@@ -98,12 +99,13 @@ async fn allowed<T>(
 }
 
 async fn prepare(
+    drafts: &Drafts,
     connection: &mut PgConnection,
     hint: &Hint,
     selected: &Selected,
 ) -> Result<(RegisteredModel, context::Context, i64)> {
     let model = model::selected(connection, &hint.tenant_id, &selected.model_ref).await?;
-    let bound = budget::bound(&model)?;
+    let bound = budget::bound(&model, drafts.turn_policy)?;
     budget::gate(connection, &hint.tenant_id, bound).await?;
     let context = context::read(connection, selected, &model).await?;
     Ok((model, context, bound))
@@ -119,8 +121,9 @@ async fn mint(drafts: &Drafts, connection: &mut PgConnection, reserved: i64) -> 
         attempt: drafts.mint(now)?,
         lease: drafts.mint(now)?,
         token: URL_SAFE_NO_PAD.encode(bytes),
-        until: clock::after(now, LEASE_TTL),
-        deadline: clock::after(now, budget::WALL),
+        until: clock::after(now, drafts.clock.ttl().min(drafts.turn_policy.wall())),
+        deadline: clock::after(now, drafts.turn_policy.wall()),
+        policy: drafts.turn_policy,
         reserved,
     })
 }
@@ -149,6 +152,14 @@ async fn insert(
         .bind(placement.until.to_sqlx())
         .bind(placement.deadline.to_sqlx())
         .bind(placement.reserved)
+        .bind(i64::from(placement.policy.settings().max_model_calls))
+        .bind(i64::from(placement.policy.settings().max_wall_seconds))
+        .bind(i64::from(
+            placement.policy.settings().max_proposal_corrections,
+        ))
+        .bind(i64::from(
+            placement.policy.settings().provider_timeout_seconds,
+        ))
         .execute(connection)
         .await
         .map_err(query(sql::CONTEXT))?;

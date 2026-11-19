@@ -41,7 +41,7 @@ impl SessionServices {
                 self.send(&Message::Heartbeat {
                     request_id,
                     answer: Answer::Ok {
-                        response: Self::policy(&beat)?,
+                        response: self.policy(&beat)?,
                     },
                 })
                 .await?;

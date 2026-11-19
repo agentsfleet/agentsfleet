@@ -73,6 +73,9 @@ impl Lessee {
         interrupt: tokio_util::sync::CancellationToken,
     ) -> Result<()> {
         let id = Uuid7::parse(&lease.lease_id)?;
+        let _busy = self
+            .holds
+            .occupy(crate::holds::Occupant::Authoring { lease: id.clone() });
         let observed = Observed::new();
         let turn = Turn {
             plane: &self.plane,
@@ -81,8 +84,10 @@ impl Lessee {
             clock: self.clock.as_ref(),
             observed: &observed,
         };
-        let deadline = renew::deadline(lease.deadline, self.clock.as_ref())
-            .min(tokio::time::Instant::now() + std::time::Duration::from_secs(300));
+        let deadline = renew::deadline(lease.deadline, self.clock.as_ref()).min(
+            tokio::time::Instant::now()
+                + std::time::Duration::from_secs(u64::from(af_wire::authoring::WALL_SECONDS_MAX)),
+        );
         // Polled in order: renewal stops at the same attempt end, so the
         // deadline is checked first and a turn that reaches it reports
         // `timed_out`, never a lost slot.
@@ -174,7 +179,7 @@ async fn acknowledged_report(
     lease: &Uuid7,
     report: &Report,
 ) -> Result<Reported> {
-    until_acknowledged(halt, || async {
+    until_acknowledged(halt, plane.runtime, || async {
         let reply = plane.authoring_report(lease, report).await?;
         Ok(reply.settled.then_some(reply))
     })

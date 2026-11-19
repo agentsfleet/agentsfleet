@@ -214,12 +214,29 @@ pub struct ReportRequest<'a> {
     pub memory: Vec<crate::memory::MemoryDelta<'a>>,
 }
 
+/// The exact local hold the daemon accepted with a terminal report.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptedHold {
+    /// Lease that parked the sandbox; a later lease's hold is independent.
+    pub lease_id: String,
+    /// Slot fence under which this hold was accepted.
+    pub fencing_token: u64,
+    /// Deadline saved by the daemon, capped by its idle policy.
+    #[serde(with = "crate::instant")]
+    pub expires_at: jiff::Timestamp,
+}
+
 /// Native report acknowledgement payload.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReportResponse {
     /// Whether the write landed.
     pub ok: bool,
+    /// Accepted retained sandbox, or none when expired, consumed or refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<AcceptedHold>,
 }
 
 #[cfg(test)]

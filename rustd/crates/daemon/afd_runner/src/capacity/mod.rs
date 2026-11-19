@@ -5,7 +5,6 @@
 //! before waiting for that lock could miss the preceding claimant's commit.
 
 use af_core::id::Uuid7;
-use afd_auth::directory::Digest;
 use jiff::Timestamp;
 use sqlx::{Postgres, Transaction};
 
@@ -13,54 +12,19 @@ use crate::error::{Result, query};
 
 pub mod authority;
 pub mod choice;
+mod guard;
+pub use guard::{Guard, proof};
 mod sql;
 
-/// The claim owner, proved under the same host lock as the physical capacity.
-pub enum Guard<'a> {
-    /// A trusted domain call for an enrolled host.
-    Enrolled(&'a Uuid7),
-    /// A stream call must also prove the exact opening credential and connection.
-    Connected {
-        /// Host whose capacity is being inspected.
-        runner: &'a Uuid7,
-        /// The opening's expected database owner.
-        connection: &'a Uuid7,
-        /// Digest proved at opening; never included in debug output.
-        digest: &'a Digest,
-    },
-}
-
-impl std::fmt::Debug for Guard<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Enrolled(runner) => f.debug_tuple("Enrolled").field(runner).finish(),
-            Self::Connected {
-                runner, connection, ..
-            } => f
-                .debug_struct("Connected")
-                .field("runner", runner)
-                .field("connection", connection)
-                .finish_non_exhaustive(),
-        }
-    }
-}
-
-impl<'a> From<&'a Uuid7> for Guard<'a> {
-    fn from(runner: &'a Uuid7) -> Self {
-        Self::Enrolled(runner)
-    }
-}
-
-impl<'a> From<&'a authority::Authority> for Guard<'a> {
-    fn from(authority: &'a authority::Authority) -> Self {
-        authority.guard_for(authority.runner())
-    }
-}
-
-impl<'a> From<(&'a Uuid7, &'a authority::Authority)> for Guard<'a> {
-    fn from((runner, authority): (&'a Uuid7, &'a authority::Authority)) -> Self {
-        authority.guard_for(runner)
-    }
+/// Which work consumes a worker; this never grants connection authority.
+#[derive(Debug, Clone, Copy)]
+pub enum Claimant<'a> {
+    /// Reusing this fleet's hold replaces it without taking another worker.
+    Fleet(&'a Uuid7),
+    /// Private authoring cannot reuse a fleet sandbox.
+    Authoring,
+    /// Current work renews its live slot without charging idle holds.
+    Existing,
 }
 
 /// Whether a locked host may take the work it was locked for, and whether a
@@ -77,6 +41,7 @@ pub struct Capacity {
     now: Timestamp,
     workers: i32,
     occupied: i64,
+    held: i64,
     claims_allowed: bool,
     renewals_allowed: bool,
     lease_version: i64,
@@ -109,7 +74,7 @@ impl Capacity {
     /// Whether one additional lease fits the currently assigned worker limit.
     #[must_use]
     pub fn can_claim(self) -> bool {
-        self.claims_allowed && self.occupied < i64::from(self.workers)
+        self.claims_allowed && self.occupied + self.held < i64::from(self.workers)
     }
 
     /// A renewal retains an already counted, unexpired slot.
@@ -126,6 +91,7 @@ struct Host {
     worker_count: i32,
     status: String,
     degraded: bool,
+    cordon_reason: Option<String>,
     lease_version: i64,
     decision_selected: bool,
     #[sqlx(flatten)]
@@ -138,6 +104,7 @@ struct Census {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     checked_at: Timestamp,
     occupied: i64,
+    held: i64,
 }
 
 /// The host row as [`lock_host`] holds it: what the claim checks before the
@@ -145,6 +112,7 @@ struct Census {
 #[derive(Debug, Clone, Copy)]
 pub struct Held {
     claims_allowed: bool,
+    continuations_allowed: bool,
     lease_version: i64,
     decision_selected: bool,
     ownership: Ownership,
@@ -170,6 +138,13 @@ impl Held {
     #[must_use]
     pub const fn can_claim(self) -> bool {
         self.claims_allowed
+    }
+
+    /// Current work may continue on a cordoned or draining host, while a
+    /// revoked, drained or degraded host may no longer mutate its checkpoint.
+    #[must_use]
+    pub const fn can_continue(self) -> bool {
+        self.continuations_allowed
     }
 
     /// The placement choice's revision, which the insert advances.
@@ -198,29 +173,38 @@ pub async fn lock_host<'a>(
     guard: impl Into<Guard<'a>>,
     work_tenant: Option<&Uuid7>,
 ) -> Result<Option<Held>> {
-    Ok(locked(transaction, guard, work_tenant)
+    held(transaction, guard, work_tenant, sql::LOCK_HOST).await
+}
+
+/// Hold the connection and credential proof while independent fleets use the host.
+/// Exclusive placement and runner-row changes wait until this transaction ends.
+///
+/// # Errors
+/// Preserves a datastore failure while reading or locking the host.
+pub async fn share_host<'a>(
+    transaction: &mut Transaction<'_, Postgres>,
+    guard: impl Into<Guard<'a>>,
+) -> Result<Option<Held>> {
+    held(transaction, guard, None, sql::SHARE_HOST).await
+}
+
+async fn held<'a>(
+    transaction: &mut Transaction<'_, Postgres>,
+    guard: impl Into<Guard<'a>>,
+    work_tenant: Option<&Uuid7>,
+    statement: &'static str,
+) -> Result<Option<Held>> {
+    Ok(locked(transaction, guard, work_tenant, statement)
         .await?
         .map(|(_, host)| Held {
-            claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+            claims_allowed: !host.degraded
+                && host.cordon_reason.is_none()
+                && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+            continuations_allowed: !host.degraded && renewable_state(&host.status),
             lease_version: host.lease_version,
             decision_selected: host.decision_selected,
             ownership: host.ownership,
         }))
-}
-
-/// What a guard binds: the host, and for a stream call the opening's
-/// credential digest and connection, which `lock_host.sql` and a host's
-/// renewal statement compare against the host row alike.
-#[must_use]
-pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Option<&'g Uuid7>) {
-    match guard.into() {
-        Guard::Enrolled(runner) => (runner, None, None),
-        Guard::Connected {
-            runner,
-            connection,
-            digest,
-        } => (runner, Some(digest.as_str()), Some(connection)),
-    }
 }
 
 /// The authorized host row, under its lock, and the runner it names.
@@ -228,12 +212,13 @@ async fn locked<'g>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'g>>,
     work_tenant: Option<&Uuid7>,
+    statement: &'static str,
 ) -> Result<Option<(Uuid7, Host)>> {
     let guard = guard.into();
     // Named from the guard's kind, never read off a missing digest.
     let connected = matches!(guard, Guard::Connected { .. });
     let (runner_id, digest, connection) = proof(guard);
-    let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
+    let host = sqlx::query_as::<_, Host>(statement)
         .bind(runner_id)
         .bind(digest)
         .bind(connection)
@@ -247,7 +232,7 @@ async fn locked<'g>(
         .map(|host| (runner_id.clone(), host)))
 }
 
-/// Lock a host and count both kinds using a fresh database-time snapshot.
+/// Lock a host and count live work and applicable holds using a fresh snapshot.
 ///
 /// `None` means the authenticated host was removed. Cordoned/draining hosts
 /// may finish current work but cannot claim more; revoked/degraded hosts do
@@ -258,14 +243,21 @@ async fn locked<'g>(
 pub async fn lock<'a>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'a>>,
+    claimant: Claimant<'_>,
     work_tenant: Option<&Uuid7>,
 ) -> Result<Option<Capacity>> {
-    let Some((runner_id, host)) = locked(transaction, guard, work_tenant).await? else {
+    let Some((runner_id, host)) = locked(transaction, guard, work_tenant, sql::LOCK_HOST).await?
+    else {
         return Ok(None);
     };
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
         .bind(&runner_id)
         .bind(crate::sql::LEASE_STATUS_ACTIVE)
+        .bind(match claimant {
+            Claimant::Fleet(fleet) => Some(fleet),
+            Claimant::Authoring | Claimant::Existing => None,
+        })
+        .bind(!matches!(claimant, Claimant::Existing))
         .fetch_one(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
@@ -273,7 +265,10 @@ pub async fn lock<'a>(
         now: census.checked_at,
         workers: host.worker_count,
         occupied: census.occupied,
-        claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+        held: census.held,
+        claims_allowed: !host.degraded
+            && host.cordon_reason.is_none()
+            && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
         renewals_allowed: !host.degraded && renewable_state(&host.status),
         lease_version: host.lease_version,
         decision_selected: host.decision_selected,

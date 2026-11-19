@@ -31,6 +31,8 @@ impl Error {
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::TurnCheckpointRefused { .. }
+            | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Authoring { .. }
             | ErrorKind::Datastore { .. }
@@ -98,6 +100,8 @@ impl Error {
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::TurnCheckpointRefused { .. }
+            | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Authoring { .. }
             | ErrorKind::Datastore { .. }

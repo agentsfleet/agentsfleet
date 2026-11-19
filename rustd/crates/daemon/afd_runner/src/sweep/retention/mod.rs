@@ -46,6 +46,9 @@ use crate::error::{Result, query};
 use crate::sql;
 use crate::sweep::{Sweep, Swept};
 
+mod config;
+pub use config::RetentionSettings;
+
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LEASES: &str = "retention lease delete";
 
@@ -104,6 +107,7 @@ const PER_WORK_EVENTS: [&str; 2] = [
 /// The retention pass, over the api-role pool.
 #[derive(Debug)]
 pub struct Retention {
+    settings: RetentionSettings,
     /// Where the rows are.
     database: Db,
     /// Whether the last cycle filled every batch it was allowed.
@@ -115,10 +119,17 @@ pub struct Retention {
 }
 
 impl Retention {
+    /// Uses validated history windows and bounded statement budgets.
+    #[must_use]
+    pub fn with_settings(mut self, settings: &garde::Valid<RetentionSettings>) -> Self {
+        self.settings = **settings;
+        self
+    }
     /// A sweeper deleting through `database`.
     #[must_use]
     pub const fn new(database: Db) -> Self {
         Self {
+            settings: RetentionSettings::DEFAULT,
             database,
             saturated: AtomicBool::new(false),
         }
@@ -145,7 +156,7 @@ impl Retention {
         B: Fn(Bound<'static>) -> Bound<'static>,
     {
         let mut total = 0;
-        for _pass in 0..MAX_BATCHES {
+        for _pass in 0..self.settings.max_batches {
             let mut connection = self.database.acquire().await?;
             let affected = bind(sqlx::query(statement))
                 .execute(&mut *connection)
@@ -155,7 +166,7 @@ impl Retention {
             total += affected;
             // A short batch means the table is drained: there was nothing left
             // for the limit to cut off.
-            if affected < u64::try_from(BATCH_LIMIT).unwrap_or(u64::MAX) {
+            if affected < u64::try_from(self.settings.batch_size).unwrap_or(u64::MAX) {
                 return Ok((total, false));
             }
         }
@@ -175,9 +186,9 @@ impl Sweep for Retention {
     /// retention.
     fn interval(&self) -> Duration {
         if self.saturated.load(Ordering::Relaxed) {
-            SATURATED_INTERVAL
+            Duration::from_secs(self.settings.backlog_interval_seconds)
         } else {
-            IDLE_INTERVAL
+            Duration::from_secs(self.settings.idle_interval_seconds)
         }
     }
 
@@ -208,9 +219,9 @@ impl Retention {
                 |statement| {
                     statement
                         .bind(vec![sql::LEASE_STATUS_ACTIVE])
-                        .bind(RETENTION_WINDOW)
+                        .bind(DAY.saturating_mul(self.settings.keep_days))
                         .bind(sql::LEASE_STATUS_EXPIRED)
-                        .bind(BATCH_LIMIT)
+                        .bind(self.settings.batch_size)
                 },
             )
             .await?;
@@ -222,8 +233,8 @@ impl Retention {
                 |statement| {
                     statement
                         .bind(TERMINAL_STATUSES.to_vec())
-                        .bind(RETENTION_WINDOW)
-                        .bind(BATCH_LIMIT)
+                        .bind(DAY.saturating_mul(self.settings.keep_days))
+                        .bind(self.settings.batch_size)
                 },
             )
             .await?;
@@ -235,8 +246,8 @@ impl Retention {
                 |statement| {
                     statement
                         .bind(PER_WORK_EVENTS.to_vec())
-                        .bind(RETENTION_WINDOW)
-                        .bind(BATCH_LIMIT)
+                        .bind(DAY.saturating_mul(self.settings.keep_days))
+                        .bind(self.settings.batch_size)
                 },
             )
             .await?;

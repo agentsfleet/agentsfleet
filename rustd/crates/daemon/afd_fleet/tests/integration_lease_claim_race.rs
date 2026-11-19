@@ -35,7 +35,7 @@ const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
      WHERE $1::integer = ANY(pg_blocking_pids(pid))";
 
 /// Which runner the slot names now.
-const HOLDER: &str = "SELECT last_runner_id FROM runner.fleet_slots WHERE fleet_id = $1";
+const HOLDER: &str = "SELECT last_runner_id FROM runner.slots WHERE fleet_id = $1";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]

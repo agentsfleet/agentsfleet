@@ -8,7 +8,7 @@ WITH held AS MATERIALIZED (
            l.lease_expires_at, s.lease_expires_at AS slot_expires_at
     FROM runner.leases l
     JOIN runner.runners r ON r.id = l.runner_id
-    JOIN runner.fleet_slots s ON s.fleet_id = l.fleet_id
+    JOIN runner.slots s ON s.fleet_id = l.fleet_id
     JOIN fleet.fleets f ON f.id = l.fleet_id AND f.workspace_id = l.workspace_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $3
       AND s.last_runner_id = l.runner_id

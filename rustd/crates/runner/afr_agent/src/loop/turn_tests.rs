@@ -263,7 +263,9 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
 
     let output = engine
         .run(AgentRun {
+            recovery: None,
             recovered_task: None,
+            recovered_turn: None,
             prepared_task: None,
             lease: &leased,
             memory: afr_memory::Seed::default(),
@@ -282,17 +284,7 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
         .unwrap();
 
     assert_eq!(output.result.content, "done");
-    assert_eq!(
-        completions(&frames.taken()),
-        [("1".to_owned(), ToolCallStatus::Succeeded)],
-        "the call was admitted and sent"
-    );
-    let minted = capture.only(EVENT_CREDENTIAL_MINTED);
-    assert_eq!(minted.field("lease_id"), Some(leased.lease_id.as_ref()));
-    assert!(
-        (capture.events().iter()).all(|event| event.fields.values().all(|v| !v.contains(MINTED))),
-        "no log line carries the minted token"
-    );
+    assert_minted_under_lease(&capture, &frames, leased.lease_id.as_ref());
 }
 
 #[tokio::test]
@@ -335,4 +327,19 @@ async fn a_run_is_traced_as_turns_and_calls_inside_one_invocation() {
     assert_eq!(tool.parent, Some(OPERATION_INVOKE_AGENT));
     assert_eq!(tool.field(ATTR_TOOL_NAME), Some(UPDATE_PLAN.name()));
     assert_eq!(tool.field(ATTR_TOOL_CALL_ID), Some("1"));
+}
+
+fn assert_minted_under_lease(capture: &Capture, frames: &Frames, lease: &str) {
+    assert_eq!(
+        completions(&frames.taken()),
+        [("1".to_owned(), ToolCallStatus::Succeeded)],
+        "the call was admitted and sent"
+    );
+
+    let minted = capture.only(EVENT_CREDENTIAL_MINTED);
+    assert_eq!(minted.field("lease_id"), Some(lease));
+    assert!(
+        (capture.events().iter()).all(|event| event.fields.values().all(|v| !v.contains(MINTED))),
+        "no log line carries the minted token"
+    );
 }

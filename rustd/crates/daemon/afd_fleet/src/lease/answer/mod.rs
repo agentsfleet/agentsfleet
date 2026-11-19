@@ -44,6 +44,7 @@ pub(super) struct Context<'a> {
     pub(super) memory: Option<MemoryHydrateResponse<'a>>,
     pub(super) decision: Option<Box<DecisionAssignment>>,
     pub(super) task: Option<af_wire::task::TaskContext<'static>>,
+    pub(super) turn_resume: Option<af_wire::lease::TurnResume>,
     pub(super) expires_at: jiff::Timestamp,
 }
 
@@ -59,6 +60,11 @@ pub(super) fn payload<'a>(
     LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
+        setup_revision_id: installed
+            .issue_revision
+            .as_ref()
+            .map(|proof| proof.current.as_str().into()),
+        turn_resume: context.turn_resume,
         lease_expires_at: context.expires_at,
         event: EventEnvelope {
             event_id: acquired.event_id.as_str().into(),

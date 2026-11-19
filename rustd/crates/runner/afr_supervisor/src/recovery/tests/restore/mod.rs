@@ -37,6 +37,8 @@ async fn restore_rejects_changed_identity_and_future_cursors_before_reading_page
         let task = task();
         let error = Restore {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
+            permit: None,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -86,6 +88,8 @@ async fn corrupt_or_unordered_manifests_never_touch_the_destination() -> crate::
         let task = task();
         let error = Restore {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
+            permit: None,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -124,6 +128,8 @@ async fn files_require_a_workspace_and_existing_files_are_never_overwritten() ->
         let has_destination = destination_path.is_some();
         let error = Restore {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
+            permit: None,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -170,6 +176,8 @@ async fn cancellation_and_changed_pin_deadline_end_restore_custody() -> crate::R
         }
         let error = Restore {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
+            permit: None,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -207,6 +215,8 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     let stop = CancellationToken::new();
     let restore = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -226,6 +236,8 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     let (plane, mut calls, _) = remote(archive, |_, _| None);
     let error = Restore {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
+        permit: None,
         ..restore
     }
     .run(None)

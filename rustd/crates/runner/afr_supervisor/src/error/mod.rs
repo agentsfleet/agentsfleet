@@ -31,9 +31,9 @@ mod raise;
 #[cfg(test)]
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
-    boundary, checkpoint_transfer, client, config, egress, egress_blocked, egress_no_ipv4,
-    egress_unresolved, encode, git, malformed, refused_with_body, stream_disconnected,
-    stream_protocol, token_refused, transport, unavailable,
+    boundary, capture_limit, capture_unavailable, checkpoint_transfer, client, config, egress,
+    egress_blocked, egress_no_ipv4, egress_unresolved, encode, git, malformed, refused_with_body,
+    stream_disconnected, stream_protocol, token_refused, transport, unavailable,
 };
 
 /// The daemon refused the runner's token.
@@ -47,6 +47,14 @@ af_core::error_shell!(
 /// Every way the supervisor fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    /// A complete local snapshot exceeds the bounded checkpoint format.
+    #[error("{detail}")]
+    CaptureLimit { detail: &'static str },
+
+    /// Local checkpoint custody is temporarily held by another capture.
+    #[error("{detail}")]
+    CaptureUnavailable { detail: &'static str },
+
     /// A native carrier retains its finite failure class and original cause.
     #[error("the runner stream did not complete")]
     Stream {

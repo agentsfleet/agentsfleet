@@ -134,7 +134,7 @@ fn bounded_queue_keeps_recent_fleets_and_a_duplicate_still_advances_the_generati
     }
     let newest = Uuid7::parse(&format!("0195b4ba-8d3a-7000-8000-{CAPACITY:012x}"))?;
     wake.ring(newest.clone());
-    assert_eq!(*observed.borrow(), 66);
+    assert_eq!(observed.borrow().rings(), 66);
     let mut remaining = Vec::new();
     while let Some(fleet) = wake.take() {
         remaining.push(fleet);

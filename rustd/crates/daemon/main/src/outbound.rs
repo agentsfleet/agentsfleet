@@ -19,13 +19,14 @@ pub const OUTBOUND_WORKER: &str = "connector:outbound";
 ///
 /// It claims owed answers from `fleet.obligations` when `bus` pings it and on
 /// its own pass, so it needs no connection of its own.
-pub fn spawn(
+pub(crate) fn spawn(
     supervisor: &mut Supervisor,
     database: &Db,
     bus: afd_bus::Handle,
     grants: Grants,
     vendor_client: reqwest::Client,
     slack_api_base: String,
+    settings: &crate::preflight::runtime::OperationalSettings,
 ) {
     let worker = Worker::new(
         database.clone(),
@@ -34,6 +35,14 @@ pub fn spawn(
             slack: SlackPoster::new(grants, vendor_client, slack_api_base),
         },
         Entropy::new(),
-    );
+    )
+    .with_claim_pass(std::time::Duration::from_secs(
+        settings
+            .maintenance
+            .loops
+            .outbound_delivery
+            .interval_seconds,
+    ))
+    .with_retries(settings.outbound_retries);
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));
 }

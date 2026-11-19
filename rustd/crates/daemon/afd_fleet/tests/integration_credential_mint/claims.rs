@@ -94,7 +94,7 @@ async fn seed_install(fixtures: &Fixtures, workspace: &Uuid7, installation: &str
 
 /// A fleet granted `service` whose workspace holds `handle` under `name`.
 async fn granted_with(fixtures: &Fixtures, name: &str, service: &str, handle: &str) -> Bound {
-    let owner = bound(fixtures, "{}").await;
+    let owner = bound(fixtures, &super::authority::config(&[name])).await;
     seed_handle(fixtures, &owner.workspace, name, handle).await;
     seed_grant(fixtures, &owner.fleet, service, STATUS_APPROVED).await;
     owner
@@ -223,7 +223,7 @@ async fn test_a_github_handle_filed_under_another_name_is_not_connected() {
     // The handle IS stored under that name, so this is not a vault miss.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
-    let renamed = "github-copy";
+    let renamed = "github_copy";
     let installation = installation();
     let owner = granted_with(
         &fixtures,

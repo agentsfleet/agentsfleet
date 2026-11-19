@@ -25,7 +25,7 @@ WITH message AS MATERIALIZED (
            head.reply_provider IS NULL AND head.reply_address IS NULL AS unaddressed,
            l.event_id AS run_event_id
     FROM message m
-    JOIN runner.fleet_slots s ON s.fleet_id = m.fleet_id
+    JOIN runner.slots s ON s.fleet_id = m.fleet_id
     JOIN runner.leases l
       ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
      AND l.fencing_token = s.fencing_token AND l.status = $3

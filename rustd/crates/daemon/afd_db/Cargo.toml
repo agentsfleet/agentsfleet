@@ -39,6 +39,8 @@ backon.workspace = true
 # crate that was already compiling.
 url.workspace = true
 thiserror.workspace = true
+garde.workspace = true
+serde.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 

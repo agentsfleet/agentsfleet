@@ -2,7 +2,6 @@
 -- Append-only; it goes with its draft.
 CREATE TABLE authoring.answer_receipts (
     id             UUID PRIMARY KEY,
-    CONSTRAINT ck_answer_receipts_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     draft_id       UUID   NOT NULL REFERENCES authoring.drafts(id) ON DELETE CASCADE,
     attempt_id     UUID   NOT NULL REFERENCES authoring.attempts(id) ON DELETE CASCADE,
     report_id      UUID   NOT NULL,

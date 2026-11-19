@@ -27,7 +27,7 @@ use crate::rows::{LAPSE, Row};
 use crate::seed::{MODEL, PROVIDER};
 
 /// One renewal of `lease`, reporting no tokens.
-async fn extend(
+pub(crate) async fn extend(
     leases: &Leases,
     lease: &Uuid7,
     runner: &Uuid7,
@@ -50,7 +50,7 @@ async fn extend(
 }
 
 /// The deadline a renewal granted, when it extended.
-const fn deadline(renewed: &Renewed) -> Option<Timestamp> {
+pub(crate) const fn deadline(renewed: &Renewed) -> Option<Timestamp> {
     match renewed {
         Renewed::Extended { expires_at, .. } => Some(*expires_at),
         Renewed::MaxRuntime | Renewed::Lost | Renewed::Cancelled => None,

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use af_core::{error_code::ErrorCode, id::Uuid7, timing::RENEWAL_TICK};
+use af_core::{error_code::ErrorCode, id::Uuid7};
 use af_wire::{
     protocol::{LEASES_MAX, Renewal},
     report::RenewResponse,
@@ -122,8 +122,19 @@ impl Renewals {
             .map_or(budget, |deadline| budget.min(deadline))
     }
 
+    #[cfg(test)]
     pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
-        let mut ticks = tokio::time::interval_at(Instant::now() + RENEWAL_TICK, RENEWAL_TICK);
+        self.run_with_interval(handle, stop, af_core::timing::RENEWAL_TICK)
+            .await
+    }
+
+    pub(crate) async fn run_with_interval(
+        &self,
+        handle: &StreamHandle,
+        stop: CancellationToken,
+        interval: std::time::Duration,
+    ) -> Result<()> {
+        let mut ticks = tokio::time::interval_at(Instant::now() + interval, interval);
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut sessions = handle.session.clone();
         let mut previous = sessions.borrow_and_update().clone();

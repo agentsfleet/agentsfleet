@@ -53,6 +53,22 @@ function converterMirror(convert: (entry: FleetThreadEntry) => ThreadMessageLike
 }
 
 describe("useFleetThreadEntries", () => {
+  it("keeps empty restarted integration replies visible and separate", () => {
+    const events = ["first", "second"].map((id) => evt({
+      id, role: "system", actor: "webhook:github", text: "delivery", reply: "", status: RECEIVED,
+    }));
+    const hook = renderHook(({ rows }) => useFleetThreadEntries(rows, renderedTrigger), {
+      initialProps: { rows: events },
+    });
+    expect(hook.result.current.entries.map((entry) => entry.kind)).toEqual(["group"]);
+    hook.rerender({ rows: events.map((event) => ({ ...event, runRestarted: true })) });
+    expect(hook.result.current.entries.map((entry) => entry.kind)).toEqual(["trigger", "reply", "trigger", "reply"]);
+    for (const entry of hook.result.current.entries.filter((row) => row.kind === "reply")) {
+      const message = hook.result.current.convertEntry(entry);
+      expect(message.metadata?.custom).toEqual(expect.objectContaining({ runRestarted: true }));
+    }
+  });
+
   it("test_settled_entries_keep_identity_across_frames", () => {
     const settled = Array.from({ length: SETTLED_TURNS }, (_, index) => operatorTurn(index));
     const streaming = evt({ id: LIVE, role: USER, actor: OPERATOR, text: ASK, reply: PARTIAL, status: RECEIVED });
@@ -108,7 +124,7 @@ describe("useFleetThreadEntries", () => {
     const rendered: Partial<FleetEvent>[] = [
       { createdAt: new Date(3_000) }, { text: "go again" }, { actor: "steer:user_2" },
       { custom: { requestJson: JSON.stringify({ message: "stop" }) } }, { status: PROCESSED }, { clientTimestamp: true },
-      { submittedAtMs: 12 }, { replyRecovering: true }, { outcome: "Stopped." },
+      { submittedAtMs: 12 }, { replyRecovering: true }, { runRestarted: true }, { restartAttempt: "42" }, { outcome: "Stopped." },
       { failureLabel: "startup_posture" }, { failureDetail: "posture check failed" },
     ];
     const unrendered: Partial<FleetEvent>[] = [

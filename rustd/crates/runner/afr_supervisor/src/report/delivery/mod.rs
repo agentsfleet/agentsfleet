@@ -1,17 +1,21 @@
 //! The worker owns retry state; PostgreSQL owns persisted completed reports.
 
-use crate::{Result, client::endless, error::ErrorKind, halt::Halt};
+use crate::{Result, error::ErrorKind, halt::Halt};
 
 const EVENT_WAITING: &str = "runner_result_waiting";
 
 /// `None` is an acknowledgement that settlement is still pending. A worker
 /// keeps its report and capacity until `Some` confirms the completed write.
-pub(crate) async fn until_acknowledged<T, F, Fut>(halt: &Halt, mut call: F) -> Result<T>
+pub(crate) async fn until_acknowledged<T, F, Fut>(
+    halt: &Halt,
+    policy: crate::config::RuntimePolicy,
+    mut call: F,
+) -> Result<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<Option<T>>>,
 {
-    let mut pauses = endless();
+    let mut pauses = policy.endless();
     loop {
         let answer = tokio::select! {
             biased;

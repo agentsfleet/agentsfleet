@@ -3,7 +3,6 @@
 -- Exactly one of `fleet_id` and `authoring_attempt_id` is set, by `work_type`.
 CREATE TABLE billing.usage_lines (
     id                          UUID   PRIMARY KEY,
-    CONSTRAINT ck_usage_lines_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     work_type                   TEXT   NOT NULL,
     work_id                     UUID   NOT NULL,
     kind                        TEXT   NOT NULL,

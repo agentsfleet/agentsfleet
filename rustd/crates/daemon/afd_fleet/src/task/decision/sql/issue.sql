@@ -5,7 +5,7 @@ WHERE c.id = $1 AND c.status = $3 AND c.issued_at IS NULL AND c.accounted_at IS 
   AND EXISTS (
       SELECT 1 FROM runner.leases l
       JOIN runner.runners r ON r.id = l.runner_id AND r.status = $9
-      JOIN runner.fleet_slots s ON s.fleet_id = l.fleet_id
+      JOIN runner.slots s ON s.fleet_id = l.fleet_id
       JOIN fleet.fleets f ON f.id = l.fleet_id AND f.workspace_id = l.workspace_id
       JOIN model.platform_models m ON m.id = $6 AND m.decision_enabled
       JOIN model.decision_revisions d ON d.id = $7 AND d.platform_model_id = m.id

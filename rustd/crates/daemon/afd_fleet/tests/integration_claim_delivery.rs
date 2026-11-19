@@ -21,7 +21,7 @@ use crate::support::Fixtures;
 /// many event rows it has.
 const DELIVERY: &str = "SELECT a.lease_fence, a.delivered_at IS NOT NULL, s.fencing_token, \
     (SELECT count(*) FROM fleet.events e WHERE e.event_id = a.id) \
-    FROM fleet.admissions a LEFT JOIN runner.fleet_slots s ON s.fleet_id = a.fleet_id \
+    FROM fleet.admissions a LEFT JOIN runner.slots s ON s.fleet_id = a.fleet_id \
     WHERE a.id = $1";
 
 /// What [`DELIVERY`] answers.
@@ -136,6 +136,7 @@ async fn claim_on_archived_fleet_takes_nothing() {
         .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
         .bind(status::RECEIVED)
         .bind(afd_admission::Producer::Steer.as_str())
+        .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *fixtures.database.acquire().await.expect("claimer"))
         .await

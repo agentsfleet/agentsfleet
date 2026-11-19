@@ -36,29 +36,8 @@
 /// status, `$4` the active lease status, `$5` draining, `$6` the batch limit.
 pub const SELECT_DUE_RUNNERS: &str = include_str!("select_due_runners.sql");
 
-/// Records a runner going offline, at most once per stale episode.
-///
-/// The partial unique index on `(runner_id, last_seen_at)` is what makes the
-/// sweep idempotent: a cycle that re-observes the same stale runner inserts
-/// nothing, and the returned count tells the caller whether THIS pass was the
-/// one that recorded it. Without it, a runner offline for an hour would write a
-/// row every ten seconds. The metadata carries the same instant as RFC 3339,
-/// written the way the heartbeat's transition event writes it.
-///
-/// `$1` event id, `$2` runner, `$3` event type, `$4` the metadata key, `$5` the
-/// last-seen instant — which is ALSO the episode's unique stamp.
-pub const INSERT_OFFLINE_EVENT: &str = include_str!("insert_offline_event.sql");
-
-/// Releases the slots a dead runner still holds.
-///
-/// A fleet's slot is what stops two runners racing for the same work, so a
-/// runner that died holding one would keep that fleet unrunnable until the
-/// lease TTL elapsed. Each slot is stamped a moment into the past, so it reads
-/// as already expired to every comparison; the matching `>` guard is what makes
-/// it converge, since a slot already released is not released again.
-///
-/// `$1` runner, `$2` the active lease status, `$3` how far into the past.
-pub const EXPIRE_ACTIVE_LEASE_SLOTS: &str = include_str!("expire_active_lease_slots.sql");
+/// Record a freshly proved silent episode and automatic quarantine atomically.
+pub const CORDON_SILENT_RUNNER: &str = include_str!("cordon_silent_runner.sql");
 
 /// Finishes draining a runner once its last lease is gone, and records the
 /// transition in the same statement.

@@ -6,5 +6,6 @@ mod choice;
 mod concurrent;
 mod expiry;
 mod fixture;
+mod holds;
 
 use self::fixture::Fixture;

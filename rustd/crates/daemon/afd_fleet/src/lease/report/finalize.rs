@@ -34,9 +34,12 @@ impl LeaseService {
             Committed::Fenced { .. } => Err(stale_fence()),
             Committed::AlreadySettled => {
                 Self::record_repeat(&lease, lease_id.as_str());
-                Ok(reconciled(lease, true, RunTokens::default(), None))
+                let mut result = reconciled(lease, true, RunTokens::default(), None);
+                result.hold = self.replayed_hold(runner_id, lease_id).await?;
+                Ok(result)
             }
             Committed::Settled {
+                accepted_hold,
                 charged,
                 tokens,
                 closed,
@@ -63,8 +66,38 @@ impl LeaseService {
                 }
                 self.announce_folds(&lease, lease_id.as_str(), folds, answer)
                     .await;
-                Ok(reconciled(lease, false, tokens, completed_at))
+                let mut result = reconciled(lease, false, tokens, completed_at);
+                result.hold = accepted_hold.map(|expires_at| af_wire::report::AcceptedHold {
+                    lease_id: lease_id.to_string(),
+                    fencing_token: request.fencing_token,
+                    expires_at,
+                });
+                Ok(result)
             }
         }
+    }
+    async fn replayed_hold(
+        &self,
+        runner: &Uuid7,
+        lease: &Uuid7,
+    ) -> Result<Option<af_wire::report::AcceptedHold>> {
+        let mut connection = self.leases.pool().acquire().await?;
+        let row: Option<(i64, jiff_sqlx::Timestamp)> =
+            sqlx::query_as(include_str!("../sql/lease/report_hold.sql"))
+                .bind(lease)
+                .bind(runner)
+                .bind(crate::lease::sql::LEASE_STATUS_REPORTED)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(crate::error::query("read current report hold receipt"))?;
+        row.map(|(fence, until)| {
+            Ok(af_wire::report::AcceptedHold {
+                lease_id: lease.to_string(),
+                fencing_token: u64::try_from(fence)
+                    .map_err(|_negative| crate::error::stale_fence())?,
+                expires_at: until.into(),
+            })
+        })
+        .transpose()
     }
 }

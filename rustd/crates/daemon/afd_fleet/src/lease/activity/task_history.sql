@@ -2,7 +2,7 @@
 -- Cosmetic progress may be dropped under contention; never wait across ownership locks.
 -- The existing event row serializes bounded progress updates. No new work queue.
 WITH slot AS MATERIALIZED (
-    SELECT s.fleet_id FROM runner.fleet_slots s
+    SELECT s.fleet_id FROM runner.slots s
     WHERE s.fleet_id = $1 AND s.last_runner_id = $5 AND s.fencing_token = $6
       AND s.lease_expires_at > statement_timestamp()
     FOR UPDATE OF s SKIP LOCKED

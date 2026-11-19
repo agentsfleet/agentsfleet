@@ -156,8 +156,10 @@ export function closedAnyAtSettle(events: readonly FleetEvent[], eventId: string
  * to the one already shown keeps its array, so a page restating a settled turn
  * re-renders nothing.
  */
-export function settleTools(row: FleetEvent, live: FleetEvent): FleetEvent {
+export function settleTools(row: FleetEvent, live: FleetEvent, hasSavedTrace: boolean): FleetEvent {
   if (row.tools === undefined) {
+    // A replacement's saved detail with no calls excludes the provisional old trace.
+    if (live.runRestarted && hasSavedTrace) return row;
     if (live.tools === undefined) return row;
     const omitted = live.omittedCallCount === undefined ? {} : { omittedCallCount: live.omittedCallCount };
     return interruptOpenCalls({ ...row, tools: live.tools, ...omitted });

@@ -15,6 +15,7 @@
 
 #![deny(clippy::self_named_module_files)]
 
+mod config;
 mod engine;
 mod host;
 
@@ -189,14 +190,16 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
 /// # Errors
 /// The failure, already logged under `run_failed`, as the exit status.
 fn supervise(args: RunArgs) -> Result<ExitCode, ExitCode> {
+    let settings = config::read(&ProcessEnv)?;
     let (config, home) = afr_supervisor::boot(&ProcessEnv).or_exit()?;
+    let config = config.with_runtime(settings.supervisor);
     // `resources` outlives the runtime and the engine it is moved into: every
     // sandbox is gone before its toolbox is unmounted.
     let host = args.host(&home)?;
     let _resources = host.resources;
     let engine = host.engine;
     let probe = host.probe;
-    let agent = host::agent()?;
+    let agent = host::agent(settings.inference, settings.provider_retries)?;
     let runtime = tokio::runtime::Runtime::new().map_err(|error| host::io_failed(&error))?;
     runtime
         .block_on(serve(&config, home, engine, agent, probe))

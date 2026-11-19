@@ -37,12 +37,17 @@ impl Waiting {
 ///
 /// # Errors
 /// Reports the datastore's failure.
-pub async fn waiting(connection: &mut sqlx::PgConnection, runners: &[Uuid7]) -> Result<Waiting> {
+pub async fn waiting(
+    connection: &mut sqlx::PgConnection,
+    runners: &[Uuid7],
+    resume_from_checkpoint: bool,
+) -> Result<Waiting> {
     sqlx::query_as::<_, Waiting>(sql::queue::SELECT_WAITING_WORK)
         .bind(sql::LEASE_STATUS_ACTIVE)
         .bind(DraftState::Editing.as_str())
         .bind(MessageState::Queued.as_str())
         .bind(runners)
+        .bind(resume_from_checkpoint)
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT_WAITING))

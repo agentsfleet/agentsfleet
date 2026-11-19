@@ -72,8 +72,9 @@ jobs:
     # The suite shares one migrated database per shard; only migrator fault
     # tests create scratch databases because schema state is what they
     # exercise. This still covers a cold instrumented workspace build on an
-    # uncached runner.
-    timeout-minutes: 20
+    # uncached runner. The daemon and substrate shards finish near twenty
+    # minutes cold, and a shard cut off after its tests passed fails the merge.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # No toolchain input: rustd/rust-toolchain.toml is the single pin, and

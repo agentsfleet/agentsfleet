@@ -253,7 +253,7 @@ impl Leased {
     /// Moves the fleet's live sequence past this lease's, as a reclaim does.
     pub(crate) async fn supersede(&self) {
         self.on_fleet(
-            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
+            "UPDATE runner.slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
         )
         .await;
     }

@@ -1,7 +1,7 @@
 //! Typed writes use the transaction whose source and slot are already locked.
 
 use af_core::id::Uuid7;
-use af_wire::task::{TaskState, UNFINISHED_MAX};
+use af_wire::task::TaskState;
 use sqlx::PgConnection;
 
 use super::super::{
@@ -12,6 +12,12 @@ use super::source::Source;
 use crate::error::{Error, ErrorKind, Result, query};
 
 const CONTEXT: &str = "write durable task binding";
+
+pub(super) struct Admission<'a> {
+    pub source: &'a Source,
+    pub active: bool,
+    pub unfinished_max: u32,
+}
 
 pub(super) async fn item(
     connection: &mut PgConnection,
@@ -50,10 +56,9 @@ pub(super) async fn task(
     plan: &PreparedPlan,
     item: &PreparedTask,
     binding: &TaskBinding,
-    source: &Source,
-    active: bool,
+    admission: Admission<'_>,
 ) -> Result<()> {
-    let status = if active {
+    let status = if admission.active {
         TaskState::Running
     } else {
         TaskState::Ready
@@ -76,14 +81,14 @@ pub(super) async fn task(
         .bind(item.limits.model_nanos)
         .bind(i64::from(item.limits.running_seconds) * 1_000_000_000)
         .bind(i64::from(item.limits.leases))
-        .bind(i32::from(active))
+        .bind(i32::from(admission.active))
         .bind(i64::from(item.limits.publications))
         .bind(i64::from(item.limits.decision_calls))
         .bind(i64::from(item.limits.fallback_reads))
-        .bind(&source.reply_provider)
-        .bind(&source.reply_address)
+        .bind(&admission.source.reply_provider)
+        .bind(&admission.source.reply_address)
         .bind(f64::from(item.limits.wall_seconds))
-        .bind(i64::from(UNFINISHED_MAX))
+        .bind(i64::from(admission.unfinished_max))
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?

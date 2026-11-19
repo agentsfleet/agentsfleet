@@ -3,7 +3,6 @@
 -- forgets it fails instead of minting a row nothing can decrypt.
 CREATE TABLE vault.secrets (
     id                 UUID PRIMARY KEY,
-    CONSTRAINT ck_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id       UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
     key_name           TEXT    NOT NULL,
     kek_version        INTEGER NOT NULL,

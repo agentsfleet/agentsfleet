@@ -46,13 +46,11 @@ async fn test_a_write_fence_holds_only_for_the_live_holder() {
     );
 
     // A reclaim moves the fleet's live sequence past the old holder's token.
-    sqlx::query(
-        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
-    )
-    .bind(&leased.run.fleet)
-    .execute(&mut *connection)
-    .await
-    .expect("the reclaim lands");
+    sqlx::query("UPDATE runner.slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1")
+        .bind(&leased.run.fleet)
+        .execute(&mut *connection)
+        .await
+        .expect("the reclaim lands");
     assert!(
         !held.holds(&mut connection).await.expect("the read answers"),
         "the superseded holder no longer holds"

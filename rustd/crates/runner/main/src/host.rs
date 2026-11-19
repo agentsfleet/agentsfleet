@@ -140,9 +140,12 @@ impl<E: Engine + 'static> From<afr_sandbox::Booted<E>> for Host {
 ///
 /// # Errors
 /// The failure, already logged, as the exit status.
-pub(crate) fn agent() -> Result<afr_agent::Loop, ExitCode> {
+pub(crate) fn agent(
+    timeouts: af_inference::Timeouts,
+    retries: af_providers::RetryPolicy,
+) -> Result<afr_agent::Loop, ExitCode> {
     let network = af_egress::Network::new().or_exit()?;
-    let connector = af_providers::Connector::new().or_exit()?;
+    let connector = af_providers::Connector::configured(timeouts, retries).or_exit()?;
     Ok(afr_agent::Loop::new(
         afr_tools::Catalog::hosted(Arc::new(network)),
         connector,

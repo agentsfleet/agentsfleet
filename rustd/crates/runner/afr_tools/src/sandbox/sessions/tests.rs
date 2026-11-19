@@ -261,3 +261,26 @@ async fn should_free_a_place_dropped_unopened() {
     let killed = executor.killed();
     assert!(killed.is_empty(), "{killed:?}");
 }
+
+#[tokio::test]
+async fn recovery_boundary_refuses_both_open_and_reserved_sessions() {
+    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
+    let sessions = Sessions::default();
+    assert!(sessions.is_quiescent());
+    let reserved = sessions.make_room(&executor).await;
+    assert!(
+        !sessions.is_quiescent(),
+        "a starting process already owns a place"
+    );
+    drop(reserved);
+    assert!(
+        sessions.is_quiescent(),
+        "cancelled starts release their reservation"
+    );
+    let reserved = sessions.make_room(&executor).await;
+    let process = executor.spawn(&Spawn::program(SHELL)).await.unwrap();
+    sessions.open(reserved, process);
+    assert!(!sessions.is_quiescent(), "an open session prevents capture");
+    sessions.close_all(&executor).await;
+    assert!(sessions.is_quiescent());
+}

@@ -8,6 +8,7 @@ use std::{num::NonZeroU64, sync::Arc};
 
 use af_stream::{Budget, OwnedFrame};
 use af_wire::protocol::{StreamKind, Up};
+use garde::Validate as _;
 use tokio::{sync::watch, time::Instant};
 use tokio_util::sync::CancellationToken;
 
@@ -131,6 +132,12 @@ impl SessionSender {
             Up::Ping { .. } | Up::RenewBatch { .. } | Up::Ready { .. } | Up::AuthoringRenew { .. }
         );
         let frame = af_stream::encode(message, &self.budget, kind, &self.stop, deadline).await?;
+        if matches!(message, Up::TurnCheckpoint { .. }) {
+            af_wire::lease::TurnMessageSize {
+                bytes: frame.as_bytes().len(),
+            }
+            .validate()?;
+        }
         let message = Outbound { frame, deadline };
         if kind == StreamKind::Activity {
             return self.queues.activity(message);

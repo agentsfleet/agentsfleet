@@ -14,6 +14,7 @@ fn every_runner_history_value_serializes_as_the_spelling_postgres_stores() {
         (RunnerEventType::LeaseAcquired, "lease_acquired"),
         (RunnerEventType::LeaseReleased, "lease_released"),
         (RunnerEventType::RunnerCordoned, "runner_cordoned"),
+        (RunnerEventType::RunnerUncordoned, "runner_uncordoned"),
         (RunnerEventType::RunnerDraining, "runner_draining"),
         (RunnerEventType::RunnerDrained, "runner_drained"),
         (RunnerEventType::RunnerRevoked, "runner_revoked"),

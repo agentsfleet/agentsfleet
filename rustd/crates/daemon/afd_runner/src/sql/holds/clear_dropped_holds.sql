@@ -1,4 +1,4 @@
-UPDATE runner.fleet_slots
+UPDATE runner.slots
 SET hold_expires_at = NULL, updated_at = now()
 WHERE last_runner_id = $1
   AND hold_expires_at IS NOT NULL

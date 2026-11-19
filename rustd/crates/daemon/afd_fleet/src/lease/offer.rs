@@ -6,7 +6,7 @@ use jiff::Timestamp;
 use super::activity::Target;
 
 /// Inputs shared by fleet and authoring placement under one physical host limit.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct OfferRequest<'a> {
     /// Enrolled host receiving the offer.
     pub runner: &'a Uuid7,
@@ -16,6 +16,36 @@ pub struct OfferRequest<'a> {
     pub degraded: bool,
     /// Edge time used to mint durable identities.
     pub now: Timestamp,
+    /// A recovery drain keeps its position across bounded candidate pages.
+    pub recovery: Option<&'a mut RecoveryScan>,
+}
+
+/// Disposable progress through one physical session's recovery candidates.
+#[derive(Debug, Default)]
+pub struct RecoveryScan {
+    pub(super) after: Option<RecoveryKey>,
+    pub(super) deferred: bool,
+    /// Progress beyond a skipped prefix before retrying its older heads.
+    pub(super) claims_after_skip: usize,
+}
+
+#[derive(Debug)]
+pub(super) struct RecoveryKey {
+    pub(super) created: Timestamp,
+    pub(super) admission: Uuid7,
+}
+
+impl RecoveryScan {
+    /// Clear the previous attempt's outcome while retaining its position.
+    pub fn begin_attempt(&mut self) {
+        self.deferred = false;
+    }
+
+    /// The attempt reached the page ceiling and can resume after it.
+    #[must_use]
+    pub const fn deferred(&self) -> bool {
+        self.deferred
+    }
 }
 
 /// Metadata returned with the exact offer, without another lease-target query.

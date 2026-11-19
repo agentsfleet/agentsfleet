@@ -105,6 +105,9 @@ export const eventStream = (events: Parameters<StreamGetCallback>[0][]) =>
     cb: StreamGetCallback,
   ): Promise<void> => {
     for (const ev of events) {
-      if (cb(ev) === false) return;
+      const data = ev.data;
+      const frame = typeof data === "object" && data !== null && !("fencing_token" in data)
+        ? {...ev, data: {...data, fencing_token: "1"}} : ev;
+      if (cb(frame) === false) return;
     }
   };

@@ -3,7 +3,11 @@
 mod recovery;
 mod subscriptions;
 
-use crate::{Gateway, Result, registry::Registry, session::SessionHandle};
+use crate::{
+    Gateway, Result,
+    registry::Registry,
+    session::{OfferMode, OfferOutcome, SessionHandle},
+};
 use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
 use std::{collections::HashSet, sync::Arc};
@@ -18,6 +22,12 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
         notifications(
             &gateway.inner.registry,
             &gateway.inner.dependencies.wake,
+            gateway
+                .inner
+                .dependencies
+                .recovery
+                .max_concurrent_claims
+                .get(),
             stop.clone(),
             |runners| {
                 let (gateway, stop) = (&gateway, &stop);
@@ -35,28 +45,37 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
     Ok(())
 }
 
-/// What one probe says about a pass.
+/// One ordinary probe can skip every tenant runner with no eligible work.
 #[derive(Debug)]
 pub(crate) enum Probe {
-    /// No session can claim anything; the pass is skipped.
+    /// No session can claim pending work.
     Nothing,
-    /// Work waits. These tenant runners have none of it to take, because a
-    /// tenant runner claims only its tenant's work, so the pass skips them.
+    /// Work waits; these tenant runners cannot claim it.
     Waiting(HashSet<Uuid7>),
 }
 
-/// A wake for work no session can claim, such as a message to a fleet already
-/// running, would cost one discovery scan per ready session. One `pending` probe
-/// per pass answers it first, and names the tenant runners the waiting work
-/// cannot reach; a recovery generation has already probed and scans them all.
 async fn notifications<F: Future<Output = Result<Probe>>>(
     registry: &Registry,
     wake: &Wake,
+    claims: usize,
     stop: CancellationToken,
+    pending: impl FnMut(Vec<Uuid7>) -> F,
+) -> Result<()> {
+    tokio::try_join!(
+        ordinary_notifications(registry, wake, &stop, pending),
+        recovery::notifications(registry, wake, claims, &stop),
+    )?;
+    Ok(())
+}
+
+async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
+    registry: &Registry,
+    wake: &Wake,
+    stop: &CancellationToken,
     mut pending: impl FnMut(Vec<Uuid7>) -> F,
 ) -> Result<()> {
     let mut generations = wake.generations();
-    let mut observed = *generations.borrow_and_update();
+    let mut observed = generations.borrow_and_update().rings();
     loop {
         tokio::select! {
             biased;
@@ -65,17 +84,20 @@ async fn notifications<F: Future<Output = Result<Probe>>>(
                 if changed.is_err() { return Ok(()); }
             }
         }
-        let current = *generations.borrow_and_update();
-        let budget = current.wrapping_sub(observed).max(1);
+        let current = generations.borrow_and_update().rings();
+        let budget = current.wrapping_sub(observed);
         observed = current;
-        let mut idle = HashSet::new();
-        if wake.recovery().is_none() {
-            match pending(registry.runners()).await {
-                Ok(Probe::Waiting(runners)) => idle = runners,
-                Ok(Probe::Nothing) => continue,
-                Err(error) => Gateway::observe(&error, crate::Operation::Offer),
-            }
+        if budget == 0 {
+            continue;
         }
+        let idle = match pending(registry.runners()).await {
+            Ok(Probe::Waiting(runners)) => runners,
+            Ok(Probe::Nothing) => continue,
+            Err(error) => {
+                Gateway::observe(&error, crate::Operation::Offer);
+                HashSet::new()
+            }
+        };
         let sessions = registry.candidates(&wake.fleets(), &idle);
         tokio::select! {
             biased;
@@ -93,7 +115,7 @@ async fn notifications<F: Future<Output = Result<Probe>>>(
 async fn pass(sessions: Vec<Arc<SessionHandle>>, mut budget: u64) -> Result<()> {
     for session in sessions {
         while budget > 0 {
-            if !session.claim().await? {
+            if session.claim(OfferMode::Ordinary).await? != OfferOutcome::Issued {
                 break;
             }
             budget -= 1;

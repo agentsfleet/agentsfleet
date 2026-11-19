@@ -136,11 +136,8 @@ impl ControlPlane {
             .await
     }
 
-    pub(crate) async fn report(&self, bytes: &[u8]) -> Result<()> {
-        self.stream
-            .compute(Report::try_from(bytes)?)
-            .await
-            .map(drop)
+    pub(crate) async fn report(&self, bytes: &[u8]) -> Result<af_wire::report::ReportResponse> {
+        self.stream.compute(Report::try_from(bytes)?).await
     }
 
     pub(crate) async fn folds(

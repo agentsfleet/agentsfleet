@@ -15,7 +15,7 @@ use tokio::sync::watch;
 
 use crate::{
     capability::{capability_report, selftest},
-    client::{ControlPlane, Verb, endless},
+    client::{ControlPlane, Verb},
     egress::Egress,
     error::{ErrorKind, Result},
     halt::Halt,
@@ -121,7 +121,7 @@ impl<'a> Heartbeat<'a> {
         halt: &Halt,
     ) {
         let mut updates = self.plane.stream.assignments.clone();
-        let mut retries = endless();
+        let mut retries = self.plane.runtime.endless();
         let mut pause = Duration::ZERO;
         loop {
             tokio::select! {
@@ -158,7 +158,7 @@ impl<'a> Heartbeat<'a> {
             };
             match beaten {
                 Ok(policy) => {
-                    retries = endless();
+                    retries = self.plane.runtime.endless();
                     pause = policy.interval;
                     publish(assignment, policy, halt);
                 }

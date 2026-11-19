@@ -3,7 +3,6 @@
 -- write matches it, so a lapsed holder's late write changes nothing.
 CREATE TABLE fleet.obligations (
     id              UUID PRIMARY KEY,
-    CONSTRAINT ck_obligations_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     sequence        BIGINT GENERATED ALWAYS AS IDENTITY,
     fleet_id        UUID   NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     workspace_id    UUID   NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,

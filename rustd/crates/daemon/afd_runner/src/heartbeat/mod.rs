@@ -18,12 +18,10 @@
 
 use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_core::timing::RUNNER_OFFLINE_AFTER;
 use af_observability::producers;
 use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, SelftestReport};
 use garde::{Valid, Validate as _};
 use jiff::Timestamp;
-use jiff_sqlx::ToSqlx as _;
 use sqlx::{Executor as _, PgConnection};
 
 use crate::bounds;
@@ -69,7 +67,7 @@ pub struct Beat {
     pub release_holds: Vec<String>,
 }
 
-use crate::capacity::authority::{Authority, Decision};
+use crate::capacity::authority::{Authority, Decision, Refusal};
 use policy::PolicyRow;
 
 impl Runners {
@@ -98,8 +96,13 @@ impl Runners {
             Decision::Allowed(row) => row,
             Decision::Refused(_) => return Err(runner_vanished()),
         };
-        self.record_beat(&mut connection, runner, beat, held, now, row)
-            .await
+        match self
+            .record_beat(&mut connection, runner, beat, held, now, row)
+            .await?
+        {
+            Decision::Allowed(beat) => Ok(beat),
+            Decision::Refused(_) => Err(runner_vanished()),
+        }
     }
 
     /// Record liveness only after the same policy read proves this physical owner.
@@ -118,10 +121,8 @@ impl Runners {
             Decision::Allowed(row) => row,
             Decision::Refused(refusal) => return Ok(Decision::Refused(refusal)),
         };
-        Ok(Decision::Allowed(
-            self.record_beat(&mut connection, authority.runner(), beat, held, now, row)
-                .await?,
-        ))
+        self.record_beat(&mut connection, authority.runner(), beat, held, now, row)
+            .await
     }
 
     /// Recheck ownership and policy without pretending that a silent host sent a heartbeat.
@@ -158,7 +159,8 @@ impl Runners {
         held: Option<&Valid<HeldFleets<'_>>>,
         now: Timestamp,
         row: PolicyRow,
-    ) -> Result<Beat> {
+    ) -> Result<Decision<Beat>> {
+        let authority = row.authority.as_ref();
         let incoming = bounded_report(beat);
         let stored = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode()?;
@@ -168,49 +170,50 @@ impl Runners {
         // After the capability write, so a malformed verdict cannot cost the
         // beat its reconciliation.
         let reported = persist_selftest(connection, runner, beat.selftest.as_ref()).await;
-        self.bump_liveness(connection, runner, now).await;
-        let release_holds = holds::reconcile(connection, runner, held, beat.closing).await;
+        let valid = authority.is_some()
+            && !verdict.is_degraded()
+            && !beat.closing
+            && (beat.capability_report.is_none() || incoming.is_some())
+            && beat
+                .selftest
+                .as_ref()
+                .is_none_or(|report| bounds::accept(report).is_ok());
+        if self
+            .bump_liveness(
+                connection,
+                runner,
+                now,
+                cordon::Health {
+                    authority,
+                    valid,
+                    policy: &row.witness,
+                },
+            )
+            .await
+            == Some(false)
+        {
+            return Ok(Decision::Refused(Refusal::Superseded));
+        }
+        let release_holds = holds::reconcile(
+            connection,
+            runner,
+            held,
+            beat.closing,
+            self.heartbeat_interval(),
+        )
+        .await;
         // The gauge's only input. Liveness is a Postgres row a collection
         // callback cannot read — it is a network round trip, and the SDK
         // collects on a thread that must not make one — so the beat that
         // writes the row publishes the same instant for the gauge to serve.
         producers::fleet::runner::seen(runner.as_str(), now);
 
-        Ok(Beat {
+        Ok(Decision::Allowed(Beat {
             selftest_requested: row.selftest_requested && !reported,
             release_holds,
             assignment: row.assignment,
             verdict,
-        })
-    }
-
-    /// Bumps liveness, emitting a transition event only on a real transition.
-    ///
-    /// Falls back to the liveness-only statement when the event identifier
-    /// cannot be minted or the combined statement is refused: a beat that
-    /// writes liveness without its audit row is a quieter loss than one that
-    /// writes nothing, because the fleet read stays true.
-    async fn bump_liveness(&self, connection: &mut PgConnection, runner: &Uuid7, now: Timestamp) {
-        let landed = match self.event_id(now) {
-            Ok(event_id) => {
-                let with_event = sqlx::query(sql::runner::HEARTBEAT_WITH_TRANSITION_EVENT)
-                    .bind(runner)
-                    .bind(event_id)
-                    .bind(sql::event_type::RUNNER_ONLINE)
-                    .bind(sql::meta::LAST_SEEN_AT)
-                    .bind(sql::NEVER_SEEN.to_sqlx())
-                    .bind(RUNNER_OFFLINE_AFTER);
-                best_effort(with_event, connection, EVENT_LIVENESS_WRITE, runner).await
-            }
-            Err(error) => {
-                report(EVENT_LIVENESS_WRITE, runner, &error);
-                false
-            }
-        };
-        if !landed {
-            let touch = sqlx::query(sql::runner::TOUCH_RUNNER_LAST_SEEN).bind(runner);
-            best_effort(touch, connection, EVENT_LIVENESS_WRITE, runner).await;
-        }
+        }))
     }
 
     /// Draws the identifier a transition event is written under.
@@ -313,6 +316,7 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
     };
 }
 
+mod cordon;
 pub mod holds;
 mod policy;
 mod verdict;

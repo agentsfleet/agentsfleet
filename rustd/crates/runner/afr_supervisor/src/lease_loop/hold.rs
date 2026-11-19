@@ -171,6 +171,13 @@ impl LeaseRun<'_> {
             }
             return self.kill(sandbox).await;
         }
+        let Ok(_reservation) = self
+            .reserve_terminal_capture(sandbox.as_ref(), recoverable)
+            .await
+        else {
+            super::recovery::capture_unavailable(ending);
+            return self.kill(sandbox).await;
+        };
         let lease_id = self.ids.lease.as_str();
         let event = EVENT_FREEZE_STARTED;
         tracing::debug!(lease_id, event);
@@ -192,9 +199,7 @@ impl LeaseRun<'_> {
         tracing::debug!(lease_id, event);
         self.capture_frozen(sandbox.as_ref(), recovery.as_ref(), ending)
             .await;
-        // Durable tasks always restore a fresh workspace from the native
-        // checkpoint. Keeping their old process tree cannot accelerate that
-        // path and must not expose it to a later ordinary lease.
+        // Durable tasks restore a fresh workspace under their native checkpoint.
         if durable || !ending.processed() {
             return self.kill(sandbox).await;
         }
@@ -322,27 +327,24 @@ fn silent() -> afr_executor::Error {
 pub(super) fn mark_reused(reused: bool) {
     tracing::Span::current().record(ATTR_SANDBOX_REUSED, reused);
 }
-
 #[cfg(test)]
-#[path = "tests/holds/reuse.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "tests/holds/revive.rs"]
-mod revive_tests;
-
-#[cfg(test)]
-#[path = "tests/holds/release.rs"]
-mod unheld_tests;
-
+#[path = "tests/holds/acknowledgement.rs"]
+mod acknowledgement_tests;
 #[cfg(test)]
 #[path = "tests/holds/reassignment.rs"]
 mod reassign_tests;
-
 #[cfg(test)]
 #[path = "tests/holds/refill.rs"]
 mod refill_tests;
-
 #[cfg(test)]
 #[path = "tests/release.rs"]
 mod release_tests;
+#[cfg(test)]
+#[path = "tests/holds/revive.rs"]
+mod revive_tests;
+#[cfg(test)]
+#[path = "tests/holds/reuse.rs"]
+mod tests;
+#[cfg(test)]
+#[path = "tests/holds/release.rs"]
+mod unheld_tests;

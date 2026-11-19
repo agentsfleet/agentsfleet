@@ -30,11 +30,15 @@ mod knobs;
 mod otlp;
 mod read;
 pub mod runner_listener;
+pub(crate) mod runtime;
+#[cfg(test)]
+mod runtime_tests;
 #[cfg(test)]
 mod stream_ceiling_tests;
 
 pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
+pub use self::runtime::RuntimeSettings;
 pub use af_otlp::{
     OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
 };
@@ -69,9 +73,17 @@ pub use crate::error::{Fault, Refusal};
 /// that gets one has nothing to retry: the process cannot serve, and the
 /// message is what the operator needs.
 pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> {
+    crate::config::ConfigBuilder::new(env).build()?.preflight()
+}
+
+pub(crate) fn resolved<E: EnvSource + ?Sized>(
+    env: &E,
+    api_pool: &garde::Valid<afd_db::config::PoolSettings>,
+    runtime: RuntimeSettings,
+) -> Result<BootConfig, Refusal> {
     let mut faults = Vec::new();
-    let readings = read_every_knob(env, &mut faults);
-    readings.admit(env, faults)
+    let readings = read_every_knob(env, &mut faults, api_pool, &runtime);
+    readings.admit(env, faults, runtime)
 }
 
 /// Every boot knob as read, each still holding its own absence.
@@ -100,34 +112,35 @@ struct Readings {
 
 /// Reads every knob in fault order, pushing a fault for each one that is
 /// unset where required or set and unusable.
-fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Readings {
-    let (api_pool, bus) = datastores(env, faults);
+fn read_every_knob<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+    budget: &garde::Valid<afd_db::config::PoolSettings>,
+    runtime: &RuntimeSettings,
+) -> Readings {
+    let (api_pool, bus) = datastores(env, faults, budget);
     let kek = read_kek(env, faults);
     let session_code_pepper = session_code_pepper(env, faults);
-    // Both are optional-with-a-default and resolve identically, so the shape is
-    // named once rather than written twice.
     let optional_url =
         |knob: &str, fallback: &str| optional(env, knob).unwrap_or_else(|| fallback.into());
-    // Set and unparseable is a typo, and a typo here would otherwise surface as
-    // a dashboard that silently refuses every stream — the furthest possible
-    // point from the mistake. Unset is the default, which is most deployments.
     let sse_max_streams = read::sse_max_streams(env, faults);
     let runner_wake = read::runner_wake(env, faults);
     let frame_memory = read::frame_memory(env, faults);
     let runner_listener = runner_listener::read(env, faults);
     let posthog = posthog(env);
-    // Absent is a deployment that exports nothing, which is most of them and
-    // is not a fault. What IS a fault is an endpoint with a protocol, timeout
-    // or header list this build cannot use — those are typos that would
-    // otherwise surface as a collector that never receives anything.
-    let otlp = otlp::otlp(env, faults);
+    let otlp = otlp::otlp(
+        env,
+        faults,
+        runtime
+            .operations
+            .telemetry
+            .export_timeout_seconds
+            .map(std::time::Duration::from_secs),
+    );
     let slack_api_url = read::slack_api_url(env, faults);
     let dashboard = read::dashboard(&optional_url(APP_URL_KNOB, APP_URL_DEFAULT), faults);
     let deployment = read::deployment(optional_url(API_URL_KNOB, API_URL_DEFAULT), faults);
     let identity = identity(env, faults);
-    // Answers `None` for BOTH "configured nothing" and "configured badly", and
-    // only the second pushed a fault — which is why `Readings::admit` reads the
-    // fault list rather than this value to decide whether boot proceeds.
     let platform_admin_workspace = read::platform_admin_workspace(env, faults);
     let checkpoint_storage = checkpoint::read(env, faults, platform_admin_workspace.as_ref());
     Readings {
@@ -155,6 +168,7 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
 fn datastores<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
+    budget: &garde::Valid<afd_db::config::PoolSettings>,
 ) -> (Option<PoolConfig>, Option<afd_bus::nats::Config>) {
     let database_knob = DbRole::Api.url_knob();
     let api_pool = classify(
@@ -162,7 +176,7 @@ fn datastores<E: EnvSource + ?Sized>(
         is_set(env, database_knob),
         database_knob,
         WHY_DATABASE,
-        PoolConfig::resolve(env, DbRole::Api),
+        PoolConfig::configured(env, DbRole::Api, budget),
     );
 
     let bus = classify(
@@ -204,7 +218,9 @@ impl Readings {
         self,
         env: &E,
         faults: Vec<Fault>,
+        runtime: RuntimeSettings,
     ) -> Result<BootConfig, Refusal> {
+        let telemetry = runtime.operations.telemetry;
         match self {
             Self {
                 api_pool: Some(api_pool),
@@ -224,6 +240,7 @@ impl Readings {
                 platform_admin_workspace,
                 checkpoint_storage,
             } if faults.is_empty() => Ok(BootConfig {
+                runtime,
                 api_pool,
                 bus,
                 kek,
@@ -240,7 +257,7 @@ impl Readings {
                 frame_memory,
                 runner_listener,
                 posthog,
-                otlp,
+                otlp: otlp.map(|config| config.with_pipeline(&telemetry)),
                 #[cfg(feature = "test-util")]
                 exchanger: None,
                 #[cfg(feature = "test-util")]

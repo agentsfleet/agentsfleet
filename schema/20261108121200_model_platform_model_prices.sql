@@ -3,7 +3,6 @@
 -- rate has no reported lifetime and is distinct from the 5-minute and 1-hour rates.
 CREATE TABLE model.platform_model_prices (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_platform_model_prices_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     platform_model_id UUID NOT NULL REFERENCES model.platform_models(id) ON DELETE CASCADE,
     effective_from TIMESTAMPTZ(3) NOT NULL,
     effective_until TIMESTAMPTZ(3),

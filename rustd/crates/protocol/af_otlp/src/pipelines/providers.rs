@@ -16,17 +16,16 @@ use af_observability::{CountingExporter, CountingLogExporter, LogDrops, SpanDrop
 use opentelemetry_otlp::{WithExportConfig as _, WithHttpConfig as _};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::error::OTelSdkResult;
-use opentelemetry_sdk::logs::SdkLoggerProvider;
+use opentelemetry_sdk::logs::{
+    BatchConfigBuilder as LogBatchConfigBuilder, BatchLogProcessor, SdkLoggerProvider,
+};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 use opentelemetry_sdk::trace::{
     BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider, ShouldSample, Span, SpanData,
     SpanProcessor,
 };
 
-use super::{
-    COLLECT_INTERVAL, LOGS_PATH, METRICS_PATH, SPAN_BATCH, SPAN_QUEUE, SPAN_SEND_EVERY, SpanEnd,
-    TRACES_PATH,
-};
+use super::{LOGS_PATH, METRICS_PATH, SpanEnd, TRACES_PATH};
 use crate::config::OtlpConfig;
 use crate::error::Result;
 
@@ -89,9 +88,11 @@ pub(super) fn tracer(
     let batch = BatchSpanProcessor::builder(spans)
         .with_batch_config(
             BatchConfigBuilder::default()
-                .with_max_queue_size(SPAN_QUEUE)
-                .with_max_export_batch_size(SPAN_BATCH)
-                .with_scheduled_delay(SPAN_SEND_EVERY)
+                .with_max_queue_size(config.pipeline().trace_queue_capacity)
+                .with_max_export_batch_size(config.pipeline().trace_batch_size)
+                .with_scheduled_delay(Duration::from_secs(
+                    config.pipeline().trace_export_interval_seconds,
+                ))
                 .build(),
         )
         .build();
@@ -131,7 +132,19 @@ pub(super) fn logger(
     let records_lost = logs.drops();
     let logger = SdkLoggerProvider::builder()
         .with_resource(resource.clone())
-        .with_batch_exporter(logs)
+        .with_log_processor(
+            BatchLogProcessor::builder(logs)
+                .with_batch_config(
+                    LogBatchConfigBuilder::default()
+                        .with_max_queue_size(config.pipeline().log_queue_capacity)
+                        .with_max_export_batch_size(config.pipeline().log_batch_size)
+                        .with_scheduled_delay(Duration::from_secs(
+                            config.pipeline().log_export_interval_seconds,
+                        ))
+                        .build(),
+                )
+                .build(),
+        )
         .build();
     Ok((Some(logger), records_lost))
 }
@@ -159,7 +172,9 @@ pub(super) fn meter_provider(
         .with_resource(resource.clone())
         .with_reader(
             PeriodicReader::builder(exporter)
-                .with_interval(COLLECT_INTERVAL)
+                .with_interval(Duration::from_secs(
+                    config.pipeline().metrics_export_interval_seconds,
+                ))
                 .build(),
         )
         .with_view(series_ceilings(registry)?)

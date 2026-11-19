@@ -31,6 +31,16 @@ async fn test_a_prepared_sandbox_freezes_and_thaws_through_its_lease_cgroup() {
 
     fs::write(lease_cgroup.join(EVENTS), "populated 1\nfrozen 1\n").unwrap();
     let frozen = sandbox.freeze().await;
+    fs::write(lease_cgroup.join("tenant").join(EVENTS), "populated 1\n").unwrap();
+    assert!(
+        !sandbox.recovery_quiescent().await.unwrap(),
+        "a frozen detached process still owns files"
+    );
+    fs::write(lease_cgroup.join("tenant").join(EVENTS), "populated 0\n").unwrap();
+    assert!(
+        sandbox.recovery_quiescent().await.unwrap(),
+        "the resident executor alone is allowed"
+    );
     let asked_to_freeze = fs::read_to_string(lease_cgroup.join(FREEZE)).unwrap();
     fs::write(lease_cgroup.join(EVENTS), "populated 1\nfrozen 0\n").unwrap();
     let thawed = sandbox.thaw().await;

@@ -1,6 +1,6 @@
 //! The task that owns every held sandbox, and the one way a hold ends.
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use af_core::clock::{self, Clock};
 use af_core::id::Uuid7;
@@ -38,7 +38,7 @@ pub(super) struct Keeper {
     clock: Arc<dyn Clock>,
     held: Vec<Entry>,
     workers: usize,
-    busy: usize,
+    busy: BTreeMap<Uuid7, Option<Uuid7>>,
     /// Set once the runner takes no new lease; nothing is held after.
     closed: bool,
     /// Every teardown in flight, so shutdown can wait for each one.
@@ -52,7 +52,7 @@ impl Keeper {
             clock,
             held: Vec::new(),
             workers: 0,
-            busy: 0,
+            busy: BTreeMap::new(),
             closed: false,
             destroying: JoinSet::new(),
             saturated,
@@ -94,16 +94,24 @@ impl Keeper {
                 }
                 Request::Release { fleet, reason } => self.release(&fleet, reason),
                 Request::Supersede { lease } => self.supersede(&lease),
+                Request::Accepted { lease, until } => self.accept(&lease, until),
                 Request::Discard {
                     fleet,
                     sandbox,
                     reason,
                 } => self.destroy(&fleet, sandbox, reason),
-                Request::Occupy { fleet } => self.occupy(&fleet),
-                Request::Vacate => self.busy = self.busy.saturating_sub(1),
+                Request::Occupy { occupant } => {
+                    let (lease, fleet) = occupant.parts();
+                    self.busy.insert(lease, fleet);
+                    self.cap(self.room(), Release::Saturated);
+                }
+                Request::Vacate { lease } => {
+                    self.busy.remove(&lease);
+                    self.cap(self.room(), Release::Capped);
+                }
                 Request::Resize { workers } => {
                     self.workers = workers;
-                    self.cap(workers);
+                    self.cap(self.room(), Release::Capped);
                 }
                 Request::Fleets { reply } => {
                     let fleets = self.held.iter().map(|entry| entry.key.fleet.clone());
@@ -148,11 +156,19 @@ impl Keeper {
             let stale = self.held.remove(at);
             self.retire(stale, Release::Superseded);
         }
-        let Some(room) = self.workers.checked_sub(1) else {
+        // A successful park consumes this lease's busy reservation atomically.
+        // Its guard may still be alive while the report awaits acknowledgement.
+        let transfers = self.busy.get(&lease).and_then(Option::as_ref) == Some(&key.fleet);
+        let busy = self.busy.len() - usize::from(transfers);
+        let room = self.workers.saturating_sub(busy).saturating_sub(1);
+        if room == 0 {
             released(&key.fleet, Release::Capped);
             return Parked::Refused(sandbox);
-        };
-        self.cap(room);
+        }
+        if transfers {
+            self.busy.remove(&lease);
+        }
+        self.cap(room - 1, Release::Capped);
         let since = self.clock.now();
         let until = clock::after(since, SANDBOX_HOLD_IDLE);
         let lease_id = lease.as_str();
@@ -170,18 +186,10 @@ impl Keeper {
         Parked::Held(until)
     }
 
-    /// Counts a busy worker; the one that leaves none free releases every
-    /// hold but its own fleet's, and says so at once.
-    fn occupy(&mut self, fleet: &Uuid7) {
-        self.busy += 1;
-        if self.busy < self.workers {
-            return;
-        }
-        let before = self.held.len();
-        self.retire_where(|entry| entry.key.fleet != *fleet, Release::Saturated);
-        if self.held.len() < before {
-            self.saturated.notify_one();
-        }
+    fn room(&self) -> usize {
+        self.workers
+            .saturating_sub(self.busy.len())
+            .saturating_sub(1)
     }
 
     fn release(&mut self, fleet: &Uuid7, reason: Release) {
@@ -200,17 +208,46 @@ impl Keeper {
         }
     }
 
+    fn accept(&mut self, lease: &Uuid7, until: Timestamp) {
+        if let Some(entry) = self.held.iter_mut().find(|entry| entry.lease == *lease)
+            && until < entry.until
+        {
+            entry.until = until;
+        }
+        self.expire();
+    }
+
     fn expire(&mut self) {
         let now = self.clock.now();
         self.retire_where(|entry| entry.until <= now, Release::Expired);
     }
 
-    /// Releases the oldest holds until at most `keep` remain.
-    fn cap(&mut self, keep: usize) {
-        let over = self.held.len().saturating_sub(keep);
-        let kept = self.held.split_off(over);
-        for entry in std::mem::replace(&mut self.held, kept) {
-            self.retire(entry, Release::Capped);
+    /// A hold transferring into a busy fleet is already charged by that worker.
+    fn cap(&mut self, keep: usize, reason: Release) {
+        let busy = &self.busy;
+        let protected = |entry: &Entry| {
+            busy.values()
+                .any(|fleet| fleet.as_ref() == Some(&entry.key.fleet))
+        };
+        let mut over = self
+            .held
+            .iter()
+            .filter(|entry| !protected(entry))
+            .count()
+            .saturating_sub(keep);
+        let mut retired = Vec::new();
+        let mut kept = Vec::new();
+        for entry in std::mem::take(&mut self.held) {
+            if over > 0 && !protected(&entry) {
+                over -= 1;
+                retired.push(entry);
+            } else {
+                kept.push(entry);
+            }
+        }
+        self.held = kept;
+        for entry in retired {
+            self.retire(entry, reason);
         }
     }
 
@@ -231,6 +268,9 @@ impl Keeper {
     /// Logs and counts the release, then tears the sandbox down off this task.
     fn destroy(&mut self, fleet: &Uuid7, sandbox: Box<dyn Sandbox>, reason: Release) {
         released(fleet, reason);
+        if !self.closed {
+            self.saturated.notify_one();
+        }
         let fleet = fleet.clone();
         self.destroying
             .spawn(async move { tear_down(&fleet, sandbox).await });

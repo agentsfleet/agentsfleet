@@ -192,6 +192,19 @@ pub enum Up<
         #[garde(dive)]
         request: FoldRequest,
     },
+    /// Event-owned recovery on the current ordinary lease.
+    TurnCheckpoint {
+        /// Correlates this transmission, independently of semantic operation identity.
+        #[garde(skip)]
+        request_id: NonZeroU64,
+        /// Current lease; the daemon derives every storage scope from it.
+        #[serde(borrow)]
+        #[garde(length(bytes, min = 36, max = 36))]
+        lease_id: Cow<'a, str>,
+        /// Bounded command retained unchanged across transmission retries.
+        #[garde(dive)]
+        request: Cow<'a, crate::lease::TurnCheckpointCommand>,
+    },
 }
 
 impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
@@ -199,7 +212,9 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
     #[must_use]
     pub const fn stream_kind(&self) -> StreamKind {
         match self {
-            Self::Report { .. } | Self::AuthoringReport { .. } => StreamKind::Reports,
+            Self::Report { .. } | Self::AuthoringReport { .. } | Self::TurnCheckpoint { .. } => {
+                StreamKind::Reports
+            }
             Self::Activity { .. } => StreamKind::Activity,
             Self::Folds { .. } | Self::AuthoringModel { .. } | Self::AuthoringActivity { .. } => {
                 StreamKind::Work
@@ -228,6 +243,7 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
             | Self::AuthoringActivity { request_id, .. }
             | Self::AuthoringRenew { request_id, .. }
             | Self::AuthoringReport { request_id, .. }
+            | Self::TurnCheckpoint { request_id, .. }
             | Self::Folds { request_id, .. } => Some(*request_id),
             Self::Ready { .. } | Self::Activity { .. } => None,
         }

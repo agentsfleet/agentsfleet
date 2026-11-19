@@ -24,7 +24,7 @@ use afd_runner::capacity::authority::{Authority, Prepared};
 use afd_sse::StreamPermit;
 use parking_lot::Mutex;
 use tokio::{
-    sync::{Notify, mpsc, oneshot},
+    sync::{Notify, mpsc},
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
@@ -33,6 +33,7 @@ use crate::{ConnectionContext, Gateway};
 
 pub(crate) use io::{StreamAttachment, StreamAttachmentSender};
 use io::{StreamIo, StreamWriters};
+pub(crate) use offers::{ClaimRequest, OfferMode, OfferOutcome};
 
 use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 
@@ -50,9 +51,16 @@ pub(crate) struct SchedulingState {
     pub(crate) ready_revision: Option<NonZeroU64>,
     pub(crate) held: Vec<Uuid7>,
     pub(crate) last_offer: Instant,
+    pub(crate) recovery_pending: Option<afd_bus::wake::Recovery>,
 }
 
 impl SchedulingState {
+    fn recovered(&mut self, observed: Option<afd_bus::wake::Recovery>) {
+        if self.recovery_pending == observed {
+            self.recovery_pending = None;
+        }
+    }
+
     fn availability(
         &mut self,
         credits: usize,
@@ -104,7 +112,8 @@ pub(crate) struct SessionHandle {
     pub(crate) liveness: liveness::Liveness,
     pub(crate) superseded: CancellationToken,
     pub(crate) offers: Notify,
-    pub(crate) claims: mpsc::Sender<oneshot::Sender<bool>>,
+    pub(crate) claims: mpsc::Sender<ClaimRequest>,
+    pub(crate) recovery_scan: Mutex<afd_fleet::lease::RecoveryScan>,
     pub(crate) rechecks: Notify,
     pub(crate) commands: mpsc::Sender<afd_bus::Command>,
 }
@@ -189,6 +198,7 @@ pub(crate) struct SessionServices {
     cache: cache::LeaseCache,
     output: StreamWriters,
     accepted: AcceptedKinds,
+    checkpoint_verifications: tokio::sync::Semaphore,
     /// Renewal frames this session has answered, for
     /// [`afd_fleet::lease::renew::funds_due`]'s cadence.
     renewal_ticks: std::sync::atomic::AtomicU64,
@@ -214,7 +224,7 @@ impl SessionHandle {
     pub(crate) fn fixture_with_claims(
         runner: Uuid7,
         connection: Uuid7,
-    ) -> (Arc<Self>, mpsc::Receiver<oneshot::Sender<bool>>) {
+    ) -> (Arc<Self>, mpsc::Receiver<ClaimRequest>) {
         let (commands, _) = mpsc::channel(1);
         let (claims, requests) = mpsc::channel(1);
         let session = Arc::new(Self {
@@ -229,6 +239,7 @@ impl SessionHandle {
                 ready_revision: None,
                 held: Vec::new(),
                 last_offer: Instant::now(),
+                recovery_pending: None,
             }),
             stop: CancellationToken::new(),
             drain: CancellationToken::new(),
@@ -236,6 +247,7 @@ impl SessionHandle {
             superseded: CancellationToken::new(),
             offers: Notify::new(),
             claims,
+            recovery_scan: Mutex::default(),
             rechecks: Notify::new(),
             commands,
         });

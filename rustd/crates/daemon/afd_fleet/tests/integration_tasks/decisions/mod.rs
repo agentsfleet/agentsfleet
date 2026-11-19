@@ -10,7 +10,7 @@ mod checkpoint_custody;
 mod checkpoint_manifest;
 mod checkpoint_remote;
 mod checkpoint_retention;
-mod checkpoint_server;
+pub(crate) mod checkpoint_server;
 mod concurrency;
 mod configured;
 mod dependency_completions;

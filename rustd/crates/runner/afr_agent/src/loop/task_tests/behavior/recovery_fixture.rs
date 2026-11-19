@@ -176,9 +176,11 @@ pub(super) async fn execute(
     };
     engine
         .run(AgentRun {
+            recovery: None,
             lease: &lease,
             prepared_task: Some(&prepared),
             recovered_task: recovered,
+            recovered_turn: None,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,

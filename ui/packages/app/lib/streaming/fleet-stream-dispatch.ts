@@ -13,7 +13,7 @@ import {
   watchRunningRows,
   type ApplyEvents,
 } from "./fleet-stream-reply-registry";
-import { TERMINAL_STATUSES } from "./fleet-stream-row";
+import { acceptAttemptFrame } from "./fleet-stream-attempt";
 import { patchSnapshot, patchGateFacts, setEvents } from "./fleet-stream-snapshot";
 
 // Where a live frame goes: held while a send here awaits its 202
@@ -25,11 +25,6 @@ import { patchSnapshot, patchGateFacts, setEvents } from "./fleet-stream-snapsho
 // entry is adopted, so a frame allocates neither.
 export type LiveEntry = Entry & { apply: ApplyEvents; isCurrent: () => boolean };
 
-const RUNNER_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
-  FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED,
-  FRAME_KIND.TOOL_CALL_PROGRESS, FRAME_KIND.TOOL_CALL_COMPLETED,
-  FRAME_KIND.CONTEXT_PROGRESS, FRAME_KIND.TASK_DECISION_STARTED, FRAME_KIND.TASK_DECISION_COMPLETED, FRAME_KIND.TASK_TRANSFER_PROGRESS,
-]);
 const TaskChange = z.object({task_id: z.uuidv7(), resource_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)});
 
 // Reads back what the stream missed. A burst of gap signals during a walk
@@ -79,10 +74,7 @@ function applyFrame(entry: LiveEntry, fleetId: string, frame: LiveFrame): void {
     recoverGap(entry, fleetId);
     return;
   }
-  // Best-effort activity can arrive after the report's durable close. Keep
-  // every late runner frame from mutating the settled answer or tool history.
-  if ("event_id" in frame && RUNNER_ACTIVITY_KINDS.has(frame.kind)
-    && entry.snapshot.events.some((event) => event.id === frame.event_id && TERMINAL_STATUSES.has(event.status))) return;
+  if (!acceptAttemptFrame(entry, frame, entry.apply)) return;
   if (dispatchReplyFrame(entry, fleetId, frame, entry.apply, entry.isCurrent)) return;
   // A completion carries the fleet's status and pending count beside its row;
   // a gate frame carries the count alone and touches no row.

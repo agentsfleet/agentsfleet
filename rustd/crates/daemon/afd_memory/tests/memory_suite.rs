@@ -15,3 +15,6 @@ mod integration_refusal;
 mod integration_shared;
 #[path = "integration_store.rs"]
 mod integration_store;
+
+#[path = "integration_capture_concurrency.rs"]
+mod integration_capture_concurrency;

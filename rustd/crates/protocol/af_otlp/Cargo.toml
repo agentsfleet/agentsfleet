@@ -25,6 +25,8 @@ af_observability.workspace = true
 # The endpoint is graded as a URI here, so the refusal names the knob rather
 # than echoing the value the exporter would have printed.
 http.workspace = true
+garde.workspace = true
+serde.workspace = true
 # The API types the providers are installed as.
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true

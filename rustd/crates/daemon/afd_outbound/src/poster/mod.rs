@@ -21,8 +21,6 @@ use afd_connector::Provider;
 use backon::Retryable as _;
 use tokio_util::sync::CancellationToken;
 
-use crate::retry::delivery_schedule;
-
 /// What one delivery attempt was worth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
@@ -156,6 +154,24 @@ pub async fn deliver_with_retry<S: Deliver>(
     token: &CancellationToken,
     opening: Attempt,
 ) -> Verdict {
+    deliver_with_policy(
+        posters,
+        job,
+        token,
+        opening,
+        crate::retry::RetryPolicy::DEFAULT,
+    )
+    .await
+}
+
+/// Delivers with the deployment's checked inline retry budget.
+pub async fn deliver_with_policy<S: Deliver>(
+    posters: &Posters<S>,
+    job: &Outgoing,
+    token: &CancellationToken,
+    opening: Attempt,
+    policy: crate::retry::RetryPolicy,
+) -> Verdict {
     let tried = AtomicBool::new(false);
     let attempt = async || {
         let this = if tried.swap(true, Ordering::Relaxed) {
@@ -173,7 +189,7 @@ pub async fn deliver_with_retry<S: Deliver>(
     };
 
     attempt
-        .retry(delivery_schedule())
+        .retry(policy.schedule())
         .when(|verdict: &Verdict| *verdict == Verdict::Retryable && !token.is_cancelled())
         .notify(|verdict: &Verdict, delay: std::time::Duration| {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.

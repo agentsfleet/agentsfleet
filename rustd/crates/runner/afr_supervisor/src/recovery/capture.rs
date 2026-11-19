@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 #[derive(Debug)]
 pub(crate) struct Capture<'a> {
     pub(crate) plane: &'a ControlPlane,
+    pub(crate) transfers: &'a Transfers,
     pub(crate) lease: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
@@ -101,6 +102,49 @@ impl Capture<'_> {
         if self.stop.is_cancelled() {
             return Err(error::config("checkpoint capture was cancelled"));
         }
+        let (task, plan) = self.plan(activity, &catalog).await?;
+        if plan.mode != self.mode
+            || plan.format_version != CHECKPOINT_FORMAT
+            || plan.toolbox_digest != self.toolbox
+        {
+            return Err(error::config(
+                "checkpoint plan differs from capture compatibility",
+            ));
+        }
+        if plan.manifest_root.is_some() && self.mode == CheckpointMode::RetainBase {
+            return Ok(plan);
+        }
+        let mut session = Session {
+            plane: self.plane,
+            lease: self.lease,
+            workspace: self.workspace,
+            fence: self.fence,
+            task,
+            plan,
+            activity_id: activity.to_owned(),
+            progress,
+            transfers: self.transfers.clone(),
+            stop: self.stop,
+        };
+        let ids = session.capture_chunks(&catalog).await?;
+        session
+            .progress(
+                Operation::Capture,
+                Phase::Verifying,
+                Some(
+                    u32::try_from(catalog.chunks.len())
+                        .map_err(|source| error::boundary("checkpoint count overflow", source))?,
+                ),
+            )
+            .await;
+        session.commit_catalog(&catalog, &ids, self.task).await
+    }
+
+    async fn plan(
+        &self,
+        activity: &str,
+        catalog: &Catalog,
+    ) -> Result<(DecisionTaskVersion, CheckpointPlan)> {
         let task = DecisionTaskVersion {
             task_id: self.task.task_id.to_string(),
             generation: self.task.generation,
@@ -132,49 +176,19 @@ impl Capture<'_> {
                     },
                     format_version: CHECKPOINT_FORMAT,
                     toolbox_digest: self.toolbox.to_owned(),
-                    page_count: u32::try_from(catalog.pages(None)?.len())
-                        .map_err(|source| error::boundary("checkpoint count overflow", source))?,
+                    page_count: u32::try_from(
+                        catalog
+                            .pages(None, af_wire::task::CHECKPOINT_PAGE_BYTES)?
+                            .len(),
+                    )
+                    .map_err(|source| error::boundary("checkpoint count overflow", source))?,
                     upload_budget_bytes: bytes.min(allowance),
                     logical_bytes: catalog.logical_bytes,
                     entry_count: catalog.entry_count,
                 },
             )
             .await?;
-        if plan.mode != self.mode
-            || plan.format_version != CHECKPOINT_FORMAT
-            || plan.toolbox_digest != self.toolbox
-        {
-            return Err(error::config(
-                "checkpoint plan differs from capture compatibility",
-            ));
-        }
-        if plan.manifest_root.is_some() && self.mode == CheckpointMode::RetainBase {
-            return Ok(plan);
-        }
-        let mut session = Session {
-            plane: self.plane,
-            lease: self.lease,
-            workspace: self.workspace,
-            fence: self.fence,
-            task,
-            plan,
-            activity_id: activity.to_owned(),
-            progress,
-            transfers: Transfers::new()?,
-            stop: self.stop,
-        };
-        let ids = session.capture_chunks(&catalog).await?;
-        session
-            .progress(
-                Operation::Capture,
-                Phase::Verifying,
-                Some(
-                    u32::try_from(catalog.chunks.len())
-                        .map_err(|source| error::boundary("checkpoint count overflow", source))?,
-                ),
-            )
-            .await;
-        session.commit_catalog(&catalog, &ids, self.task).await
+        Ok((task, plan))
     }
 }
 
@@ -214,17 +228,17 @@ impl Session<'_> {
             for ((key, chunk), object) in batch.iter().zip(objects) {
                 ids.insert((*key).clone(), object.object_id.clone());
                 if matches!(object.status, CheckpointObjectStatus::Busy) {
-                    return Err(error::config("checkpoint chunk has another live writer"));
+                    return Err(error::capture_unavailable(
+                        "checkpoint chunk has another live writer",
+                    ));
                 }
                 if !matches!(object.status, CheckpointObjectStatus::Reused) {
-                    let bytes = object.plaintext.size + crate::byte_count(af_crypto::TAG_LEN);
-                    if !pending.is_empty() && pending_bytes + bytes > super::UPLOAD_BATCH_BYTES {
+                    let bytes = super::uploads::ciphertext_size(&object);
+                    if !pending.is_empty() && pending_bytes + bytes > super::uploads::BATCH_BYTES {
                         self.upload_batch(std::mem::take(&mut pending)).await?;
                         pending_bytes = 0;
                     }
-                    let chunk = (**chunk).clone();
-                    let plaintext = tokio::task::spawn_blocking(move || chunk.read()).await??;
-                    pending.push((object, plaintext));
+                    pending.push((object, (**chunk).clone()));
                     pending_bytes += bytes;
                 }
             }
@@ -241,40 +255,14 @@ impl Session<'_> {
         ids: &BTreeMap<String, String>,
         task: &TaskContext<'_>,
     ) -> Result<CheckpointPlan> {
-        let pages = catalog.pages(Some(ids))?;
+        let pages = catalog.pages(Some(ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
         if pages.len() != self.plan.page_ids.len() {
             return Err(error::config(
                 "checkpoint page layout changed after registration",
             ));
         }
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
-        let mut digests = Vec::with_capacity(pages.len());
-        for (page_id, contents) in self.plan.page_ids.clone().into_iter().zip(pages) {
-            self.renew().await?;
-            let digest =
-                af_core::etag::sha256_hex(&serde_json::to_vec(&contents).map_err(error::encode)?);
-            let accepted = self
-                .plane
-                .task_checkpoint_page_write(
-                    self.lease,
-                    &checkpoint,
-                    &Uuid7::parse(&page_id)?,
-                    &CheckpointPageInput {
-                        fencing_token: self.fence,
-                        task: self.task.clone(),
-                        pin_id: self.plan.pin.id.clone(),
-                        digest: digest.clone(),
-                        contents,
-                    },
-                )
-                .await?;
-            if af_core::etag::sha256_hex(&serde_json::to_vec(&accepted).map_err(error::encode)?)
-                != digest
-            {
-                return Err(error::config("checkpoint page acknowledgement differs"));
-            }
-            digests.push((page_id, digest));
-        }
+        let digests = self.write_pages(&checkpoint, pages).await?;
         self.renew().await?;
         let input = CheckpointCommitInput {
             fencing_token: self.fence,
@@ -310,5 +298,40 @@ impl Session<'_> {
             ));
         }
         Ok(saved)
+    }
+
+    async fn write_pages(
+        &mut self,
+        checkpoint: &Uuid7,
+        pages: Vec<af_wire::task::CheckpointPage>,
+    ) -> Result<Vec<(String, String)>> {
+        let mut digests = Vec::with_capacity(pages.len());
+        for (page_id, contents) in self.plan.page_ids.clone().into_iter().zip(pages) {
+            self.renew().await?;
+            let digest =
+                af_core::etag::sha256_hex(&serde_json::to_vec(&contents).map_err(error::encode)?);
+            let accepted = self
+                .plane
+                .task_checkpoint_page_write(
+                    self.lease,
+                    checkpoint,
+                    &Uuid7::parse(&page_id)?,
+                    &CheckpointPageInput {
+                        fencing_token: self.fence,
+                        task: self.task.clone(),
+                        pin_id: self.plan.pin.id.clone(),
+                        digest: digest.clone(),
+                        contents,
+                    },
+                )
+                .await?;
+            if af_core::etag::sha256_hex(&serde_json::to_vec(&accepted).map_err(error::encode)?)
+                != digest
+            {
+                return Err(error::config("checkpoint page acknowledgement differs"));
+            }
+            digests.push((page_id, digest));
+        }
+        Ok(digests)
     }
 }

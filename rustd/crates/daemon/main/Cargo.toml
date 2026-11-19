@@ -25,6 +25,12 @@ path = "src/lib.rs"
 name = "agentsfleetd"
 path = "src/main.rs"
 
+[[bench]]
+name = "lease"
+path = "benches/lease/main.rs"
+harness = false
+required-features = ["test-util"]
+
 [features]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
@@ -45,6 +51,9 @@ test-util = [
 openapi = ["afd_api/openapi"]
 
 [dependencies]
+af_config.workspace = true
+toml.workspace = true
+serde.workspace = true
 afd_bus.workspace = true
 afd_gateway.workspace = true
 af_stream.workspace = true

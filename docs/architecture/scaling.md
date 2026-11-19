@@ -490,6 +490,10 @@ A runner that dies holds no datastore or bus connection to leak and no subscript
 The next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected lease expires before another runner can claim it; the recovery probe finds work after missed notifications.
 
 Surviving hosts keep their existing sessions; the gateway pushes newly available work.
+[Automatic quarantine](runner_fleet.md#automatic-quarantine-and-return) blocks new work on silent hosts without shortening their lease deadlines.
+
+[Workspace recovery](runner_execution.md#workspace-between-leases) resumes the last complete checkpoint when one exists.
+Transfer size, checkpoint age and eligible spare capacity affect recovery time; no measured checkpoint percentile is promised.
 
 **Failure domain scales with the assigned `worker_count`**. A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one. Each lease expires and re-leases independently (no batch coupling), so no work is lost, but N runs restart instead of one.
 

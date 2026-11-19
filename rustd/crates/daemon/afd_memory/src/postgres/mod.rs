@@ -10,9 +10,9 @@
 //! `memory.entries` is written as `memory_runtime`, a role the api pool
 //! does not otherwise hold. `SET LOCAL ROLE` inside a transaction is restored
 //! by Postgres at COMMIT or ROLLBACK — including the rollback a dropped
-//! transaction performs — so there is no reset to fail and no connection can
-//! return to the pool with the wrong role. [`PgStore::as_memory_role`] is the
-//! one place that opens such a transaction.
+//! transaction performs — so a pooled connection recovers its role on either path.
+//! Reads and forgets use [`PgStore::as_memory_role`]. Capture borrows the caller's
+//! transaction and restores the API role before the final authority check.
 
 mod page;
 mod read;
@@ -33,7 +33,7 @@ use crate::sql;
 /// The durable memory store, over the api-role pool.
 #[derive(Debug, Clone)]
 pub struct PgStore {
-    database: Db,
+    pub(crate) database: Db,
     entropy: Entropy,
 }
 

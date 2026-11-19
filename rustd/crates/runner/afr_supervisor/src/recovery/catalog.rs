@@ -75,7 +75,7 @@ impl Catalog {
         stop: &tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
         if history.len() > MAX_HISTORY {
-            return Err(error::config("checkpoint history exceeds its bound"));
+            return Err(error::capture_limit("checkpoint history exceeds its bound"));
         }
         let inventory = root
             .map(|root| root.inventory(stop))
@@ -97,7 +97,7 @@ impl Catalog {
             catalog.logical_bytes = catalog
                 .logical_bytes
                 .checked_add(files::size(entry))
-                .ok_or_else(|| error::config("checkpoint size overflow"))?;
+                .ok_or_else(|| error::capture_limit("checkpoint size overflow"))?;
             let wire = match entry {
                 Entry::Directory => CheckpointEntry::Directory { path: path.clone() },
                 Entry::Symlink { target } => CheckpointEntry::Symlink {
@@ -130,6 +130,13 @@ impl Catalog {
                     .insert(path.clone(), CheckpointEntry::Remove { path });
             }
         }
+        catalog.add_history(history)?;
+        // Validate the complete page layout before allocating any native plan.
+        catalog.pages(None, af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+        Ok(catalog)
+    }
+
+    fn add_history(&mut self, history: Zeroizing<Vec<u8>>) -> Result<()> {
         let history = Arc::new(history);
         let chunk_bytes = usize::try_from(files::CHUNK)
             .map_err(|source| error::boundary("checkpoint chunk size overflow", source))?;
@@ -138,7 +145,7 @@ impl Catalog {
             let end = start + chunk.len();
             let descriptor = descriptor(chunk, "history");
             let key = key(&descriptor);
-            catalog.chunks.entry(key.clone()).or_insert_with(|| Chunk {
+            self.chunks.entry(key.clone()).or_insert_with(|| Chunk {
                 descriptor,
                 source: Source::History {
                     bytes: Arc::clone(&history),
@@ -146,11 +153,9 @@ impl Catalog {
                     end,
                 },
             });
-            catalog.history_chunks.push(key);
+            self.history_chunks.push(key);
         }
-        // Validate the complete page layout before allocating any native plan.
-        catalog.pages(None)?;
-        Ok(catalog)
+        Ok(())
     }
 
     fn file(
@@ -207,65 +212,13 @@ impl Catalog {
     pub(super) fn pages(
         &self,
         ids: Option<&BTreeMap<String, String>>,
+        ceiling: usize,
     ) -> Result<Vec<CheckpointPage>> {
-        let initial = CheckpointPage {
-            page_number: 0,
-            entries: Vec::new(),
-            history_objects: Vec::new(),
-        };
-        let mut page_bytes = serde_json::to_vec(&initial).map_err(error::encode)?.len();
-        let mut pages = vec![initial];
+        let mut pages = super::layout::Pages::new(ceiling)?;
         for (path, original) in &self.entries {
-            let mut entry = original.clone();
-            if let (Some(ids), CheckpointEntry::File(file)) = (ids, &mut entry) {
-                file.objects = self
-                    .file_chunks
-                    .get(path)
-                    .ok_or_else(|| error::config("checkpoint file mapping is absent"))?
-                    .iter()
-                    .map(|key| {
-                        ids.get(key).cloned().ok_or_else(|| {
-                            error::config("checkpoint file registration is incomplete")
-                        })
-                    })
-                    .collect::<Result<_>>()?;
-            }
-            // Each entry is encoded once per layout pass. Re-encoding the whole
-            // growing page per insertion makes large repositories quadratic.
-            let entry_bytes = serde_json::to_vec(&entry).map_err(error::encode)?.len();
-            let page = pages
-                .last()
-                .ok_or_else(|| error::config("checkpoint page is absent"))?;
-            let separator = usize::from(!page.entries.is_empty());
-            if page.entries.len() == 4096
-                || page_bytes + separator + entry_bytes > af_wire::task::CHECKPOINT_PAGE_BYTES
-            {
-                if page.entries.is_empty()
-                    || pages.len()
-                        == usize::try_from(af_wire::task::CHECKPOINT_PAGES).unwrap_or(usize::MAX)
-                {
-                    return Err(error::config("checkpoint manifest exceeds its page bound"));
-                }
-                let page_number = u32::try_from(pages.len())
-                    .map_err(|source| error::boundary("checkpoint page count overflow", source))?;
-                let page = CheckpointPage {
-                    page_number,
-                    entries: Vec::new(),
-                    history_objects: Vec::new(),
-                };
-                page_bytes = serde_json::to_vec(&page).map_err(error::encode)?.len();
-                pages.push(page);
-            }
-            let page = pages
-                .last_mut()
-                .ok_or_else(|| error::config("checkpoint page is absent"))?;
-            page_bytes += usize::from(!page.entries.is_empty()) + entry_bytes;
-            page.entries.push(entry);
+            pages.push(self.mapped_entry(path, original, ids)?)?;
         }
-        let page = pages
-            .last_mut()
-            .ok_or_else(|| error::config("checkpoint page is absent"))?;
-        page.history_objects = self
+        let history = self
             .history_chunks
             .iter()
             .map(|key| {
@@ -279,25 +232,30 @@ impl Catalog {
                 )
             })
             .collect::<Result<_>>()?;
-        if !af_wire::decision::serialized_within(page, af_wire::task::CHECKPOINT_PAGE_BYTES) {
-            let history_objects = std::mem::take(&mut page.history_objects);
-            pages.push(CheckpointPage {
-                page_number: u32::try_from(pages.len())
-                    .map_err(|source| error::boundary("checkpoint page count overflow", source))?,
-                entries: Vec::new(),
-                history_objects,
-            });
+        pages.finish(history)
+    }
+
+    fn mapped_entry(
+        &self,
+        path: &str,
+        original: &CheckpointEntry,
+        ids: Option<&BTreeMap<String, String>>,
+    ) -> Result<CheckpointEntry> {
+        let mut entry = original.clone();
+        if let (Some(ids), CheckpointEntry::File(file)) = (ids, &mut entry) {
+            file.objects = self
+                .file_chunks
+                .get(path)
+                .ok_or_else(|| error::config("checkpoint file mapping is absent"))?
+                .iter()
+                .map(|key| {
+                    ids.get(key)
+                        .cloned()
+                        .ok_or_else(|| error::config("checkpoint file registration is incomplete"))
+                })
+                .collect::<Result<_>>()?;
         }
-        if pages.len() > usize::try_from(af_wire::task::CHECKPOINT_PAGES).unwrap_or(usize::MAX) {
-            return Err(error::config("checkpoint manifest exceeds its page bound"));
-        }
-        for page in &pages {
-            garde::Validate::validate(page)?;
-            if !af_wire::decision::serialized_within(page, af_wire::task::CHECKPOINT_PAGE_BYTES) {
-                return Err(error::config("checkpoint entry exceeds a manifest page"));
-            }
-        }
-        Ok(pages)
+        Ok(entry)
     }
 }
 

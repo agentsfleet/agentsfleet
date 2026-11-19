@@ -99,6 +99,9 @@ pub struct Limits {
     pub wall_seconds: i64,
     /// Maximum duration of one provider request.
     pub provider_timeout_seconds: i64,
+    /// Accepted correction allowance, retained across reconnects.
+    #[serde(default = "default_corrections")]
+    pub max_proposal_corrections: u32,
 }
 
 /// Work for a trusted authoring worker; confers no fleet tool authority.
@@ -143,6 +146,10 @@ impl<C> fmt::Debug for Lease<C> {
             .field(FIELD_EXPIRES_AT, &self.expires_at)
             .finish_non_exhaustive()
     }
+}
+
+const fn default_corrections() -> u32 {
+    super::PROPOSAL_CORRECTIONS_MAX
 }
 
 #[cfg(test)]

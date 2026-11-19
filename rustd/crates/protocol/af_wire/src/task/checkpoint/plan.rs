@@ -77,17 +77,24 @@ pub struct CheckpointPlanInput {
 
 /// One capture or restore operation, renewed without extending its deadline.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CheckpointPin {
     /// Native pin identity.
+    #[garde(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    )]
     pub id: String,
     /// Compare-and-swap version for renewal.
+    #[garde(range(min = 1, max = i64::MAX as u64))]
     pub resource_version: u64,
     /// Hard operation deadline.
     #[serde(with = "crate::instant")]
+    #[garde(skip)]
     pub operation_deadline: jiff::Timestamp,
     /// Current liveness deadline.
     #[serde(with = "crate::instant")]
+    #[garde(skip)]
     pub expires_at: jiff::Timestamp,
 }
 

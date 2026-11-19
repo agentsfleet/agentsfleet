@@ -22,9 +22,11 @@ use af_core::env::{EnvSource, optional};
 
 use crate::error::{Refused, Result};
 
+mod pipeline;
 mod protocol;
 
 pub use self::protocol::Encoding;
+pub use pipeline::PipelineSettings;
 
 #[cfg(test)]
 mod tests;
@@ -117,6 +119,7 @@ pub fn timeout_from(raw: &str) -> core::result::Result<Duration, Refused> {
 /// graded, so a value of this type is an endpoint the exporter will accept.
 #[derive(Clone, PartialEq, Eq)]
 pub struct OtlpConfig {
+    pipeline: PipelineSettings,
     /// The base URL every signal is posted under.
     endpoint: Box<str>,
     /// The knob the endpoint came from, for the line that reports it.
@@ -168,6 +171,7 @@ impl OtlpConfig {
             });
         }
         Ok(Self {
+            pipeline: PipelineSettings::default(),
             endpoint: endpoint.into(),
             source,
             headers: Vec::new(),
@@ -222,6 +226,22 @@ impl OtlpConfig {
     pub const fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
+    }
+
+    /// Uses batching and deadlines checked by the binary before opening exporters.
+    #[must_use]
+    pub fn with_pipeline(mut self, settings: &garde::Valid<PipelineSettings>) -> Self {
+        self.pipeline = **settings;
+        if let Some(seconds) = settings.export_timeout_seconds {
+            self.timeout = Duration::from_secs(seconds);
+        }
+        self
+    }
+
+    /// Read-only settings shared by exporters and their local gauge samplers.
+    #[must_use]
+    pub const fn pipeline(&self) -> &PipelineSettings {
+        &self.pipeline
     }
 
     /// The knob the endpoint came from. The NAME, never the value.

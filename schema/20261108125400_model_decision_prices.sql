@@ -2,7 +2,6 @@
 -- `platform_model_prices`.
 CREATE TABLE model.decision_prices (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_decision_prices_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     platform_model_id UUID NOT NULL,
     decision_revision_id UUID NOT NULL,
     effective_from_at TIMESTAMPTZ(3) NOT NULL,

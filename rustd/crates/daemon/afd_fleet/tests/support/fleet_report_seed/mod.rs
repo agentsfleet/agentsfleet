@@ -184,7 +184,7 @@ impl Held {
         ) = sqlx::query_as(
             "SELECT l.created_at, l.event_created_at,
                     l.status = $3 AND l.lease_expires_at > statement_timestamp()
-                        AND EXISTS (SELECT 1 FROM runner.fleet_slots s
+                        AND EXISTS (SELECT 1 FROM runner.slots s
                                     WHERE s.fleet_id = l.fleet_id
                                       AND s.last_runner_id = l.runner_id
                                       AND s.fencing_token = l.fencing_token

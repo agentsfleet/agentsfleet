@@ -30,8 +30,12 @@ use crate::identity::{Capabilities, Sessions, SignupWriteback};
 /// them at the call site is what makes that readable in one place.
 #[derive(Debug)]
 pub struct PlaneParts {
+    /// Validated deployment clocks and recovery budgets.
+    pub runtime: crate::preflight::RuntimeSettings,
     /// Fixed-origin authoring transport, built before opening datastores.
     pub authoring_transport: afd_authoring::Network,
+    /// Storage and GitHub share a guarded pool independent of inference timeouts.
+    pub storage_client: reqwest::Client,
     /// The API role's Postgres pool, open and proven.
     pub database: Db,
     /// One process-wide notification backend chosen during boot.

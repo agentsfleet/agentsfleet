@@ -85,6 +85,9 @@ impl Fixtures {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         LeaseService {
             task_reports: None,
+            turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
+                &kek,
+            )),
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             leases: self.leases(),
             gates: self.gates(),

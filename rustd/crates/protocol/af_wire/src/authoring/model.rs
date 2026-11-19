@@ -74,7 +74,7 @@ pub struct ModelCall<D = Value, C = Value, I = Value> {
     #[garde(length(bytes, min = 36, max = 36))]
     pub dispatch_id: String,
     /// Contiguous within the attempt, beginning at one.
-    #[garde(range(min = 1, max = 8))]
+    #[garde(range(min = 1, max = super::MODEL_CALLS_MAX))]
     pub call_index: u32,
     /// No provider, destination, key, headers or system/tool overrides exist.
     #[garde(dive)]
@@ -121,7 +121,7 @@ pub struct ModelResult<D = Value, C = Value, I = Value> {
     #[garde(length(bytes, min = 36, max = 36))]
     pub dispatch_id: String,
     /// Its contiguous call index.
-    #[garde(range(min = 1, max = 8))]
+    #[garde(range(min = 1, max = super::MODEL_CALLS_MAX))]
     pub call_index: u32,
     /// Whether this acknowledgement came from the saved receipt.
     #[garde(skip)]

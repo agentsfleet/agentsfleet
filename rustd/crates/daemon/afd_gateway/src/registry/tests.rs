@@ -130,3 +130,39 @@ fn allowed(
         Decision::Refused(_) => Err("expected a current owner".into()),
     }
 }
+
+#[test]
+fn a_recovery_request_remains_with_a_host_that_has_no_free_worker() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let runner = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
+    let session = SessionHandle::fixture(runner.clone(), runner);
+    let _registration = registry.register(&session)?;
+    session.snapshot.lock().credits = 0;
+    let wake = afd_bus::wake::Wake::default();
+    wake.recheck();
+    let recovery = wake
+        .recovery()
+        .ok_or("a requested recovery has an identity")?;
+    registry.request_recovery(recovery);
+    assert!(
+        registry
+            .candidates(
+                &std::collections::HashSet::default(),
+                &std::collections::HashSet::default()
+            )
+            .is_empty()
+    );
+    assert_eq!(session.snapshot.lock().recovery_pending, Some(recovery));
+    session.snapshot.lock().credits = 1;
+    assert_eq!(
+        registry
+            .candidates(
+                &std::collections::HashSet::default(),
+                &std::collections::HashSet::default()
+            )
+            .len(),
+        1
+    );
+    assert_eq!(session.snapshot.lock().recovery_pending, Some(recovery));
+    Ok(())
+}

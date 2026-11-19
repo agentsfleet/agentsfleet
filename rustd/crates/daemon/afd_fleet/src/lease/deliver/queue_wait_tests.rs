@@ -14,6 +14,7 @@ const WAITED: Duration = Duration::from_millis(350);
 /// A fresh event `redelivered` or not, admitted at [`AT`].
 fn acquired(kind: Kind, redelivered: bool) -> Acquired {
     Acquired {
+        predecessor_lease_id: None,
         kind,
         redelivered,
         ..test_dead::acquired()

@@ -28,6 +28,7 @@ use {
 pub mod banner;
 pub mod billing;
 pub mod cli;
+pub mod config;
 pub mod credentials;
 pub mod daemon;
 pub mod error;

@@ -16,6 +16,7 @@ use af_wire::memory::MemoryDelta;
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_db::Db;
 use jiff::Timestamp;
+use sqlx::Acquire as _;
 
 use crate::access::{Access, Directory};
 use crate::admit::admit;
@@ -62,7 +63,7 @@ pub struct Captured {
 
 impl Captured {
     /// Records what this capture stored and what it would not.
-    fn record(&self) {
+    pub fn record(&self) {
         let count = |size: usize| u64::try_from(size).unwrap_or(u64::MAX);
         memory::captured(count(self.stored));
         memory::capture_skipped(count(self.skipped));
@@ -141,14 +142,42 @@ impl Memories {
         deltas: &[MemoryDelta<'_>],
         now: Timestamp,
     ) -> Result<Captured> {
-        let Access { workspace, grants } = self.access(fleet).await?;
+        let mut connection = self.store().database.acquire().await?;
+        let mut tx = connection
+            .begin()
+            .await
+            .map_err(crate::error::query("begin memory capture"))?;
+        let captured = self.capture_on(&mut tx, fleet, deltas, now).await?;
+        tx.commit()
+            .await
+            .map_err(crate::error::query("commit memory capture"))?;
+        Ok(captured)
+    }
+
+    /// Writes on the caller's transaction, locking grants until its commit.
+    ///
+    /// The transaction starts under the API role and resumes that role after writing.
+    ///
+    /// # Errors
+    /// Refuses missing fleets and database failures. The caller must roll back on failure.
+    pub async fn capture_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        fleet: &Uuid7,
+        deltas: &[MemoryDelta<'_>],
+        now: Timestamp,
+    ) -> Result<Captured> {
+        let Access { workspace, grants } = Directory::lock_capture_on(connection, fleet).await?;
         let admitted = admit(deltas, grants.publish);
         let owner = Owner {
             workspace: &workspace,
             fleet,
         };
         let entries = admitted.entries.as_slice();
-        let housekept = self.store().upsert(owner, entries, now).await?;
+        let housekept = self
+            .store()
+            .upsert_on(connection, owner, entries, now)
+            .await?;
         Ok(Captured {
             stored: entries.len(),
             skipped: admitted.skipped + admitted.unpublished,

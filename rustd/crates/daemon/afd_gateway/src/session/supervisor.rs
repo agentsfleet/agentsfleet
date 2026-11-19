@@ -6,7 +6,7 @@ use super::{
         EventHandler, EventSource, OperationCompletion, SessionEvent, ShutdownReason, join_result,
     },
     io::IncomingFrame,
-    offers::OfferTrigger,
+    offers::{OfferMode, OfferOutcome, OfferTrigger},
     requests::{RequestSlots, RequestTracker},
 };
 use crate::{
@@ -102,14 +102,28 @@ impl SessionSupervisor {
         let services = Arc::clone(&self.services);
         self.jobs.spawn(
             async move {
-                let abandoned = matches!(&trigger, OfferTrigger::Pass(reply) if reply.is_closed());
-                let issued = !abandoned && services.offer().await?;
+                let mode = match &trigger {
+                    OfferTrigger::Ready => OfferMode::Ordinary,
+                    OfferTrigger::Pass(request) if !request.reply.is_closed() => request.mode,
+                    OfferTrigger::Pass(_) => return Ok(OperationCompletion::Offer),
+                };
+                let outcome = if mode == OfferMode::Ordinary
+                    && services.handle.snapshot.lock().recovery_pending.is_some()
+                {
+                    // Only the replica's bounded drain issues recovery claims.
+                    services.gateway.inner.dependencies.wake.recheck();
+                    OfferOutcome::Deferred
+                } else {
+                    services.offer(mode).await?
+                };
                 match trigger {
-                    OfferTrigger::Ready if issued => services.handle.request_offer(),
+                    OfferTrigger::Ready if outcome == OfferOutcome::Issued => {
+                        services.handle.request_offer();
+                    }
                     OfferTrigger::Ready => {}
-                    OfferTrigger::Pass(reply) => {
-                        if reply.send(issued).is_err() {
-                            tracing::debug!(event = "runner_offer_pass_abandoned", issued);
+                    OfferTrigger::Pass(request) => {
+                        if request.reply.send(outcome).is_err() {
+                            tracing::debug!(event = "runner_offer_pass_abandoned", ?outcome);
                         }
                     }
                 }

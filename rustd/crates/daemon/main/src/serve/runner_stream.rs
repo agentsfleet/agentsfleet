@@ -21,7 +21,9 @@ pub(super) struct Signals {
 }
 
 pub(super) async fn bind(config: &RunnerListenerConfig) -> Result<Listener, BootFailure> {
-    Ok(Listener::bind(config.address, config.identity.clone()).await?)
+    Ok(Listener::bind(config.address, config.identity.clone())
+        .await?
+        .with_max_udp_payload(config.udp_payload_limit))
 }
 
 pub(super) fn spawn(

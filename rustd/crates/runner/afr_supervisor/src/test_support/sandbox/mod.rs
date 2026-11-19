@@ -1,0 +1,295 @@
+//! A sandbox engine for the lease tests: sandboxes that count their teardowns
+//! and an executor that reports what is written into the workspace.
+
+use std::os::unix::fs::MetadataExt as _;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+
+use afr_executor::Executor;
+use afr_sandbox::{
+    Allowlist, Engine, HostWorkspace, Killed, Limits, Network, Sandbox, SandboxRequest,
+};
+use bytes::Bytes;
+use tokio::sync::mpsc;
+
+use crate::egress::Bound;
+mod executor;
+use executor::FakeExecutor;
+
+/// What a fake sandbox does when it is frozen and when it is thawed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Freezer {
+    /// Freezes and thaws.
+    #[default]
+    Works,
+    /// Refuses the freeze, as a host without the cgroup freezer would.
+    RefusesFreeze,
+    /// Freezes, then refuses the thaw.
+    RefusesThaw,
+    /// Freezes and thaws, but its executor never answers again, as one that
+    /// died while frozen would.
+    ThawsSilent,
+    /// Freezes and thaws, but its executor fails every listing after.
+    ThawsBroken,
+    /// Freezes, then refuses the addresses its next lease's hosts resolved
+    /// to, as a kernel refusing the swap would.
+    RefusesReallow,
+    /// A detached tenant process prevents a live workspace snapshot.
+    BusyTenant,
+    /// An abandoned file worker has not finished its executor-side work.
+    BusyExecutor,
+    /// Its executor cannot answer whether file work is idle.
+    ExecutorUnproved,
+    /// It cannot answer whether a tenant process is still running.
+    QuiescenceUnproved,
+    /// Its processes ended after the run, so it no longer reports running.
+    Dead,
+}
+
+/// How a fake sandbox's kill ends.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Kill {
+    /// The tree empties.
+    #[default]
+    Settles,
+    /// It cannot prove the tree empty, as one stuck in the kernel.
+    Unsettles,
+}
+
+/// An engine whose sandboxes count their teardowns.
+#[derive(Debug, Default)]
+pub(crate) struct FakeEngine {
+    pub(crate) refuse: bool,
+    /// Panics on the first prepare only, the way a bug in the supervisor
+    /// would take its worker down.
+    pub(crate) panic_once: bool,
+    /// Cancelled just before that panic, as a shutdown arriving while the
+    /// doomed lease runs; set once the token to cancel exists.
+    pub(crate) halt_before_panic: Arc<std::sync::OnceLock<tokio_util::sync::CancellationToken>>,
+    pub(crate) fail_teardown: bool,
+    /// How its sandboxes' kills end.
+    pub(crate) kill: Kill,
+    /// Where each sandbox reports its kill and its destroy, in order, for a
+    /// suite that sets the report beside them.
+    pub(crate) steps: Option<mpsc::UnboundedSender<&'static str>>,
+    /// How long each teardown takes before it is counted.
+    pub(crate) teardown_takes: Duration,
+    /// How long each prepare takes before it answers, refused or not.
+    pub(crate) prepare_takes: Duration,
+    /// How long each thaw takes before it answers.
+    pub(crate) thaw_takes: Duration,
+    /// Where each prepare reports when it answered with a sandbox.
+    pub(crate) ready: Option<mpsc::UnboundedSender<tokio::time::Instant>>,
+    pub(crate) prepared: Arc<AtomicUsize>,
+    pub(crate) destroyed: Arc<AtomicUsize>,
+    /// Where each sandbox's executor reports the files written into it.
+    pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
+    /// The host directory each sandbox offers as its workspace, owned by
+    /// whoever owns it; none keeps the workspace out of the host's reach.
+    pub(crate) workspace: Option<PathBuf>,
+    /// The verified toolbox identity offered by a durable-recovery sandbox.
+    pub(crate) toolbox: Option<String>,
+    /// Where each prepare reports the limits it was asked to enforce.
+    pub(crate) asked: Option<mpsc::UnboundedSender<Limits>>,
+    /// Where each prepare reports the network it was asked to reach.
+    pub(crate) reached: Option<mpsc::UnboundedSender<Bound>>,
+    /// How many times its sandboxes were frozen, and thawed.
+    pub(crate) frozen: Arc<AtomicUsize>,
+    pub(crate) thawed: Arc<AtomicUsize>,
+    /// Attempts include a thaw that reports failure before it can succeed.
+    pub(crate) thaw_attempts: Arc<AtomicUsize>,
+    /// Where each sandbox reports the allowlist it was told to take, and
+    /// whether it had been thawed by then.
+    pub(crate) reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
+    /// What its sandboxes do when frozen and thawed.
+    pub(crate) freezer: Freezer,
+}
+
+#[async_trait::async_trait]
+impl Engine for FakeEngine {
+    async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+        if let Some(asked) = &self.asked {
+            let _ = asked.send(request.limits);
+        }
+        if let Some(reached) = &self.reached {
+            let _ = reached.send(bound(request.network));
+        }
+        if !self.prepare_takes.is_zero() {
+            tokio::time::sleep(self.prepare_takes).await;
+        }
+        if self.refuse {
+            return Err(std::io::Error::other("no landlock").into());
+        }
+        let prepared = self.prepared.fetch_add(1, Ordering::SeqCst);
+        if self.panic_once
+            && prepared == 0
+            && let Some(halt) = self.halt_before_panic.get()
+        {
+            halt.cancel();
+        }
+        assert!(
+            !(self.panic_once && prepared == 0),
+            "the fake engine panics on its first prepare"
+        );
+        if let Some(ready) = &self.ready {
+            let _reader_gone = ready.send(tokio::time::Instant::now());
+        }
+        let workspace = self.workspace.clone().map(|root| {
+            let metadata = std::fs::metadata(&root).unwrap();
+            (root, (metadata.uid(), metadata.gid()))
+        });
+        Ok(Box::new(FakeSandbox {
+            fail_teardown: self.fail_teardown,
+            kill: self.kill,
+            steps: self.steps.clone(),
+            teardown_takes: self.teardown_takes,
+            thaw_takes: self.thaw_takes,
+            workspace,
+            toolbox: self.toolbox.clone(),
+            destroyed: Arc::clone(&self.destroyed),
+            frozen: Arc::clone(&self.frozen),
+            thawed: Arc::clone(&self.thawed),
+            thaw_attempts: Arc::clone(&self.thaw_attempts),
+            reallowed: self.reallowed.clone(),
+            freezer: self.freezer,
+            executor: FakeExecutor {
+                written: self.written.clone(),
+                freezer: self.freezer,
+                thawed: AtomicBool::default(),
+            },
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct FakeSandbox {
+    fail_teardown: bool,
+    kill: Kill,
+    steps: Option<mpsc::UnboundedSender<&'static str>>,
+    teardown_takes: Duration,
+    thaw_takes: Duration,
+    workspace: Option<(PathBuf, (u32, u32))>,
+    toolbox: Option<String>,
+    destroyed: Arc<AtomicUsize>,
+    frozen: Arc<AtomicUsize>,
+    thawed: Arc<AtomicUsize>,
+    thaw_attempts: Arc<AtomicUsize>,
+    reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
+    freezer: Freezer,
+    executor: FakeExecutor,
+}
+
+impl FakeSandbox {
+    /// Reports `step` to the suite reading the steps, if one is.
+    fn step(&self, step: &'static str) {
+        if let Some(steps) = &self.steps {
+            let _reader_gone = steps.send(step);
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Sandbox for FakeSandbox {
+    fn executor(&self) -> &dyn Executor {
+        &self.executor
+    }
+
+    fn workspace(&self) -> Option<HostWorkspace<'_>> {
+        self.workspace.as_ref().map(|(root, owner)| HostWorkspace {
+            root,
+            owner: *owner,
+        })
+    }
+
+    fn toolbox_digest(&self) -> Option<&str> {
+        self.toolbox.as_deref()
+    }
+
+    fn is_running(&mut self) -> bool {
+        self.freezer != Freezer::Dead
+    }
+
+    async fn freeze(&self) -> afr_sandbox::Result<()> {
+        if self.freezer == Freezer::RefusesFreeze {
+            return Err(std::io::Error::other(NO_FREEZER).into());
+        }
+        self.frozen.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn recovery_quiescent(&self) -> afr_sandbox::Result<bool> {
+        if self.freezer == Freezer::QuiescenceUnproved {
+            return Err(std::io::Error::other(NO_FREEZER).into());
+        }
+        Ok(self.freezer != Freezer::BusyTenant)
+    }
+
+    async fn thaw(&self) -> afr_sandbox::Result<()> {
+        self.thaw_attempts.fetch_add(1, Ordering::SeqCst);
+        if !self.thaw_takes.is_zero() {
+            tokio::time::sleep(self.thaw_takes).await;
+        }
+        if self.freezer == Freezer::RefusesThaw {
+            return Err(std::io::Error::other(NO_FREEZER).into());
+        }
+        self.thawed.fetch_add(1, Ordering::SeqCst);
+        self.executor.thawed.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn reallow(&mut self, allowlist: &Allowlist) -> afr_sandbox::Result<()> {
+        if self.freezer == Freezer::RefusesReallow {
+            return Err(std::io::Error::other(NO_REFILL).into());
+        }
+        if let Some(reallowed) = &self.reallowed {
+            let thawed = self.executor.thawed.load(Ordering::SeqCst);
+            let _ = reallowed.send((allowlist.clone(), thawed));
+        }
+        Ok(())
+    }
+
+    async fn kill(&self) -> Killed {
+        self.step(KILL);
+        if self.kill == Kill::Unsettles {
+            return Killed::Unsettled(std::io::Error::other(STILL_RUNNING).into());
+        }
+        Killed::Settled
+    }
+
+    async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
+        self.step(DESTROY);
+        if !self.teardown_takes.is_zero() {
+            tokio::time::sleep(self.teardown_takes).await;
+        }
+        self.destroyed.fetch_add(1, Ordering::SeqCst);
+        if self.fail_teardown {
+            return Err(std::io::Error::other("busy mount").into());
+        }
+        Ok(())
+    }
+}
+
+/// The steps a fake sandbox records, by name.
+pub(crate) const KILL: &str = "kill";
+pub(crate) const DESTROY: &str = "destroy";
+/// What a kill that cannot prove the tree empty says.
+pub(crate) const STILL_RUNNING: &str = "a process is stuck in the kernel";
+
+/// What a refused freeze or thaw says.
+pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";
+/// What a refused swap of a held sandbox's addresses says.
+pub(crate) const NO_REFILL: &str = "the egress set refused its new addresses";
+/// What a broken executor says once its sandbox is thawed.
+pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
+
+/// The network a sandbox was asked for, owned, so a test reads it back after
+/// the request is gone.
+fn bound(network: Network<'_>) -> Bound {
+    match network {
+        Network::Host => Bound::Host,
+        Network::Isolated => Bound::Isolated,
+        Network::Allowed(allowlist) => Bound::Allowed(allowlist.clone()),
+    }
+}

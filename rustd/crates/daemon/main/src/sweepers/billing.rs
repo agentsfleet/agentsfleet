@@ -17,11 +17,14 @@ use crate::supervisor::Supervisor;
 
 /// How often a tick runs: how long a committed line waits to be charged, and
 /// how far a balance can trail the charges a person reads.
+#[cfg(test)]
 const INTERVAL: Duration = Duration::from_secs(5);
 
 /// Ticks between restarts of the line read at the oldest unsettled line: a
 /// line the biller refused is retried at least this often, once a minute.
+#[cfg(test)]
 const LAP_TICKS: u64 = 12;
+#[cfg(test)]
 const _: () = assert!(
     INTERVAL.as_secs() * LAP_TICKS <= 60,
     "a refused line waits at most a minute"
@@ -29,6 +32,7 @@ const _: () = assert!(
 
 /// Passes one tick may run back to back. A backlog drains at the biller's
 /// pace, and a sustained one still yields to the next tick.
+#[cfg(test)]
 const DRAIN_PASSES: usize = 10;
 
 /// A pass began.
@@ -48,12 +52,19 @@ pub(super) fn spawn(
     database: &Db,
     tasks: Tasks,
     biller: Arc<dyn Biller>,
+    startup: &super::schedule::Startup,
+    settings: crate::config::maintenance::Billing,
 ) {
     let database = database.clone();
+    let mut interval = startup.interval(
+        super::BILLING,
+        Duration::from_secs(settings.interval_seconds),
+    );
+    let lap_ticks = settings
+        .retry_oldest_after_seconds
+        .div_ceil(settings.interval_seconds);
     supervisor.spawn(super::BILLING, async move |stop| {
         let mut decision_cursor = DecisionMaintenanceCursor::default();
-        let mut interval = tokio::time::interval(INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         // Where the next pass's line read resumes. It outlives the tick, so a
         // refused backlog of any size never holds newer lines; it goes back to
         // the oldest line every LAP_TICKS, so a refused line is retried.
@@ -71,17 +82,23 @@ pub(super) fn spawn(
                 () = stop.cancelled() => return,
                 _recovery = tasks.maintain_decisions(&mut decision_cursor) => {},
             }
-            lap(&mut ticks, &resume);
-            drain(|| sweep_leases(&database, biller.as_ref(), &resume), &stop).await;
+            lap(&mut ticks, &resume, lap_ticks);
+            drain(
+                || sweep_leases(&database, biller.as_ref(), &resume),
+                &stop,
+                settings.max_drain_passes,
+            )
+            .await;
         }
     });
 }
 
-/// Runs `pass` until one leaves nothing waiting, [`DRAIN_PASSES`] have run, or
+/// Runs `pass` until one leaves nothing waiting, the configured pass ceiling have run, or
 /// `stop` fires; answers how many ran.
 async fn drain<F: Future<Output = bool>>(
     mut pass: impl FnMut() -> F,
     stop: &CancellationToken,
+    maximum: usize,
 ) -> usize {
     if stop.is_cancelled() {
         return 0;
@@ -89,7 +106,7 @@ async fn drain<F: Future<Output = bool>>(
     let mut passes = 0;
     loop {
         passes += 1;
-        if !pass().await || passes >= DRAIN_PASSES || stop.is_cancelled() {
+        if !pass().await || passes >= maximum || stop.is_cancelled() {
             return passes;
         }
     }
@@ -132,15 +149,15 @@ async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<
 }
 
 /// Whether tick `tick` sends the line read back to the oldest unsettled line.
-const fn restarts(tick: u64) -> bool {
-    tick.is_multiple_of(LAP_TICKS)
+const fn restarts(tick: u64, lap_ticks: u64) -> bool {
+    tick.is_multiple_of(lap_ticks)
 }
 
 /// Counts one tick and, once a lap, sends the line read back to the oldest
 /// unsettled line by clearing `resume`.
-fn lap<T>(ticks: &mut u64, resume: &Mutex<Option<T>>) {
+fn lap<T>(ticks: &mut u64, resume: &Mutex<Option<T>>, lap_ticks: u64) {
     *ticks = ticks.wrapping_add(1);
-    if restarts(*ticks)
+    if restarts(*ticks, lap_ticks)
         && let Ok(mut at) = resume.lock()
     {
         *at = None;
@@ -149,7 +166,7 @@ fn lap<T>(ticks: &mut u64, resume: &Mutex<Option<T>>) {
 
 /// A pass that read a whole batch runs again at once, resuming after it, so a
 /// backlog drains at the biller's pace and a batch the biller refused never
-/// holds newer lines. [`DRAIN_PASSES`] bounds the passes one tick makes.
+/// holds newer lines. the configured pass ceiling bounds the passes one tick makes.
 const fn drains(swept: &LinesSwept) -> bool {
     swept.full
 }

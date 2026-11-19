@@ -1,7 +1,6 @@
 -- One native upload owner freezes one key/nonce and one ciphertext descriptor.
 CREATE TABLE fleet.task_objects (
     id UUID PRIMARY KEY,
-    CONSTRAINT ck_task_object_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,
     task_identity_key_id UUID NOT NULL,
     content_identity TEXT NOT NULL,

@@ -15,6 +15,7 @@ fn state() -> SchedulingState {
         ready_revision: None,
         held: Vec::new(),
         last_offer: tokio::time::Instant::now(),
+        recovery_pending: None,
     }
 }
 
@@ -137,5 +138,44 @@ async fn recovery_from_a_policy_recheck_wakes_one_capacity_pass() -> Result<()> 
         futures_util::poll!(Box::pin(session.offers.notified())),
         std::task::Poll::Pending
     ));
+    Ok(())
+}
+
+#[test]
+fn a_newer_recovery_request_survives_an_older_empty_claim() {
+    let wake = afd_bus::wake::Wake::default();
+    wake.recheck();
+    let first = wake.recovery();
+    assert!(first.is_some());
+    wake.recheck();
+    let second = wake.recovery();
+    let mut state = state();
+    state.recovery_pending = second;
+    state.recovered(first);
+    assert_eq!(state.recovery_pending, second);
+    state.recovered(second);
+    assert_eq!(state.recovery_pending, None);
+}
+
+#[test]
+fn capacity_updates_and_offers_preserve_an_unfinished_recovery_request() -> Result<()> {
+    let wake = afd_bus::wake::Wake::default();
+    wake.recheck();
+    let recovery = wake.recovery();
+    assert!(recovery.is_some());
+    let mut state = state();
+    state.recovery_pending = recovery;
+    state.availability(1, NonZeroU64::MIN, 0)?;
+    state.issued()?;
+    assert_eq!(state.credits, 0);
+    assert_eq!(state.recovery_pending, recovery);
+    state.recovered(None);
+    assert_eq!(state.recovery_pending, recovery);
+    let revision = NonZeroU64::MIN
+        .checked_add(1)
+        .ok_or(crate::error::ErrorKind::Protocol)?;
+    state.availability(1, revision, 1)?;
+    assert_eq!(state.credits, 1);
+    assert_eq!(state.recovery_pending, recovery);
     Ok(())
 }

@@ -100,6 +100,22 @@ impl Directory {
         }))
     }
 
+    pub(crate) async fn lock_capture_on(
+        connection: &mut sqlx::PgConnection,
+        fleet: &Uuid7,
+    ) -> Result<Access> {
+        let row = sqlx::query_as::<_, AccessRow>(include_str!("sql/lock_capture.sql"))
+            .bind(fleet)
+            .fetch_optional(connection)
+            .await
+            .map_err(query(CONTEXT_ACCESS))?
+            .ok_or_else(crate::error::fleet_not_found)?;
+        Ok(Access {
+            workspace: row.workspace_id,
+            grants: row.grants.into(),
+        })
+    }
+
     /// Applies `change` to `fleet` in `workspace`, answering both grants as
     /// they now stand, or `None` when the workspace holds no such fleet.
     pub(crate) async fn set(

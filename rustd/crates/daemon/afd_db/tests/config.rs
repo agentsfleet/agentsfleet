@@ -171,20 +171,15 @@ fn test_role_scoped_knob_beats_the_shared_one() {
     );
 }
 
-/// A pool size that would hang the daemon falls back to the default instead.
-///
-/// Zero is the one that matters: a zero-connection pool accepts every acquire
-/// and satisfies none, so the wrong knob reads as a datastore outage.
+/// An explicit invalid pool size refuses startup instead of substituting a default.
 #[test]
-fn test_unusable_pool_sizes_fall_back_to_the_default() {
+fn test_unusable_pool_sizes_refuse_configuration() {
     for value in ["0", "banana", "", "99999999999999999999"] {
         let env = env_with(&[("DATABASE_URL", URL), ("DATABASE_POOL_SIZE", value)]);
-        let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
-        assert_eq!(
-            config.max_connections(),
-            expected_default_pool_size(),
-            "{value:?} did not fall back"
-        );
+        let failure =
+            PoolConfig::resolve(&env, DbRole::Default).expect_err("invalid configured size");
+        assert!(failure.is_config());
+        assert_eq!(failure.code().as_str(), "UZ-INTERNAL-001");
     }
 }
 

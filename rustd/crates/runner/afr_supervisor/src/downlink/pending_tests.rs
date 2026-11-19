@@ -33,6 +33,50 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug)]
 struct NoHttp;
 
+#[test]
+fn turn_replies_require_lease_operation_kind_and_matching_success_variant() -> serde_json::Result<()>
+{
+    use af_wire::lease::{TurnCheckpointKind, TurnId};
+    let lease = "01900000-0000-7000-8000-000000000001";
+    let operation = "01900000-0000-7000-8000-000000000002";
+    let other = "01900000-0000-7000-8000-000000000003";
+    let expected = Expected::TurnCheckpoint {
+        lease: Uuid7::parse(lease).expect("fixture UUID"),
+        operation: TurnId(operation.into()),
+        kind: TurnCheckpointKind::PinRelease,
+    };
+    let original = json!({"type":"turn_checkpoint","request_id":2,"lease_id":lease,
+        "operation_id":operation,"kind":"pin_release","answer":{"status":"ok","response":{"kind":"pin_released"}}});
+    let accept = |value: &Value| -> serde_json::Result<bool> {
+        let bytes = serde_json::to_string(value)?;
+        Ok(expected.accepts(&serde_json::from_str::<Down<'_>>(&bytes)?))
+    };
+    assert!(accept(&original)?);
+    for (key, wrong) in [
+        ("lease_id", other),
+        ("operation_id", other),
+        ("kind", "abandon"),
+    ] {
+        let mut changed = original.clone();
+        *field(&mut changed, &format!("/{key}"))? = json!(wrong);
+        assert!(!accept(&changed)?);
+    }
+    let mut changed = original;
+    *field(&mut changed, "/answer/response/kind")? = json!("abandoned");
+    assert!(!accept(&changed)?);
+    *field(&mut changed, "/answer")? = json!({"status":"refused","error_code":"UZ-RUN-027","detail":"Unavailable","retryable":true});
+    assert!(accept(&changed)?);
+    *field(&mut changed, "/operation_id")? = json!(other);
+    assert!(!accept(&changed)?);
+    Ok(())
+}
+
+fn field<'a>(value: &'a mut Value, pointer: &str) -> serde_json::Result<&'a mut Value> {
+    value.pointer_mut(pointer).ok_or_else(|| {
+        <serde_json::Error as serde::de::Error>::custom("complete native correlation fixture")
+    })
+}
+
 #[async_trait::async_trait]
 impl RunnerApi for NoHttp {
     async fn send(&self, _call: Call) -> Result<Bytes> {

@@ -92,3 +92,58 @@ async fn mutate(f: &Fixture, attempt: &Attempt, delete: bool) {
             .expect("Stop commits without provider locks");
     }
 }
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn retiring_a_runner_during_a_call_keeps_known_usage_without_private_output() {
+    let f = Fixture::create().await;
+    let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
+    let provider = Arc::new(blocked_proposal());
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
+    let request = fixture::request(&attempt);
+    let task = tokio::spawn({
+        let (calls, request) = (calls.clone(), request.clone());
+        let (runner, lease) = (f.runner.clone(), attempt.lease.clone());
+        async move { calls.call(&runner, &lease, request).await }
+    });
+    tokio::time::timeout(HANG_BOUND, provider.arrived())
+        .await
+        .expect("provider reached");
+    retire_runner(&f).await;
+    provider.resume();
+    task.await
+        .expect("provider completion")
+        .expect_err("private output denied");
+    let saved: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+        .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("usage receipt");
+    assert_eq!(saved, (true, "known".into()));
+    tokio::time::timeout(HANG_BOUND, calls.call(&f.runner, &attempt.lease, request))
+        .await
+        .expect("replay completes")
+        .expect_err("retired runner cannot replay private output");
+    assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
+    assert_eq!(provider.count(), 1);
+    f.cleanup().await;
+}
+
+async fn retire_runner(f: &Fixture) {
+    let mut connection = f.connection().await;
+    sqlx::query("UPDATE runner.runners SET status=$2 WHERE id=$1")
+        .bind(&f.runner)
+        .bind("revoked")
+        .execute(&mut *connection)
+        .await
+        .expect("runner revoked");
+    let retired: (bool, bool) =
+        sqlx::query_as(afd_runner::sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
+            .bind(&f.runner)
+            .bind("revoked")
+            .bind("active")
+            .bind(&f.tenant)
+            .bind(true)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("retire runner");
+    assert_eq!(retired, (true, false));
+    drop(connection);
+}

@@ -3,7 +3,6 @@
 -- tenant, so a retry after deletion registers nothing. The runner token is never kept here.
 CREATE TABLE runner.registration_receipts (
     id              UUID PRIMARY KEY,
-    CONSTRAINT ck_registration_receipts_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     tenant_id       UUID   NOT NULL,
     operation_id    UUID   NOT NULL,
     request_digest  TEXT   NOT NULL,

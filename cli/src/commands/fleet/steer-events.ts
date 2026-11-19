@@ -1,4 +1,5 @@
 import { ActivityPrinter, activityText } from "./task-activity.ts";
+import { AttemptOutput } from "./attempt-output.ts";
 import { ToolActivityPrinter } from "./tool-activity.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { Effect, Option, Redacted } from "effect";
@@ -85,6 +86,7 @@ const makeFrameCallback = (
   setOutcome: (next: SteerOutcome) => void,
 ): StreamGetCallback => {
   const {activity, tools} = handlers.presentation;
+  const attempt = new AttemptOutput(handlers.printLine, () => { activity.reset(); tools.reset(); });
   return (event) => {
   const payload = event.data as Record<string, unknown> | null | undefined;
   if (!isRecord(payload)) return undefined;
@@ -92,7 +94,7 @@ const makeFrameCallback = (
   // activity frame (activity_publisher), so an id-less frame's ownership is
   // unknown and rendering it would break the one-event-only invariant.
   const frameEventId = payload["event_id"];
-  if (frameEventId !== handlers.eventId) return undefined;
+  if (frameEventId !== handlers.eventId || !attempt.accept(event.type, payload)) return undefined;
   if (activity.frame(event.type, payload)) return undefined;
   if (tools.frame(event.type, payload)) return undefined;
   if (event.type === KIND_CHUNK && payload["text_kind"] === "reasoning") return undefined;

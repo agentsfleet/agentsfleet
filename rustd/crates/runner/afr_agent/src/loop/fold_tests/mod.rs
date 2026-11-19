@@ -202,6 +202,7 @@ async fn a_message_the_inbox_replays_is_joined_once() -> crate::Result<()> {
     let payload = lease(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Replaying {
         message: Folded {
+            event_id: "019f0000-0000-7000-8000-000000000004".to_owned(),
             sequence: 4,
             text: "only once".to_owned(),
         },

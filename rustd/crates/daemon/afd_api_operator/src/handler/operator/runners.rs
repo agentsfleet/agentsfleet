@@ -105,6 +105,7 @@ pub(super) async fn read(scope: RunnerScope<'_>, raw: &str) -> Response {
 
 fn item(row: &StoredItem) -> RunnerItem<'static> {
     RunnerItem {
+        cordon: row.cordon().cloned(),
         id: Cow::Owned(row.id().to_string()),
         tenant_id: row.tenant_id().map(|tenant| Cow::Owned(tenant.to_string())),
         host_id: Cow::Owned(row.host_id().to_owned()),

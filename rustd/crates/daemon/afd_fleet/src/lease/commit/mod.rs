@@ -74,6 +74,8 @@ pub struct TerminalReport<'a> {
 pub enum Committed {
     /// The report won its fence and every write committed.
     Settled {
+        /// Authoritative retained sandbox deadline, absent for late reports.
+        accepted_hold: Option<Timestamp>,
         /// What the report's lines charged, its runtime line included.
         charged: Nanos,
         /// The run's token sums, this report's lines included.
@@ -191,6 +193,7 @@ impl Leases {
         let failure_reason = outcome.verdict.label();
         let notice = (!outcome.verdict.succeeded())
             .then(|| unanswered::failed_run(&lease.fleet_id, failure_reason.as_deref()));
+        let (host_digest, host_connection) = self.host_proof(report.runner_id);
         ReportStatement {
             lease_id: report.lease_id,
             runner_id: report.runner_id,
@@ -214,6 +217,9 @@ impl Leases {
             tool_calls: outcome.tool_calls,
             checkpoint: &checkpoint,
             held_until: report.held_until,
+            sandbox_idle_hold: self.clock().sandbox_idle_hold(),
+            host_digest,
+            host_connection,
             obligation_id: &obligation_id,
             obligation_receipt: &obligation_receipt,
             audit_id: &audit_id,
@@ -275,6 +281,7 @@ impl Leases {
             .await?;
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {
+            accepted_hold: settled.accepted_hold,
             charged: settled.charged,
             tokens: settled.tokens,
             closed: settled.closed.map(Box::new),

@@ -30,6 +30,7 @@ fn settled(tokens: RunTokens) -> Result<Reconciled, &'static str> {
     let id = Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")
         .map_err(|_malformed| "a fixture identifier is well formed")?;
     Ok(Reconciled {
+        hold: None,
         fleet_id: id.clone(),
         workspace_id: id.clone(),
         tenant_id: id.clone(),

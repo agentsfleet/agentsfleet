@@ -9,7 +9,6 @@ use std::time::Duration;
 
 use afd_billing::biller::Biller;
 
-const INTERVAL: Duration = Duration::from_secs(10);
 const FAILED: &str = "authoring_maintenance_failed";
 const COMPLETED: &str = "authoring_maintenance_completed";
 
@@ -18,18 +17,22 @@ pub(super) fn spawn(
     database: &Db,
     analytics: &Analytics,
     biller: Arc<dyn Biller>,
+    startup: &super::schedule::Startup,
+    settings: crate::config::maintenance::AuthoringCleanup,
 ) {
     let drafts = afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
         .with_analytics(analytics.clone());
+    let mut interval = startup.interval(
+        super::AUTHORING,
+        Duration::from_secs(settings.interval_seconds),
+    );
     supervisor.spawn(super::AUTHORING, async move |stop| {
-        let mut interval = tokio::time::interval(INTERVAL);
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
-            maintain(&drafts).await;
+            tokio::select! { () = stop.cancelled() => return, () = maintain(&drafts) => {} }
         }
     });
 }

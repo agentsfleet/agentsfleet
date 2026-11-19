@@ -7,12 +7,16 @@ pub(super) const CONTEXT: &str = "lock and count host lease capacity";
 /// for none, `$5` whether the call is a stream's, which must prove `$2` and `$3`.
 pub(super) const LOCK_HOST: &str = include_str!("lock_host.sql");
 
-/// Both lease kinds the host holds, counted at one clock read.
+/// The same host proof, shared with other continuing leases.
+pub(super) const SHARE_HOST: &str = include_str!("share_host.sql");
+
+/// Live leases and applicable idle holds, counted at one clock read.
 ///
 /// A separate statement from [`LOCK_HOST`], run after it in the same
 /// transaction, so its `clock_timestamp()` is read once the host lock is held:
 /// a lease that expired while this claimant waited for the lock no longer
-/// counts. `$1` runner, `$2` the active status both tables share.
+/// counts. `$1` runner, `$2` active status, `$3` the consuming fleet or NULL,
+/// `$4` whether this is a new claim that counts holds.
 pub(super) const CENSUS: &str = include_str!("census.sql");
 
 /// The host's lease-type counter and the type it chose last.

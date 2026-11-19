@@ -36,7 +36,7 @@ async fn assert_no_work(saved: &Saved) {
         "SELECT
          (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1),
          (SELECT count(*) FROM runner.leases WHERE fleet_id=$1),
-         (SELECT count(*) FROM runner.fleet_slots WHERE fleet_id=$1),
+         (SELECT count(*) FROM runner.slots WHERE fleet_id=$1),
          (SELECT count(*) FROM billing.usage_lines WHERE fleet_id=$1),
          (SELECT count(*) FROM fleet.obligations WHERE fleet_id=$1)",
     )

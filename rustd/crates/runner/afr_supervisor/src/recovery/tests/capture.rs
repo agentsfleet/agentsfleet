@@ -18,6 +18,7 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
     let stop = CancellationToken::new();
     let saved = Capture {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -51,6 +52,7 @@ async fn cancelled_capture_allocates_nothing_and_never_announces_saved() -> crat
     stop.cancel();
     let error = Capture {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -81,6 +83,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
     let task = task();
     let saved = Capture {
         plane: &plane,
+        transfers: &crate::recovery::Transfers::new()?,
         lease: &identity,
         workspace: &identity,
         fence: FENCE,
@@ -109,11 +112,9 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
 
 #[tokio::test]
 async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate::Result<()> {
+    let incompatible = "checkpoint plan differs from capture compatibility";
     for (fault, expected) in [
-        (
-            "toolbox",
-            "checkpoint plan differs from capture compatibility",
-        ),
+        ("toolbox", incompatible),
         ("busy", "checkpoint chunk has another live writer"),
         (
             "registration",
@@ -127,6 +128,7 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
         let task = task();
         let error = Capture {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,
@@ -139,7 +141,14 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
         .run(None, Zeroizing::new(b"private history".to_vec()), vec![])
         .await
         .unwrap_err();
-        config_failure(&error, expected);
+        if fault == "busy" {
+            assert_eq!(
+                error.code(),
+                af_core::error_code::RUN_CHECKPOINT_UNAVAILABLE
+            );
+        } else {
+            config_failure(&error, expected);
+        }
         assert!(state.lock().unwrap().plan.manifest_root.is_none());
         let requests = drain(&mut calls).await;
         assert!(
@@ -176,6 +185,7 @@ async fn page_and_commit_acknowledgements_cannot_change_the_saved_boundary() -> 
         let task = task();
         let error = Capture {
             plane: &plane,
+            transfers: &crate::recovery::Transfers::new()?,
             lease: &identity,
             workspace: &identity,
             fence: FENCE,
