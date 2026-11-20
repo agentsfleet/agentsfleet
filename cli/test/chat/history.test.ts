@@ -7,7 +7,7 @@ const PATH = `/v1/workspaces/${WORKSPACE}/drafts`;
 const TITLE = "Watch release failures";
 const CURSOR = "opaque/query+cursor=";
 const ROW = {id: DRAFT_ID, title: TITLE, etag: DRAFT.etag, state: "editing", linked_fleet_id: FLEET_ID,
-  updated_at: "2026-10-19T00:00:00Z", expires_at: null, candidate_revision: 7, setup_revision: 3, publication_revision: 2};
+  updated_at: "2026-10-19T00:00:00Z", expires_at: null, candidate_revision: 7, setup_revision: 3};
 const PAGE = {items: [ROW], next_cursor: CURSOR, total: null, extra: "preserved"};
 type Call = {method: string; path: string; query: string; body: unknown; tag: string | null; authenticated: boolean};
 type Reply = (request: Request, calls: readonly Call[]) => Response | Promise<Response>;
@@ -41,7 +41,7 @@ test("lists a bounded private page and repeats the same literal search with its 
   });
   expect(first.stdout).toContain(TITLE);
   expect(first.stdout).toContain(DRAFT_ID);
-  expect(first.stdout).toContain("Proposed v7 · Saved v3 · Published v2");
+  expect(first.stdout).toContain("Proposed v7 · Saved v3");
   expect(first.stdout).toContain("STATUS");
   expect(first.stdout).toContain("UPDATED");
   expect(first.stdout).toContain(CURSOR);
@@ -54,12 +54,12 @@ test("lists a bounded private page and repeats the same literal search with its 
 });
 
 test.each([
-  ["editing", null, null, null, "In progress", "—"],
-  ["saving", null, 4, null, "Saving fleet", "Saved v4"],
-  ["closed", FLEET_ID, null, null, "Fleet saved", "—"],
-  ["closed", null, null, null, "Chat closed", "—"],
-] as const)("renders recorded %s chat state without inventing versions", async (state, linked_fleet_id, setup_revision, publication_revision, label, versions) => {
-  const row = {...ROW, state, linked_fleet_id, candidate_revision: null, setup_revision, publication_revision};
+  ["editing", null, null, "In progress", "—"],
+  ["saving", null, 4, "Saving fleet", "Saved v4"],
+  ["closed", FLEET_ID, null, "Fleet saved", "—"],
+  ["closed", null, null, "Chat closed", "—"],
+] as const)("renders recorded %s chat state without inventing versions", async (state, linked_fleet_id, setup_revision, label, versions) => {
+  const row = {...ROW, state, linked_fleet_id, candidate_revision: null, setup_revision};
   const result = await run(["list"], () => Response.json({items: [row], next_cursor: null}));
   expect(result.code).toBe(0);
   expect(new URLSearchParams(result.calls[0]?.query).get("limit")).toBe("50");

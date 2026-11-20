@@ -115,6 +115,7 @@ it.each([
   ["provider_usage_unknown", "Usage is still being reconciled."],
   ["attempt_timed_out", "The model didn’t finish in time, so there’s no complete response."],
   ["policy_changed", "The setup or its permissions changed during this request."],
+  ["frame_too_large", "This message is too large for a run to carry."],
   ["new-failure-reason", "The model didn’t finish its response."],
 ])("explains the recorded failure without asking for another message (%s)", (reason, copy) => {
   const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",

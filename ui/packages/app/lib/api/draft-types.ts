@@ -47,18 +47,16 @@ export const DraftSchema = z.object({
   id: z.uuidv7(), state: z.enum(DRAFT_STATE), title: z.string(), etag: z.string(),
   authoring_model_ref: z.string(),
   candidate: CandidateSchema.optional(), review: ReviewSchema.optional(), linked_fleet_id: z.uuidv7().optional(),
-  publication: z.object({plugin_id: z.uuidv7(), revision_id: z.uuidv7(), canonical_digest: z.string()}).optional(),
 });
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
 export const MessageSchema = z.object({
   turn_id: z.uuidv7(), save_requested: z.boolean().optional(), save_error_code: z.string().optional(),
   sequence: decimal, operation_id: z.uuidv7(), role: z.enum(MESSAGE_ROLE), state: z.enum(MESSAGE_STATE),
   text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
-  failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string(),
-    cause: z.enum(["deadline", "cancelled", "provider_interrupted", "completion_unverified"]).optional()}).optional(),
+  failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string()}).optional(),
 });
 export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_LIMIT), next_cursor: z.string().nullable()});
-// The published schedule `View`; sync stays an open string so an unknown state counts as not registered.
+// The daemon's schedule `View`; sync stays an open string so an unknown state counts as not registered.
 export const ScheduleSchema = z.object({
   schedule_id: z.string(), fleet_id: z.string(), sync: z.string(), last_error: z.string().nullable().optional(),
   cron: z.string(), timezone: z.string(), message: z.string(), status: z.string(),
@@ -74,9 +72,6 @@ export const FleetSchema = z.object({
   })]),
   schedules: z.array(ScheduleSchema),
 });
-export const PublishedSchema = z.object({
-  plugin_id: z.uuidv7(), revision_id: z.uuidv7(), head_revision_id: z.uuidv7(), etag: z.string(),
-});
 export const AppliedSchema = z.object({fleet_id: z.uuidv7(), setup_revision: decimal, setup_etag: z.string(), etag: z.string(),
   schedules: z.array(ScheduleSchema)});
 export const ModelsSchema = z.object({items: z.array(z.object({
@@ -88,7 +83,7 @@ export const ModelsSchema = z.object({items: z.array(z.object({
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),
   linked_fleet_id: z.uuidv7().nullable().default(null), updated_at: Instant, expires_at: Instant.nullable().default(null),
-  candidate_revision: summaryRevision, setup_revision: summaryRevision, publication_revision: summaryRevision,
+  candidate_revision: summaryRevision, setup_revision: summaryRevision,
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 
 export type Definition = z.infer<typeof DefinitionSchema>;
@@ -100,7 +95,6 @@ export type Schedule = z.infer<typeof ScheduleSchema>;
 export type WorkspaceModel = z.infer<typeof ModelsSchema>["items"][number];
 export type DraftCard = z.infer<typeof DraftCardsSchema>["items"][number];
 export type Source = {kind: typeof SOURCE_KIND.blank} | {kind: typeof SOURCE_KIND.definition; definition: Definition}
-  | {kind: typeof SOURCE_KIND.plugin; plugin_id: string; revision_id: string}
   | {kind: typeof SOURCE_KIND.fleet; fleet_id: string; setup_revision: string};
 export type Start = {kind: typeof START_KIND.none} | {kind: typeof START_KIND.runNow; message: string};
 

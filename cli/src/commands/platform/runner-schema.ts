@@ -38,8 +38,7 @@ const selftest = Schema.Struct({
   all_ok: Schema.Boolean, sandbox_tier: Schema.Enum(SandboxTier), network_policy: Schema.Enum(RunnerNetworkPolicy),
 });
 export const RunnerDetailSchema = Schema.Struct({...runner.fields,
-  active_run_count: count, active_fleet_count: count, runs_acquired: count,
-  runs_succeeded: count, runs_failed: count, runs_expired: count,
+  active_run_count: count, active_fleet_count: count,
   selftest_requested_at: Schema.NullOr(instant), selftest_completed_at: Schema.NullOr(instant), selftest: Schema.NullOr(selftest),
 });
 export const RunnerMutationSchema = Schema.Struct({
@@ -50,7 +49,6 @@ export const RunnerMutationSchema = Schema.Struct({
 export const RunnerRegisteredSchema = Schema.Struct({runner_id: text, runner_token: text, assigned_policy: RunnerPolicySchema});
 export const RunnerRotatedSchema = Schema.Struct({id: text, runner_token: text});
 /** A tenant registration retried with its first key and body: the runner, never its token. */
-export const RegistrationReplaySchema = Schema.Struct({runner_id: text, assigned_policy: RunnerPolicySchema});
 export const RunnerHistoryPageSchema = Schema.Struct({
   items: Schema.Array(Schema.Struct({id: text, runner_id: text, event_type: Schema.Enum(RunnerEventType), occurred_at: instant, metadata: Schema.Unknown})),
   total: Schema.NullOr(count), next_cursor: Schema.NullOr(text),

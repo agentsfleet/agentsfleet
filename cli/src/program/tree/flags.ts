@@ -51,7 +51,6 @@ const LIST_LIMIT_MIN = 1;
 const LIST_LIMIT_MAX = 200;
 const TURNS_LIMIT_MAX = 500;
 const BILLING_LIMIT_MAX = 100;
-const PLUGIN_LIMIT_MAX = 100;
 
 // The placeholder a flag advertises in help. The library defaults to the
 // parsed TYPE — `--limit integer` — which names what the parser does rather
@@ -146,10 +145,6 @@ export const cursorFlag = textFlag("cursor", NEXT_CURSOR, METAVAR.token);
 export const startingAfterFlag = textFlag("starting-after", NEXT_CURSOR, METAVAR.id);
 
 export const listLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, LIST_LIMIT_MAX).pipe(
-  Flag.withDescription(PAGE_SIZE),
-  Flag.optional,
-);
-export const pluginLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, PLUGIN_LIMIT_MAX).pipe(
   Flag.withDescription(PAGE_SIZE),
   Flag.optional,
 );
@@ -307,7 +302,6 @@ export const gateIdArgument = idArgument("gate_id", "Approval gate ID");
 export const apiKeyIdArgument = idArgument("api_key_id", "API key ID");
 export const grantIdArgument = idArgument("grant_id", "Grant ID");
 export const scheduleIdArgument = idArgument("schedule_id", "Schedule ID");
-export const pluginIdArgument = idArgument("plugin_id", "Plugin ID");
 
 export const workspaceNameArgument = Argument.String(FLAG.name).pipe(
   Argument.withDescription("Workspace name"),

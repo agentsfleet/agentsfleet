@@ -1,6 +1,5 @@
 import type { z } from "zod";
 import type { CachedDraft } from "./draft-cache";
-import { DraftPublication } from "./draft-publication";
 import type { Draft, Fleet, Review, Source, Start } from "./draft-types";
 import { DraftLive } from "./draft-live";
 import { DraftOperation } from "./draft-operation";
@@ -33,7 +32,6 @@ export class DraftClient {
   readonly #lists: DraftLists;
   readonly #listeners = new Set<() => void>();
   readonly #base: string;
-  readonly #publication: DraftPublication;
   readonly #replies = new DraftLive(patch => this.#update(patch));
   #view = new AbortController();
   #snapshot: DraftView = EMPTY;
@@ -45,7 +43,6 @@ export class DraftClient {
   constructor(identity: DraftIdentity) {
     this.#base = `/live/v1/workspaces/${encodeURIComponent(identity.workspace)}`;
     this.#lists = new DraftLists(this.#base);
-    this.#publication = new DraftPublication(this.#base, (request, parser) => this.#request(request, parser));
   }
   readonly getSnapshot = (): DraftView => this.#snapshot;
   readonly subscribe = (listener: () => void): (() => void) => { this.#listeners.add(listener); return () => this.#listeners.delete(listener); };
@@ -214,17 +211,6 @@ export class DraftClient {
         AbortSignal.any([this.#owner.signal, this.#view.signal]), fleet => this.#savedSetup(draft.id, fleet));
       this.#update({notice: appliedNotice(this.#snapshot.schedules)});
     }, "saving");
-  }
-  publish(label: string, append: boolean, selectedTarget?: string): Promise<void> {
-    return this.#requests.run(async () => {
-      this.#idle();
-      const {draft} = await this.#readySetup();
-      const publication = await this.#publication.prepare(draft, label, append, selectedTarget);
-      await this.#operation.run({publish: publication}, async key => {
-        this.#update({notice: await this.#publication.publish(publication, key)});
-        await this.#read(draft.id); await this.#refreshSummary(draft.id);
-      });
-    }, "publishing");
   }
   retry(): Promise<void> {
     return this.#requests.run(async () => {

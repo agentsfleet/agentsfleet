@@ -110,15 +110,30 @@ test("rejects an unknown runner state instead of presenting a successful read", 
   expect(result.code).not.toBe(0); expect(result.stderr).toContain("supported API shape"); expect(result.stdout).toBe("");
 });
 
-test.each(["register", "rotate-token"])("never replays %s after a committed request loses its reply", async command => {
+// A replayed rotation would mint a second token and kill the first. A replayed
+// registration cannot make a second runner: the host registers once.
+test("never replays rotate-token after a committed request loses its reply", async () => {
   let commits = 0;
   fixture.respond = () => {commits += 1; throw Object.assign(new TypeError("Connection reset after commit"), {code: "ECONNRESET"});};
   const file = join(fixture.state, "lost-reply-token");
-  const args = command === "register" ? ["--host-id", "build-host", "--policy", "-"] : [RUNNER_ID];
-  const result = await fixture.run(["runners", command, ...args, "--token-out", file, "--json"], JSON.stringify(POLICY));
+  const result = await fixture.run(["runners", "rotate-token", RUNNER_ID, "--token-out", file, "--json"]);
   expect(result.code).toBe(2); expect(JSON.parse(result.stderr).error.code).toBe("NetworkError");
   expect(commits).toBe(1); expect(fixture.calls).toHaveLength(1);
   expect(existsSync(file)).toBe(false); expect(result.stdout).toBe("");
+});
+
+test("a platform host registered before answers 409 and names the platform group", async () => {
+  fixture.respond = () => Response.json(
+    {error_code: "UZ-RUN-033", detail: "this host is already registered", current_state: "registered"},
+    {status: 409, headers: {location: `/v1/admin/runners/${RUNNER_ID}`}},
+  );
+  const file = join(fixture.state, "registered-token");
+  const result = await fixture.run(["runners", "register", "--host-id", "build-host", "--policy", "-", "--token-out", file, "--json"], JSON.stringify(POLICY));
+  expect(result.code).toBe(3); expect(existsSync(file)).toBe(false);
+  const error = JSON.parse(result.stderr).error;
+  expect(error.code).toBe("UZ-RUN-033");
+  expect(error.suggestion).toContain("agentsfleet platform runners rotate-token");
+  expect(fixture.calls).toHaveLength(1);
 });
 
 

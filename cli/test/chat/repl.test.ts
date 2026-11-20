@@ -9,7 +9,7 @@ import { outputDouble } from "../helpers-output-double.ts";
 import { DRAFT, DRAFT_ID, EMPTY_PAGE, MODEL, PRIVATE_TEXT, REVIEW, WORKSPACE, problem, withApi } from "./fixture.ts";
 
 // pin test: literal is the contract — the action list a person reads at the prompt.
-const HELP = "/review [instance-name] · /save · /run <message> · /publish <label> · /apply · /model <ref> · /stop · /retry · /delete · /quit. Ctrl+C stops the reply being followed.";
+const HELP = "/review [instance-name] · /save · /run <message> · /apply · /model <ref> · /stop · /retry · /delete · /quit. Ctrl+C stops the reply being followed.";
 const PROMPT = "you › ";
 const DRAFT_PATH = `/v1/workspaces/${WORKSPACE}/drafts/${DRAFT_ID}`;
 const MISSING_REVIEW = "Inspect the current setup before this action. use /review [instance-name], inspect the displayed setup and access, then repeat the explicit action";
@@ -37,7 +37,7 @@ async function call(request: Request): Promise<Call> {
 
 test("should keep the conversation open after refused actions, touch nothing and exit 0 on /quit", async () => {
   const calls: Call[] = [];
-  const term = terminal(["   ", "/help", "/frobnicate now", "/review", "/save", "/run", "/run start now", "/publish", "/publish Argo",
+  const term = terminal(["   ", "/help", "/frobnicate now", "/review", "/save", "/run", "/run start now",
     "/model", "/quit", "never read"]);
   await withApi(async (request) => { calls.push(await call(request)); return problem(500); }, async (transport) => {
     const actions = new ChatActions(new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}), new SetupSession(transport),
@@ -46,12 +46,12 @@ test("should keep the conversation open after refused actions, touch nothing and
   });
   expect(calls).toEqual([]);
   expect(term.unread()).toBe(1);
-  expect(term.prompts).toEqual(Array(11).fill(PROMPT));
+  expect(term.prompts).toEqual(Array(9).fill(PROMPT));
   expect(term.rendered).toEqual([
     `info: ${HELP}`, `info: ${HELP}`, `warn: Unknown chat action. ${HELP}`,
     "warn: This conversation has no accessible draft. send your first message or resume an accessible draft",
     `warn: ${MISSING_REVIEW}`, `warn: Missing run message. ${HELP}`, `warn: ${MISSING_REVIEW}`,
-    `warn: Missing plugin label. ${HELP}`, `warn: ${MISSING_REVIEW}`, `warn: Missing setup model reference. ${HELP}`,
+    `warn: Missing setup model reference. ${HELP}`,
   ]);
 });
 

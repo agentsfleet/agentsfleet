@@ -16,6 +16,6 @@ export type DraftDeleteDialogProps = {
 export function DraftDeleteDialog({card, workspace, remove, onRemoved, onClose}: DraftDeleteDialogProps) {
   const deletion = useDeleteDraft(workspace, remove, onRemoved);
   return <ConfirmDialog open onOpenChange={onClose} title="Delete setup chat?" confirmLabel="Delete chat" intent="destructive"
-    description={`Delete “${card.title}” and its private conversation? Saved fleets and published plugin versions stay available.`}
+    description={`Delete “${card.title}” and its private conversation? Saved fleets stay available.`}
     onConfirm={() => deletion.remove(card.id)} errorMessage={deletion.error} />;
 }

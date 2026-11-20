@@ -27,7 +27,7 @@ export class DraftReplies {
 
   gap(): void {
     const current = this.#current;
-    if (current) {current.decoder.markGap(); this.#publish(current, {...current.reply, gapped: true});}
+    if (current) {current.decoder.markGap(); this.#emit(current, {...current.reply, gapped: true});}
   }
 
   reconcile(messages: readonly Message[]): void {
@@ -66,11 +66,11 @@ export class DraftReplies {
     const current: Current = {reply: {sequence, stream, text: "", gapped: false}, decoder: new ReplyStream(delta => {
       const reply = current.reply;
       if (reply.text.length + delta.answer.length > MAX_ANSWER_CHARACTERS) { this.gap(); return; }
-      this.#publish(current, {...reply, text: reply.text + delta.answer});
+      this.#emit(current, {...reply, text: reply.text + delta.answer});
     })};
     this.#current = current;
     return current;
   }
 
-  #publish(current: Current, reply: DraftReply): void { current.reply = reply; this.changed(reply); }
+  #emit(current: Current, reply: DraftReply): void { current.reply = reply; this.changed(reply); }
 }

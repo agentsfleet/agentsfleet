@@ -41,7 +41,7 @@ it("requires durable recovery after a missing frame and ignores older messages",
   replies.reconcile([{...MESSAGE, sequence: "2", role: "assistant", state: "cancelled"}]); expect(changed).toHaveBeenLastCalledWith(null);
 });
 
-it.each(["not JSON", frame({draft_id: FLEET_ID}), frame({text_kind: "reasoning"}), frame({text: "🌿".repeat(1025)}), frame({sequence: "0"}), "x".repeat(32769)])("rejects private or oversized input without publishing (%#)", data => {
+it.each(["not JSON", frame({draft_id: FLEET_ID}), frame({text_kind: "reasoning"}), frame({text: "🌿".repeat(1025)}), frame({sequence: "0"}), "x".repeat(32769)])("rejects private or oversized input without emitting (%#)", data => {
   expect(replies.accept(data, DRAFT.id, [])).toBe(false);
   expect(changed).not.toHaveBeenCalled();
 });

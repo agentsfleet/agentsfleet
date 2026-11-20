@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import { CHAT_TITLE_LIMIT, chatTitle, firstChatRequest, sidebarDrafts } from "@/lib/api/draft-summary";
-import { DRAFT, FLEET_ID, MESSAGE, PUBLICATION } from "./helpers/draft-fixtures";
+import { DRAFT, FLEET_ID, MESSAGE } from "./helpers/draft-fixtures";
 
-const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null};
 
 it("keeps an explicit name and gives unnamed chats a distinct readable label", () => {
   expect(chatTitle("Watch builds", DRAFT.id, "Another task")).toBe("Watch builds");
@@ -20,10 +20,10 @@ it("retains list order when the second chat is selected and updates its status i
 });
 
 it("includes a newly created chat once and uses its proposed purpose until a request is available", () => {
-  const draft = {...DRAFT, title: "New fleet", publication: {...PUBLICATION, canonical_digest: "one"}};
+  const draft = {...DRAFT, title: "New fleet"};
   const rows = sidebarDrafts([card], draft);
   expect(rows).toHaveLength(1);
-  expect(rows[0]).toMatchObject({title: DRAFT.candidate?.definition.description, detail: "Setup ready · Proposed v1 · Published"});
+  expect(rows[0]).toMatchObject({title: DRAFT.candidate?.definition.description, detail: "Setup ready · Proposed v1"});
   expect(sidebarDrafts([], draft)).toHaveLength(1);
   expect(sidebarDrafts([], null)).toEqual([]);
 });

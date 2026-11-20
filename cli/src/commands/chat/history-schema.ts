@@ -15,7 +15,7 @@ const revision = Schema.NullOr(Schema.Number.check(Schema.makeFilter(value => Nu
 const card = Schema.Struct({
   id: text, title: Schema.String, etag: text, state: Schema.Literals(Object.values(DRAFT_STATE)),
   linked_fleet_id: Schema.optionalKey(Schema.NullOr(text)), updated_at: instant,
-  candidate_revision: revision, setup_revision: revision, publication_revision: revision,
+  candidate_revision: revision, setup_revision: revision,
 });
 const page = Schema.Struct({items: Schema.Array(card).check(Schema.isMaxLength(CHAT_PAGE_MAX)), next_cursor: Schema.NullOr(text)});
 export type ChatCard = typeof card.Type;
@@ -39,6 +39,5 @@ export function chatStatus(row: ChatCard): string {
 
 export function chatVersions(row: ChatCard): string {
   return [row.candidate_revision === null ? null : `Proposed v${row.candidate_revision}`,
-    row.setup_revision === null ? null : `Saved v${row.setup_revision}`,
-    row.publication_revision === null ? null : `Published v${row.publication_revision}`].filter(value => value !== null).join(" · ");
+    row.setup_revision === null ? null : `Saved v${row.setup_revision}`].filter(value => value !== null).join(" · ");
 }

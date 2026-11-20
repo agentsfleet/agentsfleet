@@ -10,11 +10,10 @@ vi.mock("next/navigation", () => ({useRouter: () => ({refresh: vi.fn()})}));
 afterEach(cleanup);
 
 it("uses the approved flat grouping and real model and spending metadata", () => {
-  render(<SetupSummary definition={REVIEW.effective.definition} requirements={REQUIREMENTS} modelLabel="MiniMax M3.1 Flash" sourceLabel="Deploy check · v3" />);
+  render(<SetupSummary definition={REVIEW.effective.definition} requirements={REQUIREMENTS} modelLabel="MiniMax M3.1 Flash" />);
   expect(screen.getByText("MiniMax M3.1 Flash")).toBeTruthy();
   expect(screen.getByText("$1.00 / day")).toBeTruthy();
   expect(screen.queryByText("Next wake-up")).toBeNull();
-  expect(screen.getByText("From Deploy check · v3")).toBeTruthy();
   expect(within(screen.getByRole("region", {name: "Repositories"})).getByText("agentsfleet/web")).toBeTruthy();
   expect(screen.getByText("shell")).toBeTruthy();
   expect(within(screen.getByRole("region", {name: "Secrets"})).getByText("github-token")).toBeTruthy();

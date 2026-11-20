@@ -8,7 +8,6 @@ import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { DRAFT, FLEET, REVIEW, SCHEDULE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE, SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
 
-vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => true}));
 let client: DraftClient;
 beforeEach(() => {client = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reviewer"});});
 afterEach(() => {cleanup(); client.dispose(); vi.restoreAllMocks();});
@@ -25,17 +24,9 @@ it("shows failed registration and its native retry without duplicating next wake
   expect(client.getSnapshot().error).toBeNull();
 });
 
-it("does not invent a source or schedule for an unscheduled saved fleet", () => {
+it("does not invent a schedule for an unscheduled saved fleet", () => {
   render(<SetupReview workspace={WORKSPACE} client={client} view={{...EMPTY_DRAFT_VIEW, fleet: FLEET}} />);
   expect(screen.queryByText("Next wake-up")).toBeNull();
-  expect(screen.queryByText(/^From /)).toBeNull();
-});
-
-it("shows pinned source provenance before the first Plugin message", () => {
-  render(<SetupReview workspace={WORKSPACE} client={client} view={{...EMPTY_DRAFT_VIEW,
-    preview: {definition: REVIEW.effective.definition, instanceName: "Pinned setup", revision: "pinned-source-revision", sourceLabel: "Merge watch · v3"}}} />);
-  expect(screen.getByText("From Merge watch · v3")).toBeTruthy();
-  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 it("reads current fleet configuration instead of the older closed draft or stale preview", () => {
@@ -43,11 +34,10 @@ it("reads current fleet configuration instead of the older closed draft or stale
     model: "current-runtime", tools: ["shell"], credentials: ["current-secret"], budget: {daily_nanos: "2000000000"}}}};
   render(<SetupReview workspace={WORKSPACE} client={client} view={{...EMPTY_DRAFT_VIEW, draft: {...DRAFT, state: DRAFT_STATE.closed},
     fleet: {...FLEET, name: "Current fleet", setup_revision: "2", definition},
-    preview: {definition: REVIEW.effective.definition, instanceName: "Obsolete preview", revision: "1", setupRevision: "1", sourceLabel: "Old plugin · v1"}}} />);
+    preview: {definition: REVIEW.effective.definition, instanceName: "Obsolete preview", revision: "1", setupRevision: "1"}}} />);
   expect(screen.getByText("current-runtime")).toBeTruthy();
   expect(screen.getByText("current-secret")).toBeTruthy();
   expect(screen.getByText("$2.00 / day")).toBeTruthy();
-  expect(screen.queryByText("From Old plugin · v1")).toBeNull();
 });
 
 it("retains the retry after a scheduler refusal without claiming registration succeeded", async () => {

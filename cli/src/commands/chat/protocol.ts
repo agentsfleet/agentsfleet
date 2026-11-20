@@ -77,9 +77,6 @@ export const FleetSchema = Schema.Struct({
   setup: Schema.Struct({state: Schema.String, checks: Schema.Array(check)}),
   start: object, schedules: Schema.Array(ScheduleSchema),
 });
-export const PublishedSchema = Schema.Struct({
-  plugin_id: identifier, revision_id: identifier, head_revision_id: identifier, etag: Schema.String,
-});
 export const AppliedSchema = Schema.Struct({
   fleet_id: Schema.String, setup_revision: decimal, setup_etag: Schema.String, etag: Schema.String,
   schedules: Schema.Array(ScheduleSchema),

@@ -174,9 +174,6 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["api-keys", "revoke"], missingArgName: "api_key_id" },
   { args: ["api-keys", "delete"], missingArgName: "api_key_id" },
   { args: ["fleet", "grants", "revoke"], missingArgName: "grant_id" },
-  { args: ["plugins", "show"], missingArgName: "plugin_id" },
-  { args: ["plugins", "revisions"], missingArgName: "plugin_id" },
-  { args: ["plugins", "delete"], missingArgName: "plugin_id" },
   { args: ["fleet", "show"], missingArgName: "fleet_id" },
   { args: ["fleet", "approvals", "show"], missingArgName: "gate_id" },
   { args: ["fleet", "approvals", "approve"], missingArgName: "gate_id" },
@@ -206,8 +203,8 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
 // invocation through `help({ error: true })`, i.e. stderr).
 //
 // A node that owns subcommands and ALSO runs is listed in ACTION_GROUP_NODES
-// instead: bare `agentsfleet plugins` lists them, so asserting it prints
-// help would be asserting the opposite of what it is for.
+// instead: bare `agentsfleet chat` opens a conversation, so asserting it
+// prints help would be asserting the opposite of what it is for.
 export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["platform"],
   ["platform", "runners"],
@@ -231,7 +228,6 @@ export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
 // the command, so these are excluded from the print-help-and-exit-0 sweep and
 // covered by their own command's tests instead.
 export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
-  ["plugins"],
   ["chat"],
 ];
 

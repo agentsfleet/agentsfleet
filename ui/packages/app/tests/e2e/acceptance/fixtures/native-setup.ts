@@ -1,7 +1,7 @@
 import type { Definition, Draft, Fleet, Source } from "@/lib/api/draft-types";
 import type { ClientHandle } from "./api-client";
 import { v7 as uuidv7 } from "uuid";
-import { DraftSchema, FleetSchema, ModelsSchema, PublishedSchema, SETUP_HEADERS } from "@/lib/api/draft-types";
+import { DraftSchema, FleetSchema, ModelsSchema, SETUP_HEADERS } from "@/lib/api/draft-types";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { clientFor } from "./api-client";
 
@@ -19,14 +19,6 @@ export async function readFixtureFleet(handle: ClientHandle, workspace: string, 
 
 export async function deleteFixtureDraft(handle: ClientHandle, workspace: string, draftId: string): Promise<void> {
   await clientFor(handle).delete(`/v1/workspaces/${workspace}/drafts/${encodeURIComponent(draftId)}`);
-}
-
-export async function publishFixturePlugin(handle: ClientHandle, workspace: string, definition: Definition) {
-  const draft = await createFixtureDraft(handle, workspace, definition);
-  if (!draft.candidate) throw new Error("Fixture draft has no candidate");
-  return PublishedSchema.parse(await clientFor(handle).post<unknown>(`/v1/workspaces/${workspace}/plugins`, {
-    draft_candidate_id: draft.candidate.id, label: definition.config.name,
-  }, { [SETUP_HEADERS.key]: uuidv7() }));
 }
 
 export async function saveFixtureFleet(handle: ClientHandle, workspace: string, definition: Definition,

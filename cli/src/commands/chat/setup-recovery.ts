@@ -2,11 +2,10 @@
 
 import { OUTPUT_FORMAT, type Output } from "../../services/output.ts";
 
-export const SETUP_ACTION = { save: "save", publish: "publish", apply: "apply" } as const;
+export const SETUP_ACTION = { save: "save", apply: "apply" } as const;
 type Base = { readonly operation_id: string; readonly draft_candidate_id: string };
 export type SetupRecovery = Base & (
   | { readonly action: typeof SETUP_ACTION.save; readonly name: string; readonly review_digest: string; readonly start_kind: string }
-  | { readonly action: typeof SETUP_ACTION.publish; readonly label: string; readonly target?: { readonly id: string; readonly etag: string } }
   | { readonly action: typeof SETUP_ACTION.apply; readonly fleet_id: string; readonly review_digest: string; readonly setup_etag: string }
 );
 export type RecoveryKey = { readonly action: SetupRecovery["action"]; readonly key: string };

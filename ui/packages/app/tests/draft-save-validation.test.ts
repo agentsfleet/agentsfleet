@@ -14,9 +14,9 @@ beforeEach(async () => {
 });
 afterEach(() => {fixture.dispose();});
 
-it.each(["save", "publish", "apply"] as const)("refuses %s if a fresh read changes the displayed candidate", async (action) => {
+it.each(["save", "apply"] as const)("refuses %s if a fresh read changes the displayed candidate", async (action) => {
   fixture.current = {...DRAFT, candidate: DRAFT.candidate ? {...DRAFT.candidate, id: OTHER_DRAFT_ID} : undefined};
-  const pending = action === "save" ? client.save() : action === "apply" ? client.apply() : client.publish("Recipe", false);
+  const pending = action === "save" ? client.save() : client.apply();
   await expect(pending).rejects.toMatchObject({status: 409, message: expect.stringContaining("setup changed")});
   expect(fixture.mutations()).toHaveLength(0);
   expect(client.getSnapshot().draft?.candidate?.id).toBe(fixture.current.candidate?.id);

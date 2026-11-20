@@ -38,10 +38,10 @@ it("preserves a partial answer but refuses malformed failure metadata", () => {
 });
 
 it.each([
-  {cause: "deadline", title: "Model request timed out"},
-  {cause: "cancelled", title: "Request stopped"},
-])("explains a recorded $cause without retrying outside its owning conversation", ({cause, title}) => {
-  render(<RecordedFailure failure={{reason: "provider_failed", cause, error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"}} />);
+  {reason: "attempt_timed_out", title: "Model request timed out"},
+  {reason: "frame_too_large", title: "Message too large"},
+])("explains a recorded $reason without retrying outside its owning conversation", ({reason, title}) => {
+  render(<RecordedFailure failure={{reason, error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"}} />);
   expect(screen.getByText(title)).toBeTruthy();
   expect(screen.getByText(PARTIAL)).toBeTruthy();
   expect(screen.queryByRole("button", {name: RETRY})).toBeNull();

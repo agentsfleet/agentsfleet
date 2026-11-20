@@ -4,13 +4,13 @@ import type { ChatOptions } from "./commands.ts";
 import type { Output } from "../../services/output.ts";
 import { Effect } from "effect";
 import { ValidationError } from "../../errors/index.ts";
-import { renderApplied, renderFleet, isPartial, renderResult, schedulesOwed } from "./render.ts";
+import { renderApplied, renderFleet, isPartial, schedulesOwed } from "./render.ts";
 import { SetupSession, START } from "./setup-session.ts";
 import { SETUP_ACTION, type RecoveryKey, renderSetupRecovery } from "./setup-recovery.ts";
 
 export function recoveryKey(options: ChatOptions): RecoveryKey | undefined {
   if (!options.operationId || !options.candidateId) return undefined;
-  const action = options.save ? SETUP_ACTION.save : options.apply ? SETUP_ACTION.apply : SETUP_ACTION.publish;
+  const action = options.save ? SETUP_ACTION.save : SETUP_ACTION.apply;
   return { action, key: options.operationId };
 }
 
@@ -26,17 +26,11 @@ export function recoverSetup(setup: SetupSession, options: ChatOptions, output: 
       if (isPartial(fleet) && setup.recovery) yield* renderSetupRecovery(output, setup.recovery);
       return isPartial(fleet) ? 1 : 0;
     }
-    if (options.apply) {
-      if (!options.fleet || !options.reviewDigest || !options.setupEtag) return yield* missing("the original --fleet, --review-digest and --setup-etag");
-      const applied = yield* setup.applyCandidate(candidate, options.fleet, options.reviewDigest, options.setupEtag);
-      yield* renderApplied(output, applied);
-      return schedulesOwed(applied.schedules) ? 1 : 0;
-    }
-    if (!options.publish) return yield* missing("one explicit --save, --apply or --publish action");
-    const target = options.publishTo && options.pluginEtag ? {id: options.publishTo, etag: options.pluginEtag} : undefined;
-    const published = yield* setup.publishCandidate(candidate, options.publish, target);
-    yield* renderResult(output, `Published plugin revision ${published.revision_id}`, published);
-    return 0;
+    if (!options.apply) return yield* missing("one explicit --save or --apply action");
+    if (!options.fleet || !options.reviewDigest || !options.setupEtag) return yield* missing("the original --fleet, --review-digest and --setup-etag");
+    const applied = yield* setup.applyCandidate(candidate, options.fleet, options.reviewDigest, options.setupEtag);
+    yield* renderApplied(output, applied);
+    return schedulesOwed(applied.schedules) ? 1 : 0;
   });
 }
 

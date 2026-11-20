@@ -8,7 +8,7 @@ import { DRAFT_STATE } from "./draft-types";
 import { presentErrorString } from "@/lib/errors";
 
 export type DraftIdentity = {readonly account: string; readonly workspace: string; readonly subject: string};
-type SetupAction = "reading" | "sending" | "saving" | "publishing" | null;
+type SetupAction = "reading" | "sending" | "saving" | null;
 export type DraftRequestState =
   | {readonly kind: "idle" | "inaccessible"}
   | {readonly kind: "requesting" | "retrying" | "unconfirmed"; readonly action: SetupAction};
@@ -29,7 +29,7 @@ export type DraftView = {
   readonly moreChats: boolean;
   readonly listStatus: typeof DRAFT_LIST_STATUS[keyof typeof DRAFT_LIST_STATUS];
   readonly model: string;
-  readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string; readonly sourceLabel?: string} | null;
+  readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string} | null;
   readonly savedSetupRevision: string | null;
   readonly saveOperation?: string | null;
   readonly setupAction?: SetupAction;

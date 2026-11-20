@@ -7,13 +7,12 @@ import { DraftSchema, CreatedSchema, AcceptedSchema, MessagesSchema, MESSAGE_ROL
 import { IF_MATCH, type Transport } from "./transport.ts";
 import { RetainedRequest } from "./retained-request.ts";
 
-export const DRAFT_SOURCE = {blank: "blank", fleet: "fleet", plugin: "plugin", definition: "definition"} as const;
+export const DRAFT_SOURCE = {blank: "blank", fleet: "fleet", definition: "definition"} as const;
 /** An operator-authored native Definition, forwarded whole for the daemon to validate. */
 export type DefinitionDocument = Readonly<Record<string, unknown>>;
 export type DraftSource =
   | { readonly kind: typeof DRAFT_SOURCE.blank }
   | { readonly kind: typeof DRAFT_SOURCE.fleet; readonly fleet_id: string; readonly setup_revision: string }
-  | { readonly kind: typeof DRAFT_SOURCE.plugin; readonly plugin_id: string; readonly revision_id: string }
   | { readonly kind: typeof DRAFT_SOURCE.definition; readonly definition: DefinitionDocument };
 export type Sent = { readonly draft_id: string; readonly sequence: string };
 /** The request states Stop still ends; any other has its answer. */
@@ -76,9 +75,9 @@ export class DraftSession {
   }
 
   /**
-   * Opens the draft from its source alone, before any message. A Definition,
-   * a pinned Plugin revision or a fleet's setup revision already carries a
-   * complete setup, so it can be reviewed at once. Shares the send's retained
+   * Opens the draft from its source alone, before any message. A Definition
+   * or a fleet's setup revision already carries a complete setup, so it can be
+   * reviewed at once. Shares the send's retained
    * identity: either one is the draft's first write.
    */
   create(): Effect.Effect<Sent, ReadError> {

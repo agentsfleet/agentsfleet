@@ -37,8 +37,8 @@ it("places a dated receipt before the undated answer to an optimistic request", 
   expect(rows[2]).toMatchObject({role: "assistant", status: {type: "running"}});
 });
 
-it.each(["deadline", "cancelled", "provider_interrupted", "completion_unverified"] as const)("preserves the recorded %s in failure details without replacing a partial answer", (cause) => {
-  const failure = {reason: UNKNOWN_USAGE_REASON, cause, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
+it.each([UNKNOWN_USAGE_REASON, "attempt_timed_out", "frame_too_large"])("preserves the recorded %s failure without replacing a partial answer", (reason) => {
+  const failure = {reason, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [MESSAGE, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
   expect(rows[1]).toMatchObject({content: [{type: "text", text: "Partial answer"}], status: {type: "complete"},

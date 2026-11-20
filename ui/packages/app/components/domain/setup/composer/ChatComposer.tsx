@@ -11,7 +11,7 @@ import { savedDraft } from "@/lib/api/draft-continuation";
 import { CHAT_PLACEHOLDER } from "../chat-defaults";
 import { ChatToolbar } from "./ChatToolbar";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
-import { SetupSaveFlap } from "../publishing/SetupSaveFlap";
+import { SetupSaveFlap } from "../saving/SetupSaveFlap";
 import { SetupWakeups } from "./SetupWakeups";
 
 // DraftClient records this failure in view.error before rejecting the request.
@@ -29,6 +29,6 @@ export function ChatComposer({ client, view, workspace, canStop, blocked, dirty,
       actions={canStop ? <Button variant="secondary" size="icon" className="size-9 [&_svg]:size-4.5" aria-label="Stop authoring" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }}><SquareIcon className="size-4.5" /></Button>
         : <ComposerPrimitive.Send asChild><Button size={empty ? "default" : "icon"} className={cn("disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100", empty ? "max-[42.5rem]:min-h-11 max-[42.5rem]:px-md [&_svg]:size-4" : "size-9 rounded-full max-[42.5rem]:size-9 max-[42.5rem]:min-h-9 [&_svg]:size-4.5")} aria-label={empty ? "New fleet from message" : "Send message"} onClick={() => input.current?.focus({preventScroll: true})} {...(disabled ? {disabled: true} : {})}>{empty ? <><NotePencilIcon size={16} />New fleet</> : <ArrowUpIcon className="size-4.5" />}</Button></ComposerPrimitive.Send>} />
     <ChatComposerHint>{empty ? null : view.preview?.setupRevision || view.draft?.linked_fleet_id
-      ? "Keep chatting to change the setup." : "Save and publish when the setup is ready."}</ChatComposerHint>
+      ? "Keep chatting to change the setup." : "Save when the setup is ready."}</ChatComposerHint>
   </>;
 }

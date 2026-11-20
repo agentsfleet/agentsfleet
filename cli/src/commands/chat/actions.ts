@@ -7,11 +7,11 @@ import { follow, readHistory } from "./follow.ts";
 import { stopOnInterrupt } from "./interrupt.ts";
 import { isPartial, renderApplied, renderFleet, renderMessage, renderReview, renderResult, schedulesOwed } from "./render.ts";
 import { DraftSession, type Sent } from "./session.ts";
-import { SetupSession, START, type Start, type PublicationTarget } from "./setup-session.ts";
+import { SetupSession, START, type Start } from "./setup-session.ts";
 import { MESSAGE_STATE, type Draft, type Review } from "./protocol.ts";
 import { renderSetupRecovery } from "./setup-recovery.ts";
 
-const OPERATION = {send: "send", create: "create", save: "save", publish: "publish", apply: "apply"} as const;
+const OPERATION = {send: "send", create: "create", save: "save", apply: "apply"} as const;
 const CHAT_CREATED = "chat_created";
 type Operation = typeof OPERATION[keyof typeof OPERATION];
 type Wait = Parameters<typeof follow>[3];
@@ -60,7 +60,7 @@ export class ChatActions {
     });
   }
 
-  /** Opens a draft from a source that needs no first message: a Definition, plugin revision or fleet setup. */
+  /** Opens a draft from a source that needs no first message: a Definition or a fleet setup. */
   create() {
     const self = this;
     return Effect.gen(function* () {
@@ -102,17 +102,6 @@ export class ChatActions {
     });
   }
 
-  publish(label: string, target?: PublicationTarget) {
-    const self = this;
-    return Effect.gen(function* () {
-      yield* self.#idleSetup();
-      if (!self.#seen) return yield* missingReview();
-      self.#operation = OPERATION.publish;
-      const published = yield* self.#setup.publish(self.#seen.draft, label, target);
-      yield* renderResult(self.#output, `Published plugin revision ${published.revision_id}`, published);
-    });
-  }
-
   apply() {
     const self = this;
     return Effect.gen(function* () {
@@ -142,11 +131,6 @@ export class ChatActions {
           const fleet = yield* self.#setup.progress();
           self.#partial = isPartial(fleet);
           yield* renderFleet(self.#output, fleet);
-          break;
-        }
-        case OPERATION.publish: {
-          const publication = yield* self.#setup.retryPublication();
-          yield* renderResult(self.#output, `Published plugin revision ${publication.revision_id}`, publication);
           break;
         }
         case OPERATION.apply: {

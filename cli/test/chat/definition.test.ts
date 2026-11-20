@@ -12,7 +12,7 @@ import { HTTP_METHOD } from "../../src/constants/http-method.ts";
 import { isRecord } from "../../src/lib/guards.ts";
 import { bufferStream, cliEnv, withAuthedStateDir } from "../helpers-cli-state.ts";
 import { outputDouble } from "../helpers-output-double.ts";
-import { ACCEPTED, CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET_ID, PLUGIN_ID, MESSAGE, MODEL, PRIVATE_TEXT, REVIEW, REVISION_ID,
+import { ACCEPTED, CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET_ID, MESSAGE, MODEL, PRIVATE_TEXT, REVIEW,
   WORKSPACE, withApi, problem } from "./fixture.ts";
 
 const DEFINITION = REVIEW.effective.definition;
@@ -119,7 +119,6 @@ for (const [label, make, detail] of UNUSABLE) {
 const CONFLICTS: ReadonlyArray<readonly [string, ReadonlyArray<string>, string]> = [
   ["a resumed draft", [DRAFT_ID, "--no-input"], "A resumed draft keeps its source"],
   ["--fleet", ["--fleet", FLEET_ID, "--setup-revision", "1", "--model", MODEL, "--no-input"], "Choose one source"],
-  ["--plugin", ["--plugin", PLUGIN_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"], "Choose one source"],
 ];
 
 for (const [label, args, detail] of CONFLICTS) {

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { runCli } from "../../src/cli.ts";
 import { bufferStream, cliEnv, withAuthedStateDir } from "../helpers-cli-state.ts";
 import type { Schedule } from "../../src/commands/chat/protocol.ts";
-import { CANDIDATE_ID, DRAFT, DRAFT_ID, EMPTY_PAGE, FAILED_SCHEDULE, FLEET, FLEET_ID, PLUGIN_ID, PUBLICATION,
+import { CANDIDATE_ID, DRAFT, DRAFT_ID, EMPTY_PAGE, FAILED_SCHEDULE, FLEET, FLEET_ID,
   REVIEW, SCHEDULE_RETRY, SCHEDULE_UNCONFIRMED, SYNC_FAILED_KIND, SYNC_UNCONFIRMED_KIND, SYNCED_SCHEDULE,
   SYNCING_SCHEDULE, UNKNOWN_SYNC_SCHEDULE, WORKSPACE, withApi, problem } from "./fixture.ts";
 
@@ -89,25 +89,6 @@ test("unknown Apply replays its original setup tag after the live fleet has adva
     expect(result.code).toBe(0);
     expect(calls[0]).toEqual(calls[1]);
     expect(calls[1]?.tag).toBe(FLEET.setup_etag);
-  });
-});
-
-test("owned publication recovery preserves candidate, key and inspected Plugin tag", async () => {
-  const calls: Call[] = [];
-  await withApi(async (request) => {
-    if (request.method === "POST") {
-      calls.push(await record(request));
-      return calls.length === 1 ? problem(503) : Response.json(PUBLICATION);
-    }
-    return Response.json(new URL(request.url).pathname.endsWith("/messages") ? EMPTY_PAGE : DRAFT);
-  }, async (_, origin) => {
-    const args = ["--no-input", "--publish", "Argo", "--publish-to", PLUGIN_ID, "--plugin-etag", PUBLICATION.etag];
-    expect((await invoke(origin, [DRAFT_ID, ...args, "--review-digest", REVIEW.review_digest])).code).not.toBe(0);
-    const key = calls[0]?.key;
-    if (!key) throw new Error("missing original publication key");
-    expect((await invoke(origin, [...args, "--operation-id", key, "--candidate-id", CANDIDATE_ID])).code).toBe(0);
-    expect(calls[0]).toEqual(calls[1]);
-    expect(calls[1]?.tag).toBe(PUBLICATION.etag);
   });
 });
 
@@ -198,19 +179,7 @@ test("operation recovery reports a failed schedule from a replayed Save or Apply
   });
 });
 
-test("publication requires the digest the caller inspected before any mutation", async () => {
-  const posts: string[] = [];
-  await withApi((request) => {
-    if (request.method === "POST") posts.push(request.url);
-    return Response.json(new URL(request.url).pathname.endsWith("/messages") ? EMPTY_PAGE : DRAFT);
-  }, async (_, origin) => {
-    expect((await invoke(origin, [DRAFT_ID, "--no-input", "--publish", "Argo"])).code).not.toBe(0);
-    expect(posts).toEqual([]);
-  });
-});
-
-for (const args of [["--save"], ["--save", "--name", "argo"], ["--apply", "--fleet", FLEET_ID],
-  ["--publish", "Argo", "--publish-to", PLUGIN_ID]]) {
+for (const args of [["--save"], ["--save", "--name", "argo"], ["--apply", "--fleet", FLEET_ID]]) {
   test(`incomplete recovery metadata refuses before network work: ${args.join(" ")}`, async () => {
     const seen: string[] = [];
     await withApi((request) => { seen.push(request.url); return problem(500); }, async (_, origin) => {

@@ -1,7 +1,7 @@
 import type { Draft, Message } from "@/lib/api/draft-types";
 import { vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, PLUGIN, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 // Load the real dynamic children before interaction deadlines start.
 import "@/components/domain/setup/conversation/DraftConversation";
@@ -21,9 +21,6 @@ export class ChatFixture {
   messages: Message[] = [MESSAGE, {...MESSAGE, role: "assistant", text: "Your setup is ready."}];
   saveAttempts = 0;
   failSave = false;
-  failPublish = false;
-  publicationAttempts = 0;
-  readonly publicationKeys = new Set<string>();
   readonly turns = new Map<string, string>();
   readonly fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const path = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "http://app.test").pathname;
@@ -61,15 +58,6 @@ export class ChatFixture {
       return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}}, 201);
     }
     if (path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET, definition: REVIEW.effective.definition, status: "active", setup: {state: "ready", checks: []}});
-    if ((path.endsWith("/plugins") || path.endsWith("/revisions")) && call.method === "POST") {
-      this.publicationAttempts++;
-      const key = call.headers.get("Idempotency-Key");if (!key) throw new Error("Publication requires a retry identity");
-      this.publicationKeys.add(key);
-      this.draft = {...this.draft, publication: {...PUBLICATION, canonical_digest: this.draft.candidate?.canonical_digest ?? ""}};
-      if (this.failPublish && this.publicationAttempts === 1) throw new TypeError("publication response interrupted");
-      return response(PUBLICATION, 201);
-    }
-    if (path.includes("/plugins/") && call.method === "GET") return response(PLUGIN);
     throw new Error(`Unexpected chat fixture request ${call.method} ${path}`);
   });
   mount(): void {

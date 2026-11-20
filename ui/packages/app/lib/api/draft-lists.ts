@@ -14,7 +14,6 @@ const RESOURCE = {models: "models", drafts: "drafts"} as const;
 export class DraftLists {
   readonly #base: string;
   readonly #removed = new Set<string>();
-  readonly #publications = new Map<string, string | undefined>();
   readonly #loading = new Map<DraftList, Promise<DraftListsView | null>>();
   #models: readonly WorkspaceModel[] = [];
   #cards: readonly DraftCard[] = [];
@@ -29,26 +28,21 @@ export class DraftLists {
   }
 
   clear(): void {
-    this.#generation += 1; this.#loading.clear(); this.#removed.clear(); this.#publications.clear();
+    this.#generation += 1; this.#loading.clear(); this.#removed.clear();
     this.#models = []; this.#cards = []; this.#modelCursor = null; this.#cardCursor = null;
   }
 
   remove(id: string): DraftListsView {
     this.#removed.add(id);
-    this.#publications.delete(id);
     this.#cards = this.#cards.filter((card) => card.id !== id);
     return this.view;
   }
 
   updateDraft(draft: Draft): DraftListsView {
-    const publication = draft.publication?.revision_id;
     this.#cards = this.#cards.map((card) => card.id === draft.id
       ? {...card, title: draft.title, state: draft.state, etag: draft.etag, linked_fleet_id: draft.linked_fleet_id ?? null,
         candidate_revision: summaryRevision(draft.candidate?.revision),
-        setup_revision: card.linked_fleet_id === draft.linked_fleet_id ? card.setup_revision : null,
-        publication_revision: publication && (this.#publications.has(draft.id)
-          ? this.#publications.get(draft.id) === publication : card.etag === draft.etag) ? card.publication_revision : null} : card);
-    this.#publications.set(draft.id, publication);
+        setup_revision: card.linked_fleet_id === draft.linked_fleet_id ? card.setup_revision : null} : card);
     return this.view;
   }
 
@@ -58,7 +52,7 @@ export class DraftLists {
     return this.view;
   }
 
-  /** A completed creation or publication refreshes one summary without moving existing rows or its cursor. */
+  /** A completed creation refreshes one summary without moving existing rows or its cursor. */
   async refreshDraft(id: string, signal: AbortSignal): Promise<DraftListsView> {
     const generation = this.#generation;
     const page = await this.#cardPage(null, signal);

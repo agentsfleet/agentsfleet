@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SetupUnavailable } from "@/lib/api/draft-request";
-import { DRAFT_STATE, MESSAGE_STATE } from "@/lib/api/draft-types";
+import { MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
-import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, PUBLICATION, REVIEW, SCHEDULE, TURN_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, REVIEW, SCHEDULE, TURN_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const {calls, ready, mutations} = fixture;
@@ -115,11 +115,9 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toEqual([]);
   });
 
-  it("refuses Apply without a linked fleet and append publication without a prior publication", async () => {
+  it("refuses Apply without a linked fleet", async () => {
     const instance = await ready(true); await instance.refreshSetup();
     await expect(instance.apply()).rejects.toMatchObject({status: 409});
-    await instance.refreshSetup();
-    await expect(instance.publish("recipe", true)).rejects.toMatchObject({status: 409});
     expect(mutations()).toEqual([]);
   });
 
@@ -135,10 +133,8 @@ describe("private setup editing and recovery boundaries", () => {
     expect(instance.getSnapshot()).toMatchObject({busy: false, pending: false});
   });
 
-  it("publishes a new entry and clears a deleted conversation", async () => {
-    const instance = await ready(true); await instance.refreshSetup(); await instance.publish("recipe", false);
-    expect(instance.getSnapshot().notice).toBe("Setup published.");
-    expect(mutations()[0]?.body).toEqual({draft_candidate_id: DRAFT.candidate?.id, label: "recipe"});
+  it("clears a deleted conversation", async () => {
+    const instance = await ready(true);
     fixture.override = ({method}) => method === "DELETE" ? response(null, 204) : undefined;
     await instance.remove();
     expect(instance.getSnapshot()).toMatchObject({draft: null, messages: []});
@@ -206,7 +202,7 @@ describe("private browser chat", () => {
       error: "This chat is no longer available. It may have been removed, or your access may have changed."});
     expect(mutations()).toEqual([]);
   });
-  it("ordinary first chat has one atomic identity and never saves or publishes", async () => {
+  it("ordinary first chat has one atomic identity and never saves", async () => {
     const instance = await ready(); await instance.send("Investigate failures");
     const sent = mutations(); expect(sent).toHaveLength(1);
     expect(sent[0]?.body).toMatchObject({source: {kind: "blank"}, authoring_model_ref: MODEL_REF, message: "Investigate failures"});
@@ -295,22 +291,6 @@ describe("private browser chat", () => {
     fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "2"}}};
     const instance = await ready(true);
     await expect(instance.refreshSetup()).rejects.toMatchObject({status: 409}); expect(mutations()).toEqual([]);
-  });
-  it("retains a publication revision tag after a lost answer", async () => {
-    fixture.current = {...DRAFT, publication: {plugin_id: PUBLICATION.plugin_id, revision_id: PUBLICATION.revision_id, canonical_digest: "prior"}};
-    let attempted = false;
-    fixture.override = ({path, method}) => {
-      if (path.endsWith(`/plugins/${PUBLICATION.plugin_id}`)) return response({etag: '"original-plugin"'});
-      if (path.endsWith("/revisions") && method === "POST") {
-        if (!attempted) {attempted = true; return response({}, 503);} return response(PUBLICATION, 201);
-      }
-      return undefined;
-    };
-    const instance = await ready(true); await instance.refreshSetup();
-    await expect(instance.publish("Recipe", true)).rejects.toMatchObject({status: 503}); await instance.retry();
-    expect(mutations()[1]?.headers.get("If-Match")).toBe('"original-plugin"');
-    expect(mutations()[1]?.headers.get("Idempotency-Key")).toBe(mutations()[0]?.headers.get("Idempotency-Key"));
-    expect(calls.filter((call) => call.path.endsWith(`/plugins/${PUBLICATION.plugin_id}`))).toHaveLength(1);
   });
   it("clears private data and cancels future I/O on disposal", async () => {
     const instance = await ready(true); instance.dispose(); const before = calls.length;

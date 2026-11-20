@@ -1,7 +1,6 @@
 "use client";
 
 import {useRef, useState} from "react";
-import nextDynamic from "next/dynamic";
 import {CaretRightIcon} from "@phosphor-icons/react/ssr";
 import {Button} from "@agentsfleet/design-system";
 import type {DraftClient} from "@/lib/api/drafts";
@@ -9,19 +8,13 @@ import type {DraftView} from "@/lib/api/draft-state";
 import {DRAFT_STATE} from "@/lib/api/draft-types";
 import {savedDraft} from "@/lib/api/draft-continuation";
 import {chatRecovery} from "@/lib/api/draft-recovery";
-import {pluginsUiEnabled} from "@/lib/plugin-ui";
 import {SetupStatusFlap} from "./SetupStatusFlap";
 import {ChatProgressLabel} from "../../shared/chat/ChatProgressLabel";
 
-const PluginPublication = nextDynamic(() => import("./SetupPublication").then(module => module.SetupPublication));
 type Props = {client: DraftClient; view: DraftView; workspace: string; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string};
 
-/** The active flap saves a fleet revision; the Plugin publication tree stays dormant. */
-export function SetupSaveFlap(props: Props) {
-  return pluginsUiEnabled() ? <PluginPublication {...props} /> : <FleetSaveFlap {...props} />;
-}
-
-function FleetSaveFlap({client, view, dirty, ...statusProps}: Props) {
+/** Saves the reviewed setup as a new fleet, or as the next revision of the fleet it edits. */
+export function SetupSaveFlap({client, view, dirty, ...statusProps}: Props) {
   const inFlight = useRef(false);
   const [preparing, setPreparing] = useState(false);
   const editable = view.draft ? !savedDraft(view) && view.draft.state === DRAFT_STATE.editing && Boolean(view.draft.candidate && view.draft.review)
@@ -46,10 +39,10 @@ function FleetSaveFlap({client, view, dirty, ...statusProps}: Props) {
   if (!view.inaccessible && !view.error && (preparing || view.busy && view.setupAction === "saving")) return <div className="mb-sm flex justify-center">
     <output aria-label="Saving setup" aria-live="polite" aria-busy="true" data-setup-status="working"
       className="inline-flex max-w-full items-center rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground">
-      <ChatProgressLabel label="Saving and publishing" />
+      <ChatProgressLabel label="Saving" />
     </output>
   </div>;
   return available ? <div className="mb-sm flex justify-center"><Button variant="outline" className="rounded-full bg-card px-xl" onClick={() => {void save();}}>
-    Save and publish<CaretRightIcon size={16} className="text-muted-foreground" aria-hidden="true" />
+    Save<CaretRightIcon size={16} className="text-muted-foreground" aria-hidden="true" />
   </Button></div> : <SetupStatusFlap view={view} dirty={dirty} {...statusProps} />;
 }

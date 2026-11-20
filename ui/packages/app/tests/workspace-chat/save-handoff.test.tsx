@@ -12,7 +12,7 @@ async function proposed() {
   render(<WorkspaceChat {...CHAT_PROPS} />);
   const input = await screen.findByLabelText(CHAT_PLACEHOLDER);
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
-  fireEvent.change(input, {target: {value: "Watch releases; require my approval before publishing."}});
+  fireEvent.change(input, {target: {value: "Watch releases; require my approval before each release."}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
   await screen.findByText("Your setup is ready.");
 }

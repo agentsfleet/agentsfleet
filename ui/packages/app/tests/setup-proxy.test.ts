@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { matchSetupRoute } from "@/lib/api/setup-proxy/path";
 import { SETUP_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { SETUP_PROXY_DETAIL, SETUP_REQUEST_ID_HEADER } from "@/lib/api/setup-proxy/response";
-import { APP_ORIGIN, DRAFT_ID, FLEET_ID, PLUGIN_ID, REVISION_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { APP_ORIGIN, DRAFT_ID, FLEET_ID, REVISION_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const {credential} = vi.hoisted(() => ({credential: vi.fn()}));
 vi.mock("@/lib/auth/credential", () => ({credential}));
@@ -111,7 +111,7 @@ describe("private setup proxy", () => {
     expect(new URL(upstream.mock.calls[2]?.[0]).search).toBe("");
     // The shared page keys are not widened for the other lists.
     expect(matchSetupRoute(WORKSPACE, ["fleets"], METHOD.get)?.query).toEqual(["limit", "starting_after", "name"]);
-    expect(matchSetupRoute(WORKSPACE, ["plugins"], METHOD.get)?.query).toEqual(["limit", "starting_after"]);
+    expect(matchSetupRoute(WORKSPACE, ["drafts", DRAFT_ID, "messages"], METHOD.get)?.query).toEqual(["limit", "starting_after"]);
   });
   it("preserves the literal private-chat query together with its bound cursor", async () => {
     upstream.mockResolvedValue(response({items: [], next_cursor: null}));
@@ -209,19 +209,11 @@ describe("setup route whitelist", () => {
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
-    [["plugins"], METHOD.get], [["plugins"], METHOD.post],
-    [["plugins", PLUGIN_ID], METHOD.get], [["plugins", PLUGIN_ID], METHOD.delete],
-    [["plugins", PLUGIN_ID, "revisions"], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.post], [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.get],
   ] as const;
   it.each(allowed)("matches %s %s", (path, method) => {expect(matchSetupRoute(WORKSPACE, path, method)).toBeDefined();});
   it.each([
     ["models", DRAFT_ID], ["drafts", ".."], ["drafts", DRAFT_ID, "messages", "extra"], ["fleets", FLEET_ID, "secrets"],
-    ["fleets", FLEET_ID, "authoring-context", "extra"],
-    ["plugins", "owned"], ["plugins", "platform-recipe"],
-    ["fleet-libraries"], ["fleet-libraries", "owned"], ["fleet-libraries", PLUGIN_ID],
-    ["fleet-libraries", PLUGIN_ID, "revisions"], ["fleet-libraries", PLUGIN_ID, "revisions", REVISION_ID],
-    ["plugins", "owned", "revisions"], ["plugins", ".."], ["plugins", "x".repeat(129)],
-    ["plugins", PLUGIN_ID, "revisions", "invalid"], ["plugins", PLUGIN_ID, "other"],
+    ["fleets", FLEET_ID, "authoring-context", "extra"], ["secrets"],
   ])("rejects unsupported path %s", (...path) => {expect(matchSetupRoute(WORKSPACE, path, METHOD.get)).toBeUndefined();});
   it("rejects a malformed workspace", () => {expect(matchSetupRoute("..", ["models"], METHOD.get)).toBeUndefined();});
   it.each([
@@ -235,9 +227,6 @@ describe("setup route whitelist", () => {
     [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "turns", "invalid"], METHOD.patch],
     [["drafts", DRAFT_ID, "turns", REVISION_ID], METHOD.get], [["drafts", DRAFT_ID, "turns", "invalid"], METHOD.patch],
     [["drafts", DRAFT_ID, "cancellations"], METHOD.post],
-    [["plugins"], METHOD.patch], [["plugins", PLUGIN_ID], METHOD.patch],
-    [["plugins", ""], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.patch],
-    [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.post],
   ] as const)("rejects an unsupported method/path pair %s %s", (path, method) => {
     expect(matchSetupRoute(WORKSPACE, path, method)).toBeUndefined();
   });

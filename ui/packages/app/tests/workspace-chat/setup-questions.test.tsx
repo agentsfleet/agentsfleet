@@ -42,7 +42,7 @@ it("keeps malformed, missing and unsupported criteria visibly unconfirmed", () =
   const policy = parsedFixture();
   const definitions = [null, {}, {routing: {}},
     {...policy, completion: {...policy.completion, statements: [policy.completion.statements[0], policy.completion.statements[0]]}},
-    {...policy, completion: {...policy.completion, next_action: {question: "Choose", criteria: {CONTINUE: "Go", WAIT: "Wait", DONE: "Done", PUBLISH: "Any target"}}}},
+    {...policy, completion: {...policy.completion, next_action: {question: "Choose", criteria: {CONTINUE: "Go", WAIT: "Wait", DONE: "Done", LAUNCH: "Any target"}}}},
   ].map(definition);
   definitions.push({...REVIEW.effective.definition, config: {}});
   for (const candidate of definitions) {
