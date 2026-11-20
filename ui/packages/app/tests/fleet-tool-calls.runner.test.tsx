@@ -61,6 +61,16 @@ describe("FleetThread — runner tool cells", () => {
     expect(patch.querySelector("[data-diff]"), "no line is worked out of the patch text").toBeNull();
     cleanup();
 
+    // Each file the patch touched gets its own line; only the first takes the rail.
+    const twoFiles = [{ path: "a.ts", added: 24, removed: 8 }, { path: "b.ts", added: 3, removed: 1 }];
+    renderCalls([{ ...call(TOOL_NAME.APPLY_PATCH, patched), changes: twoFiles }]);
+    const both = cell(TOOL_NAME.APPLY_PATCH);
+    expect([...both.querySelectorAll("[data-changed-file]")].map((file) => file.textContent)).toEqual(["a.ts", "b.ts"]);
+    expect(both.textContent).toContain("b.ts +3 −1");
+    const glyphs = [...both.querySelectorAll("[data-changed-file]")].map((file) => file.parentElement?.parentElement?.firstElementChild);
+    expect(glyphs.map((glyph) => glyph?.classList.contains("invisible"))).toEqual([false, true]);
+    cleanup();
+
     // A patch the runner recorded no change for claims none.
     renderCalls([call(TOOL_NAME.APPLY_PATCH, patched)]);
     expect(cell(TOOL_NAME.APPLY_PATCH).querySelector("[data-changed-file]")).toBeNull();
