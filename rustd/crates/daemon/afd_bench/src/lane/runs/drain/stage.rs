@@ -112,7 +112,7 @@ impl Staged {
         &self,
         stores: &Datastores,
     ) -> Result<Vec<afd_gateway::test_util::RunnerConnection>> {
-        let (gateway, _) = super::connection::gateway(stores, &self.kek)?;
+        let (gateway, _) = super::connection::gateway(stores, &self.kek);
         let mut sessions = Vec::with_capacity(self.runners.len());
         for runner in &self.runners {
             sessions.push(

@@ -62,10 +62,7 @@ pub(super) async fn open_runtime(
 ) -> Result<Runtime, BootFailure> {
     // First, before a socket opens: a client that will not build is a defect
     // in the build, and nothing below should be opened only to be abandoned.
-    let clients = Clients::open()?.with_inference(config.runtime.operations.inference)?;
-    let authoring_transport = clients.authoring;
-    #[cfg(feature = "test-util")]
-    let authoring_transport = config.authoring_transport().unwrap_or(authoring_transport);
+    let clients = Clients::open()?;
     let database = open_database(config).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
@@ -83,7 +80,6 @@ pub(super) async fn open_runtime(
         identity: (capabilities, sessions, signup_writeback),
         broker,
         live,
-        authoring_transport,
         storage_client: clients.storage,
         vendor_client: clients.plane,
         schedule_client: clients.schedule,

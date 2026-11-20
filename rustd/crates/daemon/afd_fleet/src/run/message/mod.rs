@@ -2,14 +2,16 @@
 //! answer, prepared here and posted by `afd_outbound`'s posters.
 //!
 //! ```text
-//!   proved run ──► the event's thread ──► one more of eight ──► masked text
-//!        │                  │                      │                   │
-//!   stale: refuse     none: no channel       at cap: refuse       Interim
+//!   proved run ──► the event's thread ──► the line's number ──► masked text
+//!        │                  │                     │                   │
+//!   stale: refuse     none: no channel     superseded: refuse     Interim
 //! ```
 //!
 //! Every refusal is decided before the text is read, so a refused message
 //! costs no vault read. The order puts the thread before the count, so a
-//! message with nowhere to go does not spend one of the run's eight.
+//! message with nowhere to go takes no number. A run may say as much, and as
+//! often, as it likes: the channel refuses what it cannot take, and the post
+//! answers `delivered: false`.
 //!
 //! # What the mask covers
 //!
@@ -20,11 +22,11 @@
 
 use af_core::id::Uuid7;
 use af_secrets::{Scrub, StaticSecrets};
-use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
+use af_wire::message_verb::MessageRequest;
 use af_wire::turn::FleetSteerBody;
 use afd_outbound::Interim;
 
-use crate::error::{Result, message_limit_reached, message_no_channel, query, run_not_found};
+use crate::error::{Result, message_no_channel, query, run_not_found, stale_fence};
 use crate::run::installed::Installed;
 use crate::run::pull::RunService;
 use crate::run::sql;
@@ -50,13 +52,13 @@ pub struct SteerSender {
 }
 
 impl RunService {
-    /// One line for `run_id`'s thread, fenced, counted and scrubbed.
+    /// One line for `run_id`'s thread, fenced, numbered and scrubbed.
     ///
     /// # Errors
     /// Refuses a run that is not this runner's or not live, a superseded
-    /// holder, an event that recorded no thread, and a run that already said
-    /// its fill. Reports a datastore or vault that would not answer, and a
-    /// mask that could not be built — in which case nothing is posted.
+    /// holder, and an event that recorded no thread. Reports a datastore or
+    /// vault that would not answer, and a mask that could not be built — in
+    /// which case nothing is posted.
     pub async fn message(
         &self,
         runner_id: &Uuid7,
@@ -81,12 +83,13 @@ impl RunService {
             .count_message(&standing.run_id, request.fencing_token)
             .await?;
         let Some(part) = counted else {
-            // No thread taken: the run is at its cap, or a reassignment superseded the
-            // holder after its standing was read. The second read says which.
+            // No number taken: the run stopped holding after its standing was
+            // read. The second read names how; a holder it still proves was
+            // superseded inside the count's own fence check.
             let Standing { run_id, .. } = standing;
             self.standing(runner_id, run_id, request.fencing_token)
                 .await?;
-            return Err(message_limit_reached());
+            return Err(stale_fence());
         };
         let text = self.masked(&standing, &request.text).await?;
         let Standing {
@@ -181,20 +184,18 @@ impl RunService {
 impl Runs {
     /// Counts one message against `run_id` while it holds its fleet under
     /// `presented`, answering which line of the run it is, or `None` once the
-    /// run has said [`MESSAGES_PER_RUN_MAX`] or the run no longer holds.
+    /// run no longer holds.
     async fn count_message(&self, run_id: &Uuid7, presented: u64) -> Result<Option<u32>> {
         let mut connection = self.pool().acquire().await?;
         let counted: Option<i32> = sqlx::query_scalar(COUNT_MESSAGE)
             .bind(run_id)
-            .bind(i32::try_from(MESSAGES_PER_RUN_MAX).unwrap_or(i32::MAX))
             .bind(i64::try_from(presented).unwrap_or(i64::MAX))
             .bind(sql::RUN_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_COUNT))?;
-        Ok(counted.map(|posted| u32::try_from(posted).unwrap_or(MESSAGES_PER_RUN_MAX)))
+        // The column starts at zero and only grows by one, so it is never
+        // negative; a count past `u32::MAX` keeps the largest number.
+        Ok(counted.map(|posted| u32::try_from(posted).unwrap_or(u32::MAX)))
     }
 }
-
-#[cfg(test)]
-mod tests;

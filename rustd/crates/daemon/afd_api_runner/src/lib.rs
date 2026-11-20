@@ -18,6 +18,8 @@ pub mod openapi;
 
 use std::sync::Arc;
 
+use afd_http::handler::setup_input::TEXT_BODY_BYTES_MAX;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, get, patch, post};
 use handler::runner::task_checkpoints as checkpoints;
 use route::RunnerRoute;
@@ -59,7 +61,10 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::ScheduleRuns => get(handler::runner::schedule_run::runs::<D>)
             .post(handler::runner::schedule_run::run::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
-        RunnerRoute::Steers => post(handler::runner::fleet_steer::handle::<D>),
+        // A fleet's message to another carries text up to the one ceiling,
+        // past axum's 2 MiB default once escaped.
+        RunnerRoute::Steers => post(handler::runner::fleet_steer::handle::<D>)
+            .layer(DefaultBodyLimit::max(TEXT_BODY_BYTES_MAX)),
         RunnerRoute::Fleets => get(handler::runner::fleets::list::<D>),
         RunnerRoute::FleetTurns => get(handler::runner::fleets::events::<D>),
     }

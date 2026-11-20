@@ -1,8 +1,8 @@
 //! A setup turn's assistant message on the messages page reports its run's
 //! usage, read from the usage lines the run's report logged, as the notices
-//! read it: once the attempt path goes, the page has no other source.
+//! read it: the page has no other source.
 
-use af_wire::authoring::Knowledge;
+use af_wire::setup::Knowledge;
 use af_wire::usage::{RequestLines, RequestUsage};
 use afd_setup::types::{Message, MessageQuery, MessageState};
 
@@ -38,9 +38,9 @@ impl Case {
 }
 
 // Value: protects=a person paging the setup chat sees what a turn cost once its
-// draft run settles; fails_when=the page keeps reading only an attempt's receipts,
-// or drops a run's lines; why_new=the page read the attempt path alone, which §8
-// deletes; seam=report_draft's usage lines, read back through Drafts::messages.
+// draft run settles; fails_when=the page drops a run's lines; why_new=the page
+// read only the daemon's own model receipts, which §8 deletes; seam=report_draft's
+// usage lines, read back through Drafts::messages.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_messages_page_shows_a_setup_runs_usage() {

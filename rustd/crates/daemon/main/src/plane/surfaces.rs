@@ -1,4 +1,4 @@
-//! The serving plane's three configured surfaces: authoring, the outbound
+//! The serving plane's three configured surfaces: setup, the outbound
 //! family that dials vendors, and device-flow login.
 //!
 //! Each takes something [`PlaneParts`](super::PlaneParts) carries by value — a
@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
-use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_tenant::session::Sessions as Logins;
 use afd_turns::Turns;
@@ -19,46 +18,29 @@ use afd_turns::Turns;
 use super::config::{LoginConfig, ScheduleConfig};
 use super::{config, platform};
 
-/// The authoring drafts, the setup over them, the model calls they make, and
-/// the creations that admit a finished draft.
+/// The setup drafts, the setup over them, and the creations that admit a
+/// finished draft. Setup's model calls are the runner's, so none is built
+/// here.
 #[derive(Debug)]
 pub(super) struct Authoring {
     pub(super) drafts: afd_setup::Drafts,
     pub(super) setup: afd_setup::Setup,
     pub(super) creations: afd_setup::Creations,
-    pub(super) models: afd_setup::ModelCalls,
 }
 
-/// Builds the authoring surfaces over `drafts`, each over the one before it.
+/// Builds the setup surfaces over `drafts`, each over the one before it.
 ///
-/// `drafts` already carries the pool, the biller and the analytics reporter,
-/// so every surface below reports its funnel steps and moves money the same
-/// way. The setup wraps the drafts, the model calls wrap the drafts and the
-/// shared provider store, and the creations wrap the setup and the shared
-/// turns ledger — so the order below is the dependency order, not a
-/// preference.
-pub(super) fn authoring(
-    drafts: afd_setup::Drafts,
-    kek: &Arc<Kek>,
-    providers: &Providers,
-    turns: &Turns,
-    transport: afd_setup::Network,
-    decisions: Option<&af_core::id::Uuid7>,
-) -> Authoring {
+/// `drafts` already carries the pool and the analytics reporter, so every
+/// surface below reports its funnel steps the same way. The setup wraps the
+/// drafts, and the creations wrap the setup and the shared turns ledger — so
+/// the order below is the dependency order, not a preference.
+pub(super) fn authoring(drafts: afd_setup::Drafts, kek: &Arc<Kek>, turns: &Turns) -> Authoring {
     let setup = afd_setup::Setup::new(drafts.clone(), Arc::clone(kek));
-    let decision_client = transport.guarded_client();
-    let mut models =
-        afd_setup::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
-            .with_progress(turns.streams());
-    if let Some(admin) = decisions {
-        models = models.with_decisions(admin.clone(), decision_client);
-    }
     let creations = afd_setup::Creations::new(setup.clone(), turns.clone());
     Authoring {
         drafts,
         setup,
         creations,
-        models,
     }
 }
 

@@ -31,6 +31,7 @@ mod activate;
 pub mod cache;
 mod cap;
 mod decision;
+mod eligibility;
 mod endpoint;
 pub mod entries;
 mod managed;
@@ -52,6 +53,7 @@ use serde::de::DeserializeOwned;
 use crate::error::{Result, provider_malformed};
 
 pub use self::activate::Activation;
+pub use self::eligibility::{Eligibility, ModelFacts};
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
 pub use self::entries::{
     Added, Boundary, CatalogueRate, Entry, PricedDefault, RegistryPage, RegistryRow, Removed,

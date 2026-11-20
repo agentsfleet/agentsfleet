@@ -52,6 +52,7 @@ fn one_of_each() -> Vec<TailFrame<'static>> {
             actor: text(),
             event_type: text(),
             message: text(),
+            message_trimmed: false,
             created_at: jiff::Timestamp::UNIX_EPOCH,
         },
         TailFrame::TurnReceived {
@@ -60,6 +61,7 @@ fn one_of_each() -> Vec<TailFrame<'static>> {
             event_type: text(),
             created_at: jiff::Timestamp::UNIX_EPOCH,
             message: None,
+            message_trimmed: false,
             counters: None,
         },
         completion(),

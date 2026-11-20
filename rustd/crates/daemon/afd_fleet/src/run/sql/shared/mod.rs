@@ -23,12 +23,6 @@
 //! bookkeeping without the fleet's rows: the draft kind binds them, with its
 //! own per-kind statements beside them. A change to the fencing, the clock or
 //! the metering in one belongs in its fused fleet twin in the same diff.
-//!
-//! # The setup turns the authoring path still runs
-//!
-//! [`INSERT_RUN`]'s census counts `setup.attempts` beside the runs,
-//! as every host census does while the authoring path still issues attempts.
-//! That term goes with the table.
 
 /// Assigns a thread to its owner, bumping the monotonic fence.
 ///

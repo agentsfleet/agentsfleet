@@ -104,7 +104,7 @@ pub(crate) async fn wait_for_assignment(scene: &Scenario, turn_id: &Uuid7) -> (S
                 run: af_wire::run::TaggedRun::Fleet(run),
             } = message
             else {
-                panic!("this fleet fixture received an authoring assignment")
+                panic!("this fleet fixture received a frame that is not an assignment")
             };
             if run.event.turn_id == turn_id.as_str() {
                 return (run.run_id.to_string(), run.fencing_token);

@@ -79,7 +79,7 @@ impl Session {
         bearer: Option<&str>,
     ) -> Result<(), Box<Response>> {
         let (mut upload, body) = af_stream::Outgoing::pipe();
-        let hello = json!({"type":"hello","request_id":1,"accepted_kinds":["authoring"],"running":[],"credits":0});
+        let hello = json!({"type":"hello","request_id":1,"accepted_kinds":["fleet","setup"],"running":[],"credits":0});
         Self::write_to(
             &self.output,
             &self.stop,

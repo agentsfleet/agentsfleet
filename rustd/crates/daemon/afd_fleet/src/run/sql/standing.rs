@@ -52,17 +52,17 @@ pub const SELECT_STANDING: &str = const_format::concatcp!(RUN_READ, RUN_JUDGED);
 pub const SELECT_STANDING_SHARED: &str =
     const_format::concatcp!(RUN_READ, "FOR SHARE OF l", RUN_JUDGED);
 
-/// Counts one interim message against a run that still holds its fleet.
+/// Numbers one interim message of a run that still holds its fleet.
 ///
-/// Answers the new count while it is under the cap; a run a reassignment
-/// superseded since its standing was read, or one at the cap, touches no row
-/// and returns none.
+/// Answers the new count, the line's number; a run a reassignment superseded
+/// since its standing was read touches no row and returns none. Nothing caps
+/// the count: the channel refuses what it cannot take.
 ///
 /// The fence is in the statement rather than only in the standing read before
-/// it, so a holder superseded between the two cannot take a message slot, and one
-/// guarded statement means two concurrent posts cannot both take the last.
+/// it, so a holder superseded between the two cannot take a number, and one
+/// guarded statement means two concurrent posts never take the same one.
 ///
-/// `$1` run, `$2` the cap, `$3` the presented token, `$4` the active status.
+/// `$1` run, `$2` the presented token, `$3` the active status.
 /// The row is locked in a `MATERIALIZED` step and the deadline read on
 /// `clock_timestamp()` in the next, for the reason [`RUN_READ`] gives: an
 /// `UPDATE` whose own `WHERE` read the clock would judge the run before

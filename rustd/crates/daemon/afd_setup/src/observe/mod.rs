@@ -2,16 +2,19 @@
 
 mod rows;
 
-use crate::{
-    Access, Drafts, Result, access, draft::read, error::raise::query,
-    run::guard::DELETION_GENERATION, types::DraftState,
-};
+use crate::{Access, Drafts, Result, access, draft::read, error::raise::query, types::DraftState};
 use af_core::{error_code, id::Uuid7};
 use sqlx::Connection as _;
 
 pub use rows::Notice;
 
 const CONTEXT: &str = "observe private draft changes";
+
+/// Every draft's private deletion generation, as the draft stream reports it.
+///
+/// Nothing ever advanced it, so the schema keeps no column for it and the
+/// runner protocol carries none; only the observation stream still names it.
+const DELETION_GENERATION: i64 = 0;
 
 /// A reauthorized observation for one private stream poll.
 #[derive(Debug)]

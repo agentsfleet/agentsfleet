@@ -11,12 +11,12 @@ use afd_db::{
 use jiff::Timestamp;
 use sqlx::{Connection as _, Postgres, Transaction};
 
-use crate::rows::{self, AttemptRow, POLICY, RunRow};
+use crate::rows::{self, POLICY, RunRow, SetupRunRow};
 
-/// How long a live seeded run or attempt has left.
+/// How long a live seeded run has left.
 pub(super) const LIVE_FOR: Duration = Duration::from_mins(1);
 
-/// How far past its expiry a lapsed seeded run or attempt is.
+/// How far past its expiry a lapsed seeded run is.
 pub(super) const LAPSED_BY: Duration = Duration::from_millis(1);
 
 pub(super) struct Fixture {
@@ -76,14 +76,13 @@ impl Fixture {
         fixture
     }
 
-    pub(super) async fn authoring(&self, tx: &mut Transaction<'_, Postgres>, until: Timestamp) {
-        rows::attempt(
+    pub(super) async fn setup(&self, tx: &mut Transaction<'_, Postgres>, until: Timestamp) {
+        rows::setup_run(
             tx,
             (&self.runner, &self.workspace, &self.tenant),
-            AttemptRow {
+            SetupRunRow {
                 status: afd_runner::sql::RUN_STATUS_ACTIVE,
                 run_expires_at: until,
-                reserved_nanos: 0,
             },
         )
         .await;
@@ -177,7 +176,7 @@ impl Fixture {
         let capacity = afd_runner::capacity::lock(
             &mut tx,
             &self.runner,
-            afd_runner::capacity::Work::Authoring,
+            afd_runner::capacity::Work::Setup,
             None,
         )
         .await
@@ -185,7 +184,7 @@ impl Fixture {
         .expect("isolated host exists");
         let accepted = capacity.can_assign();
         if accepted {
-            self.authoring(&mut tx, clock::after(capacity.now(), LIVE_FOR))
+            self.setup(&mut tx, clock::after(capacity.now(), LIVE_FOR))
                 .await;
         }
         tx.commit().await.expect("commit the guarded assignment");
@@ -204,13 +203,6 @@ impl Fixture {
 
     pub(super) async fn cleanup(self) {
         let mut connection = self.owner.acquire().await.expect("cleanup connection");
-        // Attempts outlive their runner by design, so a test removes the ones
-        // it seeded itself rather than leaving them in the lane.
-        sqlx::query("DELETE FROM setup.attempts WHERE runner_id = $1")
-            .bind(&self.runner)
-            .execute(&mut *connection)
-            .await
-            .expect("remove only this test's attempts");
         sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)

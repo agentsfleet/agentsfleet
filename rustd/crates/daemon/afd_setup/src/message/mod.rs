@@ -15,7 +15,6 @@ pub(crate) use af_fleet_runtime::definition::normalize_text as normalize;
 #[derive(sqlx::FromRow)]
 pub(crate) struct Accepted {
     pub(crate) save_requested: bool,
-    pub(crate) user_text: String,
 }
 
 pub(crate) async fn accepted(

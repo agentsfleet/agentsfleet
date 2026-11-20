@@ -3,15 +3,13 @@
 --
 -- The head is the oldest message still queued or running; a stopped one is cancelled. A running
 -- head is taken again only when a draft run ran it before (`thread.runs.turn_id` is the
--- message): that run lapsed, so this assignment reassigns it. A running head the authoring
--- attempt path owns waits for that path.
+-- message): that run lapsed, so this assignment reassigns it.
 --
 -- $1 the editing draft status · $2 the queued message status · $3 the running message status ·
--- $4 the attempt statuses that no longer hold a draft · $5 limit · $6 the polling runner ·
--- $7 the cancelled message status
+-- $4 limit · $5 the polling runner
 WITH host AS MATERIALIZED (
   -- A tenant's runner is assigned only its tenant's drafts, and an unknown runner none.
-  SELECT platform_owned, tenant_id FROM runner.runners WHERE id = $6
+  SELECT platform_owned, tenant_id FROM runner.runners WHERE id = $5
 ), waiting AS (
   -- A setup turn has no producer; an unsettled one is queued or running.
   SELECT DISTINCT m.thread_id AS draft_id
@@ -41,18 +39,5 @@ SELECT d.id AS id, d.workspace_id AS workspace_id, d.tenant_id AS tenant_id,
    -- One live run per draft: its thread's id is the draft's.
    AND NOT EXISTS (SELECT 1 FROM thread.threads s
                     WHERE s.id = d.id AND s.run_expires_at > statement_timestamp())
-   -- Setup turns the authoring path still runs; this term goes with setup.attempts. Only
-   -- its newest attempt can still be running, and one whose turn Stop cancelled keeps
-   -- only its accounting.
-   AND NOT EXISTS (SELECT 1
-                     FROM (SELECT a.status, a.message_sequence FROM setup.attempts a
-                            WHERE a.draft_id = d.id
-                            ORDER BY a.message_sequence DESC
-                            LIMIT 1) latest
-                    WHERE latest.status <> ALL($4::text[])
-                      AND NOT EXISTS (SELECT 1 FROM thread.turns c
-                                       WHERE c.thread_id = d.id
-                                         AND c.sequence = latest.message_sequence
-                                         AND c.status = $7))
  ORDER BY head.created_at, d.id
- LIMIT $5
+ LIMIT $4

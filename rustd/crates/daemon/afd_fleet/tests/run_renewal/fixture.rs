@@ -29,7 +29,7 @@ impl Running {
 
     /// The same, on a database of this test's own.
     ///
-    /// For a test that asserts WHICH queued authoring turn the host is given.
+    /// For a test that asserts WHICH queued setup turn the host is given.
     /// Placement takes the oldest queued draft across every tenant, so on the
     /// shared lane a sibling suite's leftover or backdated draft wins the thread.
     /// A private database makes this test's draft the only candidate, and its

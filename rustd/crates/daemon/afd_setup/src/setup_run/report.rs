@@ -12,7 +12,7 @@
 //! first, finds the run already settled.
 
 use af_core::{error_code, id::Uuid7};
-use af_wire::{authoring::FailureReason, run::SetupProposal};
+use af_wire::{run::SetupProposal, setup::FailureReason};
 use afd_turns::view::activity::Announcement;
 use jiff::Timestamp;
 use sqlx::PgConnection;
@@ -25,7 +25,6 @@ use crate::{
     draft::read,
     error::raise::query,
     funnel::Message,
-    run::report::verdict,
     types::{CANCELLED, MessageState, RUNNING},
 };
 
@@ -167,7 +166,7 @@ impl Creations {
             let failed = MessageState::Failed.as_str();
             let ending = Finish {
                 candidate: draft.head_candidate_id.as_ref(),
-                reason: Some(verdict::reason(FailureReason::ProviderFailed)),
+                reason: Some(super::reason_word(FailureReason::ProviderFailed)),
                 ..Finish::status(failed)
             };
             write_turn(connection, scope, ending).await?;
@@ -213,7 +212,7 @@ impl Creations {
     }
 
     /// Commits a setup report's transaction, then announces what its save
-    /// changed, as the attempt path's report does.
+    /// changed.
     ///
     /// # Errors
     /// Reports a commit the datastore refused.
@@ -232,7 +231,7 @@ impl Creations {
     }
 
     /// After the report committed: retries a requested save's activation and
-    /// registers its triggers, as the attempt path's report does.
+    /// registers its triggers.
     ///
     /// # Errors
     /// Preserves activation and schedule failures.

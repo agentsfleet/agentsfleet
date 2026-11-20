@@ -15,12 +15,10 @@ SELECT p.id, p.tenant_id, p.workspace_id,
        p.posture, p.model, p.charged_nanos, p.input_token_count, p.output_token_count,
        p.runtime_ms AS wall_ms, p.created_at
   FROM page p
-  -- Setup turns the authoring path still runs; this join goes with setup.attempts.
-  LEFT JOIN setup.attempts a ON a.id = p.run_id AND a.tenant_id = p.tenant_id
   -- A draft run's lines name the run as their run_id.
   LEFT JOIN thread.runs dl ON dl.id = p.run_id AND dl.draft_id IS NOT NULL
         AND dl.tenant_id = p.tenant_id
-  LEFT JOIN setup.drafts d ON d.id = COALESCE(a.draft_id, dl.draft_id)
+  LEFT JOIN setup.drafts d ON d.id = dl.draft_id
         AND d.tenant_id = p.tenant_id AND d.workspace_id = p.workspace_id
   LEFT JOIN fleet.fleets f ON f.id = d.fleet_id
         AND f.tenant_id = p.tenant_id AND f.workspace_id = p.workspace_id

@@ -8,7 +8,6 @@ use garde::Validate as _;
 use super::{ConnectionServices, Message, Request, io::IncomingFrame};
 use crate::{Result, error::ErrorKind};
 
-mod authoring;
 mod context;
 mod heartbeat;
 mod progress;
@@ -116,35 +115,6 @@ impl ConnectionServices {
             } => {
                 self.availability(credits, revision, observed_assignments)?;
             }
-            Up::AuthoringModel {
-                request_id,
-                run_id,
-                request,
-            } => {
-                self.authoring_model(request_id, &run_id, request.into_owned())
-                    .await?;
-            }
-            Up::AuthoringActivity {
-                request_id,
-                run_id,
-                request,
-            } => {
-                self.authoring_activity(request_id, &run_id, request.into_owned())
-                    .await?;
-            }
-            Up::AuthoringRenew {
-                request_id,
-                run_id,
-                request,
-            } => self.authoring_renew(request_id, &run_id, request).await?,
-            Up::AuthoringReport {
-                request_id,
-                run_id,
-                request,
-            } => {
-                self.authoring_report(request_id, &run_id, request.into_owned())
-                    .await?;
-            }
             Up::Hello { .. } | Up::Confirm { .. } => return Err(ErrorKind::Protocol.into()),
         }
         Ok(())
@@ -164,10 +134,6 @@ fn operation(message: &Request<'_>) -> &'static str {
         Up::ContextSave { .. } => "context_save",
         Up::Progress { .. } => "progress",
         Up::Ready { .. } => "ready",
-        Up::AuthoringModel { .. } => "authoring_model",
-        Up::AuthoringActivity { .. } => "authoring_activity",
-        Up::AuthoringRenew { .. } => "authoring_renewal",
-        Up::AuthoringReport { .. } => "authoring_report",
         Up::Hello { .. } => "hello",
         Up::Confirm { .. } => "confirm",
     }

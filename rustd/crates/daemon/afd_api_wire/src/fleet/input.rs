@@ -43,7 +43,7 @@ pub enum Start {
     None,
     /// Queue this message once after activation.
     RunNow {
-        /// Nonempty text, at most 32,768 UTF-8 bytes.
+        /// Nonempty text, at most 1,048,576 characters.
         message: String,
     },
 }

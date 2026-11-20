@@ -35,7 +35,6 @@ async fn charge_pages_bound_usage_history_before_detail_joins() {
     let mut previous = 0;
     for size in HISTORY_SIZES {
         for owner in [&tenant, &foreign] {
-            fixture::attempts(&db, owner, previous + 1, size).await;
             fixture::lines(&db, owner, previous + 1, size).await;
         }
         sqlx::query("ANALYZE billing.usage_lines")

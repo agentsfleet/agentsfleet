@@ -6,7 +6,7 @@
 //! never holds the bot token: it posts text to the daemon, and the daemon
 //! speaks.
 //!
-//! The fence and the cap under concurrency are in
+//! The fence and the numbering under concurrency are in
 //! `integration_runner_messages_fence`.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
@@ -17,7 +17,7 @@
     reason = "test target: a step indexes the JSON it just built"
 )]
 
-use af_wire::message_verb::{MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MESSAGES_PER_RUN_MAX};
+use af_wire::message_verb::MESSAGE_DELIVERY_DEADLINE;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
@@ -31,9 +31,11 @@ const CREDENTIAL: &str = "grafana";
 /// See [`CREDENTIAL`].
 const TOKEN: &str = "glsa_fixture_interim_secret";
 
-/// How far past the byte bound the oversized line runs: a kibibyte, so it is
-/// plainly over rather than off by one.
-const OVER_BY: usize = 1024;
+/// A line far past the 4,096 bytes a line was once held to.
+const LONG_LINE_BYTES: usize = 10_000;
+
+/// How many lines the uncapped run says: past the eight it was once held to.
+const LINES: u32 = 10;
 
 /// A fleet that declares [`CREDENTIAL`].
 const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["grafana"],"budget":{"daily_nanos":"1000000000"}}}"#;
@@ -71,41 +73,39 @@ async fn test_fleet_posts_a_message_mid_run() {
     speaking.finish(supervisor).await;
 }
 
-/// Dimension 2.3. Eight lines a run, then the cap; and a line over the byte
-/// bound is refused before anything is counted.
+/// No cap on a run's lines: a 10,000-byte line lands whole, and the ninth
+/// and tenth lines land like the first, each its own part. An empty line is
+/// still refused before anything is numbered.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_message_caps_refuse() {
+async fn test_a_run_posts_long_lines_past_eight() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
     let (run_id, fence) = speaking.run_thread().await;
 
-    let (status, refused) = speaking
-        .say((&run_id, fence), &"a".repeat(MESSAGE_MAX_BYTES + OVER_BY))
-        .await;
+    let (status, refused) = speaking.say((&run_id, fence), "").await;
     assert_eq!(
         (status, &refused["error_code"]),
         (400, &json!("UZ-REQ-001")),
         "{refused}"
     );
-    for line in 1..=MESSAGES_PER_RUN_MAX {
+    let long = "a".repeat(LONG_LINE_BYTES);
+    let (status, posted) = speaking.say((&run_id, fence), &long).await;
+    assert_eq!((status, &posted), (200, &json!({"delivered": true})));
+    for line in 2..=LINES {
         let (status, posted) = speaking
             .say((&run_id, fence), &format!("line {line}"))
             .await;
         assert_eq!(status, 200, "line {line}: {posted}");
     }
-    let (status, refused) = speaking.say((&run_id, fence), "one too many").await;
-    assert_eq!(
-        (status, &refused["error_code"], &refused["current_state"]),
-        (409, &json!("UZ-RUN-020"), &json!("at_capacity")),
-        "{refused}"
-    );
-    let parts: Vec<Value> = posts(&speaking.slack)
+    let sent = posts(&speaking.slack);
+    assert_eq!(sent[0]["text"], json!(long), "the long line lands whole");
+    let parts: Vec<Value> = sent
         .iter()
         .map(|sent| sent["metadata"]["event_payload"]["part"]["line"].clone())
         .collect();
-    let expected: Vec<Value> = (1..=MESSAGES_PER_RUN_MAX).map(|part| json!(part)).collect();
-    assert_eq!(parts, expected, "eight lines landed, each its own part");
+    let expected: Vec<Value> = (1..=LINES).map(|part| json!(part)).collect();
+    assert_eq!(parts, expected, "ten lines landed, each its own part");
     speaking.finish(supervisor).await;
 }
 

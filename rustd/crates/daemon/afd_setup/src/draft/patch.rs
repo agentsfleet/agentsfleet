@@ -1,13 +1,14 @@
 //! Idle edits revalidate the full candidate and advance its immutable head once.
 
 use super::{etag, read};
+use crate::setup_run::model;
 use crate::{
     Access, Drafts, Result, access, candidate,
     error::{
         ErrorKind,
         raise::{invalid, query},
     },
-    model, sql,
+    sql,
     types::{Draft, DraftPatch, DraftState, QUEUED, RUNNING},
 };
 use af_core::id::Uuid7;

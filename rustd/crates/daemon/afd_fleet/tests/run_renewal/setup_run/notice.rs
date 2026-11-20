@@ -1,7 +1,7 @@
 //! A setup turn's notice reports its run's usage, read from the usage lines
 //! the run's report logged rather than from an attempt's dispatch receipts.
 
-use af_wire::authoring::Knowledge;
+use af_wire::setup::Knowledge;
 use af_wire::usage::{RequestLines, RequestUsage};
 use afd_setup::Notice;
 use afd_setup::types::MessageState;

@@ -158,11 +158,8 @@ async fn issue(fixtures: &Fixtures, case: &Ready) -> Issued {
 
 fn decode(answer: Option<&serde_json::Value>) -> Issued {
     let body = answer.expect("fleet work was issued").to_string();
-    let run = match serde_json::from_str::<TaggedRun<'_>>(&body).expect("typed issued run") {
-        TaggedRun::Fleet(run) => Some(run),
-        TaggedRun::Authoring(_) => None,
-    }
-    .expect("the selected turn grants fleet work");
+    let TaggedRun::Fleet(run) =
+        serde_json::from_str::<TaggedRun<'_>>(&body).expect("typed issued run");
     Issued {
         id: Uuid7::parse(&run.run_id).expect("the run names a UUIDv7"),
         decision: run.decision,

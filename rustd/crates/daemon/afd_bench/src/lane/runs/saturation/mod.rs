@@ -88,7 +88,7 @@ pub async fn run(
     let mut report = Report::new(Lane::RunsSaturation, profile, provenance);
     record::parameters(&mut report, parameters, stores.pool_size);
     let kek = Arc::new(platform::minted_kek()?);
-    let host = Arc::new(Production::new(stores, &kek)?);
+    let host = Arc::new(Production::new(stores, &kek));
     let mut ledger = FixtureLedger::new();
     let staged = stage::stage(stores, &host.drafts, &kek, prefix, parameters, &mut ledger).await;
     let measured = match staged {

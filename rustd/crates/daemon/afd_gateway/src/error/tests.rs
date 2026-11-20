@@ -130,7 +130,6 @@ fn every_operation_keeps_its_metric_label_and_sentence() {
         (Operation::Heartbeat, "heartbeat", "recording a heartbeat"),
         (Operation::Recheck, "recheck", "checking the current owner"),
         (Operation::Renewal, "renewal", "renewing work"),
-        (Operation::Model, "model", "calling the authoring model"),
         (Operation::Progress, "progress", "publishing progress"),
         (Operation::Report, "report", "settling a report"),
         (Operation::Folds, "folds", "reading pending inputs"),

@@ -54,7 +54,7 @@ impl RunOwner {
     pub const fn kind(&self) -> RunKind {
         match self {
             Self::Fleet(_) => RunKind::Fleet,
-            Self::Draft(_) => RunKind::Authoring,
+            Self::Draft(_) => RunKind::Setup,
         }
     }
 }
@@ -90,6 +90,6 @@ mod tests {
             (&id, None, Some(&id))
         );
         assert_eq!(fleet.kind(), RunKind::Fleet);
-        assert_eq!(draft.kind(), RunKind::Authoring);
+        assert_eq!(draft.kind(), RunKind::Setup);
     }
 }

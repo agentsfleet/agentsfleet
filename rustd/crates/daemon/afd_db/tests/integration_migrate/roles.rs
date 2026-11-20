@@ -65,7 +65,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// Every product table, the role that reaches it, and what that role may do, as
 /// the slots grant it. No row grants `TRUNCATE`. `connector.channels` grants
 /// UPDATE on its rebind columns only, which a whole-row probe does not reach.
-const GRANTS: [(&str, &str, &[Verb]); 86] = [
+const GRANTS: [(&str, &str, &[Verb]); 80] = [
     ("identity.tenants", "api_runtime", READ_WRITE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", READ_WRITE),
@@ -147,17 +147,11 @@ const GRANTS: [(&str, &str, &[Verb]); 86] = [
     ),
     ("setup.drafts", "api_runtime", READ_WRITE),
     ("setup.candidates", "api_runtime", WRITE_ONCE),
-    ("setup.attempts", "api_runtime", KEPT),
-    ("setup.dispatches", "api_runtime", KEPT),
-    ("setup.edit_decisions", "api_runtime", KEPT),
-    ("setup.activity_receipts", "api_runtime", APPEND_ONLY),
-    ("setup.answer_receipts", "api_runtime", WRITE_ONCE),
     ("setup.replay_receipts", "api_runtime", WRITE_ONCE),
     ("billing.wallets", "api_runtime", READ_WRITE),
     ("billing.usage_lines", "api_runtime", KEPT),
     ("billing.usage_daily", "api_runtime", KEPT),
     ("billing.runs_daily", "api_runtime", KEPT),
-    ("billing.setup_report_receipts", "api_runtime", APPEND_ONLY),
     ("memory.entries", "memory_runtime", READ_WRITE),
     ("memory.context_checkpoints", "api_runtime", READ_WRITE),
 ];
@@ -232,7 +226,6 @@ async fn assert_money_is_integral(connection: &mut PgConnection) {
         .unwrap();
     let names: BTreeSet<&str> = nanos.iter().map(|(name, _)| name.as_str()).collect();
     for expected in [
-        "setup.attempts.reserved_nanos",
         "billing.usage_lines.charged_nanos",
         "billing.wallets.balance_nanos",
     ] {

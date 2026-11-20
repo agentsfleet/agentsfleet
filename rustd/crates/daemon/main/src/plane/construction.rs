@@ -35,12 +35,10 @@ impl Common {
         let task_master = Arc::clone(&parts.kek);
         let turns = Turns::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
         let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());
-        let drafts =
-            afd_setup::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
-                .with_analytics(parts.analytics.clone())
-                .with_clock(parts.runtime.clock)
-                .with_turn_policy(parts.runtime.operations.authoring)
-                .with_bus(parts.bus.clone());
+        let drafts = afd_setup::Drafts::new(parts.database.clone(), Entropy::new())
+            .with_analytics(parts.analytics.clone())
+            .with_clock(parts.runtime.clock)
+            .with_bus(parts.bus.clone());
         Self {
             providers,
             github_client,
@@ -114,7 +112,6 @@ impl NativeInputs<'_> {
             runners: runners.clone(),
             runs: runs.clone(),
             drafts: self.authoring.drafts.clone(),
-            models: self.authoring.models.clone(),
             creations: self.authoring.creations.clone(),
             bus: self.bus,
             stream_limit: self.stream_limit,

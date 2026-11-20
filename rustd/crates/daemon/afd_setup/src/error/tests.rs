@@ -33,11 +33,6 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
             error_code::AUTHORING_MODEL,
             Some("unavailable"),
         ),
-        (
-            ErrorKind::Unknown,
-            error_code::AUTHORING_UNKNOWN,
-            Some("awaiting_accounting"),
-        ),
     ] {
         let error = Error::from(kind);
         assert_eq!(error.code(), code);

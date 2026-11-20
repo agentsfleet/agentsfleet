@@ -42,7 +42,7 @@ async fn acquire(
 async fn can_assign(fixture: &Fixture, authority: &Authority) -> TestResult<bool> {
     let mut connection = fixture.database.acquire().await?;
     let mut transaction = connection.begin().await?;
-    let available = capacity::lock(&mut transaction, authority, capacity::Work::Authoring, None)
+    let available = capacity::lock(&mut transaction, authority, capacity::Work::Setup, None)
         .await?
         .is_some_and(capacity::Capacity::can_assign);
     transaction.commit().await?;

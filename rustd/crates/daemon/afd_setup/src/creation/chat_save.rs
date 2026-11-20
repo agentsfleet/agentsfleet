@@ -5,30 +5,18 @@ use crate::{
     Access, Result, candidate, draft,
     error::{ErrorKind, raise::query},
     message, review,
-    run::guard::{Attempt, Guarded},
     types::{DraftState, MessageState, SaveOrigin, SourcePin, Start},
 };
 use af_core::{id::Uuid7, problem::Problem};
-use af_wire::authoring::{Report, Reported};
 use afd_turns::view::activity::Announcement;
 use sqlx::{Connection as _, PgConnection};
 
 /// The turn a save request rides: its locked draft, its message, and the
-/// report's clock. The attempt path and the draft run path both build one.
+/// report's clock.
 pub(crate) struct SaveTurn<'a> {
     pub(crate) draft: &'a draft::read::Locked,
     pub(crate) sequence: i64,
     pub(crate) now: jiff::Timestamp,
-}
-
-impl<'a> From<&'a Guarded> for SaveTurn<'a> {
-    fn from(guarded: &'a Guarded) -> Self {
-        Self {
-            draft: &guarded.draft,
-            sequence: guarded.attempt.message_sequence,
-            now: guarded.now,
-        }
-    }
 }
 
 /// Which completed save request a report's after-commit step finishes.
@@ -40,18 +28,6 @@ pub(crate) struct SavedKey {
     pub(crate) sequence: i64,
 }
 
-impl From<&Attempt> for SavedKey {
-    fn from(attempt: &Attempt) -> Self {
-        Self {
-            draft_id: attempt.draft_id.clone(),
-            workspace_id: attempt.workspace_id.clone(),
-            user_id: attempt.user_id.clone(),
-            tenant_id: attempt.tenant_id.clone(),
-            sequence: attempt.message_sequence,
-        }
-    }
-}
-
 #[derive(sqlx::FromRow)]
 struct SavedTurn {
     fleet_id: Uuid7,
@@ -59,20 +35,6 @@ struct SavedTurn {
 }
 
 impl Creations {
-    /// Completes a setup turn and any save that its accepted message requested.
-    ///
-    /// A checked save refusal is returned in message history. The answer remains
-    /// available. Successful saves survive a closed browser and report retries.
-    ///
-    /// # Errors
-    /// Refuses invalid fences or report replay and propagates datastore outages.
-    pub async fn report(&self, runner: &Uuid7, run: &Uuid7, request: Report) -> Result<Reported> {
-        self.setup
-            .drafts
-            .report_with_save(runner, run, request, Some(self))
-            .await
-    }
-
     pub(crate) async fn save_turn_on(
         &self,
         connection: &mut PgConnection,

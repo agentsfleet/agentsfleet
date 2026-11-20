@@ -54,10 +54,10 @@ impl Runners {
             .map_err(query(sql::CONTEXT))?;
         Ok(row.map(|(revision, last)| Ticket {
             revision,
-            preferred: if last.as_deref() == Some(RunKind::Authoring.as_str()) {
+            preferred: if last.as_deref() == Some(RunKind::Setup.as_str()) {
                 RunKind::Fleet
             } else {
-                RunKind::Authoring
+                RunKind::Setup
             },
             accepted,
         }))

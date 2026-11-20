@@ -152,7 +152,7 @@ pub struct Message {
     pub candidate_id: Option<String>,
     /// Provider usage and cumulative runtime charge, when recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<af_wire::authoring::Usage>,
+    pub usage: Option<af_wire::setup::Usage>,
     /// Server-reported failure reason and suggested recovery action.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<Failure>,
@@ -170,14 +170,11 @@ pub struct Message {
 #[derive(Debug, Serialize)]
 pub struct Failure {
     /// Server-reported failure reason.
-    pub reason: af_wire::authoring::FailureReason,
+    pub reason: af_wire::setup::FailureReason,
     /// Stable central registry code.
     pub error_code: String,
     /// Stable recovery action for the authorized client to render.
     pub recovery_action: String,
-    /// Model-stream failure category, without request or response content.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cause: Option<String>,
 }
 
 pub use crate::page::CursorPage;

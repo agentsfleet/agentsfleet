@@ -19,10 +19,8 @@ impl RunService {
         now: Timestamp,
     ) -> Result<Option<serde_json::Value>> {
         let mut encode = |run: af_wire::run::RunPayload<'_>, _metadata: crate::run::AssignedRun| {
-            serde_json::to_value(af_wire::run::TaggedRun::<serde_json::Value>::Fleet(
-                Box::new(run),
-            ))
-            .map_err(af_core::json::Unreadable::from)
+            serde_json::to_value(af_wire::run::TaggedRun::Fleet(Box::new(run)))
+                .map_err(af_core::json::Unreadable::from)
         };
         Ok(self
             .run_assigned_with(

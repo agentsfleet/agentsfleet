@@ -14,6 +14,7 @@ pub(crate) mod requests;
 mod runtime;
 mod streams;
 mod supervisor;
+mod unframed;
 
 use std::{num::NonZeroU64, sync::Arc};
 
@@ -35,10 +36,8 @@ pub(crate) use assignments::{AssignMode, AssignOutcome, PassRequest};
 pub(crate) use io::{StreamAttachment, StreamAttachmentSender};
 use io::{StreamIo, StreamWriters};
 
-use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
-
-type Message<'a> = Down<'a, afd_setup::types::Candidate, Definition, ConfigOp, InstructionEdit>;
-type Request<'a> = af_wire::protocol::Up<'a, Definition, ConfigOp, InstructionEdit>;
+type Message<'a> = Down<'a>;
+type Request<'a> = af_wire::protocol::Up<'a>;
 
 /// The scheduler reads only eligibility, available workers and locality preferences.
 #[derive(Debug, Clone)]
@@ -157,8 +156,6 @@ impl ConnectionHandle {
 struct Hello {
     request_id: NonZeroU64,
     accepted: AcceptedKinds,
-    /// The protocol revision the control stream named.
-    revision: af_wire::protocol::Revision,
     running: Vec<Uuid7>,
     credits: usize,
     unconfirmed: Option<Uuid7>,
@@ -197,13 +194,10 @@ pub(crate) struct ConnectionServices {
     authority: Authority,
     runs: afd_fleet::run::RunService,
     drafts: afd_setup::Drafts,
-    models: afd_setup::ModelCalls,
     creations: afd_setup::Creations,
     cache: cache::RunCache,
     output: StreamWriters,
     accepted: AcceptedKinds,
-    /// Whether this runner's revision may be assigned a draft-owned run.
-    draft_runs: bool,
     checkpoint_verifications: tokio::sync::Semaphore,
     /// Renewal frames this connection has answered, for
     /// [`afd_fleet::run::renew::funds_due`]'s cadence.

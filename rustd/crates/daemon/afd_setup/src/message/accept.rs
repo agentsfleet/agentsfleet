@@ -1,5 +1,6 @@
 //! Acceptance pins sequence/model once and checks replay before current state.
 
+use crate::setup_run::model;
 use crate::{
     Access, Drafts, Result,
     access::{self, Person},
@@ -8,7 +9,7 @@ use crate::{
         ErrorKind,
         raise::{invalid, query},
     },
-    model, replay, sql,
+    replay, sql,
     types::{Accepted, DraftState, QUEUED, SendMessage},
 };
 use af_core::id::Uuid7;

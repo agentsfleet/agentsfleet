@@ -91,7 +91,7 @@ async fn set_workers(fixtures: &Fixtures, runner: &Uuid7, workers: i32) {
 
 // Value: protects=a full host takes no run; fails_when=the census leaves the
 // insert or reads a snapshot from before the host lock; why_new=the census
-// moved into the insert; seam=none; no_claim=authoring attempts' share.
+// moved into the insert; seam=none; no_claim=a setup run's share.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn issue_refuses_full_host_in_insert() {

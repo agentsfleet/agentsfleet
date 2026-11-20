@@ -11,7 +11,7 @@ use afd_runner::{DETAIL_SELFTEST_REFUSED, KeysetCursor, RunnerEdit};
 use serde_json::Value;
 
 use super::{Fixture, enrolment};
-use crate::rows::{self, AttemptRow};
+use crate::rows::{self, SetupRunRow};
 use af_crypto::entropy::Entropy;
 use afd_db::Migrator;
 use afd_db::config::DbRole;
@@ -22,13 +22,8 @@ use afd_runner::Runners;
 /// Who the operator transitions are recorded as.
 const ACTOR: &str = "user_operator";
 
-/// What the retired runner's attempt held against the wallet.
-const RESERVED_NANOS: i64 = 4_200;
-
-/// Whether an attempt still names a runner, and what it reserved.
-const READ_ATTEMPT: &str = "\
-SELECT runner_id IS NULL AS runner_gone, reserved_nanos
-FROM setup.attempts WHERE id = $1";
+/// How many runs still name a runner.
+const COUNT_RUNS: &str = "SELECT count(*) FROM thread.runs WHERE runner_id = $1";
 
 /// A bind the sandbox validator accepts.
 const BIND_PATH: &str = "/srv/models";
@@ -218,21 +213,21 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
     fixture.cleanup().await;
 }
 
-/// The deletion matrix: a revoked runner's record retires, and the attempts it
-/// ran stay with their money, naming no runner.
+/// The deletion matrix: a revoked runner's record retires even after it ran a
+/// setup run, and that run goes with it. A setup run holds no money: its usage
+/// lines name the run and outlive it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations() {
+async fn test_retiring_a_runner_that_ran_a_setup_run_removes_its_runs() {
     let mut fixture = Fixture::create().await;
     let runner = fixture.enrol().await;
     let mut connection = fixture.owner.acquire().await.expect("a seed connection");
-    let attempt = rows::attempt(
+    rows::setup_run(
         &mut connection,
         (&runner, &mint_id(), &mint_id()),
-        AttemptRow {
+        SetupRunRow {
             status: afd_runner::sql::RUN_STATUS_EXPIRED,
             run_expires_at: clock::now(),
-            reserved_nanos: RESERVED_NANOS,
         },
     )
     .await;
@@ -248,20 +243,14 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
         .platform()
         .delete_revoked(&runner)
         .await
-        .expect("a runner that ran an attempt still retires");
+        .expect("a runner that ran a setup run still retires");
 
-    let (runner_gone, reserved): (bool, i64) = sqlx::query_as(READ_ATTEMPT)
-        .bind(&attempt)
+    let left: i64 = sqlx::query_scalar(COUNT_RUNS)
+        .bind(&runner)
         .fetch_one(&mut *connection)
         .await
-        .expect("the attempt outlives its runner");
-    assert!(runner_gone, "the attempt names no runner once it retires");
-    assert_eq!(reserved, RESERVED_NANOS, "its reservation is untouched");
-    sqlx::query("DELETE FROM setup.attempts WHERE id = $1")
-        .bind(&attempt)
-        .execute(&mut *connection)
-        .await
-        .expect("the seeded attempt cleans up");
+        .expect("the retired runner's runs read");
+    assert_eq!(left, 0, "a setup run goes with the runner that held it");
     drop(connection);
     fixture.cleanup().await;
 }

@@ -9,16 +9,13 @@
               and headers it just received"
 )]
 
-mod attempt;
 mod catalogue;
+mod ceiling;
 mod fixture;
 mod input;
-mod instruction_bounds;
 mod lifecycle;
-mod models;
 mod plugin;
 mod privacy;
-mod proposals;
 mod readiness;
 mod saving;
 mod seed;

@@ -162,7 +162,7 @@ fn text_that_is_no_definition_is_refused_without_being_quoted()
 #[test]
 fn a_first_setup_takes_the_same_instruction_bound_as_an_edit()
 -> Result<(), Box<dyn std::error::Error>> {
-    let bound = af_fleet_runtime::definition::MAX_INSTRUCTIONS_CHARS;
+    let bound = af_validate::TEXT_MAX_CHARS;
     let first = |instructions: &str| {
         check(
             Head {

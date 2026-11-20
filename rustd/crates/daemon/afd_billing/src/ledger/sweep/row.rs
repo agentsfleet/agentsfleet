@@ -88,22 +88,25 @@ impl UnsettledRow {
     }
 
     /// A settlement for this row's `work` under `posture`, retaining its
-    /// complete priced group.
+    /// complete priced group; `None` for a line naming no turn, which no
+    /// work this build writes leaves.
     pub(super) fn settlement(
         self,
         work: fn(Uuid7) -> WorkKey,
         posture: Posture,
         lines: Vec<RatedLine>,
-    ) -> Settlement {
+    ) -> Option<Settlement> {
         let attribution = match (self.fleet_id, self.turn_id) {
             (Some(fleet), Some(turn_id)) => Attribution::Fleet {
                 fleet,
                 fleet_name: self.fleet_name.unwrap_or_default(),
                 turn_id,
             },
-            _ => Attribution::SetupChat,
+            // A setup run's line names the draft message it ran as its turn.
+            (None, Some(message)) => Attribution::SetupRun { message },
+            (_, None) => return None,
         };
-        Settlement {
+        Some(Settlement {
             work: work(self.work_id),
             payer: Account {
                 tenant: self.tenant_id,
@@ -114,7 +117,7 @@ impl UnsettledRow {
             model: self.model,
             posture,
             lines,
-        }
+        })
     }
 }
 

@@ -99,7 +99,6 @@ impl Error {
             ErrorKind::RenewalNoCredits => error_code::RUN_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
             ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,
-            ErrorKind::MessageLimitReached => error_code::MESSAGE_LIMIT_REACHED,
             ErrorKind::IntegrationNotConnected => error_code::CRED_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => error_code::CRED_BROKER_NOT_CONFIGURED,
             ErrorKind::GithubReconnectRequired => error_code::GH_RECONNECT_REQUIRED,

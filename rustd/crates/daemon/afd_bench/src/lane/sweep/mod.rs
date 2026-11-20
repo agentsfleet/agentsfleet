@@ -28,10 +28,6 @@ const DELETE_DELIVERIES: &str = include_str!("sql/delete_deliveries.sql");
 /// A run's fleets; their revisions, events and threads go with them.
 const DELETE_FLEETS: &str = include_str!("sql/delete_fleets.sql");
 
-/// A run's setup chat attempts, which hold no key to the workspace (money
-/// outlives it), so no cascade removes them.
-const DELETE_ATTEMPTS: &str = include_str!("sql/delete_attempts.sql");
-
 /// A run's workspaces; their sealed secrets and drafts go with them.
 const DELETE_WORKSPACES: &str = include_str!("sql/delete_workspaces.sql");
 
@@ -64,7 +60,6 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     for statement in [
         DELETE_RUNNERS,
         DELETE_FLEETS,
-        DELETE_ATTEMPTS,
         DELETE_WORKSPACES,
         DELETE_TENANTS,
     ] {

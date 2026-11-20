@@ -12,7 +12,7 @@ mod source;
 
 pub(crate) use creation::InitialStart;
 pub use creation::{SaveFleet, SaveOrigin, SaveSource, Start, StartOutcome, StartState};
-pub use failure::{Failure, FailureCause};
+pub use failure::Failure;
 pub use models::{ModelEligibility, ModelPricing, ModelPurpose, ModelsQuery, WorkspaceModel};
 pub use review::{
     Action, ActionKind, Check, CheckKind, CheckState, Effective, Requirements, Review,
@@ -30,8 +30,6 @@ pub use plugin::{
     Published, RevisionSummary,
 };
 
-/// Upper bound on a chat message's UTF-8 bytes.
-pub const MAX_MESSAGE_BYTES: usize = 32 * 1024;
 /// Bound on opaque model references, independent of their current spelling.
 pub const MAX_MODEL_REF_BYTES: usize = 256;
 /// Bound on a human draft title, separate from a setup slug.

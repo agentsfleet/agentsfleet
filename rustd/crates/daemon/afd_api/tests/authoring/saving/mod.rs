@@ -2,13 +2,11 @@
 
 mod activity;
 mod archive;
-mod chat_save;
 mod fixture;
 mod grant_resume;
 mod initial_run;
 mod lifecycle;
 mod preconditions;
-mod proposed_schedule;
 mod provenance;
 mod publication;
 mod purge;

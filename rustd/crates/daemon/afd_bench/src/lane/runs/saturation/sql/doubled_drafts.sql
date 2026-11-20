@@ -1,6 +1,8 @@
+-- Drafts holding more than one active setup run.
 SELECT count(*)
-  FROM (SELECT a.draft_id
-          FROM setup.attempts a
-         WHERE a.tenant_id = ANY($1) AND a.status = $2
-         GROUP BY a.draft_id
+  FROM (SELECT l.draft_id
+          FROM thread.runs l
+          JOIN setup.drafts d ON d.id = l.draft_id
+         WHERE d.tenant_id = ANY($1) AND l.status = $2
+         GROUP BY l.draft_id
         HAVING count(*) > 1) doubled

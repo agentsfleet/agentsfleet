@@ -1,10 +1,6 @@
 //! Immutable candidates are read or appended under the draft's row lock.
 
-mod activity;
-mod proposal;
-mod receipt;
 mod source;
-mod sql;
 
 use crate::{
     Result,

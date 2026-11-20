@@ -7,8 +7,7 @@ WITH run AS MATERIALIZED (
 ), live AS MATERIALIZED (
     SELECT run.id
     FROM run
-    WHERE run.posted_message_count < $2
-      AND run.fencing_token = $3 AND run.status = $4
+    WHERE run.fencing_token = $2 AND run.status = $3
       AND run.run_expires_at > clock_timestamp()
       AND run.fencing_token >= COALESCE(
             (SELECT a.fencing_token FROM thread.threads a WHERE a.fleet_id = run.fleet_id),

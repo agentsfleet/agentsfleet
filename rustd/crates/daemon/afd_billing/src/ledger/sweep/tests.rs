@@ -3,7 +3,7 @@ use af_wire::usage::LineKind;
 use jiff::Timestamp;
 
 use super::{grouped, row::UnsettledRow};
-use crate::biller::WorkKey;
+use crate::biller::{Attribution, WorkKey};
 use crate::sql::work;
 
 fn id(byte: u8) -> Uuid7 {
@@ -11,7 +11,11 @@ fn id(byte: u8) -> Uuid7 {
         .unwrap_or_else(|_unencodable| unreachable!("the epoch encodes"))
 }
 
-/// One unsettled setup-chat line of `work`, of `kind` and number `seq`.
+/// The draft message every fixture setup line ran.
+const MESSAGE: u8 = 5;
+
+/// One unsettled setup-run line of `work`, of `kind` and number `seq`: it
+/// names no fleet, and the draft message it ran as its turn.
 fn row(work: u8, work_type: &str, kind: &str, seq: i64) -> UnsettledRow {
     UnsettledRow {
         work_type: work_type.to_owned(),
@@ -22,7 +26,7 @@ fn row(work: u8, work_type: &str, kind: &str, seq: i64) -> UnsettledRow {
         workspace_id: id(3),
         fleet_id: None,
         fleet_name: None,
-        turn_id: None,
+        turn_id: Some(id(MESSAGE)),
         provider: "anthropic".to_owned(),
         model: "claude-opus-5-5".to_owned(),
         posture: "platform".to_owned(),
@@ -60,6 +64,29 @@ fn a_work_settles_its_lines_by_kind_and_number() {
         .map(|line| (line.usage.kind, line.usage.seq))
         .collect();
     assert_eq!(lines, [(LineKind::Model, 0), (LineKind::Runtime, 0)]);
+}
+
+/// A setup run's lines settle under the draft message they ran; a line
+/// naming no turn at all, which no work this build writes leaves, stays
+/// unsettled rather than being charged to nothing.
+#[test]
+fn a_setup_line_settles_under_its_message_and_one_naming_no_turn_waits() {
+    let mut unnamed = row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0);
+    unnamed.turn_id = None;
+    let settlements = grouped(vec![
+        row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        unnamed,
+    ]);
+    let [settlement] = settlements.as_slice() else {
+        unreachable!("the unnamed work waits: {settlements:?}");
+    };
+    assert_eq!(settlement.work, WorkKey::AuthoringAttempt(id(1)));
+    assert_eq!(
+        settlement.attribution,
+        Attribution::SetupRun {
+            message: id(MESSAGE)
+        }
+    );
 }
 
 #[test]

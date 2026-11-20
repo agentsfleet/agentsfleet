@@ -1,4 +1,4 @@
-//! Live authoring services share their existing pools, keys and provider boundary with the gateway.
+//! Live setup services share their existing pools and keys with the gateway.
 
 use super::super::*;
 use afd_fleet::run::{RunService, Runs};
@@ -46,7 +46,6 @@ impl Fleet {
             runners: self.runners.clone(),
             runs,
             drafts: self.authoring.clone(),
-            models: self.authoring_models.clone(),
             creations: self.creations.clone(),
             bus,
             stream_limit: self.live.stream_limit().clone(),

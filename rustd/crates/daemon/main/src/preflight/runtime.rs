@@ -24,11 +24,9 @@ pub struct RuntimeSettings {
 #[derive(Debug)]
 pub(crate) struct OperationalSettings {
     pub(crate) outbound_retries: afd_outbound::retry::RetryPolicy,
-    pub(crate) inference: af_inference::Timeouts,
     pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
     pub(crate) maintenance: crate::config::maintenance::MaintenancePolicy,
     pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
-    pub(crate) authoring: afd_setup::turn_policy::TurnPolicy,
 }
 
 impl RuntimeSettings {
@@ -79,8 +77,6 @@ pub(crate) fn operations(
 ) -> Result<OperationalSettings, Refusal> {
     Ok(OperationalSettings {
         tasks: afd_fleet::task::policy::TaskPolicy::default(),
-        authoring: afd_setup::turn_policy::TurnPolicy::default(),
-        inference: af_inference::Timeouts::DEFAULT,
         outbound_retries: afd_outbound::retry::RetryPolicy::DEFAULT,
         maintenance: crate::config::maintenance::MaintenancePolicy::resolve(maintenance)
             .map_err(|report| refused("maintenance", report.to_string()))?,

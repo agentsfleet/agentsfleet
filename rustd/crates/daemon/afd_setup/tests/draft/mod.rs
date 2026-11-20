@@ -5,9 +5,6 @@
     reason = "fixture preconditions fail the proof loudly"
 )]
 
-mod assignment;
-mod attempt;
-mod biller;
 mod cleanup;
 mod contention;
 mod creation;
@@ -18,14 +15,12 @@ mod listing;
 mod locks;
 mod maintenance;
 mod messages;
-mod model_calls;
 mod model_keys;
 mod model_metadata;
 mod model_tools;
 mod observe;
 mod plugin;
 mod privacy;
-mod proposals;
 mod races;
 use afd_db::test_util::refusal;
 mod replay;

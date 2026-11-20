@@ -33,16 +33,15 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// The rung the steer takes.
 const FLEET_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetWrite]);
 
-/// The longest message a steer may carry.
+/// The longest message a steer may carry, in characters.
 ///
-/// `MAX_MESSAGE_BYTES`, mirrored: the handler's constant is private, and a
-/// suite that imported it could not tell a bound that moved from a bound that
-/// was always this.
-const MAX_MESSAGE_BYTES: usize = 8192;
+/// `af_validate::TEXT_MAX_CHARS`, mirrored: a suite that imported it could not
+/// tell a bound that moved from a bound that was always this.
+const MAX_MESSAGE_CHARS: usize = 1_048_576;
 
 /// The longest operation id a steer may carry.
 ///
-/// Mirrored for the reason `MAX_MESSAGE_BYTES` above is: importing the wire
+/// Mirrored for the reason `MAX_MESSAGE_CHARS` above is: importing the wire
 /// type's constant would make a bound that MOVED read the same as a bound that
 /// was always this, and the sentence below is a public one.
 const MAX_OPERATION_ID_BYTES: usize = 200;
@@ -50,8 +49,11 @@ const MAX_OPERATION_ID_BYTES: usize = 200;
 /// The sentence an operation id outside that bound earns.
 const OPERATION_ID_DETAIL: &str = "operation_id, when sent, must be 1 to 200 bytes with no NUL character; omit it to send without retry protection";
 
-/// The sentence a message past its bound, or holding NUL, earns.
-const MESSAGE_DETAIL: &str = "message must not exceed 8192 bytes or contain a NUL character";
+/// The sentence a message holding NUL earns.
+const MESSAGE_NUL_DETAIL: &str = "message must not contain a NUL character";
+
+/// The sentence a message past the text ceiling earns, naming it.
+const MESSAGE_CEILING_DETAIL: &str = "Input exceeds the maximum length of 1,048,576 characters.";
 
 /// One fully authorised steer at a fresh router holding one scoped person.
 async fn steering(body: &str) -> axum::response::Response {
@@ -152,27 +154,29 @@ async fn test_nul_operation_id_is_refused() {
 }
 
 /// A message holding NUL, which the run's `jsonb` cast cannot store, is
-/// refused with the message sentence. The store behind this router only reports
+/// refused with the NUL sentence. The store behind this router only reports
 /// an outage, so a 400 proves the refusal came before anything was admitted.
 #[tokio::test]
 async fn test_nul_message_is_refused() {
     let refused = steering(&steer_of("ship\u{0}it")).await;
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(field_of(refused, "detail").await, MESSAGE_DETAIL);
+    assert_eq!(field_of(refused, "detail").await, MESSAGE_NUL_DETAIL);
 }
 
-/// A message past the bound is refused, and the bound is on DECODED bytes.
+/// A message past the ceiling is refused naming it, and the ceiling is on
+/// DECODED characters.
 ///
-/// The pair is the claim: one byte past the ceiling is refused, and a message
-/// of newlines that DOUBLES in the escaped form is not — it is under the bound
-/// once decoded, and the decoded text is what the runner reads.
+/// The pair is the claim: one character past the ceiling is refused, and a
+/// message of newlines whose escaped form is past the ceiling is not — it is
+/// under it once decoded, and the decoded text is what the runner reads. Both
+/// bodies stay under the 2 MiB the daemon reads of any body.
 #[tokio::test]
-async fn the_message_bound_is_measured_on_the_decoded_bytes() {
-    let over = steering(&steer_of(&"a".repeat(MAX_MESSAGE_BYTES + 1))).await;
+async fn the_message_bound_is_measured_on_the_decoded_characters() {
+    let over = steering(&steer_of(&"a".repeat(MAX_MESSAGE_CHARS + 1))).await;
     assert_eq!(over.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(field_of(over, "detail").await, MESSAGE_DETAIL);
+    assert_eq!(field_of(over, "detail").await, MESSAGE_CEILING_DETAIL);
 
-    let escaped = steering(&steer_of(&"\n".repeat(MAX_MESSAGE_BYTES))).await;
+    let escaped = steering(&steer_of(&"\n".repeat(MAX_MESSAGE_CHARS / 2 + 1))).await;
     assert_ne!(
         escaped.status(),
         StatusCode::BAD_REQUEST,
@@ -191,7 +195,7 @@ async fn a_well_formed_steer_reaches_the_store_and_reports_the_outage() {
         "ship it",
         "line one\nline \"two\"",
         "an emoji lands here \u{2728}",
-        &"a".repeat(MAX_MESSAGE_BYTES),
+        &"a".repeat(MAX_MESSAGE_CHARS),
     ] {
         let response = steering(&steer_of(message)).await;
         assert_eq!(

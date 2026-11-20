@@ -32,9 +32,7 @@ use crate::identity::{Capabilities, Sessions, SignupWriteback};
 pub struct PlaneParts {
     /// Validated deployment clocks and recovery budgets.
     pub runtime: crate::preflight::RuntimeSettings,
-    /// Fixed-origin authoring transport, built before opening datastores.
-    pub authoring_transport: afd_setup::Network,
-    /// Storage and GitHub share a guarded pool independent of inference timeouts.
+    /// Storage and GitHub share a guarded pool of their own.
     pub storage_client: reqwest::Client,
     /// The API role's Postgres pool, open and proven.
     pub database: Db,

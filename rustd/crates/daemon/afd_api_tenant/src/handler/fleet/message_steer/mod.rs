@@ -33,9 +33,9 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use af_core::error_code;
-use af_validate::Sentences;
+use af_validate::{Sentences, TEXT_TOO_LONG, nul_free};
 use af_wire::turn::{SteerAccepted, SteerRequest, TurnKind};
-use afd_api_wire::tail::TailFrame;
+use afd_api_wire::tail::{FrameText, TailFrame};
 use afd_turns::view::Steered;
 use afd_turns::view::disposition::{Placed, SteerDisposition};
 use axum::Json;
@@ -69,12 +69,8 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
 /// The refusal an empty message earns.
 const DETAIL_MESSAGE_EMPTY: &str = "message must not be empty";
 
-/// The refusal a message past the bound, or holding NUL, earns.
-///
-/// One sentence names both rules: a caller told only the one it did not break
-/// would go looking at the wrong limit.
-const DETAIL_MESSAGE_INVALID: &str =
-    "message must not exceed 8192 bytes or contain a NUL character";
+/// The refusal a message holding NUL earns.
+const DETAIL_MESSAGE_NUL: &str = "message must not contain a NUL character";
 
 /// The refusal an unusable client operation identity earns.
 ///
@@ -87,12 +83,13 @@ const DETAIL_OPERATION_ID_INVALID: &str = "operation_id, when sent, must be 1 to
 /// A refused steer's sentence by the field its report names.
 ///
 /// The operation id comes FIRST: a caller that sent a bad one and was told its
-/// message was empty would go looking at the wrong field. Both message
-/// refusals report the same path, so the table answers the invalid one and the
-/// handler tells an empty message apart by looking at it.
+/// message was empty would go looking at the wrong field. Every message
+/// refusal reports the same path, so the table answers the text ceiling's own
+/// sentence, and the handler tells an empty message and one holding NUL apart
+/// by looking at it.
 const SENTENCES: Sentences = Sentences::new(
     &[("operation_id", DETAIL_OPERATION_ID_INVALID)],
-    DETAIL_MESSAGE_INVALID,
+    TEXT_TOO_LONG,
 );
 
 /// The refusal a fleet this workspace does not hold earns.
@@ -170,6 +167,8 @@ pub(crate) async fn steer<D: Services>(
 /// Once per message: a repeat carries no intake instant, because its first
 /// send announced it. Best-effort, like every tail frame — a queue that will
 /// not take it is logged by the publisher and the steer is still accepted.
+/// The frame carries the message kept to the tail batch; the turn holds it
+/// whole.
 async fn announce_admitted(
     steering: &impl FleetSteering,
     fleet: &str,
@@ -180,11 +179,13 @@ async fn announce_admitted(
     let Some(created_at) = steered.admitted_at else {
         return;
     };
+    let message = FrameText::within(message, afd_bus::TAIL_BATCH_BYTES);
     let frame = TailFrame::TurnAdmitted {
         turn_id: Cow::Borrowed(&steered.turn_id),
         actor: Cow::Borrowed(actor),
         event_type: Cow::Borrowed(TurnKind::Chat.as_str()),
-        message: Cow::Borrowed(message),
+        message: Cow::Borrowed(message.text),
+        message_trimmed: message.trimmed,
         created_at,
     };
     steering.announce(fleet, &frame).await;
@@ -301,15 +302,20 @@ fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
     let request: SteerRequest<'_> = afd_http::handler::read_body(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
     if let Err(report) = request.validate() {
-        // Three sentences read back off one report, because they are three
-        // different mistakes to whoever has to fix them.
+        // Four sentences read back off one report, because they are four
+        // different mistakes to whoever has to fix them. The NUL rule is asked
+        // of the rule itself, so the two cannot disagree.
         let picked = SENTENCES.pick(&report);
-        let empty = picked == DETAIL_MESSAGE_INVALID && request.message.is_empty();
-        return Err(Refusal::malformed(if empty {
-            DETAIL_MESSAGE_EMPTY
+        let message = &request.message;
+        return Err(if picked != TEXT_TOO_LONG {
+            Refusal::malformed(picked)
+        } else if message.is_empty() {
+            Refusal::malformed(DETAIL_MESSAGE_EMPTY)
+        } else if nul_free(message, &()).is_err() {
+            Refusal::malformed(DETAIL_MESSAGE_NUL)
         } else {
-            picked
-        }));
+            Refusal::input_too_long()
+        });
     }
     Ok(request)
 }

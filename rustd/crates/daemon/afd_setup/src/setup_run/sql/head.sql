@@ -1,6 +1,6 @@
 -- The draft's head message under its lock: the oldest still queued or running, so
--- unsettled, with whether a draft run ran it before. A running head no draft run ran
--- belongs to the authoring attempt path.
+-- unsettled, with whether a draft run ran it before. A running head no draft run ran is
+-- not one a reassignment takes.
 --
 -- $1 draft · $2 the queued status · $3 the running status
 SELECT m.id, m.sequence, m.status, m.tenant_model_id, m.request_json->>'message' AS user_text, m.save_requested,

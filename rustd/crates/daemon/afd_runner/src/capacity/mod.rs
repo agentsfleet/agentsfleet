@@ -1,4 +1,4 @@
-//! Serializes fleet and authoring runs on the physical host's assigned limit.
+//! Serializes fleet and setup runs on the physical host's assigned limit.
 //!
 //! Callers retain the transaction through the guarded run write. The census
 //! is a separate statement after the host lock: a statement snapshot acquired
@@ -21,8 +21,8 @@ mod sql;
 pub enum Work<'a> {
     /// Reusing this fleet's hold replaces it without taking another worker.
     Fleet(&'a Uuid7),
-    /// Private authoring cannot reuse a fleet sandbox.
-    Authoring,
+    /// A setup run holds no sandbox, so it cannot reuse a fleet's.
+    Setup,
     /// Current work renews its live run without charging idle holds.
     Existing,
 }
@@ -255,7 +255,7 @@ pub async fn lock<'a>(
         .bind(crate::sql::RUN_STATUS_ACTIVE)
         .bind(match work {
             Work::Fleet(fleet) => Some(fleet),
-            Work::Authoring | Work::Existing => None,
+            Work::Setup | Work::Existing => None,
         })
         .bind(!matches!(work, Work::Existing))
         .fetch_one(&mut **transaction)

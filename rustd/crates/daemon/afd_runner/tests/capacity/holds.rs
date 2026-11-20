@@ -20,8 +20,8 @@ async fn test_a_run_and_a_hold_refuse_a_third_fleet() {
     let other = afd_db::test_util::mint_id();
 
     assert!(!fixture.capacity(Work::Fleet(&other)).await.can_assign());
-    assert!(!fixture.capacity(Work::Authoring).await.can_assign());
-    assert!(!fixture.try_assign().await, "authoring writes no third run");
+    assert!(!fixture.capacity(Work::Setup).await.can_assign());
+    assert!(!fixture.try_assign().await, "setup writes no third run");
     fixture.cleanup().await;
 }
 
@@ -39,7 +39,7 @@ async fn test_the_fleets_own_hold_takes_no_second_worker() {
             .await
             .can_assign()
     );
-    assert!(!fixture.capacity(Work::Authoring).await.can_assign());
+    assert!(!fixture.capacity(Work::Setup).await.can_assign());
     fixture.cleanup().await;
 }
 
@@ -52,7 +52,7 @@ async fn test_a_renewal_counts_no_holds() {
     fixture.hold(clock::after(now, LIVE_FOR)).await;
 
     assert!(fixture.capacity(Work::Existing).await.can_renew());
-    assert!(!fixture.capacity(Work::Authoring).await.can_assign());
+    assert!(!fixture.capacity(Work::Setup).await.can_assign());
     fixture.cleanup().await;
 }
 

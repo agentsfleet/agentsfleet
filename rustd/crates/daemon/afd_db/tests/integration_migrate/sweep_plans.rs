@@ -1,5 +1,5 @@
-//! The two hot sweeps read their own index, under the generic plan a prepared
-//! statement settles on.
+//! The hot metering sweep reads its own index, under the generic plan a
+//! prepared statement settles on.
 //!
 //! Each statement is prepared with the types sqlx binds and explained with
 //! sequential scans priced out, so a plan that names no index of the sweep's
@@ -9,9 +9,6 @@
 use sqlx::AssertSqlSafe;
 
 use super::*;
-
-/// The lapse sweep (`afd_setup` maintenance): `$1` status, `$2` limit.
-const ATTEMPT_CANDIDATES: &str = afd_setup::Drafts::EXPIRED_ATTEMPTS_QUERY;
 
 /// The metering sweep (`afd_fleet` run): `$1` status, `$2` grace, `$3` limit.
 const UNBILLED_RUNS: &str = afd_fleet::run::billing_sweep::UNBILLED_RUNS_QUERY;
@@ -46,24 +43,6 @@ async fn plan(db: &afd_db::Db, statement: &str, types: &str, binds: &str) -> Str
         .await
         .unwrap();
     lines.join("\n")
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_the_attempt_lapse_sweep_reads_its_deadline_index() {
-    let (database, db) = migrated().await;
-    // The placeholders are never read: a generic plan is bind-independent.
-    let plan = plan(&db, ATTEMPT_CANDIDATES, "text, bigint", "'s', 1").await;
-    assert!(
-        plan.contains("idx_attempts_status_deadline_id"),
-        "the lapse sweep reads no deadline index:\n{plan}"
-    );
-    assert!(
-        !plan.contains("Sort"),
-        "the index order is the sweep's order, so nothing sorts:\n{plan}"
-    );
-    db.close().await;
-    database.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -1,4 +1,4 @@
-//! Closed draft retention and private dispatch results use database time.
+//! Closed draft retention uses database time.
 
 use super::sql;
 use crate::{Drafts, Result, error::raise::query, types::DraftState};
@@ -24,13 +24,4 @@ pub(super) async fn drafts(drafts: &Drafts) -> Result<u64> {
     }
     tx.commit().await.map_err(query(CONTEXT))?;
     Ok(u64::try_from(ids.len()).unwrap_or(u64::MAX))
-}
-
-pub(super) async fn results(drafts: &Drafts) -> Result<u64> {
-    let result = sqlx::query(sql::RESULTS)
-        .bind(LIMIT)
-        .execute(&mut *drafts.database.acquire().await?)
-        .await
-        .map_err(query(CONTEXT))?;
-    Ok(result.rows_affected())
 }

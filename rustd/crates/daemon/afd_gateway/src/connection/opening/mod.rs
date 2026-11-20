@@ -14,12 +14,12 @@ use request::StreamRequest;
 
 /// Initial requests authenticate once; secondary requests must prove their existing connection binding.
 pub(super) async fn open(gateway: &Gateway, runner: Runner, request: Request) -> Result<Response> {
-    let revision = crate::stream_headers::revision(request.headers())?;
+    crate::stream_headers::version(request.headers())?;
     match StreamRequest::try_from(request)? {
         StreamRequest::Control(request) => {
             // Track preparation too: drain must not finish while an opening can still acquire ownership.
             let preparation = gateway.inner.tasks.token();
-            let (opening, body) = ControlOpening::new(gateway, runner, request, revision)?;
+            let (opening, body) = ControlOpening::new(gateway, runner, request)?;
             let opening = opening.prepare().await?;
             gateway.inner.tasks.spawn(async move {
                 let _preparation = preparation;
@@ -27,18 +27,21 @@ pub(super) async fn open(gateway: &Gateway, runner: Runner, request: Request) ->
                     Gateway::observe(&error, Operation::Opening);
                 }
             });
-            response(body, revision)
+            response(body)
         }
-        StreamRequest::Secondary(request) => response(request.attach().await?, revision),
+        StreamRequest::Secondary(request) => response(request.attach().await?),
     }
 }
 
 /// Framing supplies its own finite message bounds; HTTP must keep both body directions open.
-/// The answer names the revision the runner asked for, which this daemon speaks.
-fn response(body: Body, revision: af_wire::protocol::Revision) -> Result<Response> {
+/// The answer names the one revision this daemon speaks, which the runner asked for.
+fn response(body: Body) -> Result<Response> {
     Ok(http::Response::builder()
         .header(http::header::CONTENT_TYPE, "application/octet-stream")
-        .header(af_wire::protocol::VERSION_HEADER, revision.as_str())
+        .header(
+            af_wire::protocol::VERSION_HEADER,
+            af_wire::protocol::VERSION,
+        )
         .body(body)?)
 }
 

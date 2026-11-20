@@ -35,10 +35,10 @@ mod tests;
 pub use self::detail::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
-    DETAIL_HOST_ID_BOUNDS, DETAIL_MESSAGE_LIMIT, DETAIL_MESSAGE_NO_CHANNEL,
-    DETAIL_PROVIDER_UNRESOLVED, DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST,
-    DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_CANCELLED, DETAIL_RUN_LOST, DETAIL_RUN_MAX_RUNTIME,
-    DETAIL_RUN_NOT_FOUND, DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
+    DETAIL_HOST_ID_BOUNDS, DETAIL_MESSAGE_NO_CHANNEL, DETAIL_PROVIDER_UNRESOLVED,
+    DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST, DETAIL_RENEWAL_NO_CREDITS,
+    DETAIL_RUN_CANCELLED, DETAIL_RUN_LOST, DETAIL_RUN_MAX_RUNTIME, DETAIL_RUN_NOT_FOUND,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
 };
 // The mint family's sentences, listed apart from the block above because they
 // are read together: every one is a refusal the credential mint path answers.
@@ -51,9 +51,9 @@ pub use self::detail::{
 /// names the file the cap moved them into.
 pub(crate) use self::refuse::{
     budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
-    github_reconnect_required, grant_required, integration_not_connected, message_limit_reached,
-    message_no_channel, mint_unconfigured, renewal_no_credits, run_cancelled, run_lost,
-    run_max_runtime, run_not_found, stale_fence, task_target_counter, wire_run,
+    github_reconnect_required, grant_required, integration_not_connected, message_no_channel,
+    mint_unconfigured, renewal_no_credits, run_cancelled, run_lost, run_max_runtime, run_not_found,
+    stale_fence, task_target_counter, wire_run,
 };
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.

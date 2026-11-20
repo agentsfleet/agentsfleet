@@ -1,18 +1,18 @@
 //! `POST /v1/runners/me/runs/{run_id}/messages` — a fleet saying one line
 //! to the thread it was asked from, before it answers.
 //!
-//! The run plane proves the run, finds the event's thread, counts the line
-//! against the run's cap and masks the fleet's secret values
-//! (`afd_fleet::run::message`); the outbound poster then posts it under its
-//! own marker, retried as an answer is (`afd_outbound::interim`). The runner
-//! never holds the channel's credential: it sends text, and the daemon speaks.
+//! The run plane proves the run, finds the event's thread, numbers the line
+//! and masks the fleet's secret values (`afd_fleet::run::message`); the
+//! outbound poster then posts it under its own marker, retried as an answer is
+//! (`afd_outbound::interim`). The runner never holds the channel's credential:
+//! it sends text, and the daemon speaks. Neither the line's length nor how
+//! many a run sends is capped here: the channel refuses what it cannot take,
+//! and the runner reads `delivered: false`.
 
 use std::sync::Arc;
 
 use af_core::error_code;
-use af_wire::message_verb::{
-    MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MessagePosted, MessageRequest,
-};
+use af_wire::message_verb::{MESSAGE_DELIVERY_DEADLINE, MessagePosted, MessageRequest};
 use afd_http::handler::{Refusal, read_strict_body};
 use axum::Json;
 use axum::body::Bytes;
@@ -30,31 +30,22 @@ const EVENT_FAILED: &str = "runner_message_failed";
 /// The refusal a body this verb cannot read earns.
 const DETAIL_MALFORMED: &str = "Malformed message body";
 
-/// The refusal a text outside its bound earns.
-const DETAIL_TEXT: &str = const_format::concatcp!(
-    "text must be 1 to ",
-    MESSAGE_MAX_BYTES,
-    " bytes with no NUL"
-);
+/// The refusal a text that is empty or holds NUL earns.
+const DETAIL_TEXT: &str = "text must be nonempty with no NUL";
 
 /// The `current_state` an event with no thread names.
 const STATE_NO_THREAD: &str = "no_thread";
 
-/// The `current_state` a run at its message cap names.
-const STATE_AT_CAPACITY: &str = "at_capacity";
-
 /// A post that outlasted [`MESSAGE_DELIVERY_DEADLINE`], answered undelivered.
 const EVENT_DEADLINE: &str = "runner_message_deadline";
 
-/// What [`handle`] documents, its caps spelled from their constants.
+/// What [`handle`] documents, its deadline spelled from its constant.
 #[cfg(feature = "openapi")]
 const DESCRIPTION: &str = const_format::concatcp!(
     "Posts to the event's original thread with secrets masked. The server holds the ",
-    "channel credential. Limit: ",
-    af_wire::message_verb::MESSAGES_PER_RUN_MAX,
-    " messages per run; excess returns 409 `UZ-RUN-020`. Events without a thread ",
-    "return 409 `UZ-RUN-019`. Both errors include `current_state`. `delivered` is ",
-    "false after rejection or failed retries within ",
+    "channel credential. Events without a thread return 409 `UZ-RUN-019` with ",
+    "`current_state`. `delivered` is false when the channel refuses the message or ",
+    "retries fail within ",
     MESSAGE_DELIVERY_DEADLINE.as_secs(),
     " seconds. Each request posts a new message; `Idempotency-Key` is unsupported.",
 );
@@ -108,14 +99,11 @@ pub(crate) async fn handle<D: Services>(
     Ok(Json(MessagePosted { delivered }).into_response())
 }
 
-/// A message the run plane refused, as the runner reads it: each 409 names
-/// the state that forbade it.
+/// A message the run plane refused, as the runner reads it: the 409 for an
+/// event with no thread names the state that forbade it.
 fn refused(error: afd_fleet::Error) -> Refusal {
-    let code = error.code();
-    if code == error_code::MESSAGE_NO_CHANNEL {
+    if error.code() == error_code::MESSAGE_NO_CHANNEL {
         Refusal::conflict_at(EVENT_FAILED, STATE_NO_THREAD)(error)
-    } else if code == error_code::MESSAGE_LIMIT_REACHED {
-        Refusal::conflict_at(EVENT_FAILED, STATE_AT_CAPACITY)(error)
     } else {
         Refusal::at(EVENT_FAILED)(error)
     }

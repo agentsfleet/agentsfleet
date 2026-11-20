@@ -187,11 +187,11 @@ async fn fleet_steer_refuses_bad_bodies_with_the_route_sentences() {
         ),
         (
             json!({"fencing_token": fence, "fleet_id": id, "text": ""}),
-            "text must be 1 to 8192 bytes with no NUL",
+            "text must be 1 to 1048576 characters with no NUL",
         ),
         (
             json!({"fencing_token": fence, "fleet_id": id, "text": "a\u{0}b"}),
-            "text must be 1 to 8192 bytes with no NUL",
+            "text must be 1 to 1048576 characters with no NUL",
         ),
         (
             json!({"fencing_token": fence, "fleet_id": id, "text": "hi", "extra": 1}),

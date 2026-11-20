@@ -47,7 +47,6 @@ pub async fn log_lines<'e>(
             fleet_name,
             turn_id,
         } => (Some(fleet), Some(fleet_name.as_str()), Some(turn_id), None),
-        Attribution::SetupChat => (None, None, None, Some(settlement.work.id())),
         Attribution::SetupRun { message } => {
             (None, None, Some(message), Some(settlement.work.id()))
         }
@@ -128,9 +127,9 @@ mod tests {
             work: WorkKey::AuthoringAttempt(id.clone()),
             payer: Account {
                 tenant: id.clone(),
-                workspace: id,
+                workspace: id.clone(),
             },
-            attribution: Attribution::SetupChat,
+            attribution: Attribution::SetupRun { message: id },
             provider: String::new(),
             model: String::new(),
             posture: Posture::Platform,

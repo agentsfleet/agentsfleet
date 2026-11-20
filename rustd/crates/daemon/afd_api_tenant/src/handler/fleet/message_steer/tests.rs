@@ -11,7 +11,7 @@
 )]
 
 use af_observability::metrics::label::fleet::SteerPlaced;
-use af_wire::turn::STEER_MESSAGE_MAX_BYTES;
+use af_validate::{TEXT_MAX_CHARS, TEXT_TOO_LONG};
 use afd_turns::view::disposition::{Placed, SteerDisposition};
 use axum::body::Bytes;
 use axum::response::{IntoResponse as _, Response};
@@ -22,7 +22,11 @@ use af_core::id::Uuid7;
 use afd_auth::principal::{Person, PersonCredential, Subject};
 use afd_auth::scope::ScopeSet;
 
-use super::{accepted, actor_for, counted, read_steer, refuse_steer};
+use super::{
+    DETAIL_MESSAGE_EMPTY, DETAIL_MESSAGE_NUL, accepted, actor_for, counted, read_steer,
+    refuse_steer,
+};
+use crate::handler::Refusal;
 
 const TENANT: &str = "01924f4e-0000-7000-8000-00000000a0a1";
 const EVENT: &str = "0190d5c2-7e1a-7000-8000-00000000e002";
@@ -99,10 +103,37 @@ fn should_refuse_a_body_that_is_not_a_message() {
     }
 }
 
-/// An empty message is refused: a person pressed send on nothing.
-#[test]
-fn should_refuse_an_empty_message() {
-    read_steer(&Bytes::from_static(br#"{"message":""}"#)).unwrap_err();
+/// The `detail` a refusal answers with.
+async fn detail(refusal: Refusal) -> String {
+    let response = refusal.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("the refusal body");
+    let body: Value = serde_json::from_slice(&body).expect("a problem body");
+    body.get("detail")
+        .and_then(Value::as_str)
+        .expect("a detail")
+        .to_owned()
+}
+
+/// A steer body carrying `message`.
+fn steer_body(message: &str) -> Bytes {
+    Bytes::from(serde_json::to_vec(&json!({ "message": message })).expect("a steer body"))
+}
+
+/// An empty message is refused, and told so: a person pressed send on nothing.
+#[tokio::test]
+async fn should_refuse_an_empty_message() {
+    let refusal = read_steer(&Bytes::from_static(br#"{"message":""}"#)).unwrap_err();
+    assert_eq!(detail(refusal).await, DETAIL_MESSAGE_EMPTY);
+}
+
+/// A message holding NUL is told about the NUL, not the length it is under.
+#[tokio::test]
+async fn should_refuse_a_nul_and_name_it() {
+    let refusal = read_steer(&steer_body("before\0after")).unwrap_err();
+    assert_eq!(detail(refusal).await, DETAIL_MESSAGE_NUL);
 }
 
 /// An escaped message is a message, not a malformed body.
@@ -120,34 +151,33 @@ fn should_read_a_message_that_carries_escapes() {
     );
 }
 
-/// The length bound is on the DECODED bytes, not on what a client sent.
+/// The length bound is on the DECODED characters, not on what a client sent.
 ///
 /// A message of newlines doubles in the encoded form: bounding the escaped
 /// bytes would refuse a message half the documented size, and the runner reads
 /// the decoded text.
 #[test]
-fn should_bound_the_decoded_bytes_and_not_the_escaped_ones() {
-    let escaped = format!(
-        r#"{{"message":"{}"}}"#,
-        r"\n".repeat(STEER_MESSAGE_MAX_BYTES)
-    );
+fn should_bound_the_decoded_characters_and_not_the_escaped_bytes() {
+    let escaped = format!(r#"{{"message":"{}"}}"#, r"\n".repeat(TEXT_MAX_CHARS));
     let body = Bytes::from(escaped.into_bytes());
     let read = read_steer(&body).expect("a message of newlines is under the bound once decoded");
-    assert_eq!(read.message.len(), STEER_MESSAGE_MAX_BYTES);
+    assert_eq!(read.message.chars().count(), TEXT_MAX_CHARS);
 }
 
-/// The bound admits its own ceiling and refuses one byte past it.
-#[test]
-fn should_admit_the_ceiling_and_refuse_one_byte_past_it() {
-    let at_the_ceiling = format!(r#"{{"message":"{}"}}"#, "a".repeat(STEER_MESSAGE_MAX_BYTES));
-    read_steer(&Bytes::from(at_the_ceiling.into_bytes()))
-        .expect("the documented ceiling is a message this surface takes");
+/// The bound admits the text ceiling, counted in characters of two bytes
+/// each, and refuses one character past it with the sentence naming it.
+#[tokio::test]
+async fn should_admit_the_ceiling_and_refuse_one_character_past_it() {
+    let at_the_ceiling = "é".repeat(TEXT_MAX_CHARS);
+    let body = steer_body(&at_the_ceiling);
+    let read = read_steer(&body).expect("the documented ceiling is a message this surface takes");
+    assert_eq!(read.message.chars().count(), TEXT_MAX_CHARS);
 
-    let one_past = format!(
-        r#"{{"message":"{}"}}"#,
-        "a".repeat(STEER_MESSAGE_MAX_BYTES + 1)
-    );
-    read_steer(&Bytes::from(one_past.into_bytes())).unwrap_err();
+    let one_past = format!("{at_the_ceiling}é");
+    let refusal = read_steer(&steer_body(&one_past)).unwrap_err();
+    let said = detail(refusal).await;
+    assert_eq!(said, TEXT_TOO_LONG);
+    assert!(said.contains("1,048,576"), "{said}");
 }
 
 /// A fleet that takes no work answers 409 `UZ-AGT-012` naming its status.

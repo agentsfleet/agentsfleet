@@ -43,7 +43,6 @@ pub async fn waiting(
     resume_from_checkpoint: bool,
 ) -> Result<Waiting> {
     sqlx::query_as::<_, Waiting>(sql::queue::SELECT_WAITING_WORK)
-        .bind(sql::RUN_STATUS_ACTIVE)
         .bind(DraftState::Editing.as_str())
         .bind(MessageState::Queued.as_str())
         .bind(runners)

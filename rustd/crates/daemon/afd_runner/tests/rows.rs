@@ -1,5 +1,5 @@
 //! The rows these suites seed beyond what `afd_db::test_util` spells: a run
-//! with the event it executes, a fleet's thread, and an authoring attempt.
+//! with the event it executes, a fleet's thread, and a setup draft's run.
 //!
 //! One column list each, so a schema change edits this file and not every
 //! suite. Every row is stamped by the database's `now()` unless the suite
@@ -49,15 +49,15 @@ ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, fencing
     run_expires_at = EXCLUDED.run_expires_at, hold_expires_at = EXCLUDED.hold_expires_at,
     created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at";
 
-const INSERT_ATTEMPT: &str = "\
-INSERT INTO setup.attempts
-  (id, run_id, runner_id, workspace_id, tenant_id, user_id, draft_id,
-   message_sequence, fencing_token, model_token_hash, model_snapshot, status,
-   run_expires_at, expires_at, reserved_nanos, usage_unknown, call_count,
-   output_token_count, reported_runtime_ms, last_activity_sequence, created_at,
-   updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $6, 1, 1, $1::text,
-        '{}', $7, $8::timestamptz, $8::timestamptz, $9, false, 0, 0, 0, 0, now(), now())";
+/// A setup draft's run: it names its draft and no fleet, and no foreign key
+/// reaches a draft, so the draft and its turn are opaque ids here.
+const INSERT_SETUP_RUN: &str = "\
+INSERT INTO thread.runs
+  (id, runner_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at,
+   posture, provider, model, last_metered_at, fencing_token,
+   run_expires_at, status, posted_message_count, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now(), 'platform', 'test', 'test', now(), 1,
+        $7::timestamptz, $8, 0, now(), now())";
 
 /// Where a run lives and what it owes.
 pub(crate) struct RunRow<'a> {
@@ -125,35 +125,32 @@ pub(crate) async fn thread(
         .expect("the thread seeds");
 }
 
-/// What an attempt reserved, and whether it still runs.
-pub(crate) struct AttemptRow<'a> {
+/// What a setup run holds, and whether it still runs.
+pub(crate) struct SetupRunRow<'a> {
     /// Its status, as stored.
     pub(crate) status: &'a str,
     /// When its run lapses.
     pub(crate) run_expires_at: Timestamp,
-    /// The money it holds against the wallet.
-    pub(crate) reserved_nanos: i64,
 }
 
-/// Seeds one authoring attempt `runner` ran, and answers its id.
-pub(crate) async fn attempt(
+/// Seeds one setup draft's run `runner` holds, and answers its id.
+pub(crate) async fn setup_run(
     connection: &mut PgConnection,
     (runner, workspace, tenant): (&Uuid7, &Uuid7, &Uuid7),
-    row: AttemptRow<'_>,
+    row: SetupRunRow<'_>,
 ) -> Uuid7 {
     let id = mint_id();
-    sqlx::query(INSERT_ATTEMPT)
+    sqlx::query(INSERT_SETUP_RUN)
         .bind(&id)
-        .bind(mint_id())
         .bind(runner)
+        .bind(mint_id())
         .bind(workspace)
         .bind(tenant)
         .bind(mint_id())
-        .bind(row.status)
         .bind(row.run_expires_at.to_sqlx())
-        .bind(row.reserved_nanos)
+        .bind(row.status)
         .execute(&mut *connection)
         .await
-        .expect("the authoring attempt seeds");
+        .expect("the setup run seeds");
     id
 }

@@ -1,4 +1,4 @@
-//! One connection owner orchestrates existing runner, fleet and authoring services.
+//! One connection owner orchestrates existing runner, fleet and setup services.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
@@ -41,11 +41,9 @@ pub struct GatewayDependencies {
     pub runners: Runners,
     /// Existing fleet placement, billing, activity and report owner.
     pub runs: RunService,
-    /// Existing private authoring owner.
+    /// The setup drafts a setup run's assignment, preview and context read.
     pub drafts: Drafts,
-    /// Scoped provider invocations share the daemon's key owner and dispatch ledger.
-    pub models: afd_setup::ModelCalls,
-    /// Authoring completion retains native Save/Apply and accounting behavior.
+    /// A setup run's report finishes its turn and any Save it asked for.
     pub creations: afd_setup::Creations,
     /// The same bus used by every production publisher.
     pub bus: Handle,

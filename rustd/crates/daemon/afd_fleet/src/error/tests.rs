@@ -110,19 +110,14 @@ fn mint_refusals() -> [Expected; 7] {
     ]
 }
 
-/// The two message refusals, and the corrupt sequence that answers as a row
+/// The message refusal, and the corrupt sequence that answers as a row
 /// fault.
-fn message_refusals() -> [Expected; 3] {
+fn message_refusals() -> [Expected; 2] {
     [
         expected(
             super::message_no_channel(),
             error_code::MESSAGE_NO_CHANNEL,
             super::DETAIL_MESSAGE_NO_CHANNEL,
-        ),
-        expected(
-            super::message_limit_reached(),
-            error_code::MESSAGE_LIMIT_REACHED,
-            super::DETAIL_MESSAGE_LIMIT,
         ),
         expected(
             super::sequence_corrupt(),

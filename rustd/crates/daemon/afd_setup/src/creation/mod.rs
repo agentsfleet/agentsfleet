@@ -49,13 +49,6 @@ impl Creations {
         self
     }
 
-    /// Bind authoring settlement and Save/Apply to the confirmed native owner.
-    #[must_use]
-    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
-        self.setup.drafts = self.setup.drafts.for_connection(authority);
-        self
-    }
-
     pub(crate) fn activity_streams(&self) -> afd_bus::Handle {
         self.turns.streams()
     }

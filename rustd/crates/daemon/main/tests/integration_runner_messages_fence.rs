@@ -1,4 +1,5 @@
-//! §2 — the fence and the cap hold for a run whose line has somewhere to go.
+//! §2 — the fence and the numbering hold for a run whose line has somewhere
+//! to go.
 //!
 //! Every case runs an event admitted from a Slack thread, so a post that got
 //! past the fence would land and be seen: a refusal here is proved by an empty
@@ -14,15 +15,16 @@
               indexes the JSON it was answered"
 )]
 
-use af_wire::message_verb::MESSAGES_PER_RUN_MAX;
+use std::collections::BTreeSet;
+
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::speaking::Speaking;
 use crate::verbs::posts;
 
-/// How many posts race for the cap: half again past it.
-const RACERS: u32 = MESSAGES_PER_RUN_MAX + MESSAGES_PER_RUN_MAX / 2;
+/// How many posts race: past the eight a run was once held to.
+const RACERS: u32 = 12;
 
 /// Dimension 2.2. A token that is not the run's own posts nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -64,11 +66,11 @@ async fn test_superseded_holder_of_a_thread_posts_nothing() {
     speaking.finish(supervisor).await;
 }
 
-/// Posts racing for the last slots: exactly the cap land, every other is
-/// refused, and the count never passes the cap.
+/// Posts racing for numbers: every one lands, no two take the same line, and
+/// the count is exactly how many raced.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_concurrent_messages_never_pass_the_cap() {
+async fn test_concurrent_messages_each_take_their_own_line() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
     let (run_id, fence) = speaking.run_thread().await;
@@ -81,15 +83,15 @@ async fn test_concurrent_messages_never_pass_the_cap() {
     )
     .await;
     let landed = answers.iter().filter(|(status, _)| *status == 200).count();
-    let capped = answers
-        .iter()
-        .filter(|(status, body)| *status == 409 && body["error_code"] == "UZ-RUN-020")
-        .count();
-    let cap = usize::try_from(MESSAGES_PER_RUN_MAX).expect("a small cap");
     let racers = usize::try_from(RACERS).expect("a small count");
-    assert_eq!((landed, capped), (cap, racers - cap), "{answers:?}");
-    assert_eq!(posts(&speaking.slack).len(), cap);
-    let counted = i32::try_from(MESSAGES_PER_RUN_MAX).expect("a small cap");
+    assert_eq!(landed, racers, "{answers:?}");
+    let lines: BTreeSet<u64> = posts(&speaking.slack)
+        .iter()
+        .filter_map(|sent| sent["metadata"]["event_payload"]["part"]["line"].as_u64())
+        .collect();
+    let expected: BTreeSet<u64> = (1..=u64::from(RACERS)).collect();
+    assert_eq!(lines, expected, "each post took its own line");
+    let counted = i32::try_from(RACERS).expect("a small count");
     assert_eq!(speaking.counted(&run_id).await, counted);
     speaking.finish(supervisor).await;
 }

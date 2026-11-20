@@ -13,8 +13,6 @@ pub enum Operation {
     Recheck,
     /// Extend one run and acknowledge its usage.
     Renewal,
-    /// Await one already-accounted physical authoring provider invocation.
-    Model,
     /// Publish bounded progress.
     Progress,
     /// Settle a durable terminal report.
@@ -46,7 +44,6 @@ impl Operation {
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
             Self::Context => "context",
-            Self::Model => "model",
             Self::Write => "write",
             Self::Drain => "drain",
         }
@@ -67,7 +64,6 @@ impl std::fmt::Display for Operation {
             Self::TurnCheckpoint => "saving or restoring a turn checkpoint",
             Self::Context => "reading or saving a setup context",
             Self::Write => "sending a response",
-            Self::Model => "calling the authoring model",
             Self::Drain => "closing the runner connection",
         })
     }

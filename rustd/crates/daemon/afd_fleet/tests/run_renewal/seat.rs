@@ -1,6 +1,6 @@
-//! The held fleet's own tenant also authors: an owner, a priced model behind a
-//! sealed key, a funded wallet, and queued turns the production assignment
-//! places on the same host as the runtime run.
+//! The held fleet's own tenant also sets fleets up: an owner, a priced model
+//! behind a sealed key, a funded wallet, and queued setup turns the
+//! production assignment places on the same host as the runtime run.
 
 use super::fixture::Running;
 use af_core::{clock, id::Uuid7, money::NANOS_PER_USD};
@@ -10,7 +10,7 @@ use afd_db::{
     test_util::{ModelSeed, mint_id},
 };
 use afd_setup::{
-    Access, AssignedDraft, Drafts,
+    Access, Drafts,
     types::{CreateDraft, Draft, Source},
 };
 
@@ -114,13 +114,7 @@ impl Seat {
 
     /// Drafts over `database`: the primary's pool, or a replica's.
     pub(super) fn drafts(database: &Db) -> Drafts {
-        Drafts::new(
-            database.clone(),
-            Entropy::new(),
-            std::sync::Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
-                database.clone(),
-            )),
-        )
+        Drafts::new(database.clone(), Entropy::new())
     }
 
     /// The seat owner's access to their own drafts.
@@ -148,18 +142,6 @@ impl Seat {
             .await
             .expect("queue a private turn")
             .draft
-    }
-
-    /// The production assignment transaction, pointed at this seat's draft.
-    pub(super) async fn admit(
-        drafts: &Drafts,
-        runner: &Uuid7,
-        draft: &Draft,
-    ) -> Option<AssignedDraft> {
-        drafts
-            .assign_queued(runner, &draft.id)
-            .await
-            .expect("assignment answers")
     }
 
     /// Removes the one global row the seat wrote; the lane reset owns the rest.

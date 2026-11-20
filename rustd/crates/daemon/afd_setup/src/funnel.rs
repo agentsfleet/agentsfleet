@@ -24,7 +24,7 @@ use af_core::id::Uuid7;
 use af_observability::{Analytics, AuthoringStep, Telemetry};
 use sqlx::PgConnection;
 
-use crate::{Access, Drafts, Result, error::raise::query, run::guard::Attempt};
+use crate::{Access, Drafts, Result, error::raise::query};
 
 const CONTEXT: &str = "attribute a private-chat funnel step";
 
@@ -52,16 +52,6 @@ pub(crate) struct Message<'a> {
     pub(crate) workspace: &'a Uuid7,
     pub(crate) creator: &'a Uuid7,
     pub(crate) draft: &'a Uuid7,
-}
-
-impl<'a> From<&'a Attempt> for Message<'a> {
-    fn from(attempt: &'a Attempt) -> Self {
-        Self {
-            workspace: &attempt.workspace_id,
-            creator: &attempt.user_id,
-            draft: &attempt.draft_id,
-        }
-    }
 }
 
 /// Steps a transaction has earned, held until it commits.

@@ -23,10 +23,6 @@ WITH instant AS MATERIALIZED (
     AND (SELECT count(*) FROM thread.runs l
           WHERE l.runner_id = $2 AND l.status = $13
             AND l.run_expires_at > i.checked_at)
-      -- Setup turns the authoring path still runs; this term goes with setup.attempts.
-      + (SELECT count(*) FROM setup.attempts a
-          WHERE a.runner_id = $2 AND a.status = $13
-            AND a.run_expires_at > i.checked_at)
       -- Every other owner's live hold on this host, fleet or draft.
       + (SELECT count(*) FROM thread.threads s
           WHERE s.last_runner_id = $2 AND s.id <> COALESCE($3::uuid, $4::uuid)

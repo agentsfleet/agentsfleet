@@ -1,6 +1,6 @@
 //! Strict native sources and bounded human mutations. There is no file source.
 
-use super::{MAX_MESSAGE_BYTES, MAX_MODEL_REF_BYTES, MAX_TITLE_CHARS};
+use super::{MAX_MODEL_REF_BYTES, MAX_TITLE_CHARS};
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{
     ConfigOp, Definition, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
@@ -58,7 +58,7 @@ pub struct CreateDraft {
         deserialize_with = "super::present",
         skip_serializing_if = "Option::is_none"
     )]
-    #[garde(inner(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(af_validate::rules::nul_free)))]
+    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free)))]
     pub message: Option<String>,
     /// Save the finalized candidate when this message completes successfully.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -74,7 +74,7 @@ pub struct CreateDraft {
 #[serde(deny_unknown_fields)]
 pub struct SendMessage {
     /// User text, never trimmed or interpreted as executable setup.
-    #[garde(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     pub message: String,
     /// Durable authorization to save the candidate finalized by this turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

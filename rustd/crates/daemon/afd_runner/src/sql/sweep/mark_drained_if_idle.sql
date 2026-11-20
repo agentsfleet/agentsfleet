@@ -12,11 +12,6 @@ WITH locked AS MATERIALIZED (
       WHERE l.runner_id = r.id AND l.status = $4::text
         AND l.run_expires_at > (SELECT at FROM instant)
     )
-    -- Setup turns the authoring path still runs; this term goes with setup.attempts.
-    AND NOT EXISTS (
-      SELECT 1 FROM setup.attempts a WHERE a.runner_id = r.id AND a.status = $4::text
-        AND a.run_expires_at > (SELECT at FROM instant)
-    )
   RETURNING r.id
 ), inserted AS (
   INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)

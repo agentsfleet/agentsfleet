@@ -102,13 +102,7 @@ impl Fixture {
 
     pub(super) fn creations(&self, bus: Handle) -> TestResult<Creations> {
         let database = self.scene.booted.database.clone();
-        let drafts = Drafts::new(
-            database.clone(),
-            Entropy::new(),
-            Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
-                database.clone(),
-            )),
-        );
+        let drafts = Drafts::new(database.clone(), Entropy::new());
         let setup = Setup::new(drafts, Arc::new(Kek::from_hex(e2e::GOOD_KEK)?));
         Ok(Creations::new(
             setup,

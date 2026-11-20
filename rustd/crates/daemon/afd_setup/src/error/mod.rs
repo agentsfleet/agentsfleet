@@ -18,7 +18,6 @@ mod kind;
 pub(crate) use kind::ErrorKind;
 
 af_core::error_lifts!(Error, ErrorKind:
-    af_providers::Error => Decision,
     afd_cron::Error => Cron,
     af_context::Error => Context,
     afd_db::Error => Datastore,
@@ -27,9 +26,6 @@ af_core::error_lifts!(Error, ErrorKind:
     af_crypto::error::Error => Entropy,
     af_core::error::Error => Identifier,
     garde::Report => Validation,
-    reqwest::Error => Transport,
-    af_inference::Error => Inference,
-    rig_core::ProviderError => Sdk,
     afd_runner::Error => Runner,
     afd_turns::Error => TurnWrite,
     afd_approval::Error => Approval,
@@ -54,23 +50,17 @@ impl Error {
             ErrorKind::Archived => error_code::AGENTSFLEET_ARCHIVED,
             ErrorKind::NameExists => error_code::AGENTSFLEET_NAME_EXISTS,
             ErrorKind::Policy => error_code::AUTHORING_POLICY,
-            ErrorKind::Fence => error_code::AUTHORING_FENCE,
             ErrorKind::State { .. } => error_code::AUTHORING_STATE,
             ErrorKind::Stale { .. } => error_code::AUTHORING_STALE,
             ErrorKind::Precondition => error_code::AUTHORING_PRECONDITION,
             ErrorKind::Replay => error_code::AUTHORING_REPLAY,
             ErrorKind::Review { .. } => error_code::AUTHORING_REVIEW,
             ErrorKind::Gone => error_code::AUTHORING_GONE,
-            ErrorKind::Model | ErrorKind::Inference { .. } => error_code::AUTHORING_MODEL,
+            ErrorKind::Model => error_code::AUTHORING_MODEL,
             ErrorKind::Balance => error_code::AUTHORING_BALANCE,
             ErrorKind::Token => error_code::AUTHORING_TOKEN,
             ErrorKind::Context { source } if source.is_window() => error_code::AUTHORING_TOKEN,
             ErrorKind::Context { source } => source.code(),
-            ErrorKind::Provider => error_code::AUTHORING_PROVIDER,
-            ErrorKind::Unknown
-            | ErrorKind::Transport { .. }
-            | ErrorKind::Sdk { .. }
-            | ErrorKind::Decision { .. } => error_code::AUTHORING_UNKNOWN,
             ErrorKind::Cursor => error_code::AUTHORING_CURSOR,
             ErrorKind::Validation { .. }
             | ErrorKind::Definition { .. }
@@ -104,7 +94,6 @@ impl Error {
             | ErrorKind::FleetMissing
             | ErrorKind::NameExists
             | ErrorKind::Policy
-            | ErrorKind::Fence
             | ErrorKind::State { .. }
             | ErrorKind::Stale { .. }
             | ErrorKind::Precondition
@@ -118,12 +107,6 @@ impl Error {
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
-            | ErrorKind::Provider
-            | ErrorKind::Unknown
-            | ErrorKind::Decision { .. }
-            | ErrorKind::Inference { .. }
-            | ErrorKind::Sdk { .. }
-            | ErrorKind::Transport { .. }
             | ErrorKind::Preview { .. }
             | ErrorKind::Cursor
             | ErrorKind::Query { .. }
@@ -148,7 +131,6 @@ impl Error {
             | ErrorKind::Archived
             | ErrorKind::NameExists
             | ErrorKind::Policy
-            | ErrorKind::Fence
             | ErrorKind::State { .. }
             | ErrorKind::Precondition
             | ErrorKind::Replay
@@ -161,12 +143,6 @@ impl Error {
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
-            | ErrorKind::Provider
-            | ErrorKind::Unknown
-            | ErrorKind::Decision { .. }
-            | ErrorKind::Inference { .. }
-            | ErrorKind::Sdk { .. }
-            | ErrorKind::Transport { .. }
             | ErrorKind::Preview { .. }
             | ErrorKind::Cursor
             | ErrorKind::Invalid { .. }
@@ -194,7 +170,6 @@ impl Error {
             | ErrorKind::Archived
             | ErrorKind::NameExists
             | ErrorKind::Policy
-            | ErrorKind::Fence
             | ErrorKind::State { .. }
             | ErrorKind::Stale { .. }
             | ErrorKind::Precondition
@@ -207,12 +182,6 @@ impl Error {
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
-            | ErrorKind::Provider
-            | ErrorKind::Unknown
-            | ErrorKind::Decision { .. }
-            | ErrorKind::Inference { .. }
-            | ErrorKind::Sdk { .. }
-            | ErrorKind::Transport { .. }
             | ErrorKind::Preview { .. }
             | ErrorKind::Cursor
             | ErrorKind::Invalid { .. }
@@ -238,12 +207,7 @@ impl Error {
             ErrorKind::Replay => Some("accepted"),
             ErrorKind::Review { .. } | ErrorKind::Policy => Some("review_required"),
             ErrorKind::NameExists => Some("name_exists"),
-            ErrorKind::Model | ErrorKind::Inference { .. } => Some("unavailable"),
-            ErrorKind::Fence => Some("fenced"),
-            ErrorKind::Unknown
-            | ErrorKind::Transport { .. }
-            | ErrorKind::Sdk { .. }
-            | ErrorKind::Decision { .. } => Some("awaiting_accounting"),
+            ErrorKind::Model => Some("unavailable"),
             ErrorKind::Context { .. }
             | ErrorKind::Hidden
             | ErrorKind::FleetMissing
@@ -256,7 +220,6 @@ impl Error {
             | ErrorKind::Approval { .. }
             | ErrorKind::Lifecycle { .. }
             | ErrorKind::Token
-            | ErrorKind::Provider
             | ErrorKind::Preview { .. }
             | ErrorKind::Cursor
             | ErrorKind::Invalid { .. }

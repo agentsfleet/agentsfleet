@@ -79,8 +79,6 @@ impl RunnerConnection {
             cache,
             pipes.writers,
             accepted,
-            // The fixture runner speaks the revision today's runner does.
-            af_wire::protocol::Revision::V2,
         ));
         let mut connection = Self {
             services,
@@ -120,9 +118,11 @@ impl RunnerConnection {
             .readers
             .get_mut(&StreamKind::Work)
             .ok_or(ErrorKind::Protocol)?;
-        let assigned = services.assign(AssignMode::Ordinary);
+        // Boxed: the assignment's future is the whole placement, and every
+        // fixture that awaits this one would otherwise carry it inline.
+        let mut assigned = Box::pin(services.assign(AssignMode::Ordinary));
         let receive = reader.next();
-        tokio::pin!(assigned, receive);
+        tokio::pin!(receive);
         tokio::select! {
             result = &mut assigned => {
                 if result? == AssignOutcome::Issued { Ok(Some(receive.await?.ok_or(ErrorKind::Closed)?)) } else { Ok(None) }

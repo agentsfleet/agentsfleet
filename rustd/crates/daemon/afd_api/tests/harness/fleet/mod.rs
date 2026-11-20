@@ -49,7 +49,7 @@ impl Fleet {
             capabilities,
             authenticator,
         } = Inputs::new(database);
-        let authoring = authoring::stores(&database, &ledger, &providers);
+        let authoring = authoring::stores(&database, &ledger);
         Self {
             native: None,
             ready: ReadyInputs {
@@ -69,7 +69,6 @@ impl Fleet {
             tasks: tasks(&database, &bus, &ledger),
             authoring: authoring.drafts,
             authoring_setup: authoring.setup,
-            authoring_models: authoring.models,
             creations: authoring.creations,
             workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),

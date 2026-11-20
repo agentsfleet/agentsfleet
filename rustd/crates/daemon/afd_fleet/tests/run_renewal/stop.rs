@@ -107,15 +107,14 @@ async fn take_draft_run(running: &Running, drafts: &afd_setup::Drafts) -> Taken 
                 recovery: None,
             },
             AcceptedKinds::ALL,
-            true,
             &mut af_observability::verb_span::VerbClock::untimed(),
-            |run, _metadata| match run {
-                TaggedRun::Fleet(run) if run.setup.is_some() => Some(Taken {
+            |run, _metadata| {
+                let TaggedRun::Fleet(run) = run;
+                run.setup.is_some().then(|| Taken {
                     run: run.run_id.to_string(),
                     turn: run.event.turn_id.to_string(),
                     fence: run.fencing_token,
-                }),
-                TaggedRun::Fleet(_) | TaggedRun::Authoring(_) => None,
+                })
             },
         )
         .await

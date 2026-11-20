@@ -105,6 +105,8 @@ mod integration_runner_e2e;
 mod integration_runner_fleets;
 #[path = "integration_runner_fleets_paging.rs"]
 mod integration_runner_fleets_paging;
+#[path = "integration_runner_frame.rs"]
+mod integration_runner_frame;
 #[path = "integration_runner_messages.rs"]
 mod integration_runner_messages;
 #[path = "integration_runner_messages_fence.rs"]
@@ -185,6 +187,3 @@ mod tls_posture;
 
 #[path = "integration_grant_denial.rs"]
 mod integration_grant_denial;
-
-#[path = "integration_authoring_mint.rs"]
-mod integration_authoring_mint;

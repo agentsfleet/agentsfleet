@@ -38,7 +38,7 @@ async fn sweep_until(f: &Fixture, target: i64, count: impl AsyncFn() -> i64) {
         if count().await == target {
             return;
         }
-        f.drafts.maintain().await.expect("maintenance pass");
+        f.drafts.housekeep().await.expect("maintenance pass");
     }
     assert_eq!(count().await, target, "the sweep converged");
 }
@@ -66,7 +66,7 @@ async fn the_receipt_sweep_is_bounded_and_keeps_receipts_inside_the_window() {
     seed(&f, std::slice::from_ref(&live), Duration::ZERO).await;
     let swept = f
         .drafts
-        .maintain()
+        .housekeep()
         .await
         .expect("maintenance pass")
         .expired_receipts;

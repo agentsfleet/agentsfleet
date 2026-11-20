@@ -136,14 +136,7 @@ impl ServingPlane {
         let common = construction::Common::new(&parts);
         let database = parts.database;
         let kek = parts.kek;
-        let mut authoring = surfaces::authoring(
-            common.drafts,
-            &kek,
-            &common.providers,
-            &common.turns,
-            parts.authoring_transport,
-            parts.platform_admin_workspace.as_ref(),
-        );
+        let mut authoring = surfaces::authoring(common.drafts, &kek, &common.turns);
         let admin = stores::admin(&database);
         let activity_streams = parts.bus.clone();
         let tenant = stores::tenant(&database, &kek, &common.providers, &activity_streams);

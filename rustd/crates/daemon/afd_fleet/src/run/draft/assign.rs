@@ -11,12 +11,12 @@ use std::borrow::Cow;
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
 use af_wire::{
-    authoring::FailureReason,
     policy::{ExecutionPolicy, NetworkPolicy},
     run::{
         HISTORY_BYTES_MAX, Owner, RunKind, RunPayload, SetupCandidate, SetupWork,
         TURN_TEXT_BYTES_MAX, Turn,
     },
+    setup::FailureReason,
     turn::{TurnEnvelope, TurnKind},
 };
 use afd_billing::rates::Posture;
@@ -115,7 +115,7 @@ impl RunService {
         else {
             return Ok(Placement::Busy);
         };
-        if !host.can_assign() || !ticket.permits_revision(host.run_version(), RunKind::Authoring) {
+        if !host.can_assign() || !ticket.permits_revision(host.run_version(), RunKind::Setup) {
             return Ok(Placement::Busy);
         }
         // Before any write: a foreign runner leaves no run and no failure behind.
@@ -123,7 +123,7 @@ impl RunService {
             afd_runner::capacity::refused_placement(
                 runner,
                 afd_runner::capacity::PlacementRefusal::ForeignTenant,
-                RunKind::Authoring.as_str(),
+                RunKind::Setup.as_str(),
             );
             return Ok(Placement::Skipped);
         }
@@ -170,7 +170,7 @@ impl RunService {
             held_until: won.run_expires_at,
             run_version: host.run_version(),
             reassignment,
-            max_runtime: drafts.setup_max_runtime(),
+            max_runtime: afd_setup::limits::SETUP_RUNTIME,
         };
         let Some(run_id) = self.issue_draft(&mut tx, issue, now).await? else {
             // The host filled, the fence or the choice moved: nothing commits.

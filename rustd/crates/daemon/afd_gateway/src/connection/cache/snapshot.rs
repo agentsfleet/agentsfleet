@@ -8,8 +8,7 @@ use afd_fleet::run::{AssignedRun, Reported, Target};
 use jiff::Timestamp;
 use std::collections::HashMap;
 
-/// A target exists only for fleet work; a draft's run names its draft, and an authoring
-/// attempt uses its separate private progress service.
+/// A target exists only for fleet work; a draft's run names its draft instead.
 #[derive(Debug, Clone)]
 pub(super) struct RunRecord {
     pub(super) id: Uuid7,
@@ -62,7 +61,8 @@ impl TryFrom<&LiveRunRow> for RunRecord {
                 timing_eligible: !row.cancelled,
                 fence: row.fencing_token,
             }),
-            (None, None, None) => None,
+            // A draft's run: it names its draft, never a fleet.
+            (None, None, None) if row.draft_id.is_some() => None,
             _ => return Err(ErrorKind::Protocol.into()),
         };
         Ok(Self {

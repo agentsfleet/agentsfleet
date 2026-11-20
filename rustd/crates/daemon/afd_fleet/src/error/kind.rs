@@ -257,9 +257,6 @@ pub(crate) enum ErrorKind {
     #[error("the held event recorded no thread a message can go to")]
     MessageNoChannel,
 
-    #[error("the run already posted as many messages as one run may")]
-    MessageLimitReached,
-
     #[error("the fleet's secret values could not be gathered into a mask")]
     Scrub {
         #[source]

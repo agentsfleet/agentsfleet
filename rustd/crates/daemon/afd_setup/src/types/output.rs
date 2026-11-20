@@ -42,7 +42,7 @@ impl DraftState {
 pub enum MessageState {
     /// Accepted and awaiting assignment to a runner.
     Queued,
-    /// An unexpired authoring attempt owns the request.
+    /// A setup run is answering the request.
     Running,
     /// Terminal answer and known accounting were recorded.
     Completed,
@@ -197,7 +197,7 @@ pub struct Message {
     pub candidate_id: Option<Uuid7>,
     /// Daemon-authoritative provider knowledge and cumulative runtime charge.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<af_wire::authoring::Usage>,
+    pub usage: Option<af_wire::setup::Usage>,
     /// Bounded persistent recovery action on `failed`/`timed_out` messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<super::Failure>,

@@ -22,8 +22,6 @@ pub(crate) enum ErrorKind {
     NameExists,
     #[error("the native setup policy needs a fresh review")]
     Policy,
-    #[error("the authoring attempt cannot publish")]
-    Fence,
     #[error("the setup state {current} prevents the mutation")]
     State { current: &'static str },
     #[error("the setup resource version changed")]
@@ -62,30 +60,6 @@ pub(crate) enum ErrorKind {
     },
     #[error("the assembled authoring context exceeds its bound")]
     Token,
-    #[error("the provider failed with known usage")]
-    Provider,
-    #[error("the provider delivery remains unresolved")]
-    Unknown,
-    #[error("the setup edit decision could not complete")]
-    Decision {
-        #[source]
-        source: af_providers::Error,
-    },
-    #[error("the configured model settings are invalid")]
-    Inference {
-        #[source]
-        source: af_inference::Error,
-    },
-    #[error("the model SDK could not complete the dispatch")]
-    Sdk {
-        #[source]
-        source: rig_core::ProviderError,
-    },
-    #[error("the authoring transport could not complete")]
-    Transport {
-        #[from]
-        source: reqwest::Error,
-    },
     #[error("the private preview could not be published")]
     Preview {
         #[source]

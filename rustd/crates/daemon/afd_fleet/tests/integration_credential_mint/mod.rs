@@ -27,7 +27,6 @@
 // Child of this suite, not a crate-root module: it reaches its parent
 // through `super::`, so it must stay nested here. The path is relative
 // to THIS file's directory, which the aggregator does not change.
-mod authoring;
 mod authority;
 mod cases;
 mod claims;

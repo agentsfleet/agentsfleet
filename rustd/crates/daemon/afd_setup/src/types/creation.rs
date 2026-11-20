@@ -1,6 +1,6 @@
 //! Save has one retained fleet identity and an explicit initial-run choice.
 
-use super::{MAX_MESSAGE_BYTES, MAX_MODEL_REF_BYTES};
+use super::MAX_MODEL_REF_BYTES;
 use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
@@ -58,7 +58,7 @@ pub enum Start {
     /// One message, bound to the daemon-derived creation identity.
     RunNow {
         /// Ordinary shared runtime input.
-        #[garde(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(af_validate::rules::nul_free))]
+        #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
         message: String,
     },
 }

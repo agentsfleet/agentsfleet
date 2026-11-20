@@ -34,6 +34,8 @@ afd_runner.workspace = true
 # The runs page's `?limit`, bounded as every keyset list is.
 af_validate.workspace = true
 afd_api_wire.workspace = true
+# The tail batch a fleet's admitted message is kept to on its live frame.
+afd_bus.workspace = true
 af_wire.workspace = true
 # A recall body is checked against the bounds `af_wire` declares on it.
 garde.workspace = true

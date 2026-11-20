@@ -31,8 +31,6 @@ pub(crate) enum Row<'a> {
     Thread(&'a Uuid7),
     /// A `thread.turns` row, by its id, which is the logical event id.
     Turn(&'a Uuid7),
-    /// An `setup.attempts` row, by attempt id.
-    Attempt(&'a Uuid7),
     /// A fleet's opened `thread.turns` row, its event, by fleet id and turn
     /// id. The answer column is `answer_text`.
     Event(&'a Uuid7, &'a Uuid7),
@@ -74,7 +72,6 @@ impl<'a> Row<'a> {
             Self::Run(id) => ("thread.runs", "id = $1", id, None),
             Self::Thread(fleet) => ("thread.threads", "fleet_id = $1", fleet, None),
             Self::Turn(id) => ("thread.turns", "id = $1", id, None),
-            Self::Attempt(id) => ("setup.attempts", "id = $1", id, None),
             Self::Event(fleet, event) => (
                 "thread.turns",
                 "thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",

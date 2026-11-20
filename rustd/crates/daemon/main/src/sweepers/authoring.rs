@@ -4,10 +4,7 @@ use crate::supervisor::Supervisor;
 use af_crypto::entropy::Entropy;
 use af_observability::Analytics;
 use afd_db::Db;
-use std::sync::Arc;
 use std::time::Duration;
-
-use afd_billing::biller::Biller;
 
 const FAILED: &str = "authoring_maintenance_failed";
 const COMPLETED: &str = "authoring_maintenance_completed";
@@ -16,12 +13,11 @@ pub(super) fn spawn(
     supervisor: &mut Supervisor,
     database: &Db,
     analytics: &Analytics,
-    biller: Arc<dyn Biller>,
     startup: &super::schedule::Startup,
     settings: crate::config::maintenance::AuthoringCleanup,
 ) {
-    let drafts = afd_setup::Drafts::new(database.clone(), Entropy::new(), biller)
-        .with_analytics(analytics.clone());
+    let drafts =
+        afd_setup::Drafts::new(database.clone(), Entropy::new()).with_analytics(analytics.clone());
     let mut interval = startup.interval(
         super::AUTHORING,
         Duration::from_secs(settings.interval_seconds),
@@ -40,25 +36,17 @@ pub(super) fn spawn(
 /// One maintenance pass, logged: what it advanced, or that its store is gone
 /// and the next tick retries.
 async fn maintain(drafts: &afd_setup::Drafts) {
-    // Attempt expiry runs on `sweeper:expiry`'s clock; this one keeps the
-    // privacy purges and the replay receipts.
+    // The privacy purges and the replay receipts' expiry.
     match drafts.housekeep().await {
         Ok(counts) if counts != afd_setup::Maintenance::default() => {
             {
-                let (event, purged_drafts, expired_results, expired_receipts, message) = (
+                let (event, purged_drafts, expired_receipts, message) = (
                     &COMPLETED,
                     &counts.purged_drafts,
-                    &counts.expired_results,
                     &counts.expired_receipts,
                     format_args!("authoring recovery advanced"),
                 );
-                tracing::info!(
-                    message,
-                    event,
-                    purged_drafts,
-                    expired_results,
-                    expired_receipts
-                );
+                tracing::info!(message, event, purged_drafts, expired_receipts);
             };
         }
         Ok(_) => {}
@@ -88,12 +76,7 @@ mod tests {
     /// and returns for the next tick rather than ending the task.
     #[tokio::test]
     async fn a_pass_with_no_store_waits_for_it() {
-        let database = unreachable_db();
-        let drafts = afd_setup::Drafts::new(
-            database.clone(),
-            Entropy::new(),
-            crate::billing::biller(database, af_observability::Analytics::silent()),
-        );
+        let drafts = afd_setup::Drafts::new(unreachable_db(), Entropy::new());
         let capture = Capture::install();
 
         maintain(&drafts).await;

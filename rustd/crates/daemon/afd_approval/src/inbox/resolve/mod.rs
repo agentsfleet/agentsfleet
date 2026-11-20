@@ -220,6 +220,7 @@ impl Inbox {
                 // A continuation carries no typed words: a person's message
                 // is announced on its own turn.
                 message: None,
+                message_trimmed: false,
                 counters,
             };
             let subject = afd_bus::Subject::ThreadItems(resolved.fleet_id.clone());

@@ -60,7 +60,6 @@ impl Error {
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -129,7 +128,6 @@ impl Error {
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured

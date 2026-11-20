@@ -2,8 +2,6 @@
 //! priced model of a chosen window behind a sealed key, and the draft they
 //! talk to through the production create and send paths.
 
-use std::sync::Arc;
-
 use af_core::{clock, id::Uuid7, money::NANOS_PER_USD};
 use af_crypto::{aad::Aad, entropy::Entropy, envelope::Sealer, secret::Kek};
 use afd_db::test_util::{ModelSeed, mint_id};
@@ -49,14 +47,8 @@ impl Seat {
             entry: mint_id(),
             model: format!("gpt-setup-{catalogue}"),
             catalogue,
-            drafts: Drafts::new(
-                scene.booted.database.clone(),
-                Entropy::new(),
-                Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
-                    scene.booted.database.clone(),
-                )),
-            )
-            .with_bus(scene.booted.bus.clone()),
+            drafts: Drafts::new(scene.booted.database.clone(), Entropy::new())
+                .with_bus(scene.booted.bus.clone()),
         };
         seat.seed(scene, context_tokens, output_tokens).await;
         seat

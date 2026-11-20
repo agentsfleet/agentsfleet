@@ -14,7 +14,7 @@ async fn setup_costs_page_with_runs_without_exposing_other_tenants_or_private_te
     owner.seed().await;
     other.seed().await;
     let setup = Setup::seed(&owner).await;
-    let _foreign = Setup::seed(&other).await;
+    let foreign = Setup::seed(&other).await;
     let router = Fleet::live(
         owner.database.clone(),
         SUBJECT,
@@ -26,16 +26,14 @@ async fn setup_costs_page_with_runs_without_exposing_other_tenants_or_private_te
     assert_scoped_history(&rows, &owner);
     assert_setup_row(&rows, &setup);
     assert_wallet_reads_its_balance(&router, &owner).await;
+    setup.remove(&owner).await;
+    foreign.remove(&other).await;
     owner.cleanup().await;
     other.cleanup().await;
 }
 
 fn assert_scoped_history(rows: &[Value], owner: &Fixture) {
-    assert_eq!(
-        rows.len(),
-        4,
-        "both run rows and both settled setup attempts"
-    );
+    assert_eq!(rows.len(), 4, "both run rows and both settled setup runs");
     assert_eq!(
         rows.iter()
             .map(|r| {
@@ -109,6 +107,7 @@ async fn setup_costs_use_public_fleet_names_and_survive_private_chat_deletion() 
     let after = walk(&router, &owner).await;
     assert_eq!(after.len(), before.len());
     assert_setup_row(&after, &setup);
+    setup.remove(&owner).await;
     owner.cleanup().await;
 }
 
@@ -117,7 +116,7 @@ fn assert_setup_row(rows: &[Value], setup: &Setup) {
         .iter()
         .find(|r| r["id"] == setup.settlements[0].as_str())
         .expect("settled setup row");
-    assert_eq!(row["run_id"], setup.attempts[0].as_str());
+    assert_eq!(row["run_id"], setup.runs[0].as_str());
     assert_eq!(
         row["fleet_id"],
         Value::Null,

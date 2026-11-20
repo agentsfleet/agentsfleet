@@ -263,3 +263,48 @@ async fn a_setup_run_whose_every_proposal_is_refused_writes_no_candidate() {
     assert_eq!(case.candidates(&draft.id).await.0, 0);
     case.finish(supervisor, &draft).await;
 }
+
+/// The message the 200 KiB case sends, past the 32 KiB a setup message was
+/// once held to.
+const LONG_MESSAGE_BYTES: usize = 200 * 1024;
+
+/// A 200 KiB message is stored whole, reaches the setup run's model whole, and
+/// is answered; the one other outcome the ceiling leaves is the model's own
+/// context refusal, and that is the only failure this accepts.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_setup_message_over_32_kib_is_answered() {
+    let mut supervisor = Supervisor::new();
+    let (case, transcript) =
+        Case::start(&mut supervisor, (WIDE, OUTPUT), |_asked| vec![say(ANSWER)]).await;
+    let line = "Watch the support queue and page on-call when it backs up.\n";
+    let long = case.said(&line.repeat(LONG_MESSAGE_BYTES / line.len() + 1));
+    assert!(long.len() > LONG_MESSAGE_BYTES, "{}", long.len());
+    let draft = case.seat.start(&long).await;
+
+    let stored: String = sqlx::query_scalar(
+        "SELECT request_json->>'message' FROM thread.turns WHERE thread_id = $1 AND sequence = 1",
+    )
+    .bind(&draft.id)
+    .fetch_one(&mut *case.connection().await)
+    .await
+    .expect("the message is stored");
+    assert_eq!(stored, long, "the message is stored whole");
+    let turn = case.settled(&draft.id, 1).await;
+
+    if turn.status == MessageState::Completed.as_str() {
+        assert_eq!(turn.answer.as_deref(), Some(ANSWER), "{turn:?}");
+        let asked = transcript.asked();
+        let reached = mine(&asked, &case.marker)
+            .into_iter()
+            .any(|request| request.user.iter().any(|text| text.contains(&long)));
+        assert!(reached, "the setup run's model read the whole message");
+    } else {
+        assert_eq!(
+            (turn.status.as_str(), turn.failure_reason.as_deref()),
+            (MessageState::Failed.as_str(), Some("context_too_large")),
+            "{turn:?}"
+        );
+    }
+    case.finish(supervisor, &draft).await;
+}

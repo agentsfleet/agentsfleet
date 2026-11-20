@@ -1,8 +1,8 @@
 //! Logical expiry blocks reads before physical cleanup and replay stays tombstoned.
 
-use super::{Attempt, Fixture, mint, now};
+use super::{Fixture, mint, now};
 use af_core::error_code::{AUTHORING_GONE, AUTHORING_NOT_FOUND};
-use afd_setup::types::{MessageQuery, Source};
+use afd_setup::types::MessageQuery;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
@@ -42,7 +42,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
             .code(),
         AUTHORING_NOT_FOUND
     );
-    f.drafts.maintain().await.expect("durable purge");
+    f.drafts.housekeep().await.expect("durable purge");
     assert_eq!(f.counts().await, (0, 0, 0));
     assert_eq!(
         f.drafts
@@ -57,34 +57,44 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn closed_retention_waits_for_a_live_authoring_run_then_purges_at_expiry() {
+async fn closed_retention_waits_for_a_live_setup_run_then_purges_at_expiry() {
     let f = Fixture::create().await;
-    let a = Attempt::start(&f, f.access(), Source::Blank).await;
+    let request = f.request(mint(), Some("A turn a setup run is answering"));
+    let created = f
+        .drafts
+        .create(f.access(), request, now())
+        .await
+        .expect("create");
+    let mut connection = f.connection().await;
     sqlx::query("UPDATE setup.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
-        .bind(a.draft.id)
-        .execute(&mut *f.connection().await)
+        .bind(&created.draft.id)
+        .execute(&mut *connection)
         .await
         .expect("closed fixture");
+    // A setup run holds its draft's thread, whose id is the draft's.
+    let held = sqlx::query(
+        "UPDATE thread.threads SET run_expires_at=now()+interval '1 minute' WHERE id=$1",
+    )
+    .bind(&created.draft.id)
+    .execute(&mut *connection)
+    .await
+    .expect("a live setup run");
+    assert_eq!(held.rows_affected(), 1, "the draft has a thread to hold");
+    drop(connection);
     f.drafts
-        .maintain()
+        .housekeep()
         .await
-        .expect("live run blocks physical purge");
-    assert_eq!(f.counts().await, (1, 0, 1));
-    sqlx::query("UPDATE setup.attempts SET run_expires_at='epoch' WHERE id=$1")
-        .bind(&a.id)
+        .expect("a live run blocks the purge");
+    assert_eq!(f.counts().await.0, 1, "the draft outlives its live run");
+    sqlx::query("UPDATE thread.threads SET run_expires_at='epoch' WHERE id=$1")
+        .bind(&created.draft.id)
         .execute(&mut *f.connection().await)
         .await
-        .expect("run expires");
+        .expect("the run expires");
     f.drafts
-        .maintain()
+        .housekeep()
         .await
-        .expect("purge after live boundary");
+        .expect("purge after the live boundary");
     assert_eq!(f.counts().await, (0, 0, 0));
-    let deliveries: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.attempts WHERE id=$1")
-        .bind(a.id)
-        .fetch_one(&mut *f.connection().await)
-        .await
-        .expect("accounting remains");
-    assert_eq!(deliveries, 1);
     f.cleanup().await;
 }

@@ -56,9 +56,6 @@ WITH asked AS (
   CROSS JOIN (SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM host) held) i
   WHERE (SELECT count(*) FROM thread.runs l
           WHERE l.runner_id = $1 AND l.status = $25 AND l.run_expires_at > i.checked_at)
-      -- Setup turns the authoring path still runs; this term goes with setup.attempts.
-      + (SELECT count(*) FROM setup.attempts a
-          WHERE a.runner_id = $1 AND a.status = $25 AND a.run_expires_at > i.checked_at)
       <= h.worker_count
 ), locked_thread AS MATERIALIZED (
   -- Joined to `census`, so the host row is held FOR SHARE before any thread: a

@@ -63,6 +63,7 @@ fn admitted() -> TailFrame<'static> {
         actor: Cow::Borrowed(STEER_ACTOR),
         event_type: Cow::Borrowed(CHAT),
         message: Cow::Borrowed("check the tests"),
+        message_trimmed: false,
         created_at: jiff::Timestamp::constant(1_725_000_000, 0),
     }
 }
@@ -79,6 +80,7 @@ fn should_lead_every_frame_with_its_kind() {
             event_type: Cow::Borrowed("cron"),
             created_at: jiff::Timestamp::constant(1, 0),
             message: None,
+            message_trimmed: false,
             counters: Some(COUNTERS),
         },
         TailFrame::TurnComplete {
@@ -193,6 +195,7 @@ fn should_carry_the_counters_on_every_frame_kind() {
             event_type: Cow::Borrowed("cron"),
             created_at: jiff::Timestamp::constant(1, 0),
             message: None,
+            message_trimmed: false,
             counters: Some(COUNTERS),
         },
         TailFrame::TurnComplete {
@@ -272,6 +275,7 @@ fn should_omit_the_counters_entirely_when_none_were_read() {
         event_type: Cow::Borrowed("cron"),
         created_at: jiff::Timestamp::constant(1, 0),
         message: None,
+        message_trimmed: false,
         counters: None,
     });
     let object = value.as_object().expect("a frame is an object");
@@ -310,6 +314,7 @@ fn should_carry_a_message_on_a_received_frame_only_when_given() {
         event_type: Cow::Borrowed(CHAT),
         created_at: jiff::Timestamp::constant(1, 0),
         message: message.map(Cow::Borrowed),
+        message_trimmed: false,
         counters: None,
     };
     let (text, value) = rendered(&frame(Some("hi")));

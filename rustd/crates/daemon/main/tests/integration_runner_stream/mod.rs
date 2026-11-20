@@ -6,7 +6,6 @@ pub(crate) const RECOVERY_SLACK: std::time::Duration = std::time::Duration::from
 
 mod assignments;
 #[cfg(feature = "test-util")]
-mod authoring;
 mod authority;
 mod heartbeat;
 

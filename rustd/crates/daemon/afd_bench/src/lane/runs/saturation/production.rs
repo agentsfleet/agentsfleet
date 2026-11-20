@@ -13,24 +13,16 @@ use crate::{
 use af_core::id::Uuid7;
 use af_crypto::secret::Kek;
 use af_wire::{
-    authoring::{Knowledge, Meter, Renew},
-    protocol::{Down, Up},
-    run::{AcceptedKinds, TaggedRun},
+    protocol::{Down, Renewal, Up},
+    report::RenewRequest,
+    run::{AcceptedKinds, Owner, TaggedRun},
+    usage::RequestLines,
 };
 use afd_gateway::{Gateway, test_util::RunnerConnection};
 use afd_setup::Drafts;
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
 use tokio::sync::{Mutex, watch};
 use tokio_util::sync::CancellationToken;
-
-const IDLE: Meter = Meter {
-    knowledge: Knowledge::Known,
-    calls: 0,
-    input_tokens: None,
-    output_tokens: None,
-    runtime_ms: 0,
-    provider_cost_nanos: None,
-};
 
 #[derive(Debug)]
 pub(super) struct Production {
@@ -50,9 +42,9 @@ struct ConnectedHost {
 }
 
 impl Production {
-    pub(super) fn new(stores: &Datastores, kek: &Arc<Kek>) -> Result<Self> {
-        let (gateway, drafts) = connection::gateway(stores, kek)?;
-        Ok(Self { gateway, drafts })
+    pub(super) fn new(stores: &Datastores, kek: &Arc<Kek>) -> Self {
+        let (gateway, drafts) = connection::gateway(stores, kek);
+        Self { gateway, drafts }
     }
 
     pub(super) async fn connect(
@@ -120,16 +112,17 @@ impl Host for Connected {
         let Some(frame) = session.assign().await? else {
             return Ok(Assigned::Nothing);
         };
+        // A setup chat's turn rides the common run path as a run its draft owns.
         match native::decode(&frame)? {
             Down::Run {
-                run: TaggedRun::Fleet(_),
-            } => Ok(Assigned::Fleet),
-            Down::Run {
-                run: TaggedRun::Authoring(run),
-            } => Ok(Assigned::Chat(Held {
-                run: Uuid7::parse(&run.run_id)?,
-                fence: run.fence,
-            })),
+                run: TaggedRun::Fleet(run),
+            } => match run.owner {
+                Some(Owner::Draft { .. }) => Ok(Assigned::Chat(Held {
+                    run: Uuid7::parse(&run.run_id)?,
+                    fence: run.fencing_token.to_string(),
+                })),
+                Some(Owner::Fleet { .. }) | None => Ok(Assigned::Fleet),
+            },
             _ => Err(ErrorKind::StreamAnswer.into()),
         }
     }
@@ -150,22 +143,24 @@ impl Host for Connected {
             .session
             .lock()
             .await
-            .request(&Up::AuthoringRenew {
+            .request(&Up::RenewBatch {
                 request_id: NonZeroU64::MIN,
-                run_id: held.run.as_str().into(),
-                request: Renew {
-                    fence: held.fence.clone(),
-                    usage: IDLE,
-                },
+                runs: vec![Renewal {
+                    run_id: held.run.as_str().into(),
+                    request: RenewRequest {
+                        requests: RequestLines(Vec::new()),
+                    },
+                }],
             })
             .await?;
-        let Down::AuthoringRenewed { run_id, answer, .. } = native::decode(&frame)? else {
+        let Down::Renewed { runs, .. } = native::decode(&frame)? else {
             return Err(ErrorKind::StreamAnswer.into());
         };
-        if run_id != held.run.as_str() {
+        let [renewed] = <[_; 1]>::try_from(runs).map_err(|_count| ErrorKind::StreamAnswer)?;
+        if renewed.run_id != held.run.as_str() {
             return Err(ErrorKind::StreamAnswer.into());
         }
-        native::accepted(answer)?;
+        native::accepted(renewed.answer)?;
         Ok(())
     }
 }

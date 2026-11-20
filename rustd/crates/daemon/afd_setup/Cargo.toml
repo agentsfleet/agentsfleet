@@ -1,6 +1,6 @@
 [package]
 name = "afd_setup"
-description = "Creator-private fleet drafts, immutable proposals, and bounded authoring attempts."
+description = "Creator-private fleet drafts, immutable candidates, and the daemon half of setup runs."
 autotests = false
 version.workspace = true
 edition.workspace = true
@@ -19,11 +19,8 @@ afd_fleet_lifecycle.workspace = true
 afd_vault.workspace = true
 afd_bus.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
-af_inference.workspace = true
-af_providers.workspace = true
 af_context = { workspace = true, features = ["postgres"] }
 afd_billing.workspace = true
-afd_identity.workspace = true
 af_crypto.workspace = true
 afd_db.workspace = true
 afd_credential.workspace = true
@@ -40,8 +37,6 @@ afd_api_wire.workspace = true
 # each after the commit that made it true.
 af_observability.workspace = true
 garde.workspace = true
-async-trait.workspace = true
-base64.workspace = true
 hex.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
 # jiff-sqlx.
@@ -51,28 +46,19 @@ moka.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-reqwest.workspace = true
-rig-core.workspace = true
-http.workspace = true
 futures-util.workspace = true
-bytes.workspace = true
-subtle.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["net", "time"] }
-tokio-util = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["time"] }
 zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The probe bus a running-cancellation proof stands in for the real one.
+async-trait.workspace = true
 afd_bus = { workspace = true, features = ["test-util"] }
 proc-macro2.workspace = true
 syn.workspace = true
-afd_admin = { workspace = true, features = ["test-util"] }
-rcgen.workspace = true
-rustls.workspace = true
-tokio-rustls.workspace = true
-const_format.workspace = true
 # One isolated allocator observer also checks the runner's public secret owner.
 af_secrets.workspace = true
 afd_runner = { workspace = true, features = ["test-util"] }

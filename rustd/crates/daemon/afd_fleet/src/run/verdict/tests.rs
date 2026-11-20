@@ -32,6 +32,7 @@ fn every_failure_class_has_its_stable_storage_label() {
         (FailureClass::RunExpired, "run_expired"),
         (FailureClass::RenewalTerminate, "renewal_terminate"),
         (FailureClass::BudgetBreach, "budget_breach"),
+        (FailureClass::FrameTooLarge, "frame_too_large"),
     ] {
         let verdict = Verdict::of(Outcome::FleetError, Some(class), "detail");
         assert!(!verdict.succeeded());

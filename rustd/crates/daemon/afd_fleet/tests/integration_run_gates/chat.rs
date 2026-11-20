@@ -1,11 +1,6 @@
 //! One leasable chat fleet, held and answered through the plane, for the
 //! suites that read what a run carries: its earlier turns and its memory.
 
-#![expect(
-    clippy::panic,
-    reason = "a run of the wrong kind fails the proof loudly"
-)]
-
 use std::borrow::Cow;
 use std::time::Duration;
 
@@ -155,10 +150,7 @@ impl Chat {
         assert!(answer.is_some(), "the run was refused: {answer:?}");
         let body = answer.expect("an issued run").to_string();
         let TaggedRun::Fleet(run) =
-            serde_json::from_str::<TaggedRun<'_>>(&body).expect("the issued fleet payload")
-        else {
-            panic!("the fleet plane grants fleet work");
-        };
+            serde_json::from_str::<TaggedRun<'_>>(&body).expect("the issued fleet payload");
         Issued {
             run_id: Uuid7::parse(&run.run_id).expect("the run names a UUIDv7"),
             turn_id: Uuid7::parse(&run.event.turn_id).expect("the event is a UUIDv7"),

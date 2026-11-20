@@ -13,16 +13,13 @@
 //!   nothing is reserved.
 //! - Key custody: a tenant's runner is never assigned a draft whose message
 //!   runs on the platform model, whose key the run carries.
-//! - A short `max_runtime_seconds`, the setup turn's wall, so one runaway
-//!   costs minutes.
+//! - A short `max_runtime_seconds`, [`afd_setup::limits::SETUP_RUNTIME`], so
+//!   one runaway costs minutes.
 //! - No sandbox and one tool, `propose_setup`; no turn checkpoint. A lapsed
 //!   run is reassigned and reruns its message from the start, at most
 //!   [`af_core::limits::EVENT_RUNS_MAX`] runs, then the message fails.
 //! - The draft's compacted context, read through the fenced context verb
 //!   (`context`) and saved through `afd_setup`'s fenced save.
-//! - Assigned only to a protocol v4 runner; a v2 runner keeps the authoring
-//!   attempt path (`afd_setup::run`) until the runner's setup agent
-//!   replaces it.
 
 mod assign;
 mod context;

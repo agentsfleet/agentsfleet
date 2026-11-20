@@ -154,13 +154,6 @@ pub const DETAIL_CONNECTOR_MINT_FAILED: &str = "Connector token refresh failed";
 pub const DETAIL_MESSAGE_NO_CHANNEL: &str =
     "This event came from no thread, so there is nowhere to post; say it in the answer instead";
 
-/// The refusal a message past the per-run count earns.
-pub const DETAIL_MESSAGE_LIMIT: &str = const_format::concatcp!(
-    "This run already posted ",
-    af_wire::message_verb::MESSAGES_PER_RUN_MAX,
-    " messages; put the rest in the answer"
-);
-
 /// The mint refusal when no approved grant covers the fleet and integration.
 pub const DETAIL_GRANT_REQUIRED: &str =
     "No approved integration grant for this fleet and integration";

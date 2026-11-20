@@ -1,9 +1,8 @@
 //! Purging private text preserves content-free replay and accounting deliveries.
 //!
-//! Attempts intentionally have no draft foreign key. A later accounting report
-//! can settle them, but absence of this draft fences all further private output.
-//! Replay receipts carry no foreign key either: a retry after the purge finds
-//! its receipt and no draft, and answers Gone.
+//! Replay receipts carry no foreign key to the draft: a retry after the purge
+//! finds its receipt and no draft, and answers Gone. Usage lines name the run,
+//! never the draft, so money outlives the purge.
 
 use crate::{Access, Drafts, Result, access, draft::read, error::raise::query, sql};
 use af_core::id::Uuid7;
@@ -12,7 +11,7 @@ use sqlx::{Connection as _, PgConnection};
 const CONTEXT: &str = "purge private draft text";
 
 impl Drafts {
-    /// Deletes the creator's private draft, transcript, candidates and stored results.
+    /// Deletes the creator's private draft, transcript and candidates.
     ///
     /// # Errors
     /// Hides foreign/revoked drafts and propagates failed durable deletion.
@@ -41,11 +40,6 @@ pub(crate) async fn purge(
         .bind(id)
         .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
         .fetch_all(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    sqlx::query(sql::draft::WIPE_DISPATCHES)
-        .bind(id)
-        .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     sqlx::query(sql::draft::DELETE)

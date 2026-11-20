@@ -7,8 +7,17 @@ use af_wire::{protocol::StreamKind, run::TaggedRun};
 use afd_fleet::run::{AssignRequest, AssignedRun, RecoveryScan};
 use tokio::time::Instant;
 
+use super::unframed::Unframed;
 use super::{AssignMode, AssignOutcome, ConnectionServices, Message, SchedulingState};
 use crate::{Operation, Result};
+
+/// What encoding an assignment came to: a frame ready to send, or a run its
+/// frame cannot carry, which is failed instead of sent.
+#[derive(Debug)]
+enum Encoded {
+    Framed(Box<AssignedRun>),
+    Unframed(Unframed),
+}
 
 impl ConnectionServices {
     /// Reserve before policy assembly, then transfer the same charged bytes to the writer.
@@ -32,12 +41,21 @@ impl ConnectionServices {
         let (assigned, deferred) = self
             .select_assignment(mode, &state, &mut encoder, &mut clock)
             .await?;
-        let Some(assigned) = assigned else {
+        let Some(issued) = assigned else {
             return Ok(if deferred {
                 AssignOutcome::Deferred
             } else {
                 AssignOutcome::Empty
             });
+        };
+        let assigned = match issued {
+            Encoded::Framed(assigned) => *assigned,
+            // Failed rather than sent: nothing reached the runner, so its
+            // capacity is untouched and the next pass assigns afresh.
+            Encoded::Unframed(unframed) => {
+                self.fail_unframed(&unframed).await?;
+                return Ok(AssignOutcome::Empty);
+            }
         };
         let frame = encoder.finish()?;
         self.cache
@@ -65,7 +83,7 @@ impl ConnectionServices {
         state: &SchedulingState,
         encoder: &mut Encoder,
         clock: &mut VerbClock<AssignStage>,
-    ) -> Result<(Option<AssignedRun>, bool)> {
+    ) -> Result<(Option<Encoded>, bool)> {
         let mut scan = (mode == AssignMode::Recovery)
             .then(|| std::mem::take(&mut *self.handle.recovery_scan.lock()));
         if let Some(scan) = scan.as_mut() {
@@ -96,7 +114,7 @@ impl ConnectionServices {
         encoder: &mut Encoder,
         clock: &mut VerbClock<AssignStage>,
         recovery: Option<&mut RecoveryScan>,
-    ) -> Result<Option<AssignedRun>> {
+    ) -> Result<Option<Encoded>> {
         let request = AssignRequest {
             runner: &self.handle.runner,
             held: &state.held,
@@ -112,7 +130,6 @@ impl ConnectionServices {
                         &self.drafts,
                         request,
                         self.accepted,
-                        self.draft_runs,
                         clock,
                         |run, metadata| encode_assignment(encoder, run, metadata),
                     )
@@ -124,11 +141,18 @@ impl ConnectionServices {
 }
 
 /// Serialization finishes while the policy's borrowed inputs still exist.
+///
+/// Measured first: a run past the frame is named for failing before a byte
+/// reaches the encoder, which would refuse it part-way through.
 fn encode_assignment(
     encoder: &mut Encoder,
-    run: TaggedRun<'_, afd_setup::types::Candidate>,
+    run: TaggedRun<'_>,
     assigned: AssignedRun,
-) -> Result<AssignedRun> {
-    serde_json::to_writer(encoder, &Message::Run { run })?;
-    Ok(assigned)
+) -> Result<Encoded> {
+    let message = Message::Run { run };
+    if let Some(unframed) = Unframed::of(&message) {
+        return Ok(Encoded::Unframed(unframed));
+    }
+    serde_json::to_writer(encoder, &message)?;
+    Ok(Encoded::Framed(Box::new(assigned)))
 }

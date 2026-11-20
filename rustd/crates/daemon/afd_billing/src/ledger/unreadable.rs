@@ -34,6 +34,8 @@ pub enum Unreadable {
     LineKind,
     /// A pricing posture this build does not name.
     Posture,
+    /// A line naming no turn: neither a fleet's turn nor a setup message.
+    Attribution,
 }
 
 impl Unreadable {
@@ -42,6 +44,7 @@ impl Unreadable {
             Self::WorkType => "work_type",
             Self::LineKind => "line_kind",
             Self::Posture => "posture",
+            Self::Attribution => "attribution",
         }
     }
 }

@@ -13,7 +13,7 @@
 
 use std::borrow::Cow;
 
-use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
+use af_wire::message_verb::MessageRequest;
 use af_wire::tool_detail::ToolCallRecordsRequest;
 use afd_connector::Provider;
 use afd_db::Precondition as _;
@@ -122,11 +122,11 @@ async fn test_messages_count_against_the_live_holder() {
     stage.fixtures.cleanup().await;
 }
 
-/// A run speaks at most [`MESSAGES_PER_RUN_MAX`] times; the next message is
-/// refused as over the cap, not as a lost run.
+/// No count caps a run's lines: the ninth and tenth are numbered like the
+/// first, and a line far past 4,096 bytes is prepared whole.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_run_is_refused_past_its_message_cap() {
+async fn test_a_run_speaks_past_eight_lines_each_numbered() {
     let stage = stage().await;
     let reply = Reply::To {
         connector: Provider::Slack.id(),
@@ -135,24 +135,20 @@ async fn test_a_run_is_refused_past_its_message_cap() {
     stage.admit(Producer::Webhook, "chatty", reply).await;
     let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
     let plane = stage.fixtures.plane();
+    let long = "w".repeat(10_000);
     let request = MessageRequest {
         fencing_token: run.fence.as_u64(),
-        text: Cow::Borrowed("still going"),
+        text: Cow::Borrowed(long.as_str()),
     };
 
-    for part in 1..=MESSAGES_PER_RUN_MAX {
+    for part in 1..=10_u32 {
         let said = plane
             .message(&stage.runner, run_id.clone(), &request)
             .await
-            .expect("a message under the cap is said");
+            .expect("every line is said");
         assert_eq!(said.part, part);
+        assert_eq!(said.text.len(), 10_000);
     }
-    let over = plane.message(&stage.runner, run_id, &request).await;
-
-    assert_eq!(
-        over.err().map(|error| error.code()),
-        Some(af_core::error_code::MESSAGE_LIMIT_REACHED)
-    );
     stage.fixtures.cleanup().await;
 }
 

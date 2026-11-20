@@ -24,6 +24,7 @@ mod expiry;
 mod notice;
 mod page;
 mod placement;
+mod progress;
 mod refused;
 mod superseded;
 
@@ -111,11 +112,11 @@ impl Case {
                     now: self.running.now,
                     recovery: None,
                 },
-                AcceptedKinds::AUTHORING,
-                true,
+                AcceptedKinds::ALL,
                 &mut af_observability::verb_span::VerbClock::untimed(),
-                |run, _metadata| match run {
-                    TaggedRun::Fleet(run) => run.setup.as_ref().map(|setup| Taken {
+                |run, _metadata| {
+                    let TaggedRun::Fleet(run) = run;
+                    run.setup.as_ref().map(|setup| Taken {
                         run: run.run_id.to_string(),
                         turn: run.event.turn_id.to_string(),
                         fence: run.fencing_token,
@@ -123,8 +124,7 @@ impl Case {
                             .candidate
                             .as_ref()
                             .map(|head| (head.id.to_string(), head.revision)),
-                    }),
-                    TaggedRun::Authoring(_) => None,
+                    })
                 },
             )
             .await

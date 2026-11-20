@@ -6,23 +6,27 @@
 //! runs. What lives here is what reads or writes the draft's own rows, inside
 //! the transaction `afd_fleet` holds: which message an assignment takes and what it
 //! carries, the message's start and finish, and the one candidate a
-//! report may write. The runner makes every model call; this crate makes none
-//! on this path.
-//!
-//! The authoring attempt path (`crate::run`) runs beside this one until the
-//! runner's setup agent replaces it. Each path refuses a draft the other holds:
-//! a live attempt here, a live draft thread there.
+//! report may write. The runner makes every model call; this crate makes
+//! none.
 
 mod context;
+mod lock;
+pub(crate) mod model;
 mod preview;
+mod progress;
 mod refusal;
 mod report;
 mod sql;
+mod tool;
+mod usage;
 
+pub use progress::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, TextKind};
 pub(crate) use sql::DELETE_RUNS;
+pub use tool::setup_tool;
+pub(crate) use usage::Metered;
 
 use af_core::{error_code, id::Uuid7};
-use af_wire::authoring::FailureReason;
+use af_wire::setup::FailureReason;
 use afd_credential::provider::RegisteredModel;
 use jiff::Timestamp;
 use sqlx::PgConnection;
@@ -31,19 +35,13 @@ pub use context::ContextSave;
 pub use preview::PreviewChunk;
 pub use report::{SetupFinish, SetupReportScope};
 
+use self::lock::{DraftLock, Hint};
 use crate::{
     Drafts, Result,
     draft::read,
     error::raise::query,
     funnel::Owed,
-    model::{self, budget},
-    run::{
-        FINISHED,
-        assign::selection::{self, DraftLock, Hint},
-        pending,
-        report::verdict,
-    },
-    types::{CANCELLED, Candidate, DraftState, EDITING, MessageState, QUEUED, RUNNING},
+    types::{Candidate, DraftState, EDITING, MessageState, QUEUED, RUNNING},
 };
 
 /// A draft an assignment may try, read without a lock.
@@ -191,21 +189,7 @@ impl SetupOwed {
     }
 }
 
-/// The `propose_setup` tool a setup run offers: its description and
-/// parameters, for a draft with a candidate to edit (`editing`) or without.
-#[must_use]
-pub fn setup_tool(editing: bool) -> serde_json::Value {
-    model::setup_tool(editing)
-}
-
 impl Drafts {
-    /// The longest a setup run may run: the turn wall the attempt path caps
-    /// a turn at, so one runaway costs minutes.
-    #[must_use]
-    pub fn setup_max_runtime(&self) -> std::time::Duration {
-        self.turn_policy.wall()
-    }
-
     /// Drafts whose head message a draft run may take for `runner`, oldest
     /// head first. Hints only: [`Drafts::assign_setup_turn`] rereads each.
     ///
@@ -216,10 +200,8 @@ impl Drafts {
             .bind(EDITING)
             .bind(QUEUED)
             .bind(RUNNING)
-            .bind(&FINISHED[..])
             .bind(sql::SCAN_LIMIT)
             .bind(runner)
-            .bind(CANCELLED)
             .fetch_all(&mut *self.database.acquire().await?)
             .await
             .map_err(query(sql::CONTEXT))?;
@@ -241,7 +223,7 @@ impl Drafts {
     /// A tenant's runner (`tenant_host`) never receives the platform model's
     /// key, so a head on the platform default passes, and blocks its draft for
     /// that runner rather than being jumped. A refused model or balance fails
-    /// the message durably, as the attempt path does.
+    /// the message durably.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -253,24 +235,24 @@ impl Drafts {
         owed: &mut SetupOwed,
     ) -> Result<SetupAssignment> {
         let locking = Hint {
-            id: hint.draft_id.clone(),
-            workspace_id: hint.workspace_id.clone(),
-            tenant_id: hint.tenant_id.clone(),
-            user_id: hint.user_id.clone(),
+            id: &hint.draft_id,
+            workspace_id: &hint.workspace_id,
+            tenant_id: &hint.tenant_id,
+            user_id: &hint.user_id,
         };
-        let draft = match selection::lock_draft(connection, &locking, &mut owed.0).await? {
+        let draft = match lock::lock_draft(connection, &locking, &mut owed.0).await? {
             DraftLock::Locked(draft) => *draft,
             DraftLock::Passed => return Ok(SetupAssignment::Passed),
             DraftLock::Busy => return Ok(SetupAssignment::Busy),
         };
-        if draft.status != DraftState::Editing || pending::running(connection, &draft).await? {
+        if draft.status != DraftState::Editing || lock::running(connection, &draft.id).await? {
             return Ok(SetupAssignment::Passed);
         }
         let Some(head) = head(connection, &draft).await? else {
             return Ok(SetupAssignment::Passed);
         };
         let reassigned = head.status == RUNNING;
-        // A running head no draft run ran belongs to the attempt path.
+        // A running head no draft run ran is not one a reassignment takes.
         if (reassigned && !head.held) || (tenant_host && head.tenant_model_id.is_none()) {
             return Ok(SetupAssignment::Passed);
         }
@@ -317,7 +299,7 @@ impl Drafts {
     }
 
     /// The message's model, resolved for the payer, and the payer's balance
-    /// checked against one turn's bound. A check only: nothing is set aside.
+    /// checked against one run's bound. A check only: nothing is set aside.
     async fn setup_model(
         &self,
         connection: &mut PgConnection,
@@ -325,8 +307,7 @@ impl Drafts {
         reference: &str,
     ) -> Result<RegisteredModel> {
         let model = model::selected(connection, &draft.tenant_id, reference).await?;
-        let bound = budget::bound(&model, self.turn_policy)?;
-        budget::gate(connection, &draft.tenant_id, bound).await?;
+        model::gate(connection, &draft.tenant_id, model::bound(&model)?).await?;
         Ok(model)
     }
 
@@ -353,8 +334,7 @@ impl Drafts {
 
     /// Fails the assigned message durably, in the assignment's transaction: its
     /// runs lapsed too often for another reassign
-    /// ([`FailureReason::ProviderUsageUnknown`], the attempt path's reason for
-    /// a lost turn), or its model's key no longer opens
+    /// ([`FailureReason::ProviderUsageUnknown`], a lost turn's reason), or its model's key no longer opens
     /// ([`FailureReason::ModelUnavailable`]).
     ///
     /// # Errors
@@ -371,7 +351,7 @@ impl Drafts {
             .bind(&turn.draft_id)
             .bind(turn.sequence)
             .bind(failed)
-            .bind(verdict::reason(reason))
+            .bind(reason_word(reason))
             .bind(if turn.reassigned { RUNNING } else { QUEUED })
             .execute(&mut *connection)
             .await
@@ -404,7 +384,7 @@ impl Failing<'_> {
             .bind(&self.draft.id)
             .bind(self.sequence)
             .bind(failed)
-            .bind(verdict::reason(reason))
+            .bind(reason_word(reason))
             .bind(if self.running { RUNNING } else { QUEUED })
             .execute(&mut *connection)
             .await
@@ -451,4 +431,45 @@ async fn history(
             answer,
         })
         .collect())
+}
+
+/// The word a turn's `failure_reason` stores for `value`, its wire spelling.
+pub(crate) const fn reason_word(value: FailureReason) -> &'static str {
+    match value {
+        FailureReason::InsufficientBalance => "insufficient_balance",
+        FailureReason::ModelUnavailable => "model_unavailable",
+        FailureReason::ContextTooLarge => "context_too_large",
+        FailureReason::ProviderFailed => "provider_failed",
+        FailureReason::ProviderUsageUnknown => "provider_usage_unknown",
+        FailureReason::AttemptTimedOut => "attempt_timed_out",
+        FailureReason::PolicyChanged => "policy_changed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use af_wire::setup::FailureReason;
+
+    use super::reason_word;
+
+    /// Turns store these words, and readers parse them back through serde:
+    /// every arm must spell its wire form.
+    #[test]
+    fn every_stored_failure_word_is_its_wire_spelling() {
+        for value in [
+            FailureReason::InsufficientBalance,
+            FailureReason::ModelUnavailable,
+            FailureReason::ContextTooLarge,
+            FailureReason::ProviderFailed,
+            FailureReason::ProviderUsageUnknown,
+            FailureReason::AttemptTimedOut,
+            FailureReason::PolicyChanged,
+        ] {
+            let wire = serde_json::to_value(value).ok();
+            assert_eq!(
+                wire.as_ref().and_then(serde_json::Value::as_str),
+                Some(reason_word(value))
+            );
+        }
+    }
 }

@@ -91,6 +91,8 @@ tokio-util.workspace = true
 # unreachable one the harness builds every other store over.
 afd_bus = { workspace = true, features = ["test-util"] }
 garde.workspace = true
+# The text ceiling the ceiling suite fills, through the served routes.
+af_validate.workspace = true
 af_context.workspace = true
 async-trait.workspace = true
 # The harness's frozen instant and every stamp a fixture writes.

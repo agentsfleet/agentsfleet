@@ -1,11 +1,12 @@
 //! A draft is looked up by its creator as well as its workspace.
 
+use crate::setup_run::model;
 use crate::{
     Access, Drafts, Result,
     access::{self, Person},
     candidate,
     error::{ErrorKind, raise::query},
-    model, sql,
+    sql,
     types::{Draft, DraftState, PinColumns, Publication, SourcePin},
 };
 use af_core::id::Uuid7;

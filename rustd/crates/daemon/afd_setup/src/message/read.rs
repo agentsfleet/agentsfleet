@@ -4,9 +4,8 @@ use crate::{
     Access, Drafts, Result, access,
     draft::{read, word},
     error::{ErrorKind, raise::query},
-    model::dispatch_status,
     replay,
-    run::meter::Metered,
+    setup_run::Metered,
     sql,
     types::{Message, MessageQuery, MessageState, Page, QUEUED, RUNNING},
 };
@@ -32,7 +31,6 @@ struct Stored {
     answer_text: Option<String>,
     candidate_id: Option<Uuid7>,
     failure_reason: Option<String>,
-    failure_cause: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     finished_at: Option<jiff_sqlx::Timestamp>,
@@ -85,9 +83,6 @@ pub(super) async fn page_on(
         .bind(QUEUED)
         .bind(RUNNING)
         .bind(i64::from(request.limit) + 1)
-        .bind(dispatch_status::KNOWN)
-        .bind(dispatch_status::PENDING)
-        .bind(dispatch_status::UNKNOWN)
         // A draft run's usage, bound as the notices bind it (`observe/rows.rs`):
         // its lines, keyed by the run as their work, shown once no run of the
         // turn is live and known once each one reported.
@@ -147,11 +142,6 @@ pub(super) fn window_cursors(
 }
 
 fn project(stored: Stored) -> Result<Message> {
-    let cause = stored
-        .failure_cause
-        .as_deref()
-        .map(word::<crate::types::FailureCause>)
-        .transpose()?;
     let user = stored.ordinal == 0;
     let state: MessageState = word(&stored.status)?;
     Ok(Message {
@@ -176,9 +166,9 @@ fn project(stored: Stored) -> Result<Message> {
         failure: stored
             .failure_reason
             .as_deref()
-            .map(word::<af_wire::authoring::FailureReason>)
+            .map(word::<af_wire::setup::FailureReason>)
             .transpose()?
-            .map(|reason| crate::types::Failure::for_message(reason, cause)),
+            .map(crate::types::Failure::from),
         created_at: stored.created_at,
         finished_at: stored.finished_at.map(jiff_sqlx::Timestamp::to_jiff),
     })

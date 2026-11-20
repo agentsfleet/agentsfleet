@@ -145,7 +145,6 @@ fn spawn_financial_maintenance(
         supervisor,
         database,
         analytics,
-        Arc::clone(&biller),
         startup,
         settings.authoring_cleanup,
     );
@@ -158,12 +157,5 @@ fn spawn_financial_maintenance(
         startup,
         settings.billing,
     );
-    expiry::spawn(
-        supervisor,
-        database,
-        analytics,
-        biller,
-        startup,
-        settings.expired_work,
-    );
+    expiry::spawn(supervisor, database, biller, startup, settings.expired_work);
 }

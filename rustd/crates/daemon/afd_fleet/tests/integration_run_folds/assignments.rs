@@ -180,3 +180,21 @@ async fn test_an_internal_setup_event_is_not_a_turn_head() -> Checked {
     held.fixtures.cleanup().await;
     Ok(())
 }
+
+/// A message far past the 8 KiB a person's steer was once held to folds into
+/// the live run whole: 64 KiB admitted, the same 64 KiB assigned.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_fleet_message_over_8_kib_reaches_the_run() -> Checked {
+    let held = held().await;
+    let workspace = workspace_of(&held).await?;
+    let text = "line of a long brief\n".repeat(64 * 1024 / 21 + 1);
+    assert!(text.len() > 64 * 1024, "{}", text.len());
+    let body = serde_json::json!({ "message": text }).to_string();
+    let sent = send(&held, &workspace, Producer::Steer, &body).await?;
+    let live = sent.run.live_run.as_ref().ok_or("the held run is live")?;
+    assert!(live.same_conversation, "the send folds: {:?}", sent.run);
+    assert_eq!(assign_as_holder(&held, 0).await?, [sent.assigned(&text)]);
+    held.fixtures.cleanup().await;
+    Ok(())
+}

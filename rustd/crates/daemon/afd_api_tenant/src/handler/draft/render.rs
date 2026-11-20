@@ -73,7 +73,6 @@ pub(crate) fn message(value: types::Message) -> wire::Message {
             reason: failure.reason,
             error_code: failure.error_code.to_string(),
             recovery_action: failure.recovery_action.into(),
-            cause: failure.cause.map(|cause| cause.as_str().to_owned()),
         }),
         created_at: value.created_at,
         finished_at: value.finished_at,
@@ -97,7 +96,7 @@ pub(super) fn page<T, U>(value: types::Page<T>, render: impl FnMut(T) -> U) -> w
 mod tests {
     use af_core::id::Uuid7;
 
-    use af_wire::authoring::FailureReason;
+    use af_wire::setup::FailureReason;
 
     use super::{card, message, types};
 

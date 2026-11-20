@@ -8,14 +8,10 @@ use serde::Deserialize;
 pub(super) struct ConfigToml {
     #[garde(dive)]
     pub outbound: Outbound,
-    #[garde(dive)]
-    pub inference: af_inference::TimeoutSettings,
     #[garde(skip)]
     pub maintenance: super::maintenance::Maintenance,
     #[garde(skip)]
     pub fleet: Fleet,
-    #[garde(skip)]
-    pub authoring: Authoring,
     #[garde(dive)]
     pub server: Server,
     #[garde(dive)]
@@ -39,12 +35,6 @@ pub(super) struct ConfigToml {
 pub(super) struct Outbound {
     #[garde(dive)]
     pub retries: afd_outbound::retry::RetrySettings,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub(super) struct Authoring {
-    pub turn: afd_setup::turn_policy::TurnSettings,
 }
 
 #[derive(Default, Deserialize)]

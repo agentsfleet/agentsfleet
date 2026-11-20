@@ -244,7 +244,6 @@ pub(crate) struct Fleet {
     authoring: afd_setup::Drafts,
     authoring_setup: afd_setup::Setup,
     creations: afd_setup::Creations,
-    authoring_models: afd_setup::ModelCalls,
     ready: ReadyInputs,
     mock_directory: MockDirectory,
     directory: Directory,

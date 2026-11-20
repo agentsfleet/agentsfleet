@@ -25,10 +25,10 @@ use std::sync::Arc;
 
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
-use af_validate::Sentences;
+use af_validate::{Sentences, TEXT_MAX_CHARS};
 use af_wire::steer_verb::{FleetSteerAccepted, FleetSteerRequest};
-use af_wire::turn::{STEER_MESSAGE_MAX_BYTES, TurnKind};
-use afd_api_wire::tail::TailFrame;
+use af_wire::turn::TurnKind;
+use afd_api_wire::tail::{FrameText, TailFrame};
 use afd_fleet::run::Standing;
 use afd_fleet::run::message::SteerSender;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
@@ -58,11 +58,12 @@ const EVENT_ADMITTED: &str = "runner_fleet_steer_admitted";
 /// The refusal a body this verb cannot read earns.
 const DETAIL_MALFORMED: &str = "Malformed steer body";
 
-/// The refusal a text outside its bound earns.
+/// The refusal a text outside its bounds earns: one sentence naming each rule
+/// the field can break, the text ceiling among them.
 const DETAIL_TEXT: &str = const_format::concatcp!(
     "text must be 1 to ",
-    STEER_MESSAGE_MAX_BYTES,
-    " bytes with no NUL"
+    TEXT_MAX_CHARS,
+    " characters with no NUL"
 );
 
 /// Which field a `garde` report names, as the sentence a runner reads.
@@ -238,11 +239,14 @@ async fn announce<D: Services>(
         return;
     };
     let actor = fleet_actor(&standing.fleet_id);
+    // Kept to the tail batch, as a person's steer is; the turn holds it whole.
+    let message = FrameText::within(&sender.message, afd_bus::TAIL_BATCH_BYTES);
     let frame = TailFrame::TurnAdmitted {
         turn_id: Cow::Borrowed(&steered.turn_id),
         actor: Cow::Borrowed(&actor),
         event_type: Cow::Borrowed(TurnKind::Chat.as_str()),
-        message: Cow::Borrowed(&sender.message),
+        message: Cow::Borrowed(message.text),
+        message_trimmed: message.trimmed,
         created_at,
     };
     services.steering().announce(target.as_str(), &frame).await;

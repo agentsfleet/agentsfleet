@@ -240,7 +240,12 @@ fn grouped(mut rows: Vec<UnsettledRow>) -> Vec<Settlement> {
             skipped(Unreadable::LineKind, &row.work_type, unnamed);
             continue;
         };
-        settlements.push(row.settlement(work, posture, lines));
+        let work_type = row.work_type.clone();
+        let Some(settlement) = row.settlement(work, posture, lines) else {
+            skipped(Unreadable::Attribution, &work_type, &work_type);
+            continue;
+        };
+        settlements.push(settlement);
     }
     settlements
 }

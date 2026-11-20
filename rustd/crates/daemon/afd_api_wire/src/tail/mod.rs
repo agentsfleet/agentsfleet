@@ -175,10 +175,14 @@ pub enum TailFrame<'a> {
         actor: Cow<'a, str>,
         /// How the turn entered the system.
         event_type: Cow<'a, str>,
-        /// What was typed, at most [`af_wire::turn::STEER_MESSAGE_MAX_BYTES`].
-        /// Another fleet's steer leads with its sender line, so its message
-        /// runs past that bound by the length of that line.
+        /// What was typed, kept to [`FrameText`]'s bound: a message past it
+        /// rides as its head, and the turn holds the whole text. Another
+        /// fleet's steer leads with its sender line.
         message: Cow<'a, str>,
+        /// Present, and `true`, only when `message` is the head of a longer
+        /// text; read the turn for the whole of it.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        message_trimmed: bool,
         /// When the turn was recorded.
         #[serde(with = "af_wire::instant")]
         created_at: jiff::Timestamp,
@@ -196,10 +200,16 @@ pub enum TailFrame<'a> {
         created_at: jiff::Timestamp,
         /// What a person typed, or another fleet's sender line and words, on
         /// a steer only: absent for every other actor, for a person's text
-        /// above [`af_wire::turn::STEER_MESSAGE_MAX_BYTES`], or when the
-        /// stored body does not parse.
+        /// outside the bounds its route admits (the text ceiling,
+        /// [`af_validate::TEXT_MAX_CHARS`], among them), or when the stored
+        /// body does not parse. Kept to [`FrameText`]'s bound, as
+        /// `turn_admitted`'s is.
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<Cow<'a, str>>,
+        /// Present, and `true`, only when `message` is the head of a longer
+        /// text; read the turn for the whole of it.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        message_trimmed: bool,
         /// Where the fleet's counters stand after this frame — absolute, so
         /// the client ASSIGNS them rather than adding to them.
         ///
@@ -282,5 +292,35 @@ pub enum TailFrame<'a> {
     },
 }
 
+/// A person's text as one live frame carries it: at most a bound, cut on a
+/// character boundary, and whether it was cut.
+///
+/// A frame rides one bus message, so a text near the ceiling would make the
+/// frame one the broker refuses, and the screen would lose the marker
+/// entirely. The head is enough to show the message is there; the turn the
+/// frame names holds every character.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameText<'a> {
+    /// The text, or its head.
+    pub text: &'a str,
+    /// Whether `text` is only the head of what was typed.
+    pub trimmed: bool,
+}
+
+impl<'a> FrameText<'a> {
+    /// `text`, kept to at most `max_bytes` of UTF-8.
+    #[must_use]
+    pub fn within(text: &'a str, max_bytes: usize) -> Self {
+        let (head, rest) = text.split_at(text.floor_char_boundary(max_bytes));
+        Self {
+            text: head,
+            trimmed: !rest.is_empty(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "frame_text_tests.rs"]
+mod frame_text_tests;
 #[cfg(test)]
 mod tests;

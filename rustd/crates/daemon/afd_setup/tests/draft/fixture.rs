@@ -16,7 +16,7 @@ use afd_setup::{
 use serde_json::Value;
 use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 /// One recorder for every fixture in the suite.
 ///
@@ -68,8 +68,7 @@ impl Fixture {
         let db = lane.open(DbRole::Api, &[]).await;
         let (analytics, recorded) = RECORDING.clone();
         let mut fixture = Self {
-            drafts: Drafts::new(db.clone(), Entropy::new(), ledger(&db))
-                .with_analytics(analytics.clone()),
+            drafts: Drafts::new(db.clone(), Entropy::new()).with_analytics(analytics.clone()),
             recorded: recorded.clone(),
             db,
             cleanup: OwnedRows::new(&lane),
@@ -151,16 +150,6 @@ impl Fixture {
             .expect("the draft holds a turn at that sequence")
     }
 
-    /// The status of the draft's turn at `sequence`.
-    pub(super) async fn turn_status(&self, draft: &Uuid7, sequence: i64) -> String {
-        sqlx::query_scalar("SELECT status FROM thread.turns WHERE thread_id=$1 AND sequence=$2")
-            .bind(draft)
-            .bind(sequence)
-            .fetch_one(&mut *self.connection().await)
-            .await
-            .expect("the draft holds a turn at that sequence")
-    }
-
     /// Stops the draft's turn at `sequence` through the turn `PATCH`'s door,
     /// as the creator.
     pub(super) async fn stop(
@@ -170,12 +159,6 @@ impl Fixture {
     ) -> afd_setup::Result<Option<afd_turns::view::stop::Stopped>> {
         let turn = self.turn(draft, sequence).await;
         self.drafts.stop_turn(self.access(), draft, &turn).await
-    }
-
-    /// The lane as its owner, for a test that removes history: `api_runtime`
-    /// holds no DELETE on `thread.turns`, because no runtime path deletes a turn.
-    pub(super) async fn as_owner(&self) -> Db {
-        self.lane.open(DbRole::Migrator, &[]).await
     }
 
     /// Appends a copy of `draft`'s head candidate as an older daemon would have
@@ -234,25 +217,13 @@ impl Fixture {
     }
 
     fn arm_cleanup(&mut self) {
-        // Drafts go first, before any attempt row. Every lane's maintenance
-        // pass recovers every lane's expired attempts, and it locks the draft
-        // and then the attempt; cleanup taking the attempts first and reaching
-        // the drafts through the tenant cascade is the opposite order, and
-        // Postgres broke that cycle as a deadlock in this cleanup. Messages,
-        // candidates and answer receipts cascade from the draft.
+        // Drafts go first: messages and candidates cascade from the draft.
         self.cleanup.record(
             "DELETE FROM setup.drafts WHERE workspace_id=$1",
             &self.workspace,
         );
         self.cleanup.record(
             "DELETE FROM setup.replay_receipts WHERE workspace_id=$1",
-            &self.workspace,
-        );
-        // Attempts carry no foreign key to the workspace (money outlives it),
-        // so no cascade removes them; their dispatches, receipts and
-        // settlements go with them.
-        self.cleanup.record(
-            "DELETE FROM setup.attempts WHERE workspace_id=$1",
             &self.workspace,
         );
         self.cleanup
@@ -293,32 +264,4 @@ impl Fixture {
 
 pub(super) fn now() -> jiff::Timestamp {
     clock::now()
-}
-
-impl Fixture {
-    /// What the billing relay does for one attempt: charge every line it left
-    /// unsettled. Scoped to the attempt, so a test on the shared database never
-    /// settles another test's lines.
-    pub(crate) async fn relay(&self, attempt: &str) {
-        let work = afd_billing::biller::WorkKey::AuthoringAttempt(
-            Uuid7::parse(attempt).expect("an attempt id"),
-        );
-        let unsettled = afd_billing::ledger::unsettled_work(&mut *self.connection().await, &work)
-            .await
-            .expect("the attempt's lines read");
-        for settlement in unsettled {
-            ledger(&self.db)
-                .settle(&settlement)
-                .await
-                .expect("the relay charges the attempt's lines");
-        }
-    }
-}
-
-/// The built-in biller over the suite's database: setup chat checks, logs and
-/// settles through it exactly as the daemon's does.
-pub(crate) fn ledger(db: &Db) -> Arc<dyn afd_billing::biller::Biller> {
-    Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
-        db.clone(),
-    ))
 }

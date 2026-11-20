@@ -30,14 +30,3 @@ pub(crate) const DELETE: &str = include_str!("delete.sql");
 /// `$1` workspace, `$2` creator, `$3` status filter, `$4` fleet filter,
 /// `$5` cursor instant, `$6` cursor id, `$7` limit.
 pub(crate) const PAGE: &str = include_str!("page.sql");
-
-/// The queue hint for one draft, for the fixture assignment path.
-///
-/// `$1` draft.
-#[cfg(feature = "test-util")]
-pub(crate) const HINT: &str = include_str!("hint.sql");
-
-/// Scrubs the private results of a draft's attempts; the attempts stay.
-///
-/// `$1` draft.
-pub(crate) const WIPE_DISPATCHES: &str = include_str!("wipe_dispatches.sql");

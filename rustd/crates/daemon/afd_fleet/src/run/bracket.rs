@@ -33,9 +33,10 @@
 use std::borrow::Cow;
 
 use af_core::error_code;
-use af_wire::turn::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, SteerRequest};
-use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
+use af_wire::turn::{FleetSteerBody, SteerRequest};
+use afd_api_wire::tail::{FleetCounters, FrameText, TailFrame, TailRow};
 use afd_turns::view::{Closed, is_fleet_actor, is_steer_actor};
+use garde::Validate as _;
 use jiff::Timestamp;
 
 use crate::run::envelope::Acquired;
@@ -55,15 +56,15 @@ fn inline_final_reply(reply: Option<&str>) -> Option<Cow<'_, str>> {
 }
 
 /// What a person typed, for the received frame: a steer's `message`, within
-/// the bound the route admitted it under, a fleet's steer's `message`, or
-/// `None`.
+/// the bounds the route admitted it under (`SteerRequest`'s own, the text
+/// ceiling among them), a fleet's steer's `message`, or `None`.
 ///
 /// Every other producer's body is its own shape and names no typed words, so
 /// only a `steer:` or a `fleet:` actor is read. A fleet's `message` is the
 /// sender line and the words, composed and stored by the daemon, so it carries
-/// no person's bound. A body that does not parse, or a person's that holds
-/// more than the bound, was never written by the route as it stands; it is
-/// warned once, without its text, and the frame goes out without a message.
+/// no person's bound. A body that does not parse, or a person's that breaks
+/// those bounds, was never written by the route as it stands; it is warned
+/// once, without its text, and the frame goes out without a message.
 fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
     if is_fleet_actor(&acquired.actor) {
         return serde_json::from_str::<FleetSteerBody<'_>>(&acquired.request_json)
@@ -76,9 +77,30 @@ fn steer_message(acquired: &Acquired) -> Option<Cow<'_, str>> {
     }
     serde_json::from_str::<SteerRequest<'_>>(&acquired.request_json)
         .ok()
+        .filter(|request| request.validate().is_ok())
         .map(|request| request.message)
-        .filter(|message| message.len() <= STEER_MESSAGE_MAX_BYTES)
         .or_else(|| unreadable(acquired))
+}
+
+/// The opening bracket for `acquired`, carrying `message` kept to the tail
+/// batch: the turn holds the whole text, and the frame says when it carries
+/// only the head.
+fn received<'a>(
+    acquired: &'a Acquired,
+    message: Option<&'a str>,
+    opened_at: Timestamp,
+    counters: Option<FleetCounters>,
+) -> TailFrame<'a> {
+    let message = message.map(|text| FrameText::within(text, afd_bus::TAIL_BATCH_BYTES));
+    TailFrame::TurnReceived {
+        turn_id: Cow::Borrowed(acquired.turn_id.as_str()),
+        actor: Cow::Borrowed(&acquired.actor),
+        event_type: Cow::Borrowed(&acquired.event_type),
+        created_at: opened_at,
+        message: message.map(|cut| Cow::Borrowed(cut.text)),
+        message_trimmed: message.is_some_and(|cut| cut.trimmed),
+        counters,
+    }
 }
 
 /// Warns once, without the text, that a steer body could not be shown.
@@ -118,14 +140,8 @@ impl Runs {
         opened_at: Timestamp,
         counters: Option<FleetCounters>,
     ) {
-        let frame = TailFrame::TurnReceived {
-            turn_id: Cow::Borrowed(acquired.turn_id.as_str()),
-            actor: Cow::Borrowed(&acquired.actor),
-            event_type: Cow::Borrowed(&acquired.event_type),
-            created_at: opened_at,
-            message: steer_message(acquired),
-            counters,
-        };
+        let message = steer_message(acquired);
+        let frame = received(acquired, message.as_deref(), opened_at, counters);
         let subject = afd_bus::Subject::ThreadItems(acquired.fleet_id.clone());
         let publication = self.streams().publish_frame(&subject, &frame).await;
         afd_bus::observe_notification(&subject, publication);
@@ -160,10 +176,13 @@ impl Runs {
 #[cfg(test)]
 mod tests {
     use af_core::test_util::trace::Capture;
-    use af_wire::turn::STEER_MESSAGE_MAX_BYTES;
+    use af_validate::TEXT_MAX_CHARS;
+
+    use af_wire::turn::SteerRequest;
+    use serde_json::{Value, json};
 
     use super::{
-        EVENT_STEER_BODY_UNREADABLE, MAX_INLINE_FINAL_REPLY_BYTES, inline_final_reply,
+        EVENT_STEER_BODY_UNREADABLE, MAX_INLINE_FINAL_REPLY_BYTES, inline_final_reply, received,
         steer_message,
     };
     use crate::run::envelope::Acquired;
@@ -218,10 +237,14 @@ mod tests {
         assert!(brief.ends_with("\nrun the check"), "{brief}");
         assert!(brief.starts_with("[from fleet agentmay"), "{brief}");
 
-        let words = "w".repeat(STEER_MESSAGE_MAX_BYTES);
+        let words = "w".repeat(TEXT_MAX_CHARS);
         let heavy = held(&actor, &compose(&words));
         let full = steer_message(&heavy).unwrap_or_default();
-        assert!(full.len() > STEER_MESSAGE_MAX_BYTES, "{}", full.len());
+        assert!(
+            full.chars().count() > TEXT_MAX_CHARS,
+            "{}",
+            full.chars().count()
+        );
 
         assert_eq!(steer_message(&held(&actor, "{")), None);
         let line = log.only(EVENT_STEER_BODY_UNREADABLE).fields;
@@ -247,18 +270,19 @@ mod tests {
         );
     }
 
-    /// The bound the route admits under, at its edge: exactly the bound is
-    /// shown, one byte over is dropped and warned.
+    /// The text ceiling the route admits under, at its edge, in characters:
+    /// exactly the ceiling of two-byte characters is shown, one character over
+    /// is dropped and warned.
     #[test]
     fn should_bound_a_received_message_at_the_admission_limit() {
         let log = Capture::install();
-        let at_limit = "a".repeat(STEER_MESSAGE_MAX_BYTES);
+        let at_limit = "é".repeat(TEXT_MAX_CHARS);
         let body = serde_json::json!({ "message": at_limit }).to_string();
         assert_eq!(
-            steer_message(&held("steer:user_1", &body)).map(|text| text.len()),
-            Some(STEER_MESSAGE_MAX_BYTES)
+            steer_message(&held("steer:user_1", &body)).map(|text| text.chars().count()),
+            Some(TEXT_MAX_CHARS)
         );
-        let over = format!("{at_limit}a");
+        let over = format!("{at_limit}é");
         let body = serde_json::json!({ "message": over }).to_string();
         assert_eq!(steer_message(&held("steer:user_1", &body)), None);
         let _warned = log.only(EVENT_STEER_BODY_UNREADABLE);
@@ -275,5 +299,35 @@ mod tests {
         );
         let over_limit = format!("{at_limit}a");
         assert_eq!(inline_final_reply(Some(&over_limit)), None);
+    }
+
+    /// A 1 MiB steer rides its received frame as the head that fits the 64 KiB
+    /// tail batch, cut on a character boundary and marked trimmed, while the
+    /// stored turn keeps every character; a short one rides whole and unmarked.
+    #[test]
+    fn a_long_message_is_trimmed_in_its_tail_frame() {
+        let long = "w".repeat(1 << 20);
+        let steer = held("steer:user_1", &json!({ "message": long }).to_string());
+        let message = steer_message(&steer);
+        let at = jiff::Timestamp::constant(1, 0);
+        let frame = serde_json::to_value(received(&steer, message.as_deref(), at, None))
+            .unwrap_or_default();
+        let shown = frame
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert_eq!(shown.len(), afd_bus::TAIL_BATCH_BYTES);
+        assert!(long.starts_with(shown), "the frame carries the head");
+        assert_eq!(frame.get("message_trimmed"), Some(&json!(true)), "{frame}");
+        let stored = serde_json::from_str::<SteerRequest<'_>>(&steer.request_json)
+            .map(|request| request.message.len());
+        assert_eq!(stored.ok(), Some(1 << 20), "the turn holds the whole text");
+
+        let short = held("steer:user_1", r#"{"message":"check the tests"}"#);
+        let message = steer_message(&short);
+        let frame = serde_json::to_value(received(&short, message.as_deref(), at, None))
+            .unwrap_or_default();
+        assert_eq!(frame.get("message"), Some(&json!("check the tests")));
+        assert_eq!(frame.get("message_trimmed"), None, "{frame}");
     }
 }

@@ -18,9 +18,18 @@ pub use handler::{fleet, secret, tenant};
 
 use std::sync::Arc;
 
+use afd_http::handler::setup_input::{SETUP_BODY_BYTES_MAX, TEXT_BODY_BYTES_MAX};
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use route::{AuthRoute, ConnectorRoute, FleetRoute, TenantRoute, WorkspaceRoute};
 use services::Services;
+
+/// `router`, reading request bodies up to `max` bytes in place of axum's
+/// 2 MiB default: a route whose body carries text at the one ceiling
+/// (`af_validate::TEXT_MAX_CHARS`), every character at its widest escape.
+fn reading<D: Services>(router: MethodRouter<Arc<D>>, max: usize) -> MethodRouter<Arc<D>> {
+    router.layer(DefaultBodyLimit::max(max))
+}
 
 /// Selects the device-flow handler for an authentication route.
 pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
@@ -81,9 +90,10 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         | WorkspaceRoute::DraftMessages
         | WorkspaceRoute::DraftStream
         | WorkspaceRoute::DraftTurn => draft_handler_for::<D>(verb).map(handler::draft::private),
-        WorkspaceRoute::Fleets => {
-            Some(get(fleet::list::<D>).post(fleet::native::create::save::<D>))
-        }
+        WorkspaceRoute::Fleets => Some(reading(
+            get(fleet::list::<D>).post(fleet::native::create::save::<D>),
+            TEXT_BODY_BYTES_MAX,
+        )),
         WorkspaceRoute::Secrets => Some(get(secret::list::<D>).post(secret::store::<D>)),
         WorkspaceRoute::Secret => Some(put(secret::replace::<D>).delete(secret::remove::<D>)),
         WorkspaceRoute::Onboarding => Some(get(handler::preference::onboarding::<D>)),
@@ -93,16 +103,18 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::resolve::<D>)),
         WorkspaceRoute::Turns => Some(get(handler::turn::workspace_list::<D>)),
         WorkspaceRoute::TurnsStream => Some(get(handler::stream::workspace::<D>)),
-        WorkspaceRoute::Plugin => Some(
+        WorkspaceRoute::Plugin => Some(reading(
             get(handler::plugin::list::gallery::<D>).post(handler::plugin::publish::create::<D>),
-        ),
+            SETUP_BODY_BYTES_MAX,
+        )),
         WorkspaceRoute::PluginItem => {
             Some(get(handler::plugin::read::one::<D>).delete(handler::plugin::remove::one::<D>))
         }
-        WorkspaceRoute::PluginRevisions => Some(
+        WorkspaceRoute::PluginRevisions => Some(reading(
             get(handler::plugin::list::history::<D>)
                 .post(handler::plugin::publish_revision::revision::<D>),
-        ),
+            SETUP_BODY_BYTES_MAX,
+        )),
         WorkspaceRoute::PluginRevision => Some(get(handler::plugin::read::revision::<D>)),
         WorkspaceRoute::Members => Some(get(tenant::member::in_workspace::<D>)),
     }
@@ -115,13 +127,20 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
     use handler::draft::{message, models, patch, read, stream, write};
     match verb {
         WorkspaceRoute::Models => Some(get(models::list::<D>)),
-        WorkspaceRoute::Drafts => Some(get(read::list::<D>).post(write::create::<D>)),
-        WorkspaceRoute::Draft => Some(
+        WorkspaceRoute::Drafts => Some(reading(
+            get(read::list::<D>).post(write::create::<D>),
+            SETUP_BODY_BYTES_MAX,
+        )),
+        WorkspaceRoute::Draft => Some(reading(
             get(read::one::<D>)
                 .patch(patch::patch::<D>)
                 .delete(write::delete::<D>),
-        ),
-        WorkspaceRoute::DraftMessages => Some(get(message::list::<D>).post(message::send::<D>)),
+            SETUP_BODY_BYTES_MAX,
+        )),
+        WorkspaceRoute::DraftMessages => Some(reading(
+            get(message::list::<D>).post(message::send::<D>),
+            SETUP_BODY_BYTES_MAX,
+        )),
         WorkspaceRoute::DraftStream => Some(get(stream::open::<D>)),
         WorkspaceRoute::DraftTurn => Some(patch(handler::turn::stop::draft::<D>)),
         WorkspaceRoute::Plugin
@@ -145,15 +164,19 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
 /// Selects the handler for a route scoped to one fleet.
 pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
-        FleetRoute::Detail => Some(
+        FleetRoute::Detail => Some(reading(
             get(fleet::native::read::one::<D>)
                 .patch(fleet::native::patch::change::<D>)
                 .delete(fleet::detail::purge::<D>),
-        ),
+            SETUP_BODY_BYTES_MAX,
+        )),
         FleetRoute::AuthoringContext => Some(handler::draft::private(get(
             fleet::native::context::read::<D>,
         ))),
-        FleetRoute::Revisions => Some(post(fleet::native::revision::apply::<D>)),
+        FleetRoute::Revisions => Some(reading(
+            post(fleet::native::revision::apply::<D>),
+            SETUP_BODY_BYTES_MAX,
+        )),
         FleetRoute::Turns => Some(get(handler::turn::fleet_list::<D>)),
         FleetRoute::Tasks => Some(get(fleet::tasks::list::<D>)),
         FleetRoute::Task => Some(get(fleet::tasks::one::<D>).patch(fleet::tasks::change::<D>)),
@@ -166,9 +189,10 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         FleetRoute::Memories => Some(get(fleet::memory::list::<D>)),
         FleetRoute::Memory => Some(delete(fleet::memory::forget::<D>)),
         FleetRoute::MemoryAccess => Some(patch(fleet::memory_access::set::<D>)),
-        FleetRoute::Messages => {
-            Some(get(fleet::message::thread::<D>).post(fleet::message_steer::steer::<D>))
-        }
+        FleetRoute::Messages => Some(reading(
+            get(fleet::message::thread::<D>).post(fleet::message_steer::steer::<D>),
+            TEXT_BODY_BYTES_MAX,
+        )),
         FleetRoute::TurnsStream => Some(get(handler::stream::fleet::<D>)),
         // No PUT beside the PATCH: a schedule is edited field by field, and a
         // whole-row replace would let a caller silently drop the upstream

@@ -8,7 +8,7 @@ use crate::{
 };
 use af_core::{id::Uuid7, timing::STREAM_OPEN_TIMEOUT};
 use af_stream::OwnedFrame;
-use af_wire::protocol::{Revision, StreamKind, Up};
+use af_wire::protocol::{StreamKind, Up};
 use afd_auth::{directory::Digest, principal::Runner};
 use afd_sse::StreamPermit;
 use axum::body::Body;
@@ -25,12 +25,11 @@ pub(super) struct ControlOpening {
     io: StreamIo,
     permit: StreamPermit,
     deadline: Instant,
-    revision: Revision,
 }
 
 impl Hello {
-    /// The hello `frame` carries, on the revision its control stream named.
-    fn read(frame: &OwnedFrame, revision: Revision) -> Result<Self> {
+    /// The hello `frame` carries.
+    fn read(frame: &OwnedFrame) -> Result<Self> {
         let message: Up<'_> = frame.decode()?;
         message.validate()?;
         match message {
@@ -43,7 +42,6 @@ impl Hello {
             } => Ok(Self {
                 request_id,
                 accepted: accepted_kinds,
-                revision,
                 credits,
                 running: running
                     .iter()
@@ -65,7 +63,6 @@ impl ControlOpening {
         gateway: &Gateway,
         runner: Runner,
         request: ControlRequest,
-        revision: Revision,
     ) -> Result<(Self, Body)> {
         if gateway.inner.registry.is_draining() {
             return Err(ErrorKind::Closed.into());
@@ -90,7 +87,6 @@ impl ControlOpening {
                 io,
                 permit,
                 deadline: Instant::now() + STREAM_OPEN_TIMEOUT,
-                revision,
             },
             body,
         ))
@@ -148,6 +144,6 @@ impl ControlOpening {
             },
         )
         .await?;
-        Hello::read(&frame, self.revision)
+        Hello::read(&frame)
     }
 }

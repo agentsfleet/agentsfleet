@@ -4,13 +4,12 @@ use crate::{
     Result,
     draft::{read::optional, word},
     error::raise::query,
-    model::dispatch_status,
-    run::meter::Metered,
+    setup_run::Metered,
     sql,
     types::{Failure, MessageState},
 };
 use af_core::id::Uuid7;
-use af_wire::authoring::{FailureReason, Usage};
+use af_wire::setup::{FailureReason, Usage};
 use serde::Serialize;
 use sqlx::PgConnection;
 
@@ -78,7 +77,6 @@ struct Stored {
     status: String,
     candidate_id: Option<Uuid7>,
     failure_reason: Option<String>,
-    failure_cause: Option<String>,
     #[sqlx(flatten)]
     metered: Metered,
 }
@@ -99,9 +97,6 @@ pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Re
     let rows: Vec<Stored> = sqlx::query_as(sql::message::NOTICES)
         .bind(draft)
         .bind(LIMIT)
-        .bind(dispatch_status::KNOWN)
-        .bind(dispatch_status::PENDING)
-        .bind(dispatch_status::UNKNOWN)
         // A draft run's usage: its lines, keyed by the run as their work, shown
         // once no run of the turn is live and known once each one reported.
         .bind(afd_billing::sql::work::AUTHORING_ATTEMPT)
@@ -115,11 +110,6 @@ pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Re
     rows.into_iter()
         .rev()
         .map(|stored| {
-            let cause = stored
-                .failure_cause
-                .as_deref()
-                .map(word::<crate::types::FailureCause>)
-                .transpose()?;
             let state: MessageState = word(&stored.status)?;
             let event = match state {
                 MessageState::Queued => "message.accepted",
@@ -142,7 +132,7 @@ pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Re
                     .as_deref()
                     .map(word::<FailureReason>)
                     .transpose()?
-                    .map(|reason| Failure::for_message(reason, cause)),
+                    .map(Failure::from),
             })
         })
         .collect()

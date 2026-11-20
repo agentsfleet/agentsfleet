@@ -20,8 +20,6 @@ const HOST_OCCUPANCY: &str = "\
 SELECT r.worker_count::bigint,
   (SELECT count(*) FROM thread.runs l WHERE l.runner_id = r.id AND l.status = $2
      AND l.run_expires_at > clock_timestamp())
-  + (SELECT count(*) FROM setup.attempts a WHERE a.runner_id = r.id
-     AND a.status = $2 AND a.run_expires_at > clock_timestamp())
 FROM runner.runners r WHERE r.id = $1";
 
 /// The state both replicas left, read back after the race.

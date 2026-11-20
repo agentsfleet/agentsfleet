@@ -83,8 +83,6 @@ pub enum Attribution {
         /// The turn the run answered.
         turn_id: Uuid7,
     },
-    /// A setup-chat attempt; the attempt is the work itself.
-    SetupChat,
     /// A draft-owned run's setup turn: the run is the work, and the line
     /// names the draft message it ran as its `turn_id`, so a line reaches its
     /// draft through the run and its message directly.

@@ -1,21 +1,24 @@
-//! A setup run's live answer, republished on the draft's private stream in
-//! the frame the chat clients already read (`message.delta`).
+//! A setup run's live answer and its compaction's progress, republished on
+//! the draft's private stream in the frames the chat clients already read
+//! (`message.delta`, `context.progress`).
 //!
-//! The runner streams answer chunks on the run's activity verb, as a fleet
-//! run does. Before a batch is published the daemon rechecks, under no lock,
+//! The runner streams answer chunks and compaction progress on the run's
+//! activity verb, as a fleet run does. Before a batch is published the daemon rechecks, under no lock,
 //! that the run is still the runner's live one and its message still
 //! running, and that the draft's creator still holds the workspace: private
 //! text never reaches a reader who lost access. The frame is cosmetic; the
 //! report's answer is the durable one.
 
 use af_core::{error_code, id::Uuid7};
+use af_wire::context::ContextProgress;
+use garde::Validate as _;
 use zeroize::Zeroizing;
 
+use super::progress::{ContextNotice, DELTA_BYTES, Delta, TextKind};
 use super::sql;
 use crate::{
     Access, Drafts, Result, access,
     error::{ErrorKind, raise::query},
-    model::{DELTA_BYTES, Delta, TextKind},
     types::RUNNING,
 };
 
@@ -84,6 +87,48 @@ impl Drafts {
             };
             let payload =
                 Zeroizing::new(serde_json::to_string(&frame).map_err(crate::error::raise::stored)?);
+            bus.publish(&subject, &payload)
+                .await
+                .map_err(|source| ErrorKind::Preview { source })?;
+        }
+        Ok(())
+    }
+
+    /// Publishes `progress`, `run`'s compaction status, to its draft's
+    /// private stream as `context.progress`, under the same authority as its
+    /// answer: while the run is `runner`'s live one and its creator still
+    /// holds the draft. A status outside its bounds is dropped.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a bus that would not
+    /// take a frame.
+    pub async fn publish_setup_context(
+        &self,
+        runner: &Uuid7,
+        run: &Uuid7,
+        progress: &[ContextProgress],
+    ) -> Result<()> {
+        let Some(bus) = &self.bus else {
+            return Ok(());
+        };
+        if progress.is_empty() {
+            return Ok(());
+        }
+        let Some(publishing) = self.preview_authority(runner, run).await? else {
+            return Ok(());
+        };
+        let subject = afd_bus::Subject::ThreadItems(publishing.draft_id.clone());
+        for status in progress {
+            let frame = ContextNotice {
+                draft_id: publishing.draft_id.clone(),
+                sequence: publishing.sequence.to_string(),
+                stream_id: run.clone(),
+                progress: *status,
+            };
+            if frame.validate().is_err() {
+                continue;
+            }
+            let payload = serde_json::to_string(&frame).map_err(crate::error::raise::stored)?;
             bus.publish(&subject, &payload)
                 .await
                 .map_err(|source| ErrorKind::Preview { source })?;

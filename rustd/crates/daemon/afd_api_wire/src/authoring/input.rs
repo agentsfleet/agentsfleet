@@ -41,7 +41,7 @@ pub struct CreateDraftRequest<D = Value> {
     pub source: Source<D>,
     /// Copy an eligible `ref` from `GET /v1/workspaces/{workspace_id}/models?purpose=authoring`.
     pub authoring_model_ref: String,
-    /// Optional initial user text; 1..32768 UTF-8 bytes when present.
+    /// Optional initial user text; 1 to 1,048,576 characters when present.
     #[serde(default, deserialize_with = "super::present")]
     #[cfg_attr(feature = "openapi", schema(nullable = false))]
     pub message: Option<String>,
@@ -92,7 +92,7 @@ pub struct DraftPatchRequest<C = Value, I = Value> {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MessageRequest {
-    /// 1..32768 UTF-8 bytes; line endings normalize to LF.
+    /// 1 to 1,048,576 characters; line endings normalize to LF.
     pub message: String,
     /// Defaults to false. When true, save the finalized setup after this message succeeds.
     /// Failed or stopped messages never save. Retry with the same value and operation identifier.

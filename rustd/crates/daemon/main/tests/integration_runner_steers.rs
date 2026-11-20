@@ -15,7 +15,7 @@
               indexes the JSON it was answered"
 )]
 
-use af_wire::turn::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES};
+use af_wire::turn::FleetSteerBody;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -181,8 +181,13 @@ async fn fleet_steer_replays_before_status() {
     crew.finish(supervisor).await;
 }
 
-/// The target's run reads the sender line, then the words,
-/// at a short text and at the bound; and the next run reads it as a prior turn.
+/// The target's run reads the sender line, then the words, at a short text
+/// and at 64 KiB, far past the 8 KiB a steer was once held to; and the next
+/// run reads it as a prior turn.
+///
+/// Not at the text ceiling: the stored body carries the words twice, as
+/// `message` and as `text`, so a steer near 1,048,576 characters outgrows the
+/// runner protocol's 2 MiB frame (`af_wire::protocol::MESSAGE_BYTES_MAX`).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_body_reaches_the_target_turn() {
@@ -190,7 +195,7 @@ async fn fleet_steer_body_reaches_the_target_turn() {
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.running_sibling("steer-target").await;
     let (run, fence) = crew.speaking.run_seeded().await;
-    let long = "w".repeat(STEER_MESSAGE_MAX_BYTES);
+    let long = "w".repeat(64 * 1024);
     let (_, short_answer) = crew
         .steer((&run, fence), &target, "scene the hourly check")
         .await;
@@ -256,7 +261,11 @@ async fn fleet_steer_masks_secret_values() {
         rows[0].request_json
     );
     let stored: Value = serde_json::from_str(&rows[0].request_json).expect("JSON");
-    assert_eq!(stored["text"], "use «secret:grafana.token»");
+    let message = stored["message"].as_str().expect("the stored message");
+    assert!(
+        message.ends_with("\nuse «secret:grafana.token»"),
+        "{message}"
+    );
     crew.finish(supervisor).await;
 }
 

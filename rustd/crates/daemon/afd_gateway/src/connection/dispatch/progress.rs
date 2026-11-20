@@ -5,6 +5,7 @@ use std::num::NonZeroU64;
 use af_core::id::Uuid7;
 use af_wire::{
     activity::{ActivityFrame, ActivityRequest, StreamTextKind},
+    context::ContextProgress,
     fold::FoldRequest,
 };
 use afd_setup::setup_run::PreviewChunk;
@@ -48,9 +49,17 @@ impl ConnectionServices {
         Ok(())
     }
 
-    /// A draft run's answer chunks, republished on its draft's private
-    /// stream. Cosmetic: a refused publish is observed, never returned.
+    /// A draft run's answer chunks and compaction progress, republished on
+    /// its draft's private stream as `message.delta` and `context.progress`.
+    /// Cosmetic: a refused publish is observed, never returned.
     async fn setup_preview(&self, run: &Uuid7, frames: &[ActivityFrame<'_>]) -> Result<()> {
+        let compaction: Vec<ContextProgress> = frames
+            .iter()
+            .filter_map(|frame| match frame {
+                ActivityFrame::ContextProgress(progress) => Some(*progress),
+                _ => None,
+            })
+            .collect();
         let chunks: Vec<PreviewChunk<'_>> = frames
             .iter()
             .filter_map(|frame| match frame {
@@ -68,6 +77,9 @@ impl ConnectionServices {
             .collect();
         if let Err(error) = self
             .operation(Operation::Progress, async {
+                self.drafts
+                    .publish_setup_context(&self.handle.runner, run, &compaction)
+                    .await?;
                 Ok(self
                     .drafts
                     .publish_setup_preview(&self.handle.runner, run, &chunks)
