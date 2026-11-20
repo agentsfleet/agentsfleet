@@ -13,6 +13,7 @@ export const FLEET_ID = "0199a801-1000-7000-8000-000000000004";
 export const PLUGIN_ID = "0199a801-1000-7000-8000-000000000005";
 export const REVISION_ID = "0199a801-1000-7000-8000-000000000006";
 export const SCHEDULE_ID = "0199a801-1000-7000-8000-000000000007";
+export const TURN_ID = "0199a801-1000-7000-8000-000000000008";
 export const MODEL = "owner/authoring";
 export const PRIVATE_TEXT = "a private deployment question";
 export const TOKEN = Redacted.make("local-chat-test");
@@ -45,7 +46,7 @@ export const SYNC_UNCONFIRMED_KIND = "schedule_sync_unconfirmed";
 export const SCHEDULE_UNCONFIRMED =
   `Schedule ${SCHEDULE_ID} is saved but its registration was not confirmed, so it may not fire. Retry in a minute with: ${SCHEDULE_RETRY}`;
 export const ACCEPTED = {status: "accepted", sequence: "1", replayed: false} as const;
-export const MESSAGE = {sequence: "1", operation_id: DRAFT_ID, role: MESSAGE_ROLE.user,
+export const MESSAGE = {turn_id: TURN_ID, sequence: "1", operation_id: DRAFT_ID, role: MESSAGE_ROLE.user,
   state: MESSAGE_STATE.completed, text: PRIVATE_TEXT, created_at: "1970-01-01T00:00:00.001Z"};
 export const EMPTY_PAGE = {items: [], next_cursor: null};
 export const PUBLICATION = {plugin_id: PLUGIN_ID, revision_id: REVISION_ID, head_revision_id: REVISION_ID, etag: '"plugin-1"'};

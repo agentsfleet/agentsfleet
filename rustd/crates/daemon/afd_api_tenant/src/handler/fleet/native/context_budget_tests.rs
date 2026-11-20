@@ -122,6 +122,7 @@ fn boundaries() -> Vec<Boundaries> {
 
 fn message(sequence: u8, role: &str) -> Message {
     Message {
+        turn_id: "turn".into(),
         save_requested: false,
         save_error_code: None,
         sequence: sequence.to_string(),

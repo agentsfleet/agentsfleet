@@ -35,6 +35,8 @@ export type UseFleetEventStreamResult = {
   reconcileOptimistic: (tempId: string, realTurnId: string, replayed: boolean, foldedInto?: string | null) => boolean;
   discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
+  /** Applies saved rows the page holds, such as the turn a Stop answered with. */
+  reconcileRows: (rows: TurnRow[]) => void;
   convertEvent: (event: FleetEvent) => ThreadMessageLike;
 };
 
@@ -93,6 +95,10 @@ export function useFleetEventStream(
     () => streams.retryConnection(fleetId),
     [streams, fleetId],
   );
+  const reconcileRows = useCallback(
+    (rows: TurnRow[]) => streams.reconcileServerRows(fleetId, rows),
+    [streams, fleetId],
+  );
 
   // There is deliberately no aggregate "the fleet is working" flag. The one
   // that existed was true whenever ANY event sat unfinished, so a single
@@ -109,6 +115,7 @@ export function useFleetEventStream(
     reconcileOptimistic,
     discardOptimistic,
     retryConnection,
+    reconcileRows,
     convertEvent,
   };
 }

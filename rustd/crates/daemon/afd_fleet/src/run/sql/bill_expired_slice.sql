@@ -5,7 +5,7 @@ WITH probe AS (
            -- The runtime line's number, as the meter numbers it: the slice's start.
            (EXTRACT(EPOCH FROM l.last_metered_at - l.created_at) * $3::bigint)::bigint AS runtime_seq
     FROM thread.runs l
-    WHERE l.id = $1 AND l.status <> $2
+    WHERE l.id = $1 AND l.status <> ALL($2::text[])
       AND l.run_expires_at < statement_timestamp()
       AND l.last_metered_at < l.run_expires_at
     FOR UPDATE OF l

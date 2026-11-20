@@ -28,6 +28,7 @@
 //! apart if it wanted to — see `af_core::error_code::TURN_NOT_FOUND`.
 
 mod query;
+pub(crate) mod stop;
 pub(crate) mod tool_call;
 
 use std::borrow::Cow;

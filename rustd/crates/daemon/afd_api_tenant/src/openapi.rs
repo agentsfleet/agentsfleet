@@ -53,6 +53,8 @@ afd_http::plane_collector! {
         crate::handler::draft::message::cancel,
         crate::handler::draft::stream::open,
         crate::handler::turn::detail,
+        crate::handler::turn::stop::fleet,
+        crate::handler::turn::stop::draft,
         crate::handler::turn::tool_call::read,
         crate::handler::turn::fleet_list,
         crate::handler::turn::workspace_list,

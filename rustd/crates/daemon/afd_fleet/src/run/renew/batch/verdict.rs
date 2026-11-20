@@ -76,11 +76,17 @@ impl Judged {
         if self.found && held(self.has_task) {
             return Verdict::Tasked;
         }
-        if !self.found || !held(self.host_renews) || !held(self.admitted) {
+        if !self.found || !held(self.host_renews) {
             return Verdict::Lost;
         }
+        // The cancel mark before the turn's admission, as the per-run path asks
+        // (`extend.rs`): Stop settles the turn it marks, and its run must hear
+        // `cancelled`, not `lost`.
         if held(self.cancelled) {
             return Verdict::Cancelled;
+        }
+        if !held(self.admitted) {
+            return Verdict::Lost;
         }
         if !held(self.fence_holds) {
             return Verdict::Lost;

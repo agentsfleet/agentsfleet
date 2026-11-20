@@ -101,13 +101,10 @@ impl Drafts {
         let Some(bus) = &self.bus else {
             return;
         };
-        for (runner, run_id) in cancelled {
-            let subject = afd_bus::Subject::RunnerCommand(runner.clone());
-            let publication = afd_bus::Command::Cancel { run_id }
-                .publish(bus, &runner)
-                .await;
-            afd_bus::observe_notification(&subject, publication);
-        }
+        let marked = cancelled
+            .into_iter()
+            .map(|(runner, run)| afd_turns::view::stop::Marked { runner, run });
+        afd_turns::view::stop::announce(bus, marked).await;
     }
 
     /// Fence streamed authoring grants with the same owner as fleet grants.

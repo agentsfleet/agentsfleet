@@ -256,15 +256,15 @@ A queued turn becomes `cancelled` with no run. Stop on a `waiting` turn cancels 
 
 Stop on a `failed` turn returns 409, as on an answered one. The composer shows Stop while a turn runs.
 
-- **Dimension 8.1** — Stop ends a running fleet turn → Test `stopping_a_running_fleet_turn_ends_its_run` (integration): a run that hangs, then the `PATCH`. Expected: the run reports stopped within one renewal interval, and the turn stays `cancelled`.
-- **Dimension 8.2** — a queued turn needs no runner → Test `stopping_a_queued_turn_cancels_it_without_a_run` (integration): a queued turn. Expected: `cancelled`, and no run is ever assigned.
-- **Dimension 8.3** — Stop survives a lost hint → Test `a_stop_whose_hint_was_lost_ends_at_the_next_renewal` (integration): drop the `Command::Cancel` publish. Expected: the renewal answer cancels the run.
-- **Dimension 8.4** — Stop after the answer conflicts → Test `stopping_an_answered_turn_is_a_conflict` (integration): an answered turn. Expected: 409, and the answer is unchanged.
-- **Dimension 8.5** — Stop is repeatable → Test `stopping_a_cancelled_turn_again_answers_the_same_state` (integration): two `PATCH` calls. Expected: both 200 with `cancelled`.
-- **Dimension 8.6** — the screen shows Stop only while a turn runs → Test `composer_shows_stop_while_a_turn_runs` (e2e): a Playwright run of the conversation view. Expected: Stop appears while the turn is running and is gone after the answer. The spec mocks the turn routes with `page.route`.
-- **Dimension 8.8** — a draft's running turn stops → Test `stopping_a_running_draft_turn_ends_its_setup_run` (integration): a setup run that hangs, then `PATCH …/drafts/{draft_id}/turns/{turn_id}`. Expected: the run reports stopped and the turn is `cancelled`.
-- **Dimension 8.9** — Stop ends every turn a run serves → Test `stopping_one_of_two_served_turns_cancels_both` (integration): a run serving two turns. Expected: both `cancelled`, and one run report.
-- **Dimension 8.7** — another workspace cannot stop it → Test `a_member_of_another_workspace_cannot_stop_a_turn` (integration): a token for workspace B. Expected: 404, and the turn keeps running.
+- **Dimension 8.1** — DONE — Stop ends a running fleet turn → Test `stopping_a_running_fleet_turn_ends_its_run` (integration): a run that hangs, then the `PATCH`. Expected: the run reports stopped within one renewal interval, and the turn stays `cancelled`.
+- **Dimension 8.2** — DONE — a queued turn needs no runner → Test `stopping_a_queued_turn_cancels_it_without_a_run` (integration): a queued turn. Expected: `cancelled`, and no run is ever assigned.
+- **Dimension 8.3** — DONE — Stop survives a lost hint → Test `a_stop_whose_hint_was_lost_ends_at_the_next_renewal` (integration): drop the `Command::Cancel` publish. Expected: the renewal answer cancels the run.
+- **Dimension 8.4** — DONE — Stop after the answer conflicts → Test `stopping_an_answered_turn_is_a_conflict` (integration): an answered turn. Expected: 409, and the answer is unchanged.
+- **Dimension 8.5** — DONE — Stop is repeatable → Test `stopping_a_cancelled_turn_again_answers_the_same_state` (integration): two `PATCH` calls. Expected: both 200 with `cancelled`.
+- **Dimension 8.6** — DONE — the screen shows Stop only while a turn runs → Test `composer_shows_stop_while_a_turn_runs` (e2e): a Playwright run of the conversation view. Expected: Stop appears while the turn is running and is gone after the answer. The spec mocks the turn routes with `page.route`.
+- **Dimension 8.8** — DONE — a draft's running turn stops → Test `stopping_a_running_draft_turn_ends_its_setup_run` (integration): a setup run that hangs, then `PATCH …/drafts/{draft_id}/turns/{turn_id}`. Expected: the run reports stopped and the turn is `cancelled`. The test drives the draft door at the run service (`Drafts::stop_turn`, then `report_draft`), because no fixture yet runs a draft-owned run end to end.
+- **Dimension 8.9** — DONE — Stop ends every turn a run serves → Test `stopping_one_of_two_served_turns_cancels_both` (integration): a run serving two turns. Expected: both `cancelled`, and one run report.
+- **Dimension 8.7** — DONE — another workspace cannot stop it → Test `a_member_of_another_workspace_cannot_stop_a_turn` (integration): a token for workspace B. Expected: 404 through workspace B's path, and the turn keeps running. Through workspace A's path, the shared ownership layer answers 403 first, as on every workspace route.
 
 ### §9 — The measurements run on the thread tables
 

@@ -40,7 +40,7 @@ use af_wire::report::RunSegments;
 use tokio::time::Instant;
 use tracing::Span;
 
-use super::{EVENT_COMPLETED, EVENT_FAILED, Run};
+use super::{EVENT_COMPLETED, EVENT_FAILED, EVENT_STOPPED, Run};
 use crate::activity::RunTiming;
 use crate::report::Ending;
 
@@ -214,6 +214,7 @@ impl Run<'_> {
         // field, and tracing leaves a `None` off the line.
         let (event, class, detail) = match ending {
             Ending::Ran { .. } => (EVENT_COMPLETED, None, None),
+            Ending::Stopped { .. } => (EVENT_STOPPED, None, None),
             Ending::Failed { class, detail } => (EVENT_FAILED, to_spelling(class), Some(*detail)),
         };
         let class = class.as_deref();

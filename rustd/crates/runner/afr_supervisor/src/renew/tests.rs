@@ -311,3 +311,55 @@ async fn reconnect_uses_the_live_fleet_deadline_and_recovers_freely_after_expiry
         started + Duration::from_secs(8)
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_renewal_refused_for_the_cancel_mark_is_a_stop() {
+    let (plane, _calls) = plane(|_call| {
+        Answer::Fail(error::refused(
+            Verb::Renew,
+            409,
+            Some(error_code::RUN_CANCELLED),
+        ))
+    });
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let registration = plane.stream.running.offer(run.clone(), false).unwrap();
+    let clock = clock();
+
+    let class = Renewal::new(
+        &plane,
+        &run,
+        GRANTED_UNTIL,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
+
+    assert_eq!(class, FailureClass::RenewalTerminate);
+    assert!(registration.stop.is_cancelled(), "the run is interrupted");
+    assert!(
+        plane.stream.running.stopped(&run),
+        "the lost hint's Stop is remembered, so the run reports stopped"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_renewal_refused_for_another_reason_is_no_stop() {
+    let (plane, _calls) =
+        plane(|_call| Answer::Fail(error::refused(Verb::Renew, 409, Some(error_code::RUN_LOST))));
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let _registration = plane.stream.running.offer(run.clone(), false).unwrap();
+    let clock = clock();
+
+    Renewal::new(
+        &plane,
+        &run,
+        GRANTED_UNTIL,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
+
+    assert!(!plane.stream.running.stopped(&run));
+}

@@ -80,6 +80,7 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         | WorkspaceRoute::Draft
         | WorkspaceRoute::DraftMessages
         | WorkspaceRoute::DraftStream
+        | WorkspaceRoute::DraftTurn
         | WorkspaceRoute::DraftCancellations => {
             draft_handler_for::<D>(verb).map(handler::draft::private)
         }
@@ -126,6 +127,7 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
         WorkspaceRoute::DraftMessages => Some(get(message::list::<D>).post(message::send::<D>)),
         WorkspaceRoute::DraftStream => Some(get(stream::open::<D>)),
         WorkspaceRoute::DraftCancellations => Some(post(message::cancel::<D>)),
+        WorkspaceRoute::DraftTurn => Some(patch(handler::turn::stop::draft::<D>)),
         WorkspaceRoute::Plugin
         | WorkspaceRoute::PluginItem
         | WorkspaceRoute::PluginRevisions
@@ -159,7 +161,9 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         FleetRoute::Turns => Some(get(handler::turn::fleet_list::<D>)),
         FleetRoute::Tasks => Some(get(fleet::tasks::list::<D>)),
         FleetRoute::Task => Some(get(fleet::tasks::one::<D>).patch(fleet::tasks::change::<D>)),
-        FleetRoute::Turn => Some(get(handler::turn::detail::<D>)),
+        FleetRoute::Turn => {
+            Some(get(handler::turn::detail::<D>).patch(handler::turn::stop::fleet::<D>))
+        }
         FleetRoute::Item => Some(get(handler::turn::tool_call::read::<D>)),
         FleetRoute::Grants => Some(get(handler::grant::list::<D>)),
         FleetRoute::Grant => Some(delete(handler::grant::revoke::<D>)),

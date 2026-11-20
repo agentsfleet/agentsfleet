@@ -23,7 +23,7 @@ function fleetScope(workspaceId: string, fleetId: string): string {
 // deliberately kept off oversized-attribute storage. Anything that needs a body
 // reads one event through `getFleetTurn` below.
 
-export type TurnStatus = "received" | "processed" | "fleet_error" | "gate_blocked";
+export type TurnStatus = "received" | "processed" | "fleet_error" | "gate_blocked" | "cancelled";
 
 export type EventType = "chat" | "webhook" | "cron" | "continuation";
 

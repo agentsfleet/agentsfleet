@@ -44,4 +44,5 @@ pub mod team;
 pub mod tenant;
 pub mod tenant_model_entry;
 pub mod tenant_provider;
+pub mod turn;
 pub mod workspace;

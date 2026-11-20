@@ -142,6 +142,8 @@ pub enum RunOutcome {
     Failed,
     /// This holder was superseded by a reclaim.
     Expired,
+    /// A person stopped its turn, and the run reported stopped.
+    Stopped,
     /// Stored state cannot establish a terminal outcome.
     Unknown,
 }

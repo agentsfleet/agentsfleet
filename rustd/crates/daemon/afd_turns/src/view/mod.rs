@@ -41,6 +41,7 @@ pub mod error;
 mod history;
 pub mod sql;
 mod steer;
+pub mod stop;
 
 pub use self::closed::Closed;
 pub use self::counters::{

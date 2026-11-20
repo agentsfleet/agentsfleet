@@ -41,6 +41,10 @@ const BILL_EXPIRED_SLICE: &str = include_str!("sql/bill_expired_slice.sql");
 /// What the expiry pass was doing, for [`query`].
 const CONTEXT_EXPIRED: &str = "billing sweep expired runs";
 
+/// The run statuses a report settles in. A run in either was billed by its
+/// report, so the sweep never measures it again.
+const SETTLED_STATUSES: [&str; 2] = [sql::RUN_STATUS_REPORTED, sql::RUN_STATUS_STOPPED];
+
 /// How long an expired, unreported run waits before its last slice is billed.
 ///
 /// Measured from its deadline, so a runner's late report still wins. A
@@ -205,7 +209,7 @@ async fn bill_expired(
     let candidates: Vec<Uuid7> = {
         let mut connection = database.acquire().await?;
         sqlx::query_scalar(SELECT_UNBILLED_EXPIRED_RUNS)
-            .bind(sql::RUN_STATUS_REPORTED)
+            .bind(SETTLED_STATUSES.to_vec())
             .bind(GRACE)
             .bind(BATCH_LIMIT)
             .fetch_all(&mut *connection)
@@ -239,7 +243,7 @@ async fn log_last_slice(
     let mut transaction = connection.begin().await.map_err(query(CONTEXT_EXPIRED))?;
     let Some(row) = sqlx::query(BILL_EXPIRED_SLICE)
         .bind(run)
-        .bind(sql::RUN_STATUS_REPORTED)
+        .bind(SETTLED_STATUSES.to_vec())
         .bind(afd_billing::nanos::MS_PER_SEC)
         .fetch_optional(&mut *transaction)
         .await

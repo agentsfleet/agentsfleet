@@ -13841,6 +13841,162 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/{turn_id}": {
+      "patch": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Stop a private setup turn",
+        "description": "Stops one turn of your private draft with `{\"status\":\"cancelled\"}`. A queued turn never runs, and a running turn's setup run ends. Later turns stay queued. Repeating the call answers the same state; a finished turn answers 409. Requires `fleet:write`.",
+        "operationId": "stop_draft_turn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "draft_id",
+            "in": "path",
+            "description": "Draft identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn_id",
+            "in": "path",
+            "description": "The turn to stop.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stopped"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Private draft or turn unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The turn already finished",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/fleets": {
       "get": {
         "tags": [
@@ -17467,6 +17623,160 @@
           },
           "404": {
             "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Fleets"
+        ],
+        "summary": "Stop a fleet turn",
+        "description": "Stops a turn with `{\"status\":\"cancelled\"}`. A queued turn is cancelled and never runs. A running turn is cancelled with every turn its run serves. The runner ends the run within one renewal interval. Its usage is billed, and it gets no answer. A waiting turn's open approval closes. Repeating the call answers the same state. A turn that already finished answers 409 and keeps its answer. Requires `fleet:write`.",
+        "operationId": "stop_fleet_turn",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn_id",
+            "in": "path",
+            "description": "Turn identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The turn already finished",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -22795,6 +23105,7 @@
               "type": "object",
               "description": "One user or assistant role in a durable request sequence.",
               "required": [
+                "turn_id",
                 "save_requested",
                 "sequence",
                 "operation_id",
@@ -22867,6 +23178,10 @@
                     "null"
                   ],
                   "description": "Text, when this role has private content."
+                },
+                "turn_id": {
+                  "type": "string",
+                  "description": "The turn this message belongs to, the user's request and its answer\nalike. Stop it with `PATCH …/drafts/{draft_id}/turns/{turn_id}`."
                 },
                 "usage": {
                   "oneOf": [
@@ -27288,6 +27603,7 @@
         "type": "object",
         "description": "One user or assistant role in a durable request sequence.",
         "required": [
+          "turn_id",
           "save_requested",
           "sequence",
           "operation_id",
@@ -27360,6 +27676,10 @@
               "null"
             ],
             "description": "Text, when this role has private content."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "The turn this message belongs to, the user's request and its answer\nalike. Stop it with `PATCH …/drafts/{draft_id}/turns/{turn_id}`."
           },
           "usage": {
             "oneOf": [
@@ -29277,6 +29597,7 @@
           "succeeded",
           "failed",
           "expired",
+          "stopped",
           "unknown"
         ]
       },
@@ -33220,6 +33541,20 @@
           "continuation"
         ]
       },
+      "TurnPatch": {
+        "type": "object",
+        "description": "`PATCH …/turns/{turn_id}`: stop the turn.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TurnStatusChange",
+            "description": "The status to set; `cancelled` is the only one."
+          }
+        },
+        "additionalProperties": false
+      },
       "TurnResume": {
         "type": "object",
         "description": "Offers carry only this descriptor. A fenced read supplies private state and a pin.",
@@ -33296,6 +33631,13 @@
           }
         },
         "additionalProperties": false
+      },
+      "TurnStatusChange": {
+        "type": "string",
+        "description": "The status a caller may set on a turn.",
+        "enum": [
+          "cancelled"
+        ]
       },
       "TurnSummary": {
         "type": "object",

@@ -151,3 +151,49 @@ async fn a_renewal_refused_before_the_fleet_is_free_never_starts_the_run() {
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], RENEWAL_TERMINATE);
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
 }
+
+/// The renewal answer a Stop's cancel mark earns.
+fn renewal_cancelled(call: &Call) -> Option<Answer> {
+    (call.verb == Verb::Renew).then(|| {
+        Answer::Fail(error::refused(
+            Verb::Renew,
+            409,
+            Some(af_core::error_code::RUN_CANCELLED),
+        ))
+    })
+}
+
+/// A Stop whose Cancel was lost reaches the run as a refused renewal: the run
+/// reports `stopped`, keeps its tokens for billing, and gives no answer.
+#[tokio::test(start_paused = true)]
+async fn a_run_the_daemon_stopped_reports_stopped_with_its_tokens() {
+    let mut rig = rig(renewal_cancelled, FakeEngine::default(), Behaviour::Stops);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let _registered = rig.lessee.plane.stream.running.offer(run, false).unwrap();
+
+    rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
+
+    let report = reported(&rig.calls());
+    assert_eq!(report["outcome"], "stopped", "{report}");
+    assert!(report[FAILURE_REASON].is_null(), "{report}");
+    assert_eq!(report["response_text"], "", "a stopped turn gets no answer");
+    assert_eq!(report[TOKENS], 8, "the run's total, for the history");
+    assert_eq!(
+        report[REQUESTS][0][INPUT_TOKENS], 3,
+        "its tokens are billed"
+    );
+}
+
+/// A renewal refused for any other reason is a cut, not a Stop.
+#[tokio::test(start_paused = true)]
+async fn a_run_cut_for_another_reason_is_not_stopped() {
+    let mut rig = rig(renewal_lost, FakeEngine::default(), Behaviour::Stops);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let _registered = rig.lessee.plane.stream.running.offer(run, false).unwrap();
+
+    rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
+
+    let report = reported(&rig.calls());
+    assert_eq!(report["outcome"], "fleet_error", "{report}");
+    assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
+}

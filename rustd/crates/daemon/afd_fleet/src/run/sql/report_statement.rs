@@ -32,6 +32,8 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) fleet_id: &'a Uuid7,
     pub(crate) workspace_id: &'a Uuid7,
     pub(crate) succeeded: bool,
+    /// Whether a person stopped the run: it settles `stopped`, not `reported`.
+    pub(crate) stopped: bool,
     /// The pricing facts the lines were priced under, which the statement
     /// guards on.
     pub(crate) posture: &'a str,
@@ -76,7 +78,7 @@ impl<'a> ReportStatement<'a> {
             .bind(self.runner_id)
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(crate::run::sql::RUN_STATUS_ACTIVE)
-            .bind(crate::run::sql::RUN_STATUS_REPORTED)
+            .bind(settled_status(self.stopped))
             .bind(self.succeeded)
             .bind(afd_billing::sql::work::FLEET_RUN)
             .bind(af_wire::usage::LineKind::Model.as_str())
@@ -124,6 +126,7 @@ impl<'a> ReportStatement<'a> {
                 self.held_until
                     .map(|_| afd_runner::capacity::renewable_states()),
             )
+            .bind(af_core::turn::status::CANCELLED)
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -251,7 +254,7 @@ impl ReportAnswer {
 
     /// Why nothing was written: settled before, fenced, or priced wrongly.
     fn unclaimed(answer: AnswerRow) -> Self {
-        if answer.run_status.as_deref() == Some(crate::run::sql::RUN_STATUS_REPORTED) {
+        if answer.run_status.as_deref().is_some_and(is_settled) {
             return Self::AlreadySettled;
         }
         match (
@@ -269,6 +272,22 @@ impl ReportAnswer {
             _ => Self::Fenced,
         }
     }
+}
+
+/// The status a report settles its run in: `stopped` for a run a person
+/// stopped, `reported` for every other.
+pub(crate) const fn settled_status(stopped: bool) -> &'static str {
+    if stopped {
+        crate::run::sql::RUN_STATUS_STOPPED
+    } else {
+        crate::run::sql::RUN_STATUS_REPORTED
+    }
+}
+
+/// Whether `status` is one a report settles a run in, so a replayed report
+/// finds its own earlier copy's work.
+pub(crate) fn is_settled(status: &str) -> bool {
+    status == crate::run::sql::RUN_STATUS_REPORTED || status == crate::run::sql::RUN_STATUS_STOPPED
 }
 
 /// The run's token sums, or none, logged, when a sum does not fit: the

@@ -105,6 +105,7 @@ A fleet turn stores the event words today, plus `queued`; a setup turn stores th
 | `gate_blocked` | refused at a gate, or waiting with `parked_at` set | `waiting` |
 | `processed` | answered | `answered` |
 | `fleet_error` | failed | `failed` |
+| `cancelled` | a person stopped it; settled with no answer | `cancelled` |
 | `queued`, `running`, `completed`, `failed`, `cancelled` on a setup turn | a setup draft's turn | `queued`, `running`, `answered`, `failed`, `cancelled` |
 
 ## thread.runs

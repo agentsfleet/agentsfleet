@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, List, ListItem } from "@agentsfleet/design-system";
-import { ArrowUpIcon } from "@phosphor-icons/react/ssr";
+import { ArrowUpIcon, SquareIcon } from "@phosphor-icons/react/ssr";
 import { PENDING_SEND_STATE, type PendingSend } from "../delivery/useFleetPendingSends";
 import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
@@ -14,9 +14,11 @@ import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatCompo
 import { useFleetSetup } from "../../setup/FleetSetupContext";
 import { FleetModelSelect } from "../../models/FleetModelSelect";
 import { AddUploadPreview, ComposerUploadAttachments } from "./UploadAttachments";
+import type { TurnStop } from "./useTurnStop";
 
 const PLACEHOLDER = "Message your fleet…";
 const SEND_LABEL = "Send";
+const STOP_LABEL = "Stop";
 const COMPOSER_LABEL = "Chat composer";
 const SESSION_EXPIRED = "Your session expired. Sign in again before sending this message.";
 const SEND_FAILED = "Message not sent.";
@@ -48,9 +50,11 @@ export type SteerComposerProps = {
   onRestored: (operationId: string, text: string) => void;
   /** Every draft the composer holds, so a failed send's id follows only its own returned text. */
   onDraft: (text: string) => void;
+  /** Stop for the turn this fleet is working on; absent where no turn can be stopped. */
+  turnStop?: TurnStop;
 };
 
-export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, modelLabel = "Saved model" }: SteerComposerProps) {
+export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraft, turnStop, modelLabel = "Saved model" }: SteerComposerProps) {
   const modelChanging = useFleetSetup()?.modelChanging ?? false;
   const unresolved = useMemo(
     () => pending.filter((entry) => !NOT_NOTICED.has(entry.state)),
@@ -67,7 +71,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
     <>
     <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef} disabled={modelChanging}
       toolbar={<><AddUploadPreview /><FleetModelSelect label={modelLabel} /></>}
-      actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>
+      actions={<>{turnStop?.visible ? <StopButton stop={turnStop} /> : null}<SendButton draftBytes={draftBytes} draftRef={draftRef} /></>}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftSize draftBytes={draftBytes} />
         <DraftReporter onDraft={onDraft} />
@@ -135,6 +139,24 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
         <ArrowUpIcon size={18} aria-hidden="true" />
       </Button>
     </ComposerPrimitive.Send>
+  );
+}
+
+// Shown only while a turn of this fleet runs, beside Send rather than in its
+// place: sending mid-run steers the run, so both stay available.
+function StopButton({ stop }: { stop: TurnStop }) {
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="icon-row"
+      aria-label={STOP_LABEL}
+      className="shrink-0 self-end rounded-full [&_svg]:size-4.5"
+      disabled={stop.stopping}
+      onClick={stop.stop}
+    >
+      <SquareIcon size={18} aria-hidden="true" />
+    </Button>
   );
 }
 

@@ -266,6 +266,15 @@ pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
 /// fleet, never a retry.
 pub const AGENTSFLEET_ARCHIVED: ErrorCode = ErrorCode::declare("UZ-AGT-020");
 
+/// Stop named a turn that already finished: answered, failed, or recorded.
+///
+/// A 409 carrying `current_state`, the turn's stored status, so a client tells
+/// "the answer won the race" from "this turn never ran" without re-reading it.
+/// The answer stands: Stop never rewrites a settled turn. A turn already
+/// cancelled is not this refusal; Stop answers it 200, because a retried Stop
+/// must see the state it asked for.
+pub const TURN_FINISHED: ErrorCode = ErrorCode::declare("UZ-AGT-021");
+
 /// A fleet asked to steer itself.
 ///
 /// A 409 with `current_state: "self"`: the sender is the target, so the work

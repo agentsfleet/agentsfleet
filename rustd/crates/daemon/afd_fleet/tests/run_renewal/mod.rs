@@ -15,4 +15,5 @@ mod offered;
 mod replica;
 mod replicas;
 mod seat;
+mod stop;
 mod wallet;

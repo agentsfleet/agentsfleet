@@ -97,6 +97,8 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/stream",
+    // M253 §8 — Stop on a draft's turn, beside the fleet turn's PATCH.
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/{turn_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",
     "/v1/workspaces/{workspace_id}/plugins/{plugin_id}",
     "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions",

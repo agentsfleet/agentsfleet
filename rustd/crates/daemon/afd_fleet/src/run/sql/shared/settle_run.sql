@@ -5,7 +5,7 @@
 -- step; the final slice's usage line and the owner's own rows are its own statements, in
 -- the same transaction. A run whose fence moved on writes nothing, and the row says so.
 --
--- $1 run · $2 runner · $3 milliseconds per second · $4 active status · $5 reported status ·
+-- $1 run · $2 runner · $3 milliseconds per second · $4 active status · $5 settled status ·
 -- $6 succeeded · $7 the hold the runner asked for, NULL for none · $8 the hold's idle cap ·
 -- $9 audit row · $10 its event type · $11 its metadata ·
 -- $12 the longest runtime one line may claim · $13-$14 the opening's credential proof and

@@ -50,6 +50,7 @@ import {
   TOO_LONG_TEXT,
 } from "@/tests/fleet-thread/steer-copy";
 import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
+import type { TurnStop } from "./useTurnStop";
 
 const SUBMITTED_AT_MS = 1_700_000_000_000;
 // A reply streaming in notifies the composer's store on every flush.
@@ -62,7 +63,7 @@ function entry(over: Partial<PendingSend> & { operationId: string }): PendingSen
 const REFUSED = entry({ operationId: "op-refused" });
 const noop = () => {};
 
-type Handlers = { onResend?: (id: string) => void; onDismiss?: (id: string) => void; onRestored?: (id: string, text: string) => void };
+type Handlers = { onResend?: (id: string) => void; onDismiss?: (id: string) => void; onRestored?: (id: string, text: string) => void; turnStop?: TurnStop };
 
 function view(pending: PendingSend[], handlers: Handlers = {}) {
   return (
@@ -72,6 +73,7 @@ function view(pending: PendingSend[], handlers: Handlers = {}) {
       onDismiss={handlers.onDismiss ?? noop}
       onRestored={handlers.onRestored ?? noop}
       onDraft={noop}
+      turnStop={handlers.turnStop}
     />
   );
 }
@@ -283,5 +285,20 @@ describe("SteerComposer", () => {
     const [first] = screen.getAllByRole("button", { name: DISMISS });
     fireEvent.click(first as HTMLElement);
     expect(onDismiss).toHaveBeenCalledExactlyOnceWith("op-a");
+  });
+
+  it("shows Stop beside Send only while a turn runs, and sends it once per press", () => {
+    const stop = vi.fn();
+    const viewed = render(view([], { turnStop: { visible: false, stopping: false, stop } }));
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    viewed.rerender(view([], { turnStop: { visible: true, stopping: false, stop } }));
+    const button = screen.getByRole("button", { name: "Stop" });
+    // Not the composer's submit: a press must never send the draft.
+    expect(button.getAttribute("type")).toBe("button");
+    expect(screen.getByRole("button", { name: SEND })).toBeTruthy();
+    fireEvent.click(button);
+    expect(stop).toHaveBeenCalledOnce();
+    viewed.rerender(view([], { turnStop: { visible: true, stopping: true, stop } }));
+    expect((screen.getByRole("button", { name: "Stop" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
-SELECT m.sequence,
+SELECT m.id AS turn_id,
+       m.sequence,
        m.save_requested,
        m.save_error_code,
        m.operation_id AS operation_id,

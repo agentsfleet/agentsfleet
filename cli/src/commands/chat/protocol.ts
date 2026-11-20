@@ -56,7 +56,7 @@ export const DraftSchema = Schema.Struct({
 });
 export const CreatedSchema = Schema.Struct({...DraftSchema.fields, accepted: AcceptedSchema});
 export const MessageSchema = Schema.Struct({
-  sequence: decimal, operation_id: Schema.String, role: Schema.Literals(Object.values(MESSAGE_ROLE)),
+  turn_id: identifier, sequence: decimal, operation_id: Schema.String, role: Schema.Literals(Object.values(MESSAGE_ROLE)),
   state: Schema.Literals(Object.values(MESSAGE_STATE)), text: Schema.optionalKey(Schema.String),
   created_at: instant, failure: Schema.optionalKey(Schema.Struct({
     reason: Schema.String, error_code: Schema.String, recovery_action: Schema.String,

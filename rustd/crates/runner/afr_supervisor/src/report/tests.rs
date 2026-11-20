@@ -242,3 +242,65 @@ fn a_run_that_never_finished_reports_no_message_read() {
 
     assert_eq!(folded_through(&never), None);
 }
+
+#[test]
+fn a_stopped_run_reports_stopped_with_its_tokens_and_no_answer() {
+    let run = payload(RUN_ID, FLEET_ID);
+    let ran = Ending::Ran {
+        output: Box::new(answer()),
+        first_chunk: Some(Duration::from_millis(120)),
+    };
+    let ending = ran.stopped();
+
+    let report = report(
+        &run,
+        &ending,
+        &spent(3, 1, 4),
+        Duration::from_secs(2),
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::Stopped);
+    assert_eq!(report.failure_reason, None);
+    assert_eq!(report.failure_detail, "");
+    assert_eq!(report.response_text, "", "a stopped turn gets no answer");
+    assert_eq!(report.checkpoint.last_response, "");
+    assert_eq!(report.tokens, answer().result.token_count);
+    assert_eq!(report.task, None);
+    assert_eq!(report.folded_through_sequence, None);
+    assert_eq!(report.telemetry.time_to_first_token_ms, 120);
+}
+
+#[test]
+fn a_run_stopped_before_it_answered_bills_what_the_meter_saw() {
+    let run = payload(RUN_ID, FLEET_ID);
+    let ending = Ending::Failed {
+        class: FailureClass::RenewalTerminate,
+        detail: "the daemon ended the run while it ran",
+    }
+    .stopped();
+
+    let report = report(
+        &run,
+        &ending,
+        &spent(3, 1, 4),
+        Duration::from_secs(2),
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::Stopped);
+    assert_eq!(report.tokens, 8);
+    assert_eq!(requests(&report), vec![(3, 1, 4)]);
+    assert_eq!(
+        ending.clone().stopped(),
+        ending,
+        "stopping twice changes nothing"
+    );
+    assert_eq!(
+        ending.clone().cut(FailureClass::RenewalTerminate, "cut"),
+        ending,
+        "a cut after a Stop leaves it stopped"
+    );
+}

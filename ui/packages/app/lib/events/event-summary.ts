@@ -48,6 +48,8 @@ export const EVENT_STATUS = {
   PROCESSED: "processed",
   FLEET_ERROR: "fleet_error",
   GATE_BLOCKED: "gate_blocked",
+  // A person stopped the turn (`PATCH …/turns/{turn_id}`); it gets no answer.
+  CANCELLED: "cancelled",
 } as const;
 
 // A status the thread read and the admitted frame carry but no row stores: a
@@ -213,6 +215,7 @@ export const OUTCOME = {
   // The event's saved row answered 404 or 410: nothing is left to read the
   // answer from, so the row stops waiting and says so.
   REPLY_GONE: "The final reply is no longer available.",
+  STOPPED: "Stopped.",
 } as const;
 
 const CAUSE_SEPARATOR = " — ";
@@ -239,6 +242,7 @@ export function outcomeFor(
     if (detail.length > 0 && detail !== sentence) return `${sentence}${CAUSE_SEPARATOR}${detail}`;
     return sentence;
   }
+  if (row.status === EVENT_STATUS.CANCELLED) return OUTCOME.STOPPED;
   if (row.status === EVENT_STATUS.GATE_BLOCKED) return OUTCOME.WAITING_APPROVAL;
   if (row.status === EVENT_STATUS.FLEET_ERROR) return OUTCOME.FAILED;
   return OUTCOME.COMPLETED;

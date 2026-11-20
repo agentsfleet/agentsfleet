@@ -31,6 +31,15 @@ pub(crate) enum Ending {
         /// Why, in a sentence an operator reads.
         detail: &'static str,
     },
+    /// A person stopped the run's turn, and the daemon told this runner so.
+    /// What the engine handed back, if it did, is kept for its tokens, items
+    /// and memory; its answer is not, because a stopped turn gets none.
+    Stopped {
+        /// What the engine handed back before it stopped, when it did.
+        output: Option<Box<RunOutput>>,
+        /// When the first answer chunk arrived, from the run's start.
+        first_chunk: Option<Duration>,
+    },
 }
 
 impl Ending {
@@ -43,6 +52,37 @@ impl Ending {
     /// This ending, for a run the daemon or the runner ended before the run
     /// did: a run that handed back output keeps it, with `class` and `detail`
     /// as its failure, so its tokens are billed and its memory pushed.
+    /// This ending, for a run the daemon stopped: whatever the engine handed
+    /// back is kept, and the report says `stopped`.
+    pub(crate) fn stopped(self) -> Self {
+        match self {
+            Self::Ran {
+                output,
+                first_chunk,
+            } => Self::Stopped {
+                output: Some(output),
+                first_chunk,
+            },
+            Self::Failed { .. } => Self::Stopped {
+                output: None,
+                first_chunk: None,
+            },
+            stopped @ Self::Stopped { .. } => stopped,
+        }
+    }
+
+    /// What the engine handed back, on an ending that kept it.
+    pub(crate) fn output_mut(&mut self) -> Option<&mut RunOutput> {
+        match self {
+            Self::Ran { output, .. }
+            | Self::Stopped {
+                output: Some(output),
+                ..
+            } => Some(output),
+            Self::Failed { .. } | Self::Stopped { output: None, .. } => None,
+        }
+    }
+
     pub(crate) fn cut(self, class: FailureClass, detail: &'static str) -> Self {
         match self {
             Self::Ran {
@@ -62,6 +102,7 @@ impl Ending {
                 }
             }
             Self::Failed { .. } => Self::Failed { class, detail },
+            stopped @ Self::Stopped { .. } => stopped,
         }
     }
 }
@@ -87,16 +128,24 @@ pub(crate) fn report<'a>(
             output,
             first_chunk,
         } => (Some(&output.result), *first_chunk),
+        Ending::Stopped {
+            output,
+            first_chunk,
+        } => (output.as_ref().map(|output| &output.result), *first_chunk),
         Ending::Failed { .. } => (None, None),
     };
-    let response_text = result.map_or(Cow::Borrowed(""), |result| {
-        Cow::Borrowed(result.content.as_ref())
-    });
+    // A stopped turn gets no answer, whatever the engine had written.
+    let response_text = match ending {
+        Ending::Ran { .. } => result.map_or(Cow::Borrowed(""), |result| {
+            Cow::Borrowed(result.content.as_ref())
+        }),
+        Ending::Stopped { .. } | Ending::Failed { .. } => Cow::Borrowed(""),
+    };
     let tokens = result.map_or_else(|| meter.read().total(), |result| result.token_count);
     ReportRequest {
         task: match ending {
             Ending::Ran { output, .. } if outcome == Outcome::Processed => output.task.clone(),
-            Ending::Ran { .. } | Ending::Failed { .. } => None,
+            Ending::Ran { .. } | Ending::Failed { .. } | Ending::Stopped { .. } => None,
         },
         run_id: Cow::Borrowed(&run.run_id),
         turn_id: Cow::Borrowed(&run.event.turn_id),
@@ -140,6 +189,7 @@ fn verdict(ending: &Ending) -> (Outcome, Option<FailureClass>, Cow<'_, str>) {
         Ending::Failed { class, detail } => {
             (Outcome::FleetError, Some(*class), Cow::Borrowed(*detail))
         }
+        Ending::Stopped { .. } => (Outcome::Stopped, None, Cow::Borrowed("")),
     }
 }
 
@@ -156,7 +206,7 @@ fn folded_through(ending: &Ending, outcome: Outcome) -> Option<i64> {
         Ending::Ran { output, .. } if outcome == Outcome::Processed => {
             output.folded_through_sequence
         }
-        Ending::Ran { .. } | Ending::Failed { .. } => None,
+        Ending::Ran { .. } | Ending::Failed { .. } | Ending::Stopped { .. } => None,
     }
 }
 

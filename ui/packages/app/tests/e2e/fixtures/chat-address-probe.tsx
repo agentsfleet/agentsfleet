@@ -14,7 +14,12 @@ import { FleetThreadViewport } from "@/components/domain/conversation/thread/Fle
 import { SenderNamesProvider } from "@/components/domain/shared/identity/SenderNames";
 import { ACTOR } from "@/lib/events/event-summary";
 import { senderNamesFrom } from "@/lib/events/sender-names";
-import { rowToEvent } from "@/lib/streaming/fleet-stream-row";
+import { rowToEvent, type FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { readTurnDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
+import { isReplyInFlight } from "@/components/domain/activity/replies/fleetReplyMessage";
+import { useTurnStop } from "@/components/domain/conversation/composer/useTurnStop";
+import type { TurnRow } from "@/lib/api/events";
+import { STOP_TURNS } from "./fleet-stop-data";
 import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
@@ -74,6 +79,46 @@ export function FleetSteerRowFixture() {
         onRetry={ignore} onResend={ignore} onDismiss={ignore} onRestored={ignore} onDraft={ignore} />
     </AssistantRuntimeProvider>
   </FixtureShell>;
+}
+
+const STOP_READ_MS = 200;
+
+/** Two of a person's turns, one running and one queued behind it, under the
+ * production thread, composer and Stop. The probe has no stream: it reads each
+ * unsettled turn's saved row from the same-origin route the chat reads when a
+ * reply's ending never reached it, so the spec decides when an answer lands. */
+export function FleetStopFixture() {
+  const [events, setEvents] = useState<FleetEvent[]>(() => [
+    stopRow(STOP_TURNS.running, "received", "Rotate the staging deploy key."),
+    stopRow(STOP_TURNS.queued, "queued", "Then post the new key's fingerprint."),
+  ].map(rowToEvent));
+  const reconcile = useCallback((rows: TurnRow[]) => setEvents(current => current.map(event => {
+    const saved = rows.find(row => row.turn_id === event.id);
+    return saved === undefined ? event : rowToEvent(saved);
+  })), []);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      for (const event of events.filter(isReplyInFlight)) {
+        void readTurnDetailRoute(WORKSPACE, FLEET_ID, event.id).then(read => { if (read.ok) reconcile([read.data]); });
+      }
+    }, STOP_READ_MS);
+    return () => clearInterval(timer);
+  }, [events, reconcile]);
+  const turnStop = useTurnStop(WORKSPACE, FLEET_ID, events, reconcile);
+  const grouped = useFleetThreadEntries(events, convertEvent);
+  const messages = useMemo(() => grouped.entries.map(grouped.convertEntry), [grouped]);
+  const runtime = useExternalStoreRuntime({messages, convertMessage: (row: ThreadMessageLike) => row, onNew: async () => {}});
+  return <FixtureShell fleetName={OPEN_FLEET}>
+    <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
+      <FleetThreadViewport modelLabel="MiniMax M3" eventsCount={events.length} connectionStatus={CONNECTION_STATUS.LIVE} pending={[]}
+        onRetry={ignore} onResend={ignore} onDismiss={ignore} onRestored={ignore} onDraft={ignore} turnStop={turnStop} />
+    </AssistantRuntimeProvider>
+  </FixtureShell>;
+}
+
+function stopRow(turn_id: string, status: string, message: string) {
+  return {...SCHEDULE_EVENT, workspace_id: WORKSPACE, fleet_id: FLEET_ID, turn_id, actor: `${ACTOR.STEER_PREFIX}${VIEWER}`,
+    event_type: "chat", status, request_json: JSON.stringify({message}), created_at: new Date().toISOString(), updated_at: new Date().toISOString()};
 }
 
 function FixtureShell({fleetName, children}: {fleetName: string; children: ReactNode}) {

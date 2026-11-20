@@ -73,6 +73,7 @@ const DETAIL_STOPPED: &str = "this runner was told to stop while the run went on
 const EVENT_ACQUIRED: &str = "run_acquired";
 const EVENT_COMPLETED: &str = "run_completed";
 const EVENT_FAILED: &str = "run_failed";
+const EVENT_STOPPED: &str = "run_stopped";
 /// A fixed spelling, because dashboards and alerts match on it.
 const EVENT_UNHOSTED: &str = "tool_refused_not_hosted";
 const EVENT_UNHOSTED_PROVIDER: &str = "provider_refused_not_hosted";
@@ -204,11 +205,16 @@ impl Run<'_> {
             }
         };
         // A cut keeps what the run handed back, its tokens and memory with it,
-        // and reports the cut as the reason it ended.
+        // and reports the cut as the reason it ended. A Stop the daemon sent,
+        // as a Cancel or as a refused renewal, outranks the cut it caused.
         let Worked { ending: ran, kept } = worked;
-        let ending = match cut {
-            Some((class, detail)) => ran.cut(class, detail),
-            None => ran,
+        let ending = if lessee.plane.stream.running.stopped(&self.ids.run) {
+            ran.stopped()
+        } else {
+            match cut {
+                Some((class, detail)) => ran.cut(class, detail),
+                None => ran,
+            }
         };
         self.settle_and_drain(kept, ending, renewal, pumping, live)
             .await

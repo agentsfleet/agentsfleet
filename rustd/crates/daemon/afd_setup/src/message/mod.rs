@@ -4,6 +4,7 @@ mod accept;
 mod cancel;
 mod conversation;
 mod read;
+mod stop;
 
 pub(crate) use accept::{Insertion, insert};
 pub use cancel::{Cancellation, Stopped};

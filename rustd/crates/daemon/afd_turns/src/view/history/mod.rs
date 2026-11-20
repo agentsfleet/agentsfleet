@@ -57,6 +57,7 @@ pub use self::tool_call::{CallAddress, ToolCallRow};
 const CONTEXT_FLEET_PAGE: &str = "read a fleet's history";
 const CONTEXT_WORKSPACE_PAGE: &str = "read a workspace's history";
 const CONTEXT_DETAIL: &str = "read one event";
+const CONTEXT_STOP: &str = "stop a fleet turn";
 const CONTEXT_THREAD: &str = "read a fleet's message thread";
 const CONTEXT_FINISHED: &str = "read a fleet's finished turns";
 
@@ -144,6 +145,32 @@ impl History {
             .await
             .map_err(error::query(CONTEXT_DETAIL))?;
         found.as_ref().map(TurnDetailRow::read).transpose()
+    }
+
+    /// Stops `turn_id` of `fleet` in `workspace`, in its own transaction:
+    /// `None` when the workspace holds no such turn on that fleet. The runs it
+    /// marked are the caller's to announce after this commits.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn stop(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        turn_id: &Uuid7,
+    ) -> Result<Option<crate::view::stop::Stopped>> {
+        let mut connection = self.database.acquire().await?;
+        let mut transaction = sqlx::Connection::begin(&mut *connection)
+            .await
+            .map_err(error::query(CONTEXT_STOP))?;
+        let stopped = crate::view::stop::stop_on(&mut transaction, workspace, fleet, turn_id)
+            .await
+            .map_err(error::query(CONTEXT_STOP))?;
+        transaction
+            .commit()
+            .await
+            .map_err(error::query(CONTEXT_STOP))?;
+        Ok(stopped)
     }
 
     /// One page of a fleet's chat thread, newest first, bodies included.

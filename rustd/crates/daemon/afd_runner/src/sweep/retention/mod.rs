@@ -94,7 +94,11 @@ const IDLE_INTERVAL: Duration = Duration::from_hours(1);
 const SATURATED_INTERVAL: Duration = Duration::from_mins(1);
 
 /// The run statuses whose rows are settled and may be deleted.
-const TERMINAL_STATUSES: [&str; 2] = [sql::RUN_STATUS_REPORTED, sql::RUN_STATUS_EXPIRED];
+const TERMINAL_STATUSES: [&str; 3] = [
+    sql::RUN_STATUS_REPORTED,
+    sql::RUN_STATUS_STOPPED,
+    sql::RUN_STATUS_EXPIRED,
+];
 
 /// The event types that belong to ONE run, and age out with it.
 ///

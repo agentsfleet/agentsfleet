@@ -187,7 +187,9 @@ impl Runs {
             crate::run::finalize::checkpoint_document(report.last_turn_id, report.last_response);
         let run = report.run;
         let failure_reason = outcome.verdict.label();
-        let notice = (!outcome.verdict.succeeded())
+        let notice = outcome
+            .verdict
+            .failed()
             .then(|| unanswered::failed_run(&run.fleet_id, failure_reason.as_deref()));
         let (host_digest, host_connection) = self.host_proof(report.runner_id);
         ReportStatement {
@@ -196,6 +198,7 @@ impl Runs {
             fleet_id: &run.fleet_id,
             workspace_id: &run.workspace_id,
             succeeded: outcome.verdict.succeeded(),
+            stopped: outcome.verdict.stopped(),
             posture: pricing.posture().as_str(),
             provider: pricing.provider(),
             model: pricing.model(),

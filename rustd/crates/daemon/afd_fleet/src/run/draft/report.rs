@@ -86,7 +86,9 @@ impl RunService {
             .bind(runner)
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(sql::RUN_STATUS_ACTIVE)
-            .bind(sql::RUN_STATUS_REPORTED)
+            .bind(sql::report_statement::settled_status(
+                request.outcome == Outcome::Stopped,
+            ))
             .bind(succeeded)
             // A draft's run holds no sandbox, so its report asks for no hold.
             .bind(None::<jiff_sqlx::Timestamp>)
@@ -106,7 +108,7 @@ impl RunService {
             drop(tx);
             return match settled.run_status.as_deref() {
                 // Settled already, by this report's earlier copy: nothing more to write.
-                Some(sql::RUN_STATUS_REPORTED) => Ok(()),
+                Some(status) if sql::report_statement::is_settled(status) => Ok(()),
                 _ if settled.fence_holds == Some(false) => Err(stale_fence()),
                 _ => Err(run_lost()),
             };

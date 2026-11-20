@@ -66,6 +66,14 @@ pub const RUN_STATUS_REPORTED: &str = "reported";
 /// belong beside each other.
 pub const RUN_STATUS_EXPIRED: &str = "expired";
 
+/// The status a run whose turn a person stopped is reported INTO.
+///
+/// The report statement writes it in place of [`RUN_STATUS_REPORTED`] when
+/// the runner reports `Outcome::Stopped`, and both are settled: the report
+/// billed the run either way, so every reader that treats `reported` as done
+/// names both.
+pub const RUN_STATUS_STOPPED: &str = "stopped";
+
 /// The `runner.runners.status` value that permits the runner plane.
 ///
 /// Every other status — cordoned, draining, drained, revoked, deleted — is

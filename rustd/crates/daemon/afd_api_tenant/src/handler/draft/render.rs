@@ -60,6 +60,7 @@ pub(super) fn card(value: types::DraftCard) -> wire::DraftCard {
 
 pub(crate) fn message(value: types::Message) -> wire::Message {
     wire::Message {
+        turn_id: value.turn_id.to_string(),
         save_requested: value.save_requested,
         save_error_code: value.save_error_code,
         sequence: value.sequence,
@@ -173,6 +174,8 @@ mod tests {
         let accepted = jiff::Timestamp::constant(1_760_000_000, 0);
 
         let rendered = message(types::Message {
+            turn_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012")
+                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
             save_requested: false,
             save_error_code: None,
             sequence: "7".to_owned(),

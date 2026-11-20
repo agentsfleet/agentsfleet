@@ -163,11 +163,13 @@ describe("guidanceFor", () => {
 });
 
 describe("outcomeFor", () => {
-  it("states in-progress, approval-blocked, failed, and reply-less completion", () => {
+  it("states in-progress, approval-blocked, failed, stopped, and reply-less completion", () => {
     expect(outcomeFor(row({ status: EVENT_STATUS.RECEIVED }))).toBe(OUTCOME.WORKING);
     expect(outcomeFor(row({ status: EVENT_STATUS.GATE_BLOCKED }))).toBe(OUTCOME.WAITING_APPROVAL);
     expect(outcomeFor(row({ status: EVENT_STATUS.FLEET_ERROR }))).toBe(OUTCOME.FAILED);
     expect(outcomeFor(row({ status: EVENT_STATUS.PROCESSED }))).toBe(OUTCOME.COMPLETED);
+    // A person's Stop: no answer, and no failure either.
+    expect(outcomeFor(row({ status: EVENT_STATUS.CANCELLED }))).toBe(OUTCOME.STOPPED);
   });
 
   it("should read a queued row as working when the message waits for a runner", () => {

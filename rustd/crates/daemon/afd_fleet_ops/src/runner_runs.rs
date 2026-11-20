@@ -8,7 +8,9 @@ use afd_api_wire::operator::{
     RunDestination, RunKind, RunOutcome, RunnerRunItem, RunnerRunsResponse,
 };
 use afd_db::Db;
-use afd_state::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_EXPIRED, RUN_STATUS_REPORTED};
+use afd_state::sql::{
+    RUN_STATUS_ACTIVE, RUN_STATUS_EXPIRED, RUN_STATUS_REPORTED, RUN_STATUS_STOPPED,
+};
 use jiff::Timestamp;
 
 use crate::error::{Result, cursor_invalid, query, runner_not_found};
@@ -193,6 +195,7 @@ fn outcome(run_status: &str, event_status: Option<&str>) -> RunOutcome {
     match run_status {
         RUN_STATUS_EXPIRED => RunOutcome::Expired,
         RUN_STATUS_ACTIVE => RunOutcome::Running,
+        RUN_STATUS_STOPPED => RunOutcome::Stopped,
         RUN_STATUS_REPORTED => match event_status {
             Some(PROCESSED) => RunOutcome::Succeeded,
             Some(FLEET_ERROR) => RunOutcome::Failed,
@@ -226,6 +229,7 @@ mod tests {
             RunOutcome::Failed
         );
         assert_eq!(outcome(RUN_STATUS_REPORTED, None), RunOutcome::Unknown);
+        assert_eq!(outcome(RUN_STATUS_STOPPED, None), RunOutcome::Stopped);
         assert_eq!(outcome("mystery", None), RunOutcome::Unknown);
     }
 
@@ -266,5 +270,7 @@ mod tests {
         assert_eq!(outcome("active", None), RunOutcome::Running);
         // pin test: literal is the contract
         assert_eq!(outcome("expired", None), RunOutcome::Expired);
+        // pin test: literal is the contract
+        assert_eq!(outcome("stopped", None), RunOutcome::Stopped);
     }
 }

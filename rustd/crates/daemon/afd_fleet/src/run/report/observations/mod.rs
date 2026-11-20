@@ -73,6 +73,7 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str, usa
         None => match request.outcome {
             Outcome::Processed => runner::processed(runner_id),
             Outcome::FleetError => runner::failed(runner_id, None),
+            Outcome::Stopped => runner::stopped(runner_id),
         },
     }
 

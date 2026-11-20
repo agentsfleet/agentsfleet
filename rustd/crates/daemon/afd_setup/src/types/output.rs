@@ -176,6 +176,8 @@ pub struct Created {
 /// One role in a message pair; assistant output shares the request sequence.
 #[derive(Debug, Clone, Serialize)]
 pub struct Message {
+    /// The turn both of a request's messages belong to; Stop names it.
+    pub turn_id: Uuid7,
     /// Whether this accepted turn authorizes a server-side save.
     pub save_requested: bool,
     /// Safe registry code when the completed turn's save needs recovery.
@@ -253,7 +255,9 @@ mod tests {
     )]
     fn the_message_response_carries_its_operation_id() {
         let operation = "01890a5d-ac96-774b-bcce-b302099a8063";
+        let turn = "01890a5d-ac96-774b-bcce-b302099a8064";
         let message = super::Message {
+            turn_id: super::Uuid7::parse(turn).expect("a UUIDv7 fixture"),
             save_requested: false,
             save_error_code: None,
             sequence: "1".to_owned(),
@@ -272,6 +276,7 @@ mod tests {
             written.get("operation_id"),
             Some(&serde_json::json!(operation))
         );
+        assert_eq!(written.get("turn_id"), Some(&serde_json::json!(turn)));
         assert_eq!(written.get("deletion_generation"), None);
     }
 }

@@ -123,12 +123,17 @@ impl Seat {
         )
     }
 
-    /// Queues one turn through the production create path.
-    pub(super) async fn queue(&self, drafts: &Drafts) -> Draft {
-        let access = Access {
+    /// The seat owner's access to their own drafts.
+    pub(super) fn access(&self) -> Access<'_> {
+        Access {
             workspace: &self.workspace,
             subject: self.owner.as_str(),
-        };
+        }
+    }
+
+    /// Queues one turn through the production create path.
+    pub(super) async fn queue(&self, drafts: &Drafts) -> Draft {
+        let access = self.access();
         let request = CreateDraft {
             save: false,
             source: Source::Definition {

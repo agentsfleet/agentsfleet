@@ -22,6 +22,7 @@ const CURSOR_RESOURCE: &str = "draft-messages-sequence-role";
 /// [`sql::message::PAGE`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct Stored {
+    turn_id: Uuid7,
     save_requested: bool,
     save_error_code: Option<String>,
     sequence: i64,
@@ -146,6 +147,7 @@ fn project(stored: Stored) -> Result<Message> {
     let user = stored.ordinal == 0;
     let state: MessageState = word(&stored.status)?;
     Ok(Message {
+        turn_id: stored.turn_id,
         save_requested: stored.save_requested,
         save_error_code: if user { None } else { stored.save_error_code },
         sequence: stored.sequence.to_string(),

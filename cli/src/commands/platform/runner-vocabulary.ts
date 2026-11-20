@@ -47,6 +47,7 @@ export enum RunOutcome {
   Succeeded = "succeeded",
   Failed = "failed",
   Expired = "expired",
+  Stopped = "stopped",
   Unknown = "unknown",
 }
 

@@ -3,7 +3,7 @@
 import { Effect } from "effect";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { CLI_ERROR_TAG, ValidationError, type NetworkError, type ServerError } from "../../errors/index.ts";
-import { DraftSchema, CreatedSchema, AcceptedSchema, MessagesSchema, type Draft, type MessagePage, type Review } from "./protocol.ts";
+import { DraftSchema, CreatedSchema, AcceptedSchema, MessagesSchema, MESSAGE_ROLE, MESSAGE_STATE, type Draft, type MessagePage, type Review } from "./protocol.ts";
 import { IF_MATCH, type Transport } from "./transport.ts";
 import { RetainedRequest } from "./retained-request.ts";
 
@@ -16,6 +16,10 @@ export type DraftSource =
   | { readonly kind: typeof DRAFT_SOURCE.plugin; readonly plugin_id: string; readonly revision_id: string }
   | { readonly kind: typeof DRAFT_SOURCE.definition; readonly definition: DefinitionDocument };
 export type Sent = { readonly draft_id: string; readonly sequence: string };
+/** The request states Stop still ends; any other has its answer. */
+const UNFINISHED: ReadonlySet<string> = new Set([MESSAGE_STATE.queued, MESSAGE_STATE.running]);
+/** The one status a turn's PATCH writes. */
+const STOPPED = {status: MESSAGE_STATE.cancelled} as const;
 type ReadError = ServerError | NetworkError | ValidationError;
 
 export class DraftSession {
@@ -114,11 +118,29 @@ export class DraftSession {
       : absent()));
   }
 
+  /** Stops every request this draft has not finished, each through its turn's PATCH. */
   stop(): Effect.Effect<void, ReadError> {
     return this.#guard(Effect.suspend<void, ReadError, never>(() => this.#id
-      ? this.#transport.empty({path: `${this.path}/cancellations`, method: HTTP_METHOD.post,
-        body: {through_sequence: this.#sequence}, retry: null})
+      ? this.#unfinished().pipe(Effect.flatMap((turns) =>
+        Effect.forEach(turns, (turn) => this.#stopTurn(turn), {discard: true})))
       : absent()));
+  }
+
+  /** The turns of every queued or running request, oldest first, across every page. */
+  #unfinished(cursor?: string, found: readonly string[] = []): Effect.Effect<readonly string[], ReadError> {
+    return this.page(cursor).pipe(Effect.flatMap((page) => {
+      const turns = [...found, ...page.items
+        .filter((message) => message.role === MESSAGE_ROLE.user && UNFINISHED.has(message.state))
+        .map((message) => message.turn_id)];
+      return page.next_cursor ? this.#unfinished(page.next_cursor, turns) : Effect.succeed(turns);
+    }));
+  }
+
+  /** A turn whose answer won the race answers 409; it is finished either way. */
+  #stopTurn(turn: string): Effect.Effect<void, ReadError> {
+    return this.#transport.empty({path: `${this.path}/turns/${turn}`, method: HTTP_METHOD.patch,
+      body: STOPPED, retry: null}).pipe(
+      Effect.catchIf((error) => error._tag === CLI_ERROR_TAG.server && error.status === 409, () => Effect.void));
   }
 
   remove(): Effect.Effect<void, ReadError> {

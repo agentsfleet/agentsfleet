@@ -9,6 +9,7 @@ const {credential} = vi.hoisted(() => ({credential: vi.fn()}));
 vi.mock("@/lib/auth/credential", () => ({credential}));
 import { proxySetup } from "@/lib/api/setup-proxy";
 import * as handlers from "@/app/live/v1/workspaces/[workspaceId]/[...setupPath]/route";
+import { PATCH as stopTurnRoute } from "@/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/[turnId]/route";
 
 const BASE = `/live/v1/workspaces/${WORKSPACE}`;
 const METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
@@ -60,6 +61,17 @@ describe("private setup proxy", () => {
     expect(result.status).toBe(200);
     const forwarded = upstream.mock.calls[0]?.[1];
     expect(forwarded.body).toBeUndefined(); expect(forwarded.headers.get("Content-Type")).toBeNull();
+  });
+  it("forwards a turn's Stop as the PATCH it is, to the fleet's turn", async () => {
+    upstream.mockResolvedValue(response({turn_id: REVISION_ID, status: "cancelled"}));
+    const body = JSON.stringify({status: "cancelled"});
+    const request = new Request(`${APP_ORIGIN}${BASE}/fleets/${FLEET_ID}/turns/${REVISION_ID}`, {method: METHOD.patch, body,
+      headers: {Origin: APP_ORIGIN, "Content-Type": "application/json"}});
+    const result = await stopTurnRoute(request, {params: Promise.resolve({workspaceId: WORKSPACE, fleetId: FLEET_ID, turnId: REVISION_ID})});
+    expect(result.status).toBe(200);
+    const [url, init] = upstream.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(new RegExp(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}/turns/${REVISION_ID}$`));
+    expect(init.method).toBe(METHOD.patch); expect(new TextDecoder().decode(init.body)).toBe(body);
   });
   it("returns private unauthorized state without forwarding when the session expired", async () => {
     credential.mockResolvedValue(null);
@@ -193,7 +205,7 @@ describe("setup route whitelist", () => {
     [["drafts", DRAFT_ID, "messages"], METHOD.get], [["drafts", DRAFT_ID, "messages"], METHOD.post],
     [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "turns", "stream"], METHOD.get],
     [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
-    [["fleets", FLEET_ID, "authoring-context"], METHOD.get],
+    [["fleets", FLEET_ID, "authoring-context"], METHOD.get], [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
@@ -219,6 +231,8 @@ describe("setup route whitelist", () => {
     [["fleets", FLEET_ID, "schedules", "invalid", "sync"], METHOD.post],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "other"], METHOD.post],
     [["drafts", DRAFT_ID, "messages"], METHOD.patch],
+    // Only Stop crosses this proxy for a turn: its read keeps the JSON read route.
+    [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "turns", "invalid"], METHOD.patch],
     [["plugins"], METHOD.patch], [["plugins", PLUGIN_ID], METHOD.patch],
     [["plugins", ""], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.patch],
     [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.post],

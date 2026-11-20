@@ -16,6 +16,7 @@ use af_core::id::Uuid7;
 use afd_api_wire::tail::TailFrame;
 use afd_db::Precondition;
 use afd_turns::Unheld;
+use afd_turns::view::stop::Stopped;
 use afd_turns::view::{
     CallAddress, Cursor, Filter, FleetSteer, FleetSteered, History, Result as EventResult, Steer,
     Steered, ToolCallRow, TurnDetailRow, TurnRow,
@@ -89,6 +90,20 @@ pub trait WorkspaceTurns: Send + Sync + std::fmt::Debug + 'static {
         turn_id: &Uuid7,
     ) -> impl Future<Output = EventResult<Option<TurnDetailRow>>> + Send;
 
+    /// Stops one turn of a fleet, inside this workspace: the turn and every
+    /// turn its live run serves are cancelled, and the run is marked. The runs
+    /// it marked are the caller's to announce once this answers.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer. A turn of another
+    /// workspace is `Ok(None)`, as an unknown turn is.
+    fn stop(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        turn_id: &Uuid7,
+    ) -> impl Future<Output = EventResult<Option<Stopped>>> + Send;
+
     /// One tool call's kept record, inside this workspace, fleet and event.
     ///
     /// # Errors
@@ -145,6 +160,15 @@ impl WorkspaceTurns for History {
         turn_id: &Uuid7,
     ) -> impl Future<Output = EventResult<Option<TurnDetailRow>>> + Send {
         Self::detail(self, workspace, fleet, turn_id)
+    }
+
+    fn stop(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        turn_id: &Uuid7,
+    ) -> impl Future<Output = EventResult<Option<Stopped>>> + Send {
+        Self::stop(self, workspace, fleet, turn_id)
     }
 
     fn tool_call(

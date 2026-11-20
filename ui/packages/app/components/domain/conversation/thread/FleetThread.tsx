@@ -29,6 +29,7 @@ import { useCurrentUser } from "@/lib/auth/client";
 import { ACTOR } from "@/lib/events/event-summary";
 import { useMessageDelivery, useOpenFleet } from "../delivery/useFleetMessageDelivery";
 import { useFleetSteerQueue } from "../delivery/useFleetSteerQueue";
+import { useTurnStop } from "../composer/useTurnStop";
 import { reportsOwnRun } from "../../activity/replies/fleetReplyMessage";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
@@ -89,6 +90,7 @@ export function FleetThread(props: FleetThreadProps) {
 
 function OwnedFleetThread(props: FleetThreadProps) {
   const {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount} = useThreadRuntime(props);
+  const turnStop = useTurnStop(props.workspaceId, props.fleetId, stream.events, stream.reconcileRows);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
   const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
@@ -109,7 +111,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 archived={props.archived}
                 eventsCount={stream.events.length + previewCount} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
-                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} /></FleetConversationLayout>
+                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} turnStop={turnStop} /></FleetConversationLayout>
               </FleetTaskProvider>
             </DashboardPanel>
           </SenderNamesProvider>

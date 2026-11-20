@@ -65,6 +65,15 @@ pub fn processed(runner_id: &str) {
     }
 }
 
+/// Records one runner's run a person stopped: a finished run, under its own
+/// outcome and no fault, because nothing failed.
+pub fn stopped(runner_id: &str) {
+    if let Some(producers) = installed() {
+        let label = producers.fleet.runners.admit(runner_id);
+        executed(producers, label, Outcome::Stopped, None);
+    }
+}
+
 /// Records that a runner was heard from, for the gauge that reports it.
 ///
 /// Ignored for a runner the table never admitted: a merged last-seen stamp

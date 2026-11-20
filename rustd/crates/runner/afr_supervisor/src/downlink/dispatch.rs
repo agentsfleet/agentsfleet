@@ -54,9 +54,12 @@ impl Dispatch<'_> {
                 let id = Uuid7::parse(id)?;
                 self.offer(frame, id)?;
             }
-            Down::Cancel { run_id, .. } => {
+            Down::Cancel { run_id, error_code } => {
                 let id = Uuid7::parse(&run_id)?;
-                if !self.running.cancel(&id) {
+                // `UZ-RUN-022` is the run's durable cancel mark: a person's Stop.
+                // A reconciliation's Cancel names another code and is no Stop.
+                let stopped = error_code == af_core::error_code::RUN_CANCELLED.as_str();
+                if !self.running.cancel(&id, stopped) {
                     if self.early_cancel.len() == RUNS_MAX && !self.early_cancel.contains(&id) {
                         return Ok(Progress::Reconnect);
                     }
@@ -233,6 +236,50 @@ mod tests {
         rig.shutdown.cancel();
         bounded("cancelled wire offer pool shutdown", pool).await?;
         assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn only_a_cancel_naming_the_cancel_mark_is_a_stop()
+    -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        use crate::test_support::RUN_ID;
+        let running = Arc::new(Running::default());
+        let requests = Requests::new();
+        let (offers, _offered) = mpsc::channel(RUNS_MAX);
+        let (assignments, _) = watch::channel(None);
+        let stop = CancellationToken::new();
+        let mut dispatch = Dispatch {
+            requests: &requests,
+            running: &running,
+            offers: &offers,
+            offer_budget: &Budget::default(),
+            assignments: &assignments,
+            stop: &stop,
+            early_cancel: HashSet::new(),
+        };
+        let run = Uuid7::parse(RUN_ID)?;
+        for (code, stopped) in [
+            (af_core::error_code::RUN_LOST, false),
+            (af_core::error_code::RUN_CANCELLED, true),
+        ] {
+            let registration = running.offer(run.clone(), false)?;
+            let message: Down<'_> = Down::Cancel {
+                run_id: RUN_ID.into(),
+                error_code: code.as_str().into(),
+            };
+            let kind = message.stream_kind();
+            let frame = encode(
+                &message,
+                &Budget::default(),
+                kind,
+                &stop,
+                Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT,
+            )
+            .await?;
+            assert!(matches!(dispatch.frame(kind, frame)?, Progress::Continue));
+            assert!(registration.stop.is_cancelled(), "{code}");
+            assert_eq!(running.stopped(&run), stopped, "{code}");
+        }
         Ok(())
     }
 

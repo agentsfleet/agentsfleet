@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use af_core::clock::Clock;
-use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_RENEW_BODY_MALFORMED};
+use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_CANCELLED, RUN_RENEW_BODY_MALFORMED};
 use af_core::id::Uuid7;
 use af_core::timing::MAX_RUNTIME;
 use af_wire::report::{FailureClass, RenewRequest};
@@ -129,6 +129,11 @@ impl<'a> Renewal<'a> {
             let (error_code, message) = (&code, format_args!("the daemon ended the run"));
             tracing::warn!(message, error_code, run_id, event);
         };
+        // A renewal refused for the run's cancel mark is the Stop whose hint
+        // was lost: the run ends as the Cancel would have ended it.
+        if refusal.refusal_code() == Some(RUN_CANCELLED) {
+            self.plane.stream.running.cancel(self.run_id, true);
+        }
         if refusal.refusal_code() == Some(RUN_BUDGET_EXCEEDED) {
             FailureClass::BudgetBreach
         } else {

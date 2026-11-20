@@ -142,6 +142,17 @@ impl Operator {
         Ok(())
     }
 
+    /// Stop on `turn` of the scenario's fleet, addressed under `workspace`,
+    /// answering the status and body as they came back.
+    pub(super) async fn stop_turn(
+        &self,
+        scene: &Scenario,
+        workspace: &af_core::id::Uuid7,
+        turn: &af_core::id::Uuid7,
+    ) -> TestResult<(reqwest::StatusCode, Value)> {
+        stop_turn(&self.http, self.token.expose(), scene, workspace, turn).await
+    }
+
     async fn answer(response: reqwest::Response) -> TestResult<Value> {
         let status = response.status();
         let body: Value = serde_json::from_slice(&response.bytes().await?)?;
@@ -163,4 +174,28 @@ impl Operator {
         tokio::time::timeout(Duration::from_secs(5), &mut self.owner).await???;
         Ok(())
     }
+}
+
+/// `PATCH …/fleets/{fleet_id}/turns/{turn_id}` with `{"status":"cancelled"}`,
+/// under `token`, answering the status and body as they came back.
+pub(super) async fn stop_turn(
+    http: &reqwest::Client,
+    token: &str,
+    scene: &Scenario,
+    workspace: &af_core::id::Uuid7,
+    turn: &af_core::id::Uuid7,
+) -> TestResult<(reqwest::StatusCode, Value)> {
+    let response = http
+        .patch(format!(
+            "{}/v1/workspaces/{workspace}/fleets/{}/turns/{turn}",
+            scene.base, scene.fleet
+        ))
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(serde_json::to_vec(&json!({"status":"cancelled"}))?)
+        .send()
+        .await?;
+    let status = response.status();
+    let body: Value = serde_json::from_slice(&response.bytes().await?)?;
+    Ok((status, body))
 }

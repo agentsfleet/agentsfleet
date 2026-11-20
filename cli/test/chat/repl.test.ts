@@ -6,7 +6,7 @@ import { DraftSession, DRAFT_SOURCE } from "../../src/commands/chat/session.ts";
 import { SetupSession } from "../../src/commands/chat/setup-session.ts";
 import { CLI_ERROR_TAG } from "../../src/errors/index.ts";
 import { outputDouble } from "../helpers-output-double.ts";
-import { DRAFT, DRAFT_ID, MODEL, PRIVATE_TEXT, REVIEW, WORKSPACE, problem, withApi } from "./fixture.ts";
+import { DRAFT, DRAFT_ID, EMPTY_PAGE, MODEL, PRIVATE_TEXT, REVIEW, WORKSPACE, problem, withApi } from "./fixture.ts";
 
 // pin test: literal is the contract — the action list a person reads at the prompt.
 const HELP = "/review [instance-name] · /save · /run <message> · /publish <label> · /apply · /model <ref> · /stop · /retry · /delete · /quit. Ctrl+C stops the reply being followed.";
@@ -61,6 +61,7 @@ test("should route each terminal action to its own draft request and pin the nex
   await withApi(async (request) => {
     calls.push(await call(request));
     if (request.method === "POST" || request.method === "DELETE") return new Response(null, {status: 204});
+    if (new URL(request.url).pathname.endsWith("/messages")) return Response.json(EMPTY_PAGE);
     return Response.json(REVIEWED_DRAFT);
   }, async (transport) => {
     const actions = new ChatActions(new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}, DRAFT_ID),
@@ -72,7 +73,7 @@ test("should route each terminal action to its own draft request and pin the nex
     {method: "GET", path: DRAFT_PATH, tag: null, body: null},
     {method: "PATCH", path: DRAFT_PATH, tag: DRAFT.etag, body: {instance_name: "argo-two"}},
     {method: "GET", path: DRAFT_PATH, tag: null, body: null},
-    {method: "POST", path: `${DRAFT_PATH}/cancellations`, tag: null, body: {through_sequence: "0"}},
+    {method: "GET", path: `${DRAFT_PATH}/messages`, tag: null, body: null},
     {method: "GET", path: DRAFT_PATH, tag: null, body: null},
     {method: "PATCH", path: DRAFT_PATH, tag: DRAFT.etag, body: {authoring_model_ref: "owner/other"}},
     {method: "DELETE", path: DRAFT_PATH, tag: null, body: null},

@@ -130,6 +130,9 @@ pub struct DraftCard {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Message {
+    /// The turn this message belongs to, the user's request and its answer
+    /// alike. Stop it with `PATCH …/drafts/{draft_id}/turns/{turn_id}`.
+    pub turn_id: String,
     /// True when this accepted message requests saving after successful completion.
     pub save_requested: bool,
     /// A stable error code when the setup could not be saved. The conversation remains available.

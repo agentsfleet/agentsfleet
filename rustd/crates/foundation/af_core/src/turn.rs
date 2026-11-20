@@ -61,6 +61,14 @@ pub mod status {
     /// reads skip it; the thread read lists a waiting steer under it, so a
     /// screen opened while a message waits shows it waiting.
     pub const QUEUED: &str = "queued";
+
+    /// The status Stop writes: a person ended the turn before it finished.
+    ///
+    /// Terminal and settled, on a fleet's turn and a setup draft's alike, so
+    /// no claim takes it again. A report for the run that served it finds it
+    /// cancelled and leaves it so: the turn gets no answer (`commit_report.sql`
+    /// closes only a [`RECEIVED`] turn).
+    pub const CANCELLED: &str = "cancelled";
 }
 
 /// Why the daemon ended an event itself, as `thread.turns.failure_reason`: a

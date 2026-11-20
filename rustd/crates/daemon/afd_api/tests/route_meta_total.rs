@@ -106,6 +106,10 @@ const TENANT_RUNNER_ADDITIONS: usize = 5;
 /// fleet's events, through the run it runs.
 const FLEET_TO_FLEET_ADDITIONS: usize = 3;
 
+/// Stop on a draft's turn (M253 §8). A fleet turn's Stop is a `PATCH` on the
+/// turn route it already reads, so it adds a verb and no route.
+const STOP_ADDITIONS: usize = 1;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -118,6 +122,7 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + RUNNER_STREAM_ADDITIONS
     + TENANT_RUNNER_ADDITIONS
     + FLEET_TO_FLEET_ADDITIONS
+    + STOP_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
     - RETIRED_CATALOGUE_ROUTES;

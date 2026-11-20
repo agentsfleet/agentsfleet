@@ -23,8 +23,8 @@ impl Run<'_> {
         self.decisions
             .settle(&self.lessee.plane, &self.lessee.halt, &self.ids.run)
             .await?;
-        let (memory, trace) = match ending {
-            Ending::Ran { output, .. } => {
+        let (memory, trace) = match ending.output_mut() {
+            Some(output) => {
                 self.post_records(&mem::take(&mut output.records)).await;
                 let memory = CapturedMemory::from(mem::take(&mut output.memory));
                 let trace = output
@@ -38,7 +38,7 @@ impl Run<'_> {
                     .transpose()?;
                 (memory, trace)
             }
-            Ending::Failed { .. } => (CapturedMemory::default(), None),
+            None => (CapturedMemory::default(), None),
         };
         renew::flush(&self.lessee.plane, &self.ids.run, &self.meter).await;
         let mut request = report(

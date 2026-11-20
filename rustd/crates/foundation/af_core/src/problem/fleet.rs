@@ -288,6 +288,13 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::TURN_FINISHED,
+        status: 409,
+        title: "Turn already finished",
+        hint: "This turn finished before Stop reached it, so its answer or failure stands. `current_state` names its status. Read the turn for its answer.",
+        user_message: Some("This turn already finished. Its answer is in the conversation."),
+    },
+    Problem {
         code: error_code::AGENTSFLEET_OPERATION_CONFLICT,
         status: 409,
         title: "Operation already used",

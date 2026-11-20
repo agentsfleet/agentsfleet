@@ -44,7 +44,7 @@ pub enum FleetRoute {
     Turns,
     /// The fleet's live turn stream.
     TurnsStream,
-    /// One turn.
+    /// One turn: read it, or stop it.
     Turn,
     /// One tool call of a turn, in full.
     Item,
@@ -95,11 +95,10 @@ impl FleetRoute {
             | Self::Tasks
             | Self::Turns
             | Self::TurnsStream
-            | Self::Turn
             | Self::Item
             | Self::Memories
             | Self::Grants => &[Verb::Get],
-            Self::Task => &[Verb::Get, Verb::Patch],
+            Self::Task | Self::Turn => &[Verb::Get, Verb::Patch],
             Self::Memory | Self::Grant => &[Verb::Delete],
             Self::ScheduleSync | Self::Revisions => &[Verb::Post],
             Self::MemoryAccess => &[Verb::Patch],
@@ -190,15 +189,14 @@ impl FleetRoute {
             Self::Revisions | Self::Memory | Self::MemoryAccess | Self::AuthoringContext => {
                 Scopes::Always(FLEET_WRITE)
             }
-            Self::Messages | Self::Task => Scopes::rw(FLEET_READ, FLEET_WRITE),
+            // Stopping a turn is steering the fleet, so it takes the write
+            // scope its messages take.
+            Self::Messages | Self::Task | Self::Turn => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Schedules | Self::Schedule => Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             Self::ScheduleSync => Scopes::Always(SCHEDULE_WRITE),
-            Self::Tasks
-            | Self::Turns
-            | Self::TurnsStream
-            | Self::Turn
-            | Self::Item
-            | Self::Memories => Scopes::Always(FLEET_READ),
+            Self::Tasks | Self::Turns | Self::TurnsStream | Self::Item | Self::Memories => {
+                Scopes::Always(FLEET_READ)
+            }
             Self::Grants => Scopes::Always(GRANT_READ),
             Self::Grant => Scopes::Always(GRANT_WRITE),
         }

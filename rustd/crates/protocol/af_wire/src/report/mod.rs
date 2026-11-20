@@ -17,6 +17,12 @@ pub enum Outcome {
     Processed,
     /// The run failed.
     FleetError,
+    /// A person stopped the run's turn, and the runner ended the run early.
+    ///
+    /// Reported only after the daemon said so: a `Down::Cancel` naming
+    /// `UZ-RUN-022`, or a renewal refused with it. Usage is billed and the
+    /// run's items stay, but the turns it served get no answer.
+    Stopped,
 }
 
 impl Outcome {
@@ -31,6 +37,7 @@ impl Outcome {
         match self {
             Self::Processed => "processed",
             Self::FleetError => "fleet_error",
+            Self::Stopped => "stopped",
         }
     }
 }

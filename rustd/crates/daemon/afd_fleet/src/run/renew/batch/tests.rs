@@ -69,6 +69,18 @@ fn each_failed_check_answers_as_the_per_run_path_would() {
 }
 
 #[test]
+fn a_stopped_run_whose_turn_settled_is_cancelled_not_lost() {
+    let mut row = passing();
+    row.cancelled = Some(true);
+    row.admitted = Some(false);
+    assert_eq!(
+        row.verdict(),
+        Verdict::Cancelled,
+        "Stop settles the turn it marks; the runner must hear the mark"
+    );
+}
+
+#[test]
 fn a_cancelled_run_that_lost_its_fence_is_still_cancelled() {
     let mut row = passing();
     row.cancelled = Some(true);

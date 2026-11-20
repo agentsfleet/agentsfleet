@@ -20,7 +20,7 @@
 -- whether this runner already settled the run or lost its fence.
 --
 -- $1 run · $2 runner · $3 milliseconds per second · $4 active status ·
--- $5 reported status · $6 succeeded · $7 the run work type ·
+-- $5 the status the run settles in, `reported` or `stopped` · $6 succeeded · $7 the run work type ·
 -- $8 the model line kind · $9 run nanos per second ·
 -- $10 the runtime line's price · $11 posture · $12 provider · $13 model ·
 -- $14 the catalogue version the lines were priced at ·
@@ -38,7 +38,8 @@
 -- $48 the longest runtime one line may claim · $49 the runtime line kind ·
 -- $50 the largest count a bigint holds ·
 -- $51 the notice owed in the answer's place when a failed run wrote none ·
--- $52-$53 the opening's credential proof and connection · $54 renewable states
+-- $52-$53 the opening's credential proof and connection · $54 renewable states ·
+-- $55 the status Stop writes
 WITH scope AS MATERIALIZED (
   SELECT f.id
   FROM fleet.fleets f
@@ -84,10 +85,12 @@ WITH scope AS MATERIALIZED (
   WHERE p.fencing_token >= p.live_fence
     AND p.posture = $11 AND p.provider = $12 AND p.model = $13
     AND ($14::bigint IS NULL OR (SELECT resource_version FROM catalogue) = $14::bigint)
+    -- A turn Stop settled as cancelled still lets its run settle, so the run is
+    -- billed; the `settled` step below then finds no open turn and answers none.
     AND EXISTS (
         SELECT 1 FROM thread.turns a
         WHERE a.id = p.turn_id AND a.thread_id = p.fleet_id
-          AND a.run_fence = p.fencing_token AND a.settled_at IS NULL)
+          AND a.run_fence = p.fencing_token AND (a.settled_at IS NULL OR a.status = $55))
 ), measured AS MATERIALIZED (
   -- Capped at the longest runtime one line may claim ($48), which is where the
   -- rater caps it too, so the charge here is the one the per-run path makes.
