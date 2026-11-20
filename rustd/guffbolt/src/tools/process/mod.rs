@@ -10,9 +10,8 @@
 //! (`sessions`). `git` runs the environment's git.
 
 use crate::tool::ToolOutput;
-use crate::tools::Context;
 use crate::tools::code;
-use crate::tools::env::{Env, EnvError, Spawn};
+use crate::tools::env::{EnvError, Spawn};
 
 pub mod exec_session;
 pub mod git;
@@ -48,8 +47,6 @@ pub const COMMAND_ENV: [(&str, &str); 9] = [
     ("GIT_PAGER", NO_PAGER),
     ("GH_PAGER", NO_PAGER),
 ];
-/// What a call that needs the environment reads back when it was given none.
-const NO_ENV: &str = "this call has no environment to run in";
 
 /// `script` as the shell runs it: `sh -c script`, at the root, with
 /// [`COMMAND_ENV`].
@@ -66,13 +63,6 @@ fn with_environment(spawn: Spawn) -> Spawn {
     COMMAND_ENV
         .into_iter()
         .fold(spawn, |spawn, (key, value)| spawn.env(key, value))
-}
-
-/// The call's environment, or what a call without one reads back.
-pub(super) fn env_of<'a>(context: &Context<'a>) -> Result<&'a dyn Env, ToolOutput> {
-    context
-        .env
-        .ok_or_else(|| ToolOutput::failed(code::SANDBOX_UNAVAILABLE, NO_ENV))
 }
 
 /// What a call reads back when the environment failed it: it could not be

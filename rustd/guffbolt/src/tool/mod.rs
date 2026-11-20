@@ -15,6 +15,8 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::agents::Order;
+
 /// What a call to a tool the loop does not hold reads, after its name.
 const NOT_OFFERED: &str = "is not one of this run's tools";
 /// What a call from a step cut at the output limit reads, after its name.
@@ -40,15 +42,13 @@ impl ErrorCode {
     pub const OUTPUT_LIMIT_REACHED: Self = Self("output_limit_reached");
     /// What the call waited on ended before it answered.
     pub const INTERRUPTED: Self = Self("interrupted");
-    /// The run already has as many children running, or started, as its
-    /// caps allow, or its children are paused.
+    /// The run already has as many children open, or started, as its caps
+    /// allow, or its children are paused.
     pub const CHILD_CAP_REACHED: Self = Self("child_cap_reached");
     /// A child asked for a tool its parent does not hold.
     pub const CHILD_TOOL_NOT_HELD: Self = Self("child_tool_not_held");
     /// No child of the run has the id named.
     pub const CHILD_NOT_FOUND: Self = Self("child_not_found");
-    /// The child ended on a failure of its own, which the output carries.
-    pub const CHILD_FAILED: Self = Self("child_failed");
     /// Another call of the same step already asked the person a question.
     pub const QUESTION_PENDING: Self = Self("question_pending");
 
@@ -124,6 +124,9 @@ pub struct ToolOutput {
     /// [`crate::Ending::Waiting`] once the step's other calls ran, and the
     /// call's result is the answer the run is resumed with.
     pub asks: Option<String>,
+    /// What a subagent call asks of the loop, which runs it in the calling
+    /// loop's place before the call ends.
+    pub(crate) order: Option<Box<Order>>,
 }
 
 impl ToolOutput {
@@ -136,6 +139,7 @@ impl ToolOutput {
             error_code: None,
             image: None,
             asks: None,
+            order: None,
         }
     }
 
@@ -150,6 +154,7 @@ impl ToolOutput {
             error_code: Some(code),
             image: None,
             asks: None,
+            order: None,
         }
     }
 
@@ -164,6 +169,17 @@ impl ToolOutput {
             error_code: None,
             image: None,
             asks: Some(question),
+            order: None,
+        }
+    }
+
+    /// A subagent call's answer: `order`, which the loop runs in the calling
+    /// loop's place before the call ends, and whose answer the model reads.
+    #[must_use]
+    pub fn ordering(order: Order) -> Self {
+        Self {
+            order: Some(Box::new(order)),
+            ..Self::succeeded(String::new())
         }
     }
 

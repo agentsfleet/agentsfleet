@@ -1,12 +1,14 @@
-//! Every child of one run: its id, state, inbox and stop, and the caps.
+//! Every child of one run: its place, status, inbox, stops and what it keeps
+//! between turns, and the caps.
 //!
-//! The registry is data behind one short lock; no child's future lives here,
-//! so any loop of the run reaches it while the root polls the futures. A loop
-//! asks for a child by reserving it here, which queues the start for the
-//! root; the child's state moves once, from running to its end, and a wait
+//! The registry is data behind one short lock; no turn's future lives here,
+//! so any loop of the run reaches it while the root polls the turns. A loop
+//! asks for a turn by queueing the child's id for the root's poller; a
+//! child's status moves from running to idle as each turn ends, and a wait
 //! watches it.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -15,97 +17,181 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use super::pause::Ask;
-use super::start::{Requests, Start};
-use super::{Caps, Census, Counted, Kind, Listed, Status};
+use super::{Caps, Census, Counted, Kind, Me, Status};
+use crate::drive::DriveState;
+use crate::transcript::Message;
 
 /// One child, as the book keeps it.
 #[derive(Debug)]
-struct Child {
-    status: watch::Sender<Status>,
-    input: mpsc::UnboundedSender<String>,
-    stop: CancellationToken,
-    depth: u8,
-    calls: u64,
+pub(super) struct Child {
+    /// The loop that started it: 0 for the root.
+    pub(super) parent: u64,
+    pub(super) depth: u8,
+    /// The tools it holds, by name: its parent's, or fewer.
+    pub(super) tools: Vec<String>,
+    pub(super) calls: u64,
+    pub(super) status: watch::Sender<Status>,
+    /// What it reads on its next step, oldest first.
+    pub(super) inbox: Vec<String>,
+    /// Cancelled when it is closed or the loop ends; its turns' stops and
+    /// its children's lives descend from it.
+    pub(super) life: CancellationToken,
+    /// The running turn's stop, cancelled to interrupt it.
+    pub(super) turn: Option<CancellationToken>,
+    /// Its transcript as its last turn left it.
+    pub(super) transcript: Vec<Message>,
+    /// Its loop's progress as its last turn left it.
+    pub(super) state: DriveState,
+    /// Whether it closes once its running turn ends.
+    pub(super) closing: bool,
 }
 
 /// The children, and the run's counts against its caps.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct Book {
-    next: u64,
-    running: usize,
-    started: u64,
-    children: BTreeMap<u64, Child>,
+    /// The id the last child took.
+    pub(super) next: u64,
+    /// How many children are open: running or idle.
+    pub(super) open: usize,
+    /// How many children the run started.
+    pub(super) started: u64,
+    /// How many turns run, or wait to start.
+    pub(super) running: usize,
+    pub(super) children: BTreeMap<u64, Child>,
 }
 
-/// Every child of one run, `S` being the tools a child holds.
-#[derive(Debug)]
-pub struct Agents<S> {
+/// What every loop of a run shares of its children.
+pub(super) struct Shared {
     book: Mutex<Book>,
     pub(super) caps: Caps,
-    /// Where a loop queues each child it starts, for the root.
-    pub(super) starts: mpsc::UnboundedSender<Start<S>>,
+    /// Where a loop queues a child's turn, for the root's poller.
+    turns: mpsc::UnboundedSender<u64>,
     /// Where a loop asks the root's poller for a pause.
     pub(super) pauses: mpsc::UnboundedSender<Ask>,
-    /// Set while a [`Pause`] is held; a start reads it under the book's lock.
+    /// Set while a [`super::Pause`] is held; a start reads it under the
+    /// book's lock.
     pub(super) gate: Arc<AtomicBool>,
+    /// Every child's life descends from it, so cancelling it ends them all.
+    pub(super) root: CancellationToken,
 }
 
-impl<S> Agents<S> {
-    /// No child yet, under `caps`, and where the root reads each one to
+/// Every child of one run, behind a handle each of the seven tools holds a
+/// copy of.
+#[derive(Clone)]
+pub struct Agents(pub(super) Arc<Shared>);
+
+impl fmt::Debug for Agents {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let book = self.book();
+        f.debug_struct("Agents")
+            .field("caps", &self.0.caps)
+            .field("open", &book.open)
+            .field("running", &book.running)
+            .field("started", &book.started)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What the root's [`super::Children`] reads: each turn asked for, and each
+/// ask for a pause.
+#[derive(Debug)]
+pub struct Requests {
+    pub(super) turns: mpsc::UnboundedReceiver<u64>,
+    pub(super) pauses: mpsc::UnboundedReceiver<Ask>,
+}
+
+impl Requests {
+    /// Whether no turn waits to start.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.turns.is_empty()
+    }
+}
+
+/// One child, as `list_agents` reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Listed {
+    /// Its id.
+    pub agent_id: u64,
+    /// Where it is.
+    pub status: Kind,
+    /// How many loops it is inside.
+    pub depth: u8,
+    /// How many calls it made that answered.
+    pub calls: u64,
+}
+
+/// What a turn starts from, as the poller reads it.
+#[derive(Debug)]
+pub(super) struct Turn {
+    pub(super) depth: u8,
+    pub(super) stop: CancellationToken,
+    pub(super) tools: Vec<String>,
+    pub(super) transcript: Vec<Message>,
+    pub(super) state: DriveState,
+}
+
+impl Agents {
+    /// No child yet, under `caps`, and where the root reads each turn to
     /// start.
     #[must_use]
-    pub fn new(caps: Caps) -> (Self, Requests<S>) {
-        Self::restored(caps, Census::default())
+    pub fn new(caps: Caps) -> (Self, Requests) {
+        Self::restored(caps, &DriveState::default())
     }
 
-    /// The children `census` counted in an earlier run, under `caps`, and
-    /// where the root reads each new one to start.
+    /// The children `state` saved, under `caps`, and where the root reads
+    /// each turn to start.
     ///
-    /// Every child `census` holds had ended, as one read under a [`Pause`]
-    /// has: none of them runs again or takes input, and the ids and counts
-    /// go on from where it left them.
+    /// Every child `state` holds was idle or closed when it was saved, as
+    /// one saved under a [`super::Pause`] is: each comes back as it was,
+    /// its transcript with it, and the ids and counts go on from where they
+    /// were. A child saved running, which no pause allows, comes back
+    /// interrupted.
     #[must_use]
-    pub fn restored(caps: Caps, census: Census) -> (Self, Requests<S>) {
+    pub fn restored(caps: Caps, state: &DriveState) -> (Self, Requests) {
+        let census = state.children();
+        let root = CancellationToken::new();
         let mut book = Book {
             next: census.next,
-            running: 0,
             started: census.started,
-            children: BTreeMap::new(),
+            ..Book::default()
         };
-        for counted in census.children {
-            let (status, _watched) = watch::channel(counted.status);
-            let (input, inbox) = mpsc::unbounded_channel();
-            drop(inbox);
-            let stop = CancellationToken::new();
-            stop.cancel();
-            let child = Child {
-                status,
-                input,
-                stop,
-                depth: counted.depth,
-                calls: counted.calls,
+        for counted in &census.children {
+            let life = book
+                .children
+                .get(&counted.parent)
+                .map_or(&root, |parent| &parent.life)
+                .child_token();
+            let status = match &counted.status {
+                Status::Running => Status::Interrupted,
+                other => other.clone(),
             };
-            book.children.insert(counted.id, child);
+            if status != Status::Closed {
+                book.open += 1;
+            }
+            book.children
+                .insert(counted.id, child_of(counted, status, life));
         }
-        let (starts, start_requests) = mpsc::unbounded_channel();
+        let (turns, turn_requests) = mpsc::unbounded_channel();
         let (pauses, pause_requests) = mpsc::unbounded_channel();
-        let agents = Self {
+        let shared = Shared {
             book: Mutex::new(book),
             caps,
-            starts,
+            turns,
             pauses,
             gate: Arc::new(AtomicBool::new(false)),
+            root,
         };
         let requests = Requests {
-            starts: start_requests,
+            turns: turn_requests,
             pauses: pause_requests,
         };
-        (agents, requests)
+        (Self(Arc::new(shared)), requests)
     }
 
-    /// Waits for child `id` to end, or for `timeout` to pass, and answers
-    /// where it is; `None` for an id no child has. With no timeout it waits
-    /// as long as the caller does.
+    /// Waits for child `id`'s turn to end, or for `timeout` to pass, and
+    /// answers where it is; `None` for an id no child has. With no timeout
+    /// it waits as long as the caller does.
     pub async fn wait(&self, id: u64, timeout: Option<Duration>) -> Option<Status> {
         let mut watched = self.book().children.get(&id)?.status.subscribe();
         let ended = match timeout {
@@ -122,19 +208,6 @@ impl<S> Agents<S> {
         Some(ended.unwrap_or_else(|| watched.borrow().clone()))
     }
 
-    /// Queues `message` for child `id`'s next step; whether it was taken,
-    /// which a child that has ended never does. `None` for an id no child
-    /// has.
-    #[must_use]
-    pub fn send(&self, id: u64, message: String) -> Option<bool> {
-        let book = self.book();
-        let child = book.children.get(&id)?;
-        let running = !child.status.borrow().is_final();
-        let taken = running && child.input.send(message).is_ok();
-        drop(book);
-        Some(taken)
-    }
-
     /// Every child, oldest first.
     #[must_use]
     pub fn list(&self) -> Vec<Listed> {
@@ -142,7 +215,7 @@ impl<S> Agents<S> {
             .children
             .iter()
             .map(|(id, child)| Listed {
-                child_id: *id,
+                agent_id: *id,
                 status: child.status.borrow().kind(),
                 depth: child.depth,
                 calls: child.calls,
@@ -150,157 +223,303 @@ impl<S> Agents<S> {
             .collect()
     }
 
-    /// Ends child `id` where it is, and answers its status after; one that
-    /// had ended keeps the end it had. `None` for an id no child has.
+    /// Queues `message` for child `id`: a running child reads it on its next
+    /// step, an idle one with its next turn. Whether it was taken, which a
+    /// closed child never does; `None` for an id no child has.
+    #[must_use]
+    pub fn send(&self, id: u64, message: String) -> Option<bool> {
+        let mut book = self.book();
+        let child = book.children.get_mut(&id)?;
+        let open = *child.status.borrow() != Status::Closed;
+        if open {
+            child.inbox.push(message);
+        }
+        drop(book);
+        Some(open)
+    }
+
+    /// Hands child `id` `message` as another task: an idle child runs a turn
+    /// over its transcript, a running one reads it on its next step. Whether
+    /// it was taken, which a closed child, or an idle one while the children
+    /// are paused, never does; `None` for an id no child has.
+    #[must_use]
+    pub fn follow_up(&self, id: u64, message: String) -> Option<bool> {
+        let mut book = self.book();
+        let paused = self.paused();
+        let child = book.children.get_mut(&id)?;
+        let status = child.status.borrow().clone();
+        let taken = match status {
+            Status::Closed => false,
+            Status::Running => {
+                child.inbox.push(message);
+                true
+            }
+            Status::Done(_) | Status::Failed(_) | Status::Interrupted if paused => false,
+            Status::Done(_) | Status::Failed(_) | Status::Interrupted => {
+                child.inbox.push(message);
+                child.status.send_replace(Status::Running);
+                book.running += 1;
+                // Queued under the same lock, so a pause granted after it
+                // sees the turn waiting.
+                let _after_the_run = self.0.turns.send(id);
+                true
+            }
+        };
+        drop(book);
+        Some(taken)
+    }
+
+    /// Ends child `id`'s running turn where it is, and answers the status it
+    /// had; the child stays open for another task. `None` for an id no child
+    /// has.
     #[must_use]
     pub fn interrupt(&self, id: u64) -> Option<Kind> {
+        let book = self.book();
+        let child = book.children.get(&id)?;
+        let before = child.status.borrow().kind();
+        if let Some(turn) = &child.turn {
+            turn.cancel();
+        }
+        drop(book);
+        Some(before)
+    }
+
+    /// Closes child `id` and every open child it started, and answers the
+    /// status it had. An idle child closes here; a running one closes as
+    /// its turn, stopped here, ends. `None` for an id no child has.
+    #[must_use]
+    pub fn close(&self, id: u64) -> Option<Kind> {
         let mut book = self.book();
-        book.children
-            .contains_key(&id)
-            .then(|| book.end(id, Status::Interrupted))
+        let before = book.children.get(&id)?.status.borrow().kind();
+        let mut closing = vec![id];
+        while let Some(next) = closing.pop() {
+            closing.extend(
+                book.children
+                    .iter()
+                    .filter(|(_, child)| child.parent == next)
+                    .map(|(id, _)| *id),
+            );
+            book.close(next);
+        }
+        drop(book);
+        Some(before)
     }
 
-    /// Records that child `id` ended as `status`, and answers the status in
-    /// force after: the one given, or the end the child already had.
-    pub(super) fn ended(&self, id: u64, status: Status) -> Kind {
-        self.book().end(id, status)
+    /// The caps this run's children are held to.
+    #[must_use]
+    pub fn caps(&self) -> Caps {
+        self.0.caps
     }
 
-    /// How many calls child `id` made that answered.
-    pub(super) fn calls(&self, id: u64) -> u64 {
-        self.book().children.get(&id).map_or(0, |child| child.calls)
+    /// Reserves a child of `parent` at its next depth, holding `tools`,
+    /// opening with `opening` and given `message` as its first task, and
+    /// queues its first turn.
+    ///
+    /// # Errors
+    /// As many children are open, or were started, as the run's caps allow,
+    /// or the children are paused.
+    pub(super) fn reserve(
+        &self,
+        parent: Me,
+        tools: Vec<String>,
+        opening: Vec<Message>,
+        message: String,
+    ) -> Result<u64, super::Refused> {
+        let caps = self.0.caps;
+        let mut book = self.book();
+        if self.paused() || book.open >= caps.open || book.started >= caps.started {
+            return Err(super::Refused::Capped);
+        }
+        let life = book
+            .children
+            .get(&parent.id)
+            .map_or(&self.0.root, |parent| &parent.life)
+            .child_token();
+        book.next += 1;
+        book.started += 1;
+        book.open += 1;
+        book.running += 1;
+        let id = book.next;
+        let (status, _watched) = watch::channel(Status::Running);
+        let child = Child {
+            parent: parent.id,
+            depth: parent.depth.saturating_add(1),
+            tools,
+            calls: 0,
+            status,
+            inbox: vec![message],
+            life,
+            turn: None,
+            transcript: opening,
+            state: DriveState::default(),
+            closing: false,
+        };
+        book.children.insert(id, child);
+        // Queued under the same lock, so a pause granted after it sees the
+        // turn waiting. The root holds the receiver for as long as any loop
+        // of the run runs; a turn queued after the run ended has no loop left
+        // to serve it and goes with the run.
+        let _after_the_run = self.0.turns.send(id);
+        drop(book);
+        Ok(id)
     }
 
-    /// What child `id` keeps of its place: the book its calls are counted
-    /// in, and `inbox`.
-    pub(super) fn tether(&self, id: u64, inbox: mpsc::UnboundedReceiver<String>) -> Tether<'_> {
-        Tether {
-            book: &self.book,
-            id,
-            inbox,
+    /// The turn child `id` was queued for, as it starts: a fresh stop under
+    /// its life, and a copy of what it keeps, which stays in the book until
+    /// the turn ends. `None` when there is no such turn, or when the child
+    /// was closed, or the loop ended, before it started; that turn ends
+    /// here.
+    pub(super) fn begin(&self, id: u64) -> Option<Turn> {
+        let mut book = self.book();
+        let child = book.children.get_mut(&id)?;
+        if *child.status.borrow() != Status::Running || child.turn.is_some() {
+            return None;
+        }
+        if child.life.is_cancelled() {
+            drop(book);
+            self.ended(id, Status::Interrupted, None);
+            return None;
+        }
+        let stop = child.life.child_token();
+        child.turn = Some(stop.clone());
+        Some(Turn {
+            depth: child.depth,
+            stop,
+            tools: child.tools.clone(),
+            transcript: child.transcript.clone(),
+            state: child.state.clone(),
+        })
+    }
+
+    /// Records that child `id`'s turn ended as `status`, keeping `kept`, its
+    /// transcript and state after the turn, when the turn ran to its end. A
+    /// child closed meanwhile ends closed.
+    pub(super) fn ended(&self, id: u64, status: Status, kept: Option<(Vec<Message>, DriveState)>) {
+        let mut book = self.book();
+        let Some(child) = book.children.get_mut(&id) else {
+            return;
+        };
+        if child.status.borrow().is_final() {
+            return;
+        }
+        child.turn = None;
+        if let Some((transcript, state)) = kept {
+            child.transcript = transcript;
+            child.state = state;
+        }
+        let closing = child.closing;
+        child.status.send_replace(status);
+        book.running = book.running.saturating_sub(1);
+        if closing {
+            book.close(id);
+        }
+    }
+
+    /// What child `id` was sent since its last step, oldest first.
+    pub(super) fn take_inbox(&self, id: u64) -> Vec<String> {
+        self.book()
+            .children
+            .get_mut(&id)
+            .map_or_else(Vec::new, |child| std::mem::take(&mut child.inbox))
+    }
+
+    /// Counts one call child `id` made that answered.
+    pub(super) fn called(&self, id: u64) {
+        if let Some(child) = self.book().children.get_mut(&id) {
+            child.calls += 1;
+        }
+    }
+
+    /// Ends every child with the loop: each life is cancelled, so each
+    /// running turn stops, and every open child ends interrupted, keeping
+    /// its transcript as its last finished turn left it.
+    pub(super) fn end_all(&self) {
+        self.0.root.cancel();
+        let mut book = self.book();
+        for child in book.children.values_mut() {
+            child.turn = None;
+            child.inbox.clear();
+            if *child.status.borrow() != Status::Closed {
+                child.status.send_replace(Status::Interrupted);
+            }
+        }
+        book.running = 0;
+    }
+
+    /// Every child as it is now, oldest first, with the run's counts.
+    pub(super) fn census_now(&self) -> Census {
+        let book = self.book();
+        let children = book
+            .children
+            .iter()
+            .map(|(id, child)| Counted {
+                id: *id,
+                parent: child.parent,
+                depth: child.depth,
+                calls: child.calls,
+                tools: child.tools.clone(),
+                status: child.status.borrow().clone(),
+                transcript: child.transcript.clone(),
+                state: child.state.clone(),
+            })
+            .collect();
+        Census {
+            next: book.next,
+            started: book.started,
+            children,
         }
     }
 
     /// The book, whatever a panicking holder left: every change to it is a
     /// few fields set under one lock, so a panic leaves it whole.
     pub(super) fn book(&self) -> MutexGuard<'_, Book> {
-        lock(&self.book)
+        self.0.book.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Whether a pause holds the children.
+    fn paused(&self) -> bool {
+        self.0.gate.load(std::sync::atomic::Ordering::Acquire)
     }
 }
 
 impl Book {
-    /// Whether one more child may start under `caps`.
-    pub(super) const fn admits(&self, caps: Caps) -> bool {
-        self.running < caps.running && self.started < caps.started
-    }
-
-    /// Books a child at `depth` over `task` holding `tools`, ending with
-    /// `parent`: its start, as the root receives it.
-    pub(super) fn reserve<S>(
-        &mut self,
-        depth: u8,
-        task: String,
-        tools: S,
-        parent: &CancellationToken,
-    ) -> Start<S> {
-        self.running += 1;
-        self.started += 1;
-        self.next += 1;
-        let id = self.next;
-        let (status, _watched) = watch::channel(Status::Running);
-        let (input, inbox) = mpsc::unbounded_channel();
-        let stop = parent.child_token();
-        let child = Child {
-            status,
-            input,
-            stop: stop.clone(),
-            depth,
-            calls: 0,
+    /// Closes child `id`: its life is cancelled, which stops its running
+    /// turn and its children's, and an idle child ends closed here, keeping
+    /// nothing; a running one is marked to close as its turn ends.
+    fn close(&mut self, id: u64) {
+        let Some(child) = self.children.get_mut(&id) else {
+            return;
         };
-        self.children.insert(id, child);
-        Start {
-            id,
-            depth,
-            task,
-            stop,
-            tools,
-            inbox,
-        }
-    }
-
-    /// How many children run.
-    pub(super) const fn running(&self) -> usize {
-        self.running
-    }
-
-    /// Every child as it is now, oldest first, with the run's counts.
-    pub(super) fn census(&self) -> Census {
-        let children = self
-            .children
-            .iter()
-            .map(|(id, child)| Counted {
-                id: *id,
-                depth: child.depth,
-                calls: child.calls,
-                status: child.status.borrow().clone(),
-            })
-            .collect();
-        Census {
-            next: self.next,
-            started: self.started,
-            children,
-        }
-    }
-
-    /// Moves child `id` to `status` when it is still running, and answers
-    /// the status in force after.
-    fn end(&mut self, id: u64, status: Status) -> Kind {
-        let Some(child) = self.children.get(&id) else {
-            return status.kind();
-        };
-        if child.status.borrow().is_final() {
-            return child.status.borrow().kind();
-        }
-        // Every child this one started holds a stop descending from this
-        // one's, so cancelling it here ends them however this one ended: a
-        // child that answered leaves no grandchild running or holding a
-        // running slot until the root ends.
-        child.stop.cancel();
-        let kind = status.kind();
-        child.status.send_replace(status);
-        self.running = self.running.saturating_sub(1);
-        kind
-    }
-}
-
-/// What a child's loop keeps of its place in the run: what its parent sends
-/// it, and the count of its calls its parent reads.
-#[derive(Debug)]
-pub struct Tether<'s> {
-    book: &'s Mutex<Book>,
-    id: u64,
-    inbox: mpsc::UnboundedReceiver<String>,
-}
-
-impl Tether<'_> {
-    /// What the parent sent since the child last looked, oldest first.
-    pub fn sent(&mut self) -> Vec<String> {
-        let mut sent = Vec::new();
-        while let Ok(text) = self.inbox.try_recv() {
-            sent.push(text);
-        }
-        sent
-    }
-
-    /// Counts one call the child made that answered.
-    pub fn called(&self) {
-        if let Some(child) = lock(self.book).children.get_mut(&self.id) {
-            child.calls += 1;
+        child.life.cancel();
+        let status = child.status.borrow().clone();
+        match status {
+            Status::Closed => {}
+            Status::Running => child.closing = true,
+            Status::Done(_) | Status::Failed(_) | Status::Interrupted => {
+                child.status.send_replace(Status::Closed);
+                child.transcript = Vec::new();
+                child.state = DriveState::default();
+                child.inbox.clear();
+                self.open = self.open.saturating_sub(1);
+            }
         }
     }
 }
 
-/// `book`, whatever a panicking holder left.
-fn lock(book: &Mutex<Book>) -> MutexGuard<'_, Book> {
-    book.lock().unwrap_or_else(PoisonError::into_inner)
+/// The child `counted` saves, as `status`, its life `life`.
+fn child_of(counted: &Counted, status: Status, life: CancellationToken) -> Child {
+    let (status, _watched) = watch::channel(status);
+    Child {
+        parent: counted.parent,
+        depth: counted.depth,
+        tools: counted.tools.clone(),
+        calls: counted.calls,
+        status,
+        inbox: Vec::new(),
+        life,
+        turn: None,
+        transcript: counted.transcript.clone(),
+        state: counted.state.clone(),
+        closing: false,
+    }
 }

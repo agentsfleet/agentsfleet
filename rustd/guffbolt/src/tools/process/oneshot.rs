@@ -76,13 +76,10 @@ pub(super) async fn run_to_end(
             output::with_line(text, &output::status(ending))
         }
     };
-    ToolOutput {
-        text,
-        exit_code: ending.exit_code(),
-        error_code: output::error_code(ending),
-        image: None,
-        asks: None,
-    }
+    let mut answered = ToolOutput::succeeded(text);
+    answered.exit_code = ending.exit_code();
+    answered.error_code = output::error_code(ending);
+    answered
 }
 
 fn missing_ending(

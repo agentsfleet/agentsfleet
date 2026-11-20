@@ -4,7 +4,7 @@
 //! process, and the sessions and wake a run keeps.
 //!
 //! An embedder that runs untrusted work, or holds what a command must not
-//! read, builds its tools and its [`Context`] over its own sandbox instead.
+//! read, builds its tools over its own sandbox instead.
 
 use std::io;
 use std::path::Path;
@@ -57,12 +57,15 @@ impl Local {
         })
     }
 
-    /// A builder over this run's environment, network and memory; add a
-    /// scheduler, a channel, a notifier or tools of your own before building.
+    /// A builder over this run's environment, sessions, network and memory,
+    /// `image` answering as `image_input` says; add a scheduler, a channel, a
+    /// notifier, subagents or tools of your own before building.
     #[must_use]
     pub fn builder(&self) -> ToolsBuilder<'_> {
         Tools::<ContextTool<'_>>::builder()
             .with_env(&self.env)
+            .with_sessions(&self.sessions)
+            .with_image_input(self.image_input)
             .with_outbound(&self.outbound)
             .with_memory(&self.memory)
     }
@@ -71,11 +74,6 @@ impl Local {
     #[must_use]
     pub fn context<'a>(&'a self, call_ref: &'a CallRef) -> Context<'a> {
         Context {
-            env: Some(&self.env),
-            outbound: &self.outbound,
-            sessions: &self.sessions,
-            image_input: self.image_input,
-            repository: None,
             call_ref,
             run_id: &self.run_id,
             wake: Some(&self.wake),

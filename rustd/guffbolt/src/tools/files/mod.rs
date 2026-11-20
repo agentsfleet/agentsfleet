@@ -21,7 +21,7 @@ use serde::Deserialize;
 
 use crate::tool::ToolOutput;
 use crate::tools::env::{Env, EnvError, MAX_READ_BYTES};
-use crate::tools::process::{env_of, unavailable};
+use crate::tools::process::unavailable;
 use crate::tools::{Context, Handler, code};
 
 pub mod apply_patch;
@@ -158,23 +158,23 @@ pub struct Replacement {
     new_text: String,
 }
 
-/// Writes a file, replacing what was there.
-#[derive(Debug, Clone, Copy)]
-pub struct FileWrite;
+backed! {
+    /// Writes a file, replacing what was there.
+    FileWrite over Env
+}
 
-impl Handler for FileWrite {
+impl Handler for FileWrite<'_> {
     const NAME: &'static str = "file_write";
     const DESCRIPTION: &'static str = "Write a file in the working directory, replacing what \
         was there, and make any missing directories on the way.";
     type Arguments = Content;
 
-    async fn run(&self, arguments: Content, context: Context<'_>) -> ToolOutput {
-        settled(write(&context, arguments).await)
+    async fn run(&self, arguments: Content, _context: Context<'_>) -> ToolOutput {
+        settled(write(self.backend, arguments).await)
     }
 }
 
-async fn write(context: &Context<'_>, arguments: Content) -> Answer {
-    let env = env_of(context)?;
+async fn write(env: &dyn Env, arguments: Content) -> Answer {
     let path = inside(env, &arguments.path)?;
     let bytes = arguments.content.len();
     // Read before the write so the answer can count what it replaced; a file
@@ -191,23 +191,23 @@ async fn write(context: &Context<'_>, arguments: Content) -> Answer {
     )))
 }
 
-/// Adds to the end of a file.
-#[derive(Debug, Clone, Copy)]
-pub struct FileAppend;
+backed! {
+    /// Adds to the end of a file.
+    FileAppend over Env
+}
 
-impl Handler for FileAppend {
+impl Handler for FileAppend<'_> {
     const NAME: &'static str = "file_append";
     const DESCRIPTION: &'static str = "Add text to the end of a file in the working directory, \
         making the file when it does not exist.";
     type Arguments = Content;
 
-    async fn run(&self, arguments: Content, context: Context<'_>) -> ToolOutput {
-        settled(append(&context, arguments).await)
+    async fn run(&self, arguments: Content, _context: Context<'_>) -> ToolOutput {
+        settled(append(self.backend, arguments).await)
     }
 }
 
-async fn append(context: &Context<'_>, arguments: Content) -> Answer {
-    let env = env_of(context)?;
+async fn append(env: &dyn Env, arguments: Content) -> Answer {
     let path = inside(env, &arguments.path)?;
     let bytes = arguments.content.len();
     let change = Change::between(path, "", &arguments.content);
@@ -218,23 +218,23 @@ async fn append(context: &Context<'_>, arguments: Content) -> Answer {
     Ok(ToolOutput::succeeded(changes::report(&text, &[change])))
 }
 
-/// Removes a file.
-#[derive(Debug, Clone, Copy)]
-pub struct FileDelete;
+backed! {
+    /// Removes a file.
+    FileDelete over Env
+}
 
-impl Handler for FileDelete {
+impl Handler for FileDelete<'_> {
     const NAME: &'static str = "file_delete";
     const DESCRIPTION: &'static str = "Delete a file in the working directory. Directories and \
         links are not deleted.";
     type Arguments = Named;
 
-    async fn run(&self, arguments: Named, context: Context<'_>) -> ToolOutput {
-        settled(delete(&context, &arguments.path).await)
+    async fn run(&self, arguments: Named, _context: Context<'_>) -> ToolOutput {
+        settled(delete(self.backend, &arguments.path).await)
     }
 }
 
-async fn delete(context: &Context<'_>, path: &str) -> Answer {
-    let env = env_of(context)?;
+async fn delete(env: &dyn Env, path: &str) -> Answer {
     let path = inside(env, path)?;
     env.delete_file(path)
         .await
@@ -242,23 +242,23 @@ async fn delete(context: &Context<'_>, path: &str) -> Answer {
     Ok(ToolOutput::succeeded(format!("Deleted {path}")))
 }
 
-/// Replaces text in a file.
-#[derive(Debug, Clone, Copy)]
-pub struct FileEdit;
+backed! {
+    /// Replaces text in a file.
+    FileEdit over Env
+}
 
-impl Handler for FileEdit {
+impl Handler for FileEdit<'_> {
     const NAME: &'static str = "file_edit";
     const DESCRIPTION: &'static str = "Find text in a file in the working directory and \
         replace its first occurrence. The file must be text and fit one read.";
     type Arguments = Replacement;
 
-    async fn run(&self, arguments: Replacement, context: Context<'_>) -> ToolOutput {
-        settled(edit(&context, &arguments).await)
+    async fn run(&self, arguments: Replacement, _context: Context<'_>) -> ToolOutput {
+        settled(edit(self.backend, &arguments).await)
     }
 }
 
-async fn edit(context: &Context<'_>, arguments: &Replacement) -> Answer {
-    let env = env_of(context)?;
+async fn edit(env: &dyn Env, arguments: &Replacement) -> Answer {
     let path = inside(env, &arguments.path)?;
     if arguments.old_text.is_empty() {
         return Err(ToolOutput::failed(

@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use super::{Answer, failed, inside, settled};
 use crate::tool::{Image, ImageKind, ToolOutput};
-use crate::tools::process::env_of;
+use crate::tools::env::Env;
 use crate::tools::{Context, Handler, code};
 
 /// The most an image may weigh: the Messages wire's cap per image, the
@@ -64,23 +64,36 @@ pub struct Named {
 
 /// Shows the model a file.
 #[derive(Debug, Clone, Copy)]
-pub struct ImageTool;
+pub struct ImageTool<'run> {
+    env: &'run dyn Env,
+    /// Whether the model's wire takes an image with a call's result; the
+    /// tool refuses before any read when it does not.
+    image_input: bool,
+}
 
-impl Handler for ImageTool {
+impl<'run> ImageTool<'run> {
+    /// The tool, reading from `env` for a wire that takes an image with a
+    /// call's result when `image_input` says so.
+    #[must_use]
+    pub const fn new(env: &'run dyn Env, image_input: bool) -> Self {
+        Self { env, image_input }
+    }
+}
+
+impl Handler for ImageTool<'_> {
     const NAME: &'static str = "image";
     const DESCRIPTION: &'static str = "Look at an image file in the working directory: PNG, \
         JPEG, GIF or WebP, at most 5 MiB. The image is shown to you with this call's result on \
         your next step.";
     type Arguments = Named;
 
-    async fn run(&self, arguments: Named, context: Context<'_>) -> ToolOutput {
-        settled(view(context, &arguments.path).await)
+    async fn run(&self, arguments: Named, _context: Context<'_>) -> ToolOutput {
+        settled(view(self.env, self.image_input, &arguments.path).await)
     }
 }
 
-async fn view(context: Context<'_>, path: &str) -> Answer {
-    let env = env_of(&context)?;
-    if !context.image_input {
+async fn view(env: &dyn Env, image_input: bool, path: &str) -> Answer {
+    if !image_input {
         return Err(ToolOutput::failed(
             code::IMAGE_INPUT_UNAVAILABLE,
             NO_IMAGE_INPUT,

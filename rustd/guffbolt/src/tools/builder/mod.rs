@@ -5,11 +5,13 @@
 //! ```text
 //!  Tools::builder()
 //!    .with_env(&env)            shell, files, git, browser
+//!    .with_sessions(&sessions)  exec_command, write_stdin (with the env)
 //!    .with_outbound(&outbound)  http_request, web_fetch
 //!    .with_memory(&memory)      memory_*
 //!    .with_scheduler(&jobs)     cron_*, schedule
 //!    .with_channel(&channel)    message
 //!    .with_notifier(&vendor)    notify
+//!    .with_agents(&agents)      spawn_agent, send_input, followup_task, ...
 //!    .with_tool(tool)           a tool built with a backend of its own
 //!    .build(&config) ─► Tools, or MissingBackend { tool, backend }
 //! ```
@@ -21,13 +23,13 @@
 
 mod catalog;
 mod config;
-mod seamed;
 
 use std::fmt;
 
+use crate::agents::Agents;
 use crate::tool::{Tool, Tools};
 use crate::tools::{
-    Channel, Context, ContextTool, Env, MemoryStore, Notifier, Outbound, Scheduler,
+    Channel, Context, ContextTool, Env, MemoryStore, Notifier, Outbound, Scheduler, Sessions,
 };
 
 use self::config::Pattern;
@@ -38,6 +40,8 @@ pub use self::config::{InvalidPattern, ToolsConfig};
 pub enum Backend {
     /// Where commands run and files live: [`Env`].
     Env,
+    /// The processes a run keeps open across calls: [`Sessions`].
+    Sessions,
     /// Where requests leave for the network: [`Outbound`].
     Outbound,
     /// Where memories are kept: [`MemoryStore`].
@@ -48,6 +52,8 @@ pub enum Backend {
     Channel,
     /// Where a notification goes: [`Notifier`].
     Notifier,
+    /// A run's children: [`Agents`].
+    Agents,
 }
 
 impl Backend {
@@ -56,11 +62,13 @@ impl Backend {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Env => "env",
+            Self::Sessions => "sessions",
             Self::Outbound => "outbound",
             Self::Memory => "memory",
             Self::Scheduler => "scheduler",
             Self::Channel => "channel",
             Self::Notifier => "notifier",
+            Self::Agents => "agents",
         }
     }
 }
@@ -104,15 +112,30 @@ impl fmt::Display for MissingBackend {
 
 impl std::error::Error for MissingBackend {}
 
+/// A tool the builder builds itself, by name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuiltIn {
+    /// The name the model calls it by.
+    pub name: &'static str,
+    /// The backends it is built over; none for a tool that takes none.
+    pub needs: &'static [Backend],
+}
+
+/// The built-in tool named `name`, when the builder builds one: what an
+/// embedder that publishes its own list of tools asks before it refuses a
+/// name it does not know.
+#[must_use]
+pub fn built_in(name: &str) -> Option<BuiltIn> {
+    catalog::TOOLS
+        .iter()
+        .find(|tool| tool.name == name)
+        .copied()
+}
+
 /// The backends a builder was given, and the tools added already built.
 #[derive(Debug, Default)]
 pub struct ToolsBuilder<'run> {
-    env: Option<&'run dyn Env>,
-    outbound: Option<&'run dyn Outbound>,
-    memory: Option<&'run dyn MemoryStore>,
-    scheduler: Option<&'run dyn Scheduler>,
-    channel: Option<&'run dyn Channel>,
-    notifier: Option<&'run dyn Notifier>,
+    given: Given<'run>,
     added: Vec<Box<ContextTool<'run>>>,
 }
 
@@ -127,43 +150,77 @@ impl<'run> Tools<ContextTool<'run>> {
 impl<'run> ToolsBuilder<'run> {
     /// The builder, its environment tools running in `env`.
     #[must_use]
-    pub fn with_env(mut self, env: &'run dyn Env) -> Self {
-        self.env = Some(env);
+    pub const fn with_env(mut self, env: &'run dyn Env) -> Self {
+        self.given.env = Some(env);
+        self
+    }
+
+    /// The builder, `exec_command` and `write_stdin` keeping their
+    /// processes in `sessions`, which the embedder closes when the run ends.
+    #[must_use]
+    pub const fn with_sessions(mut self, sessions: &'run Sessions) -> Self {
+        self.given.sessions = Some(sessions);
+        self
+    }
+
+    /// The builder, `git` running in `repository`, relative to the
+    /// environment's root: the one repository the embedder checked out.
+    /// Without it, `git` runs at the root.
+    #[must_use]
+    pub const fn with_repository(mut self, repository: &'run str) -> Self {
+        self.given.repository = Some(repository);
+        self
+    }
+
+    /// The builder, `image` showing the model what it reads when the model's
+    /// wire takes an image with a call's result, and refusing before any read
+    /// when it does not. Without it, `image` refuses.
+    #[must_use]
+    pub const fn with_image_input(mut self, image_input: bool) -> Self {
+        self.given.image_input = image_input;
         self
     }
 
     /// The builder, its web tools sending through `outbound`.
     #[must_use]
-    pub fn with_outbound(mut self, outbound: &'run dyn Outbound) -> Self {
-        self.outbound = Some(outbound);
+    pub const fn with_outbound(mut self, outbound: &'run dyn Outbound) -> Self {
+        self.given.outbound = Some(outbound);
         self
     }
 
     /// The builder, its memory tools over `memory`.
     #[must_use]
-    pub fn with_memory(mut self, memory: &'run dyn MemoryStore) -> Self {
-        self.memory = Some(memory);
+    pub const fn with_memory(mut self, memory: &'run dyn MemoryStore) -> Self {
+        self.given.memory = Some(memory);
         self
     }
 
     /// The builder, its schedule tools over `scheduler`.
     #[must_use]
-    pub fn with_scheduler(mut self, scheduler: &'run dyn Scheduler) -> Self {
-        self.scheduler = Some(scheduler);
+    pub const fn with_scheduler(mut self, scheduler: &'run dyn Scheduler) -> Self {
+        self.given.scheduler = Some(scheduler);
         self
     }
 
     /// The builder, `message` posting through `channel`.
     #[must_use]
-    pub fn with_channel(mut self, channel: &'run dyn Channel) -> Self {
-        self.channel = Some(channel);
+    pub const fn with_channel(mut self, channel: &'run dyn Channel) -> Self {
+        self.given.channel = Some(channel);
         self
     }
 
     /// The builder, `notify` sending through `notifier`.
     #[must_use]
-    pub fn with_notifier(mut self, notifier: &'run dyn Notifier) -> Self {
-        self.notifier = Some(notifier);
+    pub const fn with_notifier(mut self, notifier: &'run dyn Notifier) -> Self {
+        self.given.notifier = Some(notifier);
+        self
+    }
+
+    /// The builder, its subagent tools starting and steering the children
+    /// `agents` keeps, under its caps: what turns subagents on.
+    #[must_use]
+    pub const fn with_agents(mut self, agents: &'run Agents) -> Self {
+        self.given.agents = Some(agents);
         self
     }
 
@@ -185,7 +242,7 @@ impl<'run> ToolsBuilder<'run> {
     /// A name in `config` is a built-in tool whose backend this builder was
     /// not given; nothing is built.
     pub fn build(self, config: &ToolsConfig) -> Result<Tools<ContextTool<'run>>, MissingBackend> {
-        let given = Given::from(&self);
+        let given = self.given;
         let mut added: Vec<Option<Box<ContextTool<'run>>>> =
             self.added.into_iter().map(Some).collect();
         let mut offered: Vec<Box<ContextTool<'run>>> = Vec::new();
@@ -209,28 +266,19 @@ fn holds(offered: &[Box<ContextTool<'_>>], name: &str) -> bool {
     offered.iter().any(|held| held.name() == name)
 }
 
-/// The backends a builder was given, copied out of it.
-#[derive(Clone, Copy)]
+/// The backends a builder was given.
+#[derive(Debug, Default, Clone, Copy)]
 struct Given<'run> {
     env: Option<&'run dyn Env>,
+    sessions: Option<&'run Sessions>,
+    repository: Option<&'run str>,
+    image_input: bool,
     outbound: Option<&'run dyn Outbound>,
     memory: Option<&'run dyn MemoryStore>,
     scheduler: Option<&'run dyn Scheduler>,
     channel: Option<&'run dyn Channel>,
     notifier: Option<&'run dyn Notifier>,
-}
-
-impl<'run> From<&ToolsBuilder<'run>> for Given<'run> {
-    fn from(builder: &ToolsBuilder<'run>) -> Self {
-        Self {
-            env: builder.env,
-            outbound: builder.outbound,
-            memory: builder.memory,
-            scheduler: builder.scheduler,
-            channel: builder.channel,
-            notifier: builder.notifier,
-        }
-    }
+    agents: Option<&'run Agents>,
 }
 
 impl<'run> Given<'run> {
@@ -242,36 +290,37 @@ impl<'run> Given<'run> {
         pattern: &Pattern,
         offered: &mut Vec<Box<ContextTool<'run>>>,
     ) -> Result<(), MissingBackend> {
-        for family in &catalog::FAMILIES {
-            for &name in family.names {
-                if !pattern.matches(name) || holds(offered, name) {
-                    continue;
+        for built_in in &catalog::TOOLS {
+            let name = built_in.name;
+            if !pattern.matches(name) || holds(offered, name) {
+                continue;
+            }
+            match built_in.needs.iter().find(|needed| !self.gives(**needed)) {
+                None => offered.extend(catalog::tool(self, name)),
+                Some(&backend) if matches!(pattern, Pattern::Name(_)) => {
+                    return Err(MissingBackend {
+                        tool: name.to_owned(),
+                        backend,
+                    });
                 }
-                match (self.tool(name), family.needs) {
-                    (Some(tool), _) => offered.push(tool),
-                    (None, Some(backend)) if matches!(pattern, Pattern::Name(_)) => {
-                        return Err(MissingBackend {
-                            tool: name.to_owned(),
-                            backend,
-                        });
-                    }
-                    (None, _) => {}
-                }
+                Some(_) => {}
             }
         }
         Ok(())
     }
 
-    /// The built-in tool named `name`, over the backend it needs; `None`
-    /// when that backend was not given.
-    fn tool(self, name: &str) -> Option<Box<ContextTool<'run>>> {
-        catalog::plain_tool(name)
-            .or_else(|| catalog::env_tool(name, self.env?))
-            .or_else(|| catalog::outbound_tool(name, self.outbound?))
-            .or_else(|| catalog::memory_tool(name, self.memory?))
-            .or_else(|| catalog::schedule_tool(name, self.scheduler?))
-            .or_else(|| catalog::channel_tool(name, self.channel?))
-            .or_else(|| catalog::notifier_tool(name, self.notifier?))
+    /// Whether the builder was given `backend`.
+    const fn gives(self, backend: Backend) -> bool {
+        match backend {
+            Backend::Env => self.env.is_some(),
+            Backend::Sessions => self.sessions.is_some(),
+            Backend::Outbound => self.outbound.is_some(),
+            Backend::Memory => self.memory.is_some(),
+            Backend::Scheduler => self.scheduler.is_some(),
+            Backend::Channel => self.channel.is_some(),
+            Backend::Notifier => self.notifier.is_some(),
+            Backend::Agents => self.agents.is_some(),
+        }
     }
 }
 

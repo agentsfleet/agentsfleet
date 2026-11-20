@@ -16,7 +16,7 @@ use serde::Deserialize;
 use super::{Answer, failed, inside, settled};
 use crate::tool::ToolOutput;
 use crate::tools::env::{EntryKind, Env, MAX_READ_BYTES};
-use crate::tools::process::{env_of, output};
+use crate::tools::process::output;
 use crate::tools::{Context, Handler, code};
 
 /// The entries `ls` answers with when the model names no limit: pi's.
@@ -91,24 +91,24 @@ pub struct Lines {
     limit: Option<usize>,
 }
 
-/// Lists a directory.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Ls;
+backed! {
+    /// Lists a directory.
+    Ls over Env
+}
 
-impl Handler for Ls {
+impl Handler for Ls<'_> {
     const NAME: &'static str = "ls";
     const DESCRIPTION: &'static str = "List a directory in the working directory, sorted by \
         name, a directory marked with a trailing slash. Dotfiles are listed. At most `limit` \
         entries (500 when absent).";
     type Arguments = Directory;
 
-    async fn run(&self, arguments: Directory, context: Context<'_>) -> ToolOutput {
-        settled(list(&context, &arguments).await)
+    async fn run(&self, arguments: Directory, _context: Context<'_>) -> ToolOutput {
+        settled(list(self.backend, &arguments).await)
     }
 }
 
-async fn list(context: &Context<'_>, arguments: &Directory) -> Answer {
-    let env = env_of(context)?;
+async fn list(env: &dyn Env, arguments: &Directory) -> Answer {
     let path = start(env, arguments.path.as_deref())?;
     let listing = env
         .list_dir(path)
@@ -132,24 +132,24 @@ async fn list(context: &Context<'_>, arguments: &Directory) -> Answer {
     )))
 }
 
-/// Finds files by a glob.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Find;
+backed! {
+    /// Finds files by a glob.
+    Find over Env
+}
 
-impl Handler for Find {
+impl Handler for Find<'_> {
     const NAME: &'static str = "find";
     const DESCRIPTION: &'static str = "Find files in the working directory whose path matches \
         a glob, such as `**/*.rs`, and read back their paths relative to the directory searched. \
         `.git` is skipped. At most `limit` paths (1000 when absent).";
     type Arguments = Search;
 
-    async fn run(&self, arguments: Search, context: Context<'_>) -> ToolOutput {
-        settled(find(&context, &arguments).await)
+    async fn run(&self, arguments: Search, _context: Context<'_>) -> ToolOutput {
+        settled(find(self.backend, &arguments).await)
     }
 }
 
-async fn find(context: &Context<'_>, arguments: &Search) -> Answer {
-    let env = env_of(context)?;
+async fn find(env: &dyn Env, arguments: &Search) -> Answer {
     let root = start(env, arguments.path.as_deref())?;
     let glob = glob(&arguments.pattern)?;
     let limit = arguments.limit.unwrap_or(FIND_DEFAULT);
@@ -169,11 +169,12 @@ async fn find(context: &Context<'_>, arguments: &Search) -> Answer {
     Ok(ToolOutput::succeeded(answer(found, note)))
 }
 
-/// Finds the lines of files that hold a pattern.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Grep;
+backed! {
+    /// Finds the lines of files that hold a pattern.
+    Grep over Env
+}
 
-impl Handler for Grep {
+impl Handler for Grep<'_> {
     const NAME: &'static str = "grep";
     const DESCRIPTION: &'static str = "Search the files in the working directory for a pattern, a \
         regular expression or, with `literal`, text, and read back each matching line as \
@@ -181,13 +182,12 @@ impl Handler for Grep {
         and a line is cut at 500 characters. At most `limit` lines (100 when absent).";
     type Arguments = Lines;
 
-    async fn run(&self, arguments: Lines, context: Context<'_>) -> ToolOutput {
-        settled(grep(&context, &arguments).await)
+    async fn run(&self, arguments: Lines, _context: Context<'_>) -> ToolOutput {
+        settled(grep(self.backend, &arguments).await)
     }
 }
 
-async fn grep(context: &Context<'_>, arguments: &Lines) -> Answer {
-    let env = env_of(context)?;
+async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
     let root = start(env, arguments.path.as_deref())?;
     let pattern = if arguments.literal {
         regex::escape(&arguments.pattern)

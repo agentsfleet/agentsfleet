@@ -2,10 +2,13 @@
 //! every child has ended and its end is recorded, and the stop or the budget
 //! still ends a run whose child never does.
 
-use std::future::{pending, ready};
+use std::fmt;
+use std::future::ready;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use futures_util::StreamExt as _;
+use futures_util::stream::{self, BoxStream};
 use serde_json::{Value, json};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
@@ -15,16 +18,16 @@ use super::drive;
 use super::script::{ASK_USER, Failure, Script, asking, lock, naming, user};
 use crate::DriveState;
 use crate::agents::{
-    Agents, Caps, ChildFuture, Children, Kind, Narrow, Parent, Pause, Raise, Seat, Spawned, Status,
+    Action, Agents, Caps, Children, Fork, Order, Pause, Raise, Seat, Spawn, Status,
 };
 use crate::conversation::Conversation;
 use crate::drive::Input;
 use crate::extension::{Budget, Extension, Plain};
-use crate::model::Request;
+use crate::model::{Chunk, End, Model, Request, TextKind};
 use crate::observe::{CallEnd, Observe};
 use crate::step::{Ending, Listen, Waiting};
 use crate::tool::{ToolFuture, ToolOutput, ToolSpec};
-use crate::transcript::{Call, CallRef, Transcript};
+use crate::transcript::{Call, CallRef, Message, Transcript};
 use crate::window::Window;
 
 /// The tool that starts a child beside the root and answers its id at once.
@@ -38,33 +41,66 @@ const GUARD: Duration = Duration::from_secs(3_600);
 /// The caps the cases run under.
 const CAPS: Caps = Caps {
     depth: 1,
-    running: 1,
+    open: 1,
     started: 1,
 };
 
-/// The tools a child holds: none.
-#[derive(Debug, Clone, Copy)]
-struct NoTools;
+/// What a child's turn fails with; none does here.
+#[derive(Debug)]
+struct Unfinished;
 
-impl Narrow for NoTools {
-    fn narrowed<'n, N: AsRef<str>>(&self, names: &'n [N]) -> Result<Self, &'n str> {
-        names.first().map_or(Ok(Self), |name| Err(name.as_ref()))
+impl fmt::Display for Unfinished {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the child said nothing")
+    }
+}
+
+/// A child's model: it works a while, then answers its task done; a task
+/// that says never is never answered.
+#[derive(Debug)]
+struct Worker;
+
+impl Model for Worker {
+    type Error = Unfinished;
+
+    fn measure(&self, _request: Request<'_>) -> Result<u64, Unfinished> {
+        Ok(0)
     }
 
-    fn without_agents(&self) -> Self {
-        Self
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk, Unfinished>> {
+        let task = match request.messages.last() {
+            Some(Message::User(task)) => task.clone(),
+            _ => String::new(),
+        };
+        if task == NEVER {
+            return stream::pending().boxed();
+        }
+        let answer = async move {
+            tokio::time::sleep(CHILD_WORK).await;
+            Ok(Chunk::Text {
+                kind: TextKind::Answer,
+                text: format!("{task} done"),
+            })
+        };
+        stream::once(answer)
+            .chain(stream::iter([Ok(Chunk::End(End::default()))]))
+            .boxed()
+    }
+
+    fn accepts_images(&self) -> bool {
+        false
     }
 }
 
 /// The run the root and its children share: the children, and one log of
 /// what both were heard to do, in order.
 struct Family {
-    agents: Agents<NoTools>,
+    agents: Agents,
     heard: Mutex<Vec<String>>,
 }
 
 impl Family {
-    fn new(agents: Agents<NoTools>) -> Self {
+    fn new(agents: Agents) -> Self {
         Self {
             agents,
             heard: Mutex::default(),
@@ -80,29 +116,105 @@ impl Family {
     }
 }
 
-impl Raise for Family {
-    type Tools = NoTools;
+/// One child's turn: the run's worker over the child's transcript, heard as
+/// it starts and ends.
+struct Child<'f> {
+    family: &'f Family,
+    id: u64,
+    transcript: Transcript,
+    stop: CancellationToken,
+}
 
-    fn agents(&self) -> &Agents<NoTools> {
+impl Listen for Child<'_> {}
+
+impl Observe<Unfinished> for Child<'_> {
+    type Call = ();
+
+    fn step_started(&self, _number: u64) -> Span {
+        self.family.note(format!("child {} started", self.id));
+        Span::none()
+    }
+
+    fn call_started(&self, _call: &Call) -> ((), Span) {
+        ((), Span::none())
+    }
+
+    fn call_ended(&self, _kept: (), _end: CallEnd<'_>) {}
+
+    fn loop_ended(&self, _steps: u64, ending: &Ending<Unfinished>) {
+        self.family
+            .note(format!("child {} {}", self.id, ending.kind()));
+    }
+}
+
+impl Conversation for Child<'_> {
+    type Failure = Unfinished;
+    type Model = Worker;
+    type Observer = Self;
+
+    fn transcript(&mut self) -> &mut Transcript {
+        &mut self.transcript
+    }
+
+    fn take_input(&mut self) -> impl Future<Output = Vec<Input>> + Send {
+        ready(Vec::new())
+    }
+
+    fn model(&self) -> &Worker {
+        &Worker
+    }
+
+    fn observer(&self) -> &Self {
+        self
+    }
+
+    fn offered(&self) -> Vec<ToolSpec<'_>> {
+        Vec::new()
+    }
+
+    fn request<'a>(&'a self, window: &'a Window, tools: &'a [ToolSpec<'a>]) -> Request<'a> {
+        Request {
+            model: "worker",
+            instructions: "",
+            messages: &window.messages,
+            tools,
+            hosted: &[],
+            cache_key: "",
+            max_output_tokens: window.max_output_tokens,
+            single_attempt: false,
+        }
+    }
+
+    fn dispatch<'a>(&'a self, call: &'a Call, _call_ref: &'a CallRef) -> ToolFuture<'a> {
+        Box::pin(ready(ToolOutput::not_offered(&call.name)))
+    }
+
+    fn stop(&self) -> &CancellationToken {
+        &self.stop
+    }
+
+    fn silent(&self, _cut: bool) -> Unfinished {
+        Unfinished
+    }
+}
+
+impl Raise for Family {
+    type Child<'s>
+        = Child<'s>
+    where
+        Self: 's;
+
+    fn agents(&self) -> &Agents {
         &self.agents
     }
 
-    fn child<'s>(&'s self, _tools: NoTools, seat: Seat<'s>) -> ChildFuture<'s> {
-        Box::pin(async move {
-            if seat.task == NEVER {
-                pending::<()>().await;
-            }
-            tokio::time::sleep(CHILD_WORK).await;
-            Status::Done(format!("{} done", seat.task))
-        })
-    }
-
-    fn started(&self, id: u64, _depth: u8) {
-        self.note(format!("child {id} started"));
-    }
-
-    fn ended(&self, id: u64, _depth: u8, status: Kind, _calls: u64) {
-        self.note(format!("child {id} {}", status.as_str()));
+    fn child(&self, seat: Seat) -> Child<'_> {
+        Child {
+            family: self,
+            id: seat.id,
+            transcript: seat.transcript,
+            stop: seat.stop,
+        }
     }
 }
 
@@ -135,25 +247,17 @@ impl<'f> Root<'f> {
         }
     }
 
-    /// Starts a child over the task `arguments` name, beside the root.
+    /// Starts a child over the task `arguments` name, beside the root: an
+    /// order the loop runs in the root's place.
     fn spawn(&self, arguments: &Value) -> ToolOutput {
         let task = arguments.get("task").and_then(Value::as_str);
-        let parent = Parent {
-            depth: 0,
-            stop: &self.stop,
-            tools: &NoTools,
+        let spawn = Spawn {
+            message: task.unwrap_or_default().to_owned(),
+            tools: None,
+            fork: Fork::None,
         };
-        match self
-            .family
-            .agents
-            .start(parent, task.unwrap_or_default().to_owned(), None)
-        {
-            Ok(child_id) => {
-                let spawned = serde_json::to_string(&Spawned { child_id });
-                ToolOutput::succeeded(spawned.unwrap_or_default())
-            }
-            Err(refused) => ToolOutput::from(refused),
-        }
+        let order = Order::new(self.family.agents.clone(), Action::Spawn(spawn));
+        ToolOutput::ordering(order)
     }
 }
 
@@ -282,7 +386,7 @@ async fn a_question_waits_for_running_children_before_the_run_ends() {
         family.heard(),
         [
             "child 1 started",
-            "child 1 done",
+            "child 1 answered",
             "root quiet, paused true",
             "loop waiting"
         ],

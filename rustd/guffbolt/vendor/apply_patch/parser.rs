@@ -24,9 +24,8 @@
 //! The parser below is a little more lenient than the explicit spec and allows for
 //! leading/trailing whitespace around patch markers.
 use super::streaming_parser::StreamingPatchParser;
+use std::fmt;
 use std::path::PathBuf;
-
-use thiserror::Error;
 
 pub(crate) const BEGIN_PATCH_MARKER: &str = "*** Begin Patch";
 pub(crate) const END_PATCH_MARKER: &str = "*** End Patch";
@@ -46,14 +45,28 @@ pub(crate) const EMPTY_CHANGE_CONTEXT_MARKER: &str = "@@";
 /// gpt-4.1.
 const PARSE_IN_STRICT_MODE: bool = false;
 
-#[derive(Debug, PartialEq, Error, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub(crate) enum ParseError {
-    #[error("invalid patch: {0}")]
     InvalidPatchError(String),
-    #[error("invalid hunk at line {line_number}, {message}")]
     InvalidHunkError { message: String, line_number: usize },
 }
 use ParseError::*;
+
+// Written out where upstream derives `thiserror::Error`, in the words its
+// `#[error]` attributes give, so the harness links no error-derive crate.
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InvalidPatchError(message) => write!(f, "invalid patch: {message}"),
+            InvalidHunkError {
+                message,
+                line_number,
+            } => write!(f, "invalid hunk at line {line_number}, {message}"),
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}
 
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum Hunk {

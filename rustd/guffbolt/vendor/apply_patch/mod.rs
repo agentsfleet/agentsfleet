@@ -45,11 +45,28 @@ pub(crate) use self::parser::{Hunk, ParseError, UpdateFileChunk, parse_patch};
 
 /// Why a patch could not be applied: upstream's `ApplyPatchError`, less the
 /// input/output arms, because the sandbox's executor reports those itself.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum ApplyPatchError {
-    #[error(transparent)]
-    ParseError(#[from] ParseError),
+    ParseError(ParseError),
     /// Error that occurs while computing replacements when applying patch chunks
-    #[error("{0}")]
     ComputeReplacements(String),
+}
+
+// Written out where upstream derives `thiserror::Error`: the parse arm reads
+// as its parse error, and the other as its own words.
+impl std::fmt::Display for ApplyPatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParseError(error) => error.fmt(f),
+            Self::ComputeReplacements(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for ApplyPatchError {}
+
+impl From<ParseError> for ApplyPatchError {
+    fn from(error: ParseError) -> Self {
+        Self::ParseError(error)
+    }
 }

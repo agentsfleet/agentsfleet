@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use super::answered;
 use crate::tool::ToolOutput;
-use crate::tools::outbound::{Placement, Redirects, Request};
+use crate::tools::outbound::{Outbound, Placement, Redirects, Request};
 use crate::tools::{Context, Handler};
 
 /// The one method a fetch sends.
@@ -32,17 +32,18 @@ pub struct Fetch {
     max_chars: Option<usize>,
 }
 
-/// Fetches one page's text through the run's outbound hook.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct WebFetch;
+backed! {
+    /// Fetches one page's text through the run's outbound hook.
+    WebFetch over Outbound
+}
 
-impl Handler for WebFetch {
+impl Handler for WebFetch<'_> {
     const NAME: &'static str = "web_fetch";
     const DESCRIPTION: &'static str = "Fetch one https page from a host the network \
         policy allows and read back its text. No credential is sent.";
     type Arguments = Fetch;
 
-    async fn run(&self, arguments: Fetch, context: Context<'_>) -> ToolOutput {
+    async fn run(&self, arguments: Fetch, _context: Context<'_>) -> ToolOutput {
         let draft = Request {
             method: METHOD.to_owned(),
             url: arguments.url,
@@ -51,7 +52,7 @@ impl Handler for WebFetch {
             placement: Placement::Nowhere,
             redirects: Redirects::Stop,
         };
-        match context.outbound.send(Self::NAME, draft).await {
+        match self.backend.send(Self::NAME, draft).await {
             Ok(inbound) => {
                 let page = inbound
                     .content_type
@@ -60,7 +61,7 @@ impl Handler for WebFetch {
                 // Masked again once decoded: an entity-encoded echo of a minted
                 // token only reads as the token after the page becomes text.
                 let text = if page {
-                    context.outbound.mask(text_of(&inbound.body)).await
+                    self.backend.mask(text_of(&inbound.body)).await
                 } else {
                     inbound.body
                 };

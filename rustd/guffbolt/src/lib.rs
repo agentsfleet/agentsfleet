@@ -8,7 +8,7 @@
 //!    │ implements Conversation: input, the window, the request, what a call is lent, the stop
 //!    │ implements Observe: each model call and tool call as it starts and ends
 //!    │ installs an Extension: what a run of its kind adds, or Plain
-//!    │ implements Raise: the loop each child of the run runs, polled beside the root
+//!    │ implements Raise: the conversation each child's turn runs over, polled beside the root
 //!    ▼
 //!  drive(conversation, extension, state) ──► Ending: Answered | Failed | Stopped | Waiting
 //!    every step:  take input ─► before_model ─► window ─► model call ─► after_step
@@ -57,9 +57,12 @@
 //! name it holds no tool for, and a call from a step cut at the output limit,
 //! read the harness's own refusals ([`ToolOutput`]).
 //!
-//! A run's children are [`agents`]: loops a tool call starts, each the
-//! embedder's own over a narrower set of its parent's tools. The root polls
-//! them in its own future, so they end with it, and each ends once.
+//! A run's children are [`agents`]: loops a subagent call starts, each over
+//! the embedder's conversation with its own transcript and its parent's
+//! tools or fewer, driven by the harness beside the root. A finished child
+//! goes idle with its transcript and takes a follow-up task until it is
+//! closed; the root polls every child in its own future, so they end with
+//! it, and the root's [`DriveState`] carries them to a resumed loop.
 //!
 //! A call that asks the person a question ([`ToolOutput::asks`]) ends the
 //! loop [`Ending::Waiting`] once its step's other calls ran and the
@@ -68,8 +71,8 @@
 //! [`DriveState::resume`] answers the question later.
 //!
 //! The `tools` feature adds `tools`: commands, files, patches, the web,
-//! memory, schedules, a line to the conversation, a notification, MCP
-//! servers, questions, deferred tools and the clock. Each tool takes the
+//! memory, schedules, a line to the conversation, a notification, the
+//! subagent tools, MCP servers, questions, deferred tools and the clock. Each tool takes the
 //! backend it calls when `tools::ToolsBuilder` builds it, with host-process
 //! defaults for a standalone harness.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]

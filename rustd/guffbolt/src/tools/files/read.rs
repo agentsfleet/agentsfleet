@@ -16,8 +16,8 @@ use serde::Deserialize;
 
 use super::{Answer, failed, inside, settled};
 use crate::tool::ToolOutput;
-use crate::tools::env::MAX_READ_BYTES;
-use crate::tools::process::{env_of, output};
+use crate::tools::env::{Env, MAX_READ_BYTES};
+use crate::tools::process::output;
 use crate::tools::{Context, Handler, code};
 
 /// The lines a read carries when the model names no limit.
@@ -45,11 +45,12 @@ pub struct Window {
     limit: Option<NonZeroUsize>,
 }
 
-/// Reads part of a file.
-#[derive(Debug, Clone, Copy)]
-pub struct FileRead;
+backed! {
+    /// Reads part of a file.
+    FileRead over Env
+}
 
-impl Handler for FileRead {
+impl Handler for FileRead<'_> {
     const NAME: &'static str = "file_read";
     const DESCRIPTION: &'static str = "Read a file in the working directory and read back its \
         text: at most `limit` lines (2000 when absent) from line `offset` (1 when absent), cut to \
@@ -57,13 +58,12 @@ impl Handler for FileRead {
         its last line which offset to read on from.";
     type Arguments = Window;
 
-    async fn run(&self, arguments: Window, context: Context<'_>) -> ToolOutput {
-        settled(read(&context, &arguments).await)
+    async fn run(&self, arguments: Window, _context: Context<'_>) -> ToolOutput {
+        settled(read(self.backend, &arguments).await)
     }
 }
 
-async fn read(context: &Context<'_>, window: &Window) -> Answer {
-    let env = env_of(context)?;
+async fn read(env: &dyn Env, window: &Window) -> Answer {
     let path = inside(env, &window.path)?;
     let fetched = env
         .read_file(path, MAX_READ_BYTES)

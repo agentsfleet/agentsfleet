@@ -17,9 +17,9 @@ use tokio::time::Instant;
 
 use super::output::{self, Collected};
 use super::sessions::Sessions;
-use super::{command, env_of, oneshot, unavailable};
+use super::{command, oneshot, unavailable};
 use crate::tool::ToolOutput;
-use crate::tools::env::{Ending, ProcessId, Spawn};
+use crate::tools::env::{Ending, Env, ProcessId, Spawn};
 use crate::tools::files::failed;
 use crate::tools::{Context, Handler, code};
 
@@ -89,11 +89,27 @@ pub struct Input {
     max_output_tokens: Option<usize>,
 }
 
+/// The environment a session's process runs in, and the sessions the run
+/// keeps open across calls: what `exec_command` and `write_stdin` share.
+#[derive(Debug, Clone, Copy)]
+struct Held<'run> {
+    env: &'run dyn Env,
+    sessions: &'run Sessions,
+}
+
 /// Opens a session.
 #[derive(Debug, Clone, Copy)]
-pub struct ExecCommand;
+pub struct ExecCommand<'run>(Held<'run>);
 
-impl Handler for ExecCommand {
+impl<'run> ExecCommand<'run> {
+    /// The tool, starting processes in `env` and keeping them in `sessions`.
+    #[must_use]
+    pub const fn new(env: &'run dyn Env, sessions: &'run Sessions) -> Self {
+        Self(Held { env, sessions })
+    }
+}
+
+impl Handler for ExecCommand<'_> {
     const NAME: &'static str = "exec_command";
     const DESCRIPTION: &'static str = "Start a shell command in the working directory and keep it \
         running across calls. Answers with the output that arrived within yield_time_ms and, \
@@ -102,11 +118,7 @@ impl Handler for ExecCommand {
     type Arguments = Open;
 
     async fn run(&self, arguments: Open, context: Context<'_>) -> ToolOutput {
-        let env = match env_of(&context) {
-            Ok(env) => env,
-            Err(refused) => return refused,
-        };
-        let sessions = context.sessions;
+        let Held { env, sessions } = self.0;
         let slot = sessions.make_room(env).await;
         let spawn = spawn_of(&arguments);
         let process = match env.spawn(&spawn).await {
@@ -132,9 +144,17 @@ impl Handler for ExecCommand {
 
 /// Feeds a session.
 #[derive(Debug, Clone, Copy)]
-pub struct WriteStdin;
+pub struct WriteStdin<'run>(Held<'run>);
 
-impl Handler for WriteStdin {
+impl<'run> WriteStdin<'run> {
+    /// The tool, writing to the processes `sessions` keeps in `env`.
+    #[must_use]
+    pub const fn new(env: &'run dyn Env, sessions: &'run Sessions) -> Self {
+        Self(Held { env, sessions })
+    }
+}
+
+impl Handler for WriteStdin<'_> {
     const NAME: &'static str = "write_stdin";
     const DESCRIPTION: &'static str = "Write to a session exec_command started and read back \
         what it printed within yield_time_ms. Send empty chars to only read. Answers the exit \
@@ -142,12 +162,8 @@ impl Handler for WriteStdin {
     type Arguments = Input;
 
     async fn run(&self, arguments: Input, context: Context<'_>) -> ToolOutput {
-        let env = match env_of(&context) {
-            Ok(env) => env,
-            Err(refused) => return refused,
-        };
+        let Held { env, sessions } = self.0;
         let id = ProcessId::new(arguments.session_id);
-        let sessions = context.sessions;
         let Some(shared) = sessions.get(id) else {
             return not_open(id);
         };
@@ -246,13 +262,10 @@ fn reply(
         Some(why) => output::with_line(text, why),
         None => text,
     };
-    ToolOutput {
-        text: output::with_line(text, &state),
-        exit_code: ended.and_then(Ending::exit_code),
-        error_code: ended.and_then(output::error_code),
-        image: None,
-        asks: None,
-    }
+    let mut answered = ToolOutput::succeeded(output::with_line(text, &state));
+    answered.exit_code = ended.and_then(Ending::exit_code);
+    answered.error_code = ended.and_then(output::error_code);
+    answered
 }
 
 /// What a call naming session `id`, which is not open, reads back.

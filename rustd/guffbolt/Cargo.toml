@@ -18,10 +18,10 @@ workspace = true
 
 [features]
 # The generic tools: commands and sessions, files and patches, the web,
-# memory, schedules, a line to the conversation, a notification, MCP servers,
-# asking the person, deferred tools and the clock. Each takes the backend it
-# calls when `tools::ToolsBuilder` builds it, with host-process defaults for a
-# standalone harness.
+# memory, schedules, a line to the conversation, a notification, subagents,
+# MCP servers, asking the person, deferred tools and the clock. Each takes the
+# backend it calls when `tools::ToolsBuilder` builds it, with host-process
+# defaults for a standalone harness.
 tools = [
     "dep:html2text",
     "dep:jiff",
@@ -31,7 +31,6 @@ tools = [
     "dep:rmcp",
     "dep:rustix",
     "dep:schemars",
-    "dep:thiserror",
     "dep:url",
     "tokio/fs",
     "tokio/io-util",
@@ -79,8 +78,6 @@ rmcp = { workspace = true, optional = true }
 # A typed tool's parameters are the JSON Schema of the type its arguments
 # parse into.
 schemars = { workspace = true, optional = true }
-# The vendored `apply_patch` parser's errors.
-thiserror = { workspace = true, optional = true }
 # Whether a URL's host is an address literal, which never reaches a lookup
 # and so is judged where the URL is admitted.
 url = { workspace = true, optional = true }

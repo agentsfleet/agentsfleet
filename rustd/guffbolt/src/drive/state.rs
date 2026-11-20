@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::Mark;
+use crate::agents::Census;
 use crate::step::Waiting;
 use crate::transcript::{Message, Transcript};
 
@@ -28,6 +29,11 @@ pub struct DriveState {
     /// input, so a state saved before input carried marks reads the same.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) newest: Option<Mark>,
+    /// The run's children, each with its transcript, as the root's state
+    /// carries them once [`crate::agents::Agents::save`] wrote them; absent
+    /// from a state whose run started none.
+    #[serde(default, skip_serializing_if = "Census::is_empty")]
+    pub(crate) children: Census,
 }
 
 impl DriveState {
@@ -61,6 +67,18 @@ impl DriveState {
     #[must_use]
     pub const fn newest(&self) -> Option<&Mark> {
         self.newest.as_ref()
+    }
+
+    /// The run's children as they were saved into this state.
+    #[must_use]
+    pub const fn children(&self) -> &Census {
+        &self.children
+    }
+
+    /// The run's children as they were saved, for an embedder that masks
+    /// what a resumed run carries over.
+    pub const fn children_mut(&mut self) -> &mut Census {
+        &mut self.children
     }
 
     /// Answers the question the run waits on with `answer`, which the model

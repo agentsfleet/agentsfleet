@@ -1,19 +1,15 @@
 //! The browser tools, through the environment's browser.
 //!
 //! `browser_open`, `browser` and `screenshot` drive the page the environment
-//! keeps ([`crate::tools::env::Browser`]). An environment with no browser, or
-//! a call with no environment, answers a code naming why, spawns nothing,
-//! and the run goes on. An environment that cannot start a browser says so
-//! in its own words.
+//! keeps ([`crate::tools::env::Browser`]). An environment with no browser
+//! answers a code naming why, spawns nothing, and the run goes on. An
+//! environment that cannot start a browser says so in its own words.
 
 use serde_json::Value;
 
 use crate::tool::ToolOutput;
-use crate::tools::env::Browser;
+use crate::tools::env::{Browser, Env};
 use crate::tools::{Context, Handler, code};
-
-/// What a browser call with no environment reads back after its name.
-const NO_ENV: &str = "has no environment to run a browser in";
 /// The event a refused browser call logs under.
 pub const EVENT_REFUSED: &str = "browser_tool_refused";
 /// What the three tools tell the model, after what each would do.
@@ -23,13 +19,16 @@ macro_rules! when_unavailable {
     };
 }
 
-/// The call's browser, or its refusal: logged under the run it came from,
-/// naming why there is none.
-fn browser<'a>(name: &str, context: &Context<'a>) -> Result<&'a dyn Browser, ToolOutput> {
-    let why = match context.env.map(|env| env.browser()) {
-        Some(Ok(browser)) => return Ok(browser),
-        Some(Err(why)) => why,
-        None => NO_ENV,
+/// `env`'s browser, or its refusal: logged under the run the call came
+/// from, naming why there is none.
+fn browser<'a>(
+    name: &str,
+    env: &'a dyn Env,
+    context: &Context<'_>,
+) -> Result<&'a dyn Browser, ToolOutput> {
+    let why = match env.browser() {
+        Ok(browser) => return Ok(browser),
+        Err(why) => why,
     };
     let run_id = context.run_id;
     let tool = name;
@@ -46,11 +45,12 @@ fn failed(failure: &crate::tools::env::EnvError) -> ToolOutput {
     ToolOutput::failed(code::BROWSER_UNAVAILABLE, failure.message())
 }
 
-/// Opens a page in the browser.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct BrowserOpen;
+backed! {
+    /// Opens a page in the browser.
+    BrowserOpen over Env
+}
 
-impl Handler for BrowserOpen {
+impl Handler for BrowserOpen<'_> {
     const NAME: &'static str = "browser_open";
     const DESCRIPTION: &'static str = concat!(
         "Open a page in the environment's browser.",
@@ -59,7 +59,7 @@ impl Handler for BrowserOpen {
     type Arguments = Value;
 
     async fn run(&self, arguments: Value, context: Context<'_>) -> ToolOutput {
-        match browser(Self::NAME, &context) {
+        match browser(Self::NAME, self.backend, &context) {
             Ok(browser) => browser
                 .open(&arguments)
                 .await
@@ -69,11 +69,12 @@ impl Handler for BrowserOpen {
     }
 }
 
-/// Drives the open page.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Browse;
+backed! {
+    /// Drives the open page.
+    Browse over Env
+}
 
-impl Handler for Browse {
+impl Handler for Browse<'_> {
     const NAME: &'static str = "browser";
     const DESCRIPTION: &'static str = concat!(
         "Act on the open page in the environment's browser: click, type, scroll, read.",
@@ -82,7 +83,7 @@ impl Handler for Browse {
     type Arguments = Value;
 
     async fn run(&self, arguments: Value, context: Context<'_>) -> ToolOutput {
-        match browser(Self::NAME, &context) {
+        match browser(Self::NAME, self.backend, &context) {
             Ok(browser) => browser
                 .act(&arguments)
                 .await
@@ -92,11 +93,12 @@ impl Handler for Browse {
     }
 }
 
-/// Captures the open page.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Screenshot;
+backed! {
+    /// Captures the open page.
+    Screenshot over Env
+}
 
-impl Handler for Screenshot {
+impl Handler for Screenshot<'_> {
     const NAME: &'static str = "screenshot";
     const DESCRIPTION: &'static str = concat!(
         "Take a screenshot of the open page in the environment's browser.",
@@ -105,7 +107,7 @@ impl Handler for Screenshot {
     type Arguments = Value;
 
     async fn run(&self, arguments: Value, context: Context<'_>) -> ToolOutput {
-        match browser(Self::NAME, &context) {
+        match browser(Self::NAME, self.backend, &context) {
             Ok(browser) => match browser.screenshot(&arguments).await {
                 Ok(image) => {
                     let bytes = image.data.len();

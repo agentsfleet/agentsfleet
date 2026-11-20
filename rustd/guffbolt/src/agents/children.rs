@@ -1,12 +1,12 @@
-//! The children a run started, polled beside the root loop.
+//! The turns a run's children take, polled beside the root loop.
 //!
-//! A child's loop borrows what the run shares, so it cannot be handed to the
+//! A child's turn borrows what the run shares, so it cannot be handed to the
 //! runtime as a task of its own; it is a future the root polls whenever its
 //! own work waits, on a step, a call or a checkpoint. A loop anywhere in the
-//! run asks for a child through the registry, and the root starts it here, so
-//! a child's children are polled the same way. Ending the set drops every
-//! future, and each child and each call it held open end interrupted on the
-//! way down.
+//! run queues a turn through the registry, and the root starts it here, so a
+//! child's children are polled the same way. Ending the set drops every turn
+//! still running, and each call it held open ends interrupted on the way
+//! down.
 
 use std::fmt;
 use std::pin::Pin;
@@ -15,25 +15,38 @@ use futures_util::StreamExt as _;
 use futures_util::stream::FuturesUnordered;
 use tokio::sync::oneshot;
 
-use super::start::Start;
-use super::{Agents, ChildFuture, Pause, Raise, Requests, Seat, Status};
+use super::registry::Turn;
+use super::seated::Seated;
+use super::{Agents, Me, Pause, Raise, Requests, Seat, Status};
+use crate::conversation::Conversation;
+use crate::drive::{DriveState, drive_in};
+use crate::extension::Plain;
+use crate::step::Ending;
+use crate::tool::{ErrorCode, ToolOutput};
+use crate::transcript::{Message, Transcript};
 
-/// One child's loop, from its first step to its guard's end.
+/// One child's turn, from its first step to its end.
 type Running<'s> = Pin<Box<dyn Future<Output = ()> + Send + 's>>;
 
-/// Every child a run started and has not ended, `S` being the tools a child
-/// holds.
-pub struct Children<'s, S> {
+/// What a child that asked the person a question reads as that call's
+/// result: only the root asks the person.
+const NO_PERSON: &str = "a child agent cannot ask the person; answer from what you have, or say \
+                         what you need in your answer";
+/// What a call a stopped turn never finished reads as its result.
+const UNFINISHED: &str = "the turn was interrupted before this call finished";
+
+/// Every turn a run's children take and have not finished.
+pub struct Children<'s> {
     running: FuturesUnordered<Running<'s>>,
-    requests: Requests<S>,
+    requests: Requests,
     /// Each ask for a pause that waits for the set to be quiet.
     waiting: Vec<oneshot::Sender<Option<Pause>>>,
 }
 
-impl<'s, S> Children<'s, S> {
-    /// No child yet; `requests` is where the registry asks for one.
+impl<'s> Children<'s> {
+    /// No turn yet; `requests` is where the registry asks for one.
     #[must_use]
-    pub fn new(requests: Requests<S>) -> Self {
+    pub fn new(requests: Requests) -> Self {
         Self {
             running: FuturesUnordered::new(),
             requests,
@@ -41,12 +54,13 @@ impl<'s, S> Children<'s, S> {
         }
     }
 
-    /// Drives `driven` to its end, starting each child asked for through
-    /// `raise` and polling every child whenever `driven` waits. `driven` goes
-    /// first, so a loop that never waits is never slowed by its children.
+    /// Drives `driven` to its end, starting each turn asked for over the
+    /// conversation `raise` gives it and polling every turn whenever `driven`
+    /// waits. `driven` goes first, so a loop that never waits is never
+    /// slowed by its children.
     pub async fn beside<R, F>(&mut self, raise: &'s R, driven: F) -> F::Output
     where
-        R: Raise<Tools = S>,
+        R: Raise,
         F: Future,
     {
         tokio::pin!(driven);
@@ -55,7 +69,7 @@ impl<'s, S> Children<'s, S> {
             let asked = tokio::select! {
                 biased;
                 out = &mut driven => return out,
-                Some(start) = self.requests.starts.recv() => Some(start),
+                Some(id) = self.requests.turns.recv() => Some(id),
                 Some(()) = self.running.next(), if !self.running.is_empty() => None,
                 Some(ask) = self.requests.pauses.recv() => {
                     if ask.waits {
@@ -68,22 +82,23 @@ impl<'s, S> Children<'s, S> {
                     None
                 }
             };
-            if let Some(start) = asked {
-                self.running.push(raised(raise, start));
+            if let Some(turn) = asked.and_then(|id| turn(raise, id)) {
+                self.running.push(turn);
             }
         }
     }
 
-    /// Drops every child still running, ends each one queued and never
-    /// started, and answers every ask for a pause still waiting with none.
-    /// Answers a pause over the quiet set, when one may be had.
-    pub fn end_all(&mut self, agents: &Agents<S>) -> Option<Pause> {
-        self.requests.starts.close();
+    /// Ends every child with the loop: drops every turn still running, ends
+    /// each one queued and never started, and every open child ends
+    /// interrupted, keeping what its last finished turn left. Answers every
+    /// ask for a pause still waiting with none, and a pause over the quiet
+    /// set, when one may be had.
+    pub fn end_all(&mut self, agents: &Agents) -> Option<Pause> {
+        self.requests.turns.close();
         self.requests.pauses.close();
         self.running.clear();
-        while let Ok(start) = self.requests.starts.try_recv() {
-            agents.ended(start.id, Status::Interrupted);
-        }
+        while self.requests.turns.try_recv().is_ok() {}
+        agents.end_all();
         while let Ok(ask) = self.requests.pauses.try_recv() {
             let _receiver_gone = ask.reply.send(None);
         }
@@ -93,10 +108,10 @@ impl<'s, S> Children<'s, S> {
         agents.try_pause(|| self.running.is_empty() && self.requests.is_empty())
     }
 
-    /// Answers every ask waiting for the set to be quiet, once no child runs
+    /// Answers every ask waiting for the set to be quiet, once no turn runs
     /// or waits to start: the first takes the pause, and each one after it
     /// is refused while that pause is held.
-    fn answer_quiet(&mut self, agents: &Agents<S>) {
+    fn answer_quiet(&mut self, agents: &Agents) {
         if self.waiting.is_empty() || !self.running.is_empty() || !self.requests.is_empty() {
             return;
         }
@@ -106,7 +121,7 @@ impl<'s, S> Children<'s, S> {
     }
 }
 
-impl<S> fmt::Debug for Children<'_, S> {
+impl fmt::Debug for Children<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Children")
             .field("running", &self.running.len())
@@ -116,77 +131,143 @@ impl<S> fmt::Debug for Children<'_, S> {
     }
 }
 
-/// The child `start` asks for, guarded from here, so a child dropped before
-/// its first poll still ends interrupted.
-fn raised<R: Raise>(raise: &R, start: Start<R::Tools>) -> Running<'_> {
-    let Start {
-        id,
+/// Child `id`'s turn, when one is queued: its conversation from `raise`,
+/// seated, driven to its end, and its end recorded on every path.
+fn turn<R: Raise>(raise: &R, id: u64) -> Option<Running<'_>> {
+    let agents = raise.agents();
+    let Turn {
         depth,
-        task,
         stop,
         tools,
-        inbox,
-    } = start;
-    let guard = Guard::new(raise, id, depth);
-    let tether = raise.agents().tether(id, inbox);
+        transcript,
+        state,
+    } = agents.begin(id)?;
+    let me = Me { id, depth };
     let seat = Seat {
+        id,
         depth,
-        task,
-        stop,
-        tether,
+        stop: stop.clone(),
+        transcript: Transcript::new(transcript),
     };
-    let child = raise.child(tools, seat);
-    Box::pin(run(guard, child))
+    let seated = Seated {
+        inner: raise.child(seat),
+        agents,
+        me,
+        tools,
+        stop,
+    };
+    let guard = Guard {
+        agents,
+        id,
+        armed: true,
+    };
+    Some(Box::pin(run(guard, seated, state)))
 }
 
-/// Runs `child` to its end under `guard`. The child's future goes before the
-/// guard on every path, so whatever it holds open, such as a call or a child
-/// of its own, ends before it does.
-async fn run<R: Raise>(guard: Guard<'_, R>, child: ChildFuture<'_>) {
-    let status = child.await;
-    guard.ended(status);
+/// Drives `seated` from `state` to the end of its turn, and records how it
+/// ended with what it keeps.
+async fn run<C>(guard: Guard<'_>, mut seated: Seated<'_, C>, mut state: DriveState)
+where
+    C: Conversation<Failure: fmt::Display>,
+{
+    let me = seated.me;
+    let ending = drive_in(&mut seated, &mut Plain, &mut state, me).await;
+    let status = settled(&mut seated, ending, &mut state);
+    let transcript = seated.transcript();
+    mend(transcript);
+    let kept = std::mem::take(transcript).into_messages();
+    guard.ended(status, kept, state);
 }
 
-/// One child's start and end, heard as a pair on every path: its end is
-/// recorded when its loop ends, and as interrupted when its future is dropped
-/// before that, with its parent.
-struct Guard<'s, R: Raise> {
-    raise: &'s R,
+/// How a turn that ended as `ending` leaves its child: its answer scrubbed
+/// as anything a model wrote; a question it asked answered in its place, so
+/// its transcript stays whole for the next turn.
+fn settled<C>(
+    seated: &mut Seated<'_, C>,
+    ending: Ending<C::Failure>,
+    state: &mut DriveState,
+) -> Status
+where
+    C: Conversation<Failure: fmt::Display>,
+{
+    match ending {
+        Ending::Answered(mut text) => {
+            seated.scrub(&mut text, &mut []);
+            Status::Done(text)
+        }
+        // The alternate form: an error that carries more than its sentence,
+        // such as a code or a backtrace, keeps that form for the sentence.
+        Ending::Failed(failure) => Status::Failed(format!("{failure:#}")),
+        Ending::Stopped => Status::Interrupted,
+        Ending::Waiting(waiting) => {
+            let refused = ToolOutput::failed(ErrorCode::QUESTION_PENDING, NO_PERSON);
+            state.resume(seated.transcript(), refused.text);
+            Status::Failed(format!(
+                "asked a question only the person can answer: {}",
+                waiting.question
+            ))
+        }
+    }
+}
+
+/// Answers every call of the transcript's last step that has no result, as
+/// a turn stopped mid-step leaves it, so the next turn's request is whole.
+fn mend(transcript: &mut Transcript) {
+    let messages = transcript.messages();
+    let Some(last) = messages
+        .iter()
+        .rposition(|message| matches!(message, Message::Assistant { .. }))
+    else {
+        return;
+    };
+    let Some(Message::Assistant { calls, .. }) = messages.get(last) else {
+        return;
+    };
+    let answered: Vec<&str> = messages
+        .iter()
+        .skip(last)
+        .filter_map(|message| match message {
+            Message::ToolResult { call_id, .. } => Some(call_id.as_str()),
+            Message::User(_) | Message::Assistant { .. } => None,
+        })
+        .collect();
+    let unanswered: Vec<String> = calls
+        .iter()
+        .filter(|call| !answered.contains(&call.id.as_str()))
+        .map(|call| call.id.clone())
+        .collect();
+    for call_id in unanswered {
+        let output = ToolOutput::failed(ErrorCode::INTERRUPTED, UNFINISHED).text;
+        transcript.push(Message::ToolResult {
+            call_id,
+            output,
+            image: None,
+        });
+    }
+}
+
+/// One turn's end, recorded on every path: as the turn ended when it ran to
+/// its end, and interrupted, keeping what the child had before the turn,
+/// when its future is dropped first.
+struct Guard<'s> {
+    agents: &'s Agents,
     id: u64,
-    depth: u8,
     armed: bool,
 }
 
-impl<'s, R: Raise> Guard<'s, R> {
-    /// Starts child `id` at `depth`, and holds its end.
-    fn new(raise: &'s R, id: u64, depth: u8) -> Self {
-        raise.started(id, depth);
-        Self {
-            raise,
-            id,
-            depth,
-            armed: true,
-        }
-    }
-
-    /// Ends the child as `status`.
-    fn ended(mut self, status: Status) {
+impl Guard<'_> {
+    /// Ends the turn as `status`, keeping `transcript` and `state`.
+    fn ended(mut self, status: Status, transcript: Vec<Message>, state: DriveState) {
         self.armed = false;
-        self.end(status);
-    }
-
-    fn end(&self, status: Status) {
-        let agents = self.raise.agents();
-        let status = agents.ended(self.id, status);
-        let calls = agents.calls(self.id);
-        self.raise.ended(self.id, self.depth, status, calls);
+        self.agents
+            .ended(self.id, status, Some((transcript, state)));
     }
 }
 
-impl<R: Raise> Drop for Guard<'_, R> {
+impl Drop for Guard<'_> {
     fn drop(&mut self) {
         if self.armed {
-            self.end(Status::Interrupted);
+            self.agents.ended(self.id, Status::Interrupted, None);
         }
     }
 }

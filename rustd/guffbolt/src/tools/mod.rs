@@ -2,48 +2,52 @@
 //! machine and on the network, written once for every embedder.
 //!
 //! ```text
-//!  Tools::builder() ─ with_env, with_outbound, with_memory, with_scheduler,
-//!        │            with_channel, with_notifier, with_tool
+//!  Tools::builder() ─ with_env, with_sessions, with_outbound, with_memory,
+//!        │            with_scheduler, with_channel, with_notifier, with_agents,
+//!        │            with_tool
 //!        ▼
 //!  build(&ToolsConfig) ─► Tools: each named tool, holding its backend
 //!        │                 (or MissingBackend naming the tool and backend)
 //!        ▼
 //!  Typed<Handler> ─► parse the arguments ─► run ─► ToolOutput the model reads
 //!                 ▲
-//!  embedder ──► Context { call_ref, run_id, wake, … } lent per call
+//!  embedder ──► Context { call_ref, run_id, wake } lent per call
 //!
-//!   env:       shell, exec_command, write_stdin, git, file_*, apply_patch,
-//!              image, ls, find, grep, browser_open, browser, screenshot
-//!   outbound:  http_request, web_fetch, MCP over HTTP
+//!   env:       shell, git, file_*, apply_patch, image, ls, find, grep,
+//!              browser_open, browser, screenshot
+//!   env and sessions: exec_command, write_stdin
+//!   outbound:  http_request, web_fetch
 //!   memory:    memory_store, memory_recall, memory_list, memory_forget
 //!   scheduler: cron_add, cron_list, cron_update, cron_remove, cron_run,
 //!              cron_runs, schedule
 //!   channel:   message
 //!   notifier:  notify
-//!   none:      update_plan, ask_user, tool_search, current_time, sleep
+//!   agents:    spawn_agent, send_input, followup_task, wait_agent,
+//!              list_agents, close_agent, interrupt_agent
+//!   none:      update_plan, ask_user, current_time, sleep
 //! ```
 //!
 //! A backend is what a tool calls to do its work. Each tool takes its backend
 //! when it is built, as pi's tools take their operations, so no registry is
-//! looked up at call time: [`MemoryStore`] for memory, [`Scheduler`] for
-//! schedules, [`Channel`] for a line to the conversation, [`Notifier`] for a
-//! notification. A third party writes a tool whose `new` takes a backend of
-//! its own, publishes that backend's trait beside it, and adds the tool with
-//! [`ToolsBuilder::with_tool`]. The same tool runs on a developer's laptop
-//! over [`LocalEnv`], [`LocalOutbound`], [`LocalMemory`], [`LocalScheduler`]
-//! and [`LocalChannel`], and inside an embedder's sandbox behind its egress
-//! guard. Every tool is a [`Handler`]: its arguments are a type whose JSON
-//! Schema the model is told, so what it is told and what it reads cannot
-//! drift. [`Typed`] makes one a [`crate::Tool`] lent a [`Context`].
-//!
-//! The environment and the network still reach a tool through its
-//! [`Context`]: a tool [`crate::Tools::builder`] builds over them is lent the
-//! builder's own, and an embedder that lends its sandbox per call fills them
-//! itself.
+//! looked up at call time: [`Env`] for commands and files, [`Sessions`] for
+//! the processes kept across calls, [`Outbound`] for the network,
+//! [`MemoryStore`] for memory, [`Scheduler`] for schedules, [`Channel`] for a
+//! line to the conversation, [`Notifier`] for a notification and
+//! [`crate::agents::Agents`] for a run's children. A third party writes a
+//! tool whose `new` takes a backend of its own, publishes that backend's trait
+//! beside it, and adds the tool with [`ToolsBuilder::with_tool`]. The same
+//! tool runs on a developer's laptop over [`LocalEnv`], [`LocalOutbound`],
+//! [`LocalMemory`], [`LocalScheduler`] and [`LocalChannel`], and inside an
+//! embedder's sandbox behind its egress guard. Every tool is a [`Handler`]:
+//! its arguments are a type whose JSON Schema the model is told, so what it is
+//! told and what it reads cannot drift. [`Typed`] makes one a
+//! [`crate::Tool`] lent a [`Context`], which carries only what one call is:
+//! where it sits, the run it belongs to, and the wake.
 
 #[macro_use]
 mod backed;
 
+pub mod agents;
 pub mod ask;
 pub mod browser;
 pub mod builder;
@@ -78,7 +82,9 @@ use serde_json::Value;
 use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use crate::transcript::CallRef;
 
-pub use self::builder::{Backend, InvalidPattern, MissingBackend, ToolsBuilder, ToolsConfig};
+pub use self::builder::{
+    Backend, InvalidPattern, MissingBackend, ToolsBuilder, ToolsConfig, built_in,
+};
 pub use self::clock::Wake;
 pub use self::env::{Env, LocalEnv};
 pub use self::local::Local;
@@ -96,27 +102,13 @@ pub use self::schema::{NoArguments, Schema};
 pub type ContextTool<'run> = dyn for<'c> Tool<Context<'c>> + 'run;
 
 /// What a generic tool is lent for one call: where the call sits, the run it
-/// belongs to, and, for a tool that runs commands or sends requests, the
-/// environment and the network.
+/// belongs to, and what wakes a sleeping call.
 ///
-/// The embedder builds one per call from what its run holds; every field is
-/// a borrow, so building one costs nothing. A backend a tool calls is never
-/// here: the tool took it when it was built.
+/// The embedder builds one per call; every field is a borrow, so building
+/// one costs nothing. A backend a tool calls is never here: the tool took it
+/// when it was built.
 #[derive(Debug, Clone, Copy)]
 pub struct Context<'a> {
-    /// Where commands and files run; `None` for a call with no environment,
-    /// which a tool that needs one refuses.
-    pub env: Option<&'a dyn Env>,
-    /// Where every network request goes.
-    pub outbound: &'a dyn Outbound,
-    /// The processes the run's calls keep open across calls.
-    pub sessions: &'a Sessions,
-    /// Whether the model's wire takes an image with a call's result; `image`
-    /// refuses before any read when it does not.
-    pub image_input: bool,
-    /// The directory `git` runs in, relative to the environment's root; the
-    /// root when `None`.
-    pub repository: Option<&'a str>,
     /// Where the call sits in its conversation; a backend that acts outside
     /// the process derives its idempotency key from it.
     pub call_ref: &'a CallRef,

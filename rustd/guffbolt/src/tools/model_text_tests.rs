@@ -12,15 +12,16 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
+use crate::agents::{Agents, Caps};
 use crate::tools::env::Env as _;
 use crate::tools::fake::Fake;
 use crate::tools::files::FileRead;
 use crate::tools::mcp::{ListMcpResourceTemplates, ListMcpResources, ReadMcpResource, Server};
 use crate::tools::memory::{Memory, MemoryForget, MemoryStoreTool, Reach};
 use crate::tools::outbound::Allowlist;
-use crate::tools::process::{Git, Shell};
+use crate::tools::process::Git;
 use crate::tools::search::{Deferred, ToolSearch};
-use crate::tools::{Context, ContextTool, Local, LocalMemory, ToolsConfig, Typed, code};
+use crate::tools::{ContextTool, Local, LocalMemory, ToolsConfig, Typed, code};
 use crate::{CallRef, Describe as _, Tool as _, ToolSpec};
 
 /// The words that name a host product rather than the harness.
@@ -76,15 +77,21 @@ fn values(schema: &Value) -> Vec<String> {
 }
 
 /// Every tool the crate builds: every built-in over a backend for each, which
-/// `*` offers, then `tool_search` and the three MCP resource tools. An MCP
-/// server's own tools are the server's words, not the crate's.
-fn built_in<'run>(local: &'run Local, fake: &'run Fake) -> Vec<Box<ContextTool<'run>>> {
+/// `*` offers, the seven subagent tools among them, then `tool_search` and the
+/// three MCP resource tools. An MCP server's own tools are the server's
+/// words, not the crate's.
+fn built_in<'run>(
+    local: &'run Local,
+    fake: &'run Fake,
+    agents: &'run Agents,
+) -> Vec<Box<ContextTool<'run>>> {
     let servers: Vec<Arc<Server>> = Vec::new();
     local
         .builder()
         .with_scheduler(fake)
         .with_channel(fake)
         .with_notifier(fake)
+        .with_agents(agents)
         .with_tool(Typed::new(ToolSearch::new(Arc::new(Deferred::default()))))
         .with_tool(Typed::new(ListMcpResources::new(servers.clone())))
         .with_tool(Typed::new(ListMcpResourceTemplates::new(servers.clone())))
@@ -117,7 +124,12 @@ fn guffbolt_tool_specs_name_no_host_product() {
         "the check finds each host word it looks for"
     );
     let (local, fake) = (local(), Fake::answering(Ok(String::new())));
-    let tools = built_in(&local, &fake);
+    let (agents, _requests) = Agents::new(Caps {
+        depth: 2,
+        open: 4,
+        started: 16,
+    });
+    let tools = built_in(&local, &fake, &agents);
 
     let found: Vec<String> = tools
         .iter()
@@ -133,8 +145,9 @@ fn guffbolt_tool_specs_name_no_host_product() {
 
     assert_eq!(
         tools.len(),
-        42,
-        "the 38 built-ins, tool_search and the three MCP resource tools are each checked"
+        49,
+        "the 45 built-ins, the seven subagent tools among them, tool_search and the three MCP \
+         resource tools are each checked"
     );
     assert_eq!(
         found,
@@ -154,29 +167,23 @@ async fn refusals_and_answers_name_no_host_product() {
     }]);
     let at = first_call();
     let cx = local.context(&at);
-    let without_env = Context { env: None, ..cx };
+    let (read, git) = (FileRead::new(&local.env), Git::new(&local.env, None));
 
     let answers = [
         (
-            Typed::new(FileRead)
+            Typed::new(read)
                 .call(&json!({"path": "../outside"}), cx)
                 .await,
             "[path_not_allowed] ../outside leaves the working directory",
         ),
         (
-            Typed::new(FileRead).call(&json!({"path": "."}), cx).await,
+            Typed::new(read).call(&json!({"path": "."}), cx).await,
             "[invalid_arguments] path must name a file in the working directory",
         ),
         (
-            Typed::new(Git).call(&json!({"args": ["push"]}), cx).await,
+            Typed::new(git).call(&json!({"args": ["push"]}), cx).await,
             "[subcommand_not_allowed] git push reaches a remote, which this environment does not \
              reach",
-        ),
-        (
-            Typed::new(Shell)
-                .call(&json!({"command": "true"}), without_env)
-                .await,
-            "[sandbox_unavailable] this call has no environment to run in",
         ),
         (
             Typed::new(MemoryForget::new(&local.memory))

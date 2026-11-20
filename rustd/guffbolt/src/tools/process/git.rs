@@ -17,9 +17,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::oneshot::{run_to_end, timeout_of};
-use super::{env_of, with_environment};
+use super::with_environment;
 use crate::tool::ToolOutput;
-use crate::tools::env::Spawn;
+use crate::tools::env::{Env, Spawn};
 use crate::tools::{Context, Handler, code};
 
 /// The git the environment carries, found on its search path.
@@ -57,9 +57,24 @@ pub struct Invocation {
 
 /// Runs git in the working directory.
 #[derive(Debug, Clone, Copy)]
-pub struct Git;
+pub struct Git<'run> {
+    env: &'run dyn Env,
+    /// The directory git runs in, relative to the environment's root; the
+    /// root when `None`.
+    repository: Option<&'run str>,
+}
 
-impl Handler for Git {
+impl<'run> Git<'run> {
+    /// git in `env`, run in `repository` when one is named: the one
+    /// repository the embedder checked out. With several, or none, the model
+    /// names one with `-C`.
+    #[must_use]
+    pub const fn new(env: &'run dyn Env, repository: Option<&'run str>) -> Self {
+        Self { env, repository }
+    }
+}
+
+impl Handler for Git<'_> {
     const NAME: &'static str = "git";
     const DESCRIPTION: &'static str = "Run git on the repository checked out in the \
         working directory and read back its output and exit code. Local commands only: push, \
@@ -80,18 +95,12 @@ impl Handler for Git {
                 &format!("git {refused} {REACHES_REMOTE}"),
             );
         }
-        let env = match env_of(&context) {
-            Ok(env) => env,
-            Err(refused) => return refused,
-        };
         let spawn = with_environment(Spawn::program(GIT_PROGRAM).args(&arguments.args));
-        // In the one repository the run holds; with several, the model names
-        // one with `-C`.
-        let spawn = match context.repository {
+        let spawn = match self.repository {
             Some(repository) => spawn.cwd(repository),
             None => spawn,
         };
-        run_to_end(env, spawn, timeout_of(arguments.timeout_ms), run_id).await
+        run_to_end(self.env, spawn, timeout_of(arguments.timeout_ms), run_id).await
     }
 }
 

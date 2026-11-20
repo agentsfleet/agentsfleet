@@ -172,6 +172,11 @@ impl Transcript {
     pub(crate) fn extend(&mut self, messages: Vec<Message>) {
         self.messages.extend(messages);
     }
+
+    /// Every message, in order, as an owned list.
+    pub(crate) fn into_messages(self) -> Vec<Message> {
+        self.messages
+    }
 }
 
 #[cfg(test)]

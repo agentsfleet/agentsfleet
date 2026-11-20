@@ -7,8 +7,9 @@ use crate::tool::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use super::command;
 use super::oneshot::{run_to_end, timeout_of};
-use super::{command, env_of};
+use crate::tools::env::Env;
 use crate::tools::{Context, Handler};
 
 /// `shell`'s arguments.
@@ -23,11 +24,12 @@ pub struct Command {
     timeout_ms: Option<u64>,
 }
 
-/// Runs one command to its end.
-#[derive(Debug, Clone, Copy)]
-pub struct Shell;
+backed! {
+    /// Runs one command to its end.
+    Shell over Env
+}
 
-impl Handler for Shell {
+impl Handler for Shell<'_> {
     const NAME: &'static str = "shell";
     const DESCRIPTION: &'static str = "Run one shell command in the working directory and \
         read back its output and exit code. The command is killed once \
@@ -35,11 +37,8 @@ impl Handler for Shell {
     type Arguments = Command;
 
     async fn run(&self, arguments: Command, context: Context<'_>) -> ToolOutput {
-        let env = match env_of(&context) {
-            Ok(env) => env,
-            Err(refused) => return refused,
-        };
         let timeout = timeout_of(arguments.timeout_ms);
-        run_to_end(env, command(&arguments.command), timeout, context.run_id).await
+        let script = command(&arguments.command);
+        run_to_end(self.backend, script, timeout, context.run_id).await
     }
 }

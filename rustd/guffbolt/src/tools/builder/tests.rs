@@ -104,6 +104,8 @@ fn each_backend_a_named_tool_lacks_is_named() {
         ("schedule", Backend::Scheduler),
         ("message", Backend::Channel),
         ("notify", Backend::Notifier),
+        ("spawn_agent", Backend::Agents),
+        ("exec_command", Backend::Env),
     ];
 
     for (tool, backend) in cases {
@@ -303,8 +305,8 @@ async fn an_added_tool_replaces_a_built_in_of_its_name() {
     assert_eq!(answer.text, "memory_recall", "the added tool answered");
 }
 
-/// A tool built over the builder's environment runs there, even when the
-/// call's context lends none.
+/// A tool built over the builder's environment runs there: the call's
+/// context carries no environment at all.
 #[tokio::test]
 async fn a_built_environment_tool_runs_where_it_was_built() {
     let root = tempfile::tempdir().expect("a scratch directory");
@@ -315,15 +317,39 @@ async fn a_built_environment_tool_runs_where_it_was_built() {
         .build(&config(&["file_read"]))
         .expect("the environment is given");
     let at = first_call();
-    let without_env = Context {
-        env: None,
-        ..local.context(&at)
-    };
 
     let read = tools
-        .dispatch("file_read", &json!({"path": "notes.txt"}), without_env)
+        .dispatch(
+            "file_read",
+            &json!({"path": "notes.txt"}),
+            local.context(&at),
+        )
         .await;
 
     assert_eq!(read.error_code, None, "{}", read.text);
     assert!(read.text.contains("kept"), "{}", read.text);
+}
+
+/// `exec_command` and `write_stdin` keep their processes in the run's
+/// sessions, so an environment alone does not build them.
+#[test]
+fn a_session_tool_names_the_sessions_it_lacks() {
+    let root = tempfile::tempdir().expect("a scratch directory");
+    let local = local_at(root.path());
+
+    for tool in ["exec_command", "write_stdin"] {
+        let refused = Tools::builder()
+            .with_env(&local.env)
+            .build(&config(&[tool]))
+            .expect_err("no sessions were given");
+        assert_eq!(
+            (refused.tool(), refused.backend()),
+            (tool, Backend::Sessions)
+        );
+    }
+    let built = local
+        .builder()
+        .build(&config(&["exec_command", "write_stdin"]))
+        .expect("the environment and sessions are given");
+    assert_eq!(names(&built), ["exec_command", "write_stdin"]);
 }

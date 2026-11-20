@@ -1,6 +1,10 @@
 //! One tool call, from its start to its end: opened before it runs or is
 //! refused, run inside the observer's span against the loop's stop, and ended
 //! exactly once.
+//!
+//! A subagent call answers with an order rather than its result; the order
+//! runs here, inside the call, in the place of the loop that made it, so the
+//! observer hears the call end once, with what the model reads.
 
 use std::future::ready;
 use std::time::Instant;
@@ -8,20 +12,30 @@ use std::time::Instant;
 use tracing::{Instrument as _, Span};
 
 use super::Mark;
+use crate::agents::{Caller, Me};
 use crate::conversation::Conversation;
 use crate::observe::{CallEnd, Observe};
 use crate::tool::{ToolFuture, ToolOutput};
-use crate::transcript::{Call, CallRef};
+use crate::transcript::{Call, CallRef, Message};
 
-/// Runs `call`, which sits at `call_ref` in a step that began with `mark`
-/// the newest input's, or answers it unrun when its step was `cut` at the
-/// output limit, its arguments possibly incomplete. `None` when the loop was
-/// stopped before the call started or while it ran.
+/// What one call is run with: where it sits, the newest input's mark when its
+/// step began, the loop that made it, and that loop's transcript before the
+/// step when the step starts a child.
+#[derive(Clone, Copy)]
+pub(super) struct Lent<'a> {
+    pub(super) call_ref: &'a CallRef,
+    pub(super) mark: Option<&'a Mark>,
+    pub(super) me: Me,
+    pub(super) history: &'a [Message],
+}
+
+/// Runs `call` as `lent` places it, or answers it unrun when its step was
+/// `cut` at the output limit, its arguments possibly incomplete. `None` when
+/// the loop was stopped before the call started or while it ran.
 pub(super) async fn run<C: Conversation + ?Sized>(
     conversation: &C,
     call: &Call,
-    call_ref: &CallRef,
-    mark: Option<&Mark>,
+    lent: Lent<'_>,
     cut: bool,
 ) -> Option<ToolOutput> {
     let stop = conversation.stop();
@@ -31,19 +45,44 @@ pub(super) async fn run<C: Conversation + ?Sized>(
     // Opened before its work exists, so the work is always dropped first:
     // a call the work's own drop ends, such as one inside it, ends before
     // this one.
-    let open = Open::start(conversation.observer(), call, call_ref, mark);
+    let open = Open::start(conversation.observer(), call, lent.call_ref, lent.mark);
     let work: ToolFuture<'_> = if cut {
         Box::pin(ready(ToolOutput::cut(&call.name)))
     } else {
-        conversation.dispatch(call, call_ref)
+        conversation.dispatch(call, lent.call_ref)
     };
-    let work = work.instrument(open.span.clone());
+    let work = ordered(conversation, work, lent).instrument(open.span.clone());
     let output = tokio::select! {
         biased;
         () = stop.cancelled() => None,
         output = work => Some(output),
     }?;
     Some(open.answered(output))
+}
+
+/// What `work` answers, or, when it answered with an order, what running the
+/// order in the calling loop's place answers.
+async fn ordered<C: Conversation + ?Sized>(
+    conversation: &C,
+    work: ToolFuture<'_>,
+    lent: Lent<'_>,
+) -> ToolOutput {
+    let mut output = work.await;
+    let Some(order) = output.order.take() else {
+        return output;
+    };
+    let tools: Vec<String> = if order.spawns() {
+        let offered = conversation.offered();
+        offered.iter().map(|spec| spec.name.to_owned()).collect()
+    } else {
+        Vec::new()
+    };
+    let caller = Caller {
+        me: lent.me,
+        tools: &tools,
+        history: lent.history,
+    };
+    order.run(caller).await
 }
 
 /// One call between its start and its end, which comes once: when the call

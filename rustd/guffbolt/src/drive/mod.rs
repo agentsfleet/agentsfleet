@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use tracing::Instrument as _;
 
+use crate::agents::{Me, SPAWN_AGENT};
 use crate::conversation::Conversation;
 use crate::extension::{Answer, Budget, Extension};
 use crate::model::Model as _;
@@ -44,10 +45,28 @@ const ONE_QUESTION: &str = "another call of this step already asked the person a
 /// state still waiting ends it so again without a model call. A stop or the
 /// budget that cuts that wait short ends the loop stopped, the question kept.
 /// Whatever ends the loop, its observer hears the ending once.
+///
+/// This is the run's root loop: the children its subagent calls start are
+/// driven beside it by [`crate::agents::Children`].
 pub async fn drive<C, E>(
     conversation: &mut C,
     extension: &mut E,
     state: &mut DriveState,
+) -> Ending<C::Failure>
+where
+    C: Conversation + ?Sized,
+    E: Extension<C>,
+{
+    drive_in(conversation, extension, state, Me::ROOT).await
+}
+
+/// [`drive`], as loop `me` of the run: the root, or a child's turn, whose
+/// subagent calls act in its place.
+pub(crate) async fn drive_in<C, E>(
+    conversation: &mut C,
+    extension: &mut E,
+    state: &mut DriveState,
+    me: Me,
 ) -> Ending<C::Failure>
 where
     C: Conversation + ?Sized,
@@ -58,7 +77,11 @@ where
         Ending::Waiting(waiting)
     } else {
         let budget = extension.budget(conversation);
-        bounded(conversation, extension, state, &mut begun, budget).await
+        let looped = Looped {
+            begun: &mut begun,
+            me,
+        };
+        bounded(conversation, extension, state, looped, budget).await
     };
     let (kind, event) = (ending.kind(), EVENT_ENDED);
     tracing::debug!(steps = begun, ending = kind, event);
@@ -66,12 +89,19 @@ where
     ending
 }
 
+/// Which loop runs, and how many steps it began, so a loop its budget cuts
+/// short still says how far it got.
+struct Looped<'a> {
+    begun: &'a mut u64,
+    me: Me,
+}
+
 /// Every step, under the extension's `budget`.
 async fn bounded<C, E>(
     conversation: &mut C,
     extension: &mut E,
     state: &mut DriveState,
-    begun: &mut u64,
+    looped: Looped<'_>,
     budget: Budget,
 ) -> Ending<C::Failure>
 where
@@ -79,10 +109,10 @@ where
     E: Extension<C>,
 {
     match budget {
-        Budget::Unbounded => steps(conversation, extension, state, begun).await,
+        Budget::Unbounded => steps(conversation, extension, state, looped).await,
         Budget::Spent => Ending::Stopped,
         Budget::Within(limit) => {
-            let bounded = steps(conversation, extension, state, begun);
+            let bounded = steps(conversation, extension, state, looped);
             match tokio::time::timeout(limit, bounded).await {
                 Ok(ending) => ending,
                 Err(_elapsed) => {
@@ -96,15 +126,15 @@ where
     }
 }
 
-/// Every step, in order, until one ends the loop. `begun` counts the steps
-/// begun, so a loop its budget cuts short still says how far it got. Each
-/// step notes the newest input mark as it begins, and its calls carry it.
+/// Every step, in order, until one ends the loop. Each step notes the newest
+/// input mark as it begins, and its calls carry it.
 async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
     conversation: &mut C,
     extension: &mut E,
     state: &mut DriveState,
-    begun: &mut u64,
+    looped: Looped<'_>,
 ) -> Ending<C::Failure> {
+    let Looped { begun, me } = looped;
     loop {
         *begun += 1;
         let number = *begun;
@@ -136,8 +166,12 @@ async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
                 Next::Done => break Ending::Answered(state.answers.join(ANSWER_JOIN)),
             }
         }
-        let at = state.completed_steps().saturating_add(1);
-        let (results, asked) = run_calls(conversation, &step, at, mark.as_ref()).await;
+        let at = Place {
+            step: state.completed_steps().saturating_add(1),
+            mark: mark.as_ref(),
+            me,
+        };
+        let (results, asked) = run_calls(conversation, &step, at).await;
         remember(conversation, step, results);
         state.completed();
         if conversation.stop().is_cancelled() {
@@ -198,29 +232,50 @@ async fn sample<C: Conversation + ?Sized>(
     read
 }
 
-/// Runs the calls of `step`, the conversation's step `at`, in order, or
-/// answers each unrun when the step was cut, and answers their results:
-/// fewer than its calls when the loop was stopped partway. Each call is
-/// dispatched with its [`CallRef`], and ends carrying `mark`, the newest
-/// input's when the step began. A call that asked the person a question
-/// has no result yet: it is the question the run waits on, and a second
-/// question in the same step is answered that one is asked at a time.
+/// Where a step's calls sit: the conversation's step number, the newest
+/// input's mark when it began, and the loop that asked.
+#[derive(Clone, Copy)]
+struct Place<'a> {
+    step: u64,
+    mark: Option<&'a Mark>,
+    me: Me,
+}
+
+/// Runs the calls of `step`, at `at`, in order, or answers each unrun when
+/// the step was cut, and answers their results: fewer than its calls when
+/// the loop was stopped partway. Each call is dispatched with its
+/// [`CallRef`], and ends carrying the newest input's mark when the step
+/// began. A call that asked the person a question has no result yet: it is
+/// the question the run waits on, and a second question in the same step is
+/// answered that one is asked at a time. A step that starts a child keeps a
+/// copy of the transcript before it, which a child forked from this loop
+/// starts from.
 async fn run_calls<C: Conversation + ?Sized>(
     conversation: &mut C,
     step: &Step,
-    at: u64,
-    mark: Option<&Mark>,
+    at: Place<'_>,
 ) -> (Vec<Message>, Option<Waiting>) {
     let mut results = Vec::with_capacity(step.calls.len());
     let mut asked: Option<Waiting> = None;
+    let spawns = step.calls.iter().any(|call| call.name == SPAWN_AGENT);
+    let history = if spawns {
+        conversation.transcript().messages().to_vec()
+    } else {
+        Vec::new()
+    };
     for (call, index) in step.calls.iter().zip(0_u64..) {
         let call_ref = CallRef {
-            step: at,
+            step: at.step,
             index,
             call_id: call.id.clone(),
         };
-        let Some(mut output) = call::run(&*conversation, call, &call_ref, mark, step.cut).await
-        else {
+        let lent = call::Lent {
+            call_ref: &call_ref,
+            mark: at.mark,
+            me: at.me,
+            history: &history,
+        };
+        let Some(mut output) = call::run(&*conversation, call, lent, step.cut).await else {
             break;
         };
         if let Some(question) = output.asks.take() {

@@ -131,7 +131,6 @@ fn every_code_the_harness_answers_is_spelled_as_the_model_reads_it() {
         (ErrorCode::CHILD_CAP_REACHED, "child_cap_reached"),
         (ErrorCode::CHILD_TOOL_NOT_HELD, "child_tool_not_held"),
         (ErrorCode::CHILD_NOT_FOUND, "child_not_found"),
-        (ErrorCode::CHILD_FAILED, "child_failed"),
     ];
 
     for (code, spelling) in spelled {

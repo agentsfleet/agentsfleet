@@ -27,7 +27,6 @@ use super::changes::{Change, report};
 use super::{Answer, failed, inside, settled, too_long, whole};
 use crate::tool::ToolOutput;
 use crate::tools::env::{Env, MAX_READ_BYTES};
-use crate::tools::process::env_of;
 use crate::tools::{Context, Handler, code};
 
 #[path = "../../../vendor/apply_patch/mod.rs"]
@@ -142,11 +141,12 @@ impl Planned<'_> {
     }
 }
 
-/// Applies a patch.
-#[derive(Debug, Clone, Copy)]
-pub struct ApplyPatch;
+backed! {
+    /// Applies a patch.
+    ApplyPatch over Env
+}
 
-impl Handler for ApplyPatch {
+impl Handler for ApplyPatch<'_> {
     const NAME: &'static str = "apply_patch";
     const DESCRIPTION: &'static str = "Edit files in the working directory with one patch in \
         apply_patch's grammar: add, update and delete hunks, each path relative to the \
@@ -154,13 +154,12 @@ impl Handler for ApplyPatch {
         file and ends with each file's lines added and removed.";
     type Arguments = Patch;
 
-    async fn run(&self, arguments: Patch, context: Context<'_>) -> ToolOutput {
-        settled(apply(&context, &arguments.patch).await)
+    async fn run(&self, arguments: Patch, _context: Context<'_>) -> ToolOutput {
+        settled(apply(self.backend, &arguments.patch).await)
     }
 }
 
-async fn apply(context: &Context<'_>, patch: &str) -> Answer {
-    let env = env_of(context)?;
+async fn apply(env: &dyn Env, patch: &str) -> Answer {
     let hunks = codex::parse_patch(patch).map_err(invalid)?;
     if hunks.is_empty() {
         return Err(invalid("the patch changes no file"));

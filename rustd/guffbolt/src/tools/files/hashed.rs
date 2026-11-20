@@ -22,7 +22,7 @@ use serde::Deserialize;
 use super::changes::{Change, report};
 use super::{Answer, failed, inside, settled, whole};
 use crate::tool::ToolOutput;
-use crate::tools::process::env_of;
+use crate::tools::env::Env;
 use crate::tools::{Context, Handler, code};
 
 /// Fowler–Noll–Vo 1a, 32 bits: the tag hash, taken over the trimmed line
@@ -73,34 +73,35 @@ pub struct Range {
     new_text: String,
 }
 
-/// Reads a file with every line tagged.
-#[derive(Debug, Clone, Copy)]
-pub struct FileReadHashed;
+backed! {
+    /// Reads a file with every line tagged.
+    FileReadHashed over Env
+}
 
-impl Handler for FileReadHashed {
+impl Handler for FileReadHashed<'_> {
     const NAME: &'static str = "file_read_hashed";
     const DESCRIPTION: &'static str = "Read a file in the working directory with every line tagged \
         L<line>:<hash>|<text>, for file_edit_hashed to name lines by. The file must be text \
         and fit one read.";
     type Arguments = Named;
 
-    async fn run(&self, arguments: Named, context: Context<'_>) -> ToolOutput {
-        settled(read(&context, &arguments.path).await)
+    async fn run(&self, arguments: Named, _context: Context<'_>) -> ToolOutput {
+        settled(read(self.backend, &arguments.path).await)
     }
 }
 
-async fn read(context: &Context<'_>, path: &str) -> Answer {
-    let env = env_of(context)?;
+async fn read(env: &dyn Env, path: &str) -> Answer {
     let path = inside(env, path)?;
     let text = whole(env, path).await?;
     Ok(ToolOutput::succeeded(tagged(&text)))
 }
 
-/// Replaces a line, or a range of lines, named by tag.
-#[derive(Debug, Clone, Copy)]
-pub struct FileEditHashed;
+backed! {
+    /// Replaces a line, or a range of lines, named by tag.
+    FileEditHashed over Env
+}
 
-impl Handler for FileEditHashed {
+impl Handler for FileEditHashed<'_> {
     const NAME: &'static str = "file_edit_hashed";
     const DESCRIPTION: &'static str = "Replace one line, or the range from target to \
         end_target, in a file in the working directory, naming the lines by the tags \
@@ -108,13 +109,12 @@ impl Handler for FileEditHashed {
         file again.";
     type Arguments = Range;
 
-    async fn run(&self, arguments: Range, context: Context<'_>) -> ToolOutput {
-        settled(edit(&context, &arguments).await)
+    async fn run(&self, arguments: Range, _context: Context<'_>) -> ToolOutput {
+        settled(edit(self.backend, &arguments).await)
     }
 }
 
-async fn edit(context: &Context<'_>, arguments: &Range) -> Answer {
-    let env = env_of(context)?;
+async fn edit(env: &dyn Env, arguments: &Range) -> Answer {
     let path = inside(env, &arguments.path)?;
     let start = Target::parse(&arguments.target)?;
     let end = arguments

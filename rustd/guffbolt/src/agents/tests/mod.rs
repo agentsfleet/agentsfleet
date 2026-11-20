@@ -1,134 +1,187 @@
-//! A run's children, proven against a test embedder: tools held by name, and
-//! children that answer their task at once or after a while, wait on their
-//! stop, or never answer.
+//! A run's children, read through the book: the caps, a close that frees a
+//! seat and closes what the child started, an interrupt that keeps the child
+//! open, a pause that holds every start, and a census that comes back whole.
 
-mod book;
-mod poll;
-mod quiet;
+use std::sync::atomic::Ordering;
 
-use std::future::{pending, ready};
-use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use super::{Agents, Caps, Census, Counted, Kind, Me, Refused, Status};
+use crate::drive::DriveState;
+use crate::transcript::{Message, Replay};
 
-use tokio_util::sync::CancellationToken;
-
-use super::{Agents, Caps, ChildFuture, Kind, Narrow, Parent, Raise, Seat, Status};
-
-/// The caps the cases run under: depth 2, two running, three started.
+/// The caps the cases run under: depth 2, two open, three started.
 const CAPS: Caps = Caps {
     depth: 2,
-    running: 2,
+    open: 2,
     started: 3,
 };
-/// The prefix of a tool that starts or steers a child.
-const AGENT: &str = "agent_";
-/// The task of a child that never answers.
-const HANG: &str = "hang";
-/// The task of a child that ends when it is stopped.
-const STOPS: &str = "wait for the stop";
-/// The task of a child that works a while, then answers with its task.
-const SLEEPS: &str = "sleep first";
-/// How long a child that sleeps first works.
-const CHILD_WORK: Duration = Duration::from_millis(50);
 
-/// A loop's tools, by name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Names(Vec<&'static str>);
-
-impl Narrow for Names {
-    fn narrowed<'n, N: AsRef<str>>(&self, names: &'n [N]) -> Result<Self, &'n str> {
-        let mut kept = Vec::with_capacity(names.len());
-        for name in names.iter().map(AsRef::as_ref) {
-            let held = self.0.iter().find(|held| **held == name).ok_or(name)?;
-            kept.push(*held);
-        }
-        Ok(Self(kept))
-    }
-
-    fn without_agents(&self) -> Self {
-        let kept = self
-            .0
-            .iter()
-            .copied()
-            .filter(|name| !name.starts_with(AGENT));
-        Self(kept.collect())
-    }
+/// Reserves a child of `parent` over `message`, holding no tool.
+fn reserve(agents: &Agents, parent: Me, message: &str) -> Result<u64, Refused> {
+    agents.reserve(parent, Vec::new(), Vec::new(), message.to_owned())
 }
 
-/// The root's tools: one that starts a child, and one that does not.
-fn held() -> Names {
-    Names(vec!["agent_spawn", "read"])
+/// Ends child `id`'s turn with `answer`, keeping `transcript`.
+fn answer(agents: &Agents, id: u64, answer: &str, transcript: Vec<Message>) {
+    let begun = agents.begin(id);
+    assert!(begun.is_some(), "child {id} had a turn queued");
+    let status = Status::Done(answer.to_owned());
+    agents.ended(id, status, Some((transcript, DriveState::default())));
 }
 
-/// The root, at depth 0, stopped by `stop`, holding `tools`.
-const fn root<'a>(stop: &'a CancellationToken, tools: &'a Names) -> Parent<'a, Names> {
-    Parent {
-        depth: 0,
-        stop,
-        tools,
-    }
+fn kinds(agents: &Agents) -> Vec<Kind> {
+    agents.list().iter().map(|child| child.status).collect()
 }
 
-/// What the test embedder heard of its children.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Heard {
-    /// A child started: its id and depth.
-    Started(u64, u8),
-    /// A child ended: its id, status and calls.
-    Ended(u64, Kind, u64),
+#[test]
+fn the_caps_refuse_a_child_past_the_open_or_the_started_count() {
+    let (agents, _requests) = Agents::new(CAPS);
+
+    assert_eq!(reserve(&agents, Me::ROOT, "a"), Ok(1));
+    assert_eq!(reserve(&agents, Me::ROOT, "b"), Ok(2));
+    assert_eq!(
+        reserve(&agents, Me::ROOT, "c"),
+        Err(Refused::Capped),
+        "two are open"
+    );
+    answer(&agents, 1, "a done", Vec::new());
+    assert_eq!(
+        reserve(&agents, Me::ROOT, "c"),
+        Err(Refused::Capped),
+        "an idle child keeps its seat"
+    );
+    assert_eq!(agents.close(1), Some(Kind::Done));
+    assert_eq!(reserve(&agents, Me::ROOT, "c"), Ok(3));
+    assert_eq!(agents.close(3), Some(Kind::Running));
+    assert_eq!(
+        reserve(&agents, Me::ROOT, "d"),
+        Err(Refused::Capped),
+        "three were started"
+    );
 }
 
-/// A run whose children answer with their task, unless the task says
-/// otherwise.
-#[derive(Debug)]
-struct Run {
-    agents: Agents<Names>,
-    heard: Mutex<Vec<Heard>>,
+#[test]
+fn closing_a_child_closes_every_child_it_started() {
+    let (agents, _requests) = Agents::new(Caps { open: 3, ..CAPS });
+    let parent = reserve(&agents, Me::ROOT, "lead").ok();
+    answer(&agents, 1, "led", Vec::new());
+    let grandchild = reserve(&agents, Me { id: 1, depth: 1 }, "follow");
+
+    assert_eq!((parent, grandchild), (Some(1), Ok(2)));
+    assert_eq!(agents.close(1), Some(Kind::Done));
+    assert_eq!(
+        kinds(&agents),
+        [Kind::Closed, Kind::Running],
+        "the running grandchild closes as its turn ends"
+    );
+    assert!(agents.begin(2).is_none(), "its turn never starts");
+    assert_eq!(kinds(&agents), [Kind::Closed, Kind::Closed]);
+    assert_eq!(
+        reserve(&agents, Me::ROOT, "next"),
+        Ok(3),
+        "both seats are free"
+    );
 }
 
-impl Run {
-    fn new(agents: Agents<Names>) -> Self {
-        Self {
-            agents,
-            heard: Mutex::default(),
-        }
-    }
+#[test]
+fn an_interrupted_turn_stops_and_the_child_stays_open() {
+    let (agents, _requests) = Agents::new(CAPS);
+    let id = reserve(&agents, Me::ROOT, "work").ok();
+    let turn = agents.begin(1).map(|turn| turn.stop);
 
-    fn heard(&self) -> MutexGuard<'_, Vec<Heard>> {
-        self.heard.lock().unwrap_or_else(PoisonError::into_inner)
-    }
+    assert_eq!(id, Some(1));
+    assert_eq!(agents.interrupt(1), Some(Kind::Running));
+    assert!(turn.is_some_and(|stop| stop.is_cancelled()));
+    agents.ended(1, Status::Interrupted, None);
+    assert_eq!(kinds(&agents), [Kind::Interrupted]);
+    assert_eq!(agents.follow_up(1, "again".to_owned()), Some(true));
+    assert_eq!(kinds(&agents), [Kind::Running], "it takes another task");
+    assert_eq!(agents.interrupt(9), None);
+    assert_eq!(agents.close(9), None);
+    assert_eq!(agents.send(9, "x".to_owned()), None);
 }
 
-impl Raise for Run {
-    type Tools = Names;
+#[test]
+fn a_pause_refuses_every_start_and_follow_up_until_it_is_dropped() {
+    let (agents, _requests) = Agents::new(CAPS);
+    assert_eq!(reserve(&agents, Me::ROOT, "a"), Ok(1));
+    answer(&agents, 1, "a done", Vec::new());
 
-    fn agents(&self) -> &Agents<Names> {
-        &self.agents
-    }
+    let pause = agents.try_pause(|| true);
 
-    fn child<'s>(&'s self, _tools: Names, seat: Seat<'s>) -> ChildFuture<'s> {
-        if seat.task == HANG {
-            Box::pin(pending())
-        } else if seat.task == STOPS {
-            Box::pin(async move {
-                seat.stop.cancelled().await;
-                Status::Interrupted
-            })
-        } else if seat.task == SLEEPS {
-            Box::pin(async move {
-                tokio::time::sleep(CHILD_WORK).await;
-                Status::Done(seat.task)
-            })
-        } else {
-            Box::pin(ready(Status::Done(seat.task)))
-        }
-    }
+    assert!(pause.is_some(), "no turn runs");
+    assert!(agents.try_pause(|| true).is_none(), "one pause at a time");
+    assert_eq!(reserve(&agents, Me::ROOT, "b"), Err(Refused::Capped));
+    assert_eq!(agents.follow_up(1, "again".to_owned()), Some(false));
+    drop(pause);
+    assert!(!agents.0.gate.load(Ordering::Acquire));
+    assert_eq!(agents.follow_up(1, "again".to_owned()), Some(true));
+}
 
-    fn started(&self, id: u64, depth: u8) {
-        self.heard().push(Heard::Started(id, depth));
-    }
+#[test]
+fn a_census_comes_back_whole_and_reads_only_under_its_own_pause() {
+    let (agents, _requests) = Agents::new(CAPS);
+    let (other, _other_requests) = Agents::new(CAPS);
+    let transcript = vec![
+        Message::User("count".to_owned()),
+        Message::Assistant {
+            text: "one".to_owned(),
+            calls: Vec::new(),
+            replay: Replay::default(),
+        },
+    ];
+    assert_eq!(reserve(&agents, Me::ROOT, "count"), Ok(1));
+    answer(&agents, 1, "one", transcript.clone());
+    assert_eq!(reserve(&agents, Me::ROOT, "spare"), Ok(2));
+    answer(&agents, 2, "spare", Vec::new());
+    assert_eq!(agents.close(2), Some(Kind::Done));
 
-    fn ended(&self, id: u64, _depth: u8, status: Kind, calls: u64) {
-        self.heard().push(Heard::Ended(id, status, calls));
-    }
+    let foreign = other.try_pause(|| true);
+    let pause = agents.try_pause(|| true);
+    let census = pause.as_ref().and_then(|pause| agents.census(pause));
+    let mut state = DriveState::default();
+    let saved = pause
+        .as_ref()
+        .is_some_and(|pause| agents.save(pause, &mut state));
+
+    assert!(
+        foreign
+            .as_ref()
+            .is_some_and(|foreign| agents.census(foreign).is_none())
+    );
+    assert!(saved);
+    let expected = Census {
+        next: 2,
+        started: 2,
+        children: vec![
+            Counted {
+                id: 1,
+                parent: 0,
+                depth: 1,
+                calls: 0,
+                tools: Vec::new(),
+                status: Status::Done("one".to_owned()),
+                transcript,
+                state: DriveState::default(),
+            },
+            Counted {
+                id: 2,
+                parent: 0,
+                depth: 1,
+                calls: 0,
+                tools: Vec::new(),
+                status: Status::Closed,
+                transcript: Vec::new(),
+                state: DriveState::default(),
+            },
+        ],
+    };
+    assert_eq!(census.as_ref(), Some(&expected));
+    assert_eq!(state.children(), &expected);
+    let (restored, _requests) = Agents::restored(CAPS, &state);
+    assert_eq!(kinds(&restored), [Kind::Done, Kind::Closed]);
+    assert_eq!(
+        reserve(&restored, Me::ROOT, "next"),
+        Ok(3),
+        "ids and counts go on, and the closed child's seat is free"
+    );
 }

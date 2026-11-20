@@ -13,7 +13,7 @@ use serde::Deserialize;
 use super::answered;
 use crate::tool::ToolOutput;
 use crate::tools::outbound::{
-    Placement, RESPONSE_MAX_BYTES, Redirects, Request as Draft, Response,
+    Outbound, Placement, RESPONSE_MAX_BYTES, Redirects, Request as Draft, Response,
 };
 use crate::tools::{Context, Handler};
 
@@ -39,11 +39,12 @@ pub struct Request {
     body: Option<String>,
 }
 
-/// Sends one request through the run's outbound hook.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct HttpRequest;
+backed! {
+    /// Sends one request through the run's outbound hook.
+    HttpRequest over Outbound
+}
 
-impl Handler for HttpRequest {
+impl Handler for HttpRequest<'_> {
     const NAME: &'static str = "http_request";
     const DESCRIPTION: &'static str = "Send one HTTPS request to a host the network \
         policy allows, and read back its status and up to 1 MiB of a complete body. \
@@ -54,7 +55,7 @@ impl Handler for HttpRequest {
         headers are removed permanently after an origin change; temporary URLs stay private.";
     type Arguments = Request;
 
-    async fn run(&self, arguments: Request, context: Context<'_>) -> ToolOutput {
+    async fn run(&self, arguments: Request, _context: Context<'_>) -> ToolOutput {
         let method = arguments
             .method
             .unwrap_or_else(|| DEFAULT_METHOD.to_owned());
@@ -72,7 +73,7 @@ impl Handler for HttpRequest {
             placement: Placement::Authorization,
             redirects,
         };
-        match context.outbound.send(Self::NAME, draft).await {
+        match self.backend.send(Self::NAME, draft).await {
             Ok(inbound) => answered(inbound.status, render(&inbound)),
             Err(refused) => refused.into(),
         }

@@ -23,6 +23,9 @@ Changes to the copied files, as the Apache License 2.0 section 4(b) asks:
   for this repository's literal audit; their text is unchanged.
 - seek_sequence.rs: the `ApplyPatchFileUpdateMode` parameter removed; the
   PreserveLineEndings arm is the one kept.
+- parser.rs: `ParseError`'s `thiserror::Error` derive is written out as
+  `Display` and `Error` impls in the words its `#[error]` attributes gave, so
+  the crate links no error-derive crate.
 - The workspace's lints are allowed over this directory rather than met, so
   a later pull from upstream diffs cleanly.
 
