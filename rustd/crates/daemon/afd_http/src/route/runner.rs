@@ -55,7 +55,7 @@ pub enum RunnerRoute {
     /// Minting the per-run credentials a fleet needs.
     CredentialsMint,
     /// Loading a fleet's memory at run start.
-    MemoryHydrate,
+    MemoryLoad,
     /// Writing a fleet's memory back.
     MemoryCapture,
     /// Searching a fleet's memory past the window a run was seeded with.
@@ -99,7 +99,7 @@ impl RunnerRoute {
         Self::TaskCheckpointPin,
         Self::TaskDecision,
         Self::CredentialsMint,
-        Self::MemoryHydrate,
+        Self::MemoryLoad,
         Self::MemoryCapture,
         Self::MemoryRecall,
         Self::Items,
@@ -130,7 +130,7 @@ impl RunnerRoute {
             Self::Schedule => &[Verb::Patch, Verb::Delete],
             Self::TaskDecision | Self::TaskCheckpoint | Self::TaskCheckpointPin => &[Verb::Patch],
             Self::SelfRecord
-            | Self::MemoryHydrate
+            | Self::MemoryLoad
             | Self::TaskInputs
             | Self::TaskEffect
             | Self::Fleets
@@ -175,7 +175,7 @@ impl RunnerRoute {
             Self::TaskCheckpointPin => paths::RUN_TASK_CHECKPOINT_PIN,
             Self::TaskDecision => paths::RUN_TASK_DECISION,
             Self::CredentialsMint => paths::RUNNER_CREDENTIALS_MINT,
-            Self::MemoryHydrate | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
+            Self::MemoryLoad | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
             Self::MemoryRecall => paths::RUNNER_MEMORY_RECALL,
             Self::Items => paths::RUN_ITEMS,
             Self::Schedules => paths::RUN_SCHEDULES,

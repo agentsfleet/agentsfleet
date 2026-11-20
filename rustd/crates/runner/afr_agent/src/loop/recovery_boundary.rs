@@ -2,7 +2,7 @@
 
 use af_secrets::Scrub;
 use af_wire::task::TaskContext;
-use afr_memory::Hydrated;
+use afr_memory::Loaded;
 use guffbolt::Message;
 use guffbolt::agents::Pause;
 
@@ -20,7 +20,7 @@ use guffbolt::DriveState;
 pub(super) struct RootSetup<'run> {
     pub(super) opening: Vec<Message>,
     pub(super) state: Option<RootRecovery>,
-    pub(super) memory: Hydrated<'run>,
+    pub(super) memory: Loaded<'run>,
 }
 
 pub(super) fn prepare_root<'run>(
@@ -56,10 +56,10 @@ pub(super) fn prepare_root<'run>(
     let memory = if let Some(saved) = &mut state {
         opening = std::mem::take(&mut saved.messages);
         opening.push(Message::User("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.".to_owned()));
-        Hydrated::recover(run.memory, std::mem::take(&mut saved.memory), scrub)?
+        Loaded::recover(run.memory, std::mem::take(&mut saved.memory), scrub)?
     } else {
         opening.push(Message::User(scrub.text(message).into_owned()));
-        Hydrated::new(run.memory)
+        Loaded::new(run.memory)
     };
     Ok(RootSetup {
         opening,

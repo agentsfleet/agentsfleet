@@ -41,7 +41,7 @@ pub const RUNNER_RUNS: &str = concatcp!(RUNNER_SELF, "/runs");
 pub const RUNNER_MEMORY: &str = concatcp!(RUNNER_SELF, "/memory");
 
 /// Trailing segment of `POST /v1/runners/me/memory/{fleet_id}/recall` — a
-/// search past the hydration window. Bare for the reason
+/// search past the load window. Bare for the reason
 /// [`RUN_ACTIVITY_SUFFIX`] gives.
 pub const RUNNER_MEMORY_RECALL_SUFFIX: &str = "recall";
 
@@ -87,10 +87,10 @@ pub const FLEET_TURNS_SUFFIX: &str = "turns";
 /// matches `{run_id}`; the runner puts the run's id in its place.
 const RUN: &str = concatcp!(RUNNER_RUNS, "/{run_id}/");
 
-/// One fleet's memory: `GET` hydrates it, `POST` captures into it.
+/// One fleet's memory: `GET` loads it, `POST` captures into it.
 pub const RUNNER_MEMORY_FLEET: &str = concatcp!(RUNNER_MEMORY, "/{fleet_id}");
 
-/// `POST` — a search of one fleet's memory past the hydration window.
+/// `POST` — a search of one fleet's memory past the load window.
 pub const RUNNER_MEMORY_RECALL: &str =
     concatcp!(RUNNER_MEMORY_FLEET, "/", RUNNER_MEMORY_RECALL_SUFFIX);
 

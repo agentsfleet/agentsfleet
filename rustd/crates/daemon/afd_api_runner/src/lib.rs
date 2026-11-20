@@ -46,7 +46,7 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::TaskEffect => get(handler::runner::task_effects::read::<D>),
         RunnerRoute::TaskDecisions => post(handler::runner::decisions::reserve::<D>),
         RunnerRoute::TaskDecision => patch(handler::runner::decisions::record::<D>),
-        RunnerRoute::MemoryHydrate => get(handler::runner::memory::hydrate::<D>),
+        RunnerRoute::MemoryLoad => get(handler::runner::memory::load::<D>),
         RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
         RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),
         RunnerRoute::Items => post(handler::runner::tool_call::handle::<D>),

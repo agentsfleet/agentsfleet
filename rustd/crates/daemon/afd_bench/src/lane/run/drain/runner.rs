@@ -67,7 +67,7 @@ pub(super) struct Tally {
     /// Runs issued to this runner.
     pub(super) held: u64,
     /// Runs that arrived carrying their fleet's memory window. One that
-    /// did not means the hydrate failed inside the drain, and the run reads
+    /// did not means the load failed inside the drain, and the run reads
     /// memory itself, outside the count.
     pub(super) memory_windows: u64,
     /// How long a successful pushed assignment took.

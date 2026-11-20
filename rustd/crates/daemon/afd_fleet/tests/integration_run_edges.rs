@@ -249,7 +249,7 @@ async fn test_a_runner_with_no_run_or_no_host_row_gets_no_work() {
     );
     let stranger = mint_id();
 
-    let window = plane.hydrate(&held.spare, &held.fleet).await;
+    let window = plane.load(&held.spare, &held.fleet).await;
     let capture = Capture::install();
     let answer = plane
         .claim_with(

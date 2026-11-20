@@ -1,4 +1,4 @@
-//! Durable fleet memory: the hydrate and capture halves, and their byte budgets.
+//! Durable fleet memory: the load and capture halves, and their byte budgets.
 
 use std::borrow::Cow;
 
@@ -19,7 +19,7 @@ pub const MAX_CONTENT_LEN: usize = 16 * 1024;
 /// the only bound on a category label.
 pub const MAX_CATEGORY_LEN: usize = 64;
 
-/// The one category that hydrates before recency is considered, and that
+/// The one category that loads before recency is considered, and that
 /// eviction protects. It is also the category a runner stores under when the
 /// model names none.
 pub const PINNED_CATEGORY: &str = "core";
@@ -36,17 +36,17 @@ pub const MAX_PUSH_BYTES: usize = 256 * 1024;
 /// forgetting are the fleet's own. Eviction beyond this is tier-ordered.
 pub const MAX_ENTRIES_PER_FLEET: usize = 1000;
 
-/// Byte budget for one hydration window.
+/// Byte budget for one load window.
 ///
 /// Bounds the payload a run seeds into the child regardless of how large the
-/// durable set has grown; dropped entries stay durable, just unhydrated.
-pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024;
+/// durable set has grown; dropped entries stay durable, just not loaded.
+pub const LOAD_WINDOW_BYTES: usize = 256 * 1024;
 
-/// Byte budget for the workspace's shared entries one hydrate carries.
+/// Byte budget for the workspace's shared entries one load carries.
 ///
 /// A quarter of the fleet's own window, spent after it: what other fleets
 /// published informs a run and never crowds out what the fleet itself learned.
-pub const HYDRATE_SHARED_BYTES: usize = HYDRATE_WINDOW_BYTES.div_euclid(4);
+pub const LOAD_SHARED_BYTES: usize = LOAD_WINDOW_BYTES.div_euclid(4);
 
 /// The most entries of each kind one recall answers with.
 pub const RECALL_LIMIT_MAX: usize = 50;
@@ -109,7 +109,7 @@ pub struct MemoryDelta<'a> {
 }
 
 impl MemoryDelta<'_> {
-    /// The bytes this entry charges against a memory budget: the hydration
+    /// The bytes this entry charges against a memory budget: the load
     /// window, the push cap and the dropped-bytes count all charge the same.
     #[must_use]
     pub fn bytes(&self) -> usize {
@@ -185,7 +185,7 @@ pub struct SharedMemory<'a> {
 }
 
 impl SharedMemory<'_> {
-    /// The bytes this entry charges against the shared hydration budget.
+    /// The bytes this entry charges against the shared load budget.
     #[must_use]
     pub fn bytes(&self) -> usize {
         self.key.len() + self.content.len() + self.category.len() + self.writer_fleet_name.len()
@@ -209,7 +209,7 @@ impl SharedMemory<'_> {
 /// What a fleet remembers, compacted to fit one window.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemoryHydrateResponse<'a> {
+pub struct MemoryLoadResponse<'a> {
     /// The window's items.
     #[serde(borrow)]
     pub memory: Vec<MemoryDelta<'a>>,

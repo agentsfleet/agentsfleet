@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use af_wire::memory::SharedMemory;
-use afr_memory::{Hydrated, Seed};
+use afr_memory::{Loaded, Seed};
 use serde_json::json;
 
 use crate::generic::Generic;
@@ -15,7 +15,7 @@ use guffbolt::tools::memory::{MemoryForget, MemoryRecall, MemoryStoreTool};
 /// The fleet that published the shared entry these tests read.
 const WRITER: &str = "ticket-3";
 
-/// One entry another fleet published, as the hydrate reply carries it.
+/// One entry another fleet published, as the load reply carries it.
 fn published() -> Vec<SharedMemory<'static>> {
     vec![SharedMemory {
         key: Cow::Borrowed("deploy_target"),
@@ -30,7 +30,7 @@ fn published() -> Vec<SharedMemory<'static>> {
 #[tokio::test]
 async fn test_workspace_store_needs_publish() {
     let run = Run::new(
-        Box::new(Hydrated::new(Seed {
+        Box::new(Loaded::new(Seed {
             publish: false,
             ..Seed::default()
         })),
@@ -63,7 +63,7 @@ async fn test_workspace_store_needs_publish() {
 #[tokio::test]
 async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
     let run = Run::new(
-        Box::new(Hydrated::new(Seed {
+        Box::new(Loaded::new(Seed {
             publish: true,
             ..Seed::default()
         })),
@@ -87,7 +87,7 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
 async fn test_recall_names_the_writer_of_a_shared_entry() {
     let shared = published();
     let run = Run::new(
-        Box::new(Hydrated::new(Seed {
+        Box::new(Loaded::new(Seed {
             shared: &shared,
             ..Seed::default()
         })),
@@ -112,7 +112,7 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
 async fn test_forget_leaves_another_fleets_entry() {
     let shared = published();
     let run = Run::new(
-        Box::new(Hydrated::new(Seed {
+        Box::new(Loaded::new(Seed {
             shared: &shared,
             ..Seed::default()
         })),
@@ -144,7 +144,7 @@ async fn test_forget_leaves_another_fleets_entry() {
 #[tokio::test]
 async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
     let run = Run::new(
-        Box::new(Hydrated::new(Seed {
+        Box::new(Loaded::new(Seed {
             publish: true,
             ..Seed::default()
         })),

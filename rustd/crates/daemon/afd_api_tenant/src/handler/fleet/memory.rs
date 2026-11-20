@@ -135,7 +135,7 @@ fn log_zero_hit(zero_hit: bool, fleet: &af_core::id::Uuid7) {
 /// `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}`.
 ///
 /// The operator's correction path: a fleet learned a convention wrong, and the
-/// entry has to go before the next hydrate seeds it into another run.
+/// entry has to go before the next load seeds it into another run.
 ///
 /// Takes the raw [`Uri`] rather than the key as a `Path` segment, and that is a
 /// refusal being preserved rather than a preference — see

@@ -86,7 +86,7 @@ async fn stored(held: &Held) -> Vec<(String, String)> {
     let fleet = held.fleet.clone();
     let mut window: Vec<(String, String)> =
         Memories::new(held.fixtures.database.clone(), Entropy::new())
-            .hydrate(&fleet)
+            .load(&fleet)
             .await
             .expect("the store answers")
             .memory

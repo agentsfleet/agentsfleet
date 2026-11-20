@@ -15,7 +15,7 @@ use af_providers::observe::labels::Provider as ProviderLabel;
 use af_secrets::Scrub;
 use af_wire::policy::ContextBudget;
 use afr_executor::ExecutorSource;
-use afr_memory::Hydrated;
+use afr_memory::Loaded;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Run, Selection};
 use guffbolt::agents::Agents;
@@ -78,7 +78,7 @@ impl<'run> Shared<'run> {
         scrub: &'run Scrub,
         registry: Agents<Selection<'run>>,
         instructions: String,
-        memory: Hydrated<'run>,
+        memory: Loaded<'run>,
     ) -> Self {
         let policy = &run.run.policy;
         let started = Instant::now();

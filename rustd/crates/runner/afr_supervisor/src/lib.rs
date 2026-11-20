@@ -3,7 +3,7 @@
 //! It speaks the runner verbs through [`af_wire`] and keeps every duty the
 //! daemon relies on — the worker pool, renewal, the report retained in memory
 //! until acknowledged, the bounded activity sender, memory
-//! hydrate and fenced push, native instructions and the capability report
+//! load and fenced push, native instructions and the capability report
 //! (`docs/architecture/runner_fleet.md` §The control protocol). Model keys live
 //! only here; no sandbox ever holds one. The boot sweep of what a crashed
 //! runner's sandboxes left is the engine's, built on [`StorageHome::sandboxes`].

@@ -45,7 +45,7 @@ afd_http::plane_collector! {
         crate::handler::runner::decisions::record,
         crate::handler::runner::memory::capture,
         crate::handler::runner::tool_call::handle,
-        crate::handler::runner::memory::hydrate,
+        crate::handler::runner::memory::load,
         crate::handler::runner::memory::recall,
         crate::handler::runner::message::handle,
         crate::handler::runner::fleet_steer::handle,

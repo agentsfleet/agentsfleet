@@ -106,7 +106,7 @@ async fn test_memory_capture_fencing() {
 
     // ── And the store is exactly as the holder left it ──────────────────────
     let window = plane
-        .hydrate(&test_run.runner, &fleet_id)
+        .load(&test_run.runner, &fleet_id)
         .await
         .expect("the holder may read its fleet's memory");
     assert_eq!(
@@ -191,7 +191,7 @@ async fn test_memory_routes_refuse_a_superseded_active_run() {
     let plane = test_run.fixtures.plane();
     let run = test_run.issued.run_id.as_str();
     // The control: while the fleet has not moved past it, the holder recalls
-    // and hydrates, so each refusal below is the reclaim's doing.
+    // and loads, so each refusal below is the reclaim's doing.
     plane
         .recall(
             &test_run.runner,
@@ -201,9 +201,9 @@ async fn test_memory_routes_refuse_a_superseded_active_run() {
         .await
         .expect("the holder recalls while the fleet has not moved past it");
     plane
-        .hydrate(&test_run.runner, &fleet_id)
+        .load(&test_run.runner, &fleet_id)
         .await
-        .expect("and hydrates");
+        .expect("and loads");
     let live = test_run.supersede().await;
 
     for presented in [test_run.fence.as_u64(), live, u64::MAX] {
@@ -232,11 +232,11 @@ async fn test_memory_routes_refuse_a_superseded_active_run() {
             "recall with {presented}"
         );
     }
-    let hydrated = plane
-        .hydrate(&test_run.runner, &fleet_id)
+    let loaded = plane
+        .load(&test_run.runner, &fleet_id)
         .await
-        .expect_err("a superseded run cannot hydrate");
-    assert_eq!(hydrated.code(), error_code::RUN_STALE_FENCING_TOKEN);
+        .expect_err("a superseded run cannot load");
+    assert_eq!(loaded.code(), error_code::RUN_STALE_FENCING_TOKEN);
     assert!(
         stored_window(&test_run, &fleet_id).await.is_empty(),
         "no refused capture reached the store"
@@ -281,7 +281,7 @@ async fn test_memory_capture_refuses_a_run_the_runner_does_not_hold() {
     );
 
     let window = plane
-        .hydrate(&test_run.runner, &fleet_id)
+        .load(&test_run.runner, &fleet_id)
         .await
         .expect("the real holder may read");
     assert!(
@@ -296,7 +296,7 @@ async fn test_memory_capture_refuses_a_run_the_runner_does_not_hold() {
 /// verb, so a refusal cannot hide what it let through.
 async fn stored_window(test_run: &report_seed::Held, fleet_id: &Uuid7) -> Vec<String> {
     Memories::new(test_run.fixtures.database.clone(), Entropy::new())
-        .hydrate(fleet_id)
+        .load(fleet_id)
         .await
         .expect("the store answers")
         .memory

@@ -73,7 +73,7 @@ pub const DETAIL_VAULT_DATA_INVALID: &str = "Secret data must be a non-empty JSO
 pub const DETAIL_CONFIG_UNREADABLE: &str = "fleet configuration unreadable";
 
 /// The refusal any run verb answers when the presenting holder has been
-/// superseded — a report, a memory hydrate, push or recall, a tool detail.
+/// superseded — a report, a memory load, push or recall, a tool detail.
 ///
 /// It names the outcome — the current holder wins — because that is the fact
 /// the runner acts on: it stops retrying and discards its own work, rather

@@ -32,7 +32,7 @@ fn read_back(messages: &[Message]) -> Vec<&str> {
 
 #[tokio::test]
 async fn test_memory_tools_round_trip_through_push() -> Checked {
-    let hydrated = [MemoryDelta {
+    let loaded = [MemoryDelta {
         key: Cow::Borrowed("incident:41"),
         content: Cow::Borrowed("escalated to the on-call"),
         category: Cow::Borrowed(PINNED_CATEGORY),
@@ -53,7 +53,7 @@ async fn test_memory_tools_round_trip_through_push() -> Checked {
             recovered_turn: None,
             prepared_task: None,
             run: &run,
-            memory: afr_memory::Seed::window(&hydrated),
+            memory: afr_memory::Seed::window(&loaded),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
             ),
@@ -105,7 +105,7 @@ fn assert_round_trip(script: &Script, output: &RunOutput) -> Checked {
     assert_eq!(
         *recalled,
         "incident:42 (daily): deploy 812 broke iad\nincident:41 (core): escalated to the on-call",
-        "a store is recalled in the same run, ahead of what was hydrated"
+        "a store is recalled in the same run, ahead of what was loaded"
     );
     assert!(
         forgotten.starts_with("incident:41 is forgotten"),

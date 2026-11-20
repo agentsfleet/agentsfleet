@@ -317,7 +317,7 @@ async fn test_empty_assignment_pass_records_no_span() {
     scene.cleanup().await;
 }
 
-/// The runner's memory verbs, a capture then a fallback hydrate on a live
+/// The runner's memory verbs, a capture then a fallback load on a live
 /// run, each record their span under the fleet with both of their stages.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -346,8 +346,8 @@ async fn test_memory_verbs_record_their_spans() {
     });
     let captured = wire::post(&http, &scene, &path, &push).await;
     assert_eq!(captured.status().as_u16(), 200, "the capture lands");
-    let hydrated = wire::get(&http, &scene, &path).await;
-    assert_eq!(hydrated.status().as_u16(), 200, "the hydrate answers");
+    let loaded = wire::get(&http, &scene, &path).await;
+    assert_eq!(loaded.status().as_u16(), 200, "the load answers");
 
     let fleet = scene.fleet.to_string();
     let ours = |seen: &Exported, name: &str| {
@@ -355,7 +355,7 @@ async fn test_memory_verbs_record_their_spans() {
             .any(|span| attribute(span, semconv::ATTR_AGENT_ID) == Some(fleet.as_str()))
     };
     let exported = exported_until(&mut received, |seen| {
-        ours(seen, semconv::SPAN_FLEET_CAPTURE) && ours(seen, semconv::SPAN_FLEET_HYDRATE)
+        ours(seen, semconv::SPAN_FLEET_CAPTURE) && ours(seen, semconv::SPAN_FLEET_LOAD)
     })
     .await;
     for (name, stages) in [
@@ -367,10 +367,10 @@ async fn test_memory_verbs_record_their_spans() {
             ],
         ),
         (
-            semconv::SPAN_FLEET_HYDRATE,
+            semconv::SPAN_FLEET_LOAD,
             [
-                semconv::ATTR_HYDRATE_FENCE_MS,
-                semconv::ATTR_HYDRATE_MEMORY_READ_MS,
+                semconv::ATTR_LOAD_FENCE_MS,
+                semconv::ATTR_LOAD_MEMORY_READ_MS,
             ],
         ),
     ] {

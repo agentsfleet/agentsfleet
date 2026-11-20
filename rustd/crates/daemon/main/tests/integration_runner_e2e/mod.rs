@@ -143,23 +143,23 @@ async fn settle_report(scene: &Scenario, run_id: &str, fence: u64) {
 
 /// The side-channel verbs operate on the same live run and identity.
 async fn prove_live_run_satellites(http: &reqwest::Client, scene: &Scenario, run_id: &str) {
-    assert_memory_hydrates(http, scene).await;
+    assert_memory_loads(http, scene).await;
     assert_run_renews(scene, run_id).await;
     assert_activity_degrades_gracefully(scene, run_id).await;
     refusals::assert_credential_and_duplicate_refusals(http, scene, run_id).await;
 }
 
-async fn assert_memory_hydrates(http: &reqwest::Client, scene: &Scenario) {
-    let hydrated = get(
+async fn assert_memory_loads(http: &reqwest::Client, scene: &Scenario) {
+    let loaded = get(
         http,
         scene,
         &format!("/v1/runners/me/memory/{}", scene.fleet),
     )
     .await;
-    assert_eq!(hydrated.status().as_u16(), 200);
+    assert_eq!(loaded.status().as_u16(), 200);
     // A fleet with no grant reads the reply every runner parses: no `shared`,
-    // no `publish`, so a runner built before them still hydrates.
-    assert_eq!(json(hydrated).await, json!({"memory": []}));
+    // no `publish`, so a runner built before them still loads.
+    assert_eq!(json(loaded).await, json!({"memory": []}));
 }
 
 async fn assert_run_renews(scene: &Scenario, run_id: &str) {

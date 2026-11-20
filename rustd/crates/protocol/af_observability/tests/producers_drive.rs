@@ -200,10 +200,10 @@ fn test_every_http_producer_runs_its_body() {
 fn test_every_memory_producer_runs_its_body() {
     install();
 
-    producers::memory::hydration_window(12, 3, 4_096);
+    producers::memory::load_window(12, 3, 4_096);
     producers::memory::captured(5);
     producers::memory::push_failed();
-    producers::memory::hydration_dropped(2, 512);
+    producers::memory::load_dropped(2, 512);
     producers::memory::cap_evicted(1);
     producers::memory::capture_truncated(4);
     producers::memory::capture_skipped(6);

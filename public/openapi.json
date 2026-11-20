@@ -3806,7 +3806,7 @@
         ],
         "summary": "Load what a fleet remembers",
         "description": "Loads a fleet's saved memory at the start of a run. Requires its current work assignment. Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
-        "operationId": "runner_hydrate_memory",
+        "operationId": "runner_load_memory",
         "parameters": [
           {
             "name": "fleet_id",
@@ -3824,7 +3824,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryHydrateResponse"
+                  "$ref": "#/components/schemas/MemoryLoadResponse"
                 }
               }
             }
@@ -27306,7 +27306,7 @@
         },
         "additionalProperties": false
       },
-      "MemoryHydrateResponse": {
+      "MemoryLoadResponse": {
         "type": "object",
         "description": "What a fleet remembers, compacted to fit one window.",
         "required": [
@@ -29523,7 +29523,7 @@
           "memory": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/MemoryHydrateResponse",
+                "$ref": "#/components/schemas/MemoryLoadResponse",
                 "description": "The fleet's memory window, as `GET /v1/runners/me/memory/{fleet_id}`\nreturns it. A daemon that reads a report's `memory` sends it on every\nrun, an empty window included. It is absent when the read failed; the\nrunner then reads memory itself."
               },
               {

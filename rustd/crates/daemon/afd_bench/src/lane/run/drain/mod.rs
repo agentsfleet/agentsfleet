@@ -50,7 +50,7 @@ const REPORT_P95_MS: &str = "drain_report_p95_ms";
 const STATEMENTS_PER_RUN: &str = "drain_statements_per_run";
 
 /// Measurement key: the share of runs that arrived with their memory
-/// window. Under 1.0, a hydrate failed inside the drain and its run read
+/// window. Under 1.0, a load failed inside the drain and its run read
 /// memory outside the count, so `issue` reads low.
 const MEMORY_WINDOWS_PER_RUN: &str = "drain_memory_windows_per_run";
 

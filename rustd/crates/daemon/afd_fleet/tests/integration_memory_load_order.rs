@@ -1,10 +1,10 @@
-//! Which live run a hydrate trusts when one runner briefly holds two.
+//! Which live run a load trusts when one runner briefly holds two.
 //!
 //! A reclaim can leave the superseded run and its successor both live on one
-//! runner for a moment. The fence a hydrate reads must be the successor's, by
+//! runner for a moment. The fence a load reads must be the successor's, by
 //! fencing token: tokens rise with every issue, where `created_at` is one
 //! daemon replica's clock, and a replica running behind stamps the successor
-//! EARLIER. Read by the clock, the hydrate would take the superseded token,
+//! EARLIER. Read by the clock, the load would take the superseded token,
 //! find it below the live sequence, and refuse the runner that holds the fleet.
 //!
 //! Marked `#[ignore]` so only `make test-integration-rustd` runs it.
@@ -38,20 +38,20 @@ RETURNING fencing_token";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_hydrate_trusts_the_higher_token_over_the_clock() {
+async fn test_load_trusts_the_higher_token_over_the_clock() {
     let run = held().await;
     let fleet_id = run.fleet.clone();
     let plane = run.fixtures.plane();
 
-    // Positive control: the lone held run hydrates.
+    // Positive control: the lone held run loads.
     plane
-        .hydrate(&run.runner, &fleet_id)
+        .load(&run.runner, &fleet_id)
         .await
         .expect("the held run is the live one");
 
     issue_earlier_successor(&run).await;
     plane
-        .hydrate(&run.runner, &fleet_id)
+        .load(&run.runner, &fleet_id)
         .await
         .expect("the successor's token is the live sequence, whatever its clock says");
 

@@ -77,7 +77,7 @@ const EVENT_STOPPED: &str = "run_stopped";
 /// A fixed spelling, because dashboards and alerts match on it.
 const EVENT_UNHOSTED: &str = "tool_refused_not_hosted";
 const EVENT_UNHOSTED_PROVIDER: &str = "provider_refused_not_hosted";
-const EVENT_HYDRATE_FAILED: &str = "memory_hydrate_failed";
+const EVENT_LOAD_FAILED: &str = "memory_load_failed";
 const EVENT_DRAIN_ABANDONED: &str = "activity_drain_abandoned";
 
 /// One run's identifiers, parsed once.

@@ -138,7 +138,7 @@ impl ControlPlane {
     }
 
     /// Reads a fleet's memory.
-    pub(crate) async fn hydrate(&self, fleet_id: &Uuid7) -> Result<Body> {
+    pub(crate) async fn load(&self, fleet_id: &Uuid7) -> Result<Body> {
         self.send(Verb::Load, memory_path(fleet_id), None).await
     }
 

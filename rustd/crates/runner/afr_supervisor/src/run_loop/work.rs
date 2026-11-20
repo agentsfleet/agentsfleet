@@ -1,12 +1,12 @@
 //! Prepare one fleet turn and run it with its memory window and executor.
 
-use af_wire::memory::MemoryHydrateResponse;
+use af_wire::memory::MemoryLoadResponse;
 use af_wire::report::FailureClass;
 use afr_executor::{ExecutorSlot, Unavailable};
 use afr_memory::Seed;
 
 use super::{
-    DETAIL_MEMORY, DETAIL_RENEWAL, DETAIL_TURN, EVENT_HYDRATE_FAILED, Run, hold::Worked,
+    DETAIL_MEMORY, DETAIL_RENEWAL, DETAIL_TURN, EVENT_LOAD_FAILED, Run, hold::Worked,
     refusal::failed, segments::Segment,
 };
 use crate::activity::ActivitySink;
@@ -80,24 +80,24 @@ impl Run<'_> {
             window
         } else {
             afr_telemetry::record::memory_source(afr_telemetry::labels::MemorySource::Fallback);
-            let hydrating = self.timeline.start(Segment::Memory);
-            read = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
+            let loading = self.timeline.start(Segment::Memory);
+            read = match memory::load(&lessee.plane, &self.ids.fleet).await {
                 Ok(read) => read,
                 Err(failure) => {
                     return self
-                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                        .refuse(&failure, EVENT_LOAD_FAILED, DETAIL_MEMORY)
                         .into();
                 }
             };
-            decoded = match read.decode::<MemoryHydrateResponse<'_>>() {
+            decoded = match read.decode::<MemoryLoadResponse<'_>>() {
                 Ok(decoded) => decoded,
                 Err(failure) => {
                     return self
-                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                        .refuse(&failure, EVENT_LOAD_FAILED, DETAIL_MEMORY)
                         .into();
                 }
             };
-            hydrating.stop();
+            loading.stop();
             &decoded
         };
         let recaller = memory::Recaller::new(&lessee.plane, &self.ids.fleet, self.payload);

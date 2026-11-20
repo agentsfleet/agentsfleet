@@ -19,7 +19,7 @@ A fleet holding the read grant then loads and recalls such a row, naming the wri
 | Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `schema/20261108124700_memory_entries.sql` |
 | Every read and write goes through one store, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `afd_memory`: `Memories`, the Postgres store (`PgStore`), and the grants |
 | The grants are read and set as the api role on `fleet.fleets`, never by the store | `schema/20261108121900_fleet_fleets.sql` and `afd_memory`'s access module |
-| `fleet_id` is **server-derived from the run**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::hydrate` / `Plane::capture`, which refuse a runner holding no live run on that fleet |
+| `fleet_id` is **server-derived from the run**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::load` / `Plane::capture`, which refuse a runner holding no live run on that fleet |
 | Private rows remain writer-scoped; granted readers can read other fleets' workspace-visible rows, but cannot overwrite or forget them | shared-memory grants + workspace predicate + the `(key, fleet_id)` key |
 
 > [!NOTE]
@@ -101,4 +101,4 @@ See [conversation compaction](context_lifecycle.md) for summary generation, toke
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `afd_memory`'s Postgres store and its SQL statements |
 | Runner load/capture endpoints (run-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
 | Tenant read and forget (ownership-gated) | `afd_api_tenant`'s fleet memory handler |
-| A run's memory, seeded at run start and pushed before the report | `afr_memory`'s `Hydrated` store |
+| A run's memory, seeded at run start and pushed before the report | `afr_memory`'s `Loaded` store |

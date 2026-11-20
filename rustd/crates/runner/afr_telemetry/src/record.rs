@@ -38,7 +38,7 @@ use crate::labels::{
 /// harness declares them (`af_providers::observe`), and this crate records
 /// them with the rest.
 pub trait Recorder: Observer {
-    /// A run chose its inline memory or a separate hydration request.
+    /// A run chose its inline memory or a separate load request.
     fn memory_source(&self, source: crate::labels::MemorySource);
     /// One model turn ended, after `elapsed`.
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration);

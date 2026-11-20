@@ -7,7 +7,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::decision::DecisionAssignment;
-use af_wire::memory::MemoryHydrateResponse;
+use af_wire::memory::MemoryLoadResponse;
 use af_wire::policy::ExecutionPolicy;
 use af_wire::run::{RunPayload, Turn};
 use af_wire::turn::{TurnEnvelope, TurnKind};
@@ -41,7 +41,7 @@ pub(super) fn no_work(runner: &Uuid7, reason: &str) {
 #[derive(Debug)]
 pub(super) struct Context<'a> {
     pub(super) history: Vec<Turn<'a>>,
-    pub(super) memory: Option<MemoryHydrateResponse<'a>>,
+    pub(super) memory: Option<MemoryLoadResponse<'a>>,
     pub(super) decision: Option<Box<DecisionAssignment>>,
     pub(super) task: Option<af_wire::task::TaskContext<'static>>,
     pub(super) turn_resume: Option<af_wire::run::TurnResume>,

@@ -108,9 +108,9 @@ agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixe
 agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:2	no	traffic	rows served per surface
 agentsfleet_memory_entries_captured_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable-memory write volume
 agentsfleet_memory_push_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	memory writes failing
-agentsfleet_memory_hydration_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	hydration window fill
-agentsfleet_memory_hydration_dropped_entries_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	hydration overflow (entries)
-agentsfleet_memory_hydration_dropped_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	errors	hydration overflow (bytes)
+agentsfleet_memory_load_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	load window fill
+agentsfleet_memory_load_dropped_entries_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	load overflow (entries)
+agentsfleet_memory_load_dropped_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	errors	load overflow (bytes)
 agentsfleet_memory_cap_evictions_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	cap pressure on stored memory
 agentsfleet_memory_capture_truncated_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures clipped at the push byte budget
 agentsfleet_memory_capture_skipped_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures lost to validation

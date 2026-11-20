@@ -105,12 +105,12 @@ stages!(
 );
 
 stages!(
-    /// A fallback memory hydrate.
-    HydrateStage, semconv::SPAN_FLEET_HYDRATE {
+    /// A fallback memory load.
+    LoadStage, semconv::SPAN_FLEET_LOAD {
         /// The fence check.
-        Fence => semconv::ATTR_HYDRATE_FENCE_MS,
+        Fence => semconv::ATTR_LOAD_FENCE_MS,
         /// The memory read.
-        MemoryRead => semconv::ATTR_HYDRATE_MEMORY_READ_MS,
+        MemoryRead => semconv::ATTR_LOAD_MEMORY_READ_MS,
     }
 );
 

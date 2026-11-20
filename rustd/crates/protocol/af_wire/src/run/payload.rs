@@ -81,7 +81,7 @@ pub struct RunPayload<'a> {
     /// run, an empty window included. It is absent when the read failed; the
     /// runner then reads memory itself.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    pub memory: Option<crate::memory::MemoryHydrateResponse<'a>>,
+    pub memory: Option<crate::memory::MemoryLoadResponse<'a>>,
     /// Whether a later message waited in the run's conversation when the
     /// daemon claimed it. False lets the run skip its first fold ask; a
     /// message that lands after the claim folds on the ask after the answer.

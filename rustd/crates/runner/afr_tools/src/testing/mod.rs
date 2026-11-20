@@ -18,7 +18,7 @@ use af_egress::fixture::{RUN_ID, policy};
 use af_egress::testing::{CountingMint, RecordingTransport, Sent};
 use af_wire::policy::ExecutionPolicy;
 use afr_executor::{Client, Executor};
-use afr_memory::Hydrated;
+use afr_memory::Loaded;
 use guffbolt::ToolOutput;
 use jiff::Timestamp;
 use tokio::task::JoinHandle;
@@ -163,7 +163,7 @@ impl RunFixture {
     /// A run sending through this run's guard and reaching `verbs`.
     pub(crate) fn run_reaching<'r>(&'r self, verbs: &'r dyn crate::verbs::RunVerbs) -> Run<'r> {
         Run::new(
-            Box::new(Hydrated::default()),
+            Box::new(Loaded::default()),
             Egress::new(RUN_ID, &self.policy, &self.mint, &self.clock),
             verbs,
         )

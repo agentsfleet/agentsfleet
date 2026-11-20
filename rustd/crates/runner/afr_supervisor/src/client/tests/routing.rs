@@ -88,7 +88,7 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
         .report(&crate::test_support::report_body())
         .await
         .unwrap();
-    plane.hydrate(&fleet).await.unwrap();
+    plane.load(&fleet).await.unwrap();
     plane.capture(&fleet, &push).await.unwrap();
     let mint = MintCredentialRequest {
         run_id: RUN_ID.into(),
@@ -116,15 +116,12 @@ async fn a_reply_decodes_borrowing_or_refuses_as_malformed() {
         .renew(&Uuid7::parse(RUN_ID).unwrap(), &RenewRequest::default())
         .await
         .unwrap();
-    let bad = plane
-        .hydrate(&Uuid7::parse(FLEET_ID).unwrap())
-        .await
-        .unwrap();
+    let bad = plane.load(&Uuid7::parse(FLEET_ID).unwrap()).await.unwrap();
 
     assert_eq!(good.run_expires_at, RENEWED_UNTIL);
     let refused = bad.decode::<RenewResponse>().unwrap_err();
     assert!(
-        refused.to_string().contains("hydrate reply did not decode"),
+        refused.to_string().contains("load reply did not decode"),
         "{refused}"
     );
 }

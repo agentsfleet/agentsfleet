@@ -24,13 +24,13 @@ const SHARED_KEY: &str = "deploy_target";
 async fn window_of(
     memories: &afd_memory::Memories,
     acquired: &Acquired,
-) -> af_wire::memory::MemoryHydrateResponse<'static> {
+) -> af_wire::memory::MemoryLoadResponse<'static> {
     let grants = MemoryAccess {
         read: acquired.opened.memory_reads_workspace,
         publish: acquired.opened.memory_publishes_workspace,
     };
     memories
-        .hydrate_scoped(&acquired.fleet_id, &acquired.workspace_id, grants)
+        .load_scoped(&acquired.fleet_id, &acquired.workspace_id, grants)
         .await
         .expect("the window reads")
 }

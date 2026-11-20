@@ -1,8 +1,8 @@
 //! Memory held behind `agentsfleetd`, reached through its runner API.
 //!
-//! The window `agentsfleetd` hydrated at run start is borrowed, never
+//! The window `agentsfleetd` loaded at run start is borrowed, never
 //! copied. A store is held here until the supervisor pushes it, fenced, before
-//! the report, so a run's memory calls cost `agentsfleetd` one hydrate and one
+//! the report, so a run's memory calls cost `agentsfleetd` one load and one
 //! push per run — plus, when a recall finds fewer entries than it asked for,
 //! at most [`RECALL_MISS_CAP`] searches past the window.
 
@@ -27,12 +27,12 @@ struct Entry<'run> {
     pending: bool,
 }
 
-/// The hydrated window, the workspace's shared entries, and the run's stores.
+/// The loaded window, the workspace's shared entries, and the run's stores.
 #[derive(Debug, Default)]
-pub struct Hydrated<'run> {
+pub struct Loaded<'run> {
     /// The fleet's own entries, oldest first.
     entries: Vec<Entry<'run>>,
-    /// What `agentsfleetd` hydrated beside them, read and never written.
+    /// What `agentsfleetd` loaded beside them, read and never written.
     seed: Seed<'run>,
     /// What the pending entries charge against one push, kept as they come
     /// and go so a store never re-sums them.
@@ -45,7 +45,7 @@ pub struct Hydrated<'run> {
     misses: AtomicUsize,
 }
 
-impl<'run> Hydrated<'run> {
+impl<'run> Loaded<'run> {
     /// The memory a run begins with, viewing `seed`'s window, which
     /// `agentsfleetd` sends newest first.
     #[must_use]
@@ -205,7 +205,7 @@ impl<'run> Hydrated<'run> {
 }
 
 #[async_trait::async_trait]
-impl MemoryBackend for Hydrated<'_> {
+impl MemoryBackend for Loaded<'_> {
     async fn store(&mut self, entry: MemoryDelta<'static>) -> Result<()> {
         entry.validate()?;
         if entry.visibility.is_workspace() && !self.seed.publish {

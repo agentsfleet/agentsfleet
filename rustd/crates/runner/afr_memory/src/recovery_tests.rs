@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_wire::memory::{MemoryDelta, MemoryRecallResponse, Visibility};
 
-use crate::{Hydrated, MemoryBackend, MemoryRecovery, RECALL_MISS_CAP, Recall, Seed};
+use crate::{Loaded, MemoryBackend, MemoryRecovery, RECALL_MISS_CAP, Recall, Seed};
 
 type TestResult = crate::Result<(), Box<dyn std::error::Error>>;
 
@@ -42,7 +42,7 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
         entry("updated", "old value"),
     ];
     let remote = Remote::default();
-    let mut original = Hydrated::new(Seed {
+    let mut original = Loaded::new(Seed {
         recall: Some(&remote),
         ..Seed::window(&window)
     });
@@ -57,7 +57,7 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
     let encoded = serde_json::to_vec(&original.snapshot()?)?;
     let saved: MemoryRecovery = serde_json::from_slice(&encoded)?;
     let scrub = af_secrets::Scrub::of([("current-secret".to_owned(), "private")])?;
-    let recovered = Hydrated::recover(
+    let recovered = Loaded::recover(
         Seed {
             recall: Some(&remote),
             ..Seed::window(&window)
@@ -82,7 +82,7 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
 
 #[tokio::test]
 async fn recovery_refuses_a_revoked_shared_publish_grant() -> TestResult {
-    let mut original = Hydrated::new(Seed {
+    let mut original = Loaded::new(Seed {
         publish: true,
         ..Seed::default()
     });
@@ -90,7 +90,7 @@ async fn recovery_refuses_a_revoked_shared_publish_grant() -> TestResult {
     shared.visibility = Visibility::Workspace;
     original.store(shared).await?;
     let scrub = af_secrets::Scrub::of([])?;
-    let refused = Hydrated::recover(Seed::default(), original.snapshot()?, &scrub);
+    let refused = Loaded::recover(Seed::default(), original.snapshot()?, &scrub);
     assert!(refused.is_err_and(|failure| failure.is_not_granted()));
     Ok(())
 }
@@ -109,7 +109,7 @@ fn inconsistent_keys_and_unbounded_recall_state_cannot_restore() -> TestResult {
         MemoryRecovery::new(vec![], vec![], RECALL_MISS_CAP + 1),
     ] {
         assert!(
-            Hydrated::recover(Seed::default(), invalid, &scrub)
+            Loaded::recover(Seed::default(), invalid, &scrub)
                 .is_err_and(|failure| failure.code() == af_core::error_code::INVALID_REQUEST)
         );
     }

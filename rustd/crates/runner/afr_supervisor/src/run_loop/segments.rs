@@ -6,7 +6,7 @@
 //!   └── each once, absent when it never started; wall_ms is the whole run ──┘
 //! ```
 //!
-//! Five segments tile the run: the memory hydrate, the sandbox from sizing
+//! Five segments tile the run: the memory load, the sandbox from sizing
 //! through repository checkout, the model's turns, the tools those
 //! turns called, and the settle from hold-or-destroy to the posted report.
 //! What they leave of the wall time is the admission, the turn claim and the

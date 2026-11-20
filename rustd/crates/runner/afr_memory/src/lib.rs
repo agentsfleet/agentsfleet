@@ -2,7 +2,7 @@
 //!
 //! [`MemoryBackend`] is what the four memory tools read and write
 //! (`docs/architecture/runner_fleet.md` §"Memory backends and scope").
-//! [`Hydrated`] is how a run reaches it: the [`Seed`] `agentsfleetd` hydrated
+//! [`Loaded`] is how a run reaches it: the [`Seed`] `agentsfleetd` loaded
 //! at run start — the fleet's own window, the workspace's shared entries for
 //! a fleet granted to read them, and whether it may publish — with the run's
 //! stores held here and pushed, fenced, before the report. A recall the window
@@ -14,7 +14,7 @@
 
 pub mod error;
 
-mod hydrated;
+mod loaded;
 mod recovery;
 mod seed;
 
@@ -23,7 +23,7 @@ use std::fmt;
 use af_wire::memory::MemoryDelta;
 
 pub use self::error::{Error, Result};
-pub use self::hydrated::Hydrated;
+pub use self::loaded::Loaded;
 pub use self::recovery::MemoryRecovery;
 pub use self::seed::{RECALL_MISS_CAP, Recall, Recalled, Seed};
 

@@ -108,7 +108,7 @@ async fn assert_capture(
             result.expect_err("old fence refused").code(),
             error_code::RUN_STALE_FENCING_TOKEN
         );
-        let stored = memories.hydrate(&run.fleet).await.expect("memory");
+        let stored = memories.load(&run.fleet).await.expect("memory");
         assert_eq!(stored.memory.len(), 1);
         assert_eq!(
             stored.memory.first().expect("one entry").content,
@@ -119,7 +119,7 @@ async fn assert_capture(
         assert_eq!((stored.stored, stored.unpublished), (0, 1));
         assert!(
             memories
-                .hydrate(&run.fleet)
+                .load(&run.fleet)
                 .await
                 .expect("memory")
                 .memory

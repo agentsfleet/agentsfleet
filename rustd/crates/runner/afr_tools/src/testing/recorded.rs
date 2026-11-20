@@ -1,7 +1,7 @@
 //! The recording fakes: a run's verbs answering from a script, and what each
 //! call asked, compared whole.
 
-use afr_memory::Hydrated;
+use afr_memory::Loaded;
 
 use crate::run::Run;
 
@@ -222,7 +222,7 @@ impl crate::verbs::RunVerbs for RecordingVerbs {
 /// A run whose verbs are `verbs`, with empty memory and closed egress.
 pub(crate) fn run_with(verbs: &dyn crate::verbs::RunVerbs) -> Run<'_> {
     Run::new(
-        Box::new(Hydrated::default()),
+        Box::new(Loaded::default()),
         af_egress::testing::closed(),
         verbs,
     )

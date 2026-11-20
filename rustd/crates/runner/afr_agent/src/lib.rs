@@ -1,7 +1,7 @@
 //! The agent engine: what runs one run's turn.
 //!
 //! [`AgentEngine`] is the seam the supervisor drives. It receives the run,
-//! the hydrated memory, the sandbox's executor when the run has one, and an
+//! the loaded memory, the sandbox's executor when the run has one, and an
 //! [`EventSink`] its activity goes to; it returns the result the report
 //! carries and the memory to push. Before any of that, [`AgentEngine::admit`]
 //! refuses a run naming a tool the engine cannot host and says whether the

@@ -102,7 +102,7 @@ impl Runs {
     ///
     /// `None` means no live run — expired, reclaimed, or never held. A run
     /// that is live but superseded answers a [`Fence`] that is not
-    /// [`current`](Fence::current); a hydrate refuses both, because a runner
+    /// [`current`](Fence::current); a load refuses both, because a runner
     /// may read a fleet's memory only while it is actually running it.
     ///
     /// # Errors

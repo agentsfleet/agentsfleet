@@ -8,7 +8,7 @@
 
 use af_wire::activity::ActivityRequest;
 use af_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
-use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryPushRequest};
+use af_wire::memory::{MemoryCaptureResponse, MemoryLoadResponse, MemoryPushRequest};
 use af_wire::report::{
     RenewRequest, RenewResponse, ReportRequest, ReportResponse, ReportTelemetry,
 };
@@ -247,10 +247,10 @@ fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
 fn run_verb_replies() -> [(&'static str, String, Decodes); 6] {
     [
         (
-            "hydrate",
+            "load",
             r#"{"memory":[{"key":"k","content":"c","category":"core","future":1}],"future":1}"#
                 .to_owned(),
-            |b| serde_json::from_slice::<MemoryHydrateResponse<'_>>(b).is_ok(),
+            |b| serde_json::from_slice::<MemoryLoadResponse<'_>>(b).is_ok(),
         ),
         (
             "capture",

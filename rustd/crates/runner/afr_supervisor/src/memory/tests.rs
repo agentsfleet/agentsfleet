@@ -10,14 +10,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use af_core::id::Uuid7;
 use std::borrow::Cow;
 
-use af_wire::memory::{MemoryDelta, MemoryHydrateResponse};
+use af_wire::memory::{MemoryDelta, MemoryLoadResponse};
 
 use afr_agent::Checkpoint as _;
 use afr_memory::Recall as _;
 use afr_telemetry::labels::PushFailure;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
-use super::{CapturedMemory, Recaller, RunCheckpoint, hydrate};
+use super::{CapturedMemory, Recaller, RunCheckpoint, load};
 use crate::client::Verb;
 use crate::error;
 use crate::test_support::{
@@ -36,14 +36,14 @@ fn assert_kept<C: PartialEq + std::fmt::Debug>(got: &C, daemons: &C) {
 }
 
 #[tokio::test(start_paused = true)]
-async fn hydrate_rides_out_a_blip() {
+async fn load_rides_out_a_blip() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&attempts);
     let (plane, _calls) = plane(move |_call| {
         if counted.fetch_add(1, Ordering::SeqCst) == 0 {
             Answer::Fail(error::unavailable(Verb::Load, 503))
         } else {
-            json(&MemoryHydrateResponse {
+            json(&MemoryLoadResponse {
                 memory: answer().memory,
                 shared: Vec::new(),
                 publish: false,
@@ -51,12 +51,12 @@ async fn hydrate_rides_out_a_blip() {
         }
     });
 
-    let body = hydrate(&plane, &Uuid7::parse(FLEET_ID).unwrap())
+    let body = load(&plane, &Uuid7::parse(FLEET_ID).unwrap())
         .await
         .unwrap();
 
     assert_eq!(
-        body.decode::<MemoryHydrateResponse<'_>>()
+        body.decode::<MemoryLoadResponse<'_>>()
             .unwrap()
             .memory
             .len(),

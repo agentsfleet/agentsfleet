@@ -482,7 +482,7 @@ Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complet
 
 **Daemon verb spans name the stages a chat crosses.** A verb builds a stage clock from `af_observability`'s `verb_span` module at its entry. It marks each boundary it reaches and records one root span when it ends, on every exit. The span goes through the global tracer, asked for at record time, as `fleet.delivery` does.
 
-`fleet.steer` marks `admit` and `announce`; `fleet.assign` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.hydrate` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
+`fleet.steer` marks `admit` and `announce`; `fleet.assign` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.load` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
 
 A verb that reaches no stage records nothing. The common case is an assign pass that finds no work.
 
@@ -545,7 +545,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 
 Built in M233_002, closing the gaps M238 left:
 
-- Every daemon verb records its span with its stages: `fleet.steer`, `fleet.assign`, `fleet.report`, `fleet.hydrate` and `fleet.capture` (§1).
+- Every daemon verb records its span with its stages: `fleet.steer`, `fleet.assign`, `fleet.report`, `fleet.load` and `fleet.capture` (§1).
 - The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.run` carries its segments (§2).
 - The edge reports its own cost (§3). The steer route answers `Server-Timing: auth;dur=…, upstream;dur=…` after its answer is final, so a status or body never changes. The browser leaves `af:send`, `af:accepted`, `af:first-frame` and `af:complete` marks, each naming the send's operation id in `detail`.
 

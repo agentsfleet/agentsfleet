@@ -11,7 +11,7 @@ use af_wire::memory::{
     MAX_CONTENT_LEN, MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility,
 };
 
-use super::{Forgotten, Hydrated, MemoryBackend, Recalled, Seed};
+use super::{Forgotten, Loaded, MemoryBackend, Recalled, Seed};
 
 fn entry(key: &str, content: &str, category: &str) -> MemoryDelta<'static> {
     MemoryDelta {
@@ -36,14 +36,14 @@ fn window() -> Vec<MemoryDelta<'static>> {
 }
 
 /// `memory` behind the trait, the way the tools reach it.
-fn boxed<'run>(memory: Hydrated<'run>) -> Box<dyn MemoryBackend + 'run> {
+fn boxed<'run>(memory: Loaded<'run>) -> Box<dyn MemoryBackend + 'run> {
     Box::new(memory)
 }
 
 #[tokio::test]
-async fn hydrated_entries_are_views_listed_newest_first_and_never_pushed() {
+async fn loaded_entries_are_views_listed_newest_first_and_never_pushed() {
     let window = window();
-    let memory = boxed(Hydrated::new(Seed::window(&window)));
+    let memory = boxed(Loaded::new(Seed::window(&window)));
 
     let listed = memory.list(None).await.unwrap();
     assert_eq!(keys(&listed), ["deploy_target", "owner", "incident:42"]);
@@ -51,18 +51,18 @@ async fn hydrated_entries_are_views_listed_newest_first_and_never_pushed() {
         listed
             .iter()
             .all(|delta| matches!(delta.content, Cow::Borrowed(_))),
-        "a hydrated entry is a view over the reply, never a copy"
+        "a loaded entry is a view over the reply, never a copy"
     );
     assert!(
         memory.into_pending().is_empty(),
-        "nothing hydrated is pushed back"
+        "nothing loaded is pushed back"
     );
 }
 
 #[tokio::test]
 async fn a_store_replaces_its_key_and_only_stores_reach_the_push() {
     let window = window();
-    let mut memory = boxed(Hydrated::new(Seed::window(&window)));
+    let mut memory = boxed(Loaded::new(Seed::window(&window)));
 
     memory
         .store(entry("owner", "tarzy now", PINNED_CATEGORY))
@@ -88,7 +88,7 @@ async fn a_store_replaces_its_key_and_only_stores_reach_the_push() {
 
 #[tokio::test]
 async fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
-    let mut memory = boxed(Hydrated::default());
+    let mut memory = boxed(Loaded::default());
     let long_key = "k".repeat(MAX_KEY_LEN + 1);
     let long_content = "c".repeat(MAX_CONTENT_LEN + 1);
 
@@ -116,7 +116,7 @@ async fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
 
 #[tokio::test]
 async fn a_store_past_the_push_cap_is_refused_and_a_replacement_is_not_counted_twice() {
-    let mut memory = boxed(Hydrated::default());
+    let mut memory = boxed(Loaded::default());
     let content = "c".repeat(MAX_CONTENT_LEN);
     let fits = MAX_PUSH_BYTES / entry("k00", &content, "c").bytes();
     for at in 0..fits {
@@ -148,7 +148,7 @@ async fn a_store_past_the_push_cap_is_refused_and_a_replacement_is_not_counted_t
 #[tokio::test]
 async fn a_forget_holds_for_the_run_and_leaves_the_push() {
     let window = window();
-    let mut memory = boxed(Hydrated::new(Seed::window(&window)));
+    let mut memory = boxed(Loaded::new(Seed::window(&window)));
     memory
         .store(entry("scratch", "a note", "daily"))
         .await
@@ -182,7 +182,7 @@ async fn a_forget_holds_for_the_run_and_leaves_the_push() {
 #[tokio::test]
 async fn recall_matches_key_then_content_ignoring_case_newest_first() {
     let window = window();
-    let mut memory = boxed(Hydrated::new(Seed::window(&window)));
+    let mut memory = boxed(Loaded::new(Seed::window(&window)));
     memory
         .store(entry("incident:43", "fly is green", "daily"))
         .await
@@ -220,7 +220,7 @@ async fn recall_matches_key_then_content_ignoring_case_newest_first() {
 #[tokio::test]
 async fn list_keeps_one_category() {
     let window = window();
-    let memory = boxed(Hydrated::new(Seed::window(&window)));
+    let memory = boxed(Loaded::new(Seed::window(&window)));
 
     assert_eq!(
         keys(&memory.list(Some("daily")).await.unwrap()),

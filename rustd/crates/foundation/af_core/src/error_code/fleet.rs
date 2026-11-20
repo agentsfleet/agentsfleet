@@ -310,7 +310,7 @@ pub const MEM_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-MEM-003");
 /// A 404 rather than a silent 204, and that is the whole of why the code
 /// exists: an operator removing a lesson the fleet learned wrong has to find
 /// out they mistyped the key, because the alternative is believing the entry is
-/// gone while the next hydrate seeds it into another run.
+/// gone while the next load seeds it into another run.
 pub const MEM_ENTRY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-004");
 
 /// The instance is already serving as many requests as it admits.

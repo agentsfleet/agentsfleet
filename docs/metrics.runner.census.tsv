@@ -38,4 +38,4 @@ agentsfleet_runner_model_first_token_duration_seconds	histogram	f64	s	delta	gen_
 agentsfleet_runner_model_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name,gen_ai.token.type	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
 agentsfleet_runner_model_cache_read_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
 agentsfleet_runner_model_cache_write_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
-agentsfleet_runner_memory_sources_total	counter	u64	1	cumulative	source	-	fixed:2	no	traffic	inline windows versus separately requested hydration, including fallback attempts that later fail
+agentsfleet_runner_memory_sources_total	counter	u64	1	cumulative	source	-	fixed:2	no	traffic	inline windows versus separately requested loads, including fallback attempts that later fail

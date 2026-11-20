@@ -192,7 +192,7 @@ af_observability::closed_set! {
     MemorySource {
         /// The daemon attached the window to the run.
         Inline => "inline",
-        /// The runner must perform a separate hydration request.
+        /// The runner must perform a separate load request.
         Fallback => "fallback"
     }
 }

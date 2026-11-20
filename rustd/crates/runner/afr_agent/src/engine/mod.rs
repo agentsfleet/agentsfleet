@@ -108,7 +108,7 @@ pub struct AgentRun<'run> {
     pub prepared_task: Option<&'run crate::PreparedTask>,
     /// The run being run.
     pub run: &'run RunPayload<'run>,
-    /// The fleet's memory, hydrated before the run started, and where a
+    /// The fleet's memory, loaded before the run started, and where a
     /// recall past it asks.
     pub memory: Seed<'run>,
     /// Where the run's sandbox-side calls get the sandbox's executor. The

@@ -12,8 +12,8 @@ pub const SPAN_FLEET_ASSIGN: &str = "fleet.assign";
 /// The span one terminal report leaves: the run read to the acknowledgement.
 pub const SPAN_FLEET_REPORT: &str = "fleet.report";
 
-/// The span one fallback memory hydrate leaves.
-pub const SPAN_FLEET_HYDRATE: &str = "fleet.hydrate";
+/// The span one fallback memory load leaves.
+pub const SPAN_FLEET_LOAD: &str = "fleet.load";
 
 /// The span one memory capture leaves.
 pub const SPAN_FLEET_CAPTURE: &str = "fleet.capture";
@@ -57,11 +57,11 @@ pub const ATTR_REPORT_ANNOUNCE_MS: &str = "agentsfleet.report.announce_ms";
 /// The report verb's `ack` stage, in whole milliseconds.
 pub const ATTR_REPORT_ACK_MS: &str = "agentsfleet.report.ack_ms";
 
-/// The hydrate verb's `fence` stage, in whole milliseconds.
-pub const ATTR_HYDRATE_FENCE_MS: &str = "agentsfleet.hydrate.fence_ms";
+/// The load verb's `fence` stage, in whole milliseconds.
+pub const ATTR_LOAD_FENCE_MS: &str = "agentsfleet.load.fence_ms";
 
-/// The hydrate verb's `memory_read` stage, in whole milliseconds.
-pub const ATTR_HYDRATE_MEMORY_READ_MS: &str = "agentsfleet.hydrate.memory_read_ms";
+/// The load verb's `memory_read` stage, in whole milliseconds.
+pub const ATTR_LOAD_MEMORY_READ_MS: &str = "agentsfleet.load.memory_read_ms";
 
 /// The capture verb's `fence` stage, in whole milliseconds.
 pub const ATTR_CAPTURE_FENCE_MS: &str = "agentsfleet.capture.fence_ms";
@@ -87,8 +87,8 @@ pub const VERB_SPAN_KEYS: &[&str] = &[
     ATTR_REPORT_COMMIT_MS,
     ATTR_REPORT_ANNOUNCE_MS,
     ATTR_REPORT_ACK_MS,
-    ATTR_HYDRATE_FENCE_MS,
-    ATTR_HYDRATE_MEMORY_READ_MS,
+    ATTR_LOAD_FENCE_MS,
+    ATTR_LOAD_MEMORY_READ_MS,
     ATTR_CAPTURE_FENCE_MS,
     ATTR_CAPTURE_MEMORY_WRITE_MS,
 ];

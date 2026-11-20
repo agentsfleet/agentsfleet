@@ -612,7 +612,7 @@ Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recal
 
 The memory tools run in the supervisor. A sandbox therefore holds **no** `agt_r` token, **no** control-plane URL, **no** Data Source Name (DSN) and no memory. A prompt-injected fleet cannot be talked into "reach your memory endpoint", because none exists inside it.
 
-The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file.
+The run's working store is `afr_memory::Loaded`, in the supervisor's memory, with no on-disk file.
 
 Durability is the supervisor's job, over the same `agt_r` `/v1/runners` plane that already carries runs and reports. Two fencing-verified routes carry it, a load (`Verb::Load`) and a capture under `/v1/runners/me/memory/{fleet_id}`. A capped recall rides beside them (API reference › Runner plane).
 
@@ -636,7 +636,7 @@ The settle frees the thread, so no run for the fleet can issue between the captu
         +-------------------------------------------------------------+
         |  agentsfleet-runner SUPERVISOR (trusted): holds the agt_r   |
         |  the agent loop and the memory tools run here;              |
-        |  in-run store = afr_memory::Hydrated (no disk file)         |
+        |  in-run store = afr_memory::Loaded (no disk file)           |
         |  fleet calls memory_recall() / memory_store()               |
         +-------------------------------------------------------------+
             executor socket v tool calls only
@@ -749,7 +749,7 @@ capture -> lock fleet -> shared run lock -> fresh fence
 
 `afd_memory::Memories` reads each fleet's workspace and grants from `fleet.fleets`, applies them, and calls the Postgres store, `afd_memory::PgStore`. Every entry keeps its writer fleet in its identity, `(workspace_id, fleet_id, key)`, and carries `workspace_visible`.
 
-Access is a workspace setting with read and publish granted apart: `memory_reads_workspace` and `memory_publishes_workspace` on `fleet.fleets`, set by `PATCH …/fleets/{fleet_id}/memory-access` under `fleet:write`. A granted reader's window carries other fleets' shared entries, each naming its writer, within `HYDRATE_SHARED_BYTES` after its own window. A share from a fleet without publish is refused by the `memory_store` tool and skipped and counted at the push.
+Access is a workspace setting with read and publish granted apart: `memory_reads_workspace` and `memory_publishes_workspace` on `fleet.fleets`, set by `PATCH …/fleets/{fleet_id}/memory-access` under `fleet:write`. A granted reader's window carries other fleets' shared entries, each naming its writer, within `LOAD_SHARED_BYTES` after its own window. A share from a fleet without publish is refused by the `memory_store` tool and skipped and counted at the push.
 
 A recall the window cannot fill asks `POST /v1/runners/me/memory/{fleet_id}/recall`, at most `RECALL_MISS_CAP` times per run. Concurrent writers to one key do not arise: the writer is in the key, so two fleets sharing one key hold two entries.
 

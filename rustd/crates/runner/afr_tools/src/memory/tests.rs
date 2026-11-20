@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use af_wire::memory::{
     MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility,
 };
-use afr_memory::{Hydrated, Seed};
+use afr_memory::{Loaded, Seed};
 use serde_json::json;
 
 use crate::generic::Generic;
@@ -17,7 +17,7 @@ use crate::runtime::ToolErrorCode;
 use crate::testing::call;
 use guffbolt::tools::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStoreTool};
 
-fn hydrated() -> Vec<MemoryDelta<'static>> {
+fn loaded() -> Vec<MemoryDelta<'static>> {
     vec![MemoryDelta {
         key: Cow::Borrowed("operator_context:codename"),
         content: Cow::Borrowed("bluebird"),
@@ -28,9 +28,9 @@ fn hydrated() -> Vec<MemoryDelta<'static>> {
 
 #[tokio::test]
 async fn the_four_tools_share_one_run_memory() {
-    let window = hydrated();
+    let window = loaded();
     let run = Run::new(
-        Box::new(Hydrated::new(Seed::window(&window))),
+        Box::new(Loaded::new(Seed::window(&window))),
         af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );

@@ -239,7 +239,7 @@ impl Verb {
             Self::Renew => "renew",
             Self::Activity => "activity",
             Self::Report => "report",
-            Self::Load => "hydrate",
+            Self::Load => "load",
             Self::Capture => "capture",
             Self::Recall => "recall",
             Self::Mint => "mint",

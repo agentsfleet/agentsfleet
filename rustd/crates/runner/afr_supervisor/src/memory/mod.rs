@@ -20,8 +20,8 @@ use crate::error::Result;
 ///
 /// # Errors
 /// A refusal, or a retryable failure that outlasted its attempts.
-pub(crate) async fn hydrate(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
-    plane.retrying(|| plane.hydrate(fleet_id)).await
+pub(crate) async fn load(plane: &ControlPlane, fleet_id: &Uuid7) -> Result<Body> {
+    plane.retrying(|| plane.load(fleet_id)).await
 }
 
 /// Counts a memory push that did not land, by why.

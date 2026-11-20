@@ -71,8 +71,8 @@ mod integration_ledger_queue;
 mod integration_ledger_reads;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
-#[path = "integration_memory_hydrate_order.rs"]
-mod integration_memory_hydrate_order;
+#[path = "integration_memory_load_order.rs"]
+mod integration_memory_load_order;
 #[path = "integration_money_gates.rs"]
 mod integration_money_gates;
 #[path = "integration_money_gates_debt.rs"]

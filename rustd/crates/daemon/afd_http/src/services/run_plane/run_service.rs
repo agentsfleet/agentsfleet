@@ -1,7 +1,7 @@
 //! Production forwarding stays beside the seam it implements.
 
 use super::{
-    Captured, Interim, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
+    Captured, Interim, MemoryLoadResponse, MemoryPushRequest, MemoryRecallRequest,
     MemoryRecallResponse, MessageRequest, MintCredentialRequest, Minted, RunPlane, Standing,
     SteerSender, Timestamp, ToolCallRecordsRequest, ToolCallRecordsStored, Uuid7,
 };
@@ -13,12 +13,12 @@ use afd_fleet::run::RunService;
 /// direction: the HTTP layer states what it needs, and the service crate stays
 /// unaware that an HTTP layer exists.
 impl RunPlane for RunService {
-    fn hydrate(
+    fn load(
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<MemoryHydrateResponse<'static>>> + Send {
-        Self::hydrate(self, runner_id, fleet_id)
+    ) -> impl Future<Output = afd_fleet::Result<MemoryLoadResponse<'static>>> + Send {
+        Self::load(self, runner_id, fleet_id)
     }
 
     fn recall(

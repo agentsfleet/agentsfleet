@@ -342,6 +342,6 @@ pub const MODEL_CACHE_READ: Declared<CounterKind> =
 pub const MODEL_CACHE_WRITE: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_model_cache_write_tokens_total");
 
-/// Inline windows and hydration fallback choices, counted once per working run.
+/// Inline windows and load fallback choices, counted once per working run.
 pub const MEMORY_SOURCES: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_memory_sources_total");

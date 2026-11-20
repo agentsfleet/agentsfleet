@@ -23,7 +23,7 @@ pub(crate) struct NoWork {
 }
 
 impl NoWork {
-    /// A plane whose hydrate, capture, recall and mint answer `refusal`.
+    /// A plane whose load, capture, recall and mint answer `refusal`.
     pub(crate) fn refusing(refusal: fn() -> afd_fleet::Error) -> Self {
         Self {
             refusal: Some(refusal),
@@ -75,19 +75,19 @@ impl RunPlane for NoWork {
         std::future::ready(Err(refusal()))
     }
 
-    /// Hydrates nothing, which is what a fleet that has never run remembers.
+    /// Loads nothing, which is what a fleet that has never run remembers.
     ///
     /// An empty window is a real answer, not a stand-in: a first run seeds from
     /// exactly this.
-    fn hydrate(
+    fn load(
         &self,
         _runner_id: &Uuid7,
         _fleet_id: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<af_wire::memory::MemoryHydrateResponse<'static>>> + Send
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::memory::MemoryLoadResponse<'static>>> + Send
     {
         std::future::ready(
             self.refused()
-                .map(|()| af_wire::memory::MemoryHydrateResponse {
+                .map(|()| af_wire::memory::MemoryLoadResponse {
                     memory: Vec::new(),
                     shared: Vec::new(),
                     publish: false,

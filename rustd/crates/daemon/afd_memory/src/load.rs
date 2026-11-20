@@ -1,15 +1,14 @@
 //! What a run is seeded with, and what a recall past that window finds.
 //!
-//! The fleet's own entries spend [`HYDRATE_WINDOW_BYTES`] under the window's
-//! rule; a granted reader's shared entries then spend [`HYDRATE_SHARED_BYTES`],
+//! The fleet's own entries spend [`LOAD_WINDOW_BYTES`] under the window's
+//! rule; a granted reader's shared entries then spend [`LOAD_SHARED_BYTES`],
 //! newest first, each naming the fleet that wrote it.
 
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_wire::memory::{
-    HYDRATE_SHARED_BYTES, HYDRATE_WINDOW_BYTES, MemoryHydrateResponse, MemoryRecallResponse,
-    SharedMemory,
+    LOAD_SHARED_BYTES, LOAD_WINDOW_BYTES, MemoryLoadResponse, MemoryRecallResponse, SharedMemory,
 };
 use afd_api_wire::fleet::MemoryAccess;
 
@@ -20,16 +19,16 @@ use crate::record::{Owner, Record};
 use crate::window::{self, Window};
 
 /// A run was seeded with a memory window.
-const EVENT_HYDRATED: &str = "memory_hydrated";
+const EVENT_LOADED: &str = "memory_loaded";
 
 impl Memories {
     /// The window that seeds one run of `fleet`.
     ///
     /// # Errors
     /// Refuses a fleet that is gone and reports a store that would not answer.
-    pub async fn hydrate(&self, fleet: &Uuid7) -> Result<MemoryHydrateResponse<'static>> {
+    pub async fn load(&self, fleet: &Uuid7) -> Result<MemoryLoadResponse<'static>> {
         let Access { workspace, grants } = self.access(fleet).await?;
-        self.hydrate_scoped(fleet, &workspace, grants).await
+        self.load_scoped(fleet, &workspace, grants).await
     }
 
     /// The window that seeds one run of `fleet`, under the workspace and grants
@@ -41,12 +40,12 @@ impl Memories {
     ///
     /// # Errors
     /// Reports a store that would not answer.
-    pub async fn hydrate_scoped(
+    pub async fn load_scoped(
         &self,
         fleet: &Uuid7,
         workspace: &Uuid7,
         grants: MemoryAccess,
-    ) -> Result<MemoryHydrateResponse<'static>> {
+    ) -> Result<MemoryLoadResponse<'static>> {
         let workspace = workspace.clone();
         let owner = Owner {
             workspace: &workspace,
@@ -59,39 +58,39 @@ impl Memories {
         let held = own.len();
         let Window { kept, dropped } = window::select(
             own.into_iter().map(Record::into_delta).collect(),
-            HYDRATE_WINDOW_BYTES,
+            LOAD_WINDOW_BYTES,
         );
         let mut shared = self.named(&workspace, others).await?;
         shared.truncate(window::prefix_within(
             shared.iter().map(SharedMemory::bytes),
-            HYDRATE_SHARED_BYTES,
+            LOAD_SHARED_BYTES,
         ));
 
         // Hoisted for the `log` bridge's duplicated field expressions. The
         // content is never logged — only the tallies and the scope.
         let fleet_id = fleet.as_str();
-        let (hydrated, dropped_count) = (kept.len(), dropped.len());
+        let (loaded, dropped_count) = (kept.len(), dropped.len());
         let dropped_bytes = window::total_bytes(&dropped);
         let shared_count = shared.len();
         {
             let (dropped, shared, event, message) = (
                 &dropped_count,
                 &shared_count,
-                &EVENT_HYDRATED,
+                &EVENT_LOADED,
                 format_args!("a run was seeded with its memory window; the rest stays durable"),
             );
             tracing::debug!(
                 message,
                 fleet_id,
                 held,
-                hydrated,
+                loaded,
                 dropped,
                 dropped_bytes,
                 shared,
                 event
             );
         };
-        Ok(MemoryHydrateResponse {
+        Ok(MemoryLoadResponse {
             memory: kept,
             shared,
             publish: grants.publish,

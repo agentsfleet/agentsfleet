@@ -1,7 +1,7 @@
 //! What a fleet remembered, and what this process is holding.
 //!
 //! The memory families count a fleet's own recall — what was captured, what a
-//! hydration window carried, what a cap evicted — and beside them sit the
+//! load window carried, what a cap evicted — and beside them sit the
 //! process-level readings: resident memory, and the bytes a sensitive request
 //! or response had erased from it.
 
@@ -15,17 +15,17 @@ pub const MEMORY_ENTRIES_CAPTURED_TOTAL: Declared<CounterKind> =
 pub const MEMORY_PUSH_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_memory_push_failures_total");
 
-/// Hydration window fill.
-pub const MEMORY_HYDRATION_WINDOW_ENTRIES: Declared<GaugeKind> =
-    Declared::new("agentsfleet_memory_hydration_window_entries");
+/// Load window fill.
+pub const MEMORY_LOAD_WINDOW_ENTRIES: Declared<GaugeKind> =
+    Declared::new("agentsfleet_memory_load_window_entries");
 
-/// Hydration overflow (entries).
-pub const MEMORY_HYDRATION_DROPPED_ENTRIES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_memory_hydration_dropped_entries_total");
+/// Load overflow (entries).
+pub const MEMORY_LOAD_DROPPED_ENTRIES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_memory_load_dropped_entries_total");
 
-/// Hydration overflow (bytes).
-pub const MEMORY_HYDRATION_DROPPED_BYTES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_memory_hydration_dropped_bytes_total");
+/// Load overflow (bytes).
+pub const MEMORY_LOAD_DROPPED_BYTES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_memory_load_dropped_bytes_total");
 
 /// Cap pressure on stored memory.
 pub const MEMORY_CAP_EVICTIONS_TOTAL: Declared<CounterKind> =

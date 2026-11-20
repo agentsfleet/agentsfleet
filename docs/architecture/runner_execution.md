@@ -691,7 +691,7 @@ work
   │     catalog.select(policy.tools)?              an unhosted tool refuses the run
   │     .needs_sandbox()                           afr_tools/src/selection.rs
   ├─ turns.claim(fleet)                            one run per fleet per runner
-  ├─ memory::hydrate(fleet)
+  ├─ memory::load(fleet)
   └─ needs.sandbox ? sandboxed(…) : drive(slot = NoSandbox)
 ```
 

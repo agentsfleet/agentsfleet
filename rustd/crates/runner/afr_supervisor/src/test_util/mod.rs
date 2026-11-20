@@ -16,7 +16,7 @@ pub use session::Session;
 use std::borrow::Cow;
 
 use af_wire::fold::FoldResponse;
-use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
+use af_wire::memory::{MemoryCaptureResponse, MemoryLoadResponse, MemoryRecallResponse};
 use af_wire::paths::{
     RUN_ITEMS_SUFFIX, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_RUNS, RUNNER_SELF,
 };
@@ -99,7 +99,7 @@ impl Healthy {
             ) => Value::Null,
             Some(Verb::Heartbeat) => self.heartbeat(),
             Some(Verb::Renew) => self.renewed(),
-            Some(Verb::Load) => value(&MemoryHydrateResponse {
+            Some(Verb::Load) => value(&MemoryLoadResponse {
                 memory: Vec::new(),
                 shared: Vec::new(),
                 publish: false,

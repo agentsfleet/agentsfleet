@@ -28,7 +28,7 @@ pub const ATTR_RUN_ID: &str = "agentsfleet.run.id";
 /// rather than a fresh one; absent from a run that used no sandbox.
 pub const ATTR_SANDBOX_REUSED: &str = "agentsfleet.sandbox.reused";
 
-/// The run's memory hydrate, on the fallback path only.
+/// The run's memory load, on the fallback path only.
 pub const ATTR_RUNNER_MEMORY_MS: &str = "agentsfleet.runner.memory_ms";
 
 /// The sandbox, from sizing through checkout.

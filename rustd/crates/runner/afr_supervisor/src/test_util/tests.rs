@@ -64,7 +64,7 @@ async fn test_each_route_answers_as_its_verb() {
 
     plane.heartbeat(&beat).await.unwrap();
     plane.renew(&run, &RenewRequest::default()).await.unwrap();
-    plane.hydrate(&fleet).await.unwrap();
+    plane.load(&fleet).await.unwrap();
     plane.capture(&fleet, &push).await.unwrap();
     plane.recall(&fleet, &recall).await.unwrap();
     plane.me().await.unwrap();

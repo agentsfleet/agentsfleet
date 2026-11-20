@@ -10,7 +10,7 @@
 //! An entry belongs to the fleet that wrote it, under `(workspace, fleet,
 //! key)`. A fleet holding the publish grant may mark an entry
 //! [`Visibility::Workspace`](af_wire::memory::Visibility); a fleet holding the
-//! read grant hydrates and recalls those entries from the workspace's other
+//! read grant loads and recalls those entries from the workspace's other
 //! fleets, each naming its writer. No fleet overwrites or forgets another's.
 //! `docs/architecture/runner_fleet.md` §"Memory backends and scope" is the
 //! decision; this crate is where it is enforced.
@@ -22,7 +22,7 @@
 mod access;
 mod admit;
 pub mod error;
-mod hydrate;
+mod load;
 mod memories;
 pub mod page;
 mod postgres;

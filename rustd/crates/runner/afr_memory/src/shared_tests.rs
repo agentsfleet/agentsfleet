@@ -13,7 +13,7 @@ use af_wire::memory::{
     MemoryDelta, MemoryRecallResponse, PINNED_CATEGORY, SharedMemory, Visibility,
 };
 
-use super::{Hydrated, MemoryBackend, RECALL_MISS_CAP, Recall, Seed};
+use super::{Loaded, MemoryBackend, RECALL_MISS_CAP, Recall, Seed};
 use crate::Result;
 use crate::tests::keys;
 
@@ -75,7 +75,7 @@ impl Recall for Daemon {
 async fn test_recall_miss_asks_agentsfleetd_once() {
     let window = vec![entry("deploy-1")];
     let daemon = Daemon::default();
-    let memory = Hydrated::new(Seed {
+    let memory = Loaded::new(Seed {
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
@@ -95,7 +95,7 @@ async fn test_recall_miss_asks_agentsfleetd_once() {
 async fn test_recall_miss_cap_answers_from_the_window() {
     let window = vec![entry("deploy-1")];
     let daemon = Daemon::default();
-    let memory = Hydrated::new(Seed {
+    let memory = Loaded::new(Seed {
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
@@ -118,7 +118,7 @@ async fn test_recall_miss_cap_answers_from_the_window() {
 async fn a_recall_past_the_window_never_brings_back_a_key_the_run_forgot() {
     let window = vec![entry("deploy-1")];
     let daemon = Daemon::default();
-    let mut memory = Hydrated::new(Seed {
+    let mut memory = Loaded::new(Seed {
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
@@ -140,7 +140,7 @@ async fn a_recall_past_the_window_never_brings_back_a_key_the_run_forgot() {
 async fn a_recall_past_the_window_never_brings_back_a_key_the_run_overwrote() {
     let window = vec![entry("deploy-1")];
     let daemon = Daemon::default();
-    let mut memory = Hydrated::new(Seed {
+    let mut memory = Loaded::new(Seed {
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
@@ -171,7 +171,7 @@ async fn a_recall_past_the_window_keeps_another_fleets_entry_under_a_key_the_run
         shares: Some("deploy-7"),
         ..Daemon::default()
     };
-    let mut memory = Hydrated::new(Seed {
+    let mut memory = Loaded::new(Seed {
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
@@ -204,7 +204,7 @@ async fn a_full_window_and_a_refusing_daemon_both_answer_from_the_window() {
         refuses: true,
         ..Daemon::default()
     };
-    let full = Hydrated::new(Seed {
+    let full = Loaded::new(Seed {
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
@@ -216,7 +216,7 @@ async fn a_full_window_and_a_refusing_daemon_both_answer_from_the_window() {
     );
 
     let short = vec![entry("deploy-1")];
-    let missing = Hydrated::new(Seed {
+    let missing = Loaded::new(Seed {
         recall: Some(&daemon),
         ..Seed::window(&short)
     });

@@ -28,10 +28,9 @@
 //! cannot replace the new holder's entry.
 
 use af_core::id::Uuid7;
-use af_observability::verb_span::{CaptureStage, HydrateStage, VerbClock};
+use af_observability::verb_span::{CaptureStage, LoadStage, VerbClock};
 use af_wire::memory::{
-    MemoryDelta, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
-    MemoryRecallResponse,
+    MemoryDelta, MemoryLoadResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
 };
 use afd_db::Precondition as _;
 use afd_memory::Captured;
@@ -64,14 +63,14 @@ impl RunService {
     /// # Errors
     /// Refuses a runner holding no live run on `fleet_id`, and one whose run
     /// the fleet has moved past. Reports a memory store that would not answer.
-    pub async fn hydrate(
+    pub async fn load(
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-    ) -> Result<MemoryHydrateResponse<'static>> {
-        let mut clock = VerbClock::<HydrateStage>::start();
+    ) -> Result<MemoryLoadResponse<'static>> {
+        let mut clock = VerbClock::<LoadStage>::start();
         let fenced = self.runs.live_fence_for_fleet(runner_id, fleet_id).await;
-        clock.mark(HydrateStage::Fence);
+        clock.mark(LoadStage::Fence);
         let Some(fence) = fenced? else {
             return Err(run_not_found());
         };
@@ -80,8 +79,8 @@ impl RunService {
         }
         // Named only once the fence proves the run is this runner's.
         clock.agent(fleet_id.as_str());
-        let window = self.memories.hydrate(fleet_id).await;
-        clock.mark(HydrateStage::MemoryRead);
+        let window = self.memories.load(fleet_id).await;
+        clock.mark(LoadStage::MemoryRead);
         Ok(window?)
     }
 
@@ -268,7 +267,7 @@ impl RunService {
 
 /// The refusal a fenced memory verb answers, logged once for every caller.
 ///
-/// `token` is what the request presented; a hydrate presents none. `own`
+/// `token` is what the request presented; a load presents none. `own`
 /// beside it tells a superseded run (`own` below `live_seq`) from a token
 /// that is not the run's.
 fn superseded(fleet_id: &Uuid7, token: Option<u64>, fence: Fence) -> crate::Error {

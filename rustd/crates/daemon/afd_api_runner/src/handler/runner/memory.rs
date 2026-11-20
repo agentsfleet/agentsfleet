@@ -28,8 +28,8 @@ use crate::auth::RunnerIdentity;
 use crate::handler::malformed;
 use crate::services::{RunPlane as _, Services};
 
-/// The scoped event a failed hydrate is logged under.
-const EVENT_HYDRATE: &str = "runner_memory_hydrate_failed";
+/// The scoped event a failed load is logged under.
+const EVENT_LOAD: &str = "runner_memory_load_failed";
 
 /// The scoped event a failed capture is logged under.
 const EVENT_CAPTURE: &str = "runner_memory_capture_failed";
@@ -52,7 +52,7 @@ const STATE_SUPERSEDED: &str = "superseded";
     get,
     path = af_wire::paths::RUNNER_MEMORY_FLEET,
     tag = afd_http::openapi::tag::MEMORY,
-    operation_id = "runner_hydrate_memory",
+    operation_id = "runner_load_memory",
     summary = "Load what a fleet remembers",
     description = concat!(
         "Loads a fleet's saved memory at the start of a run. Requires its current work ",
@@ -62,14 +62,14 @@ const STATE_SUPERSEDED: &str = "superseded";
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryHydrateResponse<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryLoadResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn hydrate<D: Services>(
+pub(crate) async fn load<D: Services>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(fleet_id): Path<String>,
@@ -78,9 +78,9 @@ pub(crate) async fn hydrate<D: Services>(
         Ok(fleet) => fleet,
         Err(refused) => return refused.into_response(),
     };
-    match services.runs().hydrate(runner.id(), &fleet).await {
-        Ok(hydrated) => Json(hydrated).into_response(),
-        Err(error) => Refusal::conflict_or_at(EVENT_HYDRATE, conflict_state)(error).into_response(),
+    match services.runs().load(runner.id(), &fleet).await {
+        Ok(loaded) => Json(loaded).into_response(),
+        Err(error) => Refusal::conflict_or_at(EVENT_LOAD, conflict_state)(error).into_response(),
     }
 }
 
@@ -167,7 +167,7 @@ pub(crate) async fn capture<D: Services>(
         Err(refused) => return refused.into_response(),
     };
     // Borrowed out of `body`: every delta's content goes straight into a column.
-    // Strict because a delta is also what hydrate answers with, and the runner
+    // Strict because a delta is also what load answers with, and the runner
     // reads that leniently; a pushed delta still carries exactly three keys.
     let Ok(request) = afd_http::handler::read_strict_body::<MemoryPushRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);

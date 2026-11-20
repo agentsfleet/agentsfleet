@@ -58,10 +58,10 @@ Every span one chat left, daemon and runner, by its event:
 ```
 
 That returns `fleet.steer`, `fleet.assign`, `fleet.report`, `fleet.delivery` and `runner.run`.
-A fallback `fleet.hydrate` or `fleet.capture` carries no event; find it by fleet within the window between the assignment and the report:
+A fallback `fleet.load` or `fleet.capture` carries no event; find it by fleet within the window between the assignment and the report:
 
 ```traceql
-{ name =~ "fleet.hydrate|fleet.capture" && span."gen_ai.agent.id" = "$fleet_id" }
+{ name =~ "fleet.load|fleet.capture" && span."gen_ai.agent.id" = "$fleet_id" }
 ```
 
 One daemon stage per fleet; each verb's stages are `agentsfleet.<verb>.<stage>_ms`:

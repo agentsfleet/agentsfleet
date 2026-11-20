@@ -35,7 +35,7 @@ fn the_run_span(capture: &Capture) -> CapturedSpan {
     spans.into_iter().next().unwrap()
 }
 
-/// A run that hydrated, ran its model and reported, and reached nothing
+/// A run that loaded, ran its model and reported, and reached nothing
 /// else, writes those three segments and leaves every other key off the span.
 #[test]
 fn test_run_span_records_existing_segments() {

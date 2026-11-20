@@ -343,7 +343,7 @@ The fleet's thread allows one active run. On the runner, `FleetTurns` allows one
 
 A runner with a held sandbox checks that fleet first. Other runners skip the fleet while the hold lasts ([Runner fleet holds](./runner_fleet.md#cold-and-warm-execution)).
 
-**What carries over.** Fleet memory: the memory window is `HYDRATE_WINDOW_BYTES`, 256 KiB, with every `core` entry pinned first.
+**What carries over.** Fleet memory: the memory window is `LOAD_WINDOW_BYTES`, 256 KiB, with every `core` entry pinned first.
 
 A recall reads up to `RECALL_LIMIT_MAX = 50` entries past the window (`af_wire`'s memory module; [Runner Fleet](./runner_fleet.md) §"Memory continuity"). Memory belongs to the fleet, not the PR.
 

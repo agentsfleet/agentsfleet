@@ -242,9 +242,9 @@ mod tests {
     }
 
     // Value: protects=the drain says how many runs carried a memory window;
-    // fails_when=a run whose hydrate failed counts as one that carried it;
-    // why_new=a failed hydrate undercounts `issue`; seam=none; no_claim=why
-    // the hydrate failed.
+    // fails_when=a run whose load failed counts as one that carried it;
+    // why_new=a failed load undercounts `issue`; seam=none; no_claim=why
+    // the load failed.
     #[test]
     fn drain_counts_runs_that_carry_a_window() -> Result<()> {
         let mut tally = Tally::new()?;

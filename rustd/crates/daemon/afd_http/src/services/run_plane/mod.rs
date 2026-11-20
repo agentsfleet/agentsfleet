@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use af_wire::credentials::MintCredentialRequest;
 use af_wire::memory::{
-    MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
+    MemoryLoadResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
 };
 use af_wire::message_verb::MessageRequest;
 use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
@@ -21,11 +21,11 @@ pub trait RunPlane: Send + Sync + std::fmt::Debug + 'static {
     /// # Errors
     /// Refuses a runner holding no live run on the fleet, and reports a
     /// datastore that would not answer.
-    fn hydrate(
+    fn load(
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<MemoryHydrateResponse<'static>>> + Send;
+    ) -> impl Future<Output = afd_fleet::Result<MemoryLoadResponse<'static>>> + Send;
 
     /// Persist what one run learned.
     ///

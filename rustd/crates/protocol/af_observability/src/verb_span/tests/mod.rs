@@ -15,7 +15,7 @@ use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracer, SdkTracerProvider, SpanData, SpanExporter};
 
 use super::{
-    AssignStage, CaptureStage, HydrateStage, ReportStage, Stage, SteerStage, Ticks, VerbClock,
+    AssignStage, CaptureStage, LoadStage, ReportStage, Stage, SteerStage, Ticks, VerbClock,
 };
 use crate::semconv;
 
@@ -244,8 +244,8 @@ fn test_every_stage_key_belongs_to_its_verb() {
             ALL_REPORT_STAGES.map(Stage::key).to_vec(),
         ),
         (
-            "agentsfleet.hydrate.",
-            [HydrateStage::Fence, HydrateStage::MemoryRead]
+            "agentsfleet.load.",
+            [LoadStage::Fence, LoadStage::MemoryRead]
                 .map(Stage::key)
                 .to_vec(),
         ),

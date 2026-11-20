@@ -139,7 +139,7 @@ async fn a_memory_window_is_not_used_as_a_daemon_version_signal() {
         });
         let mut payload = payload(RUN_ID, FLEET_ID);
         if inline {
-            payload.memory = Some(af_wire::memory::MemoryHydrateResponse {
+            payload.memory = Some(af_wire::memory::MemoryLoadResponse {
                 memory: Vec::new(),
                 shared: Vec::new(),
                 publish: false,

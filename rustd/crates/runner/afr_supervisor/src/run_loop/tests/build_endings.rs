@@ -18,7 +18,7 @@ use crate::test_support::GRANTED_UNTIL;
 
 /// Holds up the run's memory past the first renewal, and refuses every
 /// renewal: the run is cut before its build starts.
-fn slow_hydrate_and_lost_renewal(call: &Call) -> Option<Answer> {
+fn slow_load_and_lost_renewal(call: &Call) -> Option<Answer> {
     match call.verb {
         Verb::Load => match daemon(|_call| None)(call) {
             Answer::Reply(bytes) => Some(Answer::Late(RENEWAL_TICK.saturating_mul(2), bytes)),
@@ -61,7 +61,7 @@ async fn test_every_build_is_counted_by_how_it_ended() {
         ),
         (
             rig(
-                slow_hydrate_and_lost_renewal,
+                slow_load_and_lost_renewal,
                 FakeEngine::default(),
                 Behaviour::Stops,
             ),
@@ -81,7 +81,7 @@ async fn test_every_build_is_counted_by_how_it_ended() {
 #[tokio::test(start_paused = true)]
 async fn test_a_build_stopped_before_it_starts_prepares_nothing() {
     let mut rig = rig(
-        slow_hydrate_and_lost_renewal,
+        slow_load_and_lost_renewal,
         FakeEngine::default(),
         Behaviour::Stops,
     );

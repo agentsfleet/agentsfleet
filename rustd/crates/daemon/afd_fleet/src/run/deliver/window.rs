@@ -8,7 +8,7 @@
 //! run.
 
 use af_core::error_code::{Coded as _, Logged};
-use af_wire::memory::MemoryHydrateResponse;
+use af_wire::memory::MemoryLoadResponse;
 use afd_api_wire::fleet::MemoryAccess;
 
 use crate::run::envelope::Acquired;
@@ -25,7 +25,7 @@ impl RunService {
     pub(super) async fn window_for(
         &self,
         acquired: &Acquired,
-    ) -> Option<MemoryHydrateResponse<'static>> {
+    ) -> Option<MemoryLoadResponse<'static>> {
         let fleet_id = &acquired.fleet_id;
         let grants = MemoryAccess {
             read: acquired.opened.memory_reads_workspace,
@@ -33,7 +33,7 @@ impl RunService {
         };
         let window = self
             .memories
-            .hydrate_scoped(fleet_id, &acquired.workspace_id, grants)
+            .load_scoped(fleet_id, &acquired.workspace_id, grants)
             .await;
         match window {
             Ok(window) => Some(window),

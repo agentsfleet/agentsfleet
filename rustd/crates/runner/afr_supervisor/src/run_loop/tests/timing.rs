@@ -40,7 +40,7 @@ const CLASS: &str = "class";
 /// How long the fake agent's run takes before it answers.
 const MODEL_TAKES_MS: u64 = 50;
 /// Distinct delays for the daemon's answers, so each segment is told apart.
-const HYDRATE_TAKES: Duration = Duration::from_millis(40);
+const LOAD_TAKES: Duration = Duration::from_millis(40);
 const REPORT_TAKES: Duration = Duration::from_millis(30);
 /// How far the five segments may fall short of the wall.
 const SLACK_MS: u64 = 5;
@@ -61,7 +61,7 @@ fn late(call: &Call, takes: Duration) -> Answer {
     }
 }
 
-/// A native run that hydrated, built a sandbox, ran and
+/// A native run that loaded, built a sandbox, ran and
 /// reported logs every segment, and the six sum to the run's wall time.
 #[tokio::test(start_paused = true)]
 async fn test_run_completed_logs_its_segments() {
@@ -106,14 +106,14 @@ async fn test_run_completed_logs_its_segments() {
     );
 }
 
-/// Each segment times its own step: a late hydrate is memory time, the agent's run is model time with no tool time,
+/// Each segment times its own step: a late load is memory time, the agent's run is model time with no tool time,
 /// and a late report is report time, so a stopwatch in the wrong place shows.
 #[tokio::test(start_paused = true)]
 async fn test_each_segment_times_its_own_step() {
     let capture = Capture::install();
     let rig = Rig::new(
         daemon(move |call| match call.verb {
-            Verb::Load => Some(late(call, HYDRATE_TAKES)),
+            Verb::Load => Some(late(call, LOAD_TAKES)),
             Verb::Report => Some(late(call, REPORT_TAKES)),
             _ => None,
         }),
@@ -126,8 +126,8 @@ async fn test_each_segment_times_its_own_step() {
     let line = capture.only(EVENT_COMPLETED);
     assert_eq!(
         millis(&line, MEMORY_MS),
-        ms(HYDRATE_TAKES),
-        "the late hydrate is memory time: {:?}",
+        ms(LOAD_TAKES),
+        "the late load is memory time: {:?}",
         line.fields
     );
     assert_eq!(
@@ -206,7 +206,7 @@ async fn test_unstarted_segment_is_absent() {
     let line = capture.only(EVENT_FAILED);
     assert!(
         millis(&line, MEMORY_MS).is_some(),
-        "the hydrate ran: {:?}",
+        "the load ran: {:?}",
         line.fields
     );
     assert!(millis(&line, REPORT_MS).is_some(), "the report settled");
@@ -233,7 +233,7 @@ async fn test_no_memory_read_on_a_window_run() {
         FakeAgent::new(Behaviour::Answer),
     );
     let mut windowed = payload(RUN_ID, FLEET_ID);
-    windowed.memory = Some(af_wire::memory::MemoryHydrateResponse {
+    windowed.memory = Some(af_wire::memory::MemoryLoadResponse {
         memory: Vec::new(),
         shared: Vec::new(),
         publish: false,
@@ -253,7 +253,7 @@ async fn test_memory_read_without_a_window() {
     let mut rig = Rig::new(
         move |call: &Call| {
             if call.verb == Verb::Load {
-                late(call, HYDRATE_TAKES)
+                late(call, LOAD_TAKES)
             } else {
                 daemon(|_call| None)(call)
             }
@@ -270,5 +270,5 @@ async fn test_memory_read_without_a_window() {
         .filter(|call| call.verb == Verb::Load)
         .count();
     let line = capture.only(EVENT_COMPLETED);
-    assert_eq!((reads, millis(&line, MEMORY_MS)), (1, ms(HYDRATE_TAKES)));
+    assert_eq!((reads, millis(&line, MEMORY_MS)), (1, ms(LOAD_TAKES)));
 }

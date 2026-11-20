@@ -85,7 +85,7 @@ impl Default for Run<'_> {
     /// and reaching no `agentsfleetd`.
     fn default() -> Self {
         Self::new(
-            Box::new(afr_memory::Hydrated::default()),
+            Box::new(afr_memory::Loaded::default()),
             af_egress::testing::closed(),
             &crate::verbs::CLOSED,
         )

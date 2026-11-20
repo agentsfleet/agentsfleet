@@ -1,4 +1,4 @@
-//! The runner memory routes: the fleet id in the path, hydration, the recall
+//! The runner memory routes: the fleet id in the path, the load, the recall
 //! bound and capture, each refused or rendered by the handler that owns it.
 
 use afd_auth::directory::Liveness;
@@ -16,11 +16,11 @@ async fn runner_memory_routes_validate_and_render() {
     a_fleet_id_that_is_not_a_uuid_is_refused(&router).await;
 
     let memory_path = format!("/v1/runners/me/memory/{FLEET_ID}");
-    let hydrated = send(&router, Method::GET, &memory_path, Some(RUNNER_TOKEN), "").await;
-    assert_eq!(hydrated.status(), StatusCode::OK);
-    // A fleet without grants hydrates in the shape every runner parses:
+    let loaded = send(&router, Method::GET, &memory_path, Some(RUNNER_TOKEN), "").await;
+    assert_eq!(loaded.status(), StatusCode::OK);
+    // A fleet without grants loads in the shape every runner parses:
     // `shared` and `publish` stay off the wire.
-    assert_eq!(json_body(hydrated).await, serde_json::json!({"memory": []}));
+    assert_eq!(json_body(loaded).await, serde_json::json!({"memory": []}));
 
     recall_is_bounded_and_renders_both_shelves(&router, &memory_path).await;
     capture_validates_and_counts(&router, &memory_path).await;
