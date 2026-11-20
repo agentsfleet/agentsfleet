@@ -23,6 +23,7 @@ use guffbolt::tools::{Context, ContextTool, LocalEnv, ToolsConfig, code};
 use guffbolt::{CallRef, ToolOutput, Tools};
 use serde_json::{Value, json};
 
+mod abandoned;
 mod env_types;
 mod exec_fake;
 mod exec_host;
@@ -225,3 +226,43 @@ const EXITED_0: &str = "Process exited with code 0";
 const INTERRUPTED: &str = "Process interrupted before its ending arrived";
 const ABANDONED: &str =
     "... the process ended with its output still open; what was written after is not shown ...";
+
+/// A command that leaves a background process holding its output, writing
+/// that process's number to `child`, then exits at once.
+#[cfg(unix)]
+const LEAVES_A_CHILD: &str = "nohup sleep 9999 & echo $! > child; exit 0";
+
+/// The process whose number a command wrote to `path`, once the file holds
+/// it; waits a little for the command to write it.
+#[cfg(unix)]
+async fn written_child(path: &std::path::Path) -> rustix::process::Pid {
+    let mut written = None;
+    for _ in 0..200 {
+        let number = std::fs::read_to_string(path).unwrap_or_default();
+        written = number
+            .trim()
+            .parse()
+            .ok()
+            .and_then(rustix::process::Pid::from_raw);
+        if written.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    written.expect("the command wrote its child's number")
+}
+
+/// Whether `pid` is gone, waited for a little while whoever adopted it
+/// reaps it.
+#[cfg(unix)]
+async fn gone(pid: rustix::process::Pid) -> bool {
+    for _ in 0..200 {
+        if rustix::process::test_kill_process(pid).is_err() {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // Not left behind past the test, whatever it asserts.
+    let _killed = rustix::process::kill_process(pid, rustix::process::Signal::KILL);
+    false
+}

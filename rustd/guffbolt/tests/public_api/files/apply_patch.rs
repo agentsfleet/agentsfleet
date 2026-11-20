@@ -200,3 +200,18 @@ async fn apply_patch_reports_a_write_refused_as_it_lands_and_keeps_what_landed()
     assert_eq!(desk.text("first.txt").as_deref(), Some("one\n"));
     assert!(desk.path("taken").is_dir(), "the directory stays");
 }
+
+/// A hunk whose last context line is blank, standing for the file's final
+/// line break, lands at the end of the file, and that line break stays.
+#[tokio::test]
+async fn apply_patch_lands_a_hunk_closed_by_the_final_line_break() {
+    let desk = Desk::new();
+    desk.put("end.txt", "a\nb\n");
+    let tools = desk.tools(false);
+    let patch = "*** Begin Patch\n*** Update File: end.txt\n@@\n a\n-b\n+c\n\n*** End Patch";
+
+    let output = call(&tools, "apply_patch", json!({"patch": patch})).await;
+
+    assert_eq!(output.error_code, None, "{}", output.text);
+    assert_eq!(desk.text("end.txt").as_deref(), Some("a\nc\n"));
+}

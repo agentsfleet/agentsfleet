@@ -333,3 +333,6 @@ fn failed(failure: &io::Error) -> EnvError {
 
 #[cfg(all(test, unix))]
 mod tests;
+
+#[cfg(all(test, unix))]
+mod listing_tests;

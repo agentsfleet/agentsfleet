@@ -109,3 +109,37 @@ async fn mcp_over_http_is_refused_before_any_connection_when_its_target_is_unusa
     );
     assert_eq!(unanswered.lookup.asked(), ["mcp.test"]);
 }
+
+/// An HTTP client that would not build, and a server that did not answer in
+/// time, each read in the harness's words and keep their cause.
+#[tokio::test]
+async fn an_mcp_client_or_timeout_failure_keeps_its_cause() {
+    use guffbolt::tools::mcp::McpError;
+
+    let lookup: Arc<dyn Resolve> = Arc::new(Fixed::default());
+    let unbuilt = guffbolt::tools::outbound::client(std::time::Duration::from_secs(1), lookup)
+        .build()
+        .expect("the harness's client builds")
+        .get("not a url")
+        .build()
+        .expect_err("a request with no URL does not build");
+    let late = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
+        .await
+        .expect_err("a pending call never answers");
+
+    let client = McpError::from(unbuilt);
+    let timeout = McpError::Timeout(late);
+
+    assert_eq!(client.to_string(), "the HTTP client would not build");
+    assert!(
+        client.source().is_some(),
+        "the client's failure is its cause"
+    );
+    assert!(
+        timeout
+            .to_string()
+            .starts_with("the server did not answer within"),
+        "{timeout}"
+    );
+    assert!(timeout.source().is_some(), "the elapsed timer is its cause");
+}

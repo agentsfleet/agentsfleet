@@ -262,3 +262,80 @@ async fn local_env_writes_to_and_kills_only_the_processes_it_holds() {
     );
     assert_eq!(killed, Some(Ending::Signaled(9)));
 }
+
+/// A kill that comes after the process's leader exited, while a background
+/// process it started still holds the output, kills that process too.
+#[cfg(unix)]
+#[tokio::test]
+async fn local_env_kills_a_background_child_left_after_its_leader_exited() {
+    let (directory, env) = local();
+    let process = env
+        .spawn(&Spawn::program("/bin/sh").arg("-c").arg(LEAVES_A_CHILD))
+        .await
+        .expect("started");
+    let child = written_child(&directory.path().join("child")).await;
+
+    env.kill(process.id)
+        .await
+        .expect("still held while its output drains");
+    let ended = process.ended(|_, _| {}).await;
+
+    assert!(gone(child).await, "the background process was killed");
+    assert_eq!(ended, Some(Ending::Signaled(9)));
+}
+
+/// A write or an append whose directory cannot be made, because a file sits
+/// where it would go, fails in the system's words and makes nothing.
+#[cfg(unix)]
+#[tokio::test]
+async fn local_env_refuses_a_file_under_a_path_a_file_already_holds() {
+    let (directory, env) = local();
+    std::fs::write(directory.path().join("notes"), "a file").expect("written");
+
+    let written = env
+        .write_file("notes/today.txt", Bytes::from_static(b"x"))
+        .await
+        .err();
+    let appended = env
+        .append_file("notes/today.txt", Bytes::from_static(b"x"))
+        .await
+        .err();
+
+    assert_eq!(
+        written.map(|error| error.kind()),
+        Some(EnvErrorKind::Unavailable)
+    );
+    assert_eq!(
+        appended.map(|error| error.kind()),
+        Some(EnvErrorKind::Unavailable)
+    );
+    assert_eq!(
+        std::fs::read_to_string(directory.path().join("notes"))
+            .ok()
+            .as_deref(),
+        Some("a file")
+    );
+}
+
+/// A delete the directory's permissions refuse fails in the system's words
+/// and leaves the file.
+#[cfg(unix)]
+#[tokio::test]
+async fn local_env_refuses_a_delete_its_directory_forbids() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (directory, env) = local();
+    let locked = directory.path().join("locked");
+    std::fs::create_dir(&locked).expect("made");
+    std::fs::write(locked.join("keep.txt"), "kept").expect("written");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).expect("locked");
+
+    let refused = env.delete_file("locked/keep.txt").await.err();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("unlocked");
+
+    assert_eq!(
+        refused.map(|error| error.kind()),
+        Some(EnvErrorKind::Unavailable)
+    );
+    assert!(locked.join("keep.txt").is_file(), "the file is still there");
+}

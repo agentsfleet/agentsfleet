@@ -229,3 +229,63 @@ async fn a_running_child_reads_a_followup_and_closing_it_closes_its_children() {
         "the follow-up reached the running child on its next step"
     );
 }
+
+/// An interrupt and a follow-up in one step: the follow-up reaches the child
+/// while its interrupted turn still unwinds, and that turn ends without
+/// reading it, so the follow-up runs a turn of its own rather than being
+/// lost.
+#[tokio::test]
+async fn a_followup_beside_an_interrupt_runs_its_own_turn() {
+    let (agents, requests) = Agents::new(CAPS);
+    let tools = seven(&agents);
+    let script = Script::default()
+        .plays(
+            ROOT,
+            [
+                call(
+                    SPAWN_AGENT,
+                    json!({"message": "spin", "fork_turns": "none"}),
+                ),
+                call(WAIT_AGENT, json!({"target": 1, "timeout_ms": 0})),
+                Play::Call(vec![
+                    (INTERRUPT_AGENT, json!({"target": 1})),
+                    (FOLLOWUP_TASK, json!({"target": 1, "message": "go on"})),
+                ]),
+                call(WAIT_AGENT, json!({"target": 1})),
+                Play::Say("went on"),
+            ],
+        )
+        .plays(agent(1), [Play::Hang, Play::Say("went on")]);
+    let family = Family {
+        agents: agents.clone(),
+        script,
+        tools: &tools,
+    };
+
+    let (ending, transcript) = family
+        .run(
+            requests,
+            vec![user("go")],
+            &mut Plain,
+            &mut DriveState::default(),
+        )
+        .await;
+
+    assert_eq!(answered(&ending), Some("went on"));
+    assert_eq!(
+        results(&transcript),
+        [
+            r#"{"agent_id":1}"#,
+            r#"{"status":"running"}"#,
+            r#"{"previous_status":"running"}"#,
+            r#"{"accepted":true}"#,
+            r#"{"status":"done","answer":"went on"}"#,
+        ]
+    );
+    let second = family.script.sent_by(&agent(1));
+    assert_eq!(
+        second.get(1).and_then(|sent| sent.messages.last().cloned()),
+        Some(user("spin\n\ngo on")),
+        "the follow-up's turn read it, joined to the task it never answered"
+    );
+}

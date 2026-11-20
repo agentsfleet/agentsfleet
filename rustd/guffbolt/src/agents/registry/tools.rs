@@ -57,7 +57,8 @@ impl Agents {
     }
 
     /// Hands child `id` `message` as another task: an idle child runs a turn
-    /// over its transcript, a running one reads it on its next step. Whether
+    /// over its transcript, a running one reads it on its next step, or in
+    /// a turn of its own when the running one ends first. Whether
     /// it was taken, which a closed child, or an idle one while the children
     /// are paused, never does; `None` for an id no child has.
     #[must_use]
@@ -70,16 +71,15 @@ impl Agents {
             Status::Closed => false,
             Status::Running => {
                 child.inbox.push(message);
+                child.owed = true;
                 true
             }
             Status::Done(_) | Status::Failed(_) | Status::Interrupted if paused => false,
             Status::Done(_) | Status::Failed(_) | Status::Interrupted => {
                 child.inbox.push(message);
                 child.status.send_replace(Status::Running);
+                self.queue(id, child);
                 book.running += 1;
-                // Queued under the same lock, so a pause granted after it
-                // sees the turn waiting.
-                let _after_the_run = self.0.turns.send(id);
                 true
             }
         };
@@ -87,9 +87,9 @@ impl Agents {
         Some(taken)
     }
 
-    /// Ends child `id`'s running turn where it is, and answers the status it
-    /// had; the child stays open for another task. `None` for an id no child
-    /// has.
+    /// Ends child `id`'s running turn where it is, or its queued turn before
+    /// it begins, and answers the status it had; the child stays open for
+    /// another task. `None` for an id no child has.
     #[must_use]
     pub fn interrupt(&self, id: u64) -> Option<Kind> {
         let book = self.book();

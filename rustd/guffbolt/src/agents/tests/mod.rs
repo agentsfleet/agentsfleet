@@ -32,6 +32,8 @@ fn kinds(agents: &Agents) -> Vec<Kind> {
     agents.list().iter().map(|child| child.status).collect()
 }
 
+mod edges;
+
 #[test]
 fn the_caps_refuse_a_child_past_the_open_or_the_started_count() {
     let (agents, _requests) = Agents::new(CAPS);
@@ -159,6 +161,7 @@ fn a_census_comes_back_whole_and_reads_only_under_its_own_pause() {
                 depth: 1,
                 calls: 0,
                 tools: Vec::new(),
+                steps: 0,
                 status: Status::Done("one".to_owned()),
                 transcript,
                 state: DriveState::default(),
@@ -169,6 +172,7 @@ fn a_census_comes_back_whole_and_reads_only_under_its_own_pause() {
                 depth: 1,
                 calls: 0,
                 tools: Vec::new(),
+                steps: 0,
                 status: Status::Closed,
                 transcript: Vec::new(),
                 state: DriveState::default(),

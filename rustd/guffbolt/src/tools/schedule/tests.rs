@@ -266,3 +266,20 @@ fn an_unreadable_moment_is_refused() {
         assert_eq!(minute_of(at, NOW), Err(unreadable), "{at:?}");
     }
 }
+
+/// An expression whose next match lies past the last moment the calendar
+/// holds never fires, and is refused as one that never matches.
+#[test]
+fn a_cron_whose_next_match_is_past_the_calendars_end_never_matches() {
+    let near_the_end: Timestamp = "9999-12-30T00:00:00Z".parse().expect("a moment");
+
+    let next = super::moment::next_after("0 0 1 1 *", "UTC", near_the_end);
+
+    assert_eq!(
+        next,
+        Err(Refusal::new(
+            code::INVALID_ARGUMENTS,
+            "cron never matches a moment"
+        ))
+    );
+}

@@ -1,9 +1,13 @@
-//! A root that ends, or runs out of budget, ends its children.
+//! A root that ends, or runs out of budget, ends its children; a root that
+//! asks the person waits for them first.
+
+use guffbolt::tools::ask::ASK_USER;
 
 use super::*;
 
-/// The root's loop ends while one child is idle and another still runs:
-/// both end interrupted with it, and neither is polled again.
+/// The root's loop ends while one child is idle and another still runs: the
+/// running one ends interrupted with it, the idle one keeps its answer, and
+/// neither is polled again.
 #[tokio::test]
 async fn a_loop_that_ends_ends_its_children() {
     let (agents, requests) = Agents::new(CAPS);
@@ -53,7 +57,7 @@ async fn a_loop_that_ends_ends_its_children() {
         [
             Listed {
                 agent_id: 1,
-                status: Kind::Interrupted,
+                status: Kind::Done,
                 depth: 1,
                 calls: 0
             },
@@ -64,7 +68,7 @@ async fn a_loop_that_ends_ends_its_children() {
                 calls: 0
             },
         ],
-        "the idle child and the running one both end with the run"
+        "the running child ends with the run; the idle one keeps its answer"
     );
     assert_eq!(
         family.script.sent_by(&agent(2)).len(),
@@ -140,4 +144,64 @@ impl<'f, 't> guffbolt::Extension<crate::family::Chat<'f, 't>> for Quieting<'_> {
         }
         None
     }
+}
+
+/// A root that asks the person in the step that started a child ends waiting
+/// only once that child has answered: the loop waits for the run's children
+/// itself, so the child's turn is never dropped, and its answer outlives the
+/// run's end.
+#[tokio::test]
+async fn a_question_waits_for_a_running_child_to_answer() {
+    let (agents, requests) = Agents::new(CAPS);
+    let names: Vec<&str> = TOOLS.into_iter().chain([ASK_USER]).collect();
+    let config = ToolsConfig::new(&names).expect("eight names");
+    let tools = Tools::builder()
+        .with_agents(&agents)
+        .build(&config)
+        .expect("the run's children are given");
+    let script = Script::default()
+        .plays(
+            ROOT,
+            [Play::Call(vec![
+                (
+                    SPAWN_AGENT,
+                    json!({"message": "check the build", "fork_turns": "none"}),
+                ),
+                (ASK_USER, json!({"question": "Ship it?"})),
+            ])],
+        )
+        .plays(
+            agent(1),
+            [
+                call(LIST_AGENTS, json!({})),
+                Play::Say("the build is green"),
+            ],
+        );
+    let family = Family {
+        agents: agents.clone(),
+        script,
+        tools: &tools,
+    };
+
+    let (ending, _transcript) = family
+        .run(
+            requests,
+            vec![user("go")],
+            &mut Plain,
+            &mut DriveState::default(),
+        )
+        .await;
+
+    assert!(
+        matches!(&ending, guffbolt::Ending::Waiting(waiting) if waiting.question == "Ship it?"),
+        "{ending:?}"
+    );
+    assert_eq!(
+        agents.wait(1, Some(std::time::Duration::ZERO)).await,
+        Some(guffbolt::agents::Status::Done(
+            "the build is green".to_owned()
+        )),
+        "the child ran to its answer before the run waited"
+    );
+    assert_eq!(family.script.sent_by(&agent(1)).len(), 2);
 }

@@ -65,9 +65,9 @@
 //! it, and the root's [`DriveState`] carries them to a resumed loop.
 //!
 //! A call that asks the person a question ([`ToolOutput::asks`]) ends the
-//! loop [`Ending::Waiting`] once its step's other calls ran and the
-//! conversation is quiet ([`Conversation::quiet`]), such as every child the
-//! run started having ended. Nothing waits on the person inside the run, and
+//! loop [`Ending::Waiting`] once its step's other calls ran and every child
+//! the run started has ended its turn, so none is dropped while the run
+//! waits. Nothing waits on the person inside the run, and
 //! [`DriveState::resume`] answers the question later.
 //!
 //! The `tools` feature adds `tools`: commands, files, patches, the web,

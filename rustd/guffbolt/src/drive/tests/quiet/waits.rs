@@ -4,14 +4,13 @@
 use super::*;
 
 /// The root loop: a model that spawns a child over `task` and asks a
-/// question in one step, and the pause the root took before it ended
-/// waiting.
+/// question in one step. It adds nothing for the wait: the loop waits for
+/// the children itself.
 struct Root<'f> {
     family: &'f Family,
     model: Script,
     transcript: Transcript,
     stop: CancellationToken,
-    paused: Option<Pause>,
 }
 
 impl<'f> Root<'f> {
@@ -28,7 +27,6 @@ impl<'f> Root<'f> {
             model,
             transcript: Transcript::new(vec![user("deploy the fix")]),
             stop,
-            paused: None,
         }
     }
 
@@ -119,12 +117,6 @@ impl Conversation for Root<'_> {
     fn silent(&self, _cut: bool) -> Failure {
         Failure::Silent
     }
-
-    async fn quiet(&mut self) {
-        self.paused = self.family.agents.quiet().await;
-        let paused = self.paused.is_some();
-        self.family.note(format!("root quiet, paused {paused}"));
-    }
 }
 
 /// An extension that adds only its budget, and hears it run out.
@@ -162,6 +154,7 @@ async fn a_question_waits_for_running_children_before_the_run_ends() {
     let mut plain = Plain;
     let driven = drive(&mut root, &mut plain, &mut state);
     let ended = timeout(GUARD, children.beside(&family, driven)).await;
+    let pause = children.end_all(&family.agents);
 
     assert!(
         matches!(&ended, Ok(Ending::Waiting(on)) if *on == asked()),
@@ -169,23 +162,15 @@ async fn a_question_waits_for_running_children_before_the_run_ends() {
     );
     assert_eq!(
         family.heard(),
-        [
-            "child 1 started",
-            "child 1 answered",
-            "root quiet, paused true",
-            "loop waiting"
-        ],
+        ["child 1 started", "child 1 answered", "loop waiting"],
         "the run ends waiting only after the child's end is recorded"
     );
-    let census = root
-        .paused
-        .as_ref()
-        .and_then(|pause| family.agents.census(pause));
+    let census = pause.as_ref().and_then(|pause| family.agents.census(pause));
     let statuses = census.map(|census| census.children.into_iter().map(|child| child.status));
     assert_eq!(
         statuses.map(Iterator::collect::<Vec<_>>),
         Some(vec![Status::Done("check the build done".to_owned())]),
-        "the pause the root holds reads the child's answer"
+        "the child's answer outlives the run's end"
     );
 }
 
@@ -213,7 +198,6 @@ async fn a_stop_while_a_question_waits_on_a_child_ends_the_run_and_keeps_the_que
         Some(&asked()),
         "the question is kept for its answer"
     );
-    assert!(root.paused.is_none(), "no pause was granted");
 }
 
 #[tokio::test(start_paused = true)]

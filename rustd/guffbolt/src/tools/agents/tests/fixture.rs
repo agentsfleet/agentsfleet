@@ -66,11 +66,13 @@ pub(super) struct Sent {
     pub(super) tools: Vec<String>,
 }
 
-/// A model that plays each loop's script and keeps every request.
+/// A model that plays each loop's script and keeps every request, and the
+/// place of every call a loop lent its tools.
 #[derive(Debug, Default)]
 pub(super) struct Puppet {
     plays: Mutex<HashMap<String, VecDeque<Play>>>,
     sent: Mutex<Vec<Sent>>,
+    lent: Mutex<Vec<(String, CallRef)>>,
 }
 
 impl Puppet {
@@ -82,6 +84,16 @@ impl Puppet {
     ) -> Self {
         lock(&self.plays).insert(key.into(), plays.into_iter().collect());
         self
+    }
+
+    /// The place of every call the loop keyed `key` lent its tools, in
+    /// order.
+    pub(super) fn lent_by(&self, key: &str) -> Vec<CallRef> {
+        lock(&self.lent)
+            .iter()
+            .filter(|(lender, _)| lender == key)
+            .map(|(_, call_ref)| call_ref.clone())
+            .collect()
     }
 
     /// Every request the loop keyed `key` sent, in order.
@@ -228,6 +240,7 @@ impl Conversation for Chat<'_, '_> {
     }
 
     fn dispatch<'a>(&'a self, call: &'a Call, call_ref: &'a CallRef) -> ToolFuture<'a> {
+        lock(&self.family.puppet.lent).push((self.key.clone(), call_ref.clone()));
         let context = Context {
             call_ref,
             run_id: "run-1",

@@ -23,6 +23,7 @@ use crate::tool::Tools;
 use crate::tools::{Backend, ContextTool, ToolsConfig};
 use crate::transcript::{Message, Replay};
 
+mod call_refs;
 mod fork;
 mod held;
 mod resume;

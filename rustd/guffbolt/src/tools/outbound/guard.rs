@@ -69,6 +69,11 @@ const V6_NAT64_LOCAL_USE: u16 = 0x0001;
 const V6_6TO4: u16 = 0x2002;
 /// The sixth segment of an IPv4-mapped address, `::ffff:0:0/96`.
 const V6_MAPPED: u16 = 0xffff;
+/// The first two segments of Teredo, `2001::/32`.
+const V6_TEREDO: [u16; 2] = [0x2001, 0x0000];
+/// The first six segments of SIIT's IPv4-translated addresses,
+/// `::ffff:0:0:0/96`.
+const V6_TRANSLATED: [u16; 6] = [0, 0, 0, 0, V6_MAPPED, 0];
 
 /// Whether a request may not reach `address`.
 ///
@@ -96,19 +101,25 @@ fn is_denied_v4(address: Ipv4Addr) -> bool {
 
 /// The IPv6 ranges, and every IPv6 spelling of an IPv4 address: the cloud
 /// metadata service written `::ffff:169.254.169.254` is still the metadata
-/// service. NAT64's local-use prefix carries its IPv4 address in a layout its
-/// operator picks, so the whole prefix is refused.
+/// service. A range that tunnels or translates to an IPv4 address this guard
+/// cannot read whole is refused whole: NAT64's local-use prefix, in a layout
+/// its operator picks; Teredo, which hides its client's address and reaches
+/// it through a relay; and SIIT's translated addresses, which route only
+/// through a translator.
 fn is_denied_v6(address: Ipv6Addr) -> bool {
     if let Some(embedded) = embedded_v4(address) {
         return is_denied_v4(embedded);
     }
-    let [first, second, third, ..] = address.segments();
+    let segments = address.segments();
+    let [first, second, third, ..] = segments;
     address.is_loopback()
         || address.is_unspecified()
         || address.is_multicast()
         || first & V6_UNIQUE_LOCAL_MASK == V6_UNIQUE_LOCAL
         || first & V6_LINK_LOCAL_MASK == V6_LINK_LOCAL
         || ([first, second] == V6_NAT64 && third == V6_NAT64_LOCAL_USE)
+        || [first, second] == V6_TEREDO
+        || segments.starts_with(&V6_TRANSLATED)
 }
 
 /// The IPv4 address an IPv6 spelling routes to: IPv4-mapped,

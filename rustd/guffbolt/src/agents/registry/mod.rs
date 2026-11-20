@@ -22,6 +22,7 @@ use crate::transcript::Message;
 
 mod saved;
 mod tools;
+mod turns;
 
 /// One child, as the book keeps it.
 #[derive(Debug)]
@@ -38,8 +39,18 @@ pub(super) struct Child {
     /// Cancelled when it is closed or the loop ends; its turns' stops and
     /// its children's lives descend from it.
     pub(super) life: CancellationToken,
-    /// The running turn's stop, cancelled to interrupt it.
+    /// The stop of the turn queued or running, cancelled to interrupt it: a
+    /// turn interrupted before it begins never runs.
     pub(super) turn: Option<CancellationToken>,
+    /// Whether the queued turn began.
+    pub(super) begun: bool,
+    /// Whether a follow-up the running turn has not read owes it another
+    /// turn, should this one end without reading it.
+    pub(super) owed: bool,
+    /// The most steps any of its turns began, a turn dropped before its end
+    /// included: the next turn's calls are numbered after them, so no
+    /// [`crate::CallRef`] repeats.
+    pub(super) steps: u64,
     /// Its transcript as its last turn left it.
     pub(super) transcript: Vec<Message>,
     /// Its loop's progress as its last turn left it.
@@ -178,8 +189,11 @@ impl Agents {
             calls: 0,
             status,
             inbox: vec![message],
+            turn: Some(life.child_token()),
             life,
-            turn: None,
+            begun: false,
+            owed: false,
+            steps: 0,
             transcript: opening,
             state: DriveState::default(),
             closing: false,
@@ -194,86 +208,30 @@ impl Agents {
         Ok(id)
     }
 
-    /// The turn child `id` was queued for, as it starts: a fresh stop under
-    /// its life, and a copy of what it keeps, which stays in the book until
-    /// the turn ends. `None` when there is no such turn, or when the child
-    /// was closed, or the loop ended, before it started; that turn ends
-    /// here.
-    pub(super) fn begin(&self, id: u64) -> Option<Turn> {
-        let mut book = self.book();
-        let child = book.children.get_mut(&id)?;
-        if *child.status.borrow() != Status::Running || child.turn.is_some() {
-            return None;
-        }
-        if child.life.is_cancelled() {
-            drop(book);
-            self.ended(id, Status::Interrupted, None);
-            return None;
-        }
-        let stop = child.life.child_token();
-        child.turn = Some(stop.clone());
-        Some(Turn {
-            depth: child.depth,
-            stop,
-            tools: child.tools.clone(),
-            transcript: child.transcript.clone(),
-            state: child.state.clone(),
-        })
-    }
-
-    /// Records that child `id`'s turn ended as `status`, keeping `kept`, its
-    /// transcript and state after the turn, when the turn ran to its end. A
-    /// child closed meanwhile ends closed.
-    pub(super) fn ended(&self, id: u64, status: Status, kept: Option<(Vec<Message>, DriveState)>) {
-        let mut book = self.book();
-        let Some(child) = book.children.get_mut(&id) else {
-            return;
-        };
-        if child.status.borrow().is_final() {
-            return;
-        }
-        child.turn = None;
-        if let Some((transcript, state)) = kept {
-            child.transcript = transcript;
-            child.state = state;
-        }
-        let closing = child.closing;
-        child.status.send_replace(status);
-        book.running = book.running.saturating_sub(1);
-        if closing {
-            book.close(id);
-        }
-    }
-
-    /// What child `id` was sent since its last step, oldest first.
-    pub(super) fn take_inbox(&self, id: u64) -> Vec<String> {
-        self.book()
-            .children
-            .get_mut(&id)
-            .map_or_else(Vec::new, |child| std::mem::take(&mut child.inbox))
-    }
-
-    /// Counts one call child `id` made that answered.
-    pub(super) fn called(&self, id: u64) {
-        if let Some(child) = self.book().children.get_mut(&id) {
-            child.calls += 1;
-        }
-    }
-
     /// Ends every child with the loop: each life is cancelled, so each
-    /// running turn stops, and every open child ends interrupted, keeping
-    /// its transcript as its last finished turn left it.
+    /// running turn stops. A running child ends interrupted, keeping its
+    /// transcript as its last finished turn left it, or closed when it was
+    /// closing; an idle child keeps the status its last turn left.
     pub(super) fn end_all(&self) {
         self.0.root.cancel();
         let mut book = self.book();
-        for child in book.children.values_mut() {
+        let mut closing = Vec::new();
+        for (id, child) in &mut book.children {
             child.turn = None;
+            child.begun = false;
+            child.owed = false;
             child.inbox.clear();
-            if *child.status.borrow() != Status::Closed {
+            if *child.status.borrow() == Status::Running {
                 child.status.send_replace(Status::Interrupted);
+                if child.closing {
+                    closing.push(*id);
+                }
             }
         }
         book.running = 0;
+        for id in closing {
+            book.close(id);
+        }
     }
 
     /// The book, whatever a panicking holder left: every change to it is a

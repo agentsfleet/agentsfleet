@@ -107,3 +107,22 @@ fn an_env_error_reads_its_kind_and_what_its_log_line_records() {
         ]
     );
 }
+
+/// A failure caused by another answers it as its `source()`, so a log that
+/// walks the chain reads the system's own words; one caused by nothing
+/// answers none.
+#[test]
+fn an_env_error_caused_by_another_answers_it_as_its_source() {
+    use std::error::Error as _;
+
+    let caused = EnvError::new(EnvErrorKind::Unavailable, "the disk is gone")
+        .caused_by(std::io::Error::other("device not configured"));
+    let plain = EnvError::new(EnvErrorKind::NotFound, "gone");
+
+    assert_eq!(
+        caused.source().map(ToString::to_string).as_deref(),
+        Some("device not configured")
+    );
+    assert_eq!(caused.to_string(), "the disk is gone");
+    assert!(plain.source().is_none());
+}

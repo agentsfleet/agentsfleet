@@ -7,7 +7,12 @@
 //! The report is the output's last block: a [`HEADER`] line, then one line
 //! per file, the path as a JSON string so a path holding a line break stays
 //! on its line. [`reported`] reads the block after the last header, so text
-//! a path put in the output's earlier lines cannot add a file to it.
+//! a path put in the output's earlier lines cannot add a file to it. A path's
+//! control characters are written escaped, as `\n`, and a report line whose
+//! path holds one is not a change, so no path read back can break a line of
+//! whatever shows it.
+
+use std::borrow::Cow;
 
 use super::{ApplyPatch, FileAppend, FileEdit, FileEditHashed, FileWrite};
 use crate::tools::Handler;
@@ -53,16 +58,21 @@ impl Change {
         }
     }
 
-    /// The change's report line: the path as JSON, then `+added -removed`.
+    /// The change's report line: the path, its control characters escaped,
+    /// as JSON, then `+added -removed`.
     fn line(&self) -> String {
-        let path = serde_json::Value::from(self.path.as_str());
+        let path = serde_json::Value::from(escaped(&self.path));
         format!("{path} +{} -{}", self.added, self.removed)
     }
 
-    /// The change one report line names; none when the line is not one.
+    /// The change one report line names; none when the line is not one, or
+    /// its path holds a control character, which no report writes.
     fn parse(line: &str) -> Option<Self> {
         let mut paths = serde_json::Deserializer::from_str(line).into_iter::<String>();
         let path = paths.next()?.ok()?;
+        if path.contains(char::is_control) {
+            return None;
+        }
         let counts = line.get(paths.byte_offset()..)?.strip_prefix(" +")?;
         let (added, removed) = counts.split_once(" -")?;
         Some(Self {
@@ -71,6 +81,30 @@ impl Change {
             removed: removed.parse().ok()?,
         })
     }
+}
+
+/// `path` with each control character written as its escape, such as `\n`
+/// for a line break.
+fn escaped(path: &str) -> Cow<'_, str> {
+    if !path.contains(char::is_control) {
+        return Cow::Borrowed(path);
+    }
+    let escape = |character: char| -> String {
+        if character.is_control() {
+            character.escape_default().collect()
+        } else {
+            character.into()
+        }
+    };
+    Cow::Owned(path.chars().map(escape).collect())
+}
+
+/// What appending `added` to `before`, the text at `path`, changes: the lines
+/// `added` brings, and the last line of `before` it extends when that line
+/// has no line break yet.
+pub(crate) fn appended(path: &str, before: &str, added: &str) -> Change {
+    let open = before.rsplit_once('\n').map_or(before, |(_, last)| last);
+    Change::between(path, open, &format!("{open}{added}"))
 }
 
 /// `text` with the report of `changes` after it; `text` alone when nothing

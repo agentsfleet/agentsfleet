@@ -115,6 +115,31 @@ async fn file_append_makes_the_file_then_adds_to_its_end() {
     );
 }
 
+/// Text appended to a file whose last line has no line break joins that
+/// line, so the line counts as changed rather than one more added.
+#[tokio::test]
+async fn file_append_counts_the_open_last_line_it_extends() {
+    let desk = Desk::new();
+    desk.put("notes.txt", "one\ntwo");
+    let tools = desk.tools(false);
+
+    let output = call(
+        &tools,
+        "file_append",
+        json!({"path": "notes.txt", "content": " more\nthree\n"}),
+    )
+    .await;
+
+    assert_eq!(
+        output.text,
+        "Appended 12 bytes to notes.txt\nLines changed:\n\"notes.txt\" +2 -1"
+    );
+    assert_eq!(
+        desk.text("notes.txt").as_deref(),
+        Some("one\ntwo more\nthree\n")
+    );
+}
+
 #[tokio::test]
 async fn file_append_onto_a_directory_fails_in_the_systems_words() {
     let desk = Desk::new();

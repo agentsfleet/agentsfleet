@@ -83,8 +83,10 @@ impl<C: Conversation> Conversation for Seated<'_, C> {
 
     /// Runs `call` through the embedder when the child holds its tool; a
     /// call to any other reads the harness's refusal, as a call to a tool
-    /// nobody holds does.
+    /// nobody holds does. The step it sits at is noted first, so a later
+    /// turn never lends its [`CallRef`] again.
     fn dispatch<'a>(&'a self, call: &'a Call, call_ref: &'a CallRef) -> ToolFuture<'a> {
+        self.agents.lent(self.me.id, call_ref.step);
         if self.holds(&call.name) {
             self.inner.dispatch(call, call_ref)
         } else {

@@ -106,6 +106,13 @@ impl DriveState {
         self.answers.clear();
     }
 
+    /// Counts at least `steps` steps, so the next step's calls are numbered
+    /// after every step an earlier turn began, a turn dropped before its end
+    /// included.
+    pub(crate) fn numbered_after(&mut self, steps: u64) {
+        self.completed_steps = self.completed_steps.max(steps);
+    }
+
     pub(super) const fn completed(&mut self) {
         self.completed_steps = self.completed_steps.saturating_add(1);
     }

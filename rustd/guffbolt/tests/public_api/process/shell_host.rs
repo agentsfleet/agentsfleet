@@ -220,3 +220,25 @@ fn kill_left_behind(path: &std::path::Path) {
     rustix::process::kill_process_group(group, rustix::process::Signal::KILL)
         .expect("the group is killed");
 }
+
+/// A command whose leader exited while a background process it started still
+/// holds the output is cut at its timeout whole: the group is killed after
+/// its leader was reaped, and nothing is left behind.
+#[cfg(unix)]
+#[tokio::test]
+async fn shell_kills_a_background_child_left_holding_the_output_at_the_timeout() {
+    let (directory, env) = local();
+    let sessions = Sessions::default();
+    let tools = tools(&env, &sessions, None);
+
+    let output = call(
+        &tools,
+        "shell",
+        json!({"command": LEAVES_A_CHILD, "timeout_ms": 500}),
+    )
+    .await;
+    let child = written_child(&directory.path().join("child")).await;
+
+    assert!(gone(child).await, "the background process was killed");
+    assert_eq!(output.error_code, Some(code::TIMED_OUT), "{}", output.text);
+}

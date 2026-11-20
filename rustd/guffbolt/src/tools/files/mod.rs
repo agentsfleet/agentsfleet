@@ -210,12 +210,19 @@ impl Handler for FileAppend<'_> {
 async fn append(env: &dyn Env, arguments: Content) -> Answer {
     let path = inside(env, &arguments.path)?;
     let bytes = arguments.content.len();
-    let change = Change::between(path, "", &arguments.content);
+    // Read before the append: text added to a last line with no line break
+    // changes that line. A file that cannot be read whole as text is added
+    // to uncounted, as a write over one is.
+    let extended = changes::before(env, path).await;
+    let change = extended.map(|before| changes::appended(path, &before, &arguments.content));
     env.append_file(path, Bytes::from(arguments.content))
         .await
         .map_err(|failure| failed(&failure))?;
     let text = format!("Appended {bytes} bytes to {path}");
-    Ok(ToolOutput::succeeded(changes::report(&text, &[change])))
+    Ok(ToolOutput::succeeded(changes::report(
+        &text,
+        change.as_slice(),
+    )))
 }
 
 backed! {

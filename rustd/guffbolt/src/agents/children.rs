@@ -35,6 +35,28 @@ const NO_PERSON: &str = "a child agent cannot ask the person; answer from what y
 /// What a call a stopped turn never finished reads as its result.
 const UNFINISHED: &str = "the turn was interrupted before this call finished";
 
+tokio::task_local! {
+    /// The children of the run whose root [`Children::beside`] drives, as
+    /// that root reads them. A child's turn is polled outside it, so only
+    /// the root, and a loop the root runs inside one of its calls, finds it.
+    static BESIDE: Agents;
+}
+
+/// Done once the run's children are quiet, when loop `me` is the root that
+/// [`Children::beside`] drives: every turn ended with its end recorded, as
+/// [`Agents::quiet`] waits. At once for a child, which would wait on itself,
+/// and for a root driven with no children beside it, which has none to wait
+/// for. The pause the wait takes is let go at once.
+pub(crate) async fn quiet(me: Me) {
+    if me != Me::ROOT {
+        return;
+    }
+    let Ok(agents) = BESIDE.try_with(Agents::clone) else {
+        return;
+    };
+    let _released = agents.quiet().await;
+}
+
 /// Every turn a run's children take and have not finished.
 pub struct Children<'s> {
     running: FuturesUnordered<Running<'s>>,
@@ -57,12 +79,14 @@ impl<'s> Children<'s> {
     /// Drives `driven` to its end, starting each turn asked for over the
     /// conversation `raise` gives it and polling every turn whenever `driven`
     /// waits. `driven` goes first, so a loop that never waits is never
-    /// slowed by its children.
+    /// slowed by its children. A root `driven` that asks the person a
+    /// question ends waiting only once these children are quiet.
     pub async fn beside<R, F>(&mut self, raise: &'s R, driven: F) -> F::Output
     where
         R: Raise,
         F: Future,
     {
+        let driven = BESIDE.scope(raise.agents().clone(), driven);
         tokio::pin!(driven);
         loop {
             self.answer_quiet(raise.agents());

@@ -70,3 +70,25 @@ async fn local_outbound_reads_a_dropped_connection_as_unreachable() {
     );
     assert!(dropping.connections() >= 1, "the host was reached");
 }
+
+/// A host whose certificate no root the hook trusts signed is refused as
+/// unreachable during the handshake: no request reaches it.
+#[tokio::test]
+async fn local_outbound_refuses_a_host_whose_certificate_it_does_not_trust() {
+    let (address, _root, seen) = fake(&[("/", "HTTP/1.1 200 OK\r\n\r\n")]).await;
+    let (stranger, _acceptor) = authority();
+    let outbound =
+        LocalOutbound::routed(Arc::new(FixedLookup::default()), PUBLIC, address, stranger);
+
+    let refused = sent(&outbound, "https://public.test/")
+        .await
+        .expect_err("the handshake fails");
+
+    assert_eq!(
+        refused.code,
+        code::UPSTREAM_UNREACHABLE,
+        "{}",
+        refused.detail
+    );
+    assert_eq!(requests(&seen), Vec::<String>::new(), "nothing was asked");
+}

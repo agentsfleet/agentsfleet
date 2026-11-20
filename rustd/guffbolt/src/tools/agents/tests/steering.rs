@@ -146,7 +146,7 @@ async fn a_run_that_ends_ends_its_idle_children() {
         .collect();
     assert_eq!(
         statuses,
-        [Kind::Interrupted, Kind::Interrupted],
-        "the idle child and the running one both end with the run"
+        [Kind::Done, Kind::Interrupted],
+        "the running child ends with the run; the idle one keeps its answer"
     );
 }

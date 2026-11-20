@@ -116,6 +116,34 @@ fn the_guard_admits_public_v6_addresses_and_spellings() {
     }
 }
 
+/// Teredo and SIIT reach an IPv4 address through a relay or a translator,
+/// one the guard cannot read whole, so each range is refused whole, its
+/// edges included, whatever address it carries; the ranges beside them stay
+/// reachable.
+#[test]
+fn the_guard_denies_teredo_and_siit_whole_and_admits_their_neighbours() {
+    for denied in [
+        "2001::",
+        "2001::1",
+        "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+        "2001:0:ffff:ffff:ffff:ffff:ffff:ffff",
+        "::ffff:0:0:0",
+        "::ffff:0:808:808",
+        "::ffff:0:a00:1",
+        "::ffff:0:ffff:ffff",
+    ] {
+        assert!(denies(denied), "{denied} must be denied");
+    }
+    for admitted in [
+        "2001:1::1",
+        "2001:4860:4860::8888",
+        "2001:db8::1",
+        "::fffe:0:808:808",
+    ] {
+        assert!(!denies(admitted), "{admitted} must be admitted");
+    }
+}
+
 #[test]
 fn a_private_literal_is_refused_where_it_is_admitted() {
     for (literal, host) in [

@@ -107,8 +107,11 @@ pub(super) struct Watch {
 }
 
 impl Watch {
+    /// Watches the process to its end. A kill or the timeout that comes
+    /// while something the leader started still holds the output, after the
+    /// leader exited, kills that group too.
     pub(super) async fn run(mut self) {
-        let mut group = Group(leader_of(&self.child));
+        let mut group = Group::new(leader_of(&self.child));
         let mut cause: Option<Ending> = None;
         let status = loop {
             let deadline = self.deadline;
@@ -132,48 +135,86 @@ impl Watch {
         let drained = Instant::now() + DRAIN_GRACE;
         let mut abandoned = false;
         loop {
+            let deadline = self.deadline;
             tokio::select! {
                 next = self.said.recv() => match next {
                     Some((stream, data)) => self.feed.output(stream, data),
                     None => break,
                 },
+                () = self.kill.notified() => {
+                    group.kill(&mut self.child);
+                    cause.get_or_insert(Ending::Signaled(KILLED));
+                }
+                () = sleep_until(deadline) => {
+                    group.kill(&mut self.child);
+                    cause.get_or_insert(Ending::TimedOut);
+                    self.deadline = None;
+                }
                 () = tokio::time::sleep_until(drained) => {
                     abandoned = true;
                     break;
                 }
             }
         }
+        group.settled();
         let ending = cause.unwrap_or_else(|| status.map_or(Ending::Interrupted, ending_of));
         self.feed.end(ending, abandoned);
     }
 }
 
-/// The group a process leads, while its leader is unreaped: killed whole on
-/// a stop or a timeout, and when its watcher is dropped first, such as when
-/// the runtime stops. Once the leader is reaped its number may be reused, so
-/// the group is never signalled again.
+/// The group a process leads: killed whole on a stop or a timeout, and when
+/// its watcher is dropped first, such as when the runtime stops.
+///
+/// Once the leader is reaped, the group's number stays the group's only
+/// while a member lives, such as a background process still holding the
+/// output, so it is signalled once more at most: by a kill or the timeout
+/// while the output drains, or by a watcher dropped then. It is never
+/// signalled after the output settled.
 #[derive(Debug)]
-struct Group(Option<Leader>);
+struct Group {
+    leader: Option<Leader>,
+    reaped: bool,
+}
 
 impl Group {
-    /// Kills every process in the group, the leader included.
-    fn kill(&self, child: &mut Child) {
-        if let Some(leader) = self.0 {
+    const fn new(leader: Option<Leader>) -> Self {
+        Self {
+            leader,
+            reaped: false,
+        }
+    }
+
+    /// Kills every process in the group, the leader included; after the
+    /// leader was reaped, this is the group's last signal.
+    fn kill(&mut self, child: &mut Child) {
+        let leader = if self.reaped {
+            self.leader.take()
+        } else {
+            self.leader
+        };
+        if let Some(leader) = leader {
             kill_group(leader);
         }
         // The leader's own kill also covers a platform with no groups.
         let _signalled = child.start_kill();
     }
 
-    /// The leader was reaped: its number is no longer this group's.
-    fn reaped(&mut self) {
-        self.0 = None;
+    /// The leader was reaped: its number is the group's only while a member
+    /// lives.
+    const fn reaped(&mut self) {
+        self.reaped = true;
+    }
+
+    /// The output settled after the leader was reaped: the group is never
+    /// signalled again, since its number may now be another's.
+    const fn settled(&mut self) {
+        self.leader = None;
     }
 }
 
 impl Drop for Group {
     fn drop(&mut self) {
-        if let Some(leader) = self.0.take() {
+        if let Some(leader) = self.leader.take() {
             kill_group(leader);
         }
     }

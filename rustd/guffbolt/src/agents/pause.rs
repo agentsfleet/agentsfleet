@@ -68,12 +68,26 @@ pub struct Counted {
     pub calls: u64,
     /// The tools it holds, by name.
     pub tools: Vec<String>,
+    /// The most steps any of its turns began, one dropped before its end
+    /// included, so its next turn's calls are numbered after them; absent
+    /// from a census saved before it was counted, which reads as none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub steps: u64,
     /// Where it is.
     pub status: Status,
     /// Its transcript as its last turn left it; none once closed.
     pub transcript: Vec<Message>,
     /// Its loop's progress as its last turn left it.
     pub state: DriveState,
+}
+
+/// Whether a count is zero, which a census leaves out.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if hands the field by reference"
+)]
+const fn is_zero(count: &u64) -> bool {
+    *count == 0
 }
 
 /// One ask for a pause, as the root's poller reads it.

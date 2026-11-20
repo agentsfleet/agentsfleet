@@ -178,3 +178,32 @@ async fn an_outbound_hook_looks_names_up_through_this_hosts_resolver_by_default(
         "{addresses:?}"
     );
 }
+
+/// A page nested deeper than its text can be laid out in reads as the
+/// markup it came as, rather than failing the fetch.
+#[tokio::test]
+async fn web_fetch_reads_a_page_too_deep_to_lay_out_as_its_markup() {
+    let html = format!(
+        "<html><body>{}quoted</body></html>",
+        "<blockquote>".repeat(400)
+    );
+    let hook = Canned::ok(Response {
+        content_type: Some("text/html".to_owned()),
+        ..response(200, &html)
+    });
+    let tools = web(&hook, &["web_fetch"]);
+
+    let output = dispatch(
+        &tools,
+        "web_fetch",
+        json!({"url": "https://docs.test/deep"}),
+    )
+    .await;
+
+    assert_eq!(output.error_code, None);
+    assert!(
+        output.text.starts_with("<html><body><blockquote>"),
+        "{}",
+        output.text
+    );
+}

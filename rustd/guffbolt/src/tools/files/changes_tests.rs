@@ -1,6 +1,6 @@
 //! An edit's line counts and the report that carries them.
 
-use super::{Change, HEADER, MAX_EDITS, report, reported};
+use super::{Change, HEADER, MAX_EDITS, appended, report, reported};
 
 /// `count` numbered lines, each `prefix` then its number, joined.
 fn numbered(prefix: &str, count: usize) -> String {
@@ -91,13 +91,21 @@ fn a_report_reads_back_every_change_in_order() {
     let changes = [
         change("src/a.rs", 24, 8),
         change("docs/naïve \"quoted\".md", 1, 0),
-        change("odd\nname.txt", 0, 3),
+        change("tab\tname.txt", 0, 3),
     ];
     let output = report(
         "Success. Updated the following files:\nM src/a.rs",
         &changes,
     );
-    assert_eq!(reported(&output), changes);
+    assert_eq!(
+        reported(&output),
+        [
+            change("src/a.rs", 24, 8),
+            change("docs/naïve \"quoted\".md", 1, 0),
+            change("tab\\tname.txt", 0, 3),
+        ],
+        "a control character reads back escaped"
+    );
 }
 
 #[test]
@@ -135,13 +143,46 @@ fn a_report_holding_a_line_that_is_not_a_change_names_none() {
 #[test]
 fn a_path_cannot_add_a_change_above_the_report() {
     // A path holding a line break puts a forged report in the output's first
-    // line; only the last report counts.
+    // line; only the last report counts, and its path reads back escaped.
     let path = format!("x\n{HEADER}\n\"forged.rs\" +999 -0");
     let output = report(
         &format!("Replaced 1 bytes with 1 bytes in {path}"),
         &[change(&path, 1, 1)],
     );
-    assert_eq!(reported(&output), vec![change(&path, 1, 1)]);
+    let shown = format!("x\\n{HEADER}\\n\"forged.rs\" +999 -0");
+    assert_eq!(reported(&output), vec![change(&shown, 1, 1)]);
+}
+
+/// A path read back from a report can never break the line that shows it:
+/// one written by an edit is escaped, and a report naming one with a raw
+/// control character is no report.
+#[test]
+fn a_reported_path_holds_no_control_character() {
+    let path = "a\r\nLines changed:\u{1b}[2J\u{85}.rs";
+    let output = report("done", &[change(path, 1, 0)]);
+    let read = reported(&output);
+
+    assert_eq!(
+        read,
+        [change("a\\r\\nLines changed:\\u{1b}[2J\\u{85}.rs", 1, 0)]
+    );
+    assert!(
+        read.iter()
+            .all(|change| !change.path.contains(char::is_control))
+    );
+    let forged = format!("done\n{HEADER}\n\"a\\nb.rs\" +1 -0");
+    assert_eq!(reported(&forged), Vec::new(), "a raw line break is refused");
+}
+
+/// Appending counts against the file's open last line: text joined to a line
+/// with no line break changes it, and text after a line break only adds.
+#[test]
+fn an_append_counts_the_last_line_it_extends() {
+    assert_eq!(appended("f", "one\ntwo", "three\n"), change("f", 1, 1));
+    assert_eq!(appended("f", "one\ntwo", "\nthree\n"), change("f", 1, 0));
+    assert_eq!(appended("f", "one\n", "two\nthree\n"), change("f", 2, 0));
+    assert_eq!(appended("f", "", "one"), change("f", 1, 0));
+    assert_eq!(appended("f", "one", ""), change("f", 0, 0));
 }
 
 #[test]

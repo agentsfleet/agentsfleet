@@ -162,8 +162,8 @@ async fn the_registry_reads_back_through_its_own_methods() {
 
     assert_eq!(
         waited,
-        Some(Status::Interrupted),
-        "the run ended, and the child with it"
+        Some(Status::Done("done x".to_owned())),
+        "the run ended, and the idle child kept its answer"
     );
     assert_eq!(missing, None);
     assert!(Status::Done("x".to_owned()).is_idle());

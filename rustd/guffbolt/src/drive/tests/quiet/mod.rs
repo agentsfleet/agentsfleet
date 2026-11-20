@@ -17,9 +17,7 @@ use tracing::Span;
 use super::drive;
 use super::script::{ASK_USER, Failure, Script, asking, lock, naming, user};
 use crate::DriveState;
-use crate::agents::{
-    Action, Agents, Caps, Children, Fork, Order, Pause, Raise, Seat, Spawn, Status,
-};
+use crate::agents::{Action, Agents, Caps, Children, Fork, Order, Raise, Seat, Spawn, Status};
 use crate::conversation::Conversation;
 use crate::drive::Input;
 use crate::extension::{Budget, Extension, Plain};

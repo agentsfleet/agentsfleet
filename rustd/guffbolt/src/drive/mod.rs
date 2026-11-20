@@ -36,8 +36,10 @@ const EVENT_ENDED: &str = "loop_ended";
 /// The extension's budget bounds the whole loop: a loop it stops ends
 /// [`Ending::Stopped`], and the extension hears of it. A call that asks the
 /// person a question ends the loop [`Ending::Waiting`] once its step's other
-/// calls ran and the conversation is quiet ([`Conversation::quiet`]), and a
-/// state still waiting ends it so again without a model call. A stop or the
+/// calls ran and, for a root driven beside its children
+/// ([`crate::agents::Children::beside`]), every child's turn ended with its
+/// end recorded; a state still waiting ends it so again without a model
+/// call. A stop or the
 /// budget that cuts that wait short ends the loop stopped, the question kept.
 /// Whatever ends the loop, its observer hears the ending once.
 ///
@@ -174,7 +176,7 @@ async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
         }
         if let Some(waiting) = asked {
             state.waiting = Some(waiting.clone());
-            break quieted(conversation, waiting).await;
+            break quieted(conversation, waiting, me).await;
         }
         if let Some(ending) = extension.after_group(conversation).await {
             break ending;
@@ -227,19 +229,19 @@ async fn sample<C: Conversation + ?Sized>(
     read
 }
 
-/// Ends the loop waiting on `waiting` once the conversation is quiet, so no
-/// child's work is lost while the run waits; stopped when the stop comes
-/// first. The question stays in the state either way, so the answer still
-/// belongs to its call.
+/// Ends loop `me` waiting on `waiting` once the run's children are quiet
+/// ([`crate::agents::quiet`]), so no child's turn is dropped while the run
+/// waits; stopped when the stop comes first. The question stays in the state
+/// either way, so the answer still belongs to its call.
 async fn quieted<C: Conversation + ?Sized>(
-    conversation: &mut C,
+    conversation: &C,
     waiting: Waiting,
+    me: Me,
 ) -> Ending<C::Failure> {
-    let stop = conversation.stop().clone();
     tokio::select! {
         biased;
-        () = stop.cancelled() => Ending::Stopped,
-        () = conversation.quiet() => Ending::Waiting(waiting),
+        () = conversation.stop().cancelled() => Ending::Stopped,
+        () = crate::agents::quiet(me) => Ending::Waiting(waiting),
     }
 }
 

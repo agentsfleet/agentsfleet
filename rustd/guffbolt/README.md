@@ -527,9 +527,9 @@ A `Pause` holds new turns back, and is granted only while no turn runs, unwinds 
 
 ## Asking the person
 
-A call that answers `ToolOutput::asks` asks the person a question. The loop runs the rest of that step's calls and waits for your `Conversation::quiet`. Then it ends `Ending::Waiting` with the asking call's id and its question, and nothing waits on the person inside the run. Deliver the question however your product reaches people. When the answer arrives, `DriveState::resume` makes it that call's result, and the next `drive` goes on from there. A state saved while waiting resumes the same way later, in another process.
+A call that answers `ToolOutput::asks` asks the person a question. The loop runs the rest of that step's calls, and a root driven by `Children::beside` waits for its children to be quiet. Then it ends `Ending::Waiting` with the asking call's id and its question, and nothing waits on the person inside the run. Deliver the question however your product reaches people. When the answer arrives, `DriveState::resume` makes it that call's result, and the next `drive` goes on from there. A state saved while waiting resumes the same way later, in another process.
 
-`quiet` defaults to returning at once. A root whose run starts children waits there with `Agents::quiet`, so each child's turn ends and its answer is recorded before the run waits. The loop races that wait against its stop, and its budget bounds it. A stop that cuts the wait short ends the loop `Ending::Stopped` and keeps the question in the state. A second question in the same step is answered `[question_pending]`.
+The root waits there with `Agents::quiet` itself, so each child's turn ends and its answer is recorded before the run waits; your conversation adds nothing for it. The loop races that wait against its stop, and its budget bounds it. A stop that cuts the wait short ends the loop `Ending::Stopped` and keeps the question in the state. A second question in the same step is answered `[question_pending]`.
 
 ```rust
 use guffbolt::{Conversation, DriveState, Ending, Plain, drive};

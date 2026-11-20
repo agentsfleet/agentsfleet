@@ -45,6 +45,7 @@ use crate::conversation::Conversation;
 use crate::transcript::Transcript;
 
 pub use self::children::Children;
+pub(crate) use self::children::quiet;
 pub(crate) use self::order::Caller;
 pub use self::order::{Action, Fork, Order, Refused, Spawn};
 pub use self::pause::{Census, Counted, Pause};
