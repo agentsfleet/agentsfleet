@@ -195,11 +195,11 @@ Cron syntax checking moves from `afd_cron/src/validate.rs` into `af_fleet_runtim
 
 An accepted proposal is kept for the report, and the next edit in the same run applies to it; the last accepted one is reported. A refused one returns its reason as the tool result, and the model may try again in the same run.
 
-- **Dimension 4.1** — a valid edit is kept → Test `propose_setup_keeps_a_valid_edit_against_the_head` (unit): a cron trigger `{"type":"cron","schedule":"0 9 * * *","timezone":"UTC","message":"Daily check"}` at `/config/x-agentsfleet/triggers/-`, base 1. Expected: kept, with base 1.
-- **Dimension 4.2** — an invalid definition answers the model → Test `propose_setup_returns_the_parse_failure_to_the_model` (unit): schedule `61 * * * *`. Expected: the result names the field, nothing is kept, and the loop goes on.
-- **Dimension 4.3** — a stale base is refused → Test `propose_setup_refuses_a_stale_base_revision` (unit): base 1 while the head is 2. Expected: refused, naming revision 2.
-- **Dimension 4.5** — cron checking is shared → Test `af_fleet_runtime_refuses_an_invalid_cron_schedule` (unit): `61 * * * *`. Expected: refused, and `afd_cron` calls the same function.
-- **Dimension 4.4** — a corrected retry wins → Test `a_refused_proposal_corrected_in_the_same_run_is_reported` (integration): a refusal, then a valid proposal. Expected: the report carries only the valid one.
+- **Dimension 4.1** — DONE — a valid edit is kept → Test `propose_setup_keeps_a_valid_edit_against_the_head` (unit): a cron trigger `{"type":"cron","schedule":"0 9 * * *","timezone":"UTC","message":"Daily check"}` at `/config/x-agentsfleet/triggers/-`, base 1. Expected: kept, with base 1.
+- **Dimension 4.2** — DONE — an invalid definition answers the model → Test `propose_setup_returns_the_parse_failure_to_the_model` (unit): schedule `61 * * * *`. Expected: the result names the field, nothing is kept, and the loop goes on.
+- **Dimension 4.3** — DONE — a stale base is refused → Test `propose_setup_refuses_a_stale_base_revision` (unit): base 1 while the head is 2. Expected: refused, naming revision 2.
+- **Dimension 4.5** — DONE — cron checking is shared → Test `af_fleet_runtime_refuses_an_invalid_cron_schedule` (unit): `61 * * * *`. Expected: refused, and `afd_cron` calls the same function.
+- **Dimension 4.4** — DONE — a corrected retry wins → Test `a_refused_proposal_corrected_in_the_same_run_is_reported` (integration): a refusal, then a valid proposal. Expected: the report carries only the valid one.
 
 ### §5 — The runner answers a setup turn
 
@@ -209,8 +209,8 @@ A setup run runs like a fleet run, except that it builds no sandbox, has only `p
 
 The answer's text deltas reach the daemon, which publishes them on the thread's items subject and stores none. The daemon runs `Definition::parse` and the base check again in the report transaction before writing candidate revision N+1.
 
-- **Dimension 5.1** — a setup turn gets an answer and a candidate → Test `a_setup_run_answer_writes_the_next_candidate` (integration): message 2 asking for a first version. Expected: the turn is answered, and the draft gains candidate revision 1.
-- **Dimension 5.2** — no sandbox for setup → Test `a_setup_run_builds_no_sandbox` (integration): a setup run. Expected: no sandbox prepared, and the run still answers.
+- **Dimension 5.1** — DONE — a setup turn gets an answer and a candidate → Test `a_setup_run_answer_writes_the_next_candidate` (integration): message 2 asking for a first version. Expected: the turn is answered, and the draft gains candidate revision 1.
+- **Dimension 5.2** — DONE — no sandbox for setup → Test `a_setup_run_builds_no_sandbox` (integration): a setup run. Expected: no sandbox prepared, and the run still answers.
 - **Dimension 5.3** — the report check is a safety net → Test `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` (integration): a report carrying a definition the daemon refuses. Expected: no candidate, the turn answered with its text, and one `setup_proposal_refused` event.
 - **Dimension 5.4** — a stale fence writes nothing → Test `a_superseded_setup_run_report_is_refused` (integration): a report at fence 1 after fence 2 was assigned. Expected: refused with `RUN_STALE_FENCING_TOKEN` (`UZ-RUN-005`), and no candidate.
 - **Dimension 5.5** — an expired setup run is rerun → Test `an_expired_setup_run_reruns_the_turn` (integration): a runner that stops renewing. Expected: the turn is assigned again at the next fence, up to `af_core::limits::EVENT_RUNS_MAX` runs, then fails with `ProviderUsageUnknown`.
@@ -222,7 +222,7 @@ The draft's `memory.context_checkpoints` row holds the compacted setup history a
 
 guffbolt's window hook compacts when the window fills, and the saved state is the hook's output.
 
-- **Dimension 6.1** — the context loads on the next turn → Test `the_next_setup_turn_loads_the_saved_context` (integration): turn 20 after a compaction. Expected: its first request holds the saved summary, and none of the turns the summary replaced.
+- **Dimension 6.1** — DONE — the context loads on the next turn → Test `the_next_setup_turn_loads_the_saved_context` (integration): turn 20 after a compaction. Expected: its first request holds the saved summary, and none of the turns the summary replaced.
 - **Dimension 6.2** — a stale run cannot overwrite → Test `a_superseded_setup_run_cannot_save_context` (integration): a save at fence 1 after fence 2 saved. Expected: refused with `RUN_STALE_FENCING_TOKEN`, and fence 2's row unchanged.
 
 ### §7 — Setup's last gaps close
@@ -250,7 +250,7 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 **Implementation default:** the dev database is reset after merge, per Indy's "Rule holds, reset dev".
 
 - **Dimension 8.1** — no setup model frame remains → Test `the_runner_protocol_has_no_setup_model_frames` (unit): every `Down` variant's tag. Expected: none carries a model call.
-- **Dimension 8.2** — another protocol version is refused → Test `a_runner_on_another_protocol_version_is_refused` (integration): hello with an unknown version. Expected: `UZ-RUN-023`, and no run assigned.
+- **Dimension 8.2** — DONE — another protocol version is refused → Test `a_runner_on_another_protocol_version_is_refused` (integration): hello with an unknown version. Expected: `UZ-RUN-023`, and no run assigned.
 - **Dimension 8.3** — no setting feeds setup runs → Test `setup_limits_are_constants` (unit): `afd_setup`'s limits. Expected: 300-second runtime from a constant, and no `TurnSettings` type remains.
 
 ### §9 — guffbolt is extended one way: each tool takes its backend
@@ -281,7 +281,7 @@ Text the model reads names no host product: no "fleet", "workspace", "daemon" or
 - **Dimension 9.3** — the config picks the offered tools → Test `the_startup_config_offers_only_named_tools` (unit): `["file_read", "memory_store", "mcp__docs__*"]` with a docs MCP server holding two tools. Expected: exactly those four tools are offered.
 - **Dimension 9.4** — the local scheduler survives a restart → Test `local_scheduler_returns_a_due_job_after_reopening` (integration): add a job, drop the scheduler, reopen its directory, then call `due` past the moment. Expected: the job, once.
 - **Dimension 9.5** — agentsfleetd backs a fleet's scheduling → Test `a_fleet_runs_cron_add_creates_its_schedule` (integration): a fleet run calls `cron_add`. Expected: one schedule for the fleet, as today.
-- **Dimension 9.6** — Pushover is a notifier backend → Test `pushover_backend_sends_through_the_egress_guard` (unit, `afr_tools`): `notify` with the Pushover backend. Expected: one request to Pushover's host, through the run's egress guard.
+- **Dimension 9.6** — DONE — Pushover is a notifier backend → Test `pushover_backend_sends_through_the_egress_guard` (unit, `afr_tools`): `notify` with the Pushover backend. Expected: one request to Pushover's host, through the run's egress guard.
 - **Dimension 9.7** — a retried call keeps its reference → Test `a_retried_call_keeps_its_call_ref` (unit): a backend that fails once, then the retry. Expected: both attempts see the same `CallRef`.
 - **Dimension 9.8** — DONE — the model reads no host product → Test `guffbolt_tool_specs_name_no_host_product` (unit): every built-in tool's spec. Expected: no "fleet", "workspace", "daemon" or "agentsfleet".
 
@@ -298,15 +298,15 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
 
 Fleet instructions (32,768 characters), a setup chat message (32,768 bytes) and a message typed into a running fleet (8,192 bytes) lose their limits. One ceiling replaces them, as codex's server keeps (`MAX_USER_INPUT_TEXT_CHARS = 1 << 20`, `codex-rs/protocol/src/user_input.rs:11`): 1,048,576 characters, declared once, refused with a sentence naming the ceiling. Below it, the limit a person meets is the model's context window, which every call already checks. The model's `message` tool loses its 4,096-byte and 8-posts-per-run limits; the channel's own limit refuses what it cannot take. Anything else the text still crosses (a bus frame, a runner frame, the HTTP framework's default body size) is found by the tests below and reported, not hidden.
 
-- **Dimension 11.1** — a long setup message is answered → Test `a_setup_message_over_32_kib_is_answered` (integration): a 200 KiB message. Expected: stored, sent to the setup run, and answered, or the model's context refusal.
+- **Dimension 11.1** — DONE — a long setup message is answered → Test `a_setup_message_over_32_kib_is_answered` (integration): a 200 KiB message. Expected: stored, sent to the setup run, and answered, or the model's context refusal.
 - **Dimension 11.2** — a long fleet message reaches the run → Test `a_fleet_message_over_8_kib_reaches_the_run` (integration): a 64 KiB message to a running fleet. Expected: the run receives it whole.
-- **Dimension 11.3** — long instructions save → Test `instructions_over_32k_characters_save` (unit): 100,000 characters. Expected: the definition parses and saves.
+- **Dimension 11.3** — DONE — long instructions save → Test `instructions_over_32k_characters_save` (unit): 100,000 characters. Expected: the definition parses and saves.
 - **Dimension 11.4** — text past the ceiling is refused clearly → Test `a_message_past_the_ceiling_is_refused_naming_it` (unit): 1,048,577 characters. Expected: refused with a sentence naming 1,048,576, and nothing stored.
-- **Dimension 11.5** — the model's posts are not capped → Test `the_message_tool_posts_long_and_often` (unit): a 10,000-byte post and a ninth post in one run. Expected: both sent.
+- **Dimension 11.5** — DONE — the model's posts are not capped → Test `the_message_tool_posts_long_and_often` (unit): a 10,000-byte post and a ninth post in one run. Expected: both sent.
 - **Dimension 11.6** — the ceiling is reachable → Test `a_setup_message_at_the_ceiling_in_three_byte_characters_is_accepted` (integration): 1,048,576 three-byte characters through the app's setup proxy and the daemon's setup and steer routes. Expected: accepted; one character more is refused, and the setup chat shows "Input exceeds the maximum length of 1,048,576 characters."
-- **Dimension 11.7** — a run that cannot be framed fails at once → Test `a_run_too_large_for_its_frame_fails_with_its_code` (integration): a run payload past the runner frame. Expected: the turn fails at assignment with a named code, with no lapse and no reassignment; a fleet-to-fleet message stores its words once.
+- **Dimension 11.7** — DONE — a run that cannot be framed fails at once → Test `a_run_too_large_for_its_frame_fails_with_its_code` (integration): a run payload past the runner frame. Expected: the turn fails at assignment with a named code, with no lapse and no reassignment; a fleet-to-fleet message stores its words once.
 - **Dimension 11.8** — a long message keeps its live frame → Test `a_long_message_is_trimmed_in_its_tail_frame` (unit): a 1 MiB message. Expected: its tail frame carries at most 64 KiB of the text, marked trimmed, and the stored turn holds it whole.
-- **Dimension 11.9** — a run carries anything the routes accept → Test `a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed` (unit): instructions and a message each at 1,048,576 three-byte characters. Expected: the run frame encodes within the runner frame ceiling, 64 MiB as codex's per-message ceiling (`exec-server/src/connection.rs:41`).
+- **Dimension 11.9** — a run carries anything the routes accept → Test `a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed` (unit): instructions and a message each at 1,048,576 three-byte characters. Expected: the run frame encodes within the runner frame ceiling, 32 MiB. The data buffer is shared by both directions (`af_stream/src/framing/memory.rs:19-22`), so its 64 MiB floor holds one 32 MiB frame each way; the worst run the routes accept is about 12.6 MiB.
 
 ### §12 — Crates are grouped small, by Microsoft's guidelines
 
@@ -345,6 +345,18 @@ The tools follow codex's names (`codex-rs/core/src/tools/handlers/multi_agents_s
 - **Dimension 13.5** — a loop's end still ends its children → Test `a_run_that_ends_ends_its_idle_children` (unit, guffbolt). Expected: every idle or running child ends `interrupted`.
 - **Dimension 13.6** — a resumed loop brings its children back → Test `a_resumed_loop_restores_its_children_from_drive_state` (unit, guffbolt). Expected: each child's transcript and status return from the saved `DriveState`.
 - **Dimension 13.7** — agentsfleet holds no subagent code → Test `agentsfleet_defines_no_subagent_tool` (unit): `afr_agent/src/nested/` is gone, and no `afr_*` crate names a subagent tool. Expected: a fleet run offers the seven tools through guffbolt alone.
+
+### §14 — Dead weight goes
+
+Three things the schema sign-off found are removed, before production, with no compatibility path.
+
+- **Plugins.** The paused fleet library (`setup.plugin_entries`, `setup.plugin_revisions`, `afd_setup/src/plugin/`, the Plugin routes, the app's `/plugins` page and starters) is deleted end to end.
+- **`runner.lifetime_counters`.** Four per-runner tallies upserted in seven run statements and read only by the operator's runner detail. They become one OpenTelemetry counter, `agentsfleet_runner_runs_total{runner_id, outcome}`, emitted where a run settles or expires, and the table goes.
+- **`runner.registration_receipts`.** A replay carried no token (`afd_runner/src/register.rs:27-29`), so the receipt never made a retry useful. A host registers once: `(tenant_id, host_id)` is unique on `runner.runners`, a retry answers `409` naming the runner, and the caller recovers with the tenant's token rotation. HTTP-IDEMKEY's natural-key exception is generalised in orly's source rule (own branch and PR in `~/Projects/orly`) and re-materialised here with `orly update`.
+
+- **Dimension 14.1** — Plugins are gone → Test `no_plugin_table_route_or_page_remains` (unit): no `setup.plugin_*` schema file or statement, no Plugin route in the route inventory, no `/plugins` app page. Expected: none.
+- **Dimension 14.2** — run outcomes are metrics → Test `a_settled_run_counts_its_outcome_on_its_runner` (unit): a run that succeeds, one that fails and one that expires. Expected: `agentsfleet_runner_runs_total` rises once per outcome with the runner's id, and no statement names `runner.lifetime_counters`.
+- **Dimension 14.3** — a host registers once → Test `a_retried_registration_of_one_host_answers_409_naming_the_runner` (integration): the same `(tenant, host_id)` twice. Expected: one runner; the second answers `409` with its id; a rotation then gives a token that connects.
 
 ## Interfaces
 
@@ -483,7 +495,11 @@ The tools follow codex's names (`codex-rs/core/src/tools/handlers/multi_agents_s
   - > Owner (Indy, Nov 20, 2026): selected "Make 1M reachable (Recommended), Runner frame fails fast (Recommended), Trim live-tail frames (Recommended)" — context: §11.6–§11.8, after the §11 survey found the app proxy (128 KiB), axum (2 MiB), the runner frame (2 MiB) and live-tail frames each stop text below the ceiling.
   - > Owner (Indy, Nov 20, 2026): "Codex-aligned for runs (Recommended)", then "Also why is subagent code in (afr_tools/src/catalog/mod.rs:103-111, implemented in afr_agent/src/nested/ should they be in guffbolt" and "Move them into guffbolt (Recommended)" — context: §13.
   - > Owner (Indy, Nov 20, 2026): "cut the stupid crap and make guffbolt powerful i am tired of your slop, subagents are a functionality of guffbolt and remove that from agentsfleet. What made you think its agentsfleet?" — context: §13. guffbolt owns subagents end to end; `afr_agent/src/nested/**` goes.
+  - > Owner (Indy, Nov 20, 2026): "I think i want to remove the dead setup.plugin_entries, plugin_revisions, any backend code, apis and the front end coe. just clean all that up." — context: §14, Plugins.
+  - > Owner (Indy, Nov 20, 2026): "Why do you need to keep track of lifetime_counters? Can you just send it to observability grafana?" — context: §14, run outcomes become a metric.
+  - > Owner (Indy, Nov 20, 2026): "Why do you need this? runner.registration_receipts ... To me this is crap design." and then "Change the rule, drop receipts (Recommended)" — context: §14 and HTTP-IDEMKEY in orly.
   - > Owner (Indy, Nov 20, 2026): "Match codex: 64 MiB" — context: §11.9, the runner frame ceiling.
+  - > Owner (Indy, Nov 20, 2026): "I prefer 128 prior to that ensure you ultrathink why 128 and how can you fix by 64, if you make 64 will it be like oneway 32? if so i am fine with 64 and move on" — context: §11.9. The data buffer is shared by both directions, so a 64 MiB buffer gives 32 MiB each way; the frame is 32 MiB, and the Fly daemon configs move from 48 MiB to 64 MiB (owner-approved deploy edit).
   - > Owner (Indy, Nov 20, 2026): "Delete the two lines (Recommended)" — context: §8, `authoring_renewal_*` in `deploy/baremetal/agentsfleet-runner.toml`.
   - > Owner (Indy, Nov 20, 2026): "we are not in prod yet, so i think you should think in that aspect and codify, so no backward compatibility needed. In fact when M252 milestone is merged, we will teardown dev db." — context: codified in `.orly/LOCAL.md`.
   - > Owner (Indy, Nov 20, 2026): "Just complete code first" and "The tests can be verified later on is what i meant" — context: the rest of M253_002. Each Section lands with its tests written and compiled (`fmt`, `clippy -D warnings`); the tests run together at the end on two E2E Networks virtual machines and CI, and a Dimension is marked DONE only after its test passes there.
@@ -493,5 +509,6 @@ The tools follow codex's names (`codex-rs/core/src/tools/handlers/multi_agents_s
   - > Owner (Indy, Nov 19, 2026): "E2E cloud burst" — context: Linux proof, paid, his go per run.
   - > Owner (Indy, Nov 19, 2026): "I think i did the elephant goldfish brainstrome before." and "youalready have the context" — context: orly-spec step 2.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 9 Blockers, 39 Majors, 30 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
+- **Verification evidence** — Nov 20, 2026, commit `6f97d0ef1`: each DONE Dimension from §4 on names a test that passed in CI run `44756156167` (unit) or `44756156230` (integration), or on E2E Networks VM 30591 (`make test-integration-rustd`). 9.5 and 11.6 failed there; the rest did not run because a lane stops at its first failing suite.
 - **Open blockers** — none.
 - **Deferrals and transfers** — none.
