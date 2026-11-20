@@ -135,7 +135,11 @@ impl Ledger {
     }
 
     /// Polls `event`'s row until `done` holds.
-    pub(super) async fn until(&self, event: &Uuid7, done: impl Fn(&Row) -> bool) -> Row {
+    pub(super) async fn until(
+        &self,
+        event: &Uuid7,
+        done: impl Fn(&Row) -> bool + Send + Sync,
+    ) -> Row {
         tokio::time::timeout(PATIENCE, async {
             loop {
                 let row = self.row(event).await;
@@ -208,7 +212,7 @@ pub(super) struct Row {
 }
 
 /// Polls until `done` holds.
-pub(super) async fn until(done: impl Fn() -> bool) {
+pub(super) async fn until(done: impl Fn() -> bool + Send + Sync) {
     tokio::time::timeout(PATIENCE, async {
         while !done() {
             tokio::time::sleep(POLL).await;

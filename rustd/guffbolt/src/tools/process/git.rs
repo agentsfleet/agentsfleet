@@ -58,7 +58,7 @@ pub struct Invocation {
 }
 
 /// Runs git in the workspace.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Git;
 
 impl Handler for Git {

@@ -112,7 +112,7 @@ pub const DELIVERY: &str = "The provider's original event body; requires a valid
 /// An annotation lists what is particular to its route, then this, so the
 /// shared sentences are written once.
 #[cfg(feature = "openapi")]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct GuardedFailures;
 
 #[cfg(feature = "openapi")]

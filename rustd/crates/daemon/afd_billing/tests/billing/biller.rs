@@ -87,7 +87,7 @@ pub(crate) fn settlement(
 async fn test_every_biller_passes_the_conformance_suite() {
     let lane = Lane::create().await;
     let biller = ledger(&lane);
-    conformance::every_check(&biller, || async { funded_lane().await.1 }).await;
+    conformance::every_check(&biller, async || funded_lane().await.1).await;
 }
 
 #[tokio::test]

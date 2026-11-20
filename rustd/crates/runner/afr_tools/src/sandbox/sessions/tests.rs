@@ -45,7 +45,7 @@ fn exit(executor: &ScriptedExecutor, id: ProcessId, code: i32) -> bool {
 }
 
 /// Starts the next scripted process and keeps it as a session.
-async fn opened(executor: &ScriptedExecutor, sessions: &mut Sessions) -> ProcessId {
+async fn opened(executor: &ScriptedExecutor, sessions: &Sessions) -> ProcessId {
     let slot = sessions.make_room(&env(executor)).await;
     let process = env(executor).spawn(&Spawn::program(SHELL)).await.unwrap();
     let id = process.id;
@@ -71,10 +71,10 @@ async fn should_kill_every_running_session_and_forget_an_ended_one() {
         ScriptedProcess::stays_open(""),
         ScriptedProcess::stays_open(""),
     ]);
-    let mut sessions = Sessions::default();
-    let running = opened(&executor, &mut sessions).await;
-    let also_running = opened(&executor, &mut sessions).await;
-    let exited = opened(&executor, &mut sessions).await;
+    let sessions = Sessions::default();
+    let running = opened(&executor, &sessions).await;
+    let also_running = opened(&executor, &sessions).await;
+    let exited = opened(&executor, &sessions).await;
     assert!(exit(&executor, exited, 0));
 
     let killed = sessions.close_all(&env(&executor)).await;
@@ -91,8 +91,8 @@ async fn should_kill_every_running_session_and_forget_an_ended_one() {
 async fn should_forget_a_session_whose_kill_is_refused() {
     let capture = Capture::install();
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let mut sessions = Sessions::default();
-    let id = opened(&executor, &mut sessions).await;
+    let sessions = Sessions::default();
+    let id = opened(&executor, &sessions).await;
     assert!(executor.forget(afr_executor::ProcessId::new(id.get())));
 
     let killed = sessions.close_all(&env(&executor)).await;
@@ -111,8 +111,8 @@ async fn should_forget_a_session_whose_kill_is_refused() {
 #[tokio::test]
 async fn should_not_kill_a_session_whose_executor_is_gone() {
     let executor = ScriptedExecutor::new([ScriptedProcess::vanishes("")]);
-    let mut sessions = Sessions::default();
-    opened(&executor, &mut sessions).await;
+    let sessions = Sessions::default();
+    opened(&executor, &sessions).await;
 
     let killed = sessions.close_all(&env(&executor)).await;
 
@@ -125,8 +125,8 @@ async fn should_not_kill_a_session_whose_executor_is_gone() {
 async fn should_log_a_session_opening_and_closing_with_its_ending() {
     let capture = Capture::install();
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let mut sessions = Sessions::default();
-    let id = opened(&executor, &mut sessions).await;
+    let sessions = Sessions::default();
+    let id = opened(&executor, &sessions).await;
 
     sessions.close(id, Ending::Exited(3));
 
@@ -139,26 +139,26 @@ async fn should_log_a_session_opening_and_closing_with_its_ending() {
 async fn full(count: usize) -> (ScriptedExecutor, Sessions, Vec<ProcessId>) {
     let executor =
         ScriptedExecutor::new((0..count + STARTS_LEFT).map(|_| ScriptedProcess::stays_open("")));
-    let mut sessions = Sessions::default();
+    let sessions = Sessions::default();
     let mut ids = Vec::new();
     for _ in 0..count {
-        ids.push(opened(&executor, &mut sessions).await);
+        ids.push(opened(&executor, &sessions).await);
     }
     (executor, sessions, ids)
 }
 
 /// The sessions still open, by id.
-fn still_open(sessions: &mut Sessions, ids: &[ProcessId]) -> usize {
+fn still_open(sessions: &Sessions, ids: &[ProcessId]) -> usize {
     ids.iter().filter(|id| sessions.get(**id).is_some()).count()
 }
 
 #[tokio::test]
 async fn should_leave_every_session_open_under_the_cap() {
-    let (executor, mut sessions, ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
+    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX - 1).await;
 
     sessions.make_room(&env(&executor)).await;
 
-    assert_eq!(still_open(&mut sessions, &ids), SESSIONS_PER_RUN_MAX - 1);
+    assert_eq!(still_open(&sessions, &ids), SESSIONS_PER_RUN_MAX - 1);
     let killed = kills(&executor);
     assert!(killed.is_empty(), "{killed:?}");
 }
@@ -167,14 +167,14 @@ async fn should_leave_every_session_open_under_the_cap() {
 /// ended goes first, ahead of an older one still running, and is not killed.
 #[tokio::test]
 async fn should_make_room_by_forgetting_the_oldest_ended_session() {
-    let (executor, mut sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
-    let ended = *ids.get(2).unwrap();
+    let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
+    let ended = ids.get(2).copied().unwrap();
     assert!(exit(&executor, ended, 0));
 
     sessions.make_room(&env(&executor)).await;
 
     assert!(sessions.get(ended).is_none());
-    assert_eq!(still_open(&mut sessions, &ids), SESSIONS_PER_RUN_MAX - 1);
+    assert_eq!(still_open(&sessions, &ids), SESSIONS_PER_RUN_MAX - 1);
     assert!(
         kills(&executor).is_empty(),
         "an ended session is not killed"
@@ -187,7 +187,7 @@ async fn should_make_room_by_forgetting_the_oldest_ended_session() {
 async fn should_make_room_by_killing_the_least_recently_used_session() {
     let capture = Capture::install();
     let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
-    let (first, second) = (*ids.first().unwrap(), *ids.get(1).unwrap());
+    let (first, second) = (*ids.first().unwrap(), ids.get(1).copied().unwrap());
     sessions.get(first).unwrap();
 
     sessions.make_room(&env(&executor)).await;
@@ -202,7 +202,10 @@ async fn should_make_room_by_killing_the_least_recently_used_session() {
 #[tokio::test]
 async fn should_never_prune_the_most_recently_used_sessions() {
     let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
-    let recent = *ids.get(SESSIONS_PER_RUN_MAX - SESSIONS_PROTECTED).unwrap();
+    let recent = ids
+        .get(SESSIONS_PER_RUN_MAX - SESSIONS_PROTECTED)
+        .copied()
+        .unwrap();
     assert!(exit(&executor, recent, 0));
 
     sessions.make_room(&env(&executor)).await;
@@ -216,7 +219,7 @@ async fn should_never_prune_the_most_recently_used_sessions() {
 #[tokio::test]
 async fn should_never_prune_a_session_a_call_holds() {
     let (executor, sessions, ids) = full(SESSIONS_PER_RUN_MAX).await;
-    let (first, second) = (*ids.first().unwrap(), *ids.get(1).unwrap());
+    let (first, second) = (*ids.first().unwrap(), ids.get(1).copied().unwrap());
     let held = sessions.get(first).unwrap();
     let reading = held.lock().await;
     // Every other session read since, so `first` is again the least
@@ -243,8 +246,8 @@ async fn should_never_prune_a_session_a_call_holds() {
 async fn should_log_a_session_ending_once_when_it_is_closed_twice() {
     let capture = Capture::install();
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let mut sessions = Sessions::default();
-    let id = opened(&executor, &mut sessions).await;
+    let sessions = Sessions::default();
+    let id = opened(&executor, &sessions).await;
 
     sessions.close(id, Ending::Exited(0));
     sessions.close(id, Ending::Exited(0));

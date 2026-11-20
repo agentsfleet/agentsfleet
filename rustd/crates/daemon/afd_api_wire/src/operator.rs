@@ -28,7 +28,7 @@ impl CordonReason {
 
 /// Automatic quarantine; operator status remains independently visible.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerCordon {
     /// Trigger that blocks new work.
     pub reason: CordonReason,

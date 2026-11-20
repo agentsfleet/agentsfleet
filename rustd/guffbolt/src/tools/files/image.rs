@@ -62,7 +62,7 @@ pub struct Named {
 }
 
 /// Shows the model a file.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ImageTool;
 
 impl Handler for ImageTool {

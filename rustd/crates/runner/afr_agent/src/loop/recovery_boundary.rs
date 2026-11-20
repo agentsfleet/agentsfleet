@@ -70,7 +70,7 @@ pub(super) fn prepare_root<'run>(
 
 impl Harness<'_, '_> {
     pub(super) async fn capture_task_root(
-        &mut self,
+        &self,
         task: TaskContext<'static>,
         pause: Option<&Pause>,
     ) -> Result<TaskRecovery> {

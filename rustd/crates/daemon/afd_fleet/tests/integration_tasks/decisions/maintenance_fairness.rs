@@ -21,6 +21,10 @@ async fn a_held_oldest_slot_does_not_starve_a_later_fleet() {
     exercise(later_fleet).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn later_fleet(case: &Case) {
     let other = case.sibling().await;
     let oldest = Decisions::create(case).await;
@@ -63,6 +67,10 @@ async fn later_fleet(case: &Case) {
     other.held.fixtures.cleanup().await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn held_pass(
     fixture: &Decisions<'_>,
     later: &Decisions<'_>,
@@ -171,6 +179,10 @@ async fn malformed_oldest_state_is_retained_while_later_work_recovers_and_wrap_r
     exercise(malformed).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn malformed(case: &Case) {
     let fixture = Decisions::create(case).await;
     let first = unissued(

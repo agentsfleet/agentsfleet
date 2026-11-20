@@ -69,7 +69,7 @@ pub(crate) async fn provider_listener() -> String {
 pub(crate) async fn provider_granting(scopes: &'static str) -> String {
     let app = axum::Router::new().route(
         "/users/{subject}",
-        axum::routing::get(move || async move {
+        axum::routing::get(async move || {
             axum::Json(json!({ "public_metadata": { "scopes": scopes } }))
         }),
     );

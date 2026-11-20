@@ -24,7 +24,7 @@ pub struct Command {
 }
 
 /// Runs one command to its end.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Shell;
 
 impl Handler for Shell {

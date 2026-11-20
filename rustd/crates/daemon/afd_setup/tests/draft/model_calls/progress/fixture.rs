@@ -10,7 +10,7 @@ use futures_util::stream;
 use serde_json::{Value, json};
 use std::{
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, PoisonError,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -42,7 +42,7 @@ impl Transport for Provider {
             .take()
             .expect("one physical send");
         self.entered.add_permits(1);
-        let body = stream::unfold(receiver, |mut receiver| async move {
+        let body = stream::unfold(receiver, async |mut receiver| {
             receiver.recv().await.map(|bytes| (Ok(bytes), receiver))
         });
         let mut headers = http::HeaderMap::new();
@@ -63,7 +63,9 @@ pub(super) struct Live {
     pub(super) sender: mpsc::Sender<Bytes>,
     pub(super) calls: ModelCalls,
     pub(super) server: Server,
-    pub(super) reader: Subscription,
+    /// Locked only so `&Live` is `Sync` and a test may hold it across `.await`;
+    /// every read goes through `&mut self` and never contends.
+    pub(super) reader: Mutex<Subscription>,
     subject: Subject,
 }
 
@@ -96,7 +98,7 @@ impl Live {
             sender,
             calls,
             server,
-            reader,
+            reader: Mutex::new(reader),
             subject,
         }
     }
@@ -137,16 +139,22 @@ impl Live {
     }
 
     async fn next_payload(&mut self) -> String {
-        let received = tokio::time::timeout(WAIT, self.reader.recv())
+        let received = tokio::time::timeout(WAIT, self.subscription().recv())
             .await
             .expect("incremental text before completion")
             .expect("bus stays live");
         message(received).payload.as_ref().clone()
     }
 
+    fn subscription(&mut self) -> &mut Subscription {
+        self.reader
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
     pub(super) async fn drained(&mut self) {
         self.server.publish(&self.subject, BARRIER);
-        let received = tokio::time::timeout(WAIT, self.reader.recv())
+        let received = tokio::time::timeout(WAIT, self.subscription().recv())
             .await
             .expect("bus drain")
             .expect("live bus");

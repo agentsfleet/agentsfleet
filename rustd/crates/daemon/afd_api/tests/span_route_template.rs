@@ -21,6 +21,10 @@ use tower::ServiceExt as _;
 use self::harness::Fleet;
 
 /// Drives one request and returns every span it opened.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn spans_for(method: Method, path: &str) -> Vec<CapturedSpan> {
     let capture = Capture::install();
     let router = Fleet::new().router();
@@ -137,7 +141,7 @@ async fn test_a_parameterised_route_reports_its_template() {
     let router = axum::Router::new()
         .route(
             "/v1/workspaces/{workspace_id}/secrets/{secret_name}",
-            axum::routing::get(|| async { "" }),
+            axum::routing::get(async || ""),
         )
         .route_layer(axum::middleware::from_fn(afd_api::router::trace_requests));
 

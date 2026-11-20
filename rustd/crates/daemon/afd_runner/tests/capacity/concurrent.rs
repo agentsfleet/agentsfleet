@@ -9,7 +9,7 @@ async fn test_concurrent_claims_share_one_worker_limit() {
     let fixture = Fixture::create(1).await;
     let shared = &fixture;
     let barrier = Arc::new(tokio::sync::Barrier::new(2));
-    let claim = |barrier: Arc<tokio::sync::Barrier>| async move {
+    let claim = async |barrier: Arc<tokio::sync::Barrier>| {
         barrier.wait().await;
         shared.try_claim().await
     };

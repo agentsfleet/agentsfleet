@@ -18,7 +18,7 @@ async fn a_native_session_records_its_attempt_owner_and_codec_parent()
     let mut daemon = crate::test_util::NativeDaemon::serve(
         crate::test_support::healthy(),
         serde_json::Value::Null,
-        |_| async {},
+        async |_| {},
     )
     .await?;
     let root = daemon.root();

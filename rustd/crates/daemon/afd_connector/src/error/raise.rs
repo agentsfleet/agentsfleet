@@ -16,6 +16,7 @@ af_core::error_lifts!(Error, ErrorKind:
     afd_vault::Error => Vault,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => IdentifierShape,
+    serde_json::Error => HandleUnserializable,
     reqwest::Error => VendorUnreachable,
 );
 
@@ -101,6 +102,8 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .get("http://[")
         .build()
         .expect_err("an unparseable URL is refused before it is sent");
+    let unserializable = serde_json::from_str::<serde_json::Value>("{")
+        .expect_err("a truncated JSON document is refused");
 
     vec![
         (
@@ -123,6 +126,13 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "identifier shape",
             ErrorKind::IdentifierShape { source: shape }.into(),
+        ),
+        (
+            "handle unserializable",
+            ErrorKind::HandleUnserializable {
+                source: unserializable,
+            }
+            .into(),
         ),
         (
             "vendor unreachable",

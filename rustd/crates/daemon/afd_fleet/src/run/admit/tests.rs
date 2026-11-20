@@ -87,6 +87,10 @@ fn an_unread_payer_retries_under_the_payer_gate() {
 /// The money gates over a ledger nobody answers on, for a tenant already
 /// found: what they decide under `posture`, and the lines they logged.
 #[cfg(feature = "test-util")]
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn decided_on_a_dead_ledger(
     posture: afd_billing::rates::Posture,
 ) -> (super::Admission, af_core::test_util::trace::Capture) {

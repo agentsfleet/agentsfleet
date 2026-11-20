@@ -53,7 +53,8 @@ impl Scratch {
 
 impl Drop for Scratch {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
+        // Cleanup is best effort: a leftover scratch directory fails nothing.
+        drop(fs::remove_dir_all(&self.path));
     }
 }
 

@@ -152,7 +152,8 @@ async fn readyz_stays_ready_through_a_bus_outage() {
         afd_api::router::ready_decision(inputs),
         "Postgres backs every bus signal, so readiness holds"
     );
-    let _ = bus.shutdown().await;
+    // Every seed is gone, so the drain may fail; nothing here depends on it.
+    drop(bus.shutdown().await);
 }
 
 /// The probe answers within its own deadline rather than hanging.

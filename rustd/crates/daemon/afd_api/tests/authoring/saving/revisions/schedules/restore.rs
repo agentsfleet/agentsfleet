@@ -145,16 +145,17 @@ async fn apply_second_recipe(scheduled: &Scheduled) {
 /// each status with its body.
 async fn restore_twice(scheduled: &Scheduled, tag: Option<&str>) -> Vec<(StatusCode, Value)> {
     let restore = json!({"override":null});
-    let (first, rival) = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+    let rivals: [_; 2] = tokio::time::timeout(std::time::Duration::from_secs(30), async {
         tokio::join!(
             scheduled.edit(tag, restore.clone()),
             scheduled.edit(tag, restore.clone())
         )
     })
     .await
-    .expect("rival Restores finish without a deadlock");
+    .expect("rival Restores finish without a deadlock")
+    .into();
     let mut answers = Vec::new();
-    for response in [first, rival] {
+    for response in rivals {
         let status = response.status();
         answers.push((status, json_body(response).await));
     }

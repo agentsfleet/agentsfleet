@@ -20,6 +20,8 @@ pub const NOT_ASCII_DIGITS: &str = "must be ASCII digits only";
 pub const OUTSIDE_CHARSET: &str = "must use only the characters this field allows";
 /// What [`not_relative`] reports.
 pub const RELATIVE_SEGMENT: &str = "must not be a relative path step";
+/// What [`exactly`] reports.
+pub const NOT_EXACTLY: &str = "must be the one value this field allows";
 
 /// The path step naming the directory itself.
 const CURRENT_STEP: &str = ".";
@@ -74,6 +76,17 @@ pub fn ascii_digits<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
 /// `allowed`.
 pub fn charset<C: ?Sized>(allowed: impl Fn(char) -> bool) -> impl Fn(&str, &C) -> garde::Result {
     move |value, _context| refuse_unless(value.chars().all(&allowed), OUTSIDE_CHARSET)
+}
+
+/// A rule admitting only the text `expected`, byte for byte.
+///
+/// Called in the attribute — `#[garde(custom(exactly("v1")))]` — where an
+/// anchored literal `pattern` would compile a regex to compare two strings.
+///
+/// # Errors
+/// The returned rule answers [`NOT_EXACTLY`] for any other text.
+pub fn exactly<C: ?Sized>(expected: &'static str) -> impl Fn(&str, &C) -> garde::Result {
+    move |value, _context| refuse_unless(value == expected, NOT_EXACTLY)
 }
 
 /// Refuses `.` and `..`, which a URL or a filesystem path resolves as steps,

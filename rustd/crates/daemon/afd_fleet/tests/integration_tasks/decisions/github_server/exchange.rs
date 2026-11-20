@@ -46,6 +46,11 @@ impl Exchange {
                 "actions":"read","checks":"read","metadata":"read"}}),
             );
         }
+        Some(self.mint(request))
+    }
+
+    /// The scoped token a mint answers, after the request is checked.
+    fn mint(&mut self, request: &Request) -> Value {
         assert_eq!(request.method, "POST");
         assert_eq!(
             self.reads,
@@ -65,10 +70,8 @@ impl Exchange {
             "permissions":{"contents":access,"pull_requests":access,"actions":"read","checks":"read"}})
         );
         self.mints += 1;
-        Some(
-            json!({"token":"native-test-read-token","permissions":(*body.pointer("/permissions").expect("fixture permissions")),
-            "repositories":[{"full_name":"example/linkwarden"}]}),
-        )
+        json!({"token":"native-test-read-token","permissions":(*body.pointer("/permissions").expect("fixture permissions")),
+        "repositories":[{"full_name":"example/linkwarden"}]})
     }
 
     fn signature(&self, request: &Request) {

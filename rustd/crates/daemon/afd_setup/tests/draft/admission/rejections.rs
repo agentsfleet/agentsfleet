@@ -179,7 +179,7 @@ async fn should_reject_before_intent_when_gemini_key_decodes_to_a_newline() {
 
 async fn malformed_key(api: InferenceApi, key: &str) {
     let f = funded(2).await;
-    sqlx::query("UPDATE model.platform_models SET inference=jsonb_set(inference,'{api}',$2::jsonb) WHERE id=$1")
+    sqlx::query("UPDATE model.platform_models SET inference=jsonb_set(inference,ARRAY['api'],$2::jsonb) WHERE id=$1")
         .bind(&f.catalogue[0])
         .bind(json!(api))
         .execute(&mut *f.connection().await)

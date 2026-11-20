@@ -30,6 +30,7 @@
     clippy::needless_raw_string_hashes,
     clippy::match_same_arms,
     clippy::items_after_statements,
+    clippy::doc_paragraphs_missing_punctuation,
     reason = "vendored from openai/codex at 2e5fea64e and kept as copied; see NOTICE"
 )]
 

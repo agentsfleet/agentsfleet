@@ -11,6 +11,10 @@ use super::support::{Fake, Reply, connector, payload, wires::Wire};
 
 const PRIVATE: &str = "private-provider-content-never-log";
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn recorded(reply: Reply, filtered: bool) -> String {
     let capture = if filtered {
         Capture::install_filtered(af_providers::log_filter(LevelFilter::TRACE))

@@ -209,7 +209,8 @@ async fn failed_publish_sends_a_gap_marker_on_reconnect() -> TestResult {
     settle(&publisher, &subject, &mut [&mut subscription]).await?;
     publisher.publish(&subject, "before").await?;
     proxy.cut().await;
-    let _ = publisher.publish(&subject, "lost").await;
+    // Whether the cut publish errors is timing; the gap marker is what is asserted.
+    drop(publisher.publish(&subject, "lost").await);
     tokio::time::sleep(Duration::from_millis(500)).await;
     proxy.restore();
     let before = until(&publisher, &subject, &mut subscription, "after").await?;

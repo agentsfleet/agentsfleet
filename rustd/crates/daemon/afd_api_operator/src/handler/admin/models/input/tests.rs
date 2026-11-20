@@ -42,15 +42,17 @@ fn price(tier: i64, from: &str, until: Option<&str>) -> serde_json::Value {
 }
 
 fn create(body: &serde_json::Value) -> Result<(), &'static str> {
-    create_request(&serde_json::to_vec(body).expect("body JSON")).map(|_valid| ())
+    create_request(body.to_string().as_bytes()).map(|_valid| ())
 }
 
 fn patch(body: &serde_json::Value) -> Result<(), &'static str> {
     let mut patch = body.clone();
-    let object = patch.as_object_mut().expect("object");
-    object.remove(FIELD_PROVIDER);
-    object.remove(FIELD_MODEL_ID);
-    patch_request(&serde_json::to_vec(&patch).expect("patch JSON")).map(|_valid| ())
+    // A body that is not an object goes through unchanged and is refused.
+    if let Some(object) = patch.as_object_mut() {
+        object.remove(FIELD_PROVIDER);
+        object.remove(FIELD_MODEL_ID);
+    }
+    patch_request(patch.to_string().as_bytes()).map(|_valid| ())
 }
 
 fn with(mut body: serde_json::Value, pointer: &str, value: serde_json::Value) -> serde_json::Value {

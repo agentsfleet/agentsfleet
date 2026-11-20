@@ -44,6 +44,10 @@ async fn receipt_settlement_recovers_without_replay_charges_or_losing_unknown_ca
     exercise(recovery).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn recovery(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
@@ -79,6 +83,10 @@ async fn recovery(case: &Case) {
         .expect("decision model fixture lifecycle");
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {
     let mut dependencies = fixture.dependencies.clone();
     dependencies.biller = Faulty::over(
@@ -151,6 +159,10 @@ fn assert_receipt(receipt: &DecisionReceiptResult, disposition: DecisionRecordDi
     );
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn completed_run(fixture: &Decisions<'_>) -> i64 {
     let held = &fixture.case.held;
     let capture = Capture::install();

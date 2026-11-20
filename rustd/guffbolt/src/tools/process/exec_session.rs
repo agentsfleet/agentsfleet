@@ -90,7 +90,7 @@ pub struct Input {
 }
 
 /// Opens a session.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ExecCommand;
 
 impl Handler for ExecCommand {
@@ -131,7 +131,7 @@ impl Handler for ExecCommand {
 }
 
 /// Feeds a session.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct WriteStdin;
 
 impl Handler for WriteStdin {

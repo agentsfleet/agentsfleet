@@ -46,7 +46,7 @@ async fn capture(case: &Case) {
         .expect("base allocation");
     let base = complete(&tasks, case, &task, &base).await;
     let head = "2".repeat(40);
-    sqlx::query("UPDATE fleet.tasks SET target = jsonb_set(target, '{head}', to_jsonb($2::text)), updated_at = now() WHERE id = $1")
+    sqlx::query("UPDATE fleet.tasks SET target = jsonb_set(target, ARRAY['head'], to_jsonb($2::text)), updated_at = now() WHERE id = $1")
         .bind(&task_id).bind(&head)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("publication observer"))
         .await.expect("simulate the already confirmed publication head");

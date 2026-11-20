@@ -21,8 +21,12 @@ fn record(call_number: u64, output: &str) -> String {
 
 /// What narrowing `sent` keeps: its byte count, or why it kept nothing.
 fn narrowed(sent: &str) -> Result<usize, DetailRejection> {
-    let raw: RawToolCallRecord<'_> = serde_json::from_str(sent).expect("any JSON is carried");
-    raw.narrow().map(|kept| kept.byte_count())
+    carried(sent).narrow().map(|kept| kept.byte_count())
+}
+
+/// The raw record `sent` reads as; any JSON is carried.
+fn carried(sent: &str) -> RawToolCallRecord<'_> {
+    serde_json::from_str(sent).expect("any JSON is carried")
 }
 
 #[test]

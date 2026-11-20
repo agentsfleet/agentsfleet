@@ -108,8 +108,8 @@ async fn an_ownership_layer_mounted_by_hand_fails_closed() {
         ),
     );
     let router = axum::Router::new()
-        .route("/probe", axum::routing::get(|| async { "served" }))
-        .route(TEMPLATE, axum::routing::get(|| async { "served" }))
+        .route("/probe", axum::routing::get(async || "served"))
+        .route(TEMPLATE, axum::routing::get(async || "served"))
         .layer(axum::middleware::from_fn_with_state(owner, own::<Fleet>));
 
     for path in [

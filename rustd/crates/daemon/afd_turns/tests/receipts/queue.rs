@@ -154,6 +154,10 @@ pub(super) async fn confirm(admissions: &Turns, lane: &Lane) -> Fallible<afd_tur
 
 /// Admits one event for `lane`'s fleet through `admissions`, recording what
 /// the admission logged on this thread.
+#[expect(
+    clippy::future_not_send,
+    reason = "awaits `recording` and its thread-local `Capture`; one thread polls it"
+)]
 pub(crate) async fn admit_against(
     lane: &Lane,
     admissions: &Turns,
@@ -173,6 +177,10 @@ pub(crate) async fn admit_against(
 
 /// Runs `work` on this thread with every event it logs recorded, and answers
 /// both. Concurrent futures joined inside `work` log to the same record.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 pub(super) async fn recording<F: Future>(work: F) -> Run<F::Output> {
     let capture = Capture::install();
     let outcome = work.await;

@@ -35,7 +35,7 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
     )
     .await?;
     let requests = drain(&mut calls).await;
-    assert_captured_boundary(&requests, &state, &saved);
+    assert_captured_boundary(&requests, &state, &saved)?;
     assert_eq!(
         fs::read(workspace.path().join("repo/first"))?,
         b"same bytes"
@@ -216,10 +216,15 @@ fn assert_captured_boundary(
     requests: &[Call],
     state: &Arc<Mutex<Archive>>,
     saved: &CheckpointPlan,
-) {
+) -> crate::Result<()> {
     assert_registered(requests);
-    let state = state.lock().unwrap();
-    let page = state.pages.get(PAGE).unwrap();
+    let state = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let page = state
+        .pages
+        .get(PAGE)
+        .ok_or_else(|| crate::error::config("the capture uploaded no page"))?;
     let files: Vec<_> = page
         .entries
         .iter()
@@ -230,8 +235,8 @@ fn assert_captured_boundary(
         .collect();
     assert_eq!(files.len(), 2);
     assert_eq!(
-        files.first().unwrap().objects,
-        files.get(1).unwrap().objects
+        files.first().map(|file| &file.objects),
+        files.get(1).map(|file| &file.objects)
     );
     assert_eq!(files.first().unwrap().size, 10);
     assert_eq!(page.history_objects.len(), 1);
@@ -247,6 +252,7 @@ fn assert_captured_boundary(
     assert_eq!(saved.covered_input_sequence, 3);
     assert_eq!(saved.effect_watermark, 2);
     assert_eq!(phases(requests).last().map(String::as_str), Some("saved"));
+    Ok(())
 }
 
 fn registration_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answer> {

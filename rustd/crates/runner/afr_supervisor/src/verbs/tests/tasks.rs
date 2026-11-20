@@ -181,7 +181,10 @@ fn assert_fence(call: &crate::client::Call) {
     } else {
         let url = url::Url::parse(&format!("https://daemon.invalid{}", call.path)).unwrap();
         let query: std::collections::BTreeMap<_, _> = url.query_pairs().collect();
-        assert_eq!(query.get("fencing_token").unwrap(), &FENCING.to_string());
+        assert_eq!(
+            query.get("fencing_token").map(ToString::to_string),
+            Some(FENCING.to_string())
+        );
     }
 }
 

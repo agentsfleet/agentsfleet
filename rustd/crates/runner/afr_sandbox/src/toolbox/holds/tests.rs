@@ -55,7 +55,7 @@ fn test_toolbox_admission_refusals() {
         toolboxes.admit(&manifest, &source).err()
     };
     let mut half = image;
-    half.get_mut(32..).unwrap().fill(0);
+    half.iter_mut().skip(32).for_each(|byte| *byte = 0);
 
     let refusals = [
         signer

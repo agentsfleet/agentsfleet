@@ -101,7 +101,7 @@ async fn reading_a_secret_list_does_not_confer_the_authority_to_write_one() {
     // Two rungs on one surface, and the split is the point: an operator who may
     // see WHICH credentials a workspace holds is not thereby able to replace
     // one. Only the read verb admits a read-only principal.
-    let read_only = |method: Method, path: String, body: &'static str| async move {
+    let read_only = async |method: Method, path: String, body: &'static str| {
         send(SECRET_READ, method, &path, Some(TENANT_KEY), body).await
     };
 

@@ -59,7 +59,7 @@ impl Handler for CurrentTime {
 }
 
 /// `sleep`'s arguments.
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Nap {
     /// How long to wait, in milliseconds, at most 600000; the wait ends

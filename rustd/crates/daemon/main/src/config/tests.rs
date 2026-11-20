@@ -136,8 +136,8 @@ fn explicit_unreadable_file_fails_even_when_environment_has_values() {
 #[test]
 fn every_supported_file_section_reuses_its_existing_startup_input() -> TestResult {
     let mut file = tempfile::NamedTempFile::new()?;
-    let endpoint = format!("https://{}.r2.cloudflarestorage.com", "a".repeat(32));
-    let contents = COMPLETE_SETTINGS.replace("{endpoint}", &endpoint);
+    let bucket_url = format!("https://{}.r2.cloudflarestorage.com", "a".repeat(32));
+    let contents = COMPLETE_SETTINGS.replace("{endpoint}", &bucket_url);
     file.write_all(contents.as_bytes())?;
     let environment = MapEnv::from_pairs([("ENCRYPTION_MASTER_KEY", "private-env-value")]);
     let builder = ConfigBuilder::new(&environment).file(Some(file.path()));

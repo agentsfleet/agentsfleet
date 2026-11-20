@@ -55,7 +55,7 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
         let registry = Arc::clone(&fixture.registry);
         let stop = stop.clone();
         async move {
-            notifications(&registry, &wake, 8, stop, |_| async {
+            notifications(&registry, &wake, 8, stop, async |_| {
                 Ok(Probe::Waiting(std::collections::HashSet::new()))
             })
             .await
@@ -77,15 +77,14 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
     tokio::time::advance(ASSIGN_FALLBACK_TICK).await;
     observed.changed().await?;
     assert_eq!(*observed.borrow_and_update(), 4);
-    let replies = futures_util::future::try_join_all(fixture.requests.iter_mut().map(
-        |requests| async move {
+    let replies =
+        futures_util::future::try_join_all(fixture.requests.iter_mut().map(async |requests| {
             let answer = requests.recv().await.ok_or("fallback pass lost a host")?;
             answer
                 .reply
                 .send(AssignOutcome::Empty)
                 .map_err(|unsent| format!("fallback pass lost its empty answer {unsent:?}"))
-        },
-    ));
+        }));
     let answered = tokio::time::timeout(ASSIGN_FALLBACK_TICK, replies).await??;
     assert_eq!(answered.len(), 50);
     stop.cancel();
@@ -106,7 +105,7 @@ fn start_clock(
             &wake,
             &stop,
             af_core::timing::ASSIGN_FALLBACK_TICK,
-            || async {
+            async || {
                 calls.send_modify(|count| *count += 1);
                 Ok(pending.load(Ordering::SeqCst))
             },

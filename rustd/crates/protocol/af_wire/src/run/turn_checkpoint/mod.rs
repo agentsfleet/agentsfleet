@@ -4,7 +4,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// Budget for the complete native command or response, including its envelope.
-#[derive(Debug, Validate)]
+#[derive(Debug, Clone, Copy, Validate)]
 pub struct TurnMessageSize {
     /// Serialized payload bytes, excluding only the native length prefix.
     #[garde(range(min = 1, max = TURN_CHECKPOINT_BYTES))]

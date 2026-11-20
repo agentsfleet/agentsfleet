@@ -104,7 +104,7 @@ async fn concurrent_deliveries(
     let barrier = tokio::sync::Barrier::new(100);
     let in_flight = AtomicUsize::new(0);
     let peak = AtomicUsize::new(0);
-    let requests = (0..100).map(|_| async {
+    let requests = (0..100).map(async |_| {
         barrier.wait().await;
         let count = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
         peak.fetch_max(count, Ordering::SeqCst);

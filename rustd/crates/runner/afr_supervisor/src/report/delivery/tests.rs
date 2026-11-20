@@ -14,7 +14,7 @@ async fn transient_disconnect_and_pending_settlement_keep_the_same_report() -> R
     let attempts = AtomicUsize::new(0);
     let report = zeroize::Zeroizing::new(Vec::from(b"immutable completed report"));
     let address = report.as_ptr();
-    until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, || async {
+    until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, async || {
         assert_eq!(report.as_ptr(), address);
         match attempts.fetch_add(1, Ordering::SeqCst) {
             0 => Err(ErrorKind::Disconnected.into()),
@@ -32,7 +32,7 @@ async fn terminal_refusal_never_retries_with_another_shape() {
     let halt = Halt::new(CancellationToken::new());
     let attempts = AtomicUsize::new(0);
     let result: Result<()> =
-        until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, || async {
+        until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, async || {
             attempts.fetch_add(1, Ordering::SeqCst);
             Err(ErrorKind::StreamRefused {
                 code: error_code::INVALID_REQUEST,
@@ -52,7 +52,7 @@ async fn hard_stop_releases_a_report_waiting_for_a_lost_acknowledgement() {
     let halt = Halt::new(CancellationToken::new());
     let entered = tokio::sync::Notify::new();
     let sending =
-        until_acknowledged::<(), _, _>(&halt, crate::config::RuntimePolicy::DEFAULT, || async {
+        until_acknowledged::<(), _, _>(&halt, crate::config::RuntimePolicy::DEFAULT, async || {
             entered.notify_one();
             std::future::pending().await
         });
@@ -76,7 +76,7 @@ async fn run_cancellation_and_soft_shutdown_allow_the_final_acknowledgement() ->
             halt.running().cancel();
         }
         let attempts = AtomicUsize::new(0);
-        let result = until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, || async {
+        let result = until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, async || {
             attempts.fetch_add(1, Ordering::SeqCst);
             Ok(Some("saved"))
         })

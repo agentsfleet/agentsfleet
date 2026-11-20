@@ -100,7 +100,7 @@ pub struct TaskActivity {
 
 /// Transfer facts, excluding speculative sends and repeated object references.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskTransferBytes {
     /// Unique bytes verified after upload or authenticated download.

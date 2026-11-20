@@ -66,11 +66,12 @@ fn main() -> std::io::Result<()> {
             .filter_map(Value::as_f64)
             .map(literal)
             .collect();
-        let _ = writeln!(
+        writeln!(
             listing,
             "pub(super) const {name}: &[f64] = &[{}];",
             values.join(", ")
-        );
+        )
+        .map_err(std::io::Error::other)?;
     }
     for (name, pointer) in MEASURED {
         let value = baseline
@@ -80,7 +81,8 @@ fn main() -> std::io::Result<()> {
                 || "None".to_owned(),
                 |value| format!("Some({})", literal(value)),
             );
-        let _ = writeln!(listing, "pub(super) const {name}: Option<f64> = {value};");
+        writeln!(listing, "pub(super) const {name}: Option<f64> = {value};")
+            .map_err(std::io::Error::other)?;
     }
     std::fs::write(out.join(LISTING), listing)
 }

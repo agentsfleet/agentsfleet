@@ -136,7 +136,11 @@ mod tests {
             budget.memory_checkpoint_every,
             DEFAULT_MEMORY_CHECKPOINT_EVERY
         );
-        assert_eq!(budget.stage_chunk_threshold, DEFAULT_STAGE_CHUNK_THRESHOLD);
+        // The default is copied through untouched, so the bits match exactly.
+        assert_eq!(
+            budget.stage_chunk_threshold.to_bits(),
+            DEFAULT_STAGE_CHUNK_THRESHOLD.to_bits()
+        );
         assert_eq!(budget.context_cap_tokens, 0);
         assert_eq!(budget.model, "");
     }

@@ -48,7 +48,7 @@ async fn edit_labels(scene: &Scenario, labels: &[&str]) {
 
 /// Spends the whole poll budget asserting the fleet under test is never assigned.
 async fn assert_never_assigned(scene: &Scenario, why: &str) {
-    let ended = wait_without_assignment(scene, || async { false }).await;
+    let ended = wait_without_assignment(scene, async || false).await;
     assert!(!ended, "{why}");
 }
 

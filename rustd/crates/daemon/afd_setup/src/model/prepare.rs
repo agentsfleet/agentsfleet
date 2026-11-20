@@ -85,7 +85,7 @@ pub(super) fn body(
 
 #[cfg(test)]
 fn input_tokens(
-    route: &af_inference::Configured,
+    route: &af_inference::Configured<'_>,
     canonical: &rig_core::completion::CompletionRequest,
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,

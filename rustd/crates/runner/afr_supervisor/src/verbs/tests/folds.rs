@@ -23,6 +23,10 @@ struct Claimed {
 }
 
 /// One claim after [`AFTER`] against a daemon that answers it with `answer`.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn claim(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Claimed {
     let capture = Capture::install();
     let (plane, mut calls) = plane(answer);

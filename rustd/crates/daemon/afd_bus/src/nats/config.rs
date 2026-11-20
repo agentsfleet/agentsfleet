@@ -240,7 +240,7 @@ mod tests {
             subscription_capacity: 8,
             ..Tuning::default()
         };
-        let config = config.with_tuning(small.clone())?;
+        let config = config.with_tuning(small)?;
         assert_eq!(config.tuning(), &small);
         let error = config
             .with_tuning(Tuning {

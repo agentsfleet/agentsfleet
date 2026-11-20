@@ -179,7 +179,7 @@ async fn acknowledged_report(
     run: &Uuid7,
     report: &Report,
 ) -> Result<Reported> {
-    until_acknowledged(halt, plane.runtime, || async {
+    until_acknowledged(halt, plane.runtime, async || {
         let reply = plane.authoring_report(run, report).await?;
         Ok(reply.settled.then_some(reply))
     })

@@ -131,7 +131,7 @@ impl TurnSession<'_, '_> {
         let workspace = &self.workspace;
         // Every GET in this bounded batch starts under the same freshly proved pin.
         let chunks: BTreeMap<_, _> = stream::iter(objects)
-            .map(|mut object| async move {
+            .map(async |mut object| {
                 let bytes = transfers.download(&object).await?;
                 let plaintext = transfer::open(workspace, &mut object, bytes)?;
                 Ok::<_, crate::Error>((object.object_id.clone(), Arc::new(plaintext)))

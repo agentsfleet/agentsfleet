@@ -177,7 +177,10 @@ impl Journal {
 
 impl io::Write for Journal {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(buf);
         Ok(buf.len())
     }
 

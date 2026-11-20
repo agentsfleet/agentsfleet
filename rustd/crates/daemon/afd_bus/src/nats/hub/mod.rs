@@ -306,7 +306,7 @@ pub(super) async fn pump(
             continue;
         };
         // No receiver means every reader left between the message and now.
-        let _ = sender.send(delivery);
+        drop(sender.send(delivery));
     }
     channels.ended(&physical, generation);
 }

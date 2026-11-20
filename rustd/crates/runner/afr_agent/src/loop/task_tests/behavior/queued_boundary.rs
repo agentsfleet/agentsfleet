@@ -157,12 +157,28 @@ fn assert_queued_outcome(
             .contains("Investigation awaits checks.")
     );
     assert_eq!(script.sent().len(), 3);
-    assert_eq!(native.intake.bindings.lock().expect("bound plans").len(), 1);
     assert_eq!(
-        native.intake.decisions.lock().expect("intent calls").len(),
+        native
+            .intake
+            .bindings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
         1
     );
-    let receipts = native.receipts.lock().expect("source receipts");
+    assert_eq!(
+        native
+            .intake
+            .decisions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
+        1
+    );
+    let receipts = native
+        .receipts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(receipts.len(), 1);
     assert_eq!(
         receipts
@@ -170,7 +186,10 @@ fn assert_queued_outcome(
             .and_then(|receipt| receipt.response_text.as_deref()),
         Some("Hello.")
     );
-    let reads = native.queries.lock().expect("input reads");
+    let reads = native
+        .queries
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert!(reads.len() >= 2);
     assert!(
         reads

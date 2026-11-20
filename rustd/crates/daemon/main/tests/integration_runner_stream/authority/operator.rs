@@ -23,7 +23,7 @@ impl Operator {
     pub(super) async fn start() -> TestResult<Self> {
         let app = axum::Router::new().route(
             "/users/{subject}",
-            axum::routing::get(|| async {
+            axum::routing::get(async || {
                 axum::Json(
                     json!({"public_metadata":{"scopes":"runner:write runner:tenant fleet:admin"}}),
                 )

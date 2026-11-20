@@ -81,7 +81,7 @@ async fn an_idle_stream_emits_named_heartbeats_at_the_documented_cadence() {
 async fn heartbeats_neither_consume_activity_ids_nor_delay_ready_activity() {
     let ceiling = StreamLimit::new(1);
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
-    let frames = stream::unfold(receiver, |mut receiver| async move {
+    let frames = stream::unfold(receiver, async |mut receiver| {
         receiver.recv().await.map(|frame| (frame, receiver))
     });
     let mut body = serve(

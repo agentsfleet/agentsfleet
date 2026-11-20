@@ -163,6 +163,10 @@ async fn token_charge(held: &Held, plane: &RunService, seq: u32, input_tokens: u
 /// Renews `held`'s run for `request` with the catalogue offline, and checks
 /// the renewal charged the runtime it measured and no token, and said itself
 /// that it logged those tokens unpriced, not only the pricing helper it calls.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn renew_through_a_catalogue_fault(held: &Held, plane: &RunService, request: RenewRequest) {
     let run_id = &held.issued.run_id;
     held.fixtures.set_catalogue_readable(false).await;

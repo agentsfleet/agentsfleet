@@ -58,7 +58,7 @@ async fn a_blip_is_retried_and_a_refusal_is_not() {
         })
         .await;
     let exhausted = plane
-        .retrying(|| async { Err::<(), _>(error::unavailable(Verb::Report, 502)) })
+        .retrying(async || Err::<(), _>(error::unavailable(Verb::Report, 502)))
         .await;
 
     assert_eq!(recovered.unwrap(), 2);

@@ -28,7 +28,7 @@ pub struct DecisionThreshold {
 pub struct IntentDecisionPolicy {
     /// Exact native question revision implemented by this runner generation.
     #[cfg_attr(feature = "openapi", schema(pattern = "^dt-routing-v1$"))]
-    #[garde(pattern(r"^dt-routing-v1$"))]
+    #[garde(custom(af_validate::exactly("dt-routing-v1")))]
     pub questions_revision: String,
     /// Winning route acceptance.
     #[garde(dive)]
@@ -53,7 +53,7 @@ pub struct IntentDecisionPolicy {
 pub struct GoalDecisionPolicy {
     /// Exact native question revision implemented by this runner generation.
     #[cfg_attr(feature = "openapi", schema(pattern = "^dt-goal-v1$"))]
-    #[garde(pattern(r"^dt-goal-v1$"))]
+    #[garde(custom(af_validate::exactly("dt-goal-v1")))]
     pub questions_revision: String,
     /// Every required completion statement must meet this Noul threshold.
     #[cfg_attr(feature = "openapi", schema(maximum = 10000))]

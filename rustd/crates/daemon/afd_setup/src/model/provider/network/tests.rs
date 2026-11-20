@@ -38,7 +38,7 @@ async fn physical_responses_keep_status_and_stream_bytes_without_normalized_enve
         assert_eq!(response.status, 429);
         let body = response
             .body
-            .try_fold(Vec::new(), |mut all, bytes| async move {
+            .try_fold(Vec::new(), async |mut all, bytes| {
                 all.extend_from_slice(&bytes);
                 Ok(all)
             })

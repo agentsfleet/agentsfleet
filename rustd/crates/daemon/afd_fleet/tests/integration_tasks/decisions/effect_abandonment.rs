@@ -35,6 +35,10 @@ async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() 
     .await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &Uuid7) {
     let case = fixture.case;
     let original = intent(case, effect).await;
@@ -115,6 +119,10 @@ async fn assert_replay(
     assert_eq!(state(case, &effect).await, terminal);
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn replacement(case: &Case) -> (af_core::id::Uuid7, u64) {
     super::run_recovery::support::expire(case).await;
     let acquired = super::run_recovery::support::claim(case).await;

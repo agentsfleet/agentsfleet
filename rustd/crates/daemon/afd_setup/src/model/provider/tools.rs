@@ -68,7 +68,7 @@ mod tests {
                 let path = entry.path();
                 if kind.is_dir() {
                     pending.push(path);
-                } else if kind.is_file() {
+                } else {
                     assert!(
                         path.extension().and_then(|v| v.to_str()) != Some("md")
                             || is_crate_readme(&path),

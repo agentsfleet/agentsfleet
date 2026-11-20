@@ -248,8 +248,7 @@ fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpos
     assert_eq!(
         *progress
             .get(1)
-            .unwrap()
-            .pointer("/frames/0/task_decision_completed/phase")
+            .and_then(|frame| frame.pointer("/frames/0/task_decision_completed/phase"))
             .unwrap(),
         "unavailable"
     );

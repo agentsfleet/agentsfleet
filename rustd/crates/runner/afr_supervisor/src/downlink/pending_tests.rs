@@ -41,7 +41,7 @@ fn turn_replies_require_run_operation_kind_and_matching_success_variant() -> ser
     let operation = "01900000-0000-7000-8000-000000000002";
     let other = "01900000-0000-7000-8000-000000000003";
     let expected = Expected::TurnCheckpoint {
-        run: Uuid7::parse(run).expect("fixture UUID"),
+        run: serde_json::from_value(json!(run))?,
         operation: CheckpointOperationId(operation.into()),
         kind: TurnCheckpointKind::PinRelease,
     };

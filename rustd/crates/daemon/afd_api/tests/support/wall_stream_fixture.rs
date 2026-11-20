@@ -246,13 +246,17 @@ impl Wall {
         }
     }
 
-    pub(crate) async fn publish(&self, count: usize) {
+    /// Publishes `count` frames. The future owns its bus handle rather than
+    /// borrowing the wall, whose body stream is not `Sync`, so it stays `Send`.
+    pub(crate) fn publish(&self, count: usize) -> impl Future<Output = ()> + Send + use<> {
+        let bus = self.bus.clone();
         let subject = Subject::ThreadItems(self.fixture.fleet.clone());
-        for _ in 0..count {
-            self.bus
-                .publish(&subject, CHUNK)
-                .await
-                .expect("the frame publishes");
+        async move {
+            for _ in 0..count {
+                bus.publish(&subject, CHUNK)
+                    .await
+                    .expect("the frame publishes");
+            }
         }
     }
 

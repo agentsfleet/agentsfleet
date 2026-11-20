@@ -73,7 +73,7 @@ pub struct Range {
 }
 
 /// Reads a file with every line tagged.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileReadHashed;
 
 impl Handler for FileReadHashed {
@@ -96,7 +96,7 @@ async fn read(context: &Context<'_>, path: &str) -> Answer {
 }
 
 /// Replaces a line, or a range of lines, named by tag.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileEditHashed;
 
 impl Handler for FileEditHashed {

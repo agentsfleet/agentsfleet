@@ -31,7 +31,7 @@ pub(super) async fn run(tasks: &Tasks, storage: &R2CheckpointStore) -> Result<(u
         attempted +=
             i64::try_from(purges.len()).map_err(|_overflow| TaskRefusal::LimitExhausted)?;
         let session = &session;
-        let mut work = stream::iter(purges.into_iter().map(|purge| async move {
+        let mut work = stream::iter(purges.into_iter().map(async |purge| {
             let result = async {
                 if purge.bucket_reference != storage.bucket_reference() {
                     return Err(TaskRefusal::StorageUnavailable.into());

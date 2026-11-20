@@ -85,7 +85,7 @@ async fn the_native_fixture_authenticates_both_transports()
     let mut daemon = super::NativeDaemon::serve(
         healthy(),
         serde_json::from_str(super::RUN_JSON)?,
-        |_frame| async {},
+        async |_frame| {},
     )
     .await?;
     let endpoint = af_stream::Endpoint::parse(&daemon.url)?;

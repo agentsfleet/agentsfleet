@@ -68,12 +68,12 @@ fn test_envelope_rejects_tampered() {
     ];
 
     for (component, tampered) in mutations {
-        let error = tampered
-            .open(&kek(), &aad)
-            .expect_err("a flipped byte in the {component} must not open");
+        let error = tampered.open(&kek(), &aad).err();
         assert!(
-            error.is_open_failed(),
-            "{component}: expected an open failure, got {error}"
+            error
+                .as_ref()
+                .is_some_and(af_crypto::error::Error::is_open_failed),
+            "{component}: a flipped byte must fail to open, got {error:?}"
         );
     }
 }

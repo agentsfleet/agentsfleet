@@ -133,7 +133,7 @@ macro_rules! rejects {
         #[test]
         #[should_panic(expected = "UZ-<FAMILY>-<NNN>")]
         fn $name() {
-            let _ = ErrorCode::declare($code);
+            let _rejected = ErrorCode::declare($code);
         }
     };
 }

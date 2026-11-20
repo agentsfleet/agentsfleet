@@ -45,7 +45,7 @@ pub struct Plan {
 }
 
 /// Records the plan.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct UpdatePlan;
 
 impl Handler for UpdatePlan {

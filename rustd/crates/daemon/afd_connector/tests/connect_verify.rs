@@ -209,9 +209,9 @@ async fn nothing_that_is_not_a_state_verifies_as_one() {
     for candidate in ["", "not-a-state", "a.b", "....", "%%%"] {
         let rejected = connectors()
             .verify(Provider::Slack, &secret(), candidate, STARTER, NOW)
-            .expect_err("`{candidate}` is not a state");
+            .err();
         assert!(
-            matches!(rejected, Rejected::Malformed | Rejected::BadSignature),
+            matches!(rejected, Some(Rejected::Malformed | Rejected::BadSignature)),
             "`{candidate}` earned {rejected:?}"
         );
     }

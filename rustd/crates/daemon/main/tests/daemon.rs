@@ -24,7 +24,7 @@ use crate::support::install_subscriber;
 fn spawn_observer(supervisor: &mut Supervisor, name: &'static str) -> Arc<AtomicBool> {
     let observed = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&observed);
-    supervisor.spawn(name, move |token| async move {
+    supervisor.spawn(name, async move |token| {
         token.cancelled().await;
         flag.store(true, Ordering::SeqCst);
     });
@@ -165,7 +165,7 @@ fn test_the_daemon_supervises_what_it_claims() {
 async fn test_a_daemon_reports_its_inventory_before_running() {
     let mut supervisor = Supervisor::new();
     for task in BACKGROUND_TASKS {
-        supervisor.spawn(task, |token| async move { token.cancelled().await });
+        supervisor.spawn(task, async |token| token.cancelled().await);
     }
 
     let daemon = Daemon::new(supervisor);

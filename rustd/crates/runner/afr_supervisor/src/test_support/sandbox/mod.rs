@@ -110,11 +110,12 @@ pub(crate) struct FakeEngine {
 #[async_trait::async_trait]
 impl Engine for FakeEngine {
     async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+        // A test that dropped its receiver is not watching these.
         if let Some(asked) = &self.asked {
-            let _ = asked.send(request.limits);
+            _ = asked.send(request.limits);
         }
         if let Some(reached) = &self.reached {
-            let _ = reached.send(bound(request.network));
+            drop(reached.send(bound(request.network)));
         }
         if !self.prepare_takes.is_zero() {
             tokio::time::sleep(self.prepare_takes).await;
@@ -245,7 +246,8 @@ impl Sandbox for FakeSandbox {
         }
         if let Some(reallowed) = &self.reallowed {
             let thawed = self.executor.thawed.load(Ordering::SeqCst);
-            let _ = reallowed.send((allowlist.clone(), thawed));
+            // A test that dropped its receiver is not watching reallows.
+            drop(reallowed.send((allowlist.clone(), thawed)));
         }
         Ok(())
     }

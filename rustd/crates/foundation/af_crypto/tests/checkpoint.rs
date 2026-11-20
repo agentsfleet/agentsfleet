@@ -71,7 +71,11 @@ fn object_bytes_match_the_external_vector_and_keep_the_owned_allocation() {
     // SAFETY: The original Vec initialized this whole range before truncation.
     // Its allocation is unchanged; sealing writes bytes without deinitializing.
     let retained = unsafe { std::slice::from_raw_parts(bytes.as_ptr(), initialized) };
-    assert!(retained.get(16..).unwrap().iter().all(|byte| *byte == 0));
+    assert!(
+        retained
+            .get(16..)
+            .is_some_and(|tail| tail.iter().all(|byte| *byte == 0))
+    );
     let opened = EncryptedCheckpointObject::from_parts(bytes, tag)
         .open(
             SecretBytes::new(vec![0; KEY_LEN]),
@@ -187,8 +191,9 @@ fn assert_corruption(
     ] {
         let mut damaged = bytes.to_vec();
         let mut authentication = tag;
-        if let Some(offset) = offset {
-            *damaged.get_mut(offset).unwrap() ^= 1;
+        // An offset past the end flips nothing, and the open below then succeeds and fails the test.
+        if let Some(byte) = offset.and_then(|offset| damaged.get_mut(offset)) {
+            *byte ^= 1;
         }
         if damaged_tag {
             authentication[0] ^= 1;

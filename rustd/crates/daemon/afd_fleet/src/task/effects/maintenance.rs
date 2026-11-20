@@ -43,7 +43,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
         .map_err(query("commit evidence-read claims before network"))?;
     transaction::recycle(connection);
     let mut result = EffectMaintenance::default();
-    let mut reads = stream::iter(rows.into_iter().map(|row| async move {
+    let mut reads = stream::iter(rows.into_iter().map(async |row| {
         let id = row.effect.id.clone();
         let outcome = if row.recovery.expires_at <= af_core::clock::now() {
             expire(tasks, &row.effect).await.map(|()| Outcome::Expired)

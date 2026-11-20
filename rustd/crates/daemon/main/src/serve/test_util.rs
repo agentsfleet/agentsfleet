@@ -12,7 +12,7 @@ use crate::supervisor::Supervisor;
 ///
 /// # Errors
 /// As [`super::boot`]. This exists only with `test-util`.
-pub async fn boot_with_authoring_boundary<E: EnvSource + ?Sized>(
+pub async fn boot_with_authoring_boundary<E: EnvSource + Sync + ?Sized>(
     env: &E,
     port: u16,
     supervisor: &mut Supervisor,
@@ -27,7 +27,7 @@ pub async fn boot_with_authoring_boundary<E: EnvSource + ?Sized>(
 ///
 /// # Errors
 /// As [`super::boot_with_exchanger`]. This exists only with `test-util`.
-pub async fn boot_with_connector_boundary<E: EnvSource + ?Sized>(
+pub async fn boot_with_connector_boundary<E: EnvSource + Sync + ?Sized>(
     env: &E,
     port: u16,
     supervisor: &mut Supervisor,

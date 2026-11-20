@@ -54,7 +54,7 @@ impl Observer {
         let received = Arc::new(Mutex::new(Vec::new()));
         let app = Router::new()
             .route("/v1/traces", post(accept))
-            .route("/v1/metrics", post(|| async { "" }))
+            .route("/v1/metrics", post(async || ""))
             .with_state(Arc::clone(&received));
         let stop = CancellationToken::new();
         let stopping = stop.clone();

@@ -66,7 +66,7 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
 
     let barrier = Barrier::new(RACERS);
     let (inflight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
-    let answers = futures_util::future::join_all((0..RACERS).map(|_racer| async {
+    let answers = futures_util::future::join_all((0..RACERS).map(async |_racer| {
         barrier.wait().await;
         peak.fetch_max(
             inflight.fetch_add(1, Ordering::SeqCst) + 1,

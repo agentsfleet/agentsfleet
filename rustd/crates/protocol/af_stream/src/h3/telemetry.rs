@@ -51,7 +51,7 @@ impl Sampler {
         self.finish(connection);
     }
 
-    pub(super) fn finish(&mut self, connection: &tokio_quiche::quic::QuicheConnection) {
+    pub(super) fn finish(&self, connection: &tokio_quiche::quic::QuicheConnection) {
         let counters = connection.stats();
         let (rtt, probe_timeouts) =
             connection

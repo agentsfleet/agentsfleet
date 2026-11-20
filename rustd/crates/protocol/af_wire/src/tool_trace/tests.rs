@@ -315,8 +315,12 @@ fn statuses_use_their_snake_case_spelling() {
 
 /// The raw carrier a report holds, narrowed the way the daemon narrows it.
 fn raw_narrowed(text: &str) -> Result<usize, TraceRejection> {
-    let raw: super::RawToolTrace<'_> = serde_json::from_str(text).expect("any JSON is carried");
-    raw.narrow().map(|kept| kept.calls.len())
+    carried(text).narrow().map(|kept| kept.calls.len())
+}
+
+/// The raw carrier `text` reads as; any JSON is carried.
+fn carried(text: &str) -> super::RawToolTrace<'_> {
+    serde_json::from_str(text).expect("any JSON is carried")
 }
 
 #[test]

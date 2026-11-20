@@ -70,11 +70,14 @@ impl Hub {
     fn send(&self, subject: &Subject, received: &Received) {
         let mut channels = self.channels();
         for spelling in spellings(subject) {
-            let _ = channels
-                .entry(spelling)
-                .or_insert_with(Channel::new)
-                .sender
-                .send(received.clone());
+            // No reader is not an error: the bus is at most once.
+            drop(
+                channels
+                    .entry(spelling)
+                    .or_insert_with(Channel::new)
+                    .sender
+                    .send(received.clone()),
+            );
         }
     }
 

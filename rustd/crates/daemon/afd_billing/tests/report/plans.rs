@@ -79,7 +79,7 @@ async fn grow_by(f: &Fixture, runs: usize) {
         .chain(old.first())
         .map(Line::work);
     futures_util::stream::iter(works)
-        .for_each_concurrent(SETTLING, |work| async move {
+        .for_each_concurrent(SETTLING, async |work| {
             fixture::settle(&f.biller, &f.admin, &work).await;
         })
         .await;

@@ -24,6 +24,10 @@ async fn native_credit_shortage_and_payer_debt_preserve_unsent_calls_without_cha
     }
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn refused(case: &Case, funding: Funding) {
     let capture = Capture::install();
     let fixture = Decisions::create(case).await;

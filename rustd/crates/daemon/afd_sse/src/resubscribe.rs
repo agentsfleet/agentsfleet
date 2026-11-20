@@ -153,13 +153,15 @@ impl Link {
         false
     }
 
-    /// Wait until the pending retry is due; at once when none is pending.
-    async fn until_due(&mut self) {
-        if let State::Retrying { attempt, at } = self.state {
-            let wait_ms = at.saturating_duration_since(Instant::now()).as_millis();
-            tracing::debug!(attempt, wait_ms, event = "sse_resubscribing");
-            tokio::time::sleep_until(at).await;
-        }
+    /// When the pending retry is due; `None` when none is pending. Answers
+    /// the instant rather than waiting on it, so the wait borrows no link.
+    fn retry_due(&self) -> Option<Instant> {
+        let State::Retrying { attempt, at } = self.state else {
+            return None;
+        };
+        let wait_ms = at.saturating_duration_since(Instant::now()).as_millis();
+        tracing::debug!(attempt, wait_ms, event = "sse_resubscribing");
+        Some(at)
     }
 }
 
@@ -195,7 +197,9 @@ async fn turn(link: &mut Link, seq: u64) -> Turn {
         return Turn::End;
     }
     let Some(subscription) = link.subscription() else {
-        link.until_due().await;
+        if let Some(due) = link.retry_due() {
+            tokio::time::sleep_until(due).await;
+        }
         // Frames published while the tail was down are gone: the viewer
         // backfills from the events list, and numbering starts over.
         return if link.reopen_if_due().await {

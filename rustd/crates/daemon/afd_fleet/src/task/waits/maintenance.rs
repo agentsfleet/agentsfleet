@@ -26,7 +26,7 @@ pub(in crate::task) async fn maintain(tasks: &Tasks) -> Result<WaitMaintenance> 
         .await
         .map_err(query("select bounded exact-head wait candidates"))?;
     drop(connection);
-    let mut ready = stream::iter(candidates.into_iter().map(|candidate| async move {
+    let mut ready = stream::iter(candidates.into_iter().map(async |candidate| {
         let Some(claimed) = claim::claim(tasks, &candidate).await? else {
             return Ok(None);
         };

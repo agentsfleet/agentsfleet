@@ -56,10 +56,11 @@ impl Run<'_> {
         request.memory = memory.views();
         request.telemetry.segments = Some(self.timeline.reported(settling.elapsed()));
         let bytes = Zeroizing::new(serde_json::to_vec(&request).map_err(error::encode)?);
-        let response = until_acknowledged(&self.lessee.halt, self.lessee.plane.runtime, || async {
-            self.lessee.plane.report(&bytes).await.map(Some)
-        })
-        .await?;
+        let response =
+            until_acknowledged(&self.lessee.halt, self.lessee.plane.runtime, async || {
+                self.lessee.plane.report(&bytes).await.map(Some)
+            })
+            .await?;
         let accepted = response.hold.as_ref().is_some_and(|hold| {
             hold.run_id == self.ids.run.as_str()
                 && hold.fencing_token == self.payload.fencing_token

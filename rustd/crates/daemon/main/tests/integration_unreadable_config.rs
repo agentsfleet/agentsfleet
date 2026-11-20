@@ -108,7 +108,7 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
 
     // And the neighbour is ended rather than retried forever, which is what
     // puts it in front of a human.
-    let refused = wait_without_assignment(&scene, || async {
+    let refused = wait_without_assignment(&scene, async || {
         event_column_of(&scene, &poisoned, &poisoned_event, "status").await
             == Some(GATE_BLOCKED.to_owned())
     })

@@ -96,7 +96,7 @@ fn test_the_callers_sweep_adds_to_what_the_lane_swept_itself() {
     report.fixture.created = 200;
     report.fixture.swept = 200;
     let scratch = std::env::temp_dir().join(format!("afd-bench-finish-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("scratch is creatable");
     let previous = std::env::current_dir().expect("a cwd");
     std::env::set_current_dir(&scratch).expect("scratch is enterable");
 
@@ -105,7 +105,7 @@ fn test_the_callers_sweep_adds_to_what_the_lane_swept_itself() {
     std::env::set_current_dir(previous).expect("cwd restored");
     let path = written.expect("a finished run writes");
     let read = Report::read(std::path::Path::new(&scratch).join(path).as_path()).expect("readable");
-    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::remove_dir_all(&scratch).expect("scratch is removable");
     assert_eq!(
         read.fixture.swept, 200,
         "a fallback that found nothing must not erase what the lane swept"

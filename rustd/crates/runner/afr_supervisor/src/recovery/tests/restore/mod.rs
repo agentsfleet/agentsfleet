@@ -251,7 +251,7 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     Ok(())
 }
 
-fn changed_pin_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answer> {
+fn changed_pin_reply(call: &Call, archive: &Archive, fault: &str) -> Option<Answer> {
     if fault == "renewal" && call.verb == Verb::TaskCheckpointPin {
         let mut pin = archive.plan.pin.clone();
         pin.operation_deadline = clock::after(pin.operation_deadline, Duration::from_secs(1));

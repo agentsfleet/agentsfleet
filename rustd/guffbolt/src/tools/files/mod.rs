@@ -155,7 +155,7 @@ pub struct Replacement {
 }
 
 /// Writes a file, replacing what was there.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileWrite;
 
 impl Handler for FileWrite {
@@ -182,7 +182,7 @@ async fn write(context: &Context<'_>, arguments: Content) -> Answer {
 }
 
 /// Adds to the end of a file.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileAppend;
 
 impl Handler for FileAppend {
@@ -209,7 +209,7 @@ async fn append(context: &Context<'_>, arguments: Content) -> Answer {
 }
 
 /// Removes a file.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileDelete;
 
 impl Handler for FileDelete {
@@ -233,7 +233,7 @@ async fn delete(context: &Context<'_>, path: &str) -> Answer {
 }
 
 /// Replaces text in a file.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileEdit;
 
 impl Handler for FileEdit {

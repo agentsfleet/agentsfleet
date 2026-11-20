@@ -77,7 +77,7 @@ async fn test_shutdown_joins_all_tasks() {
     for name in TASK_NAMES {
         let borrowed = Arc::clone(&borrowed);
         let started_tx = started_tx.clone();
-        supervisor.spawn(name, move |token| async move {
+        supervisor.spawn(name, async move |token| {
             started_tx
                 .send(name)
                 .expect("the test outlives every task it spawns");
@@ -164,7 +164,7 @@ async fn test_task_inventory_and_cancellation() {
     let (parked_tx, mut parked_rx) = mpsc::unbounded_channel();
 
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(ACCEPT_TASK, move |token| async move {
+    supervisor.spawn(ACCEPT_TASK, async move |token| {
         parked_tx
             .send(())
             .expect("the test outlives the task it spawns");
@@ -177,7 +177,7 @@ async fn test_task_inventory_and_cancellation() {
             .expect("the test outlives the task it spawns");
     });
     for name in TASK_NAMES {
-        supervisor.spawn(name, |token| async move { token.cancelled().await });
+        supervisor.spawn(name, async |token| token.cancelled().await);
     }
 
     parked_rx
@@ -236,7 +236,7 @@ async fn test_supervised_accept_completes_when_a_client_connects() {
     let (outcome_tx, mut outcome_rx) = mpsc::unbounded_channel();
 
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(ACCEPT_TASK, move |token| async move {
+    supervisor.spawn(ACCEPT_TASK, async move |token| {
         let outcome = tokio::select! {
             () = token.cancelled() => Outcome::Cancelled,
             _ = listener.accept() => Outcome::Accepted,
@@ -308,7 +308,7 @@ async fn test_shutdown_reports_a_panicking_task() {
     install_subscriber();
 
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(BOOM, |_token| async {
+    supervisor.spawn(BOOM, async |_token| {
         panic!("deliberate: shutdown must REPORT a panicking task, not swallow it")
     });
 

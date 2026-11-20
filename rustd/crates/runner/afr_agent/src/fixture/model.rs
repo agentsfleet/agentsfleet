@@ -6,10 +6,9 @@
     reason = "test fixture: a fixture that cannot be built is a broken test"
 )]
 
-use std::cell::RefCell;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use af_providers::{Connect, Provider};
 use af_wire::policy::ExecutionPolicy;
@@ -57,11 +56,14 @@ struct Turns {
 
 /// A scripted model the test drives and reads back. The loop gets a
 /// [`Replay`]; the requests it sends come back over a channel.
+///
+/// Both halves sit behind a lock so a test may hold `&Script` across an
+/// `.await` and its future stays `Send`.
 #[derive(Debug)]
 pub(crate) struct Script {
     replay: Replay,
-    received: mpsc::Receiver<Sent>,
-    seen: RefCell<Vec<Sent>>,
+    received: Mutex<mpsc::Receiver<Sent>>,
+    seen: Mutex<Vec<Sent>>,
 }
 
 impl Script {
@@ -145,8 +147,8 @@ impl Script {
                 sent,
                 images: true,
             },
-            received,
-            seen: RefCell::default(),
+            received: Mutex::new(received),
+            seen: Mutex::default(),
         }
     }
 
@@ -157,8 +159,10 @@ impl Script {
 
     /// Every request sent so far.
     pub(crate) fn sent(&self) -> Vec<Sent> {
-        self.seen.borrow_mut().extend(self.received.try_iter());
-        self.seen.borrow().clone()
+        let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
+        let received = self.received.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.extend(received.try_iter());
+        seen.clone()
     }
 }
 

@@ -69,7 +69,7 @@ fn should_refuse_a_half_written_image_of_the_right_length() {
     let manifest = Signer::new().manifest(&image());
     let mut half = image();
     let middle = half.len() / 2;
-    half.get_mut(middle..).unwrap().fill(0);
+    half.iter_mut().skip(middle).for_each(|byte| *byte = 0);
     let source = dir.path().join("download");
     fs::write(&source, half).unwrap();
 

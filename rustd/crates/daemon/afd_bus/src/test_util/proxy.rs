@@ -85,7 +85,8 @@ async fn accept(
         }
         let relay = tokio::spawn(async move {
             if let Ok(mut server) = TcpStream::connect(("127.0.0.1", backend)).await {
-                let _ = tokio::io::copy_bidirectional(&mut client, &mut server).await;
+                // A relay ends when either side drops or the proxy is cut.
+                drop(tokio::io::copy_bidirectional(&mut client, &mut server).await);
             }
         });
         relays.lock().await.push(relay.abort_handle());

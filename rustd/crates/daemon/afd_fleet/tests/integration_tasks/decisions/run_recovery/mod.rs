@@ -128,6 +128,10 @@ async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_assigned_again() {
     .await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 pub(super) async fn reclaimed(
     case: &super::super::fixture::Case,
     acquired: afd_fleet::run::Acquired,

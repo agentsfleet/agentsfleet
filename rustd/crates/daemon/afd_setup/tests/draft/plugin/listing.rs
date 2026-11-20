@@ -17,6 +17,10 @@ const SQLX_STATEMENT: &str = "db.statement";
 
 /// One owned page at `limit` after `cursor`, with the statements that named a
 /// Plugin table while it was read.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn page(case: &Case, limit: u32, cursor: Option<String>) -> (Page<PluginCard>, usize) {
     let capture = Capture::install();
     let page = case
@@ -98,6 +102,10 @@ async fn test_plugin_list_single_statement() {
     case.base.cleanup().await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn assert_page_sizes(case: &Case) {
     for limit in PAGE_SIZES {
         let (first, statements) = page(case, limit, None).await;

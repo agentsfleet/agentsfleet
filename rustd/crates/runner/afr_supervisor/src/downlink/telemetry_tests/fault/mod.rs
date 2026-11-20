@@ -43,7 +43,7 @@ async fn stream_failures_and_recovery_emit_correlated_telemetry() -> Result<(), 
 async fn observed_recovery() -> Result<(), Failure> {
     let observer = Observer::start().await?;
     let mut daemon =
-        crate::test_util::NativeDaemon::serve_idle(crate::test_support::healthy(), |_| async {})
+        crate::test_util::NativeDaemon::serve_idle(crate::test_support::healthy(), async |_| {})
             .await?;
     let backend = daemon
         .url

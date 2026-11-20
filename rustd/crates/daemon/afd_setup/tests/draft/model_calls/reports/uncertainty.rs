@@ -69,11 +69,12 @@ async fn acknowledged_unknown(f: &Fixture, a: &Attempt, before: i64, request: &R
 }
 
 async fn settled_by_the_same_report(f: &Fixture, a: &Attempt, before: i64, request: &Report) {
-    let (first, racing) = tokio::join!(
+    let racing: [_; 2] = tokio::join!(
         f.drafts.report(&f.runner, &a.run, request.clone()),
         f.drafts.report(&f.runner, &a.run, request.clone())
-    );
-    for ack in [first, racing] {
+    )
+    .into();
+    for ack in racing {
         let ack = ack.expect("retained report settles late usage");
         assert!(ack.settled && ack.replayed);
         assert_eq!(ack.state, Outcome::Failed);

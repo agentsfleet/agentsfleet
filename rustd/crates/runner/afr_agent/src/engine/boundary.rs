@@ -122,7 +122,7 @@ pub trait RecoveryBoundarySink: Send + Sync + std::fmt::Debug {
 pub(crate) struct RecoveryWitness {
     run_id: String,
     turn_id: String,
-    fence: u64,
+    fencing_token: u64,
     generation: u64,
     digest: String,
     previous_id: Option<String>,
@@ -152,7 +152,7 @@ impl RecoverySnapshot {
         RecoveryWitness {
             run_id: self.run_id.clone(),
             turn_id: self.turn_id.clone(),
-            fence: self.fencing_token,
+            fencing_token: self.fencing_token,
             generation,
             digest,
             previous_id,
@@ -165,7 +165,7 @@ impl RecoveryReceipt {
     pub(crate) fn matches(&self, expected: &RecoveryWitness) -> bool {
         self.run_id == expected.run_id
             && self.turn_id == expected.turn_id
-            && self.fencing_token == expected.fence
+            && self.fencing_token == expected.fencing_token
             && self.checkpoint.generation() > expected.generation
             && af_core::id::Uuid7::parse(self.checkpoint.id()).is_ok()
             && expected.previous_id.as_deref() != Some(self.checkpoint.id())

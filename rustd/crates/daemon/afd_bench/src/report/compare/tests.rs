@@ -66,7 +66,7 @@ fn test_the_comparison_reports_a_delta_without_gating() {
         rendered.contains(RATE_PER_SECOND) && rendered.contains(P95_MS),
         "every shared measurement is compared, said:\n{rendered}"
     );
-    let _ = fs::remove_dir_all(&directory);
+    fs::remove_dir_all(&directory).expect("scratch is removable");
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn test_a_missing_baseline_reports_absence_rather_than_inventing_one() {
         rendered.contains(NO_BASELINE),
         "absence is its own outcome, said:\n{rendered}"
     );
-    let _ = fs::remove_dir_all(&directory);
+    fs::remove_dir_all(&directory).expect("scratch is removable");
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn test_an_unparseable_result_is_the_one_thing_the_comparison_refuses() {
         .expect_err("a file that is not a result cannot be compared");
 
     assert!(refused.to_string().contains("run.rig.json"));
-    let _ = fs::remove_dir_all(&directory);
+    fs::remove_dir_all(&directory).expect("scratch is removable");
 }
 
 #[test]

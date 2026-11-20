@@ -69,7 +69,7 @@ async fn a_tick_runs_passes_until_one_leaves_nothing_waiting() {
 /// tick.
 #[tokio::test]
 async fn a_tick_stops_at_the_drain_cap() {
-    let ran = drain(|| async { true }, &CancellationToken::new(), DRAIN_PASSES).await;
+    let ran = drain(async || true, &CancellationToken::new(), DRAIN_PASSES).await;
     assert_eq!(ran, DRAIN_PASSES);
 }
 

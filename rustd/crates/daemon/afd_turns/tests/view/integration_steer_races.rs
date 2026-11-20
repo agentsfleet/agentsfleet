@@ -56,7 +56,7 @@ async fn test_racing_drift_is_refused() {
     let steer = Steer::new(lane.admissions());
     for round in 0..RACE_ROUNDS {
         let operation = format!("{OPERATION}-drift-{round}");
-        let (first, second) = tokio::join!(
+        let outcomes: [_; 2] = tokio::join!(
             steer.append(
                 &lane.fleet,
                 &lane.workspace,
@@ -71,8 +71,8 @@ async fn test_racing_drift_is_refused() {
                 CHANGED_JSON,
                 Some(&operation)
             ),
-        );
-        let outcomes = [first, second];
+        )
+        .into();
         let admitted = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
         let refused = outcomes
             .iter()

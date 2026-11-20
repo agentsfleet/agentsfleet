@@ -29,7 +29,9 @@ fn malformed_census() -> String {
         .lines()
         .take_while(|line| line.starts_with('#') || line.starts_with("name\t"))
         .collect();
-    header.join("\n") + "\na.family\tcounter\n"
+    let mut census = header.join("\n");
+    census.push_str("\na.family\tcounter\n");
+    census
 }
 
 fn census_failure() -> Error {

@@ -50,7 +50,7 @@ impl Step {
     ///
     /// # Errors
     /// The model's stream failed.
-    pub async fn read<E, L: Listen + ?Sized>(
+    pub async fn read<E, L: Listen + Sync + ?Sized>(
         mut stream: BoxStream<'_, Result<Chunk, E>>,
         listener: &L,
     ) -> Result<Self, E> {

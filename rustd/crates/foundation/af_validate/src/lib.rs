@@ -7,7 +7,7 @@
 //!
 //! - [`rules`]: the `custom` rules garde lacks — [`finite`] (its float `range`
 //!   compares with `<` and `>`, so NaN passes), [`nul_free`], [`ascii_digits`]
-//!   and [`charset`].
+//!   [`charset`] and [`exactly`].
 //! - [`Limit`]: a `?limit` proved inside its route's [`Ceiling`], with the
 //!   ceiling passed as garde context, so ten routes stop parsing it ten ways.
 //! - [`Sentences`]: a route's table from the path a report names to the fixed
@@ -31,6 +31,6 @@ mod serialized;
 
 pub use self::checkpoint_links::checkpoint_links;
 pub use self::limit::{Ceiling, Limit, LimitBreak};
-pub use self::rules::{ascii_digits, charset, finite, not_relative, nul_free};
+pub use self::rules::{ascii_digits, charset, exactly, finite, not_relative, nul_free};
 pub use self::sentences::{PathTable, Sentences};
 pub use self::serialized::{serialized_len, serialized_within};

@@ -120,7 +120,7 @@ async fn should_refuse_oversized_and_non_progressing_source_pages() {
 #[tokio::test]
 async fn should_refuse_a_checkpoint_whose_covered_history_has_disappeared() {
     let checkpoint = task()
-        .finish_with(summary(), |_, _| async { Ok(()) })
+        .finish_with(summary(), async |_, _| Ok(()))
         .await
         .unwrap();
     let mut source = Source::new(0, 0);

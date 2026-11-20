@@ -42,7 +42,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
         &gateway.inner.dependencies.wake,
         &stop,
         gateway.inner.dependencies.recovery.assign_fallback,
-        || async { Ok(waiting_work(&gateway, &stop, &[]).await?.pending()) },
+        async || Ok(waiting_work(&gateway, &stop, &[]).await?.pending()),
     )
     .await;
     Ok(())

@@ -33,6 +33,10 @@ async fn checkpoint_real_sdk_verifies_create_only_ciphertext_and_restore_custody
     exercise(roundtrip).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn roundtrip(case: &Case) {
     let server = Server::start().await;
     let fixture = Decisions::create(case).await;
@@ -100,6 +104,10 @@ async fn allocate(
     (plan, objects.items.into_iter().next().expect("one object"))
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn upload(
     case: &Case,
     tasks: &Tasks,

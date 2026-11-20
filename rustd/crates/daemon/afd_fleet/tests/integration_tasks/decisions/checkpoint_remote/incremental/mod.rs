@@ -28,6 +28,10 @@ async fn new_incremental_objects_restore_and_collect_without_retiring_the_live_b
     exercise(roundtrip).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn roundtrip(case: &Case) {
     let server = Server::start().await;
     let fixture = Decisions::create(case).await;
@@ -141,6 +145,10 @@ fn object_input(
     }
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn verified(
     case: &Case,
     tasks: &Tasks,

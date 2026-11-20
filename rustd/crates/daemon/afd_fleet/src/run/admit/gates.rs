@@ -141,7 +141,7 @@ const EVENT_BUDGET_BREACH: &str = "run_budget_breach";
 ///
 /// A tenant with no wallet row is ADMITTED — see [`afd_billing::wallet`] for
 /// why an unprovisioned tenant is an operator gap rather than a refusal.
-pub(super) async fn balance<F: af_core::error_code::Coded>(
+pub(super) async fn balance<F: af_core::error_code::Coded + Sync>(
     estimate: core::result::Result<Estimate, &F>,
     biller: &dyn Biller,
     request: &Request<'_>,

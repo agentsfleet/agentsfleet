@@ -76,9 +76,7 @@ fn open(body: rig_http::BoxedStream, control: TurnControl) -> (StreamTurn, Arc<P
 
 fn channel() -> (mpsc::Sender<rig_http::Result<Bytes>>, rig_http::BoxedStream) {
     let (tx, rx) = mpsc::channel(8);
-    let body = stream::unfold(rx, |mut rx| async {
-        rx.recv().await.map(|item| (item, rx))
-    });
+    let body = stream::unfold(rx, async |mut rx| rx.recv().await.map(|item| (item, rx)));
     (tx, Box::pin(body))
 }
 

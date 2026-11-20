@@ -50,7 +50,7 @@ async fn a_landed_renewal_extends_from_when_it_was_sent() {
 #[tokio::test(start_paused = true)]
 async fn a_renewal_another_holder_refused_ends_at_once() {
     let started = tokio::time::Instant::now();
-    let lost = hold_claim(CLAIM_RENEW, || async { Ok(false) }).await;
+    let lost = hold_claim(CLAIM_RENEW, async || Ok(false)).await;
     assert_eq!(lost, "renew");
     assert_eq!(started.elapsed(), CLAIM_RENEW);
 }

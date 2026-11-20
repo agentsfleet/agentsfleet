@@ -46,7 +46,7 @@ impl Drop for Stopped {
     fn drop(&mut self) {
         if !self.up {
             // The test already failed; a restart error here adds nothing.
-            let _ = control(&format!("up -d --wait {VICTIM}"));
+            drop(control(&format!("up -d --wait {VICTIM}")));
         }
     }
 }

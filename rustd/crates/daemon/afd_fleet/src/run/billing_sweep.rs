@@ -55,7 +55,7 @@ pub const GRACE: Duration = Duration::from_secs(120);
 const BATCH_LIMIT: i64 = 500;
 
 /// What one expiry pass did.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ExpirySwept {
     /// Expired runs whose last slice this pass logged and settled.
     pub billed: u64,

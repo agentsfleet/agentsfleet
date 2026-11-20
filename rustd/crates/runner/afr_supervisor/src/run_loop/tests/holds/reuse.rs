@@ -55,7 +55,7 @@ impl Counted {
         }
     }
 
-    /// (prepared, frozen, thawed, destroyed)
+    /// The counts so far, as (prepared, frozen, thawed, destroyed).
     pub(super) fn read(&self) -> (usize, usize, usize, usize) {
         let load = |count: &AtomicUsize| count.load(Ordering::SeqCst);
         (

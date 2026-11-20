@@ -7,8 +7,6 @@
 //! follow the same constant. This snapshot is where such a move shows up, as a
 //! diff a reviewer reads.
 
-use std::fmt::Write as _;
-
 use af_wire::paths;
 
 /// Each template reads as the route a runner joins, one per line.
@@ -34,11 +32,9 @@ fn test_route_templates_compose_from_their_segments() {
     ];
     let rendered = routes
         .iter()
-        .fold(String::new(), |mut out, (name, template)| {
-            // Writing to a `String` cannot fail.
-            let _ = writeln!(out, "{name:<16} {template}");
-            out
-        });
+        .map(|(name, template)| format!("{name:<16} {template}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     insta::assert_snapshot!(rendered, @r"
     enrol            /v1/admin/runners
     self             /v1/runners/me
@@ -64,13 +60,9 @@ fn test_route_templates_compose_from_their_segments() {
 /// in place of its parameter.
 #[test]
 fn test_a_joined_run_route_matches_its_template() {
-    let run_id = "019a0000-0000-7000-8000-000000000001";
-    let joined = format!(
-        "{}/{run_id}/{}",
-        paths::RUNNER_RUNS,
-        paths::RUN_ITEMS_SUFFIX
-    );
-    assert_eq!(joined, paths::RUN_ITEMS.replace("{run_id}", run_id));
+    let run = "019a0000-0000-7000-8000-000000000001";
+    let joined = format!("{}/{run}/{}", paths::RUNNER_RUNS, paths::RUN_ITEMS_SUFFIX);
+    assert_eq!(joined, paths::RUN_ITEMS.replace("{run_id}", run));
 }
 
 /// The three fleet-to-fleet routes sit under one held run, so a runner
@@ -84,11 +76,9 @@ fn runner_routes_snapshot_lists_the_three_fleet_routes() {
     ];
     let rendered = routes
         .iter()
-        .fold(String::new(), |mut out, (name, template)| {
-            // Writing to a `String` cannot fail.
-            let _ = writeln!(out, "{name:<12} {template}");
-            out
-        });
+        .map(|(name, template)| format!("{name:<12} {template}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     insta::assert_snapshot!(rendered, @r"
     steers       /v1/runners/me/runs/{run_id}/steers
     fleets       /v1/runners/me/runs/{run_id}/fleets

@@ -55,7 +55,11 @@ pub(super) fn refusal(
     expected: &str,
 ) -> crate::Result<()> {
     assert_eq!(
-        native.published.lock().expect("publication requests").len(),
+        native
+            .published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
         0
     );
     assert_eq!(
@@ -65,7 +69,11 @@ pub(super) fn refusal(
             .effect_watermark,
         0
     );
-    let requests = native.goals.requests.lock().expect("goal requests");
+    let requests = native
+        .goals
+        .requests
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(requests.len(), 1);
     assert!(
         requests

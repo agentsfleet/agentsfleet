@@ -26,7 +26,7 @@ async fn contending_completion_retries_share_one_saved_acknowledgement_and_charg
     let active = AtomicUsize::new(0);
     let peak = AtomicUsize::new(0);
     let results = stream::iter(0..CALLERS)
-        .map(|_| async {
+        .map(async |_| {
             barrier.wait().await;
             let _slot = slots.acquire().await.expect("bounded native concurrency");
             let running = active.fetch_add(1, Ordering::SeqCst) + 1;

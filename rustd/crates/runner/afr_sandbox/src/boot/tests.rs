@@ -58,7 +58,10 @@ impl Backend for TestBackend {
     type Engine = TestEngine;
 
     fn validate(&self, _: &HostProbe) -> Result<()> {
-        self.events.lock().unwrap().push(VALIDATE);
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(VALIDATE);
         if self.refuse == Some(VALIDATE) {
             return Err(crate::error::refused("test requirement"));
         }
@@ -66,9 +69,12 @@ impl Backend for TestBackend {
     }
 
     fn start(self, paths: &HostPaths, _: &HostProbe) -> Result<Started<Self::Engine>> {
-        self.events.lock().unwrap().push(START);
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(START);
         assert_eq!(
-            fs::read_to_string(paths.cgroup_root.join(crate::SUBTREE_CONTROL)).unwrap(),
+            fs::read_to_string(paths.cgroup_root.join(crate::SUBTREE_CONTROL))?,
             "+cpu +io +memory +pids"
         );
         let resources = Box::new(TestResources(Recorder(Arc::clone(&self.events))));

@@ -68,9 +68,10 @@ async fn serve_once(status: u16, body: Vec<u8>) -> (String, tokio::task::JoinHan
             "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        let _ = socket.write_all(head.as_bytes()).await;
-        let _ = socket.write_all(&body).await;
-        let _ = socket.shutdown().await;
+        // The client may hang up first; its own assertions judge what it read.
+        drop(socket.write_all(head.as_bytes()).await);
+        drop(socket.write_all(&body).await);
+        drop(socket.shutdown().await);
         String::from_utf8_lossy(&request).into_owned()
     });
 

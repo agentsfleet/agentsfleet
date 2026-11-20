@@ -54,6 +54,10 @@ fn tls_refusal() -> lettre::transport::smtp::Error {
 
 /// Runs `send` under a capture, checks its outcome, and returns every record
 /// it raised once none of them names the invitee or quotes the email.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn captured(
     send: impl Future<Output = InviteEmailOutcome>,
     expected: InviteEmailOutcome,

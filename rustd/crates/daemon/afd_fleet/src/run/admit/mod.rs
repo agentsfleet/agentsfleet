@@ -215,7 +215,10 @@ pub async fn money_gates(
 ///
 /// # Errors
 /// As [`money_gates`].
-pub async fn money_gates_with<E: af_core::error_code::Coded, F: af_core::error_code::Coded>(
+pub async fn money_gates_with<
+    E: af_core::error_code::Coded + Sync,
+    F: af_core::error_code::Coded + Sync,
+>(
     biller: &dyn Biller,
     payer: Payer,
     request: Request<'_>,

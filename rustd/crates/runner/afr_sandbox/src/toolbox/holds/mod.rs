@@ -232,7 +232,7 @@ impl<M: Mounter> Toolboxes<M> {
             // A name that is not UTF-8 is no image's.
             if let Some(image) = name.to_str()
                 && super::is_image_name(image)
-                && entry.file_type()?.is_file()
+                && !entry.file_type()?.is_dir()
                 && !kept.iter().any(|keep| keep == image)
             {
                 fs::remove_file(entry.path())?;

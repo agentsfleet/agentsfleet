@@ -258,7 +258,11 @@ async fn checkpoint_reply(
     )
 }
 
-async fn answer(api: &dyn RunnerApi, verb: Verb, request: &impl Serialize) -> Result<Value> {
+async fn answer(
+    api: &dyn RunnerApi,
+    verb: Verb,
+    request: &(impl Serialize + Sync),
+) -> Result<Value> {
     let body = Some(bytes::Bytes::from(
         serde_json::to_vec(request).map_err(error::encode)?,
     ));

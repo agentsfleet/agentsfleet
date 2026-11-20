@@ -210,8 +210,8 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
         .unwrap()
         .objects
         .get(&upload.objects.first().unwrap().object_id)
-        .unwrap()
-        .clone();
+        .cloned()
+        .unwrap();
     assert_eq!(
         *object.get("transfer").unwrap(),
         serde_json::Value::Null,
@@ -220,12 +220,7 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
     assert_eq!(phases(requests).last().map(String::as_str), Some("saved"));
 }
 
-fn history_reply(
-    call: &Call,
-    archive: &mut Archive,
-    fault: &str,
-    object_id: &str,
-) -> Option<Answer> {
+fn history_reply(call: &Call, archive: &Archive, fault: &str, object_id: &str) -> Option<Answer> {
     if call.verb != Verb::TaskCheckpointAuthorizations {
         return None;
     }

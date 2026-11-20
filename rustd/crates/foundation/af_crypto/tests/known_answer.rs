@@ -112,19 +112,19 @@ fn test_aes_gcm_known_answer_vectors() {
         let envelope = sealer.seal(&kek, &aad, &plaintext).unwrap();
 
         assert_eq!(
-            hex(envelope.payload_ciphertext()),
+            hex::encode(envelope.payload_ciphertext()),
             vector.ciphertext_hex.replace(char::is_whitespace, ""),
             "{}: ciphertext diverges from the published vector",
             vector.name
         );
         assert_eq!(
-            hex(envelope.payload_tag()),
+            hex::encode(envelope.payload_tag()),
             vector.tag_hex,
             "{}: tag diverges from the published vector",
             vector.name
         );
         assert_eq!(
-            hex(envelope.payload_nonce()),
+            hex::encode(envelope.payload_nonce()),
             vector.nonce_hex,
             "{}: the pinned nonce did not reach the payload layer",
             vector.name
@@ -150,12 +150,4 @@ fn unhex(hex: &str) -> Vec<u8> {
                 .expect("vector hex must be hexadecimal")
         })
         .collect()
-}
-
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    bytes.iter().fold(String::new(), |mut out, byte| {
-        let _ = write!(out, "{byte:02x}");
-        out
-    })
 }

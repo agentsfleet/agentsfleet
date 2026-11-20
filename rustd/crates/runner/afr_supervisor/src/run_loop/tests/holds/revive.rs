@@ -67,6 +67,10 @@ async fn test_an_executor_failing_after_thaw_falls_back_fresh() {
 /// thaws as `freezer` says: the hold is released as `thaw_failed`, the log
 /// names the failure's code once and a reason carrying `cause`, and the run
 /// runs fresh to `processed`. Answers what the engine counted.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn gives_up_the_thawed_hold(freezer: Freezer, cause: &str) -> (usize, usize, usize, usize) {
     let capture = Capture::install();
     let engine = FakeEngine {
@@ -197,12 +201,16 @@ async fn test_a_reused_sandbox_is_marked_on_the_run_span_and_logged() {
 /// Refuses every renewal of the fleet's next run, and of no other.
 fn next_run_cut(call: &Call) -> Option<Answer> {
     (call.verb == Verb::Renew
-        && serde_json::from_slice::<serde_json::Value>(call.body.as_ref().unwrap())
-            .unwrap()
+        && renewal(call)
             .get("run_id")
             .and_then(serde_json::Value::as_str)
             == Some(NEXT_RUN_ID))
     .then(|| Answer::Fail(crate::error::refused(Verb::Renew, 409, None)))
+}
+
+/// The body a renewal sent, which every renewal carries.
+fn renewal(call: &Call) -> serde_json::Value {
+    serde_json::from_slice(call.body.as_ref().unwrap()).unwrap()
 }
 
 /// Holds up every run's memory a while, and refuses the renewals of the

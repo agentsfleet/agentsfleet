@@ -46,7 +46,7 @@ pub struct Window {
 }
 
 /// Reads part of a file.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileRead;
 
 impl Handler for FileRead {

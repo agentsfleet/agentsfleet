@@ -213,7 +213,7 @@ async fn a_draining_listener_finishes_once_each_carrier_client_closes() -> Resul
         let _abort_on_exit = abort.clone().drop_guard();
         let serving = tokio::spawn(listener.serve(
             |_connection| {
-                tower::service_fn(|request: Request<Incoming>| async move {
+                tower::service_fn(async |request: Request<Incoming>| {
                     Ok::<_, Infallible>(Response::new(Outgoing::new(request.into_body())))
                 })
             },

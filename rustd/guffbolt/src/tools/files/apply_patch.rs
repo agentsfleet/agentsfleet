@@ -144,7 +144,7 @@ impl Planned<'_> {
 }
 
 /// Applies a patch.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ApplyPatch;
 
 impl Handler for ApplyPatch {

@@ -81,7 +81,7 @@ async fn test_a_refused_run_closes_the_run_on_the_tail() {
         "the native heartbeat carries its assignment"
     );
     // No work may be assigned before the durable money-gate refusal is visible.
-    let refused = wait_without_assignment(&scene, || async {
+    let refused = wait_without_assignment(&scene, async || {
         event_column(&scene, &scene.turn_id, "status")
             .await
             .as_deref()

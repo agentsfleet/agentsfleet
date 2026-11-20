@@ -91,7 +91,8 @@ impl Open {
     pub(super) async fn finish(self) {
         drop(self.response);
         self.server.abort();
-        let _ = self.server.await;
+        // An aborted task answers `Cancelled`; the await only waits it out.
+        drop(self.server.await);
         self.fixture.cleanup().await;
     }
 }

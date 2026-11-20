@@ -39,9 +39,9 @@ pub(crate) async fn orphan(held: &Held) {
         .execute(&mut *connection)
         .await
         .expect("the run ends unreported");
-    for (table, key) in [("billing.usage_lines", "work_id"), ("thread.runs", "id")] {
+    for (aged, column) in [("billing.usage_lines", "work_id"), ("thread.runs", "id")] {
         sqlx::query(sqlx::AssertSqlSafe(
-            AGED.replace("{table}", table).replace("{key}", key),
+            AGED.replace("{table}", aged).replace("{key}", column),
         ))
         .bind(&held.run_key)
         .bind(GRACE.saturating_mul(2))

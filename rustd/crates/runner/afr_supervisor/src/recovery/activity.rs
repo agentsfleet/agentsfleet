@@ -26,7 +26,7 @@ pub(super) async fn emit(
             model: None,
             completed: progress.map_or(0, |progress| progress.completed),
             total: progress.and_then(|progress| progress.total),
-            bytes: progress.map(|progress| progress.bytes.clone()),
+            bytes: progress.map(|progress| progress.bytes),
             sequence: None,
         })],
     };

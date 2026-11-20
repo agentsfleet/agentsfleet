@@ -72,7 +72,11 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
             return Some((Ok(event), watch));
         }
         let pending = receive(&mut watch).await;
-        match observe(&mut watch).await {
+        let access = Access {
+            workspace: &watch.workspace,
+            subject: &watch.subject,
+        };
+        match observe(&watch.drafts, access, &watch.draft, watch.generation).await {
             Ok(Ok(Observation::Deleted)) => {
                 watch.done = true;
                 return Some((Ok(deleted(&watch.draft)?), watch));
@@ -107,20 +111,15 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
     None
 }
 
-/// The fresh membership and generation read every frame waits on. Takes the
-/// watch mutably because a shared borrow of its link is not `Send`.
+/// The fresh membership and generation read every frame waits on. Borrows
+/// only the fields it reads: a shared borrow of the watch's link is not `Send`.
 async fn observe(
-    watch: &mut Watch,
+    drafts: &Drafts,
+    access: Access<'_>,
+    draft: &Uuid7,
+    generation: i64,
 ) -> Result<afd_setup::Result<Observation>, tokio::time::error::Elapsed> {
-    let access = Access {
-        workspace: &watch.workspace,
-        subject: &watch.subject,
-    };
-    tokio::time::timeout(
-        CHECK_DEADLINE,
-        watch.drafts.observe(access, &watch.draft, watch.generation),
-    )
-    .await
+    tokio::time::timeout(CHECK_DEADLINE, drafts.observe(access, draft, generation)).await
 }
 
 fn heartbeat() -> Event {

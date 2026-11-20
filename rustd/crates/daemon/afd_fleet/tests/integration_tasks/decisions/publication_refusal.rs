@@ -111,7 +111,7 @@ pub(super) async fn prepared(case: &Case, task: DecisionTaskVersion) -> TaskEffe
     let task_id = id(&task.task_id);
     // Represents a preexisting accepted target with reviewed workflow under this revision.
     // The tested behavior is publication; this fixture does not claim target preflight ran.
-    sqlx::query("UPDATE fleet.tasks t SET accepted_revision_id=f.head_revision_id,target=jsonb_set(t.target,'{workflows}',$2) FROM fleet.fleets f WHERE t.id=$1 AND f.id=t.fleet_id")
+    sqlx::query("UPDATE fleet.tasks t SET accepted_revision_id=f.head_revision_id,target=jsonb_set(t.target,ARRAY['workflows'],$2) FROM fleet.fleets f WHERE t.id=$1 AND f.id=t.fleet_id")
         .bind(&task_id).bind(Json(workflows)).execute(&mut *connection).await.expect("preexisting accepted binding");
     let (source, sequence): (Uuid7, i64) = sqlx::query_as(
         "SELECT originating_task_item_id,input_sequence FROM fleet.tasks WHERE id=$1",

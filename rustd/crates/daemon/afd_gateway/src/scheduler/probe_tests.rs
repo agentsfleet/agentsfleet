@@ -61,7 +61,7 @@ async fn a_failed_probe_still_runs_the_pass() -> TestResult {
         let wake = wake.clone();
         let stop = stop.clone();
         async move {
-            notifications(&registry, &wake, 8, stop, |_| async {
+            notifications(&registry, &wake, 8, stop, async |_| {
                 Err(crate::Error::from(sqlx::Error::RowNotFound))
             })
             .await
@@ -255,7 +255,7 @@ async fn recovery_asks_every_connection(
     wake.recheck();
     let answered = tokio::time::timeout(
         Duration::from_secs(5),
-        futures_util::future::try_join_all(connections.iter_mut().map(|connection| async move {
+        futures_util::future::try_join_all(connections.iter_mut().map(async |connection| {
             let answer = connection.request().await?;
             assert_eq!(answer.mode, crate::connection::AssignMode::Recovery);
             answer

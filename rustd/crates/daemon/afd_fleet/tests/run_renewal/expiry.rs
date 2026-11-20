@@ -43,7 +43,7 @@ async fn expire(running: &Running, half: Half) {
 /// The run's deadline, the run's meter stamp and the slot's deadline.
 pub(super) async fn snapshot(running: &Running) -> (Timestamp, Timestamp, Timestamp) {
     let fixtures = &running.fixtures;
-    let stamp = |row, column| async move {
+    let stamp = async |row, column| {
         fixtures
             .instant(row, column)
             .await

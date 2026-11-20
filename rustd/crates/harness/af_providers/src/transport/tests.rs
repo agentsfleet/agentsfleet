@@ -61,7 +61,7 @@ const SERVED_CHUNK: usize = 64 * 1024;
 /// A server on a loopback port answering every request with `chunks` body
 /// chunks of [`SERVED_CHUNK`] bytes each; where a turn posts to it.
 async fn serve_chunks(chunks: usize) -> String {
-    let app = axum::Router::new().fallback(move || async move {
+    let app = axum::Router::new().fallback(async move || {
         let chunk = Bytes::from(vec![b'x'; SERVED_CHUNK]);
         let body = std::iter::repeat_n(chunk, chunks).map(Ok::<_, Infallible>);
         axum::body::Body::from_stream(stream::iter(body))

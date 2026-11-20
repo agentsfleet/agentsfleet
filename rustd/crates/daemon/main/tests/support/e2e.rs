@@ -226,7 +226,7 @@ impl Scenario {
     /// Connects once through the production native downlink.
     pub(crate) async fn native_session(&self) -> &afr_supervisor::test_util::Session {
         self.native
-            .get_or_init(|| async {
+            .get_or_init(async || {
                 let origin = format!(
                     "https://localhost:{}",
                     self.booted.runner_stream_address.port()
