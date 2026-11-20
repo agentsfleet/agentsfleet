@@ -242,7 +242,7 @@ M244 measured tail p99 and the broker-kill drill on both buses, against the same
 
 Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`: three interleaved pairs, one run on each bus, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`.
 
-Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, was committed as `tail.rig.json`; the wake ladder's runs below replaced it.
+Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, was committed as `tail.rig.json` (now `items.rig.json`); the wake ladder's runs below replaced it.
 
 The viewer ladder keeps one frame in flight, so a frame's time is one trip through the bus and the fan-out. The stream ladder publishes to every stream at once and times each stream from the burst's start.
 
@@ -291,7 +291,7 @@ Each hub is a replica with its own NATS connection, listening on all 16 wake sha
 | 2 | 0.331 / 0.281 / 0.332 | 0.517 / 0.445 / 0.511 | 0 |
 | 4 | 0.461 / 0.378 / 0.424 | 1.303 / 0.606 / 0.983 | 0 |
 
-The median run by its 4,096-stream p99 (13.27, 12.62 and 11.90 ms) is run 2, committed as `tail.rig.json`.
+The median run by its 4,096-stream p99 (13.27, 12.62 and 11.90 ms) is run 2, committed as `tail.rig.json` (now `items.rig.json`).
 
 #### Kill drills
 

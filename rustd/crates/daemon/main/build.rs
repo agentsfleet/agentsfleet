@@ -3,7 +3,7 @@
 //!
 //! `SSE_MAX_STREAMS_DEFAULT` claims a rung `make bench-items PROFILE=rig`
 //! measured inside its bounds. The claim and the measurement live in two files,
-//! so this script reads `bench/baselines/tail.rig.json` and writes the series
+//! so this script reads `bench/baselines/items.rig.json` and writes the series
 //! the claim rests on into `$OUT_DIR/tail_baseline.rs`, which
 //! `src/preflight/stream_ceiling_tests.rs` includes and grades.
 //!
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 /// The committed baseline, from this crate's manifest.
-const BASELINE: &str = "../../../../bench/baselines/tail.rig.json";
+const BASELINE: &str = "../../../../bench/baselines/items.rig.json";
 
 /// The file the test includes.
 const LISTING: &str = "tail_baseline.rs";

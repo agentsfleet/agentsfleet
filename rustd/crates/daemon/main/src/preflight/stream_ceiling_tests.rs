@@ -12,7 +12,7 @@
 
 use super::knobs::SSE_MAX_STREAMS_DEFAULT;
 
-/// The series and counts `build.rs` read out of `bench/baselines/tail.rig.json`.
+/// The series and counts `build.rs` read out of `bench/baselines/items.rig.json`.
 mod baseline {
     include!(concat!(env!("OUT_DIR"), "/tail_baseline.rs"));
 }
@@ -32,7 +32,7 @@ const HEAP_BOUND_BYTES: f64 = 256.0 * 1024.0 * 1024.0;
 fn the_default_stream_ceiling_is_a_measured_rung_inside_its_bounds() {
     assert!(
         !LADDER_STREAMS.is_empty(),
-        "build.rs read no stream ladder from bench/baselines/tail.rig.json; the read is broken, not the baseline"
+        "build.rs read no stream ladder from bench/baselines/items.rig.json; the read is broken, not the baseline"
     );
     let default = f64::from(
         u32::try_from(SSE_MAX_STREAMS_DEFAULT).expect("the default stream ceiling fits a u32"),
