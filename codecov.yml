@@ -63,7 +63,7 @@ comment:
   require_changes: false
 
 ignore:
-  - "schema/**"
+  - "rustd/crates/daemon/afd_db/schema/**"
   - "tests/**"
   - "rustd/target/**"
   # The bench crate is a measuring instrument, not shipped code, and leaves

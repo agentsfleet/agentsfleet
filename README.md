@@ -60,7 +60,7 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 | `ui/packages/design-system/` | Shared UI components |
 | `cli/` | Command-line interface (CLI) — install, manage agents, tail runs |
 | `public/openapi.json` | OpenAPI reference generated from the daemon's route and schema definitions |
-| `schema/` | Postgres migrations |
+| `rustd/crates/daemon/afd_db/schema/` | Postgres migrations |
 | `playbooks/` | First setup, deployment, verification, and operations |
 
 ---

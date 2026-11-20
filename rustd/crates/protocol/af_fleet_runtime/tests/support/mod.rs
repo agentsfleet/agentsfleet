@@ -14,10 +14,7 @@ use std::path::PathBuf;
 use af_fleet_runtime::Definition;
 
 /// The corpus root, relative to this crate.
-///
-/// The fixtures live at the repository root and cargo runs a test from the
-/// package directory, so the walk up is spelled out rather than assumed.
-const CORPUS: &str = "../../../../tests/fixtures/fleets";
+const CORPUS: &str = "tests/fixtures/fleets";
 
 /// The file each first-party fleet directory holds its native setup in.
 const DEFINITION_FILE: &str = "definition.json";

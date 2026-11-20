@@ -6,7 +6,7 @@ import { renderFleet, renderReview } from "../../src/commands/chat/render.ts";
 import { makeStdioOutput, OUTPUT_FORMAT } from "../../src/services/output.ts";
 import { FLEET, REVIEW } from "./fixture.ts";
 
-const POLICY: unknown = JSON.parse(readFileSync(new URL("../../../tests/fixtures/fleets/goal-repair/decision-policy.json", import.meta.url), "utf8"));
+const POLICY: unknown = JSON.parse(readFileSync(new URL("../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/goal-repair/decision-policy.json", import.meta.url), "utf8"));
 const QUESTION = "Does the patch fix the task's accepted Linkwarden defect?";
 const YES = "Current code and regression evidence demonstrate the accepted behavior.";
 const NO = "The defect remains, scope changed, or evidence is missing or contradictory.";

@@ -239,42 +239,100 @@ bucket = "fixture-checkpoints"
 credential_name = "checkpoint-fixture"
 "#;
 
+/// The runner-plane settings the Fly files carry, written out here so the
+/// test owns its input.
+const RUNNER_PLANE: &str = r#"
+[runner.listener]
+max_udp_payload_bytes = 1232
+[runner.stream.control]
+max_buffered_bytes = 16_777_216
+[runner.stream.data]
+max_buffered_bytes = 50_331_648
+[nats]
+wake_queue_capacity_fleets = 64
+[telemetry]
+log_level = "info"
+"#;
+
+/// `text` written to a file a test reads as its config.
+fn plane_file(text: &str) -> Result<tempfile::NamedTempFile, std::io::Error> {
+    let mut file = tempfile::NamedTempFile::new()?;
+    write!(file, "{text}")?;
+    Ok(file)
+}
+
 #[test]
-fn fly_files_keep_the_exact_message_buffer_bytes() -> TestResult {
-    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../deploy/fly");
-    for deployment in ["agentsfleetd-dev", "agentsfleetd-prod"] {
-        let path = base.join(deployment).join("agentsfleetd.toml");
-        let environment = MapEnv::from_pairs([]);
-        let source = ConfigBuilder::new(&environment).file(Some(&path)).build()?;
-        let limits = af_stream::MemoryLimits::from_env(source.environment())?;
-        let (incoming, outgoing) = af_stream::Budget::duplex(limits);
-        assert_eq!(
-            incoming.available(af_wire::protocol::StreamKind::Control),
-            8_388_608
-        );
-        assert_eq!(
-            outgoing.available(af_wire::protocol::StreamKind::Work),
-            25_165_824
-        );
-        assert_eq!(
-            source
-                .environment()
-                .get("AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY")
-                .as_deref(),
-            Some("64")
-        );
-        assert_eq!(
-            source.environment().get("AGENTSFLEET_LOG_LEVEL").as_deref(),
-            Some("info")
-        );
-        assert_eq!(
-            source
-                .environment()
-                .get(super::super::preflight::runner_listener::MAX_UDP_PAYLOAD_BYTES)
-                .as_deref(),
-            Some("1232")
-        );
-    }
+fn a_runner_plane_file_sets_the_exact_buffer_and_wake_values() -> TestResult {
+    let environment = MapEnv::default();
+    let file = plane_file(RUNNER_PLANE)?;
+    let source = ConfigBuilder::new(&environment)
+        .file(Some(file.path()))
+        .build()?;
+    let limits = af_stream::MemoryLimits::from_env(source.environment())?;
+    let (incoming, outgoing) = af_stream::Budget::duplex(limits);
+    assert_eq!(
+        incoming.available(af_wire::protocol::StreamKind::Control),
+        8_388_608
+    );
+    assert_eq!(
+        outgoing.available(af_wire::protocol::StreamKind::Work),
+        25_165_824
+    );
+    let environment = source.environment();
+    assert_eq!(
+        environment
+            .get("AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY")
+            .as_deref(),
+        Some("64")
+    );
+    assert_eq!(
+        environment.get("AGENTSFLEET_LOG_LEVEL").as_deref(),
+        Some("info")
+    );
+    assert_eq!(
+        environment
+            .get(super::super::preflight::runner_listener::MAX_UDP_PAYLOAD_BYTES)
+            .as_deref(),
+        Some("1232")
+    );
+    Ok(())
+}
+
+#[test]
+fn a_runner_plane_file_naming_an_unknown_key_is_refused() -> TestResult {
+    let environment = MapEnv::default();
+    let file = plane_file("[runner.stream.control]\nmax_buffered_byte = 1\n")?;
+    let refused = ConfigBuilder::new(&environment)
+        .file(Some(file.path()))
+        .build()
+        .err()
+        .ok_or("a misspelled key must refuse before startup")?;
+    assert!(
+        refused.to_string().contains("max_buffered_byte"),
+        "{refused}"
+    );
+    Ok(())
+}
+
+#[test]
+fn a_buffer_budget_past_the_ceiling_is_refused() -> TestResult {
+    let ceiling = af_stream::MemoryLimits::MAX_BUFFER_BYTES;
+    let environment = MapEnv::default();
+    let file = plane_file(&format!(
+        "[runner.stream.data]\nmax_buffered_bytes = {}\n",
+        ceiling + 1
+    ))?;
+    let refused = ConfigBuilder::new(&environment)
+        .file(Some(file.path()))
+        .build()
+        .err()
+        .ok_or("a budget above the ceiling must refuse before startup")?;
+    assert!(
+        refused
+            .to_string()
+            .contains("runner.stream.data.max_buffered_bytes"),
+        "{refused}"
+    );
     Ok(())
 }
 

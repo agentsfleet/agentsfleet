@@ -91,7 +91,7 @@ That observation is not a standing grant.
    for pair in "ci-responder:$responder_json" "ci-repairer:$repairer_json"; do
      jq --arg channel '<CHANNEL_ID>' \
        '.config["x-agentsfleet"].triggers += [{type: "mention", source: "slack", channels: [$channel]}]' \
-       "tests/fixtures/fleets/${pair%%:*}/definition.json" > "${pair#*:}"
+       "rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/${pair%%:*}/definition.json" > "${pair#*:}"
    done
    ```
 

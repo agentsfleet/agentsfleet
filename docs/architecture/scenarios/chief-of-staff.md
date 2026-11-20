@@ -8,7 +8,7 @@
 
 ## The cast
 
-Two fleets, both saved from fixtures under `tests/fixtures/fleets/`.
+Two fleets, both saved from fixtures under `rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/`.
 
 | Fleet | What it does | Tools |
 |---|---|---|

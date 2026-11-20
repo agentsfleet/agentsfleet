@@ -7,7 +7,7 @@
 //! # What is here, and what deliberately is not
 //!
 //! Keys and the closed values a key is spelled WITH. Not family names — those
-//! live in `docs/metrics.census.tsv`, which is the single source of truth for
+//! live in `metrics/census.tsv`, which is the single source of truth for
 //! the export, and a second copy here would be a second thing to drift.
 //!
 //! Codes and attributes are still added as the milestone that emits them

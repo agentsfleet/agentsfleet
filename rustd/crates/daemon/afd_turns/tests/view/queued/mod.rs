@@ -41,7 +41,7 @@ const MARK_DELIVERED: &str = "UPDATE thread.turns SET run_fence = 1 \
      WHERE thread_id = $1 AND run_fence IS NULL";
 
 /// The index the thread read walks, waiting turns and opened ones alike: the
-/// thread's turns newest first (`schema/20261108125100_thread_turns.sql`).
+/// thread's turns newest first (`afd_db/schema/20261108125100_thread_turns.sql`).
 const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_turns_thread_id_created_at_id"];
 
 /// Ledger history, most of it delivered and settled, across many fleets of one workspace:

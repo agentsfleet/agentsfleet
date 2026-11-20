@@ -7,7 +7,6 @@
 
 mod admission;
 mod rejections;
-#[path = "../../../../tests/provider_wire.rs"]
 mod wire;
 
 use super::*;

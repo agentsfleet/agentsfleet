@@ -17,7 +17,7 @@ it("refreshes both saved task details and the parent after confirmed control and
   vi.mocked(readTasks).mockImplementation(async () => ({kind: "ready", value: {items: [{...task}], next_cursor: null}}));
   vi.mocked(controlTask).mockResolvedValue({kind: "confirmed", value});
   vi.mocked(adoptTaskGoal).mockResolvedValue({kind: "confirmed", value});
-  const policy: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
+  const policy: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
   vi.mocked(setupRequest).mockResolvedValue({setup_revision_id: TASK_IDS[1], setup_revision: "3", definition: {config: {"x-agentsfleet": {decision_policy: policy}}}});
   render(<TaskPanel workspaceId="w" fleetId="f" subject="person" revision={1} />);
   fireEvent.click(await screen.findByRole("button", {name: /^Tasks/}));

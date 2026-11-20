@@ -10,7 +10,7 @@ executable: false
 
 ## What this does
 
-Applies the curated catalogue in `scripts/model-library-allowlist.json` to one environment.
+Applies the curated catalogue in `rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json` to one environment.
 The seeder writes identities and inference connections to `model.platform_models` and dated prices to `model.platform_model_prices`.
 It uses Bun's native Postgres client.
 
@@ -124,7 +124,7 @@ Sync the `typesafe` bag first, and skip this section when `models list` already 
 
 ## Change connection settings or prices
 
-Change the snapshot in `scripts/model-library-allowlist.json` and rerun the diff and apply above.
+Change the snapshot in `rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json` and rerun the diff and apply above.
 For a one-off administrator override, read the row, edit the JSON and write it back:
 
 ```bash

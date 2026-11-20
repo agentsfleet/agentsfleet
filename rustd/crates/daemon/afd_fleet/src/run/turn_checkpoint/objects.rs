@@ -17,7 +17,7 @@ use crate::{
     error::query,
     run::Runs,
     task::{
-        checkpoint::{StoredObject, content_identity, lock_quota},
+        checkpoint::{self, StoredObject, content_identity, lock_quota},
         storage::registration::{self, NewObject, Registration},
     },
 };
@@ -182,7 +182,7 @@ async fn reserve(custody: &mut FileOwner<'_>, new: &[NewObject], bucket: &str) -
     {
         return Err(TurnCheckpointRefusal::Limit.into());
     }
-    let reserved = sqlx::query(include_str!("../../task/checkpoint/sql/quota_reserve.sql"))
+    let reserved = sqlx::query(checkpoint::QUOTA_RESERVE)
         .bind(&custody.owner.current.workspace_id)
         .bind(bytes)
         .bind(WORKSPACE_BYTES)
@@ -193,7 +193,7 @@ async fn reserve(custody: &mut FileOwner<'_>, new: &[NewObject], bucket: &str) -
         return Err(TurnCheckpointRefusal::Limit.into());
     }
     if !new.is_empty() {
-        sqlx::query(include_str!("../../task/checkpoint/sql/objects_insert.sql"))
+        sqlx::query(checkpoint::OBJECTS_INSERT)
             .bind(Json(new))
             .bind(&custody.owner.current.workspace_id)
             .bind(&custody.plan.id)

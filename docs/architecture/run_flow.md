@@ -91,7 +91,7 @@ The fleet slug `agent-bob-01` receives the request through linkwarden's installa
 Each active fleet there with an approved `github` grant receives one turn when its reviewed setup includes the following webhook trigger.
 
 The trigger uses `source: github`, `events: [pull_request]`, and `repositories: [agentsfleet/linkwarden]`.
-The test fixture's native setup says exactly that (`tests/fixtures/fleets/github-pr-reviewer/definition.json`).
+The test fixture's native setup says exactly that (`rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/github-pr-reviewer/definition.json`).
 Two fleets so configured both run (`docs/architecture/connectors.md`).
 
 The digest the fleet reasons over is twelve fields (`afd_api_wire`'s `PullRequestDigest`). The fields are action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha, received_at.
@@ -212,7 +212,7 @@ Process loss can discard results or usage the daemon has not accepted.
 
 **What the run carries for this fleet.** The setup's configuration names three tools, one credential and one network host.
 
-The fleet's write binding is on `agentsfleet/linkwarden` with base `main`. Its daily budget is `2000000000` nanos, two dollars (`tests/fixtures/fleets/github-pr-reviewer/definition.json`).
+The fleet's write binding is on `agentsfleet/linkwarden` with base `main`. Its daily budget is `2000000000` nanos, two dollars (`rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/github-pr-reviewer/definition.json`).
 
 All three tools are `Runtime::Supervisor` (`afr_tools`' catalog), so `needs_sandbox` is false. The run therefore starts no sandbox at all ([`runner_execution.md`](./runner_execution.md) §"A run's sandbox today"). No repository is cloned either: only a run offered a sandbox tool gets its bound repositories checked out (`afr_supervisor`'s checkout).
 
@@ -305,7 +305,7 @@ The write rules admit a fix on the repair branch and one draft PR, and no commen
 **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
 ```
 
-**The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the turn recorded a reply destination. That is `afd_fleet`'s run commit and `schema/20261108125100_thread_turns.sql`.
+**The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the turn recorded a reply destination. That is `afd_fleet`'s run commit and `rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`.
 
 A failed run that wrote no answer owes that destination one fixed notice. So does a turn refused at a gate, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
 

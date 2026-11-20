@@ -270,10 +270,8 @@ pub(super) async fn lock_thread(connection: &mut sqlx::PgConnection, case: &Case
 }
 
 pub(super) fn policy() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../../../../../tests/fixtures/fleets/goal-repair/decision-policy.json"
-    ))
-    .expect("reviewed owner criteria fixture")
+    serde_json::from_str(af_fleet_runtime::test_util::DECISION_POLICY)
+        .expect("reviewed owner criteria fixture")
 }
 
 async fn assignment(case: &Case, model: &DecisionModelFixture) -> DecisionAssignment {

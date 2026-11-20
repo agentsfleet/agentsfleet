@@ -359,7 +359,7 @@ handler reads before it writes and reports the replay.
 
 That pre-read is an optimisation, not the arbiter, because two concurrent
 deliveries can both pass it. The second trips `uq_users_oidc_subject`
-(`schema/20261108120400_identity_users.sql`), re-reads what the winner committed,
+(`rustd/crates/daemon/afd_db/schema/20261108120400_identity_users.sql`), re-reads what the winner committed,
 and answers as a replay. An index holds under concurrency and a read never can.
 
 **A provider that could not be reached fails the delivery, and the redelivery repairs it.**
@@ -936,7 +936,7 @@ A per-process memo used to front this read, with entries living at most `HEARTBE
 
 What that costs: one indexed single-row read per runner request. The run verb is not a blocking long poll. It returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER` = 1 s), so an idle runner authenticates about once a second per worker.
 
-The sizing assumes ~100 runners (`runner.runners`, `schema/20261108123100_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the run gate never re-reads the row it just authenticated against.
+The sizing assumes ~100 runners (`runner.runners`, `rustd/crates/daemon/afd_db/schema/20261108123100_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the run gate never re-reads the row it just authenticated against.
 
 It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner treats as retryable (`Error::is_retryable`, `rustd/crates/runner/afr_supervisor/src/error/mod.rs`), **not** as a token refusal. Only a refused token stops the runner (`rustd/crates/runner/afr_supervisor/src/halt/mod.rs`), so an outage cannot shut a healthy fleet down.
 

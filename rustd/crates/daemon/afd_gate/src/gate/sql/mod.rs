@@ -4,7 +4,7 @@
 //! The row is written by the park, and the resolve is the tenant plane's.
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
-//! (`schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
+//! (`afd_db/schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
 //! database's: the row is stamped `now()`, its deadline is `now()` plus the
 //! rule's timeout, and whether that deadline has passed is read against
 //! `statement_timestamp()`.

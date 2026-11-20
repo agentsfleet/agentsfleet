@@ -325,7 +325,7 @@ One row in `identity.device_sessions`, with one deadline.
 
 | Fact | Value | Source |
 |---|---|---|
-| Table | `identity.device_sessions`, keyed by the session's UUIDv7 | `schema/20261108193100_identity_device_sessions.sql` |
+| Table | `identity.device_sessions`, keyed by the session's UUIDv7 | `rustd/crates/daemon/afd_db/schema/20261108193100_identity_device_sessions.sql` |
 | Statements | one `.sql` file per transition | `rustd/crates/daemon/afd_tenant/src/sql/session/` |
 | Deadline | five minutes, re-stamped on every transition | `SESSION_TTL`, `rustd/crates/daemon/afd_tenant/src/session/store.rs` |
 | Cleanup | none: an expired row stays, and every read refuses it | Indy's decision, M244 spec Discovery |

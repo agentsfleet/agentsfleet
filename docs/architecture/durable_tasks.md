@@ -544,7 +544,7 @@ Keep native HTTP refusal and wire validation types consistent with their existin
 
 ### Observability aligned to native outcomes
 
-Reuse `af_observability` producers, typed metric families, closed label sets, tracing and `docs/metrics.census.tsv`.
+Reuse `af_observability` producers, typed metric families, closed label sets, tracing and `rustd/crates/protocol/af_observability/src/metrics/census.tsv`.
 Instrument asynchronous futures rather than holding an entered span across an await.
 Task rows and canonical billing lines remain the source of truth; emit signals from validated native outcomes.
 
@@ -608,7 +608,7 @@ Keep this evidence available while implementing M236; a duration total alone can
 | Is a comparison valid? | Baseline/candidate revisions, workload/query/window, runner configuration, model/profile, cache state, repetitions, comparable sample counts and missing-data flags. |
 
 Task/turn/run, physical-call, effect and checkpoint identities join logs/traces to native records; these identities never become metric labels.
-Metrics carry closed operation, stage and outcome labels; add each implemented family to `docs/metrics.census.tsv` with its actual producer and cardinality bound.
+Metrics carry closed operation, stage and outcome labels; add each implemented family to `rustd/crates/protocol/af_observability/src/metrics/census.tsv` with its actual producer and cardinality bound.
 Reuse existing exporters, tool/model instrumentation, run delivery metrics and Grafana data sources before introducing another measurement.
 
 Publish queue/wait gauges from native maintenance snapshots; failed sampling withdraws the reading rather than publishing a false zero.

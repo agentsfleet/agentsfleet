@@ -3,12 +3,11 @@
 //! image names that image and everything in it.
 
 use std::fs;
-use std::path::Path;
 
 use libtest_mimic::Failed;
 use serde_json::Value;
 
-use crate::lane::Lane;
+use crate::lane::{Lane, toolbox_source};
 use crate::run::expect;
 use crate::tools::{GIT_WORKFLOWS, answers, shell, shell_calls};
 
@@ -34,8 +33,8 @@ const PINNED: [&str; 7] = [
 const UV_RELEASE: &str = "astral-sh/uv/releases/download/";
 /// The runner version the lane's image was built to serve.
 const RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
-/// The source manifest the lane's image was built from, from this crate.
-const SOURCE_MANIFEST: &str = "../../../../scripts/toolbox/manifest.txt";
+/// The source manifest the lane's image was built from, in the toolbox source.
+const SOURCE_MANIFEST: &str = "manifest.txt";
 /// The source manifest's keys for the snapshot and each archive at it.
 const SNAPSHOT: &str = "snapshot";
 const ARCHIVE: &str = "archive";
@@ -234,7 +233,8 @@ fn release_manifest_names_the_image(lane: &Lane) -> Result<(), Failed> {
 
 /// Every value the source manifest gives `key`, in order.
 fn source_values(key: &str) -> Result<Vec<String>, Failed> {
-    let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(SOURCE_MANIFEST))?;
+    let directory = toolbox_source().ok_or("the lane names no toolbox source")?;
+    let source = fs::read_to_string(directory.join(SOURCE_MANIFEST))?;
     Ok(source
         .lines()
         .filter_map(|line| line.strip_prefix(key)?.strip_prefix(' '))

@@ -28,7 +28,7 @@ use self::admits::Components;
 use crate::support::{definition_path, fixture};
 
 /// The fixture tree the corpus suites read, relative to this crate.
-const CORPUS: &str = "../../../../tests/fixtures/fleets";
+const CORPUS: &str = "tests/fixtures/fleets";
 
 /// Every component a Definition and an edit batch publish, as a client reads them.
 fn components() -> Components {

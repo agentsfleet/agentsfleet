@@ -2,7 +2,7 @@
 //!
 //! # Why these are enums and not the strings the column holds
 //!
-//! `schema/20261108122800_fleet_schedules.sql` stores `source`, `desired_status` and
+//! `afd_db/schema/20261108122800_fleet_schedules.sql` stores `source`, `desired_status` and
 //! `sync_status` as `TEXT` with no `CHECK`, deliberately — RULE STS bans a
 //! frozen vocabulary in the schema, because changing one then means a migration
 //! rather than a release. The vocabulary still has to be closed SOMEWHERE, and

@@ -17,6 +17,10 @@ pub use afd_http::{route, services};
 
 pub(crate) mod handler;
 
+// The captured deliveries the webhook suites drive, here and in `afd_api`.
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_util;
+
 // The document generator, compiled only when it is asked for.
 #[cfg(feature = "openapi")]
 pub mod openapi;

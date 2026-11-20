@@ -239,7 +239,7 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
         charged.fleet_id,
         fleet.as_str(),
         "the purge nulled fleet_id — a referential action on \
-         billing.usage_lines.fleet_id is armed, which schema/2040 must not grow"
+         billing.usage_lines.fleet_id is armed, which afd_db/schema/2040 must not grow"
     );
     assert_eq!(
         charged.fleet_name, CHARGED_AS,

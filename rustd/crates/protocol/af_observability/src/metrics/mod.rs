@@ -9,7 +9,7 @@
 //! The family set is wire data: every dashboard is built on these names, byte
 //! for byte at the OTLP wire, so a rename breaks a panel silently. A list that
 //! lives in Rust source can only be graded by reading Rust source, so it lives
-//! in `docs/metrics.census.tsv` and the registry is built FROM it. The parity
+//! in `metrics/census.tsv` and the registry is built FROM it. The parity
 //! test then grades the registry against the same file in both directions, and
 //! a family on one side only is named rather than quietly dropped.
 

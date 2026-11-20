@@ -12,7 +12,7 @@ Every table follows the schema rules in `.orly/standards/domains/sql.md`:
 
 ## Naming convention
 
-Every name below follows the pattern most of `schema/` already uses (75 `uq_`, 42 `ck_` and 38 `fk_` constraints). `<table>` is the bare table name, without its schema.
+Every name below follows the pattern most of `rustd/crates/daemon/afd_db/schema/` already uses (75 `uq_`, 42 `ck_` and 38 `fk_` constraints). `<table>` is the bare table name, without its schema.
 
 | Object | Name | Example |
 |--------|------|---------|
@@ -54,7 +54,7 @@ Publishing a draft creates a new fleet, so the fleet gets its own thread. The dr
 
 ## thread.turns
 
-One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows, and `setup.messages`, a setup draft's chat inputs (`schema/20261108125100_thread_turns.sql`).
+One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows, and `setup.messages`, a setup draft's chat inputs (`rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`).
 
 A fleet's intake writes the turn `queued`. The assignment that first runs it stamps its fence and opens it in one update. The report settles and closes it in one update, since one statement may change a row once.
 

@@ -5,4 +5,5 @@
 )]
 
 mod draft;
+#[path = "../src/model/provider/tests/wire.rs"]
 mod provider_wire;

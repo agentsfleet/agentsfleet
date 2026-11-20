@@ -44,11 +44,10 @@ use serde_json::Value;
 ///
 /// Its `installation.id` is [`signed::INSTALLATION`], which lets the scripted
 /// lookup reach the native completion owner after signature verification.
-pub(crate) const APP_RUN_FAILURE: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_failure_app.json");
+pub(crate) const APP_RUN_FAILURE: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE_APP;
 
 /// What an App sends to prove the endpoint answers.
-const PING: &str = include_str!("../../../../../tests/fixtures/webhooks/github_ping.json");
+const PING: &str = afd_api_ingress::test_util::GITHUB_PING;
 
 /// The delivery kind both run fixtures are.
 pub(crate) const EVENT_WORKFLOW_RUN: &str = "workflow_run";
@@ -93,10 +92,8 @@ pub(crate) fn deployment(subscribers: Vec<afd_ingress::Binding>) -> Arc<Scripted
 /// A pull-request event exercises routing without a durable completion write.
 #[expect(clippy::expect_used, reason = "captured fixture must be a JSON object")]
 pub(crate) fn app_pull_request() -> String {
-    let mut body: Value = serde_json::from_str(include_str!(
-        "../../../../../tests/fixtures/webhooks/github_pull_request.json"
-    ))
-    .expect("captured pull request parses");
+    let mut body: Value = serde_json::from_str(afd_api_ingress::test_util::GITHUB_PULL_REQUEST)
+        .expect("captured pull request parses");
     let fields = body
         .as_object_mut()
         .expect("delivery envelope is an object");

@@ -1128,7 +1128,7 @@ Logs, spans and runner families: [observability.md](./observability.md) §"Signa
 
 ### The four per-runner families
 
-The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_runs`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`docs/metrics.census.tsv`](../metrics.census.tsv).
+The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_runs`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`rustd/crates/protocol/af_observability/src/metrics/census.tsv`](../../rustd/crates/protocol/af_observability/src/metrics/census.tsv).
 
 The discovery counters describe gateway assign attempts without entity labels.
 The historical `run_polls_total` name counts these attempts; it does not imply runner run polling.

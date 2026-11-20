@@ -8,7 +8,7 @@
 // `uniqueProviders(models)` over this same endpoint; the CLI derives the
 // accepted `--provider` set the same way, from the same bytes. A provider
 // reaches both surfaces by being seeded into the catalogue
-// (scripts/model-library-allowlist.json → the model_catalogue playbook), never
+// (rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json → the model_catalogue playbook), never
 // by editing TypeScript.
 //
 // The catalogue is bearer-authed — it prices the platform's billing spine and

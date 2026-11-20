@@ -2,7 +2,6 @@
 //! GitHub grant, and the runner enrolled to run it.
 
 use std::borrow::Cow;
-use std::path::PathBuf;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
@@ -17,12 +16,6 @@ use jiff::Timestamp;
 use crate::e2e::unique_ids;
 use crate::e2e_native::Stored;
 use crate::e2e_seed::{enrolment, scenario_tag};
-
-/// The native setup corpus, from this crate: the same files every corpus suite reads.
-const CORPUS: &str = "../../../../tests/fixtures/fleets";
-
-/// The file a corpus fleet keeps its native setup in.
-const DEFINITION_FILE: &str = "definition.json";
 
 /// The connector whose declared credential mints, and so needs a grant.
 const GITHUB_SERVICE: &str = "github";
@@ -70,12 +63,9 @@ pub(super) async fn install(
 
 /// The corpus fleet's native setup, parsed.
 fn read_definition(fleet_name: &str) -> Definition {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(CORPUS)
-        .join(fleet_name)
-        .join(DEFINITION_FILE);
-    let text = std::fs::read_to_string(path).expect("the corpus setup is readable");
-    Definition::parse(&text).expect("the corpus setup is a valid Definition")
+    let text = af_fleet_runtime::test_util::corpus_definition(fleet_name)
+        .expect("af_fleet_runtime embeds the corpus setup");
+    Definition::parse(text).expect("the corpus setup is a valid Definition")
 }
 
 /// The fleet row a Save writes, named for the runtime and selecting its setup.

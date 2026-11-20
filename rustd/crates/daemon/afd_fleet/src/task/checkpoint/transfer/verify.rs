@@ -127,7 +127,7 @@ pub(super) async fn record(tasks: &Tasks, workspace: &Uuid7, receipts: &[Receipt
         .map_err(query("hold workspace while accounting verified storage"))?;
     if parent.is_some() {
         super::super::identity::quota(&mut tx, workspace).await?;
-        sqlx::query(include_str!("../sql/verify.sql"))
+        sqlx::query(super::super::VERIFY)
             .bind(workspace)
             .bind(Json(receipts))
             .execute(&mut *tx)

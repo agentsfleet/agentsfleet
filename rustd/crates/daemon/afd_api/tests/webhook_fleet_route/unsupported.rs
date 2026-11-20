@@ -14,8 +14,7 @@ use super::*;
 const EVENT_PING: &str = "ping";
 
 /// A real `ping` delivery.
-const PING_DELIVERY: &str =
-    include_str!("../../../../../../tests/fixtures/webhooks/github_ping.json");
+const PING_DELIVERY: &str = afd_api_ingress::test_util::GITHUB_PING;
 
 /// The reason the route drops an event it serves no rule for.
 const REASON_UNSUPPORTED: &str = "unsupported_event";

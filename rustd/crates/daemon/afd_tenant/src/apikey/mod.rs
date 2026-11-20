@@ -40,7 +40,7 @@ pub use self::sort::ApiKeySort;
 
 /// The index that holds a tenant to one key per name.
 ///
-/// Must equal the name in `schema/20261108120700_identity_api_keys.sql`: a key-hash or
+/// Must equal the name in `afd_db/schema/20261108120700_identity_api_keys.sql`: a key-hash or
 /// primary-key collision is unique too, and is not a name the caller can change.
 const NAME_CONSTRAINT: &str = "uq_api_keys_tenant_id_name";
 const DISPLAY_SUFFIX_CHARS: usize = 4;
@@ -226,7 +226,7 @@ pub struct MintRequest<'a> {
     ///
     /// A `&str` rather than a parsed subject, because `created_by_subject` is
     /// `TEXT NOT NULL` holding the claim directly — a key outlives the admin who
-    /// made it, as `schema/20261108120700_identity_api_keys.sql` says, and it is why the
+    /// made it, as `afd_db/schema/20261108120700_identity_api_keys.sql` says, and it is why the
     /// credential lookup does not join `identity.users` for this class.
     pub created_by: &'a str,
 }

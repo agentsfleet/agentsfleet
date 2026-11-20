@@ -18,6 +18,10 @@ use crate::release::Signer;
 
 /// The environment variable naming the toolbox image to run against.
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
+/// The environment variable naming the toolbox source directory, which holds
+/// the `manifest.txt` and `build.sh` the image was built from. It sits under
+/// `scripts/`, outside this crate, so the make lane names it.
+const SOURCE_VARIABLE: &str = "AFR_TOOLBOX_SOURCE";
 /// The delegated cgroup every run's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
 /// The unprivileged host user and group bubblewrap runs as, as on a host.
@@ -127,8 +131,18 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     if toolbox.is_none() {
         gaps.push(format!("{TOOLBOX_VARIABLE}: names no toolbox image"));
     }
+    if toolbox_source().is_none() {
+        gaps.push(format!(
+            "{SOURCE_VARIABLE}: names no toolbox source directory"
+        ));
+    }
     gaps.extend(short_of_disk(Path::new(STATE_PARENT)));
     gaps
+}
+
+/// The toolbox source directory [`SOURCE_VARIABLE`] names, if it names one.
+pub(crate) fn toolbox_source() -> Option<PathBuf> {
+    ProcessEnv.get(SOURCE_VARIABLE).map(PathBuf::from)
 }
 
 /// Why `parent` cannot hold a run's state, if it cannot: too little free, with

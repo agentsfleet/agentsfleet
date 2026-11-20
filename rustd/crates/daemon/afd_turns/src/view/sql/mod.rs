@@ -44,7 +44,7 @@
 /// `inserted` is true when THIS call opened the event: a fresh row, or a
 /// conflict that met a turn not yet opened. The fleet's activity counter
 /// moves on exactly those (`trg_turns_count_inserted_opened` and
-/// `trg_turns_count_opened`, `schema/20261108125100_thread_turns.sql`).
+/// `trg_turns_count_opened`, `afd_db/schema/20261108125100_thread_turns.sql`).
 ///
 /// The `DO UPDATE` is deliberately UNCONDITIONAL. A filtered `DO UPDATE` that
 /// matches no row updates nothing, `RETURNING` then yields nothing, and both

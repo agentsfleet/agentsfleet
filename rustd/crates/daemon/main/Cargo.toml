@@ -203,7 +203,7 @@ serde_json.workspace = true
 af_wire.workspace = true
 # Seeded fleets select a native definition through the setup authority's own
 # parser and digest; the setup corpus is read into one once, as fixture data.
-af_fleet_runtime.workspace = true
+af_fleet_runtime = { workspace = true, features = ["test-util"] }
 # The Rust runner, driven end to end against this daemon: its supervisor, the
 # test-only unsandboxed engine, the scripted agent engine and the executor's
 # process request. Dev-only, and only in this direction — the runner itself

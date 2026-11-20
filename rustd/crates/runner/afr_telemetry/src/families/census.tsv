@@ -1,6 +1,6 @@
 # The runner's own metric families: facts no runner verb carries, exported by
 # `agentsfleet-runner run` straight to the runner collector. Same columns as
-# docs/metrics.census.tsv and read by the same `Registry::read`; the daemon's
+# af_observability/src/metrics/census.tsv and read by the same `Registry::read`; the daemon's
 # census is untouched and neither file declares the other's families.
 #
 # `afr_telemetry` compiles this file in and grades it against its producers in

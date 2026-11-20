@@ -42,8 +42,7 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 
 /// A failed run — the delivery that wakes a fleet.
-const RUN_FAILURE: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_failure.json");
+const RUN_FAILURE: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE;
 
 /// The event kind the fixture delivery is.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";

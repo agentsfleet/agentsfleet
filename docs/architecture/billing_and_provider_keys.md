@@ -665,7 +665,7 @@ Workspace chat lists only eligible owner registrations and the enabled platform 
 
 Read shape: API reference › Model Library (keyset-paged; `version` moves on every catalogue change).
 
-The curated identities and prices are declared in `scripts/model-library-allowlist.json`.
+The curated identities and prices are declared in `rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json`.
 The Bun validator checks the exact curated set, official sources, exact decimal rates, date ranges and context evidence.
 The validator refuses zero rates.
 
@@ -786,7 +786,7 @@ The sweeper bills expired runs' last slices, then settles every unsettled line (
 
 Each pass resumes after the last line the previous one read, across ticks, so a refused backlog never blocks newer charges. Every 30 ticks the read restarts at the oldest line, so a refused line is retried.
 
-`Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy. It records the `agentsfleet_billing_*` families and `agentsfleet.billing.credit.consumed` (`docs/metrics.census.tsv`). The relay publishes the unsettled gauges.
+`Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy. It records the `agentsfleet_billing_*` families and `agentsfleet.billing.credit.consumed` (`rustd/crates/protocol/af_observability/src/metrics/census.tsv`). The relay publishes the unsettled gauges.
 
 **Removed from the fleet path:** `Accounts`' money statements, the receive charge, and the pricing and debit inside the run metering statement. The base-tier-only price read, `slice_charge` and its round-down rule went too.
 

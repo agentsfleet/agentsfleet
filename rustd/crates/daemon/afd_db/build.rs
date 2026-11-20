@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 /// The schema directory, from this crate's manifest.
-const SCHEMA: &str = "../../../../schema";
+const SCHEMA: &str = "schema";
 
 /// The file `tests/migrations.rs` includes.
 const LISTING: &str = "schema_files.rs";

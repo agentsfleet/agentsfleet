@@ -93,7 +93,8 @@ repository:
   runner-only `afr_*`. A layer's binary sits in `main/` (`daemon/main` is
   `agentsfleetd`, `runner/main` is `agentsfleet_runner`); every other folder
   is its crate's name.
-- **SQL:** schema files are `schema/<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, one
+- **SQL:** schema files are
+  `rustd/crates/daemon/afd_db/schema/<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, one
   per table, holding its whole `CREATE` — every column, constraint, index, grant,
   function and trigger. The only `ALTER` is a foreign key that closes a cycle, in
   the later table's file. Until the first production deploy a change to a table

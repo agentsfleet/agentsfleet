@@ -95,7 +95,7 @@ macro_rules! migration {
         Migration {
             version: version_of($file),
             name: $file,
-            sql: include_str!(concat!("../../../../../schema/", $file)),
+            sql: include_str!(concat!("../schema/", $file)),
         }
     };
 }

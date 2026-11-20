@@ -91,7 +91,7 @@ pub(in crate::task) async fn uploads(
             length,
         });
     }
-    sqlx::query(include_str!("../sql/descriptors.sql"))
+    sqlx::query(super::DESCRIPTORS)
         .bind(Json(&descriptors))
         .bind(&plan.workspace_id)
         .execute(&mut *tx)

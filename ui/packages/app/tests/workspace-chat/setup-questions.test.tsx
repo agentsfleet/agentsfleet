@@ -11,7 +11,7 @@ import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { ACTIVITY_KIND } from "@/lib/turns/fleet-activity";
 import { DRAFT, FLEET, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
-const FIXTURE: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
+const FIXTURE: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
 const QUESTION = "Does the patch fix the task's accepted Linkwarden defect?";
 const YES = "Current code and regression evidence demonstrate the accepted behavior.";
 const NO = "The defect remains, scope changed, or evidence is missing or contradictory.";

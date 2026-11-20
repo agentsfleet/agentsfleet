@@ -2,7 +2,7 @@
 
 > Canonical for which Postgres schema a table lives in, what each table is for, and how
 > tables link. Indy signed the design off table by table on Oct 17, 2026, and milestone
-> M229 rebuilt `schema/*.sql` from it. Each schema file describes what is deployed.
+> M229 rebuilt `rustd/crates/daemon/afd_db/schema/*.sql` from it. Each schema file describes what is deployed.
 
 ## Why this exists
 
@@ -76,7 +76,7 @@ Wire field names (API and runner protocol) are not renamed by these rules.
 
 ## Layout
 
-Each table's columns live in its `schema/` slot, the only copy kept.
+Each table's columns live in its `rustd/crates/daemon/afd_db/schema/` slot, the only copy kept.
 
 | Schema | Owns |
 |---|---|
@@ -91,7 +91,7 @@ Each table's columns live in its `schema/` slot, the only copy kept.
 | `vault` | Encrypted secrets |
 | `memory` | Fleet memory, behind its own database role |
 
-`audit` holds the migration ledger. SQLx's `Migrator` applies `schema/*.sql` from the explicit
+`audit` holds the migration ledger. SQLx's `Migrator` applies `rustd/crates/daemon/afd_db/schema/*.sql` from the explicit
 list in `afd_db`'s migration module. It keeps checksums, so an edited applied file is refused, and
 runs inside our bounded advisory lock.
 

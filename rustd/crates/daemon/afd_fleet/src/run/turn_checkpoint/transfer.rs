@@ -11,7 +11,7 @@ use crate::{
     Result,
     error::query,
     run::Runs,
-    task::checkpoint::{StoredObject, Verification, lock_quota},
+    task::checkpoint::{self, StoredObject, Verification, lock_quota},
 };
 use af_core::id::Uuid7;
 use af_wire::{
@@ -139,7 +139,7 @@ async fn freeze(
     if by_id.len() != values.len() {
         return Err(TurnCheckpointRefusal::Conflict.into());
     }
-    sqlx::query(include_str!("../../task/checkpoint/sql/descriptors.sql"))
+    sqlx::query(checkpoint::DESCRIPTORS)
         .bind(Json(values))
         .bind(&custody.owner.current.workspace_id)
         .execute(&mut *custody.owner.tx)
@@ -163,7 +163,7 @@ async fn confirm(
     }
     objects::scoped(&mut custody, ids).await?;
     if !receipts.is_empty() {
-        sqlx::query(include_str!("../../task/checkpoint/sql/verify.sql"))
+        sqlx::query(checkpoint::VERIFY)
             .bind(&custody.owner.current.workspace_id)
             .bind(Json(receipts))
             .execute(&mut *custody.owner.tx)

@@ -15,7 +15,7 @@
 //!
 //! # Why `model` is not projected
 //!
-//! `schema/300_vault_secrets.sql` declares four `meta_*` columns and `model` is
+//! `afd_db/schema/300_vault_secrets.sql` declares four `meta_*` columns and `model` is
 //! not among them, so the only way to answer it on a list is to decrypt every
 //! row — which is precisely what spec Invariant 3 forbids. It is optional in
 //! `SecretSummary` and in the dashboard's `Secret` union, and no client reads

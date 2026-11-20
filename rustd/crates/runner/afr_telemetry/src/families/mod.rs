@@ -2,7 +2,7 @@
 //! from it once, recorded through the [`Recorder`] they implement and the
 //! provider [`Observer`] it extends.
 //!
-//! The census is `docs/metrics.runner.census.tsv`, compiled in and read by the
+//! The census is `afr_telemetry/src/families/census.tsv`, compiled in and read by the
 //! daemon's own registry reader, so the two binaries' censuses are one format
 //! graded one way. Neither census declares the other's families.
 
@@ -33,7 +33,7 @@ mod tests;
 
 /// The runner's census, compiled in so a runner can never disagree with the
 /// file its producers are graded against.
-pub const CENSUS: &str = include_str!("../../../../../../docs/metrics.runner.census.tsv");
+pub const CENSUS: &str = include_str!("census.tsv");
 
 /// Individual provider stream duration, attributed to a catalogue model.
 pub const MODEL_CALL_DURATION: Declared<HistogramKind> =

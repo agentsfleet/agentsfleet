@@ -13,13 +13,13 @@
 //!   `expected.rs` states for it, at two spreads of data.
 //!
 //! The plans are asked of a database of this test's own, migrated from
-//! `schema/`, so its statistics describe the spread and nothing else. The
+//! `afd_db/schema/`, so its statistics describe the spread and nothing else. The
 //! shared lane's table is one fleet per workspace from every other suite's
 //! fixtures, and its row count grows through a run: against it the fleet and
 //! workspace indexes tie for a fleet read, and the planner's pick is noise.
 //! Each spread holds several fleets per workspace, is seeded in a transaction
 //! that rolls back, and is analysed, which also fills the dependency
-//! statistics `schema/922` declares; without them a fleet-scoped plan sorts.
+//! statistics `afd_db/schema/922` declares; without them a fleet-scoped plan sorts.
 //! No planner switch is touched: a priced-out alternative would prove only
 //! that SOME index is usable.
 //!
@@ -117,7 +117,7 @@ pub(crate) async fn explain_generic(connection: &mut PgConnection, text: &str) -
         .join("\n")
 }
 
-/// A database of this test's own, migrated from `schema/`, and the tenant
+/// A database of this test's own, migrated from `afd_db/schema/`, and the tenant
 /// its decoys belong to.
 pub(crate) async fn private_database() -> (TestDatabase, Db, Uuid7) {
     let database = TestDatabase::create().await;

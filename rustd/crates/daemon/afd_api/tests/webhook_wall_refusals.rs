@@ -35,8 +35,7 @@ use afd_fleet_lifecycle::FleetStatus;
 use http::{Method, StatusCode};
 
 /// A failed run — a delivery that WOULD wake the fleet if it proved itself.
-const RUN_FAILURE: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_failure.json");
+const RUN_FAILURE: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE;
 
 /// The event kind the fixture is.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";

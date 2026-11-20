@@ -39,6 +39,10 @@ TEST_NATS_URL ?= nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_BAS
 # How the exclusive lane stops and restarts one node: compose plus the verb.
 TEST_NATS_CONTROL ?= docker compose --project-directory $(CURDIR)
 export TEST_NATS_URL TEST_NATS_CONTROL
+# The model catalogue seeder's Bun suite, which afd_db's catalogue test runs
+# against a freshly migrated database.
+TEST_CATALOGUE_SUITE ?= $(CURDIR)/scripts/model-catalogue
+export TEST_CATALOGUE_SUITE
 
 # The invite email's sink: its SMTP port and the API it is read back from.
 TEST_MAILPIT_SMTP_PORT ?= $(AGENTSFLEET_MAILPIT_SMTP_PORT)

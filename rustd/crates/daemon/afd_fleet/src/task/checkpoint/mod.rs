@@ -24,6 +24,13 @@ pub(super) use plan::create;
 pub(crate) use transfer::{Verification, verify_object};
 pub(super) use transfer::{authorize, list, uploads};
 
+/// The statements a run's turn checkpoints share with task checkpoints,
+/// included once so the two custody paths cannot drift apart.
+pub(crate) const QUOTA_RESERVE: &str = include_str!("sql/quota_reserve.sql");
+pub(crate) const OBJECTS_INSERT: &str = include_str!("sql/objects_insert.sql");
+pub(crate) const DESCRIPTORS: &str = include_str!("sql/descriptors.sql");
+pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");
+
 const BASE_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 const INCREMENTAL_BYTES: u64 = 1024 * 1024 * 1024;
 const WORKSPACE_BYTES: i64 = 50 * 1024 * 1024 * 1024;

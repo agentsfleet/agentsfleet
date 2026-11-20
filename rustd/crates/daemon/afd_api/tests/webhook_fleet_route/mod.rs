@@ -35,12 +35,10 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 
 /// A failed run — the delivery that wakes a fleet.
-const RUN_FAILURE: &str =
-    include_str!("../../../../../../tests/fixtures/webhooks/github_run_failure.json");
+const RUN_FAILURE: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE;
 
 /// The same run, green — a real delivery this daemon deliberately drops.
-const RUN_SUCCESS: &str =
-    include_str!("../../../../../../tests/fixtures/webhooks/github_run_success.json");
+const RUN_SUCCESS: &str = afd_api_ingress::test_util::GITHUB_RUN_SUCCESS;
 
 /// The event kind both run fixtures are.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";

@@ -1,5 +1,5 @@
 //! The heartbeat's hold reconcile reaches its threads through the partial index
-//! `schema/1820` builds for it, under the generic plan a prepared statement
+//! `afd_db/schema/1820` builds for it, under the generic plan a prepared statement
 //! settles on.
 //!
 //! sqlx prepares `CLEAR_DROPPED_HOLDS` once per connection, and Postgres may
@@ -10,7 +10,7 @@
 //! every runner reading each thread that runner was ever last on.
 //!
 //! The plan is asked of a database of this test's own, migrated from
-//! `schema/`, seeded with mostly unheld threads in a transaction that rolls
+//! `afd_db/schema/`, seeded with mostly unheld threads in a transaction that rolls
 //! back, and analysed, so its statistics describe the spread and nothing else:
 //! the shape `afd_turns`' `integration_list_plans/mod.rs` set. That suite asks
 //! `EXPLAIN (GENERIC_PLAN)`, which cannot type every parameter; here the text
@@ -110,7 +110,7 @@ async fn run(connection: &mut PgConnection, statement: &str) {
         .unwrap_or_else(|failure| panic!("{statement}: {failure}"));
 }
 
-/// A database of this test's own, migrated from `schema/`, and its tenant.
+/// A database of this test's own, migrated from `afd_db/schema/`, and its tenant.
 async fn private_database() -> (TestDatabase, Db, Uuid7) {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;

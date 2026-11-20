@@ -6,7 +6,7 @@
 //! # The lane's database, not one per scenario
 //!
 //! Each scenario used to `CREATE DATABASE`, migrate all forty-seven
-//! `schema/*.sql` files into it, boot a daemon against it, and `DROP … WITH
+//! `afd_db/schema/*.sql` files into it, boot a daemon against it, and `DROP … WITH
 //! (FORCE)` afterwards. It now boots against the database the lane already
 //! migrated — see [`afd_db::test_util`] on what the per-test database cost and
 //! what it was actually buying.

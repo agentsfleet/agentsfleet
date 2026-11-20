@@ -159,7 +159,7 @@ async fn reserve(
     {
         return Err(TaskRefusal::LimitExhausted.into());
     }
-    let reserved = sqlx::query(include_str!("sql/quota_reserve.sql"))
+    let reserved = sqlx::query(super::QUOTA_RESERVE)
         .bind(&plan.workspace_id)
         .bind(new_bytes)
         .bind(super::WORKSPACE_BYTES)
@@ -170,7 +170,7 @@ async fn reserve(
         return Err(TaskRefusal::LimitExhausted.into());
     }
     if !new.is_empty() {
-        sqlx::query(include_str!("sql/objects_insert.sql"))
+        sqlx::query(super::OBJECTS_INSERT)
             .bind(Json(new))
             .bind(&plan.workspace_id)
             .bind(&plan.id)

@@ -28,7 +28,7 @@ use crate::forked_kill::forked_oom;
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
 use crate::kill::no_sandbox_process_outlives_the_report;
-use crate::lane::{Lane, missing};
+use crate::lane::{Lane, missing, toolbox_source};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::shared_memory::full_shared_memory_spares_the_tenant;
 use crate::toolbox::toolbox_carries_the_tools;
@@ -250,7 +250,9 @@ fn unbuildable(lane: &Lane) -> Result<(), Failed> {
 
 fn reproducible(lane: &Lane) -> Result<(), Failed> {
     let out = tempfile::tempdir()?;
-    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/toolbox/build.sh");
+    let script = toolbox_source()
+        .ok_or("the lane names no toolbox source")?
+        .join("build.sh");
     let built = Command::new("bash").arg(script).arg(out.path()).output()?;
     // A failed build prints no path, and hashing the empty path reported only
     // "No such file or directory", which hid that the download had failed.

@@ -1,5 +1,5 @@
 import type { Model } from "./catalogue";
-import allowlist from "../model-library-allowlist.json";
+import allowlist from "../../rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json";
 
 const curated = new Set(allowlist.models.map((model) => `${model.provider}/${model.model_name}`));
 export const catalogueModelNames: ReadonlySet<string> = new Set(allowlist.models.map((model) => model.model_name));

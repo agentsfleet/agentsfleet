@@ -81,6 +81,8 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+# The captured GitHub deliveries the webhook suites drive.
+afd_api_ingress = { workspace = true, features = ["test-util"] }
 afd_gateway.workspace = true
 afd_gate.workspace = true
 af_stream.workspace = true

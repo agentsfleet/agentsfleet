@@ -6,7 +6,7 @@ export const NANOS_PER_USD = 1_000_000_000;
 export const TOKENS_PER_MTOK = 1_000_000;
 export const PRICING_UNIT = `USD per ${TOKENS_PER_MTOK} tokens`;
 export const MAX_CATALOGUE_BYTES = 256 * 1024;
-export const CATALOGUE_URL = new URL("../model-library-allowlist.json", import.meta.url);
+export const CATALOGUE_URL = new URL("../../rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json", import.meta.url);
 const MONEY = z.string().max(32).regex(/^\d+(?:\.\d{1,9})?$/, { abort: true }).pipe(z.string().refine((value) =>
   new Decimal(value).gte(0) && new Decimal(value).mul(NANOS_PER_USD).lte("9223372036854775807")));
 const INSTANT = z.iso.datetime({ offset: true });

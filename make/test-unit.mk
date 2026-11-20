@@ -77,7 +77,7 @@ test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (
 	@image="$${AFR_TOOLBOX_IMAGE:-}"; \
 	  if [ -z "$$image" ]; then image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" || exit $$?; fi; \
 	  test -f "$$image" && image="$$(realpath "$$image")" && \
-	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
+	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" AFR_TOOLBOX_SOURCE="$(CURDIR)/scripts/toolbox" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(or $(KERNEL_LANE_RUNNER),env)" \
 	  cargo run --locked -p afr_sandbox --features test-util --example kernel_lane
 	@$(MAKE) --no-print-directory test-runner-startup

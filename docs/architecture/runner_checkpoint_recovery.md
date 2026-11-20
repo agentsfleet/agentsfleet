@@ -347,7 +347,7 @@ Remote object I/O runs outside the checkpoint transaction. The return path check
 
 The product database is development-only. Columns and indexes are defined in their owning initial schema files.
 
-Fresh development rigs apply those definitions from an empty database. [Recovery schema](../../schema/20261117154626_runner_turn_recovery.sql) · [Checkpoint schema](../../schema/20261117154627_runner_turn_checkpoints.sql)
+Fresh development rigs apply those definitions from an empty database. [Recovery schema](../../rustd/crates/daemon/afd_db/schema/20261117154626_runner_turn_recovery.sql) · [Checkpoint schema](../../rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql)
 
 ## Operator and lab checks
 
@@ -463,8 +463,8 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/maintenance.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/maintenance.rs) | maintain_turn_checkpoints, retain | Bound the scan, advance before processing a contended owner, and retry on wraparound. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_candidates.sql`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_candidates.sql) | owner scan | Page by indexed cursor before inspecting owner-specific work. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_lock_head.sql`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_lock_head.sql) | owner head lock | Defer a contended owner promptly so the current pass can collect other owners. |
-| [`schema/20261117154626_runner_turn_recovery.sql`](../../schema/20261117154626_runner_turn_recovery.sql) | runner.turn_recovery indexes | Index the referenced head checkpoint and the maintenance cursor key. |
-| [`schema/20261117154627_runner_turn_checkpoints.sql`](../../schema/20261117154627_runner_turn_checkpoints.sql) | runner.turn_checkpoints index | Index the fleet FK used by deletion and retention. |
+| [`rustd/crates/daemon/afd_db/schema/20261117154626_runner_turn_recovery.sql`](../../rustd/crates/daemon/afd_db/schema/20261117154626_runner_turn_recovery.sql) | runner.turn_recovery indexes | Index the referenced head checkpoint and the maintenance cursor key. |
+| [`rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql`](../../rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql) | runner.turn_checkpoints index | Index the fleet FK used by deletion and retention. |
 | [`rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs`](../../rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs) | list query documentation | Include runner_uncordoned in the operator event filter. |
 
 ### Native connection settings

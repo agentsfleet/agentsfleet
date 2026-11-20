@@ -22,8 +22,8 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Signal paths | 3 | OTLP push through the daemon's collector · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
-| Metric namespace | `agentsfleet_` runtime families; dotted semantic-convention cost families | `docs/metrics.census.tsv` declares every exported name; `test_metric_family_registry_parity` grades the registry against it both ways | §The three signal paths |
-| Runner telemetry | spans and families declared in `docs/metrics.runner.census.tsv`; dev collector installed and first real run export verified Nov 04, 2026 | traces and metrics through the dedicated host collector; logs stay local; never through `otelcol-{env}` | §`agentsfleet-runner` has a collector of its own |
+| Metric namespace | `agentsfleet_` runtime families; dotted semantic-convention cost families | `rustd/crates/protocol/af_observability/src/metrics/census.tsv` declares every exported name; `test_metric_family_registry_parity` grades the registry against it both ways | §The three signal paths |
+| Runner telemetry | spans and families declared in `rustd/crates/runner/afr_telemetry/src/families/census.tsv`; dev collector installed and first real run export verified Nov 04, 2026 | traces and metrics through the dedicated host collector; logs stay local; never through `otelcol-{env}` | §`agentsfleet-runner` has a collector of its own |
 | Library read series | 124 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
 | Trace budget | daemon: none yet, one span per matched request · runner: 256 per run, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
 | OTLP loss | drop, never block; no exporter retry | bounded queues; later cumulative metric collections can recover totals while the source process survives | §The Rust daemon's export path, as built |
@@ -47,7 +47,7 @@ The control plane's telemetry surfaces live in `af_observability`.
 **One process, one registry.** Every runtime family carries the `agentsfleet_`
 prefix. The evented cost families use dotted OpenTelemetry semantic-convention
 names; §Label registry explains each divergence, and
-`docs/metrics.census.tsv` lists every family.
+`rustd/crates/protocol/af_observability/src/metrics/census.tsv` lists every family.
 
 The registry is built from that file, and `test_metric_family_registry_parity`
 grades the two against each other both ways. The prefix rule covers exported
@@ -85,7 +85,7 @@ that returned identifier for read-only log evidence.
 
 ## Metric family census (what to watch, and what it means)
 
-The complete export lives in ONE file: [`docs/metrics.census.tsv`](../metrics.census.tsv).
+The complete export lives in ONE file: [`rustd/crates/protocol/af_observability/src/metrics/census.tsv`](../../rustd/crates/protocol/af_observability/src/metrics/census.tsv).
 It lists every family the daemon pushes over OTLP exactly once. Each carries its kind, number type, unit, temporality, label keys, histogram bounds and series policy.
 
 Each row also carries the operator guidance (`category`, `watch_for`) that used to be a table here.
@@ -310,7 +310,7 @@ no telemetry knob, so hardening still sees a single thread.
   the SDK drops past it without counting; the failed exports themselves are
   counted (below).
 
-- **Its own metric families**, declared in `docs/metrics.runner.census.tsv`
+- **Its own metric families**, declared in `rustd/crates/runner/afr_telemetry/src/families/census.tsv`
   and graded both ways against their producers. Provider families cover turn
   duration and retries, by provider and outcome or reason. The provider's own
   measurements are declared where it takes them (`af_providers::observe`).
@@ -418,7 +418,7 @@ rate, sampling and retry limits and its proof.
 |---|---|---|---|
 | runner logs | runner logfmt on stderr; host owns retention | today none off the host; decided: host log store → runner collector → backends | host policy caps disk; the allowlist above; loss never blocks a run |
 | runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
-| runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `docs/metrics.runner.census.tsv`; no tenant, fleet, run or event identifier |
+| runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `rustd/crates/runner/afr_telemetry/src/families/census.tsv`; no tenant, fleet, run or event identifier |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
 | runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per run, root included, and 128 per second, roots never refused, the rest counted; joins `fleet.delivery` by the `turn_id` attribute, and the run identifier tells a redelivered event's runs apart |
 | control-plane logs | structured logger | stderr + OTLP through `otelcol-{env}` to Loki | the SDK batch log processor's queue (2048 records by default); a full queue drops, enqueue never blocks |
@@ -452,7 +452,7 @@ fired total, stale-target total).
 
 The runner's own series carry only the facts no verb carries
 (§`agentsfleet-runner` has a collector of its own), with closed label sets.
-They live in `docs/metrics.runner.census.tsv` beside `docs/metrics.census.tsv`
+They live in `rustd/crates/runner/afr_telemetry/src/families/census.tsv` beside `rustd/crates/protocol/af_observability/src/metrics/census.tsv`
 rather than in it.
 
 ## Traces
@@ -564,7 +564,7 @@ The existing signal paths above remain authoritative until that integration land
 | `runner_stream_native_pto_total` and `runner_stream_native_retransmitted_bytes_total` | Probe timeouts and stream bytes sent again |
 | `fleet_ready_wake_queue_events_total` | Per-replica queue admission, deduplication and eviction pressure |
 
-Every family uses the `agentsfleet_` prefix; the [metric census](../metrics.census.tsv) fixes its units and label ceiling.
+Every family uses the `agentsfleet_` prefix; the [metric census](../../rustd/crates/protocol/af_observability/src/metrics/census.tsv) fixes its units and label ceiling.
 Connection and operation observations record completion, cancellation, timeout and an abandoned future through automatic cleanup.
 Native samples are exported by an owned task outside QUIC I/O callbacks, including a final sample during explicit close.
 
@@ -843,7 +843,7 @@ models (`afd_credential`'s registered-provider SQL).
 
 Catalogue updates can add model identities over time.
 
-The families declare no ceiling (`shared:cost` in `docs/metrics.census.tsv`).
+The families declare no ceiling (`shared:cost` in `rustd/crates/protocol/af_observability/src/metrics/census.tsv`).
 The SDK's default limits each stream to 2,000 series.
 Past that limit, new `(model, …)` combinations fold into one `otel.metric.overflow` series, losing their separate exported spend.
 
@@ -869,7 +869,7 @@ All three OTLP signals share one resource (`service.name`,
 when a trusted id exists; `af_otlp`'s `resource` module). No schema URL is set.
 
 The cost families emit in the service layer, strictly after the money transaction commits. The exporter can therefore never block or fail a debit. Their
-kinds, units and bounds live in [`docs/metrics.census.tsv`](../metrics.census.tsv)
+kinds, units and bounds live in [`rustd/crates/protocol/af_observability/src/metrics/census.tsv`](../../rustd/crates/protocol/af_observability/src/metrics/census.tsv)
 with every other family.
 
 What belongs HERE is why their names diverge from
