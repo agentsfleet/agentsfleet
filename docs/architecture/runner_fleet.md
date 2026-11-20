@@ -1234,7 +1234,7 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 | Provider request | Up to 300 seconds | Recorded dispatch deadline, clipped to attempt expiry; replay never starts another send. Upstream cancellation remains unconfirmed. |
 | Runner model-call HTTP wait | 310 seconds | Allows the bounded provider call and receipt settlement. |
 | Run TTL / renewal | 35 seconds / 5 seconds | No overlapping assigned run while the prior live attempt remains counted. |
-| First instructions / edited | 12,288 /32,768 characters | Shared validated text bounds, independently of tokenizer counts. |
+| Instructions | 32,768 characters | Shared validated text bounds, independently of tokenizer counts. |
 | Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
 
 Original history remains creator-private and is read in bounded pages. [Conversation compaction](context_lifecycle.md) retains working notes without a fixed 64-message or 32,768-token conversation allowance.

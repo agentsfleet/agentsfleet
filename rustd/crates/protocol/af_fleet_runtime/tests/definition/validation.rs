@@ -1,8 +1,7 @@
 //! Failure boundaries reject ambiguous setup and preserve the input on failure.
 
 use af_fleet_runtime::definition::{
-    MAX_DEFINITION_BYTES, MAX_DESCRIPTION_CHARS, MAX_INITIAL_INSTRUCTIONS_CHARS,
-    MAX_INSTRUCTIONS_CHARS,
+    MAX_DEFINITION_BYTES, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS,
 };
 use af_fleet_runtime::{Definition, FleetConfig};
 use serde_json::{Value, json};
@@ -96,26 +95,6 @@ fn test_definition_empty_editing_is_valid_but_save_is_blocked() {
     parse(&value())
         .validate_for_save()
         .expect("the complete fixture can be saved");
-}
-
-/// Two-byte characters, so the allowance holds only if it counts characters.
-#[test]
-fn a_first_generation_may_not_exceed_its_smaller_instruction_allowance() {
-    let with_instructions = |chars: usize| {
-        let mut input = value();
-        set(&mut input, "/instructions_md", json!("é".repeat(chars)));
-        parse(&input)
-    };
-    with_instructions(MAX_INITIAL_INSTRUCTIONS_CHARS)
-        .validate_initial_generation()
-        .expect("instructions at the allowance are a valid first generation");
-    let over = with_instructions(MAX_INITIAL_INSTRUCTIONS_CHARS + 1);
-    let refusal = over
-        .validate_initial_generation()
-        .expect_err("one character over the allowance is refused");
-    assert!(refusal.to_string().contains(OUT_OF_BOUNDS), "{refusal}");
-    over.validate_for_save()
-        .expect("the same instructions are within the bound a later edit keeps");
 }
 
 /// Instructions are bounded in characters: a cap of two-byte characters is

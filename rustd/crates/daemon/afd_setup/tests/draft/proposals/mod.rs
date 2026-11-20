@@ -2,7 +2,6 @@
 
 mod fencing;
 mod replay;
-mod validation;
 
 use super::{attempt::Attempt, fixture::Fixture, mint};
 use af_wire::authoring::{ActivityEvent, CandidateVersion, Proposal};

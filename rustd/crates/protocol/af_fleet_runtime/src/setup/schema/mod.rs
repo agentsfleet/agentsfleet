@@ -12,8 +12,8 @@ use super::PROPOSAL_ARGUMENT;
 use super::proposal::{CANDIDATE_ID_BYTES, REVISION_DIGITS_MAX};
 use crate::config::HttpEgress;
 use crate::definition::{
-    DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS,
-    MAX_INITIAL_INSTRUCTIONS_CHARS, MAX_INSTRUCTION_EDITS, MAX_INSTRUCTIONS_CHARS,
+    DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_EDITS,
+    MAX_INSTRUCTIONS_CHARS,
 };
 
 /// The JSON Schema keyword naming a value's type.
@@ -119,7 +119,7 @@ fn definition() -> Value {
         &json!({
             KEY_SCHEMA_VERSION:{KEY_TYPE:TYPE_INTEGER,KEY_ENUM:[DEFINITION_SCHEMA_VERSION]},
             KEY_DESCRIPTION:{KEY_TYPE:TYPE_STRING,KEY_MIN_LENGTH:1,KEY_MAX_LENGTH:MAX_DESCRIPTION_CHARS},
-            KEY_INSTRUCTIONS_MD:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INITIAL_INSTRUCTIONS_CHARS,
+            KEY_INSTRUCTIONS_MD:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INSTRUCTIONS_CHARS,
                 KEY_DESCRIPTION:"The person’s fleet instructions, drafted only from their requests. Preserve supplied wording; ask about missing business decisions."},
             KEY_CONFIG:configuration()
         }),

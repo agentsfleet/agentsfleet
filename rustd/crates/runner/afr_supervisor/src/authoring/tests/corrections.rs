@@ -123,11 +123,11 @@ async fn a_refusal_naming_a_field_tells_the_model_that_field() {
     assert!(!logs.contains("belongs under"), "{logs}");
 }
 
-// Value: protects=a first setup the daemon would refuse for its length is told so before it is sent;
+// Value: protects=a first setup over the instruction bound is told so before it is sent;
 // fails_when=the runner submits an oversized first setup, or its refusal reaches the log with the sentence.
 #[tokio::test]
 async fn an_oversized_first_setup_is_refused_by_the_runner_without_asking_the_daemon() {
-    let oversized = "x".repeat(af_fleet_runtime::definition::MAX_INITIAL_INSTRUCTIONS_CHARS + 1);
+    let oversized = "x".repeat(af_fleet_runtime::definition::MAX_INSTRUCTIONS_CHARS + 1);
     let mut rig = rig(move |call| match call.verb {
         Verb::AuthoringModel => {
             let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();

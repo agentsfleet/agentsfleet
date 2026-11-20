@@ -39,10 +39,8 @@ pub const DEFINITION_SCHEMA_VERSION: u8 = 1;
 pub const POLICY_SEMANTICS: &str = "fleet-setup-v1";
 /// Maximum description, in characters.
 pub const MAX_DESCRIPTION_CHARS: usize = 32 * 1024;
-/// Maximum edited instructions, in characters.
+/// Maximum instructions, in characters.
 pub const MAX_INSTRUCTIONS_CHARS: usize = 32 * 1024;
-/// First generated instructions are deliberately smaller than later edits.
-pub const MAX_INITIAL_INSTRUCTIONS_CHARS: usize = 12 * 1024;
 /// The widest character in UTF-8, which is how stored text is addressed.
 const UTF8_MAX_CHAR_BYTES: usize = 4;
 /// The widest one character serializes to in JSON: a `\u00XX` control escape.
@@ -94,12 +92,6 @@ struct Raw {
     instructions_md: String,
     #[garde(skip)]
     config: Value,
-}
-
-#[derive(garde::Validate)]
-struct InitialInstructions<'a> {
-    #[garde(length(chars, max = MAX_INITIAL_INSTRUCTIONS_CHARS))]
-    text: &'a str,
 }
 
 impl Definition {
@@ -164,18 +156,6 @@ impl Definition {
                 "instructions are required before Save or publication",
             ));
         }
-        Ok(())
-    }
-
-    /// Proves the smaller text bound for the model's first generated candidate.
-    ///
-    /// # Errors
-    /// Refuses initial instructions beyond the shared generation allowance.
-    pub fn validate_initial_generation(&self) -> Result<()> {
-        garde::Unvalidated::new(InitialInstructions {
-            text: self.instructions_md(),
-        })
-        .validate()?;
         Ok(())
     }
 }

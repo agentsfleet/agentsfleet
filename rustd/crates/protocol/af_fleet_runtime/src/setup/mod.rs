@@ -104,12 +104,10 @@ pub fn read(
 }
 
 /// The checker's account of a first setup's definition, written as JSON
-/// text, that it refuses or that exceeds the first-generation bound.
+/// text, that it refuses.
 #[must_use]
 pub fn initial_refusal(definition: &str) -> Option<Error> {
-    Definition::parse(definition)
-        .and_then(|parsed| parsed.validate_initial_generation())
-        .err()
+    Definition::parse(definition).err()
 }
 
 /// The checker's own account of the first setup in `arguments` it refuses.

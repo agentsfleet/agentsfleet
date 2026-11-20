@@ -117,7 +117,7 @@ Only a missing candidate permits full initialization. First drawer input uses a 
 
 Implementation: `afd_setup`'s model-provider edits, `af_fleet_runtime`'s definition edit module, and `afr_supervisor`'s setup proposal and turn modules, under `authoring`.
 
-First generated instructions are at most 12,288 characters; later edited instructions at most 32,768 characters. These character ceilings never replace the tokenizer checks.
+Instructions are at most 32,768 characters, whether the model drafted them first or a person edited them later. These character ceilings never replace the tokenizer checks.
 
 Count system instructions, tools, history, and reserved output against the model window. Long instructions are changed through small edits rather than repeated full rewrites.
 

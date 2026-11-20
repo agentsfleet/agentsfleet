@@ -81,18 +81,15 @@ pub struct Head<'a> {
 }
 
 impl Native {
-    /// The whole setup this proposal leaves: a first setup within the
-    /// generation bound, or `head` with the edit applied.
+    /// The whole setup this proposal leaves: a first setup as proposed, or
+    /// `head` with the edit applied.
     ///
     /// # Errors
     /// The checker refuses the setup, with its own account of which rule; or
     /// an edit has no setup to apply to.
     pub fn apply(self, head: Option<&Definition>) -> Result<Definition, Refused> {
         match self {
-            Self::Initialize { definition } => definition
-                .validate_initial_generation()
-                .map(|()| *definition)
-                .map_err(Refused::checked),
+            Self::Initialize { definition } => Ok(*definition),
             Self::Edit {
                 config_ops,
                 instruction_edits,

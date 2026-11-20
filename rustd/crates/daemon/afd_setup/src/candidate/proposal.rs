@@ -64,7 +64,6 @@ async fn replacement(
     let draft = &guarded.draft;
     match proposal {
         Proposal::Initialize { definition } if draft.head_candidate_id.is_none() => {
-            definition.validate_initial_generation()?;
             Ok(definition.as_ref().clone())
         }
         Proposal::Edit {

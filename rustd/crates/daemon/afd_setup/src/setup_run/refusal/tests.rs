@@ -157,23 +157,30 @@ fn text_that_is_no_definition_is_refused_without_being_quoted()
     Ok(())
 }
 
-/// A first setup is held to the first generation's smaller instruction bound;
-/// an edit on a head is not.
+/// A first setup and an edit share one instruction bound: the bound itself is
+/// kept, and one character past it is refused.
 #[test]
-fn a_first_setup_past_the_first_generation_bound_is_refused()
+fn a_first_setup_takes_the_same_instruction_bound_as_an_edit()
 -> Result<(), Box<dyn std::error::Error>> {
-    let long = "x".repeat(af_fleet_runtime::definition::MAX_INITIAL_INSTRUCTIONS_CHARS + 1);
-    let text = definition("0 9 * * *", &long);
-    let first = check(
-        Head {
-            candidate: None,
-            revision: 0,
-        },
-        &proposal(None, 0, &text),
-    );
+    let bound = af_fleet_runtime::definition::MAX_INSTRUCTIONS_CHARS;
+    let first = |instructions: &str| {
+        check(
+            Head {
+                candidate: None,
+                revision: 0,
+            },
+            &proposal(None, 0, &definition("0 9 * * *", instructions)),
+        )
+    };
+    let full = "x".repeat(bound);
     assert!(
-        refused_with(&first, error_code::AGENTSFLEET_INVALID_CONFIG),
-        "{first:?}"
+        matches!(&first(&full), Ok(parsed) if parsed.instructions_md().len() == bound),
+        "a first setup may carry the full bound"
+    );
+    let over = first(&"x".repeat(bound + 1));
+    assert!(
+        refused_with(&over, error_code::AGENTSFLEET_INVALID_CONFIG),
+        "{over:?}"
     );
     let head = uuid(HEAD)?;
     let edit = check(
@@ -181,10 +188,10 @@ fn a_first_setup_past_the_first_generation_bound_is_refused()
             candidate: Some(&head),
             revision: 2,
         },
-        &proposal(Some(HEAD), 2, &text),
+        &proposal(Some(HEAD), 2, &definition("0 9 * * *", &full)),
     );
     assert!(
-        matches!(&edit, Ok(parsed) if parsed.instructions_md().len() == long.len()),
+        matches!(&edit, Ok(parsed) if parsed.instructions_md().len() == bound),
         "an edit may carry the full bound: {edit:?}"
     );
     Ok(())

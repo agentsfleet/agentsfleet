@@ -336,7 +336,7 @@ Setup model calls, proposals, renewals and completion use `authoring_model`, `au
 The [runner guide](runner_protocol.md#authoring-operations-on-the-native-session) describes their authority and recovery rules.
 Their existing proposal, accounting and dispatch rules follow below.
 
-`Proposal={kind:"initialize",definition:Definition}` is allowed only when no candidate exists and caps first generated instructions at 12,288 characters. Subsequent proposals are `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops:ConfigOp[],instruction_edits:InstructionEdit[]}`. Match both base fields against the current version before atomically replacing it.
+`Proposal={kind:"initialize",definition:Definition}` is allowed only when no candidate exists. Subsequent proposals are `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops:ConfigOp[],instruction_edits:InstructionEdit[]}`. Match both base fields against the current version before atomically replacing it.
 
 Both use the same validator as drawer input. An activity receipt is keyed by attempt + activity_sequence and normalized body; sequences are contiguous decimal strings from `"1"`. Exact retry returns the originally accepted candidate version even after later edits.
 

@@ -5,7 +5,7 @@ use af_core::error_code;
 use serde_json::{Map, Value, json};
 
 use super::{initial_refusal, invalid_setup};
-use crate::definition::MAX_INITIAL_INSTRUCTIONS_CHARS;
+use crate::definition::MAX_INSTRUCTIONS_CHARS;
 
 /// A first setup built like `FIXTURE_CONFIG`, which the checker accepts, with
 /// the description and extra settings a test chooses, as JSON text.
@@ -85,14 +85,13 @@ fn a_value_of_the_wrong_shape_is_named_by_position_never_by_value()
 }
 
 #[test]
-fn first_instructions_over_the_generation_bound_are_refused()
+fn first_instructions_over_the_instruction_bound_are_refused()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut long: Value = serde_json::from_str(&setup("Answers support questions", None))?;
     // Multi-byte characters, so the bound is counted in characters, not bytes.
     *long
         .get_mut("instructions_md")
-        .ok_or("the fixture has instructions")? =
-        json!("é".repeat(MAX_INITIAL_INSTRUCTIONS_CHARS + 1));
+        .ok_or("the fixture has instructions")? = json!("é".repeat(MAX_INSTRUCTIONS_CHARS + 1));
 
     let detail =
         initial_refusal(&long.to_string()).ok_or("an oversized first setup was accepted")?;

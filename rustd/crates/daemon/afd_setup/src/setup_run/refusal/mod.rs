@@ -75,7 +75,7 @@ impl From<af_fleet_runtime::Error> for Refusal {
 /// # Errors
 /// A [`Refusal`] under `UZ-AUTHOR-003` when the base candidate or revision is
 /// no longer the head, and under the parser's code when the Definition does
-/// not parse or, for a first setup, breaks the first generation's bound.
+/// not parse.
 pub(super) fn check(head: Head<'_>, proposal: &SetupProposal<'_>) -> Result<Definition, Refusal> {
     let revision = u64::try_from(head.revision).unwrap_or(u64::MAX);
     if head.candidate.map(Uuid7::as_str) != proposal.base_candidate_id.as_deref()
@@ -86,11 +86,7 @@ pub(super) fn check(head: Head<'_>, proposal: &SetupProposal<'_>) -> Result<Defi
             detail: DETAIL_BASE_MOVED.to_owned(),
         });
     }
-    let definition = Definition::parse(&proposal.definition)?;
-    if head.candidate.is_none() {
-        definition.validate_initial_generation()?;
-    }
-    Ok(definition)
+    Ok(Definition::parse(&proposal.definition)?)
 }
 
 #[cfg(test)]
