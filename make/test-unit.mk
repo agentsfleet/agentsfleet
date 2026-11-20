@@ -11,7 +11,8 @@ _RUSTD_UNIT_DAEMON = agentsfleetd
 _RUSTD_UNIT_DAEMON_LIBS = $(filter-out $(_RUSTD_UNIT_RUNNER) $(_RUSTD_UNIT_DAEMON),$(call _rustd_layer,*))
 # --all-features: the `test-util` mocks reach failure paths a real datastore
 # will not produce on demand.
-_RUSTD_UNIT_TEST = cargo test --locked --all-features
+# --no-fail-fast: one run names every failing test binary, not only the first.
+_RUSTD_UNIT_TEST = cargo test --locked --all-features --no-fail-fast
 _RUSTD_NEED_CARGO = command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 
 test-unit-rustd: test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs  ## Run the Rust workspace unit tests (cargo), shard by shard

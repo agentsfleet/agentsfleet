@@ -61,9 +61,9 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@cd $(RUSTD_DIR) && cargo build --locked --all-features -p agentsfleet_runner --bin agentsfleet-recovery-fixture
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --locked --workspace --exclude afd_bench --all-features --test "*" -- --ignored $(EXCLUSIVE_SKIP))
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --locked --workspace --exclude afd_bench --all-features --test "*" --no-fail-fast -- --ignored $(EXCLUSIVE_SKIP))
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
-	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --locked --workspace --exclude afd_bench --all-features --test "*" -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --locked --workspace --exclude afd_bench --all-features --test "*" --no-fail-fast -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
 # A ratchet toward 100%: raise it when a run beats it, lower it only on Indy's
 # word, recorded here. 98 since Nov 08, 2026: "if it fails again move the
