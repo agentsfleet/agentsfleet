@@ -20,10 +20,13 @@ pub(crate) const ADVANCE: &str = include_str!("advance.sql");
 /// `$7` the known usage word, `$8` and `$9` the unresolved dispatch statuses.
 pub(crate) const PAGE: &str = include_str!("page.sql");
 
-/// The newest messages' states for a stream poll, with reported usage.
+/// The newest messages' states for a stream poll, with reported usage: an
+/// attempt's dispatch receipts, or a draft run's usage lines.
 ///
 /// `$1` draft, `$2` limit, `$3` the known usage word, `$4` and `$5` the
-/// unresolved dispatch statuses.
+/// unresolved dispatch statuses, `$6` the work type a draft run's lines carry,
+/// `$7` the runtime line kind, `$8` and `$9` the settled run statuses, `$10`
+/// the live run status.
 pub(crate) const NOTICES: &str = include_str!("notices.sql");
 
 /// The running message, independently of the bounded notice tail.

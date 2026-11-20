@@ -18,7 +18,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_cron::validate::{Fields, Invalid, MAX_CRON_LEN, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN};
+use af_fleet_runtime::config::{CronSchedule, MAX_CRON_LEN, check_schedule};
+use afd_cron::validate::{Fields, Invalid, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN};
 
 /// A five-field expression with nothing exotic in it.
 const EVERY_MINUTE: &str = "* * * * *";
@@ -159,6 +160,37 @@ fn a_named_field_is_refused_rather_than_registered_to_never_fire() {
             cron(named),
             Err(Invalid::Cron),
             "`{named}` names a field in words this daemon does not register"
+        );
+    }
+}
+
+/// A schedule route and a fleet definition's cron trigger reach one verdict,
+/// because the route's check is the fleet runtime's: the same expressions are
+/// admitted and refused on both sides, minute 61 among them.
+#[test]
+fn a_schedule_route_refuses_what_a_fleet_definition_refuses() {
+    for (expression, admitted) in [
+        ("0 9 * * *", true),
+        ("*/60 * * * *", true),
+        ("0 0 5-5 * *", true),
+        ("61 * * * *", false),
+        ("@daily", false),
+        ("0 0 * * MON", false),
+        ("*/61 * * * *", false),
+        ("0 0 15-1 * *", false),
+    ] {
+        let proved = garde::Unvalidated::new(CronSchedule { expression })
+            .validate()
+            .expect("every expression here is inside the bound");
+        assert_eq!(
+            check_schedule(&proved).is_ok(),
+            admitted,
+            "the fleet runtime's verdict on `{expression}`"
+        );
+        assert_eq!(
+            cron(expression).is_ok(),
+            admitted,
+            "the schedule route's verdict on `{expression}`"
         );
     }
 }

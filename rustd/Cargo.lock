@@ -161,6 +161,7 @@ dependencies = [
  "af_webhook",
  "garde",
  "hex",
+ "philiprehberger-cron-parser",
  "regex",
  "serde",
  "serde_ignored",
@@ -754,6 +755,7 @@ version = "0.78.0"
 dependencies = [
  "af_core",
  "af_crypto",
+ "af_fleet_runtime",
  "af_observability",
  "af_validate",
  "af_wire",

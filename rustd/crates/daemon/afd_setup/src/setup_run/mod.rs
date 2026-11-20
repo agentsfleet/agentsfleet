@@ -14,6 +14,7 @@
 //! a live attempt here, a live draft thread there.
 
 mod preview;
+mod refusal;
 mod report;
 mod sql;
 

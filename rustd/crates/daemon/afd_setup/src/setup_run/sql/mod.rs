@@ -27,6 +27,11 @@ pub(super) const HISTORY: &str = include_str!("history.sql");
 /// running, `$4` queued.
 pub(super) const RUNNING: &str = include_str!("running.sql");
 
+/// The turn a draft run's report finishes, with any refused proposal's
+/// detail. `$1` draft, `$2` sequence, `$3` status, `$4` answer, `$5`
+/// candidate, `$6` failure reason, `$7` failure detail, `$8` running.
+pub(super) const FINISH: &str = include_str!("finish.sql");
+
 /// The draft a report finishes, locked, and its message. `$1` draft, `$2`
 /// message.
 pub(super) const LOCK_REPORT: &str = include_str!("lock_report.sql");

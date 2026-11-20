@@ -14,9 +14,10 @@
 use crate::harness;
 
 use af_core::error_code;
+use af_fleet_runtime::config::MAX_CRON_LEN;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_cron::validate::{
-    DETAIL_INVALID_CRON, DETAIL_INVALID_TIMEZONE, MAX_CRON_LEN, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN,
+    DETAIL_INVALID_CRON, DETAIL_INVALID_TIMEZONE, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN,
 };
 use http::{Method, StatusCode};
 use serde_json::{Value, json};

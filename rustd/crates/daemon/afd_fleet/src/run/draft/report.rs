@@ -4,8 +4,9 @@
 //!
 //! Idempotent by run and fence: the settlement flips the run only while it
 //! is active under its own fence, so a replayed report finds it settled, rolls
-//! back and writes nothing a second time. A stale fence is refused and writes
-//! nothing; the dead holder's last slice is the expiry sweep's to bill.
+//! back and writes nothing a second time. A stale fence, and a run another
+//! assignment expired, are refused and write nothing; the dead holder's last
+//! slice is the expiry sweep's to bill.
 
 use af_core::id::Uuid7;
 use af_wire::report::{Outcome, ReportRequest};
@@ -109,6 +110,9 @@ impl RunService {
             return match settled.run_status.as_deref() {
                 // Settled already, by this report's earlier copy: nothing more to write.
                 Some(status) if sql::report_statement::is_settled(status) => Ok(()),
+                // Expired by the assignment that took its turn at a higher fence, as a
+                // fleet's superseded report is refused (`report::finalize`).
+                Some(sql::RUN_STATUS_EXPIRED) => Err(stale_fence()),
                 _ if settled.fence_holds == Some(false) => Err(stale_fence()),
                 _ => Err(run_lost()),
             };
@@ -127,6 +131,7 @@ impl RunService {
             Some(scope) => {
                 let answer = Some(request.response_text.as_ref()).filter(|text| !text.is_empty());
                 let finish = afd_setup::setup_run::SetupFinish {
+                    run_id: &run_id,
                     completed: succeeded,
                     answer,
                     proposal: setup.proposal.as_ref(),

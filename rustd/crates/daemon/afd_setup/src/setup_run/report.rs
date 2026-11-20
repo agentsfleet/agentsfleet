@@ -6,17 +6,18 @@
 //! final Definition on the base it started from. The daemon re-checks that
 //! base against the draft's head once, under the draft's lock, and parses the
 //! Definition through the one parser every candidate passes. A base that moved
-//! or a Definition that does not parse writes no candidate; the answer stands.
+//! or a Definition that does not parse writes no candidate; the answer stands,
+//! and the turn keeps the refusal as its failure detail (`refusal`).
 //! A replayed report reaches none of this: the run's settlement, which runs
 //! first, finds the run already settled.
 
 use af_core::{error_code, id::Uuid7};
-use af_fleet_runtime::Definition;
 use af_wire::{authoring::FailureReason, run::SetupProposal};
 use afd_turns::view::activity::Announcement;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 
+use super::refusal::{self, Head, Refusal};
 use super::{SetupOwed, sql};
 use crate::{
     Access, Creations, Result, access, candidate,
@@ -24,13 +25,9 @@ use crate::{
     draft::read,
     error::raise::query,
     funnel::Message,
-    run::report::{sql::MESSAGE, verdict},
+    run::report::verdict,
     types::{CANCELLED, MessageState, RUNNING},
 };
-
-/// Logged when a report's setup was not written: its base moved or it did
-/// not parse.
-const EVENT_NOT_APPLIED: &str = "setup_report_not_applied";
 
 /// [`sql::LOCK_REPORT`]'s row, by column name.
 #[derive(sqlx::FromRow)]
@@ -85,6 +82,8 @@ impl SetupReportScope {
 /// What the runner reported for a setup turn.
 #[derive(Debug, Clone, Copy)]
 pub struct SetupFinish<'a> {
+    /// The run that reported, which a refused proposal's log names.
+    pub run_id: &'a Uuid7,
     /// The turn ran to an answer.
     pub completed: bool,
     /// The answer, when it gave one.
@@ -158,7 +157,7 @@ impl Creations {
             return Ok(Announcement::default());
         }
         let Some(draft) = &scope.private else {
-            write_message(connection, scope, CANCELLED, None, None, None).await?;
+            write_turn(connection, scope, Finish::status(CANCELLED)).await?;
             owed.0
                 .finished(connection, scope.message(), CANCELLED)
                 .await?;
@@ -166,23 +165,39 @@ impl Creations {
         };
         if !finish.completed {
             let failed = MessageState::Failed.as_str();
-            let reason = verdict::reason(FailureReason::ProviderFailed);
-            let head = draft.head_candidate_id.as_ref();
-            write_message(connection, scope, failed, None, head, Some(reason)).await?;
+            let ending = Finish {
+                candidate: draft.head_candidate_id.as_ref(),
+                reason: Some(verdict::reason(FailureReason::ProviderFailed)),
+                ..Finish::status(failed)
+            };
+            write_turn(connection, scope, ending).await?;
             owed.0.finished(connection, scope.message(), failed).await?;
             return Ok(Announcement::default());
         }
         // A save turn proposes nothing: it saves the head the person reviewed.
-        let written = match finish.proposal {
-            Some(proposal) if !scope.row.save_requested => {
+        let applied = match finish.proposal {
+            Some(proposal) if !scope.row.save_requested => Some(
                 self.apply_setup(connection, draft, proposal, finish.now)
-                    .await?
-            }
+                    .await?,
+            ),
             Some(_) | None => None,
         };
-        let candidate = written.as_ref().or(draft.head_candidate_id.as_ref());
+        let (written, refused) = match &applied {
+            Some(Applied::Written(id)) => (Some(id), None),
+            Some(Applied::Refused(refusal)) => {
+                refusal.log(&draft.id, finish.run_id);
+                (None, Some(refusal))
+            }
+            None => (None, None),
+        };
         let completed = MessageState::Completed.as_str();
-        write_message(connection, scope, completed, finish.answer, candidate, None).await?;
+        let ending = Finish {
+            answer: finish.answer,
+            candidate: written.or(draft.head_candidate_id.as_ref()),
+            detail: refused.map(Refusal::detail),
+            ..Finish::status(completed)
+        };
+        write_turn(connection, scope, ending).await?;
         owed.0
             .finished(connection, scope.message(), completed)
             .await?;
@@ -229,35 +244,26 @@ impl Creations {
     }
 
     /// Re-checks `proposal`'s base against the draft's head and parses its
-    /// Definition, and appends it as the next candidate: its id, or `None`
-    /// when the base moved or the Definition does not parse.
+    /// Definition, and appends it as the next candidate: its id, or the
+    /// refusal when the base moved or the Definition does not parse.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer; a refused proposal is an
+    /// [`Applied::Refused`], never this error.
     async fn apply_setup(
         &self,
         connection: &mut PgConnection,
         draft: &read::Locked,
         proposal: &SetupProposal<'_>,
         now: Timestamp,
-    ) -> Result<Option<Uuid7>> {
-        let head = draft.head_candidate_id.as_ref().map(Uuid7::as_str);
-        let base = proposal.base_candidate_id.as_deref();
-        let revision = u64::try_from(draft.candidate_revision).unwrap_or(u64::MAX);
-        if head != base || revision != proposal.base_revision {
-            not_applied(
-                &draft.id,
-                "the base candidate is no longer the draft's head",
-            );
-            return Ok(None);
-        }
-        let definition = match Definition::parse(&proposal.definition) {
-            Ok(definition)
-                if head.is_some() || definition.validate_initial_generation().is_ok() =>
-            {
-                definition
-            }
-            Ok(_) | Err(_) => {
-                not_applied(&draft.id, "the reported setup does not parse");
-                return Ok(None);
-            }
+    ) -> Result<Applied> {
+        let head = Head {
+            candidate: draft.head_candidate_id.as_ref(),
+            revision: draft.candidate_revision,
+        };
+        let definition = match refusal::check(head, proposal) {
+            Ok(definition) => definition,
+            Err(refused) => return Ok(Applied::Refused(refused)),
         };
         let id = self.setup.drafts.mint(now)?;
         candidate::append(
@@ -270,41 +276,59 @@ impl Creations {
             },
         )
         .await?;
-        Ok(Some(id))
+        Ok(Applied::Written(id))
     }
 }
 
-/// Writes the running message's finish; a message a Stop finished matches
-/// nothing.
-async fn write_message(
+/// What a report's proposal came to.
+enum Applied {
+    /// The next candidate, appended.
+    Written(Uuid7),
+    /// The daemon's check refused it; no candidate was written.
+    Refused(Refusal),
+}
+
+/// What a report writes onto its running turn. Built from
+/// [`Finish::status`], so an absent column is absent by name.
+#[derive(Debug, Clone, Copy)]
+struct Finish<'a> {
+    status: &'a str,
+    answer: Option<&'a str>,
+    candidate: Option<&'a Uuid7>,
+    reason: Option<&'a str>,
+    detail: Option<&'a str>,
+}
+
+impl<'a> Finish<'a> {
+    /// `status` alone: no answer, candidate, reason or detail.
+    const fn status(status: &'a str) -> Self {
+        Self {
+            status,
+            answer: None,
+            candidate: None,
+            reason: None,
+            detail: None,
+        }
+    }
+}
+
+/// Writes the running turn's finish; a turn a Stop finished matches nothing.
+async fn write_turn(
     connection: &mut PgConnection,
     scope: &SetupReportScope,
-    status: &str,
-    answer: Option<&str>,
-    candidate: Option<&Uuid7>,
-    reason: Option<&str>,
+    finish: Finish<'_>,
 ) -> Result<()> {
-    sqlx::query(MESSAGE)
+    sqlx::query(sql::FINISH)
         .bind(&scope.draft_id)
         .bind(scope.row.sequence)
-        .bind(status)
-        .bind(answer)
-        .bind(candidate)
-        .bind(reason)
+        .bind(finish.status)
+        .bind(finish.answer)
+        .bind(finish.candidate)
+        .bind(finish.reason)
+        .bind(finish.detail)
         .bind(RUNNING)
         .execute(connection)
         .await
         .map_err(query(sql::CONTEXT))?;
     Ok(())
-}
-
-fn not_applied(draft: &Uuid7, why: &'static str) {
-    let draft_id = draft.as_str();
-    {
-        let (event, message) = (
-            &EVENT_NOT_APPLIED,
-            format_args!("{why}; no candidate written"),
-        );
-        tracing::warn!(message, draft_id, event);
-    };
 }

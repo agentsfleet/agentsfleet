@@ -15,5 +15,6 @@ mod mixed;
 mod replica;
 mod replicas;
 mod seat;
+mod setup_run;
 mod stop;
 mod wallet;
