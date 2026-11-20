@@ -40,6 +40,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Solution summary:**
 - **guffbolt stands alone.** It is a crate at `rustd/guffbolt` with no `af_*`, `afr_*` or `afd_*` dependency. Anyone can build on it, and its `tools` feature ships default tools.
+- **One way to extend it.** A tool names the capabilities it needs, and the embedder registers a backend for each. A startup config picks the tools (§9).
 - **Setup is a run.** A setup turn on a draft's thread is assigned to a runner like a fleet turn. Its guffbolt run has one tool, `propose_setup`, and gets no sandbox.
 - **One machine.** The daemon makes no model call.
 
@@ -76,6 +77,10 @@ SPEC AUTHORING RULES (the one comment that survives):
 |------|--------|-----|
 | `rustd/guffbolt/**` | CREATE | the harness: loop, tools, sub-agents, window hook, extensions, observer, README |
 | `rustd/guffbolt/src/tools/propose/**` | CREATE | the proposal tool and its `Document` trait (§4) |
+| `rustd/guffbolt/src/capability/**` | CREATE | the capability registry, `CallRef` and the startup tool config (§9) |
+| `rustd/guffbolt/src/tools/{schedule,message,notify}/**` | CREATE | generic cron, schedule, message and notify tools over their capabilities (§9) |
+| `rustd/guffbolt/src/tools/web/pushover.rs` | DELETE | Pushover becomes a `Notifier` backend in `afr_tools` (§9) |
+| `rustd/crates/runner/afr_tools/src/verbs/**`, `src/pushover/**` | EDIT | agentsfleetd-backed `Scheduler`, `Channel` and `Notifier` backends replace the verb tools (§9) |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | the `guffbolt` member |
 | `rustd/crates/harness/**` | DELETE or EDIT | pieces now in guffbolt leave; the rest depends on guffbolt |
 | `rustd/crates/runner/afr_agent/**` | EDIT | embeds guffbolt with the runner's conversation, request and observer |
@@ -223,12 +228,39 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 - **Dimension 8.2** — another protocol version is refused → Test `a_runner_on_another_protocol_version_is_refused` (integration): hello with an unknown version. Expected: `UZ-RUN-023`, and no run assigned.
 - **Dimension 8.3** — no setting feeds setup runs → Test `setup_limits_are_constants` (unit): `afd_setup`'s limits. Expected: 300-second runtime from a constant, and no `TurnSettings` type remains.
 
+### §9 — guffbolt is extended one way: capabilities
+
+A tool names the capabilities it needs, and the embedder registers one backend per capability. A startup config names the tools to offer. `Toolset::build` refuses to start when a named tool lacks a capability, and names both.
+
+`Env`, `Outbound` and `MemoryStore` become capabilities in one registry, so `Context` carries the registry instead of three fields. `Scheduler`, `Channel` and `Notifier` join them. A third party adds its own capability trait the same way, with no edit to guffbolt.
+
+The cron tools, `schedule` and `message` move into guffbolt as generic tools over `Scheduler` and `Channel`. agentsfleet registers backends over its fenced verbs, so its runs behave as today. Pushover leaves guffbolt and becomes a `Notifier` backend in `afr_tools`, which guffbolt's `notify` tool reaches.
+
+Local defaults stay honest:
+- `LocalScheduler` keeps jobs in a file under a directory the embedder names. It returns due jobs only when the embedder calls `due`.
+- `LocalChannel` hands each line to a callback the embedder gives it.
+- guffbolt ships no local `Notifier`, because every notifier is a vendor.
+
+Each call gets a `CallRef`: its step, its index in the step, and the provider's call id. A backend derives its idempotency key from it, as agentsfleet's item `(run_id, sequence)` does in M253_003. A retried call keeps its `CallRef`, and so does a journalled call that a resume sends again. A resume that asks the model again makes new calls, which M253_003's recovery note covers.
+
+Text the model reads names no host product: no "fleet", "workspace", "daemon" or "agentsfleet". Memory's `Reach` becomes `private` and `shared`.
+
+- **Dimension 9.1** — a missing capability stops startup → Test `a_toolset_missing_a_capability_refuses_to_start` (unit): a config naming `cron_add` and no `Scheduler`. Expected: an error naming `cron_add` and `Scheduler`, and no loop starts.
+- **Dimension 9.2** — a third-party capability needs no guffbolt edit → Test `a_third_party_capability_reaches_its_tool` (unit): a test trait `Crm`, its backend and a tool reading it. Expected: the tool's answer carries the backend's value.
+- **Dimension 9.3** — the config picks the offered tools → Test `the_startup_config_offers_only_named_tools` (unit): `["files", "memory_store"]`. Expected: exactly those two are offered.
+- **Dimension 9.4** — the local scheduler survives a restart → Test `local_scheduler_returns_a_due_job_after_reopening` (integration): add a job, drop the scheduler, reopen its directory, then call `due` past the moment. Expected: the job, once.
+- **Dimension 9.5** — agentsfleetd backs a fleet's scheduling → Test `a_fleet_runs_cron_add_creates_its_schedule` (integration): a fleet run calls `cron_add`. Expected: one schedule for the fleet, as today.
+- **Dimension 9.6** — Pushover is a notifier backend → Test `pushover_backend_sends_through_the_egress_guard` (unit, `afr_tools`): `notify` with the Pushover backend. Expected: one request to Pushover's host, through the run's egress guard.
+- **Dimension 9.7** — a retried call keeps its reference → Test `a_retried_call_keeps_its_call_ref` (unit): a backend that fails once, then the retry. Expected: both attempts see the same `CallRef`.
+- **Dimension 9.8** — the model reads no host product → Test `guffbolt_tool_specs_name_no_host_product` (unit): every built-in tool's spec. Expected: no "fleet", "workspace", "daemon" or "agentsfleet".
+
 ## Interfaces
 
 - **Runner protocol:** `agentsfleet.runner.v4` alone. `Down::Run { run: RunPayload }`, where the payload names one owner, a fleet or a draft. A setup run's payload carries `setup { head_candidate_id, head_revision, message, history }`.
 - **Setup report:** `ReportRequest.setup` carries the kept proposal as today's `SetupProposal`, with `base_candidate_id`, `base_candidate_revision` and the definition as JSON text, or none for a text-only answer.
 - **Context verb:** `Up::ContextLoad { run_id, fence }` and `Up::ContextSave { run_id, fence, resource_version, checkpoint }`, answered in `Down`; a fence below the current one is refused with `RUN_STALE_FENCING_TOKEN`.
 - **guffbolt public API:** `Tool<Cx>`, `Tools<T>`, `Document`, `Env`, `Outbound`, `MemoryStore`, `Ending::{Answered, Waiting, Stopped, Failed}` and `DriveState::resume`.
+- **Capabilities:** `Capabilities::insert`, `Context::capability::<dyn T>()`, `Toolset::build(&ToolsConfig, &Capabilities)`, the `Scheduler`, `Channel` and `Notifier` traits, and `CallRef { step, index, call_id }`.
 
 ## Failure Modes
 
@@ -244,6 +276,8 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 | Other protocol version | failure | a runner on another version connects | refused at hello | `a_runner_on_another_protocol_version_is_refused` |
 | Runaway local command | capacity | a standalone command forks past its timeout | the group is killed | `a_timed_out_command_leaves_no_child_running` |
 | Private egress | security | a standalone tool fetches a private address | refused | `local_outbound_refuses_a_redirect_to_a_private_address` |
+| Missing capability | failure | a configured tool's backend is not registered | startup refused, naming the tool and the capability | `a_toolset_missing_a_capability_refuses_to_start` |
+| Retried effect | replay | a backend times out after acting | the retry keeps its `CallRef`, so the backend dedupes it | `a_retried_call_keeps_its_call_ref` |
 
 ## Invariants
 
@@ -251,6 +285,7 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 2. A report or context save below the current fence writes nothing. The settle and save statements match `fencing_token` in their `WHERE`, and zero rows map to 409.
 3. guffbolt depends on no repository crate. Dimension 1.1's test runs in `make test-unit-all`.
 4. The daemon cannot use the provider clients. `afd_setup` depends on none of `af_providers`, `af_inference` and `rig-core`.
+5. guffbolt's model-facing text names no host product. Dimension 9.8's test runs in `make test-unit-all`.
 
 ## Metrics & Observability
 
@@ -270,6 +305,7 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 | R4 | Stale reports and saves write nothing (§5, §6) | `make test-integration-rustd` | both `superseded` cases pass | P0 | |
 | R5 | Local defaults contain processes and egress (§2) | `make test-unit-all` | `a_timed_out_command_leaves_no_child_running` passes | P1 | |
 | R6 | The daemon calls no model (§8) | `git grep -n -w -E "af_providers|af_inference|rig-core" -- rustd/crates/daemon/afd_setup/Cargo.toml` | no output | P0 | |
+| R7 | guffbolt is extended one way, and a missing capability stops startup (§9) | `make test-unit-all` | `a_toolset_missing_a_capability_refuses_to_start` passes | P0 | |
 | S1 | Declared commands green | `make lint-all` | exit 0 | P0 | |
 | S2 | Declared commands green | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Declared commands green | `make test-integration-rustd` | exit 0 | P0 | |
@@ -284,12 +320,15 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 | the daemon's setup model path | `git grep -n -E "mod model|crate::model" -- rustd/crates/daemon/afd_setup` | no output |
 | the runner's remote model client | `git grep -n -E "mod authoring" -- rustd/crates/runner` | no output |
 | `[authoring.turn]` | `git grep -n -F "[authoring.turn]" -- deploy` | no output |
+| guffbolt's Pushover tool | `git grep -n -w "Pushover" -- rustd/guffbolt` | no output |
+| `Context`'s three seam fields | `git grep -n -E "pub (env|outbound|memory):" -- rustd/guffbolt/src/tools/mod.rs` | no output |
 
 ## Out of Scope
 
 - Human input as one primitive, effect keys, no task reservation, and email delivery: M253_003.
 - A JSON-RPC server for guffbolt: not planned; the runner embeds it in-process.
 - Inbound email: not planned.
+- A capability for talking to other agents, and WebAssembly plugins: not in M253. The Model Context Protocol (MCP) client already loads tools at runtime.
 
 ---
 
@@ -308,7 +347,7 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** guffbolt first (§1–§3), then the proposal tool (§4), setup runs (§5), context (§6), gaps (§7), and removal last (§8).
+- **Chosen shape:** guffbolt first (§1–§3), then capabilities (§9), because the proposal tool registers through them. Then the proposal tool (§4), setup runs (§5), context (§6), gaps (§7), and removal last (§8).
 - **Alternatives considered:**
   - **Codex app-server as a child process.** Its JSON-RPC boundary adds a process and a wire per run, and the runner must still adapt sandbox and egress, so it was rejected.
   - **Keep the daemon's model path and have the runner call it.** That keeps two paths to the model, which is the drift this spec removes.
@@ -332,6 +371,10 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
     - **D8:** `fleet_id` plus `draft_id` on the run.
     - **D10:** web and memory tools move into guffbolt.
     - **D12:** the codecov paths and the `.orly/LOCAL.md` layer rule.
+  - > Owner (Indy, Nov 20, 2026): "Move to afr_tools (Recommended)" — context: §9, Pushover leaves guffbolt.
+  - > Owner (Indy, Nov 20, 2026): "I think i need ability like memory_store, they are in guffbolt i presume, and the calls do api to save them? similar way the pushover and scheduler can be. When i start i can configure the needed (like pi or codex or zig's nullclaw or any ~/Projects/oss/rs/* equivalent)" — context: §9.
+  - > Owner (Indy, Nov 20, 2026): "I need a common better way to do this." — context: §9, one extension pattern.
+  - > Owner (Indy, Nov 20, 2026): "Yes i prefer the proposal" — context: §9, the capabilities design as proposed.
   - > Owner (Indy, Nov 19, 2026): "donot do the lint, test-unit, test-integration check but rather do it at the end of every workstream. but for every dimension do cargo check, cargo fmt (clippy) so we know code compiles." — context: per-Dimension compile checks; S rows at the end of each Workstream.
   - > Owner (Indy, Nov 19, 2026): "Ensure the rust code for individual files is 99% and overall is 99% if possible or else stick to the numbers we have currently." — context: coverage targets 99% per file and overall, never below the 98% line and 95% patch floors.
   - > Owner (Indy, Nov 19, 2026): "E2E cloud burst" — context: Linux proof, paid, his go per run.
