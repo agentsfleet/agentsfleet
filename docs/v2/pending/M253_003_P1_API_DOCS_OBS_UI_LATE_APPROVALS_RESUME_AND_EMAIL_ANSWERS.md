@@ -194,6 +194,14 @@ It sends through the invite relay with idempotency key `delivery-{delivery_id}`.
 - **Dimension 5.4** — a relay outage retries → Test `an_smtp_4xx_retries_then_abandons` (integration): a relay answering 451 every time. Expected: retries on the jittered schedule, then the delivery is abandoned.
 - **Dimension 5.5** — one email per delivery → Test `a_redelivered_email_carries_one_idempotency_key` (integration): a send that times out and is retried. Expected: both tries carry `delivery-{delivery_id}`.
 
+### §6 — M253_001's acceptance and benchmarks run at the end of M253
+
+Carried from M253_001, by the owner's instruction. They run once on E2E Networks after M253_003's CI is green, in parallel, and the virtual machines are deleted after.
+
+- **Dimension 6.1** (was M253_001 7.3) — the CLI reads turns → Test `fleet_turns_lists_turns` (acceptance, `cli/test/acceptance/logs-turns-live.spec.ts`): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
+- **Dimension 6.2** (was M253_001 9.1) — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
+- **Dimension 6.3** (was M253_001 9.2) — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
+
 ## Interfaces
 
 - **Approval routes:** unchanged. `POST /v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}` and the Slack callback resolve a gate; a `question` gate takes `{"answer":"…"}` with the `answered` decision.

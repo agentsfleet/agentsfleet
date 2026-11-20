@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 19, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, every person and operator reads a conversation through these nouns
 
@@ -242,7 +242,7 @@ The CLI's `fleet events` becomes `fleet turns` with the same flags, `fleet logs`
 
 - **Dimension 7.1** — DONE — the inventory holds only new routes → Test `the_route_inventory_names_turns_items_and_runs` (unit): `INVENTORY`. Expected: no path contains `/tool-calls`, `/leases` or `/cancellations`, and `/events` appears only in `/v1/connectors/{provider}/events`.
 - **Dimension 7.2** — DONE — an unknown field is refused → Test `a_body_naming_an_unknown_field_is_refused` (integration): a request carrying `event_id`. Expected: 400 with `UZ-REQ-001`, as today's handler refuses an unknown field.
-- **Dimension 7.3** — DEFERRED to the end-of-M253 acceptance run — the CLI reads turns → Test `fleet_turns_lists_turns` (acceptance, `cli/test/acceptance/logs-turns-live.spec.ts`): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
+- **Dimension 7.3** — TRANSFERRED to M253_003 §6 — the CLI reads turns → Test `fleet_turns_lists_turns` (acceptance, `cli/test/acceptance/logs-turns-live.spec.ts`): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
 
 ### §8 — One Stop ends any thread's running turn
 
@@ -273,8 +273,8 @@ Indy moved these here from #853: "PR853 - descope with feedback that the next la
 - **Query plans.** `EXPLAIN ANALYZE` runs on populated tables for every assign, renew, report and Stop statement.
 - **Docs.** Every architecture page speaks the new words, which §1's rule checks.
 
-- **Dimension 9.1** — DEFERRED to the end-of-M253 benchmark run — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
-- **Dimension 9.2** — DEFERRED to the end-of-M253 benchmark run — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
+- **Dimension 9.1** — TRANSFERRED to M253_003 §6 — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
+- **Dimension 9.2** — TRANSFERRED to M253_003 §6 — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
 
 ## Interfaces
 
@@ -399,7 +399,7 @@ An item on the public wire looks like this:
 - **Consults, agent defaults** — Stop is a `PATCH` of turn status, per HTTP-VERB. Sends keep `/messages`, per HTTP-MSGKEY. New tables live in a `thread` Postgres schema, as the glossary shows.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 8 Blockers, 47 Majors, 29 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
 - **Open blockers** — none.
-- **Deferrals and transfers** —
+- **Deferrals and transfers** — Owner (Indy, Nov 20, 2026): "i think M252_001 must move to done, since the stuff you say will be handled in the other spec and indy have given the necessary isntructions" — 7.3, 9.1 and 9.2 move to M253_003 §6, run on E2E once M253_003 is green ("Run both on E2E at the end (Recommended)").
   - Dimensions 9.1 and 9.2 measure the final statements, so they run once M253_003 has changed them, beside the acceptance run.
     > Owner (Indy, Nov 20, 2026): "Do we do now not after we complete the 25*003?" and "it could be done when M252_003 is run where the performance bench and the acceptance (either in burst e2e or gh are kicked off parallel)"
   - Dimensions 5.1 and 5.2 are missing behaviour, not just missing tests. `thread.items` has no `kind`, `tool`, `status`, `changes` or `run_id` columns, and runner input carries no turn id. They transfer to M253_002 §10, where guffbolt's API changes once with `CallRef`.
