@@ -102,7 +102,13 @@ async fn a_move_hunk_writes_the_new_path_and_removes_the_old() {
         "{}",
         applied.text
     );
-    assert!(applied.text.ends_with("+1 \u{2212}1"), "{}", applied.text);
+    assert!(
+        applied
+            .text
+            .ends_with("Lines changed:\n\"src/kept.txt\" +1 -1"),
+        "{}",
+        applied.text
+    );
     assert_eq!(
         std::fs::read_to_string(live.root.join("src/kept.txt")).unwrap(),
         "one\nTWO\nthree\n"

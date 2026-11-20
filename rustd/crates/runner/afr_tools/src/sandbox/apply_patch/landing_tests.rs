@@ -130,7 +130,13 @@ async fn two_update_hunks_on_one_file_both_land() {
         std::fs::read_to_string(live.root.join(KEEP)).unwrap(),
         "ONE\ntwo\nTHREE\n"
     );
-    assert!(applied.text.ends_with("+2 \u{2212}2"), "{}", applied.text);
+    assert!(
+        applied
+            .text
+            .ends_with("Lines changed:\n\"src/keep.txt\" +1 -1\n\"./src/keep.txt\" +1 -1"),
+        "{}",
+        applied.text
+    );
     live.stop().await;
 }
 

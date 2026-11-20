@@ -6,7 +6,9 @@
 )]
 
 use af_fleet_runtime::Definition;
-use af_fleet_runtime::definition::{ConfigOp, EditBatch, InstructionEdit, MAX_INSTRUCTION_OFFSET};
+use af_fleet_runtime::definition::{
+    ConfigOp, EditBatch, InstructionEdit, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_OFFSET,
+};
 use af_validate::TEXT_MAX_CHARS;
 use serde_json::{Value, json};
 
@@ -109,9 +111,12 @@ fn test_definition_utf8_overlap_and_invalid_end_are_rejected() {
 #[test]
 fn test_definition_replacement_budget_counts_all_operations_before_overwrites() {
     let original = parse(&value());
+    // Each replacement fits the description's own bound; only their sum, overwrites
+    // included, passes the batch's ceiling.
+    let over = TEXT_MAX_CHARS / MAX_DESCRIPTION_CHARS + 1;
     let batch = EditBatch {
-        config_ops: ["a".repeat(16_384), "b".repeat(16_384), "valid".into()]
-            .into_iter()
+        config_ops: std::iter::repeat_n("a".repeat(MAX_DESCRIPTION_CHARS), over)
+            .chain(std::iter::once("valid".to_owned()))
             .map(|text| ConfigOp::Replace {
                 path: "/description".into(),
                 value: json!(text),
@@ -119,9 +124,10 @@ fn test_definition_replacement_budget_counts_all_operations_before_overwrites() 
             .collect(),
         ..EditBatch::default()
     };
-    original
+    let refused = original
         .edit(batch)
         .expect_err("replacements over the budget are refused before any applies");
+    assert!(refused.to_string().contains(OUT_OF_BOUNDS), "{refused}");
     assert_eq!(original, parse(&value()));
 }
 
