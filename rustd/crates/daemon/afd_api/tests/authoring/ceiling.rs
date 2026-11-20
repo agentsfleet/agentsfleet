@@ -36,7 +36,8 @@ async fn a_setup_message_at_the_ceiling_in_three_byte_characters_is_accepted() {
     let router = f.router();
     let full: String = std::iter::repeat_n(THREE_BYTES, TEXT_MAX_CHARS).collect();
     let past = format!("{full}{THREE_BYTES}");
-    assert!(full.len() > 3 * 1024 * 1024, "{} bytes", full.len());
+    // Three bytes a character: 3 MiB, past axum's 2 MiB default body limit.
+    assert_eq!(full.len(), 3 * TEXT_MAX_CHARS);
 
     let mut body = f.request(&mint());
     body["message"] = json!(full);
