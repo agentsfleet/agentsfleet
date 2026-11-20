@@ -16,7 +16,7 @@ use utoipa::{PartialSchema, ToSchema};
 
 use super::{
     ConfigOp, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS, MAX_INSTRUCTION_OFFSET,
-    MAX_INSTRUCTIONS_CHARS, MAX_POINTER_CHARS,
+    MAX_POINTER_CHARS,
 };
 use crate::openapi::{self, Bound, Published, Text};
 
@@ -126,7 +126,10 @@ fn instruction_edit() -> Published {
         bounds: vec![
             ("start_byte", offset.clone()),
             ("end_byte", offset),
-            ("text", Bound::Text(Text::chars(0, MAX_INSTRUCTIONS_CHARS))),
+            (
+                "text",
+                Bound::Text(Text::chars(0, af_validate::TEXT_MAX_CHARS)),
+            ),
         ],
     }
 }

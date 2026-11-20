@@ -129,11 +129,13 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::MESSAGE_LIMIT_REACHED,
-        status: 409,
-        title: "Run message limit reached",
-        hint: "A run can post at most 8 messages before it answers. Put the rest in the run's answer.",
-        user_message: None,
+        code: error_code::RUN_FRAME_TOO_LARGE,
+        status: 413,
+        title: "Run too large to send",
+        hint: "The run's message, instructions and history pass the runner's 2 MiB frame. Shorten the message or start a new conversation.",
+        user_message: Some(
+            "This message is too large for a run to carry. Shorten it or start a new conversation, then try again.",
+        ),
     },
     Problem {
         code: error_code::RUN_STREAM_SUPERSEDED,

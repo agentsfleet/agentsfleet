@@ -5,9 +5,10 @@
 use serde::Deserialize;
 
 use super::{Refused, Rejection, verbatim};
+use af_validate::TEXT_MAX_CHARS;
+
 use crate::definition::{
     ConfigOp, Definition, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
-    MAX_INSTRUCTIONS_CHARS,
 };
 
 /// The bytes of a candidate identifier, a hyphenated UUID.
@@ -55,16 +56,16 @@ pub enum TextEdit {
     /// New text after the current instructions.
     Append {
         /// The text, verbatim.
-        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
+        #[garde(length(chars, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
         text: String,
     },
     /// Exact text that occurs once, and what replaces it.
     Replace {
         /// The text to replace.
-        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
+        #[garde(length(chars, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
         old_text: String,
         /// What replaces it.
-        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
+        #[garde(length(chars, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
         text: String,
     },
 }

@@ -112,14 +112,6 @@ pub const RUN_SELFTEST_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-018");
 /// tool hands the code to the model, which says it in the report instead.
 pub const MESSAGE_NO_CHANNEL: ErrorCode = ErrorCode::declare("UZ-RUN-019");
 
-/// The run already posted as many messages as one run may.
-///
-/// A 409 carrying `current_state`, and per run rather than per window: the
-/// bound is on how much one run says to a person's thread, so waiting does not
-/// lift it and a 429 would tell a client to retry into the same refusal. A
-/// reassigned run starts its own count.
-pub const MESSAGE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-RUN-020");
-
 /// A newer connection owns this runner; the superseded process must halt.
 pub const RUN_STREAM_SUPERSEDED: ErrorCode = ErrorCode::declare("UZ-RUN-021");
 
@@ -161,6 +153,11 @@ pub const RUN_CHECKPOINT_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-RUN-030
 
 /// A checkpoint exceeds a declared state, manifest, transfer or custody bound.
 pub const RUN_CHECKPOINT_LIMIT: ErrorCode = ErrorCode::declare("UZ-RUN-031");
+
+/// A run's assignment would not fit the runner protocol's frame
+/// (`af_wire::protocol::MESSAGE_BYTES_MAX`), so its turn fails at assignment
+/// instead of lapsing on a runner that never received it.
+pub const RUN_FRAME_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-RUN-032");
 
 /// A fleet declared a credential the vault does not hold.
 ///

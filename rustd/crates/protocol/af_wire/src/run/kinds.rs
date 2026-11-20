@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 pub enum RunKind {
     /// Execute an installed fleet's event.
     Fleet,
-    /// Produce a private setup proposal through scoped daemon model access.
-    Authoring,
+    /// Answer a setup draft's message with `propose_setup`.
+    Setup,
 }
 
 impl RunKind {
@@ -20,7 +20,7 @@ impl RunKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Fleet => "fleet",
-            Self::Authoring => "authoring",
+            Self::Setup => "setup",
         }
     }
 
@@ -28,13 +28,14 @@ impl RunKind {
     #[must_use]
     pub const fn other(self) -> Self {
         match self {
-            Self::Fleet => Self::Authoring,
-            Self::Authoring => Self::Fleet,
+            Self::Fleet => Self::Setup,
+            Self::Setup => Self::Fleet,
         }
     }
 }
 
-/// A nonempty, duplicate-free set parsed once at the polling boundary.
+/// A nonempty, duplicate-free set parsed once at the polling boundary. Every
+/// runner runs fleets; setup is the second kind it may also take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Vec<RunKind>", into = "Vec<RunKind>")]
 pub struct AcceptedKinds(u8);
@@ -42,17 +43,15 @@ pub struct AcceptedKinds(u8);
 impl AcceptedKinds {
     /// A worker which only executes installed fleets.
     pub const FLEET: Self = Self(1);
-    /// A worker which only executes private authoring.
-    pub const AUTHORING: Self = Self(2);
-    /// A worker implementing both protocols.
+    /// A worker which executes fleets and setup.
     pub const ALL: Self = Self(3);
 
     /// Whether this set permits a particular placement.
     #[must_use]
     pub const fn contains(self, kind: RunKind) -> bool {
         let bit = match kind {
-            RunKind::Fleet => Self::FLEET.0,
-            RunKind::Authoring => Self::AUTHORING.0,
+            RunKind::Fleet => 1,
+            RunKind::Setup => 2,
         };
         self.0 & bit != 0
     }
@@ -62,19 +61,18 @@ impl TryFrom<Vec<RunKind>> for AcceptedKinds {
     type Error = &'static str;
 
     fn try_from(kinds: Vec<RunKind>) -> Result<Self, Self::Error> {
-        use RunKind::{Authoring, Fleet};
+        use RunKind::{Fleet, Setup};
         match kinds.as_slice() {
             [Fleet] => Ok(Self::FLEET),
-            [Authoring] => Ok(Self::AUTHORING),
-            [Fleet, Authoring] | [Authoring, Fleet] => Ok(Self::ALL),
-            _ => Err("accepted_kinds must contain one or two distinct supported kinds"),
+            [Fleet, Setup] | [Setup, Fleet] => Ok(Self::ALL),
+            _ => Err("accepted_kinds must be fleet, or fleet and setup"),
         }
     }
 }
 
 impl From<AcceptedKinds> for Vec<RunKind> {
     fn from(kinds: AcceptedKinds) -> Self {
-        [RunKind::Fleet, RunKind::Authoring]
+        [RunKind::Fleet, RunKind::Setup]
             .into_iter()
             .filter(|&kind| kinds.contains(kind))
             .collect()

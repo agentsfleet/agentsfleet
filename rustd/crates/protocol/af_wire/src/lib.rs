@@ -52,7 +52,6 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod activity;
-pub mod authoring;
 pub mod context;
 pub mod credentials;
 pub mod decision;
@@ -71,6 +70,7 @@ pub mod report;
 pub mod run;
 pub mod runner;
 pub mod schedule_verb;
+pub mod setup;
 pub mod steer_verb;
 pub mod task;
 pub mod tool_detail;

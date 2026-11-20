@@ -48,13 +48,7 @@ pub struct RenewalAnswer<'a> {
 /// Every daemon message on the runner session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Down<
-    'a,
-    C = serde_json::Value,
-    D = serde_json::Value,
-    O = serde_json::Value,
-    I = serde_json::Value,
-> {
+pub enum Down<'a> {
     /// The runner records both owners before allowing the durable change.
     Prepared {
         /// Identifier of the opening hello.
@@ -84,9 +78,9 @@ pub enum Down<
     },
     /// A run assigned under the runner's available capacity.
     Run {
-        /// Fleet or authoring work, with its existing payload.
+        /// A fleet's event or a setup draft's message, with its payload.
         #[serde(borrow)]
-        run: TaggedRun<'a, C>,
+        run: TaggedRun<'a>,
     },
     /// Current policy, capability verdict and held-sandbox releases.
     Heartbeat {
@@ -108,50 +102,6 @@ pub enum Down<
         /// Run-specific deadlines, usage acknowledgements or refusals.
         #[serde(borrow)]
         runs: Vec<RenewalAnswer<'a>>,
-    },
-    /// Result or classified refusal for one authoring dispatch.
-    AuthoringModelResult {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::ModelResult<D, O, I>>,
-    },
-    /// Durable receipt for an authoring proposal or progress submission.
-    AuthoringActivityAck {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::ActivityAccepted>,
-    },
-    /// The confirmed authoring deadline or its classified refusal.
-    AuthoringRenewed {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::Renewed>,
-    },
-    /// Existing authoring settlement state after its Postgres transaction.
-    AuthoringReportAck {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::Reported>,
     },
     /// The report settled, repeated its saved result, or was refused.
     ReportAck {
@@ -229,27 +179,22 @@ pub enum Down<
     },
 }
 
-impl<C, D, O, I> Down<'_, C, D, O, I> {
+impl Down<'_> {
     /// The response follows its request's kind; unsolicited control stays separate.
     #[must_use]
     pub const fn stream_kind(&self) -> StreamKind {
         match self {
-            Self::ReportAck { .. }
-            | Self::AuthoringReportAck { .. }
-            | Self::TurnCheckpoint { .. } => StreamKind::Reports,
+            Self::ReportAck { .. } | Self::TurnCheckpoint { .. } => StreamKind::Reports,
             Self::Run { .. }
             | Self::Folded { .. }
             | Self::ContextLoaded { .. }
-            | Self::ContextSaved { .. }
-            | Self::AuthoringModelResult { .. }
-            | Self::AuthoringActivityAck { .. } => StreamKind::Work,
+            | Self::ContextSaved { .. } => StreamKind::Work,
             Self::Welcome { .. }
             | Self::Prepared { .. }
             | Self::Policy { .. }
             | Self::Heartbeat { .. }
             | Self::Pong { .. }
             | Self::Renewed { .. }
-            | Self::AuthoringRenewed { .. }
             | Self::Cancel { .. }
             | Self::GoAway { .. } => StreamKind::Control,
         }
@@ -264,10 +209,6 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
             | Self::Heartbeat { request_id, .. }
             | Self::Pong { request_id }
             | Self::Renewed { request_id, .. }
-            | Self::AuthoringModelResult { request_id, .. }
-            | Self::AuthoringActivityAck { request_id, .. }
-            | Self::AuthoringRenewed { request_id, .. }
-            | Self::AuthoringReportAck { request_id, .. }
             | Self::ReportAck { request_id, .. }
             | Self::TurnCheckpoint { request_id, .. }
             | Self::ContextLoaded { request_id, .. }

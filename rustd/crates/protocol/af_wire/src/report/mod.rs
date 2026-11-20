@@ -69,6 +69,10 @@ pub enum FailureClass {
     RenewalTerminate,
     /// The run exceeded its spend budget.
     BudgetBreach,
+    /// The run would not fit the runner protocol's frame
+    /// (`crate::protocol::MESSAGE_BYTES_MAX`). Set by `agentsfleetd`, never a
+    /// runner: the run is failed at assignment and never sent.
+    FrameTooLarge,
 }
 
 /// One run's native renewal acknowledgement.

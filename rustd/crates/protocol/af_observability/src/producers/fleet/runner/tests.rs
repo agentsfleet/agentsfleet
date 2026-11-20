@@ -8,7 +8,7 @@ use crate::metrics::label::fleet::Fault;
 /// Every class, named one at a time.
 ///
 /// Written out rather than derived from a helper, because a helper would share
-/// whatever mistake `fault_of` makes and agree with it. Eleven lines that a
+/// whatever mistake `fault_of` makes and agree with it. Twelve lines that a
 /// reviewer can argue with individually is the point: each one is a claim about
 /// who owes the customer an apology when that class fires.
 const SPLIT: &[(FailureClass, Fault)] = &[
@@ -17,6 +17,7 @@ const SPLIT: &[(FailureClass, Fault)] = &[
     (FailureClass::TransportLoss, Fault::Platform),
     (FailureClass::RunExpired, Fault::Platform),
     (FailureClass::RenewalTerminate, Fault::Platform),
+    (FailureClass::FrameTooLarge, Fault::Platform),
     (FailureClass::PolicyDeny, Fault::Workload),
     (FailureClass::LandlockDeny, Fault::Workload),
     (FailureClass::OomKill, Fault::Workload),

@@ -39,8 +39,6 @@ pub const DEFINITION_SCHEMA_VERSION: u8 = 1;
 pub const POLICY_SEMANTICS: &str = "fleet-setup-v1";
 /// Maximum description, in characters.
 pub const MAX_DESCRIPTION_CHARS: usize = 32 * 1024;
-/// Maximum instructions, in characters.
-pub const MAX_INSTRUCTIONS_CHARS: usize = 32 * 1024;
 /// The widest character in UTF-8, which is how stored text is addressed.
 const UTF8_MAX_CHAR_BYTES: usize = 4;
 /// The widest one character serializes to in JSON: a `\u00XX` control escape.
@@ -48,14 +46,16 @@ const JSON_MAX_CHAR_BYTES: usize = 6;
 /// Room the configuration takes in an envelope beside the two texts.
 const CONFIG_ALLOWANCE_BYTES: usize = 64 * 1024;
 /// The largest UTF-8 byte offset an instruction edit can name: instructions
-/// at their character cap, every character at its widest.
-pub const MAX_INSTRUCTION_OFFSET: usize = UTF8_MAX_CHAR_BYTES * MAX_INSTRUCTIONS_CHARS;
+/// at the text ceiling, [`af_validate::TEXT_MAX_CHARS`], every character at
+/// its widest.
+pub const MAX_INSTRUCTION_OFFSET: usize = UTF8_MAX_CHAR_BYTES * af_validate::TEXT_MAX_CHARS;
 /// Maximum Definition or edit envelope before allocating its parsed tree.
 ///
 /// Both texts at their character caps in the widest JSON encoding, plus the
 /// configuration, so the envelope never refuses what the text bounds admit.
-pub const MAX_DEFINITION_BYTES: usize =
-    JSON_MAX_CHAR_BYTES * (MAX_DESCRIPTION_CHARS + MAX_INSTRUCTIONS_CHARS) + CONFIG_ALLOWANCE_BYTES;
+pub const MAX_DEFINITION_BYTES: usize = JSON_MAX_CHAR_BYTES
+    * (MAX_DESCRIPTION_CHARS + af_validate::TEXT_MAX_CHARS)
+    + CONFIG_ALLOWANCE_BYTES;
 /// The `description` key, named once for the refusal that cites it.
 const FIELD_DESCRIPTION: &str = "description";
 
@@ -88,7 +88,7 @@ struct Raw {
     #[serde(default, deserialize_with = "crate::optional::present")]
     #[garde(inner(length(chars, max = MAX_DESCRIPTION_CHARS), custom(af_validate::rules::nul_free)))]
     description: Option<String>,
-    #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     instructions_md: String,
     #[garde(skip)]
     config: Value,

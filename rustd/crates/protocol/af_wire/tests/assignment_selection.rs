@@ -17,8 +17,12 @@ fn hello_requires_a_nonempty_distinct_supported_kind_set() {
         r#"{"accepted_kinds":null}"#,
         r#"{"accepted_kinds":[]}"#,
         r#"{"accepted_kinds":["fleet","fleet"]}"#,
-        r#"{"accepted_kinds":["authoring","authoring"]}"#,
-        r#"{"accepted_kinds":["fleet","authoring","fleet"]}"#,
+        r#"{"accepted_kinds":["setup","setup"]}"#,
+        r#"{"accepted_kinds":["fleet","setup","fleet"]}"#,
+        // Every runner runs fleets: setup alone is not a set a runner offers.
+        r#"{"accepted_kinds":["setup"]}"#,
+        // The kind setup ran under before it rode the common run path.
+        r#"{"accepted_kinds":["fleet","authoring"]}"#,
         r#"{"accepted_kinds":["runtime"]}"#,
         r#"{"accepted_kinds":"fleet"}"#,
     ] {
@@ -37,9 +41,8 @@ fn hello_requires_a_nonempty_distinct_supported_kind_set() {
 fn accepted_kind_order_is_a_set_and_serializes_canonically() {
     for (text, expected) in [
         (r#"["fleet"]"#, AcceptedKinds::FLEET),
-        (r#"["authoring"]"#, AcceptedKinds::AUTHORING),
-        (r#"["fleet","authoring"]"#, AcceptedKinds::ALL),
-        (r#"["authoring","fleet"]"#, AcceptedKinds::ALL),
+        (r#"["fleet","setup"]"#, AcceptedKinds::ALL),
+        (r#"["setup","fleet"]"#, AcceptedKinds::ALL),
     ] {
         let actual: AcceptedKinds = serde_json::from_str(text).expect("supported set");
         assert_eq!(actual, expected);
@@ -49,11 +52,11 @@ fn accepted_kind_order_is_a_set_and_serializes_canonically() {
         assert_eq!(round_trip, expected);
     }
     assert!(AcceptedKinds::ALL.contains(RunKind::Fleet));
-    assert!(AcceptedKinds::ALL.contains(RunKind::Authoring));
-    assert!(!AcceptedKinds::FLEET.contains(RunKind::Authoring));
+    assert!(AcceptedKinds::ALL.contains(RunKind::Setup));
+    assert!(!AcceptedKinds::FLEET.contains(RunKind::Setup));
     assert_eq!(
         serde_json::to_value(AcceptedKinds::ALL).expect("serializable set"),
-        serde_json::json!(["fleet", "authoring"])
+        serde_json::json!(["fleet", "setup"])
     );
 }
 
@@ -63,6 +66,7 @@ fn test_assignment_reply_requires_a_supported_discriminator() {
         "{}",
         r#"{"kind":"runtime"}"#,
         r#"{"kind":"authoring"}"#,
+        r#"{"kind":"setup"}"#,
         r#"{"kind":"fleet"}"#,
     ] {
         assert!(

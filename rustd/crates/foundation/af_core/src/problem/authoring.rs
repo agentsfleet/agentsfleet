@@ -103,13 +103,6 @@ pub(super) const AUTHORING: &[Problem] = &[
         user_message: Some("Reload this list to continue."),
     },
     Problem {
-        code: error_code::AUTHORING_FENCE,
-        status: 409,
-        title: "Authoring run lost",
-        hint: "Stop this attempt; refresh the private draft before starting another message.",
-        user_message: Some("This authoring attempt can no longer update the draft."),
-    },
-    Problem {
         code: error_code::AUTHORING_GONE,
         status: 410,
         title: "Setup resource purged",

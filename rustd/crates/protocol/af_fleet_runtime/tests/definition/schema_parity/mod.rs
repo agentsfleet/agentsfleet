@@ -19,8 +19,9 @@ use std::path::PathBuf;
 
 use af_fleet_runtime::Definition;
 use af_fleet_runtime::definition::{
-    ConfigOp, DefinitionSchema, InstructionEdit, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS,
+    ConfigOp, DefinitionSchema, InstructionEdit, MAX_DESCRIPTION_CHARS,
 };
+use af_validate::TEXT_MAX_CHARS;
 use serde_json::{Map, Value};
 use utoipa::{PartialSchema, ToSchema};
 
@@ -187,7 +188,7 @@ fn both_texts_at_their_character_caps_are_accepted_by_both() {
     super::set(
         &mut document,
         "/instructions_md",
-        serde_json::json!("é".repeat(MAX_INSTRUCTIONS_CHARS)),
+        serde_json::json!("é".repeat(TEXT_MAX_CHARS)),
     );
     if let Err(failure) = Definition::parse(&document.to_string()) {
         panic!("the parser refuses texts at their caps: {failure}");

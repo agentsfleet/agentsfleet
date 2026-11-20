@@ -26,11 +26,8 @@ pub use turn_checkpoint::{
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum TaggedRun<'a, C = serde_json::Value> {
+pub enum TaggedRun<'a> {
     /// Work on the common run path, with its runtime policy: an installed
-    /// fleet's event, or, on protocol v4, a setup draft's message
-    /// ([`RunPayload::owner`]).
+    /// fleet's event, or a setup draft's message ([`RunPayload::owner`]).
     Fleet(#[serde(borrow)] Box<RunPayload<'a>>),
-    /// Private setup work, with access to the daemon's scoped model endpoint.
-    Authoring(Box<crate::authoring::Run<C>>),
 }

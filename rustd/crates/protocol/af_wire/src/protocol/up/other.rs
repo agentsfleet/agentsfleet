@@ -6,12 +6,7 @@ use std::{borrow::Cow, num::NonZeroU64};
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub(super) enum Other<
-    'a,
-    D: Clone = serde_json::Value,
-    O: Clone = serde_json::Value,
-    I: Clone = serde_json::Value,
-> {
+pub(super) enum Other<'a> {
     Hello {
         request_id: NonZeroU64,
         accepted_kinds: AcceptedKinds,
@@ -43,30 +38,6 @@ pub(super) enum Other<
         request_id: NonZeroU64,
         #[serde(borrow)]
         runs: Vec<Renewal<'a>>,
-    },
-    AuthoringModel {
-        request_id: NonZeroU64,
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        request: Cow<'a, crate::authoring::ModelCall<D, O, I>>,
-    },
-    AuthoringActivity {
-        request_id: NonZeroU64,
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        request: Cow<'a, crate::authoring::ActivityRequest<D, O, I>>,
-    },
-    AuthoringRenew {
-        request_id: NonZeroU64,
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        request: crate::authoring::Renew,
-    },
-    AuthoringReport {
-        request_id: NonZeroU64,
-        #[serde(borrow)]
-        run_id: Cow<'a, str>,
-        request: Cow<'a, crate::authoring::Report>,
     },
     Progress {
         #[serde(borrow)]
@@ -107,8 +78,8 @@ macro_rules! forward {
     };
 }
 
-impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O, I> {
-    fn from(value: Other<'a, D, O, I>) -> Self {
+impl<'a> From<Other<'a>> for Up<'a> {
+    fn from(value: Other<'a>) -> Self {
         forward!(
             value,
             Hello {
@@ -133,26 +104,6 @@ impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O,
             },
             Ping { request_id },
             RenewBatch { request_id, runs },
-            AuthoringModel {
-                request_id,
-                run_id,
-                request
-            },
-            AuthoringActivity {
-                request_id,
-                run_id,
-                request
-            },
-            AuthoringRenew {
-                request_id,
-                run_id,
-                request
-            },
-            AuthoringReport {
-                request_id,
-                run_id,
-                request
-            },
             Progress { run_id, request },
             Folds {
                 request_id,

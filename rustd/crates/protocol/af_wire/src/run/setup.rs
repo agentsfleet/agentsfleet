@@ -15,7 +15,7 @@ use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 /// The longest setup Definition a report may carry, as JSON text.
-pub const SETUP_DEFINITION_BYTES_MAX: usize = crate::authoring::ENVELOPE_BYTES_MAX;
+pub const SETUP_DEFINITION_BYTES_MAX: usize = 128 * 1024;
 /// The bytes of a candidate identifier, a hyphenated UUID.
 const CANDIDATE_ID_BYTES: usize = 36;
 

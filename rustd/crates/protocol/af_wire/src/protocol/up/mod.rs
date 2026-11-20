@@ -33,12 +33,7 @@ pub struct Renewal<'a> {
 /// Every message accepted from a runner. Requests use positive correlation ids.
 #[derive(Debug, Clone, Serialize, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Up<
-    'a,
-    D: Clone = serde_json::Value,
-    O: Clone = serde_json::Value,
-    I: Clone = serde_json::Value,
-> {
+pub enum Up<'a> {
     /// Reconcile the running runs before accepting assignments.
     Hello {
         /// Session-local correlation identifier.
@@ -106,58 +101,6 @@ pub enum Up<
         #[serde(borrow)]
         #[garde(length(min = 1, max = RUNS_MAX), dive)]
         runs: Vec<Renewal<'a>>,
-    },
-    /// One physical authoring invocation; connection recovery must not redispatch it.
-    AuthoringModel {
-        #[garde(skip)]
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        #[garde(length(bytes, min = 36, max = 36))]
-        run_id: Cow<'a, str>,
-        #[garde(skip)]
-        /// Current operation body; its domain service owns nested validation.
-        request: Cow<'a, crate::authoring::ModelCall<D, O, I>>,
-    },
-    /// Acknowledged setup proposal or progress submission.
-    AuthoringActivity {
-        #[garde(skip)]
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        #[garde(length(bytes, min = 36, max = 36))]
-        run_id: Cow<'a, str>,
-        #[garde(skip)]
-        /// Current operation body; its domain service owns nested validation.
-        request: Cow<'a, crate::authoring::ActivityRequest<D, O, I>>,
-    },
-    /// Extend an existing private authoring run without blocking model work.
-    AuthoringRenew {
-        #[garde(skip)]
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        #[garde(length(bytes, min = 36, max = 36))]
-        run_id: Cow<'a, str>,
-        #[garde(dive)]
-        /// Current operation body; its domain service owns nested validation.
-        request: crate::authoring::Renew,
-    },
-    /// A current authoring result retained in memory until durable acknowledgement.
-    AuthoringReport {
-        #[garde(skip)]
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring run whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        #[garde(length(bytes, min = 36, max = 36))]
-        run_id: Cow<'a, str>,
-        #[garde(dive)]
-        /// Current operation body; its domain service owns nested validation.
-        request: Cow<'a, crate::authoring::Report>,
     },
     /// Frame-specific validation remains in the existing activity service.
     Progress {
@@ -234,27 +177,22 @@ pub enum Up<
     },
 }
 
-impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
+impl Up<'_> {
     /// The only kind permitted to carry this message.
     #[must_use]
     pub const fn stream_kind(&self) -> StreamKind {
         match self {
-            Self::Report { .. } | Self::AuthoringReport { .. } | Self::TurnCheckpoint { .. } => {
-                StreamKind::Reports
-            }
+            Self::Report { .. } | Self::TurnCheckpoint { .. } => StreamKind::Reports,
             Self::Progress { .. } => StreamKind::Progress,
-            Self::Folds { .. }
-            | Self::ContextLoad { .. }
-            | Self::ContextSave { .. }
-            | Self::AuthoringModel { .. }
-            | Self::AuthoringActivity { .. } => StreamKind::Work,
+            Self::Folds { .. } | Self::ContextLoad { .. } | Self::ContextSave { .. } => {
+                StreamKind::Work
+            }
             Self::Hello { .. }
             | Self::Confirm { .. }
             | Self::Ready { .. }
             | Self::Heartbeat { .. }
             | Self::Ping { .. }
-            | Self::RenewBatch { .. }
-            | Self::AuthoringRenew { .. } => StreamKind::Control,
+            | Self::RenewBatch { .. } => StreamKind::Control,
         }
     }
 
@@ -268,10 +206,6 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
             | Self::Ping { request_id }
             | Self::RenewBatch { request_id, .. }
             | Self::Report { request_id, .. }
-            | Self::AuthoringModel { request_id, .. }
-            | Self::AuthoringActivity { request_id, .. }
-            | Self::AuthoringRenew { request_id, .. }
-            | Self::AuthoringReport { request_id, .. }
             | Self::TurnCheckpoint { request_id, .. }
             | Self::ContextLoad { request_id, .. }
             | Self::ContextSave { request_id, .. }

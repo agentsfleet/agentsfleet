@@ -13,6 +13,8 @@
 //! - [`Sentences`]: a route's table from the path a report names to the fixed
 //!   sentence it answers, so garde's own text never reaches a caller; a
 //!   [`PathTable`] answers a crate's own error variant the same way.
+//! - [`TEXT_MAX_CHARS`]: the one ceiling on text a person or a model hands
+//!   the system, and [`TEXT_TOO_LONG`], the sentence that refuses past it.
 //!
 //! No fallible signature here returns an error of ours: the rules answer
 //! [`garde::Result`], `Limit` answers a two-variant [`LimitBreak`] each route
@@ -28,9 +30,11 @@ mod checkpoint_links;
 mod limit;
 mod sentences;
 mod serialized;
+mod text;
 
 pub use self::checkpoint_links::checkpoint_links;
 pub use self::limit::{Ceiling, Limit, LimitBreak};
 pub use self::rules::{ascii_digits, charset, exactly, finite, not_relative, nul_free};
 pub use self::sentences::{PathTable, Sentences};
 pub use self::serialized::{serialized_len, serialized_within};
+pub use self::text::{TEXT_MAX_CHARS, TEXT_MAX_JSON_BYTES, TEXT_TOO_LONG};

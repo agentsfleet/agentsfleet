@@ -11,7 +11,6 @@ fn authoring_failures_distinguish_input_version_and_uncertain_provider_outcomes(
         (error_code::AUTHORING_PROVIDER, 502, "known usage"),
         (error_code::AUTHORING_MODEL, 409, "workspace owner"),
         (error_code::AUTHORING_BALANCE, 402, "wallet"),
-        (error_code::AUTHORING_FENCE, 409, "Stop this attempt"),
         (error_code::AUTHORING_GONE, 410, "deleted"),
     ] {
         let problem = Problem::of(code);

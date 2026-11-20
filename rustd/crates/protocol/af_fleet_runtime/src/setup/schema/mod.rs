@@ -11,9 +11,10 @@ use serde_json::{Value, json};
 use super::PROPOSAL_ARGUMENT;
 use super::proposal::{CANDIDATE_ID_BYTES, REVISION_DIGITS_MAX};
 use crate::config::HttpEgress;
+use af_validate::TEXT_MAX_CHARS;
+
 use crate::definition::{
     DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_EDITS,
-    MAX_INSTRUCTIONS_CHARS,
 };
 
 /// The JSON Schema keyword naming a value's type.
@@ -119,7 +120,7 @@ fn definition() -> Value {
         &json!({
             KEY_SCHEMA_VERSION:{KEY_TYPE:TYPE_INTEGER,KEY_ENUM:[DEFINITION_SCHEMA_VERSION]},
             KEY_DESCRIPTION:{KEY_TYPE:TYPE_STRING,KEY_MIN_LENGTH:1,KEY_MAX_LENGTH:MAX_DESCRIPTION_CHARS},
-            KEY_INSTRUCTIONS_MD:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INSTRUCTIONS_CHARS,
+            KEY_INSTRUCTIONS_MD:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:TEXT_MAX_CHARS,
                 KEY_DESCRIPTION:"The person’s fleet instructions, drafted only from their requests. Preserve supplied wording; ask about missing business decisions."},
             KEY_CONFIG:configuration()
         }),
@@ -235,16 +236,16 @@ fn instruction_edit() -> Value {
     let replace = object(
         &json!({
             KEY_KIND:{KEY_TYPE:TYPE_STRING,KEY_ENUM:[ACTION_REPLACE]},
-            KEY_OLD_TEXT:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INSTRUCTIONS_CHARS,
+            KEY_OLD_TEXT:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:TEXT_MAX_CHARS,
                 KEY_DESCRIPTION:"Exact source text that occurs once in the current instructions. Include enough surrounding text to make it unique. Empty only when the current instructions are empty."},
-            KEY_TEXT:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INSTRUCTIONS_CHARS}
+            KEY_TEXT:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:TEXT_MAX_CHARS}
         }),
         &[KEY_KIND, KEY_OLD_TEXT, KEY_TEXT],
     );
     let append = object(
         &json!({
             KEY_KIND:{KEY_TYPE:TYPE_STRING,KEY_ENUM:[ACTION_APPEND]},
-            KEY_TEXT:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INSTRUCTIONS_CHARS,
+            KEY_TEXT:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:TEXT_MAX_CHARS,
                 KEY_DESCRIPTION:"New guidance to append verbatim. Include leading newlines for a new paragraph. Prefer append when adding instructions; do not rewrite existing guidance just to add a rule."}
         }),
         &[KEY_KIND, KEY_TEXT],

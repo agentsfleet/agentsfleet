@@ -101,7 +101,7 @@ pub fn run_released(runner_id: &str) {
 
 /// Which side of the platform boundary a failure falls on.
 ///
-/// A match with no default arm, deliberately: a twelfth [`FailureClass`] must
+/// A match with no default arm, deliberately: a thirteenth [`FailureClass`] must
 /// not compile until somebody decides whose fault it is. A default would pick
 /// a side silently, and the side it picked would be wrong half the time.
 ///
@@ -124,7 +124,9 @@ const fn fault_of(reason: Option<FailureClass>) -> Fault {
             | FailureClass::RunnerCrash
             | FailureClass::TransportLoss
             | FailureClass::RunExpired
-            | FailureClass::RenewalTerminate,
+            | FailureClass::RenewalTerminate
+            // The platform admitted text its own runner frame cannot carry.
+            | FailureClass::FrameTooLarge,
         )
         | None => Fault::Platform,
     }
@@ -165,5 +167,6 @@ const fn class_label(class: FailureClass) -> &'static str {
         FailureClass::RunExpired => "run_expired",
         FailureClass::RenewalTerminate => "renewal_terminate",
         FailureClass::BudgetBreach => "budget_breach",
+        FailureClass::FrameTooLarge => "frame_too_large",
     }
 }

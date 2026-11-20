@@ -79,8 +79,8 @@ pub use self::message::{MESSAGE, message_of};
 pub use self::entry::{ENTRY_FIELD_COUNT, Entry};
 
 pub use self::steer::{
-    FleetSteerBody, OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerAccepted,
-    SteerDisposition, SteerRequest, sender_line,
+    FleetSteerBody, OPERATION_ID_MAX_BYTES, SteerAccepted, SteerDisposition, SteerRequest,
+    sender_line,
 };
 
 /// A turn and its original request body. The runner reads `request_json`; API responses

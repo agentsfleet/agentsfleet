@@ -1,17 +1,15 @@
 //! The runner's steer verb: the fleet a run runs putting work on another
 //! fleet in its workspace.
 //!
-//! The text bound is a person's steer bound, so a fleet asks no more than a
-//! person may. The body names no policy: the target runs under its own setup,
+//! The text bound is the one ceiling every text shares, a person's steer
+//! among them, so a fleet asks no more than a person may. The body names no policy: the target runs under its own setup,
 //! and a steer carries words, never authority.
 
 use std::borrow::Cow;
 
-use af_validate::nul_free;
+use af_validate::{TEXT_MAX_CHARS, nul_free};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-
-use crate::turn::STEER_MESSAGE_MAX_BYTES;
 
 /// The length of a fleet identifier as text: a hyphenated UUID.
 ///
@@ -32,10 +30,12 @@ pub struct FleetSteerRequest<'a> {
     #[cfg_attr(feature = "openapi", schema(min_length = 36, max_length = 36))]
     #[garde(length(bytes, min = FLEET_ID_BYTES, max = FLEET_ID_BYTES))]
     pub fleet_id: Cow<'a, str>,
-    /// What to ask it: 1 to 8192 bytes with no NUL character.
+    /// What to ask it: 1 to 1,048,576 characters with no NUL character.
+    // utoipa reads only a literal here: 1_048_576 is `TEXT_MAX_CHARS`, which the
+    // test beside this module pins against the published schema.
     #[serde(borrow)]
-    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 8192))]
-    #[garde(length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES), custom(nul_free))]
+    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 1_048_576))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub text: Cow<'a, str>,
 }
 

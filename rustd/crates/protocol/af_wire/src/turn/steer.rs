@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use af_validate::nul_free;
+use af_validate::{TEXT_MAX_CHARS, nul_free};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -16,19 +16,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct SteerRequest<'a> {
-    /// What to say to the fleet: 1 to 8192 bytes, with no NUL character.
+    /// What to say to the fleet: 1 to 1,048,576 characters, with no NUL
+    /// character.
     ///
-    /// Bounded on the decoded bytes, which is what reaches the stream. The
+    /// Counted on the decoded text, which is what reaches the stream. The
     /// escaped form a client sends is not what counts against the limit.
     //
+    // The ceiling is the one every text shares (`af_validate::TEXT_MAX_CHARS`);
+    // below it, the model's context window is the limit a person meets.
     // NUL is refused because the run casts the stored body to `jsonb`, which
     // cannot hold `\u0000`: accepted, such a message was answered 202 and then
     // failed at run.
     #[serde(borrow)]
-    #[garde(
-        length(bytes, min = 1, max = STEER_MESSAGE_MAX_BYTES),
-        custom(nul_free)
-    )]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub message: Cow<'a, str>,
 
     /// Your retry identifier, 1 to 200 bytes with no NUL character (U+0000).
@@ -63,16 +63,6 @@ pub struct SteerRequest<'a> {
 /// The `operation_id` description spells this number out, because that
 /// description is published and a constant's name means nothing to a client.
 pub const OPERATION_ID_MAX_BYTES: usize = 200;
-
-/// The longest thing anyone may say to a fleet in one steer.
-///
-/// `MAX_MESSAGE_LEN`, mirrored. A steer is a sentence a person typed; past
-/// this it is a payload, and the fleet's own trigger surface is where a
-/// payload belongs.
-///
-/// The `message` description spells this number out, for the reason
-/// [`OPERATION_ID_MAX_BYTES`] gives.
-pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
 
 /// Where an accepted steer went.
 ///
@@ -120,19 +110,19 @@ pub struct SteerAccepted<'a> {
 /// What a fleet's steer stores as its request: the words the target reads,
 /// and which fleet sent them.
 ///
-/// `message` is the sender line, a newline, then `text`, composed once by
+/// `message` is the sender line, a newline, then the words, composed once by
 /// [`FleetSteerBody::new`]. The model, the chat and the history all read
 /// `message` (`message_of`), so the target is told who asked whichever way it
-/// reads the turn, and can answer with the same tool.
+/// reads the turn, and can answer with the same tool. The words are stored
+/// once: a second copy would double what the target's run carries in its
+/// frame.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FleetSteerBody<'a> {
-    /// The sender line, a newline, then `text`.
+    /// The sender line, a newline, then the words the sender wrote, with its
+    /// secret values masked.
     #[serde(borrow)]
     pub message: Cow<'a, str>,
-    /// The words the sender wrote, with its secret values masked.
-    #[serde(borrow)]
-    pub text: Cow<'a, str>,
     /// The fleet that sent it.
     #[serde(borrow)]
     pub sender_fleet_id: Cow<'a, str>,
@@ -149,7 +139,7 @@ impl<'a> FleetSteerBody<'a> {
     /// `sender_fleet_name`, while it ran `sender_turn_id`.
     #[must_use]
     pub fn new(
-        text: &'a str,
+        text: &str,
         sender_fleet_id: &'a str,
         sender_fleet_name: &'a str,
         sender_turn_id: &'a str,
@@ -157,7 +147,6 @@ impl<'a> FleetSteerBody<'a> {
         let line = sender_line(sender_fleet_name, sender_fleet_id);
         Self {
             message: Cow::Owned(format!("{line}\n{text}")),
-            text: Cow::Borrowed(text),
             sender_fleet_id: Cow::Borrowed(sender_fleet_id),
             sender_fleet_name: Cow::Borrowed(sender_fleet_name),
             sender_turn_id: Cow::Borrowed(sender_turn_id),

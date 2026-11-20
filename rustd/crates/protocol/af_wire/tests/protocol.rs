@@ -56,7 +56,7 @@ fn hello_bounds_running_runs_and_credits() -> serde_json::Result<()> {
         (0, RUNS_MAX + 1, false),
     ] {
         let body = json!({
-            "type": "hello", "request_id": 1, "accepted_kinds": ["fleet", "authoring"],
+            "type": "hello", "request_id": 1, "accepted_kinds": ["fleet", "setup"],
             "running": vec![RUN; running], "credits": credits,
         });
         let encoded = body.to_string();
@@ -136,14 +136,69 @@ fn unknown_stream_kinds_are_never_substituted() {
 }
 
 #[test]
-fn the_runner_protocol_is_v4_and_no_runner_speaks_v3() {
-    use af_wire::protocol::{Revision, VERSION, VERSION_V2};
-    assert_eq!(VERSION, "agentsfleet.runner.v4");
-    assert_eq!(Revision::parse(VERSION), Some(Revision::V4));
-    assert_eq!(Revision::parse(VERSION_V2), Some(Revision::V2));
-    assert_eq!(Revision::parse("agentsfleet.runner.v3"), None);
-    assert!(Revision::V4.assigns_draft_runs());
-    assert!(!Revision::V2.assigns_draft_runs());
+fn the_runner_protocol_is_v4_alone() {
+    assert_eq!(af_wire::protocol::VERSION, "agentsfleet.runner.v4");
+}
+
+/// The tags serde lists when it refuses `refused`'s unknown frame: every tag
+/// the decoded enum has, read from the derive rather than written here.
+fn listed_tags(refused: Option<serde_json::Error>) -> serde_json::Result<Vec<String>> {
+    let text = required(refused)?.to_string();
+    let listed = text
+        .split_once("expected one of ")
+        .map(|(_, rest)| rest)
+        .ok_or_else(|| serde_json::Error::custom(format!("no tag list in {text}")))?;
+    let listed = listed.split(" at line ").next().unwrap_or(listed);
+    Ok(listed
+        .split(", ")
+        .map(|tag| tag.trim_matches('`').to_owned())
+        .collect())
+}
+
+/// Dimension 8.1: the daemon makes no model call, so no frame in either
+/// direction carries one. The four setup model frames each way are gone, and
+/// a runner still sending one is refused as an unknown frame.
+#[test]
+fn the_runner_protocol_has_no_setup_model_frames() -> serde_json::Result<()> {
+    let unknown = r#"{"type":"no_such_frame"}"#;
+    let down = listed_tags(serde_json::from_str::<Down<'_>>(unknown).err())?;
+    let up = listed_tags(serde_json::from_str::<Up<'_>>(unknown).err())?;
+    assert!(down.iter().any(|tag| tag == "run"), "{down:?}");
+    assert!(up.iter().any(|tag| tag == "context_save"), "{up:?}");
+    for tag in down.iter().chain(&up) {
+        assert!(
+            !tag.contains("authoring") && !tag.contains("model"),
+            "{tag} carries a model call"
+        );
+    }
+    for frame in [
+        "authoring_model",
+        "authoring_activity",
+        "authoring_renew",
+        "authoring_report",
+    ] {
+        let body = json!({"type": frame, "request_id": 1, "run_id": RUN, "request": {}});
+        let refused = serde_json::from_str::<Up<'_>>(&body.to_string()).err();
+        assert!(
+            required(refused)?.to_string().contains("unknown variant"),
+            "{frame}"
+        );
+    }
+    for frame in [
+        "authoring_model_result",
+        "authoring_activity_ack",
+        "authoring_renewed",
+        "authoring_report_ack",
+    ] {
+        let body = json!({"type": frame, "request_id": 1, "run_id": RUN,
+            "answer": {"status": "ok", "response": {}}});
+        let refused = serde_json::from_str::<Down<'_>>(&body.to_string()).err();
+        assert!(
+            required(refused)?.to_string().contains("unknown variant"),
+            "{frame}"
+        );
+    }
+    Ok(())
 }
 
 #[test]

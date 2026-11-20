@@ -27,12 +27,7 @@ struct Report<'a> {
     request: ReportRequest<'a>,
 }
 
-impl<'de: 'a, 'a, D, O, I> Deserialize<'de> for Up<'a, D, O, I>
-where
-    D: Clone + Deserialize<'de>,
-    O: Clone + Deserialize<'de>,
-    I: Clone + Deserialize<'de>,
-{
+impl<'de: 'a, 'a> Deserialize<'de> for Up<'a> {
     fn deserialize<S: Deserializer<'de>>(deserializer: S) -> Result<Self, S::Error> {
         // RawValue borrows the charged frame. Selecting a schema never materializes its private body.
         let raw = <&RawValue>::deserialize(deserializer)?;
@@ -44,8 +39,7 @@ where
                 request: Box::new(Cow::Owned(report.request)),
             })
         } else {
-            let other: Other<'_, D, O, I> =
-                serde_json::from_str(raw.get()).map_err(S::Error::custom)?;
+            let other: Other<'_> = serde_json::from_str(raw.get()).map_err(S::Error::custom)?;
             Ok(other.into())
         }
     }

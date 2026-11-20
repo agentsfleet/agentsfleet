@@ -21,6 +21,13 @@ pub const PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-REQ-002");
 /// An endpoint the API removed on purpose; it answers `410 Gone` and does not return.
 pub const ENDPOINT_REMOVED: ErrorCode = ErrorCode::declare("UZ-REQ-003");
 
+/// A text passed the one ceiling every text shares, 1,048,576 characters.
+///
+/// The ceiling is `af_validate::TEXT_MAX_CHARS`. The code is its own, apart
+/// from `INVALID_REQUEST`, so its `user_message` can name the ceiling to the
+/// person who typed it.
+pub const INPUT_TOO_LONG: ErrorCode = ErrorCode::declare("UZ-REQ-004");
+
 /// A stored envelope was malformed — wrong component length, or an unsupported version.
 pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
 

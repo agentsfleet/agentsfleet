@@ -12,7 +12,7 @@ use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 use utoipa::{PartialSchema, ToSchema};
 
-use super::{DEFINITION_SCHEMA_VERSION, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS};
+use super::{DEFINITION_SCHEMA_VERSION, MAX_DESCRIPTION_CHARS};
 use crate::config::raw;
 use crate::openapi::{self, Bound, Components, Published, Text};
 
@@ -33,7 +33,7 @@ struct Shape {
     /// Says what the fleet does, shown wherever it is listed. At most 32,768
     /// characters.
     description: String,
-    /// The fleet's instructions, in Markdown, at most 32,768 characters.
+    /// The fleet's instructions, in Markdown, at most 1,048,576 characters.
     instructions_md: String,
     /// The fleet's configuration.
     config: raw::Document,
@@ -81,7 +81,7 @@ pub(crate) fn root() -> Published {
             ),
             (
                 "instructions_md",
-                Bound::Text(Text::chars(0, MAX_INSTRUCTIONS_CHARS)),
+                Bound::Text(Text::chars(0, af_validate::TEXT_MAX_CHARS)),
             ),
         ],
     }

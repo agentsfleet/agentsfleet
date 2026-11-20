@@ -13,7 +13,6 @@
 //! NOT aggregated for that reason.
 
 mod assignment_selection;
-mod authoring_compaction;
 mod decision_receipts;
 
 #[path = "inference_images.rs"]

@@ -24,8 +24,6 @@ pub const AUTHORING_POLICY: ErrorCode = ErrorCode::declare("UZ-AUTHOR-009");
 pub const AUTHORING_TOKEN: ErrorCode = ErrorCode::declare("UZ-AUTHOR-010");
 /// A cursor names another private subject or query.
 pub const AUTHORING_CURSOR: ErrorCode = ErrorCode::declare("UZ-AUTHOR-011");
-/// An expired, cancelled or superseded attempt cannot publish private output.
-pub const AUTHORING_FENCE: ErrorCode = ErrorCode::declare("UZ-AUTHOR-012");
 /// An accepted operation points at a purged resource within its tombstone period.
 pub const AUTHORING_GONE: ErrorCode = ErrorCode::declare("UZ-AUTHOR-013");
 /// The provider failed while returning authoritative usage.
