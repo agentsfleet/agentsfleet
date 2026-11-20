@@ -304,7 +304,8 @@ The harness also carries tools this runner does not offer yet: an MCP client (`m
 
 | Tool | Runtime | Needs |
 |---|---|---|
-| `http_request`, `web_fetch`, `pushover` | supervisor, `guffbolt::tools::web` through the run's guard as the outbound hook | the network policy, the origin rules, placeholders in `Authorization` only |
+| `http_request`, `web_fetch` | supervisor, `guffbolt::tools::web` through the run's guard as the outbound hook | the network policy, the origin rules, placeholders in `Authorization` only |
+| `notify` | supervisor, `guffbolt::tools::notify` over `afr_tools`' Pushover `Notifier` backend, which sends through the run's guard | the network policy and the fleet's Pushover credential |
 | `web_search` | the provider, as a hosted tool spec | a provider that offers one; a tool error with a code otherwise |
 | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor, `guffbolt::tools::memory` over the fleet's backend as the memory store | the loaded store and the fenced push |
 | `update_plan` | supervisor, `guffbolt::tools::plan` | nothing |
@@ -699,7 +700,7 @@ The decision reads what the policy offers, before the model runs. The model's la
 
 | Runtime | Tools | Runs in |
 |---|---|---|
-| `Supervisor` | `http_request`, `web_fetch`, `pushover`, memory tools, `update_plan`, `message`, schedule tools, child-loop tools | the runner process |
+| `Supervisor` | `http_request`, `web_fetch`, `notify`, memory tools, `update_plan`, `message`, schedule tools, child-loop tools | the runner process |
 | `Provider` | `web_search` | the model provider |
 | `Sandbox` | `shell`, `exec_command`, `write_stdin`, `git`, file tools, `apply_patch`, `image`, browser tools | the executor inside bubblewrap |
 

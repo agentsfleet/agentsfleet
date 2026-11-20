@@ -8385,7 +8385,7 @@
             "schema": {
               "type": "string"
             },
-            "example": "agentsfleet.runner.v3"
+            "example": "agentsfleet.runner.v4"
           },
           {
             "name": "agentsfleet-runner-kind",
@@ -26172,6 +26172,34 @@
           }
         }
       },
+      "FileChange": {
+        "type": "object",
+        "description": "One file an edit changed.",
+        "required": [
+          "path",
+          "added",
+          "removed"
+        ],
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Lines the call added to the file.",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string",
+            "description": "The file, as the call named it relative to its working directory: 1\nto 1024 bytes, secret values masked."
+          },
+          "removed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Lines the call removed from it.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "Fired": {
         "type": "object",
         "description": "What an accepted schedule fire is answered with.",
@@ -27070,6 +27098,22 @@
             "description": "The role accepting it grants: `member`."
           }
         }
+      },
+      "ItemKind": {
+        "type": "string",
+        "description": "What kind of thing one item of a run is.",
+        "enum": [
+          "tool_call",
+          "edit"
+        ]
+      },
+      "ItemStatus": {
+        "type": "string",
+        "description": "How an item's call ended. A record is written once its call answered, so\nit is never running.",
+        "enum": [
+          "succeeded",
+          "failed"
+        ]
       },
       "Knowledge": {
         "type": "string",
@@ -29537,7 +29581,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RunOwnerRef",
-                "description": "Whose work this is. Absent on a fleet's run, whose owner is the fleet\n`turn.fleet_id` names. A draft's run names the draft here, and its\n`turn` is the draft's message: `turn_id` the message, `fleet_id` the\ndraft. Assigned only to a protocol v3 runner."
+                "description": "Whose work this is. Absent on a fleet's run, whose owner is the fleet\n`turn.fleet_id` names. A draft's run names the draft here, and its\n`turn` is the draft's message: `turn_id` the message, `fleet_id` the\ndraft. Assigned only to a protocol v4 runner."
               },
               {
                 "type": "null"
@@ -30778,6 +30822,15 @@
                 "type": "null"
               }
             ]
+          },
+          "history_sequences": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Each [`super::RunPayload::history`] turn's position in the draft's\nconversation, oldest first and in step with it: the sequence a saved\ncontext's watermark counts in. A run skips the turns a loaded context\ncovers, and compacts only turns it can name. Empty from a daemon that\nsends none: the run then neither skips nor compacts a turn."
           },
           "save_requested": {
             "type": "boolean",
@@ -32945,6 +32998,13 @@
             "description": "Tool call identifier from the conversation, in `{fence}:{n}` format. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileChange"
+            },
+            "description": "For an edit: each file it changed and the lines it added and\nremoved. Absent for any other call."
+          },
           "output": {
             "type": "string",
             "description": "Everything the call returned. Beta: this field may change shape before it is stable.",
@@ -32979,7 +33039,11 @@
           "truncated_arguments",
           "output",
           "output_line_count",
-          "truncated"
+          "truncated",
+          "turn_id",
+          "kind",
+          "tool",
+          "status"
         ],
         "properties": {
           "arguments": {
@@ -32993,6 +33057,17 @@
             "maximum": 9223372036854775807,
             "minimum": 1
           },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileChange"
+            },
+            "description": "For an edit: each file it changed and the lines it added and removed,\nat most 64. Absent for any other call."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind",
+            "description": "What kind of thing the call was."
+          },
           "output": {
             "type": "string",
             "description": "Everything the call returned, at most 65536 bytes, with no NUL\ncharacter."
@@ -33003,6 +33078,14 @@
             "description": "How many lines the whole output had, before any cut.",
             "minimum": 0
           },
+          "status": {
+            "$ref": "#/components/schemas/ItemStatus",
+            "description": "How it ended."
+          },
+          "tool": {
+            "type": "string",
+            "description": "The tool it called, 1 to 256 bytes."
+          },
           "truncated": {
             "type": "boolean",
             "description": "Whether the runner cut the output to fit."
@@ -33010,6 +33093,10 @@
           "truncated_arguments": {
             "type": "boolean",
             "description": "Whether the runner cut the arguments to fit."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "The turn that was newest when the call's step began: the run's own,\nor one a person sent while it worked and its conversation read. A turn\nthe run does not serve is refused."
           }
         },
         "additionalProperties": false
@@ -33111,6 +33198,13 @@
           "call_id": {
             "type": "string",
             "description": "Call number starting at 1, as a decimal string. Other formats are dropped. The server\nadds `{fence}:` to match the activity stream's identifier."
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileChange"
+            },
+            "description": "For an edit: each file it changed and the lines it added and removed,\nat most 64. Absent for any other call, and for an edit that failed."
           },
           "duration_ms": {
             "type": "integer",
