@@ -185,3 +185,51 @@ fn a_census_comes_back_whole_and_reads_only_under_its_own_pause() {
         "ids and counts go on, and the closed child's seat is free"
     );
 }
+
+/// A turn begins once and ends once: a running turn is not begun again, an
+/// idle child has no turn to begin, and an end recorded twice keeps the
+/// first. An id no child has changes nothing.
+#[test]
+fn a_turn_begins_once_and_ends_once() {
+    let (agents, _requests) = Agents::new(CAPS);
+    assert_eq!(reserve(&agents, Me::ROOT, "work"), Ok(1));
+
+    assert!(agents.begin(1).is_some(), "the queued turn begins");
+    assert!(agents.begin(1).is_none(), "and only once");
+    agents.ended(1, Status::Done("one".to_owned()), None);
+    agents.ended(1, Status::Interrupted, None);
+    assert!(
+        agents.begin(1).is_none(),
+        "an idle child has no turn queued"
+    );
+    assert_eq!(kinds(&agents), [Kind::Done], "the first end stands");
+    assert_eq!(
+        agents.interrupt(1),
+        Some(Kind::Done),
+        "an idle child has no turn to stop"
+    );
+    agents.ended(9, Status::Interrupted, None);
+    agents.called(9);
+    assert_eq!(
+        agents.list().iter().map(|child| child.calls).sum::<u64>(),
+        0
+    );
+    assert_eq!(kinds(&agents), [Kind::Done]);
+}
+
+/// Ending the set answers an ask for a pause it never read with none.
+#[tokio::test]
+async fn ending_the_set_answers_an_unread_ask_for_a_pause_with_none() {
+    let (agents, requests) = Agents::new(CAPS);
+    let mut children = super::children::Children::new(requests);
+    let asking = agents.clone();
+    let granted = tokio::spawn(async move { asking.pause().await.is_some() });
+    // The test's one thread runs the asker as this task yields: it sends its
+    // ask and waits on the answer.
+    tokio::task::yield_now().await;
+
+    let pause = children.end_all(&agents);
+
+    assert_eq!(granted.await.ok(), Some(false), "the ask was answered none");
+    assert!(pause.is_some(), "the quiet set may still be paused");
+}

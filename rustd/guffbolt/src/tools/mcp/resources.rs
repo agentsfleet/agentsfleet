@@ -43,14 +43,17 @@ type Shared = Arc<[Arc<Server>]>;
 fn picked<'s>(servers: &'s Shared, named: Option<&str>) -> Result<Vec<&'s Server>, ToolOutput> {
     named.map_or_else(
         || Ok(servers.iter().map(AsRef::as_ref).collect()),
-        |name| {
-            servers
-                .iter()
-                .find(|server| server.name() == name)
-                .map(|server| vec![server.as_ref()])
-                .ok_or_else(|| not_found(name))
-        },
+        |name| one(servers, name).map(|server| vec![server]),
     )
+}
+
+/// The server named `name`.
+fn one<'s>(servers: &'s Shared, name: &str) -> Result<&'s Server, ToolOutput> {
+    servers
+        .iter()
+        .find(|server| server.name() == name)
+        .map(AsRef::as_ref)
+        .ok_or_else(|| not_found(name))
 }
 
 /// What a call naming no server of the run reads back.
@@ -196,12 +199,9 @@ impl Handler for ReadMcpResource {
     type Arguments = Read;
 
     async fn run(&self, arguments: Read, _context: Context<'_>) -> ToolOutput {
-        let server = match picked(&self.servers, Some(&arguments.server)) {
-            Ok(servers) => servers.into_iter().next(),
+        let server = match one(&self.servers, &arguments.server) {
+            Ok(server) => server,
             Err(refused) => return refused,
-        };
-        let Some(server) = server else {
-            return not_found(&arguments.server);
         };
         let params = ReadResourceRequestParams::new(arguments.uri);
         match tokio::time::timeout(CALL_TIMEOUT, server.service.read_resource(params)).await {

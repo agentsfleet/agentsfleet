@@ -5,9 +5,12 @@ use std::path::PathBuf;
 use super::codex::{ApplyPatchError, Hunk, ParseError, UpdateFileChunk, parse_patch, updated};
 
 /// `original` with the one update hunk of `patch` applied: the contents and
-/// the lines added and removed, or the parser's own error.
+/// the lines added and removed, or why the chunks did not apply. Every patch
+/// here parses; the handler reads a parse error before it applies a chunk, so
+/// one here reads as a chunk that did not apply.
 fn applied(patch: &str, original: &str) -> Result<(String, usize, usize), ApplyPatchError> {
-    let hunks = parse_patch(patch)?;
+    let hunks = parse_patch(patch)
+        .map_err(|error| ApplyPatchError::ComputeReplacements(error.to_string()))?;
     let Some(Hunk::UpdateFile { chunks, .. }) = hunks.first() else {
         return Err(ApplyPatchError::ComputeReplacements(
             "the patch holds one update hunk".to_owned(),

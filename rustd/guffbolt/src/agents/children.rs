@@ -165,12 +165,14 @@ fn turn<R: Raise>(raise: &R, id: u64) -> Option<Running<'_>> {
 }
 
 /// Drives `seated` from `state` to the end of its turn, and records how it
-/// ended with what it keeps.
+/// ended with what it keeps. The turn answers with what it said alone: a
+/// follow-up's wait reads the follow-up's answer, never the earlier ones.
 async fn run<C>(guard: Guard<'_>, mut seated: Seated<'_, C>, mut state: DriveState)
 where
     C: Conversation<Failure: fmt::Display>,
 {
     let me = seated.me;
+    state.begin_turn();
     let ending = drive_in(&mut seated, &mut Plain, &mut state, me).await;
     let status = settled(&mut seated, ending, &mut state);
     let transcript = seated.transcript();
@@ -214,13 +216,16 @@ where
 /// a turn stopped mid-step leaves it, so the next turn's request is whole.
 fn mend(transcript: &mut Transcript) {
     let messages = transcript.messages();
-    let Some(last) = messages
-        .iter()
-        .rposition(|message| matches!(message, Message::Assistant { .. }))
+    let Some((last, calls)) =
+        messages
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(at, message)| match message {
+                Message::Assistant { calls, .. } => Some((at, calls)),
+                Message::User(_) | Message::ToolResult { .. } => None,
+            })
     else {
-        return;
-    };
-    let Some(Message::Assistant { calls, .. }) = messages.get(last) else {
         return;
     };
     let answered: Vec<&str> = messages

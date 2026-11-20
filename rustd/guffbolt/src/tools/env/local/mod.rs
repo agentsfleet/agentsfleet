@@ -251,9 +251,14 @@ impl Env for LocalEnv {
                 .open(&full)
                 .await
                 .map_err(|failure| failed(&failure))?;
-            file.write_all(&data)
-                .await
-                .map_err(|failure| failed(&failure))
+            // tokio's file hands a write to its blocking pool, and `write_all`
+            // can answer before the bytes land; the flush waits for them, so a
+            // read after the call sees what it appended.
+            let appended = async {
+                file.write_all(&data).await?;
+                file.flush().await
+            };
+            appended.await.map_err(|failure| failed(&failure))
         })
     }
 

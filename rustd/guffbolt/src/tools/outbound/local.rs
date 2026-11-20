@@ -30,7 +30,15 @@ const REDIRECTS_MAX: u8 = 3;
 /// How long one request may take, end to end.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// The methods a request may use.
-const METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+const METHODS: [Method; 7] = [
+    Method::GET,
+    Method::HEAD,
+    Method::POST,
+    Method::PUT,
+    Method::PATCH,
+    Method::DELETE,
+    Method::OPTIONS,
+];
 /// The scheme every request uses.
 const HTTPS: &str = "https";
 /// The header a credential may stand in.
@@ -174,15 +182,16 @@ impl LocalOutbound {
     }
 
     async fn sent(&self, request: Request) -> Result<Response, Refused> {
-        let method_name = request.method.to_ascii_uppercase();
-        if !METHODS.contains(&method_name.as_str()) {
-            return Err(Refused::new(
-                code::METHOD_NOT_ALLOWED,
-                format!("{} is not a method this tool sends", request.method),
-            ));
-        }
-        let method = Method::from_bytes(method_name.as_bytes())
-            .map_err(|failure| Refused::new(code::METHOD_NOT_ALLOWED, failure.to_string()))?;
+        let method = METHODS
+            .iter()
+            .find(|method| method.as_str().eq_ignore_ascii_case(&request.method))
+            .cloned()
+            .ok_or_else(|| {
+                Refused::new(
+                    code::METHOD_NOT_ALLOWED,
+                    format!("{} is not a method this tool sends", request.method),
+                )
+            })?;
         let mut url = self.admitted(&request.url)?;
         let mut headers = request.headers;
         let mut followed = 0;

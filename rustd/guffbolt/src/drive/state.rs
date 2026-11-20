@@ -99,6 +99,13 @@ impl DriveState {
         Some(waiting)
     }
 
+    /// Forgets the answers of a child's earlier turns as a new one starts, so
+    /// the turn's [`crate::Ending::Answered`] is its own answer; the child's
+    /// transcript, kept beside this state, still holds every turn.
+    pub(crate) fn begin_turn(&mut self) {
+        self.answers.clear();
+    }
+
     pub(super) const fn completed(&mut self) {
         self.completed_steps = self.completed_steps.saturating_add(1);
     }

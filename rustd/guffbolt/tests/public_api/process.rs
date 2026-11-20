@@ -238,6 +238,46 @@ async fn shell_reads_back_a_clean_exit_as_its_output_alone() {
     assert_eq!((output.exit_code, output.error_code), (Some(0), None));
 }
 
+/// What a command's own child writes after the command exited, while it
+/// still holds the output open, is read before the ending.
+#[cfg(unix)]
+#[tokio::test]
+async fn shell_reads_what_a_child_writes_after_the_command_exits() {
+    let (_directory, env) = local();
+    let sessions = Sessions::default();
+    let tools = tools(&env, &sessions, None);
+
+    let output = call(
+        &tools,
+        "shell",
+        json!({"command": "(sleep 0.3; printf late) & exit 0"}),
+    )
+    .await;
+
+    assert_eq!(output.text, "late");
+    assert_eq!((output.exit_code, output.error_code), (Some(0), None));
+}
+
+/// A command whose own child holds its output open past the drain's grace
+/// ends without that output, and says so last.
+#[cfg(unix)]
+#[tokio::test]
+async fn shell_gives_up_on_output_a_child_holds_open_past_the_grace() {
+    let (_directory, env) = local();
+    let sessions = Sessions::default();
+    let tools = tools(&env, &sessions, None);
+
+    let output = call(
+        &tools,
+        "shell",
+        json!({"command": "printf early; (sleep 4; printf late) & exit 0"}),
+    )
+    .await;
+
+    assert_eq!(output.text, format!("early\n{ABANDONED}"));
+    assert_eq!(output.exit_code, Some(0));
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn shell_reports_a_failing_exit_after_the_output() {

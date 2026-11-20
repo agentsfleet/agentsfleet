@@ -869,6 +869,8 @@ struct Behaviour {
     silent: Vec<&'static str>,
     /// Methods it answers with a JSON-RPC error.
     failing: Vec<&'static str>,
+    /// Methods it exits on, unanswered.
+    exits_on: Vec<&'static str>,
 }
 
 /// An environment whose every process is a fake MCP server, and whose
@@ -991,6 +993,13 @@ impl Env for FakeEnv {
             .unwrap_or_default()
             .to_owned();
         let params = message.get("params").cloned().unwrap_or(Value::Null);
+        if self.behaviour.exits_on.contains(&method.as_str()) {
+            let feed = lock(&self.feeds).remove(&process.get());
+            if let Some(feed) = feed {
+                feed.end(Ending::Exited(1), false);
+            }
+            return Box::pin(std::future::ready(Ok(())));
+        }
         if let (Some(id), Some(answer)) = (id, self.answer(&method, &params)) {
             let reply = match answer {
                 Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
@@ -1348,6 +1357,21 @@ async fn a_server_that_lists_no_tools_on_error_says_why() {
     );
 }
 
+/// A server that exits with a request unanswered ends its session: the
+/// request fails then, and does not wait out its timeout.
+#[tokio::test(start_paused = true)]
+async fn a_server_that_exits_mid_request_fails_the_request() {
+    let env = Arc::new(FakeEnv::serving(Behaviour {
+        exits_on: vec!["tools/list"],
+        ..Behaviour::default()
+    }));
+    let server = started(&env).await;
+
+    let refused = server.tools().await.expect_err("the server is gone");
+
+    assert_ne!(refused.to_string(), "deadline has elapsed", "{refused}");
+}
+
 #[tokio::test]
 async fn a_stdio_server_that_will_not_start_or_initialize_is_refused() {
     let unstartable = Arc::new(FakeEnv {
@@ -1420,10 +1444,12 @@ fn an_mcp_tool_name_is_prefixed_sanitized_and_capped_at_64() {
 // The browser tools
 // ---------------------------------------------------------------------------
 
-/// A browser that opens and screenshots, and whose every action fails.
+/// A browser that opens and screenshots, and whose every action fails; a
+/// closed one fails its screenshots too.
 #[derive(Debug, Default)]
 struct FakeBrowser {
     opened: Mutex<Vec<Value>>,
+    closed: bool,
 }
 
 impl Browser for FakeBrowser {
@@ -1440,6 +1466,12 @@ impl Browser for FakeBrowser {
     }
 
     fn screenshot<'a>(&'a self, _arguments: &'a Value) -> EnvFuture<'a, Image> {
+        if self.closed {
+            return Box::pin(std::future::ready(Err(EnvError::new(
+                EnvErrorKind::Unavailable,
+                "no page is open",
+            ))));
+        }
         Box::pin(std::future::ready(Ok(Image {
             kind: ImageKind::Png,
             data: Bytes::from_static(b"\x89PNG"),
@@ -1524,5 +1556,29 @@ async fn the_browser_tools_drive_the_environments_browser() {
             .as_ref()
             .map(|browser| lock(&browser.opened).clone()),
         Some(vec![json!({"url": "https://example.com"})])
+    );
+}
+
+/// A screenshot the browser cannot take is a failed call carrying no image.
+#[tokio::test]
+async fn a_screenshot_the_browser_cannot_take_fails_without_an_image() {
+    let env = FakeEnv {
+        browser: Some(FakeBrowser {
+            closed: true,
+            ..FakeBrowser::default()
+        }),
+        ..FakeEnv::default()
+    };
+    let tools = browser_tools(&env);
+
+    let shot = dispatch(&tools, "screenshot", json!({})).await;
+
+    assert_eq!(
+        (shot.error_code, shot.text.as_str(), shot.image),
+        (
+            Some(code::BROWSER_UNAVAILABLE),
+            "[browser_unavailable] no page is open",
+            None
+        )
     );
 }

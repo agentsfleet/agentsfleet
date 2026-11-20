@@ -112,10 +112,10 @@ impl Sessions {
         tracing::debug!(session_id, event);
         let mut book = self.book();
         // The place becomes the session under one lock, so the cap never
-        // counts it twice.
-        if slot.0.take().is_some() {
-            book.reserved -= 1;
-        }
+        // counts it twice. A slot holds its place from `make_room` until it
+        // opens here or drops, so emptying it hands the place over once.
+        slot.0 = None;
+        book.reserved -= 1;
         let used = book.used();
         let id = process.id;
         let shared = Arc::new(Held::new(process));

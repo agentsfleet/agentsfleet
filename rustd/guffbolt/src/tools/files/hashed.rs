@@ -142,8 +142,8 @@ async fn edit(env: &dyn Env, arguments: &Range) -> Answer {
             if to < from {
                 return Err(mismatch(&format!(
                     "{END_TARGET} {} was found before {TARGET} {}",
-                    arguments.target,
-                    arguments.end_target.as_deref().unwrap_or_default()
+                    arguments.end_target.as_deref().unwrap_or_default(),
+                    arguments.target
                 )));
             }
             to
@@ -165,15 +165,15 @@ async fn edit(env: &dyn Env, arguments: &Range) -> Answer {
 
 /// `text` with lines `from..=to` replaced by `new_text`, which gets a newline
 /// after it when lines follow and it ends without one, so the next line stays
-/// its own.
+/// its own. The empty line after a file's last newline is a line that
+/// follows, so an edit of the line before it keeps that newline.
 fn spliced(text: &str, lines: &[Line<'_>], from: usize, to: usize, new_text: &str) -> String {
     let before_at = lines.get(from).map_or(0, |line| line.start);
-    let after_at = lines
-        .get(to.saturating_add(1))
-        .map_or(text.len(), |line| line.start);
+    let next = lines.get(to.saturating_add(1));
+    let after_at = next.map_or(text.len(), |line| line.start);
     let (before, _replaced) = text.split_at(before_at);
     let (_replaced, after) = text.split_at(after_at);
-    let separator = if !after.is_empty() && !new_text.is_empty() && !new_text.ends_with('\n') {
+    let separator = if next.is_some() && !new_text.is_empty() && !new_text.ends_with('\n') {
         "\n"
     } else {
         ""

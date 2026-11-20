@@ -353,3 +353,21 @@ fn a_session_tool_names_the_sessions_it_lacks() {
         .expect("the environment and sessions are given");
     assert_eq!(names(&built), ["exec_command", "write_stdin"]);
 }
+
+/// A name no built-in has builds nothing, even past every family the chain
+/// asks, down to the agent tools'.
+#[test]
+fn a_name_no_built_in_has_builds_nothing() {
+    let caps = crate::agents::Caps {
+        depth: 1,
+        open: 1,
+        started: 1,
+    };
+    let (agents, _requests) = crate::agents::Agents::new(caps);
+    let given = super::Given {
+        agents: Some(&agents),
+        ..super::Given::default()
+    };
+
+    assert!(super::catalog::tool(given, "no_such_tool").is_none());
+}
