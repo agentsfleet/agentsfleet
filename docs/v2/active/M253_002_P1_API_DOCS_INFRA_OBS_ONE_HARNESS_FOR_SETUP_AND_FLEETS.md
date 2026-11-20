@@ -92,8 +92,13 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/crates/protocol/af_fleet_runtime/src/config/trigger/**`, `rustd/crates/daemon/afd_cron/src/validate.rs` | EDIT | one shared cron check |
 | `rustd/crates/daemon/afd_gateway/src/**` | EDIT | no setup model frames |
 | `rustd/crates/daemon/afd_bench/src/lane/**` | EDIT | no lanes for the daemon's model calls |
-| `schema/*_setup_attempts.sql`, `*_setup_dispatches.sql`, `*_setup_activity_receipts.sql`, `*_setup_answer_receipts.sql`, `*_setup_replay_receipts.sql`, `*_setup_edit_decisions.sql`, `*_billing_setup_report_receipts.sql` | DELETE | tables of the daemon's model calls, named as M253_001 leaves them |
+| `schema/*_setup_attempts.sql`, `*_setup_dispatches.sql`, `*_setup_activity_receipts.sql`, `*_setup_answer_receipts.sql`, `*_setup_edit_decisions.sql`, `*_billing_setup_report_receipts.sql` | DELETE | tables of the daemon's model calls, named as M253_001 leaves them. `setup_replay_receipts` stays: it is the HTTP idempotency store |
 | `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | the shorter migration list |
+| `rustd/crates/daemon/afd_db/schema/*_thread_items.sql`, `afd_fleet/src/run/sql/upsert_tool_calls.sql`, `afd_fleet/src/run/tool_detail/**`, `af_wire/src/tool_detail/**` | EDIT | items carry kind, tool, status, changes and run id, and name the newest turn (§10) |
+| `rustd/crates/runner/afr_memory/src/lib.rs` | EDIT | `MemoryBackend` folds into guffbolt's `MemoryStore` (§9) |
+| `rustd/crates/runner/main/src/host.rs`, `afr_agent/src/{offer,router}/**`, `afr_sandbox/examples/kernel_lane/**` | EDIT | tools are built per run through `ToolsBuilder` (§9) |
+| `rustd/crates/daemon/afd_credential/src/**` | EDIT | the tool-support check selection calls moves here (§8) |
+| `rustd/crates/daemon/main/src/serve/clients.rs` | EDIT | the storage client gets its own builder (§8) |
 | `rustd/crates/protocol/af_context/src/repository/**` | EDIT | load and save through the fenced verb (§6) |
 | `deploy/fly/agentsfleetd-dev/agentsfleetd.toml`, `deploy/fly/agentsfleetd-prod/agentsfleetd.toml` | EDIT | drop `[inference]` and `[authoring.turn]`; Indy approved this edit |
 | `rustd/crates/**/tests/**` | EDIT or DELETE | tests of the daemon's model calls leave; setup run cases replace them |
@@ -175,7 +180,7 @@ guffbolt's proposal tool works over a `Document` trait with three methods. `sche
 
 Cron syntax checking moves from `afd_cron/src/validate.rs` into `af_fleet_runtime`, so runner and daemon share one check.
 
-An accepted proposal is kept for the report, and the next edit in the same run applies to it; the last accepted one is reported. A refused one returns its reason as the tool result, and the model may try again in the same run. The model's action, `initialize` or `edit`, is recorded on the usage line.
+An accepted proposal is kept for the report, and the next edit in the same run applies to it; the last accepted one is reported. A refused one returns its reason as the tool result, and the model may try again in the same run.
 
 - **Dimension 4.1** — a valid edit is kept → Test `propose_setup_keeps_a_valid_edit_against_the_head` (unit): a cron trigger `{"type":"cron","schedule":"0 9 * * *","timezone":"UTC","message":"Daily check"}` at `/config/x-agentsfleet/triggers/-`, base 1. Expected: kept, with base 1.
 - **Dimension 4.2** — an invalid definition answers the model → Test `propose_setup_returns_the_parse_failure_to_the_model` (unit): schedule `61 * * * *`. Expected: the result names the field, nothing is kept, and the loop goes on.
@@ -195,7 +200,7 @@ The answer's text deltas reach the daemon, which publishes them on the thread's 
 - **Dimension 5.2** — no sandbox for setup → Test `a_setup_run_builds_no_sandbox` (integration): a setup run. Expected: no sandbox prepared, and the run still answers.
 - **Dimension 5.3** — the report check is a safety net → Test `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` (integration): a report carrying a definition the daemon refuses. Expected: no candidate, the turn answered with its text, and one `setup_proposal_refused` event.
 - **Dimension 5.4** — a stale fence writes nothing → Test `a_superseded_setup_run_report_is_refused` (integration): a report at fence 1 after fence 2 was assigned. Expected: refused with `RUN_STALE_FENCING_TOKEN` (`UZ-RUN-005`), and no candidate.
-- **Dimension 5.5** — an expired setup run is rerun → Test `an_expired_setup_run_reruns_the_turn` (integration): a runner that stops renewing. Expected: the turn is assigned again at the next fence, up to `af_core::limits::EVENT_LEASES_MAX` runs, then fails with `ProviderUsageUnknown`.
+- **Dimension 5.5** — an expired setup run is rerun → Test `an_expired_setup_run_reruns_the_turn` (integration): a runner that stops renewing. Expected: the turn is assigned again at the next fence, up to `af_core::limits::EVENT_RUNS_MAX` runs, then fails with `ProviderUsageUnknown`.
 - **Dimension 5.6** — no platform key for a tenant runner → Test `a_tenant_runner_is_not_assigned_a_platform_key_setup_run` (integration): a draft using platform inference and a tenant runner. Expected: no assignment to that runner.
 
 ### §6 — A long setup keeps its compacted context
@@ -204,7 +209,7 @@ The draft's `memory.context_checkpoints` row holds the compacted setup history a
 
 guffbolt's window hook compacts when the window fills, and the saved state is the hook's output.
 
-- **Dimension 6.1** — the context loads on the next turn → Test `the_next_setup_turn_loads_the_saved_context` (integration): turn 20 after a compaction. Expected: its first request holds the summary, not 19 raw messages.
+- **Dimension 6.1** — the context loads on the next turn → Test `the_next_setup_turn_loads_the_saved_context` (integration): turn 20 after a compaction. Expected: its first request holds the saved summary, and none of the turns the summary replaced.
 - **Dimension 6.2** — a stale run cannot overwrite → Test `a_superseded_setup_run_cannot_save_context` (integration): a save at fence 1 after fence 2 saved. Expected: refused with `RUN_STALE_FENCING_TOKEN`, and fence 2's row unchanged.
 
 ### §7 — Setup's last gaps close
@@ -218,7 +223,14 @@ Two gaps close here:
 
 ### §8 — The daemon makes no model call
 
-Model selection, the balance gate and the `propose_setup` schema move from `afd_setup/src/model/**` to `afd_setup/src/run/**`. The rest of `model/**` is deleted: dispatch, provider calls, receipts, progress, compaction calls and the edit-intent veto. So are `afd_setup/src/lease/**`, `afr_supervisor/src/authoring/**` after its proposal code moves, the `Up` and `Down` setup model frames, `LeaseKind::Authoring`, `AcceptedKinds::AUTHORING`, the tables, and the bench lanes.
+Model selection, the balance gate and the `propose_setup` schema move from `afd_setup/src/model/**` to `afd_setup/src/setup_run/**`. The rest of `model/**` is deleted: dispatch, provider calls, receipts, compaction calls and the edit-intent veto. So are the attempt path in `afd_setup/src/run/**`, `afr_supervisor/src/authoring/**` after its proposal code moves, the `Up` and `Down` setup model frames, `TaggedRun::Authoring`, `AcceptedKinds::AUTHORING`, the attempt tables, and the attempt parts of the bench lanes. `RunKind::Authoring` is the kind of the new draft run too, so it is renamed `RunKind::Setup`, not deleted.
+
+Three things survive the deletion:
+- The preview frame (`Delta`, `TextKind`, `DELTA_BYTES`, `DELTA_EVENT`), which the run path's preview and the draft stream use.
+- The tool-support check selection calls (`af_inference::Configured`). It moves behind `afd_credential`, so `afd_setup` names no provider crate.
+- The proposal behaviours the person sees: argument normalisation, restoring the person's wording, resolving text anchors, refusing an edit on Save and refusing invalid edits. They move to the runner's `FleetSetup` (§4).
+
+The daemon's storage client, built today from the setup model network, gets its own builder. The draft stream's `context.progress` event keeps a producer: the runner publishes compaction progress (§6).
 
 The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second setup runtime, `max_model_calls` and `max_proposal_corrections` become constants in `afd_setup`. The runner protocol becomes `agentsfleet.runner.v4` alone, and `Revision` and v2 are deleted.
 
@@ -234,11 +246,11 @@ A backend is what a tool calls to do its work. Each tool takes its backend when 
 
 `Tools::builder()` returns a `ToolsBuilder`, which builds the whole set a loop holds. Each setter follows the `with_*` convention: it takes the builder and returns it. `with_env`, `with_outbound`, `with_memory`, `with_scheduler`, `with_channel` and `with_notifier` set backends, and `with_tool` adds a tool already built with its own backend.
 
-`build(&ToolsConfig)` returns `Result<Tools<ContextTool>, MissingBackend>`. It builds the tools the startup config names and refuses to start when one lacks its backend, naming both.
+`ToolsConfig` lists tool names, and a single `*` matches an MCP server's tools whose names arrive at connect time. This follows pi's `--tools read,grep,'mcp__radius__*'` (`coding-agent/src/cli/args.ts:320`) and zeroclaw's tool filter globs. `build(&ToolsConfig)` returns `Result<Tools<ContextTool>, MissingBackend>`. It builds the tools the startup config names and refuses to start when one lacks its backend, naming both.
 
 `Context` keeps only per-call facts: the `CallRef`, the run id and the wake. A third party writes a tool whose `new` takes its own backend, with no edit to guffbolt. To share such a tool, they publish its backend trait beside it, as guffbolt does with `Scheduler`.
 
-The cron tools, `schedule` and `message` move into guffbolt as generic tools over `Scheduler` and `Channel`. agentsfleet builds them with backends over its fenced verbs, so its runs behave as today. Pushover leaves guffbolt and becomes a `Notifier` backend in `afr_tools`, which guffbolt's `notify` tool calls. `afr_tools`'s `MemoryBackend` folds into guffbolt's `MemoryStore`, so memory has one layer.
+The cron tools, `schedule` and `message` move into guffbolt as generic tools over `Scheduler` and `Channel`. agentsfleet builds them with backends over its fenced verbs, so its runs behave as today. Pushover leaves guffbolt and becomes a `Notifier` backend in `afr_tools`, which guffbolt's `notify` tool calls. Fleets see the tool as `notify`; a fleet definition that named `pushover` names `notify`. A refused outbound request reads `egress_denied` everywhere, replacing `afr_tools`'s `address_not_allowed`. `afr_tools`'s `MemoryBackend` folds into guffbolt's `MemoryStore`, so memory has one layer.
 
 agentsfleet builds a run's tools when the run starts, because each run has its own sandbox, egress guard and memory.
 
@@ -253,7 +265,7 @@ Text the model reads names no host product: no "fleet", "workspace", "daemon" or
 
 - **Dimension 9.1** — a missing backend stops startup → Test `a_tool_without_its_backend_refuses_to_start` (unit): a config naming `cron_add` and a builder with no scheduler. Expected: an error naming `cron_add` and the scheduler, and no loop starts.
 - **Dimension 9.2** — a third party's tool needs no guffbolt edit → Test `a_third_party_tool_takes_its_own_backend` (unit): a test trait `Crm`, its backend, and a tool built with it and added through `with_tool`. Expected: the tool's answer carries the backend's value.
-- **Dimension 9.3** — the config picks the offered tools → Test `the_startup_config_offers_only_named_tools` (unit): `["files", "memory_store"]`. Expected: exactly those two are offered.
+- **Dimension 9.3** — the config picks the offered tools → Test `the_startup_config_offers_only_named_tools` (unit): `["file_read", "memory_store", "mcp__docs__*"]` with a docs MCP server holding two tools. Expected: exactly those four tools are offered.
 - **Dimension 9.4** — the local scheduler survives a restart → Test `local_scheduler_returns_a_due_job_after_reopening` (integration): add a job, drop the scheduler, reopen its directory, then call `due` past the moment. Expected: the job, once.
 - **Dimension 9.5** — agentsfleetd backs a fleet's scheduling → Test `a_fleet_runs_cron_add_creates_its_schedule` (integration): a fleet run calls `cron_add`. Expected: one schedule for the fleet, as today.
 - **Dimension 9.6** — Pushover is a notifier backend → Test `pushover_backend_sends_through_the_egress_guard` (unit, `afr_tools`): `notify` with the Pushover backend. Expected: one request to Pushover's host, through the run's egress guard.
@@ -271,8 +283,8 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
 
 ## Interfaces
 
-- **Runner protocol:** `agentsfleet.runner.v4` alone. `Down::Run { run: RunPayload }`, where the payload names one owner, a fleet or a draft. A setup run's payload carries `setup { head_candidate_id, head_revision, message, history }`.
-- **Setup report:** `ReportRequest.setup` carries the kept proposal as today's `SetupProposal`, with `base_candidate_id`, `base_candidate_revision` and the definition as JSON text, or none for a text-only answer.
+- **Runner protocol:** `agentsfleet.runner.v4` alone. `Down::Run { run: RunPayload }`, where the payload names one owner, a fleet or a draft. A setup run's payload carries today's `SetupWork`: the sequence, the head candidate's id, revision and definition, and `save_requested`. The message rides `event.request_json`, and history rides `RunPayload.history`.
+- **Setup report:** `ReportRequest.setup` carries the kept proposal as today's `SetupProposal`, with `base_candidate_id`, `base_revision` and the definition as JSON text, or none for a text-only answer.
 - **Context verb:** `Up::ContextLoad { run_id, fence }` and `Up::ContextSave { run_id, fence, resource_version, checkpoint }`, answered in `Down`; a fence below the current one is refused with `RUN_STALE_FENCING_TOKEN`.
 - **guffbolt public API:** `Tool<Cx>`, `Tools<T>`, `Document`, `Env`, `Outbound`, `MemoryStore`, `Ending::{Answered, Waiting, Stopped, Failed}` and `DriveState::resume`.
 - **Backends:** `Tools::builder() -> ToolsBuilder`; `with_env`, `with_outbound`, `with_memory`, `with_scheduler`, `with_channel`, `with_notifier` and `with_tool`, each `(self, …) -> Self`; `build(&ToolsConfig) -> Result<Tools<ContextTool>, MissingBackend>`; the `Scheduler`, `Channel` and `Notifier` traits; and `CallRef { step, index, call_id }`.
@@ -283,7 +295,7 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
 |------|------|-------|--------------------------------------------------|------|
 | Invalid proposal | failure | the model proposes a definition `Definition::parse` refuses | the tool result names the field; the model may retry | `propose_setup_returns_the_parse_failure_to_the_model` |
 | Stale base | race | another turn wrote revision N+1 first | refused, naming the head | `propose_setup_refuses_a_stale_base_revision` |
-| Report check refuses | failure | the daemon's rules differ from the runner's build | no candidate; turn failed; event logged | `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` |
+| Report check refuses | failure | the daemon's rules differ from the runner's build | no candidate; the turn is answered with its text and holds the refusal as its failure detail; event logged | `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` |
 | Runner dies mid-setup | failure | the run expires | rerun at fence +1, capped | `an_expired_setup_run_reruns_the_turn` |
 | Stale report | replay | a superseded run reports late | 409; nothing written | `a_superseded_setup_run_report_is_refused` |
 | Stale context save | replay | a superseded run saves late | 409; the row stays | `a_superseded_setup_run_cannot_save_context` |
@@ -299,7 +311,7 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
 1. A thread has exactly one owner. A `CHECK` in `schema/*_thread_threads.sql` requires exactly one of `fleet_id` and `draft_id`, and a run's owner is its thread.
 2. A report or context save below the current fence writes nothing. The settle and save statements match `fencing_token` in their `WHERE`, and zero rows map to 409.
 3. guffbolt depends on no repository crate. Dimension 1.1's test runs in `make test-unit-all`.
-4. The daemon cannot use the provider clients. `afd_setup` depends on none of `af_providers`, `af_inference` and `rig-core`.
+4. The daemon cannot use the provider clients. `afd_setup` depends directly on none of `af_providers`, `af_inference` and `rig-core`; the tool-support check reaches `af_inference` only through `afd_credential`.
 5. guffbolt's model-facing text names no host product. Dimension 9.8's test runs in `make test-unit-all`.
 
 ## Metrics & Observability
@@ -332,7 +344,7 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
 | Deleted file or symbol | Verify | Expected |
 |------------------------|--------|----------|
 | `AuthoringModelResult` and the other setup model frames | `git grep -n -w -E "AuthoringModelResult|AuthoringActivityAck|AuthoringRenewed|AuthoringReportAck|AuthoringModel|AuthoringRenew|AuthoringReport" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md'` | no output |
-| the daemon's setup model path | `git grep -n -E "mod model|crate::model" -- rustd/crates/daemon/afd_setup` | no output |
+| the daemon's setup model path | `git grep -n -E "^(pub(\(crate\))? )?mod model;|crate::model::" -- rustd/crates/daemon/afd_setup/src/lib.rs rustd/crates/daemon/afd_setup/src` | no output |
 | the runner's remote model client | `git grep -n -E "mod authoring" -- rustd/crates/runner` | no output |
 | `[authoring.turn]` | `git grep -n -F "[authoring.turn]" -- deploy` | no output |
 | guffbolt's Pushover tool | `git grep -n -w "Pushover" -- rustd/guffbolt` | no output |
@@ -387,6 +399,10 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
     - **D8:** `fleet_id` plus `draft_id` on the run.
     - **D10:** web and memory tools move into guffbolt.
     - **D12:** the codecov paths and the `.orly/LOCAL.md` layer rule.
+  - > Owner (Indy, Nov 20, 2026): "Tool names only, but also refer ~/Projects/oss/rs/codex, ~/Projects/oss/js/pi too as a reference and the ~/Projects/oss/rs/*claw" — context: §9, ToolsConfig.
+  - > Owner (Indy, Nov 20, 2026): "Rename to notify (Recommended)" — context: §9, the published tool name.
+  - > Owner (Indy, Nov 20, 2026): "egress_denied everywhere (Recommended)" — context: §2 and §9, one refusal code.
+  - > Owner (Indy, Nov 20, 2026): "Drop it from the spec (Recommended)" — context: §4, no action column on the usage line.
   - > Owner (Indy, Nov 20, 2026): "Defer 5.1 to M253_002" and "Move 5.2 into M253_002 (Recommended)" — context: §10, transferred from M253_001.
   - > Owner (Indy, Nov 20, 2026): "Move to afr_tools (Recommended)" — context: §9, Pushover leaves guffbolt.
   - > Owner (Indy, Nov 20, 2026): "I think i need ability like memory_store, they are in guffbolt i presume, and the calls do api to save them? similar way the pushover and scheduler can be. When i start i can configure the needed (like pi or codex or zig's nullclaw or any ~/Projects/oss/rs/* equivalent)" — context: §9.
