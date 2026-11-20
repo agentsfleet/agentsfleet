@@ -1,10 +1,11 @@
 import { Option, Schema } from "effect";
+import { TOOL_CALL_KINDS } from "./tool-activity.ts";
 
 const MAX_FENCE = "9223372036854775807";
 const FENCE = Schema.String.check(Schema.isPattern(/^[1-9][0-9]{0,18}$/u),
   Schema.makeFilter((value: string) => value.length < MAX_FENCE.length || value <= MAX_FENCE));
 const OUTPUT_KINDS: ReadonlySet<string> = new Set([
-  "chunk", "tool_call_started", "tool_call_progress", "tool_call_completed",
+  "chunk", ...TOOL_CALL_KINDS,
   "context_progress", "task_decision_started", "task_decision_completed",
   "task_transfer_progress", "run_restarted",
 ]);

@@ -12,10 +12,9 @@ import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
   KIND_CHUNK,
   KIND_TURN_COMPLETE,
-  KIND_TOOL_CALL_COMPLETED,
-  KIND_TOOL_CALL_STARTED,
   STATUS_COMPLETE,
 } from "../src/commands/fleet/steer-turns.ts";
+import { KIND_TOOL_CALL_COMPLETED, KIND_TOOL_CALL_STARTED } from "../src/commands/fleet/tool-activity.ts";
 import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";

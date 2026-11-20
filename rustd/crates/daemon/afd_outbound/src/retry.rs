@@ -109,15 +109,3 @@ const FIRST_DELAY: Duration = Duration::from_millis(200);
 /// Two sleeps come to 600ms before jitter and under a second with it. Delivery
 /// is serial, so this wait is paid by every answer queued behind this one.
 const MAX_DELAY: Duration = Duration::from_millis(800);
-
-/// The schedule one delivery's attempts are spread over.
-///
-/// `max_times` is the number of RETRIES, so it is one fewer than the attempts:
-/// the first try is not a retry. Deriving it from [`DELIVERY_ATTEMPTS`] rather
-/// than writing `2` is what keeps the two from drifting — a count written down
-/// separately from the attempts can leave the last delay unreachable while a
-/// comment beside it promises one more try.
-#[must_use]
-pub const fn delivery_schedule() -> ExponentialBuilder {
-    RetryPolicy::DEFAULT.schedule()
-}

@@ -35,8 +35,6 @@ const MS_PER_SECOND = 1000 as const;
 // Frame kinds mirror the daemon's activity_publisher KIND_* constants — the
 // wire values these frames arrive with.
 export const KIND_CHUNK = "chunk" as const;
-export const KIND_TOOL_CALL_STARTED = "tool_call_started" as const;
-export const KIND_TOOL_CALL_COMPLETED = "tool_call_completed" as const;
 export const KIND_TURN_COMPLETE = "turn_complete" as const;
 
 const BYTES_PER_KIB = 1024;
