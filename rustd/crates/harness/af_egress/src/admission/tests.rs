@@ -72,7 +72,7 @@ fn should_refuse_an_unlisted_host_and_any_scheme_but_https() {
 fn should_refuse_an_allowlisted_address_literal_in_a_private_range() {
     assert_eq!(
         refused(false, draft("GET", "https://127.0.0.1/admin", &[], None)),
-        Some(shown(&raise::address_not_allowed("127.0.0.1")))
+        Some(shown(&raise::egress_denied("127.0.0.1")))
     );
 }
 
@@ -282,7 +282,7 @@ fn should_refuse_an_allowlisted_v6_literal_in_a_private_range() {
             .as_ref()
             .map(shown);
 
-        let refused = shown(&raise::address_not_allowed(host));
+        let refused = shown(&raise::egress_denied(host));
         assert_eq!(refusal, Some(refused), "{written}");
     }
 }

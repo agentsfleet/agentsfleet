@@ -4729,16 +4729,21 @@ dependencies = [
  "futures-util",
  "html2text",
  "jiff 1.0.0",
+ "rcgen",
  "regex",
  "reqwest",
  "rmcp",
+ "rustix 1.1.6",
+ "rustls",
  "schemars 1.2.3",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "tracing",
+ "url",
 ]
 
 [[package]]

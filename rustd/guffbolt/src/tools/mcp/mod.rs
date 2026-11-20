@@ -13,9 +13,12 @@
 //! A stdio server runs where the run's commands run: its process is started
 //! through the [`Env`], never on the host behind the harness's back. A
 //! remote server is connected to only once the [`Outbound`] hook admits its
-//! URL, and every request to it carries what the hook said to carry. What a
-//! server answers is text the model reads; a server's error is a failed call,
-//! never a failed run.
+//! URL, and every request to it carries what the hook said to carry. Its
+//! host is never a private address: a literal is refused before the client
+//! is built, and a name is looked up through [`Outbound::lookup`] and judged
+//! then and again by the client's own resolver as it connects. What a server
+//! answers is text the model reads; a server's error is a failed call, never
+//! a failed run.
 
 pub mod resources;
 mod stdio;
@@ -25,6 +28,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use reqwest::Url;
 use reqwest::header::{HeaderName, HeaderValue};
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::RunningService;
@@ -35,7 +39,7 @@ use serde_json::Value;
 
 use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use crate::tools::env::{Env, Spawn};
-use crate::tools::outbound::{Outbound, client};
+use crate::tools::outbound::{Outbound, Refused, client, reachable};
 use crate::tools::{Context, code};
 
 pub use self::resources::{ListMcpResourceTemplates, ListMcpResources, ReadMcpResource};
@@ -69,6 +73,13 @@ impl fmt::Display for McpError {
 }
 
 impl std::error::Error for McpError {}
+
+/// A refused connection, as the model reads it: its code, then its sentence.
+impl From<Refused> for McpError {
+    fn from(refused: Refused) -> Self {
+        Self::new(format!("[{}] {}", refused.code, refused.detail))
+    }
+}
 
 /// One connected MCP server.
 pub struct Server {
@@ -105,19 +116,20 @@ impl Server {
     }
 
     /// Connects to the server at `url` over streamable HTTP, once `outbound`
-    /// admits it.
+    /// admits it and its host is not a private address.
     ///
     /// # Errors
-    /// The hook refused the URL, or the server would not initialize.
+    /// The hook refused the URL, its host is or resolves to a private
+    /// address (`[egress_denied]`), or the server would not initialize.
     pub async fn http(
         name: impl Into<String>,
         url: &str,
         outbound: &dyn Outbound,
     ) -> Result<Self, McpError> {
-        let admitted = outbound
-            .connect(TOOL, url)
-            .await
-            .map_err(|refused| McpError::new(format!("[{}] {}", refused.code, refused.detail)))?;
+        let admitted = outbound.connect(TOOL, url).await?;
+        let lookup = outbound.lookup();
+        let target = Url::parse(&admitted.url).map_err(McpError::new)?;
+        reachable(&target, &*lookup).await?;
         let mut headers = HashMap::new();
         for (name, value) in admitted.headers {
             let name = HeaderName::try_from(name).map_err(McpError::new)?;
@@ -126,7 +138,9 @@ impl Server {
         }
         let config =
             StreamableHttpClientTransportConfig::with_uri(admitted.url).custom_headers(headers);
-        let client = client(CALL_TIMEOUT).build().map_err(McpError::new)?;
+        let client = client(CALL_TIMEOUT, lookup)
+            .build()
+            .map_err(McpError::new)?;
         let transport = StreamableHttpClientTransport::with_client(client, config);
         let service = ().serve(transport).await.map_err(McpError::new)?;
         Ok(Self {
@@ -292,3 +306,7 @@ fn resource_uri(part: &Value) -> String {
         .unwrap_or_default()
         .to_owned()
 }
+
+#[cfg(test)]
+#[path = "http_tests.rs"]
+mod http_tests;

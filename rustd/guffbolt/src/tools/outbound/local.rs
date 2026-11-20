@@ -1,19 +1,25 @@
 //! The outbound default of a standalone harness: HTTPS only, to the hosts an
 //! allowlist names, the way nullclaw's `http_request` admits a request
-//! (`nullclaw/src/tools/http_request.zig`).
+//! (`nullclaw/src/tools/http_request.zig`), and never to a private address.
 //!
 //! A host is allowed when it is a listed host or one of its subdomains. A
-//! credential is written as `${secrets.NAME.FIELD}` in the `Authorization`
-//! header of a request that may carry one, and put in place as it is sent;
-//! every secret's value is masked out of what comes back.
+//! host that is a private address, or a name that resolves to one, is
+//! refused whatever the allowlist says, at every redirect's hop too
+//! ([`super::guard`]). A credential is written as `${secrets.NAME.FIELD}` in
+//! the `Authorization` header of a request that may carry one, and put in
+//! place as it is sent; every secret's value is masked out of what comes back.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
+use reqwest::dns::Resolve;
 use reqwest::header::{CONTENT_TYPE, LOCATION};
 use reqwest::{Client, Method, Url};
 
+use super::guard::{self, SystemLookup};
 use super::{
     Admitted, Outbound, OutboundFuture, Placement, RESPONSE_MAX_BYTES, Redirects, Refused, Request,
     Response, client,
@@ -59,24 +65,49 @@ impl Allowlist {
 }
 
 /// HTTPS requests from this host, to the hosts an allowlist names.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LocalOutbound {
     client: Client,
+    /// How a name is looked up, by this client and by an MCP client it
+    /// admits ([`Outbound::lookup`]).
+    lookup: Arc<dyn Resolve>,
     allowlist: Allowlist,
     /// Each secret's fields, by the secret's name.
     secrets: BTreeMap<String, BTreeMap<String, String>>,
 }
 
+impl fmt::Debug for LocalOutbound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LocalOutbound")
+            .field("allowlist", &self.allowlist)
+            .finish_non_exhaustive()
+    }
+}
+
 impl LocalOutbound {
-    /// Requests to the hosts `allowlist` names.
-    #[must_use]
-    pub fn new(allowlist: Allowlist) -> Self {
-        let client = client(REQUEST_TIMEOUT).build().unwrap_or_default();
-        Self {
+    /// Requests to the hosts `allowlist` names, each name looked up by this
+    /// host's resolver.
+    ///
+    /// # Errors
+    /// The TLS backend refused the client's configuration.
+    pub fn new(allowlist: Allowlist) -> reqwest::Result<Self> {
+        Self::resolving(allowlist, Arc::new(SystemLookup))
+    }
+
+    /// The same, each name looked up through `lookup`, such as a resolver of
+    /// the embedder's own. A name any of whose addresses is private is
+    /// refused whatever `lookup` answers.
+    ///
+    /// # Errors
+    /// As [`LocalOutbound::new`].
+    pub fn resolving(allowlist: Allowlist, lookup: Arc<dyn Resolve>) -> reqwest::Result<Self> {
+        let client = client(REQUEST_TIMEOUT, Arc::clone(&lookup)).build()?;
+        Ok(Self {
             client,
+            lookup,
             allowlist,
             secrets: BTreeMap::new(),
-        }
+        })
     }
 
     /// The same, holding `value` as `field` of the secret `name`.
@@ -94,7 +125,9 @@ impl LocalOutbound {
         self
     }
 
-    /// `url`, or the refusal: it parses, is HTTPS, and names an allowed host.
+    /// `url`, or the refusal: it parses, is HTTPS, names no private address
+    /// and names an allowed host. A name is judged by the client's resolver
+    /// as it connects.
     fn admitted(&self, url: &str) -> Result<Url, Refused> {
         let parsed = Url::parse(url).map_err(|failure| {
             Refused::new(
@@ -108,6 +141,7 @@ impl LocalOutbound {
                 format!("{url} is not https"),
             ));
         }
+        guard::literal_admitted(&parsed)?;
         let host = parsed.host_str().unwrap_or_default();
         if !self.allowlist.allows(host) {
             return Err(Refused::new(
@@ -167,12 +201,7 @@ impl LocalOutbound {
             if let Some(body) = &request.body {
                 outbound = outbound.body(body.clone());
             }
-            let response = outbound.send().await.map_err(|failure| {
-                Refused::new(
-                    code::UPSTREAM_UNREACHABLE,
-                    failure.without_url().to_string(),
-                )
-            })?;
+            let response = outbound.send().await.map_err(unreached)?;
             let status = response.status();
             let location = response
                 .headers()
@@ -237,6 +266,20 @@ impl LocalOutbound {
     }
 }
 
+/// Why a request that was sent got no answer: the guard refused its name,
+/// or the network failed it, in words that carry no URL.
+fn unreached(failure: reqwest::Error) -> Refused {
+    guard::denied(&failure).cloned().map_or_else(
+        || {
+            Refused::new(
+                code::UPSTREAM_UNREACHABLE,
+                failure.without_url().to_string(),
+            )
+        },
+        Refused::from,
+    )
+}
+
 impl Outbound for LocalOutbound {
     fn send<'a>(&'a self, _tool: &'a str, request: Request) -> OutboundFuture<'a, Response> {
         Box::pin(self.sent(request))
@@ -273,4 +316,12 @@ impl Outbound for LocalOutbound {
         });
         Box::pin(std::future::ready(admitted))
     }
+
+    fn lookup(&self) -> Arc<dyn Resolve> {
+        Arc::clone(&self.lookup)
+    }
 }
+
+#[cfg(test)]
+#[path = "local_tests.rs"]
+mod tests;

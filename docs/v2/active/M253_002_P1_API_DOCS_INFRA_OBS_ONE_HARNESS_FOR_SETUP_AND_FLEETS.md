@@ -158,11 +158,11 @@ A standalone embedder gets `LocalEnv`, `LocalOutbound` and `LocalMemory`.
 
 `LocalOutbound` refuses private, loopback, link-local, unique-local, CGNAT, unspecified and multicast addresses after resolution, through a `reqwest` DNS resolver hook that tests can replace. A new `[egress_denied]` code joins `tools/code.rs`. MCP over HTTP admits its URL through `Outbound::connect`, and its own client installs the same resolver.
 
-- **Dimension 2.1** — a timeout kills the group → Test `a_timed_out_command_leaves_no_child_running` (integration): `sh -c 'sleep 60 & sleep 60'` with a 1-second timeout. Expected: both sleeps are gone.
-- **Dimension 2.2** — the environment is cleared → Test `a_local_command_sees_only_named_variables` (integration): a parent variable `SECRET_X`. Expected: `env` in the child prints no `SECRET_X`.
-- **Dimension 2.3** — private names are refused → Test `local_outbound_refuses_a_name_resolving_to_loopback` (unit): a host resolving to `127.0.0.1`. Expected: `[egress_denied]`, and no connection opened.
-- **Dimension 2.4** — redirects cannot escape → Test `local_outbound_refuses_a_redirect_to_a_private_address` (integration): a test resolver mapping a public name to a test server, which answers 302 to `https://10.0.0.1/`. Expected: refused, and the private host gets no request.
-- **Dimension 2.5** — MCP over HTTP refuses private addresses → Test `mcp_http_client_refuses_a_private_address` (unit): an MCP server URL resolving to `10.0.0.1`. Expected: `[egress_denied]` before any request.
+- **Dimension 2.1** — DONE — a timeout kills the group → Test `a_timed_out_command_leaves_no_child_running` (integration): `sh -c 'sleep 60 & sleep 60'` with a 1-second timeout. Expected: both sleeps are gone.
+- **Dimension 2.2** — DONE — the environment is cleared → Test `a_local_command_sees_only_named_variables` (integration): a parent variable `SECRET_X`. Expected: `env` in the child prints no `SECRET_X`.
+- **Dimension 2.3** — DONE — private names are refused → Test `local_outbound_refuses_a_name_resolving_to_loopback` (unit): a host resolving to `127.0.0.1`. Expected: `[egress_denied]`, and no connection opened.
+- **Dimension 2.4** — DONE — redirects cannot escape → Test `local_outbound_refuses_a_redirect_to_a_private_address` (integration): a test resolver mapping a public name to a test server, which answers 302 to `https://10.0.0.1/`. Expected: refused, and the private host gets no request.
+- **Dimension 2.5** — DONE — MCP over HTTP refuses private addresses → Test `mcp_http_client_refuses_a_private_address` (unit): an MCP server URL resolving to `10.0.0.1`. Expected: `[egress_denied]` before any request.
 
 ### §3 — A run waits for a person only at a quiet point
 

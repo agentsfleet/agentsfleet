@@ -1,45 +1,43 @@
 //! The environment of a standalone harness: this host's processes and the
 //! files under one directory.
 //!
-//! A process runs as the user that runs the harness, with that user's
-//! environment and reach, so `LocalEnv` confines nothing a command chooses to
-//! do: it is for a harness on a developer's machine. An embedder whose host
-//! holds what a command must not read, such as a provider key, gives its
-//! tools a sandbox instead and never this.
+//! A process runs as the user that runs the harness, with that user's reach,
+//! so `LocalEnv` confines nothing a command chooses to do: it is for a
+//! harness on a developer's machine. An embedder whose host holds what a
+//! command must not read, such as a provider key, gives its tools a sandbox
+//! instead and never this.
 //!
-//! Every process runs on pipes, a terminal asked for included. A path is
-//! held under the root by name and, once resolved, by where its deepest
-//! existing part really is, so a link out of the root is refused.
+//! A process starts with only the variables its spawn names and a search
+//! path, never the harness's own environment, and leads a process group of
+//! its own, which a stop or a timeout kills whole ([`process`]). It runs on
+//! pipes, or on a pseudo-terminal when its spawn asks for one on a Unix host
+//! ([`terminal`]). A path is held under the root by name and, once resolved,
+//! by where its deepest existing part really is, so a link out of the root
+//! is refused.
+
+mod process;
+#[cfg(unix)]
+mod terminal;
 
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Component, Path, PathBuf};
-use std::process::{ExitStatus, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
 
 use bytes::Bytes;
-use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWriteExt as _};
-use tokio::process::{Child, ChildStdin, Command};
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::sync::{Notify, mpsc};
 use tokio::time::Instant;
 
+use self::process::Watch;
 use super::{
     DirEntry, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Listing, Process,
-    ProcessId, Spawn, Stream, pipe,
+    ProcessId, Spawn, pipe,
 };
-use crate::tools::env::{Ending, Feed};
 
-/// How long a process's pipes may stay open after it exits, held by
-/// something it started, before its output is given up.
-const DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// The most entries one listing carries.
 const LIST_MAX: usize = 1000;
-/// How much one read of a pipe takes.
-const READ_CHUNK: usize = 16 * 1024;
-/// The signal a kill ends a process with.
-const KILLED: i32 = 9;
 /// What a path that leaves the root reads back.
 const LEAVES_ROOT: &str = "the path leaves the workspace";
 /// What a call naming a process the environment no longer holds reads back.
@@ -124,29 +122,21 @@ impl LocalEnv {
             Some(cwd) => self.resolve(cwd).await?,
             None => self.root.clone(),
         };
-        let mut command = Command::new(program);
-        command
-            .args(args)
-            .current_dir(cwd)
-            .envs(spawn.environment())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        let mut child = command.spawn().map_err(|failure| failed(&failure))?;
-        let id = ProcessId::new(self.next.fetch_add(1, Ordering::Relaxed));
+        let command = process::command(program, args, &cwd, spawn);
         let (input, queued) = mpsc::unbounded_channel();
-        let kill = Arc::new(Notify::new());
-        if let Some(stdin) = child.stdin.take() {
-            tokio::spawn(feed_input(stdin, queued));
-        }
         let (output, said) = mpsc::unbounded_channel();
-        if let Some(stdout) = child.stdout.take() {
-            tokio::spawn(read_pipe(stdout, Stream::Stdout, output.clone()));
-        }
-        if let Some(stderr) = child.stderr.take() {
-            tokio::spawn(read_pipe(stderr, Stream::Stderr, output));
-        }
+        #[cfg(unix)]
+        let started = if spawn.on_terminal() {
+            terminal::on_terminal(command, output, queued)
+        } else {
+            process::on_pipes(command, output, queued)
+        };
+        // A host with no pseudo-terminal runs a terminal asked for on pipes.
+        #[cfg(not(unix))]
+        let started = process::on_pipes(command, output, queued);
+        let child = started.map_err(|failure| failed(&failure))?;
+        let id = ProcessId::new(self.next.fetch_add(1, Ordering::Relaxed));
+        let kill = Arc::new(Notify::new());
         let (feed, events) = pipe();
         self.running().insert(
             id,
@@ -335,102 +325,5 @@ fn failed(failure: &io::Error) -> EnvError {
     EnvError::new(kind, failure.to_string())
 }
 
-/// Writes what the calls queue to the process's input, until it closes it.
-async fn feed_input(mut stdin: ChildStdin, mut queued: mpsc::UnboundedReceiver<Bytes>) {
-    while let Some(data) = queued.recv().await {
-        if stdin.write_all(&data).await.is_err() {
-            break;
-        }
-    }
-}
-
-/// Hands each chunk `pipe` says to the watcher, until it closes.
-async fn read_pipe(
-    mut pipe: impl AsyncRead + Unpin,
-    stream: Stream,
-    said: mpsc::UnboundedSender<(Stream, Bytes)>,
-) {
-    let mut buffer = vec![0; READ_CHUNK];
-    while let Ok(read) = pipe.read(&mut buffer).await {
-        let Some(chunk) = buffer.get(..read).filter(|chunk| !chunk.is_empty()) else {
-            break;
-        };
-        if said.send((stream, Bytes::copy_from_slice(chunk))).is_err() {
-            break;
-        }
-    }
-}
-
-/// One process from its start to its end: its output fed on, a kill or its
-/// timeout carried out, and its ending said last.
-struct Watch {
-    child: Child,
-    said: mpsc::UnboundedReceiver<(Stream, Bytes)>,
-    feed: Feed,
-    kill: Arc<Notify>,
-    deadline: Option<Instant>,
-}
-
-impl Watch {
-    async fn run(mut self) {
-        let mut cause: Option<Ending> = None;
-        let status = loop {
-            let deadline = self.deadline;
-            tokio::select! {
-                status = self.child.wait() => break status.ok(),
-                () = self.kill.notified() => {
-                    let _signalled = self.child.start_kill();
-                    cause.get_or_insert(Ending::Signaled(KILLED));
-                }
-                () = sleep_until(deadline) => {
-                    let _signalled = self.child.start_kill();
-                    cause.get_or_insert(Ending::TimedOut);
-                    self.deadline = None;
-                }
-                Some((stream, data)) = self.said.recv() => self.feed.output(stream, data),
-            }
-        };
-        let drained = Instant::now() + DRAIN_GRACE;
-        let mut abandoned = false;
-        loop {
-            tokio::select! {
-                next = self.said.recv() => match next {
-                    Some((stream, data)) => self.feed.output(stream, data),
-                    None => break,
-                },
-                () = tokio::time::sleep_until(drained) => {
-                    abandoned = true;
-                    break;
-                }
-            }
-        }
-        let ending = cause.unwrap_or_else(|| status.map_or(Ending::Interrupted, ending_of));
-        self.feed.end(ending, abandoned);
-    }
-}
-
-/// Sleeps until `deadline`, or forever when there is none.
-async fn sleep_until(deadline: Option<Instant>) {
-    match deadline {
-        Some(deadline) => tokio::time::sleep_until(deadline).await,
-        None => std::future::pending().await,
-    }
-}
-
-/// How a process that exited with `status` ended.
-fn ending_of(status: ExitStatus) -> Ending {
-    if let Some(code) = status.code() {
-        return Ending::Exited(code);
-    }
-    signal_of(status).map_or(Ending::Interrupted, Ending::Signaled)
-}
-
-#[cfg(unix)]
-fn signal_of(status: ExitStatus) -> Option<i32> {
-    std::os::unix::process::ExitStatusExt::signal(&status)
-}
-
-#[cfg(not(unix))]
-fn signal_of(_status: ExitStatus) -> Option<i32> {
-    None
-}
+#[cfg(all(test, unix))]
+mod tests;

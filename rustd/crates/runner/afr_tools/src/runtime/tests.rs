@@ -16,7 +16,7 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
         (ToolErrorCode::HttpsRequired, "https_required"),
         (ToolErrorCode::MethodNotAllowed, "method_not_allowed"),
         (ToolErrorCode::HostNotAllowed, "host_not_allowed"),
-        (ToolErrorCode::AddressNotAllowed, "address_not_allowed"),
+        (ToolErrorCode::EgressDenied, "egress_denied"),
         (
             ToolErrorCode::CredentialPlacementNotAllowed,
             "credential_placement_not_allowed",

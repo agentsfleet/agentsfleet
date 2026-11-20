@@ -325,7 +325,7 @@ fn header_secrets<'d>(
 /// checked by the resolver, after it resolves.
 fn reachable(url: &Url, host: &str) -> Result<()> {
     if blocked_literal(url) {
-        Err(raise::address_not_allowed(host))
+        Err(raise::egress_denied(host))
     } else {
         Ok(())
     }

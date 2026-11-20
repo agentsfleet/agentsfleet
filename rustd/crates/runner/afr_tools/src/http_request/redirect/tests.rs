@@ -128,10 +128,7 @@ async fn should_refuse_redirect_before_transmission() {
             "http://api.github.com/download",
             ToolErrorCode::HttpsRequired,
         ),
-        (
-            "https://127.0.0.1/private",
-            ToolErrorCode::AddressNotAllowed,
-        ),
+        ("https://127.0.0.1/private", ToolErrorCode::EgressDenied),
         (
             "https://user:password@api.github.com/private",
             ToolErrorCode::CredentialPlacementNotAllowed,

@@ -5,21 +5,33 @@
 //!  web_fetch ────┼─► Outbound::send ──► admit, rewrite or refuse ──► the network
 //!  pushover ─────┤   Outbound::secret: a credential the tool places itself
 //!  MCP over HTTP ┘   Outbound::connect: a server a client connects to
+//!                    Outbound::lookup: how that client looks a name up
 //! ```
 //!
 //! A tool drafts its request and words the answer; whether the request may
 //! leave, what it carries and how its answer is masked are the hook's. An
 //! embedder plugs its own egress guard in here, so a tool's request obeys
 //! one network policy whichever tool drafted it. [`LocalOutbound`] is the
-//! standalone default: HTTPS only, to the hosts it allows.
+//! standalone default: HTTPS only, to the hosts it allows, and never to a
+//! private address. Every client the tools build ([`client`]) refuses a
+//! name that resolves to one, whichever hook admitted its URL.
 
+mod guard;
 mod local;
+#[cfg(test)]
+pub(crate) mod testing;
 
 use std::fmt;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+
+use reqwest::dns::Resolve;
 
 use crate::tool::{ErrorCode, ToolOutput};
 
+pub use self::guard::SystemLookup;
+pub(crate) use self::guard::reachable;
 pub use self::local::{Allowlist, LocalOutbound};
 
 /// The most of a body a hook reads back; a longer one is cut and marked
@@ -120,17 +132,23 @@ pub struct Admitted {
     pub headers: Vec<(String, String)>,
 }
 
-/// The one place the generic tools build an HTTP client: bounded by
-/// `timeout`, following no redirect itself, so every hop is the caller's to
-/// admit.
+/// The one place the generic tools build an HTTP client.
+///
+/// It is bounded by `timeout` and follows no redirect itself, so every hop
+/// is the caller's to admit. It reads no proxy from the environment, which
+/// would look a name up out of the guard's sight. It looks each name up
+/// through `lookup` and refuses one any of whose addresses is private,
+/// before a connection is opened.
 #[expect(
     clippy::disallowed_methods,
     reason = "guffbolt links no agentsfleet crate, so the harness's one client builder lives here and names its bounds"
 )]
-pub fn client(timeout: std::time::Duration) -> reqwest::ClientBuilder {
+pub fn client(timeout: Duration, lookup: Arc<dyn Resolve>) -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .timeout(timeout)
         .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .dns_resolver(Arc::new(guard::Guarded::new(lookup)))
 }
 
 /// The hook every network request goes through.
@@ -158,4 +176,12 @@ pub trait Outbound: Send + Sync + fmt::Debug {
     /// Admits a connection to `url`, for a client that speaks to a server
     /// itself, such as an MCP client; the answer says where and with what.
     fn connect<'a>(&'a self, tool: &'a str, url: &'a str) -> OutboundFuture<'a, Admitted>;
+
+    /// How such a client looks a name up: this host's resolver, unless the
+    /// hook resolves its own way. The client refuses a name any of whose
+    /// addresses is private whatever this answers, so a lookup decides where
+    /// a name points, never whether a private address is reached.
+    fn lookup(&self) -> Arc<dyn Resolve> {
+        Arc::new(SystemLookup)
+    }
 }

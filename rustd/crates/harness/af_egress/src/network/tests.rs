@@ -109,7 +109,7 @@ async fn should_refuse_a_name_that_resolves_to_loopback() {
 }
 
 #[tokio::test]
-async fn should_answer_address_not_allowed_when_the_resolver_refuses_the_name() {
+async fn should_answer_egress_denied_when_the_resolver_refuses_the_name() {
     let outbound = Outbound {
         method: Method::GET,
         url: Url::parse(&format!("https://{INSIDE}:9/")).unwrap(),
@@ -120,7 +120,7 @@ async fn should_answer_address_not_allowed_when_the_resolver_refuses_the_name() 
 
     let refused = network().send(outbound).await.err().as_ref().map(shown);
 
-    assert_eq!(refused, Some(shown(&raise::address_not_allowed(INSIDE))));
+    assert_eq!(refused, Some(shown(&raise::egress_denied(INSIDE))));
 }
 
 #[tokio::test]

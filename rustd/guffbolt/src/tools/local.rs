@@ -1,7 +1,7 @@
 //! Everything a standalone harness lends its generic tools, in one place:
-//! this host's processes and files under one directory, HTTPS to the hosts
-//! an allowlist names, a memory that lives as long as the process, and the
-//! sessions and wake a run keeps.
+//! this host's processes and files under one directory, HTTPS to the public
+//! hosts an allowlist names, a memory that lives as long as the process, and
+//! the sessions and wake a run keeps.
 //!
 //! An embedder that runs untrusted work, or holds what a command must not
 //! read, builds its [`Context`] over its own sandbox instead.
@@ -17,7 +17,7 @@ use crate::tools::{Context, LocalEnv, LocalMemory, LocalOutbound, Sessions, Wake
 pub struct Local {
     /// This host's processes and the files under the root.
     pub env: LocalEnv,
-    /// HTTPS to the allowed hosts.
+    /// HTTPS to the allowed hosts, never to a private address.
     pub outbound: LocalOutbound,
     /// The run's memory.
     pub memory: LocalMemory,
@@ -36,7 +36,8 @@ impl Local {
     /// `allowlist` names.
     ///
     /// # Errors
-    /// `root` does not exist or cannot be resolved.
+    /// `root` does not exist or cannot be resolved, or the TLS backend
+    /// refused the HTTP client's configuration.
     pub fn new(
         run_id: impl Into<String>,
         root: impl AsRef<Path>,
@@ -44,7 +45,7 @@ impl Local {
     ) -> io::Result<Self> {
         Ok(Self {
             env: LocalEnv::new(root)?,
-            outbound: LocalOutbound::new(allowlist),
+            outbound: LocalOutbound::new(allowlist).map_err(io::Error::other)?,
             memory: LocalMemory::default(),
             sessions: Sessions::default(),
             wake: Wake::default(),

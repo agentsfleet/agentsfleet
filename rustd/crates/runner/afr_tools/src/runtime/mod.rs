@@ -68,8 +68,9 @@ pub enum ToolErrorCode {
     MethodNotAllowed,
     /// The host is not in the fleet's network allowlist.
     HostNotAllowed,
-    /// The host is, or resolves to, a private, loopback or reserved address.
-    AddressNotAllowed,
+    /// The host is, or resolves to, a private, loopback or reserved address,
+    /// which no request leaves for.
+    EgressDenied,
     /// A placeholder, or a header, stands where none may.
     CredentialPlacementNotAllowed,
     /// The credential a placeholder names is not sent to this host.
@@ -148,7 +149,7 @@ impl ToolErrorCode {
             Self::HttpsRequired => code::HTTPS_REQUIRED.as_str(),
             Self::MethodNotAllowed => code::METHOD_NOT_ALLOWED.as_str(),
             Self::HostNotAllowed => code::HOST_NOT_ALLOWED.as_str(),
-            Self::AddressNotAllowed => "address_not_allowed",
+            Self::EgressDenied => code::EGRESS_DENIED.as_str(),
             Self::CredentialPlacementNotAllowed => "credential_placement_not_allowed",
             Self::CredentialHostNotAllowed => "credential_host_not_allowed",
             Self::SecretNotFound => code::SECRET_NOT_FOUND.as_str(),

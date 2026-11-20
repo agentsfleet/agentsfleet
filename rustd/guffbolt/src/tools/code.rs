@@ -21,6 +21,9 @@ pub const HTTPS_REQUIRED: ErrorCode = ErrorCode::new("https_required");
 pub const METHOD_NOT_ALLOWED: ErrorCode = ErrorCode::new("method_not_allowed");
 /// The host is not one the outbound policy allows.
 pub const HOST_NOT_ALLOWED: ErrorCode = ErrorCode::new("host_not_allowed");
+/// The host is, or resolves to, a private, loopback or reserved address, which
+/// no request leaves for.
+pub const EGRESS_DENIED: ErrorCode = ErrorCode::new("egress_denied");
 /// A secret the tool needs is not one the run holds.
 pub const SECRET_NOT_FOUND: ErrorCode = ErrorCode::new("secret_not_found");
 /// The request left and no answer came back.

@@ -617,7 +617,7 @@ guffbolt = { git = "https://github.com/agentsfleet/agentsfleet", features = ["to
 | Seam | Tools | Local default |
 |---|---|---|
 | `Env` | `shell`, `exec_command`, `write_stdin`, `git`, `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
-| `Outbound` | `http_request`, `web_fetch`, `pushover`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the hosts an `Allowlist` names |
+| `Outbound` | `http_request`, `web_fetch`, `pushover`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the public hosts an `Allowlist` names |
 | `MemoryStore` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
 | none | `update_plan`, `ask_user`, `tool_search`, `current_time`, `sleep` | |
 
@@ -643,6 +643,8 @@ async fn main() -> std::io::Result<()> {
 
 `LocalEnv` runs every command as the user that runs the harness, with that user's reach. Run untrusted work in a sandbox, and give its tools an `Env` that sends each call there. Never give them `LocalEnv` on a host that holds a secret a command must not read, such as a provider key.
 
+`LocalEnv` still limits what a command inherits and leaves behind. A command starts with only the variables its `Spawn` names and a `PATH` of `/usr/local/bin:/usr/bin:/bin`, which a named `PATH` replaces. Nothing else from the harness's environment reaches it. On a Unix host it leads a process group of its own. A stop, a timeout, or a runtime that stops while it runs kills the whole group. A spawn that asks for a terminal runs on a pseudo-terminal.
+
 ### Env
 
 An `Env` starts a process and hands back its events, writes to it and kills it, and reads, writes, appends, deletes and lists files under one root. Every path is relative to `Env::root`, and the environment refuses one that leaves it, by name or through a link. A process's unread output is kept as its first and last 512 KiB, and the middle is counted. `exec_command` and `write_stdin` keep a process open across calls in the run's `Sessions`. Close them with `Sessions::close_all` when the run ends.
@@ -650,6 +652,8 @@ An `Env` starts a process and hands back its events, writes to it and kills it, 
 ### Outbound
 
 Every network request goes through `Outbound`, which admits it, rewrites it or refuses it, and masks the secrets it placed out of the answer. A tool that places a credential itself asks `Outbound::secret`, and an MCP client asks `Outbound::connect` before it connects. A refusal is the code and sentence the model reads.
+
+No request reaches a private address. That covers loopback, the private ranges, link-local, unique-local, the shared carrier range (CGNAT), unspecified and multicast, in IPv4 and IPv6 spellings. `LocalOutbound` refuses a literal one before it sends, at every redirect too. Every client the tools build looks a name up first and refuses it if any of its addresses is private. The model reads `[egress_denied]` either way. `Outbound::lookup` says how an MCP client looks a name up, and `LocalOutbound::resolving` takes a lookup of your own. A lookup decides where a name points, never whether a private address is reached.
 
 ```rust
 use std::pin::Pin;
@@ -745,7 +749,7 @@ A run with many tools, such as every tool of several MCP servers, can hold most 
 
 `bytes` carries an image a call read. Without `tools`, `guffbolt` links no model client, HTTP stack or secret store.
 
-The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `jiff` for `current_time`, `thiserror` for the vendored `apply_patch` parser, and Tokio's process, file and runtime features for `LocalEnv`.
+The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, and `url` to tell an address literal from a name. It adds `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `jiff` for `current_time` and `thiserror` for the vendored `apply_patch` parser. Tokio's process, file, network and runtime features serve `LocalEnv` and the host's lookup. On Unix, `rustix` kills a process's group and opens its pseudo-terminal.
 
 A provider's record of a step rides it as an opaque `Replay`. `guffbolt` saves it and hands it back unopened to the provider that wrote it.
 

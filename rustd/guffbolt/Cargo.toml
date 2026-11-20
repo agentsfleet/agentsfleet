@@ -27,10 +27,13 @@ tools = [
     "dep:regex",
     "dep:reqwest",
     "dep:rmcp",
+    "dep:rustix",
     "dep:schemars",
     "dep:thiserror",
+    "dep:url",
     "tokio/fs",
     "tokio/io-util",
+    "tokio/net",
     "tokio/process",
     "tokio/rt",
 ]
@@ -71,7 +74,22 @@ rmcp = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 # The vendored `apply_patch` parser's errors.
 thiserror = { workspace = true, optional = true }
+# Whether a URL's host is an address literal, which never reaches a lookup
+# and so is judged where the URL is admitted.
+url = { workspace = true, optional = true }
+
+# `LocalEnv` on a Unix host: a process's whole group killed on a stop or a
+# timeout, and the pseudo-terminal a process asks for.
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, optional = true, features = ["pty", "termios"] }
 
 [dev-dependencies]
-# `start_paused`, so a budget runs out at once and a test never waits on it.
-tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
+# A fake HTTPS server stands in for a public host: rcgen issues its
+# certificate and tokio-rustls serves it over rustls, on the aws-lc-rs
+# provider reqwest already links.
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+# `start_paused`, so a budget runs out at once and a test never waits on it;
+# a socket a fake server listens on.
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "test-util", "time"] }

@@ -43,7 +43,7 @@ impl From<Refusal> for ToolErrorCode {
             Refusal::HttpsRequired => Self::HttpsRequired,
             Refusal::MethodNotAllowed => Self::MethodNotAllowed,
             Refusal::HostNotAllowed => Self::HostNotAllowed,
-            Refusal::AddressNotAllowed => Self::AddressNotAllowed,
+            Refusal::EgressDenied => Self::EgressDenied,
             Refusal::PlacementNotAllowed => Self::CredentialPlacementNotAllowed,
             Refusal::CredentialHostNotAllowed => Self::CredentialHostNotAllowed,
             Refusal::SecretNotFound => Self::SecretNotFound,

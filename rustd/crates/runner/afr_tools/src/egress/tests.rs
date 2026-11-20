@@ -35,7 +35,7 @@ fn should_map_every_refusal_to_its_code() {
         (Refusal::HttpsRequired, ToolErrorCode::HttpsRequired),
         (Refusal::MethodNotAllowed, ToolErrorCode::MethodNotAllowed),
         (Refusal::HostNotAllowed, ToolErrorCode::HostNotAllowed),
-        (Refusal::AddressNotAllowed, ToolErrorCode::AddressNotAllowed),
+        (Refusal::EgressDenied, ToolErrorCode::EgressDenied),
         (
             Refusal::PlacementNotAllowed,
             ToolErrorCode::CredentialPlacementNotAllowed,

@@ -167,7 +167,7 @@ fn origin_of(request: &Url, target: &str) -> Option<String> {
 /// The refusal a failed send answers with.
 fn unreached(host: &str, failed: &reqwest::Error) -> Error {
     if blocked_address(failed) {
-        raise::address_not_allowed(host)
+        raise::egress_denied(host)
     } else if failed.is_timeout() {
         raise::upstream_unreachable(host, TIMED_OUT)
     } else {

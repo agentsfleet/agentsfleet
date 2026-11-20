@@ -77,15 +77,15 @@ fn should_preserve_boundaries_with_public_http_egress() {
         ),
         (
             draft("GET", "https://127.0.0.1/", &[], None),
-            Refusal::AddressNotAllowed,
+            Refusal::EgressDenied,
         ),
         (
             draft("GET", "https://169.254.169.254/", &[], None),
-            Refusal::AddressNotAllowed,
+            Refusal::EgressDenied,
         ),
         (
             draft("GET", "https://[::1]/", &[], None),
-            Refusal::AddressNotAllowed,
+            Refusal::EgressDenied,
         ),
     ];
     for (draft, expected) in cases {
