@@ -443,14 +443,39 @@ pub(crate) const fn reason_word(value: FailureReason) -> &'static str {
         FailureReason::ProviderUsageUnknown => "provider_usage_unknown",
         FailureReason::AttemptTimedOut => "attempt_timed_out",
         FailureReason::PolicyChanged => "policy_changed",
+        FailureReason::FrameTooLarge => "frame_too_large",
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use af_wire::setup::FailureReason;
+    use af_wire::{report::FailureClass, setup::FailureReason};
 
-    use super::reason_word;
+    use super::{SetupFinish, reason_word};
+
+    /// A run failed for its frame keeps that reason, so the person is told to
+    /// shorten the message; every other class, and none, is the provider's.
+    #[test]
+    fn a_frame_too_large_report_keeps_its_reason_and_any_other_is_the_providers() {
+        for (class, reason) in [
+            (
+                Some(FailureClass::FrameTooLarge),
+                FailureReason::FrameTooLarge,
+            ),
+            (
+                Some(FailureClass::RunnerCrash),
+                FailureReason::ProviderFailed,
+            ),
+            (
+                Some(FailureClass::TimeoutKill),
+                FailureReason::ProviderFailed,
+            ),
+            (None, FailureReason::ProviderFailed),
+        ] {
+            assert_eq!(SetupFinish::failure_of(class), reason, "{class:?}");
+        }
+        assert_eq!(reason_word(FailureReason::FrameTooLarge), "frame_too_large");
+    }
 
     /// Turns store these words, and readers parse them back through serde:
     /// every arm must spell its wire form.
@@ -464,6 +489,7 @@ mod tests {
             FailureReason::ProviderUsageUnknown,
             FailureReason::AttemptTimedOut,
             FailureReason::PolicyChanged,
+            FailureReason::FrameTooLarge,
         ] {
             let wire = serde_json::to_value(value).ok();
             assert_eq!(

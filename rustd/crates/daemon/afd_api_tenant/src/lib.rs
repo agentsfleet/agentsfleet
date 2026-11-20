@@ -103,19 +103,6 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::resolve::<D>)),
         WorkspaceRoute::Turns => Some(get(handler::turn::workspace_list::<D>)),
         WorkspaceRoute::TurnsStream => Some(get(handler::stream::workspace::<D>)),
-        WorkspaceRoute::Plugin => Some(reading(
-            get(handler::plugin::list::gallery::<D>).post(handler::plugin::publish::create::<D>),
-            SETUP_BODY_BYTES_MAX,
-        )),
-        WorkspaceRoute::PluginItem => {
-            Some(get(handler::plugin::read::one::<D>).delete(handler::plugin::remove::one::<D>))
-        }
-        WorkspaceRoute::PluginRevisions => Some(reading(
-            get(handler::plugin::list::history::<D>)
-                .post(handler::plugin::publish_revision::revision::<D>),
-            SETUP_BODY_BYTES_MAX,
-        )),
-        WorkspaceRoute::PluginRevision => Some(get(handler::plugin::read::revision::<D>)),
         WorkspaceRoute::Members => Some(get(tenant::member::in_workspace::<D>)),
     }
 }
@@ -143,11 +130,7 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
         )),
         WorkspaceRoute::DraftStream => Some(get(stream::open::<D>)),
         WorkspaceRoute::DraftTurn => Some(patch(handler::turn::stop::draft::<D>)),
-        WorkspaceRoute::Plugin
-        | WorkspaceRoute::PluginItem
-        | WorkspaceRoute::PluginRevisions
-        | WorkspaceRoute::PluginRevision
-        | WorkspaceRoute::Fleets
+        WorkspaceRoute::Fleets
         | WorkspaceRoute::Secrets
         | WorkspaceRoute::Secret
         | WorkspaceRoute::Turns

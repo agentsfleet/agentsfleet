@@ -1,7 +1,7 @@
 //! Private chat setup over the shared native Definition.
 //!
 //! Access is checked inside each transaction, before replay. Candidates are
-//! immutable snapshots; publishing and activation copy them into shared setup.
+//! immutable snapshots; Save and activation copy them into shared setup.
 //! HTTP adapters and the runner use this domain owner without owning its rows.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
@@ -19,7 +19,6 @@ mod maintenance;
 mod message;
 mod observe;
 mod paging;
-mod plugin;
 mod privacy;
 mod replay;
 mod review;

@@ -8,7 +8,6 @@ pub mod fleet;
 pub(crate) mod grant;
 pub(crate) mod input;
 pub(crate) mod paging;
-pub(crate) mod plugin;
 pub(crate) mod preference;
 pub(crate) mod schedule;
 pub mod secret;

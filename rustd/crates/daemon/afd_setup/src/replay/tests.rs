@@ -72,7 +72,6 @@ fn every_resource_kind_is_one_the_read_checks() {
         Resource::FleetRevision,
         Resource::Draft,
         Resource::Message,
-        Resource::PluginRevision,
     ] {
         let arm = format!("WHEN '{}' THEN", resource.kind());
         assert!(

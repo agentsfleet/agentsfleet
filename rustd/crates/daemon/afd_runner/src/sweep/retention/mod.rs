@@ -37,7 +37,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use af_core::timing::{DAY, MAX_RUNTIME};
+use af_observability::metrics::label::fleet::RunnerRun;
 use af_observability::producers;
 use afd_db::Db;
 use afd_db::statement::Bound;
@@ -105,6 +107,13 @@ const TERMINAL_STATUSES: [&str; 3] = [
 /// The lifecycle tags are deliberately absent — see the module note.
 const PER_WORK_EVENTS: [&str; 2] = [sql::event_type::RUN_ACQUIRED, sql::event_type::RUN_RELEASED];
 
+/// One runner's share of an expiry batch, as the batch answers it.
+#[derive(sqlx::FromRow)]
+struct ExpiredRuns {
+    runner_id: Uuid7,
+    expired_count: i64,
+}
+
 /// The retention pass, over the api-role pool.
 #[derive(Debug)]
 pub struct Retention {
@@ -144,7 +153,7 @@ impl Retention {
     /// interval reads.
     ///
     /// The binder is a plain synchronous function rather than an async closure:
-    /// what varies between the three passes is which parameters go on the
+    /// what varies between the two delete passes is which parameters go on the
     /// statement, and nothing about that is asynchronous. Awaiting stays here,
     /// once, where the batching lives.
     async fn drain<B>(
@@ -167,6 +176,43 @@ impl Retention {
             total += affected;
             // A short batch means the table is drained: there was nothing left
             // for the limit to cut off.
+            if affected < u64::try_from(self.settings.batch_size).unwrap_or(u64::MAX) {
+                return Ok((total, false));
+            }
+        }
+        Ok((total, true))
+    }
+
+    /// [`Self::drain`] for the abandoned-run expiry, whose batch answers one
+    /// row per runner rather than a row count.
+    ///
+    /// Each batch is its own autocommitted statement, so its expiries are
+    /// counted on their runners once the rows they describe are written.
+    async fn expire_abandoned(&self) -> Result<(u64, bool)> {
+        let mut total = 0;
+        for _pass in 0..self.settings.max_batches {
+            let mut connection = self.database.acquire().await?;
+            let batch: Vec<ExpiredRuns> =
+                sqlx::query_as(sql::sweep::EXPIRE_ABANDONED_ACTIVE_RUNS_BATCH)
+                    .bind(vec![sql::RUN_STATUS_ACTIVE])
+                    .bind(DAY.saturating_mul(self.settings.keep_days))
+                    .bind(sql::RUN_STATUS_EXPIRED)
+                    .bind(self.settings.batch_size)
+                    .fetch_all(&mut *connection)
+                    .await
+                    .map_err(query(CONTEXT_ABANDONED))?;
+            let mut affected: u64 = 0;
+            for runner in &batch {
+                let count = runner.expired_count.unsigned_abs();
+                producers::fleet::runner::runs(
+                    runner.runner_id.as_str(),
+                    RunnerRun::Expired,
+                    count,
+                );
+                affected = affected.saturating_add(count);
+            }
+            total += affected;
+            // A short batch means nothing abandoned is left for the limit to cut off.
             if affected < u64::try_from(self.settings.batch_size).unwrap_or(u64::MAX) {
                 return Ok((total, false));
             }
@@ -213,19 +259,7 @@ impl Retention {
         // Abandoned runs are flipped FIRST, so the rows this cycle strands
         // become deletable by the pass below rather than waiting a whole
         // window longer.
-        let (expired, expired_full) = self
-            .drain(
-                CONTEXT_ABANDONED,
-                sql::sweep::EXPIRE_ABANDONED_ACTIVE_RUNS_BATCH,
-                |statement| {
-                    statement
-                        .bind(vec![sql::RUN_STATUS_ACTIVE])
-                        .bind(DAY.saturating_mul(self.settings.keep_days))
-                        .bind(sql::RUN_STATUS_EXPIRED)
-                        .bind(self.settings.batch_size)
-                },
-            )
-            .await?;
+        let (expired, expired_full) = self.expire_abandoned().await?;
 
         let (runs, runs_full) = self
             .drain(

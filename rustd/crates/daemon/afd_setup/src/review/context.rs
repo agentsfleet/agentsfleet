@@ -10,10 +10,6 @@ pub(crate) enum Subject {
     Draft {
         id: Uuid7,
     },
-    Plugin {
-        plugin_id: Uuid7,
-        revision_id: Uuid7,
-    },
     /// Setup the daemon wrote in code, such as a chat channel's resident.
     /// No person authored or reviewed it, so it carries no creator.
     System,
@@ -66,18 +62,6 @@ impl Context {
     pub(super) fn review_href(&self) -> String {
         match (&self.subject, &self.linked_fleet_id) {
             (Subject::Draft { id }, _) => format!("/w/{}/drafts/{id}", self.workspace_id),
-            (
-                Subject::Plugin {
-                    plugin_id,
-                    revision_id,
-                },
-                _,
-            ) => {
-                format!(
-                    "/w/{}/fleets/new?plugin={plugin_id}&revision={revision_id}",
-                    self.workspace_id
-                )
-            }
             (Subject::System, Some(fleet)) => format!("/w/{}/fleets/{fleet}", self.workspace_id),
             (Subject::System, None) => format!("/w/{}/fleets", self.workspace_id),
         }
@@ -104,7 +88,7 @@ mod tests {
 
     #[test]
     fn a_review_points_its_reviewer_at_the_page_that_owns_its_subject() {
-        let (workspace, draft, revision, fleet) = (id(1), id(2), id(3), id(4));
+        let (workspace, draft, fleet) = (id(1), id(2), id(4));
         let mut system = Context::system(workspace.clone(), id(5), "resident");
         assert_eq!(system.review_href(), format!("/w/{workspace}/fleets"));
         system.linked_fleet_id = Some(fleet.clone());
@@ -113,27 +97,13 @@ mod tests {
             format!("/w/{workspace}/fleets/{fleet}"),
             "a saved system fleet is reviewed on its own page"
         );
-        for (subject, href) in [
-            (
-                Subject::Draft { id: draft.clone() },
-                format!("/w/{workspace}/drafts/{draft}"),
-            ),
-            (
-                Subject::Plugin {
-                    plugin_id: id(6),
-                    revision_id: revision.clone(),
-                },
-                format!(
-                    "/w/{workspace}/fleets/new?plugin={}&revision={revision}",
-                    id(6)
-                ),
-            ),
-        ] {
-            let context = Context {
-                subject,
-                ..system.clone()
-            };
-            assert_eq!(context.review_href(), href);
-        }
+        let context = Context {
+            subject: Subject::Draft { id: draft.clone() },
+            ..system
+        };
+        assert_eq!(
+            context.review_href(),
+            format!("/w/{workspace}/drafts/{draft}")
+        );
     }
 }

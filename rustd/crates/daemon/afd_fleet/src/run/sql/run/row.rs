@@ -1,5 +1,5 @@
-//! The run row's one write: the run, its audit event and the runner's
-//! tally, fenced on the assignment that earned it.
+//! The run row's one write: the run and its audit event, fenced on the
+//! assignment that earned it.
 //!
 //! Split from [`super`] when fencing the insert pushed that file past the
 //! length cap; the statement and the struct that binds it stay together,
@@ -12,13 +12,11 @@ use jiff_sqlx::ToSqlx as _;
 
 use crate::{Result, error::query};
 
-/// Open a run, record the event that opened it and bump the runner's lifetime
-/// acquired tally, atomically.
+/// Open a run and record the event that opened it, atomically.
 ///
 /// Writing the run and its audit trail in one statement means an observer can
-/// never see a run with no corresponding event, or the reverse; the tally
-/// rides the same statement so the acquired counter can never drift from the
-/// rows it counts.
+/// never see a run with no corresponding event, or the reverse. The runner's
+/// acquired count is a metric the caller records once the issue commits.
 ///
 /// # Fenced on the assignment that earned it
 ///

@@ -105,6 +105,7 @@ fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> Test
         "[runner.run]\nttl_seconds = 32",
         "[runner.scheduling]\nmax_concurrent_recovery_assignments = 0",
         "[runner.stream.data]\nmax_buffered_bytes = 1",
+        "[runner.stream.data]\nmax_buffered_bytes = 67_108_863",
         "[runner.listener]\nmax_udp_payload_bytes = 1199",
         "[telemetry]\nlog_level = 'private-invalid-value'",
         "[server",
@@ -247,7 +248,7 @@ max_udp_payload_bytes = 1232
 [runner.stream.control]
 max_buffered_bytes = 16_777_216
 [runner.stream.data]
-max_buffered_bytes = 50_331_648
+max_buffered_bytes = 67_108_864
 [nats]
 wake_queue_capacity_fleets = 64
 [telemetry]
@@ -276,7 +277,7 @@ fn a_runner_plane_file_sets_the_exact_buffer_and_wake_values() -> TestResult {
     );
     assert_eq!(
         outgoing.available(af_wire::protocol::StreamKind::Work),
-        25_165_824
+        33_554_432
     );
     let environment = source.environment();
     assert_eq!(

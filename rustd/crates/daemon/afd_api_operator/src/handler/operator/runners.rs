@@ -71,8 +71,8 @@ pub(super) async fn page(scope: RunnerScope<'_>, params: &HashMap<String, String
     operation_id = "get_platform_runner",
     summary = "Read a platform runner",
     description = concat!(
-        "Returns a runner's details, current work, and lifetime counters. Requires platform ",
-        "administrator access.",
+        "Returns a runner's details and current work. Requires platform administrator ",
+        "access.",
     ),
     params(
         afd_http::openapi::path::Runner,
@@ -129,10 +129,6 @@ fn detail_payload(row: &StoredDetail) -> RunnerDetail<'static> {
         item: item(row.item()),
         active_run_count: row.active_run_count(),
         active_fleet_count: row.active_fleet_count(),
-        runs_acquired: row.runs_acquired(),
-        runs_succeeded: row.runs_succeeded(),
-        runs_failed: row.runs_failed(),
-        runs_expired: row.runs_expired(),
         selftest_requested_at: row.selftest_requested_at(),
         selftest_completed_at: row.selftest_completed_at(),
         selftest: row.selftest().cloned(),

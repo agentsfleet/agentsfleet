@@ -110,10 +110,6 @@ async fn a_listed_chat_carries_its_candidate_and_saved_setup_revisions() {
         "a new chat holds its first candidate"
     );
     assert_eq!(unsaved.setup_revision, None, "no fleet is saved yet");
-    assert_eq!(
-        unsaved.publication_revision, None,
-        "nothing is published yet"
-    );
 
     sqlx::query(LINK_FLEET)
         .bind(created.draft.id)

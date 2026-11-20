@@ -108,7 +108,12 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
 
 fn registration() -> RegisterRequest<'static> {
     RegisterRequest {
-        host_id: "registry-registration.test".into(),
+        // A host of its own: the platform registers each host once.
+        host_id: format!(
+            "registry-registration-{}.test",
+            afd_db::test_util::mint_id()
+        )
+        .into(),
         labels: Vec::new(),
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: true,

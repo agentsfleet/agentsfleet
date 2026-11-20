@@ -60,10 +60,6 @@ pub(super) struct DetailRow {
     item: ItemRow,
     active_run_count: i64,
     active_fleet_count: i64,
-    runs_acquired: i64,
-    runs_succeeded: i64,
-    runs_failed: i64,
-    runs_expired: i64,
     selftest_requested_at: Option<jiff_sqlx::Timestamp>,
     selftest_completed_at: Option<jiff_sqlx::Timestamp>,
     selftest_checks: Option<String>,
@@ -135,10 +131,6 @@ impl DetailRow {
             item: self.item.parse(clock)?,
             active_run_count: self.active_run_count,
             active_fleet_count: self.active_fleet_count,
-            runs_acquired: self.runs_acquired,
-            runs_succeeded: self.runs_succeeded,
-            runs_failed: self.runs_failed,
-            runs_expired: self.runs_expired,
             selftest_requested_at: self
                 .selftest_requested_at
                 .map(jiff_sqlx::Timestamp::to_jiff),

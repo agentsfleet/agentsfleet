@@ -98,7 +98,7 @@ pub struct RunnersResponse<'a> {
     pub next_cursor: Option<Cow<'a, str>>,
 }
 
-/// One runner with its live and lifetime counters.
+/// One runner with its live counters.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -110,14 +110,6 @@ pub struct RunnerDetail<'a> {
     pub active_run_count: i64,
     /// Fleets represented by live runs.
     pub active_fleet_count: i64,
-    /// Lifetime acquired count.
-    pub runs_acquired: i64,
-    /// Lifetime successful count.
-    pub runs_succeeded: i64,
-    /// Lifetime failed count.
-    pub runs_failed: i64,
-    /// Lifetime expired count.
-    pub runs_expired: i64,
     /// Outstanding self-test request instant.
     #[serde(with = "af_wire::instant::option", default)]
     pub selftest_requested_at: Option<jiff::Timestamp>,

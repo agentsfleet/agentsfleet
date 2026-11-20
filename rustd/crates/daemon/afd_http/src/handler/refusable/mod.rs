@@ -289,12 +289,10 @@ pub fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> Response
 /// The state a 409 names, so a client branches on it without re-reading the
 /// resource (HTTP-STATEEXT). A conflict this does not name answers no state.
 fn conflict_state(code: ErrorCode) -> Option<&'static str> {
-    use af_core::error_code::{
-        AUTHORING_POLICY, RUNNER_REGISTRATION_KEY_REUSED, RUNNER_TENANT_MANAGED,
-    };
+    use af_core::error_code::{AUTHORING_POLICY, RUNNER_HOST_REGISTERED, RUNNER_TENANT_MANAGED};
     if code == AUTHORING_POLICY {
         Some("review_required")
-    } else if code == RUNNER_REGISTRATION_KEY_REUSED {
+    } else if code == RUNNER_HOST_REGISTERED {
         Some("registered")
     } else if code == RUNNER_TENANT_MANAGED {
         Some("tenant_managed")

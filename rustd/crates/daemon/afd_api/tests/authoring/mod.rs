@@ -14,7 +14,6 @@ mod ceiling;
 mod fixture;
 mod input;
 mod lifecycle;
-mod plugin;
 mod privacy;
 mod readiness;
 mod saving;

@@ -132,8 +132,6 @@ scopes! {
     BillingRead => "billing:read",
     /// Create workspaces, and list the tenant's workspaces.
     WorkspaceAdmin => "workspace:admin",
-    /// Publish, revise and delete account-owned Plugins.
-    PluginsWrite => "plugins:write",
     // ── Runner credential (machine identity, minted onto the agt_r token) ──
     /// The runner's own plane. Carried ONLY by a runner-token principal, which
     /// carries only this — so a runner cannot reach a tenant route and a person
@@ -174,7 +172,7 @@ impl Scope {
 /// `admin` subsumes `write` and `read`; `write` subsumes `read`.
 ///
 /// The full transitive closure per ladder, so expansion is one non-recursive
-/// pass. Data, not string-prefix inference: `plugins:write` is independent of model catalogue administration,
+/// pass. Data, not string-prefix inference: `runner:register` is independent of `runner:write`,
 /// and a rule reading the string would ladder them.
 const HIERARCHY: [(Scope, &[Scope]); 12] = [
     (Scope::FleetAdmin, &[Scope::FleetWrite, Scope::FleetRead]),
@@ -297,7 +295,7 @@ pub const RUNNER_SCOPES: ScopeSet = ScopeSet::from_scopes(&[Scope::RunnerSelf]);
 /// provider owns the value from the instant it lands, and an operator's later
 /// edit wins permanently. It carries no platform or cross-tenant scope, which
 /// is what preserves "an admin cannot enroll a runner".
-pub const TENANT_OWNER_GRANT: [Scope; 10] = [
+pub const TENANT_OWNER_GRANT: [Scope; 9] = [
     Scope::FleetAdmin,
     Scope::ScheduleWrite,
     Scope::SecretWrite,
@@ -306,7 +304,6 @@ pub const TENANT_OWNER_GRANT: [Scope; 10] = [
     Scope::ConnectorWrite,
     Scope::BillingRead,
     Scope::WorkspaceAdmin,
-    Scope::PluginsWrite,
     Scope::ApprovalResolve,
 ];
 

@@ -85,7 +85,6 @@ fn context() -> AuthoringContext<Value, Value, Value> {
                     candidate: None,
                     review: None,
                     linked_fleet_id: Some("fleet".into()),
-                    publication: None,
                     closed_at: None,
                     expires_at: None,
                 },

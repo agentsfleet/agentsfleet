@@ -14,6 +14,7 @@ use crate::run::affinity::{self, Fence};
 use crate::run::assignment::{RecoveryKey, RecoveryScan};
 use crate::run::envelope::{Acquired, HeadKind, Kind, Opened};
 use crate::run::installed::FleetWithSession;
+use crate::run::runner_runs;
 use crate::run::sql::{self, queue};
 use crate::run::store::Runs;
 use crate::run::turn::{Delivery, Received};
@@ -26,6 +27,8 @@ const CONTEXT: &str = "turn ledger assignment";
 #[derive(Debug, sqlx::FromRow)]
 struct HeadTurn {
     predecessor_run_id: Option<Uuid7>,
+    /// The lapsed holder whose run this assignment expired, if it was still active.
+    expired_runner_id: Option<Uuid7>,
     turn_id: Uuid7,
     workspace_id: Uuid7,
     actor: String,
@@ -170,8 +173,12 @@ impl Runs {
             return Ok(None);
         };
         let displaced_hold = row.held && row.holder.as_ref() != Some(runner);
+        let expired = row.expired_runner_id.clone();
         let acquired = row.acquired(fleet, runner);
         transaction.commit().await.map_err(query(CONTEXT))?;
+        if let Some(expired) = &expired {
+            runner_runs::expired(expired);
+        }
         if displaced_hold {
             producers::fleet::hold::assigned(HeldAssignment::OtherAfterLapse);
         }

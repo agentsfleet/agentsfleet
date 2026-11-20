@@ -6,8 +6,6 @@ SELECT r.user_id AS user_id, r.request_digest, r.resource_id AS resource_id,
            WHEN 'draft' THEN EXISTS (SELECT 1 FROM setup.drafts d WHERE d.id = r.resource_id)
            WHEN 'message' THEN
                EXISTS (SELECT 1 FROM thread.turns m WHERE m.id = r.resource_id)
-           WHEN 'plugin_revision' THEN
-               EXISTS (SELECT 1 FROM setup.plugin_revisions l WHERE l.id = r.resource_id)
        END AS live
   FROM setup.replay_receipts r
  WHERE r.scope = $1 AND r.operation_id = $2

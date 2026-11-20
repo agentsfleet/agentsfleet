@@ -2,7 +2,6 @@
 
 use crate::{
     Access, Result,
-    access::Person,
     error::{
         ErrorKind,
         raise::{invalid, query, stored},
@@ -28,50 +27,34 @@ pub(crate) struct Captured {
 pub(crate) async fn resolve(
     connection: &mut PgConnection,
     access: Access<'_>,
-    person: &Person,
     request: &garde::Valid<CreateDraft>,
 ) -> Result<Captured> {
-    let value: Option<String> = match &request.source {
-        Source::Blank => {
-            return Ok(Captured {
-                definition: None,
-                fleet: None,
-                fleet_revision: None,
-                instance_name: None,
-            });
-        }
-        Source::Definition { definition } => {
-            return Ok(Captured {
-                definition: Some(definition.as_ref().clone()),
-                fleet: None,
-                fleet_revision: None,
-                instance_name: None,
-            });
-        }
-        Source::Plugin {
-            plugin_id,
-            revision_id,
-        } => plugin_source(connection, &person.owner, plugin_id, revision_id).await?,
+    match &request.source {
+        Source::Blank => Ok(Captured {
+            definition: None,
+            fleet: None,
+            fleet_revision: None,
+            instance_name: None,
+        }),
+        Source::Definition { definition } => Ok(Captured {
+            definition: Some(definition.as_ref().clone()),
+            fleet: None,
+            fleet_revision: None,
+            instance_name: None,
+        }),
         Source::Fleet {
             fleet_id,
             setup_revision,
         } => {
-            return fleet_source(
+            fleet_source(
                 connection,
                 access.workspace,
                 fleet_id,
                 positive_revision(setup_revision)?,
             )
-            .await;
+            .await
         }
-    };
-    let definition = serde_json::from_str(&value.ok_or(ErrorKind::Hidden)?).map_err(stored)?;
-    Ok(Captured {
-        definition: Some(definition),
-        fleet: None,
-        fleet_revision: None,
-        instance_name: None,
-    })
+    }
 }
 
 fn positive_revision(setup_revision: &str) -> Result<i64> {
@@ -125,21 +108,6 @@ async fn fleet_source(
         fleet_revision: Some(row.id.clone()),
         instance_name: Some(row.name),
     })
-}
-
-async fn plugin_source(
-    connection: &mut PgConnection,
-    owner: &Uuid7,
-    plugin: &Uuid7,
-    revision: &Uuid7,
-) -> Result<Option<String>> {
-    sqlx::query_scalar(crate::sql::candidate::PLUGIN_SOURCE)
-        .bind(plugin)
-        .bind(revision)
-        .bind(owner)
-        .fetch_optional(connection)
-        .await
-        .map_err(query(CONTEXT))
 }
 
 #[cfg(test)]

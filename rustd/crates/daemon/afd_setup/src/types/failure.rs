@@ -41,11 +41,33 @@ impl From<FailureReason> for Failure {
             }
             FailureReason::AttemptTimedOut => (error_code::AUTHORING_TIMEOUT, ACTION_RETRY_MESSAGE),
             FailureReason::PolicyChanged => (error_code::AUTHORING_POLICY, ACTION_REVIEW_SETUP),
+            // The same message would fail again, so the person shortens it.
+            FailureReason::FrameTooLarge => {
+                (error_code::RUN_FRAME_TOO_LARGE, ACTION_REDUCE_CONTEXT)
+            }
         };
         Self {
             reason,
             error_code,
             recovery_action,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use af_core::error_code;
+    use af_wire::setup::FailureReason;
+
+    use super::{ACTION_REDUCE_CONTEXT, Failure};
+
+    /// The same message would not fit again, so the person is asked to
+    /// shorten it, under the code the fleet path fails such a run with.
+    #[test]
+    fn a_frame_too_large_failure_names_the_run_code_and_asks_to_shorten() {
+        let failure = Failure::from(FailureReason::FrameTooLarge);
+        assert_eq!(failure.error_code, error_code::RUN_FRAME_TOO_LARGE);
+        assert_eq!(failure.recovery_action, ACTION_REDUCE_CONTEXT);
+        assert_eq!(failure.recovery_action, "reduce_context");
     }
 }

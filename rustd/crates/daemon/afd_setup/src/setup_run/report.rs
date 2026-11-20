@@ -12,7 +12,7 @@
 //! first, finds the run already settled.
 
 use af_core::{error_code, id::Uuid7};
-use af_wire::{run::SetupProposal, setup::FailureReason};
+use af_wire::{report::FailureClass, run::SetupProposal, setup::FailureReason};
 use afd_turns::view::activity::Announcement;
 use jiff::Timestamp;
 use sqlx::PgConnection;
@@ -83,14 +83,27 @@ impl SetupReportScope {
 pub struct SetupFinish<'a> {
     /// The run that reported, which a refused proposal's log names.
     pub run_id: &'a Uuid7,
-    /// The turn ran to an answer.
-    pub completed: bool,
+    /// Why the turn ended without an answer; `None` when it ran to one.
+    pub failure: Option<FailureReason>,
     /// The answer, when it gave one.
     pub answer: Option<&'a str>,
     /// The final setup the turn proposed, on the base it started from.
     pub proposal: Option<&'a SetupProposal<'a>>,
     /// The report's clock.
     pub now: Timestamp,
+}
+
+impl SetupFinish<'_> {
+    /// The reason a failed run's report `class` is stored under: a run too
+    /// large for its frame keeps its own reason, and any other failure is the
+    /// provider's, which a new message may retry.
+    #[must_use]
+    pub const fn failure_of(class: Option<FailureClass>) -> FailureReason {
+        match class {
+            Some(FailureClass::FrameTooLarge) => FailureReason::FrameTooLarge,
+            _ => FailureReason::ProviderFailed,
+        }
+    }
 }
 
 impl Creations {
@@ -162,11 +175,11 @@ impl Creations {
                 .await?;
             return Ok(Announcement::default());
         };
-        if !finish.completed {
+        if let Some(reason) = finish.failure {
             let failed = MessageState::Failed.as_str();
             let ending = Finish {
                 candidate: draft.head_candidate_id.as_ref(),
-                reason: Some(super::reason_word(FailureReason::ProviderFailed)),
+                reason: Some(super::reason_word(reason)),
                 ..Finish::status(failed)
             };
             write_turn(connection, scope, ending).await?;

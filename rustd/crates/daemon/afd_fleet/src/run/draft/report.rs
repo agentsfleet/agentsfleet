@@ -17,7 +17,7 @@ use sqlx::FromRow as _;
 use super::renew::requested;
 use crate::error::{Result, query, run_lost, run_not_found, stale_fence, wire_run};
 use crate::run::usage::{Pricing, SliceColumns};
-use crate::run::{RunService, sql};
+use crate::run::{RunService, runner_runs, sql};
 
 /// What query failures name a draft report as.
 const CONTEXT: &str = "settle a draft run report";
@@ -90,7 +90,6 @@ impl RunService {
             .bind(sql::report_statement::settled_status(
                 request.outcome == Outcome::Stopped,
             ))
-            .bind(succeeded)
             // A draft's run holds no sandbox, so its report asks for no hold.
             .bind(None::<jiff_sqlx::Timestamp>)
             .bind(self.runs.clock().sandbox_idle_hold())
@@ -130,9 +129,11 @@ impl RunService {
         let announcement = match &scope {
             Some(scope) => {
                 let answer = Some(request.response_text.as_ref()).filter(|text| !text.is_empty());
+                let failure = (!succeeded)
+                    .then(|| afd_setup::setup_run::SetupFinish::failure_of(request.failure_reason));
                 let finish = afd_setup::setup_run::SetupFinish {
                     run_id: &run_id,
-                    completed: succeeded,
+                    failure,
                     answer,
                     proposal: setup.proposal.as_ref(),
                     now,
@@ -144,6 +145,7 @@ impl RunService {
         creations
             .commit_setup_report(tx, announcement, owed)
             .await?;
+        runner_runs::reported(runner, succeeded);
         if let Some(scope) = &scope {
             Box::pin(creations.after_setup_report(scope)).await?;
         }

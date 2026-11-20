@@ -359,15 +359,8 @@ async fn a_runner_page_and_its_total_read_one_moment_while_runners_register() {
     let register = || {
         let (runners, tenant) = (&runners, &tenant);
         async move {
-            let (operation, request) = (mint_id(), enrolment());
             runners
-                .register_tenant(
-                    tenant,
-                    &operation,
-                    &request,
-                    "user_tenant_owner",
-                    clock::now(),
-                )
+                .register_tenant(tenant, &enrolment(), "user_tenant_owner", clock::now())
                 .await
         }
     };
@@ -444,25 +437,12 @@ async fn a_registration_event_names_who_registered_the_runner() {
         .insert(&mut *fixture.owner.acquire().await.expect("an owner connection"))
         .await
         .expect("the tenant seeds");
-    let registered = fixture
+    let tenant_runner = fixture
         .runners
-        .register_tenant(
-            &tenant,
-            &mint_id(),
-            &enrolment(),
-            "user_tenant_owner",
-            clock::now(),
-        )
+        .register_tenant(&tenant, &enrolment(), "user_tenant_owner", clock::now())
         .await
-        .expect("the tenant registers");
-    assert!(
-        matches!(registered, afd_runner::Registered::Created(_)),
-        "a fresh key registers a new runner"
-    );
-    let tenant_runner = match registered {
-        afd_runner::Registered::Created(enrolled) => enrolled.runner_id,
-        afd_runner::Registered::Replayed { runner_id, .. } => runner_id,
-    };
+        .expect("the tenant registers")
+        .runner_id;
     fixture.enrolled.push(tenant_runner.clone());
 
     for (runner, actor) in [

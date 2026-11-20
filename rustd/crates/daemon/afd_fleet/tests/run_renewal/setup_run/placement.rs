@@ -6,7 +6,6 @@
 use af_core::id::Uuid7;
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_db::test_util::mint_id;
-use afd_runner::Registered;
 
 use super::Case;
 use crate::requests::{enrolment_tagged, placement_tag};
@@ -62,17 +61,13 @@ async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7) -> Uuid7 {
         .runners()
         .register_tenant(
             tenant,
-            &mint_id(),
             &request,
             "fixture:tenant-owner",
             fixtures.enrolled_at(),
         )
         .await
         .expect("the tenant registers its runner");
-    let runner = match registered {
-        Registered::Created(enrolled) => enrolled.runner_id,
-        Registered::Replayed { runner_id, .. } => runner_id,
-    };
+    let runner = registered.runner_id;
     reports_capable(fixtures, &runner).await;
     runner
 }

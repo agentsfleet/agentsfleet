@@ -18,12 +18,11 @@ const EXPIRY_GRACE: Duration = Duration::from_millis(10);
 struct Issuance {
     runs: i64,
     acquired_events: i64,
-    acquisitions: i64,
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_profile_read_past_assignment_expiry_creates_no_run_audit_or_tally() {
+async fn a_profile_read_past_assignment_expiry_creates_no_run_or_audit() {
     let fixtures = Fixtures::create_isolated().await;
     let model = DecisionModelFixture::create(&fixtures.database)
         .await
@@ -129,8 +128,7 @@ async fn assert_no_issuance(fixtures: &Fixtures, runner: &Uuid7) {
         .expect("read issuance effects");
     let found: Issuance = sqlx::query_as(
         "SELECT (SELECT count(*) FROM thread.runs WHERE runner_id=$1) AS runs, \
-         (SELECT count(*) FROM runner.history WHERE runner_id=$1 AND event_type=$2) AS acquired_events, \
-         COALESCE((SELECT acquired_count FROM runner.lifetime_counters WHERE runner_id=$1),0) AS acquisitions")
+         (SELECT count(*) FROM runner.history WHERE runner_id=$1 AND event_type=$2) AS acquired_events")
         .bind(runner).bind(afd_runner::sql::event_type::RUN_ACQUIRED)
         .fetch_one(&mut *connection).await.expect("all native issuance effects");
     assert_eq!(found, Issuance::default());

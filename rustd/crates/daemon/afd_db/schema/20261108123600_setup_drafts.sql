@@ -1,5 +1,5 @@
 -- A private setup chat, which exists before any fleet and may never become one. Source and
--- publication pointers clear on delete, so a card delete or fleet purge never blocks on a draft.
+-- fleet pointers clear on delete, so a fleet purge never blocks on a draft.
 -- NULL `tenant_model_id` is the platform default; `expires_at` is 30 days after `closed_at`.
 CREATE TABLE setup.drafts (
     id                          UUID PRIMARY KEY,
@@ -11,11 +11,9 @@ CREATE TABLE setup.drafts (
     tenant_model_id             UUID,
     head_candidate_id           UUID,
     source_type                 TEXT   NOT NULL,
-    source_plugin_revision_id  UUID REFERENCES setup.plugin_revisions(id) ON DELETE SET NULL,
     source_fleet_revision_id    UUID REFERENCES fleet.revisions(id) ON DELETE SET NULL,
     instance_name               TEXT,
     fleet_id                    UUID REFERENCES fleet.fleets(id) ON DELETE SET NULL,
-    plugin_revision_id         UUID REFERENCES setup.plugin_revisions(id) ON DELETE SET NULL,
     last_message_sequence       BIGINT NOT NULL,
     resource_version            BIGINT NOT NULL,
     closed_at                   TIMESTAMPTZ(3),
@@ -44,14 +42,8 @@ CREATE INDEX idx_drafts_expires_at_id
 
 CREATE INDEX idx_drafts_fleet_id ON setup.drafts (fleet_id) WHERE fleet_id IS NOT NULL;
 
-CREATE INDEX idx_drafts_source_plugin_revision_id
-    ON setup.drafts (source_plugin_revision_id) WHERE source_plugin_revision_id IS NOT NULL;
-
 CREATE INDEX idx_drafts_source_fleet_revision_id
     ON setup.drafts (source_fleet_revision_id) WHERE source_fleet_revision_id IS NOT NULL;
-
-CREATE INDEX idx_drafts_plugin_revision_id
-    ON setup.drafts (plugin_revision_id) WHERE plugin_revision_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_tenant_model_id
     ON setup.drafts (tenant_model_id) WHERE tenant_model_id IS NOT NULL;

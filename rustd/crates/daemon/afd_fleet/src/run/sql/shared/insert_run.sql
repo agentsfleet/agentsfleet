@@ -1,5 +1,5 @@
--- The issue both kinds share: the run, the host's placement choice, its audit row and the
--- runner's tally, fenced on the assignment that earned it. The caller holds the host row
+-- The issue both kinds share: the run, the host's placement choice and its audit row,
+-- fenced on the assignment that earned it. The caller holds the host row
 -- (`lock_host.sql`) through this transaction, so this statement's snapshot, taken after that
 -- lock, sees every earlier assignment's commit: the census below counts them. The caller has
 -- proved and locked the owner's scope earlier in the transaction; the fleet's own insert
@@ -69,17 +69,8 @@ WITH instant AS MATERIALIZED (
   SELECT $14, i.runner_id, $15, $16, NULL, now()
   FROM inserted i
   RETURNING id
-), tallied AS (
-  INSERT INTO runner.lifetime_counters AS c
-    (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
-     created_at, updated_at)
-  SELECT runner_id, 1, 0, 0, 0, now(), now()
-  FROM inserted
-  ON CONFLICT (runner_id) DO UPDATE
-     SET acquired_count = c.acquired_count + 1, updated_at = now()
-  RETURNING runner_id
 )
 -- The stored TIMESTAMPTZ(3) instant. No row when the fence or the choice moved: the caller
 -- rolls the run back with it.
 SELECT created_at FROM inserted
-WHERE EXISTS (SELECT 1 FROM tallied) AND EXISTS (SELECT 1 FROM chosen)
+WHERE EXISTS (SELECT 1 FROM chosen)

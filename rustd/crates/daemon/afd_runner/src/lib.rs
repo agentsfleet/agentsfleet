@@ -59,7 +59,6 @@ pub use self::heartbeat::{Beat, NO_REPORT};
 pub use self::policy::{AssignmentColumns, StoredVerdict};
 pub use self::reconcile::{Verdict, reconcile};
 pub use self::record::SelfRow;
-pub use self::register::Registered;
 pub use self::scope::RunnerScope;
 pub use self::store::{Enrolled, Runners};
 pub use self::view::{

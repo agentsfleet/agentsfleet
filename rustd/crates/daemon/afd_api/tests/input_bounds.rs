@@ -6,10 +6,6 @@
 //! `400` carrying the malformed-request code, and the bound itself gets past
 //! the parameter check. The refusal's sentence is copy, so it is not asserted.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
@@ -34,7 +30,6 @@ const EVERY_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
     Scope::FleetWrite,
     Scope::ApprovalRead,
     Scope::PlatformKeyAdmin,
-    Scope::PluginsWrite,
 ]);
 
 /// The malformed-request code.
@@ -162,57 +157,4 @@ async fn test_provider_filter_shares_the_catalogue_bound() {
     .await;
     let at_bound = "p".repeat(CATALOGUE_PROVIDER_BYTES);
     assert_accepted(Method::GET, &format!("/v1/models?provider={at_bound}")).await;
-}
-
-#[tokio::test]
-async fn plugin_paths_reject_non_uuid_identifiers_before_storage() {
-    let base = format!("/v1/workspaces/{OWNED_WORKSPACE}/plugins");
-    for id in ["example", "owned", "01924f4e-0000-4000-8000-00000000b0de"] {
-        for method in [Method::GET, Method::DELETE] {
-            assert_refused(method, &format!("{base}/{id}"), INVALID_REQUEST).await;
-        }
-        assert_refused(
-            Method::GET,
-            &format!("{base}/{FLEET}/revisions/{id}"),
-            INVALID_REQUEST,
-        )
-        .await;
-    }
-    assert_accepted(Method::GET, &format!("{base}/{FLEET}")).await;
-}
-
-#[test]
-fn published_plugin_parameters_are_uuid_identifiers() {
-    let document = serde_json::to_value(afd_api::openapi::document())
-        .expect("the generated document serializes");
-    let paths = document
-        .get("paths")
-        .and_then(Value::as_object)
-        .expect("document paths");
-    let mut checked = 0;
-    for (path, route) in paths.iter().filter(|(path, _)| path.contains("/plugins/")) {
-        for operation in route.as_object().expect("path operations").values() {
-            let parameters = operation
-                .get("parameters")
-                .and_then(Value::as_array)
-                .expect("parameters");
-            for parameter in parameters {
-                if matches!(
-                    parameter.get("name").and_then(Value::as_str),
-                    Some("plugin_id" | "revision_id")
-                ) {
-                    assert_eq!(
-                        parameter.pointer("/schema/format").and_then(Value::as_str),
-                        Some("uuid"),
-                        "{path}"
-                    );
-                    checked += 1;
-                }
-            }
-        }
-    }
-    assert_eq!(
-        checked, 7,
-        "every Plugin operation declares its identifiers"
-    );
 }

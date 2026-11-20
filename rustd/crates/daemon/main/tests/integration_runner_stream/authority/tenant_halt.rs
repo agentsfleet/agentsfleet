@@ -9,7 +9,7 @@ use af_crypto::entropy::Entropy;
 use af_stream::Transport;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use afd_db::test_util::{TenantSeed, mint_id};
-use afd_runner::{Registered, Runners};
+use afd_runner::Runners;
 
 use super::{PUSH_BOUND, TestResult, fixture::Fixture, signals};
 use crate::wire;
@@ -34,21 +34,15 @@ fn request() -> RegisterRequest<'static> {
 /// Registers a runner for `tenant` and answers its id and token.
 async fn tenant_runner(fixture: &Fixture, tenant: &Uuid7) -> TestResult<(Uuid7, String)> {
     let runners = Runners::new(fixture.scene.booted.database.clone(), Entropy::new());
-    match runners
+    let enrolled = runners
         .register_tenant(
             tenant,
-            &mint_id(),
             &request(),
             "fixture:tenant-owner",
             af_core::clock::now(),
         )
-        .await?
-    {
-        Registered::Created(enrolled) => {
-            Ok((enrolled.runner_id, enrolled.token.expose().to_owned()))
-        }
-        Registered::Replayed { .. } => Err("a fresh key registered nothing".into()),
-    }
+        .await?;
+    Ok((enrolled.runner_id, enrolled.token.expose().to_owned()))
 }
 
 /// The production runner downlink, holding `token`.

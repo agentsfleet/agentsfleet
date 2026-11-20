@@ -19,7 +19,6 @@ mod model_keys;
 mod model_metadata;
 mod model_tools;
 mod observe;
-mod plugin;
 mod privacy;
 mod races;
 use afd_db::test_util::refusal;

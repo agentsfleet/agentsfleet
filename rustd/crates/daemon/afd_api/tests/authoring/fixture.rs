@@ -50,10 +50,6 @@ impl Fixture {
             "DELETE FROM fleet.fleets WHERE workspace_id=$1",
             &f.workspace,
         );
-        f.cleanup.record(
-            "DELETE FROM setup.plugin_entries WHERE tenant_id=$1",
-            &f.tenant,
-        );
         f.cleanup
             .record("DELETE FROM identity.tenants WHERE id=$1", &f.tenant);
         f.cleanup.record(
@@ -94,13 +90,6 @@ impl Fixture {
     pub(super) fn own_tenant(&mut self, id: &Uuid7) {
         self.cleanup
             .record("DELETE FROM identity.tenants WHERE id=$1", id);
-    }
-
-    pub(super) fn own_plugin(&mut self, id: &str) {
-        self.cleanup.record(
-            "DELETE FROM setup.plugin_revisions WHERE plugin_entry_id=$1",
-            &Uuid7::parse(id).expect("a tenant plugin is addressed by its id"),
-        );
     }
 
     pub(super) fn collection(&self) -> String {

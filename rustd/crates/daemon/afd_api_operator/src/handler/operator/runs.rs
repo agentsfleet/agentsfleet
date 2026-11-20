@@ -31,8 +31,7 @@ const EVENT: &str = "runner_runs_failed";
         "assignments are retained. Assignments abandoned by a dead runner expire after the ",
         "same window, then receive their own retention window.\n\n",
         "Acquisition and release activity remains for 30 days after each event; other ",
-        "runner lifecycle activity is retained. Lifetime counters remain unchanged when ",
-        "history is removed.",
+        "runner lifecycle activity is retained.",
     ),
     params(
         afd_http::openapi::path::Runner,

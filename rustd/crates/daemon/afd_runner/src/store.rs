@@ -129,9 +129,10 @@ impl Runners {
     /// a fail-OPEN window between minting a token and the first beat.
     ///
     /// # Errors
-    /// Refuses a `host_id` outside its bounds, labels past theirs, or a
-    /// malformed assignment; reports a datastore that would not answer, and an
-    /// entropy source that could not produce a credential.
+    /// Refuses a `host_id` outside its bounds, labels past theirs, a malformed
+    /// assignment, or a host the platform already registered, naming its
+    /// runner; reports a datastore that would not answer, and an entropy source
+    /// that could not produce a credential.
     pub async fn register(
         &self,
         request: &RegisterRequest<'_>,

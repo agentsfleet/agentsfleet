@@ -21,11 +21,14 @@ use crate::rows::{LAPSE, Row};
 
 mod context;
 mod expiry;
+mod failed;
+mod mint;
 mod notice;
 mod page;
 mod placement;
 mod progress;
 mod refused;
+mod saving;
 mod superseded;
 
 /// The key the seat's model secret is sealed under, as the plane opens it.
@@ -211,6 +214,35 @@ impl Case {
         .fetch_one(&mut *self.connection().await)
         .await
         .expect("the draft and its candidates")
+    }
+
+    /// The person's next message on the draft, asking to save the setup the
+    /// turn ends on, through the production send path.
+    async fn send_saving(&self) {
+        let accepted = self
+            .drafts
+            .send(
+                self.seat.access(),
+                &self.draft.id,
+                afd_setup::types::SendMessage {
+                    message: "Save it".to_owned(),
+                    save: true,
+                    operation_id: afd_db::test_util::mint_id(),
+                },
+                af_core::clock::now(),
+            )
+            .await
+            .expect("the save message is accepted");
+        assert_eq!(accepted.sequence, "2", "the second message on the draft");
+    }
+
+    /// The fleet a save linked the draft to, if any.
+    async fn saved_fleet(&self) -> Option<Uuid7> {
+        sqlx::query_scalar("SELECT fleet_id FROM setup.drafts WHERE id = $1")
+            .bind(&self.draft.id)
+            .fetch_one(&mut *self.connection().await)
+            .await
+            .expect("the draft")
     }
 
     /// The draft's runs, by fence: each fence and status.

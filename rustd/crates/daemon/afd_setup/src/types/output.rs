@@ -95,8 +95,6 @@ pub struct DraftCard {
     pub candidate_revision: Option<i64>,
     /// The saved fleet's current setup revision, while a fleet is saved.
     pub setup_revision: Option<i64>,
-    /// The Plugin revision this chat published, once it has.
-    pub publication_revision: Option<i64>,
 }
 
 /// Immutable normalized setup accepted from the drawer or proposal tool.
@@ -136,9 +134,6 @@ pub struct Draft {
     /// Shared fleet whose setup this draft improves.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linked_fleet_id: Option<Uuid7>,
-    /// Receipt of an explicit publication of this creator's candidate.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub publication: Option<super::Publication>,
     /// Time activation closed the draft.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "af_wire::instant::option")]

@@ -1,6 +1,6 @@
 //! Against a live datastore: a runner's owner is stated at registration and
-//! fixed after it, a tenant runner holds no decision model, and a tenant's
-//! erasure takes its runners and leaves its receipts.
+//! fixed after it, a tenant runner holds no decision model, each owner
+//! registers a host once, and a tenant's erasure takes its runners.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -62,15 +62,17 @@ async fn runner_tenant_cannot_change() {
         "and a platform runner is still a platform runner"
     );
 
+    // A name of its own: the platform holds one runner per host.
+    let renamed = format!("renamed-{platform_runner}");
     fixtures
-        .rename_runner_host(&platform_runner, "renamed")
+        .rename_runner_host(&platform_runner, &renamed)
         .await;
     assert_eq!(
         fixtures
             .text(Row::Runner(&platform_runner), "host_id")
             .await
             .as_deref(),
-        Some("renamed"),
+        Some(renamed.as_str()),
         "an update that leaves tenant_id alone still lands"
     );
 
@@ -167,10 +169,63 @@ async fn tenant_runner_refuses_a_decision_model() {
     fixtures.cleanup().await;
 }
 
+/// Each owner holds one runner per host, so a retried registration finds the
+/// first runner instead of making a second. The platform's null tenant is an
+/// owner too, and another tenant may hold the same host.
+// Value: protects=the natural key registration relies on; fails_when=the
+// unique constraint is dropped, treats nulls as distinct, or spans tenants;
+// why_new=M253_002 §14, which replaces the registration receipt; seam=none.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn each_owner_holds_one_runner_per_host() {
+    let fixtures = Fixtures::create().await;
+    let tenant = fixtures.seed_tenant().await;
+    let first = fixtures.insert_runner(Some(&tenant)).await;
+    let second = fixtures.insert_runner(Some(&tenant)).await;
+    let host = fixtures
+        .text(Row::Runner(&first), "host_id")
+        .await
+        .expect("the first runner has a host");
+
+    let refused = fixtures
+        .set_runner_host(&second, &host)
+        .await
+        .expect_err("a tenant must not hold two runners for one host");
+    assert!(
+        refused.to_string().contains("uq_runners_tenant_id_host_id"),
+        "the unique constraint must be what refused, got: {refused}"
+    );
+
+    let other = fixtures.seed_tenant().await;
+    let elsewhere = fixtures.insert_runner(Some(&other)).await;
+    fixtures
+        .set_runner_host(&elsewhere, &host)
+        .await
+        .expect("another tenant may register the same host");
+
+    let platform_a = fixtures.insert_runner(None).await;
+    let platform_b = fixtures.insert_runner(None).await;
+    let platform_host = fixtures
+        .text(Row::Runner(&platform_a), "host_id")
+        .await
+        .expect("the platform runner has a host");
+    let refused = fixtures
+        .set_runner_host(&platform_b, &platform_host)
+        .await
+        .expect_err("the platform must not hold two runners for one host");
+    assert!(
+        refused.to_string().contains("uq_runners_tenant_id_host_id"),
+        "the platform's null tenant is not distinct, got: {refused}"
+    );
+
+    fixtures.delete_runner(&platform_a).await;
+    fixtures.delete_runner(&platform_b).await;
+    fixtures.delete_tenant(&tenant).await;
+    fixtures.delete_tenant(&other).await;
+    fixtures.cleanup().await;
+}
+
 /// Erasure takes only the tenant's runners.
-///
-/// The receipt stays: it holds opaque identifiers and a digest, and a key
-/// retried after its runner was erased must still enrol nothing.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn tenant_erasure_takes_its_runners() {
@@ -181,7 +236,6 @@ async fn tenant_erasure_takes_its_runners() {
     let a_second = fixtures.insert_runner(Some(&a)).await;
     let b_runner = fixtures.insert_runner(Some(&b)).await;
     let platform = fixtures.insert_runner(None).await;
-    fixtures.insert_registration_receipt(&a, &a_first).await;
     let hosts = [a_first, a_second, b_runner.clone(), platform.clone()];
 
     fixtures.delete_tenant(&a).await;
@@ -191,11 +245,6 @@ async fn tenant_erasure_takes_its_runners() {
     survivors.sort();
     expected.sort();
     assert_eq!(survivors, expected, "only A's two runners are gone");
-    assert_eq!(
-        fixtures.registration_receipts(&a).await,
-        1,
-        "A's receipt outlives its runner and its tenant"
-    );
 
     fixtures.delete_runner(&platform).await;
     fixtures.delete_tenant(&b).await;

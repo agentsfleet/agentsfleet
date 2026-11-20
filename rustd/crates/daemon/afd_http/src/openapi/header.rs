@@ -16,13 +16,3 @@ pub struct IfMatch {
     #[param(rename = "If-Match")]
     pub if_match: String,
 }
-
-/// The replay key a creation is accepted once under.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Header)]
-pub struct IdempotencyKey {
-    /// `UUIDv7` key. The same key and body replay the accepted result; a
-    /// changed body under the same key conflicts.
-    #[param(rename = "Idempotency-Key")]
-    pub idempotency_key: String,
-}

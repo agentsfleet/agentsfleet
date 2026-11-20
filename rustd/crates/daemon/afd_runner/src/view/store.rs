@@ -132,7 +132,7 @@ impl RunnerScope<'_> {
         })
     }
 
-    /// Reads one runner with its current work summary and lifetime counters.
+    /// Reads one runner with its current work summary.
     ///
     /// # Errors
     /// Reports a missing runner, datastore failures, or malformed stored rows.

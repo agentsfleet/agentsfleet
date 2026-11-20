@@ -7,7 +7,6 @@ use af_crypto::secret::Kek;
 use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_db::test_util::mint_id;
-use afd_runner::Registered;
 
 use super::seed::seed_provider_resolution;
 use super::*;
@@ -48,21 +47,13 @@ async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, fleet: &Uuid7) -> Uu
         .runners()
         .register_tenant(
             tenant,
-            &mint_id(),
             &request,
             "fixture:tenant-owner",
             fixtures.enrolled_at(),
         )
         .await
         .expect("the tenant registers its runner");
-    assert!(
-        matches!(registered, Registered::Created(_)),
-        "a fresh key registers"
-    );
-    let runner = match registered {
-        Registered::Created(enrolled) => enrolled.runner_id,
-        Registered::Replayed { runner_id, .. } => runner_id,
-    };
+    let runner = registered.runner_id;
     reports_capable(fixtures, &runner).await;
     runner
 }

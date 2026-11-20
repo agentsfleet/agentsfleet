@@ -8,10 +8,6 @@ SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.cordon_reason, r.cordo
        r.decision_platform_model_id AS decision_model_id, r.tenant_id,
        COALESCE(s.active_count, 0) AS active_run_count,
        COALESCE(s.active_fleets, 0) AS active_fleet_count,
-       COALESCE(c.acquired_count, 0) AS runs_acquired,
-       COALESCE(c.succeeded_count, 0) AS runs_succeeded,
-       COALESCE(c.failed_count, 0) AS runs_failed,
-       COALESCE(c.expired_count, 0) AS runs_expired,
        r.selftest_requested_at, r.selftest_completed_at,
        r.selftest_checks::text AS selftest_checks,
        r.selftest_sandbox_tier, r.selftest_network_policy
@@ -24,5 +20,4 @@ LEFT JOIN (
     AND run_expires_at > statement_timestamp()
   GROUP BY runner_id
 ) s ON s.runner_id = r.id
-LEFT JOIN runner.lifetime_counters c ON c.runner_id = r.id
 WHERE r.id = $1 AND ($4::boolean OR r.tenant_id = $3::uuid)

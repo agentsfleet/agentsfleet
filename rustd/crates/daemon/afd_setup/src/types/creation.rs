@@ -38,15 +38,6 @@ pub enum SaveSource {
         #[garde(skip)]
         draft_candidate_id: Uuid7,
     },
-    /// Exactly this accessible Plugin revision.
-    Plugin {
-        /// Selected account-owned entry `UUIDv7`.
-        #[garde(skip)]
-        plugin_id: Uuid7,
-        /// Selected immutable revision.
-        #[garde(skip)]
-        revision_id: Uuid7,
-    },
 }
 
 /// Save alone never implies a runtime message.
@@ -71,7 +62,7 @@ pub struct SaveFleet {
     #[serde(default, skip_serializing)]
     #[garde(skip)]
     pub origin: Option<SaveOrigin>,
-    /// Candidate or pinned Plugin source.
+    /// The candidate a reviewed Save copies.
     #[garde(dive)]
     pub source: SaveSource,
     /// Validated instance slug, independent of the recipe name.

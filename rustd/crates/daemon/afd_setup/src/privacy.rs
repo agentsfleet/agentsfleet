@@ -15,7 +15,7 @@ impl Drafts {
     ///
     /// # Errors
     /// Hides foreign/revoked drafts and propagates failed durable deletion.
-    /// Shared fleet/Plugin snapshots and accounting are separate copies.
+    /// Shared fleet snapshots and accounting are separate copies.
     pub async fn delete(&self, access: Access<'_>, id: &Uuid7) -> Result<()> {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;

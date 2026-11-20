@@ -40,7 +40,8 @@ const HISTORY_PAGE: u32 = 20;
 /// and a beat with no report writes no verdict.
 fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
-        host_id: Cow::Borrowed("host-01.plane.test"),
+        // A host of its own: an owner registers each host once.
+        host_id: Cow::Owned(format!("host-{}.plane.test", afd_db::test_util::mint_id())),
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,

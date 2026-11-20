@@ -16,8 +16,7 @@ pub use models::{Eligibility, Pricing, WorkspaceModel};
 
 pub use input::{CreateDraftRequest, DraftPatchRequest, MessageRequest, Source};
 pub use output::{
-    Accepted, Candidate, Created, CursorPage, Draft, DraftCard, Failure, Message, Publication,
-    Stopped,
+    Accepted, Candidate, Created, CursorPage, Draft, DraftCard, Failure, Message, Stopped,
 };
 
 pub(crate) fn present<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(

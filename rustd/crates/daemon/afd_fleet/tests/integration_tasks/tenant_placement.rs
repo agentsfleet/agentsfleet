@@ -4,10 +4,9 @@
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
-use afd_db::test_util::mint_id;
 use afd_fleet::run::Billed;
 use afd_fleet::task::TaskLifecycle as _;
-use afd_runner::{Registered, RunnerEdit};
+use afd_runner::RunnerEdit;
 use afd_turns::Producer;
 
 use super::fixture::{Case, exercise};
@@ -34,21 +33,13 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
         .runners()
         .register_tenant(
             &case.held.tenant,
-            &mint_id(),
             &request,
             "fixture:tenant-owner",
             case.held.now,
         )
         .await
         .expect("the tenant registers its runner");
-    assert!(
-        matches!(registered, Registered::Created(_)),
-        "a fresh key registers"
-    );
-    let runner = match registered {
-        Registered::Created(enrolled) => enrolled.runner_id,
-        Registered::Replayed { runner_id, .. } => runner_id,
-    };
+    let runner = registered.runner_id;
     let mut capability = capable();
     capability.durable_tasks_v1 = true;
     let beat = HeartbeatRequest {

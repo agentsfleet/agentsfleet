@@ -56,7 +56,7 @@ pub fn observe(
     Ok(())
 }
 
-/// Records what the finished run cost, and what its runner did.
+/// Records what the finished run cost, and why its runner failed it.
 ///
 /// Everything here is derived from facts the settle already produced, so a
 /// deployment exporting nothing pays one branch. The per-runner counters go
@@ -64,17 +64,11 @@ pub fn observe(
 /// attributed to, and a caller that chose the label would make the cardinality
 /// ceiling a suggestion.
 fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str, usage: &UsageCounts) {
-    match request.failure_reason {
-        // A failure the runner classified, and the classification is the label.
-        reason @ Some(_) => runner::failed(runner_id, reason),
-        // No class reported. `Outcome` still decides which it was: a fleet
-        // error with no class is counted under the unmodelled bucket rather
-        // than as a clean run, because the totals have to agree.
-        None => match request.outcome {
-            Outcome::Processed => runner::processed(runner_id),
-            Outcome::FleetError => runner::failed(runner_id, None),
-            Outcome::Stopped => runner::stopped(runner_id),
-        },
+    // A failure the runner classified carries its class; a fleet error with
+    // no class is counted under the unmodelled reason. How the run ended is
+    // `agentsfleet_runner_runs_total`, recorded where the report commits.
+    if request.failure_reason.is_some() || matches!(request.outcome, Outcome::FleetError) {
+        runner::failed(runner_id, request.failure_reason);
     }
 
     cost::invocation(&spend_of(settled, request, usage));

@@ -35,7 +35,7 @@ struct Selected {
 }
 
 /// Thread and run are locked by the ordinary insert before the task lock.
-/// A failed proof rolls that entire issue transaction back, including its tally.
+/// A failed proof rolls that entire issue transaction back, so nothing counts it acquired.
 pub(crate) async fn attach(
     connection: &mut PgConnection,
     acquired: &Acquired,

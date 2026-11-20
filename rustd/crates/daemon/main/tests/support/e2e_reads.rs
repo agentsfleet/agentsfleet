@@ -232,24 +232,6 @@ async fn count_lines(scene: &Scenario, statement: &'static str) -> i64 {
         .expect("a count is a bigint")
 }
 
-/// One column of the scenario runner's lifetime counters, as text.
-pub(crate) async fn counter_column(scene: &Scenario, column: &str) -> Option<String> {
-    let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM runner.lifetime_counters WHERE runner_id = $1"
-    ));
-    let mut connection = scene
-        .booted
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query_scalar(statement)
-        .bind(&scene.runner_id)
-        .fetch_optional(&mut *connection)
-        .await
-        .expect("the counter read must scene")
-}
-
 /// How many run rows this scenario's runner holds on the fleet under test,
 /// of any status.
 ///

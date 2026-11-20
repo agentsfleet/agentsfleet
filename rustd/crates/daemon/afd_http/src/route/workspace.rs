@@ -15,7 +15,6 @@ const SECRET_READ: &[Scope] = &[Scope::SecretRead];
 const SECRET_WRITE: &[Scope] = &[Scope::SecretWrite];
 const APPROVAL_READ: &[Scope] = &[Scope::ApprovalRead];
 const APPROVAL_RESOLVE: &[Scope] = &[Scope::ApprovalResolve];
-const PLUGINS_WRITE: &[Scope] = &[Scope::PluginsWrite];
 
 /// A route addressed by workspace only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,14 +31,6 @@ pub enum WorkspaceRoute {
     DraftStream,
     /// One turn of a creator-private draft: stop it.
     DraftTurn,
-    /// The workspace account's Plugins.
-    Plugin,
-    /// One reusable native entry.
-    PluginItem,
-    /// Immutable revisions of an entry.
-    PluginRevisions,
-    /// One pinned immutable revision.
-    PluginRevision,
     /// The workspace's fleets.
     Fleets,
     /// The workspace's secrets.
@@ -73,10 +64,6 @@ impl WorkspaceRoute {
         Self::DraftMessages,
         Self::DraftStream,
         Self::DraftTurn,
-        Self::Plugin,
-        Self::PluginItem,
-        Self::PluginRevisions,
-        Self::PluginRevision,
         Self::Fleets,
         Self::Secrets,
         Self::Secret,
@@ -107,18 +94,15 @@ impl WorkspaceRoute {
             | Self::Onboarding
             | Self::Approvals
             | Self::Approval
-            | Self::PluginRevision
             | Self::Members => &[Verb::Get],
             Self::Preference => &[Verb::Put],
             Self::ApprovalResolve => &[Verb::Post],
-            Self::Drafts | Self::DraftMessages => &[Verb::Get, Verb::Post],
-            Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
-            Self::DraftTurn => &[Verb::Patch],
-            Self::Plugin | Self::PluginRevisions | Self::Fleets | Self::Secrets => {
+            Self::Drafts | Self::DraftMessages | Self::Fleets | Self::Secrets => {
                 &[Verb::Get, Verb::Post]
             }
+            Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
+            Self::DraftTurn => &[Verb::Patch],
             Self::Secret => &[Verb::Put, Verb::Delete],
-            Self::PluginItem => &[Verb::Get, Verb::Delete],
         }
     }
 
@@ -138,10 +122,6 @@ impl WorkspaceRoute {
             | Self::Draft
             | Self::DraftMessages
             | Self::DraftTurn
-            | Self::Plugin
-            | Self::PluginItem
-            | Self::PluginRevisions
-            | Self::PluginRevision
             | Self::Fleets
             | Self::Secrets
             | Self::Secret
@@ -164,14 +144,6 @@ impl WorkspaceRoute {
             Self::DraftMessages => workspace_path!("/drafts/{draft_id}/messages"),
             Self::DraftStream => workspace_path!("/drafts/{draft_id}/turns/stream"),
             Self::DraftTurn => workspace_path!("/drafts/{draft_id}/turns/{turn_id}"),
-            Self::Plugin => workspace_path!("/plugins"),
-            Self::PluginItem => workspace_path!("/plugins/{plugin_id}"),
-            Self::PluginRevisions => {
-                workspace_path!("/plugins/{plugin_id}/revisions")
-            }
-            Self::PluginRevision => {
-                workspace_path!("/plugins/{plugin_id}/revisions/{revision_id}")
-            }
             Self::Fleets => workspace_path!("/fleets"),
             Self::Secrets => workspace_path!("/secrets"),
             Self::Secret => workspace_path!("/secrets/{name}"),
@@ -199,19 +171,14 @@ impl WorkspaceRoute {
     /// own workspace state, and ownership is the check that matters.
     const fn scopes(self) -> Scopes {
         match self {
-            Self::Models
-            | Self::PluginRevision
-            | Self::Turns
-            | Self::TurnsStream
-            | Self::Members => Scopes::Always(FLEET_READ),
+            Self::Models | Self::Turns | Self::TurnsStream | Self::Members => {
+                Scopes::Always(FLEET_READ)
+            }
             Self::Drafts
             | Self::Draft
             | Self::DraftMessages
             | Self::DraftStream
             | Self::DraftTurn => Scopes::Always(FLEET_WRITE),
-            Self::Plugin | Self::PluginItem | Self::PluginRevisions => {
-                Scopes::rw(FLEET_READ, PLUGINS_WRITE)
-            }
             Self::Fleets => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Secrets => Scopes::rw(SECRET_READ, SECRET_WRITE),
             Self::Secret => Scopes::Always(SECRET_WRITE),

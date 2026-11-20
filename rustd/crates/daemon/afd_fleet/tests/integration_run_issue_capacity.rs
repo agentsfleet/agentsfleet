@@ -80,9 +80,8 @@ impl Case {
         Ok(sqlx::query_as("SELECT s.hold_expires_at,
             (SELECT count(*) FROM thread.runs l WHERE l.runner_id=$1 AND l.status='active') AS active,
             (SELECT count(*) FROM runner.history e WHERE e.runner_id=$1) AS events,
-            r.run_version AS choice, COALESCE(c.acquired_count,0) AS acquired
-            FROM thread.threads s JOIN runner.runners r ON r.id=$1
-            LEFT JOIN runner.lifetime_counters c ON c.runner_id=r.id WHERE s.fleet_id=$2")
+            r.run_version AS choice
+            FROM thread.threads s JOIN runner.runners r ON r.id=$1 WHERE s.fleet_id=$2")
             .bind(&self.runner).bind(&self.warm).fetch_one(&mut *connection).await?)
     }
 }
@@ -93,7 +92,6 @@ struct Stamp {
     active: i64,
     events: i64,
     choice: i64,
-    acquired: i64,
 }
 
 fn required<T>(value: Option<T>) -> Checked<T> {
@@ -140,7 +138,6 @@ async fn the_fleet_issuer_refuses_a_third_worker_and_transfers_its_own_hold_once
     assert_eq!(after.active, 2);
     assert_eq!(after.events, before.events + 1);
     assert_eq!(after.choice, before.choice + 1);
-    assert_eq!(after.acquired, before.acquired + 1);
     assert!(case.issue(&case.cold).await?.is_none());
     assert_eq!(case.stamp().await?, after);
     case.fixtures.cleanup().await;
@@ -163,7 +160,7 @@ async fn a_failed_task_source_attach_restores_the_exact_idle_hold_and_issue_tall
     assert_eq!(
         case.stamp().await?,
         before,
-        "attach refusal rolls back the consumed hold, run, choice and counters"
+        "attach refusal rolls back the consumed hold, run, choice and audit row"
     );
     sqlx::query("UPDATE thread.turns SET task_generation=NULL WHERE id=$1")
         .bind(&warm.turn_id)
@@ -173,7 +170,7 @@ async fn a_failed_task_source_attach_restores_the_exact_idle_hold_and_issue_tall
     let after = case.stamp().await?;
     assert!(after.hold_expires_at.is_none());
     assert_eq!(after.active, 2);
-    assert_eq!(after.acquired, before.acquired + 1);
+    assert_eq!(after.events, before.events + 1, "the issue's own audit row");
     drop(connection);
     case.fixtures.cleanup().await;
     Ok(())

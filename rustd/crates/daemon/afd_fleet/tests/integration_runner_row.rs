@@ -199,7 +199,7 @@ async fn test_the_self_read_never_bumps_liveness() {
 
     assert_eq!(row.id, enrolled.runner_id);
     assert_eq!(row.status, "active");
-    assert_eq!(row.host_id, "host-01.fixture.test");
+    assert_eq!(row.host_id, request.host_id);
     assert_eq!(row.last_seen_at, afd_runner::sql::NEVER_SEEN);
     let assigned = row
         .assignment

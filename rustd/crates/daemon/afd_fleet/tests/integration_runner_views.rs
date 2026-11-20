@@ -218,10 +218,6 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
     assert_eq!(detail.item().liveness(), RunnerLiveness::Online);
     assert_eq!(detail.active_run_count(), 0);
     assert_eq!(detail.active_fleet_count(), 0);
-    assert_eq!(detail.runs_acquired(), 0);
-    assert_eq!(detail.runs_succeeded(), 0);
-    assert_eq!(detail.runs_failed(), 0);
-    assert_eq!(detail.runs_expired(), 0);
     assert_eq!(
         detail.item().assigned_policy().sandbox_tier,
         SandboxTier::DevNone

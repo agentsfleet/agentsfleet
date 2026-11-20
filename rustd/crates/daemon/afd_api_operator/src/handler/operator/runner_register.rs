@@ -10,14 +10,14 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use af_core::id::Uuid7;
-use af_wire::runner::{AssignedPolicy, RegisterRequest, RegisterResponse, RegistrationReplay};
+use af_wire::runner::{AssignedPolicy, RegisterRequest, RegisterResponse};
 use afd_http::handler::Refusal;
-use afd_runner::{Enrolled, Registered};
+use afd_runner::Enrolled;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
-use http::{HeaderMap, StatusCode, header};
+use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::PersonIdentity;
 use crate::handler::refuse;
@@ -45,12 +45,16 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
     description = concat!(
         "Registers a platform runner and assigns its policy. Requires `runner:register` on a ",
         "bearer credential. Save the returned `agt_r` token securely; it appears once. The ",
-        "runner must apply the assigned policy.",
+        "runner must apply the assigned policy. A host registers once: registering a `host_id` ",
+        "again answers 409 with `current_state` `registered` and `Location` naming its runner, ",
+        "whose token the runner's `rotate` action recovers.",
     ),
     request_body = RegisterRequest<'_>,
     responses(
         (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 409, description = "This host is already registered; `Location` names its runner",
+            headers(("Location" = String, description = "The runner the host is registered as"))),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         afd_http::openapi::GuardedFailures,
     ),
@@ -70,26 +74,24 @@ pub(crate) async fn platform<D: Services>(
         .await
     {
         Ok(registered) => created(&registered, &request.assigned_policy),
-        Err(error) => refuse(&error, EVENT),
+        Err(error) => {
+            registered_elsewhere(&error, refuse(&error, EVENT), af_wire::paths::ADMIN_RUNNERS)
+        }
     }
 }
 
-/// Registers one of `tenant`'s runners under the request's Idempotency-Key.
+/// Registers one of `tenant`'s runners.
 ///
 /// The stored policy has durable tasks off, whatever the body asked for: only a
-/// platform admin switches them on for a tenant runner. A replay answers the
-/// runner the key already registered, without its token.
+/// platform admin switches them on for a tenant runner. A host registers once,
+/// so a retry answers `409` with `Location` naming the runner the host already
+/// is; the tenant rotates that runner's token to recover it.
 pub(super) async fn tenant<D: Services>(
     services: &D,
     tenant: &Uuid7,
     actor_id: &str,
-    headers: &HeaderMap,
     body: &Bytes,
 ) -> Response {
-    let operation = match afd_http::handler::setup_input::operation(headers) {
-        Ok(operation) => operation,
-        Err(refused) => return refused.into_response(),
-    };
     let request = match read(body) {
         Ok(request) => request,
         Err(refused) => return refused.into_response(),
@@ -100,27 +102,32 @@ pub(super) async fn tenant<D: Services>(
     };
     match services
         .runners()
-        .register_tenant(tenant, &operation, &request, actor_id, services.now())
+        .register_tenant(tenant, &request, actor_id, services.now())
         .await
     {
-        Ok(Registered::Created(registered)) => created(&registered, &stored),
-        Ok(Registered::Replayed {
-            runner_id,
-            worker_count,
-        }) => (
-            StatusCode::OK,
-            [(header::CACHE_CONTROL, "no-store")],
-            Json(RegistrationReplay {
-                runner_id: Cow::Owned(runner_id.to_string()),
-                assigned_policy: AssignedPolicy {
-                    worker_count,
-                    ..stored
-                },
-            }),
-        )
-            .into_response(),
-        Err(error) => refuse(&error, EVENT),
+        Ok(registered) => created(&registered, &stored),
+        Err(error) => registered_elsewhere(
+            &error,
+            refuse(&error, EVENT),
+            af_wire::paths::TENANT_RUNNERS,
+        ),
     }
+}
+
+/// Adds `Location` under `collection` to a refusal that names the runner a
+/// host already is, so the caller reads it without listing every runner
+/// (HTTP-IDEMKEY).
+fn registered_elsewhere(
+    error: &afd_runner::Error,
+    mut refused: Response,
+    collection: &str,
+) -> Response {
+    if let Some(runner) = error.registered_runner()
+        && let Ok(location) = HeaderValue::try_from(format!("{collection}/{runner}"))
+    {
+        refused.headers_mut().insert(header::LOCATION, location);
+    }
+    refused
 }
 
 /// The request, read strictly: a misspelled key at any depth is refused rather

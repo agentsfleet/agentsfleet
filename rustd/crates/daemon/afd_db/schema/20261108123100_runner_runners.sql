@@ -47,6 +47,11 @@ CREATE TABLE runner.runners (
     platform_owned BOOLEAN NOT NULL,
     tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,
     CONSTRAINT ck_runners_owner CHECK (platform_owned = (tenant_id IS NULL)),
+    -- A host registers once per owner; a retry is refused naming this row, and the
+    -- owner rotates its token to recover it. Nulls are not distinct, so the platform
+    -- (a null tenant) registers each host once too. Also serves the registration's
+    -- read of the existing row.
+    CONSTRAINT uq_runners_tenant_id_host_id UNIQUE NULLS NOT DISTINCT (tenant_id, host_id),
     -- A platform decision model would hand the platform decision key to a
     -- host its tenant holds root on.
     CONSTRAINT ck_runners_tenant_no_decision_model

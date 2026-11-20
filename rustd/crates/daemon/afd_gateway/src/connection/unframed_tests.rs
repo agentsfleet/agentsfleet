@@ -6,6 +6,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use af_validate::TEXT_MAX_CHARS;
 use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::report::{FailureClass, Outcome};
 use serde_json::{Value, json};
@@ -30,6 +31,48 @@ fn a_run_that_fits_its_frame_is_not_failed() {
     let framed = run_with("Triage the support queue.");
     let message: Message<'_> = serde_json::from_str(&framed).expect("a run frame");
     assert_eq!(Unframed::of(&message), None);
+}
+
+/// [`RUN`] carrying the most text a run can: its instructions, a setup
+/// candidate's instructions and the message, each at the ceiling in
+/// `character`.
+fn ceiling_run(character: char) -> String {
+    let ceiling: String = std::iter::repeat_n(character, TEXT_MAX_CHARS).collect();
+    let mut document: Value =
+        serde_json::from_str(&run_with(&ceiling)).expect("the fixture is JSON");
+    *document
+        .pointer_mut("/run/event/request_json")
+        .expect("the fixture carries a message") = json!(json!({ "message": ceiling }).to_string());
+    document
+        .pointer_mut("/run")
+        .and_then(Value::as_object_mut)
+        .expect("the fixture carries a run")
+        .insert(
+            "setup".to_owned(),
+            json!({"sequence": 2, "save_requested": false, "tool": {},
+                "candidate": {"id": "0190d5c2-7e1a-7000-8000-00000000e003", "revision": 1,
+                    "definition": {"instructions_md": ceiling}}}),
+        );
+    serde_json::to_string(&document).expect("the fixture serializes")
+}
+
+/// The most text the routes accept still fits one frame, so the run is sent.
+/// Three-byte characters fill each text's UTF-8. A control character fills
+/// its JSON escape, six bytes, and seven in the message, whose own JSON is
+/// quoted again inside the frame: the worst case, about 19 MiB.
+#[test]
+fn a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed() {
+    for (character, every_text) in [('界', 9_437_184), ('\u{1}', 19_922_944)] {
+        let framed = ceiling_run(character);
+        let message: Message<'_> = serde_json::from_str(&framed).expect("a run frame");
+        assert_eq!(Unframed::of(&message), None, "{character:?}");
+        let bytes = af_validate::serialized_len(&message).expect("the frame measures");
+        assert!(
+            bytes > every_text,
+            "{character:?}: every text rides the frame: {bytes}"
+        );
+        assert!(bytes <= MESSAGE_BYTES_MAX, "{character:?}: {bytes}");
+    }
 }
 
 /// Instructions that alone fill the frame push the assignment past it: the

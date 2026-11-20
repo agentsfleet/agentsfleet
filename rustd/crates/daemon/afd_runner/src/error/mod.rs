@@ -20,9 +20,9 @@ pub use self::detail::*;
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
-    admin_state_malformed, assignment_malformed, decision_model_id, query, registration_key_reused,
+    admin_state_malformed, assignment_malformed, decision_model_id, host_registered, query,
     rejected, row_malformed, runner_not_found, runner_not_revoked, runner_still_running,
-    runner_vanished, selftest_refused, stored_json, tenant_managed, undigestible,
+    runner_vanished, selftest_refused, stored_json, tenant_managed,
 };
 
 af_core::error_shell!(
@@ -114,9 +114,15 @@ pub(crate) enum ErrorKind {
     #[error("a runner still holding an active run cannot have its record retired")]
     RunnerStillRunning,
 
-    /// A tenant registration's key was reused for a different request.
-    #[error("a registration key was reused for a different request")]
-    RegistrationKeyReused,
+    /// The owner, a tenant or the platform, already registered this host.
+    ///
+    /// Carries that runner, so the refusal names what the caller recovers by
+    /// reading: a host registers once, and its token is rotated, not re-minted.
+    #[error("the host is already registered as runner {runner_id}")]
+    HostRegistered {
+        /// The runner the host is registered as.
+        runner_id: af_core::id::Uuid7,
+    },
 
     /// A platform caller asked to mint a tenant runner's token.
     #[error("a tenant runner's token is rotated by its tenant")]
@@ -150,14 +156,6 @@ pub(crate) enum ErrorKind {
         /// The decode failure underneath.
         #[source]
         source: serde_json::Error,
-    },
-
-    /// A parsed registration request would not serialise, so it has no digest.
-    #[error("the registration request could not be digested")]
-    RequestDigest {
-        /// The serialisation failure underneath, without the document's text.
-        #[source]
-        source: af_core::json::Unreadable,
     },
 
     /// The caller sent something this plane will not accept.
@@ -213,7 +211,7 @@ impl Error {
             ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
             ErrorKind::RunnerStillRunning => DETAIL_RUNNER_STILL_RUNNING,
-            ErrorKind::RegistrationKeyReused => DETAIL_REGISTRATION_KEY_REUSED,
+            ErrorKind::HostRegistered { .. } => DETAIL_HOST_REGISTERED,
             ErrorKind::TenantManaged => DETAIL_TENANT_MANAGED,
             ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,
             // The five datastore-shaped failures — a statement that reached
@@ -227,9 +225,7 @@ impl Error {
             | ErrorKind::StoredJson { .. }
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. } => DETAIL_DATABASE_ERROR,
-            ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. }
-            | ErrorKind::RequestDigest { .. } => DETAIL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => DETAIL_OPERATION_FAILED,
             ErrorKind::Datastore { .. } | ErrorKind::TimedOut { .. } => DETAIL_UNAVAILABLE,
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
@@ -253,14 +249,13 @@ impl Error {
             | ErrorKind::RunnerNotFound
             | ErrorKind::RunnerNotRevoked
             | ErrorKind::RunnerStillRunning
-            | ErrorKind::RegistrationKeyReused
+            | ErrorKind::HostRegistered { .. }
             | ErrorKind::TenantManaged
             | ErrorKind::SelftestRefused
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. }
             | ErrorKind::StoredJson { .. }
             | ErrorKind::Rejected { .. }
-            | ErrorKind::RequestDigest { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Identifier { .. } => false,
         }
@@ -281,6 +276,16 @@ impl Error {
         matches!(self.kind(), ErrorKind::RunnerVanished)
     }
 
+    /// The runner a refused registration's host is already registered as, so
+    /// the edge can name it.
+    #[must_use]
+    pub const fn registered_runner(&self) -> Option<&af_core::id::Uuid7> {
+        match self.kind() {
+            ErrorKind::HostRegistered { runner_id } => Some(runner_id),
+            _ => None,
+        }
+    }
+
     /// The registry code a caller is refused with.
     #[must_use]
     pub fn code(&self) -> ErrorCode {
@@ -292,7 +297,7 @@ impl Error {
                 error_code::RUNNER_MUST_REVOKE_FIRST
             }
             ErrorKind::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
-            ErrorKind::RegistrationKeyReused => error_code::RUNNER_REGISTRATION_KEY_REUSED,
+            ErrorKind::HostRegistered { .. } => error_code::RUNNER_HOST_REGISTERED,
             ErrorKind::TenantManaged => error_code::RUNNER_TENANT_MANAGED,
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -305,9 +310,9 @@ impl Error {
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — never
             // the caller's request being wrong.
-            ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. }
-            | ErrorKind::RequestDigest { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => {
+                error_code::INTERNAL_OPERATION_FAILED
+            }
             ErrorKind::Datastore { .. }
             | ErrorKind::TimedOut { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::TurnWrite { source } => source.code(),

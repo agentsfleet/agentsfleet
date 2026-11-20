@@ -10,7 +10,7 @@ CREATE TABLE fleet.revisions (
     -- Resolved at Save or Apply, because a definition may omit its model.
     runtime_model_ref    TEXT,
     review_digest        TEXT,
-    -- The frozen subject activation re-reviews against; a Plugin install has no draft to supply it.
+    -- The frozen subject activation re-reviews against; a system setup has no draft to supply it.
     review_context       JSONB,
     source_candidate_id  UUID,
     created_at           TIMESTAMPTZ(3) NOT NULL,

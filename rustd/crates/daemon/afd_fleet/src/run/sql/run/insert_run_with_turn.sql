@@ -79,17 +79,8 @@ WITH instant AS MATERIALIZED (
          NULL, now()
   FROM inserted i
   RETURNING id
-), tallied AS (
-INSERT INTO runner.lifetime_counters AS c
-  (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
-   created_at, updated_at)
-SELECT runner_id, 1, 0, 0, 0, now(), now()
-FROM inserted
-ON CONFLICT (runner_id) DO UPDATE
-   SET acquired_count = c.acquired_count + 1, updated_at = now()
-RETURNING runner_id
 )
 -- Use the value stored by TIMESTAMPTZ(3), not a separately normalized cache timestamp.
 -- No row when the choice moved: the caller rolls the run back with it.
 SELECT created_at FROM inserted
-WHERE EXISTS (SELECT 1 FROM tallied) AND EXISTS (SELECT 1 FROM chosen)
+WHERE EXISTS (SELECT 1 FROM chosen)

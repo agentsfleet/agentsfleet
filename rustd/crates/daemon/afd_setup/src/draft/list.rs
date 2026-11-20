@@ -28,7 +28,6 @@ struct Stored {
     expires_at: Option<jiff_sqlx::Timestamp>,
     candidate_revision: Option<i64>,
     setup_revision: Option<i64>,
-    publication_revision: Option<i64>,
 }
 
 impl Drafts {
@@ -101,7 +100,6 @@ fn project(rows: Vec<Stored>, limit: usize, binding: &str) -> Result<Page<DraftC
             expires_at: row.expires_at.map(jiff_sqlx::Timestamp::to_jiff),
             candidate_revision: row.candidate_revision,
             setup_revision: row.setup_revision,
-            publication_revision: row.publication_revision,
         });
     }
     Ok(Page {

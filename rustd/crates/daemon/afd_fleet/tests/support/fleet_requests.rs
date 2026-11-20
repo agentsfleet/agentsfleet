@@ -29,7 +29,11 @@ pub(crate) fn enrolment(
     workers: u32,
 ) -> RegisterRequest<'static> {
     RegisterRequest {
-        host_id: Cow::Borrowed("host-01.fixture.test"),
+        // A host of its own: an owner registers each host once.
+        host_id: Cow::Owned(format!(
+            "host-{}.fixture.test",
+            afd_db::test_util::mint_id()
+        )),
         assigned_policy: AssignedPolicy {
             decision_model_id: None,
             durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,

@@ -61,7 +61,7 @@ impl<'a> Verdict<'a> {
         }
     }
 
-    /// Whether the run finished cleanly — what the lifetime tally counts.
+    /// Whether the run finished cleanly, which its runner counts as succeeded.
     #[must_use]
     pub const fn succeeded(self) -> bool {
         matches!(self, Self::Succeeded)

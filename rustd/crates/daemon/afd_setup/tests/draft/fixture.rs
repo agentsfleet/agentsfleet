@@ -255,11 +255,6 @@ impl Fixture {
         self.db.close().await;
         self.lane.cleanup().await;
     }
-
-    pub(super) fn own_plugin(&mut self, plugin: &Uuid7) {
-        self.cleanup
-            .record("DELETE FROM setup.plugin_entries WHERE id=$1", plugin);
-    }
 }
 
 pub(super) fn now() -> jiff::Timestamp {

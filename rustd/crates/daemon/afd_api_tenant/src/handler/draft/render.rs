@@ -14,11 +14,6 @@ pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Revie
         candidate: value.candidate.map(candidate),
         review: value.review,
         linked_fleet_id: value.linked_fleet_id.map(|id| id.to_string()),
-        publication: value.publication.map(|receipt| wire::Publication {
-            plugin_id: receipt.plugin_id.to_string(),
-            revision_id: receipt.revision_id.to_string(),
-            canonical_digest: receipt.canonical_digest,
-        }),
         closed_at: value.closed_at,
         expires_at: value.expires_at,
     }
@@ -53,7 +48,6 @@ pub(super) fn card(value: types::DraftCard) -> wire::DraftCard {
         expires_at: value.expires_at,
         candidate_revision: value.candidate_revision,
         setup_revision: value.setup_revision,
-        publication_revision: value.publication_revision,
     }
 }
 
@@ -100,8 +94,8 @@ mod tests {
 
     use super::{card, message, types};
 
-    /// A card at `revisions`: candidate, saved setup and publication.
-    fn listed(revisions: (Option<i64>, Option<i64>, Option<i64>)) -> types::DraftCard {
+    /// A card at `revisions`: candidate and saved setup.
+    fn listed(revisions: (Option<i64>, Option<i64>)) -> types::DraftCard {
         types::DraftCard {
             continuation: String::new(),
             id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")
@@ -114,25 +108,17 @@ mod tests {
             expires_at: None,
             candidate_revision: revisions.0,
             setup_revision: revisions.1,
-            publication_revision: revisions.2,
         }
     }
 
     #[test]
     fn a_card_lists_every_revision_summary_and_null_for_one_it_has_not_reached() {
         for (revisions, expected) in [
-            ((Some(3), Some(2), Some(1)), [3.into(), 2.into(), 1.into()]),
+            ((Some(3), Some(2)), [3.into(), 2.into()]),
+            ((Some(1), None), [1.into(), serde_json::Value::Null]),
             (
-                (Some(1), None, None),
-                [1.into(), serde_json::Value::Null, serde_json::Value::Null],
-            ),
-            (
-                (None, None, None),
-                [
-                    serde_json::Value::Null,
-                    serde_json::Value::Null,
-                    serde_json::Value::Null,
-                ],
+                (None, None),
+                [serde_json::Value::Null, serde_json::Value::Null],
             ),
         ] {
             let wire = serde_json::to_value(card(listed(revisions)))
@@ -141,7 +127,6 @@ mod tests {
                 [
                     wire["candidate_revision"].clone(),
                     wire["setup_revision"].clone(),
-                    wire["publication_revision"].clone(),
                 ],
                 expected,
                 "each summary is present on every card, null until the chat reaches it"

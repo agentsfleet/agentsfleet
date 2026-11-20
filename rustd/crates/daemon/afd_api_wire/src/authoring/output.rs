@@ -44,9 +44,6 @@ pub struct Draft<D = Value, R = Value> {
     /// Related fleet, when this draft targets or created one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linked_fleet_id: Option<String>,
-    /// Explicit publication receipt, never synthesized by Save.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub publication: Option<Publication>,
     /// Closing timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "af_wire::instant::option", default)]
@@ -55,18 +52,6 @@ pub struct Draft<D = Value, R = Value> {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "af_wire::instant::option", default)]
     pub expires_at: Option<jiff::Timestamp>,
-}
-
-/// The exact reusable snapshot explicitly published by this creator.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
-pub struct Publication {
-    /// Reusable entry identity.
-    pub plugin_id: String,
-    /// Immutable published snapshot.
-    pub revision_id: String,
-    /// Content identity that Save can verify and reuse.
-    pub canonical_digest: String,
 }
 
 /// The message is saved and queued. The model call happens separately.
@@ -120,8 +105,6 @@ pub struct DraftCard {
     pub candidate_revision: Option<i64>,
     /// The saved fleet's current setup revision; null while no fleet is saved.
     pub setup_revision: Option<i64>,
-    /// The Plugin revision this chat published; null until it publishes.
-    pub publication_revision: Option<i64>,
 }
 
 /// One user or assistant role in a durable request sequence.

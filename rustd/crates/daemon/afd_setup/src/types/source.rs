@@ -9,8 +9,6 @@ use super::Source;
 const BLANK: &str = "blank";
 /// See [`BLANK`]: a chat started from an inline definition.
 const DEFINITION: &str = "definition";
-/// See [`BLANK`]: a chat started from a Plugin revision.
-const PLUGIN: &str = "plugin";
 /// See [`BLANK`]: a chat improving a fleet's numbered revision.
 const FLEET: &str = "fleet";
 
@@ -19,10 +17,6 @@ const FLEET: &str = "fleet";
 pub(crate) enum SourcePin {
     Blank,
     Definition,
-    Plugin {
-        plugin_id: Uuid7,
-        revision_id: Uuid7,
-    },
     Fleet {
         fleet_id: Uuid7,
         setup_revision: String,
@@ -34,13 +28,6 @@ impl From<&Source> for SourcePin {
         match source {
             Source::Blank => Self::Blank,
             Source::Definition { .. } => Self::Definition,
-            Source::Plugin {
-                plugin_id,
-                revision_id,
-            } => Self::Plugin {
-                plugin_id: plugin_id.clone(),
-                revision_id: revision_id.clone(),
-            },
             Source::Fleet {
                 fleet_id,
                 setup_revision,
@@ -53,18 +40,16 @@ impl From<&Source> for SourcePin {
 }
 
 /// A pin as `setup.drafts` stores it: its type, and the referenced
-/// revisions resolved by join. A reference the schema set NULL, because its
-/// card was deleted or its fleet purged, leaves no pin.
+/// revision resolved by join. A reference the schema set NULL, because its
+/// fleet was purged, leaves no pin.
 pub(crate) struct PinColumns {
     pub(crate) source_type: String,
-    pub(crate) plugin: Option<(Uuid7, Uuid7)>,
     pub(crate) fleet: Option<(Uuid7, i64)>,
 }
 
 impl SourcePin {
     pub(crate) fn revision(&self) -> Option<String> {
         match self {
-            Self::Plugin { revision_id, .. } => Some(revision_id.to_string()),
             Self::Fleet { setup_revision, .. } => Some(setup_revision.clone()),
             Self::Blank | Self::Definition => None,
         }
@@ -75,7 +60,6 @@ impl SourcePin {
         match self {
             Self::Blank => BLANK,
             Self::Definition => DEFINITION,
-            Self::Plugin { .. } => PLUGIN,
             Self::Fleet { .. } => FLEET,
         }
     }
@@ -86,10 +70,6 @@ impl SourcePin {
         Ok(match crate::draft::word::<Kind>(&columns.source_type)? {
             Kind::Blank => Some(Self::Blank),
             Kind::Definition => Some(Self::Definition),
-            Kind::Plugin => columns.plugin.map(|(plugin_id, revision_id)| Self::Plugin {
-                plugin_id,
-                revision_id,
-            }),
             Kind::Fleet => columns.fleet.map(|(fleet_id, revision)| Self::Fleet {
                 fleet_id,
                 setup_revision: revision.to_string(),
@@ -104,6 +84,5 @@ impl SourcePin {
 enum Kind {
     Blank,
     Definition,
-    Plugin,
     Fleet,
 }

@@ -110,6 +110,10 @@ const FLEET_TO_FLEET_ADDITIONS: usize = 3;
 /// turn route it already reads, so it adds a verb and no route.
 const STOP_ADDITIONS: usize = 1;
 
+/// The workspace's four Plugin routes — its entries, one entry, an entry's
+/// revisions and one revision — went with Plugins (`M253_002` §14).
+const RETIRED_PLUGIN_ROUTES: usize = 4;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -125,7 +129,8 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + STOP_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
-    - RETIRED_CATALOGUE_ROUTES;
+    - RETIRED_CATALOGUE_ROUTES
+    - RETIRED_PLUGIN_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.

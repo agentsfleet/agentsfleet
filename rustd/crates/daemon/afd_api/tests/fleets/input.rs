@@ -142,6 +142,8 @@ async fn creation_requires_one_header_key_and_refuses_file_sources() {
     assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
     for invalid in [
         r#"{"platform_plugin_id":"daily-digest"}"#,
+        // Plugins are gone, so a Plugin source is a shape Save does not know.
+        r#"{"source":{"kind":"plugin","plugin_id":"0199a801-1000-7000-8000-000000000001","revision_id":"0199a801-1000-7000-8000-000000000002"},"name":"daily-digest","review_digest":"review","start":{"kind":"none"}}"#,
         r#"{"source":{"kind":"file","path":"setup.json"},"name":"file","review_digest":"review","start":{"kind":"none"}}"#,
     ] {
         let response = harness::send_with_headers(

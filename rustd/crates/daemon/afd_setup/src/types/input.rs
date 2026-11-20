@@ -13,15 +13,6 @@ use serde::{Deserialize, Serialize};
 pub enum Source {
     /// Start with no candidate; the first proposal may initialize one.
     Blank,
-    /// Capture an explicitly selected immutable published revision.
-    Plugin {
-        /// Selected account-owned entry `UUIDv7`.
-        #[garde(skip)]
-        plugin_id: Uuid7,
-        /// Selected revision; never inferred from mutable head.
-        #[garde(skip)]
-        revision_id: Uuid7,
-    },
     /// Improve an explicitly selected setup revision of an accessible fleet.
     Fleet {
         /// Independent runtime instance.

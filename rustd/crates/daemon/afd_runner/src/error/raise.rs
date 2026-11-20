@@ -93,14 +93,6 @@ pub(crate) fn stored_json(
     }
 }
 
-/// Reports a parsed registration request that would not serialise.
-pub(crate) fn undigestible(source: serde_json::Error) -> Error {
-    ErrorKind::RequestDigest {
-        source: af_core::json::Unreadable::from(source),
-    }
-    .into()
-}
-
 /// Reports an authenticated runner whose row has since disappeared.
 pub(crate) fn runner_vanished() -> Error {
     ErrorKind::RunnerVanished.into()
@@ -116,9 +108,9 @@ pub(crate) fn runner_still_running() -> Error {
     ErrorKind::RunnerStillRunning.into()
 }
 
-/// Refuses a registration key reused for a different request.
-pub(crate) fn registration_key_reused() -> Error {
-    ErrorKind::RegistrationKeyReused.into()
+/// Refuses a second registration of a host its owner already registered.
+pub(crate) fn host_registered(runner_id: af_core::id::Uuid7) -> Error {
+    ErrorKind::HostRegistered { runner_id }.into()
 }
 
 /// Refuses a platform caller minting a tenant runner's token.
@@ -154,13 +146,15 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("runner not found", runner_not_found()),
         ("runner not revoked", runner_not_revoked()),
         ("runner still held", runner_still_running()),
-        ("registration key reused", registration_key_reused()),
+        (
+            "host registered",
+            host_registered(
+                af_core::id::Uuid7::parse("0199a801-1000-7000-8000-000000000001")
+                    .expect("valid fixture"),
+            ),
+        ),
         ("tenant managed", tenant_managed()),
         ("selftest refused", selftest_refused()),
-        (
-            "request digest",
-            undigestible(serde_json::from_str::<()>("x").expect_err("invalid fixture")),
-        ),
         ("admin state malformed", admin_state_malformed()),
         (
             "assignment malformed",

@@ -44,8 +44,7 @@ use serde_json::{Value, json};
 
 use crate::e2e::{Scenario, scenario};
 use crate::reads::{
-    balance, counter_column, event_column, ledger_rows, relay_settled, run_column, run_rows,
-    unsettled_lines,
+    balance, event_column, ledger_rows, relay_settled, run_column, run_rows, unsettled_lines,
 };
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, field, get, json,
@@ -244,17 +243,12 @@ async fn assert_settled(scene: &Scenario, run_id: &str, before: Option<i64>) {
         after < before,
         "a priced scene draws the tenant's wallet down: {before:?} → {after:?}"
     );
-    assert_eq!(
-        counter_column(scene, "succeeded_count").await.as_deref(),
-        Some("1"),
-        "the lifetime tally counts the completed scene on the succeeded arm"
-    );
 }
 
 /// A second delivery of the same report is answered, and changes nothing.
 ///
 /// The guard is still the run's `status = active` predicate and a report that
-/// claims no row still writes none: no ledger row, no wallet draw, no tally.
+/// claims no row still writes none: no ledger row, no wallet draw.
 /// What CHANGED is the answer. A replay used to be a 409, on the reading that a
 /// result nobody is waiting for is not worth retrying — and that reading is
 /// wrong in the one case a replay actually happens. A runner replays because it
@@ -292,13 +286,5 @@ async fn assert_replay_returns_the_stored_outcome(scene: &Scenario, run_id: &str
         run_column(scene, run_id, "status").await.as_deref(),
         Some("reported"),
         "and mutates nothing — the run reads exactly as the first report left it"
-    );
-    assert_eq!(
-        counter_column(scene, "succeeded_count").await.as_deref(),
-        Some("1"),
-        "the lifetime tally counts the scene once, because it is gated on the claim \
-         that the repeat did not win. The handler's product funnel and cost meters \
-         are skipped on the same arm and export nowhere a test can read, so this \
-         row is the durable half of that claim and the arm itself is the reviewed half"
     );
 }

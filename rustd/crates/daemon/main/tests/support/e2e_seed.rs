@@ -121,7 +121,11 @@ pub(crate) fn scenario_enrolment(fleet: &Uuid7) -> RegisterRequest<'static> {
 /// The enrolment body a seeded runner presents.
 pub(crate) fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
-        host_id: Cow::Borrowed("host-e2e.fixture.test"),
+        // A host of its own: an owner registers each host once.
+        host_id: Cow::Owned(format!(
+            "host-e2e-{}.fixture.test",
+            afd_db::test_util::mint_id()
+        )),
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,

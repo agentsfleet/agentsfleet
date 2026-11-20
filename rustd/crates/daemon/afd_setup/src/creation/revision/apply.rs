@@ -12,7 +12,7 @@ use jiff::Timestamp;
 use sqlx::Transaction;
 
 impl Creations {
-    /// Applies one reviewed improvement without publishing a Plugin revision.
+    /// Applies one reviewed improvement as the fleet's next revision.
     ///
     /// # Errors
     /// Refuses stale setup tags, changed bases, foreign candidates, active turns,

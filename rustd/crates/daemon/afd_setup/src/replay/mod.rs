@@ -69,8 +69,6 @@ pub(crate) enum Resource {
     Draft,
     /// `thread.turns`: a setup draft's accepted message.
     Message,
-    /// `setup.plugin_revisions`: a Plugin publication.
-    PluginRevision,
 }
 
 impl Resource {
@@ -81,7 +79,6 @@ impl Resource {
             Self::FleetRevision => "fleet_revision",
             Self::Draft => "draft",
             Self::Message => "message",
-            Self::PluginRevision => "plugin_revision",
         }
     }
 }

@@ -78,8 +78,8 @@ pub const LOCK_CANCELLED: &str = include_str!("lock_cancelled.sql");
 /// renews or recreates a hold after a later issue consumed it.
 pub const REPORT_HOLD: &str = include_str!("report_hold.sql");
 
-/// Issues a run under its assignment's fence, with the host's placement choice,
-/// an audit row and the runner's tally, in one statement.
+/// Issues a run under its assignment's fence, with the host's placement choice
+/// and an audit row, in one statement.
 ///
 /// `$1` run, `$2` runner, `$3` the owning fleet, NULL for a draft, `$4` the
 /// owning draft, NULL for a fleet, `$5` workspace, `$6` tenant, `$7` the event
@@ -107,23 +107,24 @@ pub const INSERT_RUN: &str = include_str!("insert_run.sql");
 pub const EXTEND_RUN: &str = include_str!("extend_run.sql");
 
 /// Settles one run at its report: status, cursor, thread release with any
-/// hold, tally and audit row, fenced on the run's own token.
+/// hold and audit row, fenced on the run's own token.
 ///
 /// `$1` run, `$2` runner, `$3` milliseconds per second, `$4` active status,
-/// `$5` reported status, `$6` succeeded, `$7` the hold asked for (NULL for
-/// none), `$8` the hold's idle cap, `$9` audit row, `$10` its event type,
-/// `$11` its metadata, `$12` the longest runtime one line may claim,
-/// `$13`-`$14` the opening's credential proof and connection (NULL for a
-/// trusted call), `$15` the host states that may keep a hold. Answers
+/// `$5` reported status, `$6` the hold asked for (NULL for none), `$7` the
+/// hold's idle cap, `$8` audit row, `$9` its event type, `$10` its metadata,
+/// `$11` the longest runtime one line may claim, `$12`-`$13` the opening's
+/// credential proof and connection (NULL for a trusted call), `$14` the host
+/// states that may keep a hold. Answers
 /// `moved_runs`, `accepted_hold`, the run's latest `run_status`, `fence_holds`
 /// and the final slice. The caller has locked the owner's scope first.
 pub const SETTLE_RUN: &str = include_str!("settle_run.sql");
 
 /// Expires the newest earlier run of the work an assignment just took, when its
-/// holder lapsed without reporting, and tallies that expiry.
+/// holder lapsed without reporting.
 ///
 /// `$1` the owning fleet, NULL for a draft, `$2` the owning draft, NULL for a
 /// fleet, `$3` the event or draft message, `$4` active status, `$5` expired
-/// status. Answers the predecessor's id, if any, and how many runs the work
-/// had before this assignment. Run under the thread the assignment won.
+/// status. Answers the predecessor's id, if any, the runner whose run it
+/// expired, if any, and how many runs the work had before this assignment.
+/// Run under the thread the assignment won.
 pub const EXPIRE_PRIOR_RUN: &str = include_str!("expire_prior_run.sql");

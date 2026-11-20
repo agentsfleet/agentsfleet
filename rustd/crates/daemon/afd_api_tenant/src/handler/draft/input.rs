@@ -38,13 +38,6 @@ pub(super) fn create(bytes: &[u8]) -> Result<CreateDraft, Refusal> {
         wire::Source::Definition { definition } => Source::Definition {
             definition: Box::new(definition),
         },
-        wire::Source::Plugin {
-            plugin_id,
-            revision_id,
-        } => Source::Plugin {
-            plugin_id: uuid(&plugin_id)?,
-            revision_id: uuid(&revision_id)?,
-        },
         wire::Source::Fleet {
             fleet_id,
             setup_revision,

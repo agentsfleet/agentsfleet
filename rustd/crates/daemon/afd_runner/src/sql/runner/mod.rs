@@ -13,7 +13,9 @@ use jiff_sqlx::ToSqlx as _;
 /// Enrol a runner and record its enrolment event atomically.
 ///
 /// One statement, so an observer can never see a registered runner with no
-/// audit row explaining where it came from. The operator's ASSIGNED policy
+/// audit row explaining where it came from. A host its owner already
+/// registered inserts neither row: `(tenant_id, host_id)` is unique with nulls
+/// not distinct, so the platform registers each host once too. The operator's ASSIGNED policy
 /// lands on the row here — the host never writes it. The enrolment event takes
 /// the row's own `created_at`, so the two cannot disagree about when.
 pub const INSERT_RUNNER_WITH_HISTORY: &str = include_str!("insert_runner_with_history.sql");
@@ -140,12 +142,10 @@ pub const ROTATE_RUNNER_TOKEN: &str = include_str!("rotate_runner_token.sql");
 /// Whether a runner is the platform's, read on a refused rotation to tell `404` from `409`.
 pub const SELECT_RUNNER_PLATFORM_OWNED: &str = include_str!("select_runner_platform_owned.sql");
 
-/// A tenant registration's retry receipt; no row back means the key exists.
-/// `$1` id, `$2` tenant, `$3` operation id, `$4` request digest, `$5` runner.
-pub const INSERT_REGISTRATION_RECEIPT: &str = include_str!("insert_registration_receipt.sql");
-
-/// The stored receipt for `$1` tenant and `$2` operation id.
-pub const SELECT_REGISTRATION_RECEIPT: &str = include_str!("select_registration_receipt.sql");
+/// The runner `$1` tenant, or the platform for NULL, registered for `$2` host,
+/// read when [`INSERT_RUNNER_WITH_HISTORY`] inserted nothing because the host
+/// is taken.
+pub const SELECT_HOST_RUNNER: &str = include_str!("select_host_runner.sql");
 
 /// The heartbeat's policy read.
 ///

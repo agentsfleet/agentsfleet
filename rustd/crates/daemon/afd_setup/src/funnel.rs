@@ -28,12 +28,6 @@ use crate::{Access, Drafts, Result, error::raise::query};
 
 const CONTEXT: &str = "attribute a private-chat funnel step";
 
-/// A first publication creates the Plugin entry.
-pub(crate) const PUBLISHED_ENTRY: &str = "entry";
-
-/// A later publication appends a revision to an entry.
-pub(crate) const PUBLISHED_REVISION: &str = "revision";
-
 impl Drafts {
     /// Reports `step`, attributed to the person acting in `access`. Call only
     /// after the transaction that made it true committed.

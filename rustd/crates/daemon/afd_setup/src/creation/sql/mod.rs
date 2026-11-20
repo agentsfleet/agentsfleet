@@ -22,11 +22,6 @@ pub(super) const LOCKED: &str = include_str!("locked.sql");
 /// `$1` candidate, `$2` workspace, `$3` creator.
 pub(super) const CANDIDATE_DRAFT: &str = include_str!("candidate_draft.sql");
 
-/// A visible Plugin revision by public Plugin id, share-locking its entry.
-///
-/// `$1` entry `UUIDv7`, `$2` revision `UUIDv7`, `$3` owner tenant.
-pub(super) const PLUGIN: &str = include_str!("plugin.sql");
-
 /// The fleet row, pointing at a head revision written in the same transaction.
 ///
 /// `$1` id, `$2` workspace, `$3` tenant, `$4` name, `$5` status, `$6` head

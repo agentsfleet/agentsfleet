@@ -123,15 +123,23 @@ pub(super) struct Listener {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Stream {
     #[garde(dive)]
-    pub control: MessageBuffer,
+    pub control: ControlBuffer,
     #[garde(dive)]
-    pub data: MessageBuffer,
+    pub data: DataBuffer,
 }
 
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct MessageBuffer {
-    #[garde(range(min = af_stream::MemoryLimits::MIN_BUFFER_BYTES, max = af_stream::MemoryLimits::MAX_BUFFER_BYTES))]
+pub(super) struct ControlBuffer {
+    #[garde(range(min = af_stream::MemoryLimits::MIN_CONTROL_BUFFER_BYTES, max = af_stream::MemoryLimits::MAX_BUFFER_BYTES))]
+    pub max_buffered_bytes: Option<usize>,
+}
+
+/// Its floor holds one maximum work or report frame in each direction.
+#[derive(Default, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct DataBuffer {
+    #[garde(range(min = af_stream::MemoryLimits::MIN_DATA_BUFFER_BYTES, max = af_stream::MemoryLimits::MAX_BUFFER_BYTES))]
     pub max_buffered_bytes: Option<usize>,
 }
 

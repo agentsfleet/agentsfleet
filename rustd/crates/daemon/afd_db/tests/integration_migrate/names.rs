@@ -23,15 +23,12 @@ SELECT src.relname::text, src_col.attname::text, dst.relname::text, dst_col.attn
  WHERE con.contype = 'f'";
 
 /// Pointers whose role name is not their table's name, each stated in its slot.
-const ROLE_NAMED: [(&str, &str); 2] = [
+const ROLE_NAMED: [(&str, &str); 1] = [
     // An approval that activated a grant: the gate names the grant it made live.
     ("active_grant_id", "integration_grants"),
-    // A card's live revision: the counter table names every live pointer
-    // `head_revision_id`, whichever revision table it points into.
-    ("head_revision_id", "plugin_revisions"),
 ];
 
-/// The singular a pointer column is named for: `plugin_entries` → `plugin_entry`.
+/// The singular a pointer column is named for: `deliveries` → `delivery`.
 fn singular(table: &str) -> String {
     table.strip_suffix("ies").map_or_else(
         || table.strip_suffix('s').unwrap_or(table).to_owned(),
@@ -78,7 +75,7 @@ async fn test_table_and_key_names_follow_rules() {
 
 #[test]
 fn test_singular_reads_the_pointer_name_a_table_takes() {
-    assert_eq!(singular("plugin_entries"), "plugin_entry");
+    assert_eq!(singular("deliveries"), "delivery");
     assert_eq!(singular("revisions"), "revision");
     assert_eq!(singular("threads"), "thread");
 }

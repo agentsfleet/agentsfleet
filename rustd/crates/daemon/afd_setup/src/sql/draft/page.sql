@@ -1,7 +1,7 @@
 -- The summaries a chat list shows without opening each chat: the current
--- candidate's revision, the saved fleet's current setup revision, and the
--- published Plugin revision. Each is one primary-key probe per row; a missing
--- row (no candidate yet, no saved fleet, never published) reads null.
+-- candidate's revision and the saved fleet's current setup revision. Each is
+-- one primary-key probe per row; a missing row (no candidate yet, no saved
+-- fleet) reads null.
 SELECT d.id AS id,
        d.title,
        d.status,
@@ -10,13 +10,11 @@ SELECT d.id AS id,
        d.updated_at,
        d.expires_at,
        c.revision AS candidate_revision,
-       fr.revision AS setup_revision,
-       lr.revision AS publication_revision
+       fr.revision AS setup_revision
   FROM setup.drafts d
   LEFT JOIN setup.candidates c ON c.id = d.head_candidate_id
   LEFT JOIN fleet.fleets f ON f.id = d.fleet_id
   LEFT JOIN fleet.revisions fr ON fr.id = f.head_revision_id
-  LEFT JOIN setup.plugin_revisions lr ON lr.id = d.plugin_revision_id
  WHERE d.workspace_id = $1 AND d.user_id = $2
    AND (d.expires_at IS NULL OR d.expires_at > statement_timestamp())
    AND ($3::text IS NULL OR d.status = $3)

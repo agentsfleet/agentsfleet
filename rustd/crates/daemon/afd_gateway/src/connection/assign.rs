@@ -57,7 +57,9 @@ impl ConnectionServices {
                 return Ok(AssignOutcome::Empty);
             }
         };
-        let frame = encoder.finish()?;
+        // A run larger than the room reserved up front is charged the rest here,
+        // after its transaction, before a byte of it is sent.
+        let frame = encoder.finish(&self.handle.stop, deadline).await?;
         self.cache
             .insert(assigned, self.gateway.inner.dependencies.wall_clock.now())?;
         self.handle.snapshot.lock().issued()?;
@@ -153,6 +155,6 @@ fn encode_assignment(
     if let Some(unframed) = Unframed::of(&message) {
         return Ok(Encoded::Unframed(unframed));
     }
-    serde_json::to_writer(encoder, &message)?;
+    encoder.frame(&message)?;
     Ok(Encoded::Framed(Box::new(assigned)))
 }

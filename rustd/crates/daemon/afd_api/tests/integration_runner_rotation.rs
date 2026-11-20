@@ -102,7 +102,8 @@ async fn platform_operator_rotates_runner_token_once() {
 
 fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
-        host_id: Cow::Borrowed("rotate.fixture.test"),
+        // A host of its own: the platform registers each host once.
+        host_id: Cow::Owned(format!("rotate-{}.fixture.test", mint_id())),
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,

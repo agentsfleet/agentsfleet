@@ -1,5 +1,5 @@
 -- The fleet's assignment. Its `won_thread` step is `../shared/assign_thread.sql` and its
--- `prior_run`, `bumped` and `tally` steps are `../shared/expire_prior_run.sql`, fused here
+-- `prior_run` and `bumped` steps are `../shared/expire_prior_run.sql`, fused here
 -- with the fleet's turn, which the assignment stamps and opens as the fleet's event in one
 -- update, so a chat's assignment stays one round trip: a change to the bookkeeping belongs in both.
 WITH fleet AS MATERIALIZED (
@@ -153,19 +153,14 @@ WITH fleet AS MATERIALIZED (
   JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
   WHERE p.active AND s.meta_has_key AND s.meta_provider = p.provider
   ORDER BY p.provider LIMIT 1
-), tally AS (
-  INSERT INTO runner.lifetime_counters AS c
-    (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
-     created_at, updated_at)
-  SELECT runner_id, 0, 0, 0, 1, now(), now() FROM bumped
-  ON CONFLICT (runner_id) DO UPDATE
-    SET expired_count = c.expired_count + 1, updated_at = now()
 )
 SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
        a.request_json, a.created_at AS turn_created_at, a.redelivered,
        won_thread.fencing_token, won_thread.run_expires_at,
        COALESCE(won_thread.held, false) AS held, won_thread.holder,
        b.id AS predecessor_run_id, b.id IS NOT NULL AS reassigned,
+       -- The lapsed holder whose run this assignment expired, counted once it commits.
+       (SELECT runner_id FROM bumped) AS expired_runner_id,
        -- The runs this turn was issued before this assignment. A report settles
        -- its turn, so each one is a run that lapsed without reporting.
        (SELECT count(*) FROM thread.runs x

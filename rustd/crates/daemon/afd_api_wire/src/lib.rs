@@ -34,7 +34,6 @@ pub mod ingress;
 pub mod models;
 pub mod operator;
 mod page;
-pub mod plugin;
 pub mod preference;
 mod redact;
 pub mod schedule;

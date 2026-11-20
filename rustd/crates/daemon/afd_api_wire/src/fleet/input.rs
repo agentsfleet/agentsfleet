@@ -25,13 +25,6 @@ pub enum SaveSource {
         /// Copy `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`.
         draft_candidate_id: String,
     },
-    /// Pinned accessible Plugin revision.
-    Plugin {
-        /// Entry identity.
-        plugin_id: String,
-        /// Immutable revision identity.
-        revision_id: String,
-    },
 }
 
 /// Saving and running are distinct explicit choices.

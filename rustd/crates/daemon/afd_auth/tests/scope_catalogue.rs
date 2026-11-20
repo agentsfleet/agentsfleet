@@ -66,16 +66,13 @@ fn test_the_hierarchy_subsumes_lower_rungs() {
     assert!(resolve.contains(Scope::ApprovalRead));
 }
 
-/// Retired claims grant nothing; the replacement retains one discrete capability.
+/// Retired claims grant nothing, so an identity still holding one gains no
+/// capability from it.
 #[test]
-fn plugin_permission_does_not_reinterpret_retired_grants() {
-    for retired in ["library:write", "platform-library:write"] {
-        assert_eq!(parse_claim(retired), ScopeSet::EMPTY);
+fn retired_claims_grant_nothing() {
+    for retired in ["library:write", "platform-library:write", "plugins:write"] {
+        assert_eq!(parse_claim(retired), ScopeSet::EMPTY, "{retired}");
     }
-    assert_eq!(
-        parse_claim("plugins:write"),
-        ScopeSet::from_scopes(&[Scope::PluginsWrite])
-    );
 }
 
 /// A discrete verb grants itself and nothing else.
@@ -213,7 +210,6 @@ fn test_the_signup_grant_is_a_tenant_owner_and_not_an_operator() {
     assert!(owner.contains(Scope::ScheduleRead));
     assert!(owner.contains(Scope::SecretWrite));
     assert!(owner.contains(Scope::WorkspaceAdmin));
-    assert!(owner.contains(Scope::PluginsWrite));
 
     for withheld in [
         Scope::RunnerRegister,
@@ -287,7 +283,7 @@ fn test_iteration_agrees_with_membership() {
 /// is new, both by Indy's ruling; every other value is unchanged.
 #[test]
 fn scope_claim_strings_are_unchanged() {
-    const PINNED: [&str; 30] = [
+    const PINNED: [&str; 29] = [
         "fleet:read",
         "fleet:write",
         "fleet:admin",
@@ -315,7 +311,6 @@ fn scope_claim_strings_are_unchanged() {
         "approval:resolve",
         "billing:read",
         "workspace:admin",
-        "plugins:write",
         "runner:self",
         "workspace:any",
     ];

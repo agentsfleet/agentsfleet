@@ -43,9 +43,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{Scenario, scenario};
-use crate::reads::{
-    balance, counter_column, ledger_rows, relay_settled, run_column, unsettled_lines,
-};
+use crate::reads::{balance, ledger_rows, relay_settled, run_column, unsettled_lines};
 use crate::tail::{next_frame, settle};
 use crate::wire::{
     capable_beat, field, report_body, wait_for_assignment, wait_for_seeded_assignment,
@@ -204,7 +202,7 @@ async fn a_report_settles_once(scene: &Scenario, run_id: &str, fence: u64) {
         "a priced scene draws the wallet down: {before:?} → {after:?}"
     );
 
-    assert_replayed_report(scene, &report, logged, after).await;
+    assert_replayed_report(scene, run_id, &report, logged, after).await;
 }
 
 /// The next poll finds the fleet's remaining work rather than stalling on it.
@@ -244,6 +242,7 @@ async fn test_cluster_preserves_application_outcomes() {
 
 async fn assert_replayed_report(
     scene: &Scenario,
+    run_id: &str,
     report: &serde_json::Value,
     logged: i64,
     after: Option<i64>,
@@ -263,8 +262,8 @@ async fn assert_replayed_report(
          replayed receipt cannot debit twice"
     );
     assert_eq!(
-        counter_column(scene, "succeeded_count").await.as_deref(),
-        Some("1"),
-        "and the lifetime tally counts one completed scene, not two"
+        run_column(scene, run_id, "status").await.as_deref(),
+        Some("reported"),
+        "and the run reads exactly as the first report settled it"
     );
 }

@@ -24,6 +24,7 @@ use sqlx::Connection as _;
 
 use crate::error::{Result, query};
 use crate::run::envelope::Acquired;
+use crate::run::runner_runs;
 use crate::run::sql;
 use crate::run::store::Runs;
 
@@ -70,10 +71,9 @@ impl Runs {
     #[cfg(any(test, feature = "test-util"))]
     /// Write the run row for `acquired`, and the audit row that explains it.
     ///
-    /// One statement lands the run, its `run_acquired` event, the runner's
-    /// lifetime tally and a fresh run's meter reset, so an observer can never
-    /// see a run with no audit row, a tally that has drifted from the rows it
-    /// counts, or a fresh run metering from a previous run's cursor.
+    /// One statement lands the run, its `run_acquired` event and a fresh run's
+    /// meter reset, so an observer can never see a run with no audit row, or a
+    /// fresh run metering from a previous run's cursor.
     ///
     /// `None` when the assignment that earned `acquired` is no longer this pass's:
     /// its fence was superseded or it lapsed, so another runner may already
@@ -160,6 +160,7 @@ impl Runs {
             return Ok(None);
         };
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
+        runner_runs::acquired(runner_id);
 
         record_issued(&run_id, runner_id, acquired, decision.as_deref());
         Ok(Some(Issued {

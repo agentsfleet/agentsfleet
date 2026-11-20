@@ -84,13 +84,12 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/approvals",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
-    // Onboarding, preferences, Plugin reads.
+    // Onboarding and preferences.
     "/v1/workspaces/{workspace_id}/onboarding",
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
-    "/v1/workspaces/{workspace_id}/plugins",
     // M227 N1–N17 (`docs/architecture/api_resources.md`) — eligible models,
-    // creator-private drafts, reviewed setup revisions and explicit Plugin
-    // publication. Removed R1/R2 `library-entries` have no row here.
+    // creator-private drafts and reviewed setup revisions. Removed R1/R2
+    // `library-entries` and M253's Plugin routes have no row here.
     "/v1/workspaces/{workspace_id}/models",
     "/v1/workspaces/{workspace_id}/drafts",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}",
@@ -99,9 +98,6 @@ const INVENTORY: &[&str] = &[
     // M253 §8 — Stop on a draft's turn, beside the fleet turn's PATCH.
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/{turn_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}",
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions",
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions/{revision_id}",
 ];
 
 /// The paths the table carries that belong to a LATER milestone.
@@ -232,6 +228,74 @@ fn the_route_inventory_names_turns_items_and_runs() {
             "{path} names /events, which only the vendor webhook keeps"
         );
     }
+}
+
+/// Dimension 14.1 (`M253_002`) — Plugins are gone end to end: no route the
+/// daemon tables, no schema file or statement naming a `setup.plugin_*`
+/// table, and no `/plugins` page in the app.
+#[test]
+fn no_plugin_table_route_or_page_remains() -> std::io::Result<()> {
+    for route in Route::all() {
+        let template = route.meta().template;
+        assert!(
+            !template.contains("/plugins"),
+            "{template} is a Plugin route"
+        );
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+    let mut statements = Vec::new();
+    sql_files(&root.join("rustd/crates"), &mut statements)?;
+    assert!(!statements.is_empty(), "the walk found no statement");
+    for path in statements {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        assert!(
+            !name.contains("_plugin_"),
+            "{} is a Plugin schema file",
+            path.display()
+        );
+        let text = std::fs::read_to_string(&path)?;
+        assert!(
+            !names_a_plugin_table(&text),
+            "{} names a Plugin table",
+            path.display()
+        );
+    }
+    let page = root.join("ui/packages/app/app/(dashboard)/w/[workspaceId]/plugins");
+    assert!(!page.exists(), "{} is a Plugin page", page.display());
+    Ok(())
+}
+
+/// The scan above would name a statement that still reads a Plugin table.
+#[test]
+fn a_statement_naming_a_plugin_table_is_named() {
+    assert!(names_a_plugin_table(
+        "SELECT id FROM setup.plugin_entries WHERE tenant_id = $1"
+    ));
+    assert!(!names_a_plugin_table(
+        "SELECT id FROM setup.drafts WHERE id = $1"
+    ));
+}
+
+fn names_a_plugin_table(statement: &str) -> bool {
+    statement.contains("setup.plugin_")
+}
+
+/// Every `.sql` file under `dir`, skipping build output.
+fn sql_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|name| name != "target") {
+                sql_files(&path, found)?;
+            }
+        } else if path.extension().is_some_and(|extension| extension == "sql") {
+            found.push(path);
+        }
+    }
+    Ok(())
 }
 
 /// The templates of the two families this milestone's inventory covers.

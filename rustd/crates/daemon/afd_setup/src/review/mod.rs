@@ -23,7 +23,7 @@ use crate::{
 
 const CONTEXT: &str = "review current native setup";
 
-pub(crate) use context::{Context, Subject};
+pub(crate) use context::Context;
 
 pub(super) struct Observed {
     checks: Vec<crate::types::Check>,

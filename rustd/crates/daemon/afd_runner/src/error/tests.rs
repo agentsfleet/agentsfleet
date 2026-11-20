@@ -43,6 +43,23 @@ fn data_only_runner_failures_have_distinct_remedies() {
     assert_eq!(rejected.code(), error_code::INVALID_REQUEST);
     assert_eq!(rejected.detail(), "host_id is invalid");
     assert!(rejected.is_rejected());
+    assert!(rejected.registered_runner().is_none());
+}
+
+/// A second registration of one host is a conflict that names the runner the
+/// host already is, so the caller recovers by reading it.
+#[test]
+fn a_registered_host_names_its_runner() -> Result<(), af_core::error::Error> {
+    let runner = af_core::id::Uuid7::parse("0199a801-1000-7000-8000-000000000001")?;
+    let error = super::host_registered(runner.clone());
+
+    assert_eq!(error.code(), error_code::RUNNER_HOST_REGISTERED);
+    assert_eq!(error.detail(), super::DETAIL_HOST_REGISTERED);
+    assert_eq!(error.registered_runner(), Some(&runner));
+    assert!(!error.is_rejected());
+    assert!(!error.is_datastore_unavailable());
+    assert!(error.to_string().contains(runner.as_str()), "{error}");
+    Ok(())
 }
 
 #[test]

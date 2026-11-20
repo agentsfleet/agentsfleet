@@ -20,8 +20,8 @@ pub const LIST_RUNNERS_FIRST: &str = include_str!("list_runners_first.sql");
 /// status, `$2` and `$3` the cursor, `$4` the page size.
 pub const LIST_RUNNERS_AFTER: &str = include_str!("list_runners_after.sql");
 
-/// One runner with current work counts and durable lifetime counters. `$1`
-/// runner, `$2` the active run status.
+/// One runner with its current work counts. `$1` runner, `$2` the active run
+/// status, `$3` the caller's tenant, `$4` whether the caller sees every tenant.
 pub const RUNNER_DETAIL: &str = include_str!("runner_detail.sql");
 
 /// Confirms the history owner exists.

@@ -1,19 +1,19 @@
 //! Private draft rows are always scoped by workspace and creator together.
 
-/// The creator's live draft, locked, with its head revision and source and
-/// publication references resolved by join.
+/// The creator's live draft, locked, with its head revision and source
+/// reference resolved by join.
 ///
 /// The expiry check reads `clock_timestamp()` after the lock: a draft that
-/// expired while this request waited on it reads as missing. A source or
-/// publication whose revision was deleted reads as NULL columns.
+/// expired while this request waited on it reads as missing. A source whose
+/// revision was deleted reads as NULL columns.
 ///
 /// `$1` draft, `$2` workspace, `$3` creator.
 pub(crate) const LOCK: &str = include_str!("lock.sql");
 
 /// `$1` id, `$2` workspace, `$3` tenant, `$4` creator, `$5` title, `$6` status,
 /// `$7` tenant model (NULL for the platform default), `$8` source type,
-/// `$9` source Plugin revision, `$10` source fleet revision, `$11` instance
-/// name, `$12` linked fleet, `$13` the initial counter.
+/// `$9` source fleet revision, `$10` instance name, `$11` linked fleet, `$12`
+/// the initial counter.
 pub(crate) const CREATE: &str = include_str!("create.sql");
 
 /// `$1` draft, `$2` and `$3` the in-flight message statuses.

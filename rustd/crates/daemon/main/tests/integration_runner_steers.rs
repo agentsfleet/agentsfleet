@@ -184,10 +184,6 @@ async fn fleet_steer_replays_before_status() {
 /// The target's run reads the sender line, then the words, at a short text
 /// and at 64 KiB, far past the 8 KiB a steer was once held to; and the next
 /// run reads it as a prior turn.
-///
-/// Not at the text ceiling: the stored body carries the words twice, as
-/// `message` and as `text`, so a steer near 1,048,576 characters outgrows the
-/// runner protocol's 2 MiB frame (`af_wire::protocol::MESSAGE_BYTES_MAX`).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_body_reaches_the_target_turn() {

@@ -1,10 +1,12 @@
 //! A run too large for the runner protocol's frame fails at assignment.
 //!
-//! A fleet's message to another, at the text ceiling in three-byte
-//! characters, is a 3 MiB body the steer route takes; the target's run would
-//! carry it past the frame's 2 MiB. The daemon fails that turn the moment it
-//! would have sent it, under its own code, instead of handing a runner a
-//! frame the encoder refuses and letting the run lapse and be reassigned.
+//! No route accepts a body that fills the 32 MiB frame: a fleet's message to
+//! another, at the text ceiling in three-byte characters, is a 3 MiB body the
+//! steer route takes and the target's run carries. So the test stores that
+//! steer, then grows its stored body past the frame, standing in for any
+//! field that outgrows it. The daemon fails that turn the moment it would
+//! have sent it, under its own code, instead of handing a runner a frame the
+//! encoder refuses and letting the run lapse and be reassigned.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -30,6 +32,10 @@ const CEILING_CHARS: usize = 1_048_576;
 
 /// Three UTF-8 bytes, one character.
 const THREE_BYTES: char = '界';
+
+/// Characters of [`THREE_BYTES`] whose UTF-8 alone passes the runner frame
+/// (`af_wire::protocol::MESSAGE_BYTES_MAX`, 32 MiB).
+const PAST_THE_FRAME_CHARS: i32 = 32 * 1024 * 1024 / 3 + 1;
 
 /// How long the turn is given to fail once its sender's run has settled.
 const FAIL_WITHIN: Duration = Duration::from_secs(10);
@@ -85,6 +91,27 @@ async fn a_run_too_large_for_its_frame_fails_with_its_code() {
         stored.request_json.matches(THREE_BYTES).count(),
         CEILING_CHARS
     );
+    // Only the words grow, so the body keeps the steer's shape; built in
+    // Postgres, so the test never holds a second 32 MiB copy.
+    sqlx::query(
+        "UPDATE thread.turns \
+         SET request_json = jsonb_set(request_json, ARRAY['message'], to_jsonb(repeat($2, $3))) \
+         WHERE id = $1",
+    )
+    .bind(&turn)
+    .bind(THREE_BYTES.to_string())
+    .bind(PAST_THE_FRAME_CHARS)
+    .execute(
+        &mut *crew
+            .run()
+            .booted
+            .database
+            .acquire()
+            .await
+            .expect("a connection"),
+    )
+    .await
+    .expect("the stored body grows past the frame");
 
     // The sender's run settles, freeing the one worker for the target's turn.
     let settled = report(crew.run(), &report_body(&run, &crew.run().turn_id, fence)).await;

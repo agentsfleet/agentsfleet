@@ -5,7 +5,6 @@ mod failure;
 mod input;
 mod models;
 mod output;
-mod plugin;
 mod review;
 mod revision;
 mod source;
@@ -25,10 +24,6 @@ pub use output::{
     Accepted, Candidate, Created, Draft, DraftCard, DraftState, Message, MessageState, Page,
 };
 pub(crate) use output::{CANCELLED, EDITING, QUEUED, RUNNING};
-pub use plugin::{
-    Plugin, PluginCard, PluginQuery, PluginRevision, Publication, PublishPlugin, PublishRevision,
-    Published, RevisionSummary,
-};
 
 /// Bound on opaque model references, independent of their current spelling.
 pub const MAX_MODEL_REF_BYTES: usize = 256;

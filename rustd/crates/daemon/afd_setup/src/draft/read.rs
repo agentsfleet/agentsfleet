@@ -7,7 +7,7 @@ use crate::{
     candidate,
     error::{ErrorKind, raise::query},
     sql,
-    types::{Draft, DraftState, PinColumns, Publication, SourcePin},
+    types::{Draft, DraftState, PinColumns, SourcePin},
 };
 use af_core::id::Uuid7;
 use jiff::Timestamp;
@@ -34,7 +34,6 @@ pub(crate) struct Locked {
     pub(crate) user_id: Uuid7,
     pub(crate) instance_name: Option<String>,
     pub(crate) source_pin: Option<SourcePin>,
-    pub(crate) publication: Option<Publication>,
 }
 
 /// [`sql::draft::LOCK`]'s row, by column name.
@@ -56,38 +55,20 @@ struct LockedRow {
     user_id: Uuid7,
     instance_name: Option<String>,
     source_type: String,
-    source_plugin_id: Option<Uuid7>,
-    source_plugin_revision_id: Option<Uuid7>,
     source_fleet_id: Option<Uuid7>,
     source_fleet_revision: Option<i64>,
-    publication_plugin_id: Option<Uuid7>,
-    publication_revision_id: Option<Uuid7>,
-    publication_digest: Option<String>,
 }
 
 impl LockedRow {
     fn decode(self) -> Result<Locked> {
-        let plugin = self.source_plugin_id.zip(self.source_plugin_revision_id);
         let fleet = match (self.source_fleet_id, self.source_fleet_revision) {
             (Some(fleet), Some(revision)) => Some((fleet, revision)),
             _ => None,
         };
         let source_pin = SourcePin::from_columns(PinColumns {
             source_type: self.source_type,
-            plugin,
             fleet,
         })?;
-        let publication = match (
-            self.publication_plugin_id.zip(self.publication_revision_id),
-            self.publication_digest,
-        ) {
-            (Some((plugin_id, revision_id)), Some(canonical_digest)) => Some(Publication {
-                plugin_id,
-                revision_id,
-                canonical_digest,
-            }),
-            _ => None,
-        };
         Ok(Locked {
             id: self.id.clone(),
             status: crate::draft::word(&self.status)?,
@@ -105,7 +86,6 @@ impl LockedRow {
             user_id: self.user_id.clone(),
             instance_name: self.instance_name,
             source_pin,
-            publication,
         })
     }
 }
@@ -160,7 +140,6 @@ pub(crate) async fn project(connection: &mut PgConnection, locked: Locked) -> Re
         candidate,
         review: None,
         linked_fleet_id: locked.fleet_id,
-        publication: locked.publication,
         closed_at: locked.closed_at,
         expires_at: locked.expires_at,
     })

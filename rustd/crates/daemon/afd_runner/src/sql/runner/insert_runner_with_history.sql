@@ -7,6 +7,7 @@ WITH inserted AS (
   VALUES ($1, $2::text, $3::text, $4::text, $5::text, $6::jsonb, $7::text,
           $8::jsonb, $9::int, $10::text, $11::timestamptz, $12::bigint,
           $17, $19::jsonb, $20::boolean, $23::boolean, $22::uuid, now(), now())
+  ON CONFLICT ON CONSTRAINT uq_runners_tenant_id_host_id DO NOTHING
   RETURNING id, created_at
 )
 INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)

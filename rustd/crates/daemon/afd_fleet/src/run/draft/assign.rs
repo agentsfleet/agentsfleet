@@ -28,7 +28,7 @@ use sqlx::Connection as _;
 
 use super::DraftTarget;
 use crate::error::{Result, query};
-use crate::run::{AssignedRun, RunOwner, RunService, sql};
+use crate::run::{AssignedRun, RunOwner, RunService, runner_runs, sql};
 
 /// What query failures name the draft assignment as.
 const CONTEXT: &str = "assign a draft run";
@@ -63,7 +63,18 @@ struct Won {
 #[derive(sqlx::FromRow)]
 struct Prior {
     predecessor_run_id: Option<Uuid7>,
+    expired_runner_id: Option<Uuid7>,
     earlier_runs: i64,
+}
+
+/// What taking a draft's thread came to.
+struct Taken {
+    /// The thread and whether the assignment reassigns the turn; `None` when
+    /// the draft yields nothing now.
+    won: Option<(Won, bool)>,
+    /// The lapsed holder whose run the assignment expired, counted once the
+    /// transaction commits.
+    expired: Option<Uuid7>,
 }
 
 /// What one candidate's assignment came to.
@@ -154,12 +165,15 @@ impl RunService {
             return Ok(Placement::Skipped);
         };
         let owner = RunOwner::Draft(turn.draft_id.clone());
-        let Some((won, reassignment)) = self
+        let taken = self
             .take_thread(&mut tx, drafts, runner, &turn, &mut owed)
-            .await?
-        else {
+            .await?;
+        let Some((won, reassignment)) = taken.won else {
             tx.commit().await.map_err(query(CONTEXT))?;
             owed.settle(drafts);
+            if let Some(expired) = &taken.expired {
+                runner_runs::expired(expired);
+            }
             return Ok(Placement::Skipped);
         };
         let issue = Issue {
@@ -179,6 +193,10 @@ impl RunService {
         drafts.start_setup_turn(&mut tx, &turn).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         owed.settle(drafts);
+        if let Some(expired) = &taken.expired {
+            runner_runs::expired(expired);
+        }
+        runner_runs::acquired(runner);
         let tool = setup_tool(turn.candidate.is_some());
         Ok(Placement::Issued(Box::new(DraftAssignment {
             run_id,
@@ -193,9 +211,9 @@ impl RunService {
 
     /// Wins the draft's thread, bumping its fence, and expires the lapsed run
     /// that ran the turn before: the thread and whether this assignment reassigns the
-    /// turn. `None` when a live runner still holds the thread, or when the turn's
-    /// runs lapsed [`af_core::limits::EVENT_RUNS_MAX`] times, which fails
-    /// it and frees the thread rather than reassigning it forever.
+    /// turn, and whose run it expired. No thread when a live runner still holds it,
+    /// or when the turn's runs lapsed [`af_core::limits::EVENT_RUNS_MAX`] times,
+    /// which fails it and frees the thread rather than reassigning it forever.
     async fn take_thread(
         &self,
         tx: &mut sqlx::PgConnection,
@@ -203,7 +221,7 @@ impl RunService {
         runner: &Uuid7,
         turn: &SetupTurn,
         owed: &mut SetupOwed,
-    ) -> Result<Option<(Won, bool)>> {
+    ) -> Result<Taken> {
         let owner = RunOwner::Draft(turn.draft_id.clone());
         let won: Option<Won> = sqlx::query_as(sql::shared::ASSIGN_THREAD)
             .bind(owner.fleet_id())
@@ -216,7 +234,10 @@ impl RunService {
             .await
             .map_err(query(CONTEXT))?;
         let Some(won) = won else {
-            return Ok(None);
+            return Ok(Taken {
+                won: None,
+                expired: None,
+            });
         };
         let prior: Prior = sqlx::query_as(sql::shared::EXPIRE_PRIOR_RUN)
             .bind(owner.fleet_id())
@@ -227,8 +248,13 @@ impl RunService {
             .fetch_one(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
+        let expired = prior.expired_runner_id;
         if prior.earlier_runs < i64::from(af_core::limits::EVENT_RUNS_MAX) {
-            return Ok(Some((won, prior.predecessor_run_id.is_some())));
+            let reassignment = prior.predecessor_run_id.is_some();
+            return Ok(Taken {
+                won: Some((won, reassignment)),
+                expired,
+            });
         }
         // Every earlier run lapsed unreported: the turn is lost, not retried forever.
         drafts
@@ -240,7 +266,7 @@ impl RunService {
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        Ok(None)
+        Ok(Taken { won: None, expired })
     }
 
     /// Writes the draft's run under its assignment's fence with

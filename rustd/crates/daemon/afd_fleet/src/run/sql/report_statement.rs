@@ -31,7 +31,6 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) runner_id: &'a Uuid7,
     pub(crate) fleet_id: &'a Uuid7,
     pub(crate) workspace_id: &'a Uuid7,
-    pub(crate) succeeded: bool,
     /// Whether a person stopped the run: it settles `stopped`, not `reported`.
     pub(crate) stopped: bool,
     /// The pricing facts the lines were priced under, which the statement
@@ -79,7 +78,6 @@ impl<'a> ReportStatement<'a> {
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(crate::run::sql::RUN_STATUS_ACTIVE)
             .bind(settled_status(self.stopped))
-            .bind(self.succeeded)
             .bind(afd_billing::sql::work::FLEET_RUN)
             .bind(af_wire::usage::LineKind::Model.as_str())
             .bind(afd_billing::RUN_NANOS_PER_SEC)
@@ -133,7 +131,7 @@ impl<'a> ReportStatement<'a> {
         ReportAnswer::read(&row, self.run_id)
     }
 
-    /// Binds `$15` to `$26`: the runner's request lines, as parallel arrays.
+    /// Binds `$14` to `$25`: the runner's request lines, as parallel arrays.
     fn bind_lines<'q>(&self, statement: Statement<'q>) -> Statement<'q>
     where
         'a: 'q,

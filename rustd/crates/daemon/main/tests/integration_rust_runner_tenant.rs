@@ -89,7 +89,6 @@ async fn tenant_runner(scene: &Scenario, credential: &str) -> (Uuid7, String) {
         .expect("an HTTP client")
         .post(format!("{}/v1/tenants/me/runners", scene.base))
         .bearer_auth(credential)
-        .header("Idempotency-Key", mint_id().as_str())
         .json(&request)
         .send()
         .await

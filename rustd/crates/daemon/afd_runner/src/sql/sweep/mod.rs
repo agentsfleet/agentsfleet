@@ -85,9 +85,8 @@ pub const DELETE_AGED_RUNNER_EVENTS_BATCH: &str =
 /// still holds is at most `MAX_RUNTIME` stale, and the retention window is
 /// longer than that, so a row past it is provably abandoned.
 ///
-/// The tally rides the same statement as the flip, so the counter cannot drift
-/// from the rows it describes. A first tally for a runner writes every count,
-/// since the table declares no defaults.
+/// Answers one row per runner, `runner_id` and `expired_count`, so the caller
+/// counts each expiry on its runner once the batch commits.
 ///
 /// `$1` the active status, `$2` the retention window, `$3` expired, `$4` the
 /// batch limit.

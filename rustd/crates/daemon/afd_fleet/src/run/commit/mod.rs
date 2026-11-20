@@ -21,6 +21,7 @@ use crate::error::{Result, query};
 use crate::run::delivery::Owing;
 use crate::run::fold::Folds;
 use crate::run::report::RunTokens;
+use crate::run::runner_runs;
 use crate::run::settle::Reported;
 use crate::run::sql::report_statement::{ReportAnswer, ReportStatement, SettledReport};
 use crate::run::store::Runs;
@@ -197,7 +198,6 @@ impl Runs {
             runner_id: report.runner_id,
             fleet_id: &run.fleet_id,
             workspace_id: &run.workspace_id,
-            succeeded: outcome.verdict.succeeded(),
             stopped: outcome.verdict.stopped(),
             posture: pricing.posture().as_str(),
             provider: pricing.provider(),
@@ -279,6 +279,7 @@ impl Runs {
             )
             .await?;
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
+        runner_runs::reported(report.runner_id, succeeded);
         Ok(Committed::Settled {
             accepted_hold: settled.accepted_hold,
             charged: settled.charged,

@@ -8,7 +8,7 @@ use crate::{
     candidate,
     error::{ErrorKind, raise::query},
     message, replay, sql,
-    types::{Accepted, CreateDraft, Created, EDITING, MAX_TITLE_CHARS, Source, SourcePin},
+    types::{Accepted, CreateDraft, Created, EDITING, MAX_TITLE_CHARS, SourcePin},
 };
 use af_core::{error_code::AUTHORING_NOT_FOUND, id::Uuid7};
 use af_fleet_runtime::Definition;
@@ -96,7 +96,7 @@ impl Drafts {
     }
 
     async fn allocate(&self, connection: &mut PgConnection, new: New<'_>) -> Result<(Uuid7, bool)> {
-        let captured = candidate::resolve(connection, new.access, new.person, new.request).await?;
+        let captured = candidate::resolve(connection, new.access, new.request).await?;
         model::selected(
             connection,
             &new.person.owner,
@@ -216,10 +216,6 @@ async fn write_draft(
     captured: &candidate::Captured,
 ) -> Result<()> {
     let pin = SourcePin::from(&new.request.source);
-    let plugin_revision = match &new.request.source {
-        Source::Plugin { revision_id, .. } => Some(Uuid7::parse(revision_id.as_str())?),
-        Source::Blank | Source::Definition { .. } | Source::Fleet { .. } => None,
-    };
     sqlx::query(sql::draft::CREATE)
         .bind(id)
         .bind(new.access.workspace)
@@ -232,7 +228,6 @@ async fn write_draft(
         .bind(EDITING)
         .bind(model::tenant_model(&new.request.authoring_model_ref)?)
         .bind(pin.source_type())
-        .bind(plugin_revision.as_ref())
         .bind(captured.fleet_revision.as_ref())
         .bind(captured.instance_name.as_deref())
         .bind(captured.fleet.as_ref())
