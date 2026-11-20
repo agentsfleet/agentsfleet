@@ -16,10 +16,11 @@ use af_observability::semconv::{LABEL_OUTCOME, LABEL_REASON, LABEL_SIGNAL};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
+use af_observability::metrics::label::models::CallOutcome;
 use af_providers::observe::Observer;
 use af_providers::observe::labels::{
-    CallOutcome, DecisionOutcome, DecisionProvider, DecisionPurpose, LABEL_PROVIDER, LABEL_PURPOSE,
-    Provider, RetryReason,
+    DecisionOutcome, DecisionProvider, DecisionPurpose, LABEL_PROVIDER, LABEL_PURPOSE, Provider,
+    RetryReason,
 };
 
 use crate::labels::{

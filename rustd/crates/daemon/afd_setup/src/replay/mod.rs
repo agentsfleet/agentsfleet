@@ -19,7 +19,7 @@ use sha2::{Digest as _, Sha256};
 use sqlx::PgConnection;
 use std::time::Duration;
 
-const CONTEXT: &str = "check authoring operation replay";
+const CONTEXT: &str = "check setup operation replay";
 const HASH_PREFIX: &str = "authoring:v1:sha256:";
 
 /// How long a receipt answers its key, measured from its `created_at`.

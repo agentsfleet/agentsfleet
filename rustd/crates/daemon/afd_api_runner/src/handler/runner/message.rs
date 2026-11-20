@@ -22,7 +22,7 @@ use garde::Validate as _;
 
 use super::schedule::run;
 use crate::auth::RunnerIdentity;
-use crate::services::{RunPlane as _, Services};
+use crate::services::{RunPlane as _, RunnerPlane};
 
 /// The scoped event a message that failed is logged under.
 const EVENT_FAILED: &str = "runner_message_failed";
@@ -69,7 +69,7 @@ const DESCRIPTION: &str = const_format::concatcp!(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run_id): Path<String>,

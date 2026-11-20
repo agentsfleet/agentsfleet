@@ -33,8 +33,8 @@ use std::collections::HashMap;
 
 use af_core::error_code::{self, ErrorCode};
 use af_core::problem::Problem;
-use afd_api::route::FleetRoute;
 use afd_auth::scope::{Scope, ScopeSet};
+use afd_http::route::FleetRoute;
 use axum::Router;
 use axum::extract::Path;
 use axum::response::Response;

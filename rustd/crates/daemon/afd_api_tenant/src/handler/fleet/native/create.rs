@@ -3,7 +3,7 @@
 use super::{access, input, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{body::Bytes, extract::State, response::Response};
@@ -31,7 +31,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn save<D: Services>(
+pub(crate) async fn save<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

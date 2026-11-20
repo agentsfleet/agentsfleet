@@ -42,16 +42,10 @@ afd_fleet_ops.workspace = true
 af_fleet_runtime.workspace = true
 # The text ceiling every text-carrying body is sized from.
 af_validate.workspace = true
-afd_identity.workspace = true
-# The invite email the invite routes send through, behind `services::InviteMail`.
-afd_mail.workspace = true
-# Fleet memory, behind `services::FleetMemories` and the run plane's verbs.
+# Fleet memory's errors, refused through `handler::Refusable`.
 afd_memory.workspace = true
-# The interim message poster, behind `Services::interjector`.
-afd_outbound.workspace = true
 af_observability.workspace = true
 afd_runner.workspace = true
-afd_sse.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_api_wire.workspace = true

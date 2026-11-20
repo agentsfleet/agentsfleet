@@ -22,7 +22,7 @@ use super::schedule::{
     refused_for, schedule_id, standing, write_fence,
 };
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSchedules as _, Services};
+use crate::services::{FleetSchedules as _, RunnerPlane};
 
 /// A fleet retired one of its schedules.
 const EVENT_DELETED: &str = "fleet_schedule_deleted";
@@ -50,7 +50,7 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn update<D: Services>(
+pub(crate) async fn update<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run_id, schedule_id_raw)): Path<(String, String)>,
@@ -117,7 +117,7 @@ pub(crate) async fn update<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn remove<D: Services>(
+pub(crate) async fn remove<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run_id, schedule_id_raw)): Path<(String, String)>,

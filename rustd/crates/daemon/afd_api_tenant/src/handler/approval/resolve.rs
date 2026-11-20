@@ -21,7 +21,7 @@ use axum::response::{IntoResponse as _, Response};
 use super::{DETAIL_ALREADY_RESOLVED, DETAIL_NOT_FOUND, EVENT_RESOLVE, ResolvePath, read_gate};
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceApprovals as _};
+use crate::services::{TenantPlane, WorkspaceApprovals as _};
 
 /// The refusal a decision the path does not spell earns.
 const DETAIL_UNKNOWN_DECISION: &str = "decision must be approve or deny";
@@ -60,7 +60,7 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn resolve<D: Services>(
+pub(crate) async fn resolve<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

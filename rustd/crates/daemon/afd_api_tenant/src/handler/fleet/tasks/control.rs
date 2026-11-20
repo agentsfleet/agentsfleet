@@ -17,7 +17,9 @@ use super::{
     input::{self, TaskPath},
     read,
 };
-use crate::{auth::WorkspaceContext, handler::fleet::detail::parse_fleet_id, services::Services};
+use crate::{
+    auth::WorkspaceContext, handler::fleet::detail::parse_fleet_id, services::TenantPlane,
+};
 
 const EVENT: &str = "fleet_task_control_failed";
 const MALFORMED: &str = "Task control exceeds its supported shape or bounds";
@@ -53,7 +55,7 @@ struct Envelope<'a> {
         (status = 429, description = "Task allowance or request limit reached"), (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE))
 ))]
-pub(crate) async fn change<D: Services>(
+pub(crate) async fn change<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(TaskPath { fleet_id, task_id }): Path<TaskPath>,

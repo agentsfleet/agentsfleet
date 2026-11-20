@@ -8,7 +8,7 @@
 //! `openai/responses_api/mod.rs`); Gemini and Ollama take it inside the
 //! result or, where the wire refuses that, in the user message rig's history
 //! adapter adds. Chat completions take text alone, which
-//! [`Wire::carries_images`](crate::Wire::carries_images) says.
+//! [`InferenceApi::carries_images`](af_wire::inference::InferenceApi::carries_images) says.
 
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use guffbolt::{Image, ImageKind};

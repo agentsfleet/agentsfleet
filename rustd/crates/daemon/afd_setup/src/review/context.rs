@@ -20,7 +20,7 @@ pub(crate) struct Context {
     pub(crate) subject: Subject,
     pub(crate) workspace_id: Uuid7,
     pub(crate) tenant_id: Uuid7,
-    /// The authoring person; absent exactly for [`Subject::System`].
+    /// The person setting up the fleet; absent exactly for [`Subject::System`].
     pub(crate) creator_id: Option<Uuid7>,
     pub(crate) instance_name: Option<String>,
     pub(crate) source_pin: Option<SourcePin>,

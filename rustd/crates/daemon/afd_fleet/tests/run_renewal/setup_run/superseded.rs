@@ -3,7 +3,7 @@
 //! `UZ-RUN-005`, and so is a report naming the live run at the old fence.
 
 use af_core::error_code;
-use afd_fleet::run::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_EXPIRED};
+use afd_state::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_EXPIRED};
 
 use super::{Case, definition, processed, proposal};
 

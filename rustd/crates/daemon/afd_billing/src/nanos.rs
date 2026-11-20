@@ -23,8 +23,6 @@ use af_fleet_runtime::config::BudgetCeiling;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Nanos(i64);
 
-pub use af_core::money::NANOS_PER_USD;
-
 /// What one second of active runtime costs, under either posture.
 ///
 /// $0.0001/sec, about $0.36/hour. Declared once: the daemon is what charges a
@@ -115,7 +113,8 @@ mod tests {
         reason = "the validated budget is the conversion fixture precondition"
     )]
 
-    use super::{NANOS_PER_USD, Nanos};
+    use super::Nanos;
+    use af_core::money::NANOS_PER_USD;
 
     /// A declared ceiling converts to nanos without rounding.
     ///

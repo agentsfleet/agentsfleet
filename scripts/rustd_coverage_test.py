@@ -192,6 +192,35 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertNotIn("per-file", result.stdout)
 
+    def test_a_crate_under_its_own_floor_fails_the_lane(self):
+        harness = str(self.root / "rustd/guffbolt/src/drive/mod.rs")
+        other = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        result = self.judge({harness: {1: 1, 2: 0}, other: {1: 1}}, "--crate-floor", "guffbolt=99")
+        self.assertEqual(result.returncode, judge.EXIT_FLOOR_MISSED, result.stdout)
+        self.assertIn("guffbolt coverage 50.0000% < 99% floor", result.stdout)
+
+    def test_a_crate_at_its_floor_passes(self):
+        harness = str(self.root / "rustd/guffbolt/src/drive/mod.rs")
+        other = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        result = self.judge({harness: {1: 1, 2: 1}, other: {1: 0}}, "--crate-floor", "guffbolt=99")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("guffbolt coverage 100.0000% >= 99% floor", result.stdout)
+
+    def test_a_crate_floor_over_an_unmeasured_crate_is_refused(self):
+        other = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        result = self.judge({other: {1: 1}}, "--crate-floor", "guffbolt=99")
+        self.assertEqual(result.returncode, judge.EXIT_UNUSABLE)
+        self.assertIn("no report measured a line of guffbolt", result.stderr)
+
+    def test_a_crate_floor_that_is_not_a_number_is_refused(self):
+        other = str(self.root / "rustd/crates/daemon/afd_x/src/lib.rs")
+        result = self.judge({other: {1: 1}}, "--crate-floor", "guffbolt=most")
+        self.assertEqual(result.returncode, judge.EXIT_UNUSABLE)
+        self.assertIn("--crate-floor ['guffbolt=most']", result.stderr)
+
+    def test_an_e2e_crate_is_named_past_its_layer(self):
+        self.assertEqual(judge.crate_of("/w/rustd/crates/e2e/af_e2e/src/lib.rs"), "af_e2e")
+
 
 if __name__ == "__main__":
     unittest.main()

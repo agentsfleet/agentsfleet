@@ -37,9 +37,7 @@ mod runtime_tests;
 pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
 pub use self::runtime::RuntimeSettings;
-pub use af_otlp::{
-    OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
-};
+use af_otlp::OtlpConfig;
 
 pub use self::knobs::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB,

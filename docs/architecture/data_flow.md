@@ -91,7 +91,7 @@ The diagrams live with their flows. Each is the section's proof, so none is dupl
 | Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
 | QStash owns the clock | the runner owns no schedule timer | §B. TRIGGER |
 | A message accepted during a live run folds into it | one Postgres statement writes its turn; the running run takes it at its next model call, so no second run starts | §"C. EXECUTE"; M242_002 |
-| Private drafts own setup | Native JSON can initialize a draft; GitHub/template-bundle import and Markdown export stay unsupported | [`user_flow.md`](./user_flow.md) §"§8.1 Authoring the Fleet" |
+| Private drafts own setup | Native JSON can initialize a draft; GitHub/template-bundle import and Markdown export stay unsupported | [`user_flow.md`](./user_flow.md) §"§8.1 Setting up the Fleet" |
 | Retained setup identity | Retry resumes missing checks under the original creation identity | §The install failure scenario |
 | Browser SSE uses the authenticated Next.js proxy | the server resolves the session and forwards a Bearer; the daemon authenticates Authorization ([AUTH](../AUTH.md)) | §D. WATCH |
 | Outbound answers are generic `thread.deliveries` rows, each taken by one worker per lane | the report path stays provider-agnostic (Invariant 9) | §"C. EXECUTE"; M106, M244 |
@@ -393,11 +393,11 @@ Improve applies a reviewed setup revision to a saved fleet. An accepted initial 
 
 A draft has no queued/running message when Save begins. GET draft returns normalized effective setup, immutable requirements, live readiness, and a digest. The person chooses Save or Save and run now; trigger content is identical.
 
-Stop raises the draft's accepted-message watermark before Save. It cancels queued and running messages through that sequence; retained attempts keep their accounting. Discovery and the locked assignment check only attempts above the watermark.
+Stop cancels one turn (`PATCH D/turns/{turn_id}`) through the Stop every thread shares. A queued turn never runs. The setup run serving a running turn is marked and told to end. Later turns stay queued, and each runs subject to ordinary capacity and balance checks.
 
-A fresh Send refuses uncancelled unknown provider usage after checking exact replay. Stop allows a higher-sequence message to run subject to ordinary capacity and balance checks.
+A stopped run's usage is still logged and charged. A superseded run's report and context save write nothing.
 
-Save keeps the watermark while the draft enters `saving`; activation closes it. An archive during setup that restores `editing` also keeps the watermark, so old proposals and answers stay fenced. Old reports may still settle their original attempt.
+Save requires that no message be queued or running; the draft enters `saving`, and activation closes it.
 
 Already accepted candidate edits stay available for the person's review; Stop does not undo them. `afd_setup` owns the Stop implementation and the creation regression tests that define these boundaries.
 
@@ -457,7 +457,7 @@ Fleet DELETE requires fleet:admin and works in any status: it releases live work
 
 Improve copies an immutable fleet setup revision into a creator-private draft. POST fleet revisions carries `If-Match: setup_etag`, one header replay key, candidate ID, and review digest. It atomically checks target/source revisions and updates the setup pointer, policy marker, and affected inherited schedules.
 
-A stale base or digest refuses the whole update. The response is the new setup tag and schedule states; publication stays separate.
+A stale base or digest refuses the whole update. The response is the new setup tag and schedule states.
 
 Already held runs keep captured setup except live revocation and renewed budget ceilings. New runs use the reviewed new revision. A policy marker drift blocks new turns until a human reviews and applies a revision.
 

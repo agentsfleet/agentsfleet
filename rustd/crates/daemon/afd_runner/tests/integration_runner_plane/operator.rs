@@ -226,7 +226,7 @@ async fn test_retiring_a_runner_that_ran_a_setup_run_removes_its_runs() {
         &mut connection,
         (&runner, &mint_id(), &mint_id()),
         SetupRunRow {
-            status: afd_runner::sql::RUN_STATUS_EXPIRED,
+            status: afd_state::sql::RUN_STATUS_EXPIRED,
             run_expires_at: clock::now(),
         },
     )

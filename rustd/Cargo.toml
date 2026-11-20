@@ -10,11 +10,15 @@
 #   harness/     the model, secret and egress seams the agent harness drives
 #   runner/      `agentsfleet-runner` (`runner/main`) and the crates only it links
 #   daemon/      `agentsfleetd` (`daemon/main`) and the crates only it links
+#   e2e/         test-only crates that may depend on every layer; nothing
+#                depends on them
 #
-# A crate depends on its own layer or a lower one, and `runner/` and `daemon/`
-# never on each other. The agent harness, `guffbolt/`, sits beside `crates/`
-# rather than in a layer: it is a standalone harness, publishable on its own,
-# that depends on no crate of this workspace, so any layer may depend on it.
+# A crate depends on its own layer or a lower one, `runner/` and `daemon/`
+# never on each other, and nothing on `e2e/`, in every dependency table: normal,
+# build and dev. `af_e2e`'s `tests/layers.rs` enforces it. The agent harness,
+# `guffbolt/`, sits beside `crates/` rather than in a layer: it is a standalone
+# harness, publishable on its own, that depends on no crate of this workspace,
+# so any layer may depend on it.
 # This root is a VIRTUAL manifest: no `[package]`, so it builds no library or
 # binary of its own. The workspace mechanics (virtual root, explicit member
 # list, the lint rationale below) come from ~/Projects/oss/bun.
@@ -27,9 +31,36 @@
 [workspace]
 resolver = "3"
 members = [
+    # foundation: no product knowledge
     "crates/foundation/af_config",
+    "crates/foundation/af_core",
+    "crates/foundation/af_crypto",
+    "crates/foundation/af_validate",
+    # protocol: the types both binaries speak
+    "crates/protocol/af_context",
+    "crates/protocol/af_fleet_runtime",
+    "crates/protocol/af_observability",
+    "crates/protocol/af_otlp",
+    "crates/protocol/af_stream",
+    "crates/protocol/af_webhook",
+    "crates/protocol/af_wire",
+    # harness: the model, secret and egress seams the agent harness drives
+    "crates/harness/af_egress",
+    "crates/harness/af_inference",
+    "crates/harness/af_providers",
+    "crates/harness/af_secrets",
+    # runner: `agentsfleet-runner` and the crates only it links
+    "crates/runner/afr_agent",
+    "crates/runner/afr_executor",
+    "crates/runner/afr_memory",
+    "crates/runner/afr_sandbox",
+    "crates/runner/afr_supervisor",
+    "crates/runner/afr_telemetry",
+    "crates/runner/afr_tools",
+    # `agentsfleet_runner`, the runner binary; nothing depends on it.
+    "crates/runner/main",
+    # daemon: `agentsfleetd` and the crates only it links
     "crates/daemon/afd_admin",
-    "crates/daemon/afd_turns",
     "crates/daemon/afd_api",
     "crates/daemon/afd_api_ingress",
     "crates/daemon/afd_api_operator",
@@ -38,54 +69,39 @@ members = [
     "crates/daemon/afd_api_wire",
     "crates/daemon/afd_approval",
     "crates/daemon/afd_auth",
-    "crates/daemon/afd_setup",
+    # `afd_bench`, the measurement lanes; nothing depends on it.
     "crates/daemon/afd_bench",
     "crates/daemon/afd_billing",
     "crates/daemon/afd_bus",
     "crates/daemon/afd_connector",
-    "crates/protocol/af_context",
-    "crates/foundation/af_core",
     "crates/daemon/afd_credential",
     "crates/daemon/afd_cron",
-    "crates/foundation/af_crypto",
     "crates/daemon/afd_db",
     "crates/daemon/afd_fleet",
     "crates/daemon/afd_fleet_lifecycle",
     "crates/daemon/afd_fleet_ops",
-    "crates/protocol/af_fleet_runtime",
     "crates/daemon/afd_gate",
     "crates/daemon/afd_gateway",
     "crates/daemon/afd_http",
     "crates/daemon/afd_identity",
-    "crates/protocol/af_inference",
     "crates/daemon/afd_ingress",
     "crates/daemon/afd_mail",
     "crates/daemon/afd_memory",
-    "crates/protocol/af_observability",
-    "crates/protocol/af_otlp",
     "crates/daemon/afd_outbound",
     "crates/daemon/afd_runner",
+    "crates/daemon/afd_setup",
     "crates/daemon/afd_sse",
     "crates/daemon/afd_state",
     "crates/daemon/afd_tenant",
-    "crates/foundation/af_validate",
+    "crates/daemon/afd_turns",
     "crates/daemon/afd_vault",
-    "crates/protocol/af_webhook",
-    "crates/protocol/af_wire",
-    "crates/protocol/af_stream",
-    "crates/runner/afr_agent",
-    "crates/harness/af_egress",
-    "crates/runner/afr_executor",
-    "crates/runner/afr_memory",
-    "crates/harness/af_providers",
-    "crates/runner/afr_sandbox",
-    "crates/harness/af_secrets",
-    "guffbolt",
-    "crates/runner/afr_supervisor",
-    "crates/runner/afr_telemetry",
-    "crates/runner/afr_tools",
-    "crates/runner/main",
     "crates/daemon/main",
+    # e2e: test-only crates over every layer; nothing depends on them
+    # `af_e2e`: the daemon-and-runner suites, the recovery bench and the layer
+    # test; nothing depends on it.
+    "crates/e2e/af_e2e",
+    # standalone: the agent harness, beside `crates/`
+    "guffbolt",
 ]
 # Vendored upstream crates patched below: not ours to lint, test or grade.
 exclude = ["patches/datagram-socket"]
@@ -109,65 +125,120 @@ keywords = ["agentsfleet", "daemon", "runner"]
 categories = ["network-programming"]
 
 [workspace.dependencies]
-af_config = { path = "crates/foundation/af_config" }
-# Exact model tokenization for the daemon authoring boundary.
-tiktoken-rs = { version = "0.12.1", default-features = false }
-percent-encoding = "2.3.2"
-# Every known secret value replaced in one pass over a tool's output, a frame
-# or a reply: leftmost-longest multi-pattern matching, rather than one scan per
-# secret. Already in the graph through `regex`.
-aho-corasick = { version = "1.1.5", default-features = false, features = ["std", "perf-literal"] }
-# Anonymous sparse mappings exercise matcher size refusals without allocating their contents.
-memmap2 = { version = "0.9.12", default-features = false }
 # Intra-workspace members resolve through the workspace, never by direct sibling
-# path (M-CRATES-IN-WORKSPACE).
+# path (M-CRATES-IN-WORKSPACE). By layer, as `members` is; each line says what
+# the crate holds. The two binaries' crates are named only where a crate needs
+# them; `afd_bench` and `af_e2e` have no entry: nothing depends on them.
+
+# --- foundation: no product knowledge
+# Layered TOML loading into the caller's validated settings type.
+af_config = { path = "crates/foundation/af_config" }
+# No-I/O primitives: ids, error codes and the error shell, limits, money, paging, clock.
+af_core = { path = "crates/foundation/af_core" }
+# Envelope encryption, message authentication, entropy and secret types.
+af_crypto = { path = "crates/foundation/af_crypto" }
+# Bounds on untrusted input garde lacks: custom rules, a route-ceilinged `?limit`,
+# and the report-to-sentence table.
+af_validate = { path = "crates/foundation/af_validate" }
+
+# --- protocol: the types both binaries speak
+# Model-window planning, compaction and checkpoints, over a store trait its
+# embedders implement; it holds no store.
+af_context = { path = "crates/protocol/af_context" }
+# The fleet Definition: configuration parsed once into the typed policy every
+# gate reads, and the setup proposal rules.
+af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
+# The telemetry vocabulary, metric families and export machinery.
+af_observability = { path = "crates/protocol/af_observability" }
+# The OTLP transport both binaries build their pipelines through: the knobs,
+# the exporters inside `af_observability`'s counting wrappers, the globals.
+af_otlp = { path = "crates/protocol/af_otlp" }
+# Bounded framing and the HTTP/2 and HTTP/3 duplex transports of a runner session.
+af_stream = { path = "crates/protocol/af_stream" }
+# The signature wall: what an unauthenticated delivery must prove before
+# anything reads its body.
+af_webhook = { path = "crates/protocol/af_webhook" }
+# The `/v1/runners` protocol types the daemon and runner exchange.
+af_wire = { path = "crates/protocol/af_wire" }
+
+# --- harness: the model, secret and egress seams the agent harness drives
+# The runner's outbound guard: a request admitted against the run's network
+# policy, its credentials placed at send time, no private address reached.
+af_egress = { path = "crates/harness/af_egress" }
+# Model API codecs, transport and stream over rig, and the persisted inference
+# settings they validate.
+af_inference = { path = "crates/harness/af_inference" }
+# guffbolt's `Model` over every provider wire.
+af_providers = { path = "crates/harness/af_providers" }
+# The runner's secrets and the one masker every outbound text passes.
+af_secrets = { path = "crates/harness/af_secrets" }
+
+# --- runner: `agentsfleet-runner` and the crates only it links
+# The agent engine: one run's turn over guffbolt.
+afr_agent = { path = "crates/runner/afr_agent" }
+# The in-sandbox process and file executor and its socket protocol.
+afr_executor = { path = "crates/runner/afr_executor" }
+# One run's memory, loaded and pushed through agentsfleetd.
+afr_memory = { path = "crates/runner/afr_memory" }
+# The sandbox engines: the interface every engine meets, and bubblewrap.
+afr_sandbox = { path = "crates/runner/afr_sandbox" }
+# The trusted runner half: pool, renew, report, recovery, verbs, downlink.
+afr_supervisor = { path = "crates/runner/afr_supervisor" }
+# The runner's telemetry: the credential-free endpoint, the span budget and
+# the runner's own metric families. Every runner crate that measures records
+# through it; it depends on none of them but the tool catalog.
+afr_telemetry = { path = "crates/runner/afr_telemetry" }
+# The tool catalog and the handlers adapting guffbolt's tools.
+afr_tools = { path = "crates/runner/afr_tools" }
+
+# --- daemon: `agentsfleetd` and the crates only it links
+# The priced-model catalogue and platform-default metadata.
 afd_admin = { path = "crates/daemon/afd_admin" }
-# The admission ledger: the Postgres row that IS a producer's acceptance, and
-# the queue entry that is only its receipt. Its own crate for the reason
-# `afd_turns` gives for existing — one owner per table — and because every
-# producer crate (`afd_turns`, `afd_ingress`, `afd_cron`, `afd_approval`,
-# `afd_runner`) admits through it while none of them may depend on another.
-afd_turns = { path = "crates/daemon/afd_turns" }
+# The HTTP shell: the route table, admission and the refusal shape.
 afd_api = { path = "crates/daemon/afd_api" }
+# Signed-delivery HTTP handlers.
 afd_api_ingress = { path = "crates/daemon/afd_api_ingress" }
+# Operator HTTP handlers.
 afd_api_operator = { path = "crates/daemon/afd_api_operator" }
+# Runner-control HTTP handlers.
 afd_api_runner = { path = "crates/daemon/afd_api_runner" }
+# Tenant HTTP handlers.
 afd_api_tenant = { path = "crates/daemon/afd_api_tenant" }
+# The daemon's own API types: every admin, tenant, operator and ingress shape
+# no runner speaks. Split from `af_wire` so an edit here rebuilds no runner
+# crate.
+afd_api_wire = { path = "crates/daemon/afd_api_wire" }
+# Approval gates: the queue, the one decision Postgres admits, and the
+# continuation an approval lands.
 afd_approval = { path = "crates/daemon/afd_approval" }
+# Credential proof and capability decisions, with no datastore.
 afd_auth = { path = "crates/daemon/afd_auth" }
-afd_setup = { path = "crates/daemon/afd_setup" }
 # What a run costs and what a tenant has. Split out of `afd_fleet` because it
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
-# calls it — the runner plane's other 23,000 lines never ask about money.
+# calls it: the run plane's other lines never ask about money.
 afd_billing = { path = "crates/daemon/afd_billing" }
+# Signals over the NATS message bus: subjects, wakes, subscriptions.
+afd_bus = { path = "crates/daemon/afd_bus" }
 # Connecting a workspace to a third party: the signed install state, the
 # code-for-token exchange, and the grant that lands in the vault. Its own crate
 # rather than a module in `afd_api` for the reason `afd_ingress` is one — the
 # state machine and the vendor conversation are decided with no router in
 # sight, and `afd_api` is already the workspace's largest crate.
 afd_connector = { path = "crates/daemon/afd_connector" }
-af_core = { path = "crates/foundation/af_core" }
-af_context = { path = "crates/protocol/af_context" }
 # What a run may USE: the declared secret, the vault that opens it, the provider
 # it dials, the token a broker mints. Split from afd_fleet once the one misfiled
 # file (an `impl Plane` living under credential/) stopped tying it to the run.
 afd_credential = { path = "crates/daemon/afd_credential" }
-af_crypto = { path = "crates/foundation/af_crypto" }
+# Fleet schedules: the stored intent, the external scheduler it is reconciled
+# against, and the signed fire that wakes a fleet.
+afd_cron = { path = "crates/daemon/afd_cron" }
+# Pools per role, the migrator, the schema files and the test seeds.
 afd_db = { path = "crates/daemon/afd_db" }
-# `thread.turns` and its live items. A crate of its own because the table
-# had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
-# plane, so `afd_approval` copied the insert rather than depend on runs,
-# money, policy and four sweepers to reuse ten lines of SQL.
+# The run plane: assigning, renewing and settling a fleet's runs, the turn
+# checkpoints they write, and durable tasks. One crate: a report settles its
+# task inside the run's transaction.
 afd_fleet = { path = "crates/daemon/afd_fleet" }
-# What a fleet is ALLOWED to do, and the gate a run stops at when the answer
-# needs a person. The run plane calls down into it at two moments and it
-# calls back at none, which is what let it out.
-afd_gate = { path = "crates/daemon/afd_gate" }
-afd_gateway = { path = "crates/daemon/afd_gateway" }
-af_stream = { path = "crates/protocol/af_stream" }
-afd_http = { path = "crates/daemon/afd_http" }
-af_inference = { path = "crates/protocol/af_inference" }
-# Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
+# Deliberately NOT folded into `afd_fleet`, which is the run plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
 # that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and
 # login modules would then rebuild behind a configuration parser and a bus
@@ -178,14 +249,22 @@ afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 # is the host's own plane and WRITES it — a run-history join reaching for
 # `fleet.fleets` and `thread.turns` would put both on the heartbeat path.
 afd_fleet_ops = { path = "crates/daemon/afd_fleet_ops" }
-af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
+# What a fleet is ALLOWED to do, and the gate a run stops at when the answer
+# needs a person. The run plane calls down into it at two moments and it
+# calls back at none, which is what let it out.
+afd_gate = { path = "crates/daemon/afd_gate" }
+# The runner connection owner: one authenticated native session per host.
+afd_gateway = { path = "crates/daemon/afd_gateway" }
+# Transport policy the handler crates share: admission, authentication,
+# the envelope and the route metadata.
+afd_http = { path = "crates/daemon/afd_http" }
+# The identity provider's side: JSON Web Token verification and users.
 afd_identity = { path = "crates/daemon/afd_identity" }
-# What a signed delivery is resolved against. Not folded into `afd_turns`,
-# which owns the same table's reads: this needs the vault and the config
-# parser, and adding them there would put AES-GCM and a configuration
-# document reader behind every history page the dashboard asks for. The same argument
-# `afd_vault` makes for not living in `afd_fleet`.
-afd_cron = { path = "crates/daemon/afd_cron" }
+# What a signed delivery is resolved against: the fleet's binding, its signing
+# secret, and the at-most-once append. Not folded into `afd_turns`, which owns
+# the same table's reads: this needs the vault and the config parser, and
+# adding them there would put AES-GCM and a configuration document reader
+# behind every history page the dashboard asks for.
 afd_ingress = { path = "crates/daemon/afd_ingress" }
 # Product email: the invite rendered from templates kept in this repository and
 # sent over SMTP through the relay the `smtp-relay` platform bag names. Its own
@@ -194,31 +273,33 @@ afd_ingress = { path = "crates/daemon/afd_ingress" }
 afd_mail = { path = "crates/daemon/afd_mail" }
 # Fleet memory behind one store trait. Its own crate so the run plane and both
 # route families reach memory through the trait, and a store for another vendor
-# is a new implementation rather than an edit to the runner plane.
+# is a new implementation rather than an edit to the run plane.
 afd_memory = { path = "crates/daemon/afd_memory" }
-af_observability = { path = "crates/protocol/af_observability" }
-# The OTLP transport both binaries build their pipelines through: the knobs,
-# the exporters inside `af_observability`'s counting wrappers, the globals.
-af_otlp = { path = "crates/protocol/af_otlp" }
+# Delivering answers back to connectors.
 afd_outbound = { path = "crates/daemon/afd_outbound" }
-afd_bus = { path = "crates/daemon/afd_bus" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
 afd_runner = { path = "crates/daemon/afd_runner" }
+# Setup drafts and candidates, the daemon half of a setup run, and the draft's
+# context checkpoint store.
+afd_setup = { path = "crates/daemon/afd_setup" }
 # One SSE connection's frames and the fan-in behind a workspace stream. Its own
 # crate rather than a module in `afd_api`: the frame shapes, the sequence
 # discipline and the concurrent-stream ceiling are decided with no router in
 # sight, and `afd_api` is already the workspace's largest crate.
 afd_sse = { path = "crates/daemon/afd_sse" }
+# The credential-directory reads authentication starts from, and the run,
+# fleet and runner status spellings.
 afd_state = { path = "crates/daemon/afd_state" }
+# API keys, command-line credentials, device login and workspace ownership.
 afd_tenant = { path = "crates/daemon/afd_tenant" }
-# The bounds every crate declares on untrusted input and cannot get from garde
-# alone: the custom rules (finite, NUL-free, digits, a charset), a `?limit`
-# proved against its route's ceiling, and the table from a reported path to a
-# route's fixed sentence. A leaf beside `af_core` rather than a module in it
-# (M-SMALLER-CRATES): it depends on garde and nothing of ours.
-af_validate = { path = "crates/foundation/af_validate" }
+# `thread.turns` and its live items: durable intake, one turn per producer key,
+# ordering, backlog and wake. A crate of its own because the table had no
+# owner: its statements sat in `afd_fleet::sql` behind the whole run plane, so
+# `afd_approval` copied the insert rather than depend on runs, money, policy
+# and four sweepers to reuse ten lines of SQL.
+afd_turns = { path = "crates/daemon/afd_turns" }
 # The one reader and writer of `vault.secrets`: the workspace secret surface,
 # the runner plane's by-name and locked reads, and the typed bag reader.
 # Deliberately NOT folded into `afd_fleet`, which is thirty thousand lines, nor
@@ -226,38 +307,24 @@ af_validate = { path = "crates/foundation/af_validate" }
 # cannot start without and would then rebuild every login when a projection
 # column moved.
 afd_vault = { path = "crates/daemon/afd_vault" }
-# The signature wall: what an unauthenticated delivery must prove before
-# anything reads its body. Its own crate rather than a module in `afd_auth`,
-# which answers a different question — who a CALLER is and what they may do.
-# A signed delivery has no principal, and the wall must be provable with no
-# datastore, no runtime and no router.
-af_webhook = { path = "crates/protocol/af_webhook" }
-af_wire = { path = "crates/protocol/af_wire" }
-# The daemon's own API types: every admin, tenant, operator and ingress shape
-# no runner speaks. Split from `af_wire` so an edit here rebuilds no runner
-# crate.
-afd_api_wire = { path = "crates/daemon/afd_api_wire" }
-# The Rust runner: the supervisor outside every sandbox, the sandbox engines,
-# the executor that runs inside each one, and the agent-engine seam. They depend
-# on `af_wire`, `af_core` and `af_observability` and on nothing else from the
-# daemon (`docs/architecture/runner_execution.md` §Crates).
-afr_agent = { path = "crates/runner/afr_agent" }
-af_egress = { path = "crates/harness/af_egress" }
-afr_executor = { path = "crates/runner/afr_executor" }
-afr_memory = { path = "crates/runner/afr_memory" }
-af_providers = { path = "crates/harness/af_providers" }
+# The daemon binary, `daemon/main`; its library is what the suites boot.
+agentsfleetd = { path = "crates/daemon/main" }
+
+# --- standalone: the agent harness, beside `crates/`
 # The agent harness: one loop's order of turns over the embedder's
 # conversation, what a run of one kind adds as an extension, and the tools a
 # loop is offered. Outside the layer folders: it depends on no crate here.
 guffbolt = { path = "guffbolt" }
-afr_sandbox = { path = "crates/runner/afr_sandbox" }
-af_secrets = { path = "crates/harness/af_secrets" }
-afr_supervisor = { path = "crates/runner/afr_supervisor" }
-# The runner's telemetry: the credential-free endpoint, the span budget and
-# the runner's own metric families. Every runner crate that measures records
-# through it; it depends on none of them but the tool catalog.
-afr_telemetry = { path = "crates/runner/afr_telemetry" }
-afr_tools = { path = "crates/runner/afr_tools" }
+
+# Exact model tokenization for the daemon authoring boundary.
+tiktoken-rs = { version = "0.12.1", default-features = false }
+percent-encoding = "2.3.2"
+# Every known secret value replaced in one pass over a tool's output, a frame
+# or a reply: leftmost-longest multi-pattern matching, rather than one scan per
+# secret. Already in the graph through `regex`.
+aho-corasick = { version = "1.1.5", default-features = false, features = ["std", "perf-literal"] }
+# Anonymous sparse mappings exercise matcher size refusals without allocating their contents.
+memmap2 = { version = "0.9.12", default-features = false }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).

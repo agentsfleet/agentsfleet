@@ -93,7 +93,7 @@ fn initialization_exposes_policy_collection_and_scalar_types() {
     );
 }
 
-// Value: protects=customer-requested HTTP settings are visible to the authoring model;
+// Value: protects=customer-requested HTTP settings are visible to the setup model;
 // fails_when=the closed proposal schema excludes fields accepted by native validation.
 #[test]
 fn initialization_exposes_reviewed_http_destination_settings() {

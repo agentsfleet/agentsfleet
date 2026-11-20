@@ -260,7 +260,7 @@ pub(crate) fn concrete_path(template: &str, workspace: Option<&str>) -> String {
             + open;
         path.push_str(&rest[..open]);
         let fill = match workspace {
-            Some(owned) if &rest[open..=close] == afd_api::route::WORKSPACE_PARAMETER => owned,
+            Some(owned) if &rest[open..=close] == afd_http::route::WORKSPACE_PARAMETER => owned,
             _ => PARAMETER_FILL,
         };
         path.push_str(fill);

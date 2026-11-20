@@ -152,7 +152,7 @@ async fn a_fleet_that_is_not_an_identifier_never_reaches_the_seam() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{method}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::fleet::detail::DETAIL_FLEET_ID,
+            afd_http::handler::DETAIL_FLEET_ID,
             "{method}"
         );
     }

@@ -6,7 +6,7 @@ use serde::Serialize;
 
 /// The owner must add balance before another turn can be admitted.
 const ACTION_OWNER_BILLING: &str = "owner_billing";
-/// The selected authoring model must be replaced while the draft is idle.
+/// The selected setup model must be replaced while the draft is idle.
 const ACTION_CHOOSE_MODEL: &str = "choose_authoring_model";
 /// The conversation or candidate must shrink to fit the model window.
 const ACTION_REDUCE_CONTEXT: &str = "reduce_context";

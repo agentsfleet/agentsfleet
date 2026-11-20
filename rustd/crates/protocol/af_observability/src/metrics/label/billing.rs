@@ -11,8 +11,8 @@ closed_set! {
     WorkType {
         /// A fleet run's run.
         FleetRun => "fleet_run",
-        /// A setup-chat attempt.
-        AuthoringAttempt => "authoring_attempt",
+        /// A draft-owned setup run.
+        SetupRun => "setup_run",
     }
 }
 

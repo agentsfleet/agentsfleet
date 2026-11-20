@@ -55,7 +55,7 @@ impl Fixture {
             .expect("seed the capacity workspace");
         RunnerSeed::new(
             &fixture.runner,
-            afd_runner::sql::RUNNER_STATUS_ACTIVE,
+            afd_state::sql::RUNNER_STATUS_ACTIVE,
             POLICY,
         )
         .workers(workers)
@@ -81,7 +81,7 @@ impl Fixture {
             tx,
             (&self.runner, &self.workspace, &self.tenant),
             SetupRunRow {
-                status: afd_runner::sql::RUN_STATUS_ACTIVE,
+                status: afd_state::sql::RUN_STATUS_ACTIVE,
                 run_expires_at: until,
             },
         )
@@ -98,7 +98,7 @@ impl Fixture {
                 fleet: &self.fleet,
                 workspace: &self.workspace,
                 tenant: &self.tenant,
-                status: afd_runner::sql::RUN_STATUS_ACTIVE,
+                status: afd_state::sql::RUN_STATUS_ACTIVE,
                 expires_at: until,
                 stamped_at: None,
             },

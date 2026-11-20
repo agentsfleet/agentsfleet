@@ -18,7 +18,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use afd_api::services::SignupMetadata;
+use afd_api_ingress::services::SignupMetadata;
 use afd_auth::principal::Subject;
 use afd_identity::MetadataUnwritten;
 

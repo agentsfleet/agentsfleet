@@ -16,7 +16,7 @@ fn checkpoint(case: &Case, generation: u64, goal: &str) -> Checkpoint {
     serde_json::from_value(serde_json::json!({
         "format_version": 1,
         "identity": {
-            "scope": af_context::repository::identity(&case.draft.id),
+            "scope": afd_setup::context::identity(&case.draft.id),
             "model": "setup-model",
             "pinned": "setup-pinned"
         },

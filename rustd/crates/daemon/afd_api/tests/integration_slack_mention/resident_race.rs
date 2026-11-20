@@ -99,7 +99,7 @@ fn spawn_latecomer_bind(
     let ingress = fixture.ingress();
     let workspace = fixture.workspace().clone();
     let team = fixture.team.clone();
-    let channel: afd_ingress::slack::ChannelId = CHANNEL.parse().expect("a channel id");
+    let channel: af_fleet_runtime::config::ChannelId = CHANNEL.parse().expect("a channel id");
     tokio::spawn(async move {
         ingress
             .bind_notice_owner(

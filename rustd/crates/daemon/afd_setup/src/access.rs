@@ -8,7 +8,7 @@ use crate::{
 use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
-const CONTEXT: &str = "check current authoring membership";
+const CONTEXT: &str = "check current setup membership";
 
 /// Request identity supplied by the already-authenticated HTTP adapter.
 #[derive(Debug, Clone, Copy)]

@@ -87,12 +87,15 @@ The standards in `.orly/standards/` name things generically. In this
 repository:
 
 - **Crates:** each crate sits in one layer folder under `rustd/crates/`:
-  `foundation/`, `protocol/`, `harness/`, `runner/` or `daemon/`. It depends
-  on its own layer or a lower one, and `runner/` and `daemon/` never on each
-  other (`rustd/Cargo.toml`). Shared crates are `af_*`, daemon-only `afd_*`,
-  runner-only `afr_*`. A layer's binary sits in `main/` (`daemon/main` is
-  `agentsfleetd`, `runner/main` is `agentsfleet_runner`); every other folder
-  is its crate's name.
+  `foundation/`, `protocol/`, `harness/`, `runner/`, `daemon/` or `e2e/`. It
+  depends on its own layer or a lower one, `runner/` and `daemon/` never on
+  each other, and nothing on `e2e/`, in normal, build and dev tables alike
+  (`rustd/Cargo.toml`). `e2e/` holds test-only crates that may depend on every
+  layer: `af_e2e` drives the runner against `agentsfleetd`. Shared and `e2e/`
+  crates are `af_*`, daemon-only `afd_*`, runner-only `afr_*`. A layer's
+  binary sits in `main/` (`daemon/main` is `agentsfleetd`, `runner/main` is
+  `agentsfleet_runner`); every other folder is its crate's name.
+  `af_e2e/tests/layers.rs` enforces these rules from the manifests.
 - **Until the first production deploy, nothing is backward compatible.** The
   daemon, runner, app and CLI ship from one commit, so the runner protocol has
   one `VERSION` and a hello naming any other is refused; a wire, API, config or

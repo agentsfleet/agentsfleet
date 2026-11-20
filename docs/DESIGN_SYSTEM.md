@@ -859,7 +859,7 @@ Save creates an independent fleet from the reviewed setup.
 Improve and Apply revise an existing fleet through a new review rather than creating another fleet.
 Use native setup records throughout. Do not offer file imports, bundle exports, `SKILL.md`, or `TRIGGER.md` authoring.
 
-### Workspace authoring and publication
+### Workspace fleets and setups
 
 The **Fleets** picker lists saved, authorized fleets with names and status. Put Delete in Fleet actions, away from the main navigation target.
 
@@ -879,15 +879,14 @@ Distinguish loading, unavailable history, and a successful empty list. Failed lo
 
 Keep every accepted message and saved assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
 
-During conversation, the selected setup model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
+During conversation, the selected setup model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The runner checks each proposal. The daemon checks the run's kept proposal again at report, then stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
 
-Keep **Instructions** and explicit publication in the setup chat menu throughout the conversation.
+Keep **Instructions** in the setup chat menu throughout the conversation.
 **Instructions** opens a tall side dialog on desktop and a full-screen editor on mobile.
 
-Questions and requested changes continue the conversation. A standalone Save command finalizes the current decisions with the model, then saves the checked setup.
-Publication remains a separate menu action and stores the selected candidate unchanged; the transcript stays private.
+Questions and requested changes continue the conversation. A standalone Save command finalizes the current decisions with the model, then saves the checked setup. The transcript stays private.
 
-Saved fleets return to the same setup page through **Edit setup**. Instructions and publication use the same menu controls.
+Saved fleets return to the same setup page through **Edit setup**. Instructions use the same menu control.
 
 Opening the editor creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the dialog is open.
 

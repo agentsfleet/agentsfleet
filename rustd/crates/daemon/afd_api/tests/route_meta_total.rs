@@ -21,11 +21,11 @@
 
 use std::collections::HashSet;
 
-use afd_api::route::{
+use afd_http::route::{
     AdminRoute, AuthRoute, ConnectorRoute, FleetRoute, OpsRoute, RunnerOpsRoute, RunnerRoute,
     TenantRoute, WebhookRoute, WorkspaceRoute,
 };
-use afd_api::{Guard, Route, RouteClass};
+use afd_http::route::{Guard, Route, RouteClass};
 
 /// The route count the surface is pinned to. Stated as a number so the surface
 /// cannot quietly shed part of itself: a family that lost a route would
@@ -35,7 +35,7 @@ const PINNED_ROUTE_COUNT: usize = 76;
 /// Routes the pinned count includes that this daemon deliberately does not table.
 ///
 /// One. `/v1/fleets/streams`, dropped on purpose — see
-/// `afd_api::route::runner_ops` for the reasoning. Counted rather than
+/// `afd_http::route::runner_ops` for the reasoning. Counted rather than
 /// subtracted inline so the divergence has to be justified to change: another
 /// route going missing still fails this test, which is the whole reason the
 /// count is pinned.
@@ -253,7 +253,7 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
 fn test_ownership_is_checked_exactly_where_the_path_names_a_workspace() {
     for route in Route::all() {
         let meta = route.meta();
-        let addressed = meta.template.contains(afd_api::route::WORKSPACE_PARAMETER);
+        let addressed = meta.template.contains(afd_http::route::WORKSPACE_PARAMETER);
         assert_eq!(
             meta.ownership.is_checked(),
             addressed,

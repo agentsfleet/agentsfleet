@@ -12,13 +12,13 @@ use serde::{Deserialize, Serialize};
 pub enum FailureReason {
     /// The workspace owner's balance cannot cover assignment or renewal.
     InsufficientBalance,
-    /// The pinned authoring model is no longer eligible.
+    /// The pinned setup model is no longer eligible.
     ModelUnavailable,
     /// The assembled context cannot fit its hard bounds.
     ContextTooLarge,
     /// A known-usage provider failure permits a new message.
     ProviderFailed,
-    /// A physical dispatch has an unresolved provider delivery.
+    /// Every run of the turn lapsed unreported, so its usage is unknown.
     ProviderUsageUnknown,
     /// The attempt exhausted its wall-clock allowance.
     AttemptTimedOut,
@@ -34,9 +34,9 @@ pub enum FailureReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Knowledge {
-    /// All physical calls have authoritative usage.
+    /// Every run of the turn reported its usage.
     Known,
-    /// At least one physical call has an unresolved delivery.
+    /// At least one run of the turn lapsed without reporting.
     Unknown,
 }
 

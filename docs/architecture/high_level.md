@@ -358,13 +358,11 @@ Captured here because it surfaced as product direction (marketing showcase + cus
 
 - **Fleet keys as a first-class principal.** Deferred to v2.1.
 
-## Fleet authoring and runtime
-
-The heading keeps its old words because other pages cite it by text.
+## Fleet setup and runtime
 
 The same fleet lifecycle begins with a private setup chat. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet.
 
-Setup has bounded inference and proposal authority. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
+Setup has bounded inference and proposal authority: a setup run's only tool is `propose_setup`. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
 
 The common architecture pages own this sequence:
 
@@ -372,9 +370,9 @@ The common architecture pages own this sequence:
 |---|---|
 | Setup and revisions | [Fleet definitions](fleet_definitions.md#validated-definition) |
 | Activation, intake and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
-| Running and scoped dispatch | [Runner protocol](runner_fleet.md#authoring-runs) |
+| Setup runs | [Runner protocol](runner_fleet.md#setup-runs) |
 | Private copies | [Runner runtime](runner_execution.md#private-content-and-report-retention) |
-| Money | [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) |
+| Money | [Billing](billing_and_provider_keys.md#setup-run-funds-and-settlement) |
 | Interface | [Web app](web_app.md#workspace-setup-and-runtime-subjects) |
 | Wire shapes | [API resources](api_resources.md) |
 

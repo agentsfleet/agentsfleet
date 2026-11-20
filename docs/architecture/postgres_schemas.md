@@ -165,16 +165,13 @@ there is no generic repository trait.
   Both fleet references are `ON DELETE SET NULL`, so purging a fleet never blocks on, or
   deletes, someone's private draft.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
-  field); the sweeper deletes past `expires_at`. The sweep cascades the draft's thread and turns,
-  candidates and answer receipts, and keeps attempts and dispatches (result and native reply scrubbed).
+  field); the sweeper deletes past `expires_at`. The sweep deletes the draft's live runs, and cascades
+  its thread, turns, runs and candidates. Usage lines and replay receipts stay.
 - **Retry window.** A replay receipt answers its key for 24 hours from `created_at` (`afd_setup::replay::REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
 - At or after the boundary, the key is new. The next claim deletes the expired receipt and files its own. `Drafts::maintain` sweeps the rest in bounded batches, waiting for concurrent receipt deletion.
 - The message API returns `thread.turns.operation_id`, written at acceptance, because the turn outlives its receipt.
-- **Lapse sweep.** `idx_attempts_status_deadline_id` indexes `(status, LEAST(run_expires_at,
-  expires_at), id)`, the maintenance sweep's own filter and order. The sweep reads lapsed
-  attempts oldest first and stops at its batch limit without a sort.
-- **Running totals**. `attempts.call_count` and `output_token_count` are aggregates maintained under
-  the attempt lock and read by assignment and renewal (rule 5 exception). The input total had no reader.
+- **Lapse sweep.** A setup run is a `thread.runs` row, so the expiry sweep bills a lapsed setup run
+  as it bills a fleet run.
 - The setup JSON is copied onto each frozen revision table on purpose. A shared definitions table
   would turn draft deletion from a cascade into a reference-counted sweep.
 
@@ -330,14 +327,14 @@ that reads them (rule 7).
 
 | Root deleted | Goes with it | Stays | Scrubbed immediately |
 |---|---|---|---|
-| Draft (user delete or 30-day sweep) | its thread and turns, candidates, answer receipts, draft context checkpoint | attempts, dispatches, usage lines, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
-| User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, usage lines | `dispatches.result` and `dispatches.native_reply` of their attempts |
+| Draft (user delete or 30-day sweep) | its thread, turns and runs, candidates, draft context checkpoint | usage lines, replay receipts | none |
+| User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, usage lines | none |
 | Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runs for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
-| Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Setup private results; each removed object first records its location and charged bytes for remote cleanup |
-| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs and history | attempts, usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Each removed object first records its location and charged bytes for remote cleanup |
+| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs and history | usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | none |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
 | OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
-| Runner (record retired after revoke) | runs, history | attempts (`runner_id` set NULL), usage lines; threads (`last_runner_id` set NULL) | none |
+| Runner (record retired after revoke) | runs, history | usage lines; threads (`last_runner_id` set NULL) | none |
 
 ## vault and memory
 

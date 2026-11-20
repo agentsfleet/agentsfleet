@@ -36,7 +36,7 @@ use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 
 use crate::handler::{Refusal, webhook};
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{IngressPlane, WebhookIngress as _};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
 use super::github::{self, Ingest, Policy};
@@ -125,7 +125,7 @@ const ACTOR_APP_GITHUB: &str = "github-app";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(provider): Path<String>,
     headers: HeaderMap,
@@ -177,7 +177,7 @@ pub(crate) async fn receive<D: Services>(
 /// Split from [`receive`] so the wall crossing and the routing read as the two
 /// separate concerns they are: everything here runs on a body that has already
 /// proved itself, and nothing here can reach the body that has not.
-async fn route<D: Services>(
+async fn route<D: IngressPlane>(
     services: &Arc<D>,
     event: &str,
     body: Bytes,
@@ -274,7 +274,7 @@ async fn route<D: Services>(
 /// rather than a target — signature verification, fleet resolution and one
 /// turn per subscribed fleet all spend the same budget, and fan-out width
 /// is what spends it fastest.
-async fn fan_out<D: Services>(
+async fn fan_out<D: IngressPlane>(
     services: &Arc<D>,
     fleets: &[afd_ingress::Binding],
     digest: &str,

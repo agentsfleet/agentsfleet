@@ -33,6 +33,11 @@ afd_cron.workspace = true
 af_crypto.workspace = true
 afd_http.workspace = true
 afd_ingress.workspace = true
+# A mention's Slack channel id, as the fleet configuration declares it.
+af_fleet_runtime.workspace = true
+# The signup seam: the account it opens and the writeback refusal it names.
+afd_identity.workspace = true
+afd_tenant.workspace = true
 af_observability.workspace = true
 afd_vault.workspace = true
 af_webhook.workspace = true

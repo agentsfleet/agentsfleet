@@ -1,14 +1,19 @@
 .PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs build-test-unit-rustd test-coverage-cli test-coverage-website test-coverage-app test-coverage-design-system test-coverage-all test-runner-kernel test-runner-startup test-coverage-runner-kernel
 
 # Three shards, which CI runs at once; test-unit-rustd runs all three in order.
-# Shards follow layer folders, so a new crate joins one with no edit here:
-# runner = runner/, harness/ and guffbolt; daemon = agentsfleetd; daemon-libs =
-# everything else, afd_bench included. `_rust_lane` fails a shard that selects nothing.
+# A shard is a list of folder globs under rustd/, never of crate names, so a
+# crate joins the shard of the folder it sits in with no edit here, and a move
+# changes its shard rather than dropping it. af_e2e's tests/layers.rs proves
+# every member lands in exactly one. `_rust_lane` fails a shard that selects
+# nothing.
+RUSTD_UNIT_RUNNER_DIRS := crates/harness/* crates/runner/* guffbolt
+RUSTD_UNIT_DAEMON_DIRS := crates/daemon/main crates/e2e/*
+RUSTD_UNIT_DAEMON_LIBS_DIRS := crates/foundation/* crates/protocol/* crates/daemon/afd_*
 _rustd_manifest_name = $(shell awk -F'"' '/^name = /{print $$2; exit}' $(1))
-_rustd_layer = $(sort $(foreach manifest,$(wildcard $(addprefix $(RUSTD_DIR)/crates/,$(addsuffix /*/Cargo.toml,$(1)))),$(call _rustd_manifest_name,$(manifest))))
-_RUSTD_UNIT_RUNNER = $(sort $(call _rustd_layer,runner harness) $(call _rustd_manifest_name,$(RUSTD_DIR)/guffbolt/Cargo.toml))
-_RUSTD_UNIT_DAEMON = agentsfleetd
-_RUSTD_UNIT_DAEMON_LIBS = $(filter-out $(_RUSTD_UNIT_RUNNER) $(_RUSTD_UNIT_DAEMON),$(call _rustd_layer,*))
+_rustd_dirs = $(sort $(foreach manifest,$(wildcard $(addprefix $(RUSTD_DIR)/,$(addsuffix /Cargo.toml,$(1)))),$(call _rustd_manifest_name,$(manifest))))
+_RUSTD_UNIT_RUNNER = $(call _rustd_dirs,$(RUSTD_UNIT_RUNNER_DIRS))
+_RUSTD_UNIT_DAEMON = $(call _rustd_dirs,$(RUSTD_UNIT_DAEMON_DIRS))
+_RUSTD_UNIT_DAEMON_LIBS = $(call _rustd_dirs,$(RUSTD_UNIT_DAEMON_LIBS_DIRS))
 # --all-features: the `test-util` mocks reach failure paths a real datastore
 # will not produce on demand.
 # --no-fail-fast: one run names every failing test binary, not only the first.
@@ -17,15 +22,15 @@ _RUSTD_NEED_CARGO = command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not fo
 
 test-unit-rustd: test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs  ## Run the Rust workspace unit tests (cargo), shard by shard
 
-test-unit-rustd-runner:  ## Rust unit shard: the runner/ and harness/ layers
+test-unit-rustd-runner:  ## Rust unit shard: the harness/ and runner/ layers, and guffbolt
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-runner.log,[rustd] unit: runner,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_RUNNER)))
 
-test-unit-rustd-daemon:  ## Rust unit shard: agentsfleetd, the daemon binary and its suites
+test-unit-rustd-daemon:  ## Rust unit shard: agentsfleetd, the daemon binary, and the e2e/ layer
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-daemon.log,[rustd] unit: daemon,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON)))
 
-test-unit-rustd-daemon-libs:  ## Rust unit shard: every other library crate (daemon/, protocol/, foundation/)
+test-unit-rustd-daemon-libs:  ## Rust unit shard: the foundation/ and protocol/ layers, and the daemon/ libraries
 	@bash scripts/local-dev-test.sh
 	@bun test deploy/local/bootstrap.test.ts
 	@bash deploy/local/linux_test.sh
@@ -80,7 +85,7 @@ test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (
 	  test -f "$$image" && image="$$(realpath "$$image")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" AFR_TOOLBOX_SOURCE="$(CURDIR)/scripts/toolbox" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(or $(KERNEL_LANE_RUNNER),env)" \
-	  cargo run --locked -p afr_sandbox --features test-util --example kernel_lane
+	  cargo run --locked -p agentsfleet_runner --features test-util --example kernel_lane
 	@$(MAKE) --no-print-directory test-runner-startup
 
 # The deployed unit and the shipping binary: an absent toolbox must refuse

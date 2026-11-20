@@ -29,7 +29,4 @@ pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
 pub use self::provider::Provider;
 pub use self::retry::settings::{RetryPolicy, RetrySettings};
-pub use af_inference::log_filter;
-pub use af_inference::transport::REPLY_MAX_BYTES;
-pub use af_wire::inference::InferenceApi as Wire;
 pub use request::context_document;

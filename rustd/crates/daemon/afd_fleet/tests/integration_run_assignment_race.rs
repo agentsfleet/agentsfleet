@@ -48,7 +48,7 @@ async fn test_an_assignment_behind_a_live_assignment_skips_and_takes_nothing() {
         .bind(&second)
         .bind(RUN_TTL)
         .bind(RUNNER_OFFLINE_AFTER)
-        .bind(afd_fleet::run::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
         .fetch_optional(&mut *assigning)
         .await
         .expect("the other runner's assignment wins, uncommitted");

@@ -35,7 +35,7 @@ pub(crate) async fn orphan(held: &Held) {
     let mut connection = database.acquire().await.expect("a pooled connection");
     sqlx::query("UPDATE thread.runs SET status = $2 WHERE id = $1")
         .bind(&held.run_key)
-        .bind(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
+        .bind(afd_state::sql::RUN_STATUS_EXPIRED)
         .execute(&mut *connection)
         .await
         .expect("the run ends unreported");

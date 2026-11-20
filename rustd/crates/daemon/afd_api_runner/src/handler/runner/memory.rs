@@ -26,7 +26,7 @@ use garde::Validate as _;
 
 use crate::auth::RunnerIdentity;
 use crate::handler::malformed;
-use crate::services::{RunPlane as _, Services};
+use crate::services::{RunPlane as _, RunnerPlane};
 
 /// The scoped event a failed load is logged under.
 const EVENT_LOAD: &str = "runner_memory_load_failed";
@@ -69,7 +69,7 @@ const STATE_SUPERSEDED: &str = "superseded";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn load<D: Services>(
+pub(crate) async fn load<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(fleet_id): Path<String>,
@@ -109,7 +109,7 @@ pub(crate) async fn load<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn recall<D: Services>(
+pub(crate) async fn recall<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(fleet_id): Path<String>,
@@ -156,7 +156,7 @@ pub(crate) async fn recall<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn capture<D: Services>(
+pub(crate) async fn capture<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(fleet_id): Path<String>,

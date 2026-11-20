@@ -1,4 +1,4 @@
-//! File mutation cannot bypass private authoring and human review.
+//! File mutation cannot bypass private setup and human review.
 
 use serde::{Deserialize, Serialize};
 

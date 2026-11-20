@@ -38,7 +38,7 @@ pub(crate) async fn purge(
     // its thread goes with the draft's own cascade.
     let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_run::DELETE_RUNS)
         .bind(id)
-        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_all(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

@@ -23,8 +23,8 @@
 #![cfg(feature = "test-util")]
 use std::collections::BTreeSet;
 
-use afd_api::Route;
-use afd_api::route::{Ownership, RunnerRoute, TenantRoute};
+use afd_http::route::Route;
+use afd_http::route::{Ownership, RunnerRoute, TenantRoute};
 
 /// Every path this milestone's §1, §2, §3, §4, §6 and §7 own.
 ///
@@ -317,7 +317,7 @@ fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
         .filter(|route| {
             !matches!(
                 route,
-                Route::Auth(afd_api::route::AuthRoute::IdentityEventClerk)
+                Route::Auth(afd_http::route::AuthRoute::IdentityEventClerk)
             )
         })
         .map(|route| route.meta().template)

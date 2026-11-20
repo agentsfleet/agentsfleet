@@ -20,11 +20,14 @@ use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 
+use crate::OperatorPlane;
 use crate::auth::PersonIdentity;
-use crate::services::Services;
 
 /// The caller's tenant, or the response that refuses it.
-async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<Uuid7, Refusal> {
+async fn tenant<D: OperatorPlane>(
+    services: &D,
+    identity: &PersonIdentity,
+) -> Result<Uuid7, Refusal> {
     afd_http::handler::caller_tenant::of(services, identity.person()).await
 }
 
@@ -53,7 +56,7 @@ async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn register<D: Services>(
+pub(crate) async fn register<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -81,7 +84,7 @@ pub(crate) async fn register<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Query(params): Query<HashMap<String, String>>,
@@ -108,7 +111,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn detail<D: Services>(
+pub(crate) async fn detail<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw): Path<String>,
@@ -143,7 +146,7 @@ pub(crate) async fn detail<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn update<D: Services>(
+pub(crate) async fn update<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw): Path<String>,
@@ -181,7 +184,7 @@ pub(crate) async fn update<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn delete<D: Services>(
+pub(crate) async fn delete<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw): Path<String>,

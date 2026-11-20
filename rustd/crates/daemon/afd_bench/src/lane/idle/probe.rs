@@ -60,13 +60,13 @@ fn candidates<'q, O>(
     runner: &'q Uuid7,
 ) -> sqlx::query::QueryScalar<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments> {
     query
-        .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
+        .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
         .bind(runner)
         .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
         // How long a silent holder binds, and the status a holder must be in
         // to bind at all; the instant they compare against is the statement's.
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-        .bind(afd_fleet::run::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
         .bind(Vec::<Uuid7>::new())
         .bind(None::<&Uuid7>)
         .bind(af_wire::task::CAPABILITY)

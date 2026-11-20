@@ -204,7 +204,7 @@ fn supported(assignment: &DecisionAssignment, request: &DecisionRequest) -> Resu
         .questions
         .iter()
         .all(|named| assignment.profile.capabilities.supports(&named.question))
-        || !af_wire::decision::serialized_within(
+        || !af_validate::serialized_within(
             &(&request.state, &request.questions),
             usize::try_from(assignment.profile.input_max_bytes).unwrap_or(usize::MAX),
         )

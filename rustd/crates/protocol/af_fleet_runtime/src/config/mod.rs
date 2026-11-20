@@ -1,4 +1,4 @@
-//! A stored authoring document, turned once into the policy every gate reads.
+//! A stored setup document, turned once into the policy every gate reads.
 //!
 //! # The shape of the read
 //!
@@ -342,8 +342,8 @@ pub(crate) fn runtime_key(key: &str) -> Option<&'static str> {
     RUNTIME_KEYS.into_iter().find(|known| *known == key)
 }
 
-/// Declarable signing recipes shared with authoring surfaces.
-pub use af_webhook::Family as WebhookFamily;
+/// Declarable signing recipes shared with setup surfaces.
+pub(crate) use af_webhook::Family as WebhookFamily;
 
 #[cfg(test)]
 mod tests {

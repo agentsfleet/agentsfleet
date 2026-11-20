@@ -1,6 +1,6 @@
 //! Complete native message acceptance; this adapter cannot prepare a target itself.
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 use af_wire::task::TaskBindingsInput;
 use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
@@ -28,7 +28,7 @@ const MALFORMED: &str = "Task interpretation exceeds its supported shape or boun
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn accept<D: Services>(
+pub(crate) async fn accept<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run): Path<String>,

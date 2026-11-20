@@ -12,7 +12,7 @@ pub enum SaveOrigin {
     Cli,
     /// Dashboard setup controls.
     Dashboard,
-    /// Completed authoring chat save.
+    /// Completed setup chat save.
     Chat,
 }
 

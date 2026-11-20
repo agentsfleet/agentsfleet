@@ -12,7 +12,8 @@
 
 use af_observability::metrics::label::fleet::SteerPlaced;
 use af_validate::{TEXT_MAX_CHARS, TEXT_TOO_LONG};
-use afd_turns::view::disposition::{Placed, SteerDisposition};
+use af_wire::turn::SteerDisposition;
+use afd_turns::view::disposition::Placed;
 use axum::body::Bytes;
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;

@@ -97,61 +97,37 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 
 ---
 
-## Authoring admission and settlement
-
-The heading keeps its old words because other pages link to it; this section covers setup chat billing.
+## Setup run funds and settlement
 
 Setup chat bills through the shared `Biller` lifecycle (§11), on the same `Arc<dyn Biller>` fleet runs use. `agentsfleetd` builds it once at boot and hands the same biller to the setup path.
 
-Resolve models and billing from `Owned.tenant`, the workspace owner's account, rather than the joined member's account. Send captures the selected reference; admission pins provider/model/inference settings/context/prices. Idle version-guarded draft PATCH can replace a disabled selection; earlier turns keep their pins.
+A setup turn is a draft-owned run on the common run path. Its usage lines carry `work_type = 'setup_run'` and name the run as their work (`WorkKey::SetupRun`).
 
-Model disable, wallet absence, membership removal, and policy-marker drift fail closed. Queue acceptance can precede admission; refusal records the durable bounded Message failure/action from the resource reference.
+Models and billing resolve from `Owned.tenant`, the workspace owner's account, not the joined member's account. Send captures the selected model reference. An idle, version-guarded draft PATCH can replace a disabled selection; earlier turns keep their own.
 
-**Admission**. Bound a setup run by the selected model's total output allowance, upward rounding for eight model calls (`afd_setup::limits::MODEL_CALLS_MAX`), and 300 seconds of runtime fees (`afd_setup::limits::SETUP_RUNTIME`). `afd_setup`'s `setup_run::model::bound` computes it; it is a bound the assignment asks for, not money set aside.
+Model disable, wallet absence, membership removal and policy-marker drift fail closed. A refused assignment records the message's bounded failure.
 
-**Assignment.** The gate reads the owner's balance less the lines the relay has not yet charged (`afd_billing::ledger::balance`). It reads on the assignment's own transaction and refuses a run whose bound it cannot cover. A tenant with no wallet is refused, and nothing is set aside.
+**Bound.** A setup run's bound is 300 seconds of runtime fees (`afd_setup::limits::SETUP_RUNTIME`). On the platform's key it adds the model's output allowance for eight model calls, each rounded up (`afd_setup::limits::MODEL_CALLS_MAX`). `afd_setup`'s `setup_run::model::bound` computes it. It is the amount the assignment checks for, not money set aside.
 
-**Renewal and report.** A setup run renews and reports as a fleet run does. Its lines are logged when it reports, under the run as their work.
+**Assignment.** The gate reads the owner's balance less the lines the relay has not yet charged (`afd_billing::ledger::balance`). It reads on the assignment's own transaction and refuses a run whose bound it cannot cover. A tenant with no wallet is refused.
 
-A second guarded transaction checks the request digest and funding ceiling before recording dispatch intent.
+**Renewal.** Each renewal checks the payer's funds first (`afd_fleet`'s `run/draft/renew.rs`). It logs the runtime slice since the run's cursor and every model request the renewal carries. A refused renewal still logs the request lines, because the runner spent them.
 
-A biller call runs outside these transactions because the biller may take another connection or make a remote request. `Short` returns the wallet failure; `FailOpen` admits an unanswered biller as `Unconfirmed`.
+**Report.** The report transaction settles the run under its fence and logs the last slice and request lines with `log_lines`. The `Rater` prices each line by its whole-request tier. The billing relay settles the lines on its next pass.
 
-**Report.** When the daemon knows the attempt's usage, the report's transaction logs its lines with `log_lines`. Each dispatch with known usage gets one line at its dispatch instant, and the runtime gets one line (`seq` 0). The `Rater` prices each line by its whole-request tier.
+A replayed report finds the run settled and writes nothing. A report at a superseded fence is refused and writes nothing. The expiry sweep bills a dead run's last slice.
 
-The settled outcome is stamped on the attempt, and every later replay reads it there after private text is gone. The report then returns, and the billing relay settles the lines on its next pass. An attempt whose usage is still unknown logs nothing until the replay that learns it.
-
-**Locks.** Setup renewal takes draft → attempt → runner, then refreshes database time after the runner lock.
-Assignment holds the runner first and takes the draft `NOWAIT`.
-[Concurrency](concurrency.md#runner-capacity-and-authoring-lock-order) owns the complete lock order and exceptions.
+**Locks.** Assignment holds the runner row first and takes the creator and the draft `NOWAIT`. Renewal takes the runner row, then the run's thread and row, and never a draft row. The report takes the draft, then the thread and the run, and never the runner row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the complete lock order and exceptions.
 
 The relay moves money in separate transactions, locking wallet → lines.
 
-Charge cumulative known usage once, with monotone counters and exact replay identity. Provider timeout/crash without trusted usage records `knowledge:"unknown"`, never an estimated zero; its lines are logged once accounting resolves, including after Stop.
+### Stop
 
-Current chat blocking considers attempts whose message sequence exceeds the draft's `cancelled_through_sequence`. Discovery and admission under the draft lock use that same rule. Stop releases publication authority for covered sequences, while their content-free attempts keep accounting liability.
+Stop locks the draft, then cancels the turn through the Stop every thread shares (`afd_setup`'s `message/stop.rs`). The run serving the turn is marked and told to end.
 
-A later message gets a run only through normal runner capacity and balance checks. Kept liability can still consume either limit. Fence expiry alone never authorizes replacement or proves that provider billing stopped.
+The next renewal of a stopped run is refused, and its request lines are still logged. Its report settles the usage already spent. Stop does not undo provider work already started.
 
-Fresh Send refuses while an uncancelled attempt has unknown provider usage. Exact accepted replay is checked first and returns its original sequence. Explicit Stop permits later work without discarding the old delivery.
-
-Parse inference-key header syntax before saving dispatch intent. A definite HTTP 401 authentication rejection records a failed call with known usage. Keep reported usage when supplied; otherwise authentication rejection has no generated tokens.
-
-Other failed responses without trusted usage stay unknown. The terminal report logs earlier calls and runtime fees once, and the relay charges them.
-
-### Stop and terminal races
-
-Stop carries the last accepted sequence and atomically raises `cancelled_through`. Queue entries at or below it become cancelled. A later send receives a greater sequence and is not cancelled by a delayed old Stop.
-
-Stop, report, and candidate proposal share the guarded attempt/subject rows. If completion commits first it stays completed; otherwise cancellation fences later text/proposal writes. Repeated lower cutoffs return the standing watermark.
-
-A terminal report can settle already-incurred usage after Stop without displaying a late answer. Replayed reports never charge twice. A late key rejection keeps attempt evidence, but emits a message finish only if its guarded update changes a running message.
-
-This also prevents duplicate finishes when model revocation wins first. Timeout, cancellation, and provider errors are separate visible states. Stop does not claim it can undo provider work already started.
-
-Save uses the reviewed candidate after queued/running messages have stopped. Closing the draft does not remove its accounting attempts or restore old publication authority.
-
-Cancelling installing setup returns the linked draft to editing and keeps its Stop watermark. A late old report stays accounting-only in both cases.
+Save uses the reviewed candidate after queued and running messages have stopped. Closing the draft keeps its usage lines.
 
 ## Detail
 
@@ -315,7 +291,7 @@ The page is cut by the `(tenant_id, created_at, id)` index before any join, unde
 
 Setup rows have `charge_type: setup` and `run_id`; `turn_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response.
 
-Setup costs stay visible after private chat deletion because a setup line names its content-free attempt. Without a kept public fleet link, `fleet_id` and `fleet_name` are null.
+Setup costs stay visible after private chat deletion because a setup line keeps its run's identifier in `run_id`, with no foreign key. Without a kept public fleet link, `fleet_id` and `fleet_name` are null.
 
 A fleet line keeps the fleet's identifier and the name it had when the line was written, through the fleet's deletion. A line for a fleet already purged names it by its identifier.
 
@@ -550,7 +526,7 @@ The api_key, platform OR self-managed, crosses one boundary cleanly. It exists o
 
 - `vault.secrets` rows as envelope ciphertext.
 - Server-side process memory. For runtime, `Providers::resolve_reference` opens the selected key in `agentsfleetd` and delivers it on `ExecutionPolicy.api_key` to the trusted runner supervisor. The key stays outside the sandbox and `secrets_map` ([`runner_execution.md`](./runner_execution.md#crates)).
-- Setup instead opens the selected inference key inside the daemon for each scoped dispatch; the setup runner receives only its capability. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that distinction. Resolved keys use `SecretString` in `afd_credential`.
+- Setup does the same: the assignment opens the pinned model's key and carries it in the setup run's payload. A tenant runner is never assigned a setup run on the platform model. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that boundary. Resolved keys use `SecretString` in `afd_credential`.
 - Outbound HTTPS request headers to the provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**
@@ -724,11 +700,11 @@ A biller in another process never joins or delays our transaction, and the run c
 
 | Method | When | Idempotent on |
 |---|---|---|
-| `check(&Ask) -> Funds` | each fleet renewal, each setup-chat renewal and model call | writes nothing |
+| `check(&Ask) -> Funds` | each fleet renewal and each setup run renewal | writes nothing |
 | `settle(&Settlement) -> Receipt` | the relay, and the relay's expired-run pass | `(work, kind, seq)` |
 | `balance(&Account) -> Balance` | the tenant billing page | read only |
 
-`WorkKey` is `FleetRun(id)` or `AuthoringAttempt(id)`, so the two products share one vocabulary. `check` answers `Funds::Covered`, `Short { available, asked }` or `Unconfirmed`, which the outage policy lets through.
+`WorkKey` is `FleetRun(id)` or `SetupRun(id)`, so the two products share one vocabulary. `check` answers `Funds::Covered`, `Short { available, asked }` or `Unconfirmed`, which the outage policy lets through.
 
 A `Settlement` carries each line's raw usage and the daemon's price. A biller that prices for itself may ignore our price, and `LedgerBiller` charges it.
 
@@ -792,7 +768,7 @@ Fleet runs write only usage lines. The turn-history reads sum a turn's cost from
 
 The run `metered_*` token cursors and the thread row's runtime cursor are gone. Runners report each request, and each run meters its own run time. The fleet charges table, its trigger and schema slot 2010 are gone.
 
-**Removed from setup chat:** the coverage rule (`balance >= (running + 1) * worst_case_turn_cost`), the report's own wallet debit and the per-attempt settlement table (slot 2020). Every setup-side wallet row lock and the two-source union behind the charges page went with them.
+**Removed from setup chat:** the coverage rule (`balance >= (running + 1) * worst_case_turn_cost`), the report's own wallet debit and the separate setup settlement table (slot 2020). Every setup-side wallet row lock and the two-source union behind the charges page went with them. M253 removed the daemon's setup model calls, so setup usage now arrives only through setup run renewals and reports.
 
 ## 13. Open questions deferred to v2.1+ and v3
 

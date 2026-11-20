@@ -10,7 +10,7 @@
 
 use af_core::id::Uuid7;
 use af_core::timing::SANDBOX_HOLD_IDLE;
-use afd_fleet::run::sql::RUNNER_STATUS_DRAINED;
+use afd_state::sql::RUNNER_STATUS_DRAINED;
 use jiff::Timestamp;
 
 use super::{hold, live, thread};

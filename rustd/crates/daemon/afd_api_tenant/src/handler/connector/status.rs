@@ -28,7 +28,7 @@ use super::{EVENT_READ, EVENT_WRITE, provider_of};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::handler::secret::STATE_REFERENCED;
-use crate::services::{Services, WorkspaceConnectors as _};
+use crate::services::{TenantPlane, WorkspaceConnectors as _};
 
 /// One connection, or the absence of one, as the wire renders it.
 ///
@@ -77,7 +77,7 @@ fn view(connection: Option<&Connection>) -> ConnectionView<'_> {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn read<D: Services>(
+pub(crate) async fn read<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path((_workspace, provider_segment)): Path<(String, String)>,
@@ -126,7 +126,7 @@ pub(crate) async fn read<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn disconnect<D: Services>(
+pub(crate) async fn disconnect<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path((_workspace, provider_segment)): Path<(String, String)>,

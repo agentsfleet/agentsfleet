@@ -16,7 +16,7 @@ use http::StatusCode;
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantTeam as _};
+use crate::services::{TenantPlane, TenantTeam as _};
 
 use super::one_page;
 use super::own::OwnTenant;
@@ -57,7 +57,7 @@ const STATE_LAST_OWNER: &str = "last_owner";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     owner: OwnTenant,
 ) -> Result<Response, Refusal> {
@@ -89,7 +89,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn remove<D: Services>(
+pub(crate) async fn remove<D: TenantPlane>(
     State(services): State<Arc<D>>,
     user: IdPath<MemberSegment>,
     owner: OwnTenant,
@@ -125,7 +125,7 @@ pub(crate) async fn remove<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn in_workspace<D: Services>(
+pub(crate) async fn in_workspace<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
 ) -> Result<Response, Refusal> {

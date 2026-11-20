@@ -132,7 +132,7 @@ fn runner_and_authoring_failures_keep_their_crates_classification() {
             );
             (kind, decided, Error::from(runner))
         });
-    let authoring = afd_db::error::one_of_each_kind()
+    let setups = afd_db::error::one_of_each_kind()
         .into_iter()
         .map(|(kind, database)| {
             let setup = afd_setup::Error::from(database);
@@ -145,7 +145,7 @@ fn runner_and_authoring_failures_keep_their_crates_classification() {
         });
 
     let mut outages = 0;
-    for (kind, decided, lifted) in runners.chain(authoring) {
+    for (kind, decided, lifted) in runners.chain(setups) {
         let read = (
             lifted.code(),
             lifted.detail(),

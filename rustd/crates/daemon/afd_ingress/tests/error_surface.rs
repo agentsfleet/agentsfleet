@@ -31,7 +31,7 @@
 use af_core::test_util::error_surface::{Expect, grade};
 
 use af_core::error_code;
-use afd_ingress::error::{detail, one_of_each_kind};
+use afd_ingress::error::one_of_each_kind;
 
 /// The labels the sample gives the failures a retry could plausibly fix.
 ///
@@ -94,7 +94,7 @@ fn an_outage_answers_the_unavailable_code_and_everything_else_does_not() {
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 "{label} is an outage and must answer the code a retry reads"
             );
-            assert_eq!(error.detail(), detail::DATABASE_UNAVAILABLE);
+            assert_eq!(error.detail(), af_core::error::DETAIL_DATABASE_UNAVAILABLE);
         } else {
             assert_ne!(
                 error.code(),
@@ -131,7 +131,7 @@ fn no_sentence_names_which_internal_failure_it_was() {
     );
     assert_eq!(
         opaque.first().copied(),
-        Some(detail::OPERATION_FAILED),
+        Some(af_core::error::DETAIL_OPERATION_FAILED),
         "and the one sentence they share is the generic one"
     );
 }

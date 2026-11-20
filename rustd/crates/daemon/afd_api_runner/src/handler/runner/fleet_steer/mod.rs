@@ -44,7 +44,7 @@ use http::StatusCode;
 use super::fleets::{DETAIL_FLEET_ID, DETAIL_FLEET_NOT_FOUND, STATE_SUPERSEDED, proven};
 use super::schedule::write_fence;
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSteering as _, RunPlane as _, Services};
+use crate::services::{FleetSteering as _, RunPlane as _, RunnerPlane};
 
 /// The scoped event a steer that failed outright is logged under.
 const EVENT_FAILED: &str = "runner_fleet_steer_failed";
@@ -116,7 +116,7 @@ const DESCRIPTION: &str = concat!(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run_id): Path<String>,
@@ -228,7 +228,7 @@ fn refusal_of(error: afd_turns::view::Error) -> Refusal {
 
 /// Tells every screen on the target the message was admitted, before a
 /// runner takes it. Once: a repeat carries no intake instant.
-async fn announce<D: Services>(
+async fn announce<D: RunnerPlane>(
     services: &D,
     target: &Uuid7,
     standing: &Standing,

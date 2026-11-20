@@ -96,7 +96,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs" |
 | How do drafts and saved fleets relate? | [Fleet definitions and revisions](fleet_definitions.md#drafts-and-fleets) |
 | What does one run write, end to end, and when is its sandbox destroyed? | [`run_flow.md`](./run_flow.md) — one run walked end to end against the Rust source, with its open gaps |
-| What is the proposed chat-to-fleet flow? | [`docs/architecture/high_level.md#fleet-authoring-and-runtime`](high_level.md#fleet-authoring-and-runtime) |
+| What is the proposed chat-to-fleet flow? | [`docs/architecture/high_level.md#fleet-setup-and-runtime`](high_level.md#fleet-setup-and-runtime) |
 | Where is the complete workspace chat review packet? | [`docs/reviews/workspace-setup/review-packet.md`](../reviews/workspace-setup/review-packet.md) |
 | Which documents changed in the chat cutover rewrite? | [Rewrite report](../reviews/workspace-setup/rewrite-report.md) |
 | What is the detailed signup-to-result ASCII flow? | [`docs/architecture/data_flow.md#fleet-setup-and-runtime-sequence`](data_flow.md#fleet-setup-and-runtime-sequence) |
@@ -106,7 +106,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | Which resources support fleet setup and runtime? | [API resources](api_resources.md) |
 | What are the exact new API inputs, outputs, and missing pieces? | [`docs/architecture/api_resources.md`](api_resources.md) |
 | How can creation retry without duplicate fleets or lost schedule fires? | [`docs/architecture/data_flow.md#fleet-creation-and-setup-recovery`](data_flow.md#fleet-creation-and-setup-recovery) |
-| How would a runner refine a private draft? | [`docs/architecture/runner_fleet.md#authoring-runs`](runner_fleet.md#authoring-runs) |
+| How would a runner refine a private draft? | [`docs/architecture/runner_fleet.md#setup-runs`](runner_fleet.md#setup-runs) |
 | Which streaming code do setup and fleet chat share? | [Shared chat implementation and verification](shared_chat_verification.md) |
 | What should Claude Agent Aiwa challenge before agreement? | [`docs/reviews/workspace-setup/claude-review-prompt.md`](../reviews/workspace-setup/claude-review-prompt.md) |
 | What prompt should ChatGPT use as CTO AIWA? | [`docs/reviews/workspace-setup/chatgpt-review-prompt.md`](../reviews/workspace-setup/chatgpt-review-prompt.md) |
@@ -150,7 +150,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🗃️ [`postgres_schemas.md`](./postgres_schemas.md) | Which Postgres schema owns each table, and the naming rules. |
 | 🖥️ [`web_app.md`](./web_app.md) | The dashboard's server-client rules. |
 | [`shared_chat_verification.md`](./shared_chat_verification.md) | Shared provider reader, browser lifecycle, tracing, limits and verification evidence. |
-| [`docs/architecture/high_level.md#fleet-authoring-and-runtime`](high_level.md#fleet-authoring-and-runtime) | Common validated fleet setup and reviewed lifecycle. |
+| [`docs/architecture/high_level.md#fleet-setup-and-runtime`](high_level.md#fleet-setup-and-runtime) | Common validated fleet setup and reviewed lifecycle. |
 | 🧪 [`testing.md`](./testing.md) | Test ownership, lanes and the coverage bar. |
 | 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |
 | 🔌 [`connectors.md`](./connectors.md) | Provider connections, App ingress and fleet subscriptions. |
@@ -188,9 +188,9 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | **Workspace** (`identity.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
 | **Fleet** (`fleet.fleets`, `fleet_id`) | A durable AI agent defined by a reviewed Definition, saved into one workspace. [(more)](./high_level.md#1-product-thesis) |
 | **Definition** | A validated description, instructions and fleet configuration stored in immutable revisions. [(more)](./fleet_definitions.md#validated-definition) |
-| **Producer** (`afd_turns::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` or `slack_mention`), stored on the turn with its dedup key. [(more)](./run_flow.md#admission-commits-the-queue-row) |
+| **Producer** (`afd_turns::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` or `slack_mention`), stored on the turn with its dedup key. [(more)](./run_flow.md#intake-commits-the-queue-row) |
 | **Thread** (`thread.threads`) | One conversation, one per fleet and one per draft, keyed by its owner's id. It holds the fence, the sticky runner, the warm hold and the resume bookmark; one runner at a time can be assigned it, and an assignment raises `fencing_token` and holds until `run_expires_at`. [(more)](./thread_model.md#threadthreads) |
-| **Turn** (`thread.turns`) | One input on a thread and its answer. A fleet turn is unique per `(producer, producer_key)` so a retried delivery is not run twice, written `queued`, opened `received` when a run takes it, and settled by the report. [(more)](./run_flow.md#admission-commits-the-queue-row) |
+| **Turn** (`thread.turns`) | One input on a thread and its answer. A fleet turn is unique per `(producer, producer_key)` so a retried delivery is not run twice, written `queued`, opened `received` when a run takes it, and settled by the report. [(more)](./run_flow.md#intake-commits-the-queue-row) |
 | **Turns queue** (`thread.turns`) | Unsettled turns ordered by `sequence` within each thread. Gateway assignment passes take the oldest head under the thread and turn fences. [(more)](./datastore_scaling.md#the-turns-ledger-is-the-queue) |
 | **Wake notification** (`af.thread.<thread_id>.wake`) | A thread hint on its own NATS subject, which each replica reads through one `af.thread.*.wake` wildcard. It starts a gateway assignment pass; each replica's 5 s recovery probe covers a lost notification. Idle runners send no run requests. [(more)](runner_protocol.md#recovery-and-availability) |
 | **Fencing token** | The thread's `fencing_token` a won assignment returns, copied onto the run's `fencing_token`; a report carrying an older one is refused. [(more)](./runner_fleet.md#system-guarantees-read-this-first) |

@@ -84,24 +84,37 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 # 95 since Nov 10, 2026, on Indy's "to 95%".
 RUSTD_PATCH_FLOOR ?= 95
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
+# guffbolt, the published harness, holds a floor of its own beside the global
+# one, over its own lines of the union.
+RUSTD_GUFFBOLT_FLOOR ?= 99
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
+  --crate-floor guffbolt=$(RUSTD_GUFFBOLT_FLOOR) \
   $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
 # Each shard owns its Postgres and NATS; test-coverage-rustd-merge grades them.
-#   runner     runner crates, plus the daemon suite's `integration_rust_runner::`
-#   daemon     agentsfleetd minus the runner and native-stream modules
-#   stream     the daemon suite's native-stream scenarios
-#   api        afd_api and afd_fleet
-#   substrate  everything else, by exclusion, so a new crate lands here
-# No test falls between shards, and a filter matching nothing fails the lane.
+# A shard is a layer group, named by folder globs under rustd/ as the unit
+# shards are (make/test-unit.mk), so a crate is measured in the shard of the
+# folder it sits in:
+#   foundation  the foundation/ and protocol/ layers
+#   harness     the harness/ layer
+#   runner      the runner/ layer
+#   daemon      the daemon/ layer, then the suites that need the cluster alone
+#   e2e         the daemon-and-runner suites (af_e2e)
+#   guffbolt    the published harness, graded at RUSTD_GUFFBOLT_FLOOR too
+# afd_bench is measured by no shard: its sampled counters are measurements,
+# not assertions, and RUSTD_COVERAGE_IGNORE keeps its lines out of the floor.
+# af_e2e's tests/layers.rs proves every member lands in exactly one shard or in
+# RUSTD_COVER_SKIP, and a filter matching nothing fails the lane.
 # RUSTD_SHARD names one shard, which writes lcov-<shard>.info and grades
 # nothing; unset runs every shard and grades. Any other subset is refused.
-RUSTD_RUNNER_PACKAGES := afr_agent afr_executor afr_sandbox afr_supervisor agentsfleet_runner
-RUSTD_DAEMON_PACKAGES := agentsfleetd
-RUSTD_API_PACKAGES := afd_api afd_fleet
-RUSTD_RUNNER_IN_DAEMON := integration_rust_runner::
-RUSTD_STREAM_IN_DAEMON := integration_runner_stream::
-RUSTD_SHARDS := runner daemon stream api substrate
+RUSTD_COVER_FOUNDATION_DIRS := crates/foundation/* crates/protocol/*
+RUSTD_COVER_HARNESS_DIRS := crates/harness/*
+RUSTD_COVER_RUNNER_DIRS := crates/runner/*
+RUSTD_COVER_DAEMON_DIRS := crates/daemon/*
+RUSTD_COVER_E2E_DIRS := crates/e2e/*
+RUSTD_COVER_GUFFBOLT_DIRS := guffbolt
+RUSTD_COVER_SKIP := afd_bench
+RUSTD_SHARDS := foundation harness runner daemon e2e guffbolt
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # Plus the kernel lane's report (test-coverage-runner-kernel): not a shard,
 # because it needs root and a real kernel.
@@ -109,7 +122,11 @@ RUSTD_COVERAGE_REPORTS := $(RUSTD_SHARDS) kernel
 
 _RUSTD_COVER := cargo llvm-cov --locked --no-report --all-features
 _rustd_packages = $(foreach package,$(1),-p $(package))
-_RUSTD_SUBSTRATE := --workspace $(foreach package,afd_bench $(RUSTD_RUNNER_PACKAGES) $(RUSTD_DAEMON_PACKAGES) $(RUSTD_API_PACKAGES),--exclude $(package))
+# The packages of shard $(1): its folders' crates, less the skipped ones.
+_rustd_shard = $(filter-out $(RUSTD_COVER_SKIP),$(call _rustd_dirs,$(RUSTD_COVER_$(1)_DIRS)))
+# $(call _rustd_shard_lane,<NAME>,<shard>,<label>): one shard's crates, every
+# test run once with the ignored ones included.
+_rustd_shard_lane = $(call _rust_lane,rustd-coverage-$(2).log,[rustd] coverage: $(3),$(_RUSTD_COVER) $(call _rustd_packages,$(call _rustd_shard,$(1))) -- --include-ignored $(4))
 _RUSTD_SHARD_UNKNOWN := $(filter-out $(RUSTD_SHARDS),$(RUSTD_SHARD))
 _RUSTD_SHARD_ALL := $(if $(filter-out $(RUSTD_SHARD),$(RUSTD_SHARDS)),,yes)
 _RUSTD_SHARD_ONE := $(if $(filter 1,$(words $(RUSTD_SHARD))),yes,)
@@ -132,29 +149,32 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }; \
 	echo "✓ [infra] Instrumented schema applied ($$(( $$(date +%s) - started ))s, its build included)"
 	@$(_api_login)
+ifneq ($(filter foundation,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard foundation: the foundation and protocol layers..."; \
+	$(call _rustd_shard_lane,FOUNDATION,foundation,foundation and protocol)
+endif
+ifneq ($(filter harness,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard harness: the harness layer..."; \
+	$(call _rustd_shard_lane,HARNESS,harness,harness)
+endif
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard runner: the runner crates, then the runner against the daemon..."; \
-	$(call _rust_lane,rustd-coverage-runner.log,[rustd] coverage: runner crates,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_RUNNER_PACKAGES)) -- --include-ignored); \
-	$(call _rust_lane,rustd-coverage-runner-daemon.log,[rustd] coverage: runner against the daemon,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_RUNNER_IN_DAEMON))
+	@echo "→ [rustd] Shard runner: the runner layer..."; \
+	$(call _rustd_shard_lane,RUNNER,runner,runner)
 endif
 ifneq ($(filter daemon,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard daemon: the daemon layer, then the suites that need the cluster alone..."; \
+	$(call _rustd_shard_lane,DAEMON,daemon,daemon,$(EXCLUSIVE_SKIP)); \
+	$(call _rust_lane,rustd-coverage-daemon-exclusive.log,[rustd] coverage: daemon (exclusive),$(_RUSTD_COVER) $(call _rustd_packages,$(call _rustd_shard,DAEMON)) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+endif
+ifneq ($(filter e2e,$(RUSTD_SHARD)),)
 	@cd $(RUSTD_DIR) && cargo llvm-cov run --locked --all-features --no-report \
 	  -p agentsfleet_runner --bin agentsfleet-recovery-fixture -- --help
-	@echo "→ [rustd] Shard daemon: agentsfleetd without runner and native-stream modules..."; \
-	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON) --skip $(RUSTD_STREAM_IN_DAEMON))
+	@echo "→ [rustd] Shard e2e: the runner driven against the daemon..."; \
+	$(call _rustd_shard_lane,E2E,e2e,daemon and runner)
 endif
-ifneq ($(filter stream,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard stream: native runner sessions against the daemon..."; \
-	$(call _rust_lane,rustd-coverage-stream.log,[rustd] coverage: native runner streams,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_STREAM_IN_DAEMON))
-endif
-ifneq ($(filter api,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard api: the API and fleet suites..."; \
-	$(call _rust_lane,rustd-coverage-api.log,[rustd] coverage: API and fleet,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_API_PACKAGES)) -- --include-ignored)
-endif
-ifneq ($(filter substrate,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard substrate: the remaining crates, then the suites that need the cluster alone..."; \
-	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored $(EXCLUSIVE_SKIP)); \
-	$(call _rust_lane,rustd-coverage-substrate-exclusive.log,[rustd] coverage: substrate (exclusive),$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+ifneq ($(filter guffbolt,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard guffbolt: the published harness..."; \
+	$(call _rustd_shard_lane,GUFFBOLT,guffbolt,guffbolt)
 endif
 ifeq ($(_RUSTD_SHARD_ALL),yes)
 	@echo "→ [rustd] Rendering the run's profile, then grading the floor..."; \

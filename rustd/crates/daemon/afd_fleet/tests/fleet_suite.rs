@@ -159,6 +159,7 @@ mod integration_runner_tenant;
 mod integration_runner_views;
 #[path = "integration_runner_views_malformed.rs"]
 mod integration_runner_views_malformed;
+mod integration_statements;
 #[path = "integration_steer_admitted_stamp.rs"]
 mod integration_steer_admitted_stamp;
 #[path = "integration_tenant_placement/mod.rs"]

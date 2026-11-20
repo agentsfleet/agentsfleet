@@ -7,7 +7,9 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
+use afd_http::{auth, client, etag, request_id, route};
+
+pub mod services;
 
 pub(crate) mod handler;
 
@@ -22,17 +24,17 @@ use afd_http::handler::setup_input::{SETUP_BODY_BYTES_MAX, TEXT_BODY_BYTES_MAX};
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use route::{AuthRoute, ConnectorRoute, FleetRoute, TenantRoute, WorkspaceRoute};
-use services::Services;
+use services::TenantPlane;
 
 /// `router`, reading request bodies up to `max` bytes in place of axum's
 /// 2 MiB default: a route whose body carries text at the one ceiling
 /// (`af_validate::TEXT_MAX_CHARS`), every character at its widest escape.
-fn reading<D: Services>(router: MethodRouter<Arc<D>>, max: usize) -> MethodRouter<Arc<D>> {
+fn reading<D: TenantPlane>(router: MethodRouter<Arc<D>>, max: usize) -> MethodRouter<Arc<D>> {
     router.layer(DefaultBodyLimit::max(max))
 }
 
 /// Selects the device-flow handler for an authentication route.
-pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn auth_handler_for<D: TenantPlane>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         AuthRoute::CreateSession => Some(post(handler::auth::open::<D>)),
         AuthRoute::PollSession => Some(get(handler::auth::poll::<D>)),
@@ -44,7 +46,7 @@ pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc
 }
 
 /// Selects the handler for a tenant-owned route.
-pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn tenant_handler_for<D: TenantPlane>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         TenantRoute::ApiKeys => Some(get(tenant::list::<D>).post(tenant::mint::<D>)),
         TenantRoute::ApiKey => Some(patch(tenant::revoke::<D>).delete(tenant::delete::<D>)),
@@ -82,7 +84,7 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
 }
 
 /// Selects the handler for a workspace collection or item route.
-pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn workspace_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         WorkspaceRoute::Models
         | WorkspaceRoute::Drafts
@@ -107,10 +109,10 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
     }
 }
 
-/// The private-authoring half of [`workspace_handler_for`], before the
+/// The private setup half of [`workspace_handler_for`], before the
 /// no-store marking every one of them carries. `None` for a route that is
-/// not an authoring route.
-fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
+/// not a setup route.
+fn draft_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
     use handler::draft::{message, models, patch, read, stream, write};
     match verb {
         WorkspaceRoute::Models => Some(get(models::list::<D>)),
@@ -145,7 +147,7 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
 }
 
 /// Selects the handler for a route scoped to one fleet.
-pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         FleetRoute::Detail => Some(reading(
             get(fleet::native::read::one::<D>)
@@ -199,7 +201,7 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
 /// and it belongs to the ingress plane. Splitting the family this way is what
 /// keeps "every handler in that crate is signature-walled" a fact about a
 /// compilation unit rather than a per-route claim.
-pub fn connector_handler_for<D: Services>(verb: ConnectorRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn connector_handler_for<D: TenantPlane>(verb: ConnectorRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         ConnectorRoute::Catalog => Some(get(handler::connector::catalogue::list::<D>)),
         // GET reads and DELETE forgets, on one template: two verbs on one

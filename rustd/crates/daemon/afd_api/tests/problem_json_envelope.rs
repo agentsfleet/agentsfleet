@@ -13,7 +13,7 @@
 )]
 
 use af_core::error_code;
-use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
+use afd_http::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 
 /// A detail long enough that a truncating envelope would be caught.
 ///

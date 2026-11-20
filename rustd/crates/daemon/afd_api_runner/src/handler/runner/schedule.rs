@@ -44,7 +44,7 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSchedules as _, RunPlane as _, Services};
+use crate::services::{FleetSchedules as _, RunPlane as _, RunnerPlane};
 
 /// The scoped event a schedules verb that failed is logged under.
 pub(super) const EVENT_FAILED: &str = "runner_schedules_failed";
@@ -102,7 +102,7 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run_id): Path<String>,
@@ -169,7 +169,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run_id): Path<String>,
@@ -193,7 +193,7 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// Proves `run_id` is `runner`'s live run under `token`.
-pub(super) async fn standing<D: Services>(
+pub(super) async fn standing<D: RunnerPlane>(
     services: &D,
     runner: &Uuid7,
     run_id: &str,
@@ -231,7 +231,7 @@ pub(super) fn checked_for(run: &Standing, fields: validate::Fields<'_>) -> Resul
 }
 
 /// `text` with the run's fleet's declared secrets masked.
-pub(super) async fn masked<D: Services>(
+pub(super) async fn masked<D: RunnerPlane>(
     services: &D,
     run: &Standing,
     text: &str,
@@ -265,7 +265,7 @@ pub(super) fn fence(query: Option<&str>) -> Result<u64, Refusal> {
 }
 
 /// Refuses unless `schedule` is the run's fleet's, and one the fleet made.
-pub(super) async fn fleet_owned<D: Services>(
+pub(super) async fn fleet_owned<D: RunnerPlane>(
     services: &D,
     run: &Standing,
     schedule: &Uuid7,

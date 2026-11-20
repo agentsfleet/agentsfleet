@@ -7,7 +7,7 @@ use crate::{
         draft,
         fleet::detail::{FleetPath, parse_fleet_id},
     },
-    services::{FleetSchedules as _, Services, WorkspaceTurns as _},
+    services::{FleetSchedules as _, TenantPlane, WorkspaceTurns as _},
 };
 use afd_api_wire::authoring::{AuthoringContext, Conversation, CursorPage, SetupActivity};
 use afd_http::handler::{Refusal, authoring_refusal};
@@ -42,7 +42,7 @@ pub(crate) struct ContextQuery {
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn read<D: Services>(
+pub(crate) async fn read<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -79,7 +79,7 @@ pub(crate) async fn read<D: Services>(
     Ok(Json(payload).into_response())
 }
 
-async fn activity_history<D: Services>(
+async fn activity_history<D: TenantPlane>(
     services: &D,
     workspace: &af_core::id::Uuid7,
     fleet: &af_core::id::Uuid7,
@@ -97,7 +97,7 @@ async fn activity_history<D: Services>(
         .map_err(Refusal::at(READ_FAILED))
 }
 
-async fn current<D: Services>(
+async fn current<D: TenantPlane>(
     services: &D,
     identity: afd_setup::Access<'_>,
     fleet: &af_core::id::Uuid7,

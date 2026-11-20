@@ -57,13 +57,13 @@ impl Fleet {
     }
 }
 
-impl afd_api::services::RunnerStreams for Fleet {
+impl afd_http::services::RunnerStreams for Fleet {
     async fn open(
         &self,
         runner: afd_auth::principal::Runner,
         request: axum::extract::Request,
     ) -> axum::response::Response {
-        use afd_api::services::RunnerStreams as _;
+        use afd_http::services::RunnerStreams as _;
         match &self.native {
             Some(database) => {
                 self.authoring_gateway(database.clone())

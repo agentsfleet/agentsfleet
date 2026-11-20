@@ -54,7 +54,7 @@ pub struct BootConfig {
     pub(super) frame_memory: af_stream::MemoryLimits,
     pub(super) runner_listener: super::runner_listener::RunnerListenerConfig,
     pub(super) posthog: Option<PostHogConfig>,
-    pub(super) otlp: Option<super::OtlpConfig>,
+    pub(super) otlp: Option<af_otlp::OtlpConfig>,
     /// A test boot's stand-in for the vendors' token endpoints.
     #[cfg(feature = "test-util")]
     pub(super) exchanger: Option<std::sync::Arc<dyn afd_credential::credential::Exchanger>>,
@@ -133,7 +133,7 @@ impl BootConfig {
     /// every developer's environment and every test, and is why the absence is
     /// a value here rather than a refusal at boot.
     #[must_use]
-    pub const fn otlp(&self) -> Option<&super::OtlpConfig> {
+    pub const fn otlp(&self) -> Option<&af_otlp::OtlpConfig> {
         self.otlp.as_ref()
     }
 

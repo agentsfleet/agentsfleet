@@ -13,9 +13,9 @@
 //! over.
 
 use af_context::Checkpoint;
-use af_context::repository::{Repository, identity};
 use af_core::id::Uuid7;
 use af_wire::context::ContextLoadRequest;
+use afd_setup::context::{Repository, identity};
 use jiff::Timestamp;
 
 use crate::error::{Result, run_not_found, stale_fence};

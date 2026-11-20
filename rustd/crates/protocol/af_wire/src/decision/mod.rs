@@ -9,7 +9,7 @@ mod result;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-pub use af_validate::serialized_within;
+pub(crate) use af_validate::serialized_within;
 pub use answer::answer_matches;
 pub use assignment::DecisionAssignment;
 pub use config::{

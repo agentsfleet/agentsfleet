@@ -46,8 +46,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use afd_api::Route;
-use afd_api::route::{Guard, RouteClass};
+use afd_http::route::Route;
+use afd_http::route::{Guard, RouteClass};
 
 /// Refused for want of a credential.
 const UNAUTHORIZED: u16 = 401;

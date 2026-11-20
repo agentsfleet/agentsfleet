@@ -1,0 +1,123 @@
+[package]
+name = "af_e2e"
+description = "The daemon-and-runner suites, the recovery bench and the workspace layer rule: test-only, depended on by nothing."
+publish = false
+autotests = false
+autobenches = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+# Every dependency is a dev-dependency: the library holds only its docs, and
+# the suites, the bench and the layer test are its targets. The `e2e/` layer
+# may depend on every other layer, which is what lets one crate boot
+# `agentsfleetd` and drive the Rust runner against it without either binary's
+# crate depending on the other's (`rustd/Cargo.toml`).
+[dev-dependencies]
+# The booted daemon, its supervisor and the knobs its suites share.
+agentsfleetd = { workspace = true, features = ["test-util"] }
+# The Rust runner, driven end to end against that daemon: its supervisor and
+# native session, the scripted agent engine, the unsandboxed engine, the
+# executor's process request, the hosted catalog and the runner's export.
+afr_agent = { workspace = true, features = ["test-util"] }
+afr_executor.workspace = true
+afr_sandbox.workspace = true
+afr_supervisor = { workspace = true, features = ["test-util"] }
+afr_telemetry.workspace = true
+afr_tools.workspace = true
+guffbolt.workspace = true
+# The egress client routed to HTTPS fakes, and a scripted model behind the
+# provider seam.
+af_egress = { workspace = true, features = ["test-util"] }
+af_providers = { workspace = true, features = ["test-util"] }
+# The value and wire layers the suites seed and read through.
+af_context.workspace = true
+af_core = { workspace = true, features = ["test-util"] }
+af_crypto.workspace = true
+af_fleet_runtime = { workspace = true, features = ["test-util"] }
+af_observability.workspace = true
+af_otlp.workspace = true
+af_stream = { workspace = true, features = ["test-util"] }
+af_webhook = { workspace = true, features = ["test-util"] }
+af_wire.workspace = true
+# The daemon's stores, read back and seeded through their own statements.
+afd_approval.workspace = true
+afd_auth.workspace = true
+afd_billing.workspace = true
+afd_bus = { workspace = true, features = ["test-util"] }
+afd_connector = { workspace = true, features = ["test-util"] }
+afd_credential.workspace = true
+afd_cron = { workspace = true, features = ["test-util"] }
+afd_db = { workspace = true, features = ["test-util"] }
+afd_fleet.workspace = true
+afd_fleet_lifecycle.workspace = true
+afd_gate.workspace = true
+afd_identity.workspace = true
+afd_runner.workspace = true
+afd_setup.workspace = true
+afd_state.workspace = true
+afd_tenant.workspace = true
+afd_turns.workspace = true
+afd_vault.workspace = true
+# The layer test reads every member manifest with a real parser.
+toml.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+# The recovery bench's command line.
+clap.workspace = true
+futures-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+jiff.workspace = true
+jiff-sqlx.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "time",
+    "sync",
+    "io-util",
+    "net",
+    "process",
+    "test-util",
+] }
+tokio-rustls.workspace = true
+tokio-util.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+
+[[test]]
+name = "e2e_suite"
+path = "tests/e2e_suite.rs"
+
+# A binary of its own: it owns the global tracer, and its verb spans leave
+# through the installed exporter.
+[[test]]
+name = "verb_span_export"
+path = "tests/integration_verb_span_export.rs"
+
+# The layer rule, read from the manifests: no datastore, no subprocess, so it
+# runs in the unit lane.
+[[test]]
+name = "layers"
+path = "tests/layers.rs"
+
+[[bench]]
+name = "recovery"
+path = "benches/recovery/main.rs"
+harness = false

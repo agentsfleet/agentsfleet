@@ -17,7 +17,7 @@ use super::support::{Fake, KEY, Seen, TOKEN, engine, payload, run};
 async fn test_api_key_never_leaves_the_supervisor() {
     for wire in Wire::ALL {
         // What the journal holds at the loudest level an operator can name.
-        let capture = Capture::install_filtered(af_providers::log_filter(LevelFilter::TRACE));
+        let capture = Capture::install_filtered(af_inference::log_filter(LevelFilter::TRACE));
         let echoed = json!({"expression": KEY, "token": TOKEN});
         let mut fake = Fake::serve(vec![
             wire.call(CALL_ID, UPDATE_PLAN.name(), &echoed),

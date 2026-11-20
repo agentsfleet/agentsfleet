@@ -27,7 +27,7 @@ use agentsfleetd::{JOIN_TIMEOUT, ShutdownReport, Supervisor};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 /// The tasks the join-order fixture supervises, in the order it spawns them.
 const TASK_NAMES: [&str; 3] = ["stream_reader", "session_sweeper", "bus_shutdown"];

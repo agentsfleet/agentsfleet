@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use afd_api::route::{AdminRoute, RunnerOpsRoute, Verb};
+use afd_http::route::{AdminRoute, RunnerOpsRoute, Verb};
 
 type Endpoint = (&'static str, Verb);
 

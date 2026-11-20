@@ -2,28 +2,25 @@
 //!
 //! The mirror of `agentsfleetd::plane::services`, and split from [`super`] for
 //! the same reason: that file BUILDS the fixture — the unreachable pool, the
-//! mock directory, the frozen clock — and this one ANSWERS for it, one
-//! accessor per seam. The list grows every time the API grows a surface; the
-//! construction beside it grows when a dependency changes.
+//! mock directory, the frozen clock — and this one ANSWERS for it, one block
+//! per plane and one accessor per seam.
 //!
 //! Every store here is the PRODUCTION one, pointed at nothing. That is what
 //! makes the refusal matrix reachable: a verb refuses with the error its own
 //! crate raises rather than one this file invented.
 
-use af_core::id::Uuid7;
-use af_observability::Analytics;
-use afd_admin::{Models as AdminModels, PlatformKeys};
-use afd_api::{Planes, SchedulePlane, Services, TenantSurface};
+use afd_api_ingress::services::IngressPlane;
+use afd_api_operator::OperatorPlane;
+use afd_api_runner::services::RunnerPlane;
+use afd_api_tenant::services::TenantPlane;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::mock::{MockCapabilities, MockVerifier};
 use afd_billing::tenant::Billing;
 use afd_connector::Connectors;
-use afd_credential::provider::Providers;
 use afd_fleet_lifecycle::Fleets;
-use afd_fleet_ops::RunnerRunHistory;
+use afd_http::auth::Planes;
+use afd_http::services::{SchedulePlane, Shared};
 use afd_memory::Memories;
-use afd_runner::Runners;
-use afd_sse::Live;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
@@ -32,123 +29,164 @@ use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 use afd_turns::view::{History, Steer};
 use afd_vault::Vault as SecretVault;
-use jiff::Timestamp;
 
 use super::HarnessProviders;
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::Ownership;
-use super::{
-    DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, HarnessTeam, RecordingWriteback,
-    SCHEDULE_DESTINATION,
-};
+use super::{DEPLOYMENT, Directory, Fleet, HarnessIngress, HarnessTeam, RecordingWriteback};
 
-impl Services for Fleet {
-    fn authoring(&self) -> &afd_setup::Drafts {
-        &self.authoring
-    }
-    fn authoring_setup(&self) -> &afd_setup::Setup {
-        &self.authoring_setup
-    }
-    fn creations(&self) -> &afd_setup::Creations {
-        &self.creations
-    }
+impl Shared for Fleet {
     type Auth = Planes<Directory, MockCapabilities, MockVerifier>;
-    type SignupMetadata = RecordingWriteback;
-    type Runs = NoWork;
-    type RunnerStreams = Self;
-
-    fn runner_streams(&self) -> &Self::RunnerStreams {
-        self
-    }
-    type Sessions = Logins;
     type Workspaces = Ownership;
-    type Fleets = Fleets;
-    type Secrets = SecretVault;
-    type Preferences = Preferences;
-    type Approvals = Inbox;
-    type Grants = IntegrationGrants;
-    type Events = History;
-    type Ingress = HarnessIngress;
-    type Schedules = SchedulePlane;
-    type Connectors = Connectors;
-    type Steering = Steer;
-    type Memories = Memories;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
     }
 
-    fn signup_metadata(&self) -> &Self::SignupMetadata {
-        &self.signup_writeback
+    fn workspaces(&self) -> &Self::Workspaces {
+        &self.workspaces
     }
 
-    fn runners(&self) -> &Runners {
-        &self.runners
+    fn now(&self) -> jiff::Timestamp {
+        self.now
+    }
+}
+
+impl TenantPlane for Fleet {
+    type WorkspaceDirectory = Workspaces;
+    type ApiKeys = ApiKeys;
+    type Team = HarnessTeam;
+    type CliCredentials = CliCredentials;
+    type Billing = Billing;
+    type Catalogue = Models;
+    type TenantProviders = HarnessProviders;
+    type InviteMail = afd_mail::InviteMailer;
+    type Sessions = Logins;
+    type Fleets = Fleets;
+    type Secrets = SecretVault;
+    type Approvals = Inbox;
+    type Grants = IntegrationGrants;
+    type Memories = Memories;
+    type Schedules = SchedulePlane;
+    type Ingress = HarnessIngress;
+    type Connectors = Connectors;
+    type Steering = Steer;
+    type Events = History;
+    type Preferences = Preferences;
+
+    /// A different value from [`Shared::workspaces`], unlike production.
+    ///
+    /// The split is the suites': the ownership seam has to answer HONESTLY for
+    /// both halves of the refusal matrix to be reachable, so it stays
+    /// `Ownership`, while the directory refuses like every other store.
+    fn workspace_directory(&self) -> &Self::WorkspaceDirectory {
+        &self.workspace_directory
+    }
+
+    fn api_keys(&self) -> &Self::ApiKeys {
+        &self.api_keys
+    }
+
+    fn team(&self) -> &Self::Team {
+        &self.team
+    }
+
+    fn cli_credentials(&self) -> &Self::CliCredentials {
+        &self.cli_credentials
+    }
+
+    fn billing(&self) -> &Self::Billing {
+        &self.billing
+    }
+
+    fn catalogue(&self) -> &Self::Catalogue {
+        &self.catalogue
+    }
+
+    fn tenant_providers(&self) -> &Self::TenantProviders {
+        &self.providers
+    }
+
+    fn invite_mail(&self) -> &Self::InviteMail {
+        &self.invite_mail
+    }
+
+    fn sessions(&self) -> &Self::Sessions {
+        &self.logins
+    }
+
+    fn fleets(&self) -> &Self::Fleets {
+        &self.fleets
+    }
+
+    fn secrets(&self) -> &Self::Secrets {
+        &self.secrets
+    }
+
+    fn approvals(&self) -> &Self::Approvals {
+        &self.approvals
+    }
+
+    fn grants(&self) -> &Self::Grants {
+        &self.grants
+    }
+
+    fn memories(&self) -> &Self::Memories {
+        &self.memories
+    }
+
+    fn schedules(&self) -> &Self::Schedules {
+        &self.schedules
+    }
+
+    fn ingress(&self) -> &Self::Ingress {
+        &self.ingress
+    }
+
+    fn connectors(&self) -> &Self::Connectors {
+        &self.connectors
+    }
+
+    fn steering(&self) -> &Self::Steering {
+        &self.steering
+    }
+
+    fn events(&self) -> &Self::Events {
+        &self.events
+    }
+
+    fn preferences(&self) -> &Self::Preferences {
+        &self.preferences
     }
 
     fn runner_commands(&self) -> &afd_bus::Handle {
         &self.runner_commands
     }
 
-    fn runs(&self) -> &NoWork {
-        &self.runs
-    }
-
     fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
         &self.tasks
     }
 
-    fn sessions(&self) -> &Logins {
-        &self.logins
+    fn authoring(&self) -> &afd_setup::Drafts {
+        &self.authoring
     }
 
-    fn workspaces(&self) -> &Ownership {
-        &self.workspaces
+    fn authoring_setup(&self) -> &afd_setup::Setup {
+        &self.authoring_setup
     }
 
-    /// A different value from [`Services::workspaces`], unlike production.
+    fn creations(&self) -> &afd_setup::Creations {
+        &self.creations
+    }
+
+    /// The deployment's own admin workspace, when a suite configured one.
     ///
-    /// The split is the suites': the ownership seam has to answer HONESTLY for
-    /// both halves of the refusal matrix to be reachable, so it stays
-    /// [`OneWorkspace`], while the directory refuses like every other store.
-    fn preferences(&self) -> &Preferences {
-        &self.preferences
-    }
-
-    fn approvals(&self) -> &Inbox {
-        &self.approvals
-    }
-
-    fn grants(&self) -> &IntegrationGrants {
-        &self.grants
-    }
-
-    fn events(&self) -> &History {
-        &self.events
-    }
-
-    fn live(&self) -> &Live {
-        &self.live
-    }
-
-    fn interjector(&self) -> &afd_outbound::Interjector {
-        &self.interjector
-    }
-
-    fn analytics(&self) -> &Analytics {
-        &self.analytics
-    }
-
-    fn ingress(&self) -> &HarnessIngress {
-        &self.ingress
-    }
-
-    fn schedules(&self) -> &SchedulePlane {
-        &self.schedules
-    }
-
-    fn connectors(&self) -> &Connectors {
-        &self.connectors
+    /// Answered from a field rather than as a constant `None`, because both
+    /// answers are reachable states of a real daemon: a deployment with no
+    /// admin workspace refuses every App delivery as unconfigured, and one with
+    /// it serves them.
+    fn platform_admin_workspace(&self) -> Option<&af_core::id::Uuid7> {
+        self.platform_admin.as_ref()
     }
 
     /// The same fixed base the device-flow surface signs its login links with.
@@ -161,117 +199,141 @@ impl Services for Fleet {
         &self.dashboard_base
     }
 
-    /// The fixture scheduler: blank signing keys unless a suite set them, which
-    /// is the fail-closed default — see `fleet_credentials::fixed_scheduler`.
-    fn scheduler(&self) -> &dyn afd_cron::Scheduler {
-        self.scheduler.as_ref()
+    fn analytics(&self) -> &af_observability::Analytics {
+        &self.analytics
     }
 
-    /// The deployment's own admin workspace, when a suite configured one.
-    ///
-    /// Answered from a field rather than as a constant `None`, unlike
-    /// [`Services::deployment`] beside it, and the difference is that both
-    /// answers are reachable states of a real daemon: a deployment with no
-    /// admin workspace refuses every App delivery as unconfigured, and one with
-    /// it serves them. A suite that could not say which it was could prove only
-    /// half of that.
-    fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretBytes> {
-        self.identity_webhook_secret.as_ref()
+    fn live(&self) -> &afd_sse::Live {
+        &self.live
     }
 
-    fn platform_admin_workspace(&self) -> Option<&Uuid7> {
-        self.platform_admin.as_ref()
-    }
-
-    fn steering(&self) -> &Steer {
-        &self.steering
-    }
-
-    fn memories(&self) -> &Memories {
-        &self.memories
-    }
-
-    fn secrets(&self) -> &SecretVault {
-        &self.secrets
-    }
-
-    fn fleets(&self) -> &Fleets {
-        &self.fleets
-    }
-
-    fn runner_run_history(&self) -> &RunnerRunHistory {
-        &self.runner_run_history
-    }
-
-    fn models(&self) -> &AdminModels {
-        &self.admin_models
-    }
-
-    fn platform_keys(&self) -> &PlatformKeys {
-        &self.platform_keys
-    }
-
-    /// A fixed deployment, which is what a real one is too.
-    ///
-    /// Read from configuration in the binary rather than from the request, so a
-    /// constant here is the same KIND of value the daemon serves with — not a
-    /// simplification a suite would have to remember is one.
+    /// A fixed deployment, which is what a real one is too: read from
+    /// configuration in the binary rather than from the request.
     fn deployment(&self) -> &str {
         DEPLOYMENT
     }
+}
 
-    fn now(&self) -> Timestamp {
-        self.now
+impl RunnerPlane for Fleet {
+    type Runs = NoWork;
+    type RunnerStreams = Self;
+    type Fleets = Fleets;
+    type Schedules = SchedulePlane;
+    type Steering = Steer;
+    type Events = History;
+
+    fn runs(&self) -> &Self::Runs {
+        &self.runs
+    }
+
+    fn runner_streams(&self) -> &Self::RunnerStreams {
+        self
+    }
+
+    fn fleets(&self) -> &Self::Fleets {
+        &self.fleets
+    }
+
+    fn schedules(&self) -> &Self::Schedules {
+        &self.schedules
+    }
+
+    fn steering(&self) -> &Self::Steering {
+        &self.steering
+    }
+
+    fn events(&self) -> &Self::Events {
+        &self.events
+    }
+
+    fn runners(&self) -> &afd_runner::Runners {
+        &self.runners
+    }
+
+    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+        &self.tasks
+    }
+
+    fn interjector(&self) -> &afd_outbound::Interjector {
+        &self.interjector
     }
 }
 
-// The tenant-scoped half, which the seam declares as a supertrait. Two blocks
-// rather than one, and the fixture values are the same ones — what changed is
-// which file of the seam each accessor is declared in.
-impl TenantSurface for Fleet {
-    type WorkspaceDirectory = Workspaces;
-    type ApiKeys = ApiKeys;
-    type Team = HarnessTeam;
-    type CliCredentials = CliCredentials;
-    type Billing = Billing;
-    type Catalogue = Models;
-    type TenantProviders = HarnessProviders;
+impl OperatorPlane for Fleet {
+    fn runners(&self) -> &afd_runner::Runners {
+        &self.runners
+    }
+
+    fn runner_commands(&self) -> &afd_bus::Handle {
+        &self.runner_commands
+    }
+
+    fn runner_run_history(&self) -> &afd_fleet_ops::RunnerRunHistory {
+        &self.runner_run_history
+    }
+
+    fn models(&self) -> &afd_admin::Models {
+        &self.admin_models
+    }
+
+    fn platform_keys(&self) -> &afd_admin::PlatformKeys {
+        &self.platform_keys
+    }
+}
+
+impl IngressPlane for Fleet {
+    type Ingress = HarnessIngress;
+    type Approvals = Inbox;
+    type Schedules = SchedulePlane;
+    type Connectors = Connectors;
     type Signups = afd_tenant::signup::Signups;
-    type InviteMail = afd_mail::InviteMailer;
+    type SignupMetadata = RecordingWriteback;
 
-    fn invite_mail(&self) -> &afd_mail::InviteMailer {
-        &self.invite_mail
+    fn ingress(&self) -> &Self::Ingress {
+        &self.ingress
     }
 
-    fn workspace_directory(&self) -> &Workspaces {
-        &self.workspace_directory
+    fn approvals(&self) -> &Self::Approvals {
+        &self.approvals
     }
 
-    fn api_keys(&self) -> &ApiKeys {
-        &self.api_keys
+    fn schedules(&self) -> &Self::Schedules {
+        &self.schedules
     }
 
-    fn team(&self) -> &HarnessTeam {
-        &self.team
-    }
-
-    fn cli_credentials(&self) -> &CliCredentials {
-        &self.cli_credentials
+    fn connectors(&self) -> &Self::Connectors {
+        &self.connectors
     }
 
     fn signups(&self) -> &Self::Signups {
         &self.signups
     }
 
-    fn billing(&self) -> &Billing {
-        &self.billing
+    fn signup_metadata(&self) -> &Self::SignupMetadata {
+        &self.signup_writeback
     }
 
-    fn tenant_providers(&self) -> &HarnessProviders {
-        &self.providers
+    /// The fixture scheduler: blank signing keys unless a suite set them, which
+    /// is the fail-closed default — see `fleet_credentials::fixed_scheduler`.
+    fn scheduler(&self) -> &dyn afd_cron::Scheduler {
+        self.scheduler.as_ref()
     }
 
-    fn catalogue(&self) -> &Models {
-        &self.catalogue
+    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+        &self.tasks
+    }
+
+    /// The deployment's own admin workspace, when a suite configured one.
+    ///
+    /// Answered from a field rather than as a constant `None`, because both
+    /// answers are reachable states of a real daemon: a deployment with no
+    /// admin workspace refuses every App delivery as unconfigured, and one with
+    /// it serves them.
+    fn platform_admin_workspace(&self) -> Option<&af_core::id::Uuid7> {
+        self.platform_admin.as_ref()
+    }
+
+    fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretBytes> {
+        self.identity_webhook_secret.as_ref()
     }
 }

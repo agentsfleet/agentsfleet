@@ -14,8 +14,9 @@ use std::borrow::Cow;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// The longest setup Definition a report may carry, as JSON text.
-pub const SETUP_DEFINITION_BYTES_MAX: usize = 128 * 1024;
+/// The longest setup Definition a report may carry, as JSON text: the bound
+/// the Definition parser applies, so a report never refuses what it admits.
+pub const SETUP_DEFINITION_BYTES_MAX: usize = af_validate::DEFINITION_MAX_BYTES;
 /// The bytes of a candidate identifier, a hyphenated UUID.
 const CANDIDATE_ID_BYTES: usize = 36;
 

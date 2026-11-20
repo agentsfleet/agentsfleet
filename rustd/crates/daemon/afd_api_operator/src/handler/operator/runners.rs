@@ -11,8 +11,8 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::query;
+use crate::OperatorPlane;
 use crate::handler::{malformed, parse_id, refuse};
-use crate::services::Services;
 
 const EVENT_LIST: &str = "runner_list_failed";
 const EVENT_DETAIL: &str = "runner_detail_failed";
@@ -38,7 +38,7 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
@@ -84,7 +84,7 @@ pub(super) async fn page(scope: RunnerScope<'_>, params: &HashMap<String, String
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn detail<D: Services>(
+pub(crate) async fn detail<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {

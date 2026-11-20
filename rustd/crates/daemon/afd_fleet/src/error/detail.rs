@@ -18,12 +18,6 @@ pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be 
 /// The refusal when the token authenticated and the runner row is gone.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
-/// The database-outage detail every crate shares through `af_core::error`.
-pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE;
-
-/// The database-fault detail every crate shares through `af_core::error`.
-pub use af_core::error::DETAIL_DATABASE_ERROR;
-
 /// An admitted event this daemon cannot run.
 ///
 /// The caller is a runner asking for work, so what it reads says nothing about

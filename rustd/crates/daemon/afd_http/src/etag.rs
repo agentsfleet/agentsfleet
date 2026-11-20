@@ -3,13 +3,11 @@
 //! The DIGEST moved to [`af_core::etag`] when a second caller appeared:
 //! `afd_fleet_lifecycle` compares a tag inside the row lock a conditional write
 //! holds, where this crate cannot reach, and two spellings of one wire encoding
-//! fail silently — a client's cached tag simply stops matching. It is
-//! re-exported here so a handler still names `crate::etag::compute`.
+//! fail silently — a client's cached tag simply stops matching. A handler
+//! names it there.
 //!
 //! What stays is the comparison, which is an HTTP rule rather than an encoding:
 //! `If-None-Match` uses the WEAK function, list membership, and `*`.
-
-pub use af_core::etag::compute;
 
 /// Drops a leading weak-validator marker, if present.
 fn strip_weak(tag: &str) -> &str {

@@ -142,7 +142,7 @@ impl Drafts {
         let found: Option<Publishing> = sqlx::query_as(sql::PREVIEW)
             .bind(run)
             .bind(runner)
-            .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+            .bind(afd_state::sql::RUN_STATUS_ACTIVE)
             .bind(RUNNING)
             .fetch_optional(&mut *connection)
             .await

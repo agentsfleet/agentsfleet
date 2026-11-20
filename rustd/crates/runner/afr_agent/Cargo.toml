@@ -30,6 +30,8 @@ af_core.workspace = true
 # The span vocabulary the loop's turns and calls are traced in.
 af_observability.workspace = true
 af_wire.workspace = true
+# `serialized_within`, the byte bound a recovered history or decision is held to.
+af_validate.workspace = true
 # A run's outbound guard, and the mint seam the supervisor implements.
 af_egress.workspace = true
 afr_executor.workspace = true

@@ -92,7 +92,7 @@ impl Creations {
         self.grants.cancel_setup_on(connection, fleet).await?;
         let cancelled = sqlx::query_as(sql::CANCEL_RUNS)
             .bind(fleet)
-            .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+            .bind(afd_state::sql::RUN_STATUS_ACTIVE)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;

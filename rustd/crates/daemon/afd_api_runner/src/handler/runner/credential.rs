@@ -31,7 +31,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
 use crate::handler::malformed;
-use crate::services::{RunPlane as _, Services};
+use crate::services::{RunPlane as _, RunnerPlane};
 
 /// The scoped event a failed mint is logged under.
 const EVENT: &str = "runner_credential_mint_failed";
@@ -66,7 +66,7 @@ const STATE_RECONNECT_REQUIRED: &str = "reconnect_required";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     body: Bytes,

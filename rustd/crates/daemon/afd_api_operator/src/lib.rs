@@ -6,9 +6,12 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
+use afd_http::{auth, request_id, route};
 
 pub(crate) mod handler;
+mod plane;
+
+pub use self::plane::OperatorPlane;
 
 /// Native response vocabulary shared by served HTTP assertions.
 #[cfg(feature = "test-util")]
@@ -25,10 +28,11 @@ use std::sync::Arc;
 
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use route::{AdminRoute, RunnerOpsRoute};
-use services::Services;
 
 /// Selects the runner-management handler for a platform or tenant runner route.
-pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn runner_ops_handler_for<D: OperatorPlane>(
+    verb: RunnerOpsRoute,
+) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         RunnerOpsRoute::Register => Some(post(handler::operator::runner_register::platform::<D>)),
         RunnerOpsRoute::List => Some(get(handler::operator::runners::list::<D>)),
@@ -50,7 +54,7 @@ pub fn runner_ops_handler_for<D: Services>(verb: RunnerOpsRoute) -> Option<Metho
 }
 
 /// Selects the handler for a platform-administration route.
-pub fn admin_handler_for<D: Services>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
+pub fn admin_handler_for<D: OperatorPlane>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
     match verb {
         AdminRoute::PlatformKeys => get(handler::admin::platform_keys::list::<D>)
             .merge(put(handler::admin::platform_keys::set::<D>)),

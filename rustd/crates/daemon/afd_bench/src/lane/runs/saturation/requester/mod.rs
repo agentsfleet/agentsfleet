@@ -201,7 +201,7 @@ fn renewal(result: Result<()>) -> bool {
     }
 }
 
-/// Idle capacity sends no repeated assignment; held authoring work still renews on its clock.
+/// Idle capacity sends no repeated assignment; held setup work still renews on its clock.
 async fn wait<H: Host>(
     host: &H,
     runner: &Uuid7,

@@ -108,7 +108,7 @@ impl RunSnapshot {
         let rows =
             sqlx::query_as::<_, LiveRunRow>(include_str!("../sql/select_runner_live_runs.sql"))
                 .bind(runner)
-                .bind(afd_fleet::run::sql::RUN_STATUS_ACTIVE)
+                .bind(afd_state::sql::RUN_STATUS_ACTIVE)
                 .bind(i64::try_from(RUNS_MAX + 1)?)
                 .fetch_all(&mut *database.acquire().await?)
                 .await?;

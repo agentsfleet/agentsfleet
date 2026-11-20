@@ -5,7 +5,7 @@ mod body;
 use super::{DraftPath, access, id};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{
@@ -31,7 +31,7 @@ use std::sync::Arc;
         (status=429, description=afd_http::openapi::TOO_MANY_REQUESTS), (status=500, description=afd_http::openapi::INTERNAL),
         (status=503, description="Stream capacity or dependency unavailable"))
 ))]
-pub(crate) async fn open<D: Services>(
+pub(crate) async fn open<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

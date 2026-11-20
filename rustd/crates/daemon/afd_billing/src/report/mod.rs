@@ -18,7 +18,7 @@ pub const BILLING_PERIOD_TODAY: &str = "today";
 pub const BILLING_PERIOD_WEEK: &str = "week";
 /// A billed fleet run, as the reporting API names it.
 pub const BILLING_ACTIVITY_RUNTIME: &str = "runtime";
-/// A private setup attempt, as the reporting API names it.
+/// A setup run, as the reporting API names it.
 pub const BILLING_ACTIVITY_SETUP: &str = "setup";
 
 use af_core::id::Uuid7;

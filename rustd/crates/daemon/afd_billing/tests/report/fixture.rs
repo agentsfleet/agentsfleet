@@ -154,7 +154,7 @@ impl Line {
     /// its own, so the sweep settles it as the setup run it is.
     pub(super) fn setup(tenant: &Uuid7, money: i64) -> Self {
         let mut line = Self::runtime(tenant, &id(), money);
-        line.work_type = work::AUTHORING_ATTEMPT;
+        line.work_type = work::SETUP_RUN;
         line.kind = LineKind::Model;
         line.fleet = None;
         line.name = None;
@@ -178,7 +178,7 @@ impl Line {
         if self.work_type == work::FLEET_RUN {
             WorkKey::FleetRun(self.work_id.clone())
         } else {
-            WorkKey::AuthoringAttempt(self.work_id.clone())
+            WorkKey::SetupRun(self.work_id.clone())
         }
     }
 }

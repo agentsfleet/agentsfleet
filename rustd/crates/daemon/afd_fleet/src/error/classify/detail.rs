@@ -1,12 +1,14 @@
 //! Safe caller-facing sentences for every native failure.
 
+use af_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE};
+
 use super::super::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED,
-    DETAIL_CONNECTOR_RECONNECT, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
-    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
-    DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
-    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_LOST, DETAIL_RUN_MAX_RUNTIME,
-    DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
+    DETAIL_CONNECTOR_RECONNECT, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
+    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED,
+    DETAIL_MINT_UNCONFIGURED, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
+    DETAIL_RUN_LOST, DETAIL_RUN_MAX_RUNTIME, DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE,
+    DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
 
 impl Error {
@@ -41,7 +43,7 @@ impl Error {
             ErrorKind::TaskTargetCounter { .. } => crate::task::TaskRefusal::InvalidTarget.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
-            ErrorKind::Authoring { ref source } => source.detail(),
+            ErrorKind::Setup { ref source } => source.detail(),
             ErrorKind::TurnWrite { ref source } | ErrorKind::TaskControlTurn { ref source, .. } => source.detail(),
             ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the

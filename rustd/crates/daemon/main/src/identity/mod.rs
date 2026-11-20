@@ -23,7 +23,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_api::services::SignupMetadata;
+use afd_api_ingress::services::SignupMetadata;
 use afd_auth::capability::{CapabilitySource, NoCapabilitySource};
 use afd_auth::credential::Presented;
 use afd_auth::error::Unavailable;

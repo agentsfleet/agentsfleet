@@ -37,7 +37,7 @@ const fn default_limit() -> u32 {
 /// Independent support facts, not permission receipts.
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct ModelEligibility {
-    /// This deployment can perform bounded authoring with the selection.
+    /// This deployment can run setup with the selection.
     pub authoring: bool,
     /// Existing runtime provider resolution accepts the selection.
     pub runtime: bool,

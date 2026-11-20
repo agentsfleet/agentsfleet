@@ -24,10 +24,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::harness;
 
 use af_core::error_code;
-use afd_api::route::Verb;
-use afd_api::{Guard, Route};
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_http::auth::DETAIL_NOT_YOURS;
+use afd_http::route::Verb;
+use afd_http::route::{Guard, Route};
 use axum::Router;
 use http::{Method, StatusCode};
 

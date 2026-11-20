@@ -39,7 +39,7 @@ async fn prior_run_lookup_probes_the_run_event_index_for_fresh_and_reassigned_he
     super::meter::assert_point_lookups(&mut tx, &held).await;
     sqlx::query(RETAINED)
         .bind(&held.run_key)
-        .bind(afd_fleet::run::sql::RUN_STATUS_REPORTED)
+        .bind(afd_state::sql::RUN_STATUS_REPORTED)
         .execute(&mut *tx)
         .await
         .expect("retained history");
@@ -94,14 +94,14 @@ async fn assignment_plan(
     .bind(runner)
     .bind(af_core::timing::RUN_TTL)
     .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-    .bind(afd_fleet::run::sql::RUNNER_STATUS_ACTIVE)
-    .bind(afd_fleet::run::sql::RUN_STATUS_ACTIVE)
-    .bind(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
+    .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
+    .bind(afd_state::sql::RUN_STATUS_ACTIVE)
+    .bind(afd_state::sql::RUN_STATUS_EXPIRED)
     .bind(af_wire::task::CAPABILITY)
     .bind(af_wire::task::TaskState::Ready.as_str())
     .bind(af_wire::task::TaskState::Running.as_str())
     .bind(afd_fleet::task::DECISION_POLICY_PATH)
-    .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
+    .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
     .bind(af_core::turn::status::RECEIVED)
     .bind(true)
     .bind(afd_credential::provider::PLATFORM_MODEL_REF)

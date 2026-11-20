@@ -19,7 +19,7 @@ afd_fleet_lifecycle.workspace = true
 afd_vault.workspace = true
 afd_bus.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
-af_context = { workspace = true, features = ["postgres"] }
+af_context.workspace = true
 afd_billing.workspace = true
 af_crypto.workspace = true
 afd_db.workspace = true
@@ -29,6 +29,8 @@ af_fleet_runtime.workspace = true
 af_validate.workspace = true
 af_wire.workspace = true
 afd_runner.workspace = true
+# The run and runner status spellings the setup statements bind.
+afd_state.workspace = true
 afd_turns.workspace = true
 afd_approval.workspace = true
 afd_cron.workspace = true

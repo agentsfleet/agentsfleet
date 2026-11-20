@@ -46,16 +46,8 @@ impl Fixture {
     /// only their status brings them into the pass.
     async fn seed_runners(&self, connection: &mut sqlx::PgConnection) {
         let rows = [
-            (
-                &self.stale,
-                afd_runner::sql::RUNNER_STATUS_ACTIVE,
-                Some(OLD),
-            ),
-            (
-                &self.draining,
-                afd_runner::sql::RUNNER_STATUS_DRAINING,
-                None,
-            ),
+            (&self.stale, afd_state::sql::RUNNER_STATUS_ACTIVE, Some(OLD)),
+            (&self.draining, afd_state::sql::RUNNER_STATUS_DRAINING, None),
             (&self.cordoned, "cordoned", None),
             (&self.unknown, UNMODELLED_STATUS, None),
         ];

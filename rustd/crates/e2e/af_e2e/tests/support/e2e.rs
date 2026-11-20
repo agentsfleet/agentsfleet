@@ -1,0 +1,324 @@
+//! A booted daemon, funded fleet, and enrolled runner.
+//!
+//! Shared-database scenarios serialize placement through [`SCENARIOS`]. Unique
+//! fleet tags keep positive assertions scoped; a test that must prove no work
+//! is available needs an isolated database because untagged fleets also match.
+//! Stop the supervisor before cleanup releases the scenario guard.
+//!
+//! # Why the clock is real
+//!
+//! The store suites freeze time at `ENROLLED_AT` because they call verbs
+//! directly and pass the instant in. Here the daemon reads its own clock, so a
+//! frozen seed would place the turn and the run deadline years
+//! apart and the assignment pass would correctly find nothing. Everything below
+//! is stamped from [`af_core::clock::now`] for that reason, which is also why
+//! nothing here asserts on an absolute instant.
+#![allow(
+    dead_code,
+    reason = "test support: shared by several test binaries, each using a subset"
+)]
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::turn::TurnKind;
+use afd_runner::Runners;
+use agentsfleetd::serve::{Booted, boot};
+use agentsfleetd::supervisor::Supervisor;
+use jiff::Timestamp;
+
+pub(crate) use crate::e2e_db::daemon_environment;
+use crate::e2e_db::scenario_database;
+use crate::e2e_event::{enqueue, enqueue_unsupported};
+use crate::e2e_retire::retire_fleet;
+use crate::e2e_seed::{
+    DEEP_POOL, FLEET_CONFIG_JSON, FLEET_NAME, scenario_enrolment, seed_fleet, seed_model_rate,
+    seed_platform_default, seed_wallet,
+};
+use crate::e2e_seed_keys::seed_provider_key;
+
+use agentsfleetd::test_util::install_subscriber;
+
+/// Where the lane publishes the Postgres it brought up.
+pub(crate) const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
+
+/// The port that asks the kernel to choose one.
+///
+/// Bind-and-hold: `boot` binds the listener itself and reports the address it
+/// got, so no test allocates a number, closes it, and races another test to
+/// re-bind it.
+pub(crate) const EPHEMERAL: u16 = 0;
+
+/// Sixty-four hex characters. Boot validates the key; nothing here decrypts.
+pub(crate) const GOOD_KEK: &str =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+/// Serializes scenarios that share the lane database and platform default.
+pub(crate) static SCENARIOS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+static SEQUENCE: AtomicU32 = AtomicU32::new(0);
+
+/// The provider a seeded catalogue row is filed under.
+pub(crate) const PROVIDER: &str = "anthropic";
+
+/// The model a seeded fleet runs, and the catalogue row that prices it.
+pub(crate) const MODEL: &str = "claude-fixture";
+
+/// The billing posture a seeded run records.
+pub(crate) const POSTURE: &str = "platform";
+
+/// The actor every seeded event carries.
+pub(crate) const ACTOR: &str = "fixture:operator";
+
+/// The type every seeded event carries.
+///
+/// `Chat`, not the `steer` the store suites next door spell. `TurnKind` is a
+/// CLOSED set and the pull path ends any delivery it cannot name — those
+/// suites call `Runs::select` directly and never reach that check, so their
+/// spelling has never had to be one the daemon executes. A §7 scenario does
+/// reach it, and the ledger this seed admits through takes the type itself,
+/// so a scenario cannot spell one the daemon would end.
+pub(crate) const EVENT_TYPE: TurnKind = TurnKind::Chat;
+
+/// The body every seeded event carries.
+pub(crate) const REQUEST_JSON: &str = r#"{"prompt":"fixture"}"#;
+
+/// Reads a lane knob, failing with the command that sets it.
+pub(crate) fn lane(knob: &str) -> String {
+    ProcessEnv.get(knob).unwrap_or_else(|| {
+        panic!("{knob} is unset — scene these through `make test-integration-rustd`")
+    })
+}
+
+/// A fleet, workspace and tenant no other scenario in this lane will name.
+///
+/// Process id and a counter spell canonical `UUIDv7` values. The application's
+/// typed decoder refuses another UUID version, so fixture IDs use the same
+/// shape as application-minted identities.
+pub(crate) fn unique_ids() -> (Uuid7, Uuid7, Uuid7) {
+    let scene = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let id = |slot: u32| {
+        Uuid7::parse(&format!(
+            "0195b4ba-8d3a-7{scene:03x}-8abc-{pid:08x}{slot:04x}"
+        ))
+        .expect("a scenario id is a canonical UUIDv7")
+    };
+    (id(1), id(2), id(3))
+}
+
+/// Everything one end-to-end run needs, and the daemon serving it.
+///
+/// Holds `Booted` rather than just the address: its pool and queue are the
+/// SAME handles the daemon answers through, so a state assertion reads what the
+/// request actually wrote instead of what a second connection can see.
+pub(crate) struct Scenario {
+    /// The daemon under test. Dropped last, after the supervisor is shut down.
+    pub(crate) booted: Booted,
+    /// Where to send requests, already spelled as an origin.
+    pub(crate) base: String,
+    /// The fleet holding the seeded event.
+    pub(crate) fleet: Uuid7,
+    /// Its workspace.
+    pub(crate) workspace: Uuid7,
+    /// Its billing tenant.
+    pub(crate) tenant: Uuid7,
+    /// The turn identifier shared by the run, report, and narrative.
+    pub(crate) turn_id: Uuid7,
+    /// The enrolled runner's durable identifier.
+    pub(crate) runner_id: Uuid7,
+    /// Its bearer token, revealed once at enrolment.
+    pub(crate) token: String,
+    pub(crate) native: tokio::sync::OnceCell<afr_supervisor::test_util::Session>,
+    /// The instant the seed was stamped with.
+    pub(crate) seeded_at: Timestamp,
+    /// This scenario's hold on the platform default, released after the daemon
+    /// above has stopped and before the scenario guard below.
+    pub(crate) _default: afd_db::test_util::PlatformDefault,
+    /// Exclusive placement among scenarios sharing the lane database.
+    ///
+    /// Last field, so it is released only after the daemon above has been
+    /// dropped and stopped polling.
+    pub(crate) _exclusive: tokio::sync::MutexGuard<'static, ()>,
+}
+
+/// Boots the daemon and seeds one funded fleet with one event and one runner.
+///
+/// The fleet exists before its initial turn is committed.
+pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
+    scenario_with_provider(supervisor, None).await
+}
+
+/// [`scenario`], with the identity provider pointed at a caller's listener.
+///
+/// The tenant plane resolves a person's capabilities through `CLERK_API_BASE`,
+/// so a suite driving `/v1/tenants/me/*` has to answer that read itself; every
+/// other suite keeps the fixture base nothing dials.
+pub(crate) async fn scenario_with_provider(
+    supervisor: &mut Supervisor,
+    provider_base: Option<&str>,
+) -> Scenario {
+    scenario_with(supervisor, provider_base, &[], FLEET_CONFIG_JSON).await
+}
+
+/// [`scenario_with_provider`], with a suite's own knobs and fleet document.
+///
+/// `extra` points the daemon at what the suite stood up — a scheduler, a
+/// Slack — and `config` is the fleet's stored document, for a suite whose
+/// fleet must declare something the fixture one does not.
+pub(crate) async fn scenario_with(
+    supervisor: &mut Supervisor,
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+    config: &str,
+) -> Scenario {
+    install_subscriber();
+    // Before the daemon boots, because booting one is joining the consumer
+    // group this guards.
+    let exclusive = SCENARIOS.lock().await;
+    // The lane's database, already migrated. Scenarios are kept apart in
+    // Postgres by the identifiers `unique_ids` mints below, not by a database
+    // apiece, and on the ready stream by the guard above.
+    let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
+
+    let booted = scenario_boot(&database_url, provider_base, extra, supervisor).await;
+    let base = format!("http://{}", booted.address);
+    let now = af_core::clock::now();
+
+    let (fleet, workspace, tenant) = unique_ids();
+    seed_fleet(
+        &booted, &fleet, FLEET_NAME, &workspace, &tenant, config, now,
+    )
+    .await;
+    seed_wallet(&booted, &tenant, DEEP_POOL, now).await;
+    seed_model_rate(&booted, now).await;
+    let default = seed_platform_default(&booted, &workspace, now).await;
+    seed_provider_key(&booted, &workspace, now).await;
+
+    let (runner_id, token) = enrolled_runner(&booted, &fleet, now).await;
+
+    let turn_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE).await;
+
+    Scenario {
+        base,
+        fleet,
+        workspace,
+        tenant,
+        turn_id,
+        runner_id,
+        token,
+        native: tokio::sync::OnceCell::new(),
+        seeded_at: now,
+        booted,
+        _default: default,
+        _exclusive: exclusive,
+    }
+}
+
+impl Scenario {
+    /// Connects once through the production native downlink.
+    pub(crate) async fn native_session(&self) -> &afr_supervisor::test_util::Session {
+        self.native
+            .get_or_init(async || {
+                let origin = format!(
+                    "https://localhost:{}",
+                    self.booted.runner_stream_address.port()
+                );
+                let root = agentsfleetd::test_util::runner_stream::root_file()
+                    .to_string_lossy()
+                    .into_owned();
+                let env = af_core::env::MapEnv::from_pairs([
+                    (afr_supervisor::config::ENV_API_URL, self.base.as_str()),
+                    (
+                        afr_supervisor::config::ENV_RUNNER_TOKEN,
+                        self.token.as_str(),
+                    ),
+                    (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
+                    (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
+                ]);
+                let config = afr_supervisor::config::Config::from_env(&env)
+                    .expect("the native fixture configuration is valid");
+                let session = afr_supervisor::test_util::Session::connect(&config)
+                    .await
+                    .expect("the native fixture connects");
+                session.capacity(1);
+                session
+            })
+            .await
+    }
+
+    /// Admits another event under this scenario's ready fleet.
+    pub(crate) async fn enqueue_event(&self, event_type: TurnKind) -> Uuid7 {
+        enqueue(&self.booted, &self.fleet, &self.workspace, event_type).await
+    }
+
+    /// Puts an event of a type this daemon cannot name on the fleet's stream.
+    pub(crate) async fn enqueue_unsupported_event(&self, event_type: &str) -> Uuid7 {
+        enqueue_unsupported(
+            &self.booted,
+            &self.fleet,
+            &self.workspace,
+            event_type,
+            af_core::clock::now(),
+        )
+        .await
+    }
+
+    /// Takes the tenant's wallet to zero.
+    ///
+    /// A row holding ZERO, not a missing row: the credits gate draws that
+    /// distinction deliberately and a tenant with NO wallet is ADMITTED,
+    /// because an unprovisioned tenant is an operator gap and refusing every
+    /// one of them would turn that into an outage. A test proving the refusal
+    /// has to seed the exhausted case, not the absent one.
+    pub(crate) async fn drain_wallet(&self) {
+        seed_wallet(&self.booted, &self.tenant, 0, self.seeded_at).await;
+    }
+
+    /// Retires this scenario's fleet, then closes its pools.
+    ///
+    /// Retired rather than only unmarked: a fleet left `active` with an open
+    /// run is re-marked by the next daemon's expiry sweeper and held to
+    /// the next scenario's runner — see `e2e_retire`. Takes `self` so the
+    /// pools close with the scenario, and so no test can reach the fleet once
+    /// it is retired.
+    pub(crate) async fn cleanup(self) {
+        let Self { booted, fleet, .. } = self;
+        retire_fleet(&booted, &fleet).await;
+        drop(booted);
+    }
+}
+
+async fn enrolled_runner(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uuid7, String) {
+    // Through the production verb, not an INSERT: enrolment mints the token
+    // and stores only its digest, and a seeded row would let the suite present
+    // a credential the daemon's own minting never produced.
+    let enrolled = Runners::new(booted.database.clone(), Entropy::new())
+        .register(&scenario_enrolment(fleet), "fixture:platform-operator", now)
+        .await
+        .expect("enrolment must succeed");
+
+    (enrolled.runner_id, enrolled.token.expose().to_owned())
+}
+
+async fn scenario_boot(
+    database_url: &str,
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+    supervisor: &mut Supervisor,
+) -> Booted {
+    boot(
+        &daemon_environment(database_url, provider_base, extra),
+        EPHEMERAL,
+        supervisor,
+    )
+    .await
+    .expect("the lane's Postgres and NATS are up")
+}

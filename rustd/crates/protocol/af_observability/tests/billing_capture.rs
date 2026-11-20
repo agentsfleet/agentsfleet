@@ -71,16 +71,13 @@ fn should_count_each_funds_check_under_its_answer() {
 #[test]
 fn should_count_only_the_settlement_groups_a_sweep_settled() {
     let capture = Capture::install();
-    let series = [(
-        semconv::LABEL_WORK_TYPE,
-        WorkType::AuthoringAttempt.as_str(),
-    )];
+    let series = [(semconv::LABEL_WORK_TYPE, WorkType::SetupRun.as_str())];
     let family = BILLING_SWEEPER_RESETTLED_TOTAL.wire_name();
     let before = capture.sum(family, &series);
 
-    billing::sweeper_resettled(WorkType::AuthoringAttempt, 0);
+    billing::sweeper_resettled(WorkType::SetupRun, 0);
     let after_none = capture.sum(family, &series);
-    billing::sweeper_resettled(WorkType::AuthoringAttempt, RESETTLED);
+    billing::sweeper_resettled(WorkType::SetupRun, RESETTLED);
 
     assert_eq!(after_none, before, "an empty sweep counts nothing");
     assert_eq!(capture.sum(family, &series), before + RESETTLED);
@@ -93,10 +90,7 @@ fn should_count_only_the_settlement_groups_a_sweep_settled() {
 fn should_withdraw_what_is_owed_when_the_read_fails() {
     let capture = Capture::install();
     let fleet = [(semconv::LABEL_WORK_TYPE, WorkType::FleetRun.as_str())];
-    let attempt = [(
-        semconv::LABEL_WORK_TYPE,
-        WorkType::AuthoringAttempt.as_str(),
-    )];
+    let attempt = [(semconv::LABEL_WORK_TYPE, WorkType::SetupRun.as_str())];
     let unsettled = BILLING_UNSETTLED_NANOS.wire_name();
     let oldest = BILLING_UNSETTLED_OLDEST_SECONDS.wire_name();
 

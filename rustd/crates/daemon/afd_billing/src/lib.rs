@@ -52,8 +52,7 @@ pub mod wallet;
 pub use self::budget::{Spend, Verdict};
 pub use self::error::{Error, Result};
 pub use self::nanos::{
-    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos,
-    RUN_NANOS_PER_SEC,
+    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, RUN_NANOS_PER_SEC,
 };
 pub use self::rates::Posture;
 pub use self::store::Accounts;

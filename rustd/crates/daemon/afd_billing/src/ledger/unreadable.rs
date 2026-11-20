@@ -154,11 +154,7 @@ mod tests {
     fn a_spelling_is_named_once_per_process() {
         let capture = Capture::install();
         for _pass in 0..5 {
-            skipped(
-                Unreadable::LineKind,
-                "authoring_attempt",
-                "once-per-process",
-            );
+            skipped(Unreadable::LineKind, "setup_run", "once-per-process");
         }
         assert_eq!(logged(&capture), 1);
 
@@ -168,7 +164,7 @@ mod tests {
             .find(|event| event.field("event") == Some(EVENT_SKIPPED))
             .expect("the first sighting was logged");
         assert_eq!(named.field("unreadable"), Some("line_kind"));
-        assert_eq!(named.field("work_type"), Some("authoring_attempt"));
+        assert_eq!(named.field("work_type"), Some("setup_run"));
         assert_eq!(named.field("spelling"), Some("once-per-process"));
     }
 
@@ -222,11 +218,7 @@ mod tests {
     fn a_different_meaning_or_work_type_is_named_again() {
         let capture = Capture::install();
         skipped(Unreadable::Posture, "fleet_run", "distinct-spelling");
-        skipped(
-            Unreadable::Posture,
-            "authoring_attempt",
-            "distinct-spelling",
-        );
+        skipped(Unreadable::Posture, "setup_run", "distinct-spelling");
         skipped(Unreadable::LineKind, "fleet_run", "distinct-spelling");
         assert_eq!(logged(&capture), 3);
     }

@@ -62,7 +62,10 @@ use http::{Method, StatusCode};
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, Owner, own, plane_of, prove};
 use crate::route::{Route, RouteMeta};
-use crate::services::Services;
+use afd_api_ingress::services::IngressPlane;
+use afd_api_operator::OperatorPlane;
+use afd_api_runner::services::RunnerPlane;
+use afd_api_tenant::services::TenantPlane;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
 pub use self::trace::record as trace_requests;
@@ -70,18 +73,21 @@ pub use self::trace::record as trace_requests;
 /// Everything one mounted route is served through, as a single bound.
 ///
 /// A trait alias in the only spelling Rust has for one: an empty trait with
-/// both supertraits, and a blanket implementation so nothing has to name it. It
-/// exists because the pair appears on the router, on both mounting helpers and
-/// on every handler, and `D: Dependencies + Services` written eight times is
-/// eight places for the two to fall out of step.
+/// the readiness probe and every plane as supertraits, and a blanket
+/// implementation so nothing has to name it. It exists because the set appears
+/// on the router and on every mounting helper, and five bounds written at each
+/// is that many places for them to fall out of step.
 ///
 /// Deliberately NOT called `Plane`. `afd_auth::Plane` is the credential plane —
 /// tenant or runner — and these files import both; one name for two ideas is
 /// how a reader ends up believing the router is parameterised by which
 /// credential it accepts.
-pub trait Serving: Dependencies + Services {}
+pub trait Serving: Dependencies + TenantPlane + RunnerPlane + OperatorPlane + IngressPlane {}
 
-impl<D: Dependencies + Services> Serving for D {}
+impl<D> Serving for D where
+    D: Dependencies + TenantPlane + RunnerPlane + OperatorPlane + IngressPlane
+{
+}
 
 /// The router this daemon serves.
 ///

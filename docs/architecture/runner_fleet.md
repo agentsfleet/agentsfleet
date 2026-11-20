@@ -440,7 +440,7 @@ agentsfleet platform runners runs <RUNNER_ID>
 
 Operators read runners through `GET /v1/admin/runners` and change them through `PATCH /v1/admin/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
 
-A runner can hold multiple active runs. Busy status derives from live runs; the server counts fleet and setup occupancy under the runner-row lock before granting capacity. [Setup runs](#authoring-runs) describes the shared limit.
+A runner can hold multiple active runs. Busy status derives from live runs; the server counts fleet and setup occupancy under the runner-row lock before granting capacity. [Setup runs](#setup-runs) describes the shared limit.
 
 > [!WARNING]
 > Cordon and drain currently block every authenticated runner request, including renewal and reports. The capacity layer permits cordoned or draining renewals, but authentication accepts only `active` tokens (`afd_state`'s credential rows and `afd_auth`'s authenticate step). Do not rely on these actions for graceful completion; existing work can stop and reports can remain spooled.
@@ -1175,13 +1175,15 @@ It overwrites an in-memory snapshot and lets the OTLP export read that snapshot.
 
 It is **not "metrics in Postgres"**. It *reads* already-durable operational state to derive a gauge; the timeseries still lives only in the metrics backend. Deferred; it is the durable answer for a scaled-out future.
 
-## Authoring runs
+## Setup runs
 
-The heading keeps its old words because other pages cite it by text. Setup runs are a draft's private work.
+A setup run answers one message of a creator-private draft. It is a run on the common run path, owned by the draft instead of a fleet.
 
-Private setup work shares runner capacity with fleet runs. The sections below describe the implemented protocol; verification evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
+Setup work shares runner capacity with fleet runs. Verification evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
 
-The native connection declares `accepted_kinds` and receives runs tagged `kind:"fleet"` or `kind:"authoring"`, the wire tag for setup work. An assignment locks the runner row, counts live runs across both kinds plus valid sandbox holds, and inserts within that transaction.
+The native connection declares `accepted_kinds`: `fleet` alone, or `fleet` and `setup` (`af_wire::run::AcceptedKinds`). Every run arrives as a `Down::Run`. A setup run's payload names the draft as its `owner` and carries the setup part: the head candidate, its revision, the message's sequence, `save_requested` and the `propose_setup` tool (`af_wire::run::SetupWork`).
+
+An assignment locks the runner row, counts live runs across both kinds plus valid sandbox holds, and inserts within that transaction.
 
 Reusing the assigned fleet's hold transfers its worker once; setup charges every hold.
 
@@ -1194,37 +1196,31 @@ The server owns `worker_count`; the connection cannot override it. Reducing it b
 
 The shared poll reads an optimistic kind choice. Under the host lock, each successful placement rechecks and advances the assignment revision and last successful kind. Mixed placements alternate preference across daemon replicas; an empty kind tries the other, and a competing placement invalidates the old choice.
 
-Both renewal kinds hold the runner guard before extending a live deadline. Fleet renewal locks runner → run/thread; setup renewal locks draft → attempt → runner. [Concurrency](concurrency.md#runner-capacity-and-authoring-lock-order) owns the ordering and nonblocking assignment exception.
+Both renewal kinds take the runner row before extending a live deadline, then the run's thread and row. A setup renewal never takes a draft row. [Concurrency](concurrency.md#runner-capacity-and-setup-lock-order) owns the ordering and the assignment's `NOWAIT` exception.
 
 Renewals sample database time after acquiring the host guard. Expired work requires a new capacity-checked assignment; renewal cannot revive it. Runtime renewal extends the run and thread deadlines atomically under their original fences.
 
-Setup is creator-private work. Resolve its workspace owner and recheck creator membership. Choose the oldest eligible queued turn within that draft, and refuse another live attempt for the same draft.
+Setup is creator-private work. The assignment resolves the workspace owner and rechecks the creator's membership. It chooses the oldest eligible queued message within the draft, and refuses a second live run for the same draft.
 
-Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Setup turns remain a Postgres queue in `thread.turns`; NATS carries wake and progress hints, not another authoritative copy.
+Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Setup messages remain a Postgres queue in `thread.turns`; NATS carries wake and progress hints, not another authoritative copy.
 
 The `setup` schema defines creator-private `setup.drafts`, candidates and replay receipts. A draft's chat inputs are its `thread.turns` rows, and a setup run is a `thread.runs` row its draft owns.
 
-A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup revisions join their existing domains.
+A setup run's charges are its usage lines in `billing.usage_lines`, with `work_type = 'setup_run'` and the run as their work. They are retained independently of the chat (billing §11). Immutable native setup revisions join their existing domains.
 
 The private progress channel is the draft's thread, `af.thread.{draft_id}.items`.
 The publisher and HTTP reader recheck current access before sending answer previews.
 No private frame joins workspace broadcast; durable turn reads remain authoritative.
 
-Each setup run has an attempt identity, fence, expiry, pinned model, inference settings, context and prices, and a budget. Renewal, report and activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this run.
+Each setup run has a run identity, a fence, an expiry, a pinned model and its key, and a funds bound. Renewal and report check the run and its fence. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this run. It builds no sandbox.
 
 Instructions and native setup are untrusted context, never system authority.
 
-### Scoped provider boundary
+### Model calls
 
-The daemon issues an opaque run capability and serves the fourth machine route, `/model-calls`. [The resource reference](api_resources.md) owns its issuance, bindings, wire, expiry, revocation, dispatch receipts, and replay behavior. The daemon holds provider keys and dispatches each authorized call; the runner receives bounded text, proposals and usage.
+The runner makes every model call, in one guffbolt loop whose only tool is `propose_setup` (`afr_agent`'s setup module). The daemon makes none.
 
-Existing raw-key runtime transport is not reused for setup. Keep automatic transport retries disabled on this path, count every physical send, and stop on an unresolved dispatch.
-
-Real-router integration tests must deny foreign runner and model bindings, expired or revoked tokens, duplicate physical sends, and runtime credential minting. A local capability type alone supplies no boundary proof.
-
-Both adapters call the shared `af_inference::stream::StreamTurn` reader over Rig's native codecs.
-The reader owns cancellation, inactivity and finalization; known partial usage survives a failed response.
-Purpose adapters retain separate physical senders, permissions and retry eligibility.
+The assignment opens the pinned model's key and carries it in the run payload. A tenant runner is never assigned a setup run on the platform model. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that boundary.
 
 The [shared chat explanation](shared_chat_verification.md#backend-ownership) maps these methods and their callers.
 
@@ -1232,45 +1228,32 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 
 | Bound | Value | Enforcement |
 |---|---|---|
-| Input per model call | Selected model's physical window | Shared compaction measures the assembled request, including instructions, schemas, history and current text, while reserving output and framing headroom. |
-| Output across a turn | Saved model maximum output tokens | Sum provider output over all calls; reserve only remaining output for each next call. |
-| Calls per attempt | 8 | Daemon and runner counters; no tool loop beyond this count. |
-| Wall time per attempt | 300 seconds | Monotonic runner timer plus daemon expiry/fence; timeouts become timed_out. |
-| Provider request | Up to 300 seconds | Recorded dispatch deadline, clipped to attempt expiry; replay never starts another send. Upstream cancellation remains unconfirmed. |
-| Runner model-call HTTP wait | 310 seconds | Allows the bounded provider call and receipt settlement. |
-| Run TTL / renewal | 35 seconds / 5 seconds | No overlapping assigned run while the prior live attempt remains counted. |
+| Input per model call | Selected model's physical window | guffbolt's window hook compacts the oldest turns when the window fills. |
+| Wall time per run | 300 seconds | `afd_setup::limits::SETUP_RUNTIME`, the run's `max_runtime_seconds`. The proposal loop has no other cap. |
+| Funds bound | 300 seconds of runtime, plus output for 8 calls on the platform's key | `afd_setup::limits::MODEL_CALLS_MAX`; the assignment's gate checks it, and sets nothing aside. |
+| Runs per message | `af_core::limits::EVENT_RUNS_MAX` (3) | A lapsed run is reassigned at the next fence and reruns the message from the start. Past the limit, the message fails. |
 | Instructions | 1,048,576 characters | The one text ceiling, `af_validate::TEXT_MAX_CHARS`, independently of tokenizer counts. |
-| Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
+| Proposal in a report | 6,553,600 bytes | `af_validate::DEFINITION_MAX_BYTES`, the bound the Definition parser applies. |
+| Answer preview chunk | 4 KiB | `afd_setup`'s `setup_run/progress.rs`. |
 
 Original history remains creator-private and is read in bounded pages. [Conversation compaction](context_lifecycle.md) retains working notes without a fixed 64-message or 32,768-token conversation allowance.
 
-Before each physical send, the daemon funds the complete measured request and known prior costs. It releases database locks while funding, then rechecks source and authority before recording dispatch intent (`afd_setup`'s dispatch funding step).
-
-The shared window planner reserves output and framing headroom. The turn's remaining output allowance and selected model's physical window still bound every request (`af_context`'s window planner).
-
 The `o200k_base` estimate for an unrecognized model carries a quarter of headroom, so it can refuse input that the provider's tokenizer would fit. Provider-reported usage remains authoritative for settlement, including charged reasoning tokens.
 
-Every physical dispatch spends the call allowance; automatic transport retries are disabled. Uncertain usage ends the attempt before another dispatch can spend an unknown output remainder. [Proposal correction](runner_execution.md#proposal-correction-and-failure) describes bounded retries after rejected edits.
+The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. `af_fleet_runtime::setup` decides each proposal. A refused proposal goes back to the model as the tool result, and the run goes on. The report carries the last proposal the run kept.
 
-The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. Assignment includes the current candidate; every proposal acknowledgement returns its accepted version. Exact replay returns that original version, even after later edits.
+The daemon applies `Definition::parse` and the base check again in the report transaction. Only then does it write the next candidate revision. A proposal it refuses writes no candidate, and the message keeps its answer.
 
-It may ask clarifying questions. It cannot grant access, publish, Save, call arbitrary functions, or choose different credentials. Tool operations pass the same validator as drawer edits.
-
-Assistant answer and candidate changes are separate records; terminal report does not re-emit the whole definition.
+The model may ask clarifying questions. It cannot grant access, Save, call arbitrary functions, or choose different credentials. Tool operations pass the same validator as drawer edits.
 
 ### Private copies and report recovery
 
 | Copy | Owner | Lifetime and removal |
 |---|---|---|
-| Draft turns and candidates | Creator-private setup domain | Draft deletion removes private rows and fences every attempt. |
-| Dispatch result, native provider reply and answer receipts | Setup domain | Bounded private replay copies expire after 24 hours. Native replies bind the attempt and unchanged conversation prefix, stay out of runner responses and logs, and are cleared with draft deletion. Accounting receipts retain no answer. |
-| Pending setup report | Supervisor worker | Retained only in memory. Private answer text is zeroed after 24 hours; retries retain content-free accounting. Process loss discards pending memory. |
-| Attempt and settlement records | Runner and billing domains | Retain content-free identities and validated accounting independently of the draft. |
-| Provider logs and infrastructure snapshots | Their service owners | Follow their published retention; draft deletion cannot promise physical removal from these systems. |
+| Draft turns and candidates | Creator-private setup domain | Draft deletion removes private rows and its runs. |
+| The draft's compacted context | Setup domain, `memory.context_checkpoints` | Removed with the draft by foreign key. |
+| Pending setup report | Supervisor worker | Retained only in memory. Process loss discards it. |
+| Usage lines | Billing domain | Content-free; retained independently of the draft. |
+| Provider logs and infrastructure snapshots | Their service owners | Follow their own retention; draft deletion cannot promise physical removal from these systems. |
 
-The supervisor's 24-hour private-answer deadline does not extend with retries.
-[Private content and report retention](runner_execution.md#private-content-and-report-retention) describes the memory owner and accounting boundary.
-
-Accounting-only replay uses the original report identity and normalized accounting fields. Receipts prevent duplicate settlement after lost acknowledgements or draft deletion. A report never received can also settle without restoring private content.
-
-Altered usage conflicts; no accounting retry restores a message, answer or candidate. The [check ledger](../reviews/workspace-setup/checks.md) records verification evidence.
+A report is idempotent by run and fence. A replayed report finds the run settled and writes nothing. A report at a superseded fence is refused and writes nothing; the expiry sweep bills the dead run's last slice.

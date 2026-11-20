@@ -21,7 +21,7 @@ use serde::Deserialize;
 use super::{TURN_ID_MAX_LEN, bounded_path, parse_fleet};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceTurns as _};
+use crate::services::{TenantPlane, WorkspaceTurns as _};
 
 /// The scoped event a failed read is logged under.
 const EVENT_TOOL_CALL: &str = "fleet_turn_item_detail_failed";
@@ -97,7 +97,7 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn read<D: Services>(
+pub(crate) async fn read<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(path): Path<ToolCallPath>,

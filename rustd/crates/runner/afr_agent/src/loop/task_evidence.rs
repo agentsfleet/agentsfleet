@@ -15,7 +15,7 @@ impl Harness<'_, '_> {
         let group = self.transcript.group();
         let evidence = serde_json::json!({ "answer": answer,
             "completed_group": group.iter().map(evidence).collect::<Vec<_>>() });
-        if af_wire::decision::serialized_within(&evidence, EVIDENCE_BYTES) {
+        if af_validate::serialized_within(&evidence, EVIDENCE_BYTES) {
             return Ok(evidence);
         }
         let encoded = zeroize::Zeroizing::new(serde_json::to_vec(&evidence)?);
@@ -57,7 +57,7 @@ impl Harness<'_, '_> {
         }
         let evidence = serde_json::json!({ "complete_group_sha256": digest, "complete_group_bytes": bytes,
             "summary": summary, "summary_is_semantic_evidence": true });
-        if !af_wire::decision::serialized_within(&evidence, EVIDENCE_BYTES) {
+        if !af_validate::serialized_within(&evidence, EVIDENCE_BYTES) {
             return Err(unavailable());
         }
         Ok(evidence)

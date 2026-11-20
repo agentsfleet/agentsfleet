@@ -26,9 +26,8 @@ const SEQUENCE_EXHAUSTED: &str = "message sequence is exhausted";
 /// preceding sender's committed receipt and sequence.
 /// `$1` draft, `$2` next sequence, `$3` message, `$4` operation, `$5` status,
 /// `$6` model, `$7` text, `$8` receipt, `$9` workspace, `$10` actor, `$11` scope,
-/// `$12` digest, `$13` replay window, `$14` save requested. An earlier attempt
-/// whose usage is still being accounted never refuses a new message: its hold
-/// keeps the wallet bounded while the person keeps talking.
+/// `$12` digest, `$13` replay window, `$14` save requested, `$15` turn kind. An
+/// earlier run whose usage is not yet settled never refuses a new message.
 const ADMIT: &str = include_str!("../sql/message/admit.sql");
 
 /// A setup draft's turn is a person's chat message, so `thread.turns.kind`

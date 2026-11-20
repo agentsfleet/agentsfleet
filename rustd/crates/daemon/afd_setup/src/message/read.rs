@@ -86,11 +86,11 @@ pub(super) async fn page_on(
         // A draft run's usage, bound as the notices bind it (`observe/rows.rs`):
         // its lines, keyed by the run as their work, shown once no run of the
         // turn is live and known once each one reported.
-        .bind(afd_billing::sql::work::AUTHORING_ATTEMPT)
+        .bind(afd_billing::sql::work::SETUP_RUN)
         .bind(af_wire::usage::LineKind::Runtime.as_str())
-        .bind(afd_runner::sql::RUN_STATUS_REPORTED)
-        .bind(afd_runner::sql::RUN_STATUS_STOPPED)
-        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_REPORTED)
+        .bind(afd_state::sql::RUN_STATUS_STOPPED)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_all(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

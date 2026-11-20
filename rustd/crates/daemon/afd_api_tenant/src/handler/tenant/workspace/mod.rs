@@ -20,7 +20,7 @@ use af_observability::Telemetry;
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::request_id::RequestId;
-use crate::services::{Services, TenantWorkspaces as _};
+use crate::services::{TenantPlane, TenantWorkspaces as _};
 
 mod input;
 mod render;
@@ -77,7 +77,7 @@ const EMPTY_OBJECT: &[u8] = b"{}";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
@@ -132,7 +132,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,

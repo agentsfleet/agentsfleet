@@ -36,9 +36,9 @@ pub(crate) enum ErrorKind {
     Gone,
     #[error("the workspace owner's selected model is unavailable")]
     Model,
-    #[error("the owner wallet cannot cover the authoring bound")]
+    #[error("the owner wallet cannot cover the setup run's bound")]
     Balance,
-    #[error("the authoring host could not be guarded")]
+    #[error("the setup run's runner could not be guarded")]
     Runner {
         #[from]
         source: afd_runner::Error,
@@ -58,7 +58,7 @@ pub(crate) enum ErrorKind {
         #[from]
         source: afd_fleet_lifecycle::Error,
     },
-    #[error("the assembled authoring context exceeds its bound")]
+    #[error("the assembled setup context exceeds its bound")]
     Token,
     #[error("the private preview could not be published")]
     Preview {
@@ -69,19 +69,19 @@ pub(crate) enum ErrorKind {
     Cursor,
     #[error("the setup request is invalid")]
     Invalid { detail: &'static str },
-    #[error("the authoring store could not {context}")]
+    #[error("the setup store could not {context}")]
     Query {
         context: &'static str,
         #[source]
         source: sqlx::Error,
     },
-    #[error("the authoring store holds unreadable JSON")]
+    #[error("the setup store holds unreadable JSON")]
     Stored {
         /// serde's position and expected type; never the private text it read.
         #[source]
         source: af_core::json::Unreadable,
     },
-    #[error("the authoring request violates a declared bound")]
+    #[error("the setup request violates a declared bound")]
     Validation {
         #[from]
         source: garde::Report,
@@ -96,17 +96,17 @@ pub(crate) enum ErrorKind {
         #[from]
         source: afd_credential::Error,
     },
-    #[error("the authoring datastore is unavailable")]
+    #[error("the setup datastore is unavailable")]
     Datastore {
         #[from]
         source: afd_db::Error,
     },
-    #[error("an authoring identifier could not be minted")]
+    #[error("a setup identifier could not be minted")]
     Identifier {
         #[from]
         source: af_core::error::Error,
     },
-    #[error("authoring entropy is unavailable")]
+    #[error("setup entropy is unavailable")]
     Entropy {
         #[from]
         source: af_crypto::error::Error,

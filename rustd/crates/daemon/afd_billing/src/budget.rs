@@ -125,7 +125,8 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Spend, Verdict, covers};
-    use crate::{NANOS_PER_USD, Nanos};
+    use crate::Nanos;
+    use af_core::money::NANOS_PER_USD;
     use af_fleet_runtime::config::Budget;
 
     /// A ceiling built the only way one can be: through the parser that bounds

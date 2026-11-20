@@ -180,7 +180,7 @@ async fn tenant_runner_carries_the_tenant_key() {
     let _default = seed_provider_resolution(&fixtures, &ready.fleet).await;
     seat_tenant_model(&fixtures, &ready.tenant, &ready.fleet).await;
     fixtures
-        .seed_wallet(&ready.tenant, 1_000 * afd_billing::nanos::NANOS_PER_USD)
+        .seed_wallet(&ready.tenant, 1_000 * af_core::money::NANOS_PER_USD)
         .await;
     let tenant = tenant_runner(&fixtures, &ready.tenant, &ready.fleet).await;
 

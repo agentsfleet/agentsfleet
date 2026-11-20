@@ -1,17 +1,17 @@
 //! A setup run's compacted context, saved through the runner's fenced
 //! context verb: the daemon half of `Up::ContextSave`.
 //!
-//! The save is `af_context`'s compare-and-swap on the draft's
+//! The save is [`crate::context`]'s compare-and-swap on the draft's
 //! `memory.context_checkpoints` row, written only while the run holds the
 //! draft's thread at its fence. A run a reassignment superseded writes
 //! nothing, and its save is refused with `RUN_STALE_FENCING_TOKEN`, as its
 //! late report is.
 
-use af_context::repository::{Holder, Repository};
 use af_context::{Checkpoint, CheckpointStore as _};
 use af_core::id::Uuid7;
 use jiff::Timestamp;
 
+use crate::context::{Holder, Repository};
 use crate::{Drafts, Result, error::raise::query};
 
 /// Names the save's statements in a query failure.
@@ -66,7 +66,7 @@ impl Drafts {
             run: &save.run_id,
             runner: runner_id,
             fence: save.fence,
-            active: afd_runner::sql::RUN_STATUS_ACTIVE,
+            active: afd_state::sql::RUN_STATUS_ACTIVE,
         };
         Repository::fenced(&mut connection, draft, id, holder)
             .commit(save.resource_version, save.checkpoint)

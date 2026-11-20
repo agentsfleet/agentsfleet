@@ -43,7 +43,7 @@ async fn assert_store_reached(response: axum::response::Response, case: &str) {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
+        af_core::error::DETAIL_DATABASE_UNAVAILABLE,
         "{case}: the refusal belongs to the store"
     );
 }

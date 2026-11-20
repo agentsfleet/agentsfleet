@@ -741,7 +741,7 @@ If diagnosis A occupies its active run, diagnosis B waits until that run finishe
 Separate incident conversations preserve context but do not add concurrent capacity to that fleet.
 
 The fleet can receive more work while its diagnosis run is active.
-Existing [intake](run_flow.md#admission-commits-the-queue-row) records each accepted job as a turn before acknowledging it; pickup waits until the fleet's thread has no live run.
+Existing [intake](run_flow.md#intake-commits-the-queue-row) records each accepted job as a turn before acknowledging it; pickup waits until the fleet's thread has no live run.
 The [backlog budgets](datastore_scaling.md#the-turns-ledger-is-the-queue) bound acceptance, with a retryable refusal when capacity is exhausted.
 
 ```text
@@ -880,7 +880,7 @@ File checkpoints and full guest snapshots carry different compatibility costs; r
 | Native backend experiment | Existing `afr_sandbox` engine/boot and `afr_executor` boundaries; proposed guest engine informed by SPACE | Map readiness, process identity, bounded streams, cancellation, network policy, quota and cleanup. Unsupported semantics must refuse explicitly. |
 | Recovery proposal | Existing `afr_supervisor` held-sandbox and run paths, plus a manifest/storage owner to be selected with the storage mechanism | Bind durable workspace generation to current fleet authority. Test host loss, source changes, deletion and revoked credentials. No new scheduler. |
 
-Do not extract a checkpoint-storage crate solely to anticipate SPACE. The current optional PostgreSQL feature (`af_context`'s manifest) already excludes that dependency from runtime builds. Extract only if a concrete caller or dependency boundary improves.
+Do not extract a checkpoint-storage crate solely to anticipate SPACE. The Postgres checkpoint store lives in the daemon, as `afd_setup::context`, so `af_context` names no datastore client and no runner build links one. Extract only if a concrete caller or dependency boundary improves.
 
 ## Selective SPACE reuse
 

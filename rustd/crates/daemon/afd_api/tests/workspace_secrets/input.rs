@@ -103,14 +103,14 @@ async fn a_body_this_daemon_cannot_read_is_told_apart_from_one_that_is_absent() 
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
         detail_of(malformed).await,
-        afd_api::handler::secret::DETAIL_MALFORMED_JSON
+        afd_api_tenant::secret::DETAIL_MALFORMED_JSON
     );
 
     let absent = authorised(Method::POST, &collection(), "").await;
     assert_eq!(absent.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
         detail_of(absent).await,
-        afd_api::handler::secret::DETAIL_BODY_REQUIRED
+        afd_api_tenant::secret::DETAIL_BODY_REQUIRED
     );
 }
 
@@ -127,7 +127,7 @@ async fn a_create_body_missing_its_name_or_its_data_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::secret::DETAIL_MALFORMED_JSON,
+            afd_api_tenant::secret::DETAIL_MALFORMED_JSON,
             "{body}"
         );
     }

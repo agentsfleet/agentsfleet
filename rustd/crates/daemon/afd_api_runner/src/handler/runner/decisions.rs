@@ -13,7 +13,7 @@ use axum::{
 };
 use http::{StatusCode, header};
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 
 const EVENT: &str = "runner_task_decision_failed";
 const MALFORMED: &str = "Decision request exceeds its supported shape or bounds";
@@ -37,7 +37,7 @@ const CALL_ID: &str = "call_id must be a UUIDv7";
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn reserve<D: Services>(
+pub(crate) async fn reserve<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run): Path<String>,
@@ -93,7 +93,7 @@ pub(crate) async fn reserve<D: Services>(
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn record<D: Services>(
+pub(crate) async fn record<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run, call)): Path<(String, String)>,

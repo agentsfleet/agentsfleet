@@ -15,8 +15,10 @@
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
-use afd_ingress::slack::{ChannelId, MentionTurn, NoticeOwed, NoticeOwner, Subscriber};
-use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
+use af_fleet_runtime::config::ChannelId;
+use afd_ingress::slack::{MentionTurn, NoticeOwed, NoticeOwner, Subscriber};
+use afd_ingress::{Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
+use afd_turns::Admitted;
 use jiff::Timestamp;
 
 /// Everything the signed-ingress routes act through.

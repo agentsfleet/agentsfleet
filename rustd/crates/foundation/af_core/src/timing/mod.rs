@@ -18,10 +18,6 @@ use std::time::Duration;
 mod run;
 pub use run::{MAX_RUN_SECONDS, MIN_RUN_SECONDS, RunClock, RunSettings};
 
-/// Authoring provider work keeps its existing five-minute budget plus delivery slack.
-/// Control ping and renewal deadlines remain independent while the model is pending.
-pub const AUTHORING_MODEL_ANSWER_TIMEOUT: Duration = Duration::from_secs(310);
-
 /// How long an issued run or thread assignment stays valid before the thread
 /// becomes reassignable, and the increment each renewal adds.
 ///

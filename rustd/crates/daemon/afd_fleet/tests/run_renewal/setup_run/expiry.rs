@@ -3,7 +3,7 @@
 //! lost turn instead of being retried forever.
 
 use af_core::limits::EVENT_RUNS_MAX;
-use afd_fleet::run::sql::RUN_STATUS_EXPIRED;
+use afd_state::sql::RUN_STATUS_EXPIRED;
 
 use super::Case;
 

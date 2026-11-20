@@ -17,8 +17,8 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
 use super::query;
+use crate::OperatorPlane;
 use crate::handler::{parse_id, refuse};
-use crate::services::Services;
 use afd_runner::RunnerScope;
 
 /// The scoped event a failed retirement is logged under.
@@ -47,7 +47,7 @@ const EVENT: &str = "runner_delete_failed";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {
@@ -55,7 +55,7 @@ pub(crate) async fn handle<D: Services>(
 }
 
 /// Retires a revoked runner within `scope`.
-pub(super) async fn retire<D: Services>(
+pub(super) async fn retire<D: OperatorPlane>(
     services: &D,
     scope: RunnerScope<'_>,
     raw: &str,

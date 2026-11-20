@@ -35,7 +35,7 @@ async fn an_expired_run_is_followed_by_a_run_at_the_next_fence() {
     assert_eq!(reassigned.earlier_runs, 1, "the lapsed holder's run");
     assert_eq!(
         fixtures.text(Row::Run(&issued), "status").await.as_deref(),
-        Some(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
+        Some(afd_state::sql::RUN_STATUS_EXPIRED)
     );
     let second = issue(&fixtures, &runs, &reassigned, &poller, &tenant).await;
     let fence = first.fence.as_i64() + 1;
@@ -48,7 +48,7 @@ async fn an_expired_run_is_followed_by_a_run_at_the_next_fence() {
         (
             Some(event.to_string()),
             Some(fence.to_string()),
-            Some(afd_fleet::run::sql::RUN_STATUS_ACTIVE.to_owned()),
+            Some(afd_state::sql::RUN_STATUS_ACTIVE.to_owned()),
         ),
         "the second run serves the same turn at the next fence"
     );

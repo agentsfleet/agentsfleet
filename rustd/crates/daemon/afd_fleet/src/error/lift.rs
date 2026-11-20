@@ -34,7 +34,7 @@ af_core::error_lifts!(Error, ErrorKind:
     tokio::time::error::Elapsed => TaskReadTimeout,
     af_core::json::Unreadable => TaskDocument,
     afd_turns::Error => TurnWrite,
-    afd_setup::Error => Authoring,
+    afd_setup::Error => Setup,
     af_context::Error => Context,
     afd_db::Error => Datastore,
     afd_runner::Error => Runner,

@@ -31,8 +31,8 @@ const PATCH = [
 describe("runner tool copy", () => {
   it("test_runner_tools_name_verb_and_target", () => {
     const cases: ReadonlyArray<readonly [string, ToolArgs, string, string]> = [
-      [TOOL_NAME.PUSHOVER, { message: "Deploy done", title: "Prod" }, "Notifying Prod", "Notified Prod"],
-      [TOOL_NAME.PUSHOVER, { message: "Deploy done\nall green" }, `Notifying Deploy done${CLIP_MARK}`, `Notified Deploy done${CLIP_MARK}`],
+      [TOOL_NAME.NOTIFY, { message: "Deploy done", title: "Prod" }, "Notifying Prod", "Notified Prod"],
+      [TOOL_NAME.NOTIFY, { message: "Deploy done\nall green" }, `Notifying Deploy done${CLIP_MARK}`, `Notified Deploy done${CLIP_MARK}`],
       [TOOL_NAME.IMAGE, { path: "/workspace/chart.png" }, "Viewing image chart.png", "Viewed image chart.png"],
       [TOOL_NAME.BROWSER_OPEN, { url: "https://example.test" }, "Opening https://example.test", "Opened https://example.test"],
       [TOOL_NAME.BROWSER, { action: "click", selector: "#save" }, "Clicking #save", "Clicked #save"],
@@ -61,7 +61,7 @@ describe("runner tool copy", () => {
       [TOOL_NAME.MESSAGE, { content: "On it" }, "Sending message On it", "Sent message On it"],
       [TOOL_NAME.UPDATE_PLAN, { plan: [] }, "Updating plan", "Updated plan"],
       // Called without its main argument: nothing invented in its place.
-      [TOOL_NAME.PUSHOVER, { priority: 1 }, "Notifying", "Notified"],
+      [TOOL_NAME.NOTIFY, { priority: 1 }, "Notifying", "Notified"],
       [TOOL_NAME.BROWSER_OPEN, { wait: true }, "Opening", "Opened"],
       [TOOL_NAME.DELEGATE, { tools: [] }, "Delegating", "Delegated"],
       [TOOL_NAME.SPAWN, { tools: [] }, "Starting agent", "Started agent"],

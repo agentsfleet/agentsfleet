@@ -30,7 +30,7 @@ use http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 
 use crate::handler::{Refusal, webhook};
-use crate::services::{Services, WorkspaceApprovals as _};
+use crate::services::{IngressPlane, WorkspaceApprovals as _};
 use afd_http::handler::{FleetPath, parse_fleet_id};
 
 use super::verify_platform::verified_approval;
@@ -111,7 +111,7 @@ struct Answer {
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
     headers: HeaderMap,

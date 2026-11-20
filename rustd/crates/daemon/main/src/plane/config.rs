@@ -139,8 +139,8 @@ pub(super) fn schedule_plane(
     database: &Db,
     scheduler: Arc<dyn afd_cron::Scheduler>,
     turns: afd_turns::Turns,
-) -> afd_api::SchedulePlane {
-    afd_api::SchedulePlane::new(
+) -> afd_http::services::SchedulePlane {
+    afd_http::services::SchedulePlane::new(
         afd_cron::ScheduleService::new(
             afd_cron::Schedules::new(database.clone(), Entropy::new())
                 .with_activity_streams(turns.streams()),

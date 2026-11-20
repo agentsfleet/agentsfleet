@@ -188,7 +188,7 @@ async fn parents(database: &Db, prefix: &RunPrefix, destinations: &[&String]) ->
             &Uuid7::parse(destination)?,
             &payer,
             &tenant,
-            afd_fleet::run::sql::FLEET_STATUS_ACTIVE,
+            afd_state::sql::FLEET_STATUS_ACTIVE,
         )
         .name(&prefix.name(&format!("fleet-{index}")))
         .at(now)

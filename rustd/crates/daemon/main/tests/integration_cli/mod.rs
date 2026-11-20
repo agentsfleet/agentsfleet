@@ -28,7 +28,7 @@ use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use agentsfleetd::cli::{Cli, SUCCESS, run};
 use clap::Parser as _;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 mod configuration;
 
@@ -81,11 +81,12 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
     .into_iter()
-    .chain(crate::support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(agentsfleetd::test_util::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
     .chain(
-        crate::support::runner_stream::environment().map(|(knob, value)| (knob, value.to_owned())),
+        agentsfleetd::test_util::runner_stream::environment()
+            .map(|(knob, value)| (knob, value.to_owned())),
     )
-    .chain(crate::support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(agentsfleetd::test_util::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
     .collect()
 }
 
@@ -128,9 +129,9 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
         "DATABASE_POOL_SIZE",
     ]
     .into_iter()
-    .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
-    .chain(crate::support::runner_stream::environment().map(|(knob, _value)| knob))
-    .chain(crate::support::IDENTITY_KNOBS)
+    .chain(agentsfleetd::test_util::SESSION_PEPPER.map(|(knob, _value)| knob))
+    .chain(agentsfleetd::test_util::runner_stream::environment().map(|(knob, _value)| knob))
+    .chain(agentsfleetd::test_util::IDENTITY_KNOBS)
     {
         command.env_remove(knob);
     }

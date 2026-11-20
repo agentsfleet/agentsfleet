@@ -23,7 +23,7 @@ use axum::response::{IntoResponse as _, Response};
 use serde::Deserialize;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
-use crate::services::{Services, WorkspaceTurns as _};
+use crate::services::{TenantPlane, WorkspaceTurns as _};
 
 use super::{DETAIL_TURN_NOT_FOUND, TurnPath, bounded_path, expanded, parse_fleet};
 
@@ -80,7 +80,7 @@ pub(crate) struct DraftTurnPath {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn fleet<D: Services>(
+pub(crate) async fn fleet<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(path): Path<TurnPath>,
@@ -132,7 +132,7 @@ pub(crate) async fn fleet<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn draft<D: Services>(
+pub(crate) async fn draft<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

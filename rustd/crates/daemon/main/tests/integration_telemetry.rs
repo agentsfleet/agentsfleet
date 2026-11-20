@@ -19,26 +19,17 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::PoisonError;
 use std::time::{Duration, Instant};
 
 use af_observability::producers::GaugeSources;
 use af_observability::semconv;
-use agentsfleetd::preflight::{OTEL_ENDPOINT_KNOB, OtlpConfig};
-use agentsfleetd::telemetry::{Exports, install};
-use axum::Router;
-use axum::extract::State;
-use axum::routing::post;
+use af_otlp::Exports;
+use af_otlp::{OTEL_ENDPOINT_KNOB, OtlpConfig};
+use agentsfleetd::telemetry::install;
+use agentsfleetd::test_util::collector::{LOGS, METRICS, Received, TRACES, collector};
 use opentelemetry::logs::{LogRecord as _, Logger as _, LoggerProvider as _};
 use opentelemetry::trace::{Tracer as _, TracerProvider as _};
-
-/// What the collector saw: the path, and the body it was sent.
-pub(crate) type Received = Arc<Mutex<Vec<(String, String)>>>;
-
-/// A signal path the fixture accepts.
-pub(crate) const TRACES: &str = "/v1/traces";
-pub(crate) const METRICS: &str = "/v1/metrics";
-const LOGS: &str = "/v1/logs";
 
 /// An event name a dashboard matches on.
 ///
@@ -48,37 +39,6 @@ const PORTED_EVENT: &str = "supervised_task_started";
 
 /// How long a flush is given before the assertions read what arrived.
 const DELIVERY_GRACE: Duration = Duration::from_millis(500);
-
-/// A collector that keeps what it is posted.
-pub(crate) async fn collector() -> (String, Received) {
-    let received: Received = Arc::new(Mutex::new(Vec::new()));
-    let app = Router::new()
-        .route(TRACES, post(accept))
-        .route(METRICS, post(accept))
-        .route(LOGS, post(accept))
-        .with_state(Arc::clone(&received));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("an ephemeral port is available");
-    let address = listener.local_addr().expect("the port is bound");
-    tokio::spawn(async move {
-        let _served = axum::serve(listener, app).await;
-    });
-    (format!("http://{address}"), received)
-}
-
-/// Records one delivery and accepts it.
-async fn accept(State(received): State<Received>, request: axum::extract::Request) -> &'static str {
-    let path = request.uri().path().to_owned();
-    let body = axum::body::to_bytes(request.into_body(), usize::MAX)
-        .await
-        .unwrap_or_default();
-    received
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .push((path, String::from_utf8_lossy(&body).into_owned()));
-    ""
-}
 
 /// The configuration a test points at `endpoint`.
 fn configured(endpoint: &str) -> OtlpConfig {

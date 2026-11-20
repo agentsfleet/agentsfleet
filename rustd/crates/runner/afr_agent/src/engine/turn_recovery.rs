@@ -104,7 +104,7 @@ impl TurnSnapshot {
             root,
         };
         history.validate()?;
-        if !af_wire::decision::serialized_within(&history, TURN_CHECKPOINT_BYTES) {
+        if !af_validate::serialized_within(&history, TURN_CHECKPOINT_BYTES) {
             return Err(recovery_invalid(
                 "ordinary private history exceeds its byte limit",
             ));

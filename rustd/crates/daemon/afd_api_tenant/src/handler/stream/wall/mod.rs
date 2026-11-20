@@ -41,7 +41,7 @@ use tokio::time::Instant;
 use super::revocable::{
     Membership, Recheck as _, STREAM_WALL, Turn, Verdict, Watch, until_revoked,
 };
-use crate::services::{Services, WorkspaceFleets as _};
+use crate::services::{TenantPlane, WorkspaceFleets as _};
 
 /// How often the fleet set and the caller's membership are re-read.
 ///
@@ -140,7 +140,7 @@ impl Recount {
 }
 
 /// Every frame one workspace stream sends, starting with its `hello`.
-pub(super) async fn frames<D: Services>(
+pub(super) async fn frames<D: TenantPlane>(
     services: Arc<D>,
     workspace: Uuid7,
     principal: Principal,
@@ -160,7 +160,7 @@ pub(super) async fn frames<D: Services>(
 }
 
 /// The next frame, and the wall that produced it.
-async fn step<D: Services>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
+async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
     // The set is announced before any activity, so a client knows which tiles
     // to open before the first frame arrives for one of them.
     if !wall.announced {
@@ -207,7 +207,7 @@ async fn step<D: Services>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
 }
 
 /// The `hello` for the set the wall carries now, which reads the counters.
-async fn announce<D: Services>(mut wall: Wall<D>) -> Turn<Wall<D>> {
+async fn announce<D: TenantPlane>(mut wall: Wall<D>) -> Turn<Wall<D>> {
     wall.recount.paid();
     let carried = wall.fan_in.fleets();
     let membership = wall.watch.question();
@@ -226,7 +226,7 @@ async fn announce<D: Services>(mut wall: Wall<D>) -> Turn<Wall<D>> {
 /// Takes the wall's parts rather than the wall: the fan-in is not `Sync`, and
 /// a borrow of the whole held across this read would make the stream's future
 /// unsendable.
-async fn hello<D: Services>(services: &D, workspace: &Uuid7, carried: Vec<String>) -> Frame {
+async fn hello<D: TenantPlane>(services: &D, workspace: &Uuid7, carried: Vec<String>) -> Frame {
     let counters = match services.fleets().counters(workspace, &carried).await {
         Ok(counters) => counters,
         Err(error) => {
@@ -248,7 +248,7 @@ fn counters_unread(workspace: &Uuid7, error: &afd_fleet_lifecycle::Error) {
 }
 
 /// Re-authorize the caller, then align the attached set with the workspace's.
-async fn refresh<D: Services>(wall: &mut Wall<D>) -> Tick {
+async fn refresh<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
     wall.next_refresh = Instant::now() + REFRESH_INTERVAL;
 
     match wall.watch.verdict().await {

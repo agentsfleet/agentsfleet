@@ -37,7 +37,7 @@ use serde_json::value::RawValue;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspacePreferences as _};
+use crate::services::{TenantPlane, WorkspacePreferences as _};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_WRITE: &str = "preference_write_failed";
@@ -100,7 +100,7 @@ pub(crate) struct PreferencePath {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn write<D: Services>(
+pub(crate) async fn write<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -152,7 +152,7 @@ pub(crate) async fn write<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn onboarding<D: Services>(
+pub(crate) async fn onboarding<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -184,7 +184,7 @@ pub(crate) async fn onboarding<D: Services>(
 }
 
 /// The internal user id behind a proven subject, or the refusal for none.
-async fn resolve_user<D: Services>(
+async fn resolve_user<D: TenantPlane>(
     services: &Arc<D>,
     subject: &str,
     event: &'static str,

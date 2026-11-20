@@ -18,7 +18,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use af_core::paging::Ceiling;
+use af_validate::Ceiling;
 use af_validate::Limit;
 use af_wire::turn::ThreadResponse;
 use afd_turns::view::{Cursor, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, TurnDetailRow};
@@ -31,7 +31,7 @@ use crate::auth::WorkspaceContext;
 use crate::handler::paging::store_ceiling;
 use crate::handler::turn::expanded;
 use crate::handler::{Refusal, parameter};
-use crate::services::{Services, WorkspaceTurns as _};
+use crate::services::{TenantPlane, WorkspaceTurns as _};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -118,7 +118,7 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn thread<D: Services>(
+pub(crate) async fn thread<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,

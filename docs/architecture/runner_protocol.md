@@ -205,9 +205,7 @@ The ask after every answer is unconditional, so a message landing after the assi
 A run keeps its compaction summary in its own state. It mints every branch it writes, so a load could only answer nothing, and nothing outside the run reads a summary.
 The runner sends no context checkpoint and the daemon serves no context route.
 
-### Authoring operations on the native session
-
-The heading keeps its old words because other pages cite it by text. It covers setup operations on the native connection.
+### Setup operations on the native session
 
 A setup turn is a run on the common run path: a `Down::Run` whose payload's owner names the draft.
 It renews and reports as a fleet run does, and its report carries the proposal the run kept.

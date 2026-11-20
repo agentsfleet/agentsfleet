@@ -48,9 +48,9 @@ fn the_error_surface_holds() {
 #[test]
 fn every_sentence_is_one_of_the_declared_details() {
     let declared = [
-        detail::DATABASE_UNAVAILABLE,
-        detail::DATABASE_ERROR,
-        detail::OPERATION_FAILED,
+        af_core::error::DETAIL_DATABASE_UNAVAILABLE,
+        af_core::error::DETAIL_DATABASE_ERROR,
+        af_core::error::DETAIL_OPERATION_FAILED,
         detail::VENDOR_UNREACHABLE,
         detail::EXCHANGE_FAILED,
         detail::INSTALLATION_OWNERSHIP,

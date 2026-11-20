@@ -12,7 +12,7 @@ impl Error {
     /// each family's reason is written here rather than between the arms, so
     /// the table reads as one table:
     ///
-    /// - **Delegated** — billing, runner, authoring, credential,
+    /// - **Delegated** — billing, runner, setup, credential,
     ///   gate, events, outbound and memory each already decide which of their
     ///   failures is an outage and which is their own fault. A second copy of
     ///   that mapping here is the drift this crate's module header warns about.
@@ -59,7 +59,7 @@ impl Error {
             | ErrorKind::TaskStatementCancelled { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
-            ErrorKind::Authoring { ref source } => source.code(),
+            ErrorKind::Setup { ref source } => source.code(),
             ErrorKind::TurnWrite { ref source } | ErrorKind::TaskControlTurn { ref source, .. } => {
                 source.code()
             }

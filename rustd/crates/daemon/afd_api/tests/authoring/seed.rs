@@ -3,7 +3,7 @@
 use super::{fixture::Fixture, mint};
 use af_core::clock;
 use af_core::money::NANOS_PER_USD;
-use afd_api::Services as _;
+use afd_api_tenant::services::TenantPlane as _;
 use afd_auth::Scope;
 use afd_db::test_util::{ApiKeySeed, ModelSeed};
 use afd_tenant::test_util::{Signup, sign_up};

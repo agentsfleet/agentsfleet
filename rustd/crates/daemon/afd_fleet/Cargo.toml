@@ -2,7 +2,7 @@
 name = "afd_fleet"
 # One aggregated integration binary; see tests/fleet_suite.rs for why.
 autotests = false
-description = "The runner control plane: enrolment, liveness, run assignment, report settlement, and the sweepers behind them."
+description = "The run plane: assigning, renewing and settling a fleet's runs, the turn checkpoints they write, and durable tasks."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -55,7 +55,7 @@ bytes.workspace = true
 # A run's two post-issue reads, the thread's turns and the memory window,
 # run overlapped (`future::join`).
 futures-util.workspace = true
-af_context = { workspace = true, features = ["postgres"] }
+af_context.workspace = true
 # The shared poll admits private setup through its production-domain owner.
 afd_setup.workspace = true
 # The thread a chat run reads its turns from is a trait object, so a read

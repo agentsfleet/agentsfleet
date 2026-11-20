@@ -109,7 +109,7 @@ Practically, this means:
 - Users who need self-host today are out of scope. The AI-infra / GPU-cloud / regulated mid-market P1 personas are v3 customers, not v2.
 - self-managed still ships in v2. It sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1.
 
-## §8.1 Authoring the Fleet
+## §8.1 Setting up the Fleet
 
 The user describes the Fleet in a private draft. Browser and terminal chat share the draft API, N1–N10 in [`api_resources.md`](./api_resources.md). The draft is visible only to its creator.
 

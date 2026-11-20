@@ -39,7 +39,7 @@ use http::StatusCode;
 
 use super::schedule::{DETAIL_MALFORMED, EVENT_FAILED, fence, log_refused, schedule_id, standing};
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSchedules as _, Services, WorkspaceTurns as _};
+use crate::services::{FleetSchedules as _, RunnerPlane, WorkspaceTurns as _};
 
 /// The refusal a page size outside the served band earns: the paging
 /// vocabulary's own sentence, which names [`CEILING`].
@@ -97,7 +97,7 @@ const RUN_KEY_PREFIX: &str = "run:";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn run<D: Services>(
+pub(crate) async fn run<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run_id, schedule_id_raw)): Path<(String, String)>,
@@ -154,7 +154,7 @@ pub(crate) async fn run<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn runs<D: Services>(
+pub(crate) async fn runs<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run_id, schedule_id_raw)): Path<(String, String)>,

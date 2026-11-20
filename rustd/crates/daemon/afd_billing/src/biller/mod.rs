@@ -37,10 +37,9 @@ pub use self::recording::RecordingBiller;
 pub enum WorkKey {
     /// A fleet run's run.
     FleetRun(Uuid7),
-    /// A setup-chat attempt, or a draft-owned run: setup work's own id. A
-    /// draft run's lines keep this kind, so the charges page still shows
-    /// them as `setup` with the run as their `run_id`.
-    AuthoringAttempt(Uuid7),
+    /// A draft-owned setup run, by the run's id. The charges page shows its
+    /// lines as `setup`, with the run as their `run_id`.
+    SetupRun(Uuid7),
 }
 
 impl WorkKey {
@@ -49,7 +48,7 @@ impl WorkKey {
     pub const fn work_type(&self) -> &'static str {
         match self {
             Self::FleetRun(_) => sql::work::FLEET_RUN,
-            Self::AuthoringAttempt(_) => sql::work::AUTHORING_ATTEMPT,
+            Self::SetupRun(_) => sql::work::SETUP_RUN,
         }
     }
 
@@ -57,7 +56,7 @@ impl WorkKey {
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {
         match self {
-            Self::FleetRun(id) | Self::AuthoringAttempt(id) => id,
+            Self::FleetRun(id) | Self::SetupRun(id) => id,
         }
     }
 }

@@ -47,5 +47,8 @@ mod validation_holds;
 mod validation_mutation;
 #[path = "validation_run.rs"]
 mod validation_run;
+// The setup report admits every Definition the Definition parser admits.
+#[path = "validation_setup.rs"]
+mod validation_setup;
 #[path = "validation_steer.rs"]
 mod validation_steer;

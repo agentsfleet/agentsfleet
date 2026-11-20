@@ -21,6 +21,8 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "af_wire/op
 [dependencies]
 afd_bus.workspace = true
 afd_admin.workspace = true
+# The operator's run-history projection, behind `OperatorPlane::runner_run_history`.
+afd_fleet_ops.workspace = true
 af_core.workspace = true
 # A garde report answered with the route's own sentence (`Sentences`), and the
 # shared `?limit` bound.

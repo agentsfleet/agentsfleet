@@ -243,5 +243,5 @@ impl Fixtures {
 /// the suites here call it directly, and one implementation is the point of the
 /// consolidation.
 pub(crate) fn install_subscriber() {
-    afd_db::test_util::install_subscriber();
+    af_core::test_util::trace::install_subscriber();
 }

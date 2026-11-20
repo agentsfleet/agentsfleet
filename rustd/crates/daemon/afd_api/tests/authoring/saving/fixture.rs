@@ -146,7 +146,7 @@ const RUN_POLICY: RunnerPolicy<'static> = RunnerPolicy {
     network_policy: "deny_all_egress",
 };
 /// A runner that may hold runs.
-const RUNNER_STATUS_ACTIVE: &str = afd_runner::sql::RUNNER_STATUS_ACTIVE;
+const RUNNER_STATUS_ACTIVE: &str = afd_state::sql::RUNNER_STATUS_ACTIVE;
 /// A run still in flight.
 const RUN_STATUS_ACTIVE: &str = afd_state::sql::RUN_STATUS_ACTIVE;
 /// One live run, expiring a run TTL from now.

@@ -106,7 +106,7 @@ pub(crate) fn configured(
         requests: value(
             env,
             "AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS",
-            afd_api::DEFAULT_MAX_IN_FLIGHT,
+            afd_http::admission::DEFAULT_MAX_IN_FLIGHT,
         )?,
         fallback_seconds: value(
             env,

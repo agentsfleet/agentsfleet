@@ -4,7 +4,7 @@ use super::{access, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     handler::fleet::detail::{FleetPath, parse_fleet_id},
-    services::Services,
+    services::TenantPlane,
 };
 use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{
@@ -23,7 +23,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn one<D: Services>(
+pub(crate) async fn one<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

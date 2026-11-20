@@ -8,7 +8,7 @@
 //! waits its turn.
 
 use crate::RunFacts;
-pub use af_wire::turn::SteerDisposition;
+pub(crate) use af_wire::turn::SteerDisposition;
 
 use super::{ACTOR_MACHINE, is_steer_actor};
 

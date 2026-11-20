@@ -18,9 +18,10 @@
 )]
 
 use af_core::error_code;
+use af_wire::turn::SteerDisposition;
 use afd_db::test_util::mint_id;
 use afd_turns::Budgets;
-use afd_turns::view::disposition::{Placed, SteerDisposition};
+use afd_turns::view::disposition::Placed;
 use afd_turns::view::{ACTOR_MACHINE, Steer};
 use tracing::Level;
 

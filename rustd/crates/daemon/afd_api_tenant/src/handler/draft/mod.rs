@@ -12,7 +12,7 @@ pub(crate) mod write;
 use crate::handler::Refusal;
 use crate::{
     auth::{Owned, PersonIdentity},
-    services::Services,
+    services::TenantPlane,
 };
 use af_core::id::Uuid7;
 use afd_setup::Access;
@@ -43,7 +43,7 @@ fn access<'a>(owned: &'a Owned, person: &'a PersonIdentity) -> Access<'a> {
 }
 
 /// Keeps private text and resource versions out of shared response caches.
-pub(crate) fn private<D: Services>(router: MethodRouter<Arc<D>>) -> MethodRouter<Arc<D>> {
+pub(crate) fn private<D: TenantPlane>(router: MethodRouter<Arc<D>>) -> MethodRouter<Arc<D>> {
     router.layer(axum::middleware::map_response(mark_private))
 }
 

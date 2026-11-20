@@ -37,7 +37,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .await
         .expect_err("an unknown stored state fails the whole detail");
     assert_eq!(malformed.code(), error_code::INTERNAL_DB_QUERY);
-    assert_eq!(malformed.detail(), afd_runner::DETAIL_DATABASE_ERROR);
+    assert_eq!(malformed.detail(), af_core::error::DETAIL_DATABASE_ERROR);
     insert_unknown_event(&fixtures, &enrolled.runner_id).await;
     let malformed_event = fixtures
         .runners()
@@ -50,7 +50,10 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .await
         .expect_err("an unknown stored event type fails the whole page");
     assert_eq!(malformed_event.code(), error_code::INTERNAL_DB_QUERY);
-    assert_eq!(malformed_event.detail(), afd_runner::DETAIL_DATABASE_ERROR);
+    assert_eq!(
+        malformed_event.detail(),
+        af_core::error::DETAIL_DATABASE_ERROR
+    );
     assert!(std::error::Error::source(&malformed_event).is_some());
     fixtures.cleanup().await;
 }

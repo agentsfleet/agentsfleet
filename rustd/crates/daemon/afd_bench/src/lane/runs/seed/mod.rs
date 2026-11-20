@@ -184,7 +184,7 @@ pub(crate) async fn rows(
         &seeded.fleet,
         &seeded.workspace,
         &seeded.tenant,
-        afd_fleet::run::sql::FLEET_STATUS_ACTIVE,
+        afd_state::sql::FLEET_STATUS_ACTIVE,
     )
     .name(&fleet)
     .tags(&[tag])

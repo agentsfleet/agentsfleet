@@ -353,7 +353,7 @@ make bench-recovery PROFILE=rig BENCH_FLEETS=1 BENCH_WORKSPACES=shared
 
 The reported latency starts at the later of the old run and thread expiries and ends at the first restored model request. It also records issue and settlement timestamps.
 
-[Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/daemon/main/benches/recovery/measure.rs)
+[Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/e2e/af_e2e/benches/recovery/measure.rs)
 
 ## Implementation paths and symbols
 

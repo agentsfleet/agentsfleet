@@ -201,15 +201,3 @@ fn a_stale_version_refusal_is_not_a_stale_fence() {
     assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
     assert!(!error.is_stale_fence());
 }
-
-// Value: the fence a save names reaches the statement as the stored bigint; one
-// past it names no thread, so it is refused before any write.
-#[cfg(feature = "postgres")]
-#[test]
-fn a_fence_no_thread_can_hold_is_refused_as_stale() {
-    use af_context::repository::stored_fence;
-    assert_eq!(stored_fence(2).unwrap(), 2);
-    let past = stored_fence(u64::MAX).unwrap_err();
-    assert!(past.is_stale_fence());
-    assert_eq!(past.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
-}

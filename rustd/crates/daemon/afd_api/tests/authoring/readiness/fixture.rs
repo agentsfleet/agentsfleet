@@ -2,7 +2,7 @@
 
 use super::super::{fixture::Fixture, json_body, mint, send};
 use af_core::{clock, id::Uuid7};
-use afd_api::Services as _;
+use afd_api_tenant::services::TenantPlane as _;
 use afd_auth::Scope;
 use afd_vault::{SecretBody, SecretName};
 use http::{Method, StatusCode, header};

@@ -48,7 +48,7 @@ pub(super) fn authoring(drafts: afd_setup::Drafts, kek: &Arc<Kek>, turns: &Turns
 /// scheduler, the connect flow, and the interim message poster.
 #[derive(Debug)]
 pub(super) struct Outbound {
-    pub(super) schedules: afd_api::SchedulePlane,
+    pub(super) schedules: afd_http::services::SchedulePlane,
     /// The scheduler the fire route verifies through, and a chat save
     /// registers its trigger schedules through.
     pub(super) scheduler: Arc<dyn afd_cron::Scheduler>,

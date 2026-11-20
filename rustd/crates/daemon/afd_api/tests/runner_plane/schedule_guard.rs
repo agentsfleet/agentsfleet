@@ -17,12 +17,12 @@
 use std::pin::Pin;
 
 use af_crypto::entropy::Entropy;
-use afd_api::SchedulePlane;
 use afd_cron::{Change, DesiredStatus, Fire, QStash, Refused, ScheduleService, Schedules};
 use afd_db::Precondition;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_http::services::FleetSchedules as _;
+use afd_http::services::SchedulePlane;
 use sqlx::PgConnection;
 
 use crate::harness::{self, SCHEDULE_API_BASE, SCHEDULE_DESTINATION};

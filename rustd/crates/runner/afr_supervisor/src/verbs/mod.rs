@@ -10,8 +10,8 @@ use std::borrow::Cow;
 use af_core::id::Uuid7;
 use af_wire::message_verb::MessagePosted;
 use af_wire::steer_verb::FleetSteerAccepted;
-use afr_agent::{ScheduleCall, Unanswered};
 use afr_tools::FleetsCall;
+use afr_tools::{ScheduleCall, Unanswered};
 
 use crate::client::ControlPlane;
 
@@ -19,7 +19,7 @@ mod decision;
 pub(crate) use decision::PendingDecisions;
 
 /// The verbs of one held run, over the control plane, each call carrying
-/// the run's fence: [`afr_agent::RunVerbs`] as the supervisor serves it.
+/// the run's fence: [`afr_tools::RunVerbs`] as the supervisor serves it.
 #[derive(Debug)]
 pub(crate) struct FencedVerbs<'a> {
     plane: &'a ControlPlane,
@@ -52,7 +52,7 @@ impl<'a> FencedVerbs<'a> {
 }
 
 #[async_trait::async_trait]
-impl afr_agent::RunVerbs for FencedVerbs<'_> {
+impl afr_tools::RunVerbs for FencedVerbs<'_> {
     async fn task_decision(
         &self,
         input: af_wire::task::DecisionReservationInput,

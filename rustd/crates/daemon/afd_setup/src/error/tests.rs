@@ -45,7 +45,7 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
 }
 
 // Value: protects=wrapped subsystem failures keep their codes and causes;
-// fails_when=authoring flattens runner/turn/approval errors into a generic refusal;
+// fails_when=setup flattens runner/turn/approval errors into a generic refusal;
 // why_new=happy-path services never produce every subsystem failure;
 // seam=existing subsystem failure fixtures; no_claim=live datastore outages.
 #[test]
@@ -118,9 +118,9 @@ fn context_refusals_preserve_the_shared_code_without_exposing_private_notes() {
 }
 
 // Value: protects=a biller that cannot answer keeps its own classification;
-// fails_when=authoring reports a lost billing datastore as its own refusal;
+// fails_when=setup reports a lost billing datastore as its own refusal;
 // why_new=fixture billers always answer; seam=the real ledger over an unreachable pool;
-// no_claim=which authoring path surfaces it.
+// no_claim=which setup path surfaces it.
 #[tokio::test]
 async fn a_biller_fault_keeps_the_billing_code_and_its_cause() {
     use afd_billing::biller::{Account, Biller as _};

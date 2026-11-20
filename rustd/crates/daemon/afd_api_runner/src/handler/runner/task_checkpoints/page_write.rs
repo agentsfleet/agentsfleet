@@ -1,6 +1,6 @@
 //! Freeze one complete manifest page through the existing authenticated task owner.
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 use af_wire::task::CheckpointPageInput;
 use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id};
@@ -26,7 +26,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run, checkpoint, page)): Path<(String, String, String)>,

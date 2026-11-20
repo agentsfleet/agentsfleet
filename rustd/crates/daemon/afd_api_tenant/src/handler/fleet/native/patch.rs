@@ -7,7 +7,7 @@ use crate::{
         fleet::detail::{FleetPath, parse_fleet_id},
         input::expected,
     },
-    services::Services,
+    services::TenantPlane,
 };
 use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{
@@ -36,7 +36,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn change<D: Services>(
+pub(crate) async fn change<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

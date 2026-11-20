@@ -176,7 +176,7 @@ async fn assert_other_fleet_history(
         &other,
         &workspace,
         &seeded.tenant,
-        afd_fleet::run::sql::FLEET_STATUS_ACTIVE,
+        afd_state::sql::FLEET_STATUS_ACTIVE,
     )
     .name(other.as_str())
     .insert(&mut *connection)

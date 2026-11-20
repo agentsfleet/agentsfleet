@@ -10,8 +10,8 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::query;
+use crate::OperatorPlane;
 use crate::handler::{malformed, parse_id, refuse};
-use crate::services::Services;
 
 const EVENT: &str = "runner_history_failed";
 
@@ -39,7 +39,7 @@ const EVENT: &str = "runner_history_failed";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
     Query(params): Query<HashMap<String, String>>,

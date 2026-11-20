@@ -327,11 +327,8 @@ fn knob(name: &str) -> String {
     })
 }
 
-/// Installs a subscriber so event macros actually run.
-///
-/// Re-exported for the live suites that already reach it through this seed
-/// home; the one implementation is `af_core`'s.
-pub use af_core::test_util::trace::install_subscriber;
+// The one subscriber install, `af_core`'s, so event macros actually run.
+use af_core::test_util::trace::install_subscriber;
 
 #[cfg(test)]
 mod tests;

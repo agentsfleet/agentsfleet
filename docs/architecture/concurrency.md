@@ -29,7 +29,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
 | Test handshake | handshakes, never sleeps | channels, `Notify` and `CancellationToken` on both planes; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
-| Setup chat assignment | never waits on a row lock | the creator and draft rows are taken `NOWAIT` in a savepoint; a held one skips that draft for the next | §Runner capacity and authoring lock order |
+| Setup chat assignment | never waits on a row lock | the creator and draft rows are taken `NOWAIT` in a savepoint; a held one skips that draft for the next | §Runner capacity and setup lock order |
 | Discipline scope | no roster | C1–C5 hold at review; RULE NLR owns cleanup of the files a change touches | §Expanding the discipline base |
 
 ## Traps
@@ -50,7 +50,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
 
-- Never let a setup chat assignment wait on a row while it holds the host row. Every other tenant on that poll would wait behind it. Take the row `NOWAIT` and skip (§Runner capacity and authoring lock order).
+- Never let a setup chat assignment wait on a row while it holds the host row. Every other tenant on that poll would wait behind it. Take the row `NOWAIT` and skip (§Runner capacity and setup lock order).
 
 ## The five invariants (rules C1–C5)
 
@@ -112,7 +112,7 @@ a name, or a sweeper that quietly went back to a bare spawn, is a failing test.
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
 | fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
-| setup, billing, task and task-storage sweepers (`sweeper:authoring`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`) | the daemon's sweepers module | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
+| setup, billing, task and task-storage sweepers (`sweeper:authoring`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`; the setup sweeper purges deleted drafts and expires replay receipts) | the daemon's sweepers module | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
 | telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises twelve tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
@@ -308,8 +308,8 @@ Per-call timeouts stay where they are. Recurring deadline passes are another
 matter: each plane runs them on one clock. The daemon's `sweeper:expiry` runs
 every `maintenance.expired_work.interval_seconds` (2 s by default); startup refuses an interval as long as one run lifetime.
 
-It bills expired runs and expires setup
-attempts in one tick. The runner arms one host timer for its runs' deadlines.
+It bills the last slice of every run that expired unreported, a fleet's
+or a setup draft's, in one tick. The runner arms one host timer for its runs' deadlines.
 A failed pass logs and waits for the next tick.
 
 ---
@@ -327,7 +327,7 @@ individual files a change touches.
 A checker reads `rustd/`, a make target invokes it, and a Continuous
 Integration (CI) job runs the target.
 
-## Runner capacity and authoring lock order
+## Runner capacity and setup lock order
 
 Every assignment holds the runner row while counting live capacity and writing a run. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each run's thread and row in fleet order, and samples database time once after them.
 
@@ -395,4 +395,4 @@ A skipped draft is passed over and kept, and the skip logs nothing. Its order by
 
 No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-The proofs are `afd_setup`'s `draft/assignment/skipping.rs` tests. An assignment can still be a deadlock victim on a lock it does wait for. That lock is the catalogue its model read shares (`draft/admission/revalidation.rs`).
+An assignment still waits on the locks it takes after the draft: the draft's thread and its earlier run (`afd_fleet`'s `run/draft/assign.rs`). It can be a deadlock victim there.

@@ -96,17 +96,17 @@ pub(super) async fn count(
     let mut connection = stores.database.acquire().await?;
     let doubled_chat: i64 = sqlx::query_scalar(DOUBLED_DRAFTS)
         .bind(tenants)
-        .bind(afd_fleet::run::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_one(&mut *connection)
         .await?;
     let doubled_fleet: i64 = sqlx::query_scalar(DOUBLED_FLEETS)
         .bind(&hosts)
-        .bind(afd_fleet::run::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_one(&mut *connection)
         .await?;
     let oversubscribed: i64 = sqlx::query_scalar(OVERSUBSCRIBED)
         .bind(&hosts)
-        .bind(afd_fleet::run::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_one(&mut *connection)
         .await?;
     Ok(Census {

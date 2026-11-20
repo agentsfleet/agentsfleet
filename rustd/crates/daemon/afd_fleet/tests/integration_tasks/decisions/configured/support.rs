@@ -88,7 +88,7 @@ pub(super) async fn assignable(case: &Case) -> bool {
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
-        .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
+        .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::turn::status::RECEIVED)
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)

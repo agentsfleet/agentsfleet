@@ -27,7 +27,7 @@ use std::borrow::Cow;
 
 use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, address, unserialisable};
 use crate::handler::Refusal;
-use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
+use crate::services::{IngressPlane, WebhookIngress as _, WorkspaceConnectors as _};
 
 /// A mention routing gave one fleet, with what admitting it reads.
 pub(super) struct Routed<'a> {
@@ -50,7 +50,7 @@ pub(super) struct Routed<'a> {
 /// # Errors
 /// A datastore that would not take the turn, as the 503 a provider
 /// retries. A thread that could not be read is not an error.
-pub(super) async fn routed<D: Services>(
+pub(super) async fn routed<D: IngressPlane>(
     services: &D,
     provider: Provider,
     routed: Routed<'_>,

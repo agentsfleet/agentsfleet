@@ -26,6 +26,8 @@ afd_fleet.workspace = true
 afd_memory.workspace = true
 # Enrolling the runners a run is issued to.
 afd_runner.workspace = true
+# The run and runner status spellings its statements bind.
+afd_state.workspace = true
 # The steer ingress path the intake lane drives.
 afd_turns.workspace = true
 # The rest of the run plane the drain composes: `Plane::run` walks past the

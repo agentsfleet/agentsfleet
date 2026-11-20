@@ -5,7 +5,7 @@ use jiff::Timestamp;
 
 use super::activity::Target;
 
-/// Inputs shared by fleet and authoring placement under one physical host limit.
+/// Inputs shared by fleet and setup placement under one physical host limit.
 #[derive(Debug)]
 pub struct AssignRequest<'a> {
     /// Enrolled host receiving the assignment.
@@ -55,11 +55,11 @@ pub struct AssignedRun {
     pub run_id: Uuid7,
     /// Last confirmed deadline; transport activity cannot extend it.
     pub expires_at: Timestamp,
-    /// Fleet activity target; authoring retains its private domain activity owner.
+    /// Fleet activity target; `None` for a setup run, whose activity stays with its draft.
     pub target: Option<Target>,
     /// What this run's report reads, known at issue: a session that keeps it
     /// reports without reading the run again. `None`
-    /// for authoring, and after a rebuild from the database.
+    /// for a setup run, and after a rebuild from the database.
     pub reported: Option<super::Reported>,
     /// The draft a draft-owned run runs a turn of; `None` for a fleet's.
     pub draft: Option<super::draft::DraftTarget>,

@@ -34,7 +34,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -102,7 +102,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }

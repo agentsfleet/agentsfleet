@@ -25,11 +25,9 @@ The [web architecture](web_app.md) owns routing and user flows.
 
 ```mermaid
 flowchart TD
-    A[Private setup: ModelCalls] --> B[Authorized dispatch intent]
-    B --> C[Setup provider adapter]
-    D[Fleet execution: afr_agent] --> E[af_providers::Turns]
-    C --> F[af_inference::StreamTurn]
-    E --> F
+    A[Private setup run: afr_agent setup loop] --> E[af_providers::Turns]
+    D[Fleet execution: afr_agent] --> E
+    E --> F[af_inference::StreamTurn]
     F --> G[Rig normalized events and final response]
     G --> H[HttpTransport]
     H --> I[SendRequest purpose adapter]
@@ -59,7 +57,6 @@ The inactivity bound is 300 seconds after the last received event.
 
 The physical sender remains a purpose boundary.
 Runtime retains its egress guard and existing retry policy.
-Setup's adapter sends once after committing durable dispatch intent.
 
 The shared reader itself never retries.
 
@@ -70,9 +67,7 @@ The guard uses Rig's `Usage::is_reported`, including reasoning counts and cost m
 On failure, `af_providers` emits known usage before its error and omits `Chunk::End`.
 `afr_agent` records that usage without running an incomplete result.
 
-Setup records a dispatch deadline of at most 300 seconds before the external call.
-The runner's 310-second HTTP wait allows receipt settlement after that bound.
-Replayed dispatches read their durable result and never send the provider request again.
+A setup run calls the provider on the runner, as a fleet run does. The daemon makes no model call.
 
 ### Message admission under contention
 

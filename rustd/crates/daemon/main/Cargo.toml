@@ -25,12 +25,6 @@ path = "src/lib.rs"
 name = "agentsfleetd"
 path = "src/main.rs"
 
-[[bench]]
-name = "recovery"
-path = "benches/recovery/main.rs"
-harness = false
-required-features = ["test-util"]
-
 [features]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
@@ -43,6 +37,10 @@ test-util = [
     "af_core/test-util",
     "af_crypto/test-util",
     "afd_db/test-util",
+    # The fixture identity `test_util::runner_stream` serves the runner listener with.
+    "af_stream/test-util",
+    # The loopback listener `test_util::collector` binds.
+    "tokio/net",
 ]
 
 # The document emitter. NOT default, and NOT reachable from the shipped binary:
@@ -74,6 +72,13 @@ reqwest.workspace = true
 # parser already classified. reqwest re-exports `Url` but not `Host`.
 url.workspace = true
 afd_api.workspace = true
+# The plane traits the composition root implements, one per handler crate,
+# over the shared base `afd_http::services::Shared`.
+afd_api_ingress.workspace = true
+afd_api_operator.workspace = true
+afd_api_runner.workspace = true
+afd_api_tenant.workspace = true
+afd_http.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true
 # `signal::shutdown`, the stop `serve` waits on.
@@ -163,18 +168,11 @@ tracing-subscriber.workspace = true
 afd_admin = { workspace = true, features = ["test-util"] }
 af_stream = { workspace = true, features = ["test-util"] }
 afd_bus = { workspace = true, features = ["test-util"] }
-af_webhook = { workspace = true, features = ["test-util"] }
-# The overlap scenario wraps the unsandboxed engine to stall its prepare.
-async-trait.workspace = true
-# Checkpoint refusal tests inspect the shared error and repository diagnostics.
-af_context.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`af_core::test_util::trace`). A dev-dependency feature only.
 af_core = { workspace = true, features = ["test-util"] }
-# The fleet rows the suites seed (`afd_db::test_util::FleetSeed`).
+# The unreachable pool the sweeper and boot proofs drive.
 afd_db = { workspace = true, features = ["test-util"] }
-# Instants a seed binds, encoded the way the store binds them.
-jiff-sqlx.workspace = true
 # `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
 # time paused and every task parked, the runtime advances to the next deadline
 # itself, so the ten-second timeout costs no wall clock in the unit lane.
@@ -190,47 +188,16 @@ tokio = { workspace = true, features = [
 # The accept-fault suite names `CancellationToken` and builds a bare Router.
 tokio-util.workspace = true
 axum.workspace = true
-# §7's end-to-end suite only. It seeds and reads rows through the pool the
-# BOOTED daemon opened, so it needs the driver directly rather than through a
-# store verb — no verb in this workspace creates a fleet or a wallet, and
-# inventing one to serve a test would put a write path nothing ships into a
-# shipping crate.
-sqlx.workspace = true
-# The same suite builds request bodies and reads answers as JSON: it speaks to
-# the daemon over a socket, so it holds bytes rather than the wire types, and
-# `af_wire` rides in as the SHAPE those bodies are written against.
 serde_json.workspace = true
+# The stream kinds and inference shapes the configuration and observation
+# proofs read.
 af_wire.workspace = true
-# Seeded fleets select a native definition through the setup authority's own
-# parser and digest; the setup corpus is read into one once, as fixture data.
-af_fleet_runtime = { workspace = true, features = ["test-util"] }
-# The Rust runner, driven end to end against this daemon: its supervisor, the
-# test-only unsandboxed engine, the scripted agent engine and the executor's
-# process request. Dev-only, and only in this direction — the runner itself
-# links nothing from the daemon but the wire and the value layer.
-afr_agent = { workspace = true, features = ["test-util"] }
-afr_executor.workspace = true
-afr_sandbox.workspace = true
-# The code-running fleet's runner fetches its bound repository from a
-# fixture origin over `file://`, not from GitHub.
-afr_supervisor = { workspace = true, features = ["test-util"] }
-# Section 6's corpus suite: the real loop over the hosted catalog, a scripted
-# model behind the provider seam, and the egress client routed to HTTPS fakes
-# that rcgen's test CA signs and hyper serves.
-af_egress = { workspace = true, features = ["test-util"] }
-af_providers = { workspace = true, features = ["test-util"] }
-# The turns and usage those suites script, in the harness's own vocabulary.
-guffbolt.workspace = true
-afr_tools.workspace = true
-futures-util.workspace = true
+# The TLS posture proof: a rustls client and server over an rcgen certificate.
 rcgen.workspace = true
 rustls.workspace = true
-tokio-rustls.workspace = true
-# A storage home and a sandbox base the run leaves behind for the test to read.
 tempfile.workspace = true
-# The runner's export, driven end to end against this daemon on a thread of
-# its own.
-afr_telemetry.workspace = true
+# The suites that drive the Rust runner against this daemon are `af_e2e`'s
+# (`crates/e2e/`), so no runner or harness crate is named here.
 
 [lints]
 workspace = true
@@ -252,8 +219,3 @@ name = "telemetry_boot"
 path = "tests/telemetry_boot.rs"
 required-features = ["test-util"]
 
-# Owns the global tracer: its verb spans leave through the installed exporter.
-[[test]]
-name = "verb_span_export"
-path = "tests/integration_verb_span_export.rs"
-required-features = ["test-util"]

@@ -8,7 +8,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afr_agent::ScheduleCall;
+use afr_tools::ScheduleCall;
 
 use crate::client::{Method, Verb};
 use crate::test_support::{FENCING, RUN_ID, drain, json, plane};

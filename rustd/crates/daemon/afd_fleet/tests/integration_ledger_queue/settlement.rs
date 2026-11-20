@@ -36,7 +36,7 @@ async fn failed_turn_settlement_rolls_back_the_report_and_retry_settles_once() {
     );
     assert_eq!(
         held.fixtures.text(Row::Run(&held.run_key), "status").await,
-        Some(afd_fleet::run::sql::RUN_STATUS_ACTIVE.to_owned())
+        Some(afd_state::sql::RUN_STATUS_ACTIVE.to_owned())
     );
     sqlx::raw_sql(RESTORE_SETTLE)
         .execute(&mut *connection)
@@ -78,7 +78,7 @@ async fn a_report_cannot_settle_a_turn_with_a_different_fence() {
     );
     assert_eq!(
         held.fixtures.text(Row::Run(&held.run_key), "status").await,
-        Some(afd_fleet::run::sql::RUN_STATUS_ACTIVE.to_owned())
+        Some(afd_state::sql::RUN_STATUS_ACTIVE.to_owned())
     );
     sqlx::query("UPDATE thread.turns SET run_fence = $2 WHERE id = $1")
         .bind(&held.turn_id)

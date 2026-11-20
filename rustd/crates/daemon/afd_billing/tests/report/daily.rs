@@ -20,7 +20,7 @@ async fn daily_spend_reconciles_filtered_snapshot() {
             ..Filter::default()
         },
         Filter {
-            work_type: Some(work::AUTHORING_ATTEMPT),
+            work_type: Some(work::SETUP_RUN),
             ..Filter::default()
         },
         Filter {
@@ -69,7 +69,7 @@ async fn usage_keeps_deleted_fleet_models() {
     assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));
     // The runtime-only slice has no model, so it names none.
     assert_eq!(fleet.models, [fixture::MODEL_A, fixture::MODEL_B]);
-    request.filter.work_type = Some(work::AUTHORING_ATTEMPT);
+    request.filter.work_type = Some(work::SETUP_RUN);
     let filtered = f.billing.report(&f.tenant, &request).await.unwrap();
     let fleet = fixture::group(&filtered, dimension::FLEET, Some(f.fleet.as_str()));
     assert_eq!(fleet.label.as_deref(), Some(fixture::FLEET_NAME));

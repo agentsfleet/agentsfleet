@@ -58,7 +58,7 @@ use self::body::serve;
 
 use crate::auth::{Acting, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceFleets as _};
+use crate::services::{TenantPlane, WorkspaceFleets as _};
 
 use super::fleet::detail::{FleetPath, parse_fleet_id};
 
@@ -143,7 +143,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn fleet<D: Services>(
+pub(crate) async fn fleet<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Acting(principal): Acting,
@@ -204,7 +204,7 @@ pub(crate) async fn fleet<D: Services>(
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn workspace<D: Services>(
+pub(crate) async fn workspace<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Acting(principal): Acting,

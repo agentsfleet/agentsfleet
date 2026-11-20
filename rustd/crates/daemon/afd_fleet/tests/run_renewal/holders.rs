@@ -43,7 +43,7 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
         original(running).await,
         (
             outcome.original_event.clone(),
-            afd_runner::sql::RUN_STATUS_EXPIRED.to_owned()
+            afd_state::sql::RUN_STATUS_EXPIRED.to_owned()
         ),
         "{order}: reassignment retires the original holder's row"
     );
@@ -89,7 +89,7 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
 async fn live_holders(running: &Running) -> Vec<Uuid7> {
     sqlx::query_scalar(LIVE_HOLDERS)
         .bind(&running.fleet)
-        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_all(&mut *running.fixtures.database.acquire().await.expect("read"))
         .await
         .expect("live holders")
@@ -105,12 +105,12 @@ async fn event_runs(running: &Running, event: &Uuid7) -> i64 {
 }
 
 /// The census both assignment paths lock before assigning — fleet issue and
-/// authoring assignment alike — reports a full host that refuses another run.
+/// setup assignment alike — reports a full host that refuses another run.
 pub(super) async fn assert_host_full(running: &Running, order: &str) {
     let mut connection = running.fixtures.database.acquire().await.expect("census");
     let (workers, occupied): (i64, i64) = sqlx::query_as(HOST_OCCUPANCY)
         .bind(&running.runner)
-        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .fetch_one(&mut *connection)
         .await
         .expect("host occupancy");

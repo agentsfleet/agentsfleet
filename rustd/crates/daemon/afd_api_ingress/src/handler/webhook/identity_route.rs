@@ -48,11 +48,10 @@ use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 
 use crate::handler::Refusal;
-use crate::services::{
-    MetadataUnwritten, NewAccount, Services, SignupMetadata as _, Signups as _,
-    personal_tenant_name,
-};
+use crate::services::{IngressPlane, SignupMetadata as _, Signups as _};
 use afd_api_wire::ingress::IdentityAnswer;
+use afd_identity::MetadataUnwritten;
+use afd_tenant::signup::{NewAccount, personal_tenant_name};
 
 use super::identity_event::IdentityEvent;
 use super::text;
@@ -129,7 +128,7 @@ const DETAIL_UNVERIFIED_ADDRESS: &str =
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     headers: HeaderMap,
     body: Bytes,
@@ -257,7 +256,7 @@ pub(crate) async fn receive<D: Services>(
 ///
 /// # Errors
 /// [`error_code::AUTH_UNAVAILABLE`] when the provider could not be reached.
-async fn write_back<D: Services>(
+async fn write_back<D: IngressPlane>(
     services: &Arc<D>,
     subject: &str,
     tenant_id: &str,

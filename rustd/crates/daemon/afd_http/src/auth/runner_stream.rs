@@ -9,7 +9,7 @@ use afd_auth::{credential::Presented, directory::Digest};
 use http::{HeaderMap, request::Parts};
 
 use super::{AuthenticationResult, BearerAuthentication, RequestAuthentication};
-use crate::{handler::Refusal, route::RouteMeta, services::Services};
+use crate::{handler::Refusal, route::RouteMeta, services::Shared};
 
 /// The initial middleware proves the bearer; session transactions retain only its digest.
 #[derive(Clone)]
@@ -119,7 +119,7 @@ impl<D> Clone for RunnerStreamAuthentication<D> {
     }
 }
 
-impl<D: Services> RequestAuthentication for RunnerStreamAuthentication<D> {
+impl<D: Shared> RequestAuthentication for RunnerStreamAuthentication<D> {
     async fn authenticate(&self, parts: &mut Parts, route: RouteMeta) -> AuthenticationResult {
         let Some(native) = parts.extensions.get::<NativeRunnerConnection>().cloned() else {
             return self.initial(parts, route).await;
@@ -135,7 +135,7 @@ impl<D: Services> RequestAuthentication for RunnerStreamAuthentication<D> {
     }
 }
 
-impl<D: Services> RunnerStreamAuthentication<D> {
+impl<D: Shared> RunnerStreamAuthentication<D> {
     async fn initial(&self, parts: &mut Parts, route: RouteMeta) -> AuthenticationResult {
         let principal = self.bearer.authenticate(parts, route).await?;
         if matches!(&principal, Some(Principal::Runner(_))) {

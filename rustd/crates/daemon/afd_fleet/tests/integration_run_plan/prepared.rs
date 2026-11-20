@@ -1,10 +1,7 @@
 //! Execute both queue statements under PostgreSQL's actual prepared-plan cache.
 
 use af_core::id::Uuid7;
-use afd_fleet::run::sql::{
-    self,
-    queue::{ASSIGN_HEAD, SELECT_CANDIDATES},
-};
+use afd_fleet::run::sql::queue::{ASSIGN_HEAD, SELECT_CANDIDATES};
 use sqlx::{AssertSqlSafe, PgConnection};
 
 use super::run;
@@ -24,8 +21,8 @@ pub(super) async fn release(connection: &mut PgConnection) {
 }
 
 pub(super) async fn candidates(connection: &mut PgConnection, runner: &Uuid7) -> serde_json::Value {
-    let active = sql::FLEET_STATUS_ACTIVE;
-    let runner_active = sql::RUNNER_STATUS_ACTIVE;
+    let active = afd_state::sql::FLEET_STATUS_ACTIVE;
+    let runner_active = afd_state::sql::RUNNER_STATUS_ACTIVE;
     let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
     let task = task_parameters();
     let model = afd_credential::provider::PLATFORM_MODEL_REF;
@@ -37,13 +34,13 @@ pub(super) async fn assign(
     fleet: &Uuid7,
     runner: &Uuid7,
 ) -> serde_json::Value {
-    let runner_active = sql::RUNNER_STATUS_ACTIVE;
-    let active = sql::RUN_STATUS_ACTIVE;
-    let expired = sql::RUN_STATUS_EXPIRED;
+    let runner_active = afd_state::sql::RUNNER_STATUS_ACTIVE;
+    let active = afd_state::sql::RUN_STATUS_ACTIVE;
+    let expired = afd_state::sql::RUN_STATUS_EXPIRED;
     let ttl = af_core::timing::RUN_TTL.as_secs();
     let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
     let task = task_parameters();
-    let fleet_active = sql::FLEET_STATUS_ACTIVE;
+    let fleet_active = afd_state::sql::FLEET_STATUS_ACTIVE;
     let received = af_core::turn::status::RECEIVED;
     let model = afd_credential::provider::PLATFORM_MODEL_REF;
     explain(connection, &format!("gate_assignment('{fleet}','{runner}','{ttl} seconds','{offline} seconds','{runner_active}','{active}','{expired}',{task},'{fleet_active}','{received}',true,'{model}')")).await

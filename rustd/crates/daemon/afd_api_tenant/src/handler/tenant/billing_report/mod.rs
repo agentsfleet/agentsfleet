@@ -10,7 +10,7 @@ pub const DETAIL_CHARGES_REMOVED: &str = "Per-activity charges were removed; GET
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantBilling as _};
+use crate::services::{TenantBilling as _, TenantPlane};
 use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
@@ -36,7 +36,7 @@ const CACHE_CONTROL: &str = "private, no-store";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn report<D: Services>(
+pub(crate) async fn report<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,

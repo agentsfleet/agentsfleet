@@ -51,13 +51,13 @@ fn row(work: u8, work_type: &str, kind: &str, seq: i64) -> UnsettledRow {
 #[test]
 fn a_work_settles_its_lines_by_kind_and_number() {
     let settlements = grouped(vec![
-        row(1, work::AUTHORING_ATTEMPT, LineKind::Runtime.as_str(), 0),
-        row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        row(1, work::SETUP_RUN, LineKind::Runtime.as_str(), 0),
+        row(1, work::SETUP_RUN, LineKind::Model.as_str(), 0),
     ]);
     let [settlement] = settlements.as_slice() else {
         unreachable!("one work, one settlement: {settlements:?}");
     };
-    assert_eq!(settlement.work, WorkKey::AuthoringAttempt(id(1)));
+    assert_eq!(settlement.work, WorkKey::SetupRun(id(1)));
     let lines: Vec<(LineKind, u32)> = settlement
         .lines
         .iter()
@@ -71,16 +71,16 @@ fn a_work_settles_its_lines_by_kind_and_number() {
 /// unsettled rather than being charged to nothing.
 #[test]
 fn a_setup_line_settles_under_its_message_and_one_naming_no_turn_waits() {
-    let mut unnamed = row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0);
+    let mut unnamed = row(4, work::SETUP_RUN, LineKind::Model.as_str(), 0);
     unnamed.turn_id = None;
     let settlements = grouped(vec![
-        row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        row(1, work::SETUP_RUN, LineKind::Model.as_str(), 0),
         unnamed,
     ]);
     let [settlement] = settlements.as_slice() else {
         unreachable!("the unnamed work waits: {settlements:?}");
     };
-    assert_eq!(settlement.work, WorkKey::AuthoringAttempt(id(1)));
+    assert_eq!(settlement.work, WorkKey::SetupRun(id(1)));
     assert_eq!(
         settlement.attribution,
         Attribution::SetupRun {
@@ -92,9 +92,9 @@ fn a_setup_line_settles_under_its_message_and_one_naming_no_turn_waits() {
 #[test]
 fn a_work_whose_line_kind_this_build_cannot_name_is_left_whole() {
     let settlements = grouped(vec![
-        row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
-        row(1, work::AUTHORING_ATTEMPT, "storage", 1),
-        row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        row(1, work::SETUP_RUN, LineKind::Model.as_str(), 0),
+        row(1, work::SETUP_RUN, "storage", 1),
+        row(4, work::SETUP_RUN, LineKind::Model.as_str(), 0),
     ]);
     let works: Vec<&WorkKey> = settlements
         .iter()
@@ -102,7 +102,7 @@ fn a_work_whose_line_kind_this_build_cannot_name_is_left_whole() {
         .collect();
     assert_eq!(
         works,
-        [&WorkKey::AuthoringAttempt(id(4))],
+        [&WorkKey::SetupRun(id(4))],
         "the work with an unnamed kind stays unsettled, whole: settling only \
          its known lines would undercharge it"
     );
@@ -112,7 +112,7 @@ fn a_work_whose_line_kind_this_build_cannot_name_is_left_whole() {
 fn a_work_type_this_build_cannot_name_stays_unsettled() {
     let settlements = grouped(vec![
         row(1, "future_work", LineKind::Model.as_str(), 0),
-        row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        row(4, work::SETUP_RUN, LineKind::Model.as_str(), 0),
     ]);
     assert_eq!(settlements.len(), 1, "{settlements:?}");
 }
@@ -121,17 +121,17 @@ fn a_work_type_this_build_cannot_name_stays_unsettled() {
 /// guess would settle a tenant's own-key usage at the platform's rates.
 #[test]
 fn a_posture_this_build_cannot_name_stays_unsettled_rather_than_settling_as_platform() {
-    let mut unreadable = row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0);
+    let mut unreadable = row(1, work::SETUP_RUN, LineKind::Model.as_str(), 0);
     "self-managed-by-another-name".clone_into(&mut unreadable.posture);
     let settlements = grouped(vec![
         unreadable,
-        row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        row(4, work::SETUP_RUN, LineKind::Model.as_str(), 0),
     ]);
     let works: Vec<&WorkKey> = settlements
         .iter()
         .map(|settlement| &settlement.work)
         .collect();
-    assert_eq!(works, [&WorkKey::AuthoringAttempt(id(4))]);
+    assert_eq!(works, [&WorkKey::SetupRun(id(4))]);
 }
 
 /// Skipping is never silent: each distinct unreadable spelling is named,
@@ -143,16 +143,11 @@ fn what_the_relay_skips_is_named_once() {
 
     let capture = Capture::install();
     let rows = || {
-        let mut bad_posture = row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0);
+        let mut bad_posture = row(1, work::SETUP_RUN, LineKind::Model.as_str(), 0);
         "posture-named-by-the-sweep-test".clone_into(&mut bad_posture.posture);
         vec![
             bad_posture,
-            row(
-                3,
-                work::AUTHORING_ATTEMPT,
-                "kind-named-by-the-sweep-test",
-                0,
-            ),
+            row(3, work::SETUP_RUN, "kind-named-by-the-sweep-test", 0),
             row(
                 2,
                 "work-type-named-by-the-sweep-test",

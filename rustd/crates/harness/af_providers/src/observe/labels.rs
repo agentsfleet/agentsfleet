@@ -5,7 +5,7 @@
 //! string a run chose would be one more series than the census admits.
 
 /// Terminal outcome of one provider stream request.
-pub use af_observability::metrics::label::models::CallOutcome;
+pub(crate) use af_observability::metrics::label::models::CallOutcome;
 
 /// The label key a provider is attributed under.
 pub const LABEL_PROVIDER: &str = "provider";

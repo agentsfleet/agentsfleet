@@ -35,7 +35,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use super::schedule::{fence, run};
 use crate::auth::RunnerIdentity;
-use crate::services::{RunPlane as _, Services, WorkspaceFleets as _, WorkspaceTurns as _};
+use crate::services::{RunPlane as _, RunnerPlane, WorkspaceFleets as _, WorkspaceTurns as _};
 
 /// The scoped event a fleets read that failed is logged under.
 const EVENT_FAILED: &str = "runner_fleets_failed";
@@ -95,7 +95,7 @@ const EVENTS_CEILING: Ceiling = Ceiling::new(EVENTS_MAX, EVENTS_DEFAULT);
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run_id): Path<String>,
@@ -144,7 +144,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn events<D: Services>(
+pub(crate) async fn events<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run_id, fleet_id)): Path<(String, String)>,
@@ -174,7 +174,7 @@ pub(crate) async fn events<D: Services>(
 
 /// Proves `run_id` is `runner`'s live run under `token`, naming
 /// `superseded` when a reassignment took it.
-pub(super) async fn proven<D: Services>(
+pub(super) async fn proven<D: RunnerPlane>(
     services: &D,
     runner: &Uuid7,
     run_id: &str,
@@ -195,7 +195,7 @@ pub(super) fn superseded(error: &afd_fleet::Error) -> Option<&'static str> {
 
 /// Refuses a fleet the run's workspace does not hold, as one that never
 /// existed: the scope is an authorization, not a filter.
-async fn known<D: Services>(services: &D, run: &Standing, fleet: &Uuid7) -> Result<(), Refusal> {
+async fn known<D: RunnerPlane>(services: &D, run: &Standing, fleet: &Uuid7) -> Result<(), Refusal> {
     let status = services
         .fleets()
         .ingress_status(&run.workspace_id, fleet)

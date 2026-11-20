@@ -34,10 +34,11 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use af_validate::{Sentences, TEXT_TOO_LONG, nul_free};
+use af_wire::turn::SteerDisposition;
 use af_wire::turn::{SteerAccepted, SteerRequest, TurnKind};
 use afd_api_wire::tail::{FrameText, TailFrame};
 use afd_turns::view::Steered;
-use afd_turns::view::disposition::{Placed, SteerDisposition};
+use afd_turns::view::disposition::Placed;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -49,7 +50,7 @@ use afd_fleet_lifecycle::FleetStatus;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{FleetSteering, Services};
+use crate::services::{FleetSteering, TenantPlane};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -129,7 +130,7 @@ const STATUS_ACCEPTED: &str = "accepted";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn steer<D: Services>(
+pub(crate) async fn steer<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

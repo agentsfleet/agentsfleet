@@ -24,17 +24,18 @@
 //! agree (RULE PSR).
 
 use af_core::id::Uuid7;
+use af_fleet_runtime::config::ChannelId;
 use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
 use afd_connector::grant::BotIdentity;
 use afd_connector::slack::Thread;
-use afd_ingress::slack::{ChannelId, Route, route};
+use afd_ingress::slack::{Route, route};
 use serde::Deserialize;
 
 use super::events::REASON_UNREADABLE;
 use super::webhook::REASON_UNSUPPORTED_EVENT;
 use crate::handler::Refusal;
-use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
+use crate::services::{IngressPlane, WebhookIngress as _, WorkspaceConnectors as _};
 
 mod admit;
 mod notice;
@@ -224,7 +225,7 @@ pub(super) fn without_bot_mention(text: &str) -> &str {
 /// # Errors
 /// A datastore that would not answer at any step, as the 503 a provider
 /// retries.
-pub(super) async fn admit<D: Services>(
+pub(super) async fn admit<D: IngressPlane>(
     services: &D,
     provider: Provider,
     asked: &Asked,
@@ -270,7 +271,7 @@ pub(super) async fn admit<D: Services>(
 ///
 /// A mapped team whose grant holds no bot cannot answer as itself, which is
 /// the same fact as an unmapped one for the person waiting.
-async fn answerer<D: Services>(
+async fn answerer<D: IngressPlane>(
     services: &D,
     provider: Provider,
     team: &str,

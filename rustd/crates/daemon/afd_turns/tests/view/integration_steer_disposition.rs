@@ -14,8 +14,9 @@ use af_core::id::Uuid7;
 use std::error::Error;
 
 use af_core::turn::status;
+use af_wire::turn::SteerDisposition;
 use afd_db::test_util::{RunnerPolicy, RunnerSeed, mint_id};
-use afd_turns::view::disposition::{Placed, SteerDisposition};
+use afd_turns::view::disposition::Placed;
 use afd_turns::view::{Steer, Steered, steer_actor};
 
 use crate::integration_steer_retry::REQUEST_JSON;

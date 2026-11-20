@@ -11,7 +11,7 @@
 //! coverage gate is what holds this document to it: a route mounted there and
 //! missing here fails, and so does the reverse.
 
-use afd_auth::credential::RUNNER_TOKEN_PREFIX;
+use af_wire::paths::RUNNER_TOKEN_PREFIX;
 use afd_http::openapi::problem::ProblemBody;
 use http::StatusCode;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme};
@@ -20,9 +20,9 @@ use utoipa::{OpenApi as _, ToSchema as _};
 
 mod stability;
 
-use crate::Route;
 use crate::envelope::CONTENT_TYPE_PROBLEM_JSON;
 use crate::route::{Guard, RunnerOpsRoute, Verb};
+use afd_http::route::Route;
 
 /// The scheme name every tenant-plane operation refers to.
 const BEARER_SCHEME: &str = "BearerAuth";

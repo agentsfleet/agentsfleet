@@ -38,7 +38,7 @@ use serde::Deserialize;
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
-use crate::services::{FleetGrants as _, Services};
+use crate::services::{FleetGrants as _, TenantPlane};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "grant_list_failed";
@@ -95,7 +95,7 @@ pub(crate) struct GrantPath {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
@@ -140,7 +140,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn revoke<D: Services>(
+pub(crate) async fn revoke<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(GrantPath { fleet_id, grant_id }): Path<GrantPath>,

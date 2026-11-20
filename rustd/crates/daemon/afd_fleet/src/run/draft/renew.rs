@@ -182,7 +182,7 @@ impl RunService {
             return Ok(());
         };
         let ask = Ask {
-            work: WorkKey::AuthoringAttempt(run_id.clone()),
+            work: WorkKey::SetupRun(run_id.clone()),
             payer: Account {
                 tenant: run.tenant_id.clone(),
                 workspace: run.workspace_id.clone(),

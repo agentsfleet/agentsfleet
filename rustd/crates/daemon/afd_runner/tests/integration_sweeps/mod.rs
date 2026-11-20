@@ -214,7 +214,7 @@ async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     let mut connection = fixture.database.acquire().await.expect("an API connection");
     afd_db::test_util::RunnerSeed::new(
         &fixture.stale,
-        afd_runner::sql::RUNNER_STATUS_ACTIVE,
+        afd_state::sql::RUNNER_STATUS_ACTIVE,
         crate::rows::POLICY,
     )
     .at(OLD)

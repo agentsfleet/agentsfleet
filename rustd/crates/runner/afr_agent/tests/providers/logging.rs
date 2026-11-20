@@ -17,7 +17,7 @@ const PRIVATE: &str = "private-provider-content-never-log";
 )]
 async fn recorded(reply: Reply, filtered: bool) -> String {
     let capture = if filtered {
-        Capture::install_filtered(af_providers::log_filter(LevelFilter::TRACE))
+        Capture::install_filtered(af_inference::log_filter(LevelFilter::TRACE))
     } else {
         Capture::install()
     };

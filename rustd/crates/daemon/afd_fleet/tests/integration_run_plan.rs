@@ -110,11 +110,11 @@ async fn head_plan(connection: &mut PgConnection, runner: &Uuid7) -> serde_json:
     sqlx::query_scalar(AssertSqlSafe(format!(
         "EXPLAIN (ANALYZE, FORMAT JSON) {SELECT_CANDIDATES}"
     )))
-    .bind(afd_fleet::run::sql::FLEET_STATUS_ACTIVE)
+    .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
     .bind(runner)
     .bind(64_i64)
     .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-    .bind(afd_fleet::run::sql::RUNNER_STATUS_ACTIVE)
+    .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
     .bind(Vec::<Uuid7>::new())
     .bind(Option::<Uuid7>::None)
     .bind(af_wire::task::CAPABILITY)

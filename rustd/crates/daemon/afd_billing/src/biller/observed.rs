@@ -96,7 +96,7 @@ fn record_spend(settlement: &Settlement, receipt: &Receipt) {
 pub(crate) const fn work_type(work: &WorkKey) -> WorkType {
     match work {
         WorkKey::FleetRun(_) => WorkType::FleetRun,
-        WorkKey::AuthoringAttempt(_) => WorkType::AuthoringAttempt,
+        WorkKey::SetupRun(_) => WorkType::SetupRun,
     }
 }
 
@@ -120,8 +120,8 @@ mod tests {
             sql::work::FLEET_RUN
         );
         assert_eq!(
-            work_type(&WorkKey::AuthoringAttempt(id)).as_str(),
-            sql::work::AUTHORING_ATTEMPT
+            work_type(&WorkKey::SetupRun(id)).as_str(),
+            sql::work::SETUP_RUN
         );
     }
 }

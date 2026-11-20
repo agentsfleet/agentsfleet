@@ -20,4 +20,4 @@ pub mod error;
 pub mod sql;
 
 pub use self::credentials::Credentials;
-pub use self::error::{Result, Unavailable};
+pub use self::error::Result;

@@ -84,10 +84,7 @@ impl TurnSession<'_, '_> {
             page.validate()?;
             if usize::try_from(page.page_number).ok() != Some(number)
                 || !page.history_objects.is_empty()
-                || !af_wire::decision::serialized_within(
-                    &page,
-                    af_wire::run::TURN_CHECKPOINT_PAGE_BYTES,
-                )
+                || !af_validate::serialized_within(&page, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)
             {
                 return Err(error::config(
                     "turn manifest page has invalid layout or size",

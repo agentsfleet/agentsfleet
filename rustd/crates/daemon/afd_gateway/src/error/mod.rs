@@ -29,7 +29,7 @@ af_core::error_lifts!(Error, ErrorKind:
     sqlx::Error => Query,
     afd_runner::Error => Runner,
     afd_fleet::Error => Fleet,
-    afd_setup::Error => Authoring,
+    afd_setup::Error => Setup,
     tokio::task::JoinError => Worker,
     http::Error => Http,
 );

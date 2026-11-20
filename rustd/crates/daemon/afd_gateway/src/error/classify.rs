@@ -45,7 +45,7 @@ impl Error {
             ErrorKind::Binding => error_code::AUTH_FORBIDDEN,
             ErrorKind::Capacity { .. } => error_code::SSE_STREAM_CAP,
             ErrorKind::Fleet { source } => source.code(),
-            ErrorKind::Authoring { source } => source.code(),
+            ErrorKind::Setup { source } => source.code(),
             ErrorKind::Runner { source } => source.code(),
             ErrorKind::Database { source } => source.code(),
             ErrorKind::Bus { source } => source.code(),
@@ -86,7 +86,7 @@ impl Error {
             ErrorKind::Http { .. } => "The server could not construct its response. Retry with backoff.".into(),
             ErrorKind::Fleet { source } => source.detail().into(),
             ErrorKind::Runner { source } => source.detail().into(),
-            ErrorKind::Authoring { source } => source.detail().into(),
+            ErrorKind::Setup { source } => source.detail().into(),
         }
     }
 
@@ -117,7 +117,7 @@ impl Error {
                     | af_stream::Reason::Closed
                     | af_stream::Reason::Worker
             ),
-            ErrorKind::Fleet { .. } | ErrorKind::Authoring { .. } | ErrorKind::Runner { .. } => {
+            ErrorKind::Fleet { .. } | ErrorKind::Setup { .. } | ErrorKind::Runner { .. } => {
                 matches!(
                     af_core::problem::Problem::of(self.code()).status(),
                     408 | 429 | 500..=599
@@ -172,7 +172,7 @@ impl Error {
             ErrorKind::Database { .. } | ErrorKind::Query { .. } => "database",
             ErrorKind::Bus { .. } => "broker",
             ErrorKind::Capacity { .. } => "capacity",
-            ErrorKind::Runner { .. } | ErrorKind::Fleet { .. } | ErrorKind::Authoring { .. } => {
+            ErrorKind::Runner { .. } | ErrorKind::Fleet { .. } | ErrorKind::Setup { .. } => {
                 "service"
             }
             ErrorKind::Http { .. } => "internal",

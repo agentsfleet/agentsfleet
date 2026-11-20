@@ -5,7 +5,7 @@ use crate::{Drafts, Result, error::raise::query, types::DraftState};
 use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
-const CONTEXT: &str = "expire private authoring content";
+const CONTEXT: &str = "expire private setup content";
 const LIMIT: i64 = 64;
 const INSTALLING: &str = "installing";
 

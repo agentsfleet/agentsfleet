@@ -25,9 +25,10 @@ use super::{
     SANDBOX_BUILDS, SANDBOX_HOLDS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
     SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
 };
+use af_observability::metrics::label::models::CallOutcome;
 use af_providers::observe::Observer;
 use af_providers::observe::labels::{
-    CallOutcome, DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
+    DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
 };
 
 use crate::labels::{

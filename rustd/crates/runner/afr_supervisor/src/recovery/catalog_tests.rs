@@ -22,14 +22,10 @@ fn ordinary_manifest_pages_fit_the_native_turn_limit() -> crate::Result<()> {
         &tokio_util::sync::CancellationToken::new(),
     )?;
     let pages = catalog.pages(None, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)?;
-    assert!(
-        pages
-            .iter()
-            .all(|page| af_wire::decision::serialized_within(
-                page,
-                af_wire::run::TURN_CHECKPOINT_PAGE_BYTES
-            ))
-    );
+    assert!(pages.iter().all(|page| af_validate::serialized_within(
+        page,
+        af_wire::run::TURN_CHECKPOINT_PAGE_BYTES
+    )));
     assert_eq!(
         pages.iter().map(|page| page.entries.len()).sum::<usize>(),
         3000

@@ -1,9 +1,7 @@
 //! Stream metadata and state belong to the gateway; the common guard already proved the principal.
 
-use afd_http::{
-    auth::RunnerIdentity,
-    services::{RunnerStreams as _, Services},
-};
+use crate::services::{RunnerPlane, RunnerStreams as _};
+use afd_http::auth::RunnerIdentity;
 use axum::{
     extract::{Request, State},
     response::Response,
@@ -32,7 +30,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     request: Request,

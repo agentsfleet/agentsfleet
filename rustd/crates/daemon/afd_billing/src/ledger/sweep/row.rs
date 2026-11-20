@@ -82,7 +82,7 @@ impl UnsettledRow {
     pub(super) fn work(&self) -> Option<fn(Uuid7) -> WorkKey> {
         match self.work_type.as_str() {
             sql::work::FLEET_RUN => Some(WorkKey::FleetRun),
-            sql::work::AUTHORING_ATTEMPT => Some(WorkKey::AuthoringAttempt),
+            sql::work::SETUP_RUN => Some(WorkKey::SetupRun),
             _ => None,
         }
     }

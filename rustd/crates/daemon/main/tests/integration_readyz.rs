@@ -43,7 +43,7 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use agentsfleetd::probes::LiveDependencies;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";

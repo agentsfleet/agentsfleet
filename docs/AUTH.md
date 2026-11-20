@@ -1036,7 +1036,7 @@ Missing, foreign and creator-private drafts return the same nondisclosing 404.
 
 The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
 `afd_setup/src/access.rs` and `sql/draft/lock.sql` enforce the inner identity boundary.
-[Fleet definitions](architecture/fleet_definitions.md) describes review, Save, Apply and publication.
+[Fleet definitions](architecture/fleet_definitions.md) describes review, Save and Apply.
 
 The setup review is where credential presence matters: it reports each named
 credential and why the setup needs it (`rustd/crates/daemon/afd_setup/src/review/credentials/`).

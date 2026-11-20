@@ -1,9 +1,8 @@
-//! The runner control plane: what a host may do, and what it is owed.
+//! The run plane: assigning, renewing and settling a fleet's runs, and its
+//! durable tasks.
 //!
-//! What lands first is the runner ROW — enrolment, liveness, and
-//! the degraded verdict — because every other verb in the plane is gated on a
-//! runner the authenticator has already proven and this crate has to be able to
-//! describe.
+//! The host's own plane (enrolment, liveness, the degraded verdict) is
+//! `afd_runner`'s; every verb here is gated on a runner it has already proven.
 //!
 //! # Deciding, apart from answering
 //!

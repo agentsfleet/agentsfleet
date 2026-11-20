@@ -77,7 +77,7 @@ async fn assert_reassigned(
     assert_eq!(recovered.kind, Kind::Reassigned);
     assert_eq!(
         fixtures.text(Row::Run(issued), "status").await.as_deref(),
-        Some(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
+        Some(afd_state::sql::RUN_STATUS_EXPIRED)
     );
 }
 

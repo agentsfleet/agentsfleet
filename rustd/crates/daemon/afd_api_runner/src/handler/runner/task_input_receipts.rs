@@ -1,6 +1,6 @@
 //! Acknowledge current input application or the original source's reply delivery.
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 use af_wire::task::TaskInputReceiptInput;
 use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
@@ -28,7 +28,7 @@ const MALFORMED: &str = "Input receipt exceeds its supported shape or bounds";
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run): Path<String>,

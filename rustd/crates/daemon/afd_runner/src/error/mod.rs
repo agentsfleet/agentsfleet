@@ -327,7 +327,7 @@ impl Error {
 /// The sentence a failure carries has to be true of every variant mapped to it
 /// — `detail()` maps four here — and a verb-shaped sentence is true of at most
 /// one.
-pub use af_core::error::DETAIL_DATABASE_ERROR;
+pub(crate) use af_core::error::DETAIL_DATABASE_ERROR;
 
 /// The sentence this plane's non-statement failures earn.
 ///

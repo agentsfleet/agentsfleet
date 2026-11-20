@@ -76,7 +76,7 @@ async fn every_wrong_limit_earns_the_bounds_refusal() {
         let (_, code, detail) = harness::problem(response).await;
         assert_eq!(
             detail,
-            afd_api::handler::tenant::DETAIL_CATALOGUE_LIMIT,
+            afd_api_tenant::tenant::DETAIL_CATALOGUE_LIMIT,
             "{path}"
         );
         assert_eq!(code, "UZ-LIBRARY-003", "{path}");
@@ -131,7 +131,7 @@ async fn a_token_nobody_issued_is_refused_as_malformed() {
         let (_, code, detail) = harness::problem(response).await;
         assert_eq!(
             detail,
-            afd_api::handler::tenant::DETAIL_CURSOR_MALFORMED,
+            afd_api_tenant::tenant::DETAIL_CURSOR_MALFORMED,
             "{path}"
         );
         assert_eq!(code, "UZ-LIBRARY-001", "{path}");
@@ -147,14 +147,14 @@ async fn a_real_cursor_for_a_different_query_is_refused_distinctly() {
     let response = read(&path, Some(TENANT_KEY)).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let (_, code, detail) = harness::problem(response).await;
-    assert_eq!(detail, afd_api::handler::tenant::DETAIL_CURSOR_MISMATCH);
+    assert_eq!(detail, afd_api_tenant::tenant::DETAIL_CURSOR_MISMATCH);
     assert_eq!(code, "UZ-LIBRARY-002");
 
     // A provider mismatch is the same second refusal.
     let path = format!("{MODELS}?starting_after={}", minted(50, Some("openai")));
     let response = read(&path, Some(TENANT_KEY)).await;
     let (_, code, detail) = harness::problem(response).await;
-    assert_eq!(detail, afd_api::handler::tenant::DETAIL_CURSOR_MISMATCH);
+    assert_eq!(detail, afd_api_tenant::tenant::DETAIL_CURSOR_MISMATCH);
     assert_eq!(code, "UZ-LIBRARY-002");
 }
 
@@ -185,7 +185,7 @@ async fn a_cursor_whose_id_is_no_identifier_is_malformed() {
     let path = format!("{MODELS}?starting_after={token}");
     let response = read(&path, Some(TENANT_KEY)).await;
     let (_, code, detail) = harness::problem(response).await;
-    assert_eq!(detail, afd_api::handler::tenant::DETAIL_CURSOR_MALFORMED);
+    assert_eq!(detail, afd_api_tenant::tenant::DETAIL_CURSOR_MALFORMED);
     assert_eq!(code, "UZ-LIBRARY-001");
 }
 

@@ -26,7 +26,7 @@ async fn unresolved_tenant_authority_refuses_the_report() {
     );
     assert_eq!(
         harness::text(&problem, "detail"),
-        Some(afd_api::handler::tenant::DETAIL_TENANT_REQUIRED)
+        Some(afd_api_tenant::tenant::DETAIL_TENANT_REQUIRED)
     );
 }
 
@@ -88,7 +88,7 @@ async fn a_model_filter_is_refused_before_any_datastore_read() {
         );
         assert_eq!(
             harness::text(&problem, "detail"),
-            Some(afd_api::handler::tenant::DETAIL_MODEL),
+            Some(afd_api_tenant::tenant::DETAIL_MODEL),
             "{path}"
         );
     }
@@ -110,6 +110,6 @@ async fn the_activity_charges_route_answers_gone() {
     );
     assert_eq!(
         harness::text(&problem, "detail"),
-        Some(afd_api::handler::tenant::DETAIL_CHARGES_REMOVED)
+        Some(afd_api_tenant::tenant::DETAIL_CHARGES_REMOVED)
     );
 }

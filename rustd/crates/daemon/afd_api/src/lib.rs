@@ -33,27 +33,13 @@ use {
     serde_json as _, sha2 as _, sqlx as _, tempfile as _, tokio as _, tokio_util as _, tower as _,
 };
 
-pub use afd_http::admission;
-pub use afd_http::auth;
-pub use afd_http::client;
-pub use afd_http::envelope;
-pub use afd_http::etag;
-pub mod handler;
+use afd_http::{admission, auth, envelope, route};
 // The document generator, compiled only when it is asked for.
 #[cfg(feature = "openapi")]
 pub mod openapi;
-pub use afd_http::request_id;
-pub use afd_http::route;
 pub mod router;
 pub mod server;
-pub use afd_http::services;
 mod telemetry;
 
-pub use self::admission::{Admission, DEFAULT_MAX_IN_FLIGHT, admit, is_metered};
-pub use self::auth::{Authenticator, Planes, RunnerIdentity};
-pub use self::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
-pub use self::request_id::{RequestId, UNKNOWN_REQUEST_ID};
-pub use self::route::{Guard, Route, RouteClass, RouteMeta, Scopes};
 pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
 pub use self::server::{MAX_REQUEST_HEADER_BYTES, connection_builder};
-pub use self::services::{SchedulePlane, Services, TenantSurface};

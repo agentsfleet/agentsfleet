@@ -55,7 +55,7 @@ async fn scenario(order: Late) {
     let running = Running::create().await;
     let replica = Replica::start().await;
     let (original_event, original_status) = original(&running).await;
-    assert_eq!(original_status, afd_runner::sql::RUN_STATUS_ACTIVE);
+    assert_eq!(original_status, afd_state::sql::RUN_STATUS_ACTIVE);
     expire(&running).await;
     let expired = snapshot(&running).await;
     let ((event, readmitted), renewed) = Box::pin(race(order, &running, &replica)).await;

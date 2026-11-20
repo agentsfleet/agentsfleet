@@ -37,25 +37,18 @@ pub use self::schema::DefinitionSchema;
 pub const DEFINITION_SCHEMA_VERSION: u8 = 1;
 /// Explicit policy meaning included in every review and content digest.
 pub const POLICY_SEMANTICS: &str = "fleet-setup-v1";
-/// Maximum description, in characters.
-pub const MAX_DESCRIPTION_CHARS: usize = 32 * 1024;
+/// Maximum description, in characters: [`af_validate::DESCRIPTION_MAX_CHARS`].
+pub const MAX_DESCRIPTION_CHARS: usize = af_validate::DESCRIPTION_MAX_CHARS;
 /// The widest character in UTF-8, which is how stored text is addressed.
 const UTF8_MAX_CHAR_BYTES: usize = 4;
-/// The widest one character serializes to in JSON: a `\u00XX` control escape.
-const JSON_MAX_CHAR_BYTES: usize = 6;
-/// Room the configuration takes in an envelope beside the two texts.
-const CONFIG_ALLOWANCE_BYTES: usize = 64 * 1024;
 /// The largest UTF-8 byte offset an instruction edit can name: instructions
 /// at the text ceiling, [`af_validate::TEXT_MAX_CHARS`], every character at
 /// its widest.
 pub const MAX_INSTRUCTION_OFFSET: usize = UTF8_MAX_CHAR_BYTES * af_validate::TEXT_MAX_CHARS;
-/// Maximum Definition or edit envelope before allocating its parsed tree.
-///
-/// Both texts at their character caps in the widest JSON encoding, plus the
-/// configuration, so the envelope never refuses what the text bounds admit.
-pub const MAX_DEFINITION_BYTES: usize = JSON_MAX_CHAR_BYTES
-    * (MAX_DESCRIPTION_CHARS + af_validate::TEXT_MAX_CHARS)
-    + CONFIG_ALLOWANCE_BYTES;
+/// Maximum Definition or edit envelope before allocating its parsed tree:
+/// [`af_validate::DEFINITION_MAX_BYTES`], the bound the runner's setup report
+/// reads too.
+pub const MAX_DEFINITION_BYTES: usize = af_validate::DEFINITION_MAX_BYTES;
 /// The `description` key, named once for the refusal that cites it.
 const FIELD_DESCRIPTION: &str = "description";
 

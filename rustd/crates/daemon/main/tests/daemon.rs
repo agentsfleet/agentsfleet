@@ -14,7 +14,7 @@ use agentsfleetd::inventory::{
 };
 use agentsfleetd::supervisor::Supervisor;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 /// Spawns a supervised task that records having observed its cancellation.
 ///

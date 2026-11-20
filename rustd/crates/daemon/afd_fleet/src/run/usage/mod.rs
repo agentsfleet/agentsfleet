@@ -250,8 +250,8 @@ impl Pricing {
         }))
     }
 
-    /// [`Self::settlement`] for a draft-owned run: its lines are setup
-    /// work's (`authoring`), name the run as their work and the draft
+    /// [`Self::settlement`] for a draft-owned run: its lines are a setup
+    /// run's (`setup_run`), name the run as their work and the draft
     /// message as their event, and bump no fleet's budget.
     ///
     /// # Errors
@@ -272,7 +272,7 @@ impl Pricing {
             return Ok(None);
         };
         Ok(Some(Settlement {
-            work: WorkKey::AuthoringAttempt(run_id.clone()),
+            work: WorkKey::SetupRun(run_id.clone()),
             payer: Account {
                 tenant: slice.tenant_id,
                 workspace: slice.workspace_id,

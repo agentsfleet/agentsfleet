@@ -3,7 +3,7 @@
 //!
 //! Row behaviour — a member reading a kept record, another workspace's fleet
 //! answering 404 — needs live Postgres and is proven in the integration lane
-//! (`agentsfleetd/tests/integration_tool_call_details.rs`).
+//! (`af_e2e/tests/integration_tool_call_details.rs`).
 #![cfg(feature = "test-util")]
 
 use crate::harness;

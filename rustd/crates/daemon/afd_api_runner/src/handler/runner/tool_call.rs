@@ -22,7 +22,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
 use crate::handler::{malformed, refuse, reject};
-use crate::services::{RunPlane as _, Services};
+use crate::services::{RunPlane as _, RunnerPlane};
 
 /// The scoped event a failed post is logged under.
 const EVENT: &str = "runner_tool_calls_failed";
@@ -60,7 +60,7 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run_id): Path<String>,

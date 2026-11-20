@@ -19,7 +19,7 @@ pub const TEXT_MAX_CHARS: usize = 1 << 20;
 pub const TEXT_TOO_LONG: &str = "Input exceeds the maximum length of 1,048,576 characters.";
 
 /// The widest one character serializes to in JSON: a `\u00XX` control escape.
-const JSON_CHAR_MAX_BYTES: usize = 6;
+pub(crate) const JSON_CHAR_MAX_BYTES: usize = 6;
 
 /// The most bytes a text at [`TEXT_MAX_CHARS`] takes as a JSON string.
 ///

@@ -7,6 +7,7 @@
 
 mod cleanup;
 mod contention;
+mod context;
 mod creation;
 mod edits;
 mod fixture;

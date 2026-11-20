@@ -130,7 +130,7 @@ mod tests {
         let bytes = maximal_create_body();
         assert!(
             bytes.len() > af_wire::run::SETUP_DEFINITION_BYTES_MAX,
-            "the old cap refused this"
+            "a Definition's bound alone refuses this; the envelope adds the message"
         );
         assert!(bytes.len() <= SETUP_BODY_BYTES_MAX, "{} bytes", bytes.len());
         let parsed = body::<Value>(&bytes).map(|document| document.is_object());

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use af_observability::producers::GaugeSources;
-use afd_api::Admission;
+use afd_http::admission::Admission;
 
 use crate::error::BootFailure;
 use crate::preflight::BootConfig;
@@ -102,9 +102,9 @@ pub(super) fn gauge_sources(
 /// configured, so re-reading `config.otlp()` there would be an `Option` that
 /// cannot be `None` — an invariant expressed as a panic instead of as a field.
 pub(crate) struct Prepared {
-    exports: crate::telemetry::Exports,
+    exports: af_otlp::Exports,
     instruments: af_observability::metrics::instrument::Instruments,
-    otlp: crate::preflight::OtlpConfig,
+    otlp: af_otlp::OtlpConfig,
 }
 
 /// Delivers what a boot buffered when that boot is not going to finish.
@@ -258,7 +258,7 @@ mod snapshot_tests {
     #[tokio::test]
     async fn pool_callback_reads_actual_capacity_and_withdraws_a_closed_pool() {
         let database = afd_db::test_util::unreachable_db();
-        let admission = Admission::new(afd_api::DEFAULT_MAX_IN_FLIGHT);
+        let admission = Admission::new(afd_http::admission::DEFAULT_MAX_IN_FLIGHT);
         let live = afd_sse::Live::detached(afd_sse::StreamLimit::new(1));
         let sources = gauge_sources(&admission, &live, &database);
         let readings = (sources.database_pools)();

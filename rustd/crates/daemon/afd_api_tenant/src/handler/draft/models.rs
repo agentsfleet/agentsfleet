@@ -3,7 +3,7 @@
 use super::access;
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
 use afd_api_wire::authoring::{CursorPage, WorkspaceModel};
@@ -36,7 +36,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

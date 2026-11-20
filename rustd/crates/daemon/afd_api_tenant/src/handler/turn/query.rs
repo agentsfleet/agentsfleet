@@ -25,7 +25,7 @@
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_core::paging::Ceiling;
+use af_validate::Ceiling;
 use af_validate::{Limit, Sentences};
 use afd_turns::view::{
     Cursor, DEFAULT_LIMIT, Filter, MAX_LIMIT, glob_to_like, parse_since, prefix_to_like,

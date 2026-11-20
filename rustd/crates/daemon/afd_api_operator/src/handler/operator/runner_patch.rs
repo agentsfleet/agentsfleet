@@ -15,9 +15,9 @@ use axum::response::{IntoResponse as _, Response};
 use http::header;
 
 use super::query;
+use crate::OperatorPlane;
 use crate::auth::PersonIdentity;
 use crate::handler::{malformed, parse_id, refuse};
-use crate::services::Services;
 
 const EVENT: &str = "runner_patch_failed";
 const DETAIL_PATCH_BODY: &str = "PATCH body must be {\"action\":\"cordon|drain|revoke|rotate|self_test\"} alone, or an edit carrying {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[], decision_model_id?}}, {\"labels\":[]}, or both";
@@ -70,7 +70,7 @@ enum OrdinaryMutation<'r, 'a> {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw): Path<String>,
@@ -87,7 +87,7 @@ pub(crate) async fn handle<D: Services>(
 }
 
 /// Applies an action or an edit to a runner within `scope`.
-pub(super) async fn apply<D: Services>(
+pub(super) async fn apply<D: OperatorPlane>(
     services: &D,
     scope: RunnerScope<'_>,
     identity: &PersonIdentity,
@@ -121,7 +121,7 @@ pub(super) async fn apply<D: Services>(
     finish(result, identity, &runner)
 }
 
-async fn mutate<'a, D: Services>(
+async fn mutate<'a, D: OperatorPlane>(
     services: &D,
     scope: RunnerScope<'_>,
     runner: &'a af_core::id::Uuid7,
@@ -188,7 +188,7 @@ fn finish(
     }
 }
 
-async fn rotate<D: Services>(
+async fn rotate<D: OperatorPlane>(
     services: &D,
     scope: RunnerScope<'_>,
     identity: &PersonIdentity,

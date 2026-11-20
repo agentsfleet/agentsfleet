@@ -99,7 +99,7 @@ pub(super) async fn seed_run(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
     };
     afd_db::test_util::RunnerSeed::new(
         &case.base.runner,
-        afd_runner::sql::RUNNER_STATUS_ACTIVE,
+        afd_state::sql::RUNNER_STATUS_ACTIVE,
         policy,
     )
     .insert(&mut *case.base.db.acquire().await?)
@@ -118,7 +118,7 @@ pub(super) async fn seed_run(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
         .bind("fixture-model")
         .bind(1_i64)
         .bind(af_core::timing::RUN_TTL.as_secs_f64())
-        .bind(afd_runner::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .bind(0_i32)
         .execute(&mut *case.base.db.acquire().await?)
         .await?;

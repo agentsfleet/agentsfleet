@@ -17,7 +17,7 @@
 //!
 //! [`Analytics::report`] queues and returns; it has no error to raise. The one
 //! datastore read here, a creator's subject, is a primary-key read of the
-//! users row every authoring guard already reads; a missing person drops the
+//! users row every setup guard already reads; a missing person drops the
 //! step rather than refusing the write.
 
 use af_core::id::Uuid7;

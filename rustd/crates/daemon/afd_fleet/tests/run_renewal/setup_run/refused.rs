@@ -58,7 +58,7 @@ async fn a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate() {
     );
     assert_eq!(
         case.runs().await,
-        vec![(1, afd_fleet::run::sql::RUN_STATUS_REPORTED.to_owned())],
+        vec![(1, afd_state::sql::RUN_STATUS_REPORTED.to_owned())],
         "the run settled"
     );
     case.cleanup().await;

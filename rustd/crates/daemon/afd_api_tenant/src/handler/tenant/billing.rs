@@ -8,7 +8,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use af_core::paging::{Ceiling, QUERY_LIMIT};
+use af_core::paging::QUERY_LIMIT;
+use af_validate::Ceiling;
 use af_validate::{Limit, LimitBreak};
 use afd_api_wire::tenant::{BillingResponse, ChargeSummary, ChargesResponse};
 use afd_billing::Wallet;
@@ -20,7 +21,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantBilling as _};
+use crate::services::{TenantBilling as _, TenantPlane};
 
 use super::{parameter, tenant_of};
 
@@ -54,7 +55,7 @@ pub const DETAIL_LIMIT_RANGE: &str = "limit must be between 1 and 200";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn snapshot<D: Services>(
+pub(crate) async fn snapshot<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
@@ -94,7 +95,7 @@ pub(crate) async fn snapshot<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn charges<D: Services>(
+pub(crate) async fn charges<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,

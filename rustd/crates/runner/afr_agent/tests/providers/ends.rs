@@ -3,7 +3,7 @@
 //! the output limit never runs, and a reply past the transport's cap ends the
 //! run without being asked again.
 
-use af_providers::REPLY_MAX_BYTES;
+use af_inference::transport::REPLY_MAX_BYTES;
 use af_wire::activity::{ActivityFrame, StreamTextKind};
 use af_wire::tool_trace::ToolCallStatus;
 use afr_agent::ResultOutcome;

@@ -28,8 +28,9 @@
 use af_core::id::Uuid7;
 use std::borrow::Cow;
 
-use af_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
+use af_core::paging::{Cursor as CoreCursor, InvalidCursor};
 use af_core::spelling::from_spelling;
+use af_validate::Ceiling;
 use af_validate::Limit;
 use afd_api_wire::approval::GateStatus;
 use afd_http::handler::parse_id;

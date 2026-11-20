@@ -22,7 +22,7 @@ use af_core::error_code;
 use af_crypto::entropy::Entropy;
 use afd_billing::ledger::LedgerBiller;
 use afd_fleet::run::billing_sweep::{BillingSwept, sweep};
-use afd_fleet::run::sql::RUN_STATUS_REPORTED;
+use afd_state::sql::RUN_STATUS_REPORTED;
 use sqlx::Connection as _;
 
 use crate::faulty_biller::{Faults, Faulty};

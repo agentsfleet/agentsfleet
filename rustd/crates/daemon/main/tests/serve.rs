@@ -36,10 +36,10 @@ fn parses_but_dead() -> MapEnv {
             // Both are required at boot and resolved rather than dialled, so
             // supplying them well-formed keeps this fixture's failure the DATASTORE
             // one it is asserting about.
-            .chain(crate::support::SESSION_PEPPER)
-            .chain(crate::support::BUS)
-            .chain(crate::support::runner_stream::environment())
-            .chain(crate::support::IDENTITY),
+            .chain(agentsfleetd::test_util::SESSION_PEPPER)
+            .chain(agentsfleetd::test_util::BUS)
+            .chain(agentsfleetd::test_util::runner_stream::environment())
+            .chain(agentsfleetd::test_util::IDENTITY),
     )
 }
 

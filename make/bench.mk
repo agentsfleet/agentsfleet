@@ -98,8 +98,9 @@ bench-idle:  ## Cost per idle fleet up a ladder. Run when you change anything th
 bench-stream:  ## Allocations and p95 per frame, heap per stream; refuses an unbacked SSE_MAX_STREAMS_DEFAULT. Run when you change the live stream (SSE) and the NATS items path
 
 bench-runs: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"
-# Boots the full daemon, so it is agentsfleetd's bench, not an afd_bench binary.
-bench-recovery: BENCH_LANE_RUN = cargo bench --profile dist --locked --manifest-path $(RUSTD_DIR)/Cargo.toml -p agentsfleetd --features test-util --bench
+# Boots the full daemon and runner processes, so it is af_e2e's bench, not an
+# afd_bench binary.
+bench-recovery: BENCH_LANE_RUN = cargo bench --profile dist --locked --manifest-path $(RUSTD_DIR)/Cargo.toml -p af_e2e --bench
 
 # The target names the binary after `bench-`.
 $(BENCH_LANES): bench-%: _ensure-test-infra $(BENCH_MIGRATE)

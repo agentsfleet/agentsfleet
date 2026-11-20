@@ -6,7 +6,7 @@
 
 #![cfg(feature = "test-util")]
 
-use afd_ingress::slack::ChannelId;
+use af_fleet_runtime::config::ChannelId;
 
 use super::*;
 

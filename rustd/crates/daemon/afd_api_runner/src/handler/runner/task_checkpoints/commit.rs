@@ -1,6 +1,6 @@
 //! Publish a complete verified checkpoint through the existing authenticated task owner.
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 use af_wire::task::CheckpointCommitInput;
 use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id};
@@ -25,7 +25,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run, checkpoint)): Path<(String, String)>,

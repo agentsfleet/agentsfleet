@@ -73,7 +73,7 @@ impl Creations {
 }
 
 const CONTEXT: &str = "advance reviewed fleet setup";
-// Spelled by the lifecycle's own enum, so the authoring checks and the fleet
+// Spelled by the lifecycle's own enum, so the setup checks and the fleet
 // row can never name a status two ways.
 const INSTALLING: &str = afd_fleet_lifecycle::FleetStatus::Installing.as_str();
 const ACTIVE: &str = afd_fleet_lifecycle::FleetStatus::Active.as_str();

@@ -50,7 +50,7 @@ Checks: exactly one of `fleet_id` and `draft_id` is set, and `id` equals it. Whi
 
 Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set for the hold sweep. The report sets `resume_context` in the same update that releases the run.
 
-Publishing a draft creates a new fleet, so the fleet gets its own thread. The draft's thread stays with the draft until the draft is deleted.
+Saving a draft creates a new fleet, so the fleet gets its own thread. The draft's thread stays with the draft until the draft is deleted.
 
 ## thread.turns
 
@@ -63,7 +63,7 @@ A history-only receipt, such as an activity or a model change, is written opened
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
 | `id` | `UUID` PK | no | `admissions.id` = `events.event_id`; `messages.id` | the turn id, which every table and the wire name `turn_id` |
-| `sequence` | `BIGINT` identity by default | no | `admissions.sequence`; `messages.sequence` | unique with `thread_id`. A fleet's turns draw it in intake order, a history-only receipt included; a setup draft numbers its own from 1, because its watermarks and attempts name turns by it |
+| `sequence` | `BIGINT` identity by default | no | `admissions.sequence`; `messages.sequence` | unique with `thread_id`. A fleet's turns draw it in intake order, a history-only receipt included; a setup draft numbers its own from 1, because its watermarks name turns by it |
 | `thread_id` | `UUID` | no | `fleet_id`; `messages.draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
 | `workspace_id` | `UUID` | no | `workspace_id`; the draft's | FK `identity.workspaces(id)` ON DELETE CASCADE |
 | `kind` | `TEXT` | no | `event_type`; `chat` for a setup turn | `chat`, `webhook`, `cron`, `continuation`, `activity`, and the rest of the event type vocabulary |
@@ -202,7 +202,7 @@ Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and 
 | `fleet.approval_gates` | `event_id` | `turn_id` (done), null for an install grant card. The FK to `thread.turns(id)` ON DELETE CASCADE waits for M253_003: the gate fixtures still bind a minted id with no turn behind it |
 | `thread.deliveries` | `event_id` | `turn_id` (done). No FK yet: a Slack notice owes a delivery that names its own row id (`afd_ingress/src/slack/notice.rs`), so it has no turn |
 | `thread.runs` | `event_id`, `event_created_at` | `turn_id`, `turn_created_at` (done). No FK yet: a settled run outlives its owner, so the FK arrives with the `thread_id` change |
-| `billing.usage_lines` | `event_id`, `authoring_attempt_id` | `turn_id`, `run_id` (done; `run_id` names a setup run, a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` values are unchanged |
+| `billing.usage_lines` | `event_id`, the setup attempt's id | `turn_id`, `run_id` (done; `run_id` names a setup run, a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` is `fleet_run` or `setup_run` |
 | `runner.decision_calls` | `source_turn_id` | `source_turn_id` (done). No FK: the call outlives its run and turn |
 | `fleet.task_items`, `fleet.task_interpretations` | `admission_id` | `turn_id` (done). No FK: an interpretation receipt outlives its source turn |
 

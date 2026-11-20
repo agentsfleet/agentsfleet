@@ -35,8 +35,8 @@ pub const SELECT_DECISION_PRICE_BOOK: &str = include_str!("select_decision_price
 pub mod work {
     /// A fleet run's run.
     pub const FLEET_RUN: &str = "fleet_run";
-    /// A setup-chat attempt.
-    pub const AUTHORING_ATTEMPT: &str = "authoring_attempt";
+    /// A draft-owned setup run.
+    pub const SETUP_RUN: &str = "setup_run";
 }
 
 /// The charges page's spelling for a fleet run's usage. Never stored: a usage

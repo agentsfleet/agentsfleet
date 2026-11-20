@@ -66,7 +66,7 @@ impl Error {
             | ErrorKind::TaskStatementCancelled { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::TurnWrite { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Context { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Credential { .. }

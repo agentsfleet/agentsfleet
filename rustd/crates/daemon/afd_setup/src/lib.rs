@@ -10,6 +10,7 @@
 mod access;
 mod candidate;
 mod catalogue;
+pub mod context;
 mod creation;
 mod draft;
 pub mod error;

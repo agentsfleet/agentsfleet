@@ -15,8 +15,8 @@ use af_wire::schedule_verb::{
     QUERY_FENCING_TOKEN, ScheduleCreateRequest, SchedulePatchRequest, ScheduleRunRequest,
 };
 use af_wire::steer_verb::FleetSteerRequest;
-use afr_agent::ScheduleCall;
 use afr_tools::FleetsCall;
+use afr_tools::ScheduleCall;
 use url::form_urlencoded::Serializer;
 
 use super::{Body, ControlPlane, Verb, run_path};

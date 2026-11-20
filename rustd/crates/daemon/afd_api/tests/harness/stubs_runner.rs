@@ -1,7 +1,7 @@
 //! The runner plane's stub: a run plane that by default answers no-work.
 
 use af_core::id::Uuid7;
-use afd_api::services::RunPlane;
+use afd_api_runner::services::RunPlane;
 use jiff::Timestamp;
 
 /// A run plane that by default answers no-work.
@@ -179,7 +179,7 @@ impl RunPlane for NoWork {
     }
 }
 
-impl afd_api::services::RunnerStreams for NoWork {
+impl afd_http::services::RunnerStreams for NoWork {
     fn open(
         &self,
         _runner: afd_auth::principal::Runner,

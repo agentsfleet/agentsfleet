@@ -50,7 +50,7 @@ pub enum MessageState {
     Cancelled,
     /// A durable bounded failure explains the recovery action.
     Failed,
-    /// The attempt reached its deadline.
+    /// The run reached its deadline.
     TimedOut,
 }
 

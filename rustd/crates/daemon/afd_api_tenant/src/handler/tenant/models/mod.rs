@@ -27,7 +27,7 @@ use crate::auth::PersonIdentity;
 use crate::etag;
 use crate::handler::Refusal;
 use crate::handler::paging::catalogue_limit;
-use crate::services::{ModelCatalogue as _, Services};
+use crate::services::{ModelCatalogue as _, TenantPlane};
 
 /// The scoped event this read's failures are logged under.
 const EVENT_CATALOGUE: &str = "model_catalogue_failed";
@@ -86,7 +86,7 @@ const VARY_VALUE: &str = "Authorization";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn catalogue<D: Services>(
+pub(crate) async fn catalogue<D: TenantPlane>(
     State(services): State<Arc<D>>,
     _identity: PersonIdentity,
     headers: HeaderMap,
@@ -116,7 +116,7 @@ fn outcome_of(read: Result<&Response, &Refusal>) -> ReadOutcome {
 
 /// [`catalogue`] without the outcome recording, so there is one place the
 /// answer is produced and one place it is classified.
-async fn read_catalogue<D: Services>(
+async fn read_catalogue<D: TenantPlane>(
     services: &Arc<D>,
     headers: &HeaderMap,
     query: Option<String>,
@@ -203,7 +203,7 @@ fn model(row: &LibraryRow) -> CatalogueModel<'_> {
 /// The validators ride BOTH answers: a 304 that omitted them would tell a
 /// cache to stop revalidating the very representation it just revalidated.
 fn respond(headers: &HeaderMap, body: Vec<u8>) -> Response {
-    let tag = etag::compute(&[Some(&body)]);
+    let tag = af_core::etag::compute(&[Some(&body)]);
     let validators = [
         (header::ETAG, tag.clone()),
         (header::CACHE_CONTROL, CACHE_CONTROL_VALUE.to_owned()),

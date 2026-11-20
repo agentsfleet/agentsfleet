@@ -28,7 +28,7 @@ impl ControlPlane {
             run_id: run.as_str().into(),
             request: Cow::Borrowed(request),
         };
-        if !af_wire::decision::serialized_within(&outgoing, af_wire::run::TURN_CHECKPOINT_BYTES) {
+        if !af_validate::serialized_within(&outgoing, af_wire::run::TURN_CHECKPOINT_BYTES) {
             return Err(ErrorKind::StreamRefused {
                 code: af_core::error_code::RUN_CHECKPOINT_LIMIT,
                 retryable: false,

@@ -89,14 +89,13 @@ Confirmation starts at 80 percent of input plus reserved output and has a ten-se
 Other routes retain their local estimate; a routed request is never forwarded elsewhere for counting.
 
 Each count binds to the request bytes, model, route settings, physical window and counting revision.
-Setup releases its transaction before counting, then rechecks source, checkpoint and credential authority before creating paid intent.
-Count failure stops that attempt; it cannot become a zero count or an automatic paid retry.
+Count failure stops that request; it cannot become a zero count or an automatic paid retry.
 
 After publication, preparation inserts the summary as explicitly untrusted conversation data before the retained suffix and current request.
 Current installed instructions and authoritative state remain separate.
 
-Setup chat loads its draft checkpoint during preparation.
-A run keeps its compaction summary in its own state and stores none, so a new runtime run never inherits another run's conversation checkpoint.
+A setup run loads its draft's checkpoint with `Up::ContextLoad` before its first model call.
+A fleet run keeps its compaction summary in its own state and stores none, so a new runtime run never inherits another run's conversation checkpoint.
 
 ## User-visible progress
 
@@ -138,20 +137,20 @@ Checkpoint restoration checks model/inference identity, trusted pinned-state ide
 
 A foreign key removes a draft's checkpoint with the draft, and so with its workspace or tenant.
 
-The setup host checks live authority in the checkpoint write's transaction after the model responds.
-A stale attempt, changed source or changed generation cannot replace current state.
-An incurred charge survives a rejected publication.
+A setup run saves its checkpoint with `Up::ContextSave`.
+The save is a compare-and-swap on the row's `resource_version`, written only while the run holds the draft's thread at its fence (`afd_setup`'s `setup_run/context.rs`).
+A superseded run's save is refused with `RUN_STALE_FENCING_TOKEN` and writes nothing. A stale generation cannot replace current state either.
+An incurred charge survives a refused save.
 
-The daemon assembles setup history; the bounded runner envelope carries current-turn work.
-Paging bounds each read without limiting conversation lifetime.
-Setup records each compaction dispatch before provider access, then commits the result and checkpoint through its guarded receipt path.
-
-A setup request carries no compaction opt-in. When the prepared context needs a summary, the daemon funds and dispatches it, and the reply says `compacted`.
-Ordinary replies omit `compacted` when false.
+The assignment carries the draft's earlier turns in the run payload, each with its sequence.
+The run skips the turns a loaded checkpoint covers.
+guffbolt's window hook compacts the oldest turns when the window fills, and the run saves the hook's output.
+The daemon makes no model call for setup, compaction included.
 
 ## Tenant boundaries and sensitive buffers
 
-Setup preparation checks the draft creator, current workspace membership and tenant before loading the draft checkpoint.
+A setup run reads its draft's checkpoint only while it holds the draft's thread at its fence (`afd_fleet`'s `run/draft/context.rs`).
+The assignment checked the draft's creator and current workspace membership.
 
 The checkpoint table uses the shared daemon database role; these application checks enforce tenant access.
 
@@ -170,11 +169,12 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
 The checkpoint table is `rustd/crates/daemon/afd_db/schema/20261108124800_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
 
-Setup intake and accounting live in `afd_setup` (run assignment, model budget, dispatch, progress and receipt).
-The runner protocol lives in `af_wire` (setup model, meter and run payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
+Setup's draft rows, its funds bound, its progress and its checkpoint store live in `afd_setup`.
+A setup run's assignment, renewal and report run in `afd_fleet`'s `run/draft` module.
+The runner protocol lives in `af_wire` (run payloads, the setup report, the context load and save payloads, and runner route declarations) and the generated `public/openapi.json`.
 
 Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
-Trusted transport lives in `afr_supervisor`'s setup turn adapter, its `authoring` module.
+The runner's setup run lives in `afr_supervisor`'s `setup_run` module, which drives `afr_agent`'s setup loop.
 
 Status and traces reach the browser through tenant private-stream forwarding and shared activity payloads.
 The app's draft and fleet stream reducers, projections and accessible status components render them.
@@ -189,7 +189,7 @@ Retain the historical failed run.
 Prove source paging past 64 turns and input past 32,768 when the physical window fits.
 Test exact trigger/output boundaries, repeated compaction and restore, model changes, atomic tool groups and native replay.
 
-Also test private scope isolation and deletion, stale authority/generation, cancellation, output and physical-call budgets, known/unknown usage and rolling financial reservation. The separate concurrent-browser failure remains an independent acceptance concern.
+Also test private scope isolation and deletion, stale authority/generation, cancellation, output and physical-call budgets, known/unknown usage and the funds check. The separate concurrent-browser failure remains an independent acceptance concern.
 
 ## Preparation and future sandbox boundary
 
@@ -213,17 +213,15 @@ No copied component or native backend implementation has been selected. Conversa
 
 **Golden path:** Read the current authority and model. Read original conversation groups or verify an owned immutable prefix. Prepare complete provider input.
 
-Fund the measured request outside datastore locks. Revalidate source and authority before dispatch. Record the dispatch before provider access.
+Funds are checked at assignment and at each renewal, outside the model call.
 
-Save known usage and conditionally publish notes. Continue through the same executor interface, independently of sandbox backend.
+Save known usage and the compacted notes under the run's fence. Continue through the same executor interface, independently of sandbox backend.
 
 **Implemented preparation:** The shared planner uses geometrically spaced probes and a final complete provider estimate.
 Each runtime conversation owns an encoded-history index with prefix digests.
 The index re-encodes the mutable final group and newly appended history.
 
-Setup funding owns the prepared body and source snapshot.
-Freshness verification returns that body after checking authority and source history; it does not prepare the request again.
-The estimator-work regression measures linear encoding work, while freshness verification still reads and hashes original history.
+The estimator-work regression measures linear encoding work.
 
 **Future sandbox work:** Checkpoint storage remains behind the daemon API; the optional PostgreSQL feature keeps database dependencies out of runtime builds.
 Git worktree recovery across runs and a Go/Firecracker backend remain separate proposal and implementation work.
@@ -234,7 +232,7 @@ Database writes retain generation checks and live-run fencing. Cancellation and 
 
 **Quality ceiling:** Measure work with deterministic counters before claiming throughput improvements. The full browser scenario and real storage races remain required. A native guest engine informed by SPACE needs its own implementation and real-backend evidence.
 
-**Files**: the `af_context` planner, ports and tests; setup preparation and funding adapters. The files also include the runtime context index and estimator, affected workspace manifests and this page. Existing in-sandbox server and sandbox interfaces provide part of the backend boundary.
+**Files**: the `af_context` planner, ports and tests. The files also include the runtime context index and estimator, affected workspace manifests and this page. Existing in-sandbox server and sandbox interfaces provide part of the backend boundary.
 
 Repository preparation still requires a host-visible path.
 

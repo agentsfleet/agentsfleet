@@ -65,7 +65,7 @@ use http::{HeaderMap, StatusCode};
 
 use crate::handler::mention::{self, Outcome, Parsed};
 use crate::handler::{Refusal, webhook};
-use crate::services::Services;
+use crate::services::IngressPlane;
 
 use super::provider_of;
 /// The two documents a 200 carries. Public wire.
@@ -172,7 +172,7 @@ fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(segment): Path<String>,
     headers: HeaderMap,
@@ -218,7 +218,7 @@ pub(crate) async fn receive<D: Services>(
 ///
 /// # Errors
 /// A datastore that would not answer while resolving or admitting.
-async fn mentioned<D: Services>(
+async fn mentioned<D: IngressPlane>(
     services: &D,
     provider: Provider,
     ingress: &EventIngress,

@@ -48,7 +48,7 @@ use afd_http::handler::{FleetPath, parse_id};
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceTurns as _};
+use crate::services::{TenantPlane, WorkspaceTurns as _};
 
 use self::query::{Listing, WorkspaceListing};
 
@@ -115,7 +115,7 @@ pub(crate) struct TurnPath {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn workspace_list<D: Services>(
+pub(crate) async fn workspace_list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     RawQuery(query): RawQuery,
@@ -157,7 +157,7 @@ pub(crate) async fn workspace_list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn fleet_list<D: Services>(
+pub(crate) async fn fleet_list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
@@ -202,7 +202,7 @@ pub(crate) async fn fleet_list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn detail<D: Services>(
+pub(crate) async fn detail<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(path): Path<TurnPath>,

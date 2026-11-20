@@ -29,7 +29,7 @@ export const TOOL_NAME = {
   SCREENSHOT: "screenshot",
   WEB_FETCH: "web_fetch",
   WEB_SEARCH: "web_search",
-  PUSHOVER: "pushover",
+  NOTIFY: "notify",
   UPDATE_PLAN: "update_plan",
   MESSAGE: "message",
   SCHEDULE: "schedule",

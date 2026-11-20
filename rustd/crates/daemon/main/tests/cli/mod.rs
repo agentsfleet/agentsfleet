@@ -46,12 +46,12 @@ fn parses_but_dead() -> MapEnv {
         .into_iter()
         // Required at boot, and — like everything else in this fixture —
         // resolved rather than used.
-        .chain(crate::support::SESSION_PEPPER)
-        .chain(crate::support::BUS)
-        .chain(crate::support::runner_stream::environment())
+        .chain(agentsfleetd::test_util::SESSION_PEPPER)
+        .chain(agentsfleetd::test_util::BUS)
+        .chain(agentsfleetd::test_util::runner_stream::environment())
         // The provider is required at boot, and — like the datastores above —
         // resolved rather than dialled, so a well-formed value is enough here.
-        .chain(crate::support::IDENTITY),
+        .chain(agentsfleetd::test_util::IDENTITY),
     )
 }
 

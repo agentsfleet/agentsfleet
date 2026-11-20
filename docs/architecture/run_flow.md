@@ -11,7 +11,7 @@ Crate names refer to crates under `rustd/crates/`.
 Expanded acronyms: Hash-based Message Authentication Code (HMAC), Server-Sent Events (SSE), Time To Live (TTL).
 
 This fleet-runtime example uses `github-pr-reviewer`, saved as "agent-bob-01" on `agentsfleet/linkwarden`.
-Private setup turns use [setup runs](runner_fleet.md#authoring-runs), without runtime tools or a sandbox.
+Private setup turns use [setup runs](runner_fleet.md#setup-runs), without runtime tools or a sandbox.
 
 Section 1 covers the daemon, section 2 the runner, and section 3 the complete example.
 Sections 6 and 7 cover the sandbox and host.
@@ -98,10 +98,7 @@ The digest the fleet reasons over is twelve fields (`afd_api_wire`'s `PullReques
 
 Under `Policy::AppIngress` every `pull_request` action wakes the fleet except one on a repair branch (`is_repair_branch`). The manual per-fleet route narrows to opened, reopened, synchronize and ready_for_review.
 
-### Admission commits the queue row
-
-The heading keeps its old words because other pages cite it by text.
-
+### Intake commits the queue row
 
 Each producer calls `Turns::admit`, which writes a `thread.turns` row as `queued`. The row carries producer identity, payload, intake time and any reply destination.
 An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
@@ -109,10 +106,9 @@ An accepted message costs one write (`admit_one.sql`) and holds no fleet-row loc
 Repeated producer identities return the existing turn.
 After commit, a bounded wake publish on `af.thread.<thread_id>.wake` starts a gateway assign pass for hosts with available capacity.
 
-### The gateway claims an admission and its fleet slot
+### The gateway claims a turn and its thread
 
-The heading keeps its old words so links to it stay stable. The gateway assigns a queued turn and its fleet's thread.
-
+The gateway assigns a queued turn and its fleet's thread.
 
 1. Read the oldest unsettled turn for each eligible fleet through `idx_turns_thread_id_sequence_unsettled`.
 2. Prefer held fleets and recent wake notifications, then try a bounded candidate set.

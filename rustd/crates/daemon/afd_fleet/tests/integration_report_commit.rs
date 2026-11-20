@@ -5,7 +5,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_fleet::run::{Committed, Reported, Runs, sql};
+use afd_fleet::run::{Committed, Reported, Runs};
 use jiff::Timestamp;
 
 use crate::report_commit::{
@@ -64,7 +64,7 @@ async fn assert_a_refused_result_charges_nothing(
     .await;
     assert_eq!(
         held.fixtures.text(Row::Run(run_id), "status").await,
-        Some(sql::RUN_STATUS_ACTIVE.to_owned()),
+        Some(afd_state::sql::RUN_STATUS_ACTIVE.to_owned()),
         "the run stays active, which is what makes the runner's retry possible at all"
     );
 }
@@ -224,7 +224,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     );
     assert_eq!(
         held.fixtures.text(Row::Run(run_id), "status").await,
-        Some(sql::RUN_STATUS_REPORTED.to_owned()),
+        Some(afd_state::sql::RUN_STATUS_REPORTED.to_owned()),
         "the run is terminal, because the settle committed with the rest"
     );
 
@@ -261,7 +261,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     );
     assert_eq!(
         held.fixtures.text(Row::Run(run_id), "status").await,
-        Some(sql::RUN_STATUS_REPORTED.to_owned()),
+        Some(afd_state::sql::RUN_STATUS_REPORTED.to_owned()),
         "the run is terminal"
     );
     assert_eq!(

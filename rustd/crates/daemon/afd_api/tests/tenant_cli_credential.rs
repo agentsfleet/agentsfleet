@@ -97,7 +97,7 @@ async fn a_tenant_key_cannot_mint_a_command_line_credential() {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_api::auth::DETAIL_SESSION_REQUIRED,
+        afd_http::auth::DETAIL_SESSION_REQUIRED,
         "minting checks the mode first, so a non-session class earns the \
          freshness sentence whichever non-session class it is"
     );
@@ -129,7 +129,7 @@ async fn a_tenant_key_cannot_revoke_a_command_line_credential() {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_api::auth::DETAIL_PERSON_REQUIRED,
+        afd_http::auth::DETAIL_PERSON_REQUIRED,
         "the person rule, not the freshness one"
     );
 }
@@ -168,7 +168,7 @@ async fn a_command_line_credential_cannot_mint_another() {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_api::auth::DETAIL_SESSION_REQUIRED,
+        afd_http::auth::DETAIL_SESSION_REQUIRED,
         "this must be the FRESHNESS refusal; the person refusal here would mean \
          the rule is gone and an afc_ credential fell through to the wider check"
     );

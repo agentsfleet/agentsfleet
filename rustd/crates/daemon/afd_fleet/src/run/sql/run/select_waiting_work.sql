@@ -27,8 +27,8 @@ WITH probe AS (
               )
         ) OR EXISTS (
             -- A setup draft waiting for a turn: a queued message, or a running one a lapsed
-            -- draft run left behind (its run's `turn_id` is the message), with neither a
-            -- live attempt nor a live draft thread holding the draft.
+            -- draft run left behind (its run's `turn_id` is the message), with no live
+            -- run on the draft's thread.
             SELECT 1 FROM setup.drafts d
             JOIN thread.turns m ON m.thread_id = d.id
             WHERE d.status = $1 AND m.settled_at IS NULL

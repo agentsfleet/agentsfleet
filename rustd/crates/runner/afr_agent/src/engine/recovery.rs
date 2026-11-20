@@ -51,7 +51,7 @@ impl TaskRecovery {
             provider: provider.to_owned(),
             root,
         };
-        if !af_wire::decision::serialized_within(&history, 64 * 1024 * 1024) {
+        if !af_validate::serialized_within(&history, 64 * 1024 * 1024) {
             return Err(crate::error::recovery_invalid(
                 "private task history exceeds its byte limit",
             ));

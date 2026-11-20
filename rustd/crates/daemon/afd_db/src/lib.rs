@@ -50,7 +50,7 @@ pub mod statement;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 
-pub use af_core::env::EnvSource;
+pub(crate) use af_core::env::EnvSource;
 
 pub use crate::config::{DbRole, PoolConfig};
 pub use crate::error::{Error, Result};

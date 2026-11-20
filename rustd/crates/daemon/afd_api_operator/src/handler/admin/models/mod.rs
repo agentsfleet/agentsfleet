@@ -23,10 +23,10 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
+use crate::OperatorPlane;
 use crate::auth::PersonIdentity;
 use crate::handler::{parse_id, refuse, reject};
 use crate::request_id::RequestId;
-use crate::services::Services;
 
 const DETAIL_ID: &str = "id must be a canonical UUIDv7";
 pub(crate) const DETAIL_LIMIT: &str = "limit must be an integer between 1 and 100";
@@ -56,7 +56,7 @@ const DETAIL_IN_USE: &str =
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
@@ -104,7 +104,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -165,7 +165,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn update<D: Services>(
+pub(crate) async fn update<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw_id): Path<String>,
@@ -230,7 +230,7 @@ pub(crate) async fn update<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn delete<D: Services>(
+pub(crate) async fn delete<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw_id): Path<String>,

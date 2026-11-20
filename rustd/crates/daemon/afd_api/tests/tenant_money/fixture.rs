@@ -49,7 +49,7 @@ impl Setup {
             // A setup run its draft owns: a settled run is history that outlives the draft.
             sqlx::query("INSERT INTO thread.runs(id,runner_id,draft_id,workspace_id,tenant_id,turn_id,turn_created_at,posture,provider,model,last_metered_at,fencing_token,run_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$1,to_timestamp(101),'platform','setup','setup-model',to_timestamp(101),1,to_timestamp(101),$6,0,to_timestamp(101),to_timestamp(101))")
                 .bind(run).bind(&setup.runner).bind(&setup.draft).bind(&setup.workspace).bind(&owner.tenant)
-                .bind(afd_runner::sql::RUN_STATUS_REPORTED)
+                .bind(afd_state::sql::RUN_STATUS_REPORTED)
                 .execute(&mut *connection).await.expect("a reported setup run without retained private draft");
         }
         for ((settlement, run), charged) in setup
@@ -61,7 +61,7 @@ impl Setup {
             // A settled setup run's charge is its usage line, as the report logs it.
             sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq, kind,tenant_id,workspace_id,run_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,settled_at,created_at,updated_at) VALUES($1,$5,$2,0, 'model',$4,$6,$2,'setup','setup-model','platform',to_timestamp(101),23,0,0,0,0,29,31,0,$3,to_timestamp(101),to_timestamp(101),to_timestamp(101))")
                 .bind(settlement).bind(run).bind(charged)
-                .bind(&owner.tenant).bind(afd_billing::sql::work::AUTHORING_ATTEMPT).bind(&setup.workspace)
+                .bind(&owner.tenant).bind(afd_billing::sql::work::SETUP_RUN).bind(&setup.workspace)
                 .execute(&mut *connection).await.expect("a settled setup line, including a paid failed run");
         }
         sqlx::query(

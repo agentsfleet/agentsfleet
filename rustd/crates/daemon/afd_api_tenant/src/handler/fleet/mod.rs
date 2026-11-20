@@ -37,7 +37,7 @@ use af_fleet_runtime::FleetName;
 
 use crate::auth::WorkspaceContext;
 use crate::handler::{Refusal, decoded_parameter, parameter};
-use crate::services::{Services, WorkspaceFleets as _};
+use crate::services::{TenantPlane, WorkspaceFleets as _};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "fleet_list_failed";
@@ -92,7 +92,7 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     RawQuery(query): RawQuery,
@@ -113,7 +113,7 @@ pub(crate) async fn list<D: Services>(
 }
 
 /// The one fleet saved under `name`, in the list's own envelope.
-async fn named<D: Services>(
+async fn named<D: TenantPlane>(
     services: &D,
     workspace: &Uuid7,
     name: &FleetName,

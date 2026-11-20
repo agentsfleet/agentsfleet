@@ -31,6 +31,8 @@ afd_db.workspace = true
 afd_fleet.workspace = true
 afd_http.workspace = true
 afd_runner.workspace = true
+# The run and runner status spellings its statements bind.
+afd_state.workspace = true
 afd_sse.workspace = true
 axum.workspace = true
 dashmap.workspace = true

@@ -51,7 +51,7 @@ fn settled(f: &Fixture) -> Written {
     };
     Written {
         usage: vec![
-            row(work::AUTHORING_ATTEMPT, None, fixture::MODEL_B, 29, 1),
+            row(work::SETUP_RUN, None, fixture::MODEL_B, 29, 1),
             row(
                 work::FLEET_RUN,
                 Some(f.fleet.clone()),

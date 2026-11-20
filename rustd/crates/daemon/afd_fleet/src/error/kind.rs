@@ -131,8 +131,8 @@ pub(crate) enum ErrorKind {
         #[source]
         source: af_context::Error,
     },
-    #[error("private authoring assignment could not complete")]
-    Authoring {
+    #[error("the setup run could not complete")]
+    Setup {
         #[source]
         source: afd_setup::Error,
     },

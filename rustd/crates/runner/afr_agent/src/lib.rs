@@ -47,9 +47,6 @@ pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
 pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};
 pub use self::setup::{SetupContext, SetupOutput, SetupRun};
-// The seam a run's schedule and message tools reach `agentsfleetd` through,
-// re-exported so the supervisor implements it through the crate it drives.
-pub use afr_tools::{RunVerbs, ScheduleCall, Unanswered};
 
 pub use decision::PreparedTask;
 pub use engine::TaskRecovery;

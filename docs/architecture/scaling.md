@@ -520,5 +520,5 @@ Measure provider-specific failover and command-error behavior on the intended de
 - **Adaptive connection pooling.** The Rust command path uses a multiplexed connection, so the retired pool knobs do not apply.
 - **The datastore's own target design.** [Datastore scaling](./datastore_scaling.md) is canonical for it and wins over this page. Postgres holds every fact, and the bus is core NATS in one region: three nodes in production, two in development. This page sizes the runtime that runs on top.
 - **Postgres scaling.** Pgbouncer + plan sizing are covered in the deployment runbook, not here. After the cutover it is the **primary** scaling axis, so the runbook carries more weight than it did.
-- **Placement.** Label checks and shared host-capacity admission are implemented ([runner protocol](runner_fleet.md#authoring-runs)). Autoscaling and fairness stay outside this sizing page.
+- **Placement.** Label checks and shared host-capacity admission are implemented ([runner protocol](runner_fleet.md#setup-runs)). Autoscaling and fairness stay outside this sizing page.
 - **Multi-region topology.** Follow [datastore scaling](./datastore_scaling.md); provider-specific latency and limits require measurements on the selected deployment.

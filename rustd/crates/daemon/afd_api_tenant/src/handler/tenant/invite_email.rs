@@ -21,7 +21,7 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::handler::Refusal;
-use crate::services::{InviteMail as _, Services, TenantTeam as _};
+use crate::services::{InviteMail as _, TenantPlane, TenantTeam as _};
 
 use super::invite::InvitePath;
 use super::invite_view::invite_link;
@@ -50,7 +50,7 @@ pub(super) struct Emailed {
 ///
 /// Never fails the create: the invite is committed, so a store that will not
 /// count or record the send is logged and the invite reads `failed`.
-pub(super) async fn email_new_invite<D: Services>(
+pub(super) async fn email_new_invite<D: TenantPlane>(
     services: &D,
     invite: &mut Invitation,
     actor: &str,
@@ -70,7 +70,7 @@ pub(super) async fn email_new_invite<D: Services>(
 /// Counts one more send of `invite`, sends it, records and reports the result.
 ///
 /// `None` when the invite is not `tenant`'s or can no longer be accepted.
-pub(super) async fn email_invite<D: Services>(
+pub(super) async fn email_invite<D: TenantPlane>(
     services: &D,
     tenant: &Uuid7,
     invite: &Uuid7,
@@ -155,7 +155,7 @@ fn send_of<'a>(invite: &'a Uuid7, attempt: &'a EmailAttempt, link: &'a str) -> I
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn send<D: Services>(
+pub(crate) async fn send<D: TenantPlane>(
     State(services): State<Arc<D>>,
     invite: InvitePath,
     owner: OwnTenant,

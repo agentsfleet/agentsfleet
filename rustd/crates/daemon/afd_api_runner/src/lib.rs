@@ -8,7 +8,9 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{auth, envelope, request_id, route, services};
+use afd_http::{auth, route};
+
+pub mod services;
 
 pub(crate) mod handler;
 
@@ -23,10 +25,10 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, get, patch, post};
 use handler::runner::task_checkpoints as checkpoints;
 use route::RunnerRoute;
-use services::Services;
+use services::RunnerPlane;
 
 /// Selects the handler for a runner speaking for itself.
-pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
+pub fn handler_for<D: RunnerPlane>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
         RunnerRoute::SelfRecord => get(handler::runner::self_record::handle::<D>),
         RunnerRoute::Stream => post(handler::runner::stream::handle::<D>),

@@ -83,7 +83,7 @@ async fn a_run_serving_two_turns_answers_both() -> Checked {
         runs,
         vec![(
             held.issued.run_id.clone(),
-            afd_fleet::run::sql::RUN_STATUS_REPORTED.to_owned()
+            afd_state::sql::RUN_STATUS_REPORTED.to_owned()
         )],
         "one run served both turns"
     );

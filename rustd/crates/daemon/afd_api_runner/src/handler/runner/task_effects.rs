@@ -1,6 +1,6 @@
 //! Native publications stay inside the authenticated runner's current run.
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 use af_wire::task::{TaskEffectInput, TaskEffectQuery, TaskEffectState, TaskEffectsQuery};
 use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
@@ -30,7 +30,7 @@ const MALFORMED: &str = "Publication request exceeds its supported shape or boun
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn publish<D: Services>(
+pub(crate) async fn publish<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run): Path<String>,
@@ -94,7 +94,7 @@ pub(crate) async fn publish<D: Services>(
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn read<D: Services>(
+pub(crate) async fn read<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run, effect)): Path<(String, String)>,
@@ -130,7 +130,7 @@ pub(crate) async fn read<D: Services>(
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run): Path<String>,

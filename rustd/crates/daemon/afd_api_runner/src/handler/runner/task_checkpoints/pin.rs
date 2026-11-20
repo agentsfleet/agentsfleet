@@ -1,6 +1,6 @@
 //! Renew a current capture or restore pin through the existing authenticated task owner.
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 use af_wire::task::CheckpointPinInput;
 use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id};
@@ -26,7 +26,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path((run, checkpoint, pin)): Path<(String, String, String)>,

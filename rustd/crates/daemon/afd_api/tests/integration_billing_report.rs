@@ -244,7 +244,7 @@ async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> V
         .bind(&person.tenant)
         .bind(&person.workspace)
         .bind(MODEL)
-        .bind(work::AUTHORING_ATTEMPT)
+        .bind(work::SETUP_RUN)
         .bind(posture::PLATFORM)
         .bind(money)
         .bind(&messages)
@@ -258,7 +258,7 @@ async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> V
 async fn settle(members: &Members, runs: &[Uuid7]) {
     let biller = LedgerBiller::on_system_clock(members.database.clone());
     for run in runs {
-        let work = WorkKey::AuthoringAttempt(run.clone());
+        let work = WorkKey::SetupRun(run.clone());
         let pending = ledger::unsettled_work(
             &mut *members.database.acquire().await.expect("a connection"),
             &work,

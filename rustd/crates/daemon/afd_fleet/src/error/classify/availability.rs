@@ -22,7 +22,7 @@ impl Error {
             ErrorKind::TaskControlTurn { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::TaskMutation { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
-            ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
+            ErrorKind::Setup { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
             ErrorKind::TaskStorageSigning { .. }
             | ErrorKind::TaskStorageSigningParameters { .. }
@@ -111,7 +111,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -178,7 +178,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }

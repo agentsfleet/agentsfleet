@@ -10,7 +10,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 
 const MALFORMED: &str = "Task input query exceeds its supported shape or bounds";
 const EVENT: &str = "runner_task_inputs_failed";
@@ -26,7 +26,7 @@ const EVENT: &str = "runner_task_inputs_failed";
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn read<D: Services>(
+pub(crate) async fn read<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
     Path(run): Path<String>,

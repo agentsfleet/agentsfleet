@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_fleet::run::sql::{self, queue::ASSIGN_HEAD};
+use afd_fleet::run::sql::queue::ASSIGN_HEAD;
 use afd_turns::Turns;
 use sqlx::Connection as _;
 
@@ -176,14 +176,14 @@ async fn assert_blocked_assignment(fixtures: &Fixtures, fleet: &Uuid7, runner: &
         .bind(runner)
         .bind(af_core::timing::RUN_TTL)
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-        .bind(sql::RUNNER_STATUS_ACTIVE)
-        .bind(sql::RUN_STATUS_ACTIVE)
-        .bind(sql::RUN_STATUS_EXPIRED)
+        .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_EXPIRED)
         .bind(af_wire::task::CAPABILITY)
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
-        .bind(sql::FLEET_STATUS_ACTIVE)
+        .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
         .bind(af_core::turn::status::RECEIVED)
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)

@@ -28,7 +28,7 @@ use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 
 use crate::handler::{Refusal, webhook};
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{IngressPlane, WebhookIngress as _};
 use afd_http::handler::{FleetPath, parse_fleet_id};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
@@ -80,7 +80,7 @@ const SOURCE: &str = "github";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
     headers: HeaderMap,

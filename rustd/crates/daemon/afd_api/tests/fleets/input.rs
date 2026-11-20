@@ -71,7 +71,7 @@ async fn a_cursor_this_daemon_never_issued_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{token}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::fleet::DETAIL_INVALID_CURSOR,
+            afd_api_tenant::fleet::DETAIL_INVALID_CURSOR,
             "{token}"
         );
     }

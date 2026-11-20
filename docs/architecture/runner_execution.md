@@ -52,7 +52,7 @@ Remove the private transcript from server-rendered and browser caches, and close
 | Pending setup report | Worker memory holds the encoded report until the daemon acknowledges or refuses it; no report files are written (`afr_supervisor/src/setup_run/mod.rs`) | The report's bytes are zeroed when the worker drops them. Process loss discards pending memory. |
 | Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
 | Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
-| Published revision / applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not unpublish or delete shared setup; disclose this before Save/publication. |
+| Saved or applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not delete a saved fleet's setup; disclose this before Save. |
 | Backups / legal accounting | Infrastructure backup schedule; billing domain content-free ledger | Follow published retention; no invented physical-purge deadline. |
 
 A retried setup report keeps its run identity, as a fleet run's does.
@@ -179,9 +179,11 @@ A renewal that fails after its retries, or records nothing, stops the flush. The
 
 The runner's crates sit in `rustd/crates/runner/`, beside the shared `foundation/`, `protocol/` and `harness/` layers. The agent harness, `guffbolt`, sits in `rustd/guffbolt/`, outside every layer, because it depends on no crate of the workspace. `af_wire` is the one wire `agentsfleetd` and the runner both speak.
 
-A crate ships with its own layer or a lower one, and `runner/` and `daemon/` never with each other (`rustd/Cargo.toml`). Shared crates take the `af_` prefix; a layer's binary sits in `main/`.
+A crate depends on its own layer or a lower one, and `runner/` and `daemon/` never on each other, in any dependency table (`rustd/Cargo.toml`). Shared crates take the `af_` prefix; a layer's binary sits in `main/`. The `harness/` layer holds `af_inference`, the model API codecs, beside `af_providers`.
 
-The supervisor implements credential minting over the control plane for `af_egress`, and uses `af_crypto` for encrypted private reports. No runner crate links a datastore crate or `afd_api_wire`.
+A sixth folder, `e2e/`, holds `af_e2e`: the suites that drive the runner against a booted `agentsfleetd`, and the recovery bench. It may depend on every layer, and nothing depends on it. Its `tests/layers.rs` checks every rule in this section from the manifests. The kernel lane is an example of the runner binary (`runner/main/examples/kernel_lane`).
+
+The supervisor implements credential minting over the control plane for `af_egress`, and uses `af_crypto` for encrypted private reports. No runner crate links a datastore crate or `afd_api_wire`. `af_context` holds no store: the setup draft's Postgres checkpoint store is `afd_setup::context`.
 
 `guffbolt` is a library that knows no run, fleet or task. `drive` takes input before every model call and once more after an answer. A message that arrives while the model writes its answer runs one more turn.
 
@@ -220,7 +222,7 @@ A separate reopening budget applies before visible output or known spend.
 The defaults allow three generation sends per opening and three eligible openings.
 
 Native token-count requests remain separate and send once per opening.
-Paid setup dispatches and native decisions retain their single-send rule.
+Native decisions retain their single-send rule.
 
 The reasoning a provider signs goes back with the turn that made it. A call from a turn cut at the output limit is answered `output_limit_reached` and never runs.
 
@@ -520,7 +522,7 @@ The specs record measured start budgets, and this page asserts none. The specs m
 
 This section records what the code builds, against the design above. Paths below start with their crate, which sits in its layer folder under `rustd/crates/`.
 
-`agentsfleet-runner run` builds one `BubblewrapEngine` per host through `BubblewrapConfig::for_host` (`rustd/crates/runner/main/src/main.rs`). Its inputs are the cgroup the service manager delegated, the admitted toolbox and the runner binary itself. The kernel lane builds its engine the same way (`afr_sandbox/examples/kernel_lane/lane.rs`).
+`agentsfleet-runner run` builds one `BubblewrapEngine` per host through `BubblewrapConfig::for_host` (`rustd/crates/runner/main/src/main.rs`). Its inputs are the cgroup the service manager delegated, the admitted toolbox and the runner binary itself. The kernel lane builds its engine the same way (`runner/main/examples/kernel_lane/lane.rs`).
 
 **Only a run that needs a sandbox gets one.** A run whose tools all run in the supervisor starts none (`afr_agent/src/engine/mod.rs`, `afr_supervisor/src/run_loop/mod.rs`). `http_request` and the memory tools run in the supervisor, so a Pull Request reviewer built from them never builds a sandbox. Shell, git and file tools run in one (`afr_tools/src/catalog/mod.rs`).
 
@@ -618,7 +620,7 @@ The probe reports host facts, and `Backend::validate` interprets them before `Ba
 
 A new backend supplies startup policy and resources through these interfaces. No other backend ships.
 
-The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr_sandbox/examples/kernel_lane/lane.rs`). Its delegation trials boot from disabled controllers (`afr_sandbox/examples/kernel_lane/delegation.rs`). They prove restart, child limits, missing-controller refusal and a populated-root failure.
+The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`runner/main/examples/kernel_lane/lane.rs`). Its delegation trials boot from disabled controllers (`runner/main/examples/kernel_lane/delegation.rs`). They prove restart, child limits, missing-controller refusal and a populated-root failure.
 
 `make test-runner-startup` also runs the shipping binary under a copy of the deployed systemd unit (`scripts/test-runner-startup.sh`). Both engine selections must reach absent-toolbox admission after host preparation, and refuse invalid delegation, activation failures and missing capabilities. This matrix keeps the release key; healthy service startup with the signed release is a deployment acceptance proof.
 

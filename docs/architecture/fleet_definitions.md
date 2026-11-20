@@ -97,15 +97,15 @@ Native edits apply atomically to one candidate revision. Configuration operation
 
 The drawer supplies native edits with `If-Match`; runner proposals name both candidate ID and revision. Invalid boundaries, overlap, stale versions or invalid final setup change nothing. Accepted changes create a fresh immutable candidate ID and next revision; exact activity retries return their originally accepted version.
 
-The model instead proposes `append {text}` or `replace {old_text,text}` instruction edits. The daemon resolves exact text against the pinned candidate and converts unique matches into native byte ranges. Missing or ambiguous matches become typed refusals; the model never counts Unicode bytes.
+The model instead proposes `append {text}` or `replace {old_text,text}` instruction edits. `af_fleet_runtime::setup` resolves exact text against the run's base candidate and converts unique matches into native byte ranges. Missing or ambiguous matches become typed refusals; the model never counts Unicode bytes.
 
-The runner returns bounded corrective feedback for refused arguments or rejected native edits. Corrections share the admitted turn’s output allowance and maximum eight model calls; exhaustion ends without claiming the setup is ready. Usage remains charged for observed calls, including rejected proposals.
+The runner returns a refused proposal to the model as the tool result, and the model may correct it in the same run. The loop has no cap of its own; the setup run's 300-second runtime bounds it (`afd_setup::limits::SETUP_RUNTIME`). Usage remains charged for observed calls, including refused proposals.
 
 An accepted edit retains the model's conversational answer. A tool-only reply continues with its accepted receipt within the same allowance; the runner supplies no stock review reminder. Questions can be answered without proposing another edit.
 
-Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save and publication.
+Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save.
 
-Implementation: `afd_setup`'s model-provider edits, `af_fleet_runtime`'s definition edit module, and `afr_supervisor`'s setup proposal and turn modules, under `authoring`.
+Implementation: `af_fleet_runtime`'s definition edit and setup modules, `afr_agent`'s setup loop, and `afd_setup`'s report check (`setup_run/refusal`).
 
 Instructions are at most 1,048,576 characters, whether the model drafted them first or a person edited them later. That is the one text ceiling, `af_validate::TEXT_MAX_CHARS`, which setup messages and fleet messages share. Past it the refusal reads "Input exceeds the maximum length of 1,048,576 characters." Below it, the model's context window is the limit a person meets. These character ceilings never replace the tokenizer checks.
 

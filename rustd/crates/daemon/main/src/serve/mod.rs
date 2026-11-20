@@ -41,8 +41,8 @@ use std::net::SocketAddr;
 
 use af_core::env::EnvSource;
 use af_observability::{Analytics, Telemetry};
-use afd_api::Admission;
 use afd_db::Db;
+use afd_http::admission::Admission;
 
 pub use self::accept::Acceptor;
 #[cfg(feature = "test-util")]

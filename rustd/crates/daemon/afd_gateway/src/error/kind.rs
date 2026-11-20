@@ -106,8 +106,8 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_fleet::Error,
     },
-    #[error("The authoring service could not complete the operation.")]
-    Authoring {
+    #[error("The setup service could not complete the operation.")]
+    Setup {
         #[source]
         source: afd_setup::Error,
     },

@@ -5,7 +5,7 @@ import { CLIP_MARK, clipMarked, compactArgs, firstLine, firstString, linesOf, ma
 
 // The runner's tools beyond files, requests, memory and commands, as their
 // cells read. Argument names come from the runner: `afr_tools` for the tools
-// it hosts (pushover, update_plan), and the specs that will host the rest
+// it hosts (notify, update_plan), and the specs that will host the rest
 // (the sandbox tools, nested loops and runner verbs). Where a
 // spec names only a verb's body, the cell tries each spelling it knows and
 // otherwise shows the arguments as they came, never a guess.
@@ -67,7 +67,7 @@ const PLAN_STATUSES: ReadonlySet<string> = new Set(Object.values(PLAN_STATUS));
 
 // A Map, not an object literal: a tool named `toString` must read as unknown.
 export const RUNNER_COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = new Map([
-  [TOOL_NAME.PUSHOVER, (args) => plainCopy(VERBS.NOTIFY, firstLine(firstString(args, [ARG.TITLE, ARG.MESSAGE]) ?? ""))],
+  [TOOL_NAME.NOTIFY, (args) => plainCopy(VERBS.NOTIFY, firstLine(firstString(args, [ARG.TITLE, ARG.MESSAGE]) ?? ""))],
   [TOOL_NAME.UPDATE_PLAN, planCopy],
   [TOOL_NAME.IMAGE, (args) => plainCopy(VERBS.VIEW_IMAGE, pathArg(args))],
   [TOOL_NAME.BROWSER_OPEN, (args) => plainCopy(VERBS.OPEN, clipMarked(stringArg(args, ARG.URL) ?? ""))],

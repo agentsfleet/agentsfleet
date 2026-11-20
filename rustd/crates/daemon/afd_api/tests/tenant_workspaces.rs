@@ -79,7 +79,7 @@ async fn every_wrong_limit_earns_the_one_sentence() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_INVALID_LIMIT,
+            afd_api_tenant::tenant::DETAIL_INVALID_LIMIT,
             "{path}"
         );
     }
@@ -101,7 +101,7 @@ async fn a_cursor_from_any_other_list_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_INVALID_CURSOR,
+            afd_api_tenant::tenant::DETAIL_INVALID_CURSOR,
             "{path}"
         );
     }
@@ -127,7 +127,7 @@ async fn a_name_filter_outside_its_bounds_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_INVALID_NAME,
+            afd_api_tenant::tenant::DETAIL_INVALID_NAME,
             "{path}"
         );
     }
@@ -153,7 +153,7 @@ async fn a_broken_percent_escape_refuses_the_query_string() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_MALFORMED_QUERY,
+            afd_api_tenant::tenant::DETAIL_MALFORMED_QUERY,
             "{path}"
         );
     }
@@ -267,7 +267,7 @@ async fn a_body_that_is_not_json_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{broken:?}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_CREATE_BODY,
+            afd_api_tenant::tenant::DETAIL_CREATE_BODY,
             "{broken:?}"
         );
     }

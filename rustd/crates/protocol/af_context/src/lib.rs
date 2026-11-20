@@ -12,9 +12,6 @@ mod summary;
 mod trace;
 mod window;
 
-#[cfg(feature = "postgres")]
-pub mod repository;
-
 pub use checkpoint::{Checkpoint, Identity, digest_groups};
 pub use compact::{Compaction, Progress, execute};
 pub use error::{Error, Result};

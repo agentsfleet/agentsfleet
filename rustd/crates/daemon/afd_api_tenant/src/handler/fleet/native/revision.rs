@@ -5,7 +5,7 @@ use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     handler::fleet::detail::FleetPath,
     handler::{Refusal, input},
-    services::Services,
+    services::TenantPlane,
 };
 use afd_api_wire::fleet as wire;
 use afd_http::handler::authoring_refusal;
@@ -30,7 +30,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn apply<D: Services>(
+pub(crate) async fn apply<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,

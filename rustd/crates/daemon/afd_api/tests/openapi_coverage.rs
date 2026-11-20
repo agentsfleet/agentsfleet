@@ -24,7 +24,7 @@
 
 use std::collections::BTreeSet;
 
-use afd_api::Route;
+use afd_http::route::Route;
 
 /// One operation, as both sides of the comparison spell it.
 type Operation = (String, String);
@@ -47,7 +47,7 @@ fn served() -> BTreeSet<Operation> {
 /// `PathItem` carries one `Option<Operation>` per verb rather than a map, so
 /// the five this daemon serves are read by name. HEAD, OPTIONS and TRACE are
 /// absent from the list for the same reason they are absent from
-/// [`afd_api::route::Verb`]: the daemon has never served them, and a document
+/// [`afd_http::route::Verb`]: the daemon has never served them, and a document
 /// that published one would be describing a route that answers 405.
 fn documented() -> BTreeSet<Operation> {
     afd_api::openapi::document()

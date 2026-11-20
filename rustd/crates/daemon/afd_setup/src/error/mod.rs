@@ -11,7 +11,7 @@ af_core::error_shell!(
     pub struct Error(ErrorKind);
 );
 
-/// The result every fallible authoring operation returns.
+/// The result every fallible setup operation returns.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 mod kind;

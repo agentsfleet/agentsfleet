@@ -22,7 +22,7 @@ async fn a_setup_run_cannot_mint_credentials() {
     let taken = case.take_on_host().await;
     assert_eq!(
         case.runs().await,
-        vec![(1, afd_fleet::run::sql::RUN_STATUS_ACTIVE.to_owned())],
+        vec![(1, afd_state::sql::RUN_STATUS_ACTIVE.to_owned())],
         "the setup run is live"
     );
 

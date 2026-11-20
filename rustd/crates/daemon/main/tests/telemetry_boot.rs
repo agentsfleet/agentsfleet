@@ -14,8 +14,6 @@ use axum::routing::post;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
-mod support;
-
 type Delivery = (String, Value);
 
 async fn collect(
@@ -40,7 +38,7 @@ fn environment_over(database: &str, bus: &str, endpoint: &str) -> MapEnv {
         ("NATS_URL", bus.to_owned()),
         (
             "ENCRYPTION_MASTER_KEY",
-            support::SESSION_PEPPER
+            agentsfleetd::test_util::SESSION_PEPPER
                 .first()
                 .expect("fixture pepper")
                 .1
@@ -53,10 +51,10 @@ fn environment_over(database: &str, bus: &str, endpoint: &str) -> MapEnv {
     ]
     .into_iter()
     .chain(
-        support::SESSION_PEPPER
+        agentsfleetd::test_util::SESSION_PEPPER
             .into_iter()
-            .chain(support::IDENTITY)
-            .chain(support::runner_stream::environment())
+            .chain(agentsfleetd::test_util::IDENTITY)
+            .chain(agentsfleetd::test_util::runner_stream::environment())
             .map(|(name, value)| (name, value.to_owned())),
     )
     .collect();
@@ -121,40 +119,36 @@ async fn collector() -> (
 const FIRST_EXPORT: Duration = Duration::from_secs(15);
 
 async fn live_samples(received: &mut mpsc::UnboundedReceiver<Delivery>) {
-    tokio::time::timeout(
-        agentsfleetd::telemetry::COLLECT_INTERVAL + FIRST_EXPORT,
-        async {
-            // Only Linux has `/proc/self/statm`; every other host reports no
-            // resident reading by design (`the_resident_reading_is_a_measurement_or_nothing`),
-            // so the wait asks for one only where one can exist.
-            let mut resident = !cfg!(target_os = "linux");
-            let mut catalogue = false;
-            let mut schedules = false;
-            while !(resident && catalogue && schedules) {
-                let (signal, body) = received.recv().await.expect("collector remains live");
-                if signal == "metrics" {
-                    for metric in metrics(&body) {
-                        if metric["name"] == "agentsfleet_process_resident_memory_bytes" {
-                            resident |= metric
-                                .pointer("/gauge/dataPoints")
-                                .and_then(Value::as_array)
-                                .into_iter()
-                                .flatten()
-                                .any(|point| {
-                                    point["asInt"]
-                                        .as_str()
-                                        .and_then(|value| value.parse::<u64>().ok())
-                                        .is_some_and(|value| value > 0)
-                                });
-                        }
-                        catalogue |=
-                            metric["name"] == "agentsfleet_model_catalog_snapshot_age_seconds";
-                        schedules |= metric["name"] == "agentsfleet_schedules";
+    tokio::time::timeout(af_otlp::COLLECT_INTERVAL + FIRST_EXPORT, async {
+        // Only Linux has `/proc/self/statm`; every other host reports no
+        // resident reading by design (`the_resident_reading_is_a_measurement_or_nothing`),
+        // so the wait asks for one only where one can exist.
+        let mut resident = !cfg!(target_os = "linux");
+        let mut catalogue = false;
+        let mut schedules = false;
+        while !(resident && catalogue && schedules) {
+            let (signal, body) = received.recv().await.expect("collector remains live");
+            if signal == "metrics" {
+                for metric in metrics(&body) {
+                    if metric["name"] == "agentsfleet_process_resident_memory_bytes" {
+                        resident |= metric
+                            .pointer("/gauge/dataPoints")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .any(|point| {
+                                point["asInt"]
+                                    .as_str()
+                                    .and_then(|value| value.parse::<u64>().ok())
+                                    .is_some_and(|value| value > 0)
+                            });
                     }
+                    catalogue |= metric["name"] == "agentsfleet_model_catalog_snapshot_age_seconds";
+                    schedules |= metric["name"] == "agentsfleet_schedules";
                 }
             }
-        },
-    )
+        }
+    })
     .await
     .expect("sampler publishes real memory, catalogue and schedule readings");
 }

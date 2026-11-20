@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
-use afd_api::services::WebhookIngress;
+use afd_http::services::WebhookIngress;
 use afd_ingress::{Binding, Ingress, Surface};
 
 /// Which ingress a suite is driving.

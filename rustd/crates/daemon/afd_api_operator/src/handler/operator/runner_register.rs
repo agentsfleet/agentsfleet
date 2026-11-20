@@ -19,9 +19,9 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderValue, StatusCode, header};
 
+use crate::OperatorPlane;
 use crate::auth::PersonIdentity;
 use crate::handler::refuse;
-use crate::services::Services;
 
 /// The scoped event a failed registration is logged under.
 const EVENT: &str = "runner_registration_failed";
@@ -59,7 +59,7 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn platform<D: Services>(
+pub(crate) async fn platform<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -86,7 +86,7 @@ pub(crate) async fn platform<D: Services>(
 /// platform admin switches them on for a tenant runner. A host registers once,
 /// so a retry answers `409` with `Location` naming the runner the host already
 /// is; the tenant rotates that runner's token to recover it.
-pub(super) async fn tenant<D: Services>(
+pub(super) async fn tenant<D: OperatorPlane>(
     services: &D,
     tenant: &Uuid7,
     actor_id: &str,

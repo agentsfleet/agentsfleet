@@ -4,7 +4,7 @@
 //!
 //! A thread's id is its owner's ([`crate::run::RunOwner`]), and a run
 //! reaches its thread through `COALESCE(fleet_id, draft_id)`, so nothing here
-//! reads a fleet or authoring table. A statement that names an owner takes it
+//! reads a fleet or setup table. A statement that names an owner takes it
 //! as two parameters, bound from [`crate::run::RunOwner::fleet_id`] and
 //! [`crate::run::RunOwner::draft_id`]; one keyed by a thread takes
 //! [`crate::run::RunOwner::thread_id`]. What an owner adds, a fleet's event
