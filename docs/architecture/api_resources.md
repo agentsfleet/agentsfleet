@@ -129,9 +129,8 @@ For a completed save-requested turn, the daemon saves the answer, accounting, an
 
 A checked save refusal retains the answer and editable candidate with a stable `save_error_code`. An internal save failure rolls back the report transaction. Cancelled or failed turns never save setup.
 
-`failure={reason,error_code,recovery_action,cause?}` is required on failed/timed_out messages and absent otherwise.
-The optional cause is `deadline|cancelled|provider_interrupted|completion_unverified`, recorded with the dispatch outcome.
-Older failures may lack a cause; clients must not infer one or display provider bodies.
+`failure={reason,error_code,recovery_action}` is required on failed/timed_out messages and absent otherwise.
+Clients must not display provider bodies.
 
 The daemon records terminal state atomically and returns the same bounded fields after reload.
 Reports cannot supply diagnostic text, URLs, credentials, or actions.
@@ -145,10 +144,11 @@ Reports cannot supply diagnostic text, URLs, credentials, or actions.
 | `provider_usage_unknown` | `UZ-AUTHOR-015` | `retry_message` |
 | `attempt_timed_out` | `UZ-AUTHOR-016` | `retry_message` |
 | `policy_changed` | `UZ-AUTHOR-009` | `review_setup` |
+| `frame_too_large` | `UZ-RUN-032` | `reduce_context` |
 
-An attempt whose provider usage is unknown no longer holds the draft: only a running attempt does. `provider_usage_unknown` keeps its reason, reports `retry_message`, and keeps its accounting hold until the billing sweep settles it.
+A failed message no longer holds the draft; only a live setup run does. `provider_usage_unknown` marks a turn whose runs all lapsed, and it reports `retry_message`.
 
-Stop/delete/revocation fences text writes; revoked callers receive no private failure detail. Fresh Send is accepted while an earlier attempt awaits accounting.
+Stop, delete and revocation fence text writes; revoked callers receive no private failure detail.
 
 Exact accepted replay is checked first. Retrying uses an explicit new message and key.
 
@@ -190,7 +190,11 @@ Revision list items omit instructions, returning `{id,revision,canonical_digest,
 
 `InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch allows 64 configuration operations and 32 instruction edits, with 1,048,576 replacement characters total. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
 
-The serialized Definition or edit batch is bounded at 6,400 KiB. A setup HTTP body may hold that Definition and a first message at the text ceiling, each at its widest JSON escape: 12,861,440 bytes (`SETUP_BODY_BYTES_MAX`). A body carrying one text, such as a fleet message, may be 6,307,840 bytes (`TEXT_BODY_BYTES_MAX`). The daemon reads that much on those routes, and the app's proxies read the same (`afd_http/tests/fixtures/body_limits.json`). The runner model-call envelope has its separate 128 KiB limit. See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
+The serialized Definition or edit batch is bounded at 6,400 KiB. A setup HTTP body may hold that Definition and a first message at the text ceiling. Each is counted at its widest JSON escape, so the body may be 12,861,440 bytes (`SETUP_BODY_BYTES_MAX`).
+
+A body carrying one text, such as a fleet message, may be 6,307,840 bytes (`TEXT_BODY_BYTES_MAX`). The daemon reads that much on those routes, and the app's proxies read the same (`afd_http/tests/fixtures/body_limits.json`).
+
+A run carrying that text reaches its runner in one frame of at most 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`). See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
 
 The next two tables preserve the workspace-chat cutover's 17 new and seven changed person routes. Subsequent fleet editor and history reads are listed separately below.
 
@@ -328,93 +332,66 @@ The report carries the remaining records and uses its original run identity when
 The native `folds` request carries `fencing_token` and `after_sequence`, returning at most 32 inputs (`FOLDS_PER_ASSIGNMENT_MAX`).
 Only a successful report settles inputs through its `folded_through_sequence`.
 
-A setup run carries the scoped model capability and current candidate identity, revision and definition when present.
-Fence and sequence values are decimal strings; the attempt identifier and capability are machine-only.
-The capability accompanies model calls on the authenticated connection.
+A setup turn rides the same connection as a fleet turn; [setup runs](#setup-runs) below covers its payload and report.
 
-Setup model calls, proposals, renewals and completion use `authoring_model`, `authoring_activity`, `authoring_renew` and `authoring_report` messages.
-The [runner guide](runner_protocol.md#authoring-operations-on-the-native-session) describes their authority and recovery rules.
-Their existing proposal, accounting and dispatch rules follow below.
+### Setup runs
 
-`Proposal={kind:"initialize",definition:Definition}` is allowed only when no candidate exists. Subsequent proposals are `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops:ConfigOp[],instruction_edits:InstructionEdit[]}`. Match both base fields against the current version before atomically replacing it.
+A setup turn is a run its draft owns, assigned to a runner like a fleet turn. The daemon makes no model call; the runner makes every one.
+The [runner guide](runner_protocol.md#authoring-operations-on-the-native-session) owns renewal, fencing and report delivery.
 
-Both use the same validator as drawer input. An activity receipt is keyed by attempt + activity_sequence and normalized body; sequences are contiguous decimal strings from `"1"`. Exact retry returns the originally accepted candidate version even after later edits.
+The run payload's `owner` is `{kind:"draft",draft_id}`, and its `setup` part is `SetupWork`.
+The message rides `event.request_json`, and earlier answered turns ride `history`.
 
-Changed-body reuse, gaps, stale bases, or reordered new proposals change nothing. Initialization retry returns its saved receipt instead of testing the now-existing candidate again. Invalid initialization creates no candidate, and no tool can set grants or manifests.
+`SetupWork={sequence,candidate?:{id,revision,definition},save_requested,tool,history_sequences?}`.
+`tool` is the `propose_setup` definition, and its description is also the run's instructions.
 
-Empty editing instructions block Save/publication.
+The run's policy offers one tool, `propose_setup`, and the runner prepares no sandbox for it.
+The run carries the pinned model's key, as a fleet run does, and no runtime credentials, memory or repository.
+A tenant's runner is never assigned a turn on the platform model, whose key the run would carry.
 
-Reports also accept `{kind:"accounting",fence,report_id,outcome,failure_reason?,usage:Meter}` with no private text or content digest. The immutable accounting identity is attempt + report_id + normalized fence/generation/outcome/failure_reason/usage, validated against daemon dispatch receipts. Store its digest and accounting acknowledgement independently from optional answer submission.
+Assignment checks that the pinned model takes tool calls and that the payer's balance covers one run.
+Nothing is reserved; renewals and the report log the run's usage lines.
+A refused model or balance fails the message as `model_unavailable` or `insufficient_balance`.
 
-Exact accounting replay returns that acknowledgement whether the original terminal report committed, was never received, or the draft was deleted. Changed accounting under the same identity conflicts; a caller-supplied digest never substitutes for validated usage. First accounting-only settlement records terminal accounting once and cannot create a message, candidate or answer.
+A setup run's maximum runtime is 300 seconds (`afd_setup::limits::SETUP_RUNTIME`).
+A lapsed run is reassigned at the next fence, and the message reruns from its start.
+A turn gets at most three runs (`af_core::limits::EVENT_RUNS_MAX`); when all three lapse, the message fails as `provider_usage_unknown`.
 
-A deleted/expired generation may confirm or settle authenticated attempt accounting but cannot restore private state. Terminal answer submission has a separate content digest.
+`propose_setup` takes `{kind:"initialize",definition}` before a candidate exists.
+After that it takes `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops,instruction_edits}`.
+Each instruction edit adds text or replaces exact text, never a byte offset.
 
-Exact terminal replay may acknowledge it while retained, but accounting replay never opens or reconstructs it. Known daemon receipts override runner estimates; unknown liability remains until authoritative settlement.
+The runner applies each call in memory with `af_fleet_runtime::setup`'s rules, which the daemon applies again at report.
+A refused call returns `[kind] sentence` to the model as the tool result, and the model may try again in the same run.
+The proposal loop has no cap of its own; the 300-second runtime bounds it.
 
-`failure_reason` is required for failed/timed_out reports and absent otherwise. It uses the Message reason enum above. The daemon validates the reason against dispatch facts and controls the final code/action.
+The refusal kinds are `invalid_arguments`, `instructions_missing`, `instructions_ambiguous`, `stale_candidate` and `edit_not_requested`.
+A later edit applies to the setup the run last kept, on the same base.
+A message that asked to save proposes nothing; every call is refused as `edit_not_requested`.
 
-A runner cannot downgrade unknown usage to an ordinary retryable failure.
+The report carries the answer, the usage and `setup:{proposal?:{base_candidate_id?,base_revision,definition}}`.
+`definition` is the final Definition as JSON text, at most 128 KiB (`SETUP_DEFINITION_BYTES_MAX`).
+A text-only answer carries no proposal, and a save turn's report saves the head candidate.
 
-### Scoped model invocation
+The report's transaction locks the draft, settles the run, then checks the proposal again.
+The base must still name the head candidate and its revision, and `Definition::parse` must accept the Definition.
+A proposal that passes becomes candidate revision N+1.
 
-`ModelCall={capability_token,attempt_id,fence,dispatch_id,call_index,request:{messages:ModelMessage[],max_output_tokens}}`. `dispatch_id` is UUIDv7; `call_index` is a contiguous integer 1..8. `ModelMessage` is `{role:"user",text}`, `{role:"assistant",text,proposal_calls:ProposalCall[]}`, or `{role:"tool",call_id,text}`.
+A refused proposal writes no candidate, and the turn still completes with its answer.
+The turn keeps the refusal's sentence as its failure detail, and the daemon logs `setup_proposal_refused` with `error_code`, `draft_id` and `run_id`.
+A moved base refuses with `UZ-AUTHOR-003`; a Definition the parser refuses keeps the parser's code.
 
-Text is untrusted context; only the fixed proposal tool is callable. The daemon adds pinned system instructions, the current candidate and tool schema. The bounded runner envelope carries current-turn work; the daemon pages prior history and applies [shared compaction](context_lifecycle.md) before provider access.
+A report below the run's current fence is refused with `UZ-RUN-005` and writes nothing.
+A replayed report finds its run settled and writes nothing a second time.
 
-Reject provider/model/host/key/header/system/tool-schema override fields.
+The run loads and saves the draft's compacted context with `context_load` and `context_save`, under its fence.
+A save is a compare-and-swap on `resource_version` over the draft's `memory.context_checkpoints` row.
+A superseded run's save is refused with `UZ-RUN-005`, and the row stays as it was.
 
-Native provider replies stay in `setup.dispatches.native_reply`; the runner receives only text, validated proposals and usage. A saved reply binds its assistant position and the complete normalized conversation prefix through a digest. Later calls must retain that exact prefix before the daemon restores the SDK message, including signed or encrypted reasoning and provider tool identifiers.
+The runner streams answer chunks on the run's activity verb, as a fleet run does.
+The daemon rechecks the run, its message and the creator's access. It then republishes each chunk as a `message.delta` frame of at most 4,096 bytes.
 
-Current membership, model and capability checks precede private reads. Expired or malformed state refuses dispatch. Deletion and private-result expiry clear both the public result and native reply; a fenced late response records usage without either private copy.
-
-`ProposalCall={id,proposal:Proposal}|{id,reason}`. Refusal reasons are `invalid_arguments`, `instructions_missing`, `instructions_ambiguous`, or `stale_candidate`; no raw rejected arguments cross this boundary. The [edit correction loop](fleet_definitions.md#small-atomic-edits) handles these results within the admitted turn.
-
-`ModelResult={dispatch_id,call_index,replayed,text,proposal_calls:ProposalCall[],usage:{knowledge,input_tokens?,output_tokens?,provider_cost_nanos?},cut,compacted}`. `cut:true` means incomplete proposals cannot run. `compacted:true` records a metered summary; the worker continues the same turn without publishing the summary.
-
-Responses fit 128 KiB and the remaining output-token allowance.
-
-A proposal result is untrusted until `authoring_activity` commits it.
-No separate model-call read route or raw provider response exists.
-
-1. Issuing the setup run creates a random 256-bit token, stores its hash and binds it to the current runner, owner, draft and attempt.
-   The binding also covers sequence, fence, generation and pinned model.
-   Issue the capability only in the run over the authenticated daemon transport; never log it or write it to disk.
-2. The daemon verifies runner identity, token hash/bindings, current membership/model policy, cancellation, and unexpired run using authoritative database time. Capability expiry follows the run and cannot exceed the attempt's 300-second deadline; renewal cannot revive expiry.
-3. Measure the complete request under subject → attempt locks, release the transaction, and confirm its billed hold. Recheck authority, exact request digest and output allowance under a second transaction. Commit dispatch identity before provider access; no provider request holds these locks.
-
-   Concurrent dispatches and unfinished replays return STATE without another provider call. [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) describes the separate billing transactions.
-
-4. The daemon alone resolves the pinned owner's provider key and approved destination. Eligibility requires configured credentials, an approved transport, valid saved context/output bounds, and pinned prices. Known tokenizers count assembled input; unknown model names are estimated as their `o200k_base` count plus a quarter.
-
-   Apply the outbound address guard and reject unsafe private/custom destinations. Setup transport disables redirects and every provider retry. Each physical dispatch consumes one index and the shared output/time budget; ordinary runtime transport stays separate.
-
-5. Save the bounded result and authoritative usage before answering `authoring_model`.
-   Exact completed replay rechecks live authorization and returns the saved result without another provider call or charge.
-   Changed-body reuse returns REPLAY.
-
-   A crash after dispatch intent, a lost provider reply, or missing usage marks the delivery unknown and fences further calls. Never redispatch that intent.
-
-6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
-
-Input reservation uses the shared tokenizer library, with no bundled model-specific tokenizer assets.
-Unrecognized models are estimated as their `o200k_base` count plus a quarter, so a request can be refused earlier than the provider's tokenizer would require.
-Provider-reported usage determines settlement.
-
-Setup and runtime use `af_inference::stream::StreamTurn` and Rig's native provider decoding.
-Purpose adapters retain their credential, authorization and tool boundaries.
-Dispatch intent records its deadline, bounded by the attempt expiry and the shared 300-second provider limit.
-
-Replay uses that recorded deadline; an unfinished intent never sends the request again.
-The runner allows 310 seconds for the native answer and receipt settlement.
-The [shared chat explanation](shared_chat_verification.md#backend-ownership) describes the methods and failure behavior.
-
-The setup capability grants no runtime tools, memory, schedules, fleet messages or credential minting.
-Fleet runtime credentials retain their separate path through `afd_fleet`'s run answer and `af_providers`' connect module.
-
-`Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown delivery. Unknown usage is never relabeled known by local estimates.
-
-Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon assignment and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-runs).
+Compaction progress reaches the same private stream as `context.progress`.
 
 ### Current task reads
 

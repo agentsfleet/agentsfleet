@@ -81,7 +81,7 @@ Each table's columns live in its `rustd/crates/daemon/afd_db/schema/` slot, the 
 | Schema | Owns |
 |---|---|
 | `identity` | Accounts, people, membership, credentials, preferences |
-| `setup` | The private setup chat, its runner work, and the fleet Plugin |
+| `setup` | The private setup chat and its runner work |
 | `fleet` | Deployed fleets, their frozen setup history, approvals and durable tasks |
 | `thread` | Every conversation: threads, turns, runs, items and deliveries |
 | `runner` | Enrolled hosts, their history and counters |
@@ -104,7 +104,7 @@ Until the first production deploy, a change to a table edits its file; after it,
 ## Runtime SQL
 
 Every static statement lives in a `.sql` file beside the use case that runs it (for example
-`plugin/sql/page.sql`). A typed Rust function loads it with `include_str!` and states its
+`sql/draft/page.sql`). A typed Rust function loads it with `include_str!` and states its
 parameters, authorization and locks. Rows decode into named `FromRow` types; `Json<T>` is for
 real JSON columns only.
 
@@ -144,10 +144,8 @@ there is no generic repository trait.
 ```
  identity.workspaces/users ◀── drafts ──▶ fleet.fleets (fleet_id)
                                  │ head_candidate_id ──▶ candidates
-                                 │ plugin_revision_id ──▶ plugin_revisions
                                  │ source_fleet_revision_id ──▶ fleet.revisions
               thread.threads (1:1) ──▶ drafts; thread.turns.candidate_id ──▶ candidates
- plugin_entries ◀── plugin_revisions (ON DELETE CASCADE)
  replay_receipts (no FKs: a retry key outlives erasure)
 ```
 
@@ -155,21 +153,17 @@ there is no generic repository trait.
 |---|---|---|
 | `drafts` | One private setup chat; its turns are `thread.turns` rows on the draft's thread |  |
 | `candidates` | A frozen numbered setup the model proposed | append-only |
-| `replay_receipts` | Every setup retry key: create draft, send message, publish | append-only, swept at a fixed age |
-| `plugin_entries` | Account-owned card; tenant is required |  |
-| `plugin_revisions` | A frozen published version | append-only |
+| `replay_receipts` | Every setup retry key: create draft, send message, save | append-only, swept at a fixed age |
 
 - **Model pointers.** `drafts.tenant_model_id` and `thread.turns.tenant_model_id` are NULL for the
   platform default and otherwise reference a `model.tenant_models` row of the same tenant. The wire
   keeps today's string: `platform-default` maps to NULL, a tenant model id maps to the row.
 - **Chat save intent.** `thread.turns.save_requested` records the accepted request to save after a completed turn. The report writer saves the setup with the answer. A checked save refusal keeps the answer and records its safe code in `save_error_code`.
-- **Source and publication are separate facts**. `source_type` (blank, definition, plugin, fleet)
-  plus `source_plugin_revision_id` or `source_fleet_revision_id` record where the chat started.
-  `plugin_revision_id` records what it published, so a draft can start from Plugin revision A and
-  publish revision B.
+- **Source**. `source_type` (blank, definition, fleet) plus `source_fleet_revision_id` record
+  where the chat started.
 
-  All three references are `ON DELETE SET NULL`, so deleting a card or purging
-  a fleet never blocks on, or deletes, someone's private draft.
+  Both fleet references are `ON DELETE SET NULL`, so purging a fleet never blocks on, or
+  deletes, someone's private draft.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
   field); the sweeper deletes past `expires_at`. The sweep cascades the draft's thread and turns,
   candidates and answer receipts, and keeps attempts and dispatches (result and native reply scrubbed).
@@ -227,7 +221,7 @@ there is no generic repository trait.
 
 The live setup is read from `revisions` only; `fleets` keeps no config copy.
 `revisions.review_context` is the frozen review subject (creator, source pin, instance name) that
-activation re-reviews against. A Plugin install has no draft, and a swept draft cannot supply it.
+activation re-reviews against. A system setup has no draft, and a swept draft cannot supply it.
 
 `revisions.runtime_model_ref` is the model resolved at Save or Apply, kept because a definition may
 omit its model and review then resolves the tenant default.
@@ -258,20 +252,19 @@ The run's `actor` and turn `kind` come from a join to `thread.turns`, as reassig
 ## runner
 
 ```
- runners ◀── history, lifetime_counters (1:1)
+ runners ◀── history
  runners ◀── thread.runs, thread.threads (last_runner_id)
  runners ──▶ identity.tenants (tenant_id, NULL for a platform runner)   ON DELETE CASCADE
- registration_receipts (no FKs: a retry key outlives its runner and its tenant)
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `runners` | An enrolled host: policy, health, self-test, and the tenant that owns it | `platform_owned` says who owns it and `tenant_id` is set exactly when it is false; both fixed after insert by a trigger; a check refuses a decision model on a tenant row; optional reviewed decision-model selection; referenced models cannot be deleted |
-| `registration_receipts` | One tenant registration's retry key and request digest, so a retry finds the runner it created | append-only; unique `(tenant_id, operation_id)`; no foreign keys, so a receipt outlives its runner and its tenant |
+| `runners` | An enrolled host: policy, health, self-test, and the tenant that owns it | `platform_owned` says who owns it and `tenant_id` is set exactly when it is false; both fixed after insert by a trigger; unique `(tenant_id, host_id)` with nulls not distinct, so each owner, the platform included, registers a host once; a check refuses a decision model on a tenant row; optional reviewed decision-model selection; referenced models cannot be deleted |
 | `decision_calls` | Kept physical-call identity, frozen prices, reservations and canonical usage | opaque original ownership survives deletion; unresolved rows prevent whole-reservation release |
 | `decision_payloads` | Bounded private evidence and answers for a call | fleet deletion removes payloads while accounting stays |
 | `history` | Append-only runner history | unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
-| `lifetime_counters` | Per-runner tallies |  |
+
+Run counts per runner are a metric, `agentsfleet_runner_runs_total`, and no table holds them.
 
 `sandbox_config` holds tier-specific knobs as JSON validated in the application. Namespace tiers use `{"extra_binds": [...]}` today, and microVM keys arrive with the tier that reads them.
 Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, every check passed),
@@ -339,13 +332,12 @@ that reads them (rule 7).
 |---|---|---|---|
 | Draft (user delete or 30-day sweep) | its thread and turns, candidates, answer receipts, draft context checkpoint | attempts, dispatches, usage lines, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, usage lines | `dispatches.result` and `dispatches.native_reply` of their attempts |
-| Plugin card | its revisions | fleets installed from it; drafts started from it (`source_plugin_revision_id` set NULL) | none |
 | Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runs for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Setup private results; each removed object first records its location and charged bytes for remote cleanup |
-| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs, history and counters | attempts, usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs and history | attempts, usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
 | OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
-| Runner (record retired after revoke) | runs, history, lifetime counters | attempts (`runner_id` set NULL), usage lines; threads (`last_runner_id` set NULL) | none |
+| Runner (record retired after revoke) | runs, history | attempts (`runner_id` set NULL), usage lines; threads (`last_runner_id` set NULL) | none |
 
 ## vault and memory
 
@@ -403,10 +395,13 @@ Added by this milestone:
 
   Spellings are `af_wire::usage::LineKind`.
 
-- **`runner.runners.platform_owned`, `tenant_id` and `runner.registration_receipts`: added by M246.** A tenant registers
+- **`runner.runners.platform_owned` and `tenant_id`: added by M246.** A tenant registers
   runners of its own, and a runner takes only its tenant's work. Ownership is stated at insert, and
   `ck_runners_owner` requires `platform_owned = (tenant_id IS NULL)`, so a missing tenant never reads as the platform. The partial index
   `idx_runners_tenant_id_created_at_id` serves a tenant's list and the erasure cascade.
+- **`uq_runners_tenant_id_host_id` replaced `runner.registration_receipts` in M253.** A retried
+  registration answers `409` naming the host's runner, and its owner rotates its token. Nulls
+  are not distinct, so the platform registers each host once too.
 - **`idx_runners_created_at_id`: added by M246.** The runner list pages newest first. A volume bench measured the list at
   3.7 ms before the index and 0.1 ms after.
 - **Unused indexes dropped by the M246 audit.** `idx_task_effects_source_item`, `idx_task_effect_states_reconcile` and
@@ -427,5 +422,4 @@ Added by this milestone:
 - The runner protocol carries no `deletion_generation` (run payload, activity, model calls, renew, report); a spooled report written before the change still decodes.
   The one development runner restarts on the new release; no fleets exist when it does.
 - `agentsfleet models use` writes through `model.tenant_models`; its output is unchanged.
-- Closed-draft retention, the 24-hour retry window and Plugin-card deletion (history goes with the
-  card) are documented in the public docs.
+- Closed-draft retention and the 24-hour retry window are documented in the public docs.

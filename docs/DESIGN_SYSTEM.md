@@ -383,11 +383,8 @@ The current invite flow accepts one email and creates a recipient-specific invit
 If email delivery fails after invitation creation, keep the invitation visible with resend and copy-link recovery.
 Keep delivery status separate from invitation status. Never show an empty membership list when its read failed.
 
-The retained Plugin implementation stores complete fleet setups with immutable revisions and existing account access. Its UI tree is disabled pending the separate Fleet/template/Plugin discussion.
+**Save** saves or updates the fleet setup through the native save path.
 
-Save and publish saves or updates the fleet setup through the native save path. It makes no Plugin or Fleet-library publication request.
-
-Keep the reusable Plugin UI and backend APIs behind this boundary.
 Keep existing Secrets.
 
 A separate readable environment-variable feature is outside this delivery.
@@ -436,7 +433,7 @@ Secrets use Name, Type, hidden Value, Available to and Manage. Available to name
 
 When the caller lacks fleet-read access, say "Access details unavailable". Never infer access from references or show an unbacked access checkbox.
 
-Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. Plugin list cards carry the head revision's number and identifier; inspection shows the selected revision's content.
+Preserve named-field replacement for credentials that require several values. Connected apps use grouped resource rows and shared dialogs.
 
 Compact phone tables keep action targets inside their visible scrolling surface. Session and key rows let identity text occupy the full width before the action. Server pagination and error recovery remain available where the API requires them.
 
@@ -448,7 +445,7 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 
 Fleet messages, setup receipts, and integration activity share one chronological conversation.
 
-**Save and publish** sits on the flap above the composer. The header keeps the fleet name and **Edit instructions** pencil.
+**Save** sits on the flap above the composer. The header keeps the fleet name and **Edit instructions** pencil.
 **Archive** and **Permanently Delete** live in **Fleet actions**.
 
 Archive and deletion use separate confirmations.
@@ -711,7 +708,7 @@ The saved setup editor returns to its fleet conversation. Use the rail's fleet p
 
 Keep one visual shell through setup, confirmed save, and the fleet conversation. Preserve the title, reading width, composer position, and inline Summary.
 
-Label the setup state Fleet setup. Its flap action is Save and publish.
+Label the setup state Fleet setup. Its flap action is Save.
 
 Show model, spending limit, repositories, internet access and secrets in Summary. Show Next wake-up only in the composer flap.
 
@@ -731,7 +728,6 @@ Keep the creator's setup transcript private.
 Other members see only setup facts and activity already authorized for them.
 
 Saving does not replay the setup prompt as a first run. Run now requires an explicit instruction; configured triggers retain their existing behavior.
-The retained Plugin publication action stays outside the active UI.
 
 ### Chat state and activity
 
@@ -753,11 +749,11 @@ Use react-window for output above 200 retained lines so long output mounts only 
 Preserve wrapped lines, original line numbers, keyboard scrolling and literal text.
 Provide search across every retained line and copy the complete output, including lines outside the current viewport.
 
-The compact setup status shows actual reading, sending, saving and publishing progress.
-Show a success tick only for a confirmed saved version or publication.
+The compact setup status shows actual reading, sending and saving progress.
+Show a success tick only for a confirmed saved version.
 A new setup request replaces the previous confirmation and its fleet action.
 
-Confirmed saving opens the fleet conversation. The disabled Plugin tree retains its publication confirmation and pinned-revision start for possible reuse.
+Confirmed saving opens the fleet conversation.
 
 Attachable capabilities are deferred to the M252 discussion.
 Keep those navigation actions separate from the Save changes control.
@@ -858,9 +854,7 @@ brief entrance animation behind the hero. It cannot intercept input or carry ess
 Foreground surfaces stay readable. Use the shared palette and purposeful depth when choosing decorative treatments.
 
 The conversation types a problem, refines setup, shows a reviewed save, and continues into scheduled work.
-Save creates an independent fleet from the reviewed setup. It does not publish to the Library.
-
-Plugin publication and reuse remain available through the retained APIs. Their dashboard navigation, source routes and publication actions are paused.
+Save creates an independent fleet from the reviewed setup.
 
 Improve and Apply revise an existing fleet through a new review rather than creating another fleet.
 Use native setup records throughout. Do not offer file imports, bundle exports, `SKILL.md`, or `TRIGGER.md` authoring.
@@ -922,7 +916,7 @@ Keep the original history.
 If compaction fails or pinned input still cannot fit, show the recorded failure and recovery action.
 [Conversation compaction](architecture/context_lifecycle.md) owns the shared behavior and limits.
 
-These boundaries follow the [model instructions](../rustd/crates/daemon/afd_setup/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/daemon/afd_setup/src/plugin/publish/persist.rs), and [resource reference](architecture/api_resources.md).
+These boundaries follow the [model instructions](../rustd/crates/protocol/af_fleet_runtime/src/setup/mod.rs), [save implementation](../rustd/crates/daemon/afd_setup/src/creation/reserve.rs), and [resource reference](architecture/api_resources.md).
 
 ### Example playback
 
@@ -1002,7 +996,7 @@ Destructive actions retain their existing confirmation behavior.
 5. Inspect app and website in dark, light, narrow, keyboard, and reduced-motion states.
 
 Finish the converted app with a rendered visual review, after real data and fonts load.
-Review conversation, activity, errors, wake-ups, empty state, Models, Create model, Plugins, Secrets, Usage, Security, Team, and invitations.
+Review conversation, activity, errors, wake-ups, empty state, Models, Create model, Secrets, Usage, Security, Team, and invitations.
 
 | Check | Required observation |
 |---|---|
@@ -1199,7 +1193,7 @@ The header shortcut starts a new fleet through the shared navigation intent on r
 
 ### Fleet setup review
 
-Use the original flat Summary rows and dividers. Model and spending limit appear at the top. Plugin provenance stays hidden while its UI is paused.
+Use the original flat Summary rows and dividers. Model and spending limit appear at the top.
 
 The broader sections are Repositories, Public internet access and Secrets. Tools sit in a small row with repositories. Remove Purpose, repeated recurrence prose and the separate Review setup panel.
 
@@ -1217,9 +1211,9 @@ The composer flap owns Next wake-up and its edit, pause and removal controls. Di
 
 Proposed schedules remain pending until saved and registered. Omit the flap when a completed read confirms no schedules. Summary contains no duplicate wake-up row or “Not scheduled” label.
 
-Save and publish is the flap above the composer, without a popup or a separate Save fleet button. It saves a fleet or updates its existing setup revision.
+**Save** is the flap above the composer, without a popup or a separate Save fleet button. It saves a fleet or updates its existing setup revision.
 
-The flap never publishes a Plugin or starts a first run. Configured triggers retain their native behavior.
+The flap never starts a first run. Configured triggers retain their native behavior.
 
 While pending it shows a spinner, a muted-to-bright label and whole seconds. Only confirmed native receipts show success.
 
@@ -1237,7 +1231,7 @@ Team counts share their heading’s center line. The Fleets rail section can col
 
 ### Domain feature organization
 
-Group components under activity, approvals, conversation, events, models, plugins, schedules, setup, shared, tasks and usage. Setup editors and Plugin inspection/history load on intent.
+Group components under activity, approvals, conversation, events, models, schedules, setup, shared, tasks and usage. Setup editors load on intent.
 
 Keep stream ownership in its existing provider and native requests in DraftClient. Avoid compatibility barrels that pull unrelated features into a route.
 

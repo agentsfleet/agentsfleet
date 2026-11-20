@@ -211,6 +211,7 @@ The heading keeps its old words because other pages cite it by text. It covers s
 
 A setup turn is a run on the common run path: a `Down::Run` whose payload's owner names the draft.
 It renews and reports as a fleet run does, and its report carries the proposal the run kept.
+
 It reads and saves the draft's compacted context with `context_load` and `context_save` on the work stream, under its fence.
 The runner makes every model call; the daemon makes none.
 
@@ -246,15 +247,24 @@ The [gateway](../../rustd/crates/daemon/afd_gateway/src/connection/mod.rs) and [
 | Setting | Default | Bounds |
 |---|---|---|
 | `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` | 16 MiB per replica | 12–512 MiB |
-| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 48 MiB per replica | 12–512 MiB |
+| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 64 MiB per replica | 64–512 MiB |
 | `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | 64 thread identifiers | 1–65,536 identifiers |
 
 Receive and send pools are separate; each receives half the configured totals.
 Invalid values refuse startup before allocation.
 
-Accepted runs use a separate allowance of up to 128 MiB for 64 runs, so workers holding runs cannot block report acknowledgements.
-The 2 MiB frame and 256 pending-request limits remain fixed protocol bounds.
-A run whose assignment would pass the frame is not sent. The daemon measures it first and fails its turn at assignment with `frame_too_large` and `UZ-RUN-032`, so it neither lapses nor is reassigned (`afd_gateway/src/connection/unframed.rs`). A fleet's message to another stores its words once, in `message`.
+The data budget can also be set in bytes, as `runner.stream.data.max_buffered_bytes` or `AGENTSFLEET_RUNNER_DATA_BUFFER_BYTES`.
+Its floor is 67,108,864 bytes, so each direction holds one maximum frame (`af_stream/src/framing/memory.rs`).
+
+Work, report and progress frames carry at most 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`).
+Control frames carry the opening, heartbeats, renewals, cancellation and small replies, at most 2 MiB each (`CONTROL_MESSAGE_BYTES_MAX`).
+A frame is charged to its stream's pool at its measured length, with no second reservation for serialization (`af_stream/src/framing/writer.rs`).
+
+Accepted runs use a separate allowance of one maximum frame for each of 64 runs, so workers holding runs cannot block report acknowledgements.
+The frame ceilings and the 256 pending-request limit are fixed protocol bounds.
+
+A run whose assignment would pass the frame is not sent. The daemon measures it first and fails its turn at assignment with `frame_too_large` and `UZ-RUN-032`, so it neither lapses nor is reassigned (`afd_gateway/src/connection/unframed.rs`).
+A fleet's message to another stores its words once, in `message`.
 
 ### Observability
 

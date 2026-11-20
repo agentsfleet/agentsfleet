@@ -36,7 +36,7 @@ Capture is exception-contained: analytics can never break the product flow it
 instruments.
 
 `EVENTS` is the list. It names the dashboard's events across fleets, runners,
-keys, secrets, models, approvals, Plugins and onboarding, and it grows with
+keys, secrets, models, approvals and onboarding, and it grows with
 the dashboard. Reading it beats reading a copy here that stops being true the
 next time someone adds a surface.
 
@@ -51,7 +51,6 @@ emit nothing.
 | `draft_message_finished` | Daemon | An accepted message reaches its durable terminal state. |
 | `fleet_setup_finished` | Daemon | Setup reaches its durable successful outcome. |
 | `fleet_setup_cancelled` | Daemon | Setup cancellation is durable. |
-| `fleet_plugin_published` | Daemon | A new Plugin revision is committed, excluding idempotent replays. |
 
 Acceptance and completion counts must come from the daemon. Terminal-client
 activity, closed browser tabs, and blocked analytics scripts cannot then turn

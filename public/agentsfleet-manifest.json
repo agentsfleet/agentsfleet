@@ -84,13 +84,6 @@
       "actionClass": "safe"
     },
     {
-      "operationId": "list_workspace_plugins",
-      "method": "GET",
-      "path": "/v1/workspaces/{workspace_id}/plugins",
-      "description": "One bounded keyset page of Plugins owned by the requesting workspace's account. Entries from other accounts are never included. Support-file manifests are not served on the workspace plane.",
-      "actionClass": "safe"
-    },
-    {
       "operationId": "receive_source_webhook",
       "method": "POST",
       "path": "/v1/webhooks/{fleet_id}/{source}",
@@ -122,7 +115,6 @@
       "get_tenant_billing_charges",
       "get_model_library",
       "list_tenant_model_entries",
-      "list_workspace_plugins",
       "get_tenant_billing_report"
     ],
     "sensitive": [

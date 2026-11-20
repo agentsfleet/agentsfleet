@@ -22,31 +22,25 @@
 | Coding engines | Codex first-class, split across the wall; Claude Code in the sandbox, its model calls through a supervisor relay |
 | Repository writes | Target: local commits inside the sandbox; the supervisor pushes under rules `agentsfleetd` compiles; draft Pull Request only. Not built: `propose_change` exists only as the `git` tool's refusal text (`guffbolt/src/tools/process/git.rs`) |
 
-## Run execution kinds
+## Run kinds
 
-A tagged native run (`Down::Run`) carries fleet runtime or private setup work. Fleet runs use their admitted tools and optional sandbox. Setup turns use only daemon-scoped model calls and the fixed proposal tool.
+A run (`Down::Run`) carries a fleet's turn or a draft's setup turn. A fleet run uses its admitted tools and an optional sandbox. A setup run gets no sandbox and one tool, `propose_setup` (`afr_supervisor/src/setup_run/mod.rs`).
 
-Setup runs carry no runtime credentials, repository checkout or tenant tools. The [runner guide](runner_protocol.md) owns connection authority, capacity and recovery. [API resources](api_resources.md#scoped-model-invocation) owns dispatch authorization.
+A setup run carries the pinned model's key and no runtime credentials, repository checkout or tenant tools. The [runner guide](runner_protocol.md) owns connection authority, capacity and recovery. [API resources](api_resources.md#setup-runs) owns the setup payload, the proposal rules and the report check.
 
 ### Proposal correction and failure
 
-Rejected proposal arguments and invalid edits return tool feedback to the model (`afr_supervisor/src/authoring/proposal.rs`). They do not apply a candidate or advance the activity sequence. A correction spends another model call and its measured output from the same attempt budget.
+A refused proposal returns its kind and reason to the model as the tool result (`afr_tools/src/setup/mod.rs`). The model may correct it in the same run, and the refusal writes no candidate. A correction is one more model call inside the same run.
 
-The turn stops at eight calls or the admitted output allowance (`afr_supervisor/src/authoring/turn.rs`). Exhausted corrections report `failed` with `provider_failed`, retain known usage, and supply no successful answer.
+The proposal loop has no call cap. The run's 300-second maximum runtime bounds it (`afd_setup::limits::SETUP_RUNTIME`), and the daemon refuses a renewal past that runtime.
 
-When every proposal in the response is accepted, the turn returns the review-ready answer. Save remains a separate human action.
+The run reports the last proposal it kept, on the base it started from. A run that ends without an answer fails its message and writes no candidate. Save remains a separate human action.
 
-Unknown provider usage ends the turn without another dispatch.
-Private setup renewal defaults to ten seconds, with a 250-millisecond pause after retryable failure (`afr_supervisor/src/authoring/renew.rs`).
-The runner profile can shorten both intervals; the accepted attempt deadline still wins.
-
-The daemon snapshots the selected call, wall-time, correction and provider-timeout limits with each issued attempt.
-Compiled compatibility ceilings remain eight calls, 300 seconds and one correction.
-Changing a deployment profile affects newly issued attempts.
+A Stop, a refused renewal or the runner's shutdown cuts the run. The cut run still sends its report, with its usage.
 
 ## Private content and report retention
 
-`DELETE` on a draft returns 204 after the daemon's transaction fences every attempt and removes private text and candidates. The same transaction writes a content-free tombstone and makes further private reads return 404. It does not delete the shared fleet or billing records.
+`DELETE` on a draft returns 204 after one transaction deletes the draft, its candidates and its active setup runs (`afd_setup/src/privacy.rs`). After the commit, the daemon tells each deleted run's runner to stop. Usage lines name the run, never the draft, so billing records outlive the delete.
 
 Remove the private transcript from server-rendered and browser caches, and close its stream. The target stores no unsent text in browser local storage. In-memory text is scoped to account, workspace and subject, and cleared on logout, revocation or delete.
 
@@ -54,18 +48,17 @@ Remove the private transcript from server-rendered and browser caches, and close
 |---|---|---|
 | Draft/message/candidate rows and private replay bodies | Daemon DELETE/expiry, content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
 | Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
-| Runner memory / in-flight request | Delete generation at renewal, report, activity; runner cancels the turn and drops its local buffers | Online runner notices at next five-second renewal; disconnected runner run expires within 35 seconds. Upstream completion may outlive local abort. |
-| Pending setup report | Worker memory retains the current report; no report files are written (`afr_supervisor/src/authoring/mod.rs`) | After 24 hours, delivery zeroes private answer text and retries content-free accounting. Process loss discards pending memory. |
+| Runner memory / in-flight request | Daemon deletes the active run and publishes a stop hint; the next renewal finds no run, and the runner cancels the turn and drops its local buffers | An online runner stops on the hint or at its next five-second renewal; a disconnected runner's run expires within 35 seconds. Upstream completion may outlive local abort. |
+| Pending setup report | Worker memory holds the encoded report until the daemon acknowledges or refuses it; no report files are written (`afr_supervisor/src/setup_run/mod.rs`) | The report's bytes are zeroed when the worker drops them. Process loss discards pending memory. |
 | Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
 | Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
 | Published revision / applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not unpublish or delete shared setup; disclose this before Save/publication. |
 | Backups / legal accounting | Infrastructure backup schedule; billing domain content-free ledger | Follow published retention; no invented physical-purge deadline. |
 
-Accounting replay keeps its original report identity and can settle against daemon receipts after draft deletion.
-Changed accounting content conflicts.
+A retried setup report keeps its run identity, as a fleet run's does.
 The [runner guide](runner_protocol.md#results-and-billing) owns delivery and shutdown limits.
 
-An offline runner does not prevent DELETE from returning 204 at the server text boundary. A tombstone rejects stale generations before accepting text. Content-free settlement can acknowledge known usage without recreating messages.
+An offline runner does not delay the 204. A late report or context save from a deleted run finds no run and writes nothing.
 
 Closed private history expires 30 days after close, only when no active work exists.
 
@@ -206,9 +199,9 @@ The turn's vocabulary is `guffbolt`'s, and a failure is the embedder's own type,
 
 The tool vocabulary is `guffbolt`'s too. `Describe` names a tool to the model, and `Tool<Cx>` runs one call with what the embedder lends it. `Tools` looks a call up and refuses one it does not hold.
 
-A run's children are `guffbolt`'s as well. `guffbolt::agents` keeps each child's state, inbox and stop, refuses one past the run's caps, and polls every child beside the root.
+A run's children are `guffbolt`'s as well, with the seven tools that start and steer them (§Tool catalog). `guffbolt::agents` keeps each child's transcript, inbox, tools and stop. It refuses a child past the run's caps, and drives each child's turns beside the root.
 
-`afr_agent` raises each child as the run's own loop over a narrowed selection, and logs its start and end. It keeps the six nested tools' names, schemas and parsing, and the caps' values. A recovery saves only ended children, read under a `Pause` that proves the children quiet.
+`afr_agent` gives `guffbolt` only the loop a child's turn runs as: its own `Harness`, over the run's provider, sandbox, memory, ledger and meter. It keeps the caps' values and logs each turn's start and end. A checkpoint writes the children into the root's `DriveState` under a `Pause` that proves them quiet, so a recovered run brings them back.
 
 What a run of one kind adds is an `Extension`: a durable task is `afr_agent`'s `Task`, and every other loop installs `Plain`. A message's media parts reach the model through a `MediaReader`; until one reads a kind, `Unread` names the part to the model.
 
@@ -288,17 +281,21 @@ A model call to a name outside the policy is a tool error the model sees, and th
 
 The scheduling tools, `message`, `fleet_activity` and `fleet_steer` reach `agentsfleetd` through `afr_tools::RunVerbs`, which the supervisor implements over its control plane. The supervisor adds the run's id and fencing token to each call, one attempt each. A tool never holds the token, and the model decides whether to try again; no retry loop does.
 
-The generic tools are `guffbolt`'s, behind its `tools` feature (`rustd/guffbolt/src/tools/`); `afr_tools` hosts them and keeps only what reaches `agentsfleetd`. Each generic call is lent the run through the harness's three seams, built per call by `afr_tools::generic::Generic`:
+The generic tools are `guffbolt`'s, behind its `tools` feature (`rustd/guffbolt/src/tools/`). `afr_tools` keeps only what reaches `agentsfleetd`. Each tool takes its backend when it is built. A run builds its tools when it starts, through `afr_tools::Backends` and `guffbolt`'s `ToolsBuilder`:
 
 ```text
- router ─► ToolContext { executor, run } ─► Generic<T>::call
-              executor     ─► SandboxEnv  (guffbolt::tools::Env)       the run's bubblewrap executor
-              run.egress ─► Egressed    (guffbolt::tools::Outbound)  af_egress admission, mint, mask
-              run.memory ─► Held      (guffbolt::tools::MemoryStore) the fleet's afr_memory backend
-                                   └──► guffbolt::tools::Context ─► the tool
+ run start ─► Backends::new(run, executor, transport).with_agents(&children)
+                ├─ LazySandboxEnv ─► with_env, with_sessions    shell, exec_command, files, git, image
+                ├─ Egressed       ─► with_outbound              http_request, web_fetch
+                ├─ run.memory     ─► with_memory                memory_*
+                ├─ Fenced verbs   ─► with_scheduler, with_channel  schedule, cron_*, message
+                ├─ Pushover       ─► with_notifier              notify
+                └─ Agents         ─► with_agents                the seven subagent tools
+              tools(the policy's names) ─► RunTools
+ each call ─► the router ─► guffbolt::tools::Context { call_ref, run_id, wake } ─► the tool
 ```
 
-A runner run's tools are built only over `SandboxEnv` or with no environment at all. `guffbolt::tools::LocalEnv` runs commands on the host it runs on, and a runner host holds the provider key, so the runner never builds one. The translation is one to one: the same spawn plus the sandbox's git identity, the same `/workspace` root, the executor's own wire message and log code for a failure, the same egress refusal codes and `tool_refused` line, the same memory visibility and grants.
+A runner run's tools are built only over the run's sandbox or with no environment at all. `LazySandboxEnv` waits for the run's build, then calls `SandboxEnv`. `guffbolt::tools::LocalEnv` runs commands on the host it runs on, and a runner host holds the provider key, so the runner never builds one. The translation is one to one: the same spawn plus the sandbox's git identity, the same `/workspace` root, the executor's own wire message and log code for a failure, the same egress refusal codes and `tool_refused` line, the same memory visibility and grants.
 
 The harness also carries tools this runner does not offer yet: an MCP client (`mcp__<server>__<tool>`, `list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`), `ask_user`, `tool_search`, `current_time`, `sleep`, `ls`, `find` and `grep`. `ask_user` ends a run `Ending::Waiting { call_id, question }` once its turn's other calls ran, and `DriveState::resume` answers it; a run that reached one today fails with `the run asked a question this run cannot deliver`, because no run carries a question to its person yet.
 
@@ -313,12 +310,26 @@ The harness also carries tools this runner does not offer yet: an MCP client (`m
 | `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's turns with 1 KiB excerpts |
 | `fleet_steer` | supervisor, through a runner verb, as a chat message on another fleet in the workspace | the steers verb: the target answers in the sender's thread and reads a first line naming the sender; never the sending fleet |
 | `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
-| `delegate`, `spawn`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent` | the loop itself, beside the turn: a child is a nested loop sharing the run's sandbox, memory, key, budget and call counter, polled inside the run so it ends with it | Codex's `spawn_agent`, `wait_agent` and `send_input` shape; depth 2, four running and sixteen started per run |
+| `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent`, `interrupt_agent` | supervisor, `guffbolt::tools::agents` over the run's `guffbolt::agents::Agents`; `guffbolt` drives each child beside the turn | depth 2, four open and sixteen started per run (`afr_agent/src/loop/shared.rs`) |
 | `shell`, `exec_command`, `write_stdin` | sandbox, `guffbolt::tools::process` through the executor as `SandboxEnv` | `shell`: one process on pipes, its group killed at its timeout; `exec_command` and `write_stdin`: a session per process, on a pseudo-terminal when asked, at most 64 per run. Every byte of output is forwarded as it arrives, behind a bounded queue a flooding process waits on, and drained for a bounded grace once the leader ends; what a call has not read is kept as a 512 KiB head and tail, the middle counted, and each call drains it. A call says when the output was still open at the end, a gap's marker sits where it fell, a write to a process gone by then says it was not delivered and answers its ending, or runs on until it lands, and a write the process would not take says so and runs on; the executor's own sentence stays on the host, and whatever an executor failure says to a model is rendered to at most 4 KiB (`WIRE_MESSAGE_MAX_BYTES`), a refusal's message and a result that would not decode alike, since the socket's other end is not trusted with the length of what a model reads |
 | `git` | sandbox, `guffbolt::tools::process::Git`, on a clone the supervisor made on the host side | the token it was fetched with stays in the supervisor; the push is `propose_change` |
 | `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch` | sandbox, `guffbolt::tools::files` through the executor's file calls | `/workspace`; `file_read` pages by line, `offset` and `limit`, and is cut to the same 10,000-token budget as a command's output |
 | `image` | `guffbolt::tools::files::ImageTool` reads the file through the executor and attaches it to the next model turn | a provider that takes images |
 | `browser`, `browser_open`, `screenshot` | sandbox under the Firecracker engine: Chromium from the toolbox, driven over the Chrome DevTools Protocol (CDP) through the process's pipes, as the environment's browser (`guffbolt::tools::env::Browser`); `SandboxEnv` on the bubblewrap engine has none, so each answers with a code | the Firecracker engine; Chromium in the toolbox; the sandbox allowlist for any host beyond loopback |
+
+### Subagents
+
+Subagents are `guffbolt`'s. A fleet offers them by naming the seven tools in its policy, as it names any `guffbolt` tool. `afr_tools` publishes them under `guffbolt`'s own names and spells none of them. The tool names and their `fork_turns` values follow Codex's multi-agent tools.
+
+- `spawn_agent` starts a child on a task and answers its `agent_id`. The child holds the tools named in `tools`, each one its parent holds, or all of them. `fork_turns` says how much of the parent's history it starts from: `all` (the default), `none`, or a number of the parent's last turns.
+- `wait_agent` waits for a child's turn to end, up to `timeout_ms`, and reads its answer.
+- `send_input` queues a message for a child. A running child reads it on its next step; an idle one with its next task.
+- `followup_task` gives a child another task. An idle child runs again with its whole history.
+- `list_agents` lists every child with its status, depth and call count.
+- `interrupt_agent` stops a child's turn. The child stays open.
+- `close_agent` closes a child and every child it started. A closed child keeps nothing and frees its place.
+
+Each tool names a child by `target`, the `agent_id` that `spawn_agent` answered. `guffbolt` keeps each child's transcript, inbox, tools and stop, and drives its turns beside the root. A child whose turn ends goes idle and keeps its transcript. Every open child ends interrupted when the run ends. A child at depth 2 holds none of the seven. A child's calls are rows of the run's one ledger, under one counter.
 
 Shell and Git commands bound their ending wait in `guffbolt/src/tools/process/oneshot.rs`, by the environment's `ending_grace`.
 `SandboxEnv` (`afr_tools/src/generic/env.rs`) answers native kill/drain grace with a named reply slack; compile-time checks there relate it to run and engine bounds.

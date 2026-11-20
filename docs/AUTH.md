@@ -169,7 +169,6 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate. The one pair here with a ladder: `approval:resolve` includes `approval:read` (`HIERARCHY`, `scope.rs`) |
 | `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing_reporting.md#public-reads) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
 | `workspace:admin` | create workspaces; list the tenant's workspaces; manage the account's invites and members (§Invites) |
-| `plugins:write` | publish, revise and delete account-owned Plugins; held independently of fleet write authority |
 
 **Runner credential** (machine identity, minted onto the `agt_r` token and never granted to a human):
 
@@ -201,7 +200,7 @@ See §"CLI credential: resolved, not granted" below for the resolver's failure m
 
 | Constant | Scopes | Why it exists in code |
 |---|---|---|
-| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `plugins:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform or cross-tenant scope, and no `runner:tenant`, so an account registers a runner only after a platform admin grants it that scope |
+| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform or cross-tenant scope, and no `runner:tenant`, so an account registers a runner only after a platform admin grants it that scope |
 | `RUNNER_SCOPES` | `runner:self` | DERIVED for every `agt_r` runner principal by `Principal::scopes` (`rustd/crates/daemon/afd_auth/src/principal.rs`), never stored on it — the one credential class with no identity at the provider to resolve against, because it names a machine, not a person |
 
 **Approving follows the person, not the credential class (M160_002 §6, Indy's call, Aug 13, 2026)**. An earlier revision authored a machine grant in code (the owner set minus `approval:resolve`). This kept a Fleet holding an `agt_t` key from approving the gate guarding its own next action.
@@ -859,11 +858,9 @@ The route is `POST /v1/tenants/me/runners`, and it requires the `runner:tenant` 
 A platform admin grants that scope to an account at the identity provider.
 Signup never grants it, so a regular user cannot register a runner.
 
-The request carries a UUIDv7 `Idempotency-Key`.
-A retry with the same key and body answers `200` with the same `runner_id` and no token, because the token appears once.
-
-The same key with another body answers `409 UZ-RUN-025`.
-To recover a lost token, rotate it with `agentsfleet runners rotate-token <RUNNER_ID> --token-out <NEW_FILE>`.
+A tenant registers a host once: `host_id` is unique within the tenant, and the route takes no `Idempotency-Key`.
+A second registration of the same host answers `409 UZ-RUN-033` with `current_state` `registered`, and its `Location` names the existing runner.
+The token appears once, so recover a lost one by rotating it with `agentsfleet runners rotate-token <RUNNER_ID> --token-out <NEW_FILE>`.
 
 A tenant runner takes only its own tenant's work, and a platform runner takes any tenant's:
 
@@ -1036,7 +1033,6 @@ Missing, foreign and creator-private drafts return the same nondisclosing 404.
 |---|---|---|
 | Read, edit, message or stream a private draft | `fleet:write` | Current membership and creator identity |
 | Save or Apply a reviewed setup | `fleet:write` | Current membership; a private candidate must belong to the caller |
-| Publish a private candidate as a Plugin | `plugins:write` | Current membership and creator identity |
 
 The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
 `afd_setup/src/access.rs` and `sql/draft/lock.sql` enforce the inner identity boundary.
@@ -1132,7 +1128,7 @@ This is why the SSE path uses a Next Route Handler instead of forwarding the coo
 
 Per-template audience isolation: a Token-B leak via agentsfleetd logs cannot be replayed against `storage-svc` because the `aud` doesn't match. Each microservice strict-checks only its own audience; cross-service replay is structurally prevented by the JWT verifier, not by application logic.
 
-Clerk dashboard configuration can restrict templates by scope, such as requiring `plugins:write` for the `fleets` template.
+Clerk dashboard configuration can restrict templates by scope, such as requiring `fleet:write` for the `fleets` template.
 For a new microservice, create its JWT template in Clerk and set its strict `OIDC_AUDIENCE` value.
 The existing session-token path serves future Bearer-audience services through configuration, without new auth code in `agentsfleetd` or sibling services.
 

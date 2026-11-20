@@ -22,7 +22,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 |---|---|---|---|
 | The wedge surface | `agentsfleet` CLI and dashboard, both over workspace chat | `curl -fsSL https://agentsfleet.dev \| bash` → `login` → `chat` | §8.0 |
 | List output shape | name, identifier, domain columns, `AGO` | one helper owns the order for every entity list the CLI prints, and appends the age itself, so a call site has neither a position to choose nor a column to forget; a catalogue with no age of its own declares that rather than rendering an empty column | §8.4 |
-| Save input | a reviewed draft candidate or a pinned Plugin revision | C1 `POST W/fleets` names one source and the review digest; changes later arrive as reviewed setup revisions (N11) | §8.2.2 |
+| Save input | a reviewed draft candidate | C1 `POST W/fleets` names it and the review digest; changes later arrive as reviewed setup revisions (N11) | §8.2.2 |
 | Deployment posture | hosted-only in v2 | no `--self-host` flag, no self-host runbook; validation on non-Fly hosts is v3 | §8.0.1 |
 | Fleet definition | one typed JSON Definition | a `description`, `instructions_md`, and the `config` policy document; one parser validates every source | §8.1 |
 | Preflight | `agentsfleet doctor --json`, health only | `server_reachable` · `workspace_selected` · `workspace_binding_valid`; the only sanctioned preflight surface | §8.2.2 |
@@ -78,19 +78,17 @@ The minimum viable product (MVP)'s user-facing wedge is the **`agentsfleet` Comm
 curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
 agentsfleet login                            # Clerk OAuth
 agentsfleet chat --model <MODEL_REF>          # describe the job, review it, then Save
-agentsfleet plugins                          # list plugins (GET /v1/workspaces/{ws}/plugins)
 ```
 
-Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/models?purpose=authoring`. New drafts require this setup model; resumed drafts keep their existing model. A draft starts from four sources:
+Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/models?purpose=authoring`. New drafts require this setup model; resumed drafts keep their existing model. A draft starts from three sources:
 
 - **Nothing.** `agentsfleet chat --model <MODEL_REF>` creates a private draft when the first message is sent.
-- **A Plugin revision.** `agentsfleet chat --plugin <PLUGIN_ID> --revision <REVISION_ID> --model <MODEL_REF>` starts from one immutable Plugin revision.
 - **A saved fleet.** `agentsfleet chat --fleet <FLEET_ID> --setup-revision <N> --model <MODEL_REF>` drafts an improvement to that exact setup revision.
 - **Native JSON.** `agentsfleet chat --definition <PATH> --model <MODEL_REF>` reads one native Definition from a local file, bounded at 6,400 KiB.
 
-Plugin IDs and revision IDs come from Plugin reads; fleet IDs and setup revisions come from fleet reads. `<PATH>` names your native JSON file.
+Fleet IDs and setup revisions come from fleet reads. `<PATH>` names your native JSON file.
 
-`--review` shows the full setup, access, readiness, and review digest. `--save` saves the reviewed setup as an independent fleet, and `--publish` creates a Plugin entry from it. The dashboard does the same through the same routes ([`api_resources.md`](./api_resources.md) N1–N17, C1–C7).
+`--review` shows the full setup, access, readiness, and review digest. `--save` saves the reviewed setup as an independent fleet. The dashboard does the same through the same routes ([`api_resources.md`](./api_resources.md) N1–N17, C1–C7).
 
 Configuration such as a Slack channel, a production-branch glob, or a cron schedule lives in the reviewed setup. The conversation changes it; the review shows exactly what Save will store.
 
@@ -132,7 +130,7 @@ This keeps the operational logic editable by changing instructions, without rewr
 
 Instructions grant no access. Runs use only reviewed `config` and approved grants ([capabilities](capabilities.md#1-reasoning--tool-inventory-declared-in-the-fleets-own-files)).
 
-Native JSON may initialize a private draft. GitHub/template-bundle import and Markdown export stay unsupported. Plugin publication explicitly selects a draft candidate.
+Native JSON may initialize a private draft. GitHub/template-bundle import and Markdown export stay unsupported.
 
 ## §8.2 Creating the Fleet
 
@@ -161,25 +159,23 @@ Login proves the new credential against `GET /v1/users/me`, which needs no capab
 
 ### §8.2.2 Per-Fleet create flow
 
-1. The user drafts a setup in chat (§8.1), optionally starting from a pinned Plugin revision.
+1. The user drafts a setup in chat (§8.1).
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity and workspace health only: `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It is the only sanctioned preflight surface for health; no parallel `preflight` command exists.
    - Doctor does **not** carry provider posture or balance. Those live in `agentsfleet models current --json` (mode/provider/model/context cap) and `agentsfleet usage show` (balance and exhaustion state), read separately once health passes.
    - The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message.
 3. **Review.** `GET` on the draft returns the effective setup, the access it needs, live readiness, and a `review_digest` (N4). The user picks the instance name and runtime model on the draft before reviewing.
-4. **Save.** `POST /v1/workspaces/{ws}/fleets` (C1) names the reviewed draft candidate, or a pinned Plugin revision, plus the review digest. `afd_setup` writes the fleet row, its first immutable revision in `fleet.revisions`, and any inherited schedule in one transaction. `fleet.fleets.head_revision_id` selects that revision, and ingress reads the setup from it; the fleet row keeps no config copy.
+4. **Save.** `POST /v1/workspaces/{ws}/fleets` (C1) names the reviewed draft candidate and the review digest. `afd_setup` writes the fleet row, its first immutable revision in `fleet.revisions`, and any inherited schedule in one transaction. `fleet.fleets.head_revision_id` selects that revision, and ingress reads the setup from it; the fleet row keeps no config copy.
 5. **Readiness.** The saved fleet starts in `installing` with one check per need: definition, model, wallet, credential, connection, and grant. A missing credential or unapproved grant is a pending check, never a refused Save.
    - Repeating Save with the same idempotency key retries the same fleet.
    - The fleet turns `active` once every check passes and activation commits; run-now activation commits its initial turn in the same transaction. See [`data_flow.md`](./data_flow.md#fleet-creation-and-setup-recovery).
 6. **Provider wiring follows the trigger surface**: a GitHub App trigger needs a one-time workspace connection. A custom webhook keeps its per-fleet URL, which the saved fleet's response lists in `webhook_urls`. The platform holds its own App secrets, never a user's Personal Access Token (PAT) ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs").
 7. Future triggers are served with no restart and no watcher thread. Each trigger commits a queued turn to `thread.turns`. The control plane assigns that turn to an eligible `agentsfleet-runner` as a run, pushed as `Down::Run` on the runner's connection.
    - [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" carries the full path.
-8. **Improve.** A change to a saved fleet is a new draft from `--fleet <id> --setup-revision <n>`, reviewed, then applied as the next immutable revision (N11). Saving never publishes, and publishing never changes a saved fleet.
+8. **Improve.** A change to a saved fleet is a new draft from `--fleet <id> --setup-revision <n>`, reviewed, then applied as the next immutable revision (N11).
 
 After Save, the Fleet is no longer tied to the conversation that created it.
 
-### §8.2.3 Plugin reuse
-
-The **Plugin** holds reusable setup. An entry is created only when a person explicitly publishes a chat-created candidate (C6 `POST W/plugins`), and every publication is an immutable revision in `setup.plugin_revisions`. Saving from a Plugin revision pins that exact revision; a later revision never changes a fleet already saved from an earlier one.
+### §8.2.3 First scenarios
 
 Two first scenarios anchor the product flow:
 

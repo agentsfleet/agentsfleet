@@ -53,48 +53,31 @@ The task policy caps new admissions and interpretation sizes.
 New tasks save their configured allowances in the existing task-limit columns.
 Lowering admission caps preserves committed receipts, saved allowances and existing task candidates.
 
-Private setup turns also save their accepted call, wall-time, correction and provider-timeout limits.
-New defaults apply to new attempts.
-An existing attempt retains its saved limits after reconnect or a replica restart.
+Setup runs read no deployment setting.
+Each setup run saves a 300-second maximum runtime, the constant `afd_setup::limits::SETUP_RUNTIME`, and that runtime bounds its proposal loop.
+It bounds model work; it adds no deadline for a person to answer or approve.
 
-```toml
-[setup.turn]
-max_model_calls = 8
-max_wall_seconds = 300
-max_proposal_corrections = 1
-provider_timeout_seconds = 300
-```
-
-Deployments can lower these values within the compiled protocol ceilings.
-A zero correction allowance stops after the first refused proposal.
-These timers bound model work; they add no deadline for a person to answer or approve.
+A daemon file that still names `[inference]` or `[authoring.turn]` refuses startup (`daemon/main/src/config/policies.rs`).
 
 Maintenance settings control job cadence, page sizes and pass deadlines.
 Bounded startup staggering separates replicas' first passes while retaining each job's maximum initial delay.
 OpenTelemetry settings control actual exporter queues, batch sizes, timeouts and export intervals.
 
-Daemon provider connection and parsed-stream inactivity limits live under `[inference]`.
-The same checked values configure both the physical client and semantic stream reader.
-Customizing them creates a separate provider pool, preserving the storage and GitHub timeout policy.
-
-`[inference]` configures outbound provider requests; it does not define a local model server.
-The daemon and runner each read their own profile and construct their own HTTP clients.
+The daemon makes no model call, so it has no provider settings.
+The runner's `[inference]` section sets its provider connection and parsed-stream inactivity limits (`runner/main/src/config/mod.rs`).
+It configures outbound provider requests; it does not define a local model server.
 
 ```text
-Fleet execution:
-  runner agent loop -> selected external provider
+Fleet run:
+  runner guffbolt loop -> selected external provider
 
-Private setup:
-  runner setup loop -> daemon scoped model broker -> selected external provider
+Setup run:
+  runner guffbolt loop -> selected external provider
 ```
 
-The setup broker assembles protected context, resolves the provider key, records dispatch identity and usage, and returns normalized results.
-A setup runner receives a scoped capability; it receives no provider key through that run.
-The daemon's `[inference]` settings govern these brokered requests; the runner's matching fields govern its direct provider requests.
-
-Fleet runs use `guffbolt::drive`; private setup currently has a separate loop in `afr_supervisor/src/authoring/turn.rs`.
-Using the shared loop and changing provider-request placement are independent changes.
-The `Conversation::sample` implementation determines where a provider request runs.
+A setup run reaches its model the way a fleet run does, with the key its run payload carries (`afr_agent/src/loop/mod.rs`).
+A tenant's runner is never assigned a setup turn on the platform model, whose key that run would carry.
+Both run kinds use `guffbolt::drive`; the setup loop lives in `afr_agent/src/setup`.
 
 `[outbound.retries]` controls inline vendor-delivery attempts and exponential pauses.
 Exhausting that budget leaves the durable delivery available to later claims.
@@ -110,7 +93,7 @@ runner profile
   |-- provider_retries -> HTTP attempt budget + separate opening budget
   `-- supervisor
         |-- daemon retry timing and bounded operation attempts
-        |-- native host and setup renewal cadence
+        |-- native host renewal cadence
         `-- shared file-operation admission across all workers
 ```
 
@@ -125,10 +108,9 @@ Worker capacity remains assigned per runner in PostgreSQL.
 | Production files | Owner or change | Effect |
 | --- | --- | --- |
 | `af_inference/src/{timeouts,stream}.rs` | `TimeoutSettings`, `Timeouts`, `TurnControl::timeouts` | Share checked physical and semantic inactivity limits |
-| `afd_setup/src/model/provider/{mod,network/mod,dispatch}.rs`, `dispatch/funding.rs` | `Transport::timeouts`, `Network::configured`, `complete`, `Funding::confirm` | Pass the selected policy through single-send generation and counting |
 | `main/src/config/{settings,policies}.rs`, `preflight/runtime.rs`, `serve/clients.rs`, `plane/*` | Checked operational snapshot and separate storage pool owner | Inject daemon settings without changing storage timeouts |
 | `af_providers/src/{retry/settings,connect/mod,transport/mod,turn/mod,turn/progress}.rs` | `RetrySettings`, `RetryPolicy`, `Connector::configured`, `Turns::with_settings` | Bound sends and eligible reopenings independently |
-| `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*`, `authoring/renew.rs` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |
+| `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |
 | `afr_supervisor/src/recovery/admission.rs`, `lib.rs` | `RecoveryResources::configured`, composition | Share file admission across the runner |
 | `runner/main/src/config/mod.rs`, `main.rs`, `host.rs`, `deploy/baremetal/*`, `deploy/local/linux.sh` | Runner profile loading, installation and read-only mounting | Deliver a real profile to each runner binary |
 | `afd_outbound/src/{retry,worker/mod,lanes/mod,poster/mod}.rs`, `main/src/outbound.rs` | Checked retry policy and `deliver_with_policy` | Apply inline delivery limits without replacing durable claims |
@@ -484,7 +466,7 @@ max_udp_payload_bytes = 1232
 max_buffered_bytes = 16_777_216
 
 [runner.stream.data]
-max_buffered_bytes = 50_331_648
+max_buffered_bytes = 67_108_864
 
 [nats]
 wake_queue_capacity_fleets = 64
@@ -492,6 +474,10 @@ wake_queue_capacity_fleets = 64
 
 When incoming work fills its buffer budget, later messages wait for room.
 Heartbeats and commands have their own budget.
+
+The data budget's floor is 67,108,864 bytes, so each half holds one 32 MiB frame.
+The control budget's floor is 12 MiB, and both budgets stop at 512 MiB.
+Startup refuses a value outside its range (`af_stream/src/framing/memory.rs`).
 
 The NATS queue retains recent fleet wake-up hints used by the scheduler. [Message budgets](../../rustd/crates/protocol/af_stream/src/framing/budget.rs)
 

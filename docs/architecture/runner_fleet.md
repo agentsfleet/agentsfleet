@@ -275,6 +275,7 @@ A runner needs a `agt_r` token before it can receive work. The **platform operat
 
 The operator runs `agentsfleet platform runners register --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
 The CLI calls `POST /v1/admin/runners` and saves the one-time runner token in an owner-only file.
+The platform registers a host once: a second registration of the same `host_id` answers `409`, and its `Location` names the existing runner, whose token the operator rotates.
 The operator installs that token on the host as `AGENTSFLEET_RUNNER_TOKEN`.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
@@ -314,7 +315,9 @@ Revoking instead sets `status='revoked'` (M84_002) so every later call gets a 40
 ### A tenant's own runner
 
 A tenant that holds `runner:tenant` registers a host of its own with `agentsfleet runners register`.
-The CLI calls `POST /v1/tenants/me/runners` with a UUIDv7 `Idempotency-Key`, so a retry never registers a second runner.
+The CLI calls `POST /v1/tenants/me/runners`, which takes no `Idempotency-Key`: a tenant registers a host once.
+A second registration of the same `host_id` answers `409`, and its `Location` names the existing runner.
+The tenant recovers that runner's token with its `rotate` action.
 The row records the tenant, and nothing changes it afterwards.
 
 A tenant runner takes only its own tenant's work, and never a fleet that runs on the platform model.
@@ -444,13 +447,13 @@ A runner can hold multiple active runs. Busy status derives from live runs; the 
 
 ### Operator plane: the read surface
 
-The runner detail read (API reference › Fleet) takes lifetime counters one-to-one from `runner.lifetime_counters`. It never reads the per-runner metric families, which are process-global, restart-zeroed and capped (§"The four per-runner families").
+The runner detail read (API reference › Fleet) answers the runner and its live work. It holds no run totals.
 
-The run write paths maintain the counter row themselves. Each transition's owning SQL statement carries its own tally arm.
+Runs acquired, succeeded, failed and expired per runner are the metric `agentsfleet_runner_runs_total`, read in Grafana (§"The four per-runner families"). Each count is recorded after the transaction that moved the run commits, so a rolled-back transaction counts nothing. A stopped run counts as failed.
 
-`acquired` rides the run insert, `succeeded` and `failed` the report's settle, and `expired` the reclaim flip. So the tallies are transactional with the rows they count. They are exactly-once under retry, by the same guards that make the transitions exactly-once.
+`acquired` follows the run insert's commit, `succeeded` and `failed` the report's settle, and `expired` the reclaim flip or the retention sweep. A retried report or assignment that wins no row counts nothing, by the same guards that make the transitions exactly-once.
 
-The tallies are constant-time to read however long the history grows. It is the `fleet.activity_counters` shape extended to runners. Only the live-now summary still reads `thread.runs`, scoped to currently-active rows.
+The live-now summary reads `thread.runs`, scoped to currently-active rows.
 
 Run history: API reference › Fleet (List a runner's runs). Neither item struct carries `token_hash` or `request_json`, so emitting either is a compile error rather than a review catch.
 
@@ -488,13 +491,13 @@ The runner's report, the fleet's next assignment through `queue::ASSIGN_HEAD`, a
 
 That leaves a gap. A run whose runner died, whose turn was settled terminally elsewhere, on a fleet nobody messages again, would stay `active` forever. The age-keyed event sweep would prune its per-work records anyway, leaving an eternal "running" run with no history behind it.
 
-The sweep flips such rows to `expired` past the same cutoff, with the `expired` tally riding the flip exactly as reclaim does. It then lets them age out through their own window.
+The sweep flips such rows to `expired` past the same cutoff and counts each one on its runner as `expired`, as reclaim does. It then lets them age out through their own window.
 
 A cycle that fills every batch re-arms within the minute rather than idling the hour, so a backlog cannot outrun the sweeper. A failed cycle increments `agentsfleet_runner_retention_sweep_failures_total`, because the swept series alone cannot tell a sweeper that is not running from one that fails every pass.
 
 `idx_runs_status_updated_at` and `idx_history_event_type_created_at` serve the sweep's own `DELETE`s. They take `FOR UPDATE SKIP LOCKED`, so each replica's sweeper claims a disjoint batch.
 
-The lifetime counters survive pruning because they count transitions, not surviving rows. That is also why the counter backfill's conflict arm takes `GREATEST`. Re-run after pruning, a recount is smaller than the truth, and it must never lower a tally.
+Pruning never lowers a run count, because the counts are metrics of transitions and not rows.
 
 Pagination: [HTTP standard](../../.orly/standards/domains/http-responses.md) HTTP-PAGE and the API reference introduction.
 
@@ -1130,7 +1133,7 @@ Logs, spans and runner families: [observability.md](./observability.md) §"Signa
 
 ### The four per-runner families
 
-The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_runs`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`rustd/crates/protocol/af_observability/src/metrics/census.tsv`](../../rustd/crates/protocol/af_observability/src/metrics/census.tsv).
+The four are `agentsfleet_runner_failures_total`, `…_runs_total`, `…_last_seen_seconds` and `…_active_runs`, each labelled by `runner_id`. `…_runs_total` carries `outcome` as `acquired`, `succeeded`, `failed` or `expired`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`rustd/crates/protocol/af_observability/src/metrics/census.tsv`](../../rustd/crates/protocol/af_observability/src/metrics/census.tsv).
 
 The discovery counters describe gateway assign attempts without entity labels.
 The historical `run_polls_total` name counts these attempts; it does not imply runner run polling.
@@ -1156,7 +1159,7 @@ The series are identified by the OpenTelemetry resource attribute carrying the m
 
 | Series | Cross-replica query | Exact under N>1? |
 |--------|---------------------|------------------|
-| `failures_total`, `executions_total` | `sum by (runner_id, …)` | ✅ exact. Counters are additive; per-replica slices are disjoint |
+| `failures_total`, `runs_total` | `sum by (runner_id, …)` | ✅ exact. Counters are additive; per-replica slices are disjoint |
 | `last_seen_seconds` | `min by (runner_id)` | ✅ exact. The most-recent sighting wins; a replica that never saw the runner exposes no series, so `min` ignores it |
 | `active_runs` | `sum by (runner_id)` | ⚠️ approximate. The `+1` grant and `−1` release can land on different replicas, so the value is meaningful only in aggregate and a single-replica restart can transiently skew it |
 
@@ -1201,7 +1204,7 @@ Selection across kinds must avoid starvation with a bounded alternating eligible
 
 The `setup` schema defines creator-private `setup.drafts`, candidates and replay receipts. A draft's chat inputs are its `thread.turns` rows, and a setup run is a `thread.runs` row its draft owns.
 
-A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Plugin revisions join their existing domains.
+A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup revisions join their existing domains.
 
 The private progress channel is the draft's thread, `af.thread.{draft_id}.items`.
 The publisher and HTTP reader recheck current access before sending answer previews.

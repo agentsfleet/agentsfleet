@@ -41,12 +41,11 @@ Describe the job --> clarify --> /schedule --> review setup --> chat Save
                      |
                  loop the example
 
-Separate explicit action: Save and publish --> reusable Plugin revision
-Ordinary Save creates the fleet; it makes no Plugin-publication claim.
+Save creates the fleet.
 ```
 
-The sample story reports fleet creation after ordinary Save and makes no Plugin-publication claim.
-The website's machine-readable summaries describe native chat setup and separate, explicit Plugin publication.
+The sample story reports fleet creation after Save.
+The website's machine-readable summaries describe native chat setup.
 
 Messages type and append to the current history; the caret blinks during typing.
 The signal loader names the current activity, such as understanding the job or preparing the setup.

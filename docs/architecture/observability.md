@@ -114,7 +114,7 @@ a pickup objective is measured.
 | Indicator | Good events over valid events | Target | Where the target came from |
 |---|---|---|---|
 | Turn intake availability | `agentsfleet_turns_total{outcome=~"accepted\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Historical development measurement on 2026-09-17: 13 `appended`, 1 `replayed`, no refusals or deferrals. The current ledger producer labels committed work `accepted`. |
-| Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the same family excluding `fault="workload"` | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash`, both platform classes, so the blame split leaves the measured 70% unchanged. |
+| Runner success | `agentsfleet_runner_runs_total{outcome="succeeded"}` over `outcome=~"succeeded\|failed"`, less the workload reasons of `agentsfleet_runner_failures_total` | 95% | unproven. Measured on 2026-09-17: 7 runs succeeded and 3 failed, the failures split 2 `startup_posture` and 1 `runner_crash`, both platform reasons, so excluding workload reasons leaves the measured 70% unchanged. |
 | Queued turns that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_turns_total{outcome="accepted"}` | 99% | unproven. Measure both families from a ledger-queue daemon before assigning this target. |
 
 `agentsfleet_turn_backlog_oldest_age_seconds` reports the oldest unsettled
@@ -134,12 +134,9 @@ members and only five of them are ours: `startup_posture`, `runner_crash`, `tran
 `resource_kill`, `budget_breach` and `timeout_kill`) are the workload failing at something the
 platform delivered correctly.
 
-The daemon classifies them at the point of record. `fault_of`, in `af_observability`'s runner
-producer, maps the class to a two-member `Fault` set. The `agentsfleet_runner_executions_total` counter carries it as
-`fault` on the failing half only.
-
-A success has no `fault` label at all. That absence is what makes `{fault!="workload"}` read as
-"everything the platform was accountable for", because an absent label satisfies a not-equal matcher.
+`agentsfleet_runner_failures_total` carries each failure's class as `reason`. The objective
+subtracts the six workload reasons from the failed runs that `agentsfleet_runner_runs_total`
+counts, so a workload failure leaves both the good and the valid events.
 
 Workload faults leave the denominator rather than counting as successes. Counting them good would
 let a noisy tenant dilute the ratio and hide real platform failures behind volume. Counting them bad

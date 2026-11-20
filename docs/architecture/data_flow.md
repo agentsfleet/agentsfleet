@@ -365,10 +365,10 @@ What is specific to this flow: status works the same way. The assignment scan fi
 
 ```text
 person -> private draft/messages -> validated Definition -> reviewed candidate
-                                      |                         |
-                                explicit Plugin publish   chat Save
-                                      |                         |
-                                pinned Plugin revision -> retained installing fleet
+                                                                |
+                                                            chat Save
+                                                                |
+                                                     retained installing fleet
                                                                 |
                                              checks + actual grants + guarded activation
                                                                 |
@@ -381,11 +381,11 @@ person -> private draft/messages -> validated Definition -> reviewed candidate
 
 Messages are durable recovery; progress streams are hints. Private draft access requires its creator and current membership. Runtime history stays fleet-scoped.
 
-An unchanged Plugin install uses a pinned revision directly. Improve applies a reviewed setup revision without publishing it. An accepted initial turn survives reload with the same turn identity.
+Improve applies a reviewed setup revision to a saved fleet. An accepted initial turn survives reload with the same turn identity.
 
-### A. SAVE  (a reviewed private candidate or a pinned Plugin revision)
+### A. SAVE  (a reviewed private candidate)
 
-One creation sequence serves both sources; §"Fleet creation and setup recovery" below carries it. The retained creation identity makes retries resume the same setup.
+§"Fleet creation and setup recovery" below carries the creation sequence. The retained creation identity makes retries resume the same setup.
 
 ### Fleet creation and setup recovery
 
@@ -393,21 +393,19 @@ One creation sequence serves both sources; §"Fleet creation and setup recovery"
 
 A draft has no queued/running message when Save begins. GET draft returns normalized effective setup, immutable requirements, live readiness, and a digest. The person chooses Save or Save and run now; trigger content is identical.
 
-Plugin installation of an unchanged revision bypasses a draft and reads its review through Inspect. Changing its name/model/setup opens a draft so every effective input has been reviewed.
-
 Stop raises the draft's accepted-message watermark before Save. It cancels queued and running messages through that sequence; retained attempts keep their accounting. Discovery and the locked assignment check only attempts above the watermark.
 
 A fresh Send refuses uncancelled unknown provider usage after checking exact replay. Stop allows a higher-sequence message to run subject to ordinary capacity and balance checks.
 
 Save keeps the watermark while the draft enters `saving`; activation closes it. An archive during setup that restores `editing` also keeps the watermark, so old proposals and answers stay fenced. Old reports may still settle their original attempt.
 
-Already accepted candidate edits stay available for the person's review; Stop does not undo them. `afd_setup` owns the Stop implementation, the publication guard, and the creation regression tests that define these boundaries.
+Already accepted candidate edits stay available for the person's review; Stop does not undo them. `afd_setup` owns the Stop implementation and the creation regression tests that define these boundaries.
 
 POST fleets includes a UUIDv7 `Idempotency-Key`, immutable source, reviewed name, digest and start choice. Authorization precedes recording the normalized body and fleet identity. Changed-body reuse returns 409.
 
 Within the [setup replay window](api_resources.md#shared-wire-rules), the same key and body resume that fleet’s setup checks. Progress may advance; accepted inputs and identity stay unchanged. After expiry, inspect the linked fleet before another Save.
 
-The draft enters `saving` with the linked fleet identity. A previously published candidate's Plugin receipt stays a source pin; do not publish it again or change an existing revision. Save itself creates no Plugin entry, so publishing before Save and Save without publication both work.
+The draft enters `saving` with the linked fleet identity.
 
 #### Bounded setup checks
 

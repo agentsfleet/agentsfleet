@@ -45,7 +45,7 @@ max_buffered_bytes = 16_777_216
 
 # Work offers, reports and activity share the data budget.
 [runner.stream.data]
-max_buffered_bytes = 50_331_648
+max_buffered_bytes = 67_108_864
 
 [runner.run]
 ttl_seconds = 35

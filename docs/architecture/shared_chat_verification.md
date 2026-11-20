@@ -227,7 +227,7 @@ Partial answers and unknown usage remain visible after failure.
 ### Setup and runtime stay together
 
 New fleet supports multiple setup messages before an explicit chat **Save**.
-A confirmed save opens its fleet conversation. **Save and publish** instead publishes the reusable setup from the flap.
+A confirmed save, from chat or from the **Save** flap, opens its fleet conversation.
 
 **Edit setup** returns to the setup page with the latest saved revision.
 

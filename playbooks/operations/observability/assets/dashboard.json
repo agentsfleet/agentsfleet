@@ -134,7 +134,7 @@
           "editorMode": "code",
           "instant": false,
           "legendFormat": "success",
-          "expr": "sum(increase(agentsfleet_runner_executions_total{outcome=\"processed\"}[$__range])) / sum(increase(agentsfleet_runner_executions_total[$__range]))"
+          "expr": "sum(increase(agentsfleet_runner_runs_total{outcome=\"succeeded\"}[$__range])) / sum(increase(agentsfleet_runner_runs_total{outcome=~\"succeeded|failed\"}[$__range]))"
         }
       ],
       "options": {
@@ -245,7 +245,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (outcome) (rate(agentsfleet_runner_executions_total[$__rate_interval]))",
+          "expr": "sum by (outcome) (rate(agentsfleet_runner_runs_total[$__rate_interval]))",
           "legendFormat": "{{outcome}}",
           "refId": "A"
         },

@@ -29,7 +29,6 @@ A tripped gate archives the fleet; approving a setup grant retries setup without
 - get_tenant_billing_report: GET /v1/tenants/me/billing/reports/current
 - get_model_library:      GET /v1/models    # paged; ?limit=&starting_after=&q=&provider= — ETag/If-None-Match
 - list_tenant_model_entries: GET /v1/tenants/me/models   # paged; the tenant's own model registry
-- list_workspace_plugins:     GET /v1/workspaces/{workspace_id}/plugins   # paged account-owned Plugins
 
 Every list above is a bounded keyset page: read `next_cursor` and follow it.
 A client that reads only the first page silently loses everything past it.

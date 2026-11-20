@@ -23,7 +23,7 @@ The [chat workspace design](../designs/chat-within-a-workspace.md) applies these
 It retains assistant-ui, keys private draft/shared fleet adapters by account/workspace/subject, and loads configuration details on intent.
 
 Private chat **Save** and editor **Save changes** follow the [single resource reference](api_resources.md).
-The **Save and publish** flap publishes the reviewed setup directly, with elapsed progress and native retry.
+The **Save** flap saves the reviewed setup directly, with elapsed progress and native retry.
 
 The setup API and workspace chat adapters are implemented. The [original API proposal](../reviews/workspace-setup/api.md) records design history; [API resources](api_resources.md) describes the current routes.
 
@@ -242,11 +242,11 @@ The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain t
 
 A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps setup open. When an initial run is requested, Pending remains until its committed turn is confirmed with its expected turn identity.
 
-Save does not publish a Plugin. Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
+Models and billing resolve from the workspace owner's account; joined members receive authorized owner-facing actions. Edit fleet starts a private draft against a pinned setup revision.
 
 Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
 
-The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet. Publication remains an explicit action in the chat menu.
+The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet.
 
 The saved view separates setup readiness from the first run's acceptance; an accepted run can still be running.
 The inline receipt shows `Save done vN`; readiness remains separate from the saved version.
@@ -258,7 +258,7 @@ The saved response supplies the Definition when present; otherwise the view reta
 New fleet keeps the private setup conversation open across multiple messages.
 The header shows the reviewed fleet name and the **Edit instructions** pencil.
 
-The **Save and publish** flap publishes a reusable Plugin. Sending **Save** in chat saves the private fleet and opens its conversation.
+The **Save** flap saves the fleet. Sending **Save** in chat also saves it and opens its conversation.
 
 The sidebar's **Fleets** list shows authorized saved fleets.
 Private drafts appear under **Unfinished setups** on **New fleet**.

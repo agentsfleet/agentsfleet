@@ -888,7 +888,7 @@
           "Runners"
         ],
         "summary": "Register a platform runner",
-        "description": "Registers a platform runner and assigns its policy. Requires `runner:register` on a bearer credential. Save the returned `agt_r` token securely; it appears once. The runner must apply the assigned policy.",
+        "description": "Registers a platform runner and assigns its policy. Requires `runner:register` on a bearer credential. Save the returned `agt_r` token securely; it appears once. The runner must apply the assigned policy. A host registers once: registering a `host_id` again answers 409 with `current_state` `registered` and `Location` naming its runner, whose token the runner's `rotate` action recovers.",
         "operationId": "register_platform_runner",
         "requestBody": {
           "content": {
@@ -933,6 +933,24 @@
           },
           "403": {
             "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This host is already registered; `Location` names its runner",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The runner the host is registered as"
+              }
+            },
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -995,7 +1013,7 @@
           "Runners"
         ],
         "summary": "Read a platform runner",
-        "description": "Returns a runner's details, current work, and lifetime counters. Requires platform administrator access.",
+        "description": "Returns a runner's details and current work. Requires platform administrator access.",
         "operationId": "get_platform_runner",
         "parameters": [
           {
@@ -1501,7 +1519,7 @@
           "Runners"
         ],
         "summary": "List a runner's work assignments",
-        "description": "Lists a runner's work assignments newest first, with fleet outcomes and failure reasons. Requires platform administrator access. Continue with `next_cursor` as `starting_after`.\n\n`destination` is `available` for a fleet in your account, `fleet_deleted` after deletion, or `not_permitted` in another account. Fleet and event fields become null when their records are removed.\n\nCompleted assignments remain for 30 days after settlement. Running or renewing assignments are retained. Assignments abandoned by a dead runner expire after the same window, then receive their own retention window.\n\nAcquisition and release activity remains for 30 days after each event; other runner lifecycle activity is retained. Lifetime counters remain unchanged when history is removed.",
+        "description": "Lists a runner's work assignments newest first, with fleet outcomes and failure reasons. Requires platform administrator access. Continue with `next_cursor` as `starting_after`.\n\n`destination` is `available` for a fleet in your account, `fleet_deleted` after deletion, or `not_permitted` in another account. Fleet and event fields become null when their records are removed.\n\nCompleted assignments remain for 30 days after settlement. Running or renewing assignments are retained. Assignments abandoned by a dead runner expire after the same window, then receive their own retention window.\n\nAcquisition and release activity remains for 30 days after each event; other runner lifecycle activity is retained.",
         "operationId": "list_platform_runner_runs",
         "parameters": [
           {
@@ -10332,19 +10350,8 @@
           "Runners"
         ],
         "summary": "Register a tenant runner",
-        "description": "Registers a runner that takes only the calling tenant's work. Requires `runner:tenant`, which a platform admin grants per account. Send a UUIDv7 `Idempotency-Key`. A retry with the same key and body answers 200 with the same runner and no token. The token appears only once, so rotate it to recover. The same key with another body answers 409. Durable tasks are stored off whatever the body asks; only a platform admin turns them on.",
+        "description": "Registers a runner that takes only the calling tenant's work. Requires `runner:tenant`, which a platform admin grants per account. A host registers once: `host_id` is unique within the tenant, and `Idempotency-Key` is not used. Registering a host again answers 409 with `current_state` `registered` and `Location` naming its runner. The token appears only once, so recover it with that runner's `rotate` action. Durable tasks are stored off whatever the body asks; only a platform admin turns them on.",
         "operationId": "register_tenant_runner",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "Required UUIDv7 registration key.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -10356,16 +10363,6 @@
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "A retry of a registration that already succeeded; no token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegistrationReplay"
-                }
-              }
-            }
-          },
           "201": {
             "description": "Runner registered; the bearer token is returned exactly once",
             "content": {
@@ -10407,7 +10404,15 @@
             }
           },
           "409": {
-            "description": "This Idempotency-Key already registered a runner with a different request",
+            "description": "This host is already registered; `Location` names its runner",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The runner the host is registered as"
+              }
+            },
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14000,7 +14005,7 @@
           "Fleets"
         ],
         "summary": "Save a reviewed fleet",
-        "description": "Saves a reviewed private draft or selected Plugin revision as a fleet. Inspect the source's complete `review` before copying `review.review_digest`. For a draft, read `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. Setup progress names missing prerequisites. Retry within 24 hours using the same `Idempotency-Key` and unchanged request to recover the same fleet and initial event. After that window, inspect existing resources before creating again. A requested immediate run must be accepted before Save completes.",
+        "description": "Saves a reviewed private draft as a fleet. Inspect the draft's complete `review` before copying `review.review_digest`, and read `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. Setup progress names missing prerequisites. Retry within 24 hours using the same `Idempotency-Key` and unchanged request to recover the same fleet and initial event. After that window, inspect existing resources before creating again. A requested immediate run must be accepted before Save completes.",
         "operationId": "create_fleet",
         "parameters": [
           {
@@ -18155,1010 +18160,6 @@
         ]
       }
     },
-    "/v1/workspaces/{workspace_id}/plugins": {
-      "get": {
-        "tags": [
-          "Plugins"
-        ],
-        "summary": "List available Plugin entries",
-        "operationId": "list_workspace_plugins",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Use this collection's previous `next_cursor` unchanged.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Page size, 1..100; default 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Account-owned entries",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CursorPage_Card"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid query or cursor",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Plugins"
-        ],
-        "summary": "Publish a chat candidate to Plugin",
-        "operationId": "publish_workspace_plugin",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "`UUIDv7` key. The same key and body replay the accepted result; a\nchanged body under the same key conflicts.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Publish"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Explicit publication",
-            "headers": {
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Location": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Published"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid candidate or label",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Private candidate unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Busy or changed operation",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "410": {
-            "description": "The resource is gone and will not return",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}": {
-      "get": {
-        "tags": [
-          "Plugins"
-        ],
-        "summary": "Inspect a Plugin revision",
-        "operationId": "read_workspace_plugin",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "plugin_id",
-            "in": "path",
-            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "revision_id",
-            "in": "query",
-            "description": "Pinned revision UUIDv7; defaults to current head",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Native setup and current readiness",
-            "headers": {
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Plugin"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Plugin or revision unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "Plugins"
-        ],
-        "summary": "Delete an owned Plugin entry",
-        "operationId": "delete_workspace_plugin",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "plugin_id",
-            "in": "path",
-            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Entry removed; installed snapshots retained"
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Owned Plugin unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions": {
-      "get": {
-        "tags": [
-          "Plugins"
-        ],
-        "summary": "List immutable Plugin revisions",
-        "operationId": "list_plugin_revisions",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "plugin_id",
-            "in": "path",
-            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Use this collection's previous `next_cursor` unchanged.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Page size, 1..100; default 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Revision metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CursorPage_RevisionSummary"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid query or cursor",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Plugin unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Plugins"
-        ],
-        "summary": "Publish a revision to an owned Plugin",
-        "operationId": "publish_plugin_revision",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "plugin_id",
-            "in": "path",
-            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "`UUIDv7` key. The same key and body replay the accepted result; a\nchanged body under the same key conflicts.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "description": "Current `ETag` from the resource's GET response. An outdated value returns 412 with\nthe current `etag`; omitting it returns 428.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PublishRevision"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Explicit immutable revision",
-            "headers": {
-              "ETag": {
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Location": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Published"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Entry or candidate unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Busy or changed operation",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "410": {
-            "description": "The resource is gone and will not return",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "412": {
-            "description": "Stale Plugin tag",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "428": {
-            "description": "Missing Plugin tag",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions/{revision_id}": {
-      "get": {
-        "tags": [
-          "Plugins"
-        ],
-        "summary": "Inspect an immutable Plugin revision",
-        "operationId": "read_plugin_revision",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "plugin_id",
-            "in": "path",
-            "description": "Plugin identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "revision_id",
-            "in": "path",
-            "description": "Revision identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Immutable content and live readiness",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevisionRead"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Plugin or revision unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}": {
       "put": {
         "tags": [
@@ -21091,112 +20092,6 @@
         },
         "additionalProperties": false
       },
-      "Card": {
-        "type": "object",
-        "description": "Reusable setup summary, excluding instructions and private chat text.",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "created_at",
-          "requirements",
-          "required_credentials_reasons",
-          "head_revision_id",
-          "head_revision",
-          "etag"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Creation timestamp, such as `2026-10-24T05:00:00.000Z`."
-          },
-          "description": {
-            "type": "string",
-            "description": "Authored description."
-          },
-          "etag": {
-            "type": "string",
-            "description": "Strong Plugin version."
-          },
-          "head_revision": {
-            "type": "string",
-            "description": "Decimal entry-local revision of that head, such as `3`."
-          },
-          "head_revision_id": {
-            "type": "string",
-            "description": "Immutable current head `UUIDv7`."
-          },
-          "id": {
-            "type": "string",
-            "description": "Entry `UUIDv7`."
-          },
-          "name": {
-            "type": "string",
-            "description": "Human label."
-          },
-          "required_credentials_reasons": {
-            "description": "Authored explanation keyed by credential name."
-          },
-          "requirements": {
-            "type": "object",
-            "description": "Declarative needs of the head revision."
-          }
-        }
-      },
-      "Card_Value": {
-        "type": "object",
-        "description": "Reusable setup summary, excluding instructions and private chat text.",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "created_at",
-          "requirements",
-          "required_credentials_reasons",
-          "head_revision_id",
-          "head_revision",
-          "etag"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Creation timestamp, such as `2026-10-24T05:00:00.000Z`."
-          },
-          "description": {
-            "type": "string",
-            "description": "Authored description."
-          },
-          "etag": {
-            "type": "string",
-            "description": "Strong Plugin version."
-          },
-          "head_revision": {
-            "type": "string",
-            "description": "Decimal entry-local revision of that head, such as `3`."
-          },
-          "head_revision_id": {
-            "type": "string",
-            "description": "Immutable current head `UUIDv7`."
-          },
-          "id": {
-            "type": "string",
-            "description": "Entry `UUIDv7`."
-          },
-          "name": {
-            "type": "string",
-            "description": "Human label."
-          },
-          "required_credentials_reasons": {
-            "description": "Authored explanation keyed by credential name."
-          },
-          "requirements": {
-            "type": "object",
-            "description": "Declarative needs of the head revision."
-          }
-        }
-      },
       "CatalogueEntry": {
         "type": "object",
         "description": "One row of `GET …/connectors`.\n\nNo secret material and no field that could carry any — the whole document is\nfour facts about availability.",
@@ -22737,88 +21632,6 @@
           }
         }
       },
-      "CursorPage_Card": {
-        "type": "object",
-        "description": "One page of results. `total` is null when unavailable; `next_cursor` is null on the last\npage.",
-        "required": [
-          "items"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "Reusable setup summary, excluding instructions and private chat text.",
-              "required": [
-                "id",
-                "name",
-                "description",
-                "created_at",
-                "requirements",
-                "required_credentials_reasons",
-                "head_revision_id",
-                "head_revision",
-                "etag"
-              ],
-              "properties": {
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Creation timestamp, such as `2026-10-24T05:00:00.000Z`."
-                },
-                "description": {
-                  "type": "string",
-                  "description": "Authored description."
-                },
-                "etag": {
-                  "type": "string",
-                  "description": "Strong Plugin version."
-                },
-                "head_revision": {
-                  "type": "string",
-                  "description": "Decimal entry-local revision of that head, such as `3`."
-                },
-                "head_revision_id": {
-                  "type": "string",
-                  "description": "Immutable current head `UUIDv7`."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Entry `UUIDv7`."
-                },
-                "name": {
-                  "type": "string",
-                  "description": "Human label."
-                },
-                "required_credentials_reasons": {
-                  "description": "Authored explanation keyed by credential name."
-                },
-                "requirements": {
-                  "type": "object",
-                  "description": "Declarative needs of the head revision."
-                }
-              }
-            },
-            "description": "Current bounded rows."
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Use this value unchanged for the next page, or stop when null."
-          },
-          "total": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Known total, or null.",
-            "minimum": 0
-          }
-        }
-      },
       "CursorPage_DraftCard": {
         "type": "object",
         "description": "One page of results. `total` is null when unavailable; `next_cursor` is null on the last\npage.",
@@ -22869,14 +21682,6 @@
                     "null"
                   ],
                   "description": "Related fleet, when available."
-                },
-                "publication_revision": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int64",
-                  "description": "The Plugin revision this chat published; null until it publishes."
                 },
                 "setup_revision": {
                   "type": [
@@ -23022,64 +21827,6 @@
                       "type": "null"
                     }
                   ]
-                }
-              }
-            },
-            "description": "Current bounded rows."
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Use this value unchanged for the next page, or stop when null."
-          },
-          "total": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Known total, or null.",
-            "minimum": 0
-          }
-        }
-      },
-      "CursorPage_RevisionSummary": {
-        "type": "object",
-        "description": "One page of results. `total` is null when unavailable; `next_cursor` is null on the last\npage.",
-        "required": [
-          "items"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "History metadata without instructions or full configuration.",
-              "required": [
-                "id",
-                "revision",
-                "canonical_digest",
-                "created_at"
-              ],
-              "properties": {
-                "canonical_digest": {
-                  "type": "string",
-                  "description": "Content identity."
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Creation timestamp, such as `2026-10-24T05:00:00.000Z`."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Immutable `UUIDv7`."
-                },
-                "revision": {
-                  "type": "string",
-                  "description": "Decimal entry-local revision."
                 }
               }
             },
@@ -25680,17 +24427,6 @@
             ],
             "description": "Related fleet, when this draft targets or created one."
           },
-          "publication": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Publication",
-                "description": "Explicit publication receipt, never synthesized by Save."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "review": {
             "type": [
               "object",
@@ -25749,14 +24485,6 @@
               "null"
             ],
             "description": "Related fleet, when available."
-          },
-          "publication_revision": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "The Plugin revision this chat published; null until it publishes."
           },
           "setup_revision": {
             "type": [
@@ -25922,17 +24650,6 @@
               "null"
             ],
             "description": "Related fleet, when this draft targets or created one."
-          },
-          "publication": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Publication",
-                "description": "Explicit publication receipt, never synthesized by Save."
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "review": {
             "type": [
@@ -26142,7 +24859,8 @@
           "provider_failed",
           "provider_usage_unknown",
           "attempt_timed_out",
-          "policy_changed"
+          "policy_changed",
+          "frame_too_large"
         ]
       },
       "FannedOut": {
@@ -28822,34 +27540,6 @@
         },
         "additionalProperties": false
       },
-      "Plugin": {
-        "type": "object",
-        "description": "Selected reusable content and readiness for the current workspace.",
-        "required": [
-          "card",
-          "head",
-          "review",
-          "etag"
-        ],
-        "properties": {
-          "card": {
-            "$ref": "#/components/schemas/Card_Value",
-            "description": "Current entry card."
-          },
-          "etag": {
-            "type": "string",
-            "description": "Strong Plugin version."
-          },
-          "head": {
-            "$ref": "#/components/schemas/Revision_Value_Value",
-            "description": "Explicitly selected revision or current head."
-          },
-          "review": {
-            "type": "object",
-            "description": "Contextual current readiness."
-          }
-        }
-      },
       "PollSessionResponse": {
         "type": "object",
         "description": "`GET /v1/auth/sessions/{session_id}` — where a login has got to.",
@@ -29003,90 +27693,6 @@
           "self_managed"
         ]
       },
-      "Publication": {
-        "type": "object",
-        "description": "The exact reusable snapshot explicitly published by this creator.",
-        "required": [
-          "plugin_id",
-          "revision_id",
-          "canonical_digest"
-        ],
-        "properties": {
-          "canonical_digest": {
-            "type": "string",
-            "description": "Content identity that Save can verify and reuse."
-          },
-          "plugin_id": {
-            "type": "string",
-            "description": "Reusable entry identity."
-          },
-          "revision_id": {
-            "type": "string",
-            "description": "Immutable published snapshot."
-          }
-        }
-      },
-      "Publish": {
-        "type": "object",
-        "description": "Explicitly publish a creator-owned chat candidate as a new reusable entry.",
-        "required": [
-          "draft_candidate_id",
-          "label"
-        ],
-        "properties": {
-          "draft_candidate_id": {
-            "type": "string",
-            "description": "Current creator-private idle candidate `UUIDv7`."
-          },
-          "label": {
-            "type": "string",
-            "description": "Display label, 1..100 characters."
-          }
-        },
-        "additionalProperties": false
-      },
-      "PublishRevision": {
-        "type": "object",
-        "description": "Explicitly append a chat candidate to the selected owned entry.",
-        "required": [
-          "draft_candidate_id"
-        ],
-        "properties": {
-          "draft_candidate_id": {
-            "type": "string",
-            "description": "Current creator-private idle candidate `UUIDv7`."
-          }
-        },
-        "additionalProperties": false
-      },
-      "Published": {
-        "type": "object",
-        "description": "Publication receipt retains the original accepted revision on retry.",
-        "required": [
-          "plugin_id",
-          "revision_id",
-          "head_revision_id",
-          "etag"
-        ],
-        "properties": {
-          "etag": {
-            "type": "string",
-            "description": "Current Plugin `ETag` for conditional updates."
-          },
-          "head_revision_id": {
-            "type": "string",
-            "description": "Current head `UUIDv7`."
-          },
-          "plugin_id": {
-            "type": "string",
-            "description": "Entry `UUIDv7`."
-          },
-          "revision_id": {
-            "type": "string",
-            "description": "Accepted immutable revision `UUIDv7`."
-          }
-        }
-      },
       "Readiness": {
         "type": "object",
         "description": "Whether this server can accept traffic. Both 200 and 503 responses include separate\ndatabase and event-queue checks.",
@@ -29157,25 +27763,6 @@
           "runner_token": {
             "type": "string",
             "description": "The minted bearer token. Secret — revealed once, never re-readable."
-          }
-        },
-        "additionalProperties": false
-      },
-      "RegistrationReplay": {
-        "type": "object",
-        "description": "A repeated tenant registration under the same Idempotency-Key and body.\n\nThe first response revealed the runner's one-time token, which is never\nstored, so the replay answers everything else; the caller rotates the token\nto recover it.",
-        "required": [
-          "runner_id",
-          "assigned_policy"
-        ],
-        "properties": {
-          "assigned_policy": {
-            "$ref": "#/components/schemas/AssignedPolicy",
-            "description": "The assignment as first registered; a later edit is read from the runner."
-          },
-          "runner_id": {
-            "type": "string",
-            "description": "The runner the first request registered."
           }
         },
         "additionalProperties": false
@@ -29304,102 +27891,6 @@
           "resolved_by": {
             "type": "string",
             "description": "Who decided it — not necessarily this caller."
-          }
-        }
-      },
-      "RevisionRead": {
-        "type": "object",
-        "description": "Immutable revision with live contextual readiness.",
-        "required": [
-          "revision",
-          "review"
-        ],
-        "properties": {
-          "review": {
-            "type": "object",
-            "description": "Current owner/workspace readiness."
-          },
-          "revision": {
-            "$ref": "#/components/schemas/Revision_Value_Value",
-            "description": "Immutable reusable content."
-          }
-        }
-      },
-      "RevisionSummary": {
-        "type": "object",
-        "description": "History metadata without instructions or full configuration.",
-        "required": [
-          "id",
-          "revision",
-          "canonical_digest",
-          "created_at"
-        ],
-        "properties": {
-          "canonical_digest": {
-            "type": "string",
-            "description": "Content identity."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Creation timestamp, such as `2026-10-24T05:00:00.000Z`."
-          },
-          "id": {
-            "type": "string",
-            "description": "Immutable `UUIDv7`."
-          },
-          "revision": {
-            "type": "string",
-            "description": "Decimal entry-local revision."
-          }
-        }
-      },
-      "Revision_Value_Value": {
-        "type": "object",
-        "description": "Immutable reusable setup selected by its revision identifier.",
-        "required": [
-          "id",
-          "plugin_id",
-          "revision",
-          "definition",
-          "canonical_digest",
-          "requirements",
-          "policy_semantics",
-          "created_at"
-        ],
-        "properties": {
-          "canonical_digest": {
-            "type": "string",
-            "description": "Canonical content identity."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Creation timestamp, such as `2026-10-24T05:00:00.000Z`."
-          },
-          "definition": {
-            "$ref": "#/components/schemas/FleetDefinition",
-            "description": "Validated native setup."
-          },
-          "id": {
-            "type": "string",
-            "description": "Revision `UUIDv7`."
-          },
-          "plugin_id": {
-            "type": "string",
-            "description": "Entry `UUIDv7`."
-          },
-          "policy_semantics": {
-            "type": "string",
-            "description": "Pinned policy meaning."
-          },
-          "requirements": {
-            "type": "object",
-            "description": "Immutable declarative needs."
-          },
-          "revision": {
-            "type": "string",
-            "description": "Decimal entry-local revision."
           }
         }
       },
@@ -29776,11 +28267,7 @@
             "type": "object",
             "required": [
               "active_run_count",
-              "active_fleet_count",
-              "runs_acquired",
-              "runs_succeeded",
-              "runs_failed",
-              "runs_expired"
+              "active_fleet_count"
             ],
             "properties": {
               "active_fleet_count": {
@@ -29792,26 +28279,6 @@
                 "type": "integer",
                 "format": "int64",
                 "description": "Live runs currently held."
-              },
-              "runs_acquired": {
-                "type": "integer",
-                "format": "int64",
-                "description": "Lifetime acquired count."
-              },
-              "runs_expired": {
-                "type": "integer",
-                "format": "int64",
-                "description": "Lifetime expired count."
-              },
-              "runs_failed": {
-                "type": "integer",
-                "format": "int64",
-                "description": "Lifetime failed count."
-              },
-              "runs_succeeded": {
-                "type": "integer",
-                "format": "int64",
-                "description": "Lifetime successful count."
               },
               "selftest": {
                 "oneOf": [
@@ -29843,7 +28310,7 @@
             }
           }
         ],
-        "description": "One runner with its live and lifetime counters."
+        "description": "One runner with its live counters."
       },
       "RunnerEventItem": {
         "type": "object",
@@ -30353,31 +28820,6 @@
                 "enum": [
                   "draft"
                 ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Pinned accessible Plugin revision.",
-            "required": [
-              "plugin_id",
-              "revision_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "plugin"
-                ]
-              },
-              "plugin_id": {
-                "type": "string",
-                "description": "Entry identity."
-              },
-              "revision_id": {
-                "type": "string",
-                "description": "Immutable revision identity."
               }
             }
           }
@@ -30903,31 +29345,6 @@
           },
           {
             "type": "object",
-            "description": "Capture a published immutable revision.",
-            "required": [
-              "plugin_id",
-              "revision_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "plugin"
-                ]
-              },
-              "plugin_id": {
-                "type": "string",
-                "description": "Entry identity."
-              },
-              "revision_id": {
-                "type": "string",
-                "description": "Selected revision identity."
-              }
-            }
-          },
-          {
-            "type": "object",
             "description": "Improve an existing fleet's selected setup.",
             "required": [
               "fleet_id",
@@ -30972,7 +29389,7 @@
             }
           }
         ],
-        "description": "Native initial setup. A Plugin or fleet source pins a revision explicitly."
+        "description": "Native initial setup. A fleet source pins a revision explicitly."
       },
       "Start": {
         "oneOf": [

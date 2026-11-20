@@ -81,19 +81,11 @@ The proposed limits and performance still need workload measurements before any 
 Setup wording is user-authored through chat. Selecting a starter inserts editable text into the composer; daemon-owned Markdown templates do not supply fleet instructions or decision criteria.
 The setup tool schema describes native fields and supported values.
 
-A short system envelope carries current candidate/save state and the distinction between conversation and a requested edit.
-Before returning an edit proposal, the daemon evaluates the newest saved user message with the runner's configured decision model. It asks one question only.
+A setup run's first message carries the head candidate, labelled as untrusted setup data, then the person's newest message.
+The `propose_setup` description is also the run's instructions (`af_fleet_runtime/src/setup/mod.rs`).
+It tells the model to call the tool only when that message asks to create or change the setup.
 
-“Does this message ask to change the fleet's setup (instructions, configuration, name, schedule or access)?”
-A no answer uses `ProposalRejection::EditNotRequested`. Yes permits ordinary validation. Unavailable, stale or malformed decisions record a bounded fallback and retain current chat behavior.
-
-The existing `DecisionEvaluator`/`DecisionClient` handles the physical request; the runner catalogue resolver supplies its reviewed profile, and platform-admin Secrets supply fresh credentials.
-A native `setup.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text.
-
-It commits physical intent before sending and preserves frozen decision pricing and usage independently of private chat deletion.
-The per-call reservation is tentative, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum. Actual provider usage remains authoritative, and further decision checks stop on unresolved usage or overage.
-
-Decision charges use the existing biller, `AuthoringAttempt` work key and `SetupChat` attribution, with a distinct usage-line sequence. An unresolved physical check retains its reservation without blocking the conversational reply.
+No separate decision model checks the message. When the person asked to save, the tool refuses every proposal as `edit_not_requested`, and the report saves the reviewed head (`afr_tools/src/setup/mod.rs`).
 No new task scheduler, setup-chat intake SQL or question-drafting decision path is introduced.
 
 Setup chat or the CLI's setup flow drafts `instructions_md` and the fleet owner's editable `decision_policy` through the existing private flow.
@@ -590,7 +582,7 @@ Kernel-only proof remains explicitly separate when its required host capability 
 
 New task reads pair their actual scope and keyset ordering with indexes. Pending input seeks the existing unsettled fleet/sequence index.
 
-Unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history. Setup edit checks use their existing unique attempt/usage-sequence index; a duplicate attempt-only index is unnecessary.
+Unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history.
 
 Account and replay lookups stay point or bounded per-attempt reads. Query-plan measurements, queue-depth cases and hostile-history cases remain part of final verification; adding LIMIT does not prove a bounded scan.
 
