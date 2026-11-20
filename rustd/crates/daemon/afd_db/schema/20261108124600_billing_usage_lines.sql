@@ -1,6 +1,7 @@
 -- One priced provider request or runtime slice. No foreign keys: a line outlives what it names,
 -- so references are opaque and `fleet_name` is the name at write time. Amounts are nanodollars.
--- By `work_type`: a fleet line sets `fleet_id` and `turn_id`, a setup line sets `run_id`.
+-- By `work_type`: a fleet line sets `fleet_id` and `turn_id`; a setup line sets `run_id`, and
+-- `turn_id` to the draft message its run answered.
 CREATE TABLE billing.usage_lines (
     id                          UUID   PRIMARY KEY,
     work_type                   TEXT   NOT NULL,

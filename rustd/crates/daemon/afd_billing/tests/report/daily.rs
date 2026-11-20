@@ -77,7 +77,7 @@ async fn usage_keeps_deleted_fleet_models() {
     f.close().await;
 }
 
-/// One run crossing UTC midnight, with a runtime-only slice, a setup attempt
+/// One run crossing UTC midnight, with a runtime-only slice, a setup run
 /// and a line still unsettled; the fleet identifier has no live fleet row.
 async fn seed_days(f: &Fixture) {
     let mut first = Line::runtime(&f.tenant, &f.fleet, 17);

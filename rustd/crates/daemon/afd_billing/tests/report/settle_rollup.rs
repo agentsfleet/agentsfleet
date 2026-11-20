@@ -25,7 +25,7 @@ const SETTLE_STATEMENTS: [&[u8]; 5] = [
     b"COMMIT",
 ];
 
-/// One fleet run of two lines and one setup attempt, logged and unsettled.
+/// One fleet run of two lines and one setup run, logged and unsettled.
 async fn run_and_setup(f: &Fixture) -> (Line, Line) {
     let first = Line::runtime(&f.tenant, &f.fleet, 17);
     let call = first.next(LineKind::Model, 0, 5);

@@ -31,7 +31,9 @@ pub(super) const RUNTIME: i64 = 31;
 /// What each fixture wallet opens with; settlements debit it.
 pub(super) const BALANCE: i64 = 1_000_000_000;
 
-/// Writes lines as a work's own transaction logs them: unsettled.
+/// Writes lines as a work's own transaction logs them: unsettled. A fleet line
+/// names its fleet and turn; a setup line names no fleet, the draft message
+/// its run answered as its turn, and the run as its `run_id`.
 const INSERT_LINES: &str = "\
 INSERT INTO billing.usage_lines (
     id, work_type, work_id, seq, kind, tenant_id, workspace_id,
@@ -42,14 +44,14 @@ INSERT INTO billing.usage_lines (
     settled_at, created_at, updated_at
 )
 SELECT id, work_kind, work_id, seq, kind, tenant, tenant,
-       fleet, name, CASE WHEN fleet IS NOT NULL THEN work_id END,
-       CASE WHEN fleet IS NULL THEN work_id END,
-       model, model, posture, at::timestamptz, $14, 0, 0, 0, 0, $15, $16,
+       fleet, name, turn, CASE WHEN fleet IS NULL THEN work_id END,
+       model, model, posture, at::timestamptz, $15, 0, 0, 0, 0, $16, $17,
        unpriced, money, NULL, at::timestamptz, at::timestamptz
   FROM unnest($1, $2::text[], $3, $4::bigint[], $5::text[],
               $6, $7, $8::text[], $9::text[], $10::text[],
-              $11::text[], $12::bigint[], $13::bigint[])
-    AS source(id, work_kind, work_id, seq, kind, tenant, fleet, name, model, posture, at, money, unpriced)
+              $11::text[], $12::bigint[], $13::bigint[], $14)
+    AS source(id, work_kind, work_id, seq, kind, tenant, fleet, name, model, posture, at, money,
+              unpriced, turn)
 ";
 
 pub(super) struct Fixture {
@@ -115,6 +117,9 @@ pub(super) struct Line {
     pub(super) tenant: Uuid7,
     pub(super) fleet: Option<Uuid7>,
     pub(super) name: Option<String>,
+    /// The turn the line names: its fleet run's turn, or the draft message its
+    /// setup run answered. Opaque, as the ledger keeps it.
+    pub(super) turn: Uuid7,
     pub(super) model: &'static str,
     pub(super) posture: &'static str,
     pub(super) at: &'static str,
@@ -123,12 +128,15 @@ pub(super) struct Line {
 }
 
 impl Line {
-    /// The first runtime slice of a new fleet run.
+    /// The first runtime slice of a new fleet run, which stands in for its
+    /// own turn.
     pub(super) fn runtime(tenant: &Uuid7, fleet: &Uuid7, money: i64) -> Self {
+        let work_id = mint_id();
         Self {
             id: mint_id(),
             work_type: work::FLEET_RUN,
-            work_id: mint_id(),
+            turn: work_id.clone(),
+            work_id,
             kind: LineKind::Runtime,
             sequence: 0,
             tenant: tenant.clone(),
@@ -142,13 +150,15 @@ impl Line {
         }
     }
 
-    /// The first model call of a new setup attempt.
+    /// The first model call of a new setup run, answering a draft message of
+    /// its own, so the sweep settles it as the setup run it is.
     pub(super) fn setup(tenant: &Uuid7, money: i64) -> Self {
         let mut line = Self::runtime(tenant, &id(), money);
         line.work_type = work::AUTHORING_ATTEMPT;
         line.kind = LineKind::Model;
         line.fleet = None;
         line.name = None;
+        line.turn = id();
         line.model = MODEL_B;
         line
     }
@@ -250,6 +260,12 @@ pub(super) async fn seed(db: &Db, lines: &[Line]) {
         .bind(column(|line| line.at.to_owned()))
         .bind(lines.iter().map(|line| line.money).collect::<Vec<_>>())
         .bind(lines.iter().map(|line| line.unpriced).collect::<Vec<_>>())
+        .bind(
+            lines
+                .iter()
+                .map(|line| line.turn.clone())
+                .collect::<Vec<_>>(),
+        )
         .bind(INPUT)
         .bind(OUTPUT)
         .bind(RUNTIME)

@@ -192,7 +192,7 @@ async fn the_rollup_equals_the_settled_ledger_key_by_key() {
 
 /// Twelve runs over October, each crossing UTC midnight on three fleets: some
 /// settled in one batch, some later day first and then repeated, some left
-/// half pending. Setup attempts, one pending, and runs on either side of the
+/// half pending. Setup runs, one pending, and runs on either side of the
 /// period complete the month.
 async fn seed_month(f: &Fixture) {
     let fleets = [f.fleet.clone(), fixture::id(), fixture::id()];
