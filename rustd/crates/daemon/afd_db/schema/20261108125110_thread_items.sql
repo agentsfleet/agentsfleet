@@ -2,8 +2,9 @@
 -- once with it, so the detail endpoint authorizes without joining the turn. `sequence`
 -- orders calls within one run. `turn_id` is the turn newest when the item's step began: the
 -- run's own, or one its conversation folded in. `kind` and `status` hold the words
--- `af_wire::tool_detail::{ItemKind, ItemStatus}` spell; `changes` holds an edit's
--- `[{path, added, removed}]`, NULL for any other item, and is read by the tool call detail
+-- `af_wire::tool_detail::{ItemKind, ItemStatus}` spell; `tool` names the tool called, NULL for
+-- an item that called none; `changes` holds an edit's `[{path, added, removed}]`, NULL for any
+-- other item. `kind`, `tool`, `status` and `changes` are read by the item detail
 -- (`afd_turns/src/view/history/select_tool_call.sql`).
 CREATE TABLE thread.items (
     id                   UUID PRIMARY KEY,

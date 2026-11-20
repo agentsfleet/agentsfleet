@@ -31375,6 +31375,8 @@
         "description": "`GET …/turns/{turn_id}/items/{item_id}` reply: one call, in full.",
         "required": [
           "call_id",
+          "kind",
+          "status",
           "arguments",
           "truncated_arguments",
           "output",
@@ -31399,6 +31401,15 @@
             },
             "description": "For an edit: each file it changed and the lines it added and\nremoved. Absent for any other call."
           },
+          "kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemKind"
+              }
+            ],
+            "description": "What kind of thing the call was. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
           "output": {
             "type": "string",
             "description": "Everything the call returned. Beta: this field may change shape before it is stable.",
@@ -31409,6 +31420,23 @@
             "format": "int64",
             "description": "How many lines the whole output had, before any cut. Beta: this field may change shape before it is stable.",
             "minimum": 0,
+            "x-stability": "beta"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemStatus"
+              }
+            ],
+            "description": "How it ended. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
+          "tool": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tool it called. Absent for an item that called none. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "truncated": {

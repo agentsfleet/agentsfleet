@@ -49,9 +49,9 @@ fn settled(f: &Fixture) -> Written {
         line_count,
         unpriced_tokens: 0,
     };
+    // In the rollup's key order: day, then work type.
     Written {
         usage: vec![
-            row(work::SETUP_RUN, None, fixture::MODEL_B, 29, 1),
             row(
                 work::FLEET_RUN,
                 Some(f.fleet.clone()),
@@ -59,6 +59,7 @@ fn settled(f: &Fixture) -> Written {
                 22,
                 2,
             ),
+            row(work::SETUP_RUN, None, fixture::MODEL_B, 29, 1),
         ],
         runs: vec![RunRow {
             day,

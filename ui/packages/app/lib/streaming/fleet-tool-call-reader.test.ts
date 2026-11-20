@@ -21,11 +21,25 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 describe("readToolCall", () => {
   it("should read one call in full, narrowing what crosses into the browser", async () => {
     const changes = [{ path: "a.md", added: 24, removed: 8 }];
-    const fetchMock = answer(json({ call_id: "f1:3", arguments: { path: "a.md" }, truncated_arguments: true, output: "ok", truncated: "yes", changes }));
+    const fetchMock = answer(json({
+      call_id: "f1:3", kind: "edit", tool: "file_edit", status: "succeeded",
+      arguments: { path: "a.md" }, truncated_arguments: true, output: "ok", truncated: "yes", changes,
+    }));
     const read = await readToolCall(AT, new AbortController().signal);
     expect(fetchMock).toHaveBeenCalledWith(URL_FOR_AT, expect.objectContaining({ redirect: "manual" }));
-    // A malformed flag reads as not cut; the recorded changes cross whole.
-    expect(read).toEqual({ kind: TOOL_CALL_READ.FULL, call: { args: { path: "a.md" }, argsTruncated: true, output: "ok", outputTruncated: false, changes } });
+    // A malformed flag reads as not cut; the recorded words and changes cross whole.
+    expect(read).toEqual({
+      kind: TOOL_CALL_READ.FULL,
+      call: { kind: "edit", tool: "file_edit", status: "succeeded", args: { path: "a.md" }, argsTruncated: true, output: "ok", outputTruncated: false, changes },
+    });
+  });
+
+  it("should read a kind, tool or status it cannot narrow as absent", async () => {
+    answer(json({ kind: "integration", tool: "", status: "running", output: "ok" }));
+    expect(await readToolCall(AT, new AbortController().signal)).toEqual({
+      kind: TOOL_CALL_READ.FULL,
+      call: { args: undefined, argsTruncated: false, output: "ok", outputTruncated: false, changes: [] },
+    });
   });
 
   it("should read arguments that are no object as none", async () => {

@@ -57,6 +57,9 @@ fn parse_call_id(call_id: &str) -> Option<CallAddress> {
 fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
     ToolCallDetail {
         call_id: Cow::Owned(fenced_call_id(call.fence, &call.call_number.to_string())),
+        kind: row.kind,
+        tool: row.tool.as_deref().map(Cow::Borrowed),
+        status: row.status,
         // The column is a JSONB object, so its text always parses; the
         // default is the parser's signature, not a reachable answer.
         arguments: serde_json::from_str(&row.arguments).unwrap_or_default(),

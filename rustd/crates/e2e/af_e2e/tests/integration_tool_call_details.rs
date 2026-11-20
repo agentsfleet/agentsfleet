@@ -262,6 +262,10 @@ async fn test_member_reads_tool_call_detail() {
         assert_eq!(body["output"], json!(output));
         assert_eq!(body["output_line_count"], json!(224));
         assert_eq!(body["arguments"], kept["arguments"]);
+        // The item's own words, as the record posted them.
+        assert_eq!(body["kind"], json!("tool_call"));
+        assert_eq!(body["tool"], json!("shell"));
+        assert_eq!(body["status"], json!("succeeded"));
     }
     supervisor.shutdown().await;
     scene.cleanup().await;

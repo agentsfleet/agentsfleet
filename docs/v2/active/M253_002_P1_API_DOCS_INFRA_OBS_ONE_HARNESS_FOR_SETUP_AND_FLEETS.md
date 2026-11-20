@@ -108,6 +108,8 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `schema/*_setup_attempts.sql`, `*_setup_dispatches.sql`, `*_setup_activity_receipts.sql`, `*_setup_answer_receipts.sql`, `*_setup_edit_decisions.sql`, `*_billing_setup_report_receipts.sql` | DELETE | tables of the daemon's model calls, named as M253_001 leaves them. `setup_replay_receipts` stays: it is the HTTP idempotency store |
 | `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | the shorter migration list |
 | `rustd/crates/daemon/afd_db/schema/*_thread_items.sql`, `afd_fleet/src/run/sql/upsert_tool_calls.sql`, `afd_fleet/src/run/tool_detail/**`, `af_wire/src/tool_detail/**` | EDIT | items carry kind, tool, status, changes and run id, and name the newest turn (§10) |
+| `afd_turns/src/view/history/{tool_call.rs,select_tool_call.sql}`, `afd_api_tenant/src/handler/turn/tool_call/**`, `afd_api/src/openapi/stability/mod.rs`, `ui/packages/app/lib/streaming/fleet-tool-call-reader.ts` | EDIT | the item detail reads kind, tool and status beside changes, and the app narrows them (§10) |
+| `rustd/crates/runner/main/Cargo.toml` | EDIT | the kernel lane's own dev-dependencies, which `afr_sandbox` declared before the move (§12) |
 | `rustd/crates/runner/afr_memory/src/lib.rs` | EDIT | `MemoryBackend` folds into guffbolt's `MemoryStore` (§9) |
 | `rustd/crates/runner/main/src/host.rs`, `afr_agent/src/{offer,router}/**`, `afr_sandbox/examples/kernel_lane/**` | EDIT | tools are built per run through `ToolsBuilder` (§9) |
 | `rustd/crates/daemon/afd_credential/src/**` | EDIT | the tool-support check selection calls moves here (§8) |

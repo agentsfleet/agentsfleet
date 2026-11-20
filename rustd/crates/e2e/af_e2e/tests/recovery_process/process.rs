@@ -1,19 +1,23 @@
 //! Integration drill observations and graceful shutdown.
 use super::{Checked, model::Model, worker::Worker};
 use crate::e2e::Scenario;
-use std::path::Path;
 use tokio::process::Command;
 impl Worker {
     pub(super) fn start(scene: &Scenario, token: &str, model: &Model) -> Checked<Self> {
         // The fixture is `agentsfleet_runner`'s binary, which the lane builds
-        // first: it sits in the profile directory, one above this test
-        // binary's `deps/`.
+        // first: it sits in the profile directory this test binary is built
+        // under, at a depth that depends on Cargo's build-directory layout
+        // (`deps/`, or `build/<package>/<hash>/out/`).
+        const FIXTURE: &str = "agentsfleet-recovery-fixture";
         let test = std::env::current_exe()?;
-        let profile = test
-            .parent()
-            .and_then(Path::parent)
-            .ok_or_else(|| std::io::Error::other("the test binary sits in no profile directory"))?;
-        let binary = profile.join("agentsfleet-recovery-fixture");
+        let binary = test
+            .ancestors()
+            .skip(1)
+            .map(|directory| directory.join(FIXTURE))
+            .find(|candidate| candidate.is_file())
+            .ok_or_else(|| {
+                std::io::Error::other(format!("no {FIXTURE} above {}", test.display()))
+            })?;
         Self::start_with(&binary, scene, token, model)
     }
 

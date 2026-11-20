@@ -264,6 +264,13 @@ pub struct ToolCallDetail<'a> {
     /// Tool call identifier from the conversation, in `{fence}:{n}` format.
     #[serde(borrow)]
     pub call_id: Cow<'a, str>,
+    /// What kind of thing the call was.
+    pub kind: ItemKind,
+    /// The tool it called. Absent for an item that called none.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<Cow<'a, str>>,
+    /// How it ended.
+    pub status: ItemStatus,
     /// Every argument the call was made with, secret values masked.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub arguments: Map<String, Value>,

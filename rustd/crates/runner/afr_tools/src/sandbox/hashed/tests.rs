@@ -152,8 +152,8 @@ async fn a_range_is_replaced_from_target_to_end_target() {
     assert!(edit.text.contains("2 lines replaced"), "{}", edit.text);
     assert_eq!(
         std::fs::read_to_string(live.root.join(GREEK)).unwrap(),
-        "alpha\nboth",
-        "nothing but the file's end follows, so no newline is added"
+        "alpha\nboth\n",
+        "the empty line after the file's last newline follows, so the newline stays"
     );
     live.stop().await;
 }

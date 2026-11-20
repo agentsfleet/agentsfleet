@@ -31,6 +31,9 @@ fn a_kept_record_answers_in_full_under_its_canonical_id() {
     assert_eq!(answered["arguments"], serde_json::json!({}));
     assert_eq!(answered["truncated"], false);
     assert_eq!(answered["truncated_arguments"], false);
+    assert_eq!(answered["kind"], "tool_call");
+    assert_eq!(answered["tool"], "shell");
+    assert_eq!(answered["status"], "succeeded");
 }
 
 #[test]
@@ -43,6 +46,9 @@ fn an_edits_record_answers_with_each_files_counts() {
         answered["changes"],
         serde_json::json!([{"path": "src/a.rs", "added": 24, "removed": 8}])
     );
+    assert_eq!(answered["kind"], "edit");
+    assert_eq!(answered["tool"], "file_edit");
+    assert_eq!(answered["status"], "succeeded");
 }
 
 #[test]

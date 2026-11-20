@@ -34,6 +34,11 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
         "ToolCallDetail",
         &[
             "call_id",
+            // The item's words grow with the thread model's later kinds and
+            // its `running` status.
+            "kind",
+            "tool",
+            "status",
             "arguments",
             "truncated_arguments",
             "output",

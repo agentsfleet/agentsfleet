@@ -128,3 +128,71 @@ async fn grep_refuses_a_pattern_or_path_it_cannot_use() {
     );
     assert_eq!(empty.text, "");
 }
+
+/// [`LocalEnv`] whose every listing comes back in reverse, as a file system
+/// that lists in no particular order may.
+#[derive(Debug)]
+struct Reversed(LocalEnv);
+
+impl Env for Reversed {
+    fn root(&self) -> &str {
+        self.0.root()
+    }
+
+    fn spawn<'a>(&'a self, spawn: &'a Spawn) -> EnvFuture<'a, Process> {
+        self.0.spawn(spawn)
+    }
+
+    fn write(&self, process: ProcessId, data: bytes::Bytes) -> EnvFuture<'_, ()> {
+        self.0.write(process, data)
+    }
+
+    fn kill(&self, process: ProcessId) -> EnvFuture<'_, ()> {
+        self.0.kill(process)
+    }
+
+    fn read_file<'a>(&'a self, path: &'a str, max_bytes: u64) -> EnvFuture<'a, FileContent> {
+        self.0.read_file(path, max_bytes)
+    }
+
+    fn write_file<'a>(&'a self, path: &'a str, data: bytes::Bytes) -> EnvFuture<'a, ()> {
+        self.0.write_file(path, data)
+    }
+
+    fn append_file<'a>(&'a self, path: &'a str, data: bytes::Bytes) -> EnvFuture<'a, ()> {
+        self.0.append_file(path, data)
+    }
+
+    fn delete_file<'a>(&'a self, path: &'a str) -> EnvFuture<'a, ()> {
+        self.0.delete_file(path)
+    }
+
+    fn list_dir<'a>(&'a self, path: &'a str) -> EnvFuture<'a, Listing> {
+        Box::pin(async move {
+            let mut listing = self.0.list_dir(path).await?;
+            listing.entries.sort_unstable_by(|a, b| b.name.cmp(&a.name));
+            Ok(listing)
+        })
+    }
+}
+
+/// A directory lists in the file system's order; `grep` answers in path
+/// order whatever that is, so the same tree reads the same on every host.
+#[tokio::test]
+async fn grep_answers_in_path_order_however_the_disk_lists() {
+    let desk = Desk::new();
+    tree(&desk);
+    let env = Reversed(LocalEnv::new(desk.path("")).expect("the directory exists"));
+    let config = ToolsConfig::new(["grep"]).expect("one name");
+    let tools = Tools::builder()
+        .with_env(&env)
+        .build(&config)
+        .expect("the environment is given");
+
+    let output = call(&tools, "grep", json!({"pattern": "fn (alpha|beta)"})).await;
+
+    assert_eq!(
+        output.text,
+        "src/a.rs:1: fn alpha() {}\nsrc/b.rs:1: fn beta() {}"
+    );
+}

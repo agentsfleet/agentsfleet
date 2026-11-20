@@ -161,6 +161,9 @@ fn the_answers_round_trip() {
 
     let detail = ToolCallDetail {
         call_id: "7:3".into(),
+        kind: ItemKind::Edit,
+        tool: Some("file_edit".into()),
+        status: ItemStatus::Succeeded,
         arguments: serde_json::Map::new(),
         truncated_arguments: false,
         output: "all of it".into(),

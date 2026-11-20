@@ -73,7 +73,11 @@ async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
     // A path that names a file is searched alone; a directory is walked.
     let (files, mut cut) = match env.list_dir(root).await {
         Ok(_listing) => {
-            let walked = walk(env, root).await?;
+            let mut walked = walk(env, root).await?;
+            // A directory lists in the file system's order, so files are
+            // searched in path order: the same lines, and the same cut at
+            // `limit`, on every host.
+            walked.files.sort_unstable();
             let files = walked
                 .files
                 .into_iter()

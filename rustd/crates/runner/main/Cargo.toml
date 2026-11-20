@@ -96,6 +96,21 @@ guffbolt.workspace = true
 hyper.workspace = true
 futures-util.workspace = true
 libtest-mimic.workspace = true
+# The kernel lane's own engine and release fixtures: a supervisor engine that
+# wraps bubblewrap, a toolbox release signed and digested as the runner admits
+# one (ECDSA P-256 over SHA-256, the signature in base64), and the mount,
+# ownership and process calls a trial makes directly.
+async-trait.workspace = true
+aws-lc-rs.workspace = true
+base64.workspace = true
+digest-io.workspace = true
+hex.workspace = true
+rustix.workspace = true
+sha2.workspace = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+# The kernel calls the lane's confinement and delegation trials read back.
+libc.workspace = true
 
 # The kernel lane proves egress with the `test-util` far host; run without it,
 # it refuses to build rather than skip those trials. Linux only: elsewhere its
