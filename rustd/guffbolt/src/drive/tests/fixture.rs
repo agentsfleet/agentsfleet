@@ -1,24 +1,92 @@
 //! The scripted conversation the loop's cases drive: a model that plays its
-//! steps in order (`script.rs`), and input that arrives on cue. What it hears
-//! of the loop is in `heard.rs`.
+//! steps in order (`script.rs`), input that arrives on cue, and the tools its
+//! calls reach by name. What it hears of the loop is in `heard.rs`.
 
 use std::collections::HashMap;
 use std::future::{pending, ready};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 
+use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-use super::script::{Cue, Failure, Script, lock, user};
+use super::script::{ASK_USER, Cue, Failure, Script, TOOL, lock, user};
 use crate::conversation::Conversation;
 use crate::model::Request;
 use crate::step::Ending;
-use crate::tool::{ToolFuture, ToolOutput, ToolSpec};
+use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
 use crate::transcript::{Call, Message, Transcript};
 use crate::window::{Fitted, Window};
 
 /// The output limit a fitted window sets.
 pub(super) const FITTED_LIMIT: u32 = 64;
+
+/// What the scripted conversation lends each call: the call's id.
+type Lent<'c> = &'c str;
+
+/// A scripted tool, as the conversation holds it.
+type Held = dyn for<'c> Tool<Lent<'c>>;
+
+/// The tools a scripted run holds: `deploy`, which answers its call's id,
+/// and `ask_user`, which asks the person the question it is given.
+pub(super) struct Kit(Tools<Held>);
+
+impl Default for Kit {
+    fn default() -> Self {
+        let parameters = json!({ "type": "object" });
+        Self(Tools::new(vec![
+            Box::new(Deploy(parameters.clone())),
+            Box::new(Ask(parameters)),
+        ]))
+    }
+}
+
+/// `deploy`: answers with the id of the call that ran it.
+#[derive(Debug)]
+struct Deploy(Value);
+
+impl Describe for Deploy {
+    fn spec(&self) -> ToolSpec<'_> {
+        ToolSpec {
+            name: TOOL,
+            description: "Deploys the fix.",
+            parameters: &self.0,
+        }
+    }
+}
+
+impl<'c> Tool<Lent<'c>> for Deploy {
+    fn call<'a>(&'a self, _arguments: &'a Value, cx: Lent<'c>) -> ToolFuture<'a>
+    where
+        Lent<'c>: 'a,
+    {
+        Box::pin(ready(ToolOutput::succeeded(cx)))
+    }
+}
+
+/// `ask_user`: asks the person the question its arguments carry.
+#[derive(Debug)]
+struct Ask(Value);
+
+impl Describe for Ask {
+    fn spec(&self) -> ToolSpec<'_> {
+        ToolSpec {
+            name: ASK_USER,
+            description: "Asks the person a question.",
+            parameters: &self.0,
+        }
+    }
+}
+
+impl<'c> Tool<Lent<'c>> for Ask {
+    fn call<'a>(&'a self, arguments: &'a Value, _cx: Lent<'c>) -> ToolFuture<'a>
+    where
+        Lent<'c>: 'a,
+    {
+        let question = arguments.get("question").and_then(Value::as_str);
+        Box::pin(ready(ToolOutput::asks(question.unwrap_or_default())))
+    }
+}
 
 /// A conversation whose model plays its script and whose input arrives on
 /// cue.
@@ -39,6 +107,8 @@ pub(super) struct Scripted {
     pub(super) calls_hang: bool,
     /// What the observer leaves of each call's output for the model.
     pub(super) mask: Option<&'static str>,
+    /// The tools each call reaches by name.
+    tools: Kit,
     pub(super) transcript: Transcript,
     /// Input that has arrived and is not yet in the conversation.
     pending: Mutex<Vec<&'static str>>,
@@ -164,7 +234,7 @@ impl Conversation for Scripted {
     }
 
     fn offered(&self) -> Vec<ToolSpec<'_>> {
-        Vec::new()
+        self.tools.0.specs().collect()
     }
 
     fn request<'a>(&'a self, window: &'a Window, tools: &'a [ToolSpec<'a>]) -> Request<'a> {
@@ -184,7 +254,9 @@ impl Conversation for Scripted {
         if self.calls_hang {
             return Box::pin(pending());
         }
-        Box::pin(ready(ToolOutput::succeeded(call.id.clone())))
+        self.tools
+            .0
+            .dispatch(&call.name, &call.arguments, call.id.as_str())
     }
 
     fn stop(&self) -> &CancellationToken {

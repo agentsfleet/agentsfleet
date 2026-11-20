@@ -11,14 +11,18 @@ mod extension;
 mod fixture;
 mod heard;
 mod observe;
+mod question;
+mod quiet;
 mod recovery;
 mod script;
+
+use serde_json::Value;
 
 use crate::extension::Plain;
 use crate::step::Ending;
 
 use self::fixture::{FITTED_LIMIT, Scripted, answered};
-use self::script::{Cue, Failure, answer, called, calling, result, said, user};
+use self::script::{Cue, Failure, answer, called, calling, naming, result, said, user};
 use super::{ANSWER_JOIN, drive};
 
 #[tokio::test]
@@ -215,6 +219,36 @@ async fn a_blank_answer_after_work_is_an_answer() {
     assert_eq!(
         answered(&drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await),
         Some("")
+    );
+}
+
+/// The model calls `ghost`, which the run holds no tool for: the call reads
+/// the harness's refusal through the run's `Tools`, and the loop goes on.
+#[tokio::test]
+async fn a_call_naming_no_offered_tool_answers_not_offered() {
+    let mut run = Scripted::new([naming([("ghost", Value::Null)]), answer("No ghost here.")]);
+    let ending = drive(&mut run, &mut Plain, &mut crate::DriveState::default()).await;
+    assert_eq!(
+        answered(&ending),
+        Some("No ghost here."),
+        "the loop goes on"
+    );
+    let refused = crate::Message::ToolResult {
+        call_id: "call-1-0".to_owned(),
+        output: "[tool_not_offered] ghost is not one of this run's tools".to_owned(),
+        image: None,
+    };
+    assert_eq!(
+        run.sent().get(1).and_then(|messages| messages.last()),
+        Some(&refused),
+        "the next model call reads the refusal as the call's result"
+    );
+    assert!(
+        run.heard()
+            .iter()
+            .any(|line| line == "call call-1-0 Failed"),
+        "{:?}",
+        run.heard()
     );
 }
 

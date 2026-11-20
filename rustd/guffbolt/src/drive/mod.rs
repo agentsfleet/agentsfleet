@@ -36,8 +36,10 @@ const ONE_QUESTION: &str = "another call of this step already asked the person a
 /// The extension's budget bounds the whole loop: a loop it stops ends
 /// [`Ending::Stopped`], and the extension hears of it. A call that asks the
 /// person a question ends the loop [`Ending::Waiting`] once its step's other
-/// calls ran, and a state still waiting ends it so again without a model
-/// call. Whatever ends the loop, its observer hears the ending once.
+/// calls ran and the conversation is quiet ([`Conversation::quiet`]), and a
+/// state still waiting ends it so again without a model call. A stop or the
+/// budget that cuts that wait short ends the loop stopped, the question kept.
+/// Whatever ends the loop, its observer hears the ending once.
 pub async fn drive<C, E>(
     conversation: &mut C,
     extension: &mut E,
@@ -136,7 +138,7 @@ async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
         }
         if let Some(waiting) = asked {
             state.waiting = Some(waiting.clone());
-            break Ending::Waiting(waiting);
+            break quieted(conversation, waiting).await;
         }
         if let Some(ending) = extension.after_group(conversation).await {
             break ending;
@@ -236,6 +238,22 @@ async fn run_calls<C: Conversation + ?Sized>(
         conversation.called().await;
     }
     (results, asked)
+}
+
+/// Ends the loop waiting on `waiting` once the conversation is quiet, so no
+/// child's work is lost while the run waits; stopped when the stop comes
+/// first. The question stays in the state either way, so the answer still
+/// belongs to its call.
+async fn quieted<C: Conversation + ?Sized>(
+    conversation: &mut C,
+    waiting: Waiting,
+) -> Ending<C::Failure> {
+    let stop = conversation.stop().clone();
+    tokio::select! {
+        biased;
+        () = stop.cancelled() => Ending::Stopped,
+        () = conversation.quiet() => Ending::Waiting(waiting),
+    }
 }
 
 /// Keeps what the model said and called, scrubbed by the embedder, then the

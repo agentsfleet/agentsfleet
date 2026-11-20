@@ -26,6 +26,7 @@ drive(conversation, extension, state) ──► Ending: Answered | Failed | Stop
 every step:  take input ─► before_model ─► window ─► model call ─► after_step
 no calls:    on_answer ─► remember ─► take input again; new input runs one more step
 calls:       run them ─► remember ─► after_group
+a question:  run the step's calls ─► remember ─► quiet ─► Waiting
 ```
 
 A message that arrives while the model works joins the next model call. `guffbolt` never cuts a call short for it.
@@ -496,6 +497,14 @@ impl Conversation for Chat<'_> {
     fn silent(&self, _cut: bool) -> String {
         "the model answered nothing".to_owned()
     }
+
+    async fn quiet(&mut self) {
+        // Before the run waits on a question, every child ends first. Only the
+        // root waits: the run's children include every child loop.
+        if self.depth == 0 {
+            let _paused = self.run.agents.quiet().await;
+        }
+    }
 }
 
 impl Raise for Run {
@@ -562,7 +571,7 @@ async fn main() {
 
 Implement `Raise` to say which loop a child runs, and to hear each one start and end. `Agents::start` narrows the child's tools through `Narrow`, and a child at the depth cap holds none that start children. Your tools that steer children call `Agents`, and answer with its shapes: `Spawned`, `State`, `Accepted` and `Listed`.
 
-A `Pause` holds new children back, and is granted only while no child runs, unwinds or waits to start. Read `Agents::census` under it to save the children, and bring the ended ones back with `Agents::restored`.
+A `Pause` holds new children back, and is granted only while no child runs, unwinds or waits to start. Read `Agents::census` under it to save the children, and bring the ended ones back with `Agents::restored`. `Agents::pause` is refused while a child runs. `Agents::quiet` waits until every child has ended, while `Children::beside` keeps polling them, and then pauses.
 
 ## Media
 
@@ -570,7 +579,9 @@ A `Pause` holds new children back, and is granted only while no child runs, unwi
 
 ## Asking the person
 
-A call that answers `ToolOutput::asks` asks the person a question. The loop runs the rest of that step's calls, then ends `Ending::Waiting` with the asking call's id and its question, and nothing waits inside the run. Deliver the question however your product reaches people. When the answer arrives, `DriveState::resume` makes it that call's result, and the next `drive` goes on from there. A state saved while waiting resumes the same way later, in another process.
+A call that answers `ToolOutput::asks` asks the person a question. The loop runs the rest of that step's calls and waits for your `Conversation::quiet`. Then it ends `Ending::Waiting` with the asking call's id and its question, and nothing waits on the person inside the run. Deliver the question however your product reaches people. When the answer arrives, `DriveState::resume` makes it that call's result, and the next `drive` goes on from there. A state saved while waiting resumes the same way later, in another process.
+
+`quiet` defaults to returning at once. A root whose run starts children waits there with `Agents::quiet`, so each child ends and its answer is recorded before the run waits. The loop races that wait against its stop, and its budget bounds it. A stop that cuts the wait short ends the loop `Ending::Stopped` and keeps the question in the state. A second question in the same step is answered `[question_pending]`.
 
 ```rust
 use guffbolt::{Conversation, DriveState, Ending, Plain, drive};

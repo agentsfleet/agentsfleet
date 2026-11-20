@@ -5,7 +5,8 @@
 //! or a start is queued, so a loop asks it for a pause, and the poller grants
 //! one only when no child runs, none unwinds and none waits to start. A start
 //! reads the hold under the book's lock, so none slips past a pause granted
-//! after it was queued.
+//! after it was queued. An ask that waits is answered once the set is quiet,
+//! after every child's end is recorded, while the poller keeps polling them.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,6 +41,16 @@ pub struct Census {
     pub children: Vec<Counted>,
 }
 
+/// One ask for a pause, as the root's poller reads it.
+#[derive(Debug)]
+pub(super) struct Ask {
+    /// Where the pause goes, or `None` when there is none to grant.
+    pub(super) reply: oneshot::Sender<Option<Pause>>,
+    /// Whether the ask waits for the set to be quiet, rather than being
+    /// refused while a child runs.
+    pub(super) waits: bool,
+}
+
 /// One child, as a census counts it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Counted {
@@ -58,8 +69,26 @@ impl<S> Agents<S> {
     /// child runs, unwinds or waits to start, when the children are paused
     /// already, or when the run has ended.
     pub async fn pause(&self) -> Option<Pause> {
+        self.ask(false).await
+    }
+
+    /// Waits until no child of the run runs, unwinds or waits to start, then
+    /// pauses them. The root's poller keeps polling every child meanwhile,
+    /// so each ends on its own and its end is recorded before this answers.
+    /// `None` when the children are paused already or the run has ended.
+    ///
+    /// Only the root waits so: a child that waited would wait on itself. A
+    /// child that never ends holds this as long as the caller waits, so the
+    /// caller races it against its stop.
+    pub async fn quiet(&self) -> Option<Pause> {
+        self.ask(true).await
+    }
+
+    /// Asks the root's poller for a pause, which `waits` for the set to be
+    /// quiet or is refused while a child runs.
+    async fn ask(&self, waits: bool) -> Option<Pause> {
         let (reply, receipt) = oneshot::channel();
-        self.pauses.send(reply).ok()?;
+        self.pauses.send(Ask { reply, waits }).ok()?;
         receipt.await.ok().flatten()
     }
 

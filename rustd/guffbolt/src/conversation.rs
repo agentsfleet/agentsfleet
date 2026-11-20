@@ -81,4 +81,14 @@ pub trait Conversation: Send + Sync {
     fn called(&mut self) -> impl Future<Output = ()> + Send {
         async {}
     }
+
+    /// Before the loop ends waiting on a question: done once the run's other
+    /// work is quiet, such as every child the run started having ended with
+    /// its end recorded ([`crate::agents::Agents::quiet`]), so none is lost
+    /// while the run waits. The loop races it against its stop, and its
+    /// budget bounds it. Only the root waits for the run's children, since
+    /// they include every child loop. The default is done at once.
+    fn quiet(&mut self) -> impl Future<Output = ()> + Send {
+        async {}
+    }
 }

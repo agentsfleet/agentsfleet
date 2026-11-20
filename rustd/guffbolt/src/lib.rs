@@ -14,6 +14,7 @@
 //!    every step:  take input ─► before_model ─► window ─► model call ─► after_step
 //!    no calls:    on_answer ─► remember ─► take input again: more input runs another step
 //!    calls:       run them ─► remember ─► after_group
+//!    a question:  run the step's calls ─► remember ─► quiet ─► Waiting
 //! ```
 //!
 //! The harness decides when each step runs and when the loop ends. What a run
@@ -61,8 +62,10 @@
 //! them in its own future, so they end with it, and each ends once.
 //!
 //! A call that asks the person a question ([`ToolOutput::asks`]) ends the
-//! loop [`Ending::Waiting`] once its step's other calls ran; nothing waits
-//! inside the run, and [`DriveState::resume`] answers it later.
+//! loop [`Ending::Waiting`] once its step's other calls ran and the
+//! conversation is quiet ([`Conversation::quiet`]), such as every child the
+//! run started having ended. Nothing waits on the person inside the run, and
+//! [`DriveState::resume`] answers the question later.
 //!
 //! The `tools` feature adds `tools`: commands, files, patches, the web,
 //! memory, MCP servers, questions, deferred tools and the clock, each run

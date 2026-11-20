@@ -6,14 +6,16 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::model::{Chunk, End, Model, Request, TextKind};
 use crate::transcript::{Call, Message, Replay};
 
-/// The tool every scripted call names.
-const TOOL: &str = "deploy";
+/// The tool every scripted call names, unless its cue names others.
+pub(super) const TOOL: &str = "deploy";
+/// The tool that asks the person a question.
+pub(super) const ASK_USER: &str = "ask_user";
 
 /// Why a scripted call failed.
 #[derive(Debug, PartialEq, Eq)]
@@ -31,6 +33,8 @@ pub(super) enum Failure {
 pub(super) enum Cue {
     /// Answers `text` and calls `calls` tools.
     Reply { text: &'static str, calls: usize },
+    /// Calls each named tool with its arguments, in order, and says nothing.
+    Named(Vec<(&'static str, Value)>),
     /// Calls this many tools and stops at the output limit.
     Cut(usize),
     /// Fails.
@@ -47,6 +51,16 @@ pub(super) fn answer(text: &'static str) -> Cue {
 
 pub(super) fn calling(calls: usize) -> Cue {
     Cue::Reply { text: "", calls }
+}
+
+/// Calls each tool `calls` names, with its arguments, in order.
+pub(super) fn naming(calls: impl IntoIterator<Item = (&'static str, Value)>) -> Cue {
+    Cue::Named(calls.into_iter().collect())
+}
+
+/// Asks the person `question`, as `ask_user`'s arguments carry it.
+pub(super) fn asking(question: &str) -> (&'static str, Value) {
+    (ASK_USER, json!({ "question": question }))
 }
 
 /// The user saying `text`.
@@ -83,10 +97,15 @@ pub(super) fn result(id: &str) -> Message {
 
 /// Call `index` of model call `number`.
 fn call(number: usize, index: usize) -> Call {
+    call_to(number, index, TOOL, Value::Null)
+}
+
+/// Call `index` of model call `number`, to `name` with `arguments`.
+pub(super) fn call_to(number: usize, index: usize, name: &str, arguments: Value) -> Call {
     Call {
         id: format!("call-{number}-{index}"),
-        name: TOOL.to_owned(),
-        arguments: Value::Null,
+        name: name.to_owned(),
+        arguments,
     }
 }
 
@@ -134,6 +153,15 @@ impl Model for Script {
                     .chain(calls)
                     .chain([Chunk::End(End::default())]);
                 stream::iter(chunks.map(Ok)).boxed()
+            }
+            Some(Cue::Named(calls)) => {
+                let calls = calls
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(index, (name, arguments))| {
+                        Chunk::Call(call_to(number, index, name, arguments))
+                    });
+                stream::iter(calls.chain([Chunk::End(End::default())]).map(Ok)).boxed()
             }
             Some(Cue::Cut(calls)) => {
                 let calls = (0..calls).map(move |index| Chunk::Call(call(number, index)));

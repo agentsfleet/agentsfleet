@@ -1,12 +1,14 @@
 //! A run's children, proven against a test embedder: tools held by name, and
-//! children that answer their task at once, wait on their stop, or never
-//! answer.
+//! children that answer their task at once or after a while, wait on their
+//! stop, or never answer.
 
 mod book;
 mod poll;
+mod quiet;
 
 use std::future::{pending, ready};
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
@@ -24,6 +26,10 @@ const AGENT: &str = "agent_";
 const HANG: &str = "hang";
 /// The task of a child that ends when it is stopped.
 const STOPS: &str = "wait for the stop";
+/// The task of a child that works a while, then answers with its task.
+const SLEEPS: &str = "sleep first";
+/// How long a child that sleeps first works.
+const CHILD_WORK: Duration = Duration::from_millis(50);
 
 /// A loop's tools, by name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +113,11 @@ impl Raise for Run {
             Box::pin(async move {
                 seat.stop.cancelled().await;
                 Status::Interrupted
+            })
+        } else if seat.task == SLEEPS {
+            Box::pin(async move {
+                tokio::time::sleep(CHILD_WORK).await;
+                Status::Done(seat.task)
             })
         } else {
             Box::pin(ready(Status::Done(seat.task)))

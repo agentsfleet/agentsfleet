@@ -11,11 +11,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
+use super::pause::Ask;
 use super::start::{Requests, Start};
-use super::{Caps, Census, Counted, Kind, Listed, Pause, Status};
+use super::{Caps, Census, Counted, Kind, Listed, Status};
 
 /// One child, as the book keeps it.
 #[derive(Debug)]
@@ -44,7 +45,7 @@ pub struct Agents<S> {
     /// Where a loop queues each child it starts, for the root.
     pub(super) starts: mpsc::UnboundedSender<Start<S>>,
     /// Where a loop asks the root's poller for a pause.
-    pub(super) pauses: mpsc::UnboundedSender<oneshot::Sender<Option<Pause>>>,
+    pub(super) pauses: mpsc::UnboundedSender<Ask>,
     /// Set while a [`Pause`] is held; a start reads it under the book's lock.
     pub(super) gate: Arc<AtomicBool>,
 }

@@ -7,7 +7,7 @@
 //!  the root ─► Children::beside(raise, the root's loop)
 //!                the root goes first; whenever it waits, the set starts each
 //!                child queued (Raise::child), polls every child, and answers
-//!                each ask for a pause
+//!                each ask for a pause, and each wait for one once it is quiet
 //!  a child's loop ends ─► its status, once: done, failed or interrupted
 //!  Children::end_all ─► every child still running is dropped, and ends interrupted
 //! ```
@@ -28,7 +28,9 @@
 //!
 //! A [`Pause`] proves the children quiet, for an embedder that saves a run:
 //! while one is held no child starts, and [`Agents::census`] reads every
-//! child for [`Agents::restored`] to bring back.
+//! child for [`Agents::restored`] to bring back. [`Agents::pause`] is refused
+//! while a child runs; [`Agents::quiet`] waits for every child to end first,
+//! as a root does before its run waits on a question.
 
 use std::pin::Pin;
 

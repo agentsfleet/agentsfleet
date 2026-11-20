@@ -49,7 +49,7 @@ RUSTD_DIR := rustd
 # The version CI installs too (`.github/workflows/test-unit-rustd.yml`).
 CARGO_SHEAR_VERSION := 1.14.0
 
-lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy + cargo shear, warnings are errors)
+lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy + cargo shear + guffbolt standalone, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@command -v cargo-shear >/dev/null 2>&1 || { echo "✗ cargo-shear not found. Install via: mise use -g cargo:cargo-shear@$(CARGO_SHEAR_VERSION)"; exit 1; }
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage_test.py
@@ -60,6 +60,8 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy + cargo shear, warning
 	@# Dead-code lints stop at a crate's edge; shear fails unused dependencies.
 	@# Its unlinked-file notes stay warnings: `#[path]` suites read as unlinked.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] cargo shear" -- cargo shear --locked
+	@# guffbolt ships alone: packaged and built outside the workspace, from crates.io only.
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] guffbolt standalone" -- cargo publish -p guffbolt --dry-run --allow-dirty --locked
 
 SHELLCHECK ?= shellcheck
 

@@ -4,10 +4,11 @@
 
 use std::sync::atomic::Ordering;
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::{Agents, Narrow, Parent, Pause};
+use super::pause::Ask;
+use super::{Agents, Narrow, Parent};
 use crate::tool::ErrorCode;
 
 /// A child reserved and not yet started, as the root receives it.
@@ -28,7 +29,7 @@ pub(super) struct Start<S> {
 #[derive(Debug)]
 pub struct Requests<S> {
     pub(super) starts: mpsc::UnboundedReceiver<Start<S>>,
-    pub(super) pauses: mpsc::UnboundedReceiver<oneshot::Sender<Option<Pause>>>,
+    pub(super) pauses: mpsc::UnboundedReceiver<Ask>,
 }
 
 impl<S> Requests<S> {

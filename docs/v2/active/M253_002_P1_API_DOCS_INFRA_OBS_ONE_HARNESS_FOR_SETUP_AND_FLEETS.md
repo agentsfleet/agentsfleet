@@ -145,10 +145,10 @@ The `tools` feature adds files, `ls`, `find`, `grep`, shell, web, memory, a Mode
 
 guffbolt's existing crate, tools and error shape stay; M253_001 renames its per-call `Turn` to `Step`. What changes here is listed per Section.
 
-- **Dimension 1.1** — guffbolt names no repository crate → Test `guffbolt_manifest_names_no_repository_crate` (unit): parse `rustd/guffbolt/Cargo.toml`. Expected: no dependency name or `path` points at an `af_`, `afr_` or `afd_` crate.
-- **Dimension 1.2** — guffbolt packages alone → Test `guffbolt_packages_without_the_workspace` (integration): `cargo package -p guffbolt --list`. Expected: exit 0, with `README.md` and no `crates/` path.
-- **Dimension 1.3** — the core builds without tools → Test `guffbolt_core_builds_without_tools` (integration): `cargo check -p guffbolt --no-default-features`. Expected: exit 0.
-- **Dimension 1.5** — an unknown tool answers the model → Test `a_call_naming_no_offered_tool_answers_not_offered` (unit): the model calls `ghost`. Expected: a result starting `[tool_not_offered]`, and the loop goes on.
+- **Dimension 1.1** — DONE (checked by `make lint-rustd`'s one line `cargo publish -p guffbolt --dry-run --allow-dirty --locked`, which packages guffbolt and builds it alone against crates.io; a planted `af_core` path dependency fails it) — guffbolt names no repository crate → Test `guffbolt_manifest_names_no_repository_crate` (unit): parse `rustd/guffbolt/Cargo.toml`. Expected: no dependency name or `path` points at an `af_`, `afr_` or `afd_` crate.
+- **Dimension 1.2** — DONE (same check as 1.1) — guffbolt packages alone → Test `guffbolt_packages_without_the_workspace` (integration): `cargo package -p guffbolt --list`. Expected: exit 0, with `README.md` and no `crates/` path.
+- **Dimension 1.3** — DONE (same check as 1.1) — the core builds without tools → Test `guffbolt_core_builds_without_tools` (integration): `cargo check -p guffbolt --no-default-features`. Expected: exit 0.
+- **Dimension 1.5** — DONE — an unknown tool answers the model → Test `a_call_naming_no_offered_tool_answers_not_offered` (unit): the model calls `ghost`. Expected: a result starting `[tool_not_offered]`, and the loop goes on.
 
 ### §2 — guffbolt's local defaults are safe outside a sandbox
 
@@ -170,9 +170,9 @@ A standalone embedder gets `LocalEnv`, `LocalOutbound` and `LocalMemory`.
 
 Today the loop ends `Waiting` at once (`drive/mod.rs:137-139`). It will first take guffbolt's pause (`agents/pause.rs`), which is granted only when no child runs, so no child work is lost or duplicated.
 
-- **Dimension 3.1** — a question waits for children → Test `a_question_waits_for_running_children_before_the_run_ends` (unit): a child sleeping 50 ms and a root `ask_user`. Expected: the ending comes after the child's answer is recorded.
-- **Dimension 3.2** — a resumed run gets the answer → Test `a_resumed_run_answers_the_question_call` (unit): resume with "yes". Expected: the next request holds one tool result for that call, text "yes".
-- **Dimension 3.3** — one question per step → Test `a_second_question_in_one_step_is_refused` (unit): two `ask_user` calls in one reply. Expected: the second gets `[question_pending]`.
+- **Dimension 3.1** — DONE — a question waits for children → Test `a_question_waits_for_running_children_before_the_run_ends` (unit): a child sleeping 50 ms and a root `ask_user`. Expected: the ending comes after the child's answer is recorded.
+- **Dimension 3.2** — DONE — a resumed run gets the answer → Test `a_resumed_run_answers_the_question_call` (unit): resume with "yes". Expected: the next request holds one tool result for that call, text "yes".
+- **Dimension 3.3** — DONE — one question per step → Test `a_second_question_in_one_step_is_refused` (unit): two `ask_user` calls in one reply. Expected: the second gets `[question_pending]`.
 
 ### §4 — `propose_setup` checks a proposal and hands refusals back to the model
 
@@ -403,6 +403,7 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
   - > Owner (Indy, Nov 20, 2026): "Rename to notify (Recommended)" — context: §9, the published tool name.
   - > Owner (Indy, Nov 20, 2026): "egress_denied everywhere (Recommended)" — context: §2 and §9, one refusal code.
   - > Owner (Indy, Nov 20, 2026): "Drop it from the spec (Recommended)" — context: §4, no action column on the usage line.
+  - > Owner (Indy, Nov 20, 2026): "Yes, one line in lint-rustd (Recommended)" — context: §1, Dimensions 1.1–1.3 are one publish dry run in `make lint-rustd` until guffbolt moves to its own repository, where it becomes that repository's CI and pre-publish step.
   - > Owner (Indy, Nov 20, 2026): "Defer 5.1 to M253_002" and "Move 5.2 into M253_002 (Recommended)" — context: §10, transferred from M253_001.
   - > Owner (Indy, Nov 20, 2026): "Move to afr_tools (Recommended)" — context: §9, Pushover leaves guffbolt.
   - > Owner (Indy, Nov 20, 2026): "I think i need ability like memory_store, they are in guffbolt i presume, and the calls do api to save them? similar way the pushover and scheduler can be. When i start i can configure the needed (like pi or codex or zig's nullclaw or any ~/Projects/oss/rs/* equivalent)" — context: §9.

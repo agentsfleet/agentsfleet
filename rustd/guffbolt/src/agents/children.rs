@@ -13,6 +13,7 @@ use std::pin::Pin;
 
 use futures_util::StreamExt as _;
 use futures_util::stream::FuturesUnordered;
+use tokio::sync::oneshot;
 
 use super::start::Start;
 use super::{Agents, ChildFuture, Pause, Raise, Requests, Seat, Status};
@@ -25,6 +26,8 @@ type Running<'s> = Pin<Box<dyn Future<Output = ()> + Send + 's>>;
 pub struct Children<'s, S> {
     running: FuturesUnordered<Running<'s>>,
     requests: Requests<S>,
+    /// Each ask for a pause that waits for the set to be quiet.
+    waiting: Vec<oneshot::Sender<Option<Pause>>>,
 }
 
 impl<'s, S> Children<'s, S> {
@@ -34,6 +37,7 @@ impl<'s, S> Children<'s, S> {
         Self {
             running: FuturesUnordered::new(),
             requests,
+            waiting: Vec::new(),
         }
     }
 
@@ -47,15 +51,20 @@ impl<'s, S> Children<'s, S> {
     {
         tokio::pin!(driven);
         loop {
+            self.answer_quiet(raise.agents());
             let asked = tokio::select! {
                 biased;
                 out = &mut driven => return out,
                 Some(start) = self.requests.starts.recv() => Some(start),
                 Some(()) = self.running.next(), if !self.running.is_empty() => None,
-                Some(reply) = self.requests.pauses.recv() => {
-                    let pause = raise.agents().try_pause(||
-                        self.running.is_empty() && self.requests.is_empty());
-                    let _receiver_gone = reply.send(pause);
+                Some(ask) = self.requests.pauses.recv() => {
+                    if ask.waits {
+                        self.waiting.push(ask.reply);
+                    } else {
+                        let pause = raise.agents().try_pause(||
+                            self.running.is_empty() && self.requests.is_empty());
+                        let _receiver_gone = ask.reply.send(pause);
+                    }
                     None
                 }
             };
@@ -75,10 +84,25 @@ impl<'s, S> Children<'s, S> {
         while let Ok(start) = self.requests.starts.try_recv() {
             agents.ended(start.id, Status::Interrupted);
         }
-        while let Ok(reply) = self.requests.pauses.try_recv() {
+        while let Ok(ask) = self.requests.pauses.try_recv() {
+            let _receiver_gone = ask.reply.send(None);
+        }
+        for reply in self.waiting.drain(..) {
             let _receiver_gone = reply.send(None);
         }
         agents.try_pause(|| self.running.is_empty() && self.requests.is_empty())
+    }
+
+    /// Answers every ask waiting for the set to be quiet, once no child runs
+    /// or waits to start: the first takes the pause, and each one after it
+    /// is refused while that pause is held.
+    fn answer_quiet(&mut self, agents: &Agents<S>) {
+        if self.waiting.is_empty() || !self.running.is_empty() || !self.requests.is_empty() {
+            return;
+        }
+        for reply in self.waiting.drain(..) {
+            let _receiver_gone = reply.send(agents.try_pause(|| true));
+        }
     }
 }
 
@@ -87,6 +111,7 @@ impl<S> fmt::Debug for Children<'_, S> {
         f.debug_struct("Children")
             .field("running", &self.running.len())
             .field("queued", &!self.requests.is_empty())
+            .field("waiting", &self.waiting.len())
             .finish()
     }
 }
