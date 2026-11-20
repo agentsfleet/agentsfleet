@@ -146,10 +146,10 @@ impl Definition {
         self.config.runtime()
     }
 
-    /// Checks the stronger boundary for Save and explicit Plugin publication.
+    /// Checks the stronger boundary for Save.
     ///
     /// # Errors
-    /// Editing may be empty; publication and runnable setup may not.
+    /// Editing may be empty; a saved, runnable setup may not.
     pub fn validate_for_save(&self) -> Result<()> {
         if self.instructions_md.trim().is_empty() {
             return Err(invalid(

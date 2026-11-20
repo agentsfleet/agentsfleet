@@ -60,6 +60,7 @@ fn assert_every_named_code_is_registered() {
         error_code::RUN_CHECKPOINT_UNAVAILABLE,
         error_code::RUN_CHECKPOINT_LIMIT,
         error_code::RUN_FRAME_TOO_LARGE,
+        error_code::RUNNER_HOST_REGISTERED,
         error_code::INPUT_TOO_LONG,
         error_code::RUN_RENEWAL_NO_CREDITS,
         error_code::RUN_RENEW_BODY_MALFORMED,

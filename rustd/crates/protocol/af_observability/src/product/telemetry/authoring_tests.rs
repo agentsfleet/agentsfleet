@@ -33,13 +33,9 @@ fn resource() -> Uuid7 {
     id("01924f4e-0000-7000-8000-00000000d7af")
 }
 
-fn revision() -> Uuid7 {
-    id("01924f4e-0000-7000-8000-0000000000e7")
-}
-
 /// Every step, each with the name the funnel matches on and the exact keys
 /// it is allowed to carry.
-fn every_step() -> [(&'static str, AuthoringStep, &'static [&'static str]); 5] {
+fn every_step() -> [(&'static str, AuthoringStep, &'static [&'static str]); 4] {
     [
         (
             "draft_message_accepted",
@@ -70,15 +66,6 @@ fn every_step() -> [(&'static str, AuthoringStep, &'static [&'static str]); 5] {
             },
             &[WORKSPACE_ID, FLEET_ID],
         ),
-        (
-            "fleet_plugin_published",
-            AuthoringStep::PluginPublished {
-                plugin_id: resource(),
-                revision_id: revision(),
-                kind: "entry",
-            },
-            &[WORKSPACE_ID, "plugin_id", "revision_id", "kind"],
-        ),
     ]
 }
 
@@ -108,8 +95,8 @@ fn should_report_each_funnel_step_under_its_published_name() {
 /// and every value is either one of the fixture's identifiers or a closed word.
 #[test]
 fn should_carry_exactly_the_allowlisted_identifiers_and_words() {
-    let identifiers = [workspace(), resource(), revision()].map(|id| id.as_str().to_owned());
-    let words = ["completed", "entry"];
+    let identifiers = [workspace(), resource()].map(|id| id.as_str().to_owned());
+    let words = ["completed"];
     for (name, step, allowed) in every_step() {
         let event = reported(step).event();
         let carried: BTreeSet<&str> = event.properties().keys().map(String::as_str).collect();
@@ -125,10 +112,10 @@ fn should_carry_exactly_the_allowlisted_identifiers_and_words() {
     }
 }
 
-/// The finished state and the publication kind travel verbatim, so a funnel
-/// can split completions from failures and entries from revisions.
+/// The finished state travels verbatim, so a funnel can split completions
+/// from failures.
 #[test]
-fn should_carry_the_state_and_kind_as_written() {
+fn should_carry_the_state_as_written() {
     let finished = reported(AuthoringStep::MessageFinished {
         draft_id: resource(),
         state: "timed_out",
@@ -137,19 +124,5 @@ fn should_carry_the_state_and_kind_as_written() {
     assert_eq!(
         finished.properties().get("state"),
         Some(&Value::from("timed_out"))
-    );
-    let published = reported(AuthoringStep::PluginPublished {
-        plugin_id: resource(),
-        revision_id: revision(),
-        kind: "revision",
-    })
-    .event();
-    assert_eq!(
-        published.properties().get("kind"),
-        Some(&Value::from("revision"))
-    );
-    assert_eq!(
-        published.properties().get("revision_id"),
-        Some(&Value::from(revision().as_str()))
     );
 }

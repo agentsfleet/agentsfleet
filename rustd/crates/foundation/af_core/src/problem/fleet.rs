@@ -132,7 +132,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::RUN_FRAME_TOO_LARGE,
         status: 413,
         title: "Run too large to send",
-        hint: "The run's message, instructions and history pass the runner's 2 MiB frame. Shorten the message or start a new conversation.",
+        hint: "The run's message, instructions and history pass the runner's 32 MiB frame. Shorten the message or start a new conversation.",
         user_message: Some(
             "This message is too large for a run to carry. Shorten it or start a new conversation, then try again.",
         ),
@@ -166,13 +166,6 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::RUNNER_REGISTRATION_KEY_REUSED,
-        status: 409,
-        title: "Registration key reused",
-        hint: "This Idempotency-Key already registered a runner with a different request. Send a new UUIDv7 key for a new runner.",
-        user_message: None,
-    },
-    Problem {
         code: error_code::RUNNER_TENANT_MANAGED,
         status: 409,
         title: "Tenant-managed runner",
@@ -190,6 +183,13 @@ pub(super) const FLEET: &[Problem] = &[
     super::checkpoint::CONFLICT,
     super::checkpoint::UNAVAILABLE,
     super::checkpoint::LIMIT,
+    Problem {
+        code: error_code::RUNNER_HOST_REGISTERED,
+        status: 409,
+        title: "Host already registered",
+        hint: "Its owner already registered a runner for this host_id; the Location header names it. Rotate its token with a `PATCH` of that runner carrying `{\"action\":\"rotate\"}`, or revoke and delete it before registering the host again.",
+        user_message: None,
+    },
     Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424: the fleet's own request is well-formed; what is missing is a
@@ -231,19 +231,6 @@ pub(super) const FLEET: &[Problem] = &[
         hint: "Fleet not found. Verify the fleet_id and that it has not been deleted.",
         user_message: Some(
             "We couldn't find that Fleet. It may have been deleted, or the identifier doesn't match one in this workspace.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_INSTALL_ROLLED_BACK,
-        // 500 rather than 503, and the difference is what the caller is being
-        // promised. A 503 says "come back later"; this says "nothing was kept,
-        // so retrying is safe" — which is the fact the rollback earned and the
-        // only one the caller can act on.
-        status: 500,
-        title: "Fleet install rolled back",
-        hint: "Event-stream setup failed during create. Nothing was kept, so retry. If it continues, check queue connectivity.",
-        user_message: Some(
-            "We couldn't finish setting up your fleet. Nothing was created — try again.",
         ),
     },
     Problem {

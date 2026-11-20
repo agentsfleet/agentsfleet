@@ -24,6 +24,9 @@ pub enum FailureReason {
     AttemptTimedOut,
     /// Effective setup policy changed and requires review.
     PolicyChanged,
+    /// The run would not fit the runner protocol's frame, so it was failed
+    /// at assignment and never sent.
+    FrameTooLarge,
 }
 
 /// Whether all reported provider usage is known.

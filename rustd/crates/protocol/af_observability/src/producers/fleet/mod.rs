@@ -80,7 +80,7 @@ pub struct Handles {
     turns: Counter<u64>,
     runner_failures: Counter<u64>,
     runner_failures_overflow: Counter<u64>,
-    runner_executions: Counter<u64>,
+    runner_runs: Counter<u64>,
     /// The bounded per-runner table both the counters and the two runner
     /// gauges read.
     ///
@@ -129,7 +129,7 @@ impl Handles {
             runner_failures: instruments.counter_u64(&declared::RUNNER_FAILURES_TOTAL)?,
             runner_failures_overflow: instruments
                 .counter_u64(&declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
-            runner_executions: instruments.counter_u64(&declared::RUNNER_EXECUTIONS_TOTAL)?,
+            runner_runs: instruments.counter_u64(&declared::RUNNER_RUNS_TOTAL)?,
         };
         Self::observe_gauges(instruments, &runners)?;
         Ok(handles)

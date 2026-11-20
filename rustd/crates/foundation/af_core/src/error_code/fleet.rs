@@ -124,12 +124,6 @@ pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023")
 /// The runner's stream ended or stopped answering; the runner reconnects on its own.
 pub const RUN_STREAM_DISCONNECTED: ErrorCode = ErrorCode::declare("UZ-RUN-024");
 
-/// A runner registration's Idempotency-Key was reused for a different request.
-///
-/// A replay of the same request answers the runner it created; a different body
-/// under the same key is a client mistake, refused rather than guessed at.
-pub const RUNNER_REGISTRATION_KEY_REUSED: ErrorCode = ErrorCode::declare("UZ-RUN-025");
-
 /// A platform caller asked to mint a tenant runner's token.
 ///
 /// A new token would hand the platform a working credential for a host its
@@ -159,6 +153,14 @@ pub const RUN_CHECKPOINT_LIMIT: ErrorCode = ErrorCode::declare("UZ-RUN-031");
 /// instead of lapsing on a runner that never received it.
 pub const RUN_FRAME_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-RUN-032");
 
+/// A tenant or the platform registered a host it already registered.
+///
+/// A host registers once per owner: `(tenant_id, host_id)` is unique on the
+/// runner row, nulls not distinct. The refusal names the runner, and its owner
+/// recovers it by rotating its token rather than minting a second runner for
+/// one machine.
+pub const RUNNER_HOST_REGISTERED: ErrorCode = ErrorCode::declare("UZ-RUN-033");
+
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the run path, where it
@@ -171,7 +173,7 @@ pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT
 /// This workspace already holds a fleet under the requested name.
 ///
 /// Only ever answered for a name the CALLER chose. An install that named
-/// nothing takes the Plugin entry's own name, and a collision there is
+/// nothing takes its setup's own name, and a collision there is
 /// re-drawn with a suffix rather than reported — "taken" would name a conflict
 /// the caller cannot see, on a value they never typed.
 pub const AGENTSFLEET_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-006");
@@ -198,16 +200,6 @@ pub const AGENTSFLEET_INVALID_CONFIG: ErrorCode = ErrorCode::declare("UZ-AGT-008
 /// layer's 403, which is about the WORKSPACE in the path — see
 /// [`AUTH_FORBIDDEN`]; the two axes are separate and both are checked.
 pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
-
-/// The install could not be finished, and nothing was kept.
-///
-/// The promise this code carries is the one the caller can act on: retrying is
-/// safe, because the row was removed. It is answered only after the rollback
-/// has been attempted — an install that could not roll back logs
-/// `row_orphaned_manual_recovery` and still answers this, because from the
-/// caller's side the fleet is equally unusable either way and no client action
-/// distinguishes them.
-pub const AGENTSFLEET_INSTALL_ROLLED_BACK: ErrorCode = ErrorCode::declare("UZ-AGT-013");
 
 /// The fleet's source moved on since the editor read it.
 ///

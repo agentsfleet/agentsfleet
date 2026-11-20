@@ -114,11 +114,10 @@ pub const RUNNER_FAILURES_TOTAL: Declared<CounterKind> =
 pub const RUNNER_FAILURES_OVERFLOW_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_failures_overflow_total");
 
-/// Run volume per runner.
+/// Runs each runner acquired, and how each one it held ended.
 ///
-/// Labels: `runner_id,outcome`, plus `fault` on the failing half.
-pub const RUNNER_EXECUTIONS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_runner_executions_total");
+/// Labels: `runner_id,outcome`.
+pub const RUNNER_RUNS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_runner_runs_total");
 
 /// A runner going quiet.
 ///

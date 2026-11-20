@@ -6,6 +6,10 @@ use std::{convert::Infallible, sync::atomic::Ordering, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
+/// Raw bytes many times every flow-control window, so a lane that buffered
+/// whole bodies, or ignored backpressure, shows it within the test's timeout.
+const LARGE_PAYLOAD: usize = 2 * 1024 * 1024;
+
 async fn duplex(transport: Transport) -> Result {
     let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
     let host = fixture.serve().await?;
@@ -34,7 +38,7 @@ async fn duplex(transport: Transport) -> Result {
     let (writer, reader) = lanes
         .get_mut(1)
         .ok_or_else(|| std::io::Error::other("missing work kind"))?;
-    let payload = vec![b'x'; af_wire::protocol::MESSAGE_BYTES_MAX];
+    let payload = vec![b'x'; LARGE_PAYLOAD];
     let mut answer = vec![0; payload.len()];
     tokio::time::timeout(Duration::from_secs(5), async {
         tokio::try_join!(writer.write_all(&payload), reader.read_exact(&mut answer))?;
@@ -112,11 +116,7 @@ async fn pressure(transport: Transport) -> Result {
             control = Some((writer, response.into_body().reader()));
         } else {
             unread.push(response);
-            blocked.spawn(async move {
-                writer
-                    .write_all(&vec![b'x'; af_wire::protocol::MESSAGE_BYTES_MAX])
-                    .await
-            });
+            blocked.spawn(async move { writer.write_all(&vec![b'x'; LARGE_PAYLOAD]).await });
         }
     }
     assert!(

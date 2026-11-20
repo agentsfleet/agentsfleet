@@ -34,7 +34,8 @@ use core::time::Duration;
 use af_observability::metrics::instrument::Instruments;
 use af_observability::metrics::label::cost::{ChargeClass, ErrorType};
 use af_observability::metrics::label::fleet::{
-    DeliveryStage, FoldOutcome, IncomingTurnOutcome, ReadyWake, SignupFailure, SteerPlaced,
+    DeliveryStage, FoldOutcome, IncomingTurnOutcome, ReadyWake, RunnerRun, SignupFailure,
+    SteerPlaced,
 };
 use af_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
@@ -141,10 +142,12 @@ fn test_every_runner_producer_runs_its_body() {
     producers::fleet::runner::cordon_changed(
         af_observability::metrics::label::fleet::CordonChange::Lifted,
     );
-    producers::fleet::runner::processed(RUNNER);
     producers::fleet::runner::seen(RUNNER, jiff::Timestamp::constant(1_767_225_600, 0));
     producers::fleet::runner::run_taken(RUNNER);
     producers::fleet::runner::run_released(RUNNER);
+    for outcome in RunnerRun::ALL {
+        producers::fleet::runner::runs(RUNNER, *outcome, 1);
+    }
 
     // No class at all is its own arm — an unmodelled reason still counts.
     producers::fleet::runner::failed(RUNNER, None);

@@ -118,7 +118,7 @@ agentsfleet_memory_search_zero_hits_total	counter	u64	1	cumulative	-	-	fixed:1	n
 agentsfleet_process_resident_memory_bytes	gauge	u64	By	-	-	-	fixed:1	yes	saturation	process RSS
 agentsfleet_runner_failures_total	counter	u64	1	cumulative	runner_id,reason	-	runner:4096	no	errors	failure rate per reason
 agentsfleet_runner_failures_overflow_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	increments only past 4096 runner slots
-agentsfleet_runner_executions_total	counter	u64	1	cumulative	runner_id,outcome,fault	-	runner:4096	no	traffic	run volume per runner
+agentsfleet_runner_runs_total	counter	u64	1	cumulative	runner_id,outcome	-	runner:4096	no	traffic	runs acquired, succeeded, failed and expired per runner; a rising expired share is a runner dying mid-run
 agentsfleet_runner_last_seen_seconds	gauge	u64	s	-	runner_id	-	runner:4096	no	health	a runner going quiet
 agentsfleet_runner_active_runs	gauge	u64	{run}	-	runner_id	-	runner:4096	no	saturation	best-effort; self-heals on restart
 #
