@@ -10,6 +10,12 @@
 //! and in the trace, so no run ending can leave a call open. Records are held
 //! only while they fit what one event may keep, measured as the daemon
 //! measures it: one it would refuse is not held to be posted.
+//!
+//! Each record names the turn newest when its call's step began, the mark
+//! `guffbolt` ends the call with; a call whose step carried none, a child's,
+//! names the newest the run heard, and the run's own turn before any. An
+//! edit's record, its trace row and its end frame carry the files it changed,
+//! read from the report its file tool ended its output with (`changes`).
 
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -21,12 +27,12 @@ use af_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
 use afr_tools::ToolErrorCode;
-use guffbolt::{Call, CallEnd, CallOutcome};
+use guffbolt::{Call, CallEnd, CallOutcome, Mark};
 use serde_json::{Map, Value};
 use tracing::Span;
 
 use crate::engine::EventSink;
-use crate::records::record;
+use crate::records::{Item, record};
 use crate::spans;
 use crate::trace::{Outcome, Trace, bounded_arguments};
 use af_secrets::{Clean, Scrub};
@@ -46,6 +52,8 @@ const EVENT_RECORD_DROPPED: &str = "tool_record_dropped";
 /// still open.
 pub(crate) struct Ledger<'run> {
     run_id: &'run str,
+    /// The turn the run was assigned for.
+    turn_id: &'run str,
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
     book: Mutex<Book>,
@@ -59,14 +67,22 @@ struct Book {
     /// What the held records spend of the event's budget.
     spent: usize,
     calls: u64,
+    /// The newest turn a call's step began with, once one did.
+    newest: Option<String>,
 }
 
 impl<'run> Ledger<'run> {
-    /// Run `run_id`'s ledger, sending its frames to `sink` and masking
-    /// through `scrub`.
-    pub(crate) fn new(run_id: &'run str, sink: &'run dyn EventSink, scrub: &'run Scrub) -> Self {
+    /// Run `run_id`'s ledger, assigned for `turn_id`, sending its frames to
+    /// `sink` and masking through `scrub`.
+    pub(crate) fn new(
+        run_id: &'run str,
+        turn_id: &'run str,
+        sink: &'run dyn EventSink,
+        scrub: &'run Scrub,
+    ) -> Self {
         Self {
             run_id,
+            turn_id,
             sink,
             scrub,
             book: Mutex::default(),
@@ -137,12 +153,35 @@ impl<'run> Ledger<'run> {
             record::out_of_memory();
         }
         let text = self.scrub.clean(std::mem::take(&mut output.text));
-        let outcome = Outcome::ended(status, &text, output.exit_code, end.duration);
-        let full = record(number, shown, &text);
+        let mut outcome = Outcome::ended(status, &text, output.exit_code, end.duration);
+        let kind = changes::kind(ended.name);
+        let changed = changes::changed(self.run_id, kind, status, &text);
+        outcome.changes.clone_from(&changed);
+        let item = Item {
+            turn_id: self.turn(end.mark),
+            kind,
+            tool: ended.name.to_owned(),
+            status: changes::item_status(status),
+            changes: changed,
+        };
+        let full = record(number, shown, &text, item);
         output.text = text.into_inner();
         let mut book = self.book();
         self.end(&mut book, ended, bounded, outcome);
         self.hold(&mut book, full);
+    }
+
+    /// The turn a call's item names: `mark`, the newest when its step began,
+    /// which the run has then heard; the newest the run heard for a call
+    /// whose step carried none; the run's own before any.
+    fn turn(&self, mark: Option<&Mark>) -> String {
+        let mut book = self.book();
+        if let Some(mark) = mark {
+            book.newest = Some(mark.as_str().to_owned());
+        }
+        book.newest
+            .clone()
+            .unwrap_or_else(|| self.turn_id.to_owned())
     }
 
     /// Logs a call's end, counts it, sends its end frame and adds its trace
@@ -172,6 +211,7 @@ impl<'run> Ledger<'run> {
                 output_tail: outcome.tail.clone().map(Cow::Owned),
                 output_line_count: outcome.line_count,
                 exit_code: outcome.exit_code,
+                changes: outcome.changes.clone(),
             }));
         book.trace.push(ended.number, tool, bounded, outcome);
     }
@@ -242,5 +282,11 @@ const fn tool_outcome(status: ToolCallStatus) -> ToolOutcome {
     }
 }
 
+mod changes;
+
+#[cfg(test)]
+mod item_tests;
+#[cfg(test)]
+mod test_calls;
 #[cfg(test)]
 mod tests;

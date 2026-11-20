@@ -197,6 +197,18 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
             request,
         } => checkpoint_reply(api, request_id, &run_id, request.as_ref()).await?,
         Up::RenewBatch { request_id, runs } => renewals(api, request_id, runs).await?,
+        Up::ContextLoad {
+            request_id,
+            run_id,
+            request,
+        } => json!({"type":"context_loaded", "request_id":request_id, "run_id":run_id,
+            "answer":answer(api, Verb::ContextLoad, &request).await?}),
+        Up::ContextSave {
+            request_id,
+            run_id,
+            request,
+        } => json!({"type":"context_saved", "request_id":request_id, "run_id":run_id,
+            "answer":answer(api, Verb::ContextSave, request.as_ref()).await?}),
         message @ (Up::AuthoringModel { .. }
         | Up::AuthoringActivity { .. }
         | Up::AuthoringRenew { .. }

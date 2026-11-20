@@ -1,10 +1,11 @@
 //! The run's egress guard as `guffbolt`'s outbound hook: every request a
 //! generic tool drafts is admitted, sent and masked here.
 //!
-//! `http_request`, `web_fetch` and `pushover` differ only in the request they
-//! draft and how they word the answer; admission, the transport, the mask
-//! and the refusal's code and log line are the guard's, so they live here
-//! once, and an MCP connection is admitted by the same policy.
+//! `http_request`, `web_fetch` and the Pushover notifier behind `notify`
+//! differ only in the request they draft and how they word the answer;
+//! admission, the transport, the mask and the refusal's code and log line are
+//! the guard's, so they live here once, and an MCP connection is admitted by
+//! the same policy.
 
 use std::borrow::Cow;
 use std::pin::Pin;

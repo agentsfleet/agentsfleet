@@ -68,7 +68,8 @@ async fn test_apply_patch_applies_codex_grammar() {
     assert_eq!(applied.error_code, None, "{applied:?}");
     assert_eq!(
         applied.text,
-        "Success. Updated the following files:\nA src/new.txt\nM src/keep.txt\nD src/old.txt\n+3 \u{2212}1"
+        "Success. Updated the following files:\nA src/new.txt\nM src/keep.txt\nD src/old.txt\n\
+         Lines changed:\n\"src/new.txt\" +2 -0\n\"src/keep.txt\" +1 -0\n\"src/old.txt\" +0 -1"
     );
     assert_eq!(
         std::fs::read_to_string(live.root.join("src/new.txt")).unwrap(),

@@ -3,7 +3,10 @@
 use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use af_core::error_code;
-use af_wire::{protocol::Down, run::TaggedRun};
+use af_wire::{
+    protocol::Down,
+    run::{Owner, TaggedRun},
+};
 use futures_util::FutureExt as _;
 use tokio::{
     sync::{Mutex, mpsc, watch},
@@ -124,6 +127,12 @@ impl Worker {
             return Err(crate::error::ErrorKind::StreamProtocol.into());
         };
         match run {
+            // A setup draft's turn rides the common run path with no sandbox.
+            TaggedRun::Fleet(run) if matches!(run.owner, Some(Owner::Draft { .. })) => {
+                self.lessee
+                    .setup(&run, assigned.registration.stop.clone())
+                    .await?;
+            }
             TaggedRun::Fleet(run) => {
                 self.lessee
                     .run(

@@ -13,7 +13,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use af_wire::tool_trace::{
-    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
+    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, FileChange, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
     TRACE_MAX_BYTES, TRACE_MAX_CALLS, ToolCallStatus, ToolTrace, ToolTraceCall, encoded_len,
 };
 use serde_json::{Map, Value};
@@ -29,6 +29,8 @@ pub(crate) struct Outcome {
     pub(crate) line_count: Option<u64>,
     pub(crate) exit_code: Option<i32>,
     pub(crate) elapsed: Duration,
+    /// For an edit that succeeded, each file it changed; empty otherwise.
+    pub(crate) changes: Vec<FileChange<'static>>,
 }
 
 impl Outcome {
@@ -48,6 +50,7 @@ impl Outcome {
             line_count: Some(u64::try_from(output.lines().count()).unwrap_or(u64::MAX)),
             exit_code,
             elapsed,
+            changes: Vec::new(),
         }
     }
 
@@ -60,6 +63,7 @@ impl Outcome {
             line_count: None,
             exit_code: None,
             elapsed,
+            changes: Vec::new(),
         }
     }
 }
@@ -160,6 +164,7 @@ impl Trace {
             output_line_count: outcome.line_count,
             exit_code: outcome.exit_code,
             duration_ms: af_core::clock::saturating_millis(outcome.elapsed),
+            changes: outcome.changes,
         };
         // A comma joins every row after the first.
         let joint = usize::from(!self.calls.is_empty());

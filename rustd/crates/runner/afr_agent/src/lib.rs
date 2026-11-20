@@ -8,7 +8,8 @@
 //! run needs a sandbox. [`Loop`] is the engine that runs the model against the
 //! run's tools: each loop's router runs a call through `guffbolt`'s tool set,
 //! a catalog handler where its runtime says. A scripted engine drives the
-//! supervisor's lanes.
+//! supervisor's lanes. [`AgentEngine::setup`] runs a setup draft's turn on the
+//! same loop, with no sandbox and `propose_setup` alone ([`setup`]).
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
@@ -32,6 +33,7 @@ mod result;
 mod router;
 #[cfg(feature = "test-util")]
 pub mod scripted;
+pub mod setup;
 mod spans;
 #[cfg(any(test, feature = "test-util"))]
 pub mod testing;
@@ -45,6 +47,7 @@ pub use self::engine::{
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
 pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};
+pub use self::setup::{SetupContext, SetupOutput, SetupRun};
 // The seam a run's schedule and message tools reach `agentsfleetd` through,
 // re-exported so the supervisor implements it through the crate it drives.
 pub use afr_tools::{RunVerbs, ScheduleCall, Unanswered};

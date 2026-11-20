@@ -4,7 +4,9 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_wire::tool_detail::{DETAIL_POST_MAX_BYTES, ToolCallRecord, ToolCallRecordsRequest};
+use af_wire::tool_detail::{
+    DETAIL_POST_MAX_BYTES, ItemKind, ItemStatus, ToolCallRecord, ToolCallRecordsRequest,
+};
 
 use super::bodies;
 
@@ -19,6 +21,11 @@ fn record(number: u64, output_bytes: usize) -> ToolCallRecord<'static> {
         output: "x".repeat(output_bytes).into(),
         output_line_count: 1,
         truncated: false,
+        turn_id: "019f0000-0000-7000-8000-000000000001".into(),
+        kind: ItemKind::ToolCall,
+        tool: "shell".into(),
+        status: ItemStatus::Succeeded,
+        changes: Vec::new(),
     }
 }
 

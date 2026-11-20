@@ -42,3 +42,8 @@ pub(crate) fn recovery_source(
     }
     .into()
 }
+
+/// A setup run's assignment that lacks what a setup run is built from.
+pub(crate) fn setup_assignment(reason: &'static str) -> Error {
+    ErrorKind::SetupAssignment { reason }.into()
+}

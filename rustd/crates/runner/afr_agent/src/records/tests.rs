@@ -3,17 +3,39 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use af_secrets::Clean;
 use af_wire::tool_detail::{
-    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, RawToolCallRecord, ToolCallRecordsRequest,
+    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ItemKind, ItemStatus, RawToolCallRecord,
+    ToolCallRecord, ToolCallRecordsRequest,
 };
-use serde_json::json;
+use af_wire::tool_trace::FileChange;
+use serde_json::{Value, json};
 
-use super::{post_envelope_bytes, record};
+use super::{Item, post_envelope_bytes};
 use crate::fixture::{clean, clean_json};
 use af_wire::tool_trace::encoded_len;
 
+/// The run's own turn, as the payload names it.
+const TURN: &str = "019f0000-0000-7000-8000-000000000001";
+
+/// A `web_fetch` call of the run's own turn that succeeded.
+fn fetched() -> Item {
+    Item {
+        turn_id: TURN.to_owned(),
+        kind: ItemKind::ToolCall,
+        tool: "web_fetch".to_owned(),
+        status: ItemStatus::Succeeded,
+        changes: Vec::new(),
+    }
+}
+
+/// Call `number`'s record as a [`fetched`] call.
+fn record(number: u64, arguments: Clean<Value>, output: &Clean<String>) -> ToolCallRecord<'static> {
+    super::record(number, arguments, output, fetched())
+}
+
 /// Whether the daemon would keep `record`, judged by the wire's own narrow.
-fn accepted(record: &af_wire::tool_detail::ToolCallRecord<'_>) -> bool {
+fn accepted(record: &ToolCallRecord<'_>) -> bool {
     let text = serde_json::to_string(record).unwrap();
     serde_json::from_str::<RawToolCallRecord<'_>>(&text)
         .unwrap()
@@ -114,4 +136,48 @@ fn should_record_no_arguments_for_a_call_whose_arguments_are_not_an_object() {
     let kept = record(1, clean_json(json!("bare")), &clean("ok"));
 
     assert!(kept.arguments.is_empty() && !kept.truncated_arguments);
+}
+
+#[test]
+fn should_carry_an_edits_turn_kind_and_counts() {
+    let edited = Item {
+        turn_id: "019f0000-0000-7000-8000-000000000002".to_owned(),
+        kind: ItemKind::Edit,
+        tool: "apply_patch".to_owned(),
+        status: ItemStatus::Succeeded,
+        changes: vec![FileChange {
+            path: "src/a.rs".into(),
+            added: 24,
+            removed: 8,
+        }],
+    };
+
+    let kept = super::record(4, clean_json(json!({"patch": "…"})), &clean("done"), edited);
+
+    assert_eq!(kept.turn_id, "019f0000-0000-7000-8000-000000000002");
+    assert_eq!(
+        (kept.kind, kept.tool.as_ref(), kept.status),
+        (ItemKind::Edit, "apply_patch", ItemStatus::Succeeded)
+    );
+    assert_eq!(kept.changes.len(), 1);
+    assert!(accepted(&kept), "the daemon keeps an edit's record");
+}
+
+#[test]
+fn should_record_a_failed_call_with_no_changes() {
+    let failed = Item {
+        status: ItemStatus::Failed,
+        ..fetched()
+    };
+
+    let kept = super::record(
+        2,
+        clean_json(json!({})),
+        &clean("[file_not_found] gone"),
+        failed,
+    );
+
+    assert_eq!(kept.status, ItemStatus::Failed);
+    assert_eq!(kept.changes, Vec::new());
+    assert!(accepted(&kept));
 }

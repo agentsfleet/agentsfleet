@@ -1,8 +1,9 @@
 //! The tools one run, or one child loop, was offered.
 //!
 //! A selection is what a policy named, in the order it named it: the
-//! catalog's handlers, the nested tools the loop runs itself, and the entries
-//! the provider hosts, borrowed for the run. A child's selection narrows its
+//! catalog's handlers, the tools the run builds over its own backends, the
+//! nested tools the loop runs itself, and the entries the provider hosts,
+//! borrowed for the run. A child's selection narrows its
 //! parent's, so a child never holds a tool its parent lacks.
 
 use guffbolt::agents::Narrow;
@@ -16,6 +17,9 @@ use crate::runtime::{CatalogTool, Runtime};
 pub enum Offered<'c> {
     /// A handler the catalog hosts, run where its published entry says.
     Handler(&'static Entry, &'c CatalogTool),
+    /// A tool the run builds over its own backends when it starts
+    /// ([`crate::RunTools`]).
+    Backed(&'static Entry),
     /// A nested tool, which the loop runs beside the turn.
     Nested(Nested),
 }
@@ -25,7 +29,7 @@ impl Offered<'_> {
     #[must_use]
     pub const fn entry(self) -> &'static Entry {
         match self {
-            Self::Handler(entry, _handler) => entry,
+            Self::Handler(entry, _) | Self::Backed(entry) => entry,
             Self::Nested(nested) => nested.entry(),
         }
     }
@@ -49,12 +53,12 @@ impl<'c> Selection<'c> {
             .any(|offered| offered.entry().runtime() == Runtime::Sandbox)
     }
 
-    /// The handler for `name`, when the run was offered one.
+    /// The catalog's handler for `name`, when the run was offered one.
     #[must_use]
     pub fn tool(&self, name: &str) -> Option<&'c CatalogTool> {
         match self.find(name)? {
             Offered::Handler(_entry, handler) => Some(handler),
-            Offered::Nested(_nested) => None,
+            Offered::Backed(_) | Offered::Nested(_) => None,
         }
     }
 

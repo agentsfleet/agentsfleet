@@ -47,6 +47,7 @@ mod recovery;
 mod renew;
 mod report;
 mod run_loop;
+mod setup_run;
 mod shutdown;
 mod storage_home;
 mod turns;

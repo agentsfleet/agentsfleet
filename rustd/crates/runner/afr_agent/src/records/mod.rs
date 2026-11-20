@@ -8,9 +8,10 @@
 use std::borrow::Cow;
 
 use af_wire::tool_detail::{
-    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ToolCallRecord, ToolCallRecordsRequest,
+    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ItemKind, ItemStatus, ToolCallRecord,
+    ToolCallRecordsRequest,
 };
-use af_wire::tool_trace::encoded_len;
+use af_wire::tool_trace::{FileChange, encoded_len};
 use serde_json::{Map, Value};
 
 use af_secrets::Clean;
@@ -26,11 +27,28 @@ fn post_envelope_bytes() -> usize {
     })
 }
 
-/// Call `number`'s record, from its scrubbed arguments and output.
+/// What a record says of its call besides the arguments and the output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Item {
+    /// The turn newest when the call's step began.
+    pub(crate) turn_id: String,
+    /// What kind of thing the call was.
+    pub(crate) kind: ItemKind,
+    /// The tool it called.
+    pub(crate) tool: String,
+    /// How it ended.
+    pub(crate) status: ItemStatus,
+    /// For an edit, each file it changed, read from its scrubbed output.
+    pub(crate) changes: Vec<FileChange<'static>>,
+}
+
+/// Call `number`'s record, from its scrubbed arguments and output, and what
+/// `item` says of it.
 pub(crate) fn record(
     number: u64,
     arguments: Clean<Value>,
     output: &Clean<String>,
+    item: Item,
 ) -> ToolCallRecord<'static> {
     let (arguments, truncated_arguments) = match arguments.into_inner() {
         Value::Object(fields) if encoded_len(&fields) <= DETAIL_FIELD_MAX_BYTES => (fields, false),
@@ -39,6 +57,13 @@ pub(crate) fn record(
             (Map::new(), false)
         }
     };
+    let Item {
+        turn_id,
+        kind,
+        tool,
+        status,
+        changes,
+    } = item;
     let mut record = ToolCallRecord {
         call_number: number,
         arguments,
@@ -46,6 +71,11 @@ pub(crate) fn record(
         output: Cow::Owned(String::new()),
         output_line_count: u64::try_from(output.lines().count()).unwrap_or(u64::MAX),
         truncated: false,
+        turn_id: Cow::Owned(turn_id),
+        kind,
+        tool: Cow::Owned(tool),
+        status,
+        changes,
     };
     let room = DETAIL_POST_MAX_BYTES.saturating_sub(post_envelope_bytes());
     let mut keep = output.floor_char_boundary(DETAIL_FIELD_MAX_BYTES);

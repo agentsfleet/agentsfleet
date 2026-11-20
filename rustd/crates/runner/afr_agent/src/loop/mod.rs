@@ -16,7 +16,7 @@
 use af_providers::Connect;
 use af_secrets::Scrub;
 use af_wire::policy::ExecutionPolicy;
-use afr_tools::{Catalog, Selection};
+use afr_tools::{Backends, Catalog, Selection};
 use guffbolt::agents::{Agents, Children, Tether};
 use guffbolt::{Hosted, Transcript};
 use tokio_util::sync::CancellationToken;
@@ -79,6 +79,12 @@ impl AgentEngine for Loop {
             .map(Some)
     }
 
+    /// A setup run reaches its model the way a fleet run does, and holds no
+    /// catalog tool: its one tool is built per run (`crate::setup`).
+    async fn setup(&self, run: crate::setup::SetupRun<'_>) -> Result<crate::setup::SetupOutput> {
+        crate::setup::run(self.connect.as_ref(), run).await
+    }
+
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<Needs> {
         self.connect.admit(policy)?;
         let sandbox = self.catalog.select(&policy.tools)?.needs_sandbox();
@@ -119,18 +125,24 @@ impl AgentEngine for Loop {
             memory,
             mut state,
         } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message)?;
+        // The run's state outlives its tools: the tools a run builds over its
+        // memory, verbs and guard borrow it, and every loop borrows them. The
+        // children's registry is made after them, so it is dropped first.
+        let tools_run = shared::run_state(&run, memory, provider.as_ref());
+        let backends = Backends::new(&tools_run, self.catalog.transport());
+        let backed = backends.tools(tools)?;
         let (registry, requests) = match &mut state {
             Some(recovered) => std::mem::take(&mut recovered.children).restored(&scrub)?,
             None => Agents::new(nested::CAPS),
         };
         let shared = Shared::new(
             &run,
-            &selection,
+            (&selection, backed),
             provider.as_ref(),
             &scrub,
             registry,
             instructions,
-            memory,
+            &tools_run,
         );
         let driven = async {
             let mut children = Children::new(requests);

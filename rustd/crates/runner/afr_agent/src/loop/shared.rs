@@ -17,7 +17,7 @@ use af_wire::policy::ContextBudget;
 use afr_executor::ExecutorSource;
 use afr_memory::Loaded;
 use afr_tools::sandbox::checkouts;
-use afr_tools::{Run, Selection};
+use afr_tools::{Run, RunTools, Selection};
 use guffbolt::agents::Agents;
 use tokio_util::sync::CancellationToken;
 
@@ -52,11 +52,16 @@ pub(crate) struct Shared<'run> {
     pub(crate) context: &'run ContextBudget<'run>,
     /// Every tool the run was offered; a child's selection narrows it.
     pub(crate) selection: &'run Selection<'run>,
+    /// The tools the run built over its own backends, which a selection's
+    /// backed entries name. Owned here, not borrowed: a boxed tool may read
+    /// what it borrowed as it drops, so it cannot sit in a local the run also
+    /// borrows for as long as it lasts.
+    pub(crate) backed: RunTools<'run>,
     pub(crate) executor: &'run dyn ExecutorSource,
     pub(crate) scrub: &'run Scrub,
     pub(crate) events: &'run dyn EventSink,
     /// What every call of the run shares.
-    pub(crate) run: Run<'run>,
+    pub(crate) run: &'run Run<'run>,
     /// Every call of the run, the children's included.
     pub(crate) ledger: Ledger<'run>,
     pub(crate) meter: &'run Meter,
@@ -67,18 +72,36 @@ pub(crate) struct Shared<'run> {
     pub(crate) started: Instant,
 }
 
+/// What every call of `run` shares, its memory beginning as `memory`. The
+/// supervisor refused a run whose binding does not parse before this turn
+/// began, so none reaches here.
+pub(crate) fn run_state<'run>(
+    run: &AgentRun<'run>,
+    memory: Loaded<'run>,
+    provider: &Provider,
+) -> Run<'run> {
+    let policy = &run.run.policy;
+    Run::new(
+        memory,
+        Egress::new(&run.run.run_id, policy, run.mint, &SystemClock),
+        run.verbs,
+    )
+    .with_checkouts(checkouts(policy).unwrap_or_default())
+    .with_image_input(provider.accepts_images())
+}
+
 impl<'run> Shared<'run> {
     /// What `run` shares between its loops, driving `provider` over the
-    /// tools `selection` offers under `instructions`, masking through
-    /// `scrub`.
+    /// tools `selection` offers, those `backed` holds among them, under
+    /// `instructions`, masking through `scrub`; every call shares `state`.
     pub(crate) fn new(
         run: &AgentRun<'run>,
-        selection: &'run Selection<'run>,
+        (selection, backed): (&'run Selection<'run>, RunTools<'run>),
         provider: &'run Provider,
         scrub: &'run Scrub,
         registry: Agents<Selection<'run>>,
         instructions: String,
-        memory: Loaded<'run>,
+        state: &'run Run<'run>,
     ) -> Self {
         let policy = &run.run.policy;
         let started = Instant::now();
@@ -106,19 +129,12 @@ impl<'run> Shared<'run> {
             inference: policy.inference.as_ref(),
             context: &policy.context,
             selection,
+            backed,
             executor: run.executor,
             scrub,
             events: run.events,
-            // The supervisor refused a run whose binding does not parse
-            // before this turn began, so none reaches here.
-            run: Run::new(
-                Box::new(memory),
-                Egress::new(&run.run.run_id, policy, run.mint, &SystemClock),
-                run.verbs,
-            )
-            .with_checkouts(checkouts(policy).unwrap_or_default())
-            .with_image_input(provider.accepts_images()),
-            ledger: Ledger::new(&run.run.run_id, run.events, scrub),
+            run: state,
+            ledger: Ledger::new(&run.run.run_id, &run.run.event.turn_id, run.events, scrub),
             meter: run.meter,
             registry,
             instructions,

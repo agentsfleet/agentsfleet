@@ -13,7 +13,7 @@ use af_wire::memory::{
     MemoryDelta, MemoryRecallResponse, PINNED_CATEGORY, SharedMemory, Visibility,
 };
 
-use super::{Loaded, MemoryBackend, RECALL_MISS_CAP, Recall, Seed};
+use super::{Loaded, RECALL_MISS_CAP, Recall, Seed};
 use crate::Result;
 use crate::tests::keys;
 
@@ -122,9 +122,9 @@ async fn a_recall_past_the_window_never_brings_back_a_key_the_run_forgot() {
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
-    memory.forget("deploy-1").await.unwrap();
+    memory.forget("deploy-1");
     // Past the window too: the durable copy is not the window's to know of.
-    memory.forget("deploy-7").await.unwrap();
+    memory.forget("deploy-7");
 
     let found = memory.recall("deploy", LIMIT).await.unwrap();
 
@@ -149,7 +149,7 @@ async fn a_recall_past_the_window_never_brings_back_a_key_the_run_overwrote() {
         content: Cow::Borrowed("moved to fly"),
         ..entry("deploy-9")
     };
-    memory.store(rewritten).await.unwrap();
+    memory.store(rewritten).unwrap();
 
     let found = memory.recall("note", LIMIT).await.unwrap();
 
@@ -175,7 +175,7 @@ async fn a_recall_past_the_window_keeps_another_fleets_entry_under_a_key_the_run
         recall: Some(&daemon),
         ..Seed::window(&window)
     });
-    memory.forget("deploy-7").await.unwrap();
+    memory.forget("deploy-7");
 
     let found = memory.recall("deploy", LIMIT).await.unwrap();
 

@@ -23,10 +23,11 @@ use guffbolt::{CallRef, ToolOutput};
 use jiff::Timestamp;
 use tokio::task::JoinHandle;
 
+use crate::backed::Backends;
 use crate::catalog::{Catalog, Entry};
 use crate::egress::SharedTransport;
 use crate::run::Run;
-use crate::runtime::{CatalogTool, ToolContext};
+use crate::runtime::{CatalogTool, RunTool, ToolContext};
 use crate::selection::Selection;
 
 /// When every egress suite's clock starts.
@@ -113,7 +114,7 @@ fn first_call() -> CallRef {
 
 /// Calls `tool` with `arguments` from the supervisor, with `run`'s state.
 pub(crate) async fn call(
-    tool: &CatalogTool,
+    tool: &RunTool<'_>,
     run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
@@ -132,7 +133,7 @@ pub(crate) async fn call(
 /// Calls `tool` with `arguments` as the router calls a sandbox-side tool:
 /// with `executor`, and `run`'s state.
 pub(crate) async fn call_in(
-    tool: &CatalogTool,
+    tool: &RunTool<'_>,
     executor: &dyn Executor,
     run: &Run<'_>,
     arguments: serde_json::Value,
@@ -147,6 +148,21 @@ pub(crate) async fn call_in(
         },
     )
     .await
+}
+
+/// Calls the tool named `name` that `run` builds over its own backends, with
+/// `arguments`, the way the router calls it; its notifier sends nowhere.
+pub(crate) async fn call_built(
+    run: &Run<'_>,
+    name: &str,
+    arguments: serde_json::Value,
+) -> ToolOutput {
+    let backends = Backends::new(run, None);
+    let tools = backends
+        .tools(&[name])
+        .expect("a run builds every backed tool it names");
+    let tool = tools.tool(name).expect("the name is a backed tool's");
+    call(tool, run, arguments).await
 }
 
 /// What an egress suite holds for one run: the policy the guard admits
@@ -176,7 +192,7 @@ impl RunFixture {
     /// A run sending through this run's guard and reaching `verbs`.
     pub(crate) fn run_reaching<'r>(&'r self, verbs: &'r dyn crate::verbs::RunVerbs) -> Run<'r> {
         Run::new(
-            Box::new(Loaded::default()),
+            Loaded::default(),
             Egress::new(RUN_ID, &self.policy, &self.mint, &self.clock),
             verbs,
         )

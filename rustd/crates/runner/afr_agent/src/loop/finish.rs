@@ -2,7 +2,6 @@
 //! carries, and what the run leaves behind.
 
 use crate::{Completed, ExecutionResult, Failure, ResultOutcome};
-use af_wire::memory::MemoryDelta;
 use guffbolt::agents::Pause;
 
 use super::{Ending, Harness};
@@ -110,11 +109,7 @@ impl Harness<'_, '_> {
         };
         let usage = shared.meter.read();
         let (trace, records) = shared.ledger.finish();
-        let memory = (shared.run.memory.lock().await)
-            .pending()
-            .into_iter()
-            .map(MemoryDelta::into_owned)
-            .collect();
+        let memory = shared.run.memory.pending().await;
         RunOutput {
             recovery,
             task: self.task_report,

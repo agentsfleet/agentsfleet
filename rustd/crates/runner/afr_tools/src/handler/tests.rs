@@ -1,20 +1,25 @@
 #![expect(
     clippy::indexing_slicing,
-    reason = "test module: a missing key or element should fail the test loudly"
+    clippy::unwrap_used,
+    reason = "test module: a missing key, element or tool should fail the test loudly"
 )]
 
 use serde_json::json;
 
-use crate::generic::Generic;
+use crate::backed::Backends;
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::testing::call;
-use guffbolt::tools::memory::MemoryRecall;
+
+/// The name of the tool these cases read: one whose arguments are a type.
+const RECALL: &str = "memory_recall";
 
 #[test]
 fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
-    let tool = Generic::boxed(MemoryRecall);
-    let parameters = tool.spec().parameters;
+    let run = Run::default();
+    let backends = Backends::new(&run, None);
+    let tools = backends.tools(&[RECALL]).unwrap();
+    let parameters = tools.tool(RECALL).unwrap().spec().parameters;
 
     assert_eq!(parameters["type"], "object");
     assert_eq!(parameters["additionalProperties"], false);
@@ -27,15 +32,17 @@ fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
 
 #[tokio::test]
 async fn arguments_that_do_not_parse_are_refused_before_the_handler_runs() {
-    let tool = Generic::boxed(MemoryRecall);
     let run = Run::default();
+    let backends = Backends::new(&run, None);
+    let tools = backends.tools(&[RECALL]).unwrap();
+    let tool = tools.tool(RECALL).unwrap();
 
     for refused in [
         json!({"query": "k", "token": "smuggled"}),
         json!({"query": 7}),
         json!({"limit": 5}),
     ] {
-        let output = call(tool.as_ref(), &run, refused.clone()).await;
+        let output = call(tool, &run, refused.clone()).await;
         assert_eq!(
             output.error_code,
             Some(ToolErrorCode::InvalidArguments.into()),
@@ -47,7 +54,7 @@ async fn arguments_that_do_not_parse_are_refused_before_the_handler_runs() {
             output.text
         );
     }
-    let parsed = call(tool.as_ref(), &run, json!({"query": "k"})).await;
+    let parsed = call(tool, &run, json!({"query": "k"})).await;
     assert_eq!(parsed.text, "nothing remembered matches k");
     assert_eq!(parsed.error_code, None);
 }

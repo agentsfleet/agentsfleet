@@ -3,22 +3,18 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use std::time::Duration;
-
 use af_wire::activity::ActivityFrame;
 use af_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, ToolCallRecord};
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::UPDATE_PLAN;
-use guffbolt::{Call, CallEnd, ToolOutput};
-use tracing::Span;
+use guffbolt::{Call, ToolOutput};
 
 use af_core::test_util::trace::{Capture, CapturedEvent};
 
-use super::{EVENT_RECORD_DROPPED, Ledger, Opened};
+use super::test_calls::{RUN_ID, TURN, call, close, planned, ran};
+use super::{EVENT_RECORD_DROPPED, Ledger};
 use crate::fixture::{Frames, GITHUB_TOKEN, clean_json, scrub};
 
-/// The run every call here belongs to.
-const RUN_ID: &str = "run-1";
 /// Calls whose records, at the field cap each, pass the event's budget.
 const LARGE_CALLS: usize = 20;
 
@@ -27,42 +23,12 @@ fn a_run_without_calls_keeps_a_known_trace_and_no_records() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
 
     assert_eq!(
         serde_json::json!(ledger.finish()),
         serde_json::json!([{"calls": [], "omitted_call_count": 0}, []])
     );
-}
-
-/// Ends `call`, which `opened` holds, as `guffbolt` ends it: answering
-/// `output`, or interrupted when there is none. Hands back what the model
-/// reads.
-fn close(
-    ledger: &Ledger<'_>,
-    call: &Call,
-    (opened, span): (Opened, Span),
-    mut output: Option<ToolOutput>,
-) -> Option<ToolOutput> {
-    let end = CallEnd {
-        call,
-        span: &span,
-        duration: Duration::ZERO,
-        output: output.as_mut(),
-    };
-    ledger.close(opened, end);
-    output
-}
-
-/// Opens `call` and ends it at once, answering `output`, or interrupted
-/// when there is none.
-fn ran(ledger: &Ledger<'_>, call: &Call, output: Option<ToolOutput>) -> Option<ToolOutput> {
-    close(ledger, call, ledger.open(call), output)
-}
-
-/// Runs one call through `ledger`, answering `text`.
-fn call(ledger: &Ledger<'_>, text: String) {
-    ran(ledger, &planned(), Some(ToolOutput::succeeded(text)));
 }
 
 /// What `records` spend of their event's budget.
@@ -76,7 +42,7 @@ fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_still_is()
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
 
     for _ in 0..LARGE_CALLS {
         call(&ledger, "x".repeat(DETAIL_FIELD_MAX_BYTES));
@@ -129,7 +95,7 @@ async fn every_call_is_counted_by_tool_and_how_it_ended() {
     let (tally, recorded) = Tally::new();
 
     scoped(tally, async {
-        let ledger = Ledger::new(RUN_ID, &sink, &scrub);
+        let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
         call(&ledger, "planned".to_owned());
         let made_up = Call {
             id: String::new(),
@@ -165,15 +131,6 @@ async fn every_call_is_counted_by_tool_and_how_it_ended() {
     assert_eq!(Tool::of("made_up_tool").as_str(), "_other");
 }
 
-/// A call to `UPDATE_PLAN`, which every call here stands in for.
-fn planned() -> Call {
-    Call {
-        id: String::new(),
-        name: UPDATE_PLAN.name().to_owned(),
-        arguments: serde_json::json!({}),
-    }
-}
-
 /// The call ids the start frames announced, then how each call ended, in
 /// the order the frames left.
 fn opened_and_ended(frames: &[ActivityFrame<'_>]) -> (Vec<String>, Vec<(String, ToolCallStatus)>) {
@@ -201,7 +158,7 @@ fn test_a_calls_start_frame_carries_its_arguments_as_json() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
     let named = serde_json::json!({"path": "a.md", "token": GITHUB_TOKEN});
 
     for arguments in [named.clone(), serde_json::json!("not an object")] {
@@ -239,7 +196,7 @@ fn a_call_opened_inside_another_takes_the_next_number_and_each_ends_once() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
     let (outer, inner) = (planned(), planned());
 
     let outer_open = ledger.open(&outer);
@@ -268,7 +225,7 @@ fn interrupting_a_call_with_one_open_inside_it_ends_both_interrupted() {
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
-    let ledger = Ledger::new(RUN_ID, &sink, &scrub);
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
     let (outer, inner) = (planned(), planned());
 
     let outer_open = ledger.open(&outer);
@@ -305,7 +262,7 @@ async fn a_call_killed_for_memory_is_counted_and_typed_on_its_span() {
     let (tally, recorded) = Tally::new();
 
     scoped(tally, async {
-        let ledger = Ledger::new(RUN_ID, &sink, &scrub);
+        let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
         let killed = ToolOutput {
             exit_code: Some(137),
             error_code: Some(ToolErrorCode::OutOfMemory.into()),

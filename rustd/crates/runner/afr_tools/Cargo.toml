@@ -21,6 +21,9 @@ af_core.workspace = true
 af_validate.workspace = true
 # A memory entry's shape and its default category.
 af_wire.workspace = true
+# A draft's setup, and the rules `propose_setup` reads and checks it by: the
+# same ones the daemon checks a reported setup with.
+af_fleet_runtime.workspace = true
 # The run's memory, which the memory tools read and write.
 afr_memory.workspace = true
 # A sandbox-side handler reaches `/workspace` through the run's executor.

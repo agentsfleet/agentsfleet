@@ -76,6 +76,7 @@ pub(super) fn completed(call_id: &'static str, ms: i64) -> ActivityFrame<'static
         output_tail: None,
         output_line_count: None,
         exit_code: None,
+        changes: Vec::new(),
     })
 }
 

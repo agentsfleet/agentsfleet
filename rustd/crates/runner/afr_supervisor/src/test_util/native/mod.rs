@@ -211,7 +211,7 @@ where
         let mut response = Response::new(body);
         response.headers_mut().insert(
             protocol::VERSION_HEADER,
-            http::HeaderValue::from_static(protocol::VERSION_V2),
+            http::HeaderValue::from_static(protocol::VERSION),
         );
         response
     }

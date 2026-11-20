@@ -15,7 +15,7 @@ use garde::Validate as _;
 
 use crate::error::{self, Result};
 use crate::seed::{RECALL_MISS_CAP, Recalled, Seed};
-use crate::{Forgotten, MemoryBackend, MemoryRecovery};
+use crate::{Forgotten, MemoryRecovery};
 
 /// A recall asked `agentsfleetd` past the window and could not get an answer.
 const EVENT_MISS_FAILED: &str = "memory_recall_miss_failed";
@@ -204,9 +204,19 @@ impl<'run> Loaded<'run> {
     }
 }
 
-#[async_trait::async_trait]
-impl MemoryBackend for Loaded<'_> {
-    async fn store(&mut self, entry: MemoryDelta<'static>) -> Result<()> {
+/// What the four memory tools read and write, and what the supervisor pushes.
+///
+/// Bound to one fleet's namespace before the run starts, so every write
+/// answers for that fleet alone; another fleet's shared entries are read,
+/// never written.
+impl Loaded<'_> {
+    /// Stores `entry`, replacing what its key held.
+    ///
+    /// # Errors
+    /// The entry breaks a bound `af_wire` declares on a stored entry, asks
+    /// the workspace to read it from a fleet that may not publish, or would
+    /// no longer fit one push.
+    pub fn store(&mut self, entry: MemoryDelta<'static>) -> Result<()> {
         entry.validate()?;
         if entry.visibility.is_workspace() && !self.seed.publish {
             return Err(error::not_granted());
@@ -230,7 +240,16 @@ impl MemoryBackend for Loaded<'_> {
         Ok(())
     }
 
-    async fn recall<'m>(&'m self, query: &str, limit: usize) -> Result<Vec<Recalled<'m>>> {
+    /// The entries whose key or content holds `query`, ignoring ASCII case:
+    /// key matches first, then content matches, each newest first, the
+    /// fleet's own ahead of the workspace's shared ones, at most `limit`; an
+    /// empty query holds in every entry. The model reads what comes back and
+    /// decides what is relevant: a substring match is the ceiling on search
+    /// (`docs/architecture/direction.md`).
+    ///
+    /// # Errors
+    /// The query cannot be searched for.
+    pub async fn recall<'m>(&'m self, query: &str, limit: usize) -> Result<Vec<Recalled<'m>>> {
         let mut found = self.matching(query, limit)?;
         if found.len() >= limit {
             return Ok(found);
@@ -248,28 +267,34 @@ impl MemoryBackend for Loaded<'_> {
         Ok(found)
     }
 
-    async fn list<'m>(&'m self, category: Option<&str>) -> Result<Vec<Recalled<'m>>> {
-        Ok(self
-            .newest_first()
+    /// Every entry, or every entry in `category`, newest first: the fleet's
+    /// own, then the workspace's shared ones.
+    #[must_use]
+    pub fn list<'m>(&'m self, category: Option<&str>) -> Vec<Recalled<'m>> {
+        self.newest_first()
             .filter(|found| category.is_none_or(|wanted| found.category == wanted))
-            .collect())
+            .collect()
     }
 
-    async fn forget(&mut self, key: &str) -> Result<Forgotten> {
+    /// Forgets this fleet's entry under `key`; another fleet's shared entry
+    /// under the same key is never touched.
+    pub fn forget(&mut self, key: &str) -> Forgotten {
         // A key past the wire bound was never stored, because the daemon
         // refuses one, so there is no durable copy to hide and nothing to hold.
         if key.len() > MAX_KEY_LEN {
-            return Ok(Forgotten::Unknown);
+            return Forgotten::Unknown;
         }
         // Recorded even when the window held nothing under the key: the
         // durable copy can sit past the window, and the run asked it gone.
         self.superseded.insert(key.to_owned());
-        Ok(self
-            .remove(key)
-            .map_or(Forgotten::Unknown, |_| Forgotten::ForThisRun))
+        self.remove(key)
+            .map_or(Forgotten::Unknown, |_| Forgotten::ForThisRun)
     }
 
-    fn into_pending(self: Box<Self>) -> Vec<MemoryDelta<'static>> {
+    /// The entries the supervisor still has to push, fenced, before the
+    /// report.
+    #[must_use]
+    pub fn into_pending(self) -> Vec<MemoryDelta<'static>> {
         self.entries
             .into_iter()
             .filter(|entry| entry.pending)
@@ -277,7 +302,10 @@ impl MemoryBackend for Loaded<'_> {
             .collect()
     }
 
-    fn pending(&self) -> Vec<MemoryDelta<'_>> {
+    /// The entries the final push would carry, as they stand: what a mid-run
+    /// checkpoint writes back while the run keeps its memory.
+    #[must_use]
+    pub fn pending(&self) -> Vec<MemoryDelta<'_>> {
         self.entries
             .iter()
             .filter(|entry| entry.pending)
@@ -285,7 +313,12 @@ impl MemoryBackend for Loaded<'_> {
             .collect()
     }
 
-    fn snapshot(&self) -> Result<MemoryRecovery> {
+    /// Captures the complete local overlay without granting any saved
+    /// permission.
+    ///
+    /// # Errors
+    /// The overlay exceeds its declared bounds.
+    pub fn snapshot(&self) -> Result<MemoryRecovery> {
         let mut superseded: Vec<_> = self.superseded.iter().cloned().collect();
         superseded.sort_unstable();
         let saved = MemoryRecovery::new(

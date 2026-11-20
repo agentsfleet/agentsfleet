@@ -24,6 +24,8 @@ pub(crate) enum Expected {
     Renewed(Vec<af_core::id::Uuid7>),
     Report(af_core::id::Uuid7),
     Folds(af_core::id::Uuid7),
+    ContextLoad(af_core::id::Uuid7),
+    ContextSave(af_core::id::Uuid7),
     TurnCheckpoint {
         run: af_core::id::Uuid7,
         operation: af_wire::run::CheckpointOperationId,
@@ -151,6 +153,8 @@ impl Expected {
             (Self::Heartbeat, Down::Heartbeat { .. }) | (Self::Pong, Down::Pong { .. }) => true,
             (Self::Report(expected), Down::ReportAck { run_id, .. })
             | (Self::Folds(expected), Down::Folded { run_id, .. })
+            | (Self::ContextLoad(expected), Down::ContextLoaded { run_id, .. })
+            | (Self::ContextSave(expected), Down::ContextSaved { run_id, .. })
             | (Self::AuthoringActivity(expected), Down::AuthoringActivityAck { run_id, .. })
             | (Self::AuthoringRenew(expected), Down::AuthoringRenewed { run_id, .. })
             | (Self::AuthoringReport(expected), Down::AuthoringReportAck { run_id, .. }) => {

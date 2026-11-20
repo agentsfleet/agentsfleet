@@ -11,7 +11,7 @@ use af_wire::memory::{
     MAX_CONTENT_LEN, MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility,
 };
 
-use super::{Forgotten, Loaded, MemoryBackend, Recalled, Seed};
+use super::{Forgotten, Loaded, Recalled, Seed};
 
 fn entry(key: &str, content: &str, category: &str) -> MemoryDelta<'static> {
     MemoryDelta {
@@ -35,17 +35,12 @@ fn window() -> Vec<MemoryDelta<'static>> {
     ]
 }
 
-/// `memory` behind the trait, the way the tools reach it.
-fn boxed<'run>(memory: Loaded<'run>) -> Box<dyn MemoryBackend + 'run> {
-    Box::new(memory)
-}
-
-#[tokio::test]
-async fn loaded_entries_are_views_listed_newest_first_and_never_pushed() {
+#[test]
+fn loaded_entries_are_views_listed_newest_first_and_never_pushed() {
     let window = window();
-    let memory = boxed(Loaded::new(Seed::window(&window)));
+    let memory = Loaded::new(Seed::window(&window));
 
-    let listed = memory.list(None).await.unwrap();
+    let listed = memory.list(None);
     assert_eq!(keys(&listed), ["deploy_target", "owner", "incident:42"]);
     assert!(
         listed
@@ -62,19 +57,16 @@ async fn loaded_entries_are_views_listed_newest_first_and_never_pushed() {
 #[tokio::test]
 async fn a_store_replaces_its_key_and_only_stores_reach_the_push() {
     let window = window();
-    let mut memory = boxed(Loaded::new(Seed::window(&window)));
+    let mut memory = Loaded::new(Seed::window(&window));
 
     memory
         .store(entry("owner", "tarzy now", PINNED_CATEGORY))
-        .await
         .unwrap();
     memory
         .store(entry("runbook", "restart the worker", "daily"))
-        .await
         .unwrap();
     memory
         .store(entry("runbook", "drain then restart", "daily"))
-        .await
         .unwrap();
 
     let owners = memory.recall("owner", 5).await.unwrap();
@@ -86,9 +78,9 @@ async fn a_store_replaces_its_key_and_only_stores_reach_the_push() {
     assert_eq!(pushed[1].content, "drain then restart");
 }
 
-#[tokio::test]
-async fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
-    let mut memory = boxed(Loaded::default());
+#[test]
+fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
+    let mut memory = Loaded::default();
     let long_key = "k".repeat(MAX_KEY_LEN + 1);
     let long_content = "c".repeat(MAX_CONTENT_LEN + 1);
 
@@ -98,14 +90,13 @@ async fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
         (entry("k", &long_content, PINNED_CATEGORY), "content"),
         (entry("k", "c", ""), "category"),
     ] {
-        let error = memory.store(refused).await.unwrap_err();
+        let error = memory.store(refused).unwrap_err();
         assert_eq!(error.code(), error_code::INVALID_REQUEST);
         assert!(!error.is_full());
         assert!(error.detail().starts_with(field), "{}", error.detail());
     }
     memory
         .store(entry(&"k".repeat(MAX_KEY_LEN), "c", PINNED_CATEGORY))
-        .await
         .unwrap();
     assert_eq!(
         memory.into_pending().len(),
@@ -114,30 +105,23 @@ async fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
     );
 }
 
-#[tokio::test]
-async fn a_store_past_the_push_cap_is_refused_and_a_replacement_is_not_counted_twice() {
-    let mut memory = boxed(Loaded::default());
+#[test]
+fn a_store_past_the_push_cap_is_refused_and_a_replacement_is_not_counted_twice() {
+    let mut memory = Loaded::default();
     let content = "c".repeat(MAX_CONTENT_LEN);
     let fits = MAX_PUSH_BYTES / entry("k00", &content, "c").bytes();
     for at in 0..fits {
         memory
             .store(entry(&format!("k{at:02}"), &content, "c"))
-            .await
             .unwrap();
     }
 
-    let error = memory
-        .store(entry("over", &content, "c"))
-        .await
-        .unwrap_err();
+    let error = memory.store(entry("over", &content, "c")).unwrap_err();
     assert!(error.is_full());
     assert_eq!(error.code(), error_code::PAYLOAD_TOO_LARGE);
-    memory.store(entry("k00", &content, "c")).await.unwrap();
-    assert_eq!(memory.forget("k01").await.unwrap(), Forgotten::ForThisRun);
-    memory
-        .store(entry("after-forget", &content, "c"))
-        .await
-        .unwrap();
+    memory.store(entry("k00", &content, "c")).unwrap();
+    assert_eq!(memory.forget("k01"), Forgotten::ForThisRun);
+    memory.store(entry("after-forget", &content, "c")).unwrap();
     assert_eq!(
         memory.into_pending().len(),
         fits,
@@ -148,33 +132,21 @@ async fn a_store_past_the_push_cap_is_refused_and_a_replacement_is_not_counted_t
 #[tokio::test]
 async fn a_forget_holds_for_the_run_and_leaves_the_push() {
     let window = window();
-    let mut memory = boxed(Loaded::new(Seed::window(&window)));
-    memory
-        .store(entry("scratch", "a note", "daily"))
-        .await
-        .unwrap();
+    let mut memory = Loaded::new(Seed::window(&window));
+    memory.store(entry("scratch", "a note", "daily")).unwrap();
 
-    assert_eq!(memory.forget("owner").await.unwrap(), Forgotten::ForThisRun);
+    assert_eq!(memory.forget("owner"), Forgotten::ForThisRun);
+    assert_eq!(memory.forget("scratch"), Forgotten::ForThisRun);
+    assert_eq!(memory.forget("never-stored"), Forgotten::Unknown);
     assert_eq!(
-        memory.forget("scratch").await.unwrap(),
-        Forgotten::ForThisRun
-    );
-    assert_eq!(
-        memory.forget("never-stored").await.unwrap(),
-        Forgotten::Unknown
-    );
-    assert_eq!(
-        memory.forget(&"k".repeat(MAX_KEY_LEN + 1)).await.unwrap(),
+        memory.forget(&"k".repeat(MAX_KEY_LEN + 1)),
         Forgotten::Unknown,
         "a key past the wire bound was never stored, so none is held for it"
     );
 
     let recalled = memory.recall("owner", 5).await.unwrap();
     assert!(recalled.is_empty(), "{recalled:?}");
-    assert_eq!(
-        keys(&memory.list(None).await.unwrap()),
-        ["deploy_target", "incident:42"]
-    );
+    assert_eq!(keys(&memory.list(None)), ["deploy_target", "incident:42"]);
     let pending = memory.into_pending();
     assert!(pending.is_empty(), "{pending:?}");
 }
@@ -182,14 +154,12 @@ async fn a_forget_holds_for_the_run_and_leaves_the_push() {
 #[tokio::test]
 async fn recall_matches_key_then_content_ignoring_case_newest_first() {
     let window = window();
-    let mut memory = boxed(Loaded::new(Seed::window(&window)));
+    let mut memory = Loaded::new(Seed::window(&window));
     memory
         .store(entry("incident:43", "fly is green", "daily"))
-        .await
         .unwrap();
     memory
         .store(entry("iad-runbook", "drain then restart", "daily"))
-        .await
         .unwrap();
 
     assert_eq!(
@@ -217,17 +187,14 @@ async fn recall_matches_key_then_content_ignoring_case_newest_first() {
     );
 }
 
-#[tokio::test]
-async fn list_keeps_one_category() {
+#[test]
+fn list_keeps_one_category() {
     let window = window();
-    let memory = boxed(Loaded::new(Seed::window(&window)));
+    let memory = Loaded::new(Seed::window(&window));
 
+    assert_eq!(keys(&memory.list(Some("daily"))), ["incident:42"]);
     assert_eq!(
-        keys(&memory.list(Some("daily")).await.unwrap()),
-        ["incident:42"]
-    );
-    assert_eq!(
-        keys(&memory.list(Some(PINNED_CATEGORY)).await.unwrap()),
+        keys(&memory.list(Some(PINNED_CATEGORY))),
         ["deploy_target", "owner"]
     );
 }

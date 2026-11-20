@@ -206,6 +206,20 @@ pub trait AgentEngine: Send + Sync + fmt::Debug {
     /// a failed [`ExecutionResult`]. An error here means the engine itself
     /// could not run.
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput>;
+
+    /// Runs a setup draft's turn to its end: no sandbox, `propose_setup`
+    /// alone, and the proposal the run kept handed back
+    /// ([`crate::setup::SetupRun`]).
+    ///
+    /// # Errors
+    /// The engine hosts no setup run, which this default refuses, or its
+    /// model or the run's assignment could not be used. A failure the model
+    /// caused is a failed result, as [`AgentEngine::run`]'s is.
+    async fn setup(&self, _run: crate::setup::SetupRun<'_>) -> Result<crate::setup::SetupOutput> {
+        Err(crate::error::setup_assignment(
+            "this engine hosts no setup run",
+        ))
+    }
 }
 
 #[cfg(test)]

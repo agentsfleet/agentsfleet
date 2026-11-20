@@ -86,10 +86,10 @@ async fn test_file_tools_operate_under_workspace() {
     assert_eq!(
         texts,
         [
-            "Wrote 4 bytes to notes/todo.txt",
-            "Appended 4 bytes to notes/todo.txt",
+            "Wrote 4 bytes to notes/todo.txt\nLines changed:\n\"notes/todo.txt\" +1 -0",
+            "Appended 4 bytes to notes/todo.txt\nLines changed:\n\"notes/todo.txt\" +1 -0",
             "one\ntwo\n",
-            "Replaced 3 bytes with 5 bytes in notes/todo.txt",
+            "Replaced 3 bytes with 5 bytes in notes/todo.txt\nLines changed:\n\"notes/todo.txt\" +1 -1",
             "Deleted notes/todo.txt",
         ]
     );
@@ -285,7 +285,10 @@ async fn an_edit_replaces_the_first_occurrence_only() {
     )
     .await;
 
-    assert_eq!(edited.text, "Replaced 1 bytes with 1 bytes in a.txt");
+    assert_eq!(
+        edited.text,
+        "Replaced 1 bytes with 1 bytes in a.txt\nLines changed:\n\"a.txt\" +1 -1"
+    );
     assert_eq!(
         std::fs::read_to_string(live.root.join("a.txt")).unwrap(),
         "z y x\n"

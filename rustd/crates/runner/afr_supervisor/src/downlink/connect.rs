@@ -24,10 +24,10 @@ use crate::{
     error::{self, ErrorKind},
 };
 
-/// The protocol revision this runner speaks. It stays v2 until the setup run
-/// agent lands: a v3 runner is assigned draft-owned runs, which this runner
-/// cannot yet run.
-const SPOKEN: &str = protocol::VERSION_V2;
+/// The protocol revision this runner speaks: v4, so the daemon assigns it a
+/// setup draft's turn as a draft-owned run (`crate::setup_run`) and answers
+/// its context verb.
+const SPOKEN: &str = protocol::VERSION;
 
 pub(crate) struct Pipe {
     pub(crate) writer: DuplexStream,

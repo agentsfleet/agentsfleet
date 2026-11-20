@@ -15,7 +15,7 @@ use tokio::time::Instant;
 use afr_executor::{ExecutorSource, Outcome};
 use afr_telemetry::labels::SandboxWait;
 use afr_telemetry::record;
-use afr_tools::{CatalogTool, Run, Runtime, Selection, ToolContext, ToolErrorCode};
+use afr_tools::{Run, RunTool, Runtime, Selection, ToolContext, ToolErrorCode};
 
 use crate::harness::Harness;
 
@@ -84,18 +84,19 @@ impl<'s, 'run> Router<'s, 'run> {
     }
 }
 
-/// A catalog handler as a loop runs it: lent the run's state, and its
-/// executor only when the handler's published entry runs in the sandbox, the
-/// way Codex's `ExtensionToolAdapter` lends an extension tool its turn.
+/// A catalog handler, or a tool the run built over its backends, as a loop
+/// runs it: lent the run's state, and its executor only when the handler's
+/// published entry runs in the sandbox, the way Codex's
+/// `ExtensionToolAdapter` lends an extension tool its turn.
 #[derive(Debug)]
 pub(crate) struct Routed<'s> {
-    handler: &'s CatalogTool,
+    handler: &'s RunTool<'s>,
     runtime: Runtime,
 }
 
 impl<'s> Routed<'s> {
     /// `handler`, run where `runtime` says.
-    pub(crate) const fn new(handler: &'s CatalogTool, runtime: Runtime) -> Self {
+    pub(crate) const fn new(handler: &'s RunTool<'s>, runtime: Runtime) -> Self {
         Self { handler, runtime }
     }
 
@@ -147,7 +148,7 @@ impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for Routed<'s> {
         Lent<'call, 's, 'run>: 'a,
     {
         let shared = cx.harness.shared;
-        Box::pin(self.run(arguments, shared.executor, &shared.run, cx.call_ref))
+        Box::pin(self.run(arguments, shared.executor, shared.run, cx.call_ref))
     }
 }
 

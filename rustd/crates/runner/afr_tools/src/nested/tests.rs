@@ -36,7 +36,7 @@ fn a_catalog_offers_the_six_with_no_handler_behind_them() {
             .offered()
             .map(|offered| match offered {
                 Offered::Nested(nested) => Some(nested),
-                Offered::Handler(..) => None,
+                Offered::Handler(..) | Offered::Backed(_) => None,
             })
             .collect();
         let expected: Vec<Option<Nested>> = names.iter().map(|name| Nested::of(name)).collect();

@@ -135,6 +135,7 @@ async fn run_tool(
         output_tail: None,
         output_line_count: None,
         exit_code: exit_code_of(ending),
+        changes: Vec::new(),
     }));
     Ok(())
 }

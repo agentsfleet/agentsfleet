@@ -5,7 +5,7 @@
 //! that reads both, so neither crate depends on the other.
 
 use afr_tools::catalog::WEB_SEARCH;
-use afr_tools::{Entry, Offered, Selection};
+use afr_tools::{Entry, Offered, RunTools, Selection};
 use guffbolt::Hosted;
 use guffbolt::Tools;
 
@@ -13,19 +13,27 @@ use crate::nested::NestedTool;
 use crate::router::{LoopTool, Routed};
 
 /// The tools `selection` offers one loop, in the order its policy named
-/// them: each handler as the router runs it, and each nested tool as the loop
-/// runs it.
-pub(crate) fn tools<'s, 'run>(selection: &'s Selection<'run>) -> Tools<LoopTool<'s, 'run>> {
+/// them: each handler as the router runs it, each tool the run built over its
+/// backends (`backed`) the same way, and each nested tool as the loop runs
+/// it. A backed entry the run built no tool for is never offered: the run
+/// builds one for every backed name its policy offers.
+pub(crate) fn tools<'s, 'run>(
+    selection: &'s Selection<'run>,
+    backed: &'s RunTools<'run>,
+) -> Tools<LoopTool<'s, 'run>> {
     Tools::new(
         selection
             .offered()
-            .map(|offered| -> Box<LoopTool<'s, 'run>> {
-                match offered {
+            .filter_map(|offered| -> Option<Box<LoopTool<'s, 'run>>> {
+                Some(match offered {
                     Offered::Handler(entry, handler) => {
                         Box::new(Routed::new(handler, entry.runtime()))
                     }
+                    Offered::Backed(entry) => {
+                        Box::new(Routed::new(backed.tool(entry.name())?, entry.runtime()))
+                    }
                     Offered::Nested(nested) => Box::new(NestedTool::new(nested)),
-                }
+                })
             })
             .collect(),
     )

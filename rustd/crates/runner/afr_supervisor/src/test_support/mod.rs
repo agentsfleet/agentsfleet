@@ -15,7 +15,7 @@ use af_providers::{Connect as _, Connector};
 use af_wire::activity::{ActivityFrame, FleetResponseChunk};
 use af_wire::memory::MemoryDelta;
 use af_wire::policy::ExecutionPolicy;
-use af_wire::tool_detail::ToolCallRecord;
+use af_wire::tool_detail::{ItemKind, ItemStatus, ToolCallRecord};
 use af_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_agent::{Completed, ExecutionResult, ResultOutcome};
@@ -270,6 +270,9 @@ pub(crate) fn answer() -> RunOutput {
 /// What every call in [`with_calls`] returned.
 const CALL_OUTPUT: &str = "ok";
 
+/// The turn every call in [`with_calls`] names.
+const CALL_TURN: &str = "019f0000-0000-7000-8000-000000000001";
+
 /// [`answer`], having made `calls` calls: their records and their trace.
 pub(crate) fn with_calls(calls: u64) -> RunOutput {
     let mut output = answer();
@@ -281,6 +284,11 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
             output: CALL_OUTPUT.into(),
             output_line_count: 1,
             truncated: false,
+            turn_id: CALL_TURN.into(),
+            kind: ItemKind::ToolCall,
+            tool: "update_plan".into(),
+            status: ItemStatus::Succeeded,
+            changes: Vec::new(),
         })
         .collect();
     output.trace = Some(ToolTrace {
@@ -295,6 +303,7 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
                 output_line_count: Some(1),
                 exit_code: None,
                 duration_ms: 1,
+                changes: Vec::new(),
             })
             .collect(),
         omitted_call_count: 0,

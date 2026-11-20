@@ -237,6 +237,7 @@ pub(crate) fn daemon(
         Verb::Report,
         Verb::Folds,
         Verb::TurnCheckpoint,
+        Verb::ContextLoad,
     ]
     .into_iter()
     .map(|verb| {

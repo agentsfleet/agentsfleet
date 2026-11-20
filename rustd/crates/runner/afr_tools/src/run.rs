@@ -1,19 +1,21 @@
 //! What every call of one run shares.
 //!
-//! Owned by the run and lent to every call through [`ToolContext`], so the
-//! handlers stay shared across runs and hold no run's state. A run's child
-//! loops call tools while their parent does, so each part a call changes sits
-//! behind its own lock: one child's long call never waits on another's memory
-//! write or credential mint.
+//! Owned by the run, lent to every call through [`ToolContext`], and borrowed
+//! by the backends the run's own tools are built over ([`crate::Backends`]),
+//! so the hosted handlers stay shared across runs and hold no run's state. A
+//! run's child loops call tools while their parent does, so each part a call
+//! changes sits behind its own lock: one child's long call never waits on
+//! another's memory write or credential mint.
 //!
 //! [`ToolContext`]: crate::ToolContext
 
 use af_egress::Egress;
-use afr_memory::MemoryBackend;
+use afr_memory::Loaded;
 use tokio::sync::Mutex;
 
 use guffbolt::tools::Sessions;
 
+use crate::generic::RunMemory;
 use crate::sandbox::Checkout;
 use crate::verbs::RunVerbs;
 
@@ -22,9 +24,8 @@ use crate::verbs::RunVerbs;
 pub struct Run<'run> {
     /// The run's id, as its guard was built for it.
     pub run_id: &'run str,
-    /// The fleet's memory, behind the backend the fleet is bound to; held
-    /// for one read or write, never across a call.
-    pub memory: Mutex<Box<dyn MemoryBackend + 'run>>,
+    /// The fleet's memory, which the memory tools are built over.
+    pub memory: RunMemory<'run>,
     /// The outbound guard every egress tool sends through: the run's policy,
     /// and the credentials it has minted; held to admit or mask, never across
     /// a send.
@@ -47,14 +48,10 @@ impl<'run> Run<'run> {
     /// reach `agentsfleetd` through `verbs`, with no session open yet and a
     /// wire that takes no image until told.
     #[must_use]
-    pub fn new(
-        memory: Box<dyn MemoryBackend + 'run>,
-        egress: Egress<'run>,
-        verbs: &'run dyn RunVerbs,
-    ) -> Self {
+    pub fn new(memory: Loaded<'run>, egress: Egress<'run>, verbs: &'run dyn RunVerbs) -> Self {
         Self {
             run_id: egress.run_id(),
-            memory: Mutex::new(memory),
+            memory: RunMemory::new(memory),
             egress: Mutex::new(egress),
             sessions: Sessions::default(),
             checkouts: Vec::new(),
@@ -85,7 +82,7 @@ impl Default for Run<'_> {
     /// and reaching no `agentsfleetd`.
     fn default() -> Self {
         Self::new(
-            Box::new(afr_memory::Loaded::default()),
+            Loaded::default(),
             af_egress::testing::closed(),
             &crate::verbs::CLOSED,
         )

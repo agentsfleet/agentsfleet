@@ -4,7 +4,9 @@
 //! The published list is `docs/architecture/runner_execution.md` §"Tool
 //! catalog", one entry per tool. A run's `ExecutionPolicy.tools` selects from
 //! it; a name with no handler here refuses the run, never a quieter tool set.
-//! The nested tools need none: the loop runs them itself.
+//! The nested tools need none: the loop runs them itself. Nor do the tools a
+//! run builds over its own backends ([`BACKED`]): the run builds them when it
+//! starts ([`crate::Backends`]).
 
 use std::sync::Arc;
 
@@ -15,11 +17,11 @@ use guffbolt::tools::files::{
     ApplyPatch, FileAppend, FileDelete, FileEdit, FileEditHashed, FileRead, FileReadHashed,
     FileWrite, ImageTool,
 };
-use guffbolt::tools::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStoreTool};
 use guffbolt::tools::plan::UpdatePlan;
 use guffbolt::tools::process::{ExecCommand, Git, Shell, WriteStdin};
-use guffbolt::tools::web::{HttpRequest, Pushover, WebFetch};
+use guffbolt::tools::web::{HttpRequest, WebFetch};
 
+use crate::egress::SharedTransport;
 use crate::error::{self, Result};
 use crate::generic::Generic;
 use crate::handler::Typed;
@@ -27,10 +29,7 @@ use crate::nested::Nested;
 use crate::runtime::{CatalogTool, Runtime};
 use crate::selection::Offered;
 use crate::selection::Selection;
-use crate::verbs::{
-    CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, FleetActivity, FleetSteer,
-    Message, ScheduleOnce,
-};
+use crate::verbs::{FleetActivity, FleetSteer};
 
 /// One published tool: its name and the runtime it executes in.
 ///
@@ -63,8 +62,8 @@ impl Entry {
 pub const HTTP_REQUEST: Entry = Entry::new("http_request", Runtime::Supervisor);
 /// A credential-free `GET` of a page's text.
 pub const WEB_FETCH: Entry = Entry::new("web_fetch", Runtime::Supervisor);
-/// A push notification through Pushover.
-pub const PUSHOVER: Entry = Entry::new("pushover", Runtime::Supervisor);
+/// A push notification to the person the fleet works for, through Pushover.
+pub const NOTIFY: Entry = Entry::new("notify", Runtime::Supervisor);
 /// A web search the provider runs.
 pub const WEB_SEARCH: Entry = Entry::new("web_search", Runtime::Provider);
 /// Stores one durable memory item.
@@ -147,7 +146,7 @@ pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 pub const PUBLISHED: [&Entry; 41] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
-    &PUSHOVER,
+    &NOTIFY,
     &WEB_SEARCH,
     &MEMORY_STORE,
     &MEMORY_RECALL,
@@ -188,38 +187,56 @@ pub const PUBLISHED: [&Entry; 41] = [
     &SCREENSHOT,
 ];
 
+/// Every published tool a run builds over its own backends when it starts:
+/// memory, schedules, a line to the thread, and a notification.
+pub const BACKED: [&Entry; 13] = [
+    &MEMORY_STORE,
+    &MEMORY_RECALL,
+    &MEMORY_LIST,
+    &MEMORY_FORGET,
+    &MESSAGE,
+    &SCHEDULE,
+    &CRON_ADD,
+    &CRON_LIST,
+    &CRON_REMOVE,
+    &CRON_UPDATE,
+    &CRON_RUN,
+    &CRON_RUNS,
+    &NOTIFY,
+];
+
 /// The published entry named `name`, if any.
 #[must_use]
 pub fn published(name: &str) -> Option<&'static Entry> {
     PUBLISHED.into_iter().find(|entry| entry.name == name)
 }
 
-/// The handlers this runner hosts.
+/// The handlers this runner hosts, and where a run's own notifier sends.
 #[derive(Debug)]
 pub struct Catalog {
     handlers: Vec<Box<CatalogTool>>,
+    transport: Option<SharedTransport>,
 }
 
 impl Catalog {
-    /// A catalog hosting `handlers`. Where two serve one tool, the first is used.
+    /// A catalog hosting `handlers`, whose runs send no notification. Where
+    /// two serve one tool, the first is used.
     #[must_use]
     pub fn new(handlers: Vec<Box<CatalogTool>>) -> Self {
-        Self { handlers }
+        Self {
+            handlers,
+            transport: None,
+        }
     }
 
     /// A catalog hosting every handler this runner carries, its egress tools
-    /// sending through `transport`. The generic ones are `guffbolt`'s, each
-    /// lent the run's sandbox, guard and memory per call.
+    /// and each run's notifier sending through `transport`. The generic ones
+    /// are `guffbolt`'s, each lent the run's sandbox and guard per call.
     #[must_use]
     pub fn hosted(transport: Arc<dyn Transport>) -> Self {
-        Self::new(vec![
+        let mut hosted = Self::new(vec![
             Generic::sending(HttpRequest, Arc::clone(&transport)),
             Generic::sending(WebFetch, Arc::clone(&transport)),
-            Generic::sending(Pushover, transport),
-            Generic::boxed(MemoryStoreTool),
-            Generic::boxed(MemoryRecall),
-            Generic::boxed(MemoryList),
-            Generic::boxed(MemoryForget),
             Generic::boxed(UpdatePlan),
             Generic::boxed(Shell),
             Generic::boxed(ExecCommand),
@@ -237,24 +254,26 @@ impl Catalog {
             Generic::boxed(BrowserOpen),
             Generic::boxed(Browse),
             Generic::boxed(Screenshot),
-            Typed::boxed(Message),
             Typed::boxed(FleetSteer),
             Typed::boxed(FleetActivity),
-            Typed::boxed(ScheduleOnce),
-            Typed::boxed(CronAdd),
-            Typed::boxed(CronList),
-            Typed::boxed(CronRemove),
-            Typed::boxed(CronUpdate),
-            Typed::boxed(CronRun),
-            Typed::boxed(CronRuns),
-        ])
+        ]);
+        hosted.transport = Some(transport);
+        hosted
     }
 
-    /// The tools a run naming `names` is offered.
+    /// Where each run's notifier sends; `None` for a catalog that sends
+    /// none, whose notifications are refused.
+    #[must_use]
+    pub fn transport(&self) -> Option<&dyn Transport> {
+        self.transport.as_deref()
+    }
+
+    /// The tools a run naming `names` is offered: a handler this catalog
+    /// hosts, else a tool the run builds over its own backends.
     ///
     /// # Errors
-    /// The first name with no handler here, or no published tool at all: the
-    /// run is refused rather than run without it.
+    /// The first name with neither, or no published tool at all: the run is
+    /// refused rather than run without it.
     pub fn select<S: AsRef<str>>(&self, names: &[S]) -> Result<Selection<'_>> {
         let mut selection = Selection::default();
         for name in names.iter().map(AsRef::as_ref) {
@@ -268,8 +287,12 @@ impl Catalog {
                     selection.tools.push(Offered::Nested(nested));
                 }
                 (Runtime::Supervisor | Runtime::Sandbox, None) => {
-                    let handler = self.handler(name).ok_or_else(|| error::unhosted(name))?;
-                    selection.tools.push(Offered::Handler(entry, handler));
+                    let offered = match self.handler(name) {
+                        Some(handler) => Offered::Handler(entry, handler),
+                        None if BACKED.contains(&entry) => Offered::Backed(entry),
+                        None => return Err(error::unhosted(name)),
+                    };
+                    selection.tools.push(offered);
                 }
             }
         }

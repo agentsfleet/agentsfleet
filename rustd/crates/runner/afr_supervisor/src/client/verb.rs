@@ -94,6 +94,10 @@ pub(crate) enum Verb {
     Folds,
     /// Native event-owned recovery command.
     TurnCheckpoint,
+    /// A setup run's read of its draft's compacted context.
+    ContextLoad,
+    /// A setup run's fenced save of its draft's compacted context.
+    ContextSave,
     /// Complete native human input and recovered meaning.
     TaskInputs,
     /// One complete immutable human interpretation.
@@ -132,7 +136,7 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 43] = [
+    pub(crate) const ALL: [Self; 45] = [
         Self::Open,
         Self::Heartbeat,
         Self::AuthoringModel,
@@ -160,6 +164,8 @@ impl Verb {
         Self::FleetSteer,
         Self::Folds,
         Self::TurnCheckpoint,
+        Self::ContextLoad,
+        Self::ContextSave,
         Self::TaskInputs,
         Self::TaskBindings,
         Self::TaskInputReceipt,
@@ -216,6 +222,8 @@ impl Verb {
             | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
+            | Self::ContextLoad
+            | Self::ContextSave
             | Self::TaskBindings
             | Self::TaskInputReceipt
             | Self::TaskDecisionReserve
@@ -257,6 +265,8 @@ impl Verb {
             Self::FleetSteer => "fleet_steer",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
+            Self::ContextLoad => "context_load",
+            Self::ContextSave => "context_save",
             Self::TaskInputs => "task_inputs",
             Self::TaskBindings => "task_bindings",
             Self::TaskInputReceipt => "task_input_receipt",
@@ -304,6 +314,8 @@ impl Verb {
             | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
+            | Self::ContextLoad
+            | Self::ContextSave
             | Self::TaskInputs
             | Self::TaskBindings
             | Self::TaskInputReceipt

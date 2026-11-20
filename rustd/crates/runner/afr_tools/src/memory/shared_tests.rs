@@ -6,11 +6,9 @@ use af_wire::memory::SharedMemory;
 use afr_memory::{Loaded, Seed};
 use serde_json::json;
 
-use crate::generic::Generic;
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::testing::call;
-use guffbolt::tools::memory::{MemoryForget, MemoryRecall, MemoryStoreTool};
+use crate::testing::call_built;
 
 /// The fleet that published the shared entry these tests read.
 const WRITER: &str = "ticket-3";
@@ -30,17 +28,17 @@ fn published() -> Vec<SharedMemory<'static>> {
 #[tokio::test]
 async fn a_shared_store_needs_the_publish_grant() {
     let run = Run::new(
-        Box::new(Loaded::new(Seed {
+        Loaded::new(Seed {
             publish: false,
             ..Seed::default()
-        })),
+        }),
         af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
-    let refused = call(
-        Generic::boxed(MemoryStoreTool).as_ref(),
+    let refused = call_built(
         &run,
+        "memory_store",
         json!({"key": "deploy_target", "content": "iad", "visibility": "shared"}),
     )
     .await;
@@ -54,32 +52,29 @@ async fn a_shared_store_needs_the_publish_grant() {
         "{}",
         refused.text
     );
-    assert!(
-        run.memory.into_inner().into_pending().is_empty(),
-        "nothing is pending"
-    );
+    assert!(run.memory.into_pending().is_empty(), "nothing is pending");
 }
 
 #[tokio::test]
 async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
     let run = Run::new(
-        Box::new(Loaded::new(Seed {
+        Loaded::new(Seed {
             publish: true,
             ..Seed::default()
-        })),
+        }),
         af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
-    let stored = call(
-        Generic::boxed(MemoryStoreTool).as_ref(),
+    let stored = call_built(
         &run,
+        "memory_store",
         json!({"key": "deploy_target", "content": "iad", "visibility": "shared"}),
     )
     .await;
 
     assert_eq!(stored.error_code, None, "{}", stored.text);
-    let pushed = run.memory.into_inner().into_pending();
+    let pushed = run.memory.into_pending();
     assert_eq!(pushed.len(), 1, "one store is one pending push");
     assert!(pushed.iter().all(|delta| delta.visibility.is_workspace()));
 }
@@ -88,20 +83,15 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
 async fn test_recall_names_the_writer_of_a_shared_entry() {
     let shared = published();
     let run = Run::new(
-        Box::new(Loaded::new(Seed {
+        Loaded::new(Seed {
             shared: &shared,
             ..Seed::default()
-        })),
+        }),
         af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
-    let recalled = call(
-        Generic::boxed(MemoryRecall).as_ref(),
-        &run,
-        json!({"query": "deploy"}),
-    )
-    .await;
+    let recalled = call_built(&run, "memory_recall", json!({"query": "deploy"})).await;
 
     assert_eq!(
         recalled.text,
@@ -113,28 +103,18 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
 async fn test_forget_leaves_another_fleets_entry() {
     let shared = published();
     let run = Run::new(
-        Box::new(Loaded::new(Seed {
+        Loaded::new(Seed {
             shared: &shared,
             ..Seed::default()
-        })),
+        }),
         af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
-    let forgot = call(
-        Generic::boxed(MemoryForget).as_ref(),
-        &run,
-        json!({"key": "deploy_target"}),
-    )
-    .await;
+    let forgot = call_built(&run, "memory_forget", json!({"key": "deploy_target"})).await;
     assert_eq!(forgot.text, "nothing remembered under deploy_target");
 
-    let recalled = call(
-        Generic::boxed(MemoryRecall).as_ref(),
-        &run,
-        json!({"query": "deploy"}),
-    )
-    .await;
+    let recalled = call_built(&run, "memory_recall", json!({"query": "deploy"})).await;
     assert!(
         recalled.text.contains(WRITER),
         "the shared entry is kept: {}",
@@ -145,23 +125,23 @@ async fn test_forget_leaves_another_fleets_entry() {
 #[tokio::test]
 async fn a_publisher_naming_private_reach_keeps_the_entry_to_itself() {
     let run = Run::new(
-        Box::new(Loaded::new(Seed {
+        Loaded::new(Seed {
             publish: true,
             ..Seed::default()
-        })),
+        }),
         af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
-    let stored = call(
-        Generic::boxed(MemoryStoreTool).as_ref(),
+    let stored = call_built(
         &run,
+        "memory_store",
         json!({"key": "deploy_target", "content": "iad", "visibility": "private"}),
     )
     .await;
 
     assert_eq!(stored.error_code, None, "{}", stored.text);
-    let pushed = run.memory.into_inner().into_pending();
+    let pushed = run.memory.into_pending();
     assert_eq!(pushed.len(), 1);
     assert!(
         pushed.iter().all(|delta| !delta.visibility.is_workspace()),

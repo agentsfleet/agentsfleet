@@ -144,6 +144,7 @@ fn row(number: u64, outcome: &Outcome, edges: bool) -> ToolTraceCall<'static> {
         output_line_count: outcome.line_count,
         exit_code: outcome.exit_code,
         duration_ms: 3,
+        changes: Vec::new(),
     }
 }
 

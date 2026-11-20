@@ -174,8 +174,9 @@ fn an_entry_reads_back_the_name_and_runtime_it_was_built_with() {
     assert_eq!(entry.runtime(), Runtime::Sandbox);
 }
 
-/// The schedule and message tools are hosted, so a run naming any of them
-/// runs rather than being refused; none needs a sandbox.
+/// The schedule and message tools are built by each run over its verbs, so a
+/// run naming any of them runs rather than being refused; none needs a
+/// sandbox.
 #[test]
 fn the_hosted_catalog_offers_every_schedule_and_message_tool() {
     let (transport, _sent) = crate::testing::replying(200, "");
@@ -278,4 +279,57 @@ fn fleet_tools_are_offered_only_when_declared() {
     assert!(with.offers("fleet_steer"));
     assert!(with.offers("fleet_activity"));
     assert_eq!(PUBLISHED.len(), 41);
+}
+
+/// A tool a run builds over its own backends is offered with no handler, and
+/// a handler the catalog hosts under its name is offered in its place.
+#[test]
+fn a_backed_tool_is_offered_without_a_handler_unless_one_is_hosted() {
+    let (empty, stubbed) = (Catalog::new(Vec::new()), catalog());
+    let built = empty
+        .select(&[NOTIFY.name(), MEMORY_RECALL.name()])
+        .unwrap();
+    let hosted = stubbed.select(&[MEMORY_RECALL.name()]).unwrap();
+
+    let built: Vec<Offered<'_>> = built.offered().collect();
+    assert!(
+        matches!(built.as_slice(), [Offered::Backed(first), Offered::Backed(second)]
+            if **first == NOTIFY && **second == MEMORY_RECALL),
+        "{built:?}"
+    );
+    let hosted: Vec<Offered<'_>> = hosted.offered().collect();
+    assert!(
+        matches!(hosted.as_slice(), [Offered::Handler(entry, _)] if **entry == MEMORY_RECALL),
+        "{hosted:?}"
+    );
+}
+
+/// A run notifies through `notify`; the vendor's name is no tool a policy
+/// may name.
+#[test]
+fn notify_is_published_and_pushover_is_not() {
+    assert_eq!(published("notify"), Some(&NOTIFY));
+    assert_eq!(published("pushover"), None);
+    let refused = Catalog::new(Vec::new()).select(&["pushover"]).unwrap_err();
+    assert_eq!(refused.unhosted_tool(), Some("pushover"));
+}
+
+/// Every backed entry is published, runs beside the loop, and is built by a
+/// run that names it.
+#[test]
+fn every_backed_entry_is_published_and_built_by_its_run() {
+    let run = crate::run::Run::default();
+    let backends = crate::Backends::new(&run, None);
+    let names: Vec<&str> = BACKED.iter().map(|entry| entry.name()).collect();
+    let tools = backends.tools(&names).unwrap();
+
+    for entry in BACKED {
+        assert_eq!(published(entry.name()), Some(entry));
+        assert_eq!(entry.runtime(), Runtime::Supervisor, "{}", entry.name());
+        assert!(
+            tools.tool(entry.name()).is_some(),
+            "{} is built",
+            entry.name()
+        );
+    }
 }

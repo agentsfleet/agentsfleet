@@ -44,6 +44,11 @@ pub struct ToolContext<'call, 'run> {
 /// call. Its runtime is its published entry's, never its own claim.
 pub type CatalogTool = dyn for<'call, 'run> guffbolt::Tool<ToolContext<'call, 'run>>;
 
+/// A tool one run built over its own backends, lent the run's
+/// [`ToolContext`] per call like a hosted handler, and living as long as the
+/// backends it borrowed (`'b`).
+pub type RunTool<'b> = dyn for<'call, 'run> guffbolt::Tool<ToolContext<'call, 'run>> + 'b;
+
 /// Why a call failed, in the stable spelling the model and the thread read.
 ///
 /// What `guffbolt` refuses itself, a call cut at the output limit and a

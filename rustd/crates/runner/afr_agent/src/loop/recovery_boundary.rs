@@ -90,7 +90,7 @@ impl Harness<'_, '_> {
             messages: self.transcript.messages().to_vec(),
             driver: driver.clone(),
             children: ChildRecovery::capture(&self.shared.registry, pause)?,
-            memory: self.shared.run.memory.lock().await.snapshot()?,
+            memory: self.shared.run.memory.snapshot().await?,
             pinned: self.context.pinned,
             folds: self.folded_inputs.clone(),
         })

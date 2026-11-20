@@ -3,12 +3,16 @@
 //! fleets.
 //!
 //! ```text
-//!   cron_* / schedule ──┐
-//!   message ────────────┤
-//!   fleet_steer ────────┼──► RunVerbs ──► agentsfleetd, fenced by the run
-//!   fleet_activity ─────┘        ▲
-//!                                └── the supervisor's control plane
+//!   cron_* / schedule ─► Scheduler ─┐
+//!   message ───────────► Channel ───┴─► Fenced ─┐
+//!   fleet_steer ────────────────────────────────┼──► RunVerbs ──► agentsfleetd,
+//!   fleet_activity ─────────────────────────────┘        ▲         fenced by the run
+//!                                                        └── the supervisor's control plane
 //! ```
+//!
+//! The cron tools, `schedule` and `message` are `guffbolt`'s, built over
+//! [`Fenced`], the run's verbs as their scheduler and channel; `fleet_steer`
+//! and `fleet_activity` are this crate's own.
 //!
 //! # The runner keeps no clock and no channel credential
 //!
@@ -37,20 +41,16 @@ use guffbolt::ToolOutput;
 
 use crate::runtime::ToolErrorCode;
 
+mod fenced;
 mod fleet_steer;
 mod fleets;
-mod message;
-mod once;
-mod schedules;
 mod task;
 
 pub use task::DecisionEvaluation;
 
+pub use self::fenced::Fenced;
 pub(crate) use self::fleet_steer::FleetSteer;
 pub(crate) use self::fleets::FleetActivity;
-pub(crate) use self::message::Message;
-pub(crate) use self::once::ScheduleOnce;
-pub(crate) use self::schedules::{CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate};
 
 /// What the model reads when `agentsfleetd` could not be reached.
 const DETAIL_UNREACHABLE: &str = "agentsfleetd did not answer; try again shortly";

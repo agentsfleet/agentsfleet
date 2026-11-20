@@ -2,8 +2,9 @@
 //! said, what the memory checkpoint wrote back; and the loop as `guffbolt`
 //! drives it.
 
-use af_wire::memory::MemoryDelta;
-use guffbolt::{Call, CallRef, Fitted, Request, ToolFuture, ToolSpec, Transcript, Window};
+use guffbolt::{
+    Call, CallRef, Fitted, Input, Mark, Request, ToolFuture, ToolSpec, Transcript, Window,
+};
 use tokio_util::sync::CancellationToken;
 
 use super::{EVENT_CHECKPOINT_FAILED, Harness};
@@ -11,9 +12,10 @@ use crate::router::Lent;
 
 impl Harness<'_, '_> {
     /// The messages a person sent the fleet since the root's last
-    /// assignment, assigned to this run; a stopped loop is assigned none, and
-    /// neither is an ask the run's assignment already answered.
-    async fn assign_folded(&mut self) -> Vec<String> {
+    /// assignment, assigned to this run, each marked with its turn; a stopped
+    /// loop is assigned none, and neither is an ask the run's assignment
+    /// already answered.
+    async fn assign_folded(&mut self) -> Vec<Input> {
         if std::mem::take(&mut self.assignment_answered) {
             return Vec::new();
         }
@@ -31,11 +33,12 @@ impl Harness<'_, '_> {
         assigned
             .into_iter()
             .map(|folded| {
+                let mark = Mark::new(folded.turn_id.as_str());
                 self.folded_inputs.push(crate::engine::FoldRef {
                     turn_id: af_wire::run::CheckpointOperationId(folded.turn_id),
                     sequence: folded.sequence,
                 });
-                folded.text
+                Input::marked(folded.text, mark)
             })
             .collect()
     }
@@ -56,11 +59,7 @@ impl Harness<'_, '_> {
     /// does not wait for it. A push that fails is logged and the run goes on:
     /// the push before the report carries every entry again.
     pub(super) async fn checkpoint(&self) {
-        let pending: Vec<MemoryDelta<'static>> = (self.shared.run.memory.lock().await)
-            .pending()
-            .into_iter()
-            .map(MemoryDelta::into_owned)
-            .collect();
+        let pending = self.shared.run.memory.pending().await;
         if pending.is_empty() {
             return;
         }
@@ -87,16 +86,20 @@ impl guffbolt::Conversation for Harness<'_, '_> {
         &mut self.transcript
     }
 
-    /// What a parent sent a child, or the messages a person sent the root,
-    /// each scrubbed like anything the model wrote.
-    async fn take_input(&mut self) -> Vec<String> {
+    /// What a parent sent a child, unmarked, or the messages a person sent
+    /// the root, each marked with its turn; each scrubbed like anything the
+    /// model wrote.
+    async fn take_input(&mut self) -> Vec<Input> {
         let sent = match self.child.as_mut() {
-            Some(tether) => tether.sent(),
+            Some(tether) => tether.sent().into_iter().map(Input::from).collect(),
             None => self.assign_folded().await,
         };
         let scrub = self.shared.scrub;
         sent.into_iter()
-            .map(|text| scrub.clean(text).into_inner())
+            .map(|Input { text, mark }| Input {
+                text: scrub.clean(text).into_inner(),
+                mark,
+            })
             .collect()
     }
 

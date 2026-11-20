@@ -8,15 +8,24 @@ use super::{Holds, Request};
 /// Every kind of work consumes the same local worker budget.
 #[derive(Debug)]
 pub(crate) enum Occupant {
-    Fleet { run: Uuid7, fleet: Uuid7 },
-    Authoring { run: Uuid7 },
+    Fleet {
+        run: Uuid7,
+        fleet: Uuid7,
+    },
+    Authoring {
+        run: Uuid7,
+    },
+    /// A setup draft's run, which holds no sandbox and so no fleet's hold.
+    Setup {
+        run: Uuid7,
+    },
 }
 
 impl Occupant {
     pub(super) fn parts(self) -> (Uuid7, Option<Uuid7>) {
         match self {
             Self::Fleet { run, fleet } => (run, Some(fleet)),
-            Self::Authoring { run } => (run, None),
+            Self::Authoring { run } | Self::Setup { run } => (run, None),
         }
     }
 }
@@ -26,7 +35,9 @@ impl Holds {
     /// this same run into a hold; a later drop cannot vacate another attempt.
     pub(crate) fn occupy(&self, occupant: Occupant) -> Occupied {
         let run = match &occupant {
-            Occupant::Fleet { run, .. } | Occupant::Authoring { run } => run.clone(),
+            Occupant::Fleet { run, .. } | Occupant::Authoring { run } | Occupant::Setup { run } => {
+                run.clone()
+            }
         };
         let _stopped = self.requests.send(Request::Occupy { occupant });
         Occupied {

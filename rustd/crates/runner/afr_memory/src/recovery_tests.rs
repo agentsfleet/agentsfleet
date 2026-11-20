@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_wire::memory::{MemoryDelta, MemoryRecallResponse, Visibility};
 
-use crate::{Loaded, MemoryBackend, MemoryRecovery, RECALL_MISS_CAP, Recall, Seed};
+use crate::{Loaded, MemoryRecovery, RECALL_MISS_CAP, Recall, Seed};
 
 type TestResult = crate::Result<(), Box<dyn std::error::Error>>;
 
@@ -46,11 +46,9 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
         recall: Some(&remote),
         ..Seed::window(&window)
     });
-    original.forget("forgotten").await?;
-    original
-        .store(entry("updated", "new private value"))
-        .await?;
-    original.store(entry("added", "new entry")).await?;
+    original.forget("forgotten");
+    original.store(entry("updated", "new private value"))?;
+    original.store(entry("added", "new entry"))?;
     for _miss in 0..RECALL_MISS_CAP {
         original.recall("missing", 50).await?;
     }
@@ -65,7 +63,7 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
         saved,
         &scrub,
     )?;
-    let listed = recovered.list(None).await?;
+    let listed = recovered.list(None);
     let keys: Vec<_> = listed.iter().map(|found| found.key.as_ref()).collect();
     assert_eq!(keys, ["added", "updated"]);
     assert!(
@@ -80,15 +78,15 @@ async fn recovery_preserves_local_memory_changes_and_recall_budget() -> TestResu
     Ok(())
 }
 
-#[tokio::test]
-async fn recovery_refuses_a_revoked_shared_publish_grant() -> TestResult {
+#[test]
+fn recovery_refuses_a_revoked_shared_publish_grant() -> TestResult {
     let mut original = Loaded::new(Seed {
         publish: true,
         ..Seed::default()
     });
     let mut shared = entry("release_note", "confirmed outcome");
     shared.visibility = Visibility::Workspace;
-    original.store(shared).await?;
+    original.store(shared)?;
     let scrub = af_secrets::Scrub::of([])?;
     let refused = Loaded::recover(Seed::default(), original.snapshot()?, &scrub);
     assert!(refused.is_err_and(|failure| failure.is_not_granted()));
