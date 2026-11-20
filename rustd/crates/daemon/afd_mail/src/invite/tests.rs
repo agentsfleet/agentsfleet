@@ -17,7 +17,7 @@ fn letter<'a>(inviter_name: &'a str, owner_name: &'a str) -> InviteLetter<'a> {
     }
 }
 
-/// Dimension 2.5: both parts match the reviewed snapshots, so a template edit
+/// Both parts match the reviewed snapshots, so a template edit
 /// shows up as a diff in review.
 #[test]
 fn test_invite_render_snapshots() {
@@ -31,7 +31,7 @@ fn test_invite_render_snapshots() {
     );
 }
 
-/// Dimension 2.4: a display name carrying markup renders as text in the HTML
+/// A display name carrying markup renders as text in the HTML
 /// part.
 #[test]
 fn test_invite_template_escapes_names() {

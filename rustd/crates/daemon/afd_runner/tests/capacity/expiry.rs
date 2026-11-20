@@ -56,7 +56,7 @@ async fn test_expired_status_active_rows_do_not_occupy_capacity() {
     fixture.cleanup().await;
 }
 
-/// Dimension 4.8 — a run that lapsed while the assignment waited on the host
+/// A run that lapsed while the assignment waited on the host
 /// lock no longer occupies the host: the census reads the clock once the lock
 /// is held, never at the instant the assignment asked for it.
 #[tokio::test(flavor = "multi_thread")]

@@ -1,4 +1,4 @@
-//! §2 — the fence and the numbering hold for a run whose line has somewhere
+//! The fence and the numbering hold for a run whose line has somewhere
 //! to go.
 //!
 //! Every case runs an event admitted from a Slack thread, so a post that got
@@ -25,7 +25,7 @@ use crate::verbs::posts;
 /// How many posts race: past the eight a run was once held to.
 const RACERS: u32 = 12;
 
-/// Dimension 2.2. A token that is not the run's own posts nothing.
+/// A token that is not the run's own posts nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_message_refused() {
@@ -44,7 +44,7 @@ async fn test_stale_fence_message_refused() {
     speaking.finish(supervisor).await;
 }
 
-/// Dimension 2.2, the spec's failure mode. A holder a reassignment has superseded
+/// The failure mode that matters: a holder a reassignment has superseded
 /// presents its own token, and its line never reaches the thread.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

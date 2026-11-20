@@ -158,7 +158,7 @@ impl TryFrom<Candidate> for SetupHead {
             revision: candidate
                 .revision
                 .parse()
-                .map_err(|_unreadable| crate::error::raise::absent("revision"))?,
+                .map_err(crate::error::raise::stored_number("revision"))?,
             definition: serde_json::to_value(&candidate.definition)
                 .map_err(crate::error::raise::stored)?,
             id: candidate.id,
@@ -266,7 +266,11 @@ impl Drafts {
                     _ => return Err(error),
                 };
                 let failed = Failing {
-                    draft: &draft,
+                    message: crate::funnel::Message {
+                        workspace: &draft.workspace_id,
+                        creator: &draft.user_id,
+                        draft: &draft.id,
+                    },
                     sequence: head.sequence,
                     running: reassigned,
                 };
@@ -346,33 +350,29 @@ impl Drafts {
         reason: FailureReason,
         owed: &mut SetupOwed,
     ) -> Result<()> {
-        let failed = MessageState::Failed.as_str();
-        sqlx::query(crate::sql::message::FAIL)
-            .bind(&turn.draft_id)
-            .bind(turn.sequence)
-            .bind(failed)
-            .bind(reason_word(reason))
-            .bind(if turn.reassigned { RUNNING } else { QUEUED })
-            .execute(&mut *connection)
-            .await
-            .map_err(query(sql::CONTEXT))?;
-        let message = crate::funnel::Message {
-            workspace: &turn.workspace_id,
-            creator: &turn.user_id,
-            draft: &turn.draft_id,
+        let failing = Failing {
+            message: crate::funnel::Message {
+                workspace: &turn.workspace_id,
+                creator: &turn.user_id,
+                draft: &turn.draft_id,
+            },
+            sequence: turn.sequence,
+            running: turn.reassigned,
         };
-        owed.0.finished(connection, message, failed).await
+        failing.fail(connection, reason, owed).await
     }
 }
 
-/// A message a refused gate fails, from the status it holds.
+/// A message an assignment fails, from the status it holds.
 struct Failing<'a> {
-    draft: &'a read::Locked,
+    message: crate::funnel::Message<'a>,
     sequence: i64,
     running: bool,
 }
 
 impl Failing<'_> {
+    /// Fails the message with [`crate::sql::message::FAIL`] and owes its
+    /// funnel record.
     async fn fail(
         &self,
         connection: &mut PgConnection,
@@ -381,7 +381,7 @@ impl Failing<'_> {
     ) -> Result<()> {
         let failed = MessageState::Failed.as_str();
         sqlx::query(crate::sql::message::FAIL)
-            .bind(&self.draft.id)
+            .bind(self.message.draft)
             .bind(self.sequence)
             .bind(failed)
             .bind(reason_word(reason))
@@ -389,12 +389,7 @@ impl Failing<'_> {
             .execute(&mut *connection)
             .await
             .map_err(query(sql::CONTEXT))?;
-        let message = crate::funnel::Message {
-            workspace: &self.draft.workspace_id,
-            creator: &self.draft.user_id,
-            draft: &self.draft.id,
-        };
-        owed.0.finished(connection, message, failed).await
+        owed.0.finished(connection, self.message, failed).await
     }
 }
 

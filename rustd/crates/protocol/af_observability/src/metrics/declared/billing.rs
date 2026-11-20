@@ -1,8 +1,7 @@
 //! What the billing lifecycle did: funds checked, lines settled, tokens left
 //! unpriced, and what is still owed.
 //!
-//! Recorded at one choke point, the biller every money path holds (billing
-//! §11), so a check or a settlement is counted once whichever product path or
+//! Recorded at one choke point, the biller every money path holds, so a check or a settlement is counted once whichever product path or
 //! relay pass made it. The two gauges are the billing relay's: it is the one
 //! reader that already scans the unsettled lines.
 

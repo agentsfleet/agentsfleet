@@ -75,8 +75,8 @@ pub enum TextEdit {
 pub struct Head<'a> {
     /// The candidate's identifier.
     pub id: &'a str,
-    /// The candidate's decimal revision, as a proposal spells it.
-    pub revision: &'a str,
+    /// The candidate's revision.
+    pub revision: u64,
     /// The setup an edit applies to.
     pub definition: &'a Definition,
 }
@@ -128,10 +128,13 @@ pub(super) fn native(
             config_ops,
             instruction_edits,
         } => {
+            // Compared as a number, so a spelling of the head's revision with
+            // leading zeros names the head rather than a stale candidate.
+            let revision: u64 = base_candidate_revision
+                .parse()
+                .map_err(|_untrusted| Rejection::InvalidArguments)?;
             let base = head
-                .filter(|base| {
-                    base.id == base_candidate_id && base.revision == base_candidate_revision
-                })
+                .filter(|base| base.id == base_candidate_id && base.revision == revision)
                 .ok_or(Rejection::StaleCandidate)?;
             let instruction_edits =
                 instructions(base.definition.instructions_md(), instruction_edits, said)?;

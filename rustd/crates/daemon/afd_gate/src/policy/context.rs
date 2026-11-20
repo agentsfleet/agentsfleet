@@ -97,7 +97,7 @@ const fn sentinel(declared: u32, fallback: u32) -> u32 {
 
 /// The window a context cap implies.
 ///
-/// The tiers are `capabilities.md` §4's. An unresolved cap takes the MIDDLE
+/// The tiers are `capabilities.md`'s. An unresolved cap takes the MIDDLE
 /// tier rather than the smallest — the cap is unknown, not known to be small,
 /// and shrinking the window on a model that turns out to be large would waste
 /// most of it.

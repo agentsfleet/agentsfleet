@@ -74,7 +74,7 @@ fn bob_router(members: &Members, bus: afd_bus::Handle) -> Router {
     members.live_router(&members.bob, owner_scopes(), bus)
 }
 
-/// Dimension 1.1: the watcher sees the typed message under the 202's id.
+/// The watcher sees the typed message under the 202's id.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_steer_publishes_admitted_frame() {
@@ -113,7 +113,7 @@ async fn test_steer_publishes_admitted_frame() {
     members.cleanup().await;
 }
 
-/// Dimension 1.3: a repeat of one operation is answered, never announced again.
+/// A repeat of one operation is answered, never announced again.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_replayed_steer_publishes_nothing() {
@@ -159,7 +159,7 @@ async fn test_admitted_publish_failure_still_accepts() {
     members.cleanup().await;
 }
 
-/// Dimension 4.3: a workspace's member list names each member by the actor
+/// A workspace's member list names each member by the actor
 /// their messages record, so a thread can put a name on each one.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

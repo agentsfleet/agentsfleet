@@ -64,7 +64,7 @@ pub enum Delivery {
     Repeat,
     /// The row already existed and has already FINISHED.
     ///
-    /// Dimension 7.4. A redelivery of an event that already ran must be
+    /// A redelivery of an event that already ran must be
     /// acknowledged and dropped, not executed: the run happened, the tenant
     /// paid for it, and the answer is already owed or delivered. Running it
     /// again spends a provider's money a second time and posts a second answer

@@ -1,4 +1,4 @@
-//! Dimension 7.7 — a deployment replaces processes, and no request with it.
+//! A deployment replaces processes, and no request with it.
 //!
 //! Against a real listener on a real socket, because the property is about what
 //! a client on the other end of a TCP connection observes, and a fake acceptor
@@ -7,7 +7,7 @@
 //! the wire — a complete status line and a complete body — and a client that
 //! retries or pools connections would hide exactly the failure being tested.
 //!
-//! The shape under test is the split between two tokens. Before Dimension 7.7
+//! The shape under test is the split between two tokens. Before the split
 //! both halves of a stop were one token, so a signal did not stop the server, it
 //! cut it: a request halfway through had its future dropped mid-await and the
 //! caller saw a closed socket with no status.

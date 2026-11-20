@@ -108,7 +108,7 @@ async fn save(
 // Value: protects=a superseded setup run cannot overwrite the context the live
 // run saved; fails_when=the fenced statements keep only the resource_version
 // compare-and-swap, or the store moves without its fence; why_new=the store
-// left af_context for afd_setup (§12), and its fence proof moved with it;
+// left af_context for afd_setup, and its fence proof moved with it;
 // seam=afd_setup::context::Repository over live Postgres.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

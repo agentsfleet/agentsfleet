@@ -1,4 +1,4 @@
-//! Dimension 2.2 — who may manage a command-line credential, and who may not.
+//! Who may manage a command-line credential, and who may not.
 //!
 //! # Why this suite is about the REFUSALS and not the mint
 //!

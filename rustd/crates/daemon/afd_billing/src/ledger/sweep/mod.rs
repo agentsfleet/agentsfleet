@@ -2,7 +2,7 @@
 //! lines that committed without a settlement.
 //!
 //! A work's own transaction logs its lines and returns; the billing relay
-//! settles them (billing §11). [`unsettled`] hands them back as one
+//! settles them, per the billing design. [`unsettled`] hands them back as one
 //! [`Settlement`] per work and pricing header, and [`resettle`] passes each to a biller, so a
 //! biller in another process sees the same calls an in-process one does and
 //! `(work, kind, seq)` keeps a retried or repeated pass from charging twice.

@@ -19,6 +19,12 @@ pub(crate) fn stored(source: serde_json::Error) -> Error {
     .into()
 }
 
+/// A stored count in `column` that does not parse as one, keeping the parser's
+/// cause, which never quotes the text it refused.
+pub(crate) fn stored_number(column: &'static str) -> impl FnOnce(std::num::ParseIntError) -> Error {
+    move |source| ErrorKind::StoredNumber { column, source }.into()
+}
+
 /// A column every write of this crate fills read back empty: a stored fault,
 /// reported as unreadable stored data rather than a missing resource.
 pub(crate) fn absent(column: &'static str) -> Error {

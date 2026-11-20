@@ -86,13 +86,10 @@ pub struct RunPayload<'a> {
     /// daemon assigned it. False lets the run skip its first fold ask; a
     /// message that lands after the assignment folds on the ask after the answer.
     pub inputs_waiting: bool,
-    /// Whose work this is. Absent on a fleet's run, whose owner is the fleet
-    /// `turn.fleet_id` names. A draft's run names the draft here, and its
-    /// `turn` is the draft's message: `turn_id` the message, `fleet_id` the
-    /// draft. Assigned only to a protocol v4 runner.
-    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    pub owner: Option<super::Owner<'a>>,
-    /// A draft's setup turn: present exactly when `owner` names a draft.
-    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    pub setup: Option<super::SetupWork<'a>>,
+    /// Whose work this is. A fleet's run names its fleet, the one
+    /// `event.fleet_id` names. A draft's run names the draft and carries its
+    /// setup turn, and its `event` is the draft's message: `turn_id` the
+    /// message, `fleet_id` the draft.
+    #[serde(borrow)]
+    pub owner: super::Owner<'a>,
 }

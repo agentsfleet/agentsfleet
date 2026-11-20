@@ -1,4 +1,4 @@
-//! The datastore half of §7: what the loop left behind.
+//! The datastore half of the end-to-end suite: what the loop left behind.
 //!
 //! Split from the suites by concern rather than by size (RULE FLL): every
 //! function here reads a ROW through the pool the BOOTED daemon opened, so an

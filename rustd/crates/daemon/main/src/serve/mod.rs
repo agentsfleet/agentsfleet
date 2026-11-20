@@ -8,9 +8,9 @@
 //!
 //! # Why hyper directly rather than `axum::serve`
 //!
-//! `axum::serve` exposes no way to bound the header buffer, and Dimension 5.3
-//! is a bound on the header buffer. So the accept loop is ours and
-//! [`afd_api::connection_builder`] carries the limit — the same builder §5's
+//! `axum::serve` exposes no way to bound the header buffer, and the daemon
+//! bounds the header buffer. So the accept loop is ours and
+//! [`afd_api::connection_builder`] carries the limit — the same builder `afd_api`'s
 //! oversize-head test drives.
 //!
 //! # Every connection is a supervised child of the accept loop
@@ -18,7 +18,7 @@
 //! A connection task is spawned per accepted socket and given the same
 //! cancellation token. The alternative would be `tokio::spawn`, which detaches
 //! — and a detached connection can outlive the pools it reads through. That is
-//! the unsupervised spawn path Dimension 7.5 says does not exist.
+//! the unsupervised spawn path the supervisor tests say does not exist.
 
 mod accept;
 mod clients;

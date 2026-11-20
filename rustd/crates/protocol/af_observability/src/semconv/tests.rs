@@ -1,4 +1,4 @@
-//! Dimension 1.1 — the vocabulary covers everything this daemon spells.
+//! The vocabulary covers everything this daemon spells.
 //!
 //! # What these tests deliberately do not do
 //!

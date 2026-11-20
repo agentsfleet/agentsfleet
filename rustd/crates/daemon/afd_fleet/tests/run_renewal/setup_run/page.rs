@@ -39,7 +39,7 @@ impl Case {
 
 // Value: protects=a person paging the setup chat sees what a turn cost once its
 // draft run settles; fails_when=the page drops a run's lines; why_new=the page
-// read only the daemon's own model receipts, which §8 deletes; seam=report_draft's
+// read only the daemon's own model receipts, which are gone; seam=report_draft's
 // usage lines, read back through Drafts::messages.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

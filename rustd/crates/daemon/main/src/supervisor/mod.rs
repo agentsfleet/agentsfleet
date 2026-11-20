@@ -116,7 +116,7 @@ impl Supervisor {
     ///
     /// Handed out so a task that owns I/O can select over it directly. A task
     /// that only polls it between iterations is not cancellable mid-read,
-    /// which is the failure Dimension 7.5 exists to catch.
+    /// which is the failure the supervisor tests exist to catch.
     #[must_use]
     pub fn token(&self) -> CancellationToken {
         self.token.clone()
@@ -150,7 +150,7 @@ impl Supervisor {
 
     /// Every task currently supervised, in the order they were spawned.
     ///
-    /// The inventory Dimension 7.5 asks to be complete. Exposed so the check
+    /// The inventory the supervisor tests ask to be complete. Exposed so the check
     /// is a test over the running process rather than a list in a document
     /// that drifts from it.
     #[must_use]

@@ -117,11 +117,11 @@ impl Host for Connected {
             Down::Run {
                 run: TaggedRun::Fleet(run),
             } => match run.owner {
-                Some(Owner::Draft { .. }) => Ok(Assigned::Chat(Held {
+                Owner::Draft { .. } => Ok(Assigned::Chat(Held {
                     run: Uuid7::parse(&run.run_id)?,
                     fence: run.fencing_token.to_string(),
                 })),
-                Some(Owner::Fleet { .. }) | None => Ok(Assigned::Fleet),
+                Owner::Fleet { .. } => Ok(Assigned::Fleet),
             },
             _ => Err(ErrorKind::StreamAnswer.into()),
         }

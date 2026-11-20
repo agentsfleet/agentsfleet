@@ -119,7 +119,7 @@ impl Case {
                 &mut af_observability::verb_span::VerbClock::untimed(),
                 |run, _metadata| {
                     let TaggedRun::Fleet(run) = run;
-                    run.setup.as_ref().map(|setup| Taken {
+                    run.owner.setup().map(|setup| Taken {
                         run: run.run_id.to_string(),
                         turn: run.event.turn_id.to_string(),
                         fence: run.fencing_token,

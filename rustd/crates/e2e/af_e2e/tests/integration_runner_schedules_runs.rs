@@ -1,4 +1,4 @@
-//! §1 — a schedule's runs: the ones that ran, and one created now, which
+//! A schedule's runs: the ones that ran, and one created now, which
 //! fires only what the scheduler itself would fire.
 //!
 //! Booted as `integration_runner_schedules` is, against a fake scheduler that
@@ -25,7 +25,7 @@ use crate::schedules::{Assigned, Seeded};
 use crate::verbs::FakeQStash;
 use crate::wire::wait_for_assignment;
 
-/// Dimension 1.6. Running now admits one event under the schedule's actor, and
+/// Running now admits one event under the schedule's actor, and
 /// a retried post answers the same run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -180,7 +180,7 @@ async fn test_run_now_from_a_scheduled_run_is_refused() {
     assigned.finish(supervisor).await;
 }
 
-/// Dimension 1.7. A schedule's runs are its events, newest first, paged.
+/// A schedule's runs are its events, newest first, paged.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_runs_lists_events() {
@@ -226,7 +226,7 @@ async fn test_schedule_runs_lists_events() {
     assigned.finish(supervisor).await;
 }
 
-/// Dimension 1.9. A `once` schedule run now retires: `QStash` removes it and the
+/// A `once` schedule run now retires: `QStash` removes it and the
 /// row goes, so a repeat finds nothing to run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

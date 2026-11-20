@@ -22,12 +22,12 @@ use crate::support::Fixtures;
 
 /// A pool deep enough that nothing under test clamps against it.
 ///
-/// Dimension 3.1 is about row SHAPE, and a wallet that ran dry mid-assertion
+/// The settle suites test row SHAPE, and a wallet that ran dry mid-assertion
 /// would clamp `charged` and make the ledger disagree with the slice for a
 /// reason that has nothing to do with parity.
 pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
 
-/// The slice every §3 settle assertion prices: one second of runtime.
+/// The slice every settle assertion prices: one second of runtime.
 ///
 /// Named because three different facts below are the same number and are NOT
 /// the same thing — this duration, the rate that prices it, and the nanos it
@@ -57,7 +57,7 @@ pub(crate) fn resume_event() -> &'static Uuid7 {
 
 /// One issued, active run with a funded tenant behind it.
 ///
-/// Every test here starts from the same precondition — §2 has already run —
+/// Every test here starts from the same precondition — the assignment has already run —
 /// and assembling it inline four times is four chances for the tests to
 /// disagree about what "an issued run" means.
 pub(crate) struct Held {
@@ -72,7 +72,7 @@ pub(crate) struct Held {
     pub(crate) spare: Uuid7,
     pub(crate) issued: Issued,
     /// The token the issued run carries — what a later reassignment must outrank
-    /// for Dimension 3.2 to be testing anything.
+    /// for the settle suites to be testing anything.
     pub(crate) fence: Fence,
     pub(crate) fleet: Uuid7,
     pub(crate) tenant: Uuid7,
@@ -81,7 +81,7 @@ pub(crate) struct Held {
     pub(crate) now: Timestamp,
 }
 
-/// Runs §2 far enough to leave one active run on one funded fleet.
+/// Runs the assignment far enough to leave one active run on one funded fleet.
 pub(crate) async fn held() -> Held {
     held_in(Fixtures::create().await).await
 }

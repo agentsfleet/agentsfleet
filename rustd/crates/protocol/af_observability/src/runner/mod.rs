@@ -10,15 +10,14 @@
 //! or a hostile one, produces unbounded distinct label values, and a metric
 //! registry that grew a series per value would consume memory until the process
 //! died — with no request ever failing to explain why. So the table has a fixed
-//! capacity, and everything past it accumulates into ONE overflow series
-//! (Dimension 6.4).
+//! capacity, and everything past it accumulates into ONE overflow series.
 //!
 //! Overflow keeps the reason and the outcome and loses only WHICH runner: a
 //! deployment past four thousand distinct runners has an operational problem
 //! that per-runner attribution would not help with, and the failure totals stay
 //! correct either way.
 //!
-//! # The overflow spelling, settled (M181 §3)
+//! # The overflow spelling, settled
 //!
 //! This module used to defer the overflow series' NAME to the milestone that
 //! configures the metrics pipeline. That milestone is M181, and the answer is
@@ -213,8 +212,8 @@ impl RunnerMetrics {
 
     /// How many distinct runners currently hold a series.
     ///
-    /// Never above [`MAX_SERIES`], which is the property Dimension 6.4 asks
-    /// for and the reason this is public.
+    /// Never above [`MAX_SERIES`], which is the property the table's capacity
+    /// exists for and the reason this is public.
     #[must_use]
     pub fn series_count(&self) -> usize {
         self.series.len()

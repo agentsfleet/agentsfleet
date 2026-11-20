@@ -1,4 +1,4 @@
-//! Dimensions 5.1 and 5.2: a recall the window cannot fill asks `agentsfleetd`,
+//! A recall the window cannot fill asks `agentsfleetd`,
 //! once per miss and never past the cap, and merges without duplicates.
 #![expect(
     clippy::unwrap_used,

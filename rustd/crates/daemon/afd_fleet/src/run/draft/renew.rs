@@ -5,6 +5,7 @@
 //! The fleet's renewal batch reads fleet rows, so a session sends a draft's
 //! run here, one statement set per run, beside its fleet batch.
 
+use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_wire::report::RenewRequest;
 use afd_billing::biller::{Account, Ask, Funds, Settlement, WorkKey};
@@ -24,6 +25,9 @@ const CONTEXT: &str = "renew a draft run";
 
 /// Logged when a draft run's payer can no longer fund it.
 const EVENT_NO_CREDITS: &str = "draft_run_no_credits";
+
+/// Logged when a funds gate could not be read and the renewal was admitted.
+const EVENT_GATE_UNREADABLE: &str = "renew_gate_unreadable_admitted";
 
 impl RunService {
     /// Extends `runner`'s draft-owned `run_id`, logging the slice since its
@@ -165,8 +169,9 @@ impl RunService {
 
     /// Whether the payer can fund one more slice of `run`: the balance, less
     /// every logged line the relay has not charged, against the floor one
-    /// renewal may spend. A check only. A balance that cannot be read, or a
-    /// payer with no wallet, admits the renewal, as a fleet's does.
+    /// renewal may spend. A check only. A payer with no wallet admits the
+    /// renewal, as a fleet's does. So does a price or a balance that cannot be
+    /// read, which says nothing about whether it covers the run, and is logged.
     async fn draft_funds(
         &self,
         run: &DraftRun,
@@ -174,12 +179,16 @@ impl RunService {
         posture: afd_billing::rates::Posture,
         now: Timestamp,
     ) -> Result<()> {
-        let Ok(estimate) = self
+        let estimate = match self
             .accounts
             .estimate(posture, &run.provider, &run.model, now)
             .await
-        else {
-            return Ok(());
+        {
+            Ok(estimate) => estimate,
+            Err(fault) => {
+                admit_unreadable("price", run, run_id, &fault);
+                return Ok(());
+            }
         };
         let ask = Ask {
             work: WorkKey::SetupRun(run_id.clone()),
@@ -191,19 +200,47 @@ impl RunService {
         };
         match self.biller.check(&ask).await {
             Ok(Funds::Short { .. }) => {
+                let refusal = renewal_no_credits();
+                let error_code = refusal.code().as_str();
                 let (draft_id, run_id) = (run.draft_id.as_str(), run_id.as_str());
                 {
                     let (event, message) = (
                         &EVENT_NO_CREDITS,
                         format_args!("the tenant's balance can no longer fund this setup turn"),
                     );
-                    tracing::warn!(message, draft_id, run_id, event);
+                    tracing::warn!(message, error_code, draft_id, run_id, event);
                 };
-                Err(renewal_no_credits())
+                Err(refusal)
             }
-            Ok(Funds::Covered | Funds::Unconfirmed) | Err(_) => Ok(()),
+            Ok(Funds::Covered | Funds::Unconfirmed) => Ok(()),
+            Err(fault) if fault.is_wallet_missing() => Ok(()),
+            Err(fault) => {
+                admit_unreadable("balance", run, run_id, &fault);
+                Ok(())
+            }
         }
     }
+}
+
+/// Admits a draft renewal whose funds `gate` could not be read, and says so
+/// under the event a fleet's fail-open renewal logs.
+fn admit_unreadable(
+    gate: &'static str,
+    run: &DraftRun,
+    run_id: &Uuid7,
+    fault: &afd_billing::Error,
+) {
+    let Logged { error_code, reason } = fault.logged();
+    let (draft_id, run_id) = (run.draft_id.as_str(), run_id.as_str());
+    {
+        let (event, message) = (
+            &EVENT_GATE_UNREADABLE,
+            format_args!(
+                "a renewal gate could not be read; the setup run is admitted for one more slice"
+            ),
+        );
+        tracing::warn!(message, error_code, draft_id, run_id, gate, reason, event);
+    };
 }
 
 /// `requests` priced as `run`'s lines with no run time measured: the lines a

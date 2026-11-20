@@ -7,7 +7,7 @@
 //! spent before then is a debt the next grant repays. The built-in
 //! implementation is [`LedgerBiller`](crate::ledger::LedgerBiller); a billing
 //! service in its own process or a third-party metering system is another
-//! implementation of the same trait, held as `Arc<dyn Biller>` (billing §11).
+//! implementation of the same trait, held as `Arc<dyn Biller>`, per the billing design.
 //!
 //! `billing.usage_lines` records what happened (always ours); a biller moves
 //! money from it. `settle` is idempotent on each line's `(work, kind, seq)`, so
@@ -202,7 +202,7 @@ impl Balance {
     }
 }
 
-/// Checks funds and charges money for work (billing §11).
+/// Checks funds and charges money for work, per the billing design.
 ///
 /// `check` writes nothing; `settle` is idempotent on each line's
 /// `(work, kind, seq)`.

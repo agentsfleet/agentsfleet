@@ -1,4 +1,4 @@
-//! Dimension 2.3 — the keyset walks a crafted corpus without skipping or
+//! The keyset walks a crafted corpus without skipping or
 //! repeating a row.
 //!
 //! The paging VOCABULARY — how a `?sort=`/`?cursor=`/`?limit=` query becomes a
@@ -45,7 +45,7 @@ fn step(steps: i32) -> Timestamp {
         .expect("the corpus instants are in range")
 }
 
-/// Dimension 2.3 — a page boundary lands exactly between two rows, ties
+/// A page boundary lands exactly between two rows, ties
 /// included, and the total does not move while a client walks.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -135,7 +135,7 @@ async fn test_list_keyset_pagination() {
     lane.cleanup().await;
 }
 
-/// Dimension 2.3 — the name sort walks on the text comparator, not the clock.
+/// The name sort walks on the text comparator, not the clock.
 ///
 /// The sibling case, and it is not redundant: `Cursor::Text` binds a different
 /// slot in the statement than `Cursor::Timestamp`, so a keyset that worked on

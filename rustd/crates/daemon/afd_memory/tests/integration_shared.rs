@@ -1,4 +1,4 @@
-//! Dimension 4.1: shared memory reaches only granted fleets, each entry naming
+//! Shared memory reaches only granted fleets, each entry naming
 //! its writer — through load, recall and the operator page alike.
 #![expect(
     clippy::expect_used,

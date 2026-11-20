@@ -1,6 +1,6 @@
 //! What `/readyz` consults once the pools are real.
 //!
-//! §5 shipped [`Dependencies`] as a trait and stopped there deliberately:
+//! `afd_api` ships [`Dependencies`] as a trait and stopped there deliberately:
 //! routing and the response shape are `afd_api`'s, and what it MEANS to reach
 //! Postgres and the bus belongs to whoever owns the connections. This is that
 //! half.
@@ -36,7 +36,7 @@ use afd_db::Db;
 /// that outlives the period it is polled at stacks up.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// The real dependencies, behind the seam §5 left for them.
+/// The real dependencies, behind the seam `afd_api` left for them.
 #[derive(Debug)]
 pub struct LiveDependencies {
     database: Db,

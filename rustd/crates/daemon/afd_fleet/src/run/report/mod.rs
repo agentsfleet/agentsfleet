@@ -16,7 +16,7 @@
 //!
 //! So the fence — which is what authorizes reporting at all — is spent on the
 //! money first, and the narrative log is closed afterwards from a position
-//! where nothing can take it away. Since §7 that position is the same
+//! where nothing can take it away. That position is the same
 //! TRANSACTION rather than merely the next statement: the result, the session
 //! cursor and the freed thread commit with the charge or not at all, so there is
 //! no interval in which a tenant is charged for a run whose answer was never

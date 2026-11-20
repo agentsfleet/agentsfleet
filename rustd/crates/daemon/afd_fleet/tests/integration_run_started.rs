@@ -1,4 +1,4 @@
-//! §2 against live datastores — a granted run is a run started, and it is
+//! A granted run is a run started, and it is
 //! counted as one.
 //!
 //! `integration_run_assign.rs` and `integration_run_issue.rs` prove what a

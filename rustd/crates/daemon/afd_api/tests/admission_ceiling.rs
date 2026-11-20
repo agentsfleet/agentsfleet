@@ -1,4 +1,4 @@
-//! Dimension 5.2 — requests past the ceiling shed before any handler runs.
+//! Requests past the ceiling shed before any handler runs.
 //!
 //! Every test here is deterministic by handshake rather than by clock: the
 //! handler parks on a barrier, so "the instance is exactly full" is a state the

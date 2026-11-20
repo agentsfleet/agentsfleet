@@ -90,7 +90,7 @@ fn assert_no_address(events: &[CapturedEvent]) {
     }
 }
 
-/// Dimension 2.3: no record holds the recipient's address or any body text —
+/// No record holds the recipient's address or any body text —
 /// only the invite id, the attempt, the reason and the reply.
 #[tokio::test]
 async fn test_send_logs_carry_no_address() {

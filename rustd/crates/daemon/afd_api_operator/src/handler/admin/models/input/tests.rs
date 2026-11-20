@@ -141,7 +141,7 @@ fn create_validation_pins_every_bound() {
 
 // Value: protects=two quotes for one tier can never both apply at one instant;
 // fails_when=an overlapping or reversed range, or a schedule with no base tier,
-// reaches the store; why_new=§8 dated prices; seam=none; no_claim=storage.
+// reaches the store; why_new=dated prices; seam=none; no_claim=storage.
 #[test]
 fn a_schedule_with_overlapping_reversed_or_no_base_ranges_is_refused() {
     for prices in [

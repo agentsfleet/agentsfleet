@@ -1,5 +1,5 @@
 //! A fleet run's required fields: the history it carries, whether the held
-//! sandbox resumes, and whether input waits.
+//! sandbox resumes, whether input waits, and whose work it is.
 #![expect(
     clippy::unwrap_used,
     clippy::indexing_slicing,
@@ -17,17 +17,21 @@ const RUN: &str = r#"{"run_id":"l","fencing_token":1,"run_expires_at":"1970-01-0
         "inference_host":"h","base_url":null,"repository_binding":null,
         "http_origin_policies":[],"context":{"tool_window":1,"memory_checkpoint_every":1,
         "stage_chunk_threshold":0.5,"model":"m","context_cap_tokens":0}},
-        "instructions":"","history":[],"resume_hold":false,"inputs_waiting":true}"#;
+        "instructions":"","history":[],"resume_hold":false,"inputs_waiting":true,
+        "owner":{"kind":"fleet","fleet_id":"f"}}"#;
 
-/// The daemon always names the fleet's history and whether the held sandbox
-/// resumes; a run missing either is refused rather than read as a default.
+/// The daemon always names the fleet's history, whether the held sandbox
+/// resumes, whether input waits and whose work the run is; a run missing any
+/// of them is refused rather than read as a default.
 #[test]
-fn a_run_must_name_its_history_resume_hold_and_waiting_inputs() {
+fn a_run_must_name_its_history_resume_hold_waiting_inputs_and_owner() {
     let text = RUN;
     for key in [
         r#","history":[]"#,
         r#","resume_hold":false"#,
         r#","inputs_waiting":true"#,
+        r#",
+        "owner":{"kind":"fleet","fleet_id":"f"}"#,
     ] {
         let missing = text.replace(key, "");
         assert_ne!(missing, text, "{key} is in the fixture");

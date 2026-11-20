@@ -66,7 +66,7 @@ impl Attempt {
 
 /// Something that can put one answer in front of a person.
 ///
-/// A trait rather than a concrete poster because Dimension 5.1 grades the
+/// A trait rather than a concrete poster because the retry tests grade the
 /// worker's RETRY behaviour, and proving what happens after three 5xx needs a
 /// destination that answers 5xx on demand. Async-in-trait rather than a boxed
 /// future: the worker takes its poster as a type parameter, so nothing here
@@ -137,7 +137,7 @@ pub async fn dispatch<S: Deliver>(
 /// A free function rather than a [`crate::Worker`] method, because the retry
 /// POLICY has nothing to do with the worker's state — it needs the posters, the
 /// job and the token, and none of the claim, the lane or the loop. That is
-/// also what makes it gradeable: Dimension 5.1 asks what a vendor sees after
+/// also what makes it gradeable: the retry tests ask what a vendor sees after
 /// three 5xx, and a test can answer that without a database.
 ///
 /// The loop AND the schedule are `backon`'s — see [`crate::retry`] on why this

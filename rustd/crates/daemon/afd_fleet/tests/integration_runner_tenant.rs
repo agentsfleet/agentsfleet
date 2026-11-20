@@ -174,7 +174,7 @@ async fn tenant_runner_refuses_a_decision_model() {
 /// owner too, and another tenant may hold the same host.
 // Value: protects=the natural key registration relies on; fails_when=the
 // unique constraint is dropped, treats nulls as distinct, or spans tenants;
-// why_new=M253_002 §14, which replaces the registration receipt; seam=none.
+// why_new=replaces the registration receipt; seam=none.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn each_owner_holds_one_runner_per_host() {

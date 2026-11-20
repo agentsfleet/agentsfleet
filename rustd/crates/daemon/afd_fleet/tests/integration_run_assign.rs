@@ -1,4 +1,4 @@
-//! §2 against live datastores — the assignment pass end to end.
+//! The assignment pass end to end.
 //!
 //! `integration_run_affinity.rs` proves the pieces underneath this: the
 //! atomic assignment, the fence, the guarded release. What is here is the pass that
@@ -91,7 +91,7 @@ async fn test_a_fleet_is_discovered_without_any_notification() {
         ..
     } = seeded::<1>(&fixtures).await;
 
-    // A full rotation, because one poll proves nothing: since §4 it samples ONE
+    // A full rotation, because one poll proves nothing: it samples ONE
     // of sixteen partitions, so a single `None` is as likely to mean "wrong
     // partition" as "nothing marked". A rotation visits every partition once.
     let acquired = seed::select_fleet(&fixtures.runs(), &runner, &fleet).await;

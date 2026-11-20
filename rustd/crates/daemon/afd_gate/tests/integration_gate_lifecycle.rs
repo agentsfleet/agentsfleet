@@ -13,7 +13,7 @@ use self::fixture::{Fixture, NOW, RUNAWAY_AT_TWO, bus, config, config_gates};
 /// The rule a gate rules fleet is parked by, and the only one this suite parks on.
 const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","gate_kind":"deploy","blast_radius":"production"}]}"#;
 
-/// Dimensions 2.1 and 2.2 — a write fleet runs every event, and every
+/// A write fleet runs every event, and every
 /// continuation of one, without a card.
 ///
 /// This suite used to assert the opposite, and the assertion was the defect.
@@ -53,7 +53,7 @@ async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
     fixture.cleanup().await;
 }
 
-/// Dimension 2.3 — deleting the write park did not delete the rules path.
+/// Deleting the write park did not delete the rules path.
 ///
 /// The boundary that survives. A workspace that asks to be consulted still is,
 /// and that is the one thing this milestone must not destabilize.
@@ -118,7 +118,7 @@ async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
     fixture.cleanup().await;
 }
 
-/// Dimension 2.4 — a recorded gate decides an in-flight event after the
+/// A recorded gate decides an in-flight event after the
 /// fleet's config stops asking for one.
 ///
 /// A recorded gate outranks policy, so the run stays parked until its answer

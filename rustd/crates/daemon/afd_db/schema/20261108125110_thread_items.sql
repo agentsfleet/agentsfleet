@@ -3,7 +3,8 @@
 -- orders calls within one run. `turn_id` is the turn newest when the item's step began: the
 -- run's own, or one its conversation folded in. `kind` and `status` hold the words
 -- `af_wire::tool_detail::{ItemKind, ItemStatus}` spell; `changes` holds an edit's
--- `[{path, added, removed}]`, NULL for any other item.
+-- `[{path, added, removed}]`, NULL for any other item, and is read by the tool call detail
+-- (`afd_turns/src/view/history/select_tool_call.sql`).
 CREATE TABLE thread.items (
     id                   UUID PRIMARY KEY,
     workspace_id         UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,

@@ -9,7 +9,7 @@ use af_core::id::Uuid7;
 use af_wire::decision::DecisionAssignment;
 use af_wire::memory::MemoryLoadResponse;
 use af_wire::policy::ExecutionPolicy;
-use af_wire::run::{RunPayload, Turn};
+use af_wire::run::{Owner, RunPayload, Turn};
 use af_wire::turn::{TurnEnvelope, TurnKind};
 
 use crate::run::envelope::Acquired;
@@ -84,8 +84,9 @@ pub(super) fn payload<'a>(
         durable_tasks: installed.config.decision_policy().is_some(),
         memory: context.memory,
         inputs_waiting: acquired.opened.inputs_waiting,
-        owner: None,
-        setup: None,
+        owner: Owner::Fleet {
+            fleet_id: acquired.fleet_id.as_str().into(),
+        },
     }
 }
 

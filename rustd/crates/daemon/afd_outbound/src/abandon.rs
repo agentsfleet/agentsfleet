@@ -69,7 +69,7 @@ mod tests {
     use super::*;
     use crate::delivery::Outgoing;
 
-    /// Dimension 4.4 — what an abandonment announces carries the connector, the
+    /// What an abandonment announces carries the connector, the
     /// fleet, the reason and the count, and neither the answer nor the address.
     ///
     /// The job below carries both, and the announcement is built from the same

@@ -40,7 +40,7 @@ async fn a_mention_by_the_bot_itself_is_dropped() {
     fixture.cleanup().await;
 }
 
-/// Dimension 1.4 — a team this deployment never installed into is dropped
+/// A team this deployment never installed into is dropped
 /// with 200, not refused: a refusal would put it in Slack's retry loop.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -67,7 +67,7 @@ async fn unmapped_team_is_dropped_not_refused() {
     fixture.cleanup().await;
 }
 
-/// Dimension 1.5 — a bad signature and a stale timestamp are refused with 401
+/// A bad signature and a stale timestamp are refused with 401
 /// before the body is parsed, and admit nothing.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

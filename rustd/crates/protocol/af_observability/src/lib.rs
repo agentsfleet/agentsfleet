@@ -12,7 +12,7 @@
 //! # What is not here yet
 //!
 //! The OTLP transport. It is constructed from configuration at boot, which is
-//! §7's, and an exporter this crate built for nobody would be a dependency and
+//! the daemon's, and an exporter this crate built for nobody would be a dependency and
 //! a code path with no caller. What IS here is everything the transport plugs
 //! into — so the piece boot adds is the endpoint, not the design.
 #![forbid(unsafe_code)]

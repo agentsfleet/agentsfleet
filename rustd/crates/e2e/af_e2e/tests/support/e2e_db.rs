@@ -1,4 +1,4 @@
-//! The database one §7 scenario runs against.
+//! The database one end-to-end scenario runs against.
 //!
 //! Split from `e2e.rs` by concern rather than by size (RULE FLL): this is the
 //! only place that answers where a scenario's daemon points.

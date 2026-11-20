@@ -14,7 +14,7 @@ use crate::integration_tool_call_details::{
 };
 use crate::wire::report_body;
 
-/// Dimension 1.7. Records go with their event.
+/// Records go with their event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_delete_cascades_tool_call_details() {
@@ -32,7 +32,7 @@ async fn test_event_delete_cascades_tool_call_details() {
     scene.cleanup().await;
 }
 
-/// Dimension 1.8. The runtime role holds every privilege the verb and the
+/// The runtime role holds every privilege the verb and the
 /// read use.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -88,7 +88,7 @@ async fn plant_dead_record(scene: &Scenario, fence: u64) {
     .await;
 }
 
-/// Dimension 1.6. Settlement keeps only the settling fence's records, and the
+/// Settlement keeps only the settling fence's records, and the
 /// current run's first post already clears a dead run's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

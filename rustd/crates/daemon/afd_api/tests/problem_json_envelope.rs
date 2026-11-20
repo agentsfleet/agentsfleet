@@ -1,4 +1,4 @@
-//! Dimension 5.4 — error responses keep the envelope clients already read.
+//! Error responses keep the envelope clients already read.
 //!
 //! The envelope is a fixed surface for clients that already exist: the
 //! dashboard reads `user_message`, the CLI reads `error_code`, and support reads

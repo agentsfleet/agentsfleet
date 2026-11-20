@@ -21,7 +21,7 @@ pub(crate) use afd_state::sql::{
 /// A sentinel rather than `NULL` because the column is `NOT NULL` and the
 /// liveness sweep's ordering predicate reads it directly. What matters is that
 /// the derived state reads `registered` rather than a fabricated `online`, which
-/// is Dimension 6.3, and that the offline sweep never mistakes it for a host
+/// is the point, and that the offline sweep never mistakes it for a host
 /// that stopped.
 pub const NEVER_SEEN: Timestamp = Timestamp::UNIX_EPOCH;
 

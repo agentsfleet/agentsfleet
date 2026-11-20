@@ -65,7 +65,9 @@ impl Error {
             ErrorKind::Validation { .. }
             | ErrorKind::Definition { .. }
             | ErrorKind::Invalid { .. } => error_code::INVALID_REQUEST,
-            ErrorKind::Query { .. } | ErrorKind::Stored { .. } => error_code::INTERNAL_DB_QUERY,
+            ErrorKind::Query { .. } | ErrorKind::Stored { .. } | ErrorKind::StoredNumber { .. } => {
+                error_code::INTERNAL_DB_QUERY
+            }
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Credential { source } => source.code(),
             ErrorKind::Runner { source } => source.code(),
@@ -111,6 +113,7 @@ impl Error {
             | ErrorKind::Cursor
             | ErrorKind::Query { .. }
             | ErrorKind::Stored { .. }
+            | ErrorKind::StoredNumber { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Identifier { .. }
@@ -148,6 +151,7 @@ impl Error {
             | ErrorKind::Invalid { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Stored { .. }
+            | ErrorKind::StoredNumber { .. }
             | ErrorKind::Validation { .. }
             | ErrorKind::Definition { .. }
             | ErrorKind::Credential { .. }
@@ -187,6 +191,7 @@ impl Error {
             | ErrorKind::Invalid { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Stored { .. }
+            | ErrorKind::StoredNumber { .. }
             | ErrorKind::Validation { .. }
             | ErrorKind::Definition { .. }
             | ErrorKind::Credential { .. }
@@ -225,6 +230,7 @@ impl Error {
             | ErrorKind::Invalid { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::Stored { .. }
+            | ErrorKind::StoredNumber { .. }
             | ErrorKind::Validation { .. }
             | ErrorKind::Definition { .. }
             | ErrorKind::Credential { .. }

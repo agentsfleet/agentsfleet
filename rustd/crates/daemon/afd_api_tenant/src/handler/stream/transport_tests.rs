@@ -202,7 +202,7 @@ async fn the_body_writes_what_axum_would() {
     );
 }
 
-/// Dimension 5.4, the body's half: three viewers of one frame write its
+/// The body's half: three viewers of one frame write its
 /// payload from the one allocation the hub dispatched.
 #[tokio::test]
 async fn test_the_body_shares_one_payload_across_viewers() {

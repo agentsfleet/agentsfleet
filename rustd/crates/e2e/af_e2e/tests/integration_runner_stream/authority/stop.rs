@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 
 // Value: protects=the Goal: a person stops a running fleet turn and the runner ends the run;
 // fails_when=the PATCH skips the mark or the hint, or the report answers the cancelled turn;
-// why_new=no route stopped a fleet turn before §8;
+// why_new=no route stopped a fleet turn before;
 // seam=two production daemons, authenticated HTTP, real Bus and Postgres, raw native runner.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -117,7 +117,7 @@ async fn stopping_one_of_two_served_turns_cancels_both() -> TestResult {
 
 // Value: protects=no route accepts a retired field; fails_when=the turn body
 // stops refusing unknown fields, or a refused Stop still marks the run;
-// why_new=§7 renamed every field and keeps no alias; seam=the production
+// why_new=every field was renamed with no alias kept; seam=the production
 // router through a booted daemon, real Postgres, raw native runner.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

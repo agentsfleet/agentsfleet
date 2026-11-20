@@ -81,6 +81,12 @@ pub(crate) enum ErrorKind {
         #[source]
         source: af_core::json::Unreadable,
     },
+    #[error("the setup store holds a {column} that is not a number")]
+    StoredNumber {
+        column: &'static str,
+        #[source]
+        source: std::num::ParseIntError,
+    },
     #[error("the setup request violates a declared bound")]
     Validation {
         #[from]

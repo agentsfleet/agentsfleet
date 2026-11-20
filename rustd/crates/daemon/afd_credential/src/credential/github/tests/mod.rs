@@ -86,7 +86,7 @@ fn scoped(binding: &RepositoryBinding) -> ScopedRequest {
     ScopedRequest::for_binding(binding, &everything)
 }
 
-/// Dimension 1.2 — a read token missing `actions`, carrying `actions: write`,
+/// A read token missing `actions`, carrying `actions: write`,
 /// or carrying `workflows` is refused rather than delivered.
 #[test]
 fn verify_refuses_a_ci_scope_mismatch() {

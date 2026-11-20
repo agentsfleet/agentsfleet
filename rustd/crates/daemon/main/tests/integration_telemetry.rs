@@ -1,4 +1,4 @@
-//! §4 — the failure posture, and all three signals actually leaving.
+//! The failure posture, and all three signals actually leaving.
 //!
 //! # Why a collector fixture rather than a mocked exporter
 //!
@@ -94,7 +94,7 @@ fn bodies(received: &Received) -> String {
         .join("\n")
 }
 
-/// Dimension 4.2 — all three signals reach a collector, carrying this
+/// All three signals reach a collector, carrying this
 /// process's identity and the event names the daemon this ports emits.
 ///
 /// The log half is the one worth having. A transport that carried metrics and
@@ -183,7 +183,7 @@ async fn a_failed_boot_delivers_what_it_buffered() {
     );
 }
 
-/// Dimension 4.1 — an unreachable collector costs telemetry, never latency.
+/// An unreachable collector costs telemetry, never latency.
 ///
 /// Measured against the emit rather than against a wall-clock budget: the
 /// claim is that recording does not WAIT for the export, and a fixed budget

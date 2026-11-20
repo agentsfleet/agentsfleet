@@ -1,4 +1,4 @@
-//! Dimension 1.1 and 3.3: the Postgres store, reached through `Memories`,
+//! The Postgres store, reached through `Memories`,
 //! keeps today's window, upsert, sweep and eviction, and skips a share from a
 //! fleet that may not publish.
 #![expect(

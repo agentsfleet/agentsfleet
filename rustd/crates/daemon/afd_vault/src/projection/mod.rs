@@ -40,7 +40,7 @@ const FIELD_API_KEY: &str = "api_key";
 /// `base_url` is meaningful exactly when the provider equals this. The runner
 /// uses the distinct `custom:<url>` wire name when dialing, never this id, so
 /// the constant belongs beside the classification that is its only reader
-/// (RULE UFS) — and is crate-private until a second reader exists. §2's model
+/// (RULE UFS) — and is crate-private until a second reader exists. The model
 /// registry is the one that will want it; exporting it before then would be
 /// publishing a name on the strength of a guess.
 pub(crate) const OPENAI_COMPATIBLE_PROVIDER: &str = "openai-compatible";

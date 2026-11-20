@@ -120,7 +120,7 @@ fn key(team: &str, event_id: &str) -> String {
     format!("{team}:{event_id}")
 }
 
-/// Dimension 1.1 — a signed mention in a thread admits one event on the
+/// A signed mention in a thread admits one event on the
 /// channel's only fleet: keyed by Slack's event id, as the person, a chat, owed
 /// back to that thread, with the bot's mention removed from the message.
 #[tokio::test]
@@ -193,7 +193,7 @@ fn a_chat_is_owed_back_to_the_thread_it_was_asked_in(admitted: &Admitted) {
     );
 }
 
-/// Dimension 1.2 — Slack's retry of the same event admits nothing new and
+/// Slack's retry of the same event admits nothing new and
 /// answers the first event, reported as replayed.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

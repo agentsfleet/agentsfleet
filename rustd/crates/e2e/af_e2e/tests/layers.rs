@@ -1,4 +1,4 @@
-//! The workspace's layer rule, enforced (`M253_002` §12): every edge obeys its
+//! The workspace's layer rule, enforced: every edge obeys its
 //! layer, no crate dev-depends on a crate that depends on it, each folder and
 //! prefix names its layer, the runner links no datastore client, lower layers
 //! hold no SQL, each item has one public path, each handler crate names its
@@ -26,7 +26,6 @@ use std::collections::BTreeSet;
 use rules::{dev_cycles, folders, layer_edges, runner_datastores};
 use workspace::{Workspace, planted};
 
-// Dimension 12.1.
 #[test]
 fn every_crate_depends_on_its_own_layer_or_lower() {
     let violations = layer_edges(&Workspace::load());
@@ -80,7 +79,6 @@ fn an_edge_to_a_higher_layer_or_into_e2e_is_refused() {
     assert!(violations.iter().any(|line| line.starts_with("af_p ") && line.ends_with("its own layer or a lower one")));
 }
 
-// Dimension 12.2.
 #[test]
 fn no_crate_dev_depends_on_a_crate_that_depends_on_it() {
     let cycles = dev_cycles(&Workspace::load());
@@ -109,7 +107,6 @@ fn a_planted_dev_cycle_is_named() {
     assert_eq!(dev_cycles(&workspace), ["afd_a → afd_b → afd_c → afd_a"]);
 }
 
-// Dimension 12.3.
 #[test]
 fn every_crate_folder_names_its_crate_and_its_prefix_matches_its_layer() {
     let violations = folders(&Workspace::load());
@@ -136,7 +133,6 @@ fn a_crate_in_the_wrong_folder_is_named() {
     );
 }
 
-// Dimension 12.4.
 #[test]
 fn the_runner_graph_names_no_datastore_client() {
     let violations = runner_datastores(&Workspace::load());
@@ -172,7 +168,6 @@ fn a_runner_crate_enabling_af_core_sqlx_is_refused() {
     );
 }
 
-// Dimension 12.5.
 #[test]
 fn foundation_and_protocol_crates_hold_no_sql() {
     let files = sources::crate_files();
@@ -201,7 +196,6 @@ fn a_sql_file_in_a_lower_layer_is_named() {
     );
 }
 
-// Dimension 12.7.
 #[test]
 fn no_crate_re_exports_another_workspace_crates_items() {
     let found = sources::workspace_reexports(&Workspace::load());
@@ -223,7 +217,6 @@ fn a_pub_use_of_another_workspace_crate_is_named() {
     );
 }
 
-// Dimension 12.8.
 #[test]
 fn no_handler_crate_names_the_shared_services_hub() {
     let found = sources::services_hub(&sources::hub_sources(&Workspace::load()));
@@ -279,7 +272,6 @@ pub trait IngressPlane: Shared {}
     );
 }
 
-// Dimension 12.9.
 #[test]
 fn every_crate_runs_in_exactly_one_unit_shard() {
     let workspace = Workspace::load();

@@ -1,4 +1,4 @@
-//! Dimension 2.3 — a table whose rows change carries `updated_at`; an immutable
+//! A table whose rows change carries `updated_at`; an immutable
 //! table lacks it, grants no runtime role UPDATE, and refuses UPDATE by trigger,
 //! while a cascade from its parent still deletes it (rule 9).
 

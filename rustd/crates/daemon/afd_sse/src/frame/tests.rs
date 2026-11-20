@@ -254,7 +254,7 @@ fn should_refuse_a_kind_that_would_break_the_event_line() {
     }
 }
 
-/// Dimension 5.4, the frame's half: an activity frame and a wall frame built
+/// The frame's half: an activity frame and a wall frame built
 /// for three viewers all point at the one payload the hub dispatched, and
 /// only the tag's head is the wall frame's own.
 #[test]

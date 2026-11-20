@@ -255,7 +255,7 @@ pub fn status_for(outcome: &Outcome) -> u8 {
         // A task that would not stop, or a server that fell over. This is a
         // LOG, not command output: it describes how the daemon ended rather
         // than answering the operator's request, and the exit status above is
-        // what the caller reads. Hoisted per §8A — the `log` bridge duplicates
+        // what the caller reads. Hoisted per LOG-HOIST — the `log` bridge duplicates
         // field expressions and llvm-cov scores the dead copy.
         let detail = format!("{outcome:?}");
         tracing::error!(outcome = detail, event = "serve_stopped_unclean");
@@ -274,7 +274,7 @@ pub fn status_for(outcome: &Outcome) -> u8 {
 pub async fn migrate<E: EnvSource + ?Sized + Sync>(config: &crate::config::Config<'_, E>) -> u8 {
     match config.migrate().await {
         Ok(applied) => {
-            // Hoisted per §8A — the `log` bridge duplicates field expressions
+            // Hoisted per LOG-HOIST — the `log` bridge duplicates field expressions
             // and llvm-cov scores the dead copy.
             let summary = crate::migrate::summarise(&applied);
             tracing::info!(summary, event = "migrate_completed");

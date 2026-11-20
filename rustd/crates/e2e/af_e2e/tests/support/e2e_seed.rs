@@ -1,4 +1,4 @@
-//! Every row a §7 scenario has to put in place before a runner can run.
+//! Every row an end-to-end scenario has to put in place before a runner can run.
 //!
 //! Split from `e2e.rs` by concern rather than by size (RULE FLL): that file
 //! owns the LIFECYCLE — create a database, boot a daemon at it, tear both
@@ -9,7 +9,7 @@
 //! # Read this list before adding a scenario
 //!
 //! Six rows, and every one of them was discovered by a failing poll rather than
-//! by reading the code, because §7 is the first suite in this workspace to cross
+//! by reading the code, because the end-to-end suite is the first in this workspace to cross
 //! the pull path at all. The store suites next door call `Runs::select` and
 //! `issue` directly and reach none of these checks, which is why their fixtures
 //! can seed an empty config and an unsupported event type and stay green.
@@ -76,14 +76,14 @@ const INPUT_NANOS_PER_MTOK: i64 = 3_000_000_000;
 const CACHED_INPUT_NANOS_PER_MTOK: i64 = 300_000_000;
 const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 
-/// The fleet's stored configuration, as §5's parser reads it.
+/// The fleet's stored configuration, as the daemon's parser reads it.
 ///
 /// NOT `{}`. The store suites next door seed an empty object and never notice,
 /// because they call `Runs::select`/`issue` directly and only the PULL path
 /// resolves a configuration — `Plane::run` reads it through
 /// `FleetConfig::stored` and answers `UZ-INTERNAL-003`,
 /// "the fleet's stored configuration cannot be read", on anything that will not
-/// parse. A §7 suite is the first thing in this workspace to cross that seam,
+/// parse. An end-to-end suite is the first thing in this workspace to cross that seam,
 /// so it is the first that has to seed a document a fleet could really carry.
 ///
 /// The minimum a stored document needs: a name, one trigger, a tool list, and

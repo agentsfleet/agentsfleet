@@ -96,6 +96,8 @@ repository:
   binary sits in `main/` (`daemon/main` is `agentsfleetd`, `runner/main` is
   `agentsfleet_runner`); every other folder is its crate's name.
   `af_e2e/tests/layers.rs` enforces these rules from the manifests.
+  `rustd/guffbolt` is the one crate outside `rustd/crates/`: a standalone
+  published crate that depends on no workspace crate, so it packages alone.
 - **Until the first production deploy, nothing is backward compatible.** The
   daemon, runner, app and CLI ship from one commit, so the runner protocol has
   one `VERSION` and a hello naming any other is refused; a wire, API, config or

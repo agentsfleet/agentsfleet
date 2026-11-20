@@ -1,4 +1,4 @@
-//! §1's tenant provider and model-registry routes, over the BOOTED daemon.
+//! The tenant provider and model-registry routes, over the BOOTED daemon.
 //!
 //! The one lane that reaches `afd_http`'s production seams. Those two files —
 //! `services/provider.rs` and `services/model_entry.rs` — are traits whose

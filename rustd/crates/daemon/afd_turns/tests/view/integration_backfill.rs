@@ -1,4 +1,4 @@
-//! Dimension 5.4 — the reconnect gap, and the overlap that closes it.
+//! The reconnect gap, and the overlap that closes it.
 //!
 //! A client watching a fleet holds two sources of the same narrative log: the
 //! live tail, which is pub/sub and keeps nothing, and the events list, which is
@@ -98,7 +98,7 @@ fn after_now(span: Duration) -> Timestamp {
         .expect("a fixture instant is in range")
 }
 
-/// Dimension 5.4 — a reconnect misses nothing, and the client sees each event
+/// A reconnect misses nothing, and the client sees each event
 /// once.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

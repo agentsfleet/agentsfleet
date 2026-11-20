@@ -1,4 +1,4 @@
-//! Dimensions 4.3 and 4.4 — the ladder, and what a gate does with it.
+//! The ladder, and what a gate does with it.
 //!
 //! The catalogue's claim values are shared verbatim with the identity
 //! provider's token template, so a spelling that drifts here is a capability
@@ -276,7 +276,7 @@ fn test_iteration_agrees_with_membership() {
     assert!(ScopeSet::EMPTY.iter().next().is_none());
 }
 
-/// Dimension 2.9: every claim string survives the catalogue's rewrite.
+/// Every claim string survives the catalogue's rewrite.
 ///
 /// The identity provider matches claim values verbatim, so this pins each one
 /// byte for byte. `runner:register` replaces `runner:enroll` and `runner:tenant`

@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use super::{Message, Unframed, detail};
 
 /// A fleet run's assignment, as the daemon frames one.
-const RUN: &str = r#"{"type":"run","run":{"kind":"fleet","run_id":"0190d5c2-7e1a-7000-8000-00000000e001","fencing_token":4,"run_expires_at":"1970-01-01T00:00:00.931Z","event":{"turn_id":"0190d5c2-7e1a-7000-8000-00000000e002","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"steer:user_1","event_type":"chat","request_json":"{\"message\":\"hi\"}","created_at":"1970-01-01T00:00:00.426Z"},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","history":[],"resume_hold":false,"inputs_waiting":false}}"#;
+const RUN: &str = r#"{"type":"run","run":{"kind":"fleet","run_id":"0190d5c2-7e1a-7000-8000-00000000e001","fencing_token":4,"run_expires_at":"1970-01-01T00:00:00.931Z","event":{"turn_id":"0190d5c2-7e1a-7000-8000-00000000e002","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"steer:user_1","event_type":"chat","request_json":"{\"message\":\"hi\"}","created_at":"1970-01-01T00:00:00.426Z"},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","history":[],"resume_hold":false,"inputs_waiting":false,"owner":{"kind":"fleet","fleet_id":"fleet_id"}}}"#;
 
 /// [`RUN`] with its instructions replaced by `instructions`.
 fn run_with(instructions: &str) -> String {
@@ -48,10 +48,11 @@ fn ceiling_run(character: char) -> String {
         .and_then(Value::as_object_mut)
         .expect("the fixture carries a run")
         .insert(
-            "setup".to_owned(),
-            json!({"sequence": 2, "save_requested": false, "tool": {},
-                "candidate": {"id": "0190d5c2-7e1a-7000-8000-00000000e003", "revision": 1,
-                    "definition": {"instructions_md": ceiling}}}),
+            "owner".to_owned(),
+            json!({"kind": "draft", "draft_id": "fleet_id",
+                "setup": {"sequence": 2, "save_requested": false, "tool": {},
+                    "candidate": {"id": "0190d5c2-7e1a-7000-8000-00000000e003", "revision": 1,
+                        "definition": {"instructions_md": ceiling}}}}),
         );
     serde_json::to_string(&document).expect("the fixture serializes")
 }

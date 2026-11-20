@@ -106,12 +106,12 @@ const TENANT_RUNNER_ADDITIONS: usize = 5;
 /// fleet's events, through the run it runs.
 const FLEET_TO_FLEET_ADDITIONS: usize = 3;
 
-/// Stop on a draft's turn (M253 §8). A fleet turn's Stop is a `PATCH` on the
+/// Stop on a draft's turn. A fleet turn's Stop is a `PATCH` on the
 /// turn route it already reads, so it adds a verb and no route.
 const STOP_ADDITIONS: usize = 1;
 
 /// The workspace's four Plugin routes — its entries, one entry, an entry's
-/// revisions and one revision — went with Plugins (`M253_002` §14).
+/// revisions and one revision — went with Plugins.
 const RETIRED_PLUGIN_ROUTES: usize = 4;
 
 /// What this daemon's union must carry.

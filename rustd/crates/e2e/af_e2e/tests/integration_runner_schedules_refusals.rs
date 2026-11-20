@@ -1,4 +1,4 @@
-//! §1 — every refusal the schedules verbs make before a schedule is touched,
+//! Every refusal the schedules verbs make before a schedule is touched,
 //! one family to a case.
 //!
 //! Booted as `integration_runner_schedules` is; after every case the fake

@@ -69,8 +69,7 @@ async fn registration_without_runner_tenant_is_refused() {
 
 // Value: protects=a host registers once, and its tenant recovers the token by
 // rotation; fails_when=a retry makes a second runner, the 409 names no runner,
-// or the rotated token does not connect; why_new=M253_002 §14 Dimension 14.3,
-// the natural key replacing the registration receipt; seam=none.
+// or the rotated token does not connect; why_new=the natural key replacing the registration receipt; seam=none.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_retried_registration_of_one_host_answers_409_naming_the_runner() {

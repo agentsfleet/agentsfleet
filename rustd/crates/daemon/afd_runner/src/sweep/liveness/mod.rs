@@ -19,7 +19,7 @@
 //! runner enrolled a second ago look decades stale — the sentinel is the epoch
 //! — and it would be reported offline before it ever had a chance to beat. A runner that has never connected is not one that stopped: it is one
 //! that has not started, which is a different word to an operator and a
-//! different row to a dashboard (Dimension 6.3).
+//! different row to a dashboard.
 
 use std::time::Duration;
 
@@ -84,7 +84,7 @@ impl Due {
     ///
     /// The sentinel is excluded HERE as well as in the statement, and the
     /// duplication is deliberate: this is the predicate a reader checks
-    /// Dimension 6.3 against, and a fetch widened later must not silently make
+    /// that distinction against, and a fetch widened later must not silently make
     /// a never-seen runner offline. Judged at the database's clock, the same
     /// instant the fetch's own staleness test used.
     fn is_stale(&self, clock: af_core::timing::RunClock) -> bool {

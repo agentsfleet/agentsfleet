@@ -1,4 +1,4 @@
-//! Dimension 4.8 for the run verbs: a run that lapses while a verb waits on
+//! For the run verbs: a run that lapses while a verb waits on
 //! its row lock no longer holds once the verb has the lock.
 //!
 //! Three verbs read `thread.runs` under a lock: the write fence a schedule

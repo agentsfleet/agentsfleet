@@ -97,7 +97,7 @@ fn row(call: &Value) -> (String, String, String) {
     (number, text("name"), text("status"))
 }
 
-/// Dimension 4.1, on `guffbolt`'s subagents. The triager starts two
+/// On `guffbolt`'s subagents: the triager starts two
 /// children with `spawn_agent` and waits for each with `wait_agent`; each
 /// child holds `file_read` alone, reads the checked-out repository through
 /// the executor, and its answer is what its wait reads; the stored trace

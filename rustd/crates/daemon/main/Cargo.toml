@@ -151,7 +151,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The cancellation token every supervised task stops on.
 tokio-util.workspace = true
 # The accept loop drives hyper directly: `axum::serve` cannot bound the header
-# buffer, and Dimension 5.3 is a bound on the header buffer.
+# buffer, and the daemon bounds the header buffer.
 axum.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true

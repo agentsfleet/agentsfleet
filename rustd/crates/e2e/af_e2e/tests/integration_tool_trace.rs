@@ -86,7 +86,7 @@ fn fenced(sent: &Value, fence: u64) -> Value {
     expected
 }
 
-/// Dimension 3.3. A settled report stores the trace beside its answer, with
+/// A settled report stores the trace beside its answer, with
 /// every call id fenced as the live frames carry it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -113,7 +113,7 @@ async fn test_report_writes_tool_calls_with_result() {
     scene.cleanup().await;
 }
 
-/// Dimension 3.2. A trace past a bound is dropped; the run still settles.
+/// A trace past a bound is dropped; the run still settles.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_oversize_tool_trace_dropped_report_settles() {
@@ -137,7 +137,7 @@ async fn test_oversize_tool_trace_dropped_report_settles() {
     scene.cleanup().await;
 }
 
-/// Dimension 3.4. A report the fence refuses writes neither answer nor trace.
+/// A report the fence refuses writes neither answer nor trace.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fenced_report_writes_no_tool_calls() {
@@ -216,7 +216,7 @@ pub(crate) async fn settle_with(
         .expect("the native report is acknowledged");
 }
 
-/// Dimension 4.1. The single-event read serves the stored trace, and `null`
+/// The single-event read serves the stored trace, and `null`
 /// for a row that recorded none.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -263,7 +263,7 @@ async fn test_event_detail_serves_tool_calls() {
     scene.cleanup().await;
 }
 
-/// Dimension 4.3. The events list never carries the trace.
+/// The events list never carries the trace.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_list_omits_tool_calls() {

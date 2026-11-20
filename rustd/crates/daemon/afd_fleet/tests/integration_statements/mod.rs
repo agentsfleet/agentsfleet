@@ -4,7 +4,7 @@
 //!
 //! They live here, beside the statements they check, rather than in `afd_db`,
 //! whose suite would otherwise dev-depend on this crate while this crate
-//! depends on it (§12 step 4).
+//! depends on it.
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -60,7 +60,7 @@ impl Unframed {
             run_id: payload.run_id.clone().into_owned(),
             turn_id: payload.event.turn_id.clone().into_owned(),
             fencing_token: payload.fencing_token,
-            draft: payload.setup.is_some(),
+            draft: payload.owner.setup().is_some(),
         })
     }
 

@@ -1,4 +1,4 @@
-//! Dimension 1.3 — every tampered envelope fails closed, and nothing panics.
+//! Every tampered envelope fails closed, and nothing panics.
 //!
 //! The daemon links these crates and must not abort on a malformed row, so the
 //! workspace denies `panic`, `unwrap` and `indexing_slicing` in library code.

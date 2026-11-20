@@ -2,7 +2,7 @@
 //!
 //! Every registry code is paired with the status it answers, a title, a hint
 //! written for an integrator, and — where the dashboard renders it — a sentence
-//! written for a person. §5's `application/problem+json` envelope is assembled
+//! written for a person. The daemon's `application/problem+json` envelope is assembled
 //! from exactly these fields, so they live beside the codes rather than in the
 //! HTTP crate: the status a code answers with is a property OF THE CODE, and
 //! two callers answering different statuses for one code would be the bug this
@@ -84,7 +84,7 @@ impl Problem {
     /// A dashboard-safe sentence, where one is authored.
     ///
     /// `None` for the codes a person never sees — a runner-plane wire contract,
-    /// a boot check, a command-line surface. §5's envelope omits the field from
+    /// a boot check, a command-line surface. The envelope omits the field from
     /// the wire entirely rather than serializing a null.
     #[must_use]
     pub const fn user_message(self) -> Option<&'static str> {

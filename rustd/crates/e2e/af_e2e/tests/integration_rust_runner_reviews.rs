@@ -26,7 +26,7 @@ use crate::https::{Reply, Route, Upstream};
 const PULL: &str = "/repos/agentsfleet/linkwarden/pulls/7";
 const REVIEWS: &str = "/repos/agentsfleet/linkwarden/pulls/7/reviews";
 
-/// Dimension 6.3. The reviewer reads the diff in the media type it names and
+/// The reviewer reads the diff in the media type it names and
 /// posts its findings as one `COMMENT` review; an operator steer reads and
 /// posts nothing. No write rule admits a review post yet, so today the post
 /// is refused before it leaves and the refusal is what the model reads.

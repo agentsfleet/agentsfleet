@@ -229,7 +229,7 @@ async fn every_window_form_this_daemon_reads_is_accepted() {
 /// A window this daemon cannot read is refused.
 ///
 /// The offset and fractional forms are refused because the absolute form is
-/// exactly `YYYY-MM-DDTHH:MM:SSZ`: once a wider set is served, §9 makes
+/// exactly `YYYY-MM-DDTHH:MM:SSZ`: once a wider set is served, the stability rule makes
 /// narrowing it back a breaking change. The impossible calendar date is
 /// refused too — `2026-02-31` names no instant, and rolling it into March would
 /// answer a question nobody asked.

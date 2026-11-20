@@ -122,7 +122,7 @@ pub(crate) async fn held(supervisor: &mut Supervisor) -> (Scenario, reqwest::Cli
     (scene, http, run_id, fence)
 }
 
-/// Dimensions 1.1 and 1.3. A valid post stores one row per record, and the
+/// A valid post stores one row per record, and the
 /// same post again changes nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -153,7 +153,7 @@ async fn test_tool_call_details_retry_is_idempotent() {
     scene.cleanup().await;
 }
 
-/// Dimension 1.2. A holder the fleet has moved past keeps nothing.
+/// A holder the fleet has moved past keeps nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_tool_call_details_refused() {
@@ -172,7 +172,7 @@ async fn test_stale_fence_tool_call_details_refused() {
     scene.cleanup().await;
 }
 
-/// Dimension 1.4. One record over a bound is skipped; the rest are kept.
+/// One record over a bound is skipped; the rest are kept.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_over_bound_tool_call_detail_skipped() {
@@ -189,7 +189,7 @@ async fn test_over_bound_tool_call_detail_skipped() {
     scene.cleanup().await;
 }
 
-/// Dimension 1.5. An event keeps at most 1 MiB of records.
+/// An event keeps at most 1 MiB of records.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_detail_budget_caps_records() {
@@ -234,7 +234,7 @@ async fn tenant_status(
     (status, body_of(response).await)
 }
 
-/// Dimensions 2.1 and 2.2. A member reads a kept call in full; an unknown
+/// A member reads a kept call in full; an unknown
 /// call, another fleet, and a call id that is not one each answer 404.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

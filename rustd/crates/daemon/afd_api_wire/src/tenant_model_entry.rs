@@ -22,7 +22,7 @@
 //! always emitted.
 //!
 //! `total` is always null, and that is not a gap. Counting a keyset page costs
-//! the scan the pagination exists to avoid, and §3 declares null to mean "not
+//! the scan the pagination exists to avoid, and the paging rule declares null to mean "not
 //! computed" rather than letting the key vanish.
 
 use garde::Validate;
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn an_empty_page_still_carries_both_navigation_keys() {
-        // §3 requires `total` and `next_cursor` to be present on EVERY page
+        // The paging rule requires `total` and `next_cursor` to be present on EVERY page
         // including the last, so a client can read them without branching on
         // their absence first. They are the two nulls that stay on this wire.
         let body = serde_json::to_string(&ModelEntriesResponse {

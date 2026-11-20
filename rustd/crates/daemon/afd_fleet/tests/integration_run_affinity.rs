@@ -1,4 +1,4 @@
-//! §2 against a live datastore — the atomic assignment, and what racing it proves.
+//! The atomic assignment, and what racing it proves.
 //!
 //! Invariant 1 is "at most one active run per fleet", and the whole of it
 //! rests on one conditional UPSERT. `dispatch/write_rust.md` asks for a
@@ -89,7 +89,7 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
         .expect("N enrolments produce exactly N identifiers")
 }
 
-/// Dimension 2.2 — two runners race one fleet, and exactly one runs.
+/// Two runners race one fleet, and exactly one runs.
 ///
 /// The losers must lose CLEANLY: `None` is the documented `.taken` verdict, not
 /// an error, because a loser that saw a failure would back off instead of
@@ -145,7 +145,7 @@ async fn test_run_affinity_race() {
 /// An assignment taken after the prior one lapsed carries a STRICTLY higher fence.
 ///
 /// Invariant 2's first half. Without it a reassigned run would be
-/// indistinguishable from the dead holder it displaced, and §3's report could
+/// indistinguishable from the dead holder it displaced, and the report could
 /// not tell a stale writer from the live one.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

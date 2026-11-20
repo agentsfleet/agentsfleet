@@ -73,7 +73,7 @@ http.workspace = true
 # executor HTTP/2 drives its own per-connection tasks on. A library dependency,
 # not only the dev one below: the connection POLICY lives with the route table.
 hyper-util.workspace = true
-# One warn per shed. §6 attaches the subscriber; until then this goes nowhere,
+# One warn per shed. The daemon attaches the subscriber; until then this goes nowhere,
 # which is the correct default for a library.
 tracing.workspace = true
 

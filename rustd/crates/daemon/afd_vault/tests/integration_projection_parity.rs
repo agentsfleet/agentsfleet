@@ -1,4 +1,4 @@
-//! §4 Dimension 4.2 — the projection cannot drift from the ciphertext beside it.
+//! The projection cannot drift from the ciphertext beside it.
 //!
 //! `#[ignore]`d so `make test-unit-all` compiles and lints these without a
 //! datastore; `make test-integration-rustd` runs them against compose Postgres.

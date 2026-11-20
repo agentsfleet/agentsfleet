@@ -11,6 +11,8 @@ use crate::setup::Rejection;
 const ID: &str = "01900000-0000-7000-8000-000000000001";
 /// Its revision, as a proposal spells it.
 const REVISION: &str = "1";
+/// Its revision, as the head carries it.
+const HEAD_REVISION: u64 = 1;
 
 /// A setup whose instructions are `text`.
 fn definition(text: &str) -> Result<Definition, Box<dyn std::error::Error>> {
@@ -24,7 +26,7 @@ fn definition(text: &str) -> Result<Definition, Box<dyn std::error::Error>> {
 }
 
 /// `definition` as the head candidate at `revision`.
-const fn head<'a>(definition: &'a Definition, revision: &'a str) -> Head<'a> {
+const fn head(definition: &Definition, revision: u64) -> Head<'_> {
     Head {
         id: ID,
         revision,
@@ -33,8 +35,13 @@ const fn head<'a>(definition: &'a Definition, revision: &'a str) -> Head<'a> {
 }
 
 fn suggestion(edits: &Value) -> Result<Suggestion, Box<dyn std::error::Error>> {
+    suggestion_at(edits, REVISION)
+}
+
+/// [`suggestion`] naming the head's revision spelled as `revision`.
+fn suggestion_at(edits: &Value, revision: &str) -> Result<Suggestion, Box<dyn std::error::Error>> {
     Ok(serde_json::from_value(json!({
-        "kind":"edit","base_candidate_id":ID,"base_candidate_revision":REVISION,
+        "kind":"edit","base_candidate_id":ID,"base_candidate_revision":revision,
         "config_ops":[],"instruction_edits":edits
     }))?)
 }
@@ -62,7 +69,7 @@ fn unicode_anchors_become_exact_native_ranges_and_preserve_the_surrounding_text(
 -> Result<(), Box<dyn std::error::Error>> {
     let base = definition("語🙂 before café after\n")?;
     let proposed = suggestion(&json!([{"kind":"replace","old_text":"café","text":"evidence"}]))?;
-    let resolved = native(proposed, Some(&head(&base, REVISION)), None)
+    let resolved = native(proposed, Some(&head(&base, HEAD_REVISION)), None)
         .map_err(|reason| format!("unexpected rejection: {reason:?}"))?;
     let Proposal::Edit {
         instruction_edits, ..
@@ -94,7 +101,7 @@ fn ambiguous_missing_empty_and_invalid_anchors_are_refused()
         let proposed =
             suggestion(&json!([{"kind":"replace","old_text":anchor,"text":"replacement"}]))?;
         assert_eq!(
-            native(proposed, Some(&head(&base, REVISION)), None).err(),
+            native(proposed, Some(&head(&base, HEAD_REVISION)), None).err(),
             Some(reason)
         );
         assert_eq!(base.instructions_md(), text);
@@ -114,9 +121,49 @@ fn stale_and_missing_candidate_snapshots_cannot_resolve_edits()
         Some(Rejection::StaleCandidate)
     );
     assert_eq!(
-        native(suggestion(&edit)?, Some(&head(&base, "2")), None).err(),
+        native(suggestion(&edit)?, Some(&head(&base, 2)), None).err(),
         Some(Rejection::StaleCandidate)
     );
+    Ok(())
+}
+
+// Value: protects=a revision is compared as the number it is;
+// fails_when=a spelling with leading zeros reads as a stale candidate.
+#[test]
+fn a_revision_with_leading_zeros_names_the_head() -> Result<(), Box<dyn std::error::Error>> {
+    let base = definition("current")?;
+    let edit = json!([{"kind":"append","text":" More."}]);
+
+    let resolved = native(
+        suggestion_at(&edit, "01")?,
+        Some(&head(&base, HEAD_REVISION)),
+        None,
+    );
+
+    assert!(resolved.is_ok(), "{:?}", resolved.err());
+    Ok(())
+}
+
+// Value: protects=a revision that is not a number is malformed arguments, never compared;
+// fails_when=a non-number reaches the comparison and reads as a stale candidate.
+#[test]
+fn a_revision_that_is_not_a_number_is_refused_as_malformed()
+-> Result<(), Box<dyn std::error::Error>> {
+    let base = definition("current")?;
+    let edit = json!([{"kind":"append","text":" More."}]);
+
+    for spelled in ["one", "-1", "+1", "1.0", ""] {
+        let refused = native(
+            suggestion_at(&edit, spelled)?,
+            Some(&head(&base, HEAD_REVISION)),
+            None,
+        );
+        assert_eq!(
+            refused.err(),
+            Some(Rejection::InvalidArguments),
+            "{spelled}"
+        );
+    }
     Ok(())
 }
 
@@ -128,7 +175,7 @@ fn an_edit_with_no_head_to_apply_to_is_refused_as_stale() -> Result<(), Box<dyn 
     let base = definition("current")?;
     let resolved = native(
         suggestion(&json!([{"kind":"append","text":" More."}]))?,
-        Some(&head(&base, REVISION)),
+        Some(&head(&base, HEAD_REVISION)),
         None,
     )
     .map_err(|reason| format!("unexpected rejection: {reason:?}"))?;
@@ -151,7 +198,7 @@ fn empty_instructions_have_one_unambiguous_insertion_position()
     let base = definition("")?;
     let proposed =
         suggestion(&json!([{"kind":"replace","old_text":"","text":"Answer directly."}]))?;
-    let resolved = native(proposed, Some(&head(&base, REVISION)), None)
+    let resolved = native(proposed, Some(&head(&base, HEAD_REVISION)), None)
         .map_err(|reason| format!("unexpected rejection: {reason:?}"))?;
     assert_eq!(
         applied(&base, resolved)?.instructions_md(),
@@ -170,7 +217,7 @@ fn multiple_additions_append_once_after_unicode_instructions()
         {"kind":"append","text":"\n\nAccept corrections."},
         {"kind":"append","text":"\nAcknowledge uncertainty."}
     ]))?;
-    let resolved = native(proposed, Some(&head(&base, REVISION)), None)
+    let resolved = native(proposed, Some(&head(&base, HEAD_REVISION)), None)
         .map_err(|reason| format!("unexpected rejection: {reason:?}"))?;
     let Proposal::Edit {
         instruction_edits, ..
@@ -196,7 +243,7 @@ fn an_appended_rule_keeps_the_persons_quotes_and_every_prior_byte()
     let proposed = suggestion(
         &json!([{"kind":"append","text":"\n\n- Write units as \"ms\", \"µs\" and \"°C\" in every answer."}]),
     )?;
-    let resolved = native(proposed, Some(&head(&base, REVISION)), Some(said))
+    let resolved = native(proposed, Some(&head(&base, HEAD_REVISION)), Some(said))
         .map_err(|reason| format!("unexpected rejection: {reason:?}"))?;
     assert_eq!(
         applied(&base, resolved)?.instructions_md(),

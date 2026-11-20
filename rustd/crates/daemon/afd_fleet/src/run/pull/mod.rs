@@ -59,7 +59,7 @@ pub struct RunService {
     /// The payer, the issue-time floor and a fleet's spend: the reads a money
     /// gate makes before anything moves.
     pub accounts: Accounts,
-    /// Checks every run's funds as it renews (billing §11); the relay charges.
+    /// Checks every run's funds as it renews; the relay charges.
     ///
     /// A trait object so the built-in ledger, a queue or a third-party
     /// metering system all sit behind one call site; the daemon chooses which,

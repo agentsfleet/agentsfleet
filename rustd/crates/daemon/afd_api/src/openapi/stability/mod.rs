@@ -1,4 +1,4 @@
-//! Each response field's stability class, as `x-stability` (REST §9).
+//! Each response field's stability class, as `x-stability`, per the REST standard's stability rule.
 //!
 //! `utoipa` field extensions do not survive a reference-valued field. The
 //! table keeps field classes together and tests every declared property in
@@ -16,7 +16,7 @@ const STABILITY: &str = "x-stability";
 const BETA: &str = "beta";
 
 /// What a `beta` field's description says, so a reader of the rendered
-/// reference sees the class the extension carries (REST §9).
+/// reference sees the class the extension carries, per the REST standard's stability rule.
 const BETA_NOTE: &str = "Beta: this field may change shape before it is stable.";
 
 /// The response fields published `beta`: each schema, with its properties.

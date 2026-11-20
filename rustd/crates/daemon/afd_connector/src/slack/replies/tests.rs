@@ -23,7 +23,7 @@ fn said(ts: usize) -> Message {
     }
 }
 
-/// Dimension 4.2 — a CI announcement whose run link sits only in an
+/// A CI announcement whose run link sits only in an
 /// attachment's `title_link` still carries that link after flattening.
 #[test]
 fn attachment_links_survive_flattening() {

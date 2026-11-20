@@ -51,7 +51,7 @@ async fn operator_reads_and_mutates_a_real_runner() {
 
 // Value: protects=a platform host registers once, as a tenant's does;
 // fails_when=the unique key treats the platform's null tenant as distinct, or
-// the 409 names no runner; why_new=M253_002 §14, platform hosts are unique
+// the 409 names no runner; why_new=platform hosts are unique
 // too; seam=none.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

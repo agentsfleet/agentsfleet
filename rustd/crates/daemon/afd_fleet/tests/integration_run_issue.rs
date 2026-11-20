@@ -1,4 +1,4 @@
-//! §2 against live datastores — writing the run, and what that makes
+//! Writing the run, and what that makes
 //! reachable.
 //!
 //! `integration_run_assign.rs` proves how work is FOUND. This proves what

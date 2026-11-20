@@ -1,4 +1,4 @@
-//! Dimension 2.1 — every declared family is fed.
+//! Every declared family is fed.
 
 #![expect(
     clippy::expect_used,

@@ -1,4 +1,4 @@
-//! Dimension 1.2 — the delivery span says what happened, and when it happened.
+//! The delivery span says what happened, and when it happened.
 
 #![expect(
     clippy::expect_used,

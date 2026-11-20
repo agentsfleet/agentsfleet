@@ -1,6 +1,6 @@
-//! §3 against live datastores — the renewal's clamp and its coverage gate.
+//! The renewal's clamp and its coverage gate.
 //!
-//! Dimension 3.4. Split from `integration_report_settle.rs` because the
+//! Split from `integration_report_settle.rs` because the
 //! precondition differs in a way that matters: these tests need a run whose
 //! `created_at` is far enough back to reach the hard ceiling, and a wallet that
 //! is deliberately empty. A suite that seeded both for every test would make
@@ -65,7 +65,7 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
     held.fixtures.cleanup().await;
 }
 
-/// Dimension 3.4b — a renewal for a run that is no longer ours is LOST.
+/// A renewal for a run that is no longer ours is LOST.
 ///
 /// The other terminal verdict, and the one that must not be confused with the
 /// cap: `MaxRuntime` says the runner did nothing wrong and its result is still
@@ -108,12 +108,12 @@ async fn test_renew_after_reassignment_is_lost() {
     fixtures.cleanup().await;
 }
 
-/// Dimension 3.4c — an exhausted tenant cannot buy another slice.
+/// An exhausted tenant cannot buy another slice.
 ///
 /// The refusal that makes the clamp above matter: without it a run whose
 /// tenant went to zero mid-flight would renew forever on credit nobody has.
 ///
-/// This is the one §3 test that needs the composed [`Plane`] rather than the
+/// This is the one renewal test that needs the composed [`Plane`] rather than the
 /// store, and the reason is the gate's own shape — it reads a WALLET and a
 /// fleet ceiling, neither of which the run store can see. The wallet is
 /// seeded holding zero rather than left absent, which is a distinction the gate

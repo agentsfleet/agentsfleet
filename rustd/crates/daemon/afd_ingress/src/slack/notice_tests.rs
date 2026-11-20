@@ -18,7 +18,7 @@ fn subscriber(name: &str, id: &str) -> Subscriber {
     }
 }
 
-/// Dimension 6.1 — each of the four kinds renders fixed text that names the
+/// Each of the four kinds renders fixed text that names the
 /// fleets it is about and the next step, and is owed under one key per event.
 #[test]
 fn each_notice_kind_owes_one_fixed_text() {

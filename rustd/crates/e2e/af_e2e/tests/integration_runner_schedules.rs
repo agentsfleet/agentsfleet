@@ -1,4 +1,4 @@
-//! §1 — a running fleet keeps its own schedules on the daemon's plane:
+//! A running fleet keeps its own schedules on the daemon's plane:
 //! creating, listing, the fence and the fleet's own cap.
 //!
 //! Each case boots the daemon against the lane's Postgres and NATS, with
@@ -25,7 +25,7 @@ use serde_json::Value;
 use crate::schedules::{Assigned, KOLKATA, WEEKLY};
 use crate::verbs::{FakeQStash, QSTASH_TOKEN, Told};
 
-/// Dimension 1.1. A valid create stores a `fleet`-sourced row, registers it
+/// A valid create stores a `fleet`-sourced row, registers it
 /// once, and the fleet's own list returns it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -81,7 +81,7 @@ async fn test_one_run_creates_two_schedules_at_once() {
     assigned.finish(supervisor).await;
 }
 
-/// Dimension 1.2. A holder the fleet has moved past stores nothing and reads
+/// A holder the fleet has moved past stores nothing and reads
 /// nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -101,7 +101,7 @@ async fn test_stale_fence_schedule_refused() {
     assigned.finish(supervisor).await;
 }
 
-/// Dimension 1.3. A fleet holding its sixteen refuses the seventeenth, names
+/// A fleet holding its sixteen refuses the seventeenth, names
 /// the state, and the scheduler is never asked.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

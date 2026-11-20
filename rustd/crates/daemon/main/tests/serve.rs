@@ -186,7 +186,7 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
     let token = tokio_util::sync::CancellationToken::new();
 
     // The accept loop stops on the DRAIN's token; the supervisor's only cuts a
-    // connection already in flight, which is the split Dimension 7.7 rests on.
+    // connection already in flight, which is the split a graceful stop rests on.
     let drain = Drain::new();
     let loop_drain = drain.clone();
     let loop_token = token.clone();

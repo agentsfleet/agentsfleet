@@ -14,10 +14,10 @@ use super::Case;
 /// How long a frame may take to arrive, or how long to wait for none.
 const WAIT: Duration = Duration::from_secs(5);
 
-// Value: protects=a person whose long setup compacts sees it summarizing, as before
-// §8; fails_when=the daemon drops the run's context_progress frame, publishes it for a
+// Value: protects=a person whose long setup compacts sees it summarizing, as it did when the daemon
+// compacted; fails_when=the daemon drops the run's context_progress frame, publishes it for a
 // run the runner no longer holds, or names another draft; why_new=the producer was
-// the daemon's own compaction, which §8 deletes; seam=the production draft
+// the daemon's own compaction, which is gone; seam=the production draft
 // assignment and Drafts::publish_setup_context over an in-process bus.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]

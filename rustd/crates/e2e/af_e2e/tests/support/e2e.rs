@@ -82,7 +82,7 @@ pub(crate) const ACTOR: &str = "fixture:operator";
 /// `Chat`, not the `steer` the store suites next door spell. `TurnKind` is a
 /// CLOSED set and the pull path ends any delivery it cannot name — those
 /// suites call `Runs::select` directly and never reach that check, so their
-/// spelling has never had to be one the daemon executes. A §7 scenario does
+/// spelling has never had to be one the daemon executes. An end-to-end scenario does
 /// reach it, and the ledger this seed admits through takes the type itself,
 /// so a scenario cannot spell one the daemon would end.
 pub(crate) const EVENT_TYPE: TurnKind = TurnKind::Chat;

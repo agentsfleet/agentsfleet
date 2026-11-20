@@ -1,4 +1,4 @@
-//! Dimension 3.4 — the error type's chain shape.
+//! The error type's chain shape.
 //!
 //! The invariant under test is the one `docs/RUST_ERROR_STANDARD.md` rule 4
 //! states, and deliberately NOT the one it warns against: a variant holding

@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn the_refusal_names_no_cause() {
-        // RULE from docs/RUST_ERROR_STANDARD.md §4: a variant holding only data
+        // RS-NOCAUSE: a variant holding only data
         // has no source, and inventing one would put a Postgres error on a path
         // Postgres never saw.
         let refusal = Cursor::decode("!!").expect_err("two bangs are not a cursor");

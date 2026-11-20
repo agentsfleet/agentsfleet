@@ -9,7 +9,7 @@
 //! the datastore is reached: the guard, the scope rung, the OWNERSHIP layer, the
 //! path identifiers, and every body and query refusal.
 //!
-//! # Dimension 3.3 lives here
+//! # Workspace authorization lives here
 //!
 //! A principal with valid scopes and the wrong workspace is a 403 that never
 //! runs a statement; the same principal on their OWN workspace reaches the verb.
@@ -105,7 +105,7 @@ fn every_verb() -> [(Method, String, ScopeSet); 5] {
 
 #[tokio::test]
 async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
-    // The allow half of Dimension 3.3: valid scopes AND the right workspace
+    // The allow half of workspace authorization: valid scopes AND the right workspace
     // reach the store, which is the only thing left that can refuse.
     // Each body is the smallest one that gets PAST the edge's own refusals, so
     // what answers is the store and not a parse. An empty PATCH is the no-op

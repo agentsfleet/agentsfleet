@@ -1,4 +1,4 @@
-//! Dimension 2.7: the access statement and the team reads plan as index
+//! The access statement and the team reads plan as index
 //! probes, never a scan.
 //!
 //! The access statement runs before every workspace request, so its cost is

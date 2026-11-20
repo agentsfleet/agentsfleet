@@ -1,4 +1,4 @@
-//! A §6 scenario: a first-party fleet's native setup saved into a booted daemon.
+//! A definition scenario: a first-party fleet's native setup saved into a booted daemon.
 //!
 //! Where `e2e::scenario` seeds a fleet with an empty tool list, this reads the
 //! corpus fleet's `definition.json` — the native Definition a reviewed Save

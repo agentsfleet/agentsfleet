@@ -86,7 +86,7 @@ async fn admit(fixtures: &Fixtures, turn: IncomingTurn<'_>) -> Admitted {
         .expect("the ledger admits")
 }
 
-/// Dimension 1.1 — a producer that owns no reply surface records none.
+/// A producer that owns no reply surface records none.
 ///
 /// Every production call site states its `Reply` because the field has no
 /// default; this proves what the ledger does with the answer they all give.
@@ -117,7 +117,7 @@ async fn existing_producers_record_no_reply_destination() {
     fixtures.cleanup().await;
 }
 
-/// Dimension 1.2 — a stated destination round-trips whole; half of one is
+/// A stated destination round-trips whole; half of one is
 /// refused by the check.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -158,7 +158,7 @@ async fn reply_destination_is_both_or_neither() {
     fixtures.cleanup().await;
 }
 
-/// Dimension 1.3 — a continuation copies the destination of the event it
+/// A continuation copies the destination of the event it
 /// resumes, and copies nothing from an event that had none or that the ledger
 /// never minted.
 #[tokio::test(flavor = "multi_thread")]
@@ -217,7 +217,7 @@ async fn continuation_inherits_the_resumed_destination() {
     fixtures.cleanup().await;
 }
 
-/// Dimension 1.4 — a retried key naming another thread keeps the first
+/// A retried key naming another thread keeps the first
 /// turn's, and is seen as drift.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]

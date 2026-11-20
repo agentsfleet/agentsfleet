@@ -1,6 +1,6 @@
-//! §7 — the end-to-end harness: a runner's whole loop against the daemon that ships.
+//! The end-to-end harness: a runner's whole loop against the daemon that ships.
 //!
-//! Dimensions 7.1 and 7.2, and the only suite in this workspace where the
+//! The only suite in this workspace where the
 //! request crosses a real socket into a real `agentsfleetd-rs` process graph.
 //! Everything else proves a store verb or a router in isolation; this proves the
 //! two were wired to each other.
@@ -211,14 +211,14 @@ async fn assert_activity_degrades_gracefully(scene: &Scenario, run_id: &str) {
         .expect("cosmetic malformed arguments do not stop native activity");
 }
 
-/// Dimension 7.2 — the statements fill the columns they are supposed to.
+/// The statements fill the columns they are supposed to.
 ///
 /// Each row must carry every column its statement was written to fill. A
 /// statement that drops a column from an `INSERT` list still compiles, still
 /// returns `Ok`, and still passes every behavioural assertion that reads some
 /// OTHER column — this is the test that does not.
 ///
-/// Four tables, because those are the four Dimension 7.2 names and they are
+/// Four tables, because those are the four the run's statements write and they are
 /// written by
 /// report, because a draw is only meaningful against what preceded it.
 async fn assert_settled(scene: &Scenario, run_id: &str, before: Option<i64>) {

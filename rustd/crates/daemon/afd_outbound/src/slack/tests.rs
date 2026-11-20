@@ -87,7 +87,7 @@ const UNPOSTABLE: [&str; 9] = [
     "not json",
 ];
 
-/// Dimension 3.2 — an address naming nowhere is a permanent verdict, and it
+/// An address naming nowhere is a permanent verdict, and it
 /// is reached from the job alone: nothing has been read or requested.
 #[test]
 fn unreadable_address_is_permanent_without_a_request() {

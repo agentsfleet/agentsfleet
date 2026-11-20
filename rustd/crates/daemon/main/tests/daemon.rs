@@ -1,4 +1,4 @@
-//! Dimensions 7.2 and 7.5 — the boot window, and an inventory that cannot drift.
+//! The boot window, and an inventory that cannot drift.
 //!
 //! Every wait is a handshake. `test_boot_window_sigterm` in particular must not
 //! be a race: the signal is made to have ALREADY arrived before the server is
@@ -31,7 +31,7 @@ fn spawn_observer(supervisor: &mut Supervisor, name: &'static str) -> Arc<Atomic
     observed
 }
 
-/// Dimension 7.2 — a signal during boot stops the daemon, and says it was one.
+/// A signal during boot stops the daemon, and says it was one.
 ///
 /// The signal future is already resolved when `run` polls it, so there is
 /// nothing to race: the daemon must report `Signalled` even though the server

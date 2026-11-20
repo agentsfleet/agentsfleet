@@ -77,7 +77,7 @@ impl Routed {
     }
 }
 
-/// Dimension 8.2: the runner protocol is v4 alone. A runner speaking v2, the
+/// The runner protocol is v4 alone. A runner speaking v2, the
 /// revision that kept the daemon-side setup run, v3, which no runner shipped,
 /// or a version no daemon knows is refused at hello with `UZ-RUN-023`: it
 /// owns no connection, so it is assigned no run.

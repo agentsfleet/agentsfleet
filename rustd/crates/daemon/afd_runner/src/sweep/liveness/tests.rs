@@ -1,6 +1,6 @@
 //! When a runner counts as gone, and when it has simply not arrived.
 //!
-//! The staleness predicate is the whole of Dimension 6.3 and it needs no
+//! The staleness predicate is the whole of that distinction and it needs no
 //! datastore: what it reads is a column and the clock the fetch answered with,
 //! both of which are fields.
 
@@ -38,7 +38,7 @@ fn seen_at(last_seen_at: Timestamp) -> Due {
 
 #[test]
 fn a_runner_that_has_never_connected_is_not_stale() {
-    // Dimension 6.3. The sentinel is the epoch, decades before any fetch, so
+    // The sentinel is the epoch, decades before any fetch, so
     // arithmetic alone would report a runner enrolled a second ago as long
     // dead — offline before it ever had a chance to beat. A runner that has
     // never connected is not one that stopped; it is one that has not started,

@@ -158,15 +158,17 @@ async fn a_setup_run_offers_propose_setup_alone() -> TestResult {
 }
 
 #[tokio::test]
-async fn a_run_without_a_setup_part_is_refused_before_any_model_call() -> TestResult {
+async fn a_fleet_run_handed_to_setup_is_refused_before_any_model_call() -> TestResult {
     let script = Script::new([vec![say(ANSWER)]]);
     let mut run = setup_payload(&[], 0, None);
-    run.setup = None;
+    run.owner = af_wire::run::Owner::Fleet {
+        fleet_id: run.event.fleet_id.clone(),
+    };
 
     let refused = run_setup(&script.replay(), &run, &Context::empty()).await;
 
     let Err(failure) = refused else {
-        return Err("a run with no setup part ran".into());
+        return Err("a fleet's run ran as a setup turn".into());
     };
     assert_eq!(
         failure.code(),

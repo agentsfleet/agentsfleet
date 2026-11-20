@@ -90,16 +90,16 @@ fn answered() -> SetupOutput {
 /// The fixture run, owned by a draft and carrying its setup part.
 fn draft_run() -> RunPayload<'static> {
     let mut run = payload(RUN_ID, FLEET_ID);
-    run.owner = Some(Owner::Draft {
+    run.owner = Owner::Draft {
         draft_id: FLEET_ID.into(),
-    });
-    run.setup = Some(SetupWork {
-        sequence: 2,
-        candidate: None,
-        save_requested: false,
-        tool: json!({}),
-        history_sequences: vec![1],
-    });
+        setup: Box::new(SetupWork {
+            sequence: 2,
+            candidate: None,
+            save_requested: false,
+            tool: json!({}),
+            history_sequences: vec![1],
+        }),
+    };
     run
 }
 

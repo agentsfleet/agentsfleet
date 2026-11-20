@@ -1,4 +1,4 @@
-//! Dimension 1.1 — the primitive is standard AES-256-GCM, not a lookalike.
+//! The primitive is standard AES-256-GCM, not a lookalike.
 //!
 //! Published vectors from "The Galois/Counter Mode of Operation", the
 //! specification NIST's validation suite draws on. Each pins a key, nonce,

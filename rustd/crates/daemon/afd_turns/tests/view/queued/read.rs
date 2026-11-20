@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Dimension 2.1: an admitted, undelivered steer leads the first page as a
+/// An admitted, undelivered steer leads the first page as a
 /// waiting row carrying its body, and a later page does not repeat it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -31,7 +31,7 @@ async fn test_thread_read_includes_queued_steers() {
     lane.cleanup().await;
 }
 
-/// Dimension 2.2: once a runner has it, the event is one history row and no
+/// Once a runner has it, the event is one history row and no
 /// longer waiting.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]

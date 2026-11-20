@@ -49,7 +49,7 @@ mod tests {
         found
     }
 
-    /// Dimension 8.3: the 300-second runtime is a constant, and the setting
+    /// The 300-second runtime is a constant, and the setting
     /// that fed setup runs (`[authoring.turn]`) is gone from this crate and
     /// from the daemon's configuration.
     #[test]
@@ -102,7 +102,7 @@ mod tests {
             .collect()
     }
 
-    /// The spec's Dead Code Sweep rows for §8, read from the tree: no setup
+    /// The removed daemon-side authoring, read from the tree: no setup
     /// model frame in any Rust source, no model module in this crate, no
     /// runner authoring module, and no `[authoring.turn]` in a deployment.
     #[test]

@@ -75,7 +75,7 @@ async fn the_relay_settles_orphaned_lines() {
 }
 
 /// A run that ended unreported owes the run time between its last renewal
-/// and the deadline it was granted (spec Dimension 9.5). The sweeper logs it as
+/// and the deadline it was granted. The sweeper logs it as
 /// one runtime line numbered by its slice's start, settles it, and a second pass finds
 /// nothing more to bill.
 #[tokio::test]

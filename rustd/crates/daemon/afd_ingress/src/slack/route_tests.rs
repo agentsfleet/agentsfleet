@@ -39,7 +39,7 @@ fn archived(nth: usize, name: &str) -> Subscriber {
     subscriber(nth, name, false, false)
 }
 
-/// Dimension 3.1 — every row of the scenario's §4 table, addressed and not.
+/// Every row of the scenario's routing table, addressed and not.
 #[test]
 fn routing_table_is_total() {
     // No subscriber: nothing can be named, so no model runs.
@@ -132,7 +132,7 @@ fn the_drill_channel_routes_by_eligibility_not_by_count() {
     );
 }
 
-/// Dimension 3.2 — two subscribers whose names differ only in case make that
+/// Two subscribers whose names differ only in case make that
 /// word ambiguous, and neither is ever picked.
 #[test]
 fn case_folded_duplicates_never_route() {
@@ -148,7 +148,7 @@ fn case_folded_duplicates_never_route() {
     }
 }
 
-/// Dimension 3.3 — a write-bound subscriber is never `Sole`, even alone, and
+/// A write-bound subscriber is never `Sole`, even alone, and
 /// never counted toward one when a read-only fleet shares the channel.
 #[test]
 fn write_bound_fleets_take_addressed_mentions_only() {
@@ -166,7 +166,7 @@ fn write_bound_fleets_take_addressed_mentions_only() {
     );
 }
 
-/// Dimension 3.4 — the addressed name, and the space after it, are removed;
+/// The addressed name, and the space after it, are removed;
 /// the rest is kept byte for byte, internal spacing and punctuation included.
 #[test]
 fn addressed_name_is_stripped_from_the_message() {

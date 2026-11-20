@@ -40,7 +40,7 @@ pub(super) async fn owed(fixture: &Fixture) -> Vec<Owed> {
     .collect()
 }
 
-/// Dimension 6.2 — an unaddressed mention two fleets could answer is owed one
+/// An unaddressed mention two fleets could answer is owed one
 /// notice naming both, by the first subscriber, in the thread it was asked
 /// in, and no event is admitted. Slack's retry of it owes it again: notices
 /// carry no dedupe key (Indy, Nov 08, 2026).

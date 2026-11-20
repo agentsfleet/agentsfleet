@@ -43,7 +43,7 @@ fn marker(toolbox: &Toolbox) -> Result<String, Failed> {
     Ok(fs::read_to_string(toolbox.root().join(MARKER))?)
 }
 
-/// Dimension 8.1: across 1,000 admissions while another thread exchanges the
+/// Across 1,000 admissions while another thread exchanges the
 /// published path with a decoy as fast as it can, only the authorized image
 /// is ever mounted; an admission that opened the decoy refuses it.
 pub(crate) fn path_swap(lane: &Lane) -> Result<(), Failed> {
@@ -104,7 +104,7 @@ fn is_decoy(error: &afr_sandbox::Error) -> bool {
     )
 }
 
-/// Dimension 8.3: an ext4 file system, the image itself mounted without
+/// An ext4 file system, the image itself mounted without
 /// `nosuid` or `nodev`, a loop device of a copy of the image, a bind of a
 /// directory inside the image, and a matching mount with another stacked
 /// beneath it, each found at the digest's directory, are detached and the

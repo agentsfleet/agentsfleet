@@ -115,9 +115,9 @@ pub(crate) async fn run(connect: &dyn Connect, setup: SetupRun<'_>) -> Result<Se
     let started = Instant::now();
     let run = setup.run;
     let work = run
-        .setup
-        .as_ref()
-        .ok_or_else(|| setup_assignment("the run carries no setup part"))?;
+        .owner
+        .setup()
+        .ok_or_else(|| setup_assignment("the run is not a draft's"))?;
     connect.admit(&run.policy)?;
     let provider = connect.connect(run)?;
     let scrub = Scrub::new(&run.policy)?;

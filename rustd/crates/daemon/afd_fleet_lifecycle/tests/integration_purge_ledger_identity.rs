@@ -207,7 +207,7 @@ async fn seed_approval_gates(connection: &mut sqlx::PgConnection, lane: &Lane, f
     }
 }
 
-/// Dimension 1.1. The charge still names its fleet after the fleet is gone.
+/// The charge still names its fleet after the fleet is gone.
 ///
 /// Both halves in one purge, because they fail for different reasons and a
 /// reader needs to see which: the identifier survives only if the foreign key
@@ -249,7 +249,7 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
     lane.cleanup().await;
 }
 
-/// Dimension 1.4. Relaxing one erasure relaxed no other.
+/// Relaxing one erasure relaxed no other.
 ///
 /// The risk this carries: `fleet_id` is retained by declaring NO referential
 /// action, and the tempting way to write that slot drops a cascade beside it. Counting the four children after a

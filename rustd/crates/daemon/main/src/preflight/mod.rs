@@ -3,8 +3,8 @@
 //! # Why this collects rather than exits
 //!
 //! A boot that exits at each check in turn leaves an operator holding three
-//! unset knobs to fix one, restart, and learn about the second. Dimension 8.1
-//! asks for all of them in one output, and the shape that gets there is a
+//! unset knobs to fix one, restart, and learn about the second. An operator
+//! needs all of them in one output, and the shape that gets there is a
 //! function that RETURNS its faults instead of ending the process in the
 //! middle of one.
 //!

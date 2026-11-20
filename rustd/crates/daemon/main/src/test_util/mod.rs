@@ -81,7 +81,7 @@ pub fn install_subscriber() {
         // A sink by default, stderr under `AFD_TEST_LOG`. The default is what
         // keeps a passing lane readable; the switch is what makes a live-service
         // failure diagnosable without editing this file, which is the shape the
-        // §7 suite needs — the daemon's own refusal reason is the only account
+        // end-to-end suite needs — the daemon's own refusal reason is the only account
         // of why a poll answered no-work.
         if std::env::var_os("AFD_TEST_LOG").is_some() {
             let subscriber = tracing_subscriber::fmt()

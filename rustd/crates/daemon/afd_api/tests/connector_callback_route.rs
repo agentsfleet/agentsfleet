@@ -17,7 +17,7 @@
 //! of the vault: an unshipped provider, a callback with no state, one with no
 //! code, and a deployment with no platform admin workspace. Those four are
 //! here. Everything past that point — a forged, expired, spent or foreign
-//! state, which is the rest of Dimension 4.2 — needs a vault the fixture cannot
+//! state, which is the rest of the callback's checks — needs a vault the fixture cannot
 //! serve, and belongs to the integration lane. Splitting there is deliberate:
 //! it is the last line at which the handler has touched no store.
 

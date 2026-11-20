@@ -1,6 +1,6 @@
-//! §7 against live datastores — an empty assignment commits none of the four.
+//! An empty assignment commits none of the four.
 //!
-//! Dimension 7.3's other half. The fence is what a transaction could silently
+//! The fence is what a transaction could silently
 //! break: wrap four writes around an assignment and it is easy to end up committing
 //! the three that carry no guard of their own. Both cases here drive an assignment
 //! that matches no row and assert the same emptiness; what differs is WHY the
@@ -22,7 +22,7 @@ use crate::report_commit::{RESPONSE_ACCEPTED, assert_nothing_landed, report};
 use crate::report_seed::held;
 use crate::rows::{LAPSE, Row};
 
-/// Dimension 7.3 — a superseded report commits nothing, by either route.
+/// A superseded report commits nothing, by either route.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_superseded_report_commits_nothing() {

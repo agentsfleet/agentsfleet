@@ -63,9 +63,9 @@ pub(super) fn setup_payload(
                 "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 0}},
         "instructions": "Shape the person's fleet.", "history": turns,
         "resume_hold": false, "inputs_waiting": false,
-        "owner": {"kind": "draft", "draft_id": DRAFT},
-        "setup": {"sequence": history.len() + 1, "candidate": candidate,
-            "save_requested": false, "tool": {}, "history_sequences": sequences}
+        "owner": {"kind": "draft", "draft_id": DRAFT,
+            "setup": {"sequence": history.len() + 1, "candidate": candidate,
+                "save_requested": false, "tool": {}, "history_sequences": sequences}}
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());

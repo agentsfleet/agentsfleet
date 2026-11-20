@@ -1,4 +1,4 @@
-//! Dimension 2.4 — table and key names follow the placement and foreign-key
+//! Table and key names follow the placement and foreign-key
 //! rules: no table repeats its schema's name as a prefix, and every foreign-key
 //! column ends `_id` and names the table it points at, or a stated role.
 

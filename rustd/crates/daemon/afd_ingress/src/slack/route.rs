@@ -2,7 +2,7 @@
 //!
 //! A pure function of the channel's subscribers and the mention's text, so the
 //! routing table in `docs/architecture/scenarios/slack-incident-responder.md`
-//! §4 is proven row by row with no datastore. The verdict is a tagged union
+//! is proven row by row with no datastore. The verdict is a tagged union
 //! (RULE TGU): each arm names at most one fleet, so no path through here can
 //! admit two events for one mention.
 

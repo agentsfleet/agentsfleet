@@ -1,4 +1,4 @@
-//! Dimension 7.1 — the preference and onboarding surfaces, in front of the store.
+//! The preference and onboarding surfaces, in front of the store.
 //!
 //! # What this suite pins
 //!

@@ -1,4 +1,4 @@
-//! Dimension 3.5 — an invalid snapshot emits no data point, never a zero.
+//! An invalid snapshot emits no data point, never a zero.
 //!
 //! The assertions are about the DIFFERENCE between absent and zero, because
 //! that is the whole reason the type exists. A cell that reported `0` when

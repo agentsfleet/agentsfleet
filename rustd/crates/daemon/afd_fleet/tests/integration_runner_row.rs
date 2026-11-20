@@ -1,4 +1,4 @@
-//! §1 against a live datastore — what enrolment writes, and what a beat moves.
+//! What enrolment writes, and what a beat moves.
 //!
 //! The other half of `afd_api/tests/runner_plane/mod.rs`. That suite proves the
 //! GUARD — who is admitted and who is refused — through the production router
@@ -25,7 +25,7 @@ use self::requests::enrolment;
 use self::support::Fixtures;
 use crate::rows::Row;
 
-/// Dimension 1.3 (second half) — enrolment stores the DIGEST and never the token.
+/// Enrolment stores the DIGEST and never the token.
 ///
 /// The property the whole credential design rests on: the value is revealed in
 /// one response and the row keeps a hash of it, so a database read — a backup, a

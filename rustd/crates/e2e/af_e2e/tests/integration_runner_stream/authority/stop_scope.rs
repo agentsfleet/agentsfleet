@@ -12,7 +12,7 @@ use afd_db::test_util::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed, mint_id
 
 // Value: protects=a queued turn Stop cancels is never assigned;
 // fails_when=the assignment still takes a cancelled turn;
-// why_new=no route cancelled a fleet turn before §8;
+// why_new=no route cancelled a fleet turn before;
 // seam=the HTTP PATCH, then the production assignment over a real native connection.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -52,7 +52,7 @@ async fn stopping_a_queued_turn_cancels_it_without_a_run() -> TestResult {
 
 // Value: protects=the answer wins a race with Stop, and stands;
 // fails_when=Stop rewrites a settled turn or answers it 200;
-// why_new=no route could stop a turn before §8;
+// why_new=no route could stop a turn before;
 // seam=a real report, then the HTTP PATCH.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -92,7 +92,7 @@ async fn stopping_an_answered_turn_is_a_conflict() -> TestResult {
 
 // Value: protects=a retried Stop sees the state it asked for (HTTP-PATCH);
 // fails_when=a second Stop refuses, or changes the row;
-// why_new=no route could stop a turn before §8;
+// why_new=no route could stop a turn before;
 // seam=the HTTP PATCH, twice.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

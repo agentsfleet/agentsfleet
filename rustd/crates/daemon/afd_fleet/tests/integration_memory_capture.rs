@@ -1,6 +1,6 @@
-//! Dimension 4.3 — what a superseded holder may write, which is nothing.
+//! What a superseded holder may write, which is nothing.
 //!
-//! Split from the other §4 suites because the precondition differs in the way
+//! Split from the other memory suites because the precondition differs in the way
 //! that matters: these need a run whose FENCE can be compared against the
 //! fleet's live sequence, and a store whose contents are read back after a
 //! refusal. A suite that seeded that for every case would make the mint tests
@@ -55,7 +55,7 @@ const CATEGORY: &str = "core";
 /// How many entries a recall asks for; any value in range serves.
 const RECALL_LIMIT: usize = 10;
 
-/// Dimension 4.3 — a fence below the fleet's live sequence writes nothing.
+/// A fence below the fleet's live sequence writes nothing.
 ///
 /// The positive control comes first and is not decoration: without a stored
 /// entry to overwrite, a refused write and a write that silently did nothing
@@ -245,7 +245,7 @@ async fn test_memory_routes_refuse_a_superseded_active_run() {
     test_run.fixtures.cleanup().await;
 }
 
-/// Dimension 4.3 — a run that is not this runner's writes into no fleet.
+/// A run that is not this runner's writes into no fleet.
 ///
 /// The fence is only half of capture's authorization; the other half is the
 /// run's OWNERSHIP, and both live in the same statement's `WHERE`. Proven

@@ -1,4 +1,4 @@
-//! Dimension 3.1 — the registry says exactly what the contract declares.
+//! The registry says exactly what the contract declares.
 //!
 //! # What these tests deliberately do not do
 //!
@@ -43,7 +43,7 @@ pub(super) fn census(rows: &[&str]) -> String {
 /// A well-formed row, as the base every seeded defect mutates one column of.
 /// The SDK's own per-stream cardinality limit when a View sets none
 /// (`opentelemetry_sdk` 0.32.1, `metrics/instrument.rs`). The backstop
-/// Dimension 3.2 requires never to fire.
+/// the declared limits must keep from firing.
 pub(super) const SDK_STREAM_CARDINALITY_DEFAULT: usize = 2000;
 
 /// What a runner slot table may admit before `_other`. Raised on the stream

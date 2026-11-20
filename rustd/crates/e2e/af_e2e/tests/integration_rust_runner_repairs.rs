@@ -180,7 +180,7 @@ fn incident_upstream(contents: Reply) -> Vec<Route> {
     all
 }
 
-/// Dimension 6.4. After a full read the incident repairer ships five writes
+/// After a full read the incident repairer ships five writes
 /// and one draft, its read-only telemetry hosts admitting only the listed
 /// query; after a partial read — the file answers 403 — it ends
 /// diagnosis-only and nothing is written.

@@ -155,7 +155,7 @@ fn listed_tags(refused: Option<serde_json::Error>) -> serde_json::Result<Vec<Str
         .collect())
 }
 
-/// Dimension 8.1: the daemon makes no model call, so no frame in either
+/// The daemon makes no model call, so no frame in either
 /// direction carries one. The four setup model frames each way are gone, and
 /// a runner still sending one is refused as an unknown frame.
 #[test]

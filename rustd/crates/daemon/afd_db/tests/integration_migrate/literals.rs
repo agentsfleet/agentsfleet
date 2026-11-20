@@ -1,4 +1,4 @@
-//! Dimension 2.2 — no schema object carries a vocabulary literal (RULE STS).
+//! No schema object carries a vocabulary literal (RULE STS).
 //!
 //! Every string literal in a CHECK, an index predicate, a column default or a
 //! trigger function is read out of the catalog and held to the structural

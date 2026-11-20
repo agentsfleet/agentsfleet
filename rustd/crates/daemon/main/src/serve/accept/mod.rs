@@ -80,7 +80,7 @@ async fn next_accepted<A: Acceptor>(
 ) -> Option<std::io::Result<tokio::net::TcpStream>> {
     tokio::select! {
         // Cancellation is checked against a genuinely blocked accept, not
-        // between iterations — the property Dimension 7.5 exists to prove.
+        // between iterations — the property the supervisor tests exist to prove.
         //
         // The DRAIN's token stops the loop on the graceful path. Stopping
         // drops `listener`, so the port stops answering and a new

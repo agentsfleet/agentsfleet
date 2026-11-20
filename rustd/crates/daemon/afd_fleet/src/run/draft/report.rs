@@ -14,6 +14,7 @@ use garde::Validate as _;
 use jiff::Timestamp;
 use sqlx::FromRow as _;
 
+use super::DraftRun;
 use super::renew::requested;
 use crate::error::{Result, query, run_lost, run_not_found, stale_fence, wire_run};
 use crate::run::usage::{Pricing, SliceColumns};
@@ -21,6 +22,9 @@ use crate::run::{RunService, runner_runs, sql};
 
 /// What query failures name a draft report as.
 const CONTEXT: &str = "settle a draft run report";
+
+/// Logged at `info` once a draft run's report commits.
+const EVENT_SETTLED: &str = "setup_run_settled";
 
 /// [`sql::shared::SETTLE_RUN`]'s verdict columns, by column name.
 #[derive(sqlx::FromRow)]
@@ -146,9 +150,25 @@ impl RunService {
             .commit_setup_report(tx, announcement, owed)
             .await?;
         runner_runs::reported(runner, succeeded);
+        log_settled(&run, request, now);
         if let Some(scope) = &scope {
             Box::pin(creations.after_setup_report(scope)).await?;
         }
         Ok(())
     }
+}
+
+/// Logs a committed draft run's report, once, at `info`: how it ended, how
+/// long it held the run and the tokens it spent, never its text.
+fn log_settled(run: &DraftRun, request: &ReportRequest<'_>, now: Timestamp) {
+    let (draft_id, outcome) = (run.draft_id.as_str(), request.outcome.as_str());
+    let duration_ms = now.as_millisecond() - run.created_at.as_millisecond();
+    let tokens = request.tokens;
+    tracing::info!(
+        event = EVENT_SETTLED,
+        draft_id,
+        outcome,
+        duration_ms,
+        tokens
+    );
 }

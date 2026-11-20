@@ -10,14 +10,18 @@ use afd_db::statement::Bound;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
-/// Enrol a runner and record its enrolment event atomically.
+/// Enrol a runner and record its enrolment event atomically, answering the
+/// runner the host is (`id`) and whether this call `inserted` it.
 ///
 /// One statement, so an observer can never see a registered runner with no
 /// audit row explaining where it came from. A host its owner already
 /// registered inserts neither row: `(tenant_id, host_id)` is unique with nulls
-/// not distinct, so the platform registers each host once too. The operator's ASSIGNED policy
-/// lands on the row here — the host never writes it. The enrolment event takes
-/// the row's own `created_at`, so the two cannot disagree about when.
+/// not distinct, so the platform registers each host once too. The no-op
+/// `DO UPDATE` answers the existing row even when it committed concurrently,
+/// where `DO NOTHING` answers no row and a second read can miss a row deleted
+/// in between. The operator's ASSIGNED policy lands on the row here — the host
+/// never writes it. The enrolment event takes the row's own `created_at`, so
+/// the two cannot disagree about when.
 pub const INSERT_RUNNER_WITH_HISTORY: &str = include_str!("insert_runner_with_history.sql");
 
 /// The run-type counter a freshly enrolled host starts at.
@@ -27,8 +31,8 @@ const FIRST_RUN_VERSION: i64 = 0;
 ///
 /// # Why this one gets a struct and most statements do not
 ///
-/// It takes twenty-one positional parameters and `$2` and `$4` are each read
-/// twice. A flat bind list is correct only as far as someone counts arguments
+/// It takes twenty-five positional parameters, and `$2`, `$4`, `$17` and
+/// `$20` are each read twice. A flat bind list is correct only as far as someone counts arguments
 /// against the statement text. Two same-typed arguments transposed —
 /// `host_id` and `token_hash` are both text, and one is a CREDENTIAL — compiles
 /// clean and writes the wrong column.
@@ -141,11 +145,6 @@ pub const ROTATE_RUNNER_TOKEN: &str = include_str!("rotate_runner_token.sql");
 
 /// Whether a runner is the platform's, read on a refused rotation to tell `404` from `409`.
 pub const SELECT_RUNNER_PLATFORM_OWNED: &str = include_str!("select_runner_platform_owned.sql");
-
-/// The runner `$1` tenant, or the platform for NULL, registered for `$2` host,
-/// read when [`INSERT_RUNNER_WITH_HISTORY`] inserted nothing because the host
-/// is taken.
-pub const SELECT_HOST_RUNNER: &str = include_str!("select_host_runner.sql");
 
 /// The heartbeat's policy read.
 ///

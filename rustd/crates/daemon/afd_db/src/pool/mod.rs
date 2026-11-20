@@ -267,7 +267,7 @@ impl Db {
     ///
     /// Named rather than left to `Drop`: closing is asynchronous, `Drop` cannot
     /// await, and a pool dropped mid-shutdown abandons connections the server
-    /// is still holding open. §7's supervisor calls this in stop order.
+    /// is still holding open. The daemon's supervisor calls this in stop order.
     pub async fn close(&self) {
         self.pool.close().await;
     }

@@ -1,4 +1,4 @@
-//! Reads and seeds the §3 suites need: the wallet a settle draws on, the
+//! Reads and seeds the settle suites need: the wallet a settle draws on, the
 //! catalogue that gives a run a price at all, and the rows it leaves behind.
 //!
 //! Separate from `fleet_run_reads.rs` because the tables are different and

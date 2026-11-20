@@ -1,4 +1,4 @@
-//! Dimension 2.4 — an exhausted pool and an absent datastore, told apart.
+//! An exhausted pool and an absent datastore, told apart.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing a datastore; `make test-integration-rustd` runs them.
@@ -24,7 +24,7 @@ use afd_db::test_util::TestDatabase;
 /// tries is not slow, it is down.
 const WARMING_ATTEMPTS: usize = 3;
 
-/// Dimension 2.4 — an exhausted pool and an absent datastore are two different
+/// An exhausted pool and an absent datastore are two different
 /// answers, because they are two different incidents.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -143,7 +143,7 @@ async fn test_a_closed_pool_refuses_rather_than_hanging() {
     database.cleanup().await;
 }
 
-/// Dimension 2.4 — the warm floor is real, not merely configured.
+/// The warm floor is real, not merely configured.
 ///
 /// The test this suite did not have. `min_connections` was passed to sqlx and
 /// believed; sqlx bootstraps that floor from zero only when `max_lifetime` and

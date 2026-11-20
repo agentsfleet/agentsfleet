@@ -27938,6 +27938,7 @@
             "description": "A setup draft's queued message.",
             "required": [
               "draft_id",
+              "setup",
               "kind"
             ],
             "properties": {
@@ -27950,11 +27951,15 @@
                 "enum": [
                   "draft"
                 ]
+              },
+              "setup": {
+                "$ref": "#/components/schemas/SetupWork",
+                "description": "The draft's setup turn."
               }
             }
           }
         ],
-        "description": "Whose work a run runs.\n\nAbsent on a fleet's run, whose owner is the fleet its `event` names, so a\nfleet assignment reads as it did before drafts shared the path."
+        "description": "Whose work a run runs, and what that owner's work carries beside the\ncommon payload."
       },
       "RunPayload": {
         "type": "object",
@@ -27968,7 +27973,8 @@
           "instructions",
           "history",
           "resume_hold",
-          "inputs_waiting"
+          "inputs_waiting",
+          "owner"
         ],
         "properties": {
           "decision": {
@@ -28025,15 +28031,8 @@
             "x-stability": "beta"
           },
           "owner": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RunOwnerRef",
-                "description": "Whose work this is. Absent on a fleet's run, whose owner is the fleet\n`turn.fleet_id` names. A draft's run names the draft here, and its\n`turn` is the draft's message: `turn_id` the message, `fleet_id` the\ndraft. Assigned only to a protocol v4 runner."
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/RunOwnerRef",
+            "description": "Whose work this is. A fleet's run names its fleet, the one\n`event.fleet_id` names. A draft's run names the draft and carries its\nsetup turn, and its `event` is the draft's message: `turn_id` the\nmessage, `fleet_id` the draft."
           },
           "policy": {
             "$ref": "#/components/schemas/ExecutionPolicy",
@@ -28051,17 +28050,6 @@
           "run_id": {
             "type": "string",
             "description": "Identifier for this run."
-          },
-          "setup": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SetupWork",
-                "description": "A draft's setup turn: present exactly when `owner` names a draft."
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "setup_revision_id": {
             "type": [

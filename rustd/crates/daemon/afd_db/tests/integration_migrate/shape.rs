@@ -1,4 +1,4 @@
-//! Dimension 2.1 — migrating an empty database builds the nine owned schemas,
+//! Migrating an empty database builds the nine owned schemas,
 //! each holding a table, and no table anywhere else.
 //!
 //! `schema/*.sql` is the only record of each table's columns, so nothing here

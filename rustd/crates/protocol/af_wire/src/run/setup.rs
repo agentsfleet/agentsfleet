@@ -2,7 +2,7 @@
 //! assignment carries for the draft, and what its report hands back.
 //!
 //! A draft-owned run is a [`super::RunPayload`] like a fleet's. Its
-//! `owner` names the draft, its `event` is the draft's queued message, its
+//! `owner` names the draft and carries its [`SetupWork`], its `event` is the draft's queued message, its
 //! `history` the draft's earlier turns, and its policy offers one tool,
 //! `propose_setup`, with no sandbox. The runner applies proposals in memory
 //! and reports the final setup once; the daemon re-checks it in the report
@@ -20,10 +20,8 @@ pub const SETUP_DEFINITION_BYTES_MAX: usize = af_validate::DEFINITION_MAX_BYTES;
 /// The bytes of a candidate identifier, a hyphenated UUID.
 const CANDIDATE_ID_BYTES: usize = 36;
 
-/// Whose work a run runs.
-///
-/// Absent on a fleet's run, whose owner is the fleet its `event` names, so a
-/// fleet assignment reads as it did before drafts shared the path.
+/// Whose work a run runs, and what that owner's work carries beside the
+/// common payload.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = RunOwnerRef))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,7 +38,21 @@ pub enum Owner<'a> {
         /// The draft.
         #[serde(borrow)]
         draft_id: Cow<'a, str>,
+        /// The draft's setup turn.
+        #[serde(borrow)]
+        setup: Box<SetupWork<'a>>,
     },
+}
+
+impl<'a> Owner<'a> {
+    /// The draft's setup turn; `None` on a fleet's run.
+    #[must_use]
+    pub fn setup(&self) -> Option<&SetupWork<'a>> {
+        match self {
+            Self::Fleet { .. } => None,
+            Self::Draft { setup, .. } => Some(setup.as_ref()),
+        }
+    }
 }
 
 /// The setup a draft's turn starts from.

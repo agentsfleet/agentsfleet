@@ -56,7 +56,7 @@ fn test_a_fence_round_trips_through_its_column_type() {
 
 /// Fences order, because that ordering IS the staleness test.
 ///
-/// §3 rejects a report whose token is behind the thread's current one, so an
+/// The report rejects one whose token is behind the thread's current one, so an
 /// ordering that did not hold would be a stale writer admitted.
 #[test]
 fn test_a_later_fence_outranks_an_earlier_one() {

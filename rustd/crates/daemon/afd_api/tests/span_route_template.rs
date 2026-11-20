@@ -1,4 +1,4 @@
-//! Dimension 6.1 — a span carries the route template, never the raw path.
+//! A span carries the route template, never the raw path.
 //!
 //! Asserted by capturing real spans through a `tracing` subscriber rather than
 //! by reading the middleware's source, because the property is about what
@@ -80,7 +80,7 @@ fn test_span_fields_are_the_semconv_keys() {
 async fn test_an_unmatched_request_opens_no_server_span() {
     // Workspace-SHAPED but not in the route table, which is the interesting
     // case: a path that looks like a template must not be granted one. The
-    // fixture was `…/secrets` until §4 mounted that family; a fixture that is
+    // fixture was `…/secrets` until the vault routes mounted that family; a fixture that is
     // a real-but-unserved route would go the same way when its section lands,
     // so this names a segment the table has never held.
     let spans = spans_for(Method::GET, "/v1/workspaces/secret-id/not-a-route").await;

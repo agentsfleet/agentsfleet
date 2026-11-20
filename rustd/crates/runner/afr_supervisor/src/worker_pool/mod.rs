@@ -128,7 +128,7 @@ impl Worker {
         };
         match run {
             // A setup draft's turn rides the common run path with no sandbox.
-            TaggedRun::Fleet(run) if matches!(run.owner, Some(Owner::Draft { .. })) => {
+            TaggedRun::Fleet(run) if matches!(run.owner, Owner::Draft { .. }) => {
                 self.lessee
                     .setup(&run, assigned.registration.stop.clone())
                     .await?;

@@ -1,4 +1,4 @@
-//! Dimension 7.4 — every runtime `.sql` file `PREPARE`s against the rebuilt
+//! Every runtime `.sql` file `PREPARE`s against the rebuilt
 //! schema, so a query naming a dropped table or column fails here, before
 //! merge, rather than on the first request that runs it.
 //!

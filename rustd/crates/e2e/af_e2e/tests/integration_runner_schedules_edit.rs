@@ -1,4 +1,4 @@
-//! §1 — a running fleet changes and deletes only its own schedules, and only
+//! A running fleet changes and deletes only its own schedules, and only
 //! its own fleet's.
 //!
 //! Booted as `integration_runner_schedules` is, against a fake scheduler that
@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use crate::schedules::{Assigned, Seeded, WEEKLY};
 use crate::verbs::{FakeQStash, Told};
 
-/// Dimension 1.4. A person's schedule is the fleet's to read, not to change or
+/// A person's schedule is the fleet's to read, not to change or
 /// delete.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -105,7 +105,7 @@ async fn test_fleet_cannot_reach_another_fleets_schedule() {
     held.finish_with(supervisor, &other).await;
 }
 
-/// Dimension 1.8. A delete removes the schedule from `QStash`, then the row.
+/// A delete removes the schedule from `QStash`, then the row.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_deletes_its_schedule() {

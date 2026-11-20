@@ -1,7 +1,7 @@
 //! What a request costs: the catalogue's dated tiers for one model, and the pure
 //! [`Rater`] that turns one usage line into nanos.
 //!
-//! Pricing is split from money movement on purpose (billing §11): every biller
+//! Pricing is split from money movement on purpose, per the billing design: every biller
 //! receives the same priced lines, whichever system moves the money. Nothing in
 //! [`rate`] reaches a datastore, so the arithmetic is proven without one.
 

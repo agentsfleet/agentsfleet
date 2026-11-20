@@ -35,8 +35,8 @@ async fn test_a_poll_accepting_both_kinds_places_the_owed_setup_turn() {
             |run, _metadata| {
                 let TaggedRun::Fleet(run) = run;
                 match run.owner {
-                    Some(Owner::Draft { draft_id }) => Some(draft_id.into_owned()),
-                    Some(Owner::Fleet { .. }) | None => None,
+                    Owner::Draft { draft_id, .. } => Some(draft_id.into_owned()),
+                    Owner::Fleet { .. } => None,
                 }
             },
         )

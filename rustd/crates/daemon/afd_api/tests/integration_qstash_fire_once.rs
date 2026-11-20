@@ -33,7 +33,7 @@ async fn fire_once(fixture: &Fixture, message_id: &str) -> StatusCode {
     .status()
 }
 
-/// Dimension 1.9, from `QStash`. The fire is work, and the schedule retires.
+/// From `QStash`. The fire is work, and the schedule retires.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_once_schedule_retires_after_its_qstash_fire() {

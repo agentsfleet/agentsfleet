@@ -74,18 +74,13 @@ impl FleetSetup {
     /// on the head candidate before the run kept one.
     fn check(&self, kept: Option<&Definition>, proposal: &Value) -> Result<Definition, Refused> {
         let definition = kept.or_else(|| self.candidate.as_ref().map(|head| &head.definition));
-        let revision = self
-            .candidate
-            .as_ref()
-            .map(|head| head.revision.to_string());
         let head = self
             .candidate
             .as_ref()
-            .zip(revision.as_deref())
             .zip(definition)
-            .map(|((candidate, revision), definition)| Head {
+            .map(|(candidate, definition)| Head {
                 id: &candidate.id,
-                revision,
+                revision: candidate.revision,
                 definition,
             });
         let native = setup::read(proposal.clone(), head.as_ref(), self.said.as_deref())?;

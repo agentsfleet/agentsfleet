@@ -1,4 +1,4 @@
-//! What §7's report suites share: the report they send, and the emptiness two
+//! What the report suites share: the report they send, and the emptiness two
 //! of them assert.
 //!
 //! Split out because the dimension has two shapes and they belong in separate

@@ -84,7 +84,7 @@ fn router(as_member: bool) -> Router {
     fleet.router()
 }
 
-/// Dimension 2.3: a member reaches every workspace route except the
+/// A member reaches every workspace route except the
 /// owner-grade ones, and those answer `403 UZ-AUTH-026`.
 #[tokio::test]
 async fn test_member_refused_owner_only_routes() {
@@ -124,7 +124,7 @@ async fn test_an_owner_is_never_refused_as_a_member() {
     }
 }
 
-/// Dimension 2.5: an access check that cannot reach Postgres answers `503`,
+/// An access check that cannot reach Postgres answers `503`,
 /// never `403`.
 ///
 /// The production resolver over a pool nobody listens on, which is the
@@ -184,7 +184,7 @@ async fn assert_answers_the_outage(router: &Router) {
     );
 }
 
-/// Dimension 5.2: the layer records a platform crossing once, naming the
+/// The layer records a platform crossing once, naming the
 /// method, and records nothing for the account's own owner.
 #[tokio::test]
 async fn test_layer_records_platform_crossings() {

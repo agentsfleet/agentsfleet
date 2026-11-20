@@ -28,7 +28,7 @@ async fn admit_mention(ledger: &Turns, fleet: &Uuid7, workspace: &Uuid7, key: &s
         .expect("the ledger admits the mention")
 }
 
-/// Dimension 3.3 — Slack's retry of one mention is the same event, so it puts
+/// Slack's retry of one mention is the same event, so it puts
 /// nothing more on the stream and the fleet is held once for it, on a branch
 /// named for it and with no approval asked for; a second mention is a second
 /// event with a branch of its own.

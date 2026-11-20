@@ -1,4 +1,4 @@
-//! One §6 run: the Rust runner's real loop, over the hosted catalog, running
+//! One definition run: the Rust runner's real loop, over the hosted catalog, running
 //! one event of a corpus fleet's scenario until the daemon has settled it.
 //!
 //! The loop's egress client is the HTTPS fake's routed one, so every

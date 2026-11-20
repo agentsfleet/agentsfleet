@@ -272,7 +272,7 @@ impl ScopeSet {
 
     /// Every scope held, in catalogue order.
     ///
-    /// Public because §6 renders a principal's capabilities into a span field
+    /// Public because tracing renders a principal's capabilities into a span field
     /// and needs to walk them; nothing on the request path does. Catalogue
     /// order rather than insertion order, so the same held set always renders
     /// as the same string and a log line is diffable across requests.

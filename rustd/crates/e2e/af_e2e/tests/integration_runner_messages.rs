@@ -1,4 +1,4 @@
-//! §2 — a running fleet says one line to its thread before it answers.
+//! A running fleet says one line to its thread before it answers.
 //!
 //! The daemon is booted with `SLACK_API_URL` pointed at a loopback Slack, the
 //! workspace holds a sealed Slack grant, and the event is admitted from a
@@ -39,7 +39,7 @@ const LINES: u32 = 10;
 /// A fleet that declares [`CREDENTIAL`].
 const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"tools":[],"credentials":["grafana"],"budget":{"daily_nanos":"1000000000"}}}"#;
 
-/// Dimension 2.1. A line reaches the event's Slack thread while the run is
+/// A line reaches the event's Slack thread while the run is
 /// still held, under its own marker part.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -108,7 +108,7 @@ async fn test_a_run_posts_long_lines_past_eight() {
     speaking.finish(supervisor).await;
 }
 
-/// Dimension 2.4. An event from no thread has nowhere to post, and the run
+/// An event from no thread has nowhere to post, and the run
 /// keeps its budget.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -158,7 +158,7 @@ async fn test_message_without_channel_refused() {
     speaking.finish(supervisor).await;
 }
 
-/// Dimension 2.5. A secret value the fleet declared is masked before the line
+/// A secret value the fleet declared is masked before the line
 /// leaves the daemon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

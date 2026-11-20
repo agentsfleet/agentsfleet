@@ -38,7 +38,7 @@ fn release(signer: &Signer, dir: &Path, n: u8) -> Release {
     }
 }
 
-/// Dimension 8.2: a bad signature, a wrong length, the wrong architecture
+/// A bad signature, a wrong length, the wrong architecture
 /// and a half-written download are each refused, with its own code, before
 /// anything is mounted.
 #[test]
@@ -88,7 +88,7 @@ fn test_toolbox_admission_refusals() {
     assert_eq!(toolboxes.digests(), [] as [String; 0]);
 }
 
-/// Dimension 8.4: a held image is never unmounted, the current and previous
+/// A held image is never unmounted, the current and previous
 /// are kept, and a runner killed mid-stage admits cleanly on restart.
 #[test]
 fn test_toolbox_holds_and_retention() {

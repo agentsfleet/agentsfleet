@@ -8,7 +8,7 @@
 //! every request line by its own whole-prompt tier and its own request time,
 //! adds one runtime-only line for the time the daemon measured, and wraps them
 //! as the [`Settlement`] the run's transaction logs and the billing relay
-//! settles (billing §11).
+//! settles, per the billing design.
 
 mod original;
 mod slice;

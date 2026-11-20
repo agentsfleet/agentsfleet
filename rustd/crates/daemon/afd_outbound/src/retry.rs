@@ -15,7 +15,7 @@
 //! Under a flat `200ms << attempt`, every worker that saw the same vendor
 //! outage retries in the same millisecond, and the recovering vendor is hit by
 //! the whole deployment at once — the retry storm that keeps it down. `backon`
-//! adds a random offset inside each delay, which is what Dimension 5.1's
+//! adds a random offset inside each delay, which is what the retry tests'
 //! "jittered" means.
 //!
 //! # The budget is small on purpose

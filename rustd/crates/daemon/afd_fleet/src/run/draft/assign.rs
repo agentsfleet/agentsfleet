@@ -36,6 +36,9 @@ const CONTEXT: &str = "assign a draft run";
 /// The one tool a setup run offers.
 const PROPOSE_SETUP: &str = "propose_setup";
 
+/// Logged at `info` once a draft run's assignment commits.
+const EVENT_ASSIGNED: &str = "setup_run_assigned";
+
 /// A committed draft run, ready to render as its assignment.
 ///
 /// Holds the key the assignment carries, so the payload borrows it rather than
@@ -197,6 +200,7 @@ impl RunService {
             runner_runs::expired(expired);
         }
         runner_runs::acquired(runner);
+        log_assigned(&turn.draft_id, &run_id, runner, won.fencing_token);
         let tool = setup_tool(turn.candidate.is_some());
         Ok(Placement::Issued(Box::new(DraftAssignment {
             run_id,
@@ -418,18 +422,30 @@ impl DraftAssignment {
             durable_tasks: false,
             memory: None,
             inputs_waiting: false,
-            owner: Some(Owner::Draft {
+            owner: Owner::Draft {
                 draft_id: Cow::Owned(turn.draft_id.to_string()),
-            }),
-            setup: Some(SetupWork {
-                sequence: u64::try_from(turn.sequence).unwrap_or_default(),
-                candidate,
-                save_requested: turn.save_requested,
-                tool: self.tool.clone(),
-                history_sequences,
-            }),
+                setup: Box::new(SetupWork {
+                    sequence: u64::try_from(turn.sequence).unwrap_or_default(),
+                    candidate,
+                    save_requested: turn.save_requested,
+                    tool: self.tool.clone(),
+                    history_sequences,
+                }),
+            },
         }
     }
+}
+
+/// Logs a committed draft run's assignment, once, at `info`.
+fn log_assigned(draft: &Uuid7, run: &Uuid7, runner: &Uuid7, fencing_token: i64) {
+    let (draft_id, run_id, runner_id) = (draft.as_str(), run.as_str(), runner.as_str());
+    tracing::info!(
+        event = EVENT_ASSIGNED,
+        draft_id,
+        run_id,
+        runner_id,
+        fencing_token
+    );
 }
 
 /// The draft's earlier turns, oldest first, and each one's sequence, within a

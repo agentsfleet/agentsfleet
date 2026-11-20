@@ -16,7 +16,7 @@
 //! `fencing_token`, `run_expires_at`, and two instants — and two of them
 //! transposed compiles clean and writes a run that can never be reported
 //! against. [`Fence`] exists so that only the value an assignment minted can reach
-//! the column that fences reports, and §3 can demand one by type rather than by
+//! the column that fences reports, and the report can demand one by type rather than by
 //! comment.
 
 use af_core::error_code::{Coded as _, Logged};

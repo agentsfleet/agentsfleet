@@ -1,4 +1,4 @@
-//! §1 — the runner plane's guard: who is admitted, who is refused, and how.
+//! The runner plane's guard: who is admitted, who is refused, and how.
 //!
 //! Every case here is proven through the PRODUCTION router, over real HTTP,
 //! with no datastore behind it. That is deliberate and it is what the layer
@@ -54,7 +54,7 @@ const FLEET_ID: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 /// The identity-provider subject a fixture operator acts as.
 const OPERATOR: &str = "user_2abcOPERATOR";
 
-/// Dimension 1.1 — every state a presented runner credential can be in.
+/// Every state a presented runner credential can be in.
 ///
 /// The four rows are the runner guard's whole matrix: a credential that matches
 /// nothing, one whose row is no longer live, one from the other plane entirely,
@@ -95,7 +95,7 @@ async fn test_runner_bearer_state_matrix() {
     }
 }
 
-/// Dimension 1.1 (boundary) — neither plane accepts the other's credential.
+/// Neither plane accepts the other's credential.
 ///
 /// `docs/AUTH.md` states this as a rule about which middleware is mounted
 /// where; here it is a property of the route table, so a route mounted one
@@ -133,7 +133,7 @@ async fn test_planes_refuse_each_others_credentials() {
     );
 }
 
-/// Dimension 1.2 — a datastore that will not answer is a 503, never a 401.
+/// A datastore that will not answer is a 503, never a 401.
 ///
 /// The distinction the whole `CredentialDirectory` seam exists for. Collapsing
 /// them would report a Postgres outage as an authentication rejection, and the
@@ -155,7 +155,7 @@ async fn test_runner_auth_pg_outage_503() {
     assert_eq!(code_of(outage).await, "UZ-AUTH-004");
 }
 
-/// Dimension 1.3 — enrolment is gated on `runner:register` and nothing weaker.
+/// Enrolment is gated on `runner:register` and nothing weaker.
 ///
 /// The grant is held independently of `runner:read` and `runner:write` because
 /// the host it creates receives every tenant's inline secrets. A caller holding
@@ -197,7 +197,7 @@ async fn test_register_enroll_gate() {
     assert_eq!(code_of(admitted).await, "UZ-REQ-001");
 }
 
-/// Dimension 1.4 — a revoked runner is refused on its very next request.
+/// A revoked runner is refused on its very next request.
 ///
 /// There is no memoised verdict to invalidate, because there is no memo: the
 /// row is read on EVERY request, and that read is the revocation channel. The

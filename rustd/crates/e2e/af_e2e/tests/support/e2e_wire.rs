@@ -1,4 +1,4 @@
-//! The runner half of §7: what a stock runner sends, and how it reads answers.
+//! The runner half of the end-to-end suite: what a stock runner sends, and how it reads answers.
 //!
 //! Split from the suites by concern rather than by size (RULE FLL): these are
 //! the REQUEST-side helpers — the bodies a runner puts on the wire and the
@@ -48,7 +48,7 @@ pub(crate) const OUTPUT_TOKENS: u32 = 4_000;
 /// answers no-work with `"the runner's verdict is degraded or unreadable"` —
 /// fail-closed, and correct: a host that has not proven it can enforce the
 /// assigned sandbox must not be handed work. A runner therefore beats its
-/// capabilities BEFORE its first poll, and a §7 suite that skipped the beat
+/// capabilities BEFORE its first poll, and an end-to-end suite that skipped the beat
 /// would be asserting against a state no runner is ever in.
 pub(crate) fn capable_beat() -> Value {
     json!({

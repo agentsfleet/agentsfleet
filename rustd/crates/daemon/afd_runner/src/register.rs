@@ -6,10 +6,10 @@ use af_core::id::Uuid7;
 use af_wire::runner::{AssignedPolicy, RegisterRequest};
 use afd_auth::minted::Minted;
 use jiff::Timestamp;
-use sqlx::{Acquire as _, Postgres, Transaction};
+use sqlx::{Acquire as _, FromRow as _, Postgres, Transaction};
 
 use crate::edit::DETAIL_TENANT_DECISION_MODEL;
-use crate::error::{Result, host_registered, query, rejected, runner_not_found};
+use crate::error::{Result, host_registered, query, rejected};
 use crate::policy::SandboxConfig;
 use crate::reconcile::{Verdict, reconcile};
 use crate::scope::Owner;
@@ -84,7 +84,7 @@ impl<'r> Prepared<'r> {
         crate::decision::lock(transaction, self.decision_model_id.as_ref())
             .await?
             .allow_change_from(None)?;
-        let inserted = sql::runner::RegisterRow {
+        let row = sql::runner::RegisterRow {
             durable_tasks_enabled: self.assigned.durable_tasks_enabled,
             sandbox_config_json: &self.sandbox_config_json,
             decision_model_id: self.decision_model_id.as_ref(),
@@ -106,21 +106,14 @@ impl<'r> Prepared<'r> {
             actor_id,
         }
         .bind()
-        .execute(&mut **transaction)
+        .fetch_one(&mut **transaction)
         .await
-        .map_err(query(CONTEXT_REGISTER))?
-        .rows_affected();
-        if inserted > 0 {
+        .map_err(query(CONTEXT_REGISTER))?;
+        let registered = Registered::from_row(&row).map_err(query(CONTEXT_REGISTER))?;
+        if registered.inserted {
             return Ok(());
         }
-        let registered: Uuid7 = sqlx::query_scalar(sql::runner::SELECT_HOST_RUNNER)
-            .bind(owner.tenant())
-            .bind(self.host_id)
-            .fetch_optional(&mut **transaction)
-            .await
-            .map_err(query(CONTEXT_REGISTER))?
-            .ok_or_else(runner_not_found)?;
-        Err(host_registered(registered))
+        Err(host_registered(registered.id))
     }
 
     /// The created runner, its token revealed to this one caller.
@@ -133,6 +126,15 @@ impl<'r> Prepared<'r> {
             verdict: self.verdict,
         }
     }
+}
+
+/// [`sql::runner::INSERT_RUNNER_WITH_HISTORY`]'s row, by column name.
+#[derive(sqlx::FromRow)]
+struct Registered {
+    /// The runner the host is: this call's, or the one registered before.
+    id: Uuid7,
+    /// Whether this call wrote the runner and its enrolment event.
+    inserted: bool,
 }
 
 impl Runners {

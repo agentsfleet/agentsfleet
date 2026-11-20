@@ -110,7 +110,7 @@ async fn take_draft_run(running: &Running, drafts: &afd_setup::Drafts) -> Taken 
             &mut af_observability::verb_span::VerbClock::untimed(),
             |run, _metadata| {
                 let TaggedRun::Fleet(run) = run;
-                run.setup.is_some().then(|| Taken {
+                run.owner.setup().is_some().then(|| Taken {
                     run: run.run_id.to_string(),
                     turn: run.event.turn_id.to_string(),
                     fence: run.fencing_token,

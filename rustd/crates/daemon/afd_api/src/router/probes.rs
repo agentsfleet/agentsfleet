@@ -76,7 +76,7 @@ const EVENT_BUS_UNAVAILABLE: &str = "bus_unavailable_at_readyz";
 
 /// What `/readyz` consults.
 ///
-/// The trait is the seam between §5 and §7: routing and the response shape are
+/// The trait is the seam between the router and the daemon's boot: routing and the response shape are
 /// settled here, and what it MEANS to reach Postgres and the bus is supplied by
 /// whoever owns the connections. Generic rather than `dyn`, so the probe is a static
 /// call and the trait needs no boxed future to stay object safe.

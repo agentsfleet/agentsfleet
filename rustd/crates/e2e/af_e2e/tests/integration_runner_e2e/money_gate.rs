@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Dimension 2.3 — an exhausted tenant is refused at issue, and nothing is
+/// An exhausted tenant is refused at issue, and nothing is
 /// written.
 ///
 /// The credits gate is reached when a native session proves

@@ -17,7 +17,7 @@ use crate::integration_invite_email::{
 use crate::integration_team_routes::{INVITES, MEMBERS, call, send_again};
 use crate::integration_workspace_members::fixture::Members;
 
-/// Dimension 4.1: sending again after a failure is a new attempt under a new
+/// Sending again after a failure is a new attempt under a new
 /// key, and the invite flips to `sent`.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -46,7 +46,7 @@ async fn test_send_again_after_failure() {
     members.cleanup().await;
 }
 
-/// Dimension 4.2: sending again with no relay is `503 UZ-INV-005`, and an
+/// Sending again with no relay is `503 UZ-INV-005`, and an
 /// invite that is not pending is `404 UZ-INV-001`.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

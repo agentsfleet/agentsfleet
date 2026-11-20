@@ -1,4 +1,4 @@
-//! §2's refusal write against a live Postgres: ending an event at a gate.
+//! The assignment's refusal write against a live Postgres: ending an event at a gate.
 //!
 //! The statement's whole safety property is a `WHERE … AND status = $6`, and a
 //! guard is exactly the thing that cannot be proven by reading it. What is

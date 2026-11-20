@@ -1,4 +1,4 @@
-//! The selection is a pointer: Dimension 4.4 against real rows.
+//! The selection is a pointer, proved against real rows.
 //!
 //! `model.tenant_selections.tenant_model_id` names one `model.tenant_models`
 //! row through a composite foreign key that carries `tenant_id` too, so the

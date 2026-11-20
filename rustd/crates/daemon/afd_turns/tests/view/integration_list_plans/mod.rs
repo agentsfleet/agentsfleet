@@ -1,4 +1,4 @@
-//! Dimension 4.2 — the fleet, workspace and thread reads keep their scope,
+//! The fleet, workspace and thread reads keep their scope,
 //! cursor and `since` as index conditions under a generic plan.
 //!
 //! sqlx prepares each text once per connection, and Postgres may then plan it
@@ -205,7 +205,6 @@ fn assert_walks_the_index(name: &str, plan: &str, index: &str, bounds: &[&str]) 
     );
 }
 
-/// Dimension 4.2.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_event_list_plans_use_the_index() {

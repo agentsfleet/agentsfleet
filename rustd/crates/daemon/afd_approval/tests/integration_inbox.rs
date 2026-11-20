@@ -1,4 +1,4 @@
-//! Dimensions 6.1 and 6.3 — answering a gate under a race, and expiring the
+//! Answering a gate under a race, and expiring the
 //! ones nobody answered.
 //!
 //! # Why the race is proven against a live datastore and not a stub

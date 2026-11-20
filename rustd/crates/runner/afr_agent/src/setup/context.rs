@@ -39,6 +39,7 @@ const KEEP_RECENT_TURNS: usize = 2;
 const ESTIMATOR: &str = "setup-estimator-v1";
 const EVENT_LOAD_FAILED: &str = "setup_context_load_failed";
 const EVENT_IGNORED: &str = "setup_context_ignored";
+const EVENT_UNREADABLE: &str = "setup_context_unreadable";
 const EVENT_SAVED: &str = "setup_context_saved";
 
 /// One earlier turn of the draft: what the person asked and what setup
@@ -74,8 +75,8 @@ impl<'a> Saved<'a> {
         scrub: &Scrub,
     ) -> Self {
         let named = run
-            .setup
-            .as_ref()
+            .owner
+            .setup()
             .is_some_and(|work| work.history_sequences.len() == run.history.len());
         let (saving, version, scope, stored) = match context.load().await {
             Ok(loaded) => (
@@ -91,7 +92,8 @@ impl<'a> Saved<'a> {
             }
         };
         let identity = identity(scope, run);
-        let checkpoint = stored.and_then(|document| usable(document, &identity, named));
+        let checkpoint =
+            stored.and_then(|document| usable(document, &identity, named, &run.run_id));
         let covered = checkpoint.as_ref().map(|kept| kept.covered_through);
         Self {
             context,
@@ -266,25 +268,46 @@ pub(super) fn identity(scope: String, run: &RunPayload<'_>) -> Identity {
 }
 
 /// The stored `document`, when it is a valid checkpoint of `identity` the
-/// run can place: one whose watermark names turns, which `named` says.
-fn usable(document: serde_json::Value, identity: &Identity, named: bool) -> Option<Checkpoint> {
-    let checkpoint = serde_json::from_value::<Checkpoint>(document)
-        .ok()
-        .filter(|checkpoint| checkpoint.validate_document().is_ok())
+/// run can place: one whose watermark names turns, which `named` says. A
+/// document that does not parse or validate is a corrupt store and logs a
+/// warning; a valid one written for another identity is expected after a
+/// model or prompt change and logs at `info`.
+fn usable(
+    document: serde_json::Value,
+    identity: &Identity,
+    named: bool,
+    run_id: &str,
+) -> Option<Checkpoint> {
+    let read = serde_json::from_value::<Checkpoint>(document)
+        .map_err(crate::Error::from)
+        .and_then(|checkpoint| {
+            checkpoint.validate_document()?;
+            Ok(checkpoint)
+        });
+    let checkpoint = match read {
+        Ok(checkpoint) => checkpoint,
+        Err(corrupt) => {
+            // The code alone: a parse failure can quote the stored text.
+            let error_code = corrupt.code().as_str();
+            tracing::warn!(event = EVENT_UNREADABLE, error_code, run_id);
+            return None;
+        }
+    };
+    let placeable = Some(checkpoint)
         .filter(|checkpoint| checkpoint.belongs_to(identity))
         .filter(|_| named);
-    if checkpoint.is_none() {
-        tracing::info!(event = EVENT_IGNORED);
+    if placeable.is_none() {
+        tracing::info!(event = EVENT_IGNORED, run_id);
     }
-    checkpoint
+    placeable
 }
 
 /// `run`'s earlier turns, oldest first and scrubbed, without those a saved
 /// summary `covered` through.
 fn earlier(run: &RunPayload<'_>, scrub: &Scrub, named: bool, covered: Option<u64>) -> Vec<Earlier> {
     let sequences = run
-        .setup
-        .as_ref()
+        .owner
+        .setup()
         .map(|work| work.history_sequences.as_slice())
         .filter(|_| named)
         .unwrap_or_default();

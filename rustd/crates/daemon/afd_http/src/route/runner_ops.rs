@@ -54,7 +54,7 @@ pub enum RunnerOpsRoute {
 // while merging M179 into M178: nothing consumes it (no UI, no CLI, absent from
 // the public OpenAPI document by its own carve-out), and serving it would mean
 // carrying a live-stream census whose only reader is the endpoint itself.
-// Recorded in M179's Dimension 4.4 rather than left to be noticed.
+// Recorded here rather than left to be noticed.
 
 impl RunnerOpsRoute {
     /// Every operator route over runners.

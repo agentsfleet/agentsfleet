@@ -1,4 +1,4 @@
-//! Dimension 4.2 — bad signature, expired, wrong audience and wrong issuer each
+//! Bad signature, expired, wrong audience and wrong issuer each
 //! refuse, and a key-id miss triggers EXACTLY ONE refresh.
 //!
 //! Every token here is a real RS256 signature over a real 2048-bit key,

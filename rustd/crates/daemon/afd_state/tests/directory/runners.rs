@@ -1,4 +1,4 @@
-//! Dimension 5.5 — a runner token resolves to a machine, live only while active.
+//! A runner token resolves to a machine, live only while active.
 //!
 //! The runner class of the credential directory: the reconciled verdict rides
 //! the lookup, every status but `active` bars the runner plane, and a row this

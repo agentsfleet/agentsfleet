@@ -1,4 +1,4 @@
-//! Dimension 2.4 — the route table carries exactly this milestone's inventory.
+//! The route table carries exactly this milestone's inventory.
 //!
 //! # Why a hand-written list is the right shape here
 //!
@@ -26,19 +26,19 @@ use std::collections::BTreeSet;
 use afd_http::route::Route;
 use afd_http::route::{Ownership, RunnerRoute, TenantRoute};
 
-/// Every path this milestone's §1, §2, §3, §4, §6 and §7 own.
+/// Every path the daemon serves.
 ///
 /// Schedules and connector surfaces are M180's and are deliberately absent even
 /// though the table carries them; the families walked below exclude them the
 /// same way.
 const INVENTORY: &[&str] = &[
     "/v1/runners/me/stream",
-    // §1 — the device-flow login surface.
+    // The device-flow login surface.
     "/v1/auth/sessions",
     "/v1/auth/sessions/{session_id}",
     "/v1/auth/sessions/{session_id}/approve",
     "/v1/auth/sessions/{session_id}/verify",
-    // §2 — the tenant plane.
+    // The tenant plane.
     "/v1/models",
     "/v1/workspaces",
     "/v1/tenants/me/billing",
@@ -56,14 +56,14 @@ const INVENTORY: &[&str] = &[
     // The caller's identity read. Listed here beside the tenant plane's own
     // rows because it is read for the caller itself, like every path above it.
     "/v1/users/me",
-    // §3 — workspace fleets and install.
+    // Workspace fleets and install.
     "/v1/workspaces/{workspace_id}/fleets",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/setup-context",
-    // §4 — the vault.
+    // The vault.
     "/v1/workspaces/{workspace_id}/secrets",
     "/v1/workspaces/{workspace_id}/secrets/{name}",
-    // §5 — events, streams, messages, memories, grants.
+    // Events, streams, messages, memories, grants.
     "/v1/workspaces/{workspace_id}/turns",
     "/v1/workspaces/{workspace_id}/turns/stream",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns",
@@ -80,7 +80,7 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}",
-    // §6 — approvals.
+    // Approvals.
     "/v1/workspaces/{workspace_id}/approvals",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
@@ -89,13 +89,13 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
     // M227 N1–N11 (`docs/architecture/api_resources.md`) — eligible models,
     // creator-private drafts and reviewed setup revisions. Removed R1/R2
-    // `library-entries` and M253's Plugin routes have no row here.
+    // `library-entries` and the retired Plugin routes have no row here.
     "/v1/workspaces/{workspace_id}/models",
     "/v1/workspaces/{workspace_id}/drafts",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/stream",
-    // M253 §8 — Stop on a draft's turn, beside the fleet turn's PATCH.
+    // Stop on a draft's turn, beside the fleet turn's PATCH.
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/{turn_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",
 ];
@@ -204,7 +204,7 @@ fn test_workspace_create_is_tenant_scoped_not_workspace_scoped() {
     assert_eq!(meta.ownership, Ownership::None);
 }
 
-/// Dimension 7.1 (M253) — the surface speaks in turns, items and runs.
+/// The surface speaks in turns, items and runs.
 ///
 /// A run's tool calls are items, a runner works a run rather than a lease, a
 /// turn is stopped by its own `PATCH`, and a fleet's history is its turns. So
@@ -230,7 +230,7 @@ fn the_route_inventory_names_turns_items_and_runs() {
     }
 }
 
-/// Dimension 14.1 (`M253_002`) — Plugins are gone end to end: no route the
+/// Plugins are gone end to end: no route the
 /// daemon tables, no schema file or statement naming a `setup.plugin_*`
 /// table, and no `/plugins` page in the app.
 #[test]
