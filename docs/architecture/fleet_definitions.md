@@ -92,7 +92,7 @@ Instance allocation uses the existing validated fleet-name rules; a display titl
 |---|---|
 | `schema_version` | Required; only `1`. |
 | `description` | Required display text, nonempty, at most 32,768 characters, no NUL; CRLF and lone CR normalize to LF. Absent or empty refuses as missing; null or a non-string refuses as a shape. Nothing that decides what a fleet may do reads it. |
-| `instructions_md` | Required string, at most 32,768 characters, no NUL; CRLF and lone CR normalize to LF. May be empty while editing. |
+| `instructions_md` | Required string, at most 1,048,576 characters, no NUL; CRLF and lone CR normalize to LF. May be empty while editing. |
 | `config.name` | Required lowercase letters/digits/hyphens, 1..64 bytes. |
 
 Evidence: `Definition::parse` and the name validator in `af_fleet_runtime`. Runner tags are not setup: no level of the Definition accepts `tags`, and placement requires none. Browser and terminal chat use the same validator.
@@ -117,7 +117,7 @@ Only a missing candidate permits full initialization. First drawer input uses a 
 
 Implementation: `afd_setup`'s model-provider edits, `af_fleet_runtime`'s definition edit module, and `afr_supervisor`'s setup proposal and turn modules, under `authoring`.
 
-Instructions are at most 32,768 characters, whether the model drafted them first or a person edited them later. These character ceilings never replace the tokenizer checks.
+Instructions are at most 1,048,576 characters, whether the model drafted them first or a person edited them later. That is the one text ceiling, `af_validate::TEXT_MAX_CHARS`, which setup messages and fleet messages share. Past it the refusal reads "Input exceeds the maximum length of 1,048,576 characters." Below it, the model's context window is the limit a person meets. These character ceilings never replace the tokenizer checks.
 
 Count system instructions, tools, history, and reserved output against the model window. Long instructions are changed through small edits rather than repeated full rewrites.
 
@@ -161,7 +161,7 @@ Private drafts are the setup path in browser and terminal. [Source selection](us
 
 Setup does not load `SKILL.md`, `TRIGGER.md`, bundle manifests or tar snapshots. Paste older prompts into chat or supply native JSON, then review before publication. Runtime repository access remains separate and requires grants.
 
-Serialization round trips cover the description, gates, anomaly rules, network read_only/read_post_paths, repository writes/base, context, trigger options, monthly budgets, and the runtime model reference. A missing description and uppercase/spaced slugs fail. Initialize → edit → edit, lost acknowledgements, stale/reordered proposals, and a small edit to 32,768-character instructions must work without retransmitting the definition.
+Serialization round trips cover the description, gates, anomaly rules, network read_only/read_post_paths, repository writes/base, context, trigger options, monthly budgets, and the runtime model reference. A missing description and uppercase/spaced slugs fail. Initialize → edit → edit, lost acknowledgements, stale/reordered proposals, and a small edit to 1,048,576-character instructions must work without retransmitting the definition.
 
 The terminal client creates or resumes a private draft and sends ordinary chat messages. It displays the same reviewed candidate and readiness checks before explicit Save or Plugin publication.
 

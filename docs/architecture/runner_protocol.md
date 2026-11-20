@@ -209,20 +209,20 @@ The runner sends no context checkpoint and the daemon serves no context route.
 
 The heading keeps its old words because other pages cite it by text. It covers setup operations on the native connection.
 
-Setup model calls, proposals, renewals and completion share the authenticated runner connection.
-The daemon checks the current connection owner and credential at each authority boundary.
-Model credentials and saved results remain in the daemon.
+A setup turn is a run on the common run path: a `Down::Run` whose payload's owner names the draft.
+It renews and reports as a fleet run does, and its report carries the proposal the run kept.
+It reads and saves the draft's compacted context with `context_load` and `context_save` on the work stream, under its fence.
+The runner makes every model call; the daemon makes none.
 
-An accepted physical provider call stays tracked after disconnect so known usage can reach Postgres.
-A fenced result retains that usage while withholding private text.
-Uncertain physical model calls are never automatically redispatched.
+The protocol is `agentsfleet.runner.v4` alone.
+A runner that names any other version is refused at hello with `UZ-RUN-023`, so it owns no connection and is assigned no run.
 
 ### Session protocol
 
 The heading keeps its old words so links to it stay stable.
 
 The connection authenticates once, then binds four independently bounded streams to the same physical connection.
-Control stays available while reports, model results or activity are waiting.
+Control stays available while reports or activity are waiting.
 Wrong-stream messages, unknown fields and conflicting connection bindings are refused.
 
 Each stream is a duplex `POST /v1/runners/me/stream` on the same physical connection.
@@ -231,7 +231,7 @@ The control stream authenticates and confirms ownership; secondary streams bind 
 | Kind | Carries |
 |---|---|
 | `control` | Opening, credits, heartbeat, ping, renewals, cancellation and drain |
-| `work` | Runs (`Down::Run`), folded input, setup model calls and proposals |
+| `work` | Runs (`Down::Run`), folded input, and a setup run's context load and save |
 | `reports` | Fleet and setup completion with matching acknowledgements |
 | `activity` | Fleet progress without application acknowledgements |
 
@@ -254,6 +254,7 @@ Invalid values refuse startup before allocation.
 
 Accepted runs use a separate allowance of up to 128 MiB for 64 runs, so workers holding runs cannot block report acknowledgements.
 The 2 MiB frame and 256 pending-request limits remain fixed protocol bounds.
+A run whose assignment would pass the frame is not sent. The daemon measures it first and fails its turn at assignment with `frame_too_large` and `UZ-RUN-032`, so it neither lapses nor is reassigned (`afd_gateway/src/connection/unframed.rs`). A fleet's message to another stores its words once, in `message`.
 
 ### Observability
 

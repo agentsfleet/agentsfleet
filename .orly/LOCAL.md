@@ -93,6 +93,12 @@ repository:
   runner-only `afr_*`. A layer's binary sits in `main/` (`daemon/main` is
   `agentsfleetd`, `runner/main` is `agentsfleet_runner`); every other folder
   is its crate's name.
+- **Until the first production deploy, nothing is backward compatible.** The
+  daemon, runner, app and CLI ship from one commit, so the runner protocol has
+  one `VERSION` and a hello naming any other is refused; a wire, API, config or
+  schema change edits in place, with no alias, shim, second version or
+  migration path; and the dev database is torn down when a milestone merges,
+  never migrated forward (Indy, Nov 20, 2026).
 - **SQL:** schema files are
   `rustd/crates/daemon/afd_db/schema/<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, one
   per table, holding its whole `CREATE` — every column, constraint, index, grant,

@@ -37,6 +37,12 @@
         "test-integration-rustd"
       ]
     ],
+    "burst.unit": [
+      [
+        "make",
+        "test-unit-all"
+      ]
+    ],
     "burst.acceptance": [
       [
         "bash",

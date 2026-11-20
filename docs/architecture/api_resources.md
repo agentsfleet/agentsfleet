@@ -156,7 +156,7 @@ Exact accepted replay is checked first. Retrying uses an explicit new message an
 
 Grant checks record actual approved access; missing approval cannot be logged as ready.
 
-`Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..32,768 UTF-8 bytes). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",turn_id?,error_code?}`. Derive the initial turn's one identity from creation, not another client key.
+`Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..1,048,576 characters). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",turn_id?,error_code?}`. Derive the initial turn's one identity from creation, not another client key.
 
 `start.accepted` requires confirmation of the committed initial turn with the expected turn identity (`afd_setup`'s start confirm). Ordinary fleet-message acceptance also requires a committed turn. Wake notifications are best effort.
 
@@ -188,9 +188,9 @@ Revision list items omit instructions, returning `{id,revision,canonical_digest,
 
 `ConfigOp = {op:"add"|"replace",path,value} | {op:"remove",path}` permits `/config` descendants and replacement of `/description`. Identity, manifest and receipt fields are unwritable.
 
-`InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch allows 64 configuration operations and 32 instruction edits, with 32,768 replacement characters total. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
+`InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch allows 64 configuration operations and 32 instruction edits, with 1,048,576 replacement characters total. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
 
-The serialized Definition or edit batch is bounded at 448 KiB; setup HTTP bodies allow 464 KiB including their wrapper. The runner model-call envelope has its separate 128 KiB limit. See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
+The serialized Definition or edit batch is bounded at 6,400 KiB. A setup HTTP body may hold that Definition and a first message at the text ceiling, each at its widest JSON escape: 12,861,440 bytes (`SETUP_BODY_BYTES_MAX`). A body carrying one text, such as a fleet message, may be 6,307,840 bytes (`TEXT_BODY_BYTES_MAX`). The daemon reads that much on those routes, and the app's proxies read the same (`afd_http/tests/fixtures/body_limits.json`). The runner model-call envelope has its separate 128 KiB limit. See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
 
 The next two tables preserve the workspace-chat cutover's 17 new and seven changed person routes. Subsequent fleet editor and history reads are listed separately below.
 
@@ -204,7 +204,7 @@ The next two tables preserve the workspace-chat cutover's 17 new and seven chang
 | N4 | GET D | No body; creator + current membership | 200 Draft with latest candidate/review when available; ETag | HIDDEN, AUTH, DEPENDENCY |
 | N5 | PATCH D | If-Match; `{title?,instance_name?,authoring_model_ref?,runtime_model_ref?,config_ops?:ConfigOp[],instruction_edits?:InstructionEdit[]}`; at least one, editing and no running/queued messages | 200 Draft with new tag and current candidate/review; recheck owner eligibility; the setup model selection applies to future sends only | PRECONDITION, STALE, STATE, INPUT, MODEL, POLICY |
 | N6 | DELETE D | No body; creator only, no If-Match | 204 after fencing and private-text deletion boundary; ongoing setup link may remain shared | HIDDEN, AUTH, DEPENDENCY; residual-copy bounds are in runner page |
-| N7 | POST D/messages | `{message,save?,operation_id}`; text1..32,768 bytes; body UUIDv7 only; `editing`; omitted `save` is false | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
+| N7 | POST D/messages | `{message,save?,operation_id}`; text 1..1,048,576 characters; body UUIDv7 only; `editing`; omitted `save` is false | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
 | N8 | GET D/messages | No body; creator; limit default 20/max 25, starting_after | 200 Page of Message; ordered sequence then role; states/usage included | HIDDEN, CURSOR, INPUT, DEPENDENCY |
 | N9 | POST D/cancellations | `{through_sequence}` decimal string, at most current last accepted sequence; no If-Match | 200 `{cancelled_through,stopped:[{sequence,state:"cancelled"}]}`; lower repeated cutoff returns standing watermark | INPUT, HIDDEN, DEPENDENCY |
 | N10 | GET D/turns/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
@@ -228,7 +228,7 @@ Title is a human display name, independent of validated definition slugs. Runtim
 | C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"plugin",plugin_id,revision_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle, Plugin install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
 | C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `archived` cancels setup and live work | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; an archived fleet returns 409 `UZ-AGT-020` with `current_state: archived` after write preconditions pass; a fleet that does not exist returns 404 `UZ-AGT-009` |
-| C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",turn_id,replayed,disposition,folded_into_turn_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_turn_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
+| C4 | POST F/messages | `{message,operation_id?}`; message 1..1,048,576 characters; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",turn_id,replayed,disposition,folded_into_turn_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_turn_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT (a message past the ceiling is `UZ-REQ-004`), REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
 | C6 | POST W/plugins | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; plugins:write | 201 `{plugin_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
 | C7 | GET W/plugins | Bounded limit/starting_after paging; no body | 200 Page of account-owned PluginCard, including head_revision_id, its decimal head_revision and etag | existing plugin input/cursor errors, AUTH, DEPENDENCY |
@@ -454,7 +454,6 @@ The following codes name the route tables' error categories. Read the operation'
 | POLICY | `UZ-AUTHOR-009` | 409 | Marker or supported setup differs; requires new review. |
 | TOKEN | `UZ-AUTHOR-010` | 422 | Assembled context cannot fit tokenizer/window bounds; record failed message before call. |
 | CURSOR | `UZ-AUTHOR-011` | 400 | Cursor malformed or bound to another query/subject. |
-| FENCE | `UZ-AUTHOR-012` | 409 | Stale, cancelled, expired, or deleted run attempt cannot publish. |
 | GONE | `UZ-AUTHOR-013` | 410 | Accepted resource was purged; recreation is refused within the original 24-hour replay window. |
 | PROVIDER | `UZ-AUTHOR-014` | 502 | Provider failed with known usage; store bounded failure and permit explicit retry. |
 | UNKNOWN | `UZ-AUTHOR-015` | 409 | Dispatch/usage unresolved; retain its bound. Stop permits a new message beyond its cutoff while accounting remains unresolved. |

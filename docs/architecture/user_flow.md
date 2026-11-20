@@ -86,7 +86,7 @@ Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/
 - **Nothing.** `agentsfleet chat --model <MODEL_REF>` creates a private draft when the first message is sent.
 - **A Plugin revision.** `agentsfleet chat --plugin <PLUGIN_ID> --revision <REVISION_ID> --model <MODEL_REF>` starts from one immutable Plugin revision.
 - **A saved fleet.** `agentsfleet chat --fleet <FLEET_ID> --setup-revision <N> --model <MODEL_REF>` drafts an improvement to that exact setup revision.
-- **Native JSON.** `agentsfleet chat --definition <PATH> --model <MODEL_REF>` reads one native Definition from a local file, bounded at 448 KiB.
+- **Native JSON.** `agentsfleet chat --definition <PATH> --model <MODEL_REF>` reads one native Definition from a local file, bounded at 6,400 KiB.
 
 Plugin IDs and revision IDs come from Plugin reads; fleet IDs and setup revisions come from fleet reads. `<PATH>` names your native JSON file.
 

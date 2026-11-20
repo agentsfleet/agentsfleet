@@ -107,13 +107,11 @@ Resolve models and billing from `Owned.tenant`, the workspace owner's account, r
 
 Model disable, wallet absence, membership removal, and policy-marker drift fail closed. Queue acceptance can precede admission; refusal records the durable bounded Message failure/action from the resource reference.
 
-**Admission**. Bound the attempt by the selected model's total output allowance, upward rounding for eight physical calls, and 300 seconds of runtime fees. `setup.attempts.reserved_nanos` records that initial ceiling (`afd_setup`'s budget `bound`); it is a bound each check asks for, not money set aside.
+**Admission**. Bound a setup run by the selected model's total output allowance, upward rounding for eight model calls (`afd_setup::limits::MODEL_CALLS_MAX`), and 300 seconds of runtime fees (`afd_setup::limits::SETUP_RUNTIME`). `afd_setup`'s `setup_run::model::bound` computes it; it is a bound the assignment asks for, not money set aside.
 
-**Measured input.** Before each physical send, add its measured input cost and all known prior dispatch costs to the admission bound. Check that the payer can still fund that bound before sending, with checked arithmetic and no independent 32,768-token input allowance. Summaries use this same funding path; [conversation compaction](context_lifecycle.md) owns window selection.
+**Assignment.** The gate reads the owner's balance less the lines the relay has not yet charged (`afd_billing::ledger::balance`). It reads on the assignment's own transaction and refuses a run whose bound it cannot cover. A tenant with no wallet is refused, and nothing is set aside.
 
-**Assignment.** The gate reads the owner's balance less the lines the relay has not yet charged (`afd_billing::ledger::balance`). It reads on the assignment's own transaction and refuses an attempt whose bound it cannot cover. A tenant with no wallet is refused, and nothing is set aside.
-
-**Renewal** checks the stored ceiling again. Each model call measures its request in a guarded transaction, then releases the connection and checks funds for the whole bound. The attempt logs its lines only when it reports, so its own spend is not yet unsettled.
+**Renewal and report.** A setup run renews and reports as a fleet run does. Its lines are logged when it reports, under the run as their work.
 
 A second guarded transaction checks the request digest and funding ceiling before recording dispatch intent.
 

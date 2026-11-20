@@ -112,18 +112,6 @@ max_attempts = 3
 initial_backoff_ms = 200
 max_backoff_ms = 800
 
-# Provider connection and stream inactivity limits for authoring requests this
-# daemon sends; earlier turn deadlines win. Fleet runs use the runner's profile.
-[inference]
-connect_timeout_seconds = 10
-stream_idle_timeout_seconds = 300
-
-[authoring.turn]
-max_model_calls = 8
-max_wall_seconds = 300
-max_proposal_corrections = 1
-provider_timeout_seconds = 300
-
 [fleet.tasks]
 max_unfinished_per_fleet = 16
 max_inputs_per_safe_boundary = 4

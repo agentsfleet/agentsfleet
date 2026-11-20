@@ -140,7 +140,7 @@ One row per try at a turn. It replaces `runner.leases` and `setup.attempts`.
 | `max_runtime_seconds` | `INTEGER` | no | `leases` | hard cap |
 | `last_metered_at` | `TIMESTAMPTZ(3)` | no | `leases` | metering cursor |
 | `cancel_requested_at` | `TIMESTAMPTZ(3)` | yes | `leases` | the durable Stop mark |
-| `posted_message_count` | `INTEGER` | no | `leases` | the per-run message cap |
+| `posted_message_count` | `INTEGER` | no | `leases` | numbers the run's interim lines; no cap |
 | `decision_snapshot`, `setup_revision_id` | `JSONB`, `UUID` | yes | `leases` | decision budget and the fleet revision run |
 | `task_id`, `task_generation`, `task_stop_generation`, `task_started_at`, `task_runtime_accounted_at`, `task_execution_deadline_at` | as today | yes | `leases` | task slice accounting |
 

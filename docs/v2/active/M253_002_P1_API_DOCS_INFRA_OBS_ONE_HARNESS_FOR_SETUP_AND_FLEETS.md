@@ -79,6 +79,18 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/guffbolt/src/tools/propose/**` | CREATE | the proposal tool and its `Document` trait (§4) |
 | `rustd/guffbolt/src/tools/builder/**` | CREATE | `ToolsBuilder` and the startup tool config (§9) |
 | `rustd/guffbolt/src/transcript/mod.rs` | EDIT | `CallRef`, beside `Call`: `Conversation::dispatch` takes it, so it builds without the `tools` feature (§9) |
+| `rustd/Cargo.toml` | EDIT | members listed by layer, `af_e2e` added, `af_inference` moved (§12) |
+| `rustd/crates/protocol/af_context/**` | EDIT | no Postgres store, no `postgres` feature, no `sqlx` edge (§12) |
+| `rustd/crates/daemon/afd_setup/src/context/**` | CREATE | the checkpoint store and its SQL, moved from `af_context` (§12) |
+| `rustd/crates/harness/af_inference/**` | MOVE | from `protocol/` (§12) |
+| `rustd/crates/e2e/af_e2e/**` | CREATE | the daemon-and-runner suites, the recovery bench and the layer tests (§12) |
+| `rustd/crates/daemon/main/tests/**`, `rustd/crates/daemon/main/benches/recovery/**` | MOVE | runner-driving suites and the recovery bench to `af_e2e` (§12) |
+| `rustd/crates/runner/main/examples/kernel_lane/**` | MOVE | from `afr_sandbox/examples/` (§12) |
+| `rustd/crates/daemon/afd_db/tests/**`, `rustd/crates/daemon/afd_fleet/tests/**` | MOVE | `afd_db`'s statement tests, breaking the dev cycle (§12) |
+| `rustd/crates/daemon/afd_http/src/**`, `rustd/crates/daemon/afd_api_*/src/**` | EDIT | one services trait per plane; no cross-crate re-exports (§12) |
+| `rustd/crates/**/src/**` | EDIT | callers import each item from the crate that owns it (§12) |
+| `make/test-unit.mk`, `make/test-integration-rustd.mk`, `make/bench.mk` | EDIT | lanes follow the moved crates (§12) |
+| `.orly/LOCAL.md` | EDIT | the `e2e/` layer folder (§12) |
 | `rustd/guffbolt/src/tools/{schedule,message,notify}/**` | CREATE | generic cron, schedule, message and notify tools over their backends (§9) |
 | `rustd/guffbolt/src/tools/web/pushover.rs` | DELETE | Pushover becomes a `Notifier` backend in `afr_tools` (§9) |
 | `rustd/crates/runner/afr_tools/src/verbs/**`, `src/pushover/**`, `src/generic/memory.rs` | EDIT | agentsfleetd-backed `Scheduler`, `Channel` and `Notifier` backends replace the verb tools; `MemoryBackend` folds into guffbolt's `MemoryStore` (§9) |
@@ -291,10 +303,48 @@ Fleet instructions (32,768 characters), a setup chat message (32,768 bytes) and 
 - **Dimension 11.3** — long instructions save → Test `instructions_over_32k_characters_save` (unit): 100,000 characters. Expected: the definition parses and saves.
 - **Dimension 11.4** — text past the ceiling is refused clearly → Test `a_message_past_the_ceiling_is_refused_naming_it` (unit): 1,048,577 characters. Expected: refused with a sentence naming 1,048,576, and nothing stored.
 - **Dimension 11.5** — the model's posts are not capped → Test `the_message_tool_posts_long_and_often` (unit): a 10,000-byte post and a ninth post in one run. Expected: both sent.
+- **Dimension 11.6** — the ceiling is reachable → Test `a_setup_message_at_the_ceiling_in_three_byte_characters_is_accepted` (integration): 1,048,576 three-byte characters through the app's setup proxy and the daemon's setup and steer routes. Expected: accepted; one character more is refused, and the setup chat shows "Input exceeds the maximum length of 1,048,576 characters."
+- **Dimension 11.7** — a run that cannot be framed fails at once → Test `a_run_too_large_for_its_frame_fails_with_its_code` (integration): a run payload past the runner frame. Expected: the turn fails at assignment with a named code, with no lapse and no reassignment; a fleet-to-fleet message stores its words once.
+- **Dimension 11.8** — a long message keeps its live frame → Test `a_long_message_is_trimmed_in_its_tail_frame` (unit): a 1 MiB message. Expected: its tail frame carries at most 64 KiB of the text, marked trimmed, and the stored turn holds it whole.
+- **Dimension 11.9** — a run carries anything the routes accept → Test `a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed` (unit): instructions and a message each at 1,048,576 three-byte characters. Expected: the run frame encodes within the runner frame ceiling, 64 MiB as codex's per-message ceiling (`exec-server/src/connection.rs:41`).
 
 ### §12 — Crates are grouped small, by Microsoft's guidelines
 
-After §8's deletion, the crates under `rustd/crates/**` are regrouped to follow Microsoft's Pragmatic Rust Guidelines (https://microsoft.github.io/rust-guidelines/) within the layer rules of `.orly/LOCAL.md`: a crate holds one concern, a crate too large splits, a crate too tied to one other merges, and every dependency obeys its layer. The regrouping is proposed from a survey of today's crates against the quoted guidelines and approved by the owner before any crate moves; its Dimensions and tests are added here with that approval.
+After §8's deletion, the crates follow Microsoft's Pragmatic Rust Guidelines (https://microsoft.github.io/rust-guidelines/: M-SMALLER-CRATES, M-CRATES-FLAT-FOLDER, M-FEATURES-ADDITIVE, M-SINGLE-ITEM-PATH, M-FOREIGN-REEXPORTS, M-INTEGRATION-TESTS) inside the layer rules of `.orly/LOCAL.md`. The survey found no crate to split or merge; it found a runner that links `sqlx` (`af_context/Cargo.toml:18` turns on `af_core`'s `sqlx` feature: `sqlx ← af_core ← af_context ← afr_agent ← agentsfleet_runner`), one layer break (`agentsfleetd` dev-depends on six `afr_*` crates), three dev-dependency cycles, cross-crate re-export aliases, and one hub trait (`afd_http::Services` names 29 crates). In order:
+
+1. `rustd/Cargo.toml` lists crates by layer, each with its purpose line.
+2. `af_context::repository` and its SQL move to `afd_setup::context`; `af_context` loses its `postgres` feature and its `sqlx` edge.
+3. `af_inference` moves from `protocol/` to `harness/`.
+4. The dev cycles break: `afd_db`'s statement tests move to `afd_fleet/tests`, and `kernel_lane` becomes an example of `agentsfleet_runner`.
+5. A sixth folder, `crates/e2e/`, holds `af_e2e`: the daemon-and-runner suites and the recovery bench; nothing depends on it, and `agentsfleetd` drops its runner dev-dependencies.
+6. Each item has one public path: the cross-crate `pub use` aliases go.
+7. `afd_http::Services` splits into one trait per plane, each in its `afd_api_*` crate, so a handler names only the services it calls.
+8. The layer rule is a unit test.
+
+- **Dimension 12.1** — every edge obeys its layer → Test `every_crate_depends_on_its_own_layer_or_lower` (unit): the workspace manifests, with dev, build and target tables. Expected: no edge to a higher layer, none between `runner/` and `daemon/`, none into `e2e/`. Negative twin `a_daemon_crate_naming_a_runner_crate_is_refused`.
+- **Dimension 12.2** — no dev-dependency cycle → Test `no_crate_dev_depends_on_a_crate_that_depends_on_it` (unit). Expected: none. Negative twin `a_planted_dev_cycle_is_named`.
+- **Dimension 12.3** — folder and prefix match → Test `every_crate_folder_names_its_crate_and_its_prefix_matches_its_layer` (unit). Negative twin `a_crate_in_the_wrong_folder_is_named`.
+- **Dimension 12.4** — the runner links no datastore client → Test `the_runner_graph_names_no_datastore_client` (unit): normal and build edges from `agentsfleet_runner`. Expected: no `sqlx`, no `async-nats`, no `af_core` feature `sqlx`. Negative twin `a_runner_crate_enabling_af_core_sqlx_is_refused`.
+- **Dimension 12.5** — lower layers hold no SQL → Test `foundation_and_protocol_crates_hold_no_sql` (unit). Expected: no `*.sql` under `foundation/` or `protocol/`.
+- **Dimension 12.6** — the moved store still refuses a stale run → Test `a_save_at_a_superseded_fence_is_refused` (integration, `afd_setup`). Expected: `RUN_STALE_FENCING_TOKEN`, row unchanged.
+- **Dimension 12.7** — one public path per item → Test `no_crate_re_exports_another_workspace_crates_items` (unit): scan `rustd/crates/**/src` for `pub use` of a workspace crate. Expected: none outside the crate that owns the item.
+- **Dimension 12.8** — a handler names only its plane's services → Test `no_handler_crate_names_the_shared_services_hub` (unit). Expected: no `afd_api_*` crate bounds a handler by `afd_http::Services`; each bounds by its own plane trait.
+
+VERIFY: `rustd/guffbolt` is unchanged by §12; the test count before and after each move is equal (`cargo test --workspace --all-features -- --list --include-ignored`); the Linux kernel lane passes after step 4.
+
+### §13 — Subagents are guffbolt's
+
+Subagents are a guffbolt capability, end to end. guffbolt owns the tools, the registry, running each child with its own drive over its own transcript and a narrowed toolset, and each child's state in `DriveState`, so a resumed loop brings its children back. An embedder turns subagents on with `ToolsBuilder` and caps, and sees children only through the observer it already gives the root loop. agentsfleet's `afr_agent/src/nested/**` (2,294 lines) and the subagent entries in `afr_tools`' catalog go; a fleet offers subagents by naming the tools in its `ToolsConfig`, as it names any guffbolt tool.
+
+The tools follow codex's names (`codex-rs/core/src/tools/handlers/multi_agents_spec.rs`): `spawn_agent` (with `fork_turns`, starting the child from the parent's last turns), `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent` and `interrupt_agent`. A finished child goes idle, keeping its transcript, and takes a `followup_task` until `close_agent` or the loop ends. There is no `resume_agent`: children live inside one loop, and the loop's own resume brings them back.
+
+- **Dimension 13.1** — a finished child takes a follow-up → Test `a_finished_child_takes_a_followup_task_with_its_transcript` (unit, guffbolt). Expected: the child runs again and its request holds its earlier turns.
+- **Dimension 13.2** — a child can start from the parent's turns → Test `spawn_agent_with_fork_turns_starts_from_the_parents_last_turns` (unit, guffbolt). Expected: the child's first request holds the parent's last N turns, and none before.
+- **Dimension 13.3** — close ends a child → Test `close_agent_ends_an_idle_child_and_frees_its_seat` (unit, guffbolt). Expected: the child ends, `list_agents` shows it closed, and the run may start another within its caps.
+- **Dimension 13.4** — the tools are guffbolt's, named as codex names them → Test `the_subagent_tools_are_guffbolts_and_named_as_codex_names_them` (unit, guffbolt). Expected: the seven names, built through `ToolsBuilder`, and covered by `guffbolt_tool_specs_name_no_host_product`.
+- **Dimension 13.5** — a loop's end still ends its children → Test `a_run_that_ends_ends_its_idle_children` (unit, guffbolt). Expected: every idle or running child ends `interrupted`.
+- **Dimension 13.6** — a resumed loop brings its children back → Test `a_resumed_loop_restores_its_children_from_drive_state` (unit, guffbolt). Expected: each child's transcript and status return from the saved `DriveState`.
+- **Dimension 13.7** — agentsfleet holds no subagent code → Test `agentsfleet_defines_no_subagent_tool` (unit): `afr_agent/src/nested/` is gone, and no `afr_*` crate names a subagent tool. Expected: a fleet run offers the seven tools through guffbolt alone.
 
 ## Interfaces
 
@@ -429,6 +479,13 @@ After §8's deletion, the crates under `rustd/crates/**` are regrouped to follow
   - > Owner (Indy, Nov 20, 2026): "I think remove this  plus 12K for the model's first draft only" — context: §4. Neither codex (`project_doc_max_bytes` = 32,768) nor pi has a separate first-draft bound; `MAX_INITIAL_INSTRUCTIONS_CHARS` and `validate_initial_generation` are removed, and every setup keeps the 32,768-character bound.
   - > Owner (Indy, Nov 20, 2026): "I think just remove the 32KB limit as well, let us test and figure it out. Since codex or pi doesnt have that when user chats, understand we save and codify it. But i think its pointless to limit." then "Remove all three, no ceiling", then, after asking "no limits in codex and pi on mesages?" and reading codex's `MAX_USER_INPUT_TEXT_CHARS = 1 << 20`, "Match codex: 1M chars (Recommended)"; and for the `message` tool's 4,096 bytes and 8 posts per run, "Drop both" — context: §11.
   - > Owner (Indy, Nov 20, 2026): "just group the crates in a better way and keep it modular and small following microsoft standards" and then "I want all in this PR, i dont wish to create new specs" — context: §12, and this batch's commits grouped by crate layer. The regrouping runs after §8 inside M253_002; no new spec.
+  - > Owner (Indy, Nov 20, 2026): selected "1–4 + 7: core fixes (Recommended), 5: new e2e crate (Recommended), 6: one public path (Recommended), Also split afd_http Services" and "af_e2e (Recommended)" — context: §12, approving the regrouping proposal (`/tmp/m247-review/M253_002-crates-proposal.md`) before any crate moves.
+  - > Owner (Indy, Nov 20, 2026): selected "Make 1M reachable (Recommended), Runner frame fails fast (Recommended), Trim live-tail frames (Recommended)" — context: §11.6–§11.8, after the §11 survey found the app proxy (128 KiB), axum (2 MiB), the runner frame (2 MiB) and live-tail frames each stop text below the ceiling.
+  - > Owner (Indy, Nov 20, 2026): "Codex-aligned for runs (Recommended)", then "Also why is subagent code in (afr_tools/src/catalog/mod.rs:103-111, implemented in afr_agent/src/nested/ should they be in guffbolt" and "Move them into guffbolt (Recommended)" — context: §13.
+  - > Owner (Indy, Nov 20, 2026): "cut the stupid crap and make guffbolt powerful i am tired of your slop, subagents are a functionality of guffbolt and remove that from agentsfleet. What made you think its agentsfleet?" — context: §13. guffbolt owns subagents end to end; `afr_agent/src/nested/**` goes.
+  - > Owner (Indy, Nov 20, 2026): "Match codex: 64 MiB" — context: §11.9, the runner frame ceiling.
+  - > Owner (Indy, Nov 20, 2026): "Delete the two lines (Recommended)" — context: §8, `authoring_renewal_*` in `deploy/baremetal/agentsfleet-runner.toml`.
+  - > Owner (Indy, Nov 20, 2026): "we are not in prod yet, so i think you should think in that aspect and codify, so no backward compatibility needed. In fact when M252 milestone is merged, we will teardown dev db." — context: codified in `.orly/LOCAL.md`.
   - > Owner (Indy, Nov 20, 2026): "Just complete code first" and "The tests can be verified later on is what i meant" — context: the rest of M253_002. Each Section lands with its tests written and compiled (`fmt`, `clippy -D warnings`); the tests run together at the end on two E2E Networks virtual machines and CI, and a Dimension is marked DONE only after its test passes there.
   - > Owner (Indy, Nov 20, 2026): "I prefer this  leaving it out and trusting the model to find `propose_change` and its a harness ability to detect and ask back or what" — context: §9.8. guffbolt's `git` tool no longer points the model at `propose_change`; its refusal of a remote reaches the model as the tool result, and agentsfleet adds no hint.
   - > Owner (Indy, Nov 19, 2026): "donot do the lint, test-unit, test-integration check but rather do it at the end of every workstream. but for every dimension do cargo check, cargo fmt (clippy) so we know code compiles." — context: per-Dimension compile checks; S rows at the end of each Workstream.

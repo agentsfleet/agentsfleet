@@ -827,6 +827,8 @@ The bracket frames are `turn_received`, `turn_complete`, and `gate_opened` / `ga
 
 Each carries what a watcher needs to fold it in without a read. `turn_complete` is the terminal row from the closing statement's `RETURNING`. The gate frames carry `pending_approvals` from the statement that moved the gate.
 
+`turn_admitted` and `turn_received` carry a person's message kept to the 64 KiB tail batch (`afd_bus::TAIL_BATCH_BYTES`). A longer message rides as its head, cut on a character boundary, with `message_trimmed: true`. The turn holds the whole text.
+
 Frame kinds and fields: API reference › Fleets (Stream live fleet activity).
 
 Every daemon frame also carries the fleet's activity counters as an absolute snapshot, so the wall's tiles assign rather than add. The closing statement reads them beside the row it ends. Every other publisher reads them once, by primary key off `fleet.activity_counters`, right before its publish (`afd_turns::fleet_counters_best_effort`).
@@ -1197,7 +1199,7 @@ Setup is creator-private work. Resolve its workspace owner and recheck creator m
 
 Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Setup turns remain a Postgres queue in `thread.turns`; NATS carries wake and progress hints, not another authoritative copy.
 
-The `setup` schema defines creator-private `setup.drafts`, candidates and replay receipts, plus content-free `setup.attempts` and dispatch and activity receipts. A draft's chat inputs are its `thread.turns` rows.
+The `setup` schema defines creator-private `setup.drafts`, candidates and replay receipts. A draft's chat inputs are its `thread.turns` rows, and a setup run is a `thread.runs` row its draft owns.
 
 A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Plugin revisions join their existing domains.
 
@@ -1234,7 +1236,7 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 | Provider request | Up to 300 seconds | Recorded dispatch deadline, clipped to attempt expiry; replay never starts another send. Upstream cancellation remains unconfirmed. |
 | Runner model-call HTTP wait | 310 seconds | Allows the bounded provider call and receipt settlement. |
 | Run TTL / renewal | 35 seconds / 5 seconds | No overlapping assigned run while the prior live attempt remains counted. |
-| Instructions | 32,768 characters | Shared validated text bounds, independently of tokenizer counts. |
+| Instructions | 1,048,576 characters | The one text ceiling, `af_validate::TEXT_MAX_CHARS`, independently of tokenizer counts. |
 | Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
 
 Original history remains creator-private and is read in bounded pages. [Conversation compaction](context_lifecycle.md) retains working notes without a fixed 64-message or 32,768-token conversation allowance.

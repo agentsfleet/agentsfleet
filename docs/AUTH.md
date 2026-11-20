@@ -1048,14 +1048,13 @@ Named runtime secret values resolve at run time inside `agentsfleetd` and
 ride the runner run envelope described above. Capability comes from the
 server-built `ExecutionPolicy` and workspace credential grants.
 
-The setup model's inference credential has a separate path.
-Before each scoped dispatch, `agentsfleetd` checks the selected model against
-the admitted snapshot and opens only that model's vault credential.
-
-The daemon commits dispatch intent before sending the provider request
-(`afd_setup/src/model/dispatch/mod.rs`, `afd_credential/src/provider/registered/key.rs`).
-The inference key stays in the daemon. The setup runner receives a scoped
-capability, and neither the browser nor sandbox receives the key.
+The setup model's inference key rides the setup run, as a fleet run's does.
+The assignment opens the pinned model's key in its own transaction and
+carries it in the run payload (`afd_fleet/src/run/draft/assign.rs`,
+`afd_credential/src/provider/registered/key.rs`). A tenant runner is never
+assigned a setup run on the platform model, so the platform key never
+reaches a host its tenant controls. The daemon makes no model call, and
+neither the browser nor a sandbox receives the key.
 
 ## Backend validation (the common path)
 

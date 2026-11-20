@@ -147,9 +147,6 @@ there is no generic repository trait.
                                  │ plugin_revision_id ──▶ plugin_revisions
                                  │ source_fleet_revision_id ──▶ fleet.revisions
               thread.threads (1:1) ──▶ drafts; thread.turns.candidate_id ──▶ candidates
- attempts ──▶ runner.runners   ON DELETE SET NULL: a revoked runner's record goes, its charges stay
-          (no FK to drafts/turns: a charge outlives chat text)
-   ◀── dispatches, activity_receipts, answer_receipts
  plugin_entries ◀── plugin_revisions (ON DELETE CASCADE)
  replay_receipts (no FKs: a retry key outlives erasure)
 ```
@@ -158,11 +155,6 @@ there is no generic repository trait.
 |---|---|---|
 | `drafts` | One private setup chat; its turns are `thread.turns` rows on the draft's thread |  |
 | `candidates` | A frozen numbered setup the model proposed | append-only |
-| `attempts` | One runner run running one setup turn, money bounded, model pinned | `reserved_nanos` is the ceiling each funds check asks for, with nothing set aside; `outcome` is set once usage settles |
-| `dispatches` | One physical model call: intent before, result after; `native_reply` is the provider's own reply kept for replay, private like `result` |  |
-| `edit_decisions` | Setup edit-intent checks with their reservation and measured usage | no private text or secrets; opaque setup-chat accounting survives deletion; unresolved calls keep their reservation |
-| `activity_receipts` | Replay proof for "runner posted a setup" | append-only |
-| `answer_receipts` | Replay proof for "runner posted an answer" | append-only |
 | `replay_receipts` | Every setup retry key: create draft, send message, publish | append-only, swept at a fixed age |
 | `plugin_entries` | Account-owned card; tenant is required |  |
 | `plugin_revisions` | A frozen published version | append-only |
@@ -327,7 +319,6 @@ Routing follows those settings; credential endpoint restrictions must match them
 | Table | Purpose | Notes |
 |---|---|---|
 | `wallets` | The tenant's balance; the only row money moves on | `balance_nanos` is signed: negative while the tenant owes a debt |
-| `setup_report_receipts` | Acknowledges a setup run's interim report without settling | append-only |
 | `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `UNIQUE (work_type, work_id, kind, seq)` · fleet runs and setup chat both write it (billing §11) |
 | `usage_daily` | Settled usage per tenant, UTC day, work type, fleet and model; what the Usage report reads | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id, model)` · written in the settle transaction · rebuildable from `usage_lines` |
 | `runs_daily` | Settled runs per tenant, UTC day, work type and fleet | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id)` · a run counts once, on its first runtime slice |
@@ -337,8 +328,7 @@ lines, and no `holds` table exists (billing §11).
 
 Money outlives every deletion. `usage_lines` carries opaque `tenant_id`, `workspace_id`,
 `fleet_id` and `run_id` values with no foreign key, and `usage_daily` and
-`runs_daily` carry opaque `tenant_id` and `fleet_id` the same way. `setup.attempts` keeps
-its workspace, tenant and user identifiers without a foreign key.
+`runs_daily` carry opaque `tenant_id` and `fleet_id` the same way.
 
 Erasing a fleet, workspace or account therefore never deletes a charge. The slots name the export
 that reads them (rule 7).
@@ -382,9 +372,6 @@ A column kept with no reader still owes a drop under rule 7.
   `select_cli_credential.sql` reads it during authentication. The mint copies the user's tenant,
   and the reading statement already joins `identity.users`. The column therefore restates
   `identity.users.tenant_id` (rule 5) with no consistency rule in its slot.
-- **`setup.attempts.settled_nanos`: dropped.** The file `20261108123900_setup_attempts.sql` declares the table without it. The
-  settled charge is `billing.usage_lines.charged_nanos` (the file `20261108124600_billing_usage_lines.sql`), summed per work type by
-  `afd_billing`'s `select_owed.sql`.
 
 Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 
@@ -402,9 +389,6 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
   by `afd_runner`'s `runner_detail.sql`.
 - **`runner.runners.capability_reported_at`: dropped.** The file `20261108123100_runner_runners.sql` declares the table with
   `capability_report` and no instant beside it.
-- **`setup.attempts.input_token_count`: dropped.** The file `20261108123900_setup_attempts.sql` keeps `call_count` and
-  `output_token_count` only; input tokens are counted per request on `billing.usage_lines` (the file `20261108124600_billing_usage_lines.sql`).
-- **`setup.dispatches.output_allowance`: dropped.** The file `20261108124000_setup_dispatches.sql` declares the table without it.
 - **`setup_context`: replaced** by `fleet.revisions.review_context` (the file `20261108122000_fleet_revisions.sql`), written by
   `afd_setup`'s creation `revision.sql` and read by its `locked.sql`.
 
@@ -430,7 +414,7 @@ Added by this milestone:
 - **Write-only columns dropped by the M246 audit.** Each was written by a statement and read by none.
   - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
   - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
-  - `setup.edit_decisions.snapshot`, `thread.deliveries.abandon_reason`, `fleet.task_bases.retained_bytes`.
+  - `thread.deliveries.abandon_reason`, `fleet.task_bases.retained_bytes`.
   - `fleet.task_completions`: `conclusion`, `body_digest`.
   - `fleet.task_effect_states.confirmed_at`, `fleet.task_waits.consumed_admission_id`, `fleet.tasks.last_transition_at`.
   - `fleet.task_inputs` and `fleet.task_interpretations`: `accepting_run_id`, `accepting_fence`.

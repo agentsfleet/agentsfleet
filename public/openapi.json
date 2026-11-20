@@ -4642,7 +4642,7 @@
           "Runners"
         ],
         "summary": "Post a message to the event's thread",
-        "description": "Posts to the event's original thread with secrets masked. The server holds the channel credential. Limit: 8 messages per run; excess returns 409 `UZ-RUN-020`. Events without a thread return 409 `UZ-RUN-019`. Both errors include `current_state`. `delivered` is false after rejection or failed retries within 12 seconds. Each request posts a new message; `Idempotency-Key` is unsupported.",
+        "description": "Posts to the event's original thread with secrets masked. The server holds the channel credential. Events without a thread return 409 `UZ-RUN-019` with `current_state`. `delivered` is false when the channel refuses the message or retries fail within 12 seconds. Each request posts a new message; `Idempotency-Key` is unsupported.",
         "operationId": "runner_post_message",
         "parameters": [
           {
@@ -22567,7 +22567,7 @@
           },
           "message": {
             "type": "string",
-            "description": "Optional initial user text; 1..32768 UTF-8 bytes when present."
+            "description": "Optional initial user text; 1 to 1,048,576 characters when present."
           },
           "operation_id": {
             "type": "string",
@@ -24897,19 +24897,19 @@
           "end_byte": {
             "type": "integer",
             "description": "Exclusive end in the unmodified base.",
-            "maximum": 131072,
+            "maximum": 4194304,
             "minimum": 0
           },
           "start_byte": {
             "type": "integer",
             "description": "Inclusive start in the unmodified base.",
-            "maximum": 131072,
+            "maximum": 4194304,
             "minimum": 0
           },
           "text": {
             "type": "string",
             "description": "Replacement text.",
-            "maxLength": 32768
+            "maxLength": 1048576
           }
         },
         "additionalProperties": false
@@ -25814,7 +25814,7 @@
         "properties": {
           "message": {
             "type": "string",
-            "description": "1..32768 UTF-8 bytes; line endings normalize to LF."
+            "description": "1 to 1,048,576 characters; line endings normalize to LF."
           },
           "operation_id": {
             "type": "string",
@@ -26118,13 +26118,6 @@
           "recovery_action"
         ],
         "properties": {
-          "cause": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Model-stream failure category, without request or response content."
-          },
           "error_code": {
             "type": "string",
             "description": "Stable central registry code."
@@ -26240,8 +26233,8 @@
           },
           "instructions_md": {
             "type": "string",
-            "description": "The fleet's instructions, in Markdown, at most 32,768 characters.",
-            "maxLength": 32768
+            "description": "The fleet's instructions, in Markdown, at most 1,048,576 characters.",
+            "maxLength": 1048576
           },
           "schema_version": {
             "type": "integer",
@@ -26448,8 +26441,8 @@
           },
           "text": {
             "type": "string",
-            "description": "What to ask it: 1 to 8192 bytes with no NUL character.",
-            "maxLength": 8192,
+            "description": "What to ask it: 1 to 1,048,576 characters with no NUL character.",
+            "maxLength": 1048576,
             "minLength": 1
           }
         },
@@ -27587,8 +27580,7 @@
           },
           "text": {
             "type": "string",
-            "description": "What to say in the thread. At most 4096 bytes.",
-            "maxLength": 4096,
+            "description": "What to say in the thread: nonempty, with no NUL character.",
             "minLength": 1
           }
         },
@@ -31015,7 +31007,7 @@
               },
               "message": {
                 "type": "string",
-                "description": "Nonempty text, at most 32,768 UTF-8 bytes."
+                "description": "Nonempty text, at most 1,048,576 characters."
               }
             }
           }
@@ -31089,7 +31081,7 @@
         "properties": {
           "message": {
             "type": "string",
-            "description": "What to say to the fleet: 1 to 8192 bytes, with no NUL character.\n\nBounded on the decoded bytes, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
+            "description": "What to say to the fleet: 1 to 1,048,576 characters, with no NUL\ncharacter.\n\nCounted on the decoded text, which is what reaches the stream. The\nescaped form a client sends is not what counts against the limit."
           },
           "operation_id": {
             "type": [
