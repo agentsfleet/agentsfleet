@@ -86,6 +86,10 @@ pub(super) struct Launcher(&'static str);
 /// another thread is still writing. The failing one's first line overruns the
 /// drain's line cap, which skips it and reads on, and more lines follow than a
 /// refusal quotes, so the oldest are dropped.
+#[expect(
+    clippy::literal_string_with_formatting_args,
+    reason = "the fake scripts use shell `${VAR:+word}` expansion, not format strings"
+)]
 fn scripts() -> &'static Path {
     static DIR: OnceLock<TempDir> = OnceLock::new();
     DIR.get_or_init(|| {

@@ -56,13 +56,14 @@ pub(crate) fn writable_state_exhaustion_spares_the_sandbox(lane: &Lane) -> Resul
     let seen = runtime().block_on(async {
         let engine = lane.engine();
         let [a, b, c, d] = RUNS;
-        let (a, b, c, d) = tokio::join!(
+        let seen: [_; 4] = tokio::join!(
             fill(&engine, lane, a),
             fill(&engine, lane, b),
             fill(&engine, lane, c),
             fill(&engine, lane, d),
-        );
-        [a, b, c, d]
+        )
+        .into();
+        seen
     });
     for (run_id, seen) in RUNS.into_iter().zip(seen) {
         survived(run_id, &seen?)?;

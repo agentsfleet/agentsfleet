@@ -79,6 +79,10 @@ pub(crate) fn run(lane: &Lane, case: Case) -> Result<Observed, Failed> {
     runtime().block_on(exercise(lane, case))
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "the fake supervisor plane holds a std mpsc receiver; block_on polls this on one thread"
+)]
 async fn exercise(lane: &Lane, case: Case) -> Result<Observed, Failed> {
     let root = tempfile::tempdir()?;
     crate::git::serve(root.path())?;
@@ -140,6 +144,10 @@ async fn upstream() -> Upstream {
 
 type Driven = (Vec<Asked>, usize, Vec<u32>);
 
+#[expect(
+    clippy::future_not_send,
+    reason = "the fake supervisor plane holds a std mpsc receiver; block_on polls this on one thread"
+)]
 async fn drive(
     lane: &Lane,
     case: &Case,

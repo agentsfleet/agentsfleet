@@ -27,6 +27,10 @@ pub(crate) struct Config {
     tree: String,
 }
 impl Config {
+    #[expect(
+        clippy::literal_string_with_formatting_args,
+        reason = "`HEAD^{tree}` is a git revision spec, not a format string"
+    )]
     pub(crate) fn new(
         mode: Mode,
         head: &[u8],

@@ -88,10 +88,10 @@ fn test_rewritten_names_land_in_the_file_the_sandbox_reads() {
     else {
         unreachable!("an allowlist renders its names")
     };
-    let before = std::fs::metadata(&hosts).unwrap().ino();
+    let before = fs::metadata(&hosts).unwrap().ino();
 
     Names::rewrite(dir.path(), &moved).unwrap();
 
-    assert_eq!(std::fs::metadata(&hosts).unwrap().ino(), before);
-    assert_eq!(std::fs::read_to_string(&hosts).unwrap(), moved.hosts_file());
+    assert_eq!(fs::metadata(&hosts).unwrap().ino(), before);
+    assert_eq!(fs::read_to_string(&hosts).unwrap(), moved.hosts_file());
 }
