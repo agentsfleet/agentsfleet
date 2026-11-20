@@ -15,7 +15,7 @@
 //! - a second admission must be a second turn in the `thread.turns`
 //!   ledger, not a replay of the first;
 //! - an admission rings the wake ring (`af.thread.<id>.wake`) and the scheduler
-//!   reads the ledger's candidates, so an offer that never arrives is a runner
+//!   reads the ledger's candidates, so an assignment that never arrives is a runner
 //!   idling beside work;
 //! - a live frame is published on whichever NATS node the daemon holds, so a
 //!   subscriber attached to another node that missed it hears silence and the
@@ -47,7 +47,9 @@ use crate::reads::{
     balance, counter_column, ledger_rows, relay_settled, run_column, unsettled_lines,
 };
 use crate::tail::{next_frame, settle};
-use crate::wire::{capable_beat, field, report_body, wait_for_offer, wait_for_seeded_offer};
+use crate::wire::{
+    capable_beat, field, report_body, wait_for_assignment, wait_for_seeded_assignment,
+};
 
 /// The event type the daemon has an execution path for, so an extra append is
 /// leasable rather than ended as unsupported. `TurnKind` is a closed set and
@@ -92,22 +94,22 @@ async fn a_second_admission_is_a_second_event(scene: &Scenario) -> Uuid7 {
     second
 }
 
-/// The runner is offered the fleet's oldest event.
+/// The runner is assigned the fleet's oldest event.
 ///
 /// # The hazard
 ///
 /// Readiness is the Postgres admissions ledger: an admission commits a row in
 /// `thread.turns`, then rings the NATS wake ring for the fleet's thread,
-/// and the scheduler reads the ledger's candidates and pushes an offer down
+/// and the scheduler reads the ledger's candidates and pushes an assignment down
 /// the runner's stream. A scheduler that never heard the ring, or read a
-/// ledger that did not hold the row, offers nothing, and a runner idling
+/// ledger that did not hold the row, assigns nothing, and a runner idling
 /// beside work is not an error anywhere.
-async fn the_runner_is_offered_the_fleets_oldest_event(scene: &Scenario) -> (String, u64) {
-    // Other fleets' heads may be offered first: candidates are ordered at
-    // random among eligible fleets. `wait_for_seeded_offer` reads offers until
+async fn the_runner_is_assigned_the_fleets_oldest_event(scene: &Scenario) -> (String, u64) {
+    // Other fleets' heads may be assigned first: candidates are ordered at
+    // random among eligible fleets. `wait_for_seeded_assignment` reads assignments until
     // this scenario's own event arrives, which is the OLDEST unsettled
     // admission on this fleet.
-    wait_for_seeded_offer(scene).await
+    wait_for_seeded_assignment(scene).await
 }
 
 /// A frame the daemon publishes reaches a subscriber that attached elsewhere.
@@ -218,10 +220,10 @@ async fn the_fleet_is_still_discoverable_for_its_remaining_work(
     scene: &Scenario,
     second_event: &Uuid7,
 ) {
-    // Offers are read until the second event arrives: another fleet's head may
+    // Assignments are read until the second event arrives: another fleet's head may
     // come first, and the helper carries the diagnosis if none in its budget
     // is this one.
-    let (_run_id, _fence) = wait_for_offer(scene, second_event).await;
+    let (_run_id, _fence) = wait_for_assignment(scene, second_event).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -231,7 +233,7 @@ async fn test_cluster_preserves_application_outcomes() {
     let scene = scenario(&mut supervisor).await;
     prove_capabilities(&scene).await;
     let second_event = a_second_admission_is_a_second_event(&scene).await;
-    let (run_id, fence) = the_runner_is_offered_the_fleets_oldest_event(&scene).await;
+    let (run_id, fence) = the_runner_is_assigned_the_fleets_oldest_event(&scene).await;
     a_frame_crosses_the_cluster_to_its_subscriber(&scene, &run_id).await;
     a_report_settles_once(&scene, &run_id, fence).await;
     the_fleet_is_still_discoverable_for_its_remaining_work(&scene, &second_event).await;

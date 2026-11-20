@@ -80,7 +80,7 @@ pub struct Renewals<'a> {
     pub funds_due: bool,
     /// The instant identifiers this pass mints are drawn at.
     pub now: Timestamp,
-    /// What the session kept from each plain run's offer: when every run
+    /// What the session kept from each plain run's assignment: when every run
     /// has its facts and the replica knows each fleet's versions, the frame runs
     /// without its pre-read.
     pub kept: HashMap<Uuid7, crate::run::Reported>,

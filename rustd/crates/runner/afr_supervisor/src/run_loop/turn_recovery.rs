@@ -62,7 +62,7 @@ impl Run<'_> {
         thawed?;
         if turn.is_none() {
             return Err(error::config(
-                "ordinary restore lost its offered checkpoint",
+                "ordinary restore lost its assigned checkpoint",
             ));
         }
         build.recovery.get_or_init(|| State {

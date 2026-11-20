@@ -143,7 +143,7 @@ impl crate::run::Runs {
         if !parents(&mut tx, acquired).await? {
             return Ok(());
         }
-        let _slot: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE_SLOT)
+        let _slot: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE_THREAD)
             .bind(&acquired.fleet_id)
             .fetch_optional(&mut *tx)
             .await

@@ -1,7 +1,7 @@
 //! A recovery hint fills real connection credits without another five-second probe.
 
 use super::*;
-use crate::connection::OfferMode;
+use crate::connection::AssignMode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::{sync::Notify, task::JoinSet};
 
@@ -50,7 +50,7 @@ async fn drain_burst(fleets: usize) -> TestResult {
         "one wake left {} of {fleets} fleets waiting",
         remaining.load(Ordering::SeqCst)
     );
-    assert!(started.elapsed() < af_core::timing::OFFER_FALLBACK_TICK);
+    assert!(started.elapsed() < af_core::timing::ASSIGN_FALLBACK_TICK);
     drop(registrations);
     Ok(())
 }
@@ -100,9 +100,9 @@ async fn serve_host(
             connection.handle.snapshot.lock().credits -= 1;
         }
         let _finished = answer.reply.send(if issued {
-            OfferOutcome::Issued
+            AssignOutcome::Issued
         } else {
-            OfferOutcome::Empty
+            AssignOutcome::Empty
         });
         completed.notify_one();
     }
@@ -175,20 +175,20 @@ async fn an_ordinary_ring_can_reach_a_free_host_while_recovery_is_waiting() -> T
     tokio::task::yield_now().await;
     wake.recheck();
     let blocked = slow.request().await?;
-    assert_eq!(blocked.mode, OfferMode::Recovery);
+    assert_eq!(blocked.mode, AssignMode::Recovery);
     let recovered = healthy.request().await?;
-    assert_eq!(recovered.mode, OfferMode::Recovery);
+    assert_eq!(recovered.mode, AssignMode::Recovery);
     recovered
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|_closed| "recovery recipient closed")?;
 
     wake.ring(healthy.handle.runner.clone());
     let ordinary = healthy.request().await?;
-    assert_eq!(ordinary.mode, OfferMode::Ordinary);
+    assert_eq!(ordinary.mode, AssignMode::Ordinary);
     ordinary
         .reply
-        .send(OfferOutcome::Issued)
+        .send(AssignOutcome::Issued)
         .map_err(|_closed| "ordinary recipient closed")?;
     stop.cancel();
     scheduler.await??;
@@ -223,13 +223,13 @@ async fn a_new_recovery_wake_survives_the_previous_pass_finishing() -> TestResul
     assert_ne!(earlier, wake.recovery());
     first
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|_closed| "first recovery recipient closed")?;
     let second = host.request().await?;
-    assert_eq!(second.mode, OfferMode::Recovery);
+    assert_eq!(second.mode, AssignMode::Recovery);
     second
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|_closed| "second recovery recipient closed")?;
     stop.cancel();
     scheduler.await??;

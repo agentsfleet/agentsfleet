@@ -110,7 +110,9 @@ impl TurnSession<'_, '_> {
                 .map(|(id, digest)| (id.as_str(), digest.as_str())),
         ) != digest
         {
-            return Err(error::config("turn manifest differs from the offered root"));
+            return Err(error::config(
+                "turn manifest differs from the assigned root",
+            ));
         }
         Ok(entries)
     }

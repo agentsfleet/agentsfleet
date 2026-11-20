@@ -47,7 +47,7 @@ async fn counts(case: &Case) -> (i64, i64, i64) {
         "SELECT
         (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1),
         (SELECT count(*) FROM thread.turns WHERE workspace_id=$1 AND opened_at IS NOT NULL),
-        (SELECT count(*) FROM billing.authoring_report_receipts r
+        (SELECT count(*) FROM billing.setup_report_receipts r
           JOIN setup.attempts a ON a.id=r.attempt_id WHERE a.workspace_id=$1)",
     )
     .bind(&case.base.workspace)

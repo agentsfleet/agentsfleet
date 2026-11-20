@@ -146,7 +146,7 @@ pub const RUNNER_TENANT_MANAGED: ErrorCode = ErrorCode::declare("UZ-RUN-026");
 
 /// Issue refused a placement the claim should already have filtered.
 ///
-/// Log-only: a foreign tenant's runner, or a tenant runner offered work that
+/// Log-only: a foreign tenant's runner, or a tenant runner assigned work that
 /// would carry a platform model key. Any occurrence means the claim has a hole.
 pub const RUNNER_PLACEMENT_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-027");
 

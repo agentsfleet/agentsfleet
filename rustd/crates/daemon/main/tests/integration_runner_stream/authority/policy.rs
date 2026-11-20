@@ -41,7 +41,7 @@ async fn operator_transition(fixture: &Fixture, transport: Transport, action: &s
         RUN_INVALID_RUNNER_TOKEN
     };
     signals::away(&mut native, code).await?;
-    signals::no_offer(&mut native).await?;
+    signals::no_assignment(&mut native).await?;
     signals::opening_refused(&fixture.scene, &fixture.scene.token, code, transport).await?;
     if action == "rotate" {
         rotated(fixture, &answer, transport).await?;
@@ -62,7 +62,7 @@ async fn rotated(
         Native::connect_at(fixture.peer.runner_stream_address, token, transport).await;
     current.heartbeat().await;
     current.ready().await;
-    let held = signals::offer(&mut current).await?;
+    let held = signals::assign(&mut current).await?;
     assert_eq!(held.event, fixture.scene.turn_id);
     signals::report(&fixture.scene, &mut current, &held, false).await?;
     current.close().await;
@@ -83,10 +83,10 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
         revoke_without_delivery(&fixture).await?;
         native.ready().await;
         // Discovery can reject a committed revoke before issuance takes the host lock.
-        let offered = tokio::time::timeout(PUSH_BOUND, native.next(StreamKind::Work)).await;
+        let assigned = tokio::time::timeout(PUSH_BOUND, native.next(StreamKind::Work)).await;
         assert!(
-            offered.is_err(),
-            "revoked cached capacity offered work: {offered:?}"
+            assigned.is_err(),
+            "revoked cached capacity assigned work: {assigned:?}"
         );
         let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE turn_id=$1")
             .bind(&fixture.scene.turn_id)
@@ -94,7 +94,7 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
             .await?;
         assert_eq!(runs, 0, "revoked cached capacity must not issue a run");
         heartbeat_refused(&mut native).await?;
-        signals::no_offer(&mut native).await?;
+        signals::no_assignment(&mut native).await?;
         native.close().await;
         fixture.finish().await?;
     }
@@ -141,13 +141,14 @@ async fn heartbeat_refused(native: &mut Native) -> TestResult {
     signals::away(native, RUN_ADMIN_STATE_BLOCKED).await
 }
 
-// Value: protects=one committed owner receives offers across replica registries;
+// Value: protects=one committed owner receives assignments across replica registries;
 // fails_when=ownership publication is local-only or stale credits receive fresh work;
 // why_new=the existing supersession case connects twice to one replica;
 // seam=two production daemons sharing the actual Bus and Postgres.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers() -> TestResult {
+async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_assignments() -> TestResult
+{
     for transport in [Transport::H2, Transport::H3] {
         let fixture = Fixture::start().await?;
         status(&fixture, "archived").await?;
@@ -157,11 +158,11 @@ async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers
         let mut current = fixture.native(transport).await;
         assert_ne!(old.owner, current.owner);
         signals::away(&mut old, RUN_STREAM_SUPERSEDED).await?;
-        signals::no_offer(&mut old).await?;
+        signals::no_assignment(&mut old).await?;
         status(&fixture, "active").await?;
         current.heartbeat().await;
         current.ready().await;
-        let held = signals::offer(&mut current).await?;
+        let held = signals::assign(&mut current).await?;
         assert_eq!(held.event, fixture.scene.turn_id);
         signals::report(&fixture.scene, &mut current, &held, false).await?;
         current.close().await;

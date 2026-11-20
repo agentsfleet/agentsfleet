@@ -25,7 +25,7 @@ pub(super) async fn assert_unknown_credential_is_refused(http: &reqwest::Client,
 
 pub(super) async fn assert_unsupported_event_ends(scene: &Scenario) {
     let unsupported = scene.enqueue_unsupported_event("future_event_type").await;
-    let ended = wait_without_offer(scene, || async {
+    let ended = wait_without_assignment(scene, || async {
         event_column(scene, &unsupported, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;
@@ -56,7 +56,7 @@ pub(super) async fn assert_credential_and_duplicate_refusals(
 
     scene.native_session().await.capacity(2);
     assert!(
-        !wait_without_offer(scene, || async { false }).await,
+        !wait_without_assignment(scene, || async { false }).await,
         "a second free worker must not receive the same fleet's active admission"
     );
     assert_eq!(run_rows(scene).await, 1);

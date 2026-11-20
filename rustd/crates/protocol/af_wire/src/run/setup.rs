@@ -1,5 +1,5 @@
 //! A setup draft's turn on the common run path: who owns the run, what the
-//! offer carries for the draft, and what its report hands back.
+//! assignment carries for the draft, and what its report hands back.
 //!
 //! A draft-owned run is a [`super::RunPayload`] like a fleet's. Its
 //! `owner` names the draft, its `event` is the draft's queued message, its
@@ -21,7 +21,7 @@ const CANDIDATE_ID_BYTES: usize = 36;
 /// Whose work a run runs.
 ///
 /// Absent on a fleet's run, whose owner is the fleet its `event` names, so a
-/// fleet offer reads as it did before drafts shared the path.
+/// fleet assignment reads as it did before drafts shared the path.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = RunOwnerRef))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,7 +55,7 @@ pub struct SetupCandidate<'a> {
     pub definition: serde_json::Value,
 }
 
-/// What a draft-owned offer carries beside its message and history.
+/// What a draft-owned assignment carries beside its message and history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SetupWork<'a> {

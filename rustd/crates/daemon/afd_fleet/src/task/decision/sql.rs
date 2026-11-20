@@ -33,7 +33,7 @@ pub(super) const ACCOUNT_TASK: &str = include_str!("sql/account_task.sql");
 pub(super) const LOCK_PARENT: &str = include_str!("sql/lock_parent.sql");
 pub(super) const TRY_PARENT: &str = const_format::concatcp!(LOCK_PARENT, " NOWAIT");
 pub(super) const TRY_SLOT: &str =
-    const_format::concatcp!(crate::task::sql::LOCK_SCOPE_SLOT, " NOWAIT");
+    const_format::concatcp!(crate::task::sql::LOCK_SCOPE_THREAD, " NOWAIT");
 pub(super) const TRY_TASK: &str = const_format::concatcp!(LOCK_TASK, " NOWAIT");
 pub(super) const SEMANTIC_OWNER: &str = include_str!("sql/semantic_owner.sql");
 pub(super) const SEMANTIC_TASK: &str = include_str!("sql/semantic_task.sql");

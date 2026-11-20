@@ -327,7 +327,7 @@ async fn continue_ready(
         Err(fault) => return Err(fault.into()),
     };
     transition(&mut savepoint, current, TaskState::Ready, reason).await?;
-    sqlx::query(crate::task::sql::CONTROL_ADMISSION)
+    sqlx::query(crate::task::sql::CONTROL_TURN)
         .bind(&current.task_id)
         .bind(&admitted.stored.id)
         .execute(&mut *savepoint)

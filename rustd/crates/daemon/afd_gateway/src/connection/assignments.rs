@@ -9,13 +9,13 @@ use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use tokio::{sync::oneshot, time::Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OfferMode {
+pub(crate) enum AssignMode {
     Ordinary,
     Recovery,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OfferOutcome {
+pub(crate) enum AssignOutcome {
     Issued,
     Empty,
     Deferred,
@@ -23,19 +23,19 @@ pub(crate) enum OfferOutcome {
 
 #[derive(Debug)]
 pub(crate) struct ClaimRequest {
-    pub(crate) mode: OfferMode,
-    pub(crate) reply: oneshot::Sender<OfferOutcome>,
+    pub(crate) mode: AssignMode,
+    pub(crate) reply: oneshot::Sender<AssignOutcome>,
 }
 
-pub(super) enum OfferTrigger {
+pub(super) enum AssignTrigger {
     Ready,
     Pass(ClaimRequest),
 }
 
 impl ConnectionHandle {
-    pub(crate) async fn claim(&self, mode: OfferMode) -> Result<OfferOutcome> {
+    pub(crate) async fn claim(&self, mode: AssignMode) -> Result<AssignOutcome> {
         if self.stop.is_cancelled() || self.drain.is_cancelled() || self.superseded.is_cancelled() {
-            return Ok(OfferOutcome::Empty);
+            return Ok(AssignOutcome::Empty);
         }
         let (reply, answer) = oneshot::channel();
         within(

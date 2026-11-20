@@ -13,7 +13,7 @@ use crate::e2e::{MODEL, POSTURE, Scenario, scenario};
 use crate::reads::{assert_shape, line_output_tokens, relay_settled, run_column};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, post, report_body,
-    wait_for_seeded_offer,
+    wait_for_seeded_assignment,
 };
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
@@ -128,7 +128,7 @@ async fn complete_cycle(http: &reqwest::Client, scene: &Scenario) -> String {
         "the native heartbeat carries its assignment"
     );
 
-    let (run_id, fence) = wait_for_seeded_offer(scene).await;
+    let (run_id, fence) = wait_for_seeded_assignment(scene).await;
 
     let captured = post(
         http,

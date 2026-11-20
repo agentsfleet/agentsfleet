@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# The NATS Bus the live tail and the wakes run over, connected the way the
+# The NATS Bus the live items stream and the wakes run over, connected the way the
 # daemon connects it.
 afd_bus.workspace = true
 afd_auth.workspace = true
@@ -55,10 +55,10 @@ afd_outbound.workspace = true
 afd_connector.workspace = true
 # The token the worker is stopped by.
 tokio-util.workspace = true
-# The live tail's per-viewer stream and its stream ceiling, as the tenant
-# routes hold them: the tail lane measures that path, not a copy of it.
+# The live items stream per viewer and its stream ceiling, as the tenant
+# routes hold them: the items lane measures that path, not a copy of it.
 afd_sse.workspace = true
-# Pulling frames off a tail, which is a `Stream`.
+# Pulling frames off an items stream, which is a `Stream`.
 futures-util.workspace = true
 # The pool the run path reads through, opened the way the daemon opens it,
 # and the shared seeds the lane's fixture rows are written through: the same

@@ -46,7 +46,7 @@ pub const RUN_STATUS_ACTIVE: &str = "active";
 /// The `fleet.fleets.status` a leasable fleet carries.
 ///
 /// Declared here, beside the run statuses, because two crates compare
-/// against it: the run pass, which offers only active fleets, and the
+/// against it: the run pass, which assigns only active fleets, and the
 /// heartbeat, which tells a runner to drop the sandbox it holds for a fleet
 /// that is no longer active (RULE UFS).
 pub const FLEET_STATUS_ACTIVE: &str = "active";

@@ -56,15 +56,15 @@ impl ConnectionServices {
         &self,
         credits: usize,
         revision: std::num::NonZeroU64,
-        observed_offers: u64,
+        observed_assignments: u64,
     ) -> Result<()> {
         let increased =
             self.handle
                 .snapshot
                 .lock()
-                .availability(credits, revision, observed_offers)?;
+                .availability(credits, revision, observed_assignments)?;
         if increased {
-            self.handle.request_offer();
+            self.handle.request_assignment();
         }
         Ok(())
     }
@@ -94,13 +94,13 @@ impl ConnectionServices {
                 self.turn_checkpoint(request_id, &run_id, request.as_ref())
                     .await?;
             }
-            Up::Activity { run_id, request } => self.progress(&run_id, &request).await?,
+            Up::Progress { run_id, request } => self.progress(&run_id, &request).await?,
             Up::Ready {
                 credits,
                 revision,
-                observed_offers,
+                observed_assignments,
             } => {
-                self.availability(credits, revision, observed_offers)?;
+                self.availability(credits, revision, observed_assignments)?;
             }
             Up::AuthoringModel {
                 request_id,
@@ -146,7 +146,7 @@ fn operation(message: &Request<'_>) -> &'static str {
         Up::Report { .. } => "report",
         Up::Folds { .. } => "folds",
         Up::TurnCheckpoint { .. } => "turn_checkpoint",
-        Up::Activity { .. } => "activity",
+        Up::Progress { .. } => "progress",
         Up::Ready { .. } => "ready",
         Up::AuthoringModel { .. } => "authoring_model",
         Up::AuthoringActivity { .. } => "authoring_activity",

@@ -50,7 +50,7 @@ pub(crate) const EVENT_CLAIM_RELEASE_FAILED: &str = "run_claim_release_failed";
 /// The `fencing_token` column, which is the one number that orders run holders.
 ///
 /// Monotonic per fleet and minted by the slot upsert inside the claim head
-/// (`claim_admission_head.sql`): every winning claim bumps it, so a holder
+/// (`claim_turn_head.sql`): every winning claim bumps it, so a holder
 /// superseded by a reclaim carries a strictly smaller value than the runner
 /// that displaced it. That is the whole basis of
 /// Invariant 2, and the reason a report verifies its token inside the same
@@ -107,7 +107,7 @@ pub struct Claimed {
 }
 
 #[cfg(any(test, feature = "test-util"))]
-/// What [`sql::shared::CLAIM_SLOT`] answers when the claim wins: the new
+/// What [`sql::shared::CLAIM_THREAD`] answers when the claim wins: the new
 /// fence, the slot's deadline on the database clock, and whether the slot's
 /// prior hold was still live and whose it was.
 #[derive(Debug, sqlx::FromRow)]
@@ -134,7 +134,7 @@ impl Runs {
     /// event, so nothing is orphaned by losing.
     ///
     /// A test seam: production claims through the `slot` step of the claim head
-    /// (`claim_admission_head.sql`), which runs this same upsert beside the head
+    /// (`claim_turn_head.sql`), which runs this same upsert beside the head
     /// read, so this method is not compiled into a build without `test-util`.
     ///
     /// # Errors
@@ -148,7 +148,7 @@ impl Runs {
     ) -> Result<Option<Claimed>> {
         let owner = RunOwner::Fleet(fleet_id.clone());
         let mut connection = self.pool().acquire().await?;
-        let won: Option<Won> = sqlx::query_as(sql::shared::CLAIM_SLOT)
+        let won: Option<Won> = sqlx::query_as(sql::shared::CLAIM_THREAD)
             .bind(owner.fleet_id())
             .bind(owner.draft_id())
             .bind(runner_id)
@@ -191,7 +191,7 @@ impl Runs {
     pub async fn release(&self, fleet_id: &Uuid7, fence: Fence) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         // A fleet's slot is keyed by the fleet's id.
-        sqlx::query(sql::shared::RELEASE_UNLEASED_SLOT)
+        sqlx::query(sql::shared::RELEASE_RUNLESS_THREAD)
             .bind(fleet_id)
             .bind(fence.as_i64())
             .execute(&mut *connection)
@@ -248,7 +248,7 @@ impl Runs {
         fence: Fence,
         asked_hold: Option<Timestamp>,
     ) -> Result<()> {
-        sqlx::query(sql::shared::RELEASE_SLOT)
+        sqlx::query(sql::shared::RELEASE_THREAD)
             .bind(fleet_id)
             .bind(fence.as_i64())
             .bind(asked_hold.map(jiff_sqlx::ToSqlx::to_sqlx))

@@ -1,9 +1,11 @@
 //! Guard reads acquire wallet, current subject, draft and attempt in that order.
 
-/// Current chat work, excluding accounting retained below the Stop watermark:
-/// a running attempt, or a draft run's live slot.
+/// Current chat work: the newest attempt still running a turn Stop has not
+/// cancelled, or a draft run's live slot. A stopped attempt keeps only its
+/// accounting.
 ///
-/// `$1` draft, `$2` settled status, `$3` Stop watermark; caller holds the draft lock.
+/// `$1` draft, `$2` the settled attempt statuses, `$3` the cancelled turn
+/// status; caller holds the draft lock.
 pub(super) const PENDING: &str = include_str!("pending.sql");
 
 /// The runner's attempt for a run, unlocked.
@@ -24,9 +26,10 @@ pub(crate) const LOCK_BY_ID: &str = include_str!("lock_by_id.sql");
 /// `$1` draft, `$2` sequence, `$3` the running status.
 pub(super) const MESSAGE: &str = include_str!("message.sql");
 
-/// Whether a saved cutoff, a deletion or a lifecycle change fenced the message.
+/// Whether Stop, a deletion or a lifecycle change fenced the message.
 ///
-/// `$1` draft, `$2` sequence, `$3` the editing status.
+/// `$1` draft, `$2` sequence, `$3` the editing status, `$4` the cancelled turn
+/// status.
 pub(super) const CANCELLED: &str = include_str!("cancelled.sql");
 
 /// Whether a dispatch of the attempt still has no known outcome.

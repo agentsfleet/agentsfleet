@@ -50,7 +50,7 @@ const POPULATION_QUERY: &str = include_str!("sql/select_fleet_population.sql");
 
 /// The store named when a latency sample set is empty.
 const POSTGRES: &str = "postgres";
-const SELECT_ADMISSION_HEAD: &str = include_str!("sql/select_admission_head.sql");
+const SELECT_TURN_HEAD: &str = include_str!("sql/select_turn_head.sql");
 
 /// The serving candidate query's binds, as the run path sends them
 /// (`afd_fleet::run::assign::ledger`): no held fleets and no hint. One
@@ -104,7 +104,7 @@ pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &Uuid7) -> R
     let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        let _head: Option<Uuid7> = sqlx::query_scalar(SELECT_ADMISSION_HEAD)
+        let _head: Option<Uuid7> = sqlx::query_scalar(SELECT_TURN_HEAD)
             .bind(fleet)
             .fetch_optional(&mut *connection)
             .await?;

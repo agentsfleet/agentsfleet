@@ -228,7 +228,7 @@ async fn consume(
         .await
         .map_err(query("make consumed dependency continuation ready"))?;
     crate::task::continuation::retire(&mut savepoint, &owner.task_id).await?;
-    sqlx::query(crate::task::sql::CONTROL_ADMISSION)
+    sqlx::query(crate::task::sql::CONTROL_TURN)
         .bind(&owner.task_id)
         .bind(&admitted.stored.id)
         .execute(&mut *savepoint)

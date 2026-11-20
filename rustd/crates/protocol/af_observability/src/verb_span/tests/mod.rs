@@ -228,7 +228,7 @@ fn test_every_stage_key_belongs_to_its_verb() {
                 .to_vec(),
         ),
         (
-            "agentsfleet.offer.",
+            "agentsfleet.assign.",
             [
                 AssignStage::Claim,
                 AssignStage::Admit,

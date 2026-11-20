@@ -104,7 +104,7 @@ pub(super) async fn apply(
                     state: current.context.state,
                     source,
                 })?;
-            sqlx::query(sql::CONTROL_ADMISSION)
+            sqlx::query(sql::CONTROL_TURN)
                 .bind(task)
                 .bind(&admitted.stored.id)
                 .execute(&mut *tx)

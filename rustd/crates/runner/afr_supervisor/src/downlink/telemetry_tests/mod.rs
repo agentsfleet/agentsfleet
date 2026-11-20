@@ -32,7 +32,7 @@ async fn a_native_session_records_its_attempt_owner_and_codec_parent()
         (ENV_RUNNER_TOKEN, "agt_r_fixture_tracing"),
     ]);
     let config = Config::from_env(&env)?;
-    let (handle, downlink, _offers) = Downlink::new(&config)?;
+    let (handle, downlink, _assignments) = Downlink::new(&config)?;
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
     let exercise = exercise(&handle, &shutdown);

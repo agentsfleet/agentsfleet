@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// The protocol revision this runner speaks. It stays v2 until the setup run
-/// agent lands: a v3 runner is offered draft-owned runs, which this runner
+/// agent lands: a v3 runner is assigned draft-owned runs, which this runner
 /// cannot yet run.
 const SPOKEN: &str = protocol::VERSION_V2;
 

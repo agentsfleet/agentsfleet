@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::admin::AdminState;
 use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
 
-/// Why the daemon has stopped offering new work to an operator-active host.
+/// Why the daemon has stopped assigning new work to an operator-active host.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -1,6 +1,6 @@
 //! The narrative log's row: how a delivery relates to it, and the gate ending.
 //!
-//! The claim statement opens the row (`sql/run/claim_admission_head.sql`):
+//! The claim statement opens the row (`sql/run/claim_turn_head.sql`):
 //! the first thing the run verb writes, before any gate and before any
 //! money. `data_flow.md` §C numbers it 1 for that reason — everything after it
 //! either amends this row or refers to it, and the reclaim path's INNER JOIN
@@ -174,7 +174,7 @@ impl Runs {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ENDED))?;
         if !self
-            .lock_admission_on(
+            .lock_turn_on(
                 &mut transaction,
                 &acquired.fleet_id,
                 &acquired.turn_id,
@@ -184,7 +184,7 @@ impl Runs {
         {
             return Err(crate::error::stale_fence());
         }
-        let closed = sqlx::query(afd_turns::view::sql::UPDATE_FLEET_EVENT_FAILURE)
+        let closed = sqlx::query(afd_turns::view::sql::UPDATE_TURN_FAILURE)
             .bind(&acquired.fleet_id)
             .bind(&acquired.turn_id)
             .bind(ending.status)

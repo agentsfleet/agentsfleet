@@ -33,7 +33,7 @@ pub(crate) struct OperationalSettings {
 
 impl RuntimeSettings {
     pub(crate) fn announce(&self) {
-        let (run_ttl_seconds, resume_from_checkpoint, offer_fallback_seconds) = (
+        let (run_ttl_seconds, resume_from_checkpoint, assign_fallback_seconds) = (
             self.clock.ttl().as_secs(),
             self.resume_from_checkpoint,
             self.fallback.as_secs(),
@@ -44,7 +44,7 @@ impl RuntimeSettings {
             event = "daemon_configuration_loaded",
             run_ttl_seconds,
             resume_from_checkpoint,
-            offer_fallback_seconds,
+            assign_fallback_seconds,
             max_concurrent_claims,
             max_in_flight_requests
         );
@@ -114,8 +114,8 @@ pub(crate) fn configured(
         )?,
         fallback_seconds: value(
             env,
-            "AGENTSFLEET_OFFER_FALLBACK_SECONDS",
-            defaults.offer_fallback.as_secs(),
+            "AGENTSFLEET_ASSIGN_FALLBACK_SECONDS",
+            defaults.assign_fallback.as_secs(),
         )?,
         expired_work_interval_seconds: operations.maintenance.loops.expired_work.interval_seconds,
     })

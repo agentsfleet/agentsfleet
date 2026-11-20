@@ -8,7 +8,7 @@ use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
 const IMMUTABLE: [&str; 24] = [
-    "billing.authoring_report_receipts",
+    "billing.setup_report_receipts",
     "connector.oauth_nonces",
     "fleet.revisions",
     "fleet.task_adoptions",

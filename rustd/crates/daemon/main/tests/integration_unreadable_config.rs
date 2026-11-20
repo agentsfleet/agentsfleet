@@ -42,7 +42,7 @@ use agentsfleetd::supervisor::Supervisor;
 use crate::e2e::{Scenario, scenario};
 use crate::e2e_event::enqueue;
 use crate::reads::event_column_of;
-use crate::wire::{capable_beat, report_body, wait_for_seeded_offer, wait_without_offer};
+use crate::wire::{capable_beat, report_body, wait_for_seeded_assignment, wait_without_assignment};
 
 /// Valid JSON, and not a fleet.
 const UNREADABLE_CONFIG: &str = "{}";
@@ -100,7 +100,7 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     // answer 200, which is the regression this file exists for: before the
     // fix, the poll that sampled the neighbour's partition answered 500 and
     // this loop died there rather than finding the scenario's own event.
-    let (run_id, fence) = wait_for_seeded_offer(&scene).await;
+    let (run_id, fence) = wait_for_seeded_assignment(&scene).await;
 
     // Settled so the runner's one run slot is free for the polls below.
     let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.turn_id, fence)).await;
@@ -108,7 +108,7 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
 
     // And the neighbour is ended rather than retried forever, which is what
     // puts it in front of a human.
-    let refused = wait_without_offer(&scene, || async {
+    let refused = wait_without_assignment(&scene, || async {
         event_column_of(&scene, &poisoned, &poisoned_event, "status").await
             == Some(GATE_BLOCKED.to_owned())
     })

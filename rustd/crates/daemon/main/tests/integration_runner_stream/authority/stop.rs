@@ -23,7 +23,7 @@ async fn stopping_a_running_fleet_turn_ends_its_run() -> TestResult {
     let mut native = fixture.native(Transport::H2).await;
     native.heartbeat().await;
     native.ready().await;
-    let held = signals::offer(&mut native).await?;
+    let held = signals::assign(&mut native).await?;
     let (status, body) = fixture
         .operator
         .stop_turn(&fixture.scene, &fixture.scene.workspace, &held.event)
@@ -51,7 +51,7 @@ async fn a_stop_whose_hint_was_lost_ends_at_the_next_renewal() -> TestResult {
     let mut native = fixture.native(Transport::H2).await;
     native.heartbeat().await;
     native.ready().await;
-    let held = signals::offer(&mut native).await?;
+    let held = signals::assign(&mut native).await?;
     let (bus, dropped) = faults::dropping(
         fixture.bus.clone(),
         Subject::RunnerCommand(fixture.scene.runner_id.clone()),
@@ -92,7 +92,7 @@ async fn stopping_one_of_two_served_turns_cancels_both() -> TestResult {
     let mut native = fixture.native(Transport::H2).await;
     native.heartbeat().await;
     native.ready().await;
-    let held = signals::offer(&mut native).await?;
+    let held = signals::assign(&mut native).await?;
     let second = admit_person_message(&fixture).await?;
     fold(&mut native, &held, &second).await;
     let (status, body) = fixture

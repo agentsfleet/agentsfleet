@@ -1,8 +1,8 @@
 //! Statements owned by the task lifecycle, with the run owner reused.
 
-pub(super) const LOCK_SLOT: &str = include_str!("sql/lock_slot.sql");
+pub(super) const LOCK_THREAD: &str = include_str!("sql/lock_thread.sql");
 pub(super) const RUN: &str = include_str!("sql/run.sql");
-pub(super) const LOCK_REPLAY_SLOT: &str = include_str!("sql/lock_replay_slot.sql");
+pub(super) const LOCK_REPLAY_THREAD: &str = include_str!("sql/lock_replay_thread.sql");
 pub(super) const REPLAY_RUN: &str = include_str!("sql/replay_run.sql");
 pub(super) const LOCK_SOURCE: &str = include_str!("sql/lock_source.sql");
 pub(super) const REPLAY: &str = include_str!("sql/replay.sql");
@@ -18,9 +18,9 @@ pub(super) const LOCK_SCOPE: &str = include_str!("sql/lock_scope.sql");
 pub(super) const LOCK_ISSUE_SCOPE: &str = include_str!("sql/lock_issue_scope.sql");
 pub(super) const LOCK_WORKSPACE: &str = include_str!("checkpoint/sql/lock_workspace.sql");
 pub(super) const COLLECT_COMPLETIONS: &str = include_str!("waits/sql/collect_completions.sql");
-pub(super) const LOCK_SCOPE_SLOT: &str = include_str!("sql/lock_scope_slot.sql");
+pub(super) const LOCK_SCOPE_THREAD: &str = include_str!("sql/lock_scope_thread.sql");
 
-pub(super) const BIND_ADMISSION: &str = include_str!("sql/bind_admission.sql");
+pub(super) const BIND_TURN: &str = include_str!("sql/bind_turn.sql");
 
 pub(super) const CONTROL_ORIGIN: &str = include_str!("sql/control_origin.sql");
-pub(super) const CONTROL_ADMISSION: &str = include_str!("sql/control_admission.sql");
+pub(super) const CONTROL_TURN: &str = include_str!("sql/control_turn.sql");

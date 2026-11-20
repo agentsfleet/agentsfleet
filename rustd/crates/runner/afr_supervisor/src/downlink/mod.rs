@@ -37,7 +37,7 @@ use reconnect::{Preference, Recovery, Resume};
 use running::{RunRegistration, Running};
 
 #[derive(Debug)]
-pub(crate) struct Offered {
+pub(crate) struct Assigned {
     pub(crate) frame: OwnedFrame,
     pub(crate) registration: RunRegistration,
     pub(crate) session: CancellationToken,
@@ -51,13 +51,13 @@ pub(crate) struct Downlink {
     authorization: HeaderValue,
     current: watch::Sender<Option<Arc<SessionSender>>>,
     running: Arc<Running>,
-    offers: mpsc::Sender<Offered>,
-    offer_budget: Budget,
-    assignments: watch::Sender<Option<Arc<OwnedFrame>>>,
+    assignments: mpsc::Sender<Assigned>,
+    assignment_budget: Budget,
+    policies: watch::Sender<Option<Arc<OwnedFrame>>>,
 }
 
 impl Downlink {
-    pub(crate) fn new(config: &Config) -> Result<(StreamHandle, Self, mpsc::Receiver<Offered>)> {
+    pub(crate) fn new(config: &Config) -> Result<(StreamHandle, Self, mpsc::Receiver<Assigned>)> {
         let bearer = zeroize::Zeroizing::new(format!("Bearer {}", config.token().expose()));
         let mut authorization = HeaderValue::from_str(&bearer).map_err(|source| {
             error::boundary(
@@ -68,9 +68,9 @@ impl Downlink {
         authorization.set_sensitive(true);
         let running = Arc::new(Running::default());
         let (current, session) = watch::channel(None);
-        let (offers, offered) = mpsc::channel(af_wire::protocol::RUNS_MAX);
-        let (assignments, policies) = watch::channel(None);
-        let handle = StreamHandle::new(session, Arc::clone(&running), policies);
+        let (assignments, assigned) = mpsc::channel(af_wire::protocol::RUNS_MAX);
+        let (policies, watching) = watch::channel(None);
+        let handle = StreamHandle::new(session, Arc::clone(&running), watching);
         Ok((
             handle.clone(),
             Self {
@@ -80,11 +80,11 @@ impl Downlink {
                 authorization,
                 current,
                 running,
-                offers,
-                offer_budget: Budget::new(0, RUNS_MAX * MESSAGE_BYTES_MAX)?,
                 assignments,
+                assignment_budget: Budget::new(0, RUNS_MAX * MESSAGE_BYTES_MAX)?,
+                policies,
             },
-            offered,
+            assigned,
         ))
     }
 
@@ -243,9 +243,9 @@ impl Downlink {
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &self.running,
-            offers: &self.offers,
-            offer_budget: &self.offer_budget,
             assignments: &self.assignments,
+            assignment_budget: &self.assignment_budget,
+            policies: &self.policies,
             stop: &stop,
             early_cancel: HashSet::new(),
         };

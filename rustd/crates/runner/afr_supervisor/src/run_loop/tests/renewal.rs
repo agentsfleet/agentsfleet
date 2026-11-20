@@ -169,7 +169,7 @@ fn renewal_cancelled(call: &Call) -> Option<Answer> {
 async fn a_run_the_daemon_stopped_reports_stopped_with_its_tokens() {
     let mut rig = rig(renewal_cancelled, FakeEngine::default(), Behaviour::Stops);
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let _registered = rig.lessee.plane.stream.running.offer(run, false).unwrap();
+    let _registered = rig.lessee.plane.stream.running.assign(run, false).unwrap();
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 
@@ -189,7 +189,7 @@ async fn a_run_the_daemon_stopped_reports_stopped_with_its_tokens() {
 async fn a_run_cut_for_another_reason_is_not_stopped() {
     let mut rig = rig(renewal_lost, FakeEngine::default(), Behaviour::Stops);
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let _registered = rig.lessee.plane.stream.running.offer(run, false).unwrap();
+    let _registered = rig.lessee.plane.stream.running.assign(run, false).unwrap();
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();
 

@@ -1,4 +1,4 @@
-//! The host row decides a placement: an offered choice another placement
+//! The host row decides a placement: an assigned choice another placement
 //! already spent admits nothing, a host that is gone admits nothing, and a
 //! choice that cannot be recorded rolls the whole admission back.
 
@@ -12,18 +12,18 @@ use afd_runner::Runners;
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn an_offered_choice_admits_queued_work_once_and_a_spent_choice_admits_nothing() {
-    // Its own database: an offered claim scans every queued chat, and the
+    // Its own database: an assignment claim scans every queued chat, and the
     // shared lane's belong to other proofs.
     let f = fund(Fixture::isolated().await, 2).await;
     let draft = queue(&f, "Claimed through the shared poll").await;
     let ticket = Runners::new(f.db.clone(), Entropy::new())
-        .claim_offer(&f.runner, AcceptedKinds::ALL)
+        .claim_assignment(&f.runner, AcceptedKinds::ALL)
         .await
         .expect("the host answers")
-        .expect("an active host is offered");
+        .expect("an active host is assigned");
     let claimed = f
         .drafts
-        .claim_offered(&f.runner, ticket)
+        .claim_assigned(&f.runner, ticket)
         .await
         .expect("admission answers")
         .expect("the queued chat is admitted");
@@ -31,7 +31,7 @@ async fn an_offered_choice_admits_queued_work_once_and_a_spent_choice_admits_not
     let second = queue(&f, "A second chat for the spent choice").await;
     let spent = f
         .drafts
-        .claim_offered(&f.runner, ticket)
+        .claim_assigned(&f.runner, ticket)
         .await
         .expect("admission answers");
     assert!(spent.is_none(), "the recorded placement spent the choice");
@@ -41,13 +41,13 @@ async fn an_offered_choice_admits_queued_work_once_and_a_spent_choice_admits_not
         .await
         .expect("the second chat's retention closed");
     let fresh = Runners::new(f.db.clone(), Entropy::new())
-        .claim_offer(&f.runner, AcceptedKinds::ALL)
+        .claim_assignment(&f.runner, AcceptedKinds::ALL)
         .await
         .expect("the host answers")
-        .expect("an active host is offered");
+        .expect("an active host is assigned");
     let skipped = f
         .drafts
-        .claim_offered(&f.runner, fresh)
+        .claim_assigned(&f.runner, fresh)
         .await
         .expect("admission answers");
     assert!(

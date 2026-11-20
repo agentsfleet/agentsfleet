@@ -1,5 +1,5 @@
 //! The terminal report's run read, for a report whose stream session kept
-//! no facts from the offer. The report commits in one statement,
+//! no facts from the assignment. The report commits in one statement,
 //! [`super::report_statement::COMMIT_REPORT`].
 
 /// The run a report is about, scoped to the runner presenting it.

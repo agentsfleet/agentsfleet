@@ -1,5 +1,6 @@
 //! Production admission, with pointed fixture selection like the fleet run suite.
 
+mod assigned;
 mod capacity;
 mod context;
 mod deliveries;
@@ -9,7 +10,6 @@ mod fixture;
 mod funnel;
 mod history;
 mod identity;
-mod offered;
 mod placement;
 mod platform;
 mod policy;

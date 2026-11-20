@@ -45,10 +45,10 @@ const POSTGRES_STATEMENTS_PER_STEER: &str = "postgres_statements_per_steer";
 /// The task role a lost depth sampler is reported under.
 const SAMPLER_ROLE: &str = "backlog sampler";
 
-/// Series key: unsettled admission count, sampled through the run.
-const BACKLOG_DEPTH: &str = "admission_backlog";
+/// Series key: unsettled turn count, sampled through the run.
+const BACKLOG_DEPTH: &str = "turn_backlog";
 
-/// How often the admission backlog is sampled.
+/// How often the turn backlog is sampled.
 const DEPTH_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
 
 /// What the caller asked this lane to measure.

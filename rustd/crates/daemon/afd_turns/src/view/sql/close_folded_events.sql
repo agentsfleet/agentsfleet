@@ -1,5 +1,5 @@
 -- Closes, with the run's answer, each folded message's event that is still
--- received: update_fleet_event_result.sql for many events in one statement,
+-- received: update_turn_result.sql for many events in one statement,
 -- with `$2` a list of turn ids. An event already closed keeps its result.
 -- Each closed row carries the fleet facts the live tail reads.
 --

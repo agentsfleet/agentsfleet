@@ -1,5 +1,5 @@
 //! What the fleet-to-fleet suites share: a booted daemon, more fleets in the
-//! scenario's workspace its runner is offered, and the steer and fleets
+//! scenario's workspace its runner is assigned, and the steer and fleets
 //! verbs a running fleet calls.
 //!
 //! Built on [`Speaking`], because a steer's reply destination is copied from
@@ -87,10 +87,10 @@ impl Crew {
     }
 
     /// An active fleet named `name` in the scenario's workspace that no
-    /// runner is offered: a steer's target that only has to be written to.
+    /// runner is assigned: a steer's target that only has to be written to.
     ///
     /// Unplaced, because the scenario's runner holds one run at a time, and
-    /// a target it was offered would take that slot from the event the test
+    /// a target it was assigned would take that slot from the event the test
     /// waits on next.
     pub(crate) async fn sibling(&self, name: &str) -> Uuid7 {
         self.sibling_as(name, ACTIVE).await
@@ -105,7 +105,7 @@ impl Crew {
     }
 
     /// An active fleet named `name` in the scenario's workspace whose work the
-    /// scenario's runner is offered: a target the test runs.
+    /// scenario's runner is assigned: a target the test runs.
     pub(crate) async fn running_sibling(&self, name: &str) -> Uuid7 {
         let (fleet, _workspace, _tenant) = unique_ids();
         let tag = scenario_tag(&self.run().fleet);

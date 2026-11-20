@@ -33,7 +33,7 @@ pub(crate) struct SessionSender {
 pub(crate) struct StreamHandle {
     session: watch::Receiver<Option<Arc<SessionSender>>>,
     pub(crate) running: Arc<crate::downlink::running::Running>,
-    pub(crate) assignments: watch::Receiver<Option<Arc<OwnedFrame>>>,
+    pub(crate) policies: watch::Receiver<Option<Arc<OwnedFrame>>>,
     pub(crate) renewing: Arc<renewals::Renewals>,
 }
 
@@ -41,12 +41,12 @@ impl StreamHandle {
     pub(crate) fn new(
         session: watch::Receiver<Option<Arc<SessionSender>>>,
         running: Arc<crate::downlink::running::Running>,
-        assignments: watch::Receiver<Option<Arc<OwnedFrame>>>,
+        policies: watch::Receiver<Option<Arc<OwnedFrame>>>,
     ) -> Self {
         Self {
             session,
             running,
-            assignments,
+            policies,
             renewing: Arc::new(renewals::Renewals::default()),
         }
     }

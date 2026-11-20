@@ -29,13 +29,13 @@ pub struct TurnSnapshot {
 /// A fenced native read has authenticated these bytes with its exact descriptor.
 #[derive(Clone)]
 pub struct TurnRecovery {
-    /// Exact offer generation, including the files and root digests.
+    /// Exact assignment generation, including the files and root digests.
     pub descriptor: TurnResume,
     /// Complete root bytes returned by the fenced reader.
     pub history: Zeroizing<Vec<u8>>,
     /// Exact membership adopted under the replacement run before model startup.
     pub adopted: Vec<FoldRef>,
-    /// Actual workspace proof supplied after restore, independently compared with the offer.
+    /// Actual workspace proof supplied after restore, independently compared with the assignment.
     pub workspace: TurnWorkspace,
 }
 
@@ -119,7 +119,7 @@ impl TurnSnapshot {
 }
 
 impl TurnRecovery {
-    /// Check the complete private codec and offered scope before adopting inputs.
+    /// Check the complete private codec and assigned scope before adopting inputs.
     ///
     /// # Errors
     /// Refuses unsupported formats, corrupt root state, changed membership and scope.
@@ -145,7 +145,7 @@ impl TurnRecovery {
             || af_core::etag::sha256_hex(&self.history) != self.descriptor.history_digest
         {
             return Err(recovery_invalid(
-                "ordinary restore differs from the offered scope or digest",
+                "ordinary restore differs from the assigned scope or digest",
             ));
         }
         let mut history: History = serde_json::from_slice(&self.history)

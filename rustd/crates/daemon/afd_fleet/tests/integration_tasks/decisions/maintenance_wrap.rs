@@ -6,7 +6,7 @@ use sqlx::Connection as _;
 
 use super::{
     super::fixture::{Case, exercise},
-    fixture::{Decisions, lock_slot},
+    fixture::{Decisions, lock_thread},
     maintenance::{due, state},
     maintenance_fairness::{due_after_scan, extra_unissued},
 };
@@ -59,7 +59,7 @@ async fn full_page(
         .await
         .expect("owned slot holder");
     let mut blocked = connection.begin().await.expect("oldest native owner");
-    let _pid = lock_slot(&mut blocked, oldest.case).await;
+    let _pid = lock_thread(&mut blocked, oldest.case).await;
     let mut cursor = DecisionMaintenanceCursor::default();
     let page = oldest
         .tasks

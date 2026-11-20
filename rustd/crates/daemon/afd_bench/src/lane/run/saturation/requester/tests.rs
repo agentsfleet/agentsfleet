@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use af_core::id::Uuid7;
 
-use super::{Held, Host, Offered, Shared, Tally, drive};
+use super::{Assigned, Held, Host, Shared, Tally, drive};
 use crate::abort::Abort;
 use crate::error::Result;
 
@@ -50,13 +50,13 @@ fn shared(population: u64, deadline: Instant) -> Shared {
 
 /// Answers its script in order, then nothing; renews as `renews` says.
 struct Scripted {
-    script: Mutex<VecDeque<Result<Offered>>>,
+    script: Mutex<VecDeque<Result<Assigned>>>,
     renews: bool,
     renewed: AtomicU64,
 }
 
 impl Scripted {
-    fn new(script: Vec<Offered>, renews: bool) -> Self {
+    fn new(script: Vec<Assigned>, renews: bool) -> Self {
         Self {
             script: Mutex::new(script.into_iter().map(Ok).collect()),
             renews,
@@ -66,9 +66,9 @@ impl Scripted {
 }
 
 impl Host for Scripted {
-    fn offer(&self, _runner: &Uuid7) -> impl Future<Output = Result<Offered>> + Send {
+    fn assign(&self, _runner: &Uuid7) -> impl Future<Output = Result<Assigned>> + Send {
         let next = self.script.lock().expect("unpoisoned").pop_front();
-        ready(next.unwrap_or(Ok(Offered::Nothing)))
+        ready(next.unwrap_or(Ok(Assigned::Nothing)))
     }
 
     fn renew(&self, _runner: &Uuid7, _held: &Held) -> impl Future<Output = Result<()>> + Send {
@@ -90,7 +90,11 @@ async fn run(host: &Scripted, window: &Shared) -> Tally {
 #[tokio::test]
 async fn test_a_host_counts_each_kind_and_stops_at_the_population() {
     let host = Scripted::new(
-        vec![Offered::Chat(held("1")), Offered::Nothing, Offered::Fleet],
+        vec![
+            Assigned::Chat(held("1")),
+            Assigned::Nothing,
+            Assigned::Fleet,
+        ],
         true,
     );
     let window = shared(2, Instant::now() + WINDOW);
@@ -104,9 +108,9 @@ async fn test_a_host_counts_each_kind_and_stops_at_the_population() {
 
 #[tokio::test]
 async fn test_a_host_renews_what_it_holds_every_round() {
-    let mut script = vec![Offered::Chat(held("1")), Offered::Chat(held("1"))];
-    script.extend([Offered::Nothing, Offered::Nothing, Offered::Nothing]);
-    script.extend([Offered::Nothing, Offered::Nothing, Offered::Fleet]);
+    let mut script = vec![Assigned::Chat(held("1")), Assigned::Chat(held("1"))];
+    script.extend([Assigned::Nothing, Assigned::Nothing, Assigned::Nothing]);
+    script.extend([Assigned::Nothing, Assigned::Nothing, Assigned::Fleet]);
     let host = Scripted::new(script, true);
     let tally = run(&host, &shared(3, Instant::now() + WINDOW)).await;
     // Rounds fire before claims 4 and 8, each over the two chat runs held.
@@ -116,8 +120,8 @@ async fn test_a_host_renews_what_it_holds_every_round() {
 
 #[tokio::test]
 async fn test_a_refused_renewal_is_counted_not_propagated() {
-    let mut script = vec![Offered::Chat(held("1"))];
-    script.extend([Offered::Nothing, Offered::Nothing, Offered::Fleet]);
+    let mut script = vec![Assigned::Chat(held("1"))];
+    script.extend([Assigned::Nothing, Assigned::Nothing, Assigned::Fleet]);
     let host = Scripted::new(script, false);
     let tally = run(&host, &shared(2, Instant::now() + WINDOW)).await;
     assert_eq!((tally.renewals, tally.failures), (0, 1));
@@ -125,15 +129,15 @@ async fn test_a_refused_renewal_is_counted_not_propagated() {
 
 #[tokio::test]
 async fn test_a_passed_deadline_polls_nothing() {
-    let host = Scripted::new(vec![Offered::Fleet], true);
+    let host = Scripted::new(vec![Assigned::Fleet], true);
     let tally = run(&host, &shared(1, Instant::now())).await;
     assert_eq!(tally.claims, 0);
 }
 
 #[tokio::test]
 async fn test_tallies_absorb_every_count_and_sample() {
-    let one = Scripted::new(vec![Offered::Chat(held("1"))], true);
-    let other = Scripted::new(vec![Offered::Fleet], true);
+    let one = Scripted::new(vec![Assigned::Chat(held("1"))], true);
+    let other = Scripted::new(vec![Assigned::Fleet], true);
     let mut total = run(&one, &shared(1, Instant::now() + WINDOW)).await;
     let theirs = run(&other, &shared(1, Instant::now() + WINDOW)).await;
     total.absorb(&theirs).expect("latencies merge");
@@ -142,7 +146,7 @@ async fn test_tallies_absorb_every_count_and_sample() {
 }
 
 #[tokio::test]
-async fn a_failed_offer_preserves_its_error() {
+async fn a_failed_assignment_preserves_its_error() {
     let host = Scripted::new(Vec::new(), true);
     host.script
         .lock()

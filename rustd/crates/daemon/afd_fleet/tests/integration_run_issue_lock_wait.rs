@@ -26,7 +26,7 @@ use crate::support::Fixtures;
 const HELD_FOR: Duration = Duration::from_millis(400);
 
 /// Takes the fleet's slot row lock and writes nothing.
-const LOCK_SLOT: &str =
+const LOCK_THREAD: &str =
     "SELECT pg_backend_pid() FROM thread.threads WHERE fleet_id = $1 FOR UPDATE";
 
 /// Whether any backend is waiting on `$1`'s locks.
@@ -55,7 +55,7 @@ async fn the_wait_for_the_slot_lock_is_not_billed_as_runtime() {
 
     let mut holder = fixtures.database.acquire().await.expect("a connection");
     let mut locked = holder.begin().await.expect("holder transaction");
-    let pid: i32 = sqlx::query_scalar(LOCK_SLOT)
+    let pid: i32 = sqlx::query_scalar(LOCK_THREAD)
         .bind(&fleet)
         .fetch_one(&mut *locked)
         .await

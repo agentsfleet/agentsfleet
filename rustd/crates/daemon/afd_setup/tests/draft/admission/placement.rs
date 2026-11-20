@@ -27,14 +27,15 @@ async fn tenant_runner(f: &Fixture, tenant: &Uuid7) -> Uuid7 {
     runner
 }
 
-/// The drafts the candidate read offers `runner`.
-async fn offered(f: &Fixture, runner: &Uuid7) -> Vec<Uuid7> {
+/// The drafts the candidate read assigns `runner`.
+async fn assigned(f: &Fixture, runner: &Uuid7) -> Vec<Uuid7> {
     sqlx::query(Drafts::QUEUED_DRAFTS_QUERY)
         .bind("editing")
         .bind("queued")
         .bind(["awaiting_accounting", "settled"])
         .bind(64_i64)
         .bind(runner)
+        .bind("cancelled")
         .fetch_all(&mut *f.connection().await)
         .await
         .expect("the candidate read answers")
@@ -63,12 +64,12 @@ async fn authoring_placement_refuses_a_foreign_runner() {
     let own = tenant_runner(&f, &f.tenant).await;
 
     assert!(
-        !offered(&f, &foreign).await.contains(&draft.id),
-        "never offered to a foreign host"
+        !assigned(&f, &foreign).await.contains(&draft.id),
+        "never assigned to a foreign host"
     );
     assert!(
-        offered(&f, &own).await.contains(&draft.id),
-        "offered to its tenant's host"
+        assigned(&f, &own).await.contains(&draft.id),
+        "assigned to its tenant's host"
     );
 
     let captured = af_core::test_util::trace::Capture::install();

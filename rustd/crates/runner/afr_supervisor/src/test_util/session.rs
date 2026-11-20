@@ -4,7 +4,7 @@ use crate::{
     Result,
     client::{ControlPlane, HttpRunnerApi},
     config::Config,
-    downlink::{Downlink, Offered, running::RunRegistration},
+    downlink::{Assigned, Downlink, running::RunRegistration},
     error::ErrorKind,
     halt::Halt,
 };
@@ -24,7 +24,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 #[derive(Debug)]
 pub struct Session {
     plane: ControlPlane,
-    offers: tokio::sync::Mutex<mpsc::Receiver<Offered>>,
+    assignments: tokio::sync::Mutex<mpsc::Receiver<Assigned>>,
     held: Mutex<HashMap<Uuid7, RunRegistration>>,
     halt: Arc<Halt>,
     owner: AbortOnDropHandle<Result<()>>,
@@ -36,7 +36,7 @@ impl Session {
     /// # Errors
     /// Returns configuration, authentication or connection failures before the opening deadline.
     pub async fn connect(config: &Config) -> Result<Self> {
-        let (stream, downlink, offers) = Downlink::new(config)?;
+        let (stream, downlink, assignments) = Downlink::new(config)?;
         let halt = Arc::new(Halt::new(CancellationToken::new()));
         let serving_halt = Arc::clone(&halt);
         let owner =
@@ -45,7 +45,7 @@ impl Session {
             ));
         let session = Self {
             plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream),
-            offers: tokio::sync::Mutex::new(offers),
+            assignments: tokio::sync::Mutex::new(assignments),
             held: Mutex::new(HashMap::new()),
             halt,
             owner,
@@ -80,13 +80,13 @@ impl Session {
         self.plane.heartbeat(request).await?.decode()
     }
 
-    /// Receive an issued offer while retaining its cancellation and worker registration.
+    /// Receive an issued assignment while retaining its cancellation and worker registration.
     ///
     /// # Errors
-    /// Returns a disconnected owner or a malformed protocol offer.
-    pub async fn offer(&self) -> Result<OwnedFrame> {
-        let offered = self
-            .offers
+    /// Returns a disconnected owner or a malformed protocol assignment.
+    pub async fn assign(&self) -> Result<OwnedFrame> {
+        let assigned = self
+            .assignments
             .lock()
             .await
             .recv()
@@ -94,8 +94,8 @@ impl Session {
             .ok_or(ErrorKind::Disconnected)?;
         self.held
             .lock()
-            .insert(offered.registration.run.clone(), offered.registration);
-        Ok(offered.frame)
+            .insert(assigned.registration.run.clone(), assigned.registration);
+        Ok(assigned.frame)
     }
 
     /// Deliver the current report and release its registration only after acknowledgement.
@@ -158,7 +158,7 @@ impl Session {
         self.plane.folds(run, fence, after).await?.decode()
     }
 
-    /// Invoke a model through the same native connection as the run offer.
+    /// Invoke a model through the same native connection as the run assignment.
     ///
     /// # Errors
     /// Preserves native transport failures and coded authoring refusals.

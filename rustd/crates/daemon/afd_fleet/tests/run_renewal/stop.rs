@@ -15,7 +15,7 @@ use af_crypto::{entropy::Entropy, secret::Kek};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use af_wire::run::{AcceptedKinds, SetupReport, TaggedRun};
 use afd_bus::{Command, Received, Subject};
-use afd_fleet::run::OfferRequest;
+use afd_fleet::run::AssignRequest;
 use afd_turns::view::stop::Stop;
 
 const KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -99,7 +99,7 @@ async fn take_draft_run(running: &Running, drafts: &afd_setup::Drafts) -> Taken 
         .plane()
         .claim_with(
             drafts,
-            OfferRequest {
+            AssignRequest {
                 runner: &running.runner,
                 held: &[],
                 degraded: false,

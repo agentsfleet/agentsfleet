@@ -71,5 +71,5 @@ fn test_claim_reply_requires_a_supported_discriminator() {
         );
     }
     serde_json::from_str::<Down<'_>>(r#"{"type":"run","run":null}"#)
-        .expect_err("an offer must contain a native run");
+        .expect_err("an assignment must contain a native run");
 }

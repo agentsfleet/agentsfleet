@@ -322,7 +322,7 @@ async fn a_renewal_refused_for_the_cancel_mark_is_a_stop() {
         ))
     });
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let registration = plane.stream.running.offer(run.clone(), false).unwrap();
+    let registration = plane.stream.running.assign(run.clone(), false).unwrap();
     let clock = clock();
 
     let class = Renewal::new(
@@ -348,7 +348,7 @@ async fn a_renewal_refused_for_another_reason_is_no_stop() {
     let (plane, _calls) =
         plane(|_call| Answer::Fail(error::refused(Verb::Renew, 409, Some(error_code::RUN_LOST))));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let _registration = plane.stream.running.offer(run.clone(), false).unwrap();
+    let _registration = plane.stream.running.assign(run.clone(), false).unwrap();
     let clock = clock();
 
     Renewal::new(

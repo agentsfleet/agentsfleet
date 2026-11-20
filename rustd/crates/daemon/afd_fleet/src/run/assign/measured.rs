@@ -13,15 +13,15 @@
 use af_core::id::Uuid7;
 
 use crate::error::Result;
+use crate::run::assignment::RecoveryScan;
 use crate::run::envelope::Acquired;
-use crate::run::offer::RecoveryScan;
 use crate::run::store::Runs;
 
 /// One poll's examined candidates. Statement cost is measured from
 /// `pg_stat_statements` in the bench, which counts what every crate sends.
 #[derive(Debug, Clone, Copy)]
 pub struct PollMeasurement {
-    /// Fleets the ledger scan offered this poll.
+    /// Fleets the ledger scan assigned this poll.
     pub candidates_scanned: u64,
 }
 

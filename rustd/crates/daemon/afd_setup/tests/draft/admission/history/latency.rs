@@ -100,10 +100,7 @@ async fn delayed_database_keeps_one_hundred_sends_within_the_existing_pool_budge
     let draft = queue(&f, "Original unknown request").await;
     let run = claim(&f, &draft).await.expect("first attempt");
     unknown(&f, &run).await;
-    f.drafts
-        .cancel(f.access(), &draft.id, 1)
-        .await
-        .expect("Stop old work");
+    f.stop(&draft.id, 1).await.expect("Stop old work");
     super::history(&f, &draft, &run).await;
     let proxy = DelayedDatabase::start(&f.owner_url()).await;
     let database = proxy.open().await;
@@ -119,7 +116,8 @@ async fn delayed_database_keeps_one_hundred_sends_within_the_existing_pool_budge
     );
     let fixture = Arc::new(f);
     super::sends(Arc::clone(&fixture), &draft.id, peer).await;
-    assert_eq!(stored(&fixture, &draft.id).await, (101, 101, 1_100));
+    // Turns: the stopped first, its 999 seeded stopped copies, and the 100 sends.
+    assert_eq!(stored(&fixture, &draft.id).await, (1_100, 101, 1_100));
     Arc::try_unwrap(fixture)
         .ok()
         .expect("all senders released")

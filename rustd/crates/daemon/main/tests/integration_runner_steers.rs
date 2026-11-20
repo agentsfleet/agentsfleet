@@ -21,12 +21,12 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Barrier;
 
+use crate::assignments::{assigned, settle, steered};
 use crate::definition_install::seal;
 use crate::e2e_seed::FLEET_NAME;
-use crate::offers::{offered, settle, steered};
 use crate::steers::Crew;
 use crate::verbs::enqueue_from_thread;
-use crate::wire::{report, report_body, wait_for_offer};
+use crate::wire::{report, report_body, wait_for_assignment};
 
 /// How many identical steers race for one admission, released together.
 const RACERS: usize = 100;
@@ -128,7 +128,7 @@ async fn fleet_steer_copies_the_sender_reply_destination() {
     assert!(reported.is_ok(), "{reported:?}");
 
     let thread_event = enqueue_from_thread(crew.run()).await;
-    let (threaded, fence) = wait_for_offer(crew.run(), &thread_event).await;
+    let (threaded, fence) = wait_for_assignment(crew.run(), &thread_event).await;
     let (status, _) = crew
         .steer((&threaded, fence), &target, "from the thread")
         .await;
@@ -203,7 +203,7 @@ async fn fleet_steer_body_reaches_the_target_turn() {
         (&short_answer, "scene the hourly check"),
         (&long_answer, long.as_str()),
     ] {
-        let turn = offered(crew.run(), &steered(answer)).await;
+        let turn = assigned(crew.run(), &steered(answer)).await;
         assert_eq!(turn.message, format!("{line}\n{text}"));
         settle(crew.run(), &turn).await;
     }
@@ -214,7 +214,7 @@ async fn fleet_steer_body_reaches_the_target_turn() {
         af_wire::turn::TurnKind::Chat,
     )
     .await;
-    let turn = offered(crew.run(), &next).await;
+    let turn = assigned(crew.run(), &next).await;
     assert!(
         turn.history
             .iter()

@@ -5,7 +5,7 @@
 # installs it). It measures a URL, which is the only thing hey can measure.
 #
 # What the daemon's paths cost is the THROUGHPUT LANES further down —
-# bench-run, bench-steer, bench-outbound, bench-cardinality, bench-tail. Those are Rust,
+# bench-run, bench-steer, bench-outbound, bench-cardinality, bench-items. Those are Rust,
 # they drive the production types directly rather than a URL, and they are the
 # agentsfleetd benchmarks.
 # =============================================================================
@@ -119,7 +119,7 @@ BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 # build profile rather than of the path.
 BENCH_LANE_RUN := cargo run --release --locked --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin
 
-BENCH_LANES := bench-run bench-steer bench-outbound bench-cardinality bench-tail
+BENCH_LANES := bench-run bench-steer bench-outbound bench-cardinality bench-items
 
 .PHONY: $(BENCH_LANES) bench-compare
 
@@ -127,7 +127,7 @@ BENCH_LANES := bench-run bench-steer bench-outbound bench-cardinality bench-tail
 # does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`, which depends on the
 # reset, so `make -j` cannot run the two side by side). The migration gives a
 # fresh worktree the schema its seed needs (`identity.tenants`); the reset clears
-# the unsettled `fleet.admissions` rows the integration suite leaves, which a
+# the unsettled `thread.turns` rows the integration suite leaves, which a
 # run run would otherwise meet as candidates in every idle window. Only an owned rig: a dev
 # or prod profile points at a deployed database, and a rig whose
 # BENCH_TARGET_OWNED is overridden is not this run's to reset (see above), so a
@@ -153,10 +153,10 @@ bench-run:  ## Run throughput, then a drain: rate, p95, statements and commits p
 bench-steer:  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
 bench-outbound:  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
 bench-cardinality:  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
-# The live tail's ladders: viewers on one fleet × payload size, then open
+# The live items stream's ladders: viewers on one fleet × payload size, then open
 # streams. The only lane that also subscribes, on the same NATS cluster the
 # others publish to.
-bench-tail:  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
+bench-items:  ## Live items stream: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
 
 # Only the run lane has shapes, so it alone is handed BENCH_SHAPE.
 bench-run: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"

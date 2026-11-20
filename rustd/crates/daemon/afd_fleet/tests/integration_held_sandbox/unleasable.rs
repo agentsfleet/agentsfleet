@@ -1,7 +1,7 @@
 //! A holder that cannot run keeps no fleet closed. A degraded runner is
 //! answered no work, and one an operator drained is refused at
 //! authentication, so its hold binds nobody even while its last beat is
-//! recent: another runner's poll is offered the fleet and its claim wins.
+//! recent: another runner's poll is assigned the fleet and its claim wins.
 
 #![expect(
     clippy::expect_used,

@@ -1,4 +1,4 @@
--- The draft's earlier answered turns, newest first, for the offer's bounded history.
+-- The draft's earlier answered turns, newest first, for the assignment's bounded history.
 --
 -- $1 draft · $2 the message the run runs · $3 the completed status · $4 limit
 SELECT request_json->>'message' AS user_text, answer_text

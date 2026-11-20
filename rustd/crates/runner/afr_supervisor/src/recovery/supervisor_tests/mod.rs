@@ -1,4 +1,4 @@
-//! Ordinary file offers drive the production supervisor and agent to the model boundary.
+//! Ordinary file assignments drive the production supervisor and agent to the model boundary.
 
 mod fixture;
 mod model;
@@ -124,9 +124,9 @@ fn install(
     Ok(())
 }
 
-async fn warm(rig: &mut Rig, offered: &af_wire::run::RunPayload<'_>) -> Checked {
+async fn warm(rig: &mut Rig, assigned: &af_wire::run::RunPayload<'_>) -> Checked {
     rig.lessee.holds.resize(2);
-    let mut warm = offered.clone();
+    let mut warm = assigned.clone();
     warm.run_id = "019f0000-0000-7000-8000-000000000099".into();
     warm.turn_resume = None;
     warm.resume_hold = false;

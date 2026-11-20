@@ -2,7 +2,7 @@
 //!
 //! # What it asks
 //!
-//! What native gateway offers sustain when hosts outnumber the pool's
+//! What native gateway assignments sustain when hosts outnumber the pool's
 //! connections, and whether placement stays correct. Hosts receive setup
 //! chats and fleet runs through their own guarded session and renew held
 //! work, while wall viewers read the fleet
@@ -173,7 +173,7 @@ async fn record_census(
     census.judge()
 }
 
-/// One requester per host, each waiting for notified offers until the window closes.
+/// One requester per host, each waiting for notified assignments until the window closes.
 fn spawn_requesters(
     host: &Arc<Connected>,
     runners: &[super::seed::RunnerIdentity],

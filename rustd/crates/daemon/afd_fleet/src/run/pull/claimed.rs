@@ -18,7 +18,7 @@ impl RunService {
         runner_id: &Uuid7,
         now: Timestamp,
     ) -> Result<Option<serde_json::Value>> {
-        let mut encode = |run: af_wire::run::RunPayload<'_>, _metadata: crate::run::Offered| {
+        let mut encode = |run: af_wire::run::RunPayload<'_>, _metadata: crate::run::AssignedRun| {
             serde_json::to_value(af_wire::run::TaggedRun::<serde_json::Value>::Fleet(
                 Box::new(run),
             ))

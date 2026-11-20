@@ -2,12 +2,12 @@
 
 use super::{
     ConnectionServices, Message,
+    assignments::{AssignMode, AssignOutcome, AssignTrigger},
     events::{
         ConnectionEvent, EventHandler, EventSource, OperationCompletion, ShutdownReason,
         join_result,
     },
     io::IncomingFrame,
-    offers::{OfferMode, OfferOutcome, OfferTrigger},
     requests::{RequestSlots, RequestTracker},
 };
 use crate::{
@@ -98,33 +98,33 @@ impl ConnectionSupervisor {
         Ok(())
     }
 
-    fn offer(&mut self, trigger: OfferTrigger) {
+    fn assign(&mut self, trigger: AssignTrigger) {
         self.assign_running = true;
         let services = Arc::clone(&self.services);
         self.jobs.spawn(
             async move {
                 let mode = match &trigger {
-                    OfferTrigger::Ready => OfferMode::Ordinary,
-                    OfferTrigger::Pass(request) if !request.reply.is_closed() => request.mode,
-                    OfferTrigger::Pass(_) => return Ok(OperationCompletion::Assign),
+                    AssignTrigger::Ready => AssignMode::Ordinary,
+                    AssignTrigger::Pass(request) if !request.reply.is_closed() => request.mode,
+                    AssignTrigger::Pass(_) => return Ok(OperationCompletion::Assign),
                 };
-                let outcome = if mode == OfferMode::Ordinary
+                let outcome = if mode == AssignMode::Ordinary
                     && services.handle.snapshot.lock().recovery_pending.is_some()
                 {
                     // Only the replica's bounded drain issues recovery claims.
                     services.gateway.inner.dependencies.wake.recheck();
-                    OfferOutcome::Deferred
+                    AssignOutcome::Deferred
                 } else {
-                    services.offer(mode).await?
+                    services.assign(mode).await?
                 };
                 match trigger {
-                    OfferTrigger::Ready if outcome == OfferOutcome::Issued => {
-                        services.handle.request_offer();
+                    AssignTrigger::Ready if outcome == AssignOutcome::Issued => {
+                        services.handle.request_assignment();
                     }
-                    OfferTrigger::Ready => {}
-                    OfferTrigger::Pass(request) => {
+                    AssignTrigger::Ready => {}
+                    AssignTrigger::Pass(request) => {
                         if request.reply.send(outcome).is_err() {
-                            tracing::debug!(event = "runner_offer_pass_abandoned", ?outcome);
+                            tracing::debug!(event = "runner_assign_pass_abandoned", ?outcome);
                         }
                     }
                 }
@@ -227,7 +227,7 @@ impl EventHandler for ConnectionSupervisor {
             ConnectionEvent::Frame(frame) => self.request(frame)?,
             ConnectionEvent::Completed(completion) => self.completed(completion),
             ConnectionEvent::Command(command) => self.command(command),
-            ConnectionEvent::OfferRequested(trigger) => self.offer(trigger),
+            ConnectionEvent::AssignRequested(trigger) => self.assign(trigger),
             ConnectionEvent::DrainRequested => {
                 return Ok(ControlFlow::Break(ShutdownReason::Drain));
             }

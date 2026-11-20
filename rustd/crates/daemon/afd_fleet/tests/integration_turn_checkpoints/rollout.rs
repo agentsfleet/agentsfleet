@@ -1,4 +1,4 @@
-//! Disabling restore admission preserves checkpointed heads on ordinary and recovery offers.
+//! Disabling restore admission preserves checkpointed heads on ordinary and recovery assignments.
 
 use std::sync::Arc;
 

@@ -151,7 +151,7 @@ impl RunnerRoute {
         }
     }
 
-    /// Hydrate and capture share a path and differ by method, so they share an
+    /// Load and capture share a path and differ by method, so they share an
     /// arm here. They stay two routes because they are two operations — one
     /// reads a fleet's memory at run start, the other writes it back — and
     /// collapsing them would lose the distinction every other table keys on.

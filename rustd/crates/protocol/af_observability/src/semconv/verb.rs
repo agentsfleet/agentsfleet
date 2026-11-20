@@ -6,8 +6,8 @@ use super::{ATTR_AGENT_ID, ATTR_TURN_ID};
 /// The span one steer leaves: admission to the announce.
 pub const SPAN_FLEET_STEER: &str = "fleet.steer";
 
-/// The span one offer that selected work leaves: claim to the stream write.
-pub const SPAN_FLEET_OFFER: &str = "fleet.offer";
+/// The span one assignment that selected work leaves: claim to the stream write.
+pub const SPAN_FLEET_ASSIGN: &str = "fleet.assign";
 
 /// The span one terminal report leaves: the run read to the acknowledgement.
 pub const SPAN_FLEET_REPORT: &str = "fleet.report";
@@ -24,20 +24,20 @@ pub const ATTR_STEER_ADMIT_MS: &str = "agentsfleet.steer.admit_ms";
 /// The steer verb's `announce` stage, in whole milliseconds.
 pub const ATTR_STEER_ANNOUNCE_MS: &str = "agentsfleet.steer.announce_ms";
 
-/// The offer verb's `claim` stage, in whole milliseconds.
-pub const ATTR_OFFER_CLAIM_MS: &str = "agentsfleet.offer.claim_ms";
+/// The assignment verb's `claim` stage, in whole milliseconds.
+pub const ATTR_ASSIGN_CLAIM_MS: &str = "agentsfleet.assign.claim_ms";
 
-/// The offer verb's `admit` stage, in whole milliseconds.
-pub const ATTR_OFFER_ADMIT_MS: &str = "agentsfleet.offer.admit_ms";
+/// The assignment verb's `admit` stage, in whole milliseconds.
+pub const ATTR_ASSIGN_ADMIT_MS: &str = "agentsfleet.assign.admit_ms";
 
-/// The offer verb's `issue` stage, in whole milliseconds.
-pub const ATTR_OFFER_ISSUE_MS: &str = "agentsfleet.offer.issue_ms";
+/// The assignment verb's `issue` stage, in whole milliseconds.
+pub const ATTR_ASSIGN_ISSUE_MS: &str = "agentsfleet.assign.issue_ms";
 
-/// The offer verb's `encode` stage, in whole milliseconds.
-pub const ATTR_OFFER_ENCODE_MS: &str = "agentsfleet.offer.encode_ms";
+/// The assignment verb's `encode` stage, in whole milliseconds.
+pub const ATTR_ASSIGN_ENCODE_MS: &str = "agentsfleet.assign.encode_ms";
 
-/// The offer verb's `send` stage, in whole milliseconds.
-pub const ATTR_OFFER_SEND_MS: &str = "agentsfleet.offer.send_ms";
+/// The assignment verb's `send` stage, in whole milliseconds.
+pub const ATTR_ASSIGN_SEND_MS: &str = "agentsfleet.assign.send_ms";
 
 /// The report verb's `load` stage, in whole milliseconds.
 pub const ATTR_REPORT_LOAD_MS: &str = "agentsfleet.report.load_ms";
@@ -76,11 +76,11 @@ pub const VERB_SPAN_KEYS: &[&str] = &[
     ATTR_AGENT_ID,
     ATTR_STEER_ADMIT_MS,
     ATTR_STEER_ANNOUNCE_MS,
-    ATTR_OFFER_CLAIM_MS,
-    ATTR_OFFER_ADMIT_MS,
-    ATTR_OFFER_ISSUE_MS,
-    ATTR_OFFER_ENCODE_MS,
-    ATTR_OFFER_SEND_MS,
+    ATTR_ASSIGN_CLAIM_MS,
+    ATTR_ASSIGN_ADMIT_MS,
+    ATTR_ASSIGN_ISSUE_MS,
+    ATTR_ASSIGN_ENCODE_MS,
+    ATTR_ASSIGN_SEND_MS,
     ATTR_REPORT_LOAD_MS,
     ATTR_REPORT_PREPARE_MS,
     ATTR_REPORT_CAPTURE_MS,

@@ -243,7 +243,7 @@ impl Inbox {
         turn_id: &Uuid7,
     ) -> Result<(bool, Option<FleetCounters>)> {
         let mut connection = self.database.acquire().await?;
-        let landed = sqlx::query_as::<_, Landed>(afd_turns::view::sql::INSERT_FLEET_EVENT)
+        let landed = sqlx::query_as::<_, Landed>(afd_turns::view::sql::INSERT_TURN)
             .bind(&resolved.fleet_id)
             .bind(stored_id)
             .bind(&resolved.workspace_id)

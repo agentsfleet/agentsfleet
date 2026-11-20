@@ -26,7 +26,7 @@ enum Fault {
     WrongRelease,
 }
 
-/// A run offered an API-only ordinary checkpoint, and what the owner saved.
+/// A run assigned an API-only ordinary checkpoint, and what the owner saved.
 fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointRead)> {
     let mut run = test_support::payload(RUN_ID, FLEET_ID);
     run.event.workspace_id = ID.into();
@@ -101,9 +101,9 @@ fn sent(calls: &mut test_support::Calls) -> Checked<Vec<Action>> {
         .collect()
 }
 
-/// Restores `offer` API-only against an owner holding `saved`.
+/// Restores `assignment` API-only against an owner holding `saved`.
 async fn restore(
-    offer: &RunPayload<'_>,
+    assignment: &RunPayload<'_>,
     saved: TurnCheckpointRead,
     fault: Option<Fault>,
     stop: &CancellationToken,
@@ -111,20 +111,20 @@ async fn restore(
     let (plane, mut calls) = owner(saved, fault);
     let run = Uuid7::parse(RUN_ID)?;
     let transfers = Transfers::new()?;
-    let restored = NativeTurn::new(&plane, &run, offer.fencing_token, &transfers)
-        .restore(offer, TurnWorkspace::ApiOnly, None, stop, None)
+    let restored = NativeTurn::new(&plane, &run, assignment.fencing_token, &transfers)
+        .restore(assignment, TurnWorkspace::ApiOnly, None, stop, None)
         .await;
     Ok((restored, sent(&mut calls)?))
 }
 
 #[tokio::test]
 async fn an_api_only_restore_adopts_its_saved_inputs_and_releases_its_pin() -> Checked {
-    let (offer, saved) = api_only()?;
+    let (assignment, saved) = api_only()?;
     let descriptor = saved.descriptor.clone();
 
-    let (restored, sent) = restore(&offer, saved, None, &CancellationToken::new()).await?;
+    let (restored, sent) = restore(&assignment, saved, None, &CancellationToken::new()).await?;
 
-    let recovered = restored?.ok_or("the offered checkpoint was not restored")?;
+    let recovered = restored?.ok_or("the assigned checkpoint was not restored")?;
     assert_eq!(recovered.descriptor, descriptor);
     assert_eq!(recovered.adopted, Vec::<FoldRef>::new());
     assert!(matches!(
@@ -140,7 +140,7 @@ async fn an_api_only_restore_adopts_its_saved_inputs_and_releases_its_pin() -> C
 
 #[tokio::test]
 async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Checked {
-    let (offer, saved) = api_only()?;
+    let (assignment, saved) = api_only()?;
     let root = tempfile::tempdir()?;
     for workspace in [
         TurnWorkspace::Files {
@@ -152,9 +152,9 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
         let run = Uuid7::parse(RUN_ID)?;
         let transfers = Transfers::new()?;
 
-        let restored = NativeTurn::new(&plane, &run, offer.fencing_token, &transfers)
+        let restored = NativeTurn::new(&plane, &run, assignment.fencing_token, &transfers)
             .restore(
-                &offer,
+                &assignment,
                 workspace,
                 Some((root.path().to_owned(), (0, 0))),
                 &CancellationToken::new(),
@@ -173,8 +173,8 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
 
 #[tokio::test]
 async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted() -> Checked {
-    for case in ["files", "changed offer", "stopped"] {
-        let (mut offer, mut saved) = api_only()?;
+    for case in ["files", "changed assignment", "stopped"] {
+        let (mut assignment, mut saved) = api_only()?;
         let stop = CancellationToken::new();
         let expected = match case {
             "files" => {
@@ -183,9 +183,9 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
                 )];
                 "API-only recovery unexpectedly contains files"
             }
-            "changed offer" => {
-                if let Some(offered) = offer.turn_resume.as_mut() {
-                    offered.history_digest = "c".repeat(64);
+            "changed assignment" => {
+                if let Some(assigned) = assignment.turn_resume.as_mut() {
+                    assigned.history_digest = "c".repeat(64);
                 }
                 "ordinary root validation refused restore"
             }
@@ -195,7 +195,7 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
             }
         };
 
-        let (restored, sent) = restore(&offer, saved, None, &stop).await?;
+        let (restored, sent) = restore(&assignment, saved, None, &stop).await?;
 
         assert_eq!(test_support::detail(&restored), Some(expected), "{case}");
         assert!(
@@ -213,10 +213,10 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
 /// fails the restore, and the pin is still released.
 #[tokio::test]
 async fn an_adoption_naming_other_saved_inputs_fails_the_restore() -> Checked {
-    let (offer, saved) = api_only()?;
+    let (assignment, saved) = api_only()?;
 
     let (restored, sent) = restore(
-        &offer,
+        &assignment,
         saved,
         Some(Fault::ChangedAdopt),
         &CancellationToken::new(),

@@ -4,8 +4,8 @@
 use super::*;
 use af_wire::run::{CheckpointOperationId, TurnResume, TurnScope, TurnWorkspace};
 
-/// The fixture run, offered an ordinary file checkpoint instead of a task.
-fn offered() -> Result<Fixture> {
+/// The fixture run, assigned an ordinary file checkpoint instead of a task.
+fn assigned() -> Result<Fixture> {
     let mut fixture = Fixture::new(|_call| None)?;
     fixture.run.turn_resume = Some(TurnResume {
         checkpoint_id: CheckpointOperationId(ID.to_owned()),
@@ -45,7 +45,7 @@ async fn an_ordinary_restore_needs_a_trusted_workspace_and_toolbox() -> Result<(
             "ordinary restore has no verified toolbox",
         ),
     ] {
-        let mut fixture = offered()?;
+        let mut fixture = assigned()?;
         let sandbox = engine
             .prepare(SandboxRequest::new(test_support::RUN_ID, Limits::default()))
             .await
@@ -82,7 +82,7 @@ async fn an_ordinary_restore_that_cannot_freeze_or_prove_quiescence_thaws_and_re
             "ordinary restore could not prove tenant quiescence",
         ),
     ] {
-        let mut fixture = offered()?;
+        let mut fixture = assigned()?;
         let root = tempfile::tempdir()?;
         let (engine, sandbox) = sandbox(root.path(), freezer).await?;
         let owner = OnceLock::new();

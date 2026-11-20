@@ -1,15 +1,15 @@
-//! One simulated host under saturation: offer, renew what it holds, never
+//! One simulated host under saturation: assign, renew what it holds, never
 //! report.
 //!
 //! # What one iteration is
 //!
-//! One [`Host::offer`] — in production `Plane::claim`, the verb the runner
+//! One [`Host::assign`] — in production `Plane::claim`, the verb the runner
 //! route serves, which tries a setup chat and a fleet run in the order the
 //! host's ticket names — timed end to end. Every [`RENEW_EVERY`] claims the host
 //! renews each chat run it holds, so renewals compete for the pool the way a
 //! host mid-conversation makes them compete.
 //!
-//! Offer failures end the measurement with their cause. Renewal refusals are
+//! Assignment failures end the measurement with their cause. Renewal refusals are
 //! counted and observed by the load generator before the final correctness check.
 
 use std::sync::Arc;
@@ -22,7 +22,7 @@ use crate::abort::Abort;
 use crate::error::Result;
 use crate::report::Latency;
 
-/// Successful offer rounds between eager renewal rounds.
+/// Successful assignment rounds between eager renewal rounds.
 const RENEW_EVERY: u64 = 4;
 
 /// A chat run a host holds, as its renewal names it.
@@ -32,10 +32,10 @@ pub(super) struct Held {
     pub(super) fence: String,
 }
 
-/// What one offer answered.
+/// What one assignment answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Offered {
-    /// No work this offer.
+pub(super) enum Assigned {
+    /// No work this assignment.
     Nothing,
     /// A setup chat run, held until the window ends.
     Chat(Held),
@@ -50,12 +50,12 @@ pub(super) trait Host: Sync {
     /// # Errors
     ///
     /// Preserves gateway, decoding and domain refusal failures.
-    fn offer(&self, runner: &Uuid7) -> impl Future<Output = Result<Offered>> + Send;
+    fn assign(&self, runner: &Uuid7) -> impl Future<Output = Result<Assigned>> + Send;
 
     /// Renew one held chat run, answering whether the path accepted it.
     fn renew(&self, runner: &Uuid7, held: &Held) -> impl Future<Output = Result<()>> + Send;
 
-    /// Wait for a new scheduling notification after an empty offer pass.
+    /// Wait for a new scheduling notification after an empty assignment pass.
     fn wait(&self, _runner: &Uuid7) -> impl Future<Output = Result<()>> + Send {
         async { Ok(()) }
     }
@@ -97,9 +97,9 @@ pub(super) struct Tally {
     pub(super) failures: u64,
     /// Renewals the path accepted.
     pub(super) renewals: u64,
-    /// How long a offer that issued a run of either kind took.
+    /// How long an assignment that issued a run of either kind took.
     pub(super) run_latency: Latency,
-    /// How long a offer that issued a setup chat run took: the tail a claim
+    /// How long an assignment that issued a setup chat run took: the tail a claim
     /// waiting on a locked draft shows in.
     pub(super) chat_latency: Latency,
 }
@@ -142,7 +142,7 @@ impl Tally {
     }
 }
 
-/// Process offers and renew held work until the window closes.
+/// Process assignments and renew held work until the window closes.
 ///
 /// # Errors
 ///
@@ -161,25 +161,25 @@ pub(super) async fn drive<H: Host>(host: &H, runner: &Uuid7, shared: &Shared) ->
             }
         }
         let started = Instant::now();
-        let offered = tokio::select! {
+        let assigned = tokio::select! {
             () = stop.cancelled() => break,
             () = shared.done.cancelled() => break,
             () = tokio::time::sleep_until(shared.deadline.into()) => break,
-            result = host.offer(runner) => result?,
+            result = host.assign(runner) => result?,
         };
         let took = started.elapsed();
         tally.outcome(true, shared);
-        match offered {
-            Offered::Nothing => {
+        match assigned {
+            Assigned::Nothing => {
                 wait(host, runner, &held, &mut tally, shared).await?;
                 continue;
             }
-            Offered::Chat(run) => {
+            Assigned::Chat(run) => {
                 tally.chat += 1;
                 tally.chat_latency.record(took)?;
                 held.push(run);
             }
-            Offered::Fleet => tally.fleet += 1,
+            Assigned::Fleet => tally.fleet += 1,
         }
         tally.run_latency.record(took)?;
         let held = shared.held.fetch_add(1, Ordering::Relaxed) + 1;

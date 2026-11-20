@@ -213,7 +213,7 @@ async fn unknown_work_keeps_its_delivery_while_a_fresh_message_runs() {
 
 // Value: protects=Stop releases chat ownership while old liability remains;
 // fails_when=claim still treats a stopped attempt as the current turn;
-// why_new=both discovery and locked admission ignored the watermark; seam=physical provider only.
+// why_new=both discovery and locked admission ignored the stopped turn; seam=physical provider only.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
@@ -221,10 +221,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
     let draft = queue(&f, FIRST).await;
     let run = claim(&f, &draft).await.expect("first attempt");
     unknown(&f, &run).await;
-    f.drafts
-        .cancel(f.access(), &draft.id, 1)
-        .await
-        .expect("Stop unknown work");
+    f.stop(&draft.id, 1).await.expect("Stop unknown work");
     let sent = f
         .drafts
         .send(
@@ -256,10 +253,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
         ACTION_RETRY_MESSAGE
     );
     late_cannot_publish(&f, &run).await;
-    f.drafts
-        .cancel(f.access(), &draft.id, 1)
-        .await
-        .expect("delayed old Stop");
+    f.stop(&draft.id, 1).await.expect("delayed old Stop");
     let status: String =
         sqlx::query_scalar("SELECT status FROM thread.turns WHERE thread_id=$1 AND sequence=2")
             .bind(&draft.id)

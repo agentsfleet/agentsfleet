@@ -3,7 +3,7 @@
 //!
 //! # They authorize differently
 //!
-//! Hydrate asks "does this runner hold a live run on this fleet, and has no
+//! Load asks "does this runner hold a live run on this fleet, and has no
 //! reclaim moved the fleet past it" — a read of a fleet's own memory by the
 //! runner currently running it.
 //!

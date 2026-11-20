@@ -40,13 +40,13 @@ const RENEWALS: &str = "renewals";
 /// Measurement key: runs of either kind per second of the window.
 const RUNS_PER_SECOND: &str = "runs_per_second";
 
-/// Measurement key: the tail of a offer that issued a run.
+/// Measurement key: the tail of an assignment that issued a run.
 const RUN_P95_MS: &str = "run_p95_ms";
 
-/// Measurement key: the tail of a offer that issued a setup chat run.
+/// Measurement key: the tail of an assignment that issued a setup chat run.
 const CHAT_RUN_P95_MS: &str = "chat_run_p95_ms";
 
-/// Measurement key: the longest offer that issued a setup chat run.
+/// Measurement key: the longest assignment that issued a setup chat run.
 const CHAT_RUN_MAX_MS: &str = "chat_run_max_ms";
 
 /// Measurement key: holds the slow writer took on one tenant's drafts.

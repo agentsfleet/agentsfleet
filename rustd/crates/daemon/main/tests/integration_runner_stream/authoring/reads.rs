@@ -64,7 +64,7 @@ impl AuthoringFixture {
     }
 
     pub(super) async fn receipts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM setup.dispatches WHERE attempt_id=$1), (SELECT count(*) FROM setup.activity_receipts WHERE attempt_id=$1), (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1)")
+        sqlx::query_as("SELECT (SELECT count(*) FROM setup.dispatches WHERE attempt_id=$1), (SELECT count(*) FROM setup.activity_receipts WHERE attempt_id=$1), (SELECT count(*) FROM billing.setup_report_receipts WHERE attempt_id=$1)")
             .bind(Uuid7::parse(&self.run.attempt_id).expect("attempt id"))
             .fetch_one(&mut *self.booted.database.acquire().await.expect("receipt read connection"))
             .await.expect("scoped receipt counts")

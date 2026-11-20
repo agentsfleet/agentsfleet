@@ -71,8 +71,6 @@ async fn stopping_a_message_withholds_its_buffered_summary_notice() {
     let mut body = live.open().await;
     live.mutate("UPDATE thread.turns SET status='cancelled' WHERE thread_id=$1")
         .await;
-    live.mutate("UPDATE setup.drafts SET cancelled_through_sequence=1 WHERE id=$1")
-        .await;
     live.publish(&notice(&live, "resuming"));
     let received = frame(&mut body).await;
     assert!(

@@ -24,7 +24,7 @@ use sqlx::Row as _;
 use crate::e2e::Scenario;
 use crate::schedules::{Assigned, Seeded};
 use crate::verbs::FakeQStash;
-use crate::wire::wait_for_offer;
+use crate::wire::wait_for_assignment;
 
 /// Dimension 1.6. Running now admits one event under the schedule's actor, and
 /// a retried post answers the same run.
@@ -80,7 +80,7 @@ async fn test_scheduled_run_is_assigned_with_its_message() {
         .expect("the scene answers a canonical event id");
 
     assigned.settle().await;
-    let _woken = wait_for_offer(&assigned.scene, &event).await;
+    let _woken = wait_for_assignment(&assigned.scene, &event).await;
 
     let mut connection = assigned.connection().await;
     let message: String = sqlx::query_scalar(
@@ -318,7 +318,7 @@ fn turn_ids(page: &Value) -> Vec<&Value> {
 /// them in, with `turn_id` breaking a same-millisecond tie the same way.
 async fn record_event(scene: &Scenario, event: &Uuid7, actor: &str) {
     let mut connection = scene.booted.database.acquire().await.expect("a connection");
-    sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
+    sqlx::query(afd_turns::view::sql::INSERT_TURN)
         .bind(&scene.fleet)
         .bind(event)
         .bind(&scene.workspace)

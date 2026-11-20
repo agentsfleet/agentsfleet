@@ -38,10 +38,7 @@ async fn cancelled_and_deleted_attempts_cannot_replay_private_proposals() {
         .activity(&f.runner, &a.run, request.clone())
         .await
         .expect("initial proposal");
-    f.drafts
-        .cancel(f.access(), &a.draft.id, 1)
-        .await
-        .expect("Stop wins");
+    f.stop(&a.draft.id, 1).await.expect("Stop wins");
     assert_eq!(
         f.drafts
             .activity(&f.runner, &a.run, request.clone())

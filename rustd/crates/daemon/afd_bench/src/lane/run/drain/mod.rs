@@ -31,8 +31,8 @@ use crate::report::Report;
 /// Measurement key: runs the drain issued, one per event it settled.
 const RUNS: &str = "drain_runs";
 
-/// Measurement key: production offer entries driven by notifications and capacity.
-const CLAIMS: &str = "drain_offer_claims";
+/// Measurement key: production assignment entries driven by notifications and capacity.
+const CLAIMS: &str = "drain_assignment_claims";
 
 /// Measurement key: zero when every native operation completed.
 const FAILURES: &str = "drain_failures";
@@ -40,13 +40,13 @@ const FAILURES: &str = "drain_failures";
 /// Measurement key: runs issued per second of the drain.
 const RUNS_PER_SECOND: &str = "drain_runs_per_second";
 
-/// Measurement key: the tail of a pushed offer.
+/// Measurement key: the tail of a pushed assignment.
 const RUN_P95_MS: &str = "drain_run_p95_ms";
 
 /// Measurement key: the tail of the report after it.
 const REPORT_P95_MS: &str = "drain_report_p95_ms";
 
-/// Measurement key: statements per run across offer, native exchanges and completion.
+/// Measurement key: statements per run across assignment, native exchanges and completion.
 const STATEMENTS_PER_RUN: &str = "drain_statements_per_run";
 
 /// Measurement key: the share of runs that arrived with their memory

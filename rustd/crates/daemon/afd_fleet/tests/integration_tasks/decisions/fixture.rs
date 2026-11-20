@@ -256,7 +256,7 @@ impl<'a> Decisions<'a> {
     }
 }
 
-pub(super) async fn lock_slot(connection: &mut sqlx::PgConnection, case: &Case) -> i32 {
+pub(super) async fn lock_thread(connection: &mut sqlx::PgConnection, case: &Case) -> i32 {
     let pid = sqlx::query_scalar("SELECT pg_backend_pid()")
         .fetch_one(&mut *connection)
         .await

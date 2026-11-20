@@ -1,4 +1,4 @@
-//! One probe per offer pass: whether any work waits, and which connected
+//! One probe per assignment pass: whether any work waits, and which connected
 //! tenant runners have none of it to take.
 
 use af_core::id::Uuid7;

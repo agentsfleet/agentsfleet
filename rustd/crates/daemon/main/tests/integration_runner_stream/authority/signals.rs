@@ -19,7 +19,7 @@ pub(super) struct Held {
     pub(super) expires: jiff::Timestamp,
 }
 
-pub(super) async fn offer(native: &mut Native) -> TestResult<Held> {
+pub(super) async fn assign(native: &mut Native) -> TestResult<Held> {
     let frame = native.expect(StreamKind::Work, "run").await;
     let run = wire::pointer(&frame, "/run");
     let (id, fence) = wire::claim(run);
@@ -127,11 +127,11 @@ async fn assert_settled(scene: &Scenario, held: &Held, cancelled: bool) -> TestR
     Ok(())
 }
 
-pub(super) async fn no_offer(native: &mut Native) -> TestResult {
+pub(super) async fn no_assignment(native: &mut Native) -> TestResult {
     let ended = tokio::time::timeout(PUSH_BOUND, native.next(StreamKind::Work)).await?;
     assert!(
         !matches!(ended, Ok(Some(_))),
-        "a terminal owner received an offer"
+        "a terminal owner received an assignment"
     );
     Ok(())
 }

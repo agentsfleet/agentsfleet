@@ -30,17 +30,17 @@ pub(super) fn start(api: &Arc<dyn RunnerApi>, stop: CancellationToken) -> Stream
     let initial = session(&stop);
     let (current, session) = watch::channel(Some(Arc::clone(&initial.0)));
     let (renewal_owner, renewal_session) = watch::channel(Some(Arc::clone(&initial.0)));
-    let (assignment, assignments) = watch::channel(None);
-    let handle = StreamHandle::new(session, Arc::new(Running::default()), assignments);
+    let (policy, policies) = watch::channel(None);
+    let handle = StreamHandle::new(session, Arc::new(Running::default()), policies);
     let mut renewal_handle = StreamHandle::new(
         renewal_session,
         Arc::clone(&handle.running),
-        handle.assignments.clone(),
+        handle.policies.clone(),
     );
     renewal_handle.renewing = Arc::clone(&handle.renewing);
     let api = Arc::clone(api);
     tokio::spawn(async move {
-        let _assignment = assignment;
+        let _policy = policy;
         let batching = async {
             let _stop_on_exit = stop.clone().drop_guard();
             if let Err(error) = renewal_handle
@@ -202,7 +202,7 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
         | Up::AuthoringRenew { .. }
         | Up::AuthoringReport { .. }) => authoring_reply(api, message).await?,
         Up::Ping { request_id } => json!({"type":"pong", "request_id":request_id}),
-        Up::Activity { request, .. } => return activity_reply(api, &request).await,
+        Up::Progress { request, .. } => return activity_reply(api, &request).await,
         Up::Ready { .. } => return Ok(None),
         Up::Hello { .. } | Up::Confirm { .. } => {
             panic!("opening is tested by the native connection fixtures")

@@ -22,7 +22,7 @@ const CONTEXT: &str = "accept private draft message";
 const SEQUENCE_EXHAUSTED: &str = "message sequence is exhausted";
 
 /// Runs after the draft lock, so its snapshot sees the
-/// preceding sender's committed receipt, sequence and Stop watermark.
+/// preceding sender's committed receipt and sequence.
 /// `$1` draft, `$2` next sequence, `$3` message, `$4` operation, `$5` status,
 /// `$6` model, `$7` text, `$8` receipt, `$9` workspace, `$10` actor, `$11` scope,
 /// `$12` digest, `$13` replay window, `$14` save requested. An earlier attempt

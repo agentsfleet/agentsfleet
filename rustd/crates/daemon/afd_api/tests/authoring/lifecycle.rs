@@ -70,14 +70,7 @@ async fn stop_then_edit(
     .await;
     assert_eq!(busy.status(), StatusCode::CONFLICT);
     assert_eq!(json_body(busy).await["current_state"], "authoring");
-    let stopped = send(
-        router,
-        Method::POST,
-        &format!("{item}/cancellations"),
-        Some(&f.token),
-        r#"{"through_sequence":"1"}"#,
-    )
-    .await;
+    let stopped = super::stop(router, item, &f.token, "1").await;
     assert_eq!(stopped.status(), StatusCode::OK);
     assert_conditional_edit(f, router, item, tag, &patch, created).await;
 }

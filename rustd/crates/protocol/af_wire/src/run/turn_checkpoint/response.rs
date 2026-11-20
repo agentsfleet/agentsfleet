@@ -45,7 +45,7 @@ pub struct TurnCheckpointPlan {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TurnCheckpointRead {
-    /// Must equal the offer's descriptor before any model call.
+    /// Must equal the assignment's descriptor before any model call.
     #[garde(dive)]
     pub descriptor: TurnResume,
     /// Current replacement's reader custody.

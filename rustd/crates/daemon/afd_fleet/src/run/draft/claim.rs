@@ -1,5 +1,5 @@
 //! The draft claim: one transaction under the host lock takes the draft, its
-//! slot and its run, and the offer is rendered from what it committed.
+//! slot and its run, and the assignment is rendered from what it committed.
 //!
 //! Lock order is the host row, then the draft's creator and draft (`NOWAIT`,
 //! so a busy draft never stalls the walk), then the draft's slot and its
@@ -28,7 +28,7 @@ use sqlx::Connection as _;
 
 use super::DraftTarget;
 use crate::error::{Result, query};
-use crate::run::{Offered, RunOwner, RunService, sql};
+use crate::run::{AssignedRun, RunOwner, RunService, sql};
 
 /// What query failures name the draft claim as.
 const CONTEXT: &str = "claim a draft run";
@@ -36,12 +36,12 @@ const CONTEXT: &str = "claim a draft run";
 /// The one tool a setup run offers.
 const PROPOSE_SETUP: &str = "propose_setup";
 
-/// A committed draft run, ready to render as its offer.
+/// A committed draft run, ready to render as its assignment.
 ///
-/// Holds the key the offer carries, so the payload borrows it rather than
+/// Holds the key the assignment carries, so the payload borrows it rather than
 /// copying a secret into an owned string.
 #[derive(Debug)]
-pub struct DraftOffer {
+pub struct DraftAssignment {
     run_id: Uuid7,
     fence: i64,
     expires_at: Timestamp,
@@ -51,7 +51,7 @@ pub struct DraftOffer {
     tool: serde_json::Value,
 }
 
-/// [`sql::shared::CLAIM_SLOT`]'s winning row, by column name.
+/// [`sql::shared::CLAIM_THREAD`]'s winning row, by column name.
 #[derive(sqlx::FromRow)]
 struct Won {
     fencing_token: i64,
@@ -68,7 +68,7 @@ struct Prior {
 
 /// What one candidate's claim came to.
 enum Placement {
-    Issued(Box<DraftOffer>),
+    Issued(Box<DraftAssignment>),
     /// The host can take no more work this pass.
     Busy,
     /// This draft yields nothing now; the next may.
@@ -87,10 +87,10 @@ impl RunService {
         runner: &Uuid7,
         ticket: Ticket,
         now: Timestamp,
-    ) -> Result<Option<DraftOffer>> {
+    ) -> Result<Option<DraftAssignment>> {
         for hint in drafts.setup_candidates(runner).await? {
             match self.claim_one(drafts, runner, &hint, ticket, now).await? {
-                Placement::Issued(offer) => return Ok(Some(*offer)),
+                Placement::Issued(assignment) => return Ok(Some(*assignment)),
                 Placement::Busy => return Ok(None),
                 Placement::Skipped => {}
             }
@@ -180,7 +180,7 @@ impl RunService {
         tx.commit().await.map_err(query(CONTEXT))?;
         owed.settle(drafts);
         let tool = setup_tool(turn.candidate.is_some());
-        Ok(Placement::Issued(Box::new(DraftOffer {
+        Ok(Placement::Issued(Box::new(DraftAssignment {
             run_id,
             fence: won.fencing_token,
             expires_at: won.run_expires_at,
@@ -192,10 +192,10 @@ impl RunService {
     }
 
     /// Wins the draft's slot, bumping its fence, and expires the lapsed run
-    /// that ran the turn before: the slot and whether this claim reoffers the
+    /// that ran the turn before: the slot and whether this claim reassigns the
     /// turn. `None` when a live runner still holds the slot, or when the turn's
     /// runs lapsed [`af_core::limits::EVENT_RUNS_MAX`] times, which fails
-    /// it and frees the slot rather than reoffering it forever.
+    /// it and frees the slot rather than reassigning it forever.
     async fn take_slot(
         &self,
         tx: &mut sqlx::PgConnection,
@@ -205,7 +205,7 @@ impl RunService {
         owed: &mut SetupOwed,
     ) -> Result<Option<(Won, bool)>> {
         let owner = RunOwner::Draft(turn.draft_id.clone());
-        let won: Option<Won> = sqlx::query_as(sql::shared::CLAIM_SLOT)
+        let won: Option<Won> = sqlx::query_as(sql::shared::CLAIM_THREAD)
             .bind(owner.fleet_id())
             .bind(owner.draft_id())
             .bind(runner)
@@ -234,7 +234,7 @@ impl RunService {
         drafts
             .fail_setup_turn(&mut *tx, turn, FailureReason::ProviderUsageUnknown, owed)
             .await?;
-        sqlx::query(sql::shared::RELEASE_UNLEASED_SLOT)
+        sqlx::query(sql::shared::RELEASE_RUNLESS_THREAD)
             .bind(owner.slot_id())
             .bind(won.fencing_token)
             .execute(&mut *tx)
@@ -309,11 +309,11 @@ struct Issue<'a> {
     max_runtime: std::time::Duration,
 }
 
-impl DraftOffer {
-    /// What the session keeps beside the offer.
+impl DraftAssignment {
+    /// What the session keeps beside the assignment.
     #[must_use]
-    pub fn offered(&self) -> Offered {
-        Offered {
+    pub fn assigned(&self) -> AssignedRun {
+        AssignedRun {
             run_id: self.run_id.clone(),
             expires_at: self.expires_at,
             target: None,
@@ -324,7 +324,7 @@ impl DraftOffer {
         }
     }
 
-    /// The offer: a [`RunPayload`] the draft owns, borrowing the key this
+    /// The assignment: a [`RunPayload`] the draft owns, borrowing the key this
     /// value holds.
     #[must_use]
     pub fn payload(&self) -> RunPayload<'_> {

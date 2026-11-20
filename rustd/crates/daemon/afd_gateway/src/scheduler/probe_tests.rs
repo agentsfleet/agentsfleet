@@ -73,7 +73,7 @@ async fn a_failed_probe_still_runs_the_pass() -> TestResult {
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("the pass lost its answer {unsent:?}"))?;
     stop.cancel();
     job.await??;
@@ -81,7 +81,7 @@ async fn a_failed_probe_still_runs_the_pass() -> TestResult {
 }
 
 // Value: protects=a wake costs a tenant runner with nothing to take no claim;
-// fails_when=the pass offers a runner the probe named idle, or the probe is
+// fails_when=the pass assigns a runner the probe named idle, or the probe is
 // not asked about every connected runner; why_new=the idle skip; seam=the
 // injected probe.
 #[tokio::test(start_paused = true)]
@@ -99,7 +99,7 @@ async fn a_pass_skips_the_runner_the_probe_names_idle() -> TestResult {
     busy.request()
         .await?
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("pass lost its empty answer {unsent:?}"))?;
     let reached_idle = tokio::select! {
         request = idle.requests.recv() => request.is_some(),
@@ -161,7 +161,7 @@ async fn a_wake_asks_the_one_runner_with_work_and_a_recovery_pass_asks_all_fifty
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("pass lost its empty answer {unsent:?}"))?;
     tokio::time::sleep(Duration::from_secs(1)).await;
     let asked = connections
@@ -257,10 +257,10 @@ async fn recovery_asks_every_connection(
         Duration::from_secs(5),
         futures_util::future::try_join_all(connections.iter_mut().map(|connection| async move {
             let answer = connection.request().await?;
-            assert_eq!(answer.mode, crate::connection::OfferMode::Recovery);
+            assert_eq!(answer.mode, crate::connection::AssignMode::Recovery);
             answer
                 .reply
-                .send(OfferOutcome::Empty)
+                .send(AssignOutcome::Empty)
                 .map_err(|unsent| format!("recovery pass lost its answer {unsent:?}"))?;
             TestResult::Ok(())
         })),

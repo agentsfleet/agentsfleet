@@ -72,7 +72,7 @@ WITH instant AS MATERIALIZED (
          OR setup.definition #> $22::text[] = 'null'::jsonb)
   RETURNING id, runner_id, fleet_id, turn_id, created_at
 ), chosen AS (
-  -- The placement choice the host lock read: the next offer prefers the other kind.
+  -- The placement choice the host lock read: the next assignment prefers the other kind.
   UPDATE runner.runners
   SET run_version = run_version + 1, last_run_type = $18::text, updated_at = now()
   WHERE id = $2 AND run_version = $17::bigint AND EXISTS (SELECT 1 FROM inserted)

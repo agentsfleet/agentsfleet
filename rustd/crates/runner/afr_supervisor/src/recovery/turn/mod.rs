@@ -59,7 +59,7 @@ impl<'a> NativeTurn<'a> {
 
     async fn adopt(
         &self,
-        offer: &RunPayload<'_>,
+        assignment: &RunPayload<'_>,
         saved: TurnCheckpointRead,
         workspace: TurnWorkspace,
     ) -> Result<TurnRecovery> {
@@ -74,7 +74,7 @@ impl<'a> NativeTurn<'a> {
                 adopted: saved.folds,
                 workspace,
             };
-            recovered.validate_for(offer).map_err(|source| {
+            recovered.validate_for(assignment).map_err(|source| {
                 error::boundary("ordinary root validation refused restore", source)
             })?;
             let Response::Adopted(adopted) = self

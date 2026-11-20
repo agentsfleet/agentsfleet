@@ -14,7 +14,7 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
     let mut issued = 0;
     let answer = test_dead::plane()
         .claim_fleet_with(
-            &mut crate::run::OfferRequest {
+            &mut crate::run::AssignRequest {
                 runner: &test_dead::id(9),
                 held: &[],
                 degraded: true,
@@ -30,7 +30,7 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
         .await
         .expect("a degraded runner is a decision, not a datastore read");
     assert!(answer.is_none());
-    assert_eq!(issued, 0, "a degraded runner cannot receive an offer");
+    assert_eq!(issued, 0, "a degraded runner cannot receive an assignment");
 }
 
 /// A failed terminal settlement stays retryable instead of claiming success.

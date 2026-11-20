@@ -21,7 +21,7 @@ use afd_bus::{Handle, Received, Subject, Subscription};
 use serde_json::Value;
 
 use crate::e2e::Scenario;
-use crate::wire::{capable_beat, wait_for_seeded_offer};
+use crate::wire::{capable_beat, wait_for_seeded_assignment};
 
 /// How long a published frame is given to reach the subscriber.
 ///
@@ -79,7 +79,7 @@ pub(crate) async fn run(scene: &Scenario) -> (String, u64) {
         "the native heartbeat carries its assignment"
     );
 
-    wait_for_seeded_offer(scene).await
+    wait_for_seeded_assignment(scene).await
 }
 
 /// Gives the subscription time to reach every node of the lane's NATS cluster.

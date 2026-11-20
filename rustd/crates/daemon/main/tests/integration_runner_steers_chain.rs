@@ -20,9 +20,9 @@ use afd_turns::view::{Steer, Steered, steer_actor};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
 
+use crate::assignments::{Assigned, assigned, next_assignment, settle, steered};
 use crate::e2e::Scenario;
 use crate::e2e_seed::FLEET_NAME;
-use crate::offers::{Offered, next_offer, offered, settle, steered};
 use crate::steers::Crew;
 
 /// The inputs a fold answer claimed, wherever the answer nests them: each
@@ -65,7 +65,7 @@ async fn person_message(scene: &Scenario, target: &Uuid7) -> Steered {
 }
 
 /// What the live run's fold claims: each message's event and its sequence.
-async fn folded_by(scene: &Scenario, live: &Offered) -> (Value, Vec<(String, i64)>) {
+async fn folded_by(scene: &Scenario, live: &Assigned) -> (Value, Vec<(String, i64)>) {
     let run = Uuid7::parse(&live.run_id).expect("a run id");
     let answer = scene
         .native_session()
@@ -91,7 +91,7 @@ async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
     let scene = crew.run();
     let busy =
         crate::e2e_event::enqueue(&scene.booted, &target, &scene.workspace, TurnKind::Chat).await;
-    let live = offered(scene, &busy).await;
+    let live = assigned(scene, &busy).await;
 
     let person = person_message(scene, &target).await;
     let (status, answer) = crew
@@ -116,7 +116,7 @@ async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
     report["folded_through_sequence"] = serde_json::json!(read_through);
     let reported = crate::wire::report(scene, &report).await;
     assert!(reported.is_ok(), "the live scene settles: {reported:?}");
-    let own = offered(scene, &fleet_event).await;
+    let own = assigned(scene, &fleet_event).await;
     settle(scene, &own).await;
     crew.finish(supervisor).await;
 }
@@ -195,29 +195,29 @@ async fn fleet_steer_chain_has_no_limit_and_the_receiver_answers() {
 
     let mut ran = BTreeSet::from([a.to_string()]);
     while !expected.is_empty() {
-        let offer = next_offer(crew.run()).await;
+        let assignment = next_assignment(crew.run()).await;
         let line = expected
-            .remove(&offer.turn_id.to_string())
-            .expect("only a steer this chain sent is offered");
+            .remove(&assignment.turn_id.to_string())
+            .expect("only a steer this chain sent is assigned");
         assert!(
-            offer.message.starts_with(&format!("{line}\n")),
+            assignment.message.starts_with(&format!("{line}\n")),
             "{}",
-            offer.message
+            assignment.message
         );
-        let receiver = offer.fleet_id.to_string();
+        let receiver = assignment.fleet_id.to_string();
         if ran.insert(receiver.clone()) {
-            let sender = (&offer.fleet_id, ring.names[&receiver]);
+            let sender = (&assignment.fleet_id, ring.names[&receiver]);
             let sends = &ring.sends[&receiver];
             pass_it_on(
                 &crew,
-                (&offer.run_id, offer.fence),
+                (&assignment.run_id, assignment.fence),
                 sender,
                 sends,
                 &mut expected,
             )
             .await;
         }
-        settle(crew.run(), &offer).await;
+        settle(crew.run(), &assignment).await;
     }
     assert_eq!(ran.len(), 4, "every fleet ran: {ran:?}");
     crew.finish(supervisor).await;

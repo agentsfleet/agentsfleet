@@ -43,10 +43,7 @@ async fn uncertain_failure_notice_preserves_cause_and_offers_a_retry_before_and_
         .expect("unknown report acknowledgement");
     assert!(!acknowledged.settled);
     assert_failure(&f, &attempt, "retry_message").await;
-    f.drafts
-        .cancel(f.access(), &attempt.draft.id, 1)
-        .await
-        .expect("explicit Stop");
+    f.stop(&attempt.draft.id, 1).await.expect("explicit Stop");
     assert_failure(&f, &attempt, "retry_message").await;
     assert_eq!(
         calls

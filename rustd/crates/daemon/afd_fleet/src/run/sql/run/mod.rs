@@ -4,7 +4,7 @@
 //!
 //! # The claim is the whole concurrency design
 //!
-//! The slot upsert inside `claim_admission_head.sql` is one conditional UPSERT
+//! The slot upsert inside `claim_turn_head.sql` is one conditional UPSERT
 //! and it carries three jobs at once: it wins the fleet iff the slot is free or
 //! its prior claim expired,
 //! it bumps the monotonic `fencing_token`, and it records the sticky-routing
@@ -19,7 +19,7 @@
 
 mod row;
 
-pub use self::row::{INSERT_RUN_WITH_EVENT, RunRow};
+pub use self::row::{INSERT_RUN_WITH_TURN, RunRow};
 
 /// Claims for a live run's run the messages its fleet received after the
 /// run's own, oldest first.

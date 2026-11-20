@@ -52,7 +52,7 @@ static SERIAL: Mutex<()> = Mutex::const_new(());
 /// Past the batch processor's send interval, so a recorded span has left.
 const EXPORT_DEADLINE: Duration = Duration::from_secs(20);
 
-/// Two of the gateway's offer probes: long enough for empty passes to run.
+/// Two of the gateway's assignment probes: long enough for empty passes to run.
 const EMPTY_PASSES: Duration = Duration::from_secs(12);
 
 /// Every span name and attribute the collector received.
@@ -216,7 +216,7 @@ async fn test_verb_span_reaches_exporter_through_global_provider() {
     );
 }
 
-/// Through the real stack, one chat's offer and report spans
+/// Through the real stack, one chat's assignment and report spans
 /// carry its event and fleet, each with every stage it reached.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -231,20 +231,20 @@ async fn test_event_identity_joins_the_verb_spans() {
             .any(|span| attribute(span, semconv::ATTR_TURN_ID) == Some(event.as_str()))
     };
     let exported = exported_until(&mut received, |seen| {
-        ours(seen, semconv::SPAN_FLEET_OFFER) && ours(seen, semconv::SPAN_FLEET_REPORT)
+        ours(seen, semconv::SPAN_FLEET_ASSIGN) && ours(seen, semconv::SPAN_FLEET_REPORT)
     })
     .await;
 
     let fleet = scene.fleet.to_string();
     for (name, stages) in [
         (
-            semconv::SPAN_FLEET_OFFER,
+            semconv::SPAN_FLEET_ASSIGN,
             [
-                semconv::ATTR_OFFER_CLAIM_MS,
-                semconv::ATTR_OFFER_ADMIT_MS,
-                semconv::ATTR_OFFER_ISSUE_MS,
-                semconv::ATTR_OFFER_ENCODE_MS,
-                semconv::ATTR_OFFER_SEND_MS,
+                semconv::ATTR_ASSIGN_CLAIM_MS,
+                semconv::ATTR_ASSIGN_ADMIT_MS,
+                semconv::ATTR_ASSIGN_ISSUE_MS,
+                semconv::ATTR_ASSIGN_ENCODE_MS,
+                semconv::ATTR_ASSIGN_SEND_MS,
             ]
             .as_slice(),
         ),
@@ -281,12 +281,12 @@ async fn test_event_identity_joins_the_verb_spans() {
     scene.cleanup().await;
 }
 
-/// Once the one event is reported, the gateway's later offer passes select
-/// nothing and record nothing: every offer span reached `claim`, and only one
+/// Once the one event is reported, the gateway's later assignment passes select
+/// nothing and record nothing: every assignment span reached `claim`, and only one
 /// names this chat's event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_empty_offer_pass_records_no_span() {
+async fn test_empty_assignment_pass_records_no_span() {
     let _owner = SERIAL.lock().await;
     let (endpoint, mut received) = collector().await;
     let mut supervisor = Supervisor::new();
@@ -297,19 +297,22 @@ async fn test_empty_offer_pass_records_no_span() {
     })
     .await;
 
-    let offers: Vec<_> = exported.named(semconv::SPAN_FLEET_OFFER).collect();
-    for offer in &offers {
+    let assignments: Vec<_> = exported.named(semconv::SPAN_FLEET_ASSIGN).collect();
+    for assignment in &assignments {
         assert!(
-            attribute(offer, semconv::ATTR_OFFER_CLAIM_MS).is_some(),
-            "an empty pass recorded a span: {offer:?}"
+            attribute(assignment, semconv::ATTR_ASSIGN_CLAIM_MS).is_some(),
+            "an empty pass recorded a span: {assignment:?}"
         );
     }
     let event = scene.turn_id.to_string();
-    let ours = offers
+    let ours = assignments
         .iter()
-        .filter(|offer| attribute(offer, semconv::ATTR_TURN_ID) == Some(event.as_str()))
+        .filter(|assignment| attribute(assignment, semconv::ATTR_TURN_ID) == Some(event.as_str()))
         .count();
-    assert_eq!(ours, 1, "one offer span names the chat's event: {offers:?}");
+    assert_eq!(
+        ours, 1,
+        "one assignment span names the chat's event: {assignments:?}"
+    );
     supervisor.shutdown().await;
     scene.cleanup().await;
 }

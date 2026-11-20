@@ -2,12 +2,12 @@
 //! authoring turn when authoring is the kind the host is owed next.
 //!
 //! The runtime run the fixture issued made runtime the host's last kind, so
-//! the alternation offers authoring first. The poll answers that turn as an
+//! the alternation assigns authoring first. The poll answers that turn as an
 //! authoring run, through the same response type a runtime run rides in.
 
 use super::{fixture::Running, replica::expire, seat::Seat};
 use af_wire::run::{AcceptedKinds, TaggedRun};
-use afd_fleet::run::OfferRequest;
+use afd_fleet::run::AssignRequest;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -23,7 +23,7 @@ async fn test_a_poll_accepting_both_kinds_places_the_owed_authoring_turn() {
         .plane()
         .claim_with(
             &drafts,
-            OfferRequest {
+            AssignRequest {
                 runner: &running.runner,
                 held: &[],
                 degraded: false,

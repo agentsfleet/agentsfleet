@@ -38,7 +38,7 @@ pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Result<Option<Value
         Up::RenewBatch { request_id, runs } => json!({"type":"renewed", "request_id":request_id,
             "runs":runs.iter().map(|run| json!({"run_id":run.run_id,
                 "answer":ok(healthy, Verb::Renew)})).collect::<Vec<_>>()}),
-        Up::Ready { .. } | Up::Activity { .. } => return Ok(None),
+        Up::Ready { .. } | Up::Progress { .. } => return Ok(None),
         Up::TurnCheckpoint {
             request_id,
             run_id,

@@ -1,4 +1,4 @@
-//! What the live tail costs: per delivered frame as viewers pile onto one
+//! What the live items stream costs: per delivered frame as viewers pile onto one
 //! fleet, and per open stream as a replica holds more of them.
 //!
 //! # Three ladders, one broker
@@ -40,7 +40,7 @@
 //! # A node's loss is not measured here
 //!
 //! Killing one process of the shared compose cluster is not a stable bench;
-//! the live tail's behaviour on a node loss is proven by an integration test.
+//! the items stream's behaviour on a node loss is proven by an integration test.
 
 mod publish;
 mod streams;
@@ -140,7 +140,7 @@ pub async fn run(
     let live = Live::new(bus.clone(), StreamLimit::new(usize::try_from(widest)?));
     let publisher = bus.clone();
     let counting = allocations::installed();
-    let mut report = Report::new(Lane::Tail, profile, provenance);
+    let mut report = Report::new(Lane::Items, profile, provenance);
     report.created = true;
     let mut missing = Totals::default();
     for viewers in VIEWER_LADDER {

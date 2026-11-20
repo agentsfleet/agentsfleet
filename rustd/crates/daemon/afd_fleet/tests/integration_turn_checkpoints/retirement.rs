@@ -11,7 +11,7 @@ use sqlx::Connection as _;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn reading_an_uncaptured_offer_does_not_allocate_recovery_state() -> Checked {
+async fn reading_an_uncaptured_assignment_does_not_allocate_recovery_state() -> Checked {
     let files = isolated().await?;
     assert!(
         files

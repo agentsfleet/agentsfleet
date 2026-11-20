@@ -14,7 +14,7 @@ async fn test_run_money_gate_refusal() {
     let mut supervisor = Supervisor::new();
     let scene = scenario(&mut supervisor).await;
     assert!(
-        !wait_without_offer(&scene, || async { false }).await,
+        !wait_without_assignment(&scene, || async { false }).await,
         "a newly enrolled runner receives no work before proving its capabilities"
     );
     assert_eq!(run_rows(&scene).await, 0);
@@ -29,7 +29,7 @@ async fn test_run_money_gate_refusal() {
     );
 
     // Durable refusal proves the claim ran; silence alone would not.
-    let refused = wait_without_offer(&scene, || async {
+    let refused = wait_without_assignment(&scene, || async {
         event_column(&scene, &scene.turn_id, "status")
             .await
             .as_deref()

@@ -23,7 +23,7 @@ impl Runs {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
         if self
-            .lock_admission_on(&mut transaction, fleet, event, fence)
+            .lock_turn_on(&mut transaction, fleet, event, fence)
             .await?
         {
             sqlx::query(queue::PARK_WAITING)
@@ -33,7 +33,7 @@ impl Runs {
                 .execute(&mut *transaction)
                 .await
                 .map_err(query(CONTEXT))?;
-            sqlx::query(sql::shared::RELEASE_UNLEASED_SLOT)
+            sqlx::query(sql::shared::RELEASE_RUNLESS_THREAD)
                 .bind(fleet)
                 .bind(fence.as_i64())
                 .execute(&mut *transaction)
@@ -44,14 +44,14 @@ impl Runs {
         Ok(())
     }
 
-    pub(crate) async fn lock_admission_on(
+    pub(crate) async fn lock_turn_on(
         &self,
         connection: &mut sqlx::PgConnection,
         fleet: &Uuid7,
         event: &Uuid7,
         fence: Fence,
     ) -> Result<bool> {
-        sqlx::query_scalar(queue::LOCK_ADMISSION)
+        sqlx::query_scalar(queue::LOCK_TURN)
             .bind(fleet)
             .bind(event)
             .bind(fence.as_i64())
@@ -65,7 +65,7 @@ impl Runs {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
         if self
-            .lock_admission_on(
+            .lock_turn_on(
                 &mut transaction,
                 &acquired.fleet_id,
                 &acquired.turn_id,

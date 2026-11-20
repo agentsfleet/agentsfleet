@@ -36,7 +36,7 @@ fn run_spans(capture: &Capture) -> Vec<CapturedSpan> {
     spans.filter(|span| span.name == SPAN_RUNNER_RUN).collect()
 }
 
-fn offered() -> RunPayload<'static> {
+fn assigned() -> RunPayload<'static> {
     let mut held = payload(RUN_ID, FLEET_ID);
     held.policy.tools = Vec::new();
     held
@@ -47,7 +47,7 @@ async fn every_runs_inside_a_span_naming_this_runner() {
     let capture = Capture::install();
     let mut rig = rig(|_| None);
 
-    rig.run(&offered()).await.unwrap();
+    rig.run(&assigned()).await.unwrap();
 
     let spans = run_spans(&capture);
     assert_eq!(spans.len(), 1, "{spans:?}");
@@ -66,10 +66,10 @@ async fn every_runs_inside_a_span_naming_this_runner() {
 #[tokio::test(start_paused = true)]
 async fn the_daemon_is_asked_once_whatever_the_runs() {
     let mut rig = rig(|_| None);
-    let mut second = offered();
+    let mut second = assigned();
     second.run_id = SECOND_RUN.into();
 
-    rig.run(&offered()).await.unwrap();
+    rig.run(&assigned()).await.unwrap();
     rig.run(&second).await.unwrap();
 
     let asked = rig
@@ -87,7 +87,7 @@ async fn a_daemon_that_cannot_say_costs_the_span_its_runner_and_nothing_else() {
         (call.verb == Verb::Me).then(|| Answer::Fail(error::unavailable(Verb::Me, 503)))
     });
 
-    rig.run(&offered()).await.unwrap();
+    rig.run(&assigned()).await.unwrap();
 
     let spans = run_spans(&capture);
     assert_eq!(spans[0].field(ATTR_RUNNER_ID), None);

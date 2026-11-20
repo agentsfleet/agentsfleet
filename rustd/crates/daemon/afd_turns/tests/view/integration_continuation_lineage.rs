@@ -9,7 +9,7 @@
 //! which is BEFORE the approval path writes its row, and its insert binds no
 //! predecessor at all.
 //!
-//! Both run `INSERT_FLEET_EVENT` against the same turn `id`. Only
+//! Both run `INSERT_TURN` against the same turn `id`. Only
 //! one of them can be first, and no amount of reordering fixes that: the two
 //! live in different processes with a network between them. So the row itself
 //! has to hold the answer, which is what the conflict arm's `COALESCE` does.
@@ -54,7 +54,7 @@ async fn seed_predecessor(lane: &TurnsLane) -> Uuid7 {
 /// prove something about itself.
 async fn insert(lane: &TurnsLane, turn_id: &Uuid7, resumes: Option<&Uuid7>) -> bool {
     let mut connection = lane.connection().await;
-    sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
+    sqlx::query(afd_turns::view::sql::INSERT_TURN)
         .bind(&lane.fleet)
         .bind(turn_id)
         .bind(&lane.workspace)
@@ -239,7 +239,7 @@ async fn the_turn_id_is_the_row_key_and_stable_across_arms() {
 /// Runs the shared insert, then reads back the id of the row it wrote.
 async fn inserted_id(lane: &TurnsLane, turn_id: &Uuid7) -> Uuid7 {
     let mut connection = lane.connection().await;
-    sqlx::query(afd_turns::view::sql::INSERT_FLEET_EVENT)
+    sqlx::query(afd_turns::view::sql::INSERT_TURN)
         .bind(&lane.fleet)
         .bind(turn_id)
         .bind(&lane.workspace)

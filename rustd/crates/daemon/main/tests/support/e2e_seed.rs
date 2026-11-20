@@ -169,7 +169,7 @@ pub(crate) async fn seed_fleet(
 }
 
 /// What a seeded fleet row carries beside its identity: its name, its status,
-/// and the one placement tag a runner must hold to be offered its work.
+/// and the one placement tag a runner must hold to be assigned its work.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Seeded<'a> {
     pub(crate) name: &'a str,
@@ -178,7 +178,7 @@ pub(crate) struct Seeded<'a> {
 }
 
 /// [`seed_fleet`], with the name, status and placement tag chosen by the
-/// caller: a second fleet a scenario's own runner is offered carries that
+/// caller: a second fleet a scenario's own runner is assigned carries that
 /// runner's tag, [`scenario_tag`] of the scenario's fleet.
 pub(crate) async fn seed_fleet_as(
     booted: &Booted,

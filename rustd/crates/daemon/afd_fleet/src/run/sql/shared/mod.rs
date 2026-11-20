@@ -15,7 +15,7 @@
 //!
 //! The fleet's claim, issue, renewals and report each run ONE statement that
 //! does this bookkeeping beside the fleet's own rows
-//! (`../run/claim_admission_head.sql`, `../run/insert_run_with_event.sql`,
+//! (`../run/claim_turn_head.sql`, `../run/insert_run_with_turn.sql`,
 //! `../renew_batch.sql`, `../meter_run.sql`, `../commit_report.sql`).
 //! Splitting them into a shared statement and a fleet one would add a round
 //! trip to every fleet chat, so they stay fused. [`INSERT_RUN`],
@@ -45,8 +45,8 @@
 /// slot. One `clock_timestamp()` reading decides every deadline.
 ///
 /// The fleet's production claim runs this upsert as the `slot` step of
-/// `claim_admission_head.sql`; the test seam `Runs::claim` runs it alone.
-pub const CLAIM_SLOT: &str = include_str!("claim_slot.sql");
+/// `claim_turn_head.sql`; the test seam `Runs::claim` runs it alone.
+pub const CLAIM_THREAD: &str = include_str!("claim_thread.sql");
 
 /// Releases a slot, fencing-guarded so only the current holder can free it,
 /// and records whether that holder keeps the owner's sandbox.
@@ -61,15 +61,15 @@ pub const CLAIM_SLOT: &str = include_str!("claim_slot.sql");
 /// The guard is load-bearing: a holder superseded by a reclaim would otherwise
 /// free the current holder's slot and hand one owner's work to two runners.
 /// Idempotent: a no-op once the token has moved on.
-pub const RELEASE_SLOT: &str = include_str!("release_slot.sql");
+pub const RELEASE_THREAD: &str = include_str!("release_thread.sql");
 
-/// [`RELEASE_SLOT`] for a claim that held nothing. `$1` slot, `$2` fence.
+/// [`RELEASE_THREAD`] for a claim that held nothing. `$1` slot, `$2` fence.
 ///
 /// It drops the sticky hint too, or an owner whose pass keeps stopping sorts
 /// first for that runner on every poll, starving the rest. A slot still held
 /// keeps its hint: the hint names the holder, and the hold steers the owner's
 /// next work there.
-pub const RELEASE_UNLEASED_SLOT: &str = include_str!("release_unleased_slot.sql");
+pub const RELEASE_RUNLESS_THREAD: &str = include_str!("release_runless_thread.sql");
 
 /// Locks a run's slot and then the run, and answers whether its Kill mark
 /// is set. `$1` run, `$2` runner.

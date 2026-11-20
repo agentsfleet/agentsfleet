@@ -7,26 +7,26 @@ use afd_runner::capacity::choice::Ticket;
 use super::RunService;
 use crate::{
     Result,
-    run::{OfferRequest, Offered, answer::no_work},
+    run::{AssignRequest, AssignedRun, answer::no_work},
 };
 
 impl RunService {
     /// Place fleet work and invoke the sink while its borrowed policy is alive.
     /// The sink's result remains concrete and cannot borrow from that policy.
-    /// Marks each offer stage it reaches on `clock`, from the selection on.
+    /// Marks each assignment stage it reaches on `clock`, from the selection on.
     ///
     /// # Errors
     /// Preserves selection, policy, billing and durable issue failures.
     pub async fn claim_fleet_with<T, F>(
         &self,
-        request: &mut OfferRequest<'_>,
+        request: &mut AssignRequest<'_>,
         ticket: Option<Ticket>,
         clock: &mut VerbClock<AssignStage>,
         mut emit: F,
     ) -> Result<Option<T>>
     where
         T: Send,
-        F: for<'a> FnMut(RunPayload<'a>, Offered) -> T + Send,
+        F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
         let began = std::time::Instant::now();
         if request.degraded {

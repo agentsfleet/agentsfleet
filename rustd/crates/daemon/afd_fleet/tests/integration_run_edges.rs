@@ -254,7 +254,7 @@ async fn test_a_runner_with_no_run_or_no_host_row_gets_no_work() {
     let answer = plane
         .claim_with(
             &drafts,
-            afd_fleet::run::OfferRequest {
+            afd_fleet::run::AssignRequest {
                 runner: &stranger,
                 held: &[],
                 degraded: false,

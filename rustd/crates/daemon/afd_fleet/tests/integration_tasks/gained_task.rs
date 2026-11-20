@@ -1,6 +1,6 @@
 //! A plain chat's run that binds a durable task mid-run keeps renewing.
 //!
-//! The stream session keeps a plain run's facts from its offer and renews
+//! The stream session keeps a plain run's facts from its assignment and renews
 //! it without a pre-read. Binding a task afterwards sets the run's task, and
 //! the renewal statement never renews a task's run, so the frame must hand
 //! it to the per-run path, which checks the task's authority.
@@ -41,7 +41,7 @@ async fn kept_frame(
 // Value: protects=a chat that creates a durable task keeps its run;
 // fails_when=the kept frame treats the run as plain and the statement's
 // task guard answers it lost; why_new=renewal takes a plain run's facts from
-// its offer; seam=none; no_claim=the task's own authority checks, which the
+// its assignment; seam=none; no_claim=the task's own authority checks, which the
 // per-run path's suites prove.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]

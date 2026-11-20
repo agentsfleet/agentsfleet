@@ -116,12 +116,14 @@ pub(crate) async fn accounting(
     Ok(locked)
 }
 
-/// Reads a saved cancellation fence without requiring access to private content.
+/// Whether Stop cancelled the attempt's turn, or its draft left editing or
+/// went, read without requiring access to private content.
 pub(crate) async fn cancelled(connection: &mut PgConnection, attempt: &Attempt) -> Result<bool> {
     sqlx::query_scalar(sql::CANCELLED)
         .bind(&attempt.draft_id)
         .bind(attempt.message_sequence)
         .bind(crate::types::EDITING)
+        .bind(crate::types::CANCELLED)
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT))
@@ -215,7 +217,6 @@ fn check(
         || counters
             .sequence
             .is_some_and(|sequence| attempt.message_sequence != sequence)
-        || attempt.message_sequence <= draft.cancelled_through_sequence
         || !purpose.accepts(attempt)
         || attempt.failure_reason.is_some()
         || attempt.run_expires_at <= now

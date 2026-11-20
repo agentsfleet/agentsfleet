@@ -18,7 +18,7 @@ use jiff::Timestamp;
 use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
-use crate::run::Offered;
+use crate::run::AssignedRun;
 use crate::run::answer::{EVENT_ASSIGNED, no_work};
 use crate::run::envelope::Acquired;
 use crate::run::pull::{AdmittedFleetWork, Assigned, RunService, Step};
@@ -43,7 +43,7 @@ impl RunService {
     ) -> Result<Step<Assigned<T>>>
     where
         T: Send,
-        F: for<'a> FnMut(RunPayload<'a>, Offered) -> T + Send,
+        F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
         let declared = afd_credential::secrets::declared(
             &self.vault,

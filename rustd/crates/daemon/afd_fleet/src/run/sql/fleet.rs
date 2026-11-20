@@ -18,7 +18,7 @@
 /// the resume bookmark.
 ///
 /// `$1` fleet.
-pub const SELECT_FLEET_WITH_SESSION: &str = include_str!("select_fleet_with_session.sql");
+pub const SELECT_FLEET_WITH_THREAD: &str = include_str!("select_fleet_with_thread.sql");
 
 /// A fleet's stored config, whatever its status.
 ///

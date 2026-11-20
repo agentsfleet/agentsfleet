@@ -125,8 +125,7 @@ async fn stop_withholds_the_summary_ending_while_its_known_usage_still_settles()
         live.context().await.progress.state,
         ContextState::Summarizing
     );
-    f.drafts
-        .cancel(f.access(), &attempt.draft.id, 181)
+    f.stop(&attempt.draft.id, 181)
         .await
         .expect("stop current message");
     finish(&live, SUMMARY).await;

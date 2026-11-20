@@ -53,7 +53,7 @@ impl Tailed {
 
     /// Activity has no reply; publication and refusal are observed independently.
     pub(crate) async fn forward(&mut self, request: &Value) {
-        let value = json!({"type":"activity", "run_id":self.run, "request":request});
+        let value = json!({"type":"progress", "run_id":self.run, "request":request});
         self.native.send(StreamKind::Activity, &value).await;
     }
 
@@ -61,7 +61,7 @@ impl Tailed {
         self.native
             .send(
                 StreamKind::Activity,
-                &json!({"type":"activity", "run_id":run, "request":request}),
+                &json!({"type":"progress", "run_id":run, "request":request}),
             )
             .await;
     }

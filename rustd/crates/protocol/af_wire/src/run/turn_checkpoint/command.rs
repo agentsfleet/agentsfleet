@@ -174,9 +174,9 @@ pub enum TurnCheckpointAction {
         #[garde(length(max = 16_384), dive)]
         folds: Vec<FoldRef>,
     },
-    /// An offer is a descriptor, never inline private history.
+    /// An assignment is a descriptor, never inline private history.
     Read {
-        /// Exact offer metadata; the server never silently selects a newer head.
+        /// Exact assignment metadata; the server never silently selects a newer head.
         #[garde(dive)]
         descriptor: Box<TurnResume>,
     },

@@ -1,7 +1,7 @@
 -- The reclaim both kinds share. A claim that takes work its slot held before expires that
 -- work's newest earlier run, still active only when its holder lapsed without reporting,
 -- and tallies the expiry against that holder. The caller holds the slot its claim won, so
--- the lock order is slot, then run, as in the fleet's claim (`claim_admission_head.sql`).
+-- the lock order is slot, then run, as in the fleet's claim (`claim_turn_head.sql`).
 --
 -- $1 the owning fleet, NULL for a draft · $2 the owning draft, NULL for a fleet ·
 -- $3 the event or draft message claimed · $4 active status · $5 expired status

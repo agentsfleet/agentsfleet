@@ -222,7 +222,7 @@ fn run(
     if recovery.is_some() {
         crate::supervisor_recovery::Config::configure(&mut run)?;
     }
-    // Offers use the daemon's tagged run encoding.
+    // Assignments use the daemon's tagged run encoding.
     Ok(serde_json::to_value(
         af_wire::run::TaggedRun::<'_, Value>::Fleet(Box::new(run)),
     )?)

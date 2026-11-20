@@ -49,9 +49,9 @@ async fn stale_claim(
     let mut current =
         Native::connect_at(fixture.peer.runner_stream_address, &token, transport).await;
     current.heartbeat().await;
-    signals::no_offer(&mut old).await?;
+    signals::no_assignment(&mut old).await?;
     current.ready().await;
-    let held = signals::offer(&mut current).await?;
+    let held = signals::assign(&mut current).await?;
     assert_eq!(held.event, fixture.scene.turn_id);
     signals::report(&fixture.scene, &mut current, &held, false).await?;
     current.close().await;
@@ -82,7 +82,7 @@ async fn stale_renewal(
     let mut old = fixture.native(transport).await;
     old.heartbeat().await;
     old.ready().await;
-    let held = signals::offer(&mut old).await?;
+    let held = signals::assign(&mut old).await?;
     let locked = HostLock::hold(&fixture.scene).await?;
     old.send(
         StreamKind::Control,

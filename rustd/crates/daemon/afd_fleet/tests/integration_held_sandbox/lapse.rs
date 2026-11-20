@@ -1,5 +1,5 @@
 //! A hold that no longer binds, on the paths beside the claim: another
-//! runner's candidate scan offers a lapsed or silent hold's fleet, and an
+//! runner's candidate scan assigns a lapsed or silent hold's fleet, and an
 //! empty claim on a lapsed hold lets its hint go as an unheld fleet's would.
 
 #![expect(
@@ -45,7 +45,7 @@ async fn lapse_hold(fixtures: &Fixtures, fleet: &Uuid7, holder: &Uuid7, lapse: L
 /// Whether another runner's poll runs a fleet whose hold `lapse` ended. The
 /// poll reaches the claim only through the candidate scan, so a fleet the scan
 /// filters is never held.
-async fn offered_to_another(lapse: Lapse) -> bool {
+async fn assigned_to_another(lapse: Lapse) -> bool {
     let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, other],
@@ -72,18 +72,18 @@ async fn offered_to_another(lapse: Lapse) -> bool {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_another_runners_poll_is_offered_a_lapsed_hold() {
+async fn test_another_runners_poll_is_assigned_a_lapsed_hold() {
     assert!(
-        offered_to_another(Lapse::Deadline).await,
+        assigned_to_another(Lapse::Deadline).await,
         "a hold past its deadline binds nobody, at the scan as at the claim"
     );
 }
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_another_runners_poll_is_offered_a_silent_holders_fleet() {
+async fn test_another_runners_poll_is_assigned_a_silent_holders_fleet() {
     assert!(
-        offered_to_another(Lapse::Silence).await,
+        assigned_to_another(Lapse::Silence).await,
         "nor does a holder silent past the offline threshold"
     );
 }

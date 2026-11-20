@@ -1,4 +1,4 @@
-//! Parent, connection, slot, run and admission locks precede recovery ownership.
+//! Parent, connection, thread, run and turn locks precede recovery ownership.
 
 use af_core::id::Uuid7;
 use af_wire::run::{CheckpointOperationId, TurnScope, TurnWorkspace};
@@ -30,7 +30,7 @@ pub(super) struct Current {
 }
 
 #[derive(sqlx::FromRow)]
-struct Admission {
+struct HeldTurn {
     id: Uuid7,
     run_fence: Option<i64>,
     task_id: Option<Uuid7>,
@@ -68,7 +68,7 @@ impl<'a> TurnRunGuard<'a> {
         if current.fleet_status != sql::FLEET_STATUS_ACTIVE {
             return Err(run_cancelled());
         }
-        admission(&mut tx, &current).await?;
+        hold_turn(&mut tx, &current).await?;
         let setup = current
             .setup_revision_id
             .clone()
@@ -133,7 +133,7 @@ async fn parents(connection: &mut PgConnection, presented: TurnRun<'_>) -> Resul
 }
 
 async fn current(connection: &mut PgConnection, presented: TurnRun<'_>) -> Result<Current> {
-    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/lock_slot.sql"))
+    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/lock_thread.sql"))
         .bind(presented.run_id)
         .bind(presented.runner_id)
         .fetch_optional(&mut *connection)
@@ -150,21 +150,21 @@ async fn current(connection: &mut PgConnection, presented: TurnRun<'_>) -> Resul
         .ok_or_else(run_not_found)
 }
 
-async fn admission(connection: &mut PgConnection, current: &Current) -> Result<()> {
-    let admission: Admission = sqlx::query_as(include_str!("sql/lock_admission.sql"))
+async fn hold_turn(connection: &mut PgConnection, current: &Current) -> Result<()> {
+    let held: HeldTurn = sqlx::query_as(include_str!("sql/lock_turn.sql"))
         .bind(&current.turn_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(connection)
         .await
-        .map_err(query("hold ordinary source admission"))?
+        .map_err(query("hold the ordinary source turn"))?
         .ok_or_else(run_not_found)?;
-    if admission.id != current.turn_id
-        || admission.run_fence != Some(current.fence)
-        || admission.parked
-        || admission.settled
-        || admission.task_id.is_some()
-        || admission.task_generation.is_some()
+    if held.id != current.turn_id
+        || held.run_fence != Some(current.fence)
+        || held.parked
+        || held.settled
+        || held.task_id.is_some()
+        || held.task_generation.is_some()
     {
         return Err(run_lost());
     }

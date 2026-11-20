@@ -5,7 +5,7 @@
 //! delayed renewal is still in flight. In every ordering the authoring turn is
 //! the only live run, the late renewal is refused without reviving either
 //! half of A's run, the host stays at its worker limit, nothing waits
-//! forever, and the next placement offers the runtime kind first.
+//! forever, and the next placement assigns the runtime kind first.
 
 use super::{
     expiry::snapshot, fixture::Running, holders::assert_host_full, replica::expire,
@@ -75,14 +75,14 @@ async fn scenario(order: Late) {
     );
     assert_host_full(&running, &label).await;
     let next = afd_runner::Runners::new(running.fixtures.database.clone(), Entropy::new())
-        .claim_offer(&running.runner, AcceptedKinds::ALL)
+        .claim_assignment(&running.runner, AcceptedKinds::ALL)
         .await
         .expect("the next poll reads its preference")
         .expect("the host exists");
     assert_eq!(
         next.order().next(),
         Some(RunKind::Fleet),
-        "{label}: the runtime kind is offered first after an authoring placement"
+        "{label}: the runtime kind is assigned first after an authoring placement"
     );
     replica.stop().await;
     seat.remove(&running.fixtures.database).await;

@@ -85,26 +85,22 @@ async fn create(router: &Router, f: &Fixture, token: &str) -> (String, String) {
 }
 
 /// Every draft-member verb, as `(method, path suffix, body, If-Match)`.
-fn verbs(tag: &str) -> Vec<(Method, &'static str, String, Option<String>)> {
+fn verbs(tag: &str) -> Vec<(Method, String, String, Option<String>)> {
     let message = json!({"message":"Foreign text","operation_id":mint()}).to_string();
+    let stop = json!({"status":"cancelled"}).to_string();
     vec![
-        (Method::GET, "", String::new(), None),
-        (Method::GET, "/messages", String::new(), None),
-        (Method::POST, "/messages", message, None),
+        (Method::GET, String::new(), String::new(), None),
+        (Method::GET, "/messages".into(), String::new(), None),
+        (Method::POST, "/messages".into(), message, None),
         (
             Method::PATCH,
-            "",
+            String::new(),
             json!({"title":"Taken"}).to_string(),
             Some(tag.to_owned()),
         ),
-        (
-            Method::POST,
-            "/cancellations",
-            json!({"through_sequence":"1"}).to_string(),
-            None,
-        ),
-        (Method::GET, "/turns/stream", String::new(), None),
-        (Method::DELETE, "", String::new(), None),
+        (Method::PATCH, format!("/turns/{}", mint()), stop, None),
+        (Method::GET, "/turns/stream".into(), String::new(), None),
+        (Method::DELETE, String::new(), String::new(), None),
     ]
 }
 

@@ -24,8 +24,7 @@ async fn stopped(c: &Case) -> (Attempt, SaveFleet) {
     )
     .await;
     c.base
-        .drafts
-        .cancel(c.base.access(), &attempt.draft.id, 1)
+        .stop(&attempt.draft.id, 1)
         .await
         .expect("Stop before Save");
     let draft = c
@@ -155,7 +154,7 @@ async fn finish_setup(
 }
 
 // Value: protects=returning a saved setup to editing never restores old authority;
-// fails_when=creation loses the watermark or late reports append a private answer.
+// fails_when=creation forgets the stopped turn or late reports append a private answer.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn save_after_stop_keeps_old_reports_accounting_only() {
@@ -173,7 +172,7 @@ async fn save_after_stop_keeps_old_reports_accounting_only() {
             .await
             .expect("draft after setup decision");
         assert_eq!(current.state, state);
-        assert_eq!(current.cancelled_through, "1");
+        assert_eq!(c.base.turn_status(&a.draft.id, 1).await, "cancelled");
         late(&c, &a).await;
         let send = c
             .base

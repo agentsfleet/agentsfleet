@@ -31,8 +31,6 @@ pub struct View {
     pub notices: Vec<Notice>,
     /// The draft closed and this stream can end after its last notices.
     pub closed: bool,
-    /// Messages at or below this watermark cannot publish further preview text.
-    pub cancelled_through_sequence: i64,
     /// Running state is authoritative even outside the recent notice window.
     pub running_sequence: Option<i64>,
 }
@@ -89,7 +87,6 @@ impl Drafts {
             generation: DELETION_GENERATION,
             notices,
             closed,
-            cancelled_through_sequence: locked.cancelled_through_sequence,
             running_sequence,
         }))
     }

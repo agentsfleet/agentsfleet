@@ -2,7 +2,7 @@
 
 use crate::{
     Gateway, Operation, Result,
-    connection::{ConnectionHandle, OfferMode, OfferOutcome},
+    connection::{AssignMode, AssignOutcome, ConnectionHandle},
 };
 use futures_util::{StreamExt as _, stream::FuturesUnordered};
 use std::{collections::VecDeque, sync::Arc};
@@ -26,8 +26,8 @@ impl Host {
         }
     }
 
-    async fn claim(self) -> (Self, Result<OfferOutcome>) {
-        let outcome = self.connection.claim(OfferMode::Recovery).await;
+    async fn claim(self) -> (Self, Result<AssignOutcome>) {
+        let outcome = self.connection.claim(AssignMode::Recovery).await;
         (self, outcome)
     }
 
@@ -35,11 +35,11 @@ impl Host {
         self.credits > 0 && self.connection.snapshot.lock().credits > 0
     }
 
-    fn advance(&mut self, outcome: Result<OfferOutcome>) -> bool {
+    fn advance(&mut self, outcome: Result<AssignOutcome>) -> bool {
         match outcome {
-            Ok(OfferOutcome::Issued) => self.credits -= 1,
-            Ok(OfferOutcome::Deferred) if self.extra_pages > 0 => self.extra_pages -= 1,
-            Ok(OfferOutcome::Empty | OfferOutcome::Deferred) => return false,
+            Ok(AssignOutcome::Issued) => self.credits -= 1,
+            Ok(AssignOutcome::Deferred) if self.extra_pages > 0 => self.extra_pages -= 1,
+            Ok(AssignOutcome::Empty | AssignOutcome::Deferred) => return false,
             Err(failure) => {
                 // The connection may have committed a run before its reply was lost.
                 Gateway::observe(&failure, Operation::Assign);

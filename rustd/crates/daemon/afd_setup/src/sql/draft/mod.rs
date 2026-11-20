@@ -25,9 +25,6 @@ pub(crate) const PATCH: &str = include_str!("patch.sql");
 /// `$1` draft.
 pub(crate) const DELETE: &str = include_str!("delete.sql");
 
-/// `$1` draft, `$2` the cutoff sequence; the watermark never decreases.
-pub(crate) const CANCEL: &str = include_str!("cancel.sql");
-
 /// One page of the creator's live drafts, newest change first.
 ///
 /// `$1` workspace, `$2` creator, `$3` status filter, `$4` fleet filter,

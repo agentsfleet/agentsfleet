@@ -37,10 +37,7 @@ enum Interruption {
 async fn interrupt(f: &Fixture, draft: &Uuid7, interruption: &Interruption) {
     match interruption {
         Interruption::Stop => {
-            f.drafts
-                .cancel(f.access(), draft, 1)
-                .await
-                .expect("Stop commits");
+            f.stop(draft, 1).await.expect("Stop commits");
         }
         Interruption::RevokeModel => {
             sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")

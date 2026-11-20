@@ -1,4 +1,4 @@
-//! Fleet placement keeps policy borrows alive through the caller's offer encoder.
+//! Fleet placement keeps policy borrows alive through the caller's assignment encoder.
 //!
 //! Gates run before issue; an empty selection carries no polling response or retry hint.
 //! The native session owns delivery and decides when another placement pass is useful.

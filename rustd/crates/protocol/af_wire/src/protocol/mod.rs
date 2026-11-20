@@ -9,11 +9,11 @@ pub use up::{Renewal, Up};
 /// The newest revision, negotiated before the server accepts a runner session.
 ///
 /// It adds draft-owned runs on the common run path: a v3 runner may be
-/// offered a [`crate::run::RunPayload`] whose `owner` names a setup draft.
+/// assigned a [`crate::run::RunPayload`] whose `owner` names a setup draft.
 /// The daemon accepts every [`Revision`] and answers the one the runner sent.
 pub const VERSION: &str = "agentsfleet.runner.v3";
 /// The revision before setup rode the common run path: its runner is never
-/// offered a draft-owned run, and keeps the separate authoring run.
+/// assigned a draft-owned run, and keeps the separate authoring run.
 pub const VERSION_V2: &str = "agentsfleet.runner.v2";
 
 /// One protocol revision a daemon accepts.
@@ -45,9 +45,9 @@ impl Revision {
         }
     }
 
-    /// Whether a runner on this revision may be offered a draft-owned run.
+    /// Whether a runner on this revision may be assigned a draft-owned run.
     #[must_use]
-    pub const fn offers_draft_runs(self) -> bool {
+    pub const fn assigns_draft_runs(self) -> bool {
         matches!(self, Self::V3)
     }
 }
@@ -67,9 +67,9 @@ pub const PENDING_MAX: usize = 256;
 /// Independent HTTP request streams within one authenticated connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StreamKind {
-    /// Offers, cancellation, renewals and small request/answer exchanges.
+    /// Assignments, cancellation, renewals and small request/answer exchanges.
     Control,
-    /// Offers and folded inputs, independently flow-controlled from control.
+    /// Assignments and folded inputs, independently flow-controlled from control.
     Work,
     /// Durable terminal reports and their acknowledgements.
     Reports,

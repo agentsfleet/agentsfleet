@@ -30,7 +30,7 @@ CREATE INDEX idx_fleets_workspace_id_created_at_id
 
 CREATE INDEX idx_fleets_workspace_id_status_id ON fleet.fleets (workspace_id, status, id);
 
--- The offer probe asks whether a connected tenant runner's tenant has work
+-- The waiting-work probe asks whether a connected tenant runner's tenant has work
 -- waiting (`afd_fleet/src/run/sql/run/select_waiting_work.sql`).
 CREATE INDEX idx_fleets_tenant_id ON fleet.fleets (tenant_id);
 

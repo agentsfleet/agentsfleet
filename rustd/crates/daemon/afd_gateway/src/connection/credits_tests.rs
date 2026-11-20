@@ -1,4 +1,4 @@
-//! Availability updates cannot grant capacity already consumed by an unseen offer.
+//! Availability updates cannot grant capacity already consumed by an unseen assignment.
 
 use std::num::NonZeroU64;
 
@@ -10,17 +10,17 @@ fn state() -> SchedulingState {
         ready: false,
         degraded: false,
         credits: 0,
-        offers_sent: 0,
-        offers_seen: 0,
+        assignments_sent: 0,
+        assignments_seen: 0,
         ready_revision: None,
         held: Vec::new(),
-        last_offer: tokio::time::Instant::now(),
+        last_assignment: tokio::time::Instant::now(),
         recovery_pending: None,
     }
 }
 
 #[test]
-fn an_offer_crossing_a_ready_update_does_not_create_another_idle_worker() -> Result<()> {
+fn an_assignment_crossing_a_ready_update_does_not_create_another_idle_worker() -> Result<()> {
     let mut state = state();
     let mut revision = NonZeroU64::MIN;
     state.availability(1, revision, 0)?;
@@ -29,14 +29,14 @@ fn an_offer_crossing_a_ready_update_does_not_create_another_idle_worker() -> Res
         .checked_add(1)
         .ok_or(crate::error::ErrorKind::Protocol)?;
     state.availability(1, revision, 0)?;
-    assert_eq!(state.credits, 0, "the first offer is still in flight");
+    assert_eq!(state.credits, 0, "the first assignment is still in flight");
     revision = revision
         .checked_add(1)
         .ok_or(crate::error::ErrorKind::Protocol)?;
     state.availability(0, revision, 1)?;
     assert_eq!(
         state.credits, 0,
-        "the runner received the offer and is busy"
+        "the runner received the assignment and is busy"
     );
     revision = revision
         .checked_add(1)
@@ -47,7 +47,7 @@ fn an_offer_crossing_a_ready_update_does_not_create_another_idle_worker() -> Res
 }
 
 #[test]
-fn a_second_free_worker_can_receive_work_while_the_first_offer_is_in_flight() -> Result<()> {
+fn a_second_free_worker_can_receive_work_while_the_first_assignment_is_in_flight() -> Result<()> {
     let mut state = state();
     let first = NonZeroU64::MIN;
     state.availability(2, first, 0)?;
@@ -62,10 +62,10 @@ fn a_second_free_worker_can_receive_work_while_the_first_offer_is_in_flight() ->
     state.availability(2, next, 0)?;
     assert_eq!(
         state.credits, 1,
-        "an unseen offer consumes only its own worker"
+        "an unseen assignment consumes only its own worker"
     );
     state.issued()?;
-    assert_eq!(state.credits, 0, "both workers have an offer");
+    assert_eq!(state.credits, 0, "both workers have an assignment");
     Ok(())
 }
 
@@ -83,7 +83,7 @@ fn asynchronously_completed_older_updates_cannot_overwrite_current_capacity() ->
 }
 
 #[test]
-fn acknowledgement_cannot_name_an_offer_the_daemon_never_sent() {
+fn acknowledgement_cannot_name_an_assignment_the_daemon_never_sent() {
     assert!(
         matches!(state().availability(1, NonZeroU64::MIN, 1), Err(error) if error.code() == af_core::error_code::INVALID_REQUEST)
     );
@@ -105,7 +105,7 @@ fn only_a_rise_in_available_workers_starts_a_connection_pass() -> Result<()> {
         .ok_or(crate::error::ErrorKind::Protocol)?;
     assert!(
         !state.availability(2, revision, 0)?,
-        "one offer is still unseen"
+        "one assignment is still unseen"
     );
     revision = revision
         .checked_add(1)
@@ -125,17 +125,17 @@ async fn recovery_from_a_policy_recheck_wakes_one_capacity_pass() -> Result<()> 
     connection.snapshot.lock().degraded = true;
     connection.apply_policy(false);
     assert!(matches!(
-        futures_util::poll!(Box::pin(connection.offers.notified())),
+        futures_util::poll!(Box::pin(connection.assignments.notified())),
         std::task::Poll::Ready(())
     ));
     connection.apply_policy(false);
     assert!(matches!(
-        futures_util::poll!(Box::pin(connection.offers.notified())),
+        futures_util::poll!(Box::pin(connection.assignments.notified())),
         std::task::Poll::Pending
     ));
     connection.apply_policy(true);
     assert!(matches!(
-        futures_util::poll!(Box::pin(connection.offers.notified())),
+        futures_util::poll!(Box::pin(connection.assignments.notified())),
         std::task::Poll::Pending
     ));
     Ok(())
@@ -158,7 +158,7 @@ fn a_newer_recovery_request_survives_an_older_empty_claim() {
 }
 
 #[test]
-fn capacity_updates_and_offers_preserve_an_unfinished_recovery_request() -> Result<()> {
+fn capacity_updates_and_assignments_preserve_an_unfinished_recovery_request() -> Result<()> {
     let wake = afd_bus::wake::Wake::default();
     wake.recheck();
     let recovery = wake.recovery();

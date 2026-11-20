@@ -1,4 +1,5 @@
-//! Cutoff range scans and real contention retain one claim per new message.
+//! Stopped history stays off the newest-attempt read, and real contention
+//! retains one claim per new message.
 
 mod latency;
 mod waiting;
@@ -27,8 +28,11 @@ const CONTENTION_POLL: Duration = Duration::from_millis(10);
 const MIN_WAITERS: i64 = 2;
 const BLOCKED: &str = "WITH RECURSIVE queued(pid) AS (SELECT $1::int UNION SELECT a.pid FROM pg_stat_activity a JOIN queued q ON q.pid = ANY(pg_blocking_pids(a.pid))) SELECT count(*) - 1 FROM queued";
 const CLONE_HISTORY: &str = "INSERT INTO setup.attempts SELECT r.* FROM setup.attempts a CROSS JOIN unnest($2,$3,$4::bigint[]) n(id,run_id,sequence) CROSS JOIN LATERAL jsonb_populate_record(NULL::setup.attempts,to_jsonb(a)||jsonb_build_object('id',n.id,'run_id',n.run_id,'message_sequence',n.sequence,'reserved_nanos',0)) r WHERE a.id=$1";
-const CUTOFF: &str =
-    "UPDATE setup.drafts SET last_message_sequence=$2,cancelled_through_sequence=$2 WHERE id=$1";
+/// The stopped turn 1, copied at each historical sequence: every retained
+/// attempt answered a turn Stop cancelled. A fresh turn already at a sequence
+/// keeps it.
+const CLONE_STOPPED: &str = "INSERT INTO thread.turns SELECT r.* FROM thread.turns t CROSS JOIN unnest($2,$3::bigint[]) n(id,sequence) CROSS JOIN LATERAL jsonb_populate_record(NULL::thread.turns,to_jsonb(t)||jsonb_build_object('id',n.id,'sequence',n.sequence)) r WHERE t.thread_id=$1 AND t.sequence=1 ON CONFLICT (thread_id, sequence) DO NOTHING";
+const LAST: &str = "UPDATE setup.drafts SET last_message_sequence=$2 WHERE id=$1";
 const EXPLAIN: &str = const_format::concatcp!(
     "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ",
     Drafts::CURRENT_ATTEMPT_QUERY
@@ -44,7 +48,7 @@ async fn history(f: &Fixture, draft: &Draft, run: &Claimed) {
         let plan: Value = sqlx::query_scalar(EXPLAIN)
             .bind(&draft.id)
             .bind(["awaiting_accounting", "settled"])
-            .bind(last)
+            .bind("cancelled")
             .fetch_one(&mut owner)
             .await
             .expect("production range query plan");
@@ -69,12 +73,19 @@ pub(super) async fn seed(
         .execute(&mut *owner)
         .await
         .expect("retained historical attempts");
-    sqlx::query(CUTOFF)
+    sqlx::query(CLONE_STOPPED)
+        .bind(&draft.id)
+        .bind((first..=last).map(|_| mint()).collect::<Vec<_>>())
+        .bind((first..=last).collect::<Vec<_>>())
+        .execute(&mut *owner)
+        .await
+        .expect("the turns the retained attempts answered, stopped");
+    sqlx::query(LAST)
         .bind(&draft.id)
         .bind(last)
         .execute(&mut *owner)
         .await
-        .expect("historical accepted watermark");
+        .expect("historical accepted sequence");
     sqlx::query("ANALYZE setup.attempts")
         .execute(&mut *owner)
         .await
@@ -92,7 +103,10 @@ fn indexed(plan: &Value, last: i64) {
             .contains("uq_attempts_draft_id_message_sequence"),
         "{plan}"
     );
-    assert!(plan.to_string().contains("message_sequence >"), "{plan}");
+    assert!(
+        plan.to_string().contains(r#""Scan Direction":"Backward""#),
+        "the newest attempt is read first: {plan}"
+    );
     assert_eq!(root.get("Actual Rows").and_then(Value::as_f64), Some(0.0));
     let buffers = root
         .get("Shared Hit Blocks")
@@ -102,7 +116,9 @@ fn indexed(plan: &Value, last: i64) {
         buffers <= BUFFER_BOUND,
         "history={last}, buffers={buffers}: {plan}"
     );
-    eprintln!("retained history={last}: indexed cutoff; shared buffers={buffers}/{BUFFER_BOUND}");
+    eprintln!(
+        "retained history={last}: newest attempt indexed; shared buffers={buffers}/{BUFFER_BOUND}"
+    );
 }
 
 async fn sends(f: Arc<Fixture>, id: &Uuid7, peer: Drafts) {
@@ -232,10 +248,7 @@ async fn stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_se
     let draft = queue(&f, "Original unknown request").await;
     let run = claim(&f, &draft).await.expect("first attempt");
     unknown(&f, &run).await;
-    f.drafts
-        .cancel(f.access(), &draft.id, 1)
-        .await
-        .expect("Stop old work");
+    f.stop(&draft.id, 1).await.expect("Stop old work");
     history(&f, &draft, &run).await;
     let peer = Drafts::new(
         f.db.clone(),
@@ -253,15 +266,12 @@ async fn stopped_history_uses_sequence_index_and_concurrent_sends_keep_unique_se
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn discovery_offers_new_work_after_stopped_unknown_usage() {
+async fn discovery_assigns_new_work_after_stopped_unknown_usage() {
     let f = fund(Fixture::isolated().await, 2).await;
     let draft = queue(&f, "Original unknown request").await;
     let run = claim(&f, &draft).await.expect("first attempt");
     unknown(&f, &run).await;
-    f.drafts
-        .cancel(f.access(), &draft.id, 1)
-        .await
-        .expect("Stop");
+    f.stop(&draft.id, 1).await.expect("Stop");
     f.drafts
         .send(
             f.access(),
@@ -275,17 +285,17 @@ async fn discovery_offers_new_work_after_stopped_unknown_usage() {
         )
         .await
         .expect("new message");
-    let offer = Runners::new(f.db.clone(), Entropy::new())
-        .claim_offer(&f.runner, AcceptedKinds::ALL)
+    let assignment = Runners::new(f.db.clone(), Entropy::new())
+        .claim_assignment(&f.runner, AcceptedKinds::ALL)
         .await
         .expect("host poll")
         .expect("eligible host");
     let next = f
         .drafts
-        .claim_offered(&f.runner, offer)
+        .claim_assigned(&f.runner, assignment)
         .await
         .expect("discovery and admission")
-        .expect("new work offered");
+        .expect("new work assigned");
     assert_eq!(next.draft_id, draft.id.to_string());
     assert_eq!(next.sequence, "2");
     f.cleanup().await;

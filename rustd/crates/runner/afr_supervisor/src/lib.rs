@@ -91,7 +91,7 @@ pub(crate) struct Runner {
     /// The daemon.
     pub(crate) plane: ControlPlane,
     pub(crate) downlink: downlink::Downlink,
-    pub(crate) offers: tokio::sync::mpsc::Receiver<downlink::Offered>,
+    pub(crate) assignments: tokio::sync::mpsc::Receiver<downlink::Assigned>,
     /// The storage root.
     pub(crate) home: StorageHome,
     /// Builds each run's sandbox.
@@ -173,12 +173,12 @@ fn compose(
     agent: Box<dyn AgentEngine>,
     probe: HostProbe,
 ) -> Result<Runner> {
-    let (stream, downlink, offers) = downlink::Downlink::new(config)?;
+    let (stream, downlink, assignments) = downlink::Downlink::new(config)?;
     Ok(Runner {
         plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream)
             .with_runtime(config.runtime()),
         downlink,
-        offers,
+        assignments,
         home,
         engine,
         agent,
@@ -198,7 +198,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
     let Runner {
         plane,
         downlink,
-        offers,
+        assignments,
         home,
         engine,
         agent,
@@ -220,19 +220,19 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         whoami: Whoami::default(),
         recovery,
     });
-    serve_composed(lessee, downlink, offers, &probe).await
+    serve_composed(lessee, downlink, assignments, &probe).await
 }
 
 async fn serve_composed(
     lessee: Arc<Lessee>,
     downlink: downlink::Downlink,
-    offers: tokio::sync::mpsc::Receiver<downlink::Offered>,
+    assignments: tokio::sync::mpsc::Receiver<downlink::Assigned>,
     probe: &HostProbe,
 ) -> Result<()> {
     let (assignment, watching) = watch::channel(Assignment::initial());
     let heartbeat =
         Heartbeat::new(&lessee.plane, probe, &lessee.holds).keep_beating(&assignment, &lessee.halt);
-    let pool = worker_pool::serve(Arc::clone(&lessee), watching, offers);
+    let pool = worker_pool::serve(Arc::clone(&lessee), watching, assignments);
     let duties = shutdown::finish(&lessee.halt, async {
         tokio::join!(heartbeat, pool);
     });

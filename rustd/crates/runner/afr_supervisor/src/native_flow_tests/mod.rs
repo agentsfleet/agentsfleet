@@ -99,7 +99,7 @@ impl Native {
             let seen = seen.clone();
             let release = blocked.clone();
             async move {
-                let activity = kind(&frame) == Some("activity");
+                let activity = kind(&frame) == Some("progress");
                 let _seen = seen.send(frame);
                 if activity {
                     release.cancelled().await;
@@ -222,7 +222,7 @@ async fn an_activity_flood_does_not_delay_renewal() -> TestResult {
         })],
     };
     session.activity(&run, &activity).await?;
-    assert_eq!(kind(&native.frames.next().await?), Some("activity"));
+    assert_eq!(kind(&native.frames.next().await?), Some("progress"));
     for _ in 1..1000 {
         session.activity(&run, &activity).await?;
     }

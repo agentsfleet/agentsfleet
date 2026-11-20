@@ -30,7 +30,7 @@ struct SchemaField {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_admissions_queue_migration_bootstraps() {
+async fn test_turns_queue_migration_bootstraps() {
     let lane = TestDatabase::create().await;
     let migrator = lane.open(DbRole::Migrator, &[]).await;
     Migrator::new()

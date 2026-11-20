@@ -4,7 +4,7 @@
 //! Listener authentication, the replica registry and scheduler have separate native tests.
 
 use crate::connection::{
-    ConnectionHandle, ConnectionServices, OfferMode, OfferOutcome, SchedulingState,
+    AssignMode, AssignOutcome, ConnectionHandle, ConnectionServices, SchedulingState,
     cache::RunCache,
     io::{self, IncomingFrame, StreamWriters},
     liveness::Liveness,
@@ -94,42 +94,42 @@ impl RunnerConnection {
         Ok(connection)
     }
 
-    /// Advertise capacity through the production revision and observed-offer checks.
+    /// Advertise capacity through the production revision and observed-assignment checks.
     ///
     /// # Errors
     /// Refuses exhausted revisions or invalid readiness frames.
     pub async fn ready(&mut self, credits: usize) -> Result<()> {
         self.revision = self.revision.checked_add(1).ok_or(ErrorKind::Protocol)?;
         let revision = NonZeroU64::new(self.revision).ok_or(ErrorKind::Protocol)?;
-        let observed_offers = self.services.handle.snapshot.lock().offers_sent;
+        let observed_assignments = self.services.handle.snapshot.lock().assignments_sent;
         self.send(&Up::Ready {
             credits,
             revision,
-            observed_offers,
+            observed_assignments,
         })
         .await
     }
 
-    /// Run one production offer pass entry, returning its charged encoded offer.
+    /// Run one production assignment pass entry, returning its charged encoded assignment.
     ///
     /// # Errors
     /// Preserves issue and frame delivery failures.
-    pub async fn offer(&mut self) -> Result<Option<OwnedFrame>> {
+    pub async fn assign(&mut self) -> Result<Option<OwnedFrame>> {
         let services = Arc::clone(&self.services);
         let reader = self
             .readers
             .get_mut(&StreamKind::Work)
             .ok_or(ErrorKind::Protocol)?;
-        let offered = services.offer(OfferMode::Ordinary);
+        let assigned = services.assign(AssignMode::Ordinary);
         let receive = reader.next();
-        tokio::pin!(offered, receive);
+        tokio::pin!(assigned, receive);
         tokio::select! {
-            result = &mut offered => {
-                if result? == OfferOutcome::Issued { Ok(Some(receive.await?.ok_or(ErrorKind::Closed)?)) } else { Ok(None) }
+            result = &mut assigned => {
+                if result? == AssignOutcome::Issued { Ok(Some(receive.await?.ok_or(ErrorKind::Closed)?)) } else { Ok(None) }
             }
             frame = &mut receive => {
                 let frame = frame?.ok_or(ErrorKind::Closed)?;
-                if offered.await? != OfferOutcome::Issued { return Err(ErrorKind::Protocol.into()); }
+                if assigned.await? != AssignOutcome::Issued { return Err(ErrorKind::Protocol.into()); }
                 Ok(Some(frame))
             }
         }
@@ -248,7 +248,7 @@ fn handle(
         drain: CancellationToken::new(),
         liveness: Liveness::default(),
         superseded: CancellationToken::new(),
-        offers: Notify::new(),
+        assignments: Notify::new(),
         claims,
         recovery_scan: parking_lot::Mutex::default(),
         rechecks: Notify::new(),
@@ -257,11 +257,11 @@ fn handle(
             ready: false,
             degraded: false,
             credits,
-            offers_sent: 0,
-            offers_seen: 0,
+            assignments_sent: 0,
+            assignments_seen: 0,
             ready_revision: None,
             held: Vec::new(),
-            last_offer: Instant::now(),
+            last_assignment: Instant::now(),
             recovery_pending: None,
         }),
     })

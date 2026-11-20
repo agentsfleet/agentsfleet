@@ -99,7 +99,7 @@ pub const STREAM_RECOVERY_BUDGET: Duration = Duration::from_secs(7);
 /// A connection must remain usable this long before reconnect backoff resets.
 pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
 /// One independent ready-work probe per daemon replica, regardless of broker traffic.
-pub const OFFER_FALLBACK_TICK: Duration = Duration::from_secs(5);
+pub const ASSIGN_FALLBACK_TICK: Duration = Duration::from_secs(5);
 /// The shortest idle timeout a proxy or load balancer on the runner's path is assumed to apply.
 ///
 /// Nothing reads it at run time. It is the floor [`STREAM_PING_INTERVAL`] is held under, so an
@@ -122,8 +122,8 @@ const _: () = assert!(
 );
 
 const _: () = assert!(
-    OFFER_FALLBACK_TICK.as_nanos() < RUN_TTL.as_nanos(),
-    "work stranded by a lost ring must be offered again before the run backstop would free it"
+    ASSIGN_FALLBACK_TICK.as_nanos() < RUN_TTL.as_nanos(),
+    "work stranded by a lost ring must be assigned again before the run backstop would free it"
 );
 
 const _: () = assert!(

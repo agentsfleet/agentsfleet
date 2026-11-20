@@ -1,6 +1,6 @@
 //! One guarded native session per saturation host, sharing the daemon's domain handles.
 
-use super::requester::{Held, Host, Offered};
+use super::requester::{Assigned, Held, Host};
 use super::stage::WORKERS;
 use crate::lane::run::{
     drain::{connection, native},
@@ -114,19 +114,19 @@ impl Drop for Connected {
 }
 
 impl Host for Connected {
-    async fn offer(&self, runner: &Uuid7) -> Result<Offered> {
+    async fn assign(&self, runner: &Uuid7) -> Result<Assigned> {
         let host = self.host(runner)?;
         let mut session = host.session.lock().await;
-        let Some(frame) = session.offer().await? else {
-            return Ok(Offered::Nothing);
+        let Some(frame) = session.assign().await? else {
+            return Ok(Assigned::Nothing);
         };
         match native::decode(&frame)? {
             Down::Run {
                 run: TaggedRun::Fleet(_),
-            } => Ok(Offered::Fleet),
+            } => Ok(Assigned::Fleet),
             Down::Run {
                 run: TaggedRun::Authoring(run),
-            } => Ok(Offered::Chat(Held {
+            } => Ok(Assigned::Chat(Held {
                 run: Uuid7::parse(&run.run_id)?,
                 fence: run.fence,
             })),

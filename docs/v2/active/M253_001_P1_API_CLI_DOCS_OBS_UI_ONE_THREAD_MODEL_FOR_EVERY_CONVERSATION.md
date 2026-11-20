@@ -178,7 +178,7 @@ Every retired word gets one replacement, in code, schema, wire, routes, CLI, scr
 
 Words that share a spelling but not the meaning keep it: login and device sessions, token claims, the vendor webhook `/v1/connectors/{provider}/events`, and "offered" tools. After each Workstream, a glossary review reads every file the Workstream touched, per Indy.
 
-- **Dimension 1.1** — no retired identifier remains → Test `retired_identifiers_are_gone` (integration): `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events|RUN_LEASE_CANCELLED" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'`. Expected: no output.
+- **Dimension 1.1** — no retired identifier remains → Test `retired_identifiers_are_gone` (integration): `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events|RUN_LEASE_CANCELLED" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'`. Expected: no output.
 - **Dimension 1.2** — guffbolt counts steps → Test `a_run_reports_each_model_call_as_a_step` (unit): a scripted model making three calls. Expected: `step_started` 1, 2 and 3.
 
 ### §2 — A thread holds a conversation's fence and resume bookmark
@@ -240,7 +240,7 @@ Every field is `turn_id`, `run_id`, `item_id` or `delivery_id`. The charge API's
 
 The CLI's `fleet events` becomes `fleet turns` with the same flags, `fleet logs` tails the turn stream, and `chat`'s Stop uses the turn `PATCH`. The UI, CLI, OpenAPI document and TypeScript types change in this PR. Nothing answers an old route or accepts an old field.
 
-- **Dimension 7.1** — the inventory holds only new routes → Test `the_route_inventory_names_turns_items_and_runs` (unit): `INVENTORY`. Expected: no path contains `/tool-calls`, `/leases` or `/cancellations`, and `/events` appears only in `/v1/connectors/{provider}/events`.
+- **Dimension 7.1** — DONE — the inventory holds only new routes → Test `the_route_inventory_names_turns_items_and_runs` (unit): `INVENTORY`. Expected: no path contains `/tool-calls`, `/leases` or `/cancellations`, and `/events` appears only in `/v1/connectors/{provider}/events`.
 - **Dimension 7.2** — an unknown field is refused → Test `a_body_naming_an_unknown_field_is_refused` (integration): a request carrying `event_id`. Expected: 400 with `UZ-REQ-001`, as today's handler refuses an unknown field.
 - **Dimension 7.3** — the CLI reads turns → Test `fleet_turns_lists_turns` (integration): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
 
@@ -331,8 +331,8 @@ An item on the public wire looks like this:
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Stop ends a running fleet turn (§8) | `make test-integration-rustd` | `stopping_a_running_fleet_turn_ends_its_run` passes | P0 | |
 | R2 | The conversation shows Stop while a turn runs (§8) | `make dry-app` | `composer_shows_stop_while_a_turn_runs` passes | P0 | |
-| R3 | No retired identifier remains (§1) | `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output | P0 | |
-| R4 | No retired table remains (§2–§6) | `git grep -n -w -E "fleet\.events|fleet\.admissions|runner\.leases|runner\.slots|fleet\.tool_calls|fleet\.obligations|fleet\.sessions|runner\.events" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output | P0 | |
+| R3 | No retired identifier remains (§1) | `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output | P0 | |
+| R4 | No retired table remains (§2–§6) | `git grep -n -w -E "fleet\.events|fleet\.admissions|runner\.leases|runner\.slots|fleet\.tool_calls|fleet\.obligations|fleet\.sessions|runner\.events" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output | P0 | |
 | R5 | Items keep the right owner (§5) | `make test-integration-rustd` | both §5 integration cases pass | P0 | |
 | R6 | Measurements recorded (§9) | `ls bench/baselines/thread-recovery.rig.json bench/baselines/thread-sql.rig.json` | exit 0 | P1 | |
 | S1 | Declared commands green | `make lint-all` | exit 0 | P0 | |
@@ -345,12 +345,12 @@ An item on the public wire looks like this:
 
 | Deleted file or symbol | Verify | Expected |
 |------------------------|--------|----------|
-| `LeasePayload`, `TaggedLease` | `git grep -n -w -E "LeasePayload|TaggedLease" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
-| `Down::Offer` | `git grep -n "Down::Offer" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
-| `Verb::Hydrate` | `git grep -n -w "Hydrate" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
-| `afd_authoring`, `afd_admission`, `afd_events` | `git grep -n -w -E "afd_authoring|afd_admission|afd_events" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
-| `SessionHandle` | `git grep -n -w "SessionHandle" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
-| `FleetTail`, `DraftEvents`, `OutboundWake`, `DraftCancellations` | `git grep -n -w -E "FleetTail|DraftEvents|OutboundWake|DraftCancellations" -- . ':!docs/v2' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
+| `LeasePayload`, `TaggedLease` | `git grep -n -w -E "LeasePayload|TaggedLease" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
+| `Down::Offer` | `git grep -n "Down::Offer" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
+| `Verb::Hydrate` | `git grep -n -w "Hydrate" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
+| `afd_authoring`, `afd_admission`, `afd_events` | `git grep -n -w -E "afd_authoring|afd_admission|afd_events" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
+| `SessionHandle` | `git grep -n -w "SessionHandle" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
+| `FleetTail`, `DraftEvents`, `OutboundWake`, `DraftCancellations` | `git grep -n -w -E "FleetTail|DraftEvents|OutboundWake|DraftCancellations" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output |
 
 ## Out of Scope
 

@@ -19,7 +19,7 @@ use sqlx::PgExecutor;
 use crate::{Result, error};
 
 /// Every column an event seed sets.
-const INSERT_FLEET_EVENT: &str = include_str!("sql/insert.sql");
+const INSERT_TURN: &str = include_str!("sql/insert.sql");
 
 const CONTEXT: &str = "seed a fleet event";
 
@@ -85,7 +85,7 @@ impl<'a> TurnSeed<'a> {
     /// [`crate::Error`] when the insert fails: a missing fleet or workspace, or
     /// a producer identifier the fleet already holds.
     pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<Uuid7> {
-        sqlx::query_scalar(INSERT_FLEET_EVENT)
+        sqlx::query_scalar(INSERT_TURN)
             .bind(self.fleet_id)
             .bind(self.workspace_id)
             .bind(self.turn_id)

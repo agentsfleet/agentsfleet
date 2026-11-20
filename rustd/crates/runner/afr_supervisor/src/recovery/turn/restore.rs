@@ -15,13 +15,13 @@ use zeroize::Zeroizing;
 impl NativeTurn<'_> {
     pub(crate) async fn restore(
         &self,
-        offer: &RunPayload<'_>,
+        assignment: &RunPayload<'_>,
         workspace: TurnWorkspace,
         destination: Option<(PathBuf, (u32, u32))>,
         stop: &CancellationToken,
         permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<Option<TurnRecovery>> {
-        let Some(descriptor) = &offer.turn_resume else {
+        let Some(descriptor) = &assignment.turn_resume else {
             return Ok(None);
         };
         if descriptor.scope.workspace != workspace
@@ -46,7 +46,7 @@ impl NativeTurn<'_> {
             pin_id: CheckpointOperationId(saved.pin.id.clone()),
         };
         let checked = async {
-            validate(&saved, offer, &workspace)?;
+            validate(&saved, assignment, &workspace)?;
             if let Some(destination) = destination {
                 let mut session = TurnSession::new(
                     self,
@@ -80,7 +80,7 @@ impl NativeTurn<'_> {
                 .await;
             return Err(failure);
         }
-        self.adopt(offer, *saved, workspace).await.map(Some)
+        self.adopt(assignment, *saved, workspace).await.map(Some)
     }
 }
 
@@ -96,7 +96,7 @@ fn require_empty_manifest(saved: &TurnCheckpointRead) -> Result<()> {
 
 fn validate(
     saved: &TurnCheckpointRead,
-    offer: &RunPayload<'_>,
+    assignment: &RunPayload<'_>,
     workspace: &TurnWorkspace,
 ) -> Result<()> {
     saved.validate()?;
@@ -107,6 +107,6 @@ fn validate(
         workspace: workspace.clone(),
     };
     proof
-        .validate_for(offer)
+        .validate_for(assignment)
         .map_err(|source| error::boundary("ordinary root validation refused restore", source))
 }

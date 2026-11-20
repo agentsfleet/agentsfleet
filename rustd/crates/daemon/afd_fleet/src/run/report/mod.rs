@@ -64,7 +64,7 @@ impl RunService {
     /// and reading them again would be a second statement for a fact this one
     /// already had.
     ///
-    /// `kept` is the run's facts a stream session kept from the offer, so the
+    /// `kept` is the run's facts a stream session kept from the assignment, so the
     /// report reads no run row. `None` reads them, as a session rebuilt from
     /// the database must. The facts never change after issue, and the report
     /// statement still checks the fence.

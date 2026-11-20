@@ -23,7 +23,7 @@ use crate::{
 ///
 /// `stream_seq` counts from zero across the whole run and `stream_start`
 /// marks only the first chunk: a run is one reply, and the run id is its
-/// stream identity, so a reoffered turn starts a new reply.
+/// stream identity, so a reassigned turn starts a new reply.
 #[derive(Debug, Clone, Copy)]
 pub struct PreviewChunk<'a> {
     /// Zero-based position within the run's answer.

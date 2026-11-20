@@ -6,7 +6,7 @@
 use afd_sse::frame::kind_of;
 
 use super::{FRAME_KIND, PROBE, PROBE_KIND, frame_of};
-use crate::lane::tail::PAYLOAD_LADDER;
+use crate::lane::items::PAYLOAD_LADDER;
 
 #[test]
 fn every_rung_of_the_payload_ladder_publishes_exactly_its_size() {

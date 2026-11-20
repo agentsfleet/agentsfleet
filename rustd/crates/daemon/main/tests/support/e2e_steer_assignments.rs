@@ -1,4 +1,4 @@
-//! Reading what the scenario's runner is offered: the next run, the message
+//! Reading what the scenario's runner is assigned: the next run, the message
 //! its model reads, the turns before it, and settling the run.
 #![allow(
     dead_code,
@@ -14,9 +14,9 @@ use serde_json::Value;
 
 use crate::e2e::Scenario;
 
-/// What one offer carried: its run, its fence, its event and fleet, the
+/// What one assignment carried: its run, its fence, its event and fleet, the
 /// message the model reads, and the earlier turns' messages, oldest first.
-pub(crate) struct Offered {
+pub(crate) struct Assigned {
     pub(crate) run_id: String,
     pub(crate) fence: u64,
     pub(crate) turn_id: Uuid7,
@@ -25,25 +25,29 @@ pub(crate) struct Offered {
     pub(crate) history: Vec<String>,
 }
 
-/// The next fleet offer the scenario's runner is pushed, whichever event it
+/// The next fleet assignment the scenario's runner is pushed, whichever event it
 /// carries.
-pub(crate) async fn next_offer(scene: &Scenario) -> Offered {
+pub(crate) async fn next_assignment(scene: &Scenario) -> Assigned {
     let client = scene.native_session().await;
     let reading = async {
         loop {
-            let frame = client.offer().await.expect("the native owner remains live");
-            let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
+            let frame = client
+                .assign()
+                .await
+                .expect("the native owner remains live");
+            let message: af_wire::protocol::Down<'_> =
+                frame.decode().expect("the assignment decodes");
             let af_wire::protocol::Down::Run {
                 run: af_wire::run::TaggedRun::Fleet(run),
             } = message
             else {
                 continue;
             };
-            return Offered {
+            return Assigned {
                 run_id: run.run_id.to_string(),
                 fence: run.fencing_token,
-                turn_id: Uuid7::parse(&run.event.turn_id).expect("an offered event id"),
-                fleet_id: Uuid7::parse(&run.event.fleet_id).expect("an offered fleet id"),
+                turn_id: Uuid7::parse(&run.event.turn_id).expect("an assigned event id"),
+                fleet_id: Uuid7::parse(&run.event.fleet_id).expect("an assigned fleet id"),
                 message: af_wire::turn::message_of(&run.event.request_json).into_owned(),
                 history: run
                     .history
@@ -55,20 +59,23 @@ pub(crate) async fn next_offer(scene: &Scenario) -> Offered {
     };
     tokio::time::timeout(std::time::Duration::from_secs(10), reading)
         .await
-        .expect("an event is offered")
+        .expect("an event is assigned")
 }
 
-/// The offer of `turn_id`, when it is the only work the runner is waiting on:
-/// an offer of any other event fails the test, since it would hold the slot.
-pub(crate) async fn offered(scene: &Scenario, turn_id: &Uuid7) -> Offered {
-    let offer = next_offer(scene).await;
-    assert_eq!(&offer.turn_id, turn_id, "another event was offered first");
-    offer
+/// The assignment of `turn_id`, when it is the only work the runner is waiting on:
+/// an assignment of any other event fails the test, since it would hold the slot.
+pub(crate) async fn assigned(scene: &Scenario, turn_id: &Uuid7) -> Assigned {
+    let assignment = next_assignment(scene).await;
+    assert_eq!(
+        &assignment.turn_id, turn_id,
+        "another event was assigned first"
+    );
+    assignment
 }
 
-/// Settles `offer` with the harness's processed report.
-pub(crate) async fn settle(scene: &Scenario, offer: &Offered) {
-    let body = crate::wire::report_body(&offer.run_id, &offer.turn_id, offer.fence);
+/// Settles `assignment` with the harness's processed report.
+pub(crate) async fn settle(scene: &Scenario, assignment: &Assigned) {
+    let body = crate::wire::report_body(&assignment.run_id, &assignment.turn_id, assignment.fence);
     let reported = crate::wire::report(scene, &body).await;
     assert!(reported.is_ok(), "the scene settles: {reported:?}");
 }

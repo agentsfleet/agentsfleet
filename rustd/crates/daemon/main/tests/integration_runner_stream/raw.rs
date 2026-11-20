@@ -159,7 +159,7 @@ impl Native {
         self.send(
             StreamKind::Control,
             &json!({
-                "type":"ready", "credits":1, "revision":1, "observed_offers":0
+                "type":"ready", "credits":1, "revision":1, "observed_assignments":0
             }),
         )
         .await;

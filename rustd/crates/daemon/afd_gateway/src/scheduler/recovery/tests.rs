@@ -3,11 +3,11 @@
 use super::probe_ticks;
 use crate::scheduler::Probe;
 use crate::{
-    connection::{ClaimRequest, ConnectionHandle, OfferOutcome},
+    connection::{AssignOutcome, ClaimRequest, ConnectionHandle},
     registry::{Registration, Registry},
     scheduler::notifications,
 };
-use af_core::{id::Uuid7, timing::OFFER_FALLBACK_TICK};
+use af_core::{id::Uuid7, timing::ASSIGN_FALLBACK_TICK};
 use afd_bus::wake::Wake;
 use std::sync::{
     Arc,
@@ -63,7 +63,7 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
     });
     tokio::task::yield_now().await;
     for expected in 1..=3 {
-        tokio::time::advance(OFFER_FALLBACK_TICK).await;
+        tokio::time::advance(ASSIGN_FALLBACK_TICK).await;
         observed.changed().await?;
         assert_eq!(*observed.borrow_and_update(), expected);
     }
@@ -74,7 +74,7 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
             .all(|requests| matches!(requests.try_recv(), Err(mpsc::error::TryRecvError::Empty)))
     );
     pending.store(true, Ordering::SeqCst);
-    tokio::time::advance(OFFER_FALLBACK_TICK).await;
+    tokio::time::advance(ASSIGN_FALLBACK_TICK).await;
     observed.changed().await?;
     assert_eq!(*observed.borrow_and_update(), 4);
     let replies = futures_util::future::try_join_all(fixture.requests.iter_mut().map(
@@ -82,11 +82,11 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
             let answer = requests.recv().await.ok_or("fallback pass lost a host")?;
             answer
                 .reply
-                .send(OfferOutcome::Empty)
+                .send(AssignOutcome::Empty)
                 .map_err(|unsent| format!("fallback pass lost its empty answer {unsent:?}"))
         },
     ));
-    let answered = tokio::time::timeout(OFFER_FALLBACK_TICK, replies).await??;
+    let answered = tokio::time::timeout(ASSIGN_FALLBACK_TICK, replies).await??;
     assert_eq!(answered.len(), 50);
     stop.cancel();
     clock.await?;
@@ -105,7 +105,7 @@ fn start_clock(
         probe_ticks(
             &wake,
             &stop,
-            af_core::timing::OFFER_FALLBACK_TICK,
+            af_core::timing::ASSIGN_FALLBACK_TICK,
             || async {
                 calls.send_modify(|count| *count += 1);
                 Ok(pending.load(Ordering::SeqCst))

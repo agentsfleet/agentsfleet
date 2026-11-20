@@ -75,6 +75,7 @@ pub(super) async fn candidates(database: &Db, runner: &Uuid7) -> Result<Vec<Hint
         .bind(&FINISHED[..])
         .bind(sql::SCAN_LIMIT)
         .bind(runner)
+        .bind(CANCELLED)
         .fetch_all(&mut *database.acquire().await?)
         .await
         .map_err(query(sql::CONTEXT))?;
@@ -211,7 +212,6 @@ async fn select_message(
     let next: Option<Next> = sqlx::query_as(sql::MESSAGE)
         .bind(&draft.id)
         .bind(QUEUED)
-        .bind(draft.cancelled_through_sequence)
         .fetch_optional(connection)
         .await
         .map_err(query(sql::CONTEXT))?;

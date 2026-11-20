@@ -30,14 +30,14 @@ const HOLD_DRAFT: &str = "SELECT id FROM setup.drafts WHERE id=$1 FOR UPDATE";
 /// Locks a tenant's wallet row, the way a ledger write does.
 const HOLD_WALLET: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1 FOR UPDATE";
 
-/// One offered claim on the fixture's host, failing the proof if it waits.
+/// One assignment claim on the fixture's host, failing the proof if it waits.
 async fn claim(f: &Fixture) -> Option<Claimed> {
     let ticket = Runners::new(f.db.clone(), Entropy::new())
-        .claim_offer(&f.runner, AcceptedKinds::ALL)
+        .claim_assignment(&f.runner, AcceptedKinds::ALL)
         .await
         .expect("the host answers")
-        .expect("an active host is offered");
-    tokio::time::timeout(PROMPT, f.drafts.claim_offered(&f.runner, ticket))
+        .expect("an active host is assigned");
+    tokio::time::timeout(PROMPT, f.drafts.claim_assigned(&f.runner, ticket))
         .await
         .expect("the claim answered while the row was held, so it did not wait")
         .expect("admission answers")
@@ -77,7 +77,7 @@ async fn release(mut session: PoolConnection<sqlx::Postgres>) {
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn test_locked_draft_does_not_block_other_tenant() {
-    // Its own database: an offered claim scans every queued chat.
+    // Its own database: an assignment claim scans every queued chat.
     let f = fund(Fixture::isolated().await, WORKERS).await;
     let older = queue(&f, "The older chat, whose draft is busy").await;
     let newer = queue_as_member(&f, "The newer chat, from someone else").await;

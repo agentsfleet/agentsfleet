@@ -1,7 +1,7 @@
 //! Live daemon coverage for an operator label edit reaching placement.
 //!
 //! The runner binary never reads its own labels: the daemon's run poll reads
-//! `runner.runners.labels` afresh on every request and offers a fleet only when
+//! `runner.runners.labels` afresh on every request and assigns a fleet only when
 //! its `required_tags` are a subset of them. So an edit takes effect on the
 //! runner's next polls, with no restart, no re-enrolment and nothing for the
 //! host to pick up, and this is the test that holds the daemon to that.
@@ -46,13 +46,13 @@ async fn edit_labels(scene: &Scenario, labels: &[&str]) {
     assert_eq!(stored.labels.as_deref(), Some(labels.as_slice()));
 }
 
-/// Spends the whole poll budget asserting the fleet under test is never offered.
-async fn assert_never_offered(scene: &Scenario, why: &str) {
-    let ended = wait_without_offer(scene, || async { false }).await;
+/// Spends the whole poll budget asserting the fleet under test is never assigned.
+async fn assert_never_assigned(scene: &Scenario, why: &str) {
+    let ended = wait_without_assignment(scene, || async { false }).await;
     assert!(!ended, "{why}");
 }
 
-/// A fleet requiring a tag is withheld from a runner without it, offered on
+/// A fleet requiring a tag is withheld from a runner without it, assigned on
 /// that same runner's next polls once an operator adds the label, and withheld
 /// again once the label is edited away — with the runner never restarted or
 /// re-enrolled.
@@ -71,19 +71,19 @@ async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    assert_never_offered(&scene, "a runner without the tag was offered the fleet").await;
+    assert_never_assigned(&scene, "a runner without the tag was assigned the fleet").await;
 
     edit_labels(&scene, &[ENROLLED_LABEL, &tag]).await;
-    let (run_id, fence) = wait_for_seeded_offer(&scene).await;
+    let (run_id, fence) = wait_for_seeded_assignment(&scene).await;
     let report = report_body(&run_id, &scene.turn_id, fence);
     let settled = crate::wire::report(&scene, &report).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
 
     edit_labels(&scene, &[ENROLLED_LABEL]).await;
     let _next = scene.enqueue_event(EVENT_TYPE).await;
-    assert_never_offered(
+    assert_never_assigned(
         &scene,
-        "a runner whose tag was edited away was offered the fleet again",
+        "a runner whose tag was edited away was assigned the fleet again",
     )
     .await;
 

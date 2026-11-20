@@ -30,14 +30,7 @@ async fn ordinary_failed_and_cancelled_messages_never_save() {
             report["failure_reason"] = json!("provider_failed");
         }
         if mode == "cancelled" {
-            let response = send(
-                &case.router,
-                Method::POST,
-                &format!("{item}/cancellations"),
-                Some(&case.base.token),
-                r#"{"through_sequence":"1"}"#,
-            )
-            .await;
+            let response = crate::authoring::stop(&case.router, &item, &case.base.token, "1").await;
             assert_eq!(response.status(), StatusCode::OK);
         }
         let response =

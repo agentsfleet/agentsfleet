@@ -49,7 +49,7 @@ use crate::reads::{
 };
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, field, get, json,
-    post, report_body, wait_for_seeded_offer, wait_without_offer,
+    post, report_body, wait_for_seeded_assignment, wait_without_assignment,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -100,7 +100,7 @@ async fn prove_runner_ready(http: &reqwest::Client, scene: &Scenario) {
 
 async fn claim_seeded_run(scene: &Scenario) -> (String, u64) {
     // Receiving once retains the worker registration until report acknowledgement.
-    wait_for_seeded_offer(scene).await
+    wait_for_seeded_assignment(scene).await
 }
 
 async fn capture_memory(http: &reqwest::Client, scene: &Scenario, run_id: &str, fence: u64) {

@@ -41,8 +41,8 @@ impl Runners {
     /// Read the host's next placement choice without reserving a worker.
     ///
     /// # Errors
-    /// Preserves datastore and column failures; a removed host has no offer.
-    pub async fn claim_offer(
+    /// Preserves datastore and column failures; a removed host has no assignment.
+    pub async fn claim_assignment(
         &self,
         runner: &Uuid7,
         accepted: AcceptedKinds,

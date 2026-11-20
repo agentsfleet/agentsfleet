@@ -34,7 +34,7 @@ use afd_turns::view::Closed;
 use sqlx::PgConnection;
 
 use crate::error::Result;
-use crate::run::sql::session::MAX_CHECKPOINT_RESPONSE_BYTES;
+use crate::run::sql::resume::MAX_CHECKPOINT_RESPONSE_BYTES;
 use crate::run::store::Runs;
 use crate::run::verdict::Terminal;
 
@@ -94,7 +94,7 @@ impl Runs {
             wall_ms,
             tool_calls,
         } = outcome;
-        let closed = sqlx::query(afd_turns::view::sql::UPDATE_FLEET_EVENT_RESULT)
+        let closed = sqlx::query(afd_turns::view::sql::UPDATE_TURN_RESULT)
             .bind(fleet_id)
             .bind(turn_id)
             .bind(verdict.status())

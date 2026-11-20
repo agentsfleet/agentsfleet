@@ -65,7 +65,7 @@ impl Case {
         self.held
             .iter()
             .find(|run| &run.event == event)
-            .ok_or_else(|| "the expected event was not offered".into())
+            .ok_or_else(|| "the expected event was not assigned".into())
     }
 
     async fn close(self) {
@@ -84,20 +84,20 @@ async fn acquire(scene: &Scenario) -> Proof<[Run; 3]> {
     session.capacity(3);
     wire::heartbeat(scene, &wire::capable_beat()).await;
     Ok([
-        offered(session).await?,
-        offered(session).await?,
-        offered(session).await?,
+        assigned(session).await?,
+        assigned(session).await?,
+        assigned(session).await?,
     ])
 }
 
-async fn offered(session: &Session) -> Proof<Run> {
-    let frame = tokio::time::timeout(Duration::from_secs(5), session.offer()).await??;
+async fn assigned(session: &Session) -> Proof<Run> {
+    let frame = tokio::time::timeout(Duration::from_secs(5), session.assign()).await??;
     let message: Down<'_> = frame.decode()?;
     let Down::Run {
         run: TaggedRun::Fleet(run),
     } = message
     else {
-        return Err("the native offer was not fleet work".into());
+        return Err("the native assignment was not fleet work".into());
     };
     Ok(Run {
         id: Uuid7::parse(&run.run_id)?,
@@ -108,7 +108,7 @@ async fn offered(session: &Session) -> Proof<Run> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work()
+async fn opening_reconciles_retained_missing_and_cancelled_work_without_reassigning_omitted_work()
 -> Proof {
     for transport in [Transport::H2, Transport::H3] {
         Box::pin(reconcile(transport)).await?;
@@ -141,17 +141,17 @@ async fn reconcile(transport: Transport) -> Proof {
         .await
         .is_ok()
     {
-        return Err("an omitted live run cannot be offered before its expiry".into());
+        return Err("an omitted live run cannot be assigned before its expiry".into());
     }
     expire(&case.scene, omitted_fleet, &omitted.id).await?;
     let bus = case.scene.booted.bus.clone();
     afd_bus::wake::publish(&bus, omitted_fleet.clone()).await;
-    let offered = current.expect(StreamKind::Work, "run").await;
+    let assigned = current.expect(StreamKind::Work, "run").await;
     assert_eq!(
-        wire::pointer(&offered, "/run/event/turn_id"),
+        wire::pointer(&assigned, "/run/event/turn_id"),
         omitted_event.as_str()
     );
-    let (replacement, fence) = wire::claim(wire::pointer(&offered, "/run"));
+    let (replacement, fence) = wire::claim(wire::pointer(&assigned, "/run"));
     assert_ne!(replacement, omitted.id.as_str());
     assert!(fence > omitted.fence);
     current.close().await;

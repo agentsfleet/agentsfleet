@@ -11,7 +11,7 @@ use tokio::time::timeout;
 
 use super::{
     super::fixture::{Case, exercise},
-    fixture::{Decisions, lock_slot},
+    fixture::{Decisions, lock_thread},
     maintenance::{due, state, unissued},
 };
 
@@ -80,7 +80,7 @@ async fn held_pass(
         .begin()
         .await
         .expect("in-flight native operation");
-    let _pid = lock_slot(&mut blocker, fixture.case).await;
+    let _pid = lock_thread(&mut blocker, fixture.case).await;
     let capture = Capture::install();
     let swept = timeout(
         Duration::from_secs(1),

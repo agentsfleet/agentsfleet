@@ -150,7 +150,7 @@ fn the_costliest_statements_come_first() {
 /// belongs to.
 const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
     (
-        "claim_admission_head.sql",
+        "claim_turn_head.sql",
         afd_fleet::run::sql::queue::CLAIM_HEAD,
         Path::Claim,
     ),
@@ -160,8 +160,8 @@ const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
         Path::Gates,
     ),
     (
-        "insert_run_with_event.sql",
-        afd_fleet::run::sql::run::INSERT_RUN_WITH_EVENT,
+        "insert_run_with_turn.sql",
+        afd_fleet::run::sql::run::INSERT_RUN_WITH_TURN,
         Path::Issue,
     ),
     (

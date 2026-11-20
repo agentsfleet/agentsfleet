@@ -120,7 +120,7 @@ pub(super) async fn confirm(tasks: &Tasks, effect: &Effect, commit: &str) -> Res
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("protect any remaining publication parent"))?;
-    let _slot: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_SLOT)
+    let _slot: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_THREAD)
         .bind(&effect.fleet_id)
         .fetch_optional(&mut *tx)
         .await

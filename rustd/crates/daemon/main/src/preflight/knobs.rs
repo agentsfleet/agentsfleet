@@ -126,7 +126,7 @@ pub(super) const SSE_MAX_STREAMS_KNOB: &str = "SSE_MAX_STREAMS";
 /// Postgres pool (`afd_db` `config.rs:52-60`), one NATS connection and the
 /// runtime's own — which leaves room for 256 and not for the next rung.
 ///
-/// The tail holds up well past that. `make bench-tail PROFILE=rig` on NATS
+/// The tail holds up well past that. `make bench-items PROFILE=rig` on NATS
 /// (Nov 09, 2026, `docs/architecture/push_scheduler.md` §Baselines) burst
 /// 4,096 streams at a p99 of 9.83 ms with no frame undelivered, so a host with
 /// a raised descriptor limit can set the knob far higher.

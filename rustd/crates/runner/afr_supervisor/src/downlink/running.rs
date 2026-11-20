@@ -32,7 +32,7 @@ struct State {
     /// The registered runs the daemon stopped; each leaves with its registration.
     stopped: HashSet<Uuid7>,
     capacity: usize,
-    offers_seen: u64,
+    assignments_seen: u64,
     next_ready: NonZeroU64,
 }
 
@@ -42,7 +42,7 @@ impl Default for State {
             runs: HashMap::new(),
             stopped: HashSet::new(),
             capacity: 0,
-            offers_seen: 0,
+            assignments_seen: 0,
             next_ready: NonZeroU64::MIN,
         }
     }
@@ -61,7 +61,7 @@ impl Running {
 
     pub(crate) fn new_session(&self) {
         let mut state = self.state.lock();
-        state.offers_seen = 0;
+        state.assignments_seen = 0;
         state.next_ready = NonZeroU64::MIN;
     }
 
@@ -72,7 +72,7 @@ impl Running {
         Ok(Up::Ready {
             credits: state.capacity.saturating_sub(state.runs.len()),
             revision,
-            observed_offers: state.offers_seen,
+            observed_assignments: state.assignments_seen,
         })
     }
 
@@ -80,13 +80,13 @@ impl Running {
         self.state.lock().runs.keys().cloned().collect()
     }
 
-    pub(crate) fn offer(self: &Arc<Self>, run: Uuid7, cancelled: bool) -> Result<RunRegistration> {
+    pub(crate) fn assign(self: &Arc<Self>, run: Uuid7, cancelled: bool) -> Result<RunRegistration> {
         let mut state = self.state.lock();
         if state.runs.len() >= RUNS_MAX || state.runs.contains_key(&run) {
             return Err(ErrorKind::StreamProtocol.into());
         }
-        state.offers_seen = state
-            .offers_seen
+        state.assignments_seen = state
+            .assignments_seen
             .checked_add(1)
             .ok_or(ErrorKind::StreamProtocol)?;
         let stop = CancellationToken::new();
@@ -165,7 +165,7 @@ mod tests {
     fn only_a_daemon_stop_marks_a_run_stopped() {
         let running = Arc::new(Running::default());
         let run = Uuid7::parse(RUN_ID).unwrap();
-        let registration = running.offer(run.clone(), false).unwrap();
+        let registration = running.assign(run.clone(), false).unwrap();
 
         assert!(running.cancel(&run, false));
         assert!(registration.stop.is_cancelled());
@@ -190,7 +190,7 @@ mod tests {
     fn cancel_all_trips_every_run_and_stops_none() {
         let running = Arc::new(Running::default());
         let run = Uuid7::parse(RUN_ID).unwrap();
-        let registration = running.offer(run.clone(), false).unwrap();
+        let registration = running.assign(run.clone(), false).unwrap();
         running.cancel_all();
         assert!(registration.stop.is_cancelled());
         assert!(!running.stopped(&run));

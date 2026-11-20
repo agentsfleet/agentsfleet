@@ -255,7 +255,7 @@ impl RunService {
                         &EVENT_CONFIG_REFUSAL_UNRECORDED,
                         format_args!(
                             "a fleet with an unreadable config could not be ended; it \
-                     will be offered again"
+                     will be assigned again"
                         ),
                     );
                     tracing::warn!(

@@ -83,7 +83,7 @@ fn read_definition(fleet_name: &str) -> Definition {
 /// Placed on its own scenario tag, so only the runner [`enrol`] labels for it
 /// is handed its work. The shared unplaced tag would not do: `enrol` copies
 /// the row's tags onto the runner, and a runner carrying the tag every
-/// unplaced fixture fleet requires is offered the work other suites left on
+/// unplaced fixture fleet requires is assigned the work other suites left on
 /// them.
 async fn insert_fleet_row(
     connection: &mut sqlx::PgConnection,

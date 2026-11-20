@@ -28,7 +28,7 @@ async fn stopping_a_queued_turn_cancels_it_without_a_run() -> TestResult {
     let mut native = fixture.native(Transport::H2).await;
     native.heartbeat().await;
     native.ready().await;
-    // For a push bound, nothing offered names the cancelled turn. A platform
+    // For a push bound, nothing assigned names the cancelled turn. A platform
     // runner may take another suite's work on the shared lane; that is not
     // this turn.
     let deadline = tokio::time::Instant::now() + super::PUSH_BOUND;
@@ -38,7 +38,7 @@ async fn stopping_a_queued_turn_cancels_it_without_a_run() -> TestResult {
         assert_ne!(
             wire::pointer(&frame, "/run/event/turn_id"),
             turn.as_str(),
-            "a cancelled turn was offered"
+            "a cancelled turn was assigned"
         );
     }
     let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE turn_id=$1")
@@ -61,7 +61,7 @@ async fn stopping_an_answered_turn_is_a_conflict() -> TestResult {
     let mut native = fixture.native(Transport::H2).await;
     native.heartbeat().await;
     native.ready().await;
-    let held = signals::offer(&mut native).await?;
+    let held = signals::assign(&mut native).await?;
     signals::report(&fixture.scene, &mut native, &held, false).await?;
     let before = answer(&fixture, &held.event).await?;
     let (status, body) = fixture
@@ -124,7 +124,7 @@ async fn a_member_of_another_workspace_cannot_stop_a_turn() -> TestResult {
     let mut native = fixture.native(Transport::H2).await;
     native.heartbeat().await;
     native.ready().await;
-    let held = signals::offer(&mut native).await?;
+    let held = signals::assign(&mut native).await?;
     let stranger = Stranger::seed(&fixture).await?;
     // Through the stranger's own workspace, the Stop statement's scope finds
     // no such turn: 404, as the sibling read answers.

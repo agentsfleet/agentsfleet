@@ -50,7 +50,6 @@ afd_http::plane_collector! {
         crate::handler::draft::write::delete,
         crate::handler::draft::message::list,
         crate::handler::draft::message::send,
-        crate::handler::draft::message::cancel,
         crate::handler::draft::stream::open,
         crate::handler::turn::detail,
         crate::handler::turn::stop::fleet,

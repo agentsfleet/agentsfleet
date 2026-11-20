@@ -43,7 +43,7 @@ CREATE TABLE runner.runners (
     -- Ownership is stated at registration, never inferred from a missing tenant: a
     -- platform runner takes every tenant's work, so it must be named as one. Both
     -- columns are fixed after insert (trigger below). Read by the run claim and
-    -- candidate scan, authoring candidates, the host lock and the runner statements.
+    -- candidate scan, setup candidates, the host lock and the runner statements.
     platform_owned BOOLEAN NOT NULL,
     tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,
     CONSTRAINT ck_runners_owner CHECK (platform_owned = (tenant_id IS NULL)),

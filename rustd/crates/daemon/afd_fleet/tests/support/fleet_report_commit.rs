@@ -19,7 +19,7 @@ use crate::rows::Row;
 /// A NUL byte in a `text` value is rejected with `22021` — and a runner's
 /// response text is bytes nothing upstream validates, so this is a report the
 /// platform can actually receive rather than a seam invented for a test. It
-/// fails at `UPDATE_FLEET_EVENT_RESULT`, the second statement in the
+/// fails at `UPDATE_TURN_RESULT`, the second statement in the
 /// transaction: the charge is already written when it lands, which is exactly
 /// the boundary this dimension is about.
 pub(crate) const RESPONSE_POSTGRES_REFUSES: &str = "the answer\u{0}with a null in it";

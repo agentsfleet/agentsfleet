@@ -100,11 +100,11 @@ async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once()
     };
     let (sent, stopped, raced) = tokio::join!(
         f.drafts.send(f.access(), &draft.id, second, now()),
-        f.drafts.cancel(f.access(), &draft.id, 1),
+        f.stop(&draft.id, 1),
         claim(&f, &draft),
     );
     assert_eq!(sent.expect("send commits around the Stop").sequence, "2");
-    assert_eq!(stopped.expect("Stop commits").cancelled_through, "1");
+    assert_eq!(stopped.expect("Stop commits").map(|s| s.sequence), Some(1));
     let second = match raced {
         Some(run) => run,
         None => claim(&f, &draft)
@@ -123,10 +123,7 @@ async fn send_racing_stop_admits_new_work_and_the_retained_report_settles_once()
         "new attempt still owns its hold"
     );
     assert_current_turn(&f, &draft).await;
-    f.drafts
-        .cancel(f.access(), &draft.id, 2)
-        .await
-        .expect("Stop current turn");
+    f.stop(&draft.id, 2).await.expect("Stop current turn");
     settle_once(&f, &second).await;
     assert_eq!(deliveries(&f, &draft).await, (0, 0));
     f.cleanup().await;
@@ -171,9 +168,8 @@ async fn settle_once(f: &Fixture, first: &Claimed) {
 async fn claim_racing_stop_keeps_at_most_one_accounting_delivery() {
     let f = super::funded(2).await;
     let draft = queue(&f, "Second").await;
-    let (claimed, stopped) =
-        tokio::join!(claim(&f, &draft), f.drafts.cancel(f.access(), &draft.id, 1));
-    assert_eq!(stopped.expect("Stop commits").cancelled_through, "1");
+    let (claimed, stopped) = tokio::join!(claim(&f, &draft), f.stop(&draft.id, 1));
+    assert_eq!(stopped.expect("Stop commits").map(|s| s.sequence), Some(1));
     let (live, reserved) = deliveries(&f, &draft).await;
     assert_eq!(live, i64::from(claimed.is_some()));
     assert_eq!(

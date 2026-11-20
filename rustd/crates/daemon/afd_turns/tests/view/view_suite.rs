@@ -16,8 +16,6 @@ mod support;
 #[path = "counters_refused.rs"]
 mod counters_refused;
 
-#[path = "integration_admission_history.rs"]
-mod integration_admission_history;
 #[path = "integration_backfill.rs"]
 mod integration_backfill;
 #[path = "integration_budgets.rs"]
@@ -39,6 +37,8 @@ mod integration_steer_races;
 mod integration_steer_replay;
 #[path = "integration_steer_retry.rs"]
 mod integration_steer_retry;
+#[path = "integration_turn_history.rs"]
+mod integration_turn_history;
 mod queued;
 
 #[path = "error_surface.rs"]

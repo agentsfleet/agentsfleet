@@ -107,8 +107,6 @@ async fn stopped_message_preview_is_withheld_before_a_new_running_message() {
     let mut body = live.open().await;
     live.mutate("UPDATE thread.turns SET status='cancelled' WHERE thread_id=$1")
         .await;
-    live.mutate("UPDATE setup.drafts SET cancelled_through_sequence=1 WHERE id=$1")
-        .await;
     live.publish(&live.delta("stopped private text"));
     let cancelled = frame(&mut body).await;
     assert!(

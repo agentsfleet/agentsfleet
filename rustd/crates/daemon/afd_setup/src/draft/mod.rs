@@ -38,7 +38,7 @@ pub struct Drafts {
     pub(crate) biller: Arc<dyn Biller>,
     pub(crate) authority: Option<afd_runner::capacity::authority::Authority>,
     /// Carries the hints a draft run needs after a commit: the wake that
-    /// offers an accepted message, the Cancel a Stop or a deletion sends, and
+    /// assigns an accepted message, the Cancel a Stop or a deletion sends, and
     /// a setup run's live answer. `None` publishes nothing; the 5 s probe
     /// still finds the work.
     pub(crate) bus: Option<afd_bus::Handle>,

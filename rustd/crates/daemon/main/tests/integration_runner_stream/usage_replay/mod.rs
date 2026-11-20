@@ -40,7 +40,7 @@ async fn renewal_batches_acknowledge_usage_independently_across_reconnect() {
             .heartbeat(&serde_json::from_slice(&beat).expect("heartbeat body"))
             .await
             .expect("capable heartbeat");
-        let held = fixture::offers(&session, &scene.turn_id, &sibling.1).await;
+        let held = fixture::assignments(&session, &scene.turn_id, &sibling.1).await;
         proxy.assert_initial_carrier(carrier);
         replay(&scene, &relay, &session, &held).await;
         Arc::get_mut(&mut session)

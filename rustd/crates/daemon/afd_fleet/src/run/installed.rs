@@ -114,7 +114,7 @@ impl Runs {
         fleet_id: &Uuid7,
         event: Option<&Uuid7>,
     ) -> Result<Option<Installed>> {
-        let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_SESSION)
+        let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_THREAD)
             .bind(fleet_id)
             .bind(event)
             .fetch_optional(connection)
@@ -244,7 +244,7 @@ pub(crate) fn parse_for_save(document: &str) -> Result<Definition> {
     Ok(definition)
 }
 
-/// [`sql::fleet::SELECT_FLEET_WITH_SESSION`]'s row, and the same columns of
+/// [`sql::fleet::SELECT_FLEET_WITH_THREAD`]'s row, and the same columns of
 /// the claim statement's: the fleet, its head revision and its session, each
 /// revision column absent until one is installed.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]

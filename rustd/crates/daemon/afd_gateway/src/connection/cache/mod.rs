@@ -1,11 +1,11 @@
-//! Confirmed run targets; refresh never overwrites a newer offer, renewal or report.
+//! Confirmed run targets; refresh never overwrites a newer assignment, renewal or report.
 
 mod snapshot;
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::protocol::RUNS_MAX;
 use afd_db::Db;
-use afd_fleet::run::{Offered, Reported, Target};
+use afd_fleet::run::{AssignedRun, Reported, Target};
 use jiff::Timestamp;
 use parking_lot::RwLock;
 use std::collections::hash_map::Entry;
@@ -22,8 +22,8 @@ struct CachedRuns {
 }
 
 impl CachedRuns {
-    /// A recheck may load a run from its committed issue before the offer
-    /// records it. The same identifier is the same durable run, so the offer
+    /// A recheck may load a run from its committed issue before the assignment
+    /// records it. The same identifier is the same durable run, so the assignment
     /// merges: its report facts join the loaded row, and a confirmed cancel or
     /// later deadline stays. Only a new run counts against the host bound.
     ///
@@ -90,7 +90,7 @@ impl RunCache {
         let mut current = self.0.write();
         if current.revision == revision {
             let mut records = snapshot.into_records();
-            // A run's report facts never change after its offer; the
+            // A run's report facts never change after its assignment; the
             // database row a rebuild reads does not carry them.
             for (id, record) in &mut records {
                 if record.reported.is_none() {
@@ -112,8 +112,8 @@ impl RunCache {
     }
 
     /// The durable issuer enforces capacity; a run past the host bound is an explicit error.
-    pub(super) fn insert(&self, offered: Offered, now: Timestamp) -> Result<()> {
-        self.0.write().insert(RunRecord::from(offered), now)
+    pub(super) fn insert(&self, assigned: AssignedRun, now: Timestamp) -> Result<()> {
+        self.0.write().insert(RunRecord::from(assigned), now)
     }
 
     /// Expired and cancelled targets never authorize publication, regardless of connection health.
@@ -143,7 +143,7 @@ impl RunCache {
         })
     }
 
-    /// What `run`'s report reads, when the offer left it here.
+    /// What `run`'s report reads, when the assignment left it here.
     pub(super) fn reported(&self, run: &Uuid7) -> Option<Reported> {
         self.0
             .read()

@@ -10,7 +10,7 @@ use tokio::time::{interval, timeout};
 
 use super::{
     super::fixture::{Case, GOALS, exercise},
-    fixture::{Decisions, known, lock_slot, request},
+    fixture::{Decisions, known, lock_thread, request},
 };
 
 #[tokio::test]
@@ -37,7 +37,7 @@ async fn ordered(case: &Case) {
         .await
         .expect("issuance slot owner");
     let mut blocker = connection.begin().await.expect("issuance slot transaction");
-    let pid = lock_slot(&mut blocker, case).await;
+    let pid = lock_thread(&mut blocker, case).await;
     let unblock = async {
         waiting_on_slot(&fixture, pid).await;
         assert_eq!(fixture.counts().await, (1, 1, 0));

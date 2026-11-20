@@ -41,7 +41,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
     probe_ticks(
         &gateway.inner.dependencies.wake,
         &stop,
-        gateway.inner.dependencies.recovery.offer_fallback,
+        gateway.inner.dependencies.recovery.assign_fallback,
         || async { Ok(waiting_work(&gateway, &stop, &[]).await?.pending()) },
     )
     .await;

@@ -32,7 +32,7 @@ use super::*;
 
 use af_core::turn::label;
 use af_observability::verb_span::{AssignStage, VerbClock};
-use afd_fleet::run::OfferRequest;
+use afd_fleet::run::AssignRequest;
 use afd_gate::policy::repair;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -79,10 +79,10 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
     fixtures.cleanup().await;
 }
 
-/// A delivery that ends without an offer frame still marks `issue`: the stage
+/// A delivery that ends without an assignment frame still marks `issue`: the stage
 /// runs to where the delivery returns, so a refusal's writes are not left
 /// unexplained, and `encode` and `send` stay unreached. The same unenforceable
-/// binding as above, entered through the offer's own claim so the clock is the
+/// binding as above, entered through the assignment's own claim so the clock is the
 /// one the gateway passes.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -95,11 +95,11 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
     seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
 
     let mut clock = VerbClock::<AssignStage>::start();
-    let mut offered = 0;
+    let mut assigned = 0;
     let answer = fixtures
         .plane()
         .claim_fleet_with(
-            &mut OfferRequest {
+            &mut AssignRequest {
                 runner: &seeded.runner,
                 held: std::slice::from_ref(&seeded.fleet),
                 degraded: false,
@@ -109,7 +109,7 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
             None,
             &mut clock,
             |_run, _metadata| {
-                offered += 1;
+                assigned += 1;
             },
         )
         .await
@@ -119,7 +119,7 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
         answer.is_none(),
         "an unenforceable binding issued a run: {answer:?}"
     );
-    assert_eq!(offered, 0, "a refused delivery built an offer");
+    assert_eq!(assigned, 0, "a refused delivery built an assignment");
     assert_eq!(
         clock.reached(),
         [AssignStage::Claim, AssignStage::Admit, AssignStage::Issue],

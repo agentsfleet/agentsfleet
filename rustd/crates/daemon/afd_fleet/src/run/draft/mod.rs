@@ -1,4 +1,4 @@
-//! A setup draft's turn on the common run path: claim, offer, renewal,
+//! A setup draft's turn on the common run path: claim, assignment, renewal,
 //! report, each on the shared run statements ([`super::sql::shared`]).
 //!
 //! A draft's run is a fleet-like run the draft owns
@@ -11,14 +11,14 @@
 //! What differs from a fleet's run:
 //! - No fleet gates and no fleet budget: the payer's balance is checked, and
 //!   nothing is reserved.
-//! - Key custody: a tenant's runner is never offered a draft whose message
+//! - Key custody: a tenant's runner is never assigned a draft whose message
 //!   runs on the platform model, whose key the run carries.
 //! - A short `max_runtime_seconds`, the setup turn's wall, so one runaway
 //!   costs minutes.
 //! - No sandbox and one tool, `propose_setup`; no checkpoint. A lapsed run is
-//!   reoffered and reruns its message from the start, at most
+//!   reassigned and reruns its message from the start, at most
 //!   [`af_core::limits::EVENT_RUNS_MAX`] runs, then the message fails.
-//! - Offered only to a protocol v3 runner; a v2 runner keeps the authoring
+//! - Assigned only to a protocol v3 runner; a v2 runner keeps the authoring
 //!   attempt path (`afd_setup::run`) until the runner's setup agent
 //!   replaces it.
 
@@ -28,9 +28,9 @@ mod report;
 
 use af_core::id::Uuid7;
 
-pub use claim::DraftOffer;
+pub use claim::DraftAssignment;
 
-/// What a session keeps about a draft-owned run it offered: the draft, so
+/// What a session keeps about a draft-owned run it assigned: the draft, so
 /// its renewals, report and live answer take the draft's path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftTarget {

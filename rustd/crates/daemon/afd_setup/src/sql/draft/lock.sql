@@ -2,7 +2,7 @@ WITH locked AS MATERIALIZED (
     SELECT id, workspace_id, tenant_id, user_id, title, status, tenant_model_id,
            head_candidate_id, source_type, source_plugin_revision_id,
            source_fleet_revision_id, instance_name, fleet_id, plugin_revision_id,
-           last_message_sequence, cancelled_through_sequence, resource_version,
+           last_message_sequence, resource_version,
            closed_at, expires_at
       FROM setup.drafts
      WHERE id = $1 AND workspace_id = $2 AND user_id = $3
@@ -18,7 +18,6 @@ SELECT d.id AS id,
        d.head_candidate_id AS head_candidate_id,
        COALESCE(c.revision, 0) AS candidate_revision,
        d.last_message_sequence,
-       d.cancelled_through_sequence,
        d.fleet_id AS fleet_id,
        d.closed_at,
        d.expires_at,

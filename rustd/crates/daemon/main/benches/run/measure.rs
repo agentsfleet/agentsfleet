@@ -35,7 +35,7 @@ pub(super) async fn run(n: usize) -> Checked {
     stage("all source checkpoints committed")?;
     let (survivors, survivor_ids) = cohort::hosts(&run, &model, n).await?;
     stage("replacement runners connected")?;
-    tokio::time::sleep(af_core::timing::OFFER_FALLBACK_TICK).await;
+    tokio::time::sleep(af_core::timing::ASSIGN_FALLBACK_TICK).await;
     let _logs = try_join_all(source.into_iter().map(Worker::kill)).await?;
     let eligible = eligibility(&run, &fleets, &source_ids).await?;
     stage("runners stopped; waiting for expiry")?;

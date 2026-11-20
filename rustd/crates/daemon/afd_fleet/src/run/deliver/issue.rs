@@ -1,4 +1,4 @@
-//! Freeze the durable offer target and serialize while the policy still borrows its inputs.
+//! Freeze the durable assignment target and serialize while the policy still borrows its inputs.
 
 use std::time::Instant;
 
@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use crate::{
     Result,
     run::{
-        Billed, Issued, Offered, Target,
+        AssignedRun, Billed, Issued, Target,
         answer::{Context, payload},
         history,
         pull::{AdmittedFleetWork, Assigned, RunService, Step, claim_lost},
@@ -29,7 +29,7 @@ impl RunService {
     ) -> Result<Step<Assigned<T>>>
     where
         T: Send,
-        F: for<'a> FnMut(RunPayload<'a>, Offered) -> T + Send,
+        F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
         let Some(issued) = self
             .runs
@@ -73,11 +73,11 @@ impl RunService {
             &admitted.acquired,
             super::queue_wait::issued_at(now, began),
         );
-        self.render_offer(runner, admitted, policy, issued, emit)
+        self.render_assignment(runner, admitted, policy, issued, emit)
             .await
     }
 
-    async fn render_offer<T, F>(
+    async fn render_assignment<T, F>(
         &self,
         runner: &Uuid7,
         admitted: &AdmittedFleetWork,
@@ -87,7 +87,7 @@ impl RunService {
     ) -> Result<Step<Assigned<T>>>
     where
         T: Send,
-        F: for<'a> FnMut(RunPayload<'a>, Offered) -> T + Send,
+        F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
         let turn_resume = if issued.task.is_none() {
             self.runs
@@ -129,9 +129,9 @@ impl RunService {
     }
 }
 
-fn metadata(issued: &Issued, admitted: &AdmittedFleetWork) -> Offered {
+fn metadata(issued: &Issued, admitted: &AdmittedFleetWork) -> AssignedRun {
     let acquired = &admitted.acquired;
-    Offered {
+    AssignedRun {
         run_id: issued.run_id.clone(),
         expires_at: issued.expires_at,
         target: Some(Target {

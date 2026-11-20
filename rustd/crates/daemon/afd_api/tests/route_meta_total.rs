@@ -68,13 +68,13 @@ const POST_PORT_ADDITIONS: usize = 17;
 /// Routes authoring a fleet in chat added, counted apart for the reason
 /// [`POST_PORT_ADDITIONS`] is.
 ///
-/// Fifteen: a creator's drafts, one draft, its messages, its Stop watermark and
-/// its setup-progress stream, and the models a draft may run on; the
+/// Fourteen: a creator's drafts, one draft, its messages and its
+/// setup-progress stream, and the models a draft may run on; the
 /// workspace's Plugin entries it owns, one entry, an entry's revisions and one
 /// pinned revision; applying a reviewed improvement to a fleet; and the four
 /// runner routes an authoring run works through: its activity, its model
 /// calls, its renewal and its report.
-const CHAT_AUTHORING_ADDITIONS: usize = 15;
+const CHAT_AUTHORING_ADDITIONS: usize = 14;
 
 /// Settled period reports, read from the daily usage rollup, and the removed
 /// per-activity charges route, kept so it answers `410 Gone`.

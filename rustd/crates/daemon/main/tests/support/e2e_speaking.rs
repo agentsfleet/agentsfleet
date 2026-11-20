@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use crate::e2e::{Scenario, scenario_with};
 use crate::tail::run;
 use crate::verbs::{enqueue_from_thread, seal_slack_grant};
-use crate::wire::{json as body_of, post, report_body, wait_for_offer};
+use crate::wire::{json as body_of, post, report_body, wait_for_assignment};
 
 /// A booted daemon pointed at a loopback Slack.
 pub(crate) struct Speaking {
@@ -61,7 +61,7 @@ impl Speaking {
         let reported = crate::wire::report(&self.scene, &report).await;
         assert!(reported.is_ok(), "native report refused: {reported:?}");
         let event = enqueue_from_thread(&self.scene).await;
-        wait_for_offer(&self.scene, &event).await
+        wait_for_assignment(&self.scene, &event).await
     }
 
     pub(crate) async fn say(&self, (run_id, fence): (&str, u64), text: &str) -> (u16, Value) {

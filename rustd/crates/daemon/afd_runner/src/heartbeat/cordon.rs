@@ -27,7 +27,7 @@ impl Runners {
         match (self.event_id(now), self.event_id(now)) {
             (Ok(online), Ok(lift)) => {
                 let result: Result<(bool, bool), sqlx::Error> =
-                    sqlx::query_as(sql::runner::HEARTBEAT_WITH_TRANSITION_EVENT)
+                    sqlx::query_as(sql::runner::HEARTBEAT_WITH_TRANSITION_HISTORY)
                         .bind(runner)
                         .bind(online)
                         .bind(sql::event_type::RUNNER_ONLINE)

@@ -2,7 +2,7 @@
 
 use super::{Probe, notifications, pass};
 use crate::{
-    connection::{ClaimRequest, ConnectionHandle, OfferOutcome},
+    connection::{AssignOutcome, ClaimRequest, ConnectionHandle},
     registry::{Registration, Registry},
 };
 use af_core::id::Uuid7;
@@ -69,13 +69,13 @@ async fn rings_coalesce_into_one_claim_pass() -> TestResult {
     }
     first
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("first pass lost its answer {unsent:?}"))?;
     connection
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("second pass lost its answer {unsent:?}"))?;
     let extra = tokio::select! {
         request = connection.requests.recv() => {
@@ -105,7 +105,7 @@ async fn a_one_ring_pass_ends_at_its_first_run() -> TestResult {
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Issued)
+        .send(AssignOutcome::Issued)
         .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     tokio::select! {
         result = job => result??,
@@ -139,7 +139,7 @@ async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
             .request()
             .await?
             .reply
-            .send(OfferOutcome::Empty)
+            .send(AssignOutcome::Empty)
             .map_err(|unsent| format!("pass lost its empty answer {unsent:?}"))?;
         claims += 1;
     }
@@ -164,13 +164,13 @@ async fn a_ring_reaches_a_later_eligible_host_when_the_first_claim_is_empty() ->
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("pass lost its empty answer {unsent:?}"))?;
     second
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Issued)
+        .send(AssignOutcome::Issued)
         .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     job.await??;
     assert!(matches!(
@@ -193,20 +193,20 @@ async fn several_rings_spend_one_budget_across_connections() -> TestResult {
             .request()
             .await?
             .reply
-            .send(OfferOutcome::Issued)
+            .send(AssignOutcome::Issued)
             .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     }
     first
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Empty)
+        .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("pass lost its empty answer {unsent:?}"))?;
     second
         .request()
         .await?
         .reply
-        .send(OfferOutcome::Issued)
+        .send(AssignOutcome::Issued)
         .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     job.await??;
     assert!(matches!(
@@ -267,7 +267,7 @@ async fn candidates_prefer_locality_then_the_longest_waiting_host() -> TestResul
             second.handle.runner.clone()
         ]
     );
-    first.handle.request_offer();
+    first.handle.request_assignment();
     let oldest = registry.candidates(&HashSet::new(), &HashSet::new());
     assert_eq!(
         oldest.first().map(|connection| &connection.runner),

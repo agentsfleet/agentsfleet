@@ -58,11 +58,11 @@ pub(super) async fn healthy(native: &mut Native, request_id: u64) {
     );
 }
 
-pub(super) async fn offer(scene: &Scenario, native: &mut Native) -> Result<Held> {
+pub(super) async fn assign(scene: &Scenario, native: &mut Native) -> Result<Held> {
     let response = native.expect(StreamKind::Work, "run").await;
     let run = response
         .get("run")
-        .ok_or("the native offer lacks its run")?;
+        .ok_or("the native assignment lacks its run")?;
     assert_eq!(run.pointer("/event/turn_id"), Some(&json!(scene.turn_id)));
     let (id, fence) = wire::claim(run);
     Ok(Held { id, fence })
@@ -75,7 +75,7 @@ const TARGET: &str = "%SELECT l.fleet_id, l.turn_id, l.created_at, l.turn_create
 // afd_runner/src/capacity/sql/lock_host.sql; Ready must reach this durable guard.
 const HOST: &str = "%SELECT worker_count, status, cordon_reason, degraded_reason IS NOT NULL AS degraded, run_version,%FROM runner.runners%WHERE id =%FOR UPDATE%";
 // afd_fleet/src/run/sql/select_run_for_report.sql; a session that kept
-// the offer's facts reports without it.
+// the assignment's facts reports without it.
 const REPORTED: &str = "%SELECT l.fleet_id, l.workspace_id,%l.tenant_id, l.turn_id, e.actor, l.posture%FROM thread.runs l%WHERE l.id = $1 AND l.runner_id = $2%";
 const COUNTS: &str = "SELECT \
     COALESCE(sum(calls) FILTER (WHERE query LIKE $1), 0)::bigint, \

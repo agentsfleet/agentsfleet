@@ -4,7 +4,7 @@ use crate::{Result, error::ErrorKind};
 use af_core::id::Uuid7;
 use af_wire::protocol::RUNS_MAX;
 use afd_db::Db;
-use afd_fleet::run::{Offered, Reported, Target};
+use afd_fleet::run::{AssignedRun, Reported, Target};
 use jiff::Timestamp;
 use std::collections::HashMap;
 
@@ -16,22 +16,22 @@ pub(super) struct RunRecord {
     pub(super) expires_at: Timestamp,
     pub(super) target: Option<Target>,
     pub(super) cancelled: bool,
-    /// What the run's report reads, kept from the offer.
+    /// What the run's report reads, kept from the assignment.
     pub(super) reported: Option<Reported>,
     /// The draft a draft-owned run runs a turn of: its renewals, report and
     /// live answer take the draft's path.
     pub(super) draft: Option<Uuid7>,
 }
 
-impl From<Offered> for RunRecord {
-    fn from(offered: Offered) -> Self {
+impl From<AssignedRun> for RunRecord {
+    fn from(assigned: AssignedRun) -> Self {
         Self {
-            id: offered.run_id,
-            expires_at: offered.expires_at,
-            target: offered.target,
+            id: assigned.run_id,
+            expires_at: assigned.expires_at,
+            target: assigned.target,
             cancelled: false,
-            reported: offered.reported,
-            draft: offered.draft.map(|target| target.draft_id),
+            reported: assigned.reported,
+            draft: assigned.draft.map(|target| target.draft_id),
         }
     }
 }

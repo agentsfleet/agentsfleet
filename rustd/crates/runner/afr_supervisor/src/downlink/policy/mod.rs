@@ -120,7 +120,7 @@ impl<'a> Heartbeat<'a> {
         assignment: &watch::Sender<Assignment>,
         halt: &Halt,
     ) {
-        let mut updates = self.plane.stream.assignments.clone();
+        let mut updates = self.plane.stream.policies.clone();
         let mut retries = self.plane.runtime.endless();
         let mut pause = Duration::ZERO;
         loop {

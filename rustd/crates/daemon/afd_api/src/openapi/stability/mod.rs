@@ -50,7 +50,7 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // fire. `source` grew a third value with the fleet as an author, and both
     // are read by that same new runner.
     ("View", &["source", "once"]),
-    // The memory window travels in native offers and may still change shape.
+    // The memory window travels in native assignments and may still change shape.
     ("RunPayload", &["memory"]),
     // Where a steer went is new, and folding may reshape it.
     ("SteerAccepted", &["disposition", "folded_into_turn_id"]),

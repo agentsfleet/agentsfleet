@@ -94,10 +94,10 @@ async fn tenant_revoke_closes_its_runner_stream() -> TestResult {
         .operator
         .tenant_runner(&fixture.scene, &runner, "revoke")
         .await?;
-    let stopped = tokio::time::timeout(PUSH_BOUND, session.offer()).await?;
+    let stopped = tokio::time::timeout(PUSH_BOUND, session.assign()).await?;
     assert!(
         stopped.is_err(),
-        "a revoked tenant runner awaits no more offers"
+        "a revoked tenant runner awaits no more assignments"
     );
     let failure = session
         .close()

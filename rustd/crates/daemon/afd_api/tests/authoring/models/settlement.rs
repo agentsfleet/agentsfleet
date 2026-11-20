@@ -86,7 +86,7 @@ async fn renewal_and_report_refuse_person_identity_and_accounting_text() {
         &forged.to_string(),
     )
     .await;
-    let count:i64=sqlx::query_scalar("SELECT count(*) FROM billing.authoring_report_receipts r JOIN setup.attempts a ON a.id=r.attempt_id WHERE a.draft_id=$1")
+    let count:i64=sqlx::query_scalar("SELECT count(*) FROM billing.setup_report_receipts r JOIN setup.attempts a ON a.id=r.attempt_id WHERE a.draft_id=$1")
         .bind(&r.draft).fetch_one(&mut *r.f.db.acquire().await.expect("receipt read")).await.expect("no effects on refusal");
     assert_eq!(count, 0);
     model.running.f.cleanup().await;

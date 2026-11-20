@@ -12,15 +12,15 @@ use garde::Validate as _;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-use super::{Offered, pending::Requests, running::Running};
+use super::{Assigned, pending::Requests, running::Running};
 use crate::{Result, error::ErrorKind};
 
 pub(crate) struct Dispatch<'a> {
     pub(crate) requests: &'a Requests,
     pub(crate) running: &'a Arc<Running>,
-    pub(crate) offers: &'a mpsc::Sender<Offered>,
-    pub(crate) offer_budget: &'a af_stream::Budget,
-    pub(crate) assignments: &'a watch::Sender<Option<Arc<OwnedFrame>>>,
+    pub(crate) assignments: &'a mpsc::Sender<Assigned>,
+    pub(crate) assignment_budget: &'a af_stream::Budget,
+    pub(crate) policies: &'a watch::Sender<Option<Arc<OwnedFrame>>>,
     pub(crate) stop: &'a CancellationToken,
     pub(crate) early_cancel: HashSet<Uuid7>,
 }
@@ -52,7 +52,7 @@ impl Dispatch<'_> {
                     TaggedRun::Authoring(run) => run.run_id.as_str(),
                 };
                 let id = Uuid7::parse(id)?;
-                self.offer(frame, id)?;
+                self.assign(frame, id)?;
             }
             Down::Cancel { run_id, error_code } => {
                 let id = Uuid7::parse(&run_id)?;
@@ -67,7 +67,7 @@ impl Dispatch<'_> {
                 }
             }
             Down::Policy { .. } => {
-                self.assignments.send_replace(Some(Arc::new(frame)));
+                self.policies.send_replace(Some(Arc::new(frame)));
             }
             Down::GoAway { error_code: None } => return Ok(Progress::Reconnect),
             Down::GoAway {
@@ -121,18 +121,18 @@ impl Dispatch<'_> {
         }
     }
 
-    fn offer(&mut self, mut frame: OwnedFrame, id: Uuid7) -> Result<()> {
+    fn assign(&mut self, mut frame: OwnedFrame, id: Uuid7) -> Result<()> {
         let cancelled = self.early_cancel.remove(&id);
-        let registration = self.running.offer(id, cancelled)?;
+        let registration = self.running.assign(id, cancelled)?;
         // The fixed run-count bound admits at most one maximum-sized frame per registration.
-        frame.try_rebudget(self.offer_budget, StreamKind::Work)?;
-        let offer = Offered {
+        frame.try_rebudget(self.assignment_budget, StreamKind::Work)?;
+        let assignment = Assigned {
             frame,
             registration,
             session: self.stop.clone(),
         };
-        self.offers
-            .try_send(offer)
+        self.assignments
+            .try_send(assignment)
             .map_err(crate::error::stream_protocol)?;
         Ok(())
     }
@@ -156,15 +156,15 @@ mod tests {
     async fn late_cancellation_overflow_recovers_without_halting_the_runner() -> Result<()> {
         let requests = Requests::new();
         let running = Arc::new(Running::default());
-        let (offers, _receiver) = mpsc::channel(RUNS_MAX);
-        let (assignments, _watching) = watch::channel(None);
+        let (assignments, _receiver) = mpsc::channel(RUNS_MAX);
+        let (policies, _watching) = watch::channel(None);
         let stop = CancellationToken::new();
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &running,
-            offers: &offers,
-            offer_budget: &Budget::default(),
             assignments: &assignments,
+            assignment_budget: &Budget::default(),
+            policies: &policies,
             stop: &stop,
             early_cancel: HashSet::new(),
         };
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_cancel_received_before_its_offer_prevents_execution()
+    async fn a_cancel_received_before_its_assignment_prevents_execution()
     -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         use crate::test_support::{Behaviour, FakeAgent, FakeEngine, Rig, bounded, daemon};
         use std::sync::atomic::Ordering;
@@ -205,36 +205,36 @@ mod tests {
             FakeAgent::new(Behaviour::Answer),
         );
         let requests = Requests::new();
-        let (offers, offered) = mpsc::channel(RUNS_MAX);
-        let (assignments, _) = watch::channel(None);
+        let (assignments, assigned) = mpsc::channel(RUNS_MAX);
+        let (policies, _) = watch::channel(None);
         let stop = CancellationToken::new();
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &rig.lessee.plane.stream.running,
-            offers: &offers,
-            offer_budget: &Budget::default(),
             assignments: &assignments,
+            assignment_budget: &Budget::default(),
+            policies: &policies,
             stop: &stop,
             early_cancel: HashSet::new(),
         };
-        cancel_then_offer(&mut dispatch, &stop).await?;
+        cancel_then_assign(&mut dispatch, &stop).await?;
         assert!(dispatch.early_cancel.is_empty());
         drop(dispatch);
-        drop(offers);
+        drop(assignments);
         let (_, watching) = watch::channel(super::super::policy::Assignment::initial());
         let pool = tokio::spawn(crate::worker_pool::serve(
             Arc::clone(&rig.lessee),
             watching,
-            offered,
+            assigned,
         ));
-        bounded("cancelled wire offer removal", async {
+        bounded("cancelled wire assignment removal", async {
             while !rig.lessee.plane.stream.running.snapshot().is_empty() {
                 tokio::task::yield_now().await;
             }
         })
         .await;
         rig.shutdown.cancel();
-        bounded("cancelled wire offer pool shutdown", pool).await?;
+        bounded("cancelled wire assignment pool shutdown", pool).await?;
         assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
         Ok(())
     }
@@ -245,15 +245,15 @@ mod tests {
         use crate::test_support::RUN_ID;
         let running = Arc::new(Running::default());
         let requests = Requests::new();
-        let (offers, _offered) = mpsc::channel(RUNS_MAX);
-        let (assignments, _) = watch::channel(None);
+        let (assignments, _assigned) = mpsc::channel(RUNS_MAX);
+        let (policies, _) = watch::channel(None);
         let stop = CancellationToken::new();
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &running,
-            offers: &offers,
-            offer_budget: &Budget::default(),
             assignments: &assignments,
+            assignment_budget: &Budget::default(),
+            policies: &policies,
             stop: &stop,
             early_cancel: HashSet::new(),
         };
@@ -262,7 +262,7 @@ mod tests {
             (af_core::error_code::RUN_LOST, false),
             (af_core::error_code::RUN_CANCELLED, true),
         ] {
-            let registration = running.offer(run.clone(), false)?;
+            let registration = running.assign(run.clone(), false)?;
             let message: Down<'_> = Down::Cancel {
                 run_id: RUN_ID.into(),
                 error_code: code.as_str().into(),
@@ -283,7 +283,7 @@ mod tests {
         Ok(())
     }
 
-    async fn cancel_then_offer(
+    async fn cancel_then_assign(
         dispatch: &mut Dispatch<'_>,
         stop: &CancellationToken,
     ) -> Result<()> {

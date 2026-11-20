@@ -33,7 +33,7 @@ pub(super) fn prepare_root<'run>(
         || (run.run.turn_resume.is_some() && run.recovered_turn.is_none())
     {
         return Err(recovery_invalid(
-            "offered recovery has no single complete restore owner",
+            "assigned recovery has no single complete restore owner",
         ));
     }
     let mut state = if let Some(recovered) = run.recovered_task {

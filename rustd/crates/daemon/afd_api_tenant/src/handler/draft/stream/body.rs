@@ -221,10 +221,7 @@ fn preview(draft: &Uuid7, view: &afd_setup::View, received: afd_bus::Received) -
 
 fn permitted(draft: &Uuid7, view: &afd_setup::View, subject: &Uuid7, sequence: &str) -> bool {
     sequence.parse::<i64>().is_ok_and(|sequence| {
-        subject == draft
-            && !view.closed
-            && sequence > view.cancelled_through_sequence
-            && view.running_sequence == Some(sequence)
+        subject == draft && !view.closed && view.running_sequence == Some(sequence)
     })
 }
 

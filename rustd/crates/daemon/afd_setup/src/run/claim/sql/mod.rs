@@ -3,10 +3,11 @@
 pub(super) const CONTEXT: &str = "admit queued authoring message";
 pub(super) const SCAN_LIMIT: i64 = 64;
 
-/// Drafts with queued work and no uncancelled attempt, oldest request first.
+/// Drafts with queued work and no running attempt, oldest request first.
 ///
 /// `$1` the editing draft status, `$2` the queued message status, `$3` the
-/// settled attempt status, `$4` limit.
+/// settled attempt statuses, `$4` limit, `$5` the polling runner, `$6` the
+/// cancelled turn status.
 pub(super) const CANDIDATES: &str = include_str!("candidates.sql");
 
 /// The creator's row, shared, refusing rather than waiting when another
@@ -21,9 +22,9 @@ pub(super) const HOLD_DRAFT: &str = include_str!("hold_draft.sql");
 /// is held.
 pub(super) const LOCK_NOT_AVAILABLE: &str = "55P03";
 
-/// The draft's next queued message past its cutoff, with its pinned model.
+/// The draft's next queued message, with its pinned model.
 ///
-/// `$1` draft, `$2` the queued status, `$3` the cutoff.
+/// `$1` draft, `$2` the queued status.
 pub(super) const MESSAGE: &str = include_str!("message.sql");
 
 /// `$1` draft, `$2` the admitted sequence, `$3` limit.

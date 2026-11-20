@@ -137,7 +137,7 @@ async fn queue(
                 state: previous,
                 source,
             })?;
-        sqlx::query(sql::CONTROL_ADMISSION)
+        sqlx::query(sql::CONTROL_TURN)
             .bind(task_id)
             .bind(&admitted.stored.id)
             .execute(&mut *connection)

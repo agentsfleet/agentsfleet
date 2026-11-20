@@ -34,8 +34,6 @@ pub struct Draft<D = Value, R = Value> {
     pub etag: String,
     /// Explicit model for future messages.
     pub authoring_model_ref: String,
-    /// Highest cancelled message sequence, as a decimal string.
-    pub cancelled_through: String,
     /// Latest accepted setup, absent before the first candidate.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate: Option<Candidate<D>>,
@@ -184,7 +182,7 @@ pub struct Failure {
 
 pub use crate::page::CursorPage;
 
-/// One request cancelled by this Stop operation.
+/// The draft turn one Stop answers, by its sequence on the draft.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize)]
 pub struct Stopped {
@@ -192,15 +190,4 @@ pub struct Stopped {
     pub sequence: String,
     /// Always cancelled.
     pub state: String,
-}
-
-/// Cancellation result, including the latest cancelled message sequence and newly cancelled
-/// requests.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
-pub struct Cancellation {
-    /// Highest cancelled message sequence, as a decimal string.
-    pub cancelled_through: String,
-    /// Newly transitioned requests.
-    pub stopped: Vec<Stopped>,
 }

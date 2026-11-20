@@ -12,7 +12,7 @@
 //! Moving the binding down here would drag them with it and invert the
 //! layering, so the writers keep their `bind` chains and this module owns the
 //! one text each of them runs. That is the whole of what was wrong before:
-//! `afd_approval` carried a byte-identical copy of [`INSERT_FLEET_EVENT`]
+//! `afd_approval` carried a byte-identical copy of [`INSERT_TURN`]
 //! because reaching the original meant depending on 25,500 lines of runner
 //! plane to reuse ten lines of SQL.
 //!
@@ -56,7 +56,7 @@
 /// `$5` type, `$6` body, `$7` the turn it resumes, `$8` status.
 /// Bind `$6` with `sqlx::types::Json`: cached statements retain that parameter's
 /// database type, so mixing text and JSONB binary encodings corrupts later writes.
-pub const INSERT_FLEET_EVENT: &str = include_str!("insert_fleet_event.sql");
+pub const INSERT_TURN: &str = include_str!("insert_turn.sql");
 
 /// Access receipts: workspace, required service, actor, type, status, metadata.
 pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_activity.sql");
@@ -82,11 +82,11 @@ pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_acti
 /// counts as pending.
 ///
 /// [`status::RECEIVED`]: af_core::turn::status::RECEIVED
-pub const UPDATE_FLEET_EVENT_FAILURE: &str = include_str!("update_fleet_event_failure.sql");
+pub const UPDATE_TURN_FAILURE: &str = include_str!("update_turn_failure.sql");
 
 /// End an event with the runner's verdict.
 ///
-/// The sibling of [`UPDATE_FLEET_EVENT_FAILURE`] and guarded the same way, on
+/// The sibling of [`UPDATE_TURN_FAILURE`] and guarded the same way, on
 /// `status = $8`. A terminal row is never reopened, so a redelivery whose
 /// acknowledgement was lost yields no row and the settled result stands. A
 /// check-then-write would let two reports of one event race, and the second
@@ -101,7 +101,7 @@ pub const UPDATE_FLEET_EVENT_FAILURE: &str = include_str!("update_fleet_event_fa
 /// `$6` wall milliseconds, `$7` failure reason, `$8` the status this transition
 /// is guarded on, `$9` failure detail, `$10` the gate status that counts as
 /// pending, `$11` the run's tool trace as JSON text, or NULL.
-pub const UPDATE_FLEET_EVENT_RESULT: &str = include_str!("update_fleet_event_result.sql");
+pub const UPDATE_TURN_RESULT: &str = include_str!("update_turn_result.sql");
 
 /// Open, as received, the event of each admitted turn a run took in.
 ///
@@ -111,7 +111,7 @@ pub const UPDATE_FLEET_EVENT_RESULT: &str = include_str!("update_fleet_event_res
 /// key.
 pub const OPEN_FOLDED_EVENTS: &str = include_str!("open_folded_events.sql");
 
-/// [`UPDATE_FLEET_EVENT_RESULT`] for many events in one statement: `$2` is
+/// [`UPDATE_TURN_RESULT`] for many events in one statement: `$2` is
 /// the list of event ids, every other parameter as there.
 pub const CLOSE_FOLDED_EVENTS: &str = include_str!("close_folded_events.sql");
 

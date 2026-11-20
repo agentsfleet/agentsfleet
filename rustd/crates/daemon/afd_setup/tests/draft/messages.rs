@@ -4,8 +4,9 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY, INVALID_REQUEST};
+use af_core::error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY};
 use afd_setup::types::{MessageQuery, MessageState, SendMessage};
+use afd_turns::view::stop::Stop;
 
 const fn page(cursor: Option<String>) -> MessageQuery {
     MessageQuery {
@@ -16,7 +17,7 @@ const fn page(cursor: Option<String>) -> MessageQuery {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn stop_cutoff_preserves_new_messages_and_exact_operation_replay() {
+async fn stop_preserves_new_messages_and_exact_operation_replay() {
     let f = Fixture::create().await;
     let operation = mint();
     let created = f
@@ -44,15 +45,15 @@ async fn stop_cutoff_preserves_new_messages_and_exact_operation_replay() {
         .await
         .expect("queue second request");
     let stopped = f
-        .drafts
-        .cancel(f.access(), id, 1)
+        .stop(id, 1)
         .await
-        .expect("stop through first request");
-    assert_eq!(stopped.cancelled_through, "1");
-    assert_eq!(stopped.stopped.len(), 1);
+        .expect("stop the first request")
+        .expect("the draft holds turn 1");
+    assert_eq!(stopped.sequence, 1);
+    assert!(matches!(stopped.stop, Stop::Cancelled { turns: 1, .. }));
     assert_eq!(second.sequence, "2");
     assert_replay(&f, id, operation).await;
-    assert_cutoff_bounds(&f, id).await;
+    assert_stop_repeats(&f, id).await;
     assert_eq!(f.counts().await, (1, 1, 2));
     assert_pages(&f, id).await;
     f.cleanup().await;
@@ -133,21 +134,11 @@ async fn assert_replay(f: &Fixture, id: &af_core::id::Uuid7, operation: af_core:
     assert_eq!(error.code(), AUTHORING_REPLAY);
 }
 
-async fn assert_cutoff_bounds(f: &Fixture, id: &af_core::id::Uuid7) {
-    assert_eq!(
-        f.drafts
-            .cancel(f.access(), id, 3)
-            .await
-            .expect_err("Stop cannot cancel a future sequence")
-            .code(),
-        INVALID_REQUEST
-    );
-    assert!(
-        f.drafts
-            .cancel(f.access(), id, 0)
-            .await
-            .expect("old Stop retry")
-            .stopped
-            .is_empty()
-    );
+async fn assert_stop_repeats(f: &Fixture, id: &af_core::id::Uuid7) {
+    let again = f
+        .stop(id, 1)
+        .await
+        .expect("a repeated Stop answers")
+        .expect("the draft holds turn 1");
+    assert_eq!(again.stop, Stop::AlreadyCancelled);
 }

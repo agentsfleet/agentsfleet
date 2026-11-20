@@ -98,7 +98,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
 
 /// A continuation the run path already opened is not announced twice.
 ///
-/// Both writers run `INSERT_FLEET_EVENT` against `(fleet_id, turn_id)`, and
+/// Both writers run `INSERT_TURN` against `(fleet_id, turn_id)`, and
 /// the admission ledger hands them the SAME id, because the gate's action is
 /// the repeated key. Whichever lands second converges on the first's row,
 /// `RETURNING (xmax = 0)` reports `inserted = false`, and the frame must stay
@@ -212,7 +212,7 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
         .await
         .expect("the admission ledger accepts the continuation");
     // The statement answers `inserted` first, which is the column this reads.
-    let landed: bool = sqlx::query_scalar(afd_turns::view::sql::INSERT_FLEET_EVENT)
+    let landed: bool = sqlx::query_scalar(afd_turns::view::sql::INSERT_TURN)
         .bind(&lane.fleet)
         .bind(&admitted.stored.id)
         .bind(&lane.workspace)

@@ -43,7 +43,7 @@ impl Replica {
     pub(super) async fn readmit(&self, running: &Running) -> (Uuid7, Uuid7) {
         let acquired = crate::seed::select_fleet(&self.runs, &running.runner, &running.fleet)
             .await
-            .expect("the lapsed fleet is offered to the second replica");
+            .expect("the lapsed fleet is assigned to the second replica");
         assert_eq!(
             acquired.kind,
             Kind::Reclaim,

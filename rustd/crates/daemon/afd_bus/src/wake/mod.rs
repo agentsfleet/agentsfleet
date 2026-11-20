@@ -29,7 +29,7 @@ pub struct Generation {
 }
 
 impl Generation {
-    /// Ordinary rings grant an equal number of successful offers.
+    /// Ordinary rings grant an equal number of successful assignments.
     #[must_use]
     pub const fn rings(self) -> u64 {
         self.rings

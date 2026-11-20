@@ -62,7 +62,7 @@ impl Shared {
 /// What one runner did in one window.
 #[derive(Debug)]
 pub(super) struct Tally {
-    /// Entries in a notified or capacity offer pass.
+    /// Entries in a notified or capacity assignment pass.
     pub(super) claims: u64,
     /// Runs issued to this runner.
     pub(super) held: u64,
@@ -70,7 +70,7 @@ pub(super) struct Tally {
     /// did not means the hydrate failed inside the drain, and the run reads
     /// memory itself, outside the count.
     pub(super) memory_windows: u64,
-    /// How long a successful pushed offer took.
+    /// How long a successful pushed assignment took.
     pub(super) run_latency: Latency,
     /// How long the report after it took.
     pub(super) report_latency: Latency,
@@ -131,11 +131,11 @@ pub(super) async fn drive(
     Ok((tally, session))
 }
 
-/// The offer and all following operations use one gateway-owned target cache.
+/// The assignment and all following operations use one gateway-owned target cache.
 async fn step(session: &mut RunnerConnection, shared: &Shared, tally: &mut Tally) -> Result<bool> {
     session.ready(1).await?;
     let started = Instant::now();
-    let Some(frame) = session.offer().await? else {
+    let Some(frame) = session.assign().await? else {
         return Ok(false);
     };
     let Down::Run {
@@ -186,7 +186,7 @@ async fn run_turn(
     renew(session, run, turn.renewals).await?;
     for seq in 0..turn.posts {
         session
-            .send(&Up::Activity {
+            .send(&Up::Progress {
                 run_id: Cow::Borrowed(&run.run_id),
                 request: ActivityRequest {
                     frames: vec![chunk(seq)],

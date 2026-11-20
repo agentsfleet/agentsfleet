@@ -12,7 +12,7 @@ use afd_bus::Subject;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 use std::time::Duration;
-use support::{Counts, Fixture, Held, Tail, healthy, host_locks, offer, text};
+use support::{Counts, Fixture, Held, Tail, assign, healthy, host_locks, text};
 
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -63,7 +63,7 @@ async fn measure_cost(fixture: &Fixture, transport: Transport) -> Result<()> {
     assert_eq!(
         after.report_reads - before.report_reads,
         0,
-        "{transport:?}: the report uses the facts its session kept from the offer"
+        "{transport:?}: the report uses the facts its session kept from the assignment"
     );
     Ok(())
 }
@@ -71,11 +71,11 @@ async fn measure_cost(fixture: &Fixture, transport: Transport) -> Result<()> {
 async fn turn(fixture: &Fixture, native: &mut Native, tail: &mut Tail) -> Result<()> {
     healthy(native, 3).await;
     native.ready().await;
-    let held = offer(&fixture.scene, native).await?;
+    let held = assign(&fixture.scene, native).await?;
     renew(native, &held, 4).await;
     for sequence in 0..ACTIVITY_FRAMES {
         native.send(StreamKind::Activity, &json!({
-            "type":"activity", "run_id":held.id, "request":{"frames":[{
+            "type":"progress", "run_id":held.id, "request":{"frames":[{
                 "fleet_response_chunk":{"text":text(sequence), "text_kind":"answer",
                     "stream_start":sequence == 0, "stream_contiguous":true, "stream_seq":sequence}
             }]}
@@ -158,7 +158,7 @@ async fn guarded(fixture: &Fixture, native: &mut Native) -> Result<()> {
         tokio::time::timeout(Duration::from_millis(750), native.next(StreamKind::Work)).await;
     assert!(
         next.is_err(),
-        "a stale healthy session must receive no offer"
+        "a stale healthy session must receive no assignment"
     );
     assert_eq!(
         census(fixture).await?,
@@ -189,7 +189,7 @@ async fn recovered(fixture: &Fixture, native: &mut Native) -> Result<()> {
         "the healthy heartbeat clears the durable degradation"
     );
     wake(fixture).await?;
-    offer(&fixture.scene, native).await?;
+    assign(&fixture.scene, native).await?;
     assert_eq!(
         census(fixture).await?.0,
         1,

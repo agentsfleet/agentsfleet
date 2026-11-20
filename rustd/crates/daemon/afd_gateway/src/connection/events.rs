@@ -1,6 +1,6 @@
 //! Typed event selection is separate from connection decisions, following Exonum's handler pattern.
 
-use super::offers::{ClaimRequest, OfferTrigger};
+use super::assignments::{AssignTrigger, ClaimRequest};
 use super::{io::IncomingFrame, streams::StreamReceivers, supervisor::ConnectionSupervisor};
 use crate::{Result, error::ErrorKind};
 use af_wire::protocol::StreamKind;
@@ -16,7 +16,7 @@ pub(super) enum ConnectionEvent {
     Frame(IncomingFrame),
     Completed(OperationCompletion),
     Command(Command),
-    OfferRequested(OfferTrigger),
+    AssignRequested(AssignTrigger),
     DrainRequested,
     Superseded,
     Disconnected,
@@ -70,9 +70,9 @@ impl EventSource {
             () = handle.rechecks.notified(), if !connection.command_running => Ok(ConnectionEvent::Command(Command::Recheck)),
             frame = self.frames.control.recv(), if connection.slots.available(StreamKind::Control) => frame_event(frame),
             claim = self.claims.recv(), if !connection.assign_running => {
-                Ok(ConnectionEvent::OfferRequested(OfferTrigger::Pass(claim.ok_or(ErrorKind::Closed)?)))
+                Ok(ConnectionEvent::AssignRequested(AssignTrigger::Pass(claim.ok_or(ErrorKind::Closed)?)))
             }
-            () = handle.offers.notified(), if !connection.assign_running => Ok(ConnectionEvent::OfferRequested(OfferTrigger::Ready)),
+            () = handle.assignments.notified(), if !connection.assign_running => Ok(ConnectionEvent::AssignRequested(AssignTrigger::Ready)),
             frame = self.frames.reports.recv(), if connection.slots.available(StreamKind::Reports) => frame_event(frame),
             frame = self.frames.work.recv(), if connection.slots.available(StreamKind::Work) => frame_event(frame),
             frame = self.frames.activity.recv() => frame_event(frame),

@@ -166,9 +166,9 @@ struct Restored {
     root: tempfile::TempDir,
 }
 
-/// Restores `pages`, each read under its own id, against `offered`, or
-/// against the pages' own manifest root when `offered` is `None`.
-async fn restore_pages(pages: Vec<CheckpointPage>, offered: Option<String>) -> Checked<Restored> {
+/// Restores `pages`, each read under its own id, against `assigned`, or
+/// against the pages' own manifest root when `assigned` is `None`.
+async fn restore_pages(pages: Vec<CheckpointPage>, assigned: Option<String>) -> Checked<Restored> {
     let ids: Vec<_> = (0..pages.len())
         .map(|index| CheckpointOperationId(format!("019f0000-0000-7000-8000-{:012}", index + 200)))
         .collect();
@@ -179,7 +179,7 @@ async fn restore_pages(pages: Vec<CheckpointPage>, offered: Option<String>) -> C
             af_core::etag::sha256_hex(&serde_json::to_vec(page)?),
         ));
     }
-    let digest = offered.unwrap_or_else(|| {
+    let digest = assigned.unwrap_or_else(|| {
         af_crypto::checkpoint_digest::manifest_root(
             digests
                 .iter()
@@ -192,7 +192,7 @@ async fn restore_pages(pages: Vec<CheckpointPage>, offered: Option<String>) -> C
             .get(&page_id.0)
             .cloned()
             .map(Response::PageRead)
-            .ok_or_else(|| error::config("the restore read a page it was not offered")),
+            .ok_or_else(|| error::config("the restore read a page it was not assigned")),
         _ => Err(error::config("unexpected manifest request")),
     });
     let run = Uuid7::parse(ID)?;
@@ -271,13 +271,13 @@ async fn a_page_out_of_position_or_carrying_history_is_refused() -> Checked {
 }
 
 #[tokio::test]
-async fn a_manifest_other_than_the_offered_root_restores_nothing() -> Checked {
+async fn a_manifest_other_than_the_assigned_root_restores_nothing() -> Checked {
     let pages = vec![numbered(0, vec![directory("dir")])];
     let restored = restore_pages(pages.clone(), Some("e".repeat(64))).await?;
 
     assert_eq!(
         test_support::detail(&restored.result),
-        Some("turn manifest differs from the offered root")
+        Some("turn manifest differs from the assigned root")
     );
     assert_eq!(restored.sent.len(), 1);
     assert!(!restored.root.path().join("dir").exists());

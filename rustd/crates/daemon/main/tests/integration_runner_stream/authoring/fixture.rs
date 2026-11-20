@@ -220,18 +220,18 @@ async fn queue(drafts: &Drafts, rows: &Rows, session: &Session) -> wire::Run<ser
         .create(access, request, clock::now())
         .await
         .expect("queue authoring message");
-    let frame = tokio::time::timeout(DEADLINE, session.offer())
+    let frame = tokio::time::timeout(DEADLINE, session.assign())
         .await
-        .expect("authoring offer deadline")
-        .expect("authoring offer");
-    let message: Down<'_> = frame.decode().expect("native offer decode");
+        .expect("authoring assignment deadline")
+        .expect("authoring assignment");
+    let message: Down<'_> = frame.decode().expect("native assignment decode");
     let run = match message {
         Down::Run {
             run: TaggedRun::Authoring(run),
         } => Some(*run),
         _ => None,
     }
-    .expect("expected authoring offer");
+    .expect("expected authoring assignment");
     assert_eq!(run.draft_id, created.draft.id.as_str());
     run
 }

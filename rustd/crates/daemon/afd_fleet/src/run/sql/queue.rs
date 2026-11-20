@@ -14,10 +14,10 @@ pub const SELECT_WAITING_WORK: &str = include_str!("run/select_waiting_work.sql"
 /// runnable check follows that lock; the caller rolls the slot and admission
 /// back together when the head is blocked or gone. A fleet that is not active
 /// claims nothing: no fence moves and no row opens.
-pub const CLAIM_HEAD: &str = include_str!("run/claim_admission_head.sql");
+pub const CLAIM_HEAD: &str = include_str!("run/claim_turn_head.sql");
 
 /// Lock the current slot before its admission; false means the claim was superseded.
-pub(crate) const LOCK_ADMISSION: &str = include_str!("run/lock_admission.sql");
+pub(crate) const LOCK_TURN: &str = include_str!("run/lock_turn.sql");
 /// Refusals and terminal redeliveries settle only a row with a durable ending.
 pub(crate) const SETTLE_TERMINAL: &str = include_str!("run/settle_terminal.sql");
 /// A separate statement after locking observes an answer that raced the park.

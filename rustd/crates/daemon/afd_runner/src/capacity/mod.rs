@@ -302,9 +302,9 @@ pub fn renewable_states() -> Vec<String> {
 /// Why issue refused a placement the claim should already have filtered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlacementRefusal {
-    /// A tenant's runner was offered another tenant's work.
+    /// A tenant's runner was assigned another tenant's work.
     ForeignTenant,
-    /// A tenant's runner was offered work that would carry a platform model key.
+    /// A tenant's runner was assigned work that would carry a platform model key.
     PlatformModel,
 }
 

@@ -21,7 +21,7 @@ use crate::integration_renew_batch::{SEEDED_DAILY_NANOS, codes, frame, spend};
 use crate::report_seed::{Held, held, held_in};
 use crate::support::Fixtures;
 
-/// [`frame_on`], with the facts a session kept from each run's offer.
+/// [`frame_on`], with the facts a session kept from each run's assignment.
 async fn kept_frame(
     plane: &afd_fleet::run::RunService,
     held: &Held,

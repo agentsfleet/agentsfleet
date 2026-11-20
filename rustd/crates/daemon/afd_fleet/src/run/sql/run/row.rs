@@ -41,9 +41,9 @@ use crate::{Result, error::query};
 /// The run stores no copy of the event body: the reclaim path reads it by
 /// joining `thread.turns` on the run's `turn_id`, so the
 /// hottest write in the system stops duplicating the largest value in it.
-pub const INSERT_RUN_WITH_EVENT: &str = include_str!("insert_run_with_event.sql");
+pub const INSERT_RUN_WITH_TURN: &str = include_str!("insert_run_with_turn.sql");
 
-/// Everything [`INSERT_RUN_WITH_EVENT`] needs, by name.
+/// Everything [`INSERT_RUN_WITH_TURN`] needs, by name.
 ///
 /// Seventeen positional parameters, several of them same-typed text that a
 /// transposition would compile straight through, and this workspace disables
@@ -116,7 +116,7 @@ impl RunRow<'_> {
             ),
             (afd_runner::sql::meta::KIND, self.kind),
         ]);
-        let created_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(INSERT_RUN_WITH_EVENT)
+        let created_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(INSERT_RUN_WITH_TURN)
             .bind(self.run_id)
             .bind(self.runner_id)
             .bind(self.fleet_id)

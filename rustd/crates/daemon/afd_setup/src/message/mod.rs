@@ -1,13 +1,11 @@
-//! Durable message requests and monotone cancellation; no transient turn resource.
+//! Durable message requests; Stop is the turn PATCH every thread shares.
 
 mod accept;
-mod cancel;
 mod conversation;
 mod read;
 mod stop;
 
 pub(crate) use accept::{Insertion, insert};
-pub use cancel::{Cancellation, Stopped};
 pub use conversation::Conversation;
 
 pub(crate) const ACCEPTED: &str = "accepted";

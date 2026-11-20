@@ -31,7 +31,7 @@ WITH probe AS (
             -- live attempt nor a live draft slot holding the draft.
             SELECT 1 FROM setup.drafts d
             JOIN thread.turns m ON m.thread_id = d.id
-            WHERE d.status = $2 AND m.sequence > d.cancelled_through_sequence
+            WHERE d.status = $2 AND m.settled_at IS NULL
               AND (m.status = $3
                    OR (m.status = $6 AND EXISTS (
                        SELECT 1 FROM thread.runs l
@@ -76,7 +76,7 @@ SELECT
               SELECT 1 FROM setup.drafts d
               JOIN thread.turns m ON m.thread_id = d.id
               WHERE d.tenant_id = r.tenant_id
-                AND d.status = $2 AND m.sequence > d.cancelled_through_sequence
+                AND d.status = $2 AND m.settled_at IS NULL
                 AND (m.status = $3
                      OR (m.status = $6 AND EXISTS (
                          SELECT 1 FROM thread.runs l

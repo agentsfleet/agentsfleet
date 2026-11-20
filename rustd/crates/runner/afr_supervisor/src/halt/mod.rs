@@ -38,7 +38,7 @@ impl Halt {
         }
     }
 
-    /// Cancelled once the runner should stop beating and taking offers.
+    /// Cancelled once the runner should stop beating and taking assignments.
     pub(crate) const fn serving(&self) -> &CancellationToken {
         &self.serving
     }

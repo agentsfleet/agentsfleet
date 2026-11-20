@@ -2,7 +2,7 @@
 
 use af_fleet_runtime::Definition;
 use afd_api_wire::authoring as wire;
-use afd_setup::{Cancellation, types};
+use afd_setup::types;
 
 pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Review> {
     wire::Draft {
@@ -11,7 +11,6 @@ pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Revie
         title: value.title,
         etag: value.etag,
         authoring_model_ref: value.authoring_model_ref,
-        cancelled_through: value.cancelled_through,
         candidate: value.candidate.map(candidate),
         review: value.review,
         linked_fleet_id: value.linked_fleet_id.map(|id| id.to_string()),
@@ -86,20 +85,6 @@ pub(super) fn page<T, U>(value: types::Page<T>, render: impl FnMut(T) -> U) -> w
         items: value.items.into_iter().map(render).collect(),
         total: value.total,
         next_cursor: value.next_cursor,
-    }
-}
-
-pub(super) fn cancellation(value: Cancellation) -> wire::Cancellation {
-    wire::Cancellation {
-        cancelled_through: value.cancelled_through,
-        stopped: value
-            .stopped
-            .into_iter()
-            .map(|value| wire::Stopped {
-                sequence: value.sequence,
-                state: value.state.into(),
-            })
-            .collect(),
     }
 }
 

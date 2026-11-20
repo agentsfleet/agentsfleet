@@ -5,13 +5,13 @@
     reason = "integration preconditions must fail loudly"
 )]
 
+mod assigned;
 mod cancellation;
 mod expiry;
 mod fixture;
 mod holders;
 mod lock_wait;
 mod mixed;
-mod offered;
 mod replica;
 mod replicas;
 mod seat;

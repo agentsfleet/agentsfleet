@@ -77,7 +77,7 @@ fn runner(values: &mut Values, settings: &ConfigToml) {
     );
     insert(
         values,
-        "AGENTSFLEET_OFFER_FALLBACK_SECONDS",
+        "AGENTSFLEET_ASSIGN_FALLBACK_SECONDS",
         runner.scheduling.missed_wake_probe_seconds,
     );
     insert(

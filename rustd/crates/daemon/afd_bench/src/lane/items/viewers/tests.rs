@@ -16,7 +16,7 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use super::{FRAMES, Rung, Shared, view};
-use crate::lane::tail::publish::{PROBE, frame_of};
+use crate::lane::items::publish::{PROBE, frame_of};
 use crate::profile::Profile;
 use crate::report::latency::Latency;
 use crate::report::{Lane, Provenance, Report};
@@ -122,7 +122,7 @@ fn only(report: &Report, key: &str) -> Option<f64> {
 /// The summary carries p99 beside p95.
 #[test]
 fn tail_summary_reports_p99() {
-    let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Items, Profile::Rig, Provenance::for_test());
     rung_of((1..=100).map(core::time::Duration::from_millis)).record(&mut report, false);
 
     let p95 = only(&report, super::super::RECEIVE_P95_MS).expect("a timed rung writes p95");
@@ -141,7 +141,7 @@ fn tail_summary_reports_p99() {
 /// nothing is not a zero.
 #[test]
 fn rung_without_frames_reports_no_p99() {
-    let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Items, Profile::Rig, Provenance::for_test());
     rung_of([]).record(&mut report, false);
 
     assert_eq!(only(&report, super::super::RECEIVE_P99_MS), None);

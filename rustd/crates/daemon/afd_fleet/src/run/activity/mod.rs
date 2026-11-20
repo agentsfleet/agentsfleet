@@ -8,7 +8,7 @@
 //! A dropped frame is cosmetic — the durable record is the report — so a
 //! publish that fails is logged and the verb still answers. What is NOT
 //! best-effort is authorization: the target names a run this runner's stream
-//! session was offered, because without that a runner could publish onto a
+//! session was assigned, because without that a runner could publish onto a
 //! fleet it holds no run on and write into somebody else's live tail.
 //!
 //! Ordinary cosmetic frames remain available after supersession. Durable task

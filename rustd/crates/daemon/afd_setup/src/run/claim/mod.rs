@@ -43,7 +43,7 @@ impl Drafts {
     ///
     /// # Errors
     /// Preserves admission failures; a concurrent winning poll yields no work.
-    pub async fn claim_offered(&self, runner: &Uuid7, ticket: Ticket) -> Result<Option<Claimed>> {
+    pub async fn claim_assigned(&self, runner: &Uuid7, ticket: Ticket) -> Result<Option<Claimed>> {
         for hint in selection::candidates(&self.database, runner).await? {
             match self.admit(runner, &hint, Some(ticket)).await? {
                 Placement::Admitted(run) => return Ok(Some(*run)),
@@ -57,7 +57,7 @@ impl Drafts {
     /// Runs the production admission transaction for one fixture-owned draft.
     ///
     /// # Errors
-    /// Preserves the same refusals and datastore failures as `claim_offered`.
+    /// Preserves the same refusals and datastore failures as `claim_assigned`.
     #[cfg(feature = "test-util")]
     pub async fn claim_queued(&self, runner: &Uuid7, draft: &Uuid7) -> Result<Option<Claimed>> {
         let hint = selection::hint(&mut *self.database.acquire().await?, draft).await?;

@@ -46,7 +46,7 @@ pub enum MessageState {
     Running,
     /// Terminal answer and known accounting were recorded.
     Completed,
-    /// A cutoff or deletion fenced further private output.
+    /// A Stop or deletion fenced further private output.
     Cancelled,
     /// A durable bounded failure explains the recovery action.
     Failed,
@@ -127,8 +127,6 @@ pub struct Draft {
     pub etag: String,
     /// Explicit selection for future messages.
     pub authoring_model_ref: String,
-    /// Monotone stopped-through message watermark.
-    pub cancelled_through: String,
     /// Selected candidate, absent before initialization.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate: Option<Candidate>,

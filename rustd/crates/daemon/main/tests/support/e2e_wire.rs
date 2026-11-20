@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 
 use crate::e2e::Scenario;
 
-const OFFER_LIMIT: usize = 8;
+const ASSIGNMENT_LIMIT: usize = 8;
 
 /// A runner credential belonging to no row: well-formed, sixty-four hex
 /// characters after the marker, so the refusal comes from the DIRECTORY rather
@@ -83,33 +83,37 @@ pub(crate) fn claim(run: &Value) -> (String, u64) {
     )
 }
 
-/// Read the pushed offer for this scenario's event through the production runner downlink.
-pub(crate) async fn wait_for_seeded_offer(scene: &Scenario) -> (String, u64) {
-    wait_for_offer(scene, &scene.turn_id).await
+/// Read the pushed assignment for this scenario's event through the production runner downlink.
+pub(crate) async fn wait_for_seeded_assignment(scene: &Scenario) -> (String, u64) {
+    wait_for_assignment(scene, &scene.turn_id).await
 }
 
 /// Wait for the requested event without issuing another run request.
-pub(crate) async fn wait_for_offer(scene: &Scenario, turn_id: &Uuid7) -> (String, u64) {
+pub(crate) async fn wait_for_assignment(scene: &Scenario, turn_id: &Uuid7) -> (String, u64) {
     let client = scene.native_session().await;
     let reading = async {
         let mut elsewhere = Vec::new();
         loop {
-            let frame = client.offer().await.expect("the native owner remains live");
-            let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
+            let frame = client
+                .assign()
+                .await
+                .expect("the native owner remains live");
+            let message: af_wire::protocol::Down<'_> =
+                frame.decode().expect("the assignment decodes");
             let af_wire::protocol::Down::Run {
                 run: af_wire::run::TaggedRun::Fleet(run),
             } = message
             else {
-                panic!("this fleet fixture received an authoring offer")
+                panic!("this fleet fixture received an authoring assignment")
             };
             if run.event.turn_id == turn_id.as_str() {
                 return (run.run_id.to_string(), run.fencing_token);
             }
             elsewhere.push(run.event.fleet_id.to_string());
             assert!(
-                elsewhere.len() <= OFFER_LIMIT,
+                elsewhere.len() <= ASSIGNMENT_LIMIT,
                 "{}",
-                never_offered(&elsewhere)
+                never_assigned(&elsewhere)
             );
         }
     };
@@ -137,13 +141,13 @@ pub(crate) async fn report(scene: &Scenario, body: &Value) -> afr_supervisor::Re
     Ok(serde_json::to_value(response).expect("the report response encodes"))
 }
 
-/// How many unrelated fleet identifiers a missing-offer diagnostic names.
+/// How many unrelated fleet identifiers a missing-assignment diagnostic names.
 const NAMED_ELSEWHERE: usize = 8;
 
-/// Why [`wait_for_offer`] came back empty-handed, from what it was handed.
-fn never_offered(elsewhere: &[String]) -> String {
+/// Why [`wait_for_assignment`] came back empty-handed, from what it was handed.
+fn never_assigned(elsewhere: &[String]) -> String {
     if elsewhere.is_empty() {
-        return "No offer arrived. Enable AFD_TEST_LOG=1 to inspect the fleet's gate and placement decisions.".to_owned();
+        return "No assignment arrived. Enable AFD_TEST_LOG=1 to inspect the fleet's gate and placement decisions.".to_owned();
     }
     let named = elsewhere
         .iter()
@@ -152,13 +156,13 @@ fn never_offered(elsewhere: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{} offers named other events on fleets [{named}]; check scenario isolation and retirement",
+        "{} assignments named other events on fleets [{named}]; check scenario isolation and retirement",
         elsewhere.len()
     )
 }
 
-/// Observe a durable refusal while asserting the runner receives no offer for this fleet.
-pub(crate) async fn wait_without_offer<F, Fut>(scene: &Scenario, mut ended: F) -> bool
+/// Observe a durable refusal while asserting the runner receives no assignment for this fleet.
+pub(crate) async fn wait_without_assignment<F, Fut>(scene: &Scenario, mut ended: F) -> bool
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
@@ -174,9 +178,9 @@ where
     };
     tokio::select! {
         biased;
-        frame = client.offer() => {
+        frame = client.assign() => {
             let frame = frame.expect("the native owner remains live");
-            let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
+            let message: af_wire::protocol::Down<'_> = frame.decode().expect("the assignment decodes");
             if let af_wire::protocol::Down::Run { run: af_wire::run::TaggedRun::Fleet(run) } = message {
                 assert_ne!(run.event.fleet_id, scene.fleet.as_str(), "a refused fleet must not be issued");
             }

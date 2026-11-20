@@ -1,6 +1,6 @@
 //! The default stream ceiling, held to the rung the tail lane measured.
 //!
-//! `SSE_MAX_STREAMS_DEFAULT`'s doc cites a `make bench-tail PROFILE=rig` run.
+//! `SSE_MAX_STREAMS_DEFAULT`'s doc cites a `make bench-items PROFILE=rig` run.
 //! The number and the run are two files, so a default raised without a run
 //! behind it, or a re-run whose rung missed a bound, would leave the doc citing
 //! evidence that no longer holds. `build.rs` carries the committed baseline in;

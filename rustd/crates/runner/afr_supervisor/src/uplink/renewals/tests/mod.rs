@@ -162,7 +162,7 @@ struct RenewalPeer {
     sender: Arc<super::super::SessionSender>,
     outgoing: super::super::queues::Receivers,
     current: tokio::sync::watch::Sender<Option<Arc<super::super::SessionSender>>>,
-    _assignments: tokio::sync::watch::Sender<Option<Arc<af_stream::OwnedFrame>>>,
+    _policies: tokio::sync::watch::Sender<Option<Arc<af_stream::OwnedFrame>>>,
 }
 
 impl RenewalPeer {
@@ -176,7 +176,7 @@ impl RenewalPeer {
             stop: tokio_util::sync::CancellationToken::new(),
         });
         let (current, session) = tokio::sync::watch::channel(Some(Arc::clone(&sender)));
-        let (assignments, watching) = tokio::sync::watch::channel(None);
+        let (policies, watching) = tokio::sync::watch::channel(None);
         let handle = super::super::StreamHandle::new(
             session,
             Arc::new(crate::downlink::running::Running::default()),
@@ -188,7 +188,7 @@ impl RenewalPeer {
                 sender,
                 outgoing,
                 current,
-                _assignments: assignments,
+                _policies: policies,
             },
         )
     }

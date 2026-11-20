@@ -107,7 +107,7 @@ fn rendered(resume_hold: bool) -> Value {
     serde_json::to_value(af_wire::protocol::Down::<serde_json::Value>::Run {
         run: af_wire::run::TaggedRun::<serde_json::Value>::Fleet(Box::new(run)),
     })
-    .expect("an offer renders")
+    .expect("an assignment renders")
 }
 
 #[test]

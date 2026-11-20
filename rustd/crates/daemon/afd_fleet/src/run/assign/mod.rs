@@ -3,8 +3,8 @@
 use crate::{
     error::Result,
     run::{
+        assignment::RecoveryScan,
         envelope::{Acquired, Kind},
-        offer::RecoveryScan,
         store::Runs,
     },
 };

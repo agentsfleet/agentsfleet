@@ -1,4 +1,4 @@
-//! An offer keeps its durable target beside bytes serialized inside the policy borrow.
+//! An assignment keeps its durable target beside bytes serialized inside the policy borrow.
 
 use af_core::id::Uuid7;
 use jiff::Timestamp;
@@ -7,8 +7,8 @@ use super::activity::Target;
 
 /// Inputs shared by fleet and authoring placement under one physical host limit.
 #[derive(Debug)]
-pub struct OfferRequest<'a> {
-    /// Enrolled host receiving the offer.
+pub struct AssignRequest<'a> {
+    /// Enrolled host receiving the assignment.
     pub runner: &'a Uuid7,
     /// Fleets whose existing sandboxes this host holds.
     pub held: &'a [Uuid7],
@@ -48,9 +48,9 @@ impl RecoveryScan {
     }
 }
 
-/// Metadata returned with the exact offer, without another run-target query.
+/// Metadata returned with the exact assignment, without another run-target query.
 #[derive(Debug, Clone)]
-pub struct Offered {
+pub struct AssignedRun {
     /// Durable run identity for acknowledgements and cancellation.
     pub run_id: Uuid7,
     /// Last confirmed deadline; transport activity cannot extend it.

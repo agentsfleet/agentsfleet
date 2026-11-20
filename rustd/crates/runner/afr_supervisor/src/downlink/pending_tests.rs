@@ -9,7 +9,7 @@ use super::*;
 use crate::{
     client::{Call, ControlPlane, RunnerApi},
     downlink::{
-        Offered,
+        Assigned,
         dispatch::{Dispatch, Progress},
         running::Running,
     },
@@ -88,25 +88,25 @@ struct Harness {
     plane: ControlPlane,
     current: watch::Sender<Option<Arc<SessionSender>>>,
     running: Arc<Running>,
-    assignments: watch::Sender<Option<Arc<OwnedFrame>>>,
-    offers: mpsc::Sender<Offered>,
-    _offered: mpsc::Receiver<Offered>,
+    policies: watch::Sender<Option<Arc<OwnedFrame>>>,
+    assignments: mpsc::Sender<Assigned>,
+    _assigned: mpsc::Receiver<Assigned>,
 }
 
 impl Harness {
     fn new() -> Self {
         let running = Arc::new(Running::default());
         let (current, session) = watch::channel(None);
-        let (assignments, watching) = watch::channel(None);
+        let (policies, watching) = watch::channel(None);
         let stream = StreamHandle::new(session, Arc::clone(&running), watching);
-        let (offers, offered) = mpsc::channel(af_wire::protocol::RUNS_MAX);
+        let (assignments, assigned) = mpsc::channel(af_wire::protocol::RUNS_MAX);
         Self {
             plane: ControlPlane::new(Box::new(NoHttp), stream),
             current,
             running,
+            policies,
             assignments,
-            offers,
-            _offered: offered,
+            _assigned: assigned,
         }
     }
 
@@ -134,9 +134,9 @@ impl Harness {
         let mut dispatch = Dispatch {
             requests: &peer.sender.requests,
             running: &self.running,
-            offers: &self.offers,
-            offer_budget: &Budget::default(),
             assignments: &self.assignments,
+            assignment_budget: &Budget::default(),
+            policies: &self.policies,
             stop: &peer.sender.stop,
             early_cancel: HashSet::new(),
         };

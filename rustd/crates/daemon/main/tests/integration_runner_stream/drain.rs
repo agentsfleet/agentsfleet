@@ -25,8 +25,8 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
         let mut native = Native::connect(&scene, transport).await;
         native.heartbeat().await;
         native.ready().await;
-        let offer = native.expect(StreamKind::Work, "run").await;
-        let (run, _) = wire::claim(offer.pointer("/run").expect("native response field"));
+        let assignment = native.expect(StreamKind::Work, "run").await;
+        let (run, _) = wire::claim(assignment.pointer("/run").expect("native response field"));
         // The renewal takes no host lock; it waits on its fleet's slot.
         let (host, blocker) = hold_slot(&scene, &run).await;
         native
@@ -86,7 +86,7 @@ async fn hold_slot(scene: &Scenario, run: &str) -> (Transaction<'static, Postgre
         .fetch_one(&mut *host)
         .await
         .expect("owned blocker identity");
-    let run = af_core::id::Uuid7::parse(run).expect("the offer names a run");
+    let run = af_core::id::Uuid7::parse(run).expect("the assignment names a run");
     let _held: af_core::id::Uuid7 = sqlx::query_scalar(
         "SELECT s.fleet_id FROM thread.threads s JOIN thread.runs l ON l.fleet_id = s.fleet_id \
          WHERE l.id = $1 FOR UPDATE OF s",

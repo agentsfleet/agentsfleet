@@ -1,7 +1,7 @@
 //! Runner proposals cross the actual bearer, strict input and native-edit boundary.
 
-use super::{attempt::Running, json_body, send};
-use http::{Method, StatusCode};
+use super::{attempt::Running, json_body};
+use http::StatusCode;
 use serde_json::json;
 
 #[tokio::test]
@@ -20,15 +20,8 @@ async fn proposal_router_commits_one_version_and_checks_stop_before_replay() {
     let replay = json_body(replay).await;
     assert_eq!(replay.get("candidate"), first.get("candidate"));
     assert_eq!(replay.get("replayed"), Some(&json!(true)));
-    let path = format!("{}/{}/cancellations", r.f.collection(), r.draft);
-    let stopped = send(
-        &r.router,
-        Method::POST,
-        &path,
-        Some(&r.f.token),
-        r#"{"through_sequence":"1"}"#,
-    )
-    .await;
+    let item = format!("{}/{}", r.f.collection(), r.draft);
+    let stopped = super::stop(&r.router, &item, &r.f.token, "1").await;
     assert_eq!(stopped.status(), StatusCode::OK);
     let late =
         crate::harness::native::send(&r.router, &r.operation, Some(&r.token), &request).await;

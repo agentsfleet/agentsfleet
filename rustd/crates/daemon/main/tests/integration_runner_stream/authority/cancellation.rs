@@ -21,7 +21,7 @@ async fn an_archive_on_another_replica_cancels_and_settles_the_native_run() -> T
         let mut native = fixture.native(transport).await;
         native.heartbeat().await;
         native.ready().await;
-        let held = signals::offer(&mut native).await?;
+        let held = signals::assign(&mut native).await?;
         assert_eq!(held.event, fixture.scene.turn_id);
         fixture.operator.archive(&fixture.scene).await?;
         signals::cancelled(&mut native, &held).await?;
@@ -69,10 +69,13 @@ async fn pair(
         .send(
             StreamKind::Control,
             &json!({"type":"ready","credits":2,
-        "revision":1,"observed_offers":0}),
+        "revision":1,"observed_assignments":0}),
         )
         .await;
-    let mut held = [signals::offer(native).await?, signals::offer(native).await?];
+    let mut held = [
+        signals::assign(native).await?,
+        signals::assign(native).await?,
+    ];
     held.sort_by_key(|run| run.event != fixture.scene.turn_id);
     Ok(held)
 }

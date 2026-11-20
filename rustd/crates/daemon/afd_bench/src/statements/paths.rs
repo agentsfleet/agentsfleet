@@ -192,7 +192,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Host,
     ),
     ("UPDATE runner.runners SET run_version", Path::Host),
-    // The placement choice an offer reads before it claims (`choice.sql`).
+    // The placement choice an assignment reads before it claims (`choice.sql`).
     (
         "SELECT run_version, last_run_type FROM runner.runners",
         Path::Host,

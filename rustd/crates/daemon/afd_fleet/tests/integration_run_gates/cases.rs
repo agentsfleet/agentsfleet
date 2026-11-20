@@ -43,7 +43,7 @@ async fn test_a_fleet_past_its_ceiling_ends_the_event_rather_than_retrying_it() 
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_denied_gate_ends_the_event_and_names_the_denial() {
     // `of_gate` maps a denial to `Admission::Refuse`, and the verb must then
-    // end the event: a human said no, so waiting would offer the same event
+    // end the event: a human said no, so waiting would assign the same event
     // back on every poll forever.
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;

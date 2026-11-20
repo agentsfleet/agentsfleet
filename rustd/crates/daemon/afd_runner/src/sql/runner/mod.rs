@@ -16,12 +16,12 @@ use jiff_sqlx::ToSqlx as _;
 /// audit row explaining where it came from. The operator's ASSIGNED policy
 /// lands on the row here — the host never writes it. The enrolment event takes
 /// the row's own `created_at`, so the two cannot disagree about when.
-pub const INSERT_RUNNER_WITH_EVENT: &str = include_str!("insert_runner_with_event.sql");
+pub const INSERT_RUNNER_WITH_HISTORY: &str = include_str!("insert_runner_with_history.sql");
 
 /// The run-type counter a freshly enrolled host starts at.
 const FIRST_RUN_VERSION: i64 = 0;
 
-/// Everything [`INSERT_RUNNER_WITH_EVENT`] needs, by name.
+/// Everything [`INSERT_RUNNER_WITH_HISTORY`] needs, by name.
 ///
 /// # Why this one gets a struct and most statements do not
 ///
@@ -86,13 +86,13 @@ pub struct RegisterRow<'a> {
 }
 
 impl<'a> RegisterRow<'a> {
-    /// Binds this row to [`INSERT_RUNNER_WITH_EVENT`], in `$n` order.
+    /// Binds this row to [`INSERT_RUNNER_WITH_HISTORY`], in `$n` order.
     ///
     /// The metadata keys (`$15`, `$16`, `$18`) and the opening run version
     /// (`$12`) are constants rather than caller data, so they are supplied
     /// here and no caller supplies anything positionally.
     pub fn bind(&'a self) -> Bound<'a> {
-        sqlx::query(INSERT_RUNNER_WITH_EVENT)
+        sqlx::query(INSERT_RUNNER_WITH_HISTORY)
             .bind(self.runner_id)
             .bind(self.host_id)
             .bind(self.token_digest)
@@ -180,8 +180,8 @@ pub const UPDATE_RUNNER_VERDICT: &str = include_str!("update_runner_verdict.sql"
 /// zeros trimmed — the form `jiff` writes, so the operator API serves one
 /// spelling of an instant. `$1` runner, `$2` event id, `$3` event type, `$4`
 /// the metadata key, `$5` the never-seen sentinel, `$6` the offline threshold.
-pub const HEARTBEAT_WITH_TRANSITION_EVENT: &str =
-    include_str!("heartbeat_with_transition_event.sql");
+pub const HEARTBEAT_WITH_TRANSITION_HISTORY: &str =
+    include_str!("heartbeat_with_transition_history.sql");
 
 /// Store a reported self-test verdict and retire the request that asked for it,
 /// in one write.
@@ -195,7 +195,7 @@ pub const UPDATE_RUNNER_SELFTEST: &str = include_str!("update_runner_selftest.sq
 
 /// Liveness-only bump, for the paths that must not emit history.
 ///
-/// The fallback when [`HEARTBEAT_WITH_TRANSITION_EVENT`] could not run — an
+/// The fallback when [`HEARTBEAT_WITH_TRANSITION_HISTORY`] could not run — an
 /// event identifier that would not mint, or a statement Postgres refused. A
 /// beat that writes liveness without its transition event is a quieter loss
 /// than a beat that writes nothing: the fleet read stays true, and only the

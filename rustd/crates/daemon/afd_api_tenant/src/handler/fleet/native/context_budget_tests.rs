@@ -82,7 +82,6 @@ fn context() -> AuthoringContext<Value, Value, Value> {
                     title: "Private setup".into(),
                     etag: "draft-tag".into(),
                     authoring_model_ref: "owner-model".into(),
-                    cancelled_through: "0".into(),
                     candidate: None,
                     review: None,
                     linked_fleet_id: Some("fleet".into()),

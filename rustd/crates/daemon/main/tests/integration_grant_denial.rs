@@ -63,13 +63,13 @@ async fn gate_cards(scene: &Scenario) -> i64 {
         .expect("the gate count must scene")
 }
 
-/// Wait for the durable outcome while refusing any offer for this fleet.
-async fn wait_without_offer<F, Fut>(scene: &Scenario, awaited: &str, mut reached: F)
+/// Wait for the durable outcome while refusing any assignment for this fleet.
+async fn wait_without_assignment<F, Fut>(scene: &Scenario, awaited: &str, mut reached: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    let observed = crate::wire::wait_without_offer(scene, || {
+    let observed = crate::wire::wait_without_assignment(scene, || {
         let reached = reached();
         async {
             sqlx::query(
@@ -125,7 +125,7 @@ async fn refusal_drains(preended: bool) {
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    wait_without_offer(&scene, "the gate never saw this fleet", || async {
+    wait_without_assignment(&scene, "the gate never saw this fleet", || async {
         gate_cards(&scene).await == 1
     })
     .await;
@@ -136,7 +136,7 @@ async fn refusal_drains(preended: bool) {
     );
     deny(&scene).await;
     preend(&scene, preended).await;
-    wait_without_offer(&scene, "the denied admission never settled", || async {
+    wait_without_assignment(&scene, "the denied admission never settled", || async {
         sqlx::query_scalar::<_, bool>(
             "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1",
         )
@@ -154,7 +154,7 @@ async fn refusal_drains(preended: bool) {
             .await
             .expect("queue state");
     let second = scene.enqueue_event(TurnKind::Chat).await;
-    wait_without_offer(&scene, "the next denied event never settled", || async {
+    wait_without_assignment(&scene, "the next denied event never settled", || async {
         event_column(&scene, &second, LABEL).await.as_deref()
             == Some(af_core::turn::label::GRANT_DENIED)
     })

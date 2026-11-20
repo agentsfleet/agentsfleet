@@ -157,11 +157,7 @@ const GRANTS: [(&str, &str, &[Verb]); 86] = [
     ("billing.usage_lines", "api_runtime", KEPT),
     ("billing.usage_daily", "api_runtime", KEPT),
     ("billing.runs_daily", "api_runtime", KEPT),
-    (
-        "billing.authoring_report_receipts",
-        "api_runtime",
-        APPEND_ONLY,
-    ),
+    ("billing.setup_report_receipts", "api_runtime", APPEND_ONLY),
     ("memory.entries", "memory_runtime", READ_WRITE),
     ("memory.context_checkpoints", "api_runtime", READ_WRITE),
 ];

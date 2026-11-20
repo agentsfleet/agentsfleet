@@ -170,7 +170,7 @@ impl Window {
         );
     }
 
-    /// Idle sessions report measured totals even when no offer pass ran.
+    /// Idle sessions report measured totals even when no assignment pass ran.
     pub(super) fn record_idle(&self, report: &mut Report) {
         report.measurement(IDLE_STATEMENTS, count(self.cost.statements));
         report.measurement(IDLE_COMMITS, count(self.cost.commits));

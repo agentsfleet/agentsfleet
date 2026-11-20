@@ -4,7 +4,7 @@
 //! self-contained `ExecutionPolicy` to the runner. Split by concern:
 //! [`affinity`] holds the fence and the slot's release verbs — a fence is
 //! minted by the slot upsert inside the claim head statement
-//! (`claim_admission_head.sql`) and read back into a [`affinity::Fence`] — and
+//! (`claim_turn_head.sql`) and read back into a [`affinity::Fence`] — and
 //! the modules beside it add the gates and the row.
 //!
 //! # Where the modules split
@@ -17,6 +17,7 @@ pub mod admit;
 pub mod affinity;
 mod answer;
 pub mod assign;
+mod assignment;
 pub mod billing_sweep;
 pub mod bracket;
 pub mod cache;
@@ -39,7 +40,6 @@ pub mod issue;
 pub mod memory;
 pub mod message;
 pub mod mint;
-mod offer;
 pub mod owner;
 mod park;
 pub mod pull;
@@ -65,6 +65,7 @@ pub use self::activity::Target;
 #[cfg(any(test, feature = "test-util"))]
 pub use self::affinity::Claimed;
 pub use self::affinity::Fence;
+pub use self::assignment::{AssignRequest, AssignedRun, RecoveryScan};
 pub use self::commit::{Committed, TerminalReport};
 pub use self::delivery::{Owing, ReplyDestination};
 pub use self::envelope::{Acquired, Kind};
@@ -72,7 +73,6 @@ pub use self::event::{Delivery, Ended, Received};
 pub use self::history::Thread;
 pub use self::installed::{FRESH_CONTEXT, Installed};
 pub use self::issue::{Billed, Issued};
-pub use self::offer::{OfferRequest, Offered, RecoveryScan};
 pub use self::owner::RunOwner;
 pub use self::pull::RunService;
 pub use self::renew::{Renewed, Renewing};

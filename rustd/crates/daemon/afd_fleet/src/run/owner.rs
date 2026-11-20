@@ -47,7 +47,7 @@ impl RunOwner {
         }
     }
 
-    /// The placement kind this owner's work is offered as. Its
+    /// The placement kind this owner's work is assigned as. Its
     /// [`RunKind::as_str`] is the one spelling the database stores
     /// (`runner.runners.last_run_type`), so no second vocabulary names a kind.
     #[must_use]

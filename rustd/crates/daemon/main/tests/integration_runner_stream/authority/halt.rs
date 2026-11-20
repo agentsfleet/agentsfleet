@@ -17,8 +17,11 @@ async fn an_operator_revocation_halts_the_production_native_downlink() -> TestRe
     let beat = serde_json::from_slice(&bytes)?;
     runner.heartbeat(&beat).await?;
     fixture.operator.runner(&fixture.scene, "revoke").await?;
-    let stopped = tokio::time::timeout(PUSH_BOUND, runner.offer()).await?;
-    assert!(stopped.is_err(), "revoked runners cannot await more offers");
+    let stopped = tokio::time::timeout(PUSH_BOUND, runner.assign()).await?;
+    assert!(
+        stopped.is_err(),
+        "revoked runners cannot await more assignments"
+    );
     let failure = runner
         .close()
         .await

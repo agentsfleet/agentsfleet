@@ -104,13 +104,3 @@ pub struct MessageRequest {
     /// that window, inspect existing messages before retrying.
     pub operation_id: String,
 }
-
-/// Stops work through the supplied accepted user-message sequence.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct CancellationRequest {
-    /// Nonnegative decimal string; a future sequence is refused.
-    #[garde(length(bytes, min = 1, max = 19), custom(af_validate::ascii_digits))]
-    pub through_sequence: String,
-}

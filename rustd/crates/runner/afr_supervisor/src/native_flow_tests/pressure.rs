@@ -45,7 +45,7 @@ impl Blocked {
                 self.report_bytes.store(bytes, Ordering::SeqCst);
                 self.report.cancel();
             }
-            Some("activity") => self.activity.cancel(),
+            Some("progress") => self.activity.cancel(),
             _ => return,
         }
         self.release.cancelled().await;
@@ -98,8 +98,8 @@ async fn exercise(transport: Transport, logs: &Capture) -> TestResult {
     let connected_after = logs.events().len();
     let mut session = Session::connect(&configured(&daemon, origin)?).await?;
     session.capacity(1);
-    let offer = tokio::time::timeout(Duration::from_secs(5), session.offer()).await??;
-    assert_ne!(offer.as_bytes(), b"");
+    let assignment = tokio::time::timeout(Duration::from_secs(5), session.assign()).await??;
+    assert_ne!(assignment.as_bytes(), b"");
     assert_carrier(logs, connected_after, transport);
     simultaneous(&session, &daemon, &blocked, logs).await?;
     session.close().await?;
@@ -139,7 +139,7 @@ async fn simultaneous(
     let run = Uuid7::parse(RUN_ID)?;
     let cancelled = session
         .run_cancellation(&run)
-        .ok_or("the native offer has no cancellation owner")?;
+        .ok_or("the native assignment has no cancellation owner")?;
     let bytes = large_report()?;
     let mut reporting = Box::pin(session.report(&bytes));
     assert!(poll!(&mut reporting).is_pending());

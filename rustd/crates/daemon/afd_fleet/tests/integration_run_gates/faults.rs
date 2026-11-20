@@ -17,7 +17,7 @@ const UNREADABLE_CONFIG: &str = "{}";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
+async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_assigned() {
     // The first pass ends the event; the second finds the row already ended
     // and must neither reopen it nor answer anything but no work.
     let fixtures = Fixtures::create().await;

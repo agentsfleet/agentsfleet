@@ -29,7 +29,7 @@ pub(super) enum Other<
     Ready {
         credits: usize,
         revision: NonZeroU64,
-        observed_offers: u64,
+        observed_assignments: u64,
     },
     Heartbeat {
         request_id: NonZeroU64,
@@ -68,7 +68,7 @@ pub(super) enum Other<
         run_id: Cow<'a, str>,
         request: Cow<'a, crate::authoring::Report>,
     },
-    Activity {
+    Progress {
         #[serde(borrow)]
         run_id: Cow<'a, str>,
         #[serde(borrow)]
@@ -113,7 +113,7 @@ impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O,
             Ready {
                 credits,
                 revision,
-                observed_offers
+                observed_assignments
             },
             Heartbeat {
                 request_id,
@@ -141,7 +141,7 @@ impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O,
                 run_id,
                 request
             },
-            Activity { run_id, request },
+            Progress { run_id, request },
             Folds {
                 request_id,
                 run_id,

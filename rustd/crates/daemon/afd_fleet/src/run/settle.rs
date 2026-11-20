@@ -1,5 +1,5 @@
 //! The run a report is about, read for a report whose stream session kept
-//! no facts from the offer. The report itself commits in one statement
+//! no facts from the assignment. The report itself commits in one statement
 //! ([`super::commit`]).
 
 use af_core::id::Uuid7;

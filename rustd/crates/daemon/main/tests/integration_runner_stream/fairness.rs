@@ -1,4 +1,4 @@
-//! Old admitted work progresses through native offers during continuous hot-fleet notifications.
+//! Old admitted work progresses through native assignments during continuous hot-fleet notifications.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
@@ -7,7 +7,7 @@ use crate::{
     e2e_native::Stored,
     e2e_seed, wire,
 };
-use af_core::{id::Uuid7, timing::OFFER_FALLBACK_TICK};
+use af_core::{id::Uuid7, timing::ASSIGN_FALLBACK_TICK};
 use afd_db::{
     Db, Migrator,
     config::DbRole,
@@ -26,7 +26,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 const FLEETS: usize = 1_000;
 const HOT_TICK: Duration = Duration::from_millis(10);
 mod measurement;
-use measurement::{Witness, offered, probes, progress, wait_for_probes, zero_usage};
+use measurement::{Witness, assigned, probes, progress, wait_for_probes, zero_usage};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -35,7 +35,7 @@ async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notificatio
     let (database, owner, scene) = setup(&mut supervisor).await;
     let population = Population::seed(&scene, FLEETS).await;
     wire::heartbeat(&scene, &wire::capable_beat()).await;
-    let first = offered(&scene).await;
+    let first = assigned(&scene).await;
     assert_eq!(
         first.fleet, population.hot.fleet,
         "only the warm-up fleet is initially runnable"
@@ -49,7 +49,7 @@ async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notificatio
     let traffic = population.hot.produce(stop.clone(), Arc::clone(&produced));
     let mut witness = Witness::default();
     let measured = tokio::time::timeout(
-        OFFER_FALLBACK_TICK * 3,
+        ASSIGN_FALLBACK_TICK * 3,
         progress(&scene, &owner, &population.hot, first, before, &mut witness),
     )
     .await;
@@ -74,18 +74,21 @@ async fn a_busy_runner_remembers_recovery_when_its_worker_becomes_free() {
     let (database, owner, scene) = setup(&mut supervisor).await;
     let population = Population::seed(&scene, 2).await;
     wire::heartbeat(&scene, &wire::capable_beat()).await;
-    let first = offered(&scene).await;
+    let first = assigned(&scene).await;
     assert_eq!(first.fleet, population.hot.fleet);
     population.activate(&scene, 2).await;
     let before = probes(&owner).await;
-    tokio::time::timeout(OFFER_FALLBACK_TICK * 3, wait_for_probes(&owner, before + 2))
-        .await
-        .expect("the independent clock probes while the sole worker is busy");
+    tokio::time::timeout(
+        ASSIGN_FALLBACK_TICK * 3,
+        wait_for_probes(&owner, before + 2),
+    )
+    .await
+    .expect("the independent clock probes while the sole worker is busy");
     population.hot.admit().await;
     wire::report(&scene, &zero_usage(&first))
         .await
         .expect("the worker finishes");
-    let next = offered(&scene).await;
+    let next = assigned(&scene).await;
     assert_eq!(
         next.fleet, scene.fleet,
         "returning capacity must serve the older unhinted admission"

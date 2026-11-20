@@ -129,7 +129,7 @@ impl ControlPlane {
         let verb = Verb::Activity.as_str();
         tracing::debug!(event = "runner_activity_queued", verb);
         self.stream
-            .send(&Up::Activity {
+            .send(&Up::Progress {
                 run_id: run_id.as_str().into(),
                 request: request.clone(),
             })

@@ -12,10 +12,6 @@ pub(crate) const INSERT: &str = include_str!("insert.sql");
 /// `$1` draft, `$2` the new last sequence.
 pub(crate) const ADVANCE: &str = include_str!("advance.sql");
 
-/// `$1` draft, `$2` cutoff, `$3` cancelled status, `$4` and `$5` the in-flight
-/// statuses it moves.
-pub(crate) const CANCEL: &str = include_str!("cancel.sql");
-
 /// One page of user and assistant roles, with each message's retry key and
 /// reported usage.
 ///

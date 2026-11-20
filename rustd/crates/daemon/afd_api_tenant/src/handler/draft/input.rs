@@ -11,7 +11,6 @@ use afd_api_wire::authoring as wire;
 use afd_setup::types::{CreateDraft, DraftPatch, SendMessage, Source};
 use http::HeaderMap;
 
-const INVALID: &str = "Setup input violates the supported shape or bounds";
 const HEADER_KEY: &str = "Use only body operation_id for draft creation and messages";
 const IDEMPOTENCY_KEY: &str = "idempotency-key";
 
@@ -72,15 +71,4 @@ pub(super) fn send(bytes: &[u8]) -> Result<SendMessage, Refusal> {
         save: request.save,
         operation_id: uuid(&request.operation_id)?,
     })
-}
-
-pub(super) fn cutoff(bytes: &[u8]) -> Result<i64, Refusal> {
-    let request: wire::CancellationRequest = body(bytes)?;
-    let request = garde::Unvalidated::new(request)
-        .validate()
-        .map_err(|_invalid| Refusal::malformed(INVALID))?;
-    request
-        .through_sequence
-        .parse()
-        .map_err(|_invalid| Refusal::malformed(INVALID))
 }

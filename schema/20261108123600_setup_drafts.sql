@@ -17,7 +17,6 @@ CREATE TABLE setup.drafts (
     fleet_id                    UUID REFERENCES fleet.fleets(id) ON DELETE SET NULL,
     plugin_revision_id         UUID REFERENCES setup.plugin_revisions(id) ON DELETE SET NULL,
     last_message_sequence       BIGINT NOT NULL,
-    cancelled_through_sequence  BIGINT NOT NULL,
     resource_version            BIGINT NOT NULL,
     closed_at                   TIMESTAMPTZ(3),
     expires_at                  TIMESTAMPTZ(3),
@@ -36,7 +35,7 @@ CREATE INDEX idx_drafts_workspace_id_user_id_updated_at_id
 
 CREATE INDEX idx_drafts_user_id ON setup.drafts (user_id);
 
--- The offer probe asks whether a connected tenant runner's tenant has setup
+-- The waiting-work probe asks whether a connected tenant runner's tenant has setup
 -- work waiting (`afd_fleet/src/run/sql/run/select_waiting_work.sql`).
 CREATE INDEX idx_drafts_tenant_id ON setup.drafts (tenant_id);
 

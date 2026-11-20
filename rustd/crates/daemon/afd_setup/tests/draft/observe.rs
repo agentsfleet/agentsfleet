@@ -8,7 +8,7 @@ use super::{
 use af_core::error_code;
 use afd_setup::{Observation, View};
 
-/// Moves the draft's one message to `status`, as a run or a cutoff does.
+/// Moves the draft's one message to `status`, as a run or a Stop does.
 const MESSAGE_STATUS: &str = "UPDATE thread.turns SET status=$2 WHERE thread_id=$1";
 
 /// Closes the draft for its retention window, as a Save or an apply does.

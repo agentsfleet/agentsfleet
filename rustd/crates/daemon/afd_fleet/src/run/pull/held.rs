@@ -17,7 +17,7 @@ use jiff::Timestamp;
 use super::RunService;
 use super::step::{Assigned, Step};
 use crate::error::Result;
-use crate::run::Offered;
+use crate::run::AssignedRun;
 use crate::run::affinity::Fence;
 use crate::run::envelope::Acquired;
 
@@ -29,7 +29,7 @@ struct Held {
 }
 
 impl RunService {
-    /// Runs a claimed pass, marking the admission, the issue and the offer's
+    /// Runs a claimed pass, marking the admission, the issue and the assignment's
     /// encoding on `clock`. The issue ends where `emit` is called, or where the
     /// delivery returns without calling it, so a refused claim shows `issue`
     /// and no `encode`.
@@ -44,7 +44,7 @@ impl RunService {
     ) -> Result<Option<T>>
     where
         T: Send,
-        F: for<'a> FnMut(RunPayload<'a>, Offered) -> T + Send,
+        F: for<'a> FnMut(RunPayload<'a>, AssignedRun) -> T + Send,
     {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
@@ -57,9 +57,9 @@ impl RunService {
         let pass = match admitted.map(Step::proceed) {
             Ok(Ok(admitted)) => {
                 let delivered = {
-                    let mut timed = |run: RunPayload<'_>, offered: Offered| {
+                    let mut timed = |run: RunPayload<'_>, assigned: AssignedRun| {
                         clock.mark(AssignStage::Issue);
-                        let encoded = emit(run, offered);
+                        let encoded = emit(run, assigned);
                         clock.mark(AssignStage::Encode);
                         encoded
                     };

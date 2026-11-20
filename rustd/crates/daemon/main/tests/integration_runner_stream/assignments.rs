@@ -1,11 +1,11 @@
-//! Admission wakes a connected worker through a pushed offer without run
-//! requests, and the replica's backstop re-read offers a turn whose wake was lost.
+//! Admission wakes a connected worker through a pushed assignment without run
+//! requests, and the replica's backstop re-read assigns a turn whose wake was lost.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
 use std::sync::atomic::Ordering;
 
-use af_core::timing::OFFER_FALLBACK_TICK;
+use af_core::timing::ASSIGN_FALLBACK_TICK;
 use afd_bus::Subject;
 use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;
@@ -28,12 +28,12 @@ async fn admitted_work_reaches_an_idle_native_worker_without_a_run_poll() {
     let mut supervisor = Supervisor::new();
     let mut scene = scenario(&mut supervisor).await;
     wire::heartbeat(&scene, &wire::capable_beat()).await;
-    let (run, fence) = wire::wait_for_seeded_offer(&scene).await;
+    let (run, fence) = wire::wait_for_seeded_assignment(&scene).await;
     wire::report(&scene, &wire::report_body(&run, &scene.turn_id, fence))
         .await
         .expect("settle seeded work");
     let event = scene.enqueue_event(EVENT_TYPE).await;
-    let (run, fence) = wire::wait_for_offer(&scene, &event).await;
+    let (run, fence) = wire::wait_for_assignment(&scene, &event).await;
     wire::report(&scene, &wire::report_body(&run, &event, fence))
         .await
         .expect("settle pushed work");
@@ -54,7 +54,7 @@ async fn a_turn_whose_wake_was_lost_is_assigned_by_the_backstop() {
     let mut supervisor = Supervisor::new();
     let mut scene = scenario(&mut supervisor).await;
     wire::heartbeat(&scene, &wire::capable_beat()).await;
-    let (run, fence) = wire::wait_for_seeded_offer(&scene).await;
+    let (run, fence) = wire::wait_for_seeded_assignment(&scene).await;
     wire::report(&scene, &wire::report_body(&run, &scene.turn_id, fence))
         .await
         .expect("settle seeded work");
@@ -80,10 +80,10 @@ async fn a_turn_whose_wake_was_lost_is_assigned_by_the_backstop() {
         1,
         "the admission's wake was lost"
     );
-    let (run, fence) = wire::wait_for_offer(&scene, &event).await;
+    let (run, fence) = wire::wait_for_assignment(&scene, &event).await;
     let waited = admitted.elapsed();
     assert!(
-        waited <= OFFER_FALLBACK_TICK + RECOVERY_SLACK,
+        waited <= ASSIGN_FALLBACK_TICK + RECOVERY_SLACK,
         "the backstop assigns within one interval, waited {waited:?}"
     );
     wire::report(&scene, &wire::report_body(&run, &event, fence))

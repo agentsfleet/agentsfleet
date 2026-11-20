@@ -16,7 +16,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
 use crate::steers::{ARCHIVED, Crew, INSTALLING};
-use crate::wire::{report, report_body, wait_for_offer};
+use crate::wire::{report, report_body, wait_for_assignment};
 
 /// The ids a page's items name, in order.
 fn ids(page: &Value) -> Vec<String> {
@@ -166,7 +166,7 @@ async fn fleets_read_refuses_a_run_the_runner_does_not_hold() {
         .run()
         .enqueue_event(af_wire::turn::TurnKind::Chat)
         .await;
-    let (live, fence) = wait_for_offer(crew.run(), &next).await;
+    let (live, fence) = wait_for_assignment(crew.run(), &next).await;
     crew.speaking.supersede().await;
     let answered = read_fleets(&crew, &live, fence).await;
     assert_eq!(answered.1["current_state"], "superseded", "{}", answered.1);

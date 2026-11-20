@@ -51,7 +51,7 @@ pub(super) async fn run_scope(database: &Db, presented: TaskRun<'_>) -> Result<T
 }
 
 pub(super) async fn run(connection: &mut PgConnection, presented: TaskRun<'_>) -> Result<RunRow> {
-    locked_run(connection, presented, sql::LOCK_SLOT, sql::RUN).await
+    locked_run(connection, presented, sql::LOCK_THREAD, sql::RUN).await
 }
 
 /// Receipt reads exclude writers without serializing other receipt readers.
@@ -63,7 +63,7 @@ pub(super) async fn replay_run(
     locked_run(
         connection,
         presented,
-        sql::LOCK_REPLAY_SLOT,
+        sql::LOCK_REPLAY_THREAD,
         sql::REPLAY_RUN,
     )
     .await
@@ -115,7 +115,7 @@ async fn locked_run(
 
 pub(super) async fn scope(connection: &mut PgConnection, scope: &TaskScope) -> Result<()> {
     lock_scope(connection, &scope.fleet_id, &scope.workspace_id).await?;
-    let _slot = sqlx::query_scalar::<_, Uuid7>(sql::LOCK_SCOPE_SLOT)
+    let _slot = sqlx::query_scalar::<_, Uuid7>(sql::LOCK_SCOPE_THREAD)
         .bind(&scope.fleet_id)
         .fetch_optional(connection)
         .await

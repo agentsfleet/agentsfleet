@@ -31,8 +31,8 @@ pub enum Lane {
     Outbound,
     /// What an idle fleet costs when there are a million of them.
     Cardinality,
-    /// What the live tail costs per frame and per stream.
-    Tail,
+    /// What the live items stream costs per frame and per stream.
+    Items,
 }
 
 impl Lane {
@@ -47,7 +47,7 @@ impl Lane {
         Self::RunBurst,
         Self::Outbound,
         Self::Cardinality,
-        Self::Tail,
+        Self::Items,
     ];
 
     /// The name this lane is written and asked for under.
@@ -60,7 +60,7 @@ impl Lane {
             Self::RunBurst => "run-burst",
             Self::Outbound => "outbound",
             Self::Cardinality => "cardinality",
-            Self::Tail => "tail",
+            Self::Items => "items",
         }
     }
 
@@ -95,4 +95,4 @@ impl core::str::FromStr for Lane {
 
 /// How the lane names are spelled, for the refusal an unknown one raises.
 const LANE_USAGE: &str =
-    "expected one of steer, run, run-saturation, run-burst, outbound, cardinality, tail";
+    "expected one of steer, run, run-saturation, run-burst, outbound, cardinality, items";

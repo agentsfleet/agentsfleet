@@ -1,5 +1,5 @@
 -- One row per turn, keyed by its parent: replacement runs share this head.
--- head_turn_checkpoint_id is read by offer/restore; next_generation by begin.
+-- head_turn_checkpoint_id is read by assign/restore; next_generation by begin.
 CREATE TABLE runner.turn_recovery (
     turn_id UUID PRIMARY KEY,
     head_turn_checkpoint_id UUID,

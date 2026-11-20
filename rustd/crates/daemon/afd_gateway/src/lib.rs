@@ -67,7 +67,7 @@ pub struct RecoverySettings {
     /// Maximum active claims across credited hosts.
     pub max_concurrent_claims: std::num::NonZeroUsize,
     /// Independent lost-notification probe cadence.
-    pub offer_fallback: std::time::Duration,
+    pub assign_fallback: std::time::Duration,
 }
 
 impl Default for RecoverySettings {
@@ -75,7 +75,7 @@ impl Default for RecoverySettings {
         const CLAIMS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
         Self {
             max_concurrent_claims: CLAIMS,
-            offer_fallback: af_core::timing::OFFER_FALLBACK_TICK,
+            assign_fallback: af_core::timing::ASSIGN_FALLBACK_TICK,
         }
     }
 }
@@ -141,7 +141,7 @@ impl Gateway {
         scheduler::run(self.clone(), stop).await
     }
 
-    /// Stop offers, finish accepted requests and close every connection by one deadline.
+    /// Stop assigning, finish accepted requests and close every connection by one deadline.
     ///
     /// # Errors
     /// Returns the drain timeout after cancelling any connection still serving.

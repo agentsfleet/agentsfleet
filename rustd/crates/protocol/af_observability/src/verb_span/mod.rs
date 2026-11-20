@@ -14,7 +14,7 @@
 //! The stage type is a closed enum per verb, so a free-form key cannot be
 //! written, and the only strings a span carries are the event and fleet
 //! identifiers. A verb that reaches no stage records nothing. The gateway's
-//! recovery probe runs an offer pass every 5 s per replica and most find no
+//! recovery probe runs an assignment pass every 5 s per replica and most find no
 //! work, so a span for each would flood the exporter's `SPAN_QUEUE`; and a
 //! span with no stage is an identity with no timing to place.
 //! [`VerbClock::untimed`] is a clock that records nothing at all, for a caller
@@ -70,19 +70,19 @@ stages!(
 );
 
 stages!(
-    /// An offer that selected work, from the claim to the stream write.
-    AssignStage, semconv::SPAN_FLEET_OFFER {
+    /// An assignment that selected work, from the claim to the stream write.
+    AssignStage, semconv::SPAN_FLEET_ASSIGN {
         /// Selection and the slot claim.
-        Claim => semconv::ATTR_OFFER_CLAIM_MS,
+        Claim => semconv::ATTR_ASSIGN_CLAIM_MS,
         /// Delivery, payer, provider and gates.
-        Admit => semconv::ATTR_OFFER_ADMIT_MS,
+        Admit => semconv::ATTR_ASSIGN_ADMIT_MS,
         /// The policy and the issue commit, or the refusal or fault that ends
-        /// the attempt before an offer is built.
-        Issue => semconv::ATTR_OFFER_ISSUE_MS,
-        /// The offer frame.
-        Encode => semconv::ATTR_OFFER_ENCODE_MS,
+        /// the attempt before an assignment is built.
+        Issue => semconv::ATTR_ASSIGN_ISSUE_MS,
+        /// The assignment frame.
+        Encode => semconv::ATTR_ASSIGN_ENCODE_MS,
         /// The stream write.
-        Send => semconv::ATTR_OFFER_SEND_MS,
+        Send => semconv::ATTR_ASSIGN_SEND_MS,
     }
 );
 
@@ -227,7 +227,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     }
 
     /// Records the span so far and starts a fresh one in its place, as one pass
-    /// that serves a second offer needs. A clock that reached no stage has no
+    /// that serves a second assignment needs. A clock that reached no stage has no
     /// span to close, so it keeps its start and identity; an untimed clock
     /// starts over without recording.
     pub fn restart_if_staged(&mut self) {
@@ -270,7 +270,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
             return;
         }
         // A span with no stage is an identity with no timing, and the empty
-        // offer passes the recovery probe runs would flood the span queue.
+        // assignment passes the recovery probe runs would flood the span queue.
         if self.stages.is_empty() {
             return;
         }

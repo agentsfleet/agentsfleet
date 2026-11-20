@@ -8,7 +8,7 @@ use crate::report::{Lane, Provenance, Report};
 
 #[test]
 fn the_summary_prints_one_line_per_rung_then_the_totals() {
-    let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Items, Profile::Rig, Provenance::for_test());
     for (viewers, bytes) in [(1.0, 200.0), (64.0, 4_096.0)] {
         push(&mut report, LADDER_VIEWERS, viewers);
         push(&mut report, LADDER_PAYLOAD_BYTES, bytes);
@@ -33,7 +33,7 @@ fn the_summary_prints_one_line_per_rung_then_the_totals() {
 fn a_series_the_run_never_wrote_is_left_out_of_its_rung() {
     // Without the counting allocator there is no allocation or heap figure,
     // and the line must say nothing about it rather than print a zero.
-    let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Items, Profile::Rig, Provenance::for_test());
     push(&mut report, LADDER_STREAMS, 256.0);
     push(&mut report, STREAMS_LIVE, 256.0);
 
@@ -42,7 +42,7 @@ fn a_series_the_run_never_wrote_is_left_out_of_its_rung() {
 
 #[test]
 fn a_stream_rung_prints_its_publish_to_receive_p95() {
-    let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Items, Profile::Rig, Provenance::for_test());
     push(&mut report, LADDER_STREAMS, 4_096.0);
     push(&mut report, STREAMS_LIVE, 4_096.0);
     push(&mut report, STREAM_RECEIVE_P95_MS, 12.5);

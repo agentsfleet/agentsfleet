@@ -1,9 +1,9 @@
 //! A model proposal has no candidate until the fixed activity handler accepts it.
 
-use super::super::{json_body, send};
+use super::super::json_body;
 use super::fixture::Model;
 use axum::response::Response;
-use http::{Method, StatusCode};
+use http::StatusCode;
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 
@@ -76,14 +76,8 @@ async fn accept_proposal(model: &Model, calls: &[Value]) {
 
 async fn refuse_after_stop(model: &Model) {
     let r = &model.running;
-    let stopped = send(
-        &r.router,
-        Method::POST,
-        &format!("{}/{}/cancellations", r.f.collection(), r.draft),
-        Some(&r.f.token),
-        r#"{"through_sequence":"1"}"#,
-    )
-    .await;
+    let item = format!("{}/{}", r.f.collection(), r.draft);
+    let stopped = crate::authoring::stop(&r.router, &item, &r.f.token, "1").await;
     assert_eq!(stopped.status(), StatusCode::OK);
     let refused = invoke(model).await;
     assert_eq!(refused.status(), StatusCode::CONFLICT);

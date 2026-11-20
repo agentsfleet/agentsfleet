@@ -21,7 +21,7 @@ use serde_json::json;
 use crate::e2e::scenario;
 use crate::reads::event_column;
 use crate::tail::{next_frame, run, settle};
-use crate::wire::{capable_beat, field, report_body, wait_without_offer};
+use crate::wire::{capable_beat, field, report_body, wait_without_assignment};
 
 /// The bracket frames — the daemon opens and closes a run on the tail itself.
 ///
@@ -80,8 +80,8 @@ async fn test_a_refused_run_closes_the_run_on_the_tail() {
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    // No work may be offered before the durable money-gate refusal is visible.
-    let refused = wait_without_offer(&scene, || async {
+    // No work may be assigned before the durable money-gate refusal is visible.
+    let refused = wait_without_assignment(&scene, || async {
         event_column(&scene, &scene.turn_id, "status")
             .await
             .as_deref()

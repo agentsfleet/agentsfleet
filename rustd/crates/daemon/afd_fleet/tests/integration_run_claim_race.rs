@@ -3,7 +3,7 @@
 //! Fleet creation writes the thread, so the other runner's uncommitted claim
 //! holds that row's lock. This runner's claim skips the locked thread rather
 //! than wait on it, and takes nothing: no turn is read, so nothing is orphaned,
-//! and the poll moves on as if the fleet were never offered. The other
+//! and the poll moves on as if the fleet were never assigned. The other
 //! runner's claim is held open in a transaction so the lock is certain rather
 //! than a race the scheduler may or may not produce.
 //!
@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_core::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER};
-use afd_fleet::run::sql::shared::CLAIM_SLOT;
+use afd_fleet::run::sql::shared::CLAIM_THREAD;
 use sqlx::Connection as _;
 
 use crate::seed::{Seeded, seeded};
@@ -42,7 +42,7 @@ async fn test_a_claim_behind_a_live_claim_skips_and_takes_nothing() {
     let fleet_id = fleet.clone();
     let mut other = fixtures.database.acquire().await.expect("a connection");
     let mut claiming = other.begin().await.expect("a transaction");
-    sqlx::query(CLAIM_SLOT)
+    sqlx::query(CLAIM_THREAD)
         .bind(&fleet)
         .bind(None::<Uuid7>)
         .bind(&second)

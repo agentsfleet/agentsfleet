@@ -1,5 +1,7 @@
 //! One bounded owner joins the four streams, domain operations and every child task.
 
+mod assign;
+mod assignments;
 pub(crate) mod cache;
 mod commands;
 mod context;
@@ -7,8 +9,6 @@ mod dispatch;
 mod events;
 pub(crate) mod io;
 pub(crate) mod liveness;
-mod offer;
-mod offers;
 pub(crate) mod opening;
 pub(crate) mod requests;
 mod runtime;
@@ -31,9 +31,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{ConnectionContext, Gateway};
 
+pub(crate) use assignments::{AssignMode, AssignOutcome, ClaimRequest};
 pub(crate) use io::{StreamAttachment, StreamAttachmentSender};
 use io::{StreamIo, StreamWriters};
-pub(crate) use offers::{ClaimRequest, OfferMode, OfferOutcome};
 
 use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 
@@ -46,11 +46,11 @@ pub(crate) struct SchedulingState {
     pub(crate) ready: bool,
     pub(crate) degraded: bool,
     pub(crate) credits: usize,
-    pub(crate) offers_sent: u64,
-    pub(crate) offers_seen: u64,
+    pub(crate) assignments_sent: u64,
+    pub(crate) assignments_seen: u64,
     pub(crate) ready_revision: Option<NonZeroU64>,
     pub(crate) held: Vec<Uuid7>,
-    pub(crate) last_offer: Instant,
+    pub(crate) last_assignment: Instant,
     pub(crate) recovery_pending: Option<afd_bus::wake::Recovery>,
 }
 
@@ -65,7 +65,7 @@ impl SchedulingState {
         &mut self,
         credits: usize,
         revision: NonZeroU64,
-        observed_offers: u64,
+        observed_assignments: u64,
     ) -> crate::Result<bool> {
         if self
             .ready_revision
@@ -73,30 +73,32 @@ impl SchedulingState {
         {
             return Ok(false);
         }
-        if observed_offers < self.offers_seen || observed_offers > self.offers_sent {
+        if observed_assignments < self.assignments_seen
+            || observed_assignments > self.assignments_sent
+        {
             return Err(crate::error::ErrorKind::Protocol.into());
         }
         let previous = if self.ready { self.credits } else { 0 };
-        let unseen = self.offers_sent - observed_offers;
+        let unseen = self.assignments_sent - observed_assignments;
         // The comparison proves any subsequent narrowing fits the supplied usize capacity.
         self.credits = if unseen >= credits as u64 {
             0
         } else {
             credits - usize::try_from(unseen)?
         };
-        self.offers_seen = observed_offers;
+        self.assignments_seen = observed_assignments;
         self.ready_revision = Some(revision);
         self.ready = true;
         Ok(self.credits > previous)
     }
 
     fn issued(&mut self) -> crate::Result<()> {
-        self.offers_sent = self
-            .offers_sent
+        self.assignments_sent = self
+            .assignments_sent
             .checked_add(1)
             .ok_or(crate::error::ErrorKind::Protocol)?;
         self.credits = self.credits.saturating_sub(1);
-        self.last_offer = Instant::now();
+        self.last_assignment = Instant::now();
         Ok(())
     }
 }
@@ -111,7 +113,7 @@ pub(crate) struct ConnectionHandle {
     pub(crate) drain: CancellationToken,
     pub(crate) liveness: liveness::Liveness,
     pub(crate) superseded: CancellationToken,
-    pub(crate) offers: Notify,
+    pub(crate) assignments: Notify,
     pub(crate) claims: mpsc::Sender<ClaimRequest>,
     pub(crate) recovery_scan: Mutex<afd_fleet::run::RecoveryScan>,
     pub(crate) rechecks: Notify,
@@ -127,7 +129,7 @@ impl ConnectionHandle {
             recovered
         };
         if recovered {
-            self.request_offer();
+            self.request_assignment();
         }
     }
 
@@ -138,8 +140,8 @@ impl ConnectionHandle {
         }
     }
 
-    pub(crate) fn request_offer(&self) {
-        self.offers.notify_one();
+    pub(crate) fn request_assignment(&self) {
+        self.assignments.notify_one();
     }
 
     pub(crate) fn supersede(&self) {
@@ -200,7 +202,7 @@ pub(crate) struct ConnectionServices {
     cache: cache::RunCache,
     output: StreamWriters,
     accepted: AcceptedKinds,
-    /// Whether this runner's revision may be offered a draft-owned run.
+    /// Whether this runner's revision may be assigned a draft-owned run.
     draft_runs: bool,
     checkpoint_verifications: tokio::sync::Semaphore,
     /// Renewal frames this connection has answered, for
@@ -238,18 +240,18 @@ impl ConnectionHandle {
                 ready: true,
                 degraded: false,
                 credits: 1,
-                offers_sent: 0,
-                offers_seen: 0,
+                assignments_sent: 0,
+                assignments_seen: 0,
                 ready_revision: None,
                 held: Vec::new(),
-                last_offer: Instant::now(),
+                last_assignment: Instant::now(),
                 recovery_pending: None,
             }),
             stop: CancellationToken::new(),
             drain: CancellationToken::new(),
             liveness: liveness::Liveness::default(),
             superseded: CancellationToken::new(),
-            offers: Notify::new(),
+            assignments: Notify::new(),
             claims,
             recovery_scan: Mutex::default(),
             rechecks: Notify::new(),

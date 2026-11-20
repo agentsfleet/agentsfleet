@@ -95,7 +95,6 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/drafts",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages",
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/stream",
     // M253 §8 — Stop on a draft's turn, beside the fleet turn's PATCH.
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/{turn_id}",
@@ -207,6 +206,32 @@ fn test_workspace_create_is_tenant_scoped_not_workspace_scoped() {
     let meta = Route::Tenant(TenantRoute::CreateWorkspace).meta();
     assert_eq!(meta.template, "/v1/workspaces");
     assert_eq!(meta.ownership, Ownership::None);
+}
+
+/// Dimension 7.1 (M253) — the surface speaks in turns, items and runs.
+///
+/// A run's tool calls are items, a runner works a run rather than a lease, a
+/// turn is stopped by its own `PATCH`, and a fleet's history is its turns. So
+/// no inventory path, and no template the daemon tables, names a retired
+/// segment, and `/events` survives only as the vendor webhook's ingress.
+#[test]
+fn the_route_inventory_names_turns_items_and_runs() {
+    const RETIRED: [&str; 3] = ["/tool-calls", "/leases", "/cancellations"];
+    const VENDOR_EVENTS: &str = "/v1/connectors/{provider}/events";
+    let paths = INVENTORY
+        .iter()
+        .copied()
+        .chain(DEFERRED_TO_M180.iter().copied())
+        .chain(Route::all().map(|route| route.meta().template));
+    for path in paths {
+        for retired in RETIRED {
+            assert!(!path.contains(retired), "{path} names {retired}");
+        }
+        assert!(
+            !path.contains("/events") || path == VENDOR_EVENTS,
+            "{path} names /events, which only the vendor webhook keeps"
+        );
+    }
 }
 
 /// The templates of the two families this milestone's inventory covers.

@@ -72,10 +72,7 @@ async fn settled_without_private_copy(f: &Fixture, attempt: &Attempt) {
 async fn mutate(f: &Fixture, attempt: &Attempt, revoke: Revoke) {
     match revoke {
         Revoke::Stop => {
-            f.drafts
-                .cancel(f.access(), &attempt.draft.id, 1)
-                .await
-                .expect("Stop");
+            f.stop(&attempt.draft.id, 1).await.expect("Stop");
         }
         Revoke::Delete => {
             f.drafts

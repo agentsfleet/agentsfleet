@@ -1,4 +1,4 @@
-//! Durable private message acceptance, role paging, and monotone Stop.
+//! Durable private message acceptance and role paging.
 
 use super::{DraftPath, access, id, input, location, render};
 use crate::{
@@ -6,9 +6,7 @@ use crate::{
     services::Services,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{
-    Accepted, Cancellation, CancellationRequest, CursorPage, Message, MessageRequest,
-};
+use afd_api_wire::authoring::{Accepted, CursorPage, Message, MessageRequest};
 use afd_http::handler::{Refusal, authoring_refusal};
 use afd_setup::types::MessageQuery;
 use axum::{
@@ -90,31 +88,4 @@ pub(crate) async fn list<D: Services>(
         .await
         .map_err(authoring_refusal)?;
     Ok(Json(render::page(messages, render::message)).into_response())
-}
-
-/// Advances the cutoff while leaving later accepted messages queued.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations", operation_id = "cancel_workspace_draft_messages",
-    tag = afd_http::openapi::tag::DRAFTS, summary = "Stop private setup through a message",
-    params(afd_http::openapi::path::Draft),
-    request_body = CancellationRequest,
-    responses((status = 200, body = Cancellation, description = "Standing cutoff and newly cancelled requests"),
-        (status = 400, description = "Invalid or future cutoff"), (status = 404, description = super::DRAFT_UNAVAILABLE),
-        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
-        afd_http::openapi::GuardedFailures,
-    )
-))]
-pub(crate) async fn cancel<D: Services>(
-    State(services): State<Arc<D>>,
-    WorkspaceContext(owned): WorkspaceContext,
-    person: PersonIdentity,
-    Path(path): Path<DraftPath>,
-    body: Bytes,
-) -> Result<Response, Refusal> {
-    let cancellation = services
-        .authoring()
-        .cancel(access(&owned, &person), &id(&path)?, input::cutoff(&body)?)
-        .await
-        .map_err(authoring_refusal)?;
-    Ok(Json(render::cancellation(cancellation)).into_response())
 }

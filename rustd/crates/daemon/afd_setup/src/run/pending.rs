@@ -12,14 +12,14 @@ impl crate::Drafts {
     pub const CURRENT_ATTEMPT_QUERY: &'static str = sql::PENDING;
 }
 
-/// Whether a running attempt above the watermark still holds the draft. The
-/// caller holds the draft lock; stopped attempts remain available to reports,
+/// Whether a running attempt still holds the draft. The caller holds the draft
+/// lock; an attempt whose turn Stop cancelled remains available to reports,
 /// and an attempt awaiting accounting no longer holds the draft.
 pub(crate) async fn running(connection: &mut PgConnection, draft: &Locked) -> Result<bool> {
     let running: Option<bool> = sqlx::query_scalar(sql::PENDING)
         .bind(&draft.id)
         .bind(&FINISHED[..])
-        .bind(draft.cancelled_through_sequence)
+        .bind(crate::types::CANCELLED)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;

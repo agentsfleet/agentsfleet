@@ -1,4 +1,4 @@
--- The fleet's claim. Its `slot` step is `../shared/claim_slot.sql` and its `prior_run`,
+-- The fleet's claim. Its `slot` step is `../shared/claim_thread.sql` and its `prior_run`,
 -- `bumped` and `tally` steps are `../shared/expire_prior_run.sql`, fused here with the
 -- fleet's turn, which the claim stamps and opens as the fleet's event in one update, so a
 -- chat's claim stays one round trip: a change to the bookkeeping belongs in both.

@@ -3,7 +3,7 @@
 -- (`lock_host.sql`) through this transaction, so this statement's snapshot, taken after that
 -- lock, sees every earlier claimant's commit: the census below counts them. The caller has
 -- proved and locked the owner's scope earlier in the transaction; the fleet's own insert
--- (`insert_run_with_event.sql`) proves it in its insert instead. A full host, a moved slot
+-- (`insert_run_with_turn.sql`) proves it in its insert instead. A full host, a moved slot
 -- fence or a moved placement choice writes nothing that commits.
 --
 -- $1 run · $2 runner · $3 the owning fleet, NULL for a draft · $4 the owning draft, NULL
@@ -62,7 +62,7 @@ WITH instant AS MATERIALIZED (
     AND $18 > a.checked_at
   RETURNING id, runner_id, created_at
 ), chosen AS (
-  -- The placement choice the host lock read: the next offer prefers the other kind.
+  -- The placement choice the host lock read: the next assignment prefers the other kind.
   UPDATE runner.runners
   SET run_version = run_version + 1, last_run_type = $20::text, updated_at = now()
   WHERE id = $2 AND run_version = $19::bigint AND EXISTS (SELECT 1 FROM inserted)

@@ -80,10 +80,7 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         | WorkspaceRoute::Draft
         | WorkspaceRoute::DraftMessages
         | WorkspaceRoute::DraftStream
-        | WorkspaceRoute::DraftTurn
-        | WorkspaceRoute::DraftCancellations => {
-            draft_handler_for::<D>(verb).map(handler::draft::private)
-        }
+        | WorkspaceRoute::DraftTurn => draft_handler_for::<D>(verb).map(handler::draft::private),
         WorkspaceRoute::Fleets => {
             Some(get(fleet::list::<D>).post(fleet::native::create::save::<D>))
         }
@@ -126,7 +123,6 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
         ),
         WorkspaceRoute::DraftMessages => Some(get(message::list::<D>).post(message::send::<D>)),
         WorkspaceRoute::DraftStream => Some(get(stream::open::<D>)),
-        WorkspaceRoute::DraftCancellations => Some(post(message::cancel::<D>)),
         WorkspaceRoute::DraftTurn => Some(patch(handler::turn::stop::draft::<D>)),
         WorkspaceRoute::Plugin
         | WorkspaceRoute::PluginItem

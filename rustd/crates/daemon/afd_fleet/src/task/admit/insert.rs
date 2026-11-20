@@ -119,7 +119,7 @@ pub(super) async fn admission(
     admission: &Uuid7,
     binding: &TaskBinding,
 ) -> Result<()> {
-    sqlx::query(sql::BIND_ADMISSION)
+    sqlx::query(sql::BIND_TURN)
         .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
         .bind(&binding.item_id)
         .bind(admission)

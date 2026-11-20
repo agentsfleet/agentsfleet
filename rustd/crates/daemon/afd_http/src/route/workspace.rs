@@ -28,8 +28,6 @@ pub enum WorkspaceRoute {
     Draft,
     /// Private user requests and assistant answers.
     DraftMessages,
-    /// Monotone private authoring Stop watermark.
-    DraftCancellations,
     /// Creator-private, currently authorized setup progress.
     DraftStream,
     /// One turn of a creator-private draft: stop it.
@@ -73,7 +71,6 @@ impl WorkspaceRoute {
         Self::Drafts,
         Self::Draft,
         Self::DraftMessages,
-        Self::DraftCancellations,
         Self::DraftStream,
         Self::DraftTurn,
         Self::Plugin,
@@ -113,7 +110,7 @@ impl WorkspaceRoute {
             | Self::PluginRevision
             | Self::Members => &[Verb::Get],
             Self::Preference => &[Verb::Put],
-            Self::ApprovalResolve | Self::DraftCancellations => &[Verb::Post],
+            Self::ApprovalResolve => &[Verb::Post],
             Self::Drafts | Self::DraftMessages => &[Verb::Get, Verb::Post],
             Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
             Self::DraftTurn => &[Verb::Patch],
@@ -140,7 +137,6 @@ impl WorkspaceRoute {
             | Self::Drafts
             | Self::Draft
             | Self::DraftMessages
-            | Self::DraftCancellations
             | Self::DraftTurn
             | Self::Plugin
             | Self::PluginItem
@@ -166,7 +162,6 @@ impl WorkspaceRoute {
             Self::Drafts => workspace_path!("/drafts"),
             Self::Draft => workspace_path!("/drafts/{draft_id}"),
             Self::DraftMessages => workspace_path!("/drafts/{draft_id}/messages"),
-            Self::DraftCancellations => workspace_path!("/drafts/{draft_id}/cancellations"),
             Self::DraftStream => workspace_path!("/drafts/{draft_id}/turns/stream"),
             Self::DraftTurn => workspace_path!("/drafts/{draft_id}/turns/{turn_id}"),
             Self::Plugin => workspace_path!("/plugins"),
@@ -212,7 +207,6 @@ impl WorkspaceRoute {
             Self::Drafts
             | Self::Draft
             | Self::DraftMessages
-            | Self::DraftCancellations
             | Self::DraftStream
             | Self::DraftTurn => Scopes::Always(FLEET_WRITE),
             Self::Plugin | Self::PluginItem | Self::PluginRevisions => {

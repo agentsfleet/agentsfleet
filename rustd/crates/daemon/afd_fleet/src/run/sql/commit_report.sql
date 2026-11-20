@@ -257,7 +257,7 @@ SELECT
     CASE WHEN tk.output_tokens <= $50::bigint THEN tk.output_tokens::bigint END
         AS output_tokens,
     ad.nanos AS charged_nanos, ad.model_nanos,
-    -- The closing row, as `update_fleet_event_result.sql` answered it.
+    -- The closing row, as `update_turn_result.sql` answered it.
     c.fleet_id, c.turn_id, c.workspace_id, c.actor, c.event_type, c.status, c.token_count,
     c.wall_ms, c.failure_reason, c.failure_detail, c.resumes_turn_id, c.created_at,
     c.updated_at,

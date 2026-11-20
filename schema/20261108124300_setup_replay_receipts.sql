@@ -1,4 +1,4 @@
--- Every authoring retry key. The same key and body within 24 hours of `created_at` return the
+-- Every setup retry key. The same key and body within 24 hours of `created_at` return the
 -- first result; after that the key is new and the row is swept. Append-only, and no foreign keys:
 -- a key must outlive erasure of what it created, or a late retry would create it again.
 CREATE TABLE setup.replay_receipts (

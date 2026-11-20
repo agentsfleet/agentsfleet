@@ -48,7 +48,7 @@ pub enum TurnCheckpointKind {
     PinRelease,
     /// Atomically publish matching files, root and folds.
     Commit,
-    /// Pin and read the exact offered descriptor.
+    /// Pin and read the exact assigned descriptor.
     Read,
     /// Restamp only incorporated inputs under the new fence.
     Adopt,
@@ -118,7 +118,7 @@ pub struct FoldRef {
     pub sequence: i64,
 }
 
-/// Offers carry only this descriptor. A fenced read supplies private state and a pin.
+/// Assignments carry only this descriptor. A fenced read supplies private state and a pin.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]

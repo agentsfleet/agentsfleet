@@ -41,9 +41,9 @@ fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
         spans.first().expect("the first"),
         spans.get(1).expect("the second"),
     );
-    assert_eq!(millis(first, semconv::ATTR_OFFER_CLAIM_MS), Some(5));
+    assert_eq!(millis(first, semconv::ATTR_ASSIGN_CLAIM_MS), Some(5));
     assert_eq!(event_of(first).as_deref(), Some(TURN_ID));
-    assert_eq!(millis(second, semconv::ATTR_OFFER_CLAIM_MS), Some(7));
+    assert_eq!(millis(second, semconv::ATTR_ASSIGN_CLAIM_MS), Some(7));
     assert_eq!(
         event_of(second),
         None,
@@ -69,7 +69,7 @@ fn test_a_clock_that_reached_no_stage_keeps_its_start_and_identity_on_restart() 
     let spans = collected.spans();
     assert_eq!(spans.len(), 1, "{spans:?}");
     let span = spans.first().expect("the one span");
-    assert_eq!(millis(span, semconv::ATTR_OFFER_CLAIM_MS), Some(10));
+    assert_eq!(millis(span, semconv::ATTR_ASSIGN_CLAIM_MS), Some(10));
     assert_eq!(event_of(span).as_deref(), Some(TURN_ID));
 }
 

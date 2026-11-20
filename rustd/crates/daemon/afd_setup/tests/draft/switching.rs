@@ -11,9 +11,10 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::{AUTHORING_MODEL, AUTHORING_STATE, INVALID_REQUEST};
+use af_core::error_code::{AUTHORING_MODEL, AUTHORING_STATE};
 use af_core::id::Uuid7;
 use afd_setup::types::{Draft, DraftPatch, MessageQuery, MessageState, SendMessage};
+use afd_turns::view::stop::Stop;
 use serde_json::json;
 use sqlx::Connection as _;
 use std::time::Duration;
@@ -129,8 +130,7 @@ async fn a_switch_waits_until_no_request_is_queued() {
     assert_eq!(queued.etag, created.etag, "the refusal wrote nothing");
     assert_eq!(queued.authoring_model_ref, f.model.to_string());
 
-    f.drafts
-        .cancel(f.access(), &created.id, 1)
+    f.stop(&created.id, 1)
         .await
         .expect("stop the queued request");
     let idle = f.drafts.read(f.access(), &created.id).await.expect("read");
@@ -149,9 +149,8 @@ async fn a_switch_waits_until_no_request_is_queued() {
     f.cleanup().await;
 }
 
-/// Stop names an accepted sequence; a send racing it lands after that cutoff
-/// in either order and stays queued, and a Stop naming a sequence not yet
-/// accepted is refused rather than reaching the request that later takes it.
+/// Stop names one turn; a send racing it lands in either order and stays
+/// queued.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn send_and_stop_race_in_either_order_without_stopping_the_later_request() {
@@ -160,7 +159,7 @@ async fn send_and_stop_race_in_either_order_without_stopping_the_later_request()
         let id = draft(&f, Some("first")).await.id;
         // Boxed: each operation's future is tens of kilobytes, and the pair
         // would otherwise sit inline in this test's own future.
-        let stop = Box::pin(f.drafts.cancel(f.access(), &id, 1));
+        let stop = Box::pin(f.stop(&id, 1));
         let later = Box::pin(f.drafts.send(f.access(), &id, send("second"), now()));
         let (stopped, sent) = if stop_first {
             in_order(&f, &id, stop, later).await
@@ -168,14 +167,14 @@ async fn send_and_stop_race_in_either_order_without_stopping_the_later_request()
             let (sent, stopped) = in_order(&f, &id, later, stop).await;
             (stopped, sent)
         };
-        let stopped = stopped.expect("Stop through the first request");
-        assert_eq!(stopped.cancelled_through, "1", "stop_first={stop_first}");
-        let stopped: Vec<_> = stopped
-            .stopped
-            .iter()
-            .map(|s| s.sequence.as_str())
-            .collect();
-        assert_eq!(stopped, ["1"], "stop_first={stop_first}");
+        let stopped = stopped
+            .expect("Stop the first request")
+            .expect("the draft holds turn 1");
+        assert_eq!(stopped.sequence, 1, "stop_first={stop_first}");
+        assert!(
+            matches!(stopped.stop, Stop::Cancelled { turns: 1, .. }),
+            "stop_first={stop_first}"
+        );
         assert_eq!(sent.expect("send").sequence, "2", "stop_first={stop_first}");
         assert_eq!(
             states(&f, &id).await,
@@ -186,22 +185,6 @@ async fn send_and_stop_race_in_either_order_without_stopping_the_later_request()
             "stop_first={stop_first}"
         );
     }
-
-    let id = draft(&f, Some("first")).await.id;
-    let early = Box::pin(f.drafts.cancel(f.access(), &id, 2));
-    let later = Box::pin(f.drafts.send(f.access(), &id, send("second"), now()));
-    let (early, sent) = in_order(&f, &id, early, later).await;
-    let early = early.expect_err("sequence 2 was not yet accepted");
-    assert_eq!(early.code(), INVALID_REQUEST);
-    assert_eq!(sent.expect("send").sequence, "2");
-    assert_eq!(
-        states(&f, &id).await,
-        [
-            ("1".to_owned(), MessageState::Queued),
-            ("2".to_owned(), MessageState::Queued)
-        ],
-        "a refused Stop stops nothing"
-    );
     f.cleanup().await;
 }
 

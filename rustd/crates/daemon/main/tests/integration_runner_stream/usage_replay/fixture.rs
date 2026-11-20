@@ -33,14 +33,14 @@ pub(super) fn config(scene: &Scenario, origin: &str, root: &std::path::Path) -> 
     .expect("native test configuration")
 }
 
-pub(super) async fn offers(session: &Session, first: &Uuid7, second: &Uuid7) -> [Held; 2] {
+pub(super) async fn assignments(session: &Session, first: &Uuid7, second: &Uuid7) -> [Held; 2] {
     let mut held = Vec::new();
     for _ in 0..2 {
-        let frame = tokio::time::timeout(STREAM_ANSWER_TIMEOUT * 2, session.offer())
+        let frame = tokio::time::timeout(STREAM_ANSWER_TIMEOUT * 2, session.assign())
             .await
-            .expect("pushed offer deadline")
-            .expect("pushed offer");
-        let message: Down<'_> = frame.decode().expect("strict native offer");
+            .expect("pushed assignment deadline")
+            .expect("pushed assignment");
+        let message: Down<'_> = frame.decode().expect("strict native assignment");
         let Down::Run {
             run: TaggedRun::Fleet(run),
         } = message

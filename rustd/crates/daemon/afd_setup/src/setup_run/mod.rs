@@ -5,7 +5,7 @@
 //! shared statements' in `afd_fleet::run::sql::shared`, which `afd_fleet`
 //! runs. What lives here is what reads or writes the draft's own rows, inside
 //! the transaction `afd_fleet` holds: which message a claim takes and what its
-//! offer carries, the message's start and finish, and the one candidate a
+//! assignment carries, the message's start and finish, and the one candidate a
 //! report may write. The runner makes every model call; this crate makes none
 //! on this path.
 //!
@@ -17,7 +17,7 @@ mod preview;
 mod report;
 mod sql;
 
-pub(crate) use sql::{CANCEL_RUNS, DELETE_RUNS};
+pub(crate) use sql::DELETE_RUNS;
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::authoring::FailureReason;
@@ -40,7 +40,7 @@ use crate::{
         pending,
         report::verdict,
     },
-    types::{Candidate, DraftState, EDITING, MessageState, QUEUED, RUNNING},
+    types::{CANCELLED, Candidate, DraftState, EDITING, MessageState, QUEUED, RUNNING},
 };
 
 /// A draft a claim may try, read without a lock.
@@ -87,7 +87,7 @@ pub struct SetupTurnText {
     pub answer: String,
 }
 
-/// The turn a claim admitted, with everything its offer carries. Its `Debug`
+/// The turn a claim admitted, with everything its assignment carries. Its `Debug`
 /// names the draft and message only.
 pub struct SetupTurn {
     /// The draft, which is also its slot's id.
@@ -108,7 +108,7 @@ pub struct SetupTurn {
     pub user_text: String,
     /// The person asked to save with this message.
     pub save_requested: bool,
-    /// A lapsed draft run ran this message before; the claim reoffers it.
+    /// A lapsed draft run ran this message before; the claim reassigns it.
     pub reclaim: bool,
     /// The model the message pinned, resolved and admitted.
     pub model: RegisteredModel,
@@ -135,7 +135,7 @@ impl std::fmt::Debug for SetupTurn {
     }
 }
 
-/// The draft's head candidate as an offer carries it.
+/// The draft's head candidate as an assignment carries it.
 #[derive(Debug, Clone)]
 pub struct SetupHead {
     /// The candidate a report's base names.
@@ -213,6 +213,7 @@ impl Drafts {
             .bind(&FINISHED[..])
             .bind(sql::SCAN_LIMIT)
             .bind(runner)
+            .bind(CANCELLED)
             .fetch_all(&mut *self.database.acquire().await?)
             .await
             .map_err(query(sql::CONTEXT))?;
@@ -345,7 +346,7 @@ impl Drafts {
     }
 
     /// Fails the admitted message durably, in the claim's transaction: its
-    /// runs lapsed too often for another reoffer
+    /// runs lapsed too often for another reassign
     /// ([`FailureReason::ProviderUsageUnknown`], the attempt path's reason for
     /// a lost turn), or its model's key no longer opens
     /// ([`FailureReason::ModelUnavailable`]).
@@ -414,7 +415,6 @@ impl Failing<'_> {
 async fn head(connection: &mut PgConnection, draft: &read::Locked) -> Result<Option<HeadRow>> {
     sqlx::query_as(sql::HEAD)
         .bind(&draft.id)
-        .bind(draft.cancelled_through_sequence)
         .bind(QUEUED)
         .bind(RUNNING)
         .fetch_optional(connection)
@@ -431,7 +431,7 @@ async fn history(
         .bind(draft)
         .bind(sequence)
         .bind(MessageState::Completed.as_str())
-        // The most earlier turns an offer carries, as a fleet chat's does.
+        // The most earlier turns an assignment carries, as a fleet chat's does.
         .bind(i64::try_from(af_wire::run::HISTORY_TURNS_MAX).unwrap_or(i64::MAX))
         .fetch_all(connection)
         .await

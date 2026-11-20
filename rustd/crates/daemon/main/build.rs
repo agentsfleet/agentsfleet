@@ -1,6 +1,7 @@
-//! Carries the tail lane's committed baseline into the stream-ceiling test.
+//! Carries the items lane's committed baseline, recorded under the lane's
+//! old name `tail`, into the stream-ceiling test.
 //!
-//! `SSE_MAX_STREAMS_DEFAULT` claims a rung `make bench-tail PROFILE=rig`
+//! `SSE_MAX_STREAMS_DEFAULT` claims a rung `make bench-items PROFILE=rig`
 //! measured inside its bounds. The claim and the measurement live in two files,
 //! so this script reads `bench/baselines/tail.rig.json` and writes the series
 //! the claim rests on into `$OUT_DIR/tail_baseline.rs`, which

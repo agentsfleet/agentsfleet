@@ -10,7 +10,7 @@ use tokio::time::{sleep, timeout};
 
 use super::{
     super::fixture::{Case, exercise, id},
-    fixture::{Decisions, known, lock_slot},
+    fixture::{Decisions, known, lock_thread},
     maintenance::{budget, due, state, unissued},
 };
 
@@ -33,7 +33,7 @@ async fn issuance_wins(case: &Case) {
         .begin()
         .await
         .expect("native issuance transaction");
-    let _pid = lock_slot(&mut issuer, case).await;
+    let _pid = lock_thread(&mut issuer, case).await;
     let grant = sqlx::query("UPDATE runner.decision_calls SET issued_at=clock_timestamp(), status=$2 WHERE id=$1 AND issued_at IS NULL AND logical_expires_at>clock_timestamp()")
         .bind(&call).bind("issued").execute(&mut *issuer).await.expect("issuance begins before expiry");
     assert_eq!(grant.rows_affected(), 1);

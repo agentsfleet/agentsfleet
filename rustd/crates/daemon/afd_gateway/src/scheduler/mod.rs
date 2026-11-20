@@ -1,11 +1,11 @@
-//! Notifications schedule offers. A separate, replica-wide recovery probe covers lost notifications.
+//! Notifications schedule assignments. A separate, replica-wide recovery probe covers lost notifications.
 
 mod recovery;
 mod subscriptions;
 
 use crate::{
     Gateway, Result,
-    connection::{ConnectionHandle, OfferMode, OfferOutcome},
+    connection::{AssignMode, AssignOutcome, ConnectionHandle},
     registry::Registry,
 };
 use af_core::id::Uuid7;
@@ -115,7 +115,7 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
 async fn pass(connections: Vec<Arc<ConnectionHandle>>, mut budget: u64) -> Result<()> {
     for connection in connections {
         while budget > 0 {
-            if connection.claim(OfferMode::Ordinary).await? != OfferOutcome::Issued {
+            if connection.claim(AssignMode::Ordinary).await? != AssignOutcome::Issued {
                 break;
             }
             budget -= 1;

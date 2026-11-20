@@ -41,7 +41,7 @@ SELECT m.id AS turn_id,
           FROM setup.attempts a
           LEFT JOIN setup.dispatches d ON d.attempt_id = a.id
          WHERE a.draft_id = m.thread_id AND a.message_sequence = m.sequence
-           AND EXISTS (SELECT 1 FROM billing.authoring_report_receipts rr
+           AND EXISTS (SELECT 1 FROM billing.setup_report_receipts rr
                         WHERE rr.attempt_id = a.id)
          GROUP BY a.id, a.reported_runtime_ms
        ) u ON true

@@ -212,8 +212,7 @@ async fn mutate(f: &Fixture, attempt: &Attempt, change: Change) {
                 .bind(&attempt.draft.id).execute(&mut *f.connection().await).await.expect("source mutation commits");
         }
         Change::Stop => {
-            f.drafts
-                .cancel(f.access(), &attempt.draft.id, PRIOR_EXCHANGES + 1)
+            f.stop(&attempt.draft.id, PRIOR_EXCHANGES + 1)
                 .await
                 .expect("Stop commits while count waits");
         }

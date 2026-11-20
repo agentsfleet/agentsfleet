@@ -35,7 +35,7 @@ pub use self::creation::{Creations, SavedFleet, SetupCheck, SetupProgress, Syste
 pub use self::draft::Drafts;
 pub use self::error::{Error, Result};
 pub use self::maintenance::Maintenance;
-pub use self::message::{Cancellation, Conversation, Stopped};
+pub use self::message::Conversation;
 pub use self::model::{
     CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, ModelCallInput, ModelCallResult, ModelCalls,
     Network, ProviderRequest, ProviderResponse, TextKind, Transport,

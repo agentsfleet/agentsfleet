@@ -239,12 +239,11 @@ async fn authentication_rejection_fails_and_settles_without_cancelling_the_chat(
     assert_eq!(provider.count.load(Ordering::Relaxed), 1);
     assert_eq!(state(&f, &run).await, ("active".into(), false, 1));
     settled(&f, &run, 1).await;
-    let current = f
-        .drafts
+    f.drafts
         .read(f.access(), &draft.id)
         .await
         .expect("chat available");
-    assert_eq!(current.cancelled_through, "0");
+    assert_ne!(f.turn_status(&draft.id, 1).await, "cancelled");
     f.drafts
         .send(
             f.access(),

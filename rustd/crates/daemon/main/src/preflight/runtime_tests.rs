@@ -24,7 +24,7 @@ fn validated_clock_edges_accept_a_strictly_shorter_fallback() -> TestResult {
     for (ttl, fallback) in [("33", "32"), ("43199", "43198")] {
         let settings = read(&MapEnv::from_pairs([
             ("AGENTSFLEET_RUN_TTL_SECONDS", ttl),
-            ("AGENTSFLEET_OFFER_FALLBACK_SECONDS", fallback),
+            ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", fallback),
         ]))?;
         assert!(settings.fallback < settings.clock.ttl());
         assert_eq!(settings.clock.offline_after(), settings.clock.ttl() * 3);
@@ -66,7 +66,7 @@ fn an_expired_work_interval_must_be_shorter_than_one_run_lifetime() -> TestResul
 fn configured_clock_and_budget_reach_the_typed_settings() -> TestResult {
     let settings = read(&MapEnv::from_pairs([
         ("AGENTSFLEET_RUN_TTL_SECONDS", "40"),
-        ("AGENTSFLEET_OFFER_FALLBACK_SECONDS", "2"),
+        ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", "2"),
         ("AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", "4"),
         ("AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS", "128"),
         ("AGENTSFLEET_RESUME_FROM_CHECKPOINT", "true"),
@@ -85,8 +85,8 @@ fn unsafe_clock_and_zero_or_malformed_budgets_refuse_startup() {
     for pair in [
         ("AGENTSFLEET_RUN_TTL_SECONDS", "32"),
         ("AGENTSFLEET_RUN_TTL_SECONDS", "43200"),
-        ("AGENTSFLEET_OFFER_FALLBACK_SECONDS", "35"),
-        ("AGENTSFLEET_OFFER_FALLBACK_SECONDS", "0"),
+        ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", "35"),
+        ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", "0"),
         ("AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", "0"),
         ("AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", "65"),
         ("AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS", "0"),

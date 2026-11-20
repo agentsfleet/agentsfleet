@@ -154,7 +154,7 @@ af_context = { path = "crates/protocol/af_context" }
 afd_credential = { path = "crates/daemon/afd_credential" }
 af_crypto = { path = "crates/foundation/af_crypto" }
 afd_db = { path = "crates/daemon/afd_db" }
-# `fleet.events` and its live tail. A crate of its own because the table
+# `thread.turns` and its live items. A crate of its own because the table
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
 # plane, so `afd_approval` copied the insert rather than depend on runs,
 # money, policy and four sweepers to reuse ten lines of SQL.
@@ -176,7 +176,7 @@ afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
 # is the host's own plane and WRITES it — a run-history join reaching for
-# `fleet.fleets` and `fleet.events` would put both on the heartbeat path.
+# `fleet.fleets` and `thread.turns` would put both on the heartbeat path.
 afd_fleet_ops = { path = "crates/daemon/afd_fleet_ops" }
 af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
 afd_identity = { path = "crates/daemon/afd_identity" }

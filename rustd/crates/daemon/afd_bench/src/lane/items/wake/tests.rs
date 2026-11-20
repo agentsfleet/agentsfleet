@@ -30,7 +30,7 @@ async fn wake_past_deadline_counts_missed() -> Result<()> {
     })
     .await?;
 
-    let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Items, Profile::Rig, Provenance::for_test());
     ledger.record(&mut report, 1);
     assert_eq!(report.measurements.get("wake_missed_hubs_1"), Some(&1.0));
     let p99 = report.measurements.get("wake_p99_ms_hubs_1").copied();
@@ -79,7 +79,7 @@ async fn wake_ringer_waits_at_window() -> Result<()> {
 
 #[test]
 fn the_wake_summary_prints_one_line_per_hub_rung() {
-    let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Items, Profile::Rig, Provenance::for_test());
     report.measurement("wake_p50_ms_hubs_1", 0.25);
     report.measurement("wake_p99_ms_hubs_1", 0.75);
     report.measurement("wake_missed_hubs_1", 0.0);

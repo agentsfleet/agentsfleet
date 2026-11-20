@@ -22,7 +22,7 @@ pub use turn_checkpoint::{
     TurnCheckpointResponse, TurnMessageSize, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
 };
 
-/// Placement identifies the execution authority carried by a pushed offer.
+/// Placement identifies the execution authority carried by a pushed assignment.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

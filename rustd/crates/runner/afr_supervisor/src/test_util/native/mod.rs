@@ -54,7 +54,7 @@ impl NativeDaemon {
         Self::start(healthy, Some(run), observe).await
     }
 
-    /// Serve idle native sessions without injecting a run offer.
+    /// Serve idle native sessions without injecting a run assignment.
     ///
     /// # Errors
     /// Preserves identity creation, listener binding and address failures.

@@ -38,7 +38,7 @@ pub enum Up<
     O: Clone = serde_json::Value,
     I: Clone = serde_json::Value,
 > {
-    /// Reconcile the running runs before accepting offers.
+    /// Reconcile the running runs before accepting assignments.
     Hello {
         /// Session-local correlation identifier.
         #[garde(skip)]
@@ -50,7 +50,7 @@ pub enum Up<
         #[serde(borrow)]
         #[garde(length(max = RUNS_MAX), inner(length(bytes, min = 36, max = 36)))]
         running: Vec<Cow<'a, str>>,
-        /// Idle workers available to accept offers.
+        /// Idle workers available to accept assignments.
         #[garde(range(max = RUNS_MAX))]
         credits: usize,
         /// Proposal whose final welcome may have been lost on the prior connection.
@@ -70,15 +70,15 @@ pub enum Up<
     },
     /// Replace, rather than increment, the advertised idle-worker count.
     Ready {
-        /// Current idle workers, before subtracting offers still in flight.
+        /// Current idle workers, before subtracting assignments still in flight.
         #[garde(range(max = RUNS_MAX))]
         credits: usize,
         /// Increasing availability update on this physical connection.
         #[garde(skip)]
         revision: NonZeroU64,
-        /// Offers received on this connection; the daemon subtracts unseen offers.
+        /// Assignments received on this connection; the daemon subtracts unseen assignments.
         #[garde(skip)]
-        observed_offers: u64,
+        observed_assignments: u64,
     },
     /// The heartbeat service retains capability and self-test validation.
     Heartbeat {
@@ -159,7 +159,7 @@ pub enum Up<
         request: Cow<'a, crate::authoring::Report>,
     },
     /// Frame-specific validation remains in the existing activity service.
-    Activity {
+    Progress {
         /// Run whose target and fence scope the progress.
         #[serde(borrow)]
         #[garde(length(bytes, min = 36, max = 36))]
@@ -215,7 +215,7 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
             Self::Report { .. } | Self::AuthoringReport { .. } | Self::TurnCheckpoint { .. } => {
                 StreamKind::Reports
             }
-            Self::Activity { .. } => StreamKind::Activity,
+            Self::Progress { .. } => StreamKind::Activity,
             Self::Folds { .. } | Self::AuthoringModel { .. } | Self::AuthoringActivity { .. } => {
                 StreamKind::Work
             }
@@ -245,7 +245,7 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
             | Self::AuthoringReport { request_id, .. }
             | Self::TurnCheckpoint { request_id, .. }
             | Self::Folds { request_id, .. } => Some(*request_id),
-            Self::Ready { .. } | Self::Activity { .. } => None,
+            Self::Ready { .. } | Self::Progress { .. } => None,
         }
     }
 }

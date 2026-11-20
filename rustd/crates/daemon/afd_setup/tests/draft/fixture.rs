@@ -141,6 +141,37 @@ impl Fixture {
         self.db.acquire().await.expect("fixture database answers")
     }
 
+    /// The draft's turn at `sequence`.
+    pub(super) async fn turn(&self, draft: &Uuid7, sequence: i64) -> Uuid7 {
+        sqlx::query_scalar("SELECT id FROM thread.turns WHERE thread_id=$1 AND sequence=$2")
+            .bind(draft)
+            .bind(sequence)
+            .fetch_one(&mut *self.connection().await)
+            .await
+            .expect("the draft holds a turn at that sequence")
+    }
+
+    /// The status of the draft's turn at `sequence`.
+    pub(super) async fn turn_status(&self, draft: &Uuid7, sequence: i64) -> String {
+        sqlx::query_scalar("SELECT status FROM thread.turns WHERE thread_id=$1 AND sequence=$2")
+            .bind(draft)
+            .bind(sequence)
+            .fetch_one(&mut *self.connection().await)
+            .await
+            .expect("the draft holds a turn at that sequence")
+    }
+
+    /// Stops the draft's turn at `sequence` through the turn `PATCH`'s door,
+    /// as the creator.
+    pub(super) async fn stop(
+        &self,
+        draft: &Uuid7,
+        sequence: i64,
+    ) -> afd_setup::Result<Option<afd_turns::view::stop::Stopped>> {
+        let turn = self.turn(draft, sequence).await;
+        self.drafts.stop_turn(self.access(), draft, &turn).await
+    }
+
     /// The lane as its owner, for a test that removes history: `api_runtime`
     /// holds no DELETE on `thread.turns`, because no runtime path deletes a turn.
     pub(super) async fn as_owner(&self) -> Db {

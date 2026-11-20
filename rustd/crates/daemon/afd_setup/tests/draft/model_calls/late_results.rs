@@ -86,8 +86,7 @@ async fn mutate(f: &Fixture, attempt: &Attempt, delete: bool) {
             .await
             .expect("delete commits without provider locks");
     } else {
-        f.drafts
-            .cancel(f.access(), &attempt.draft.id, 1)
+        f.stop(&attempt.draft.id, 1)
             .await
             .expect("Stop commits without provider locks");
     }

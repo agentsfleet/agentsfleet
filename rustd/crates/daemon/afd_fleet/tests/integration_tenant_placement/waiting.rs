@@ -1,4 +1,4 @@
-//! The offer probe: one statement per wake that names the connected tenant
+//! The assignment probe: one statement per wake that names the connected tenant
 //! runners whose tenant has nothing waiting, so the pass skips them.
 
 use super::*;
@@ -33,7 +33,7 @@ async fn the_probe_names_only_the_tenant_runners_with_nothing_waiting() {
     assert_eq!(
         found.idle(),
         [quiet_runner],
-        "only the quiet tenant's runner is idle; the busy tenant's and the platform's are offered"
+        "only the quiet tenant's runner is idle; the busy tenant's and the platform's are assigned"
     );
 }
 

@@ -231,7 +231,7 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
         }
     }
 
-    /// Unsolicited offers, cancellation and drain create no pending request.
+    /// Unsolicited assignments, cancellation and drain create no pending request.
     #[must_use]
     pub const fn request_id(&self) -> Option<NonZeroU64> {
         match self {

@@ -111,17 +111,27 @@ async fn cancellation_during_provider_http_preserves_accounting_without_private_
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
     let run = fixture.id();
     let model = fixture.model();
+    let draft = Uuid7::parse(&fixture.run.draft_id).expect("draft id");
+    let turn: Uuid7 =
+        sqlx::query_scalar("SELECT id FROM thread.turns WHERE thread_id=$1 AND sequence=1")
+            .bind(&draft)
+            .fetch_one(
+                &mut *fixture
+                    .booted
+                    .database
+                    .acquire()
+                    .await
+                    .expect("turn connection"),
+            )
+            .await
+            .expect("the accepted message's turn");
     let (result, ()) = tokio::join!(fixture.session.authoring_model(&run, &model), async {
         fixture.provider.state.arrived().await;
         fixture
             .drafts
-            .cancel(
-                fixture.access(),
-                &Uuid7::parse(&fixture.run.draft_id).expect("draft id"),
-                1,
-            )
+            .stop_turn(fixture.access(), &draft, &turn)
             .await
-            .expect("cancel accepted message");
+            .expect("stop the accepted message");
         fixture.provider.state.resume();
     });
     assert_eq!(

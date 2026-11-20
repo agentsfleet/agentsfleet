@@ -13290,142 +13290,6 @@
         ]
       }
     },
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations": {
-      "post": {
-        "tags": [
-          "Drafts"
-        ],
-        "summary": "Stop private setup through a message",
-        "operationId": "cancel_workspace_draft_messages",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "draft_id",
-            "in": "path",
-            "description": "Draft identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CancellationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Standing cutoff and newly cancelled requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Cancellation"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid or future cutoff",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Private draft unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages": {
       "get": {
         "tags": [
@@ -21146,41 +21010,6 @@
           "read_write"
         ]
       },
-      "Cancellation": {
-        "type": "object",
-        "description": "Cancellation result, including the latest cancelled message sequence and newly cancelled\nrequests.",
-        "required": [
-          "cancelled_through",
-          "stopped"
-        ],
-        "properties": {
-          "cancelled_through": {
-            "type": "string",
-            "description": "Highest cancelled message sequence, as a decimal string."
-          },
-          "stopped": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Stopped"
-            },
-            "description": "Newly transitioned requests."
-          }
-        }
-      },
-      "CancellationRequest": {
-        "type": "object",
-        "description": "Stops work through the supplied accepted user-message sequence.",
-        "required": [
-          "through_sequence"
-        ],
-        "properties": {
-          "through_sequence": {
-            "type": "string",
-            "description": "Nonnegative decimal string; a future sequence is refused."
-          }
-        },
-        "additionalProperties": false
-      },
       "Candidate_Value": {
         "type": "object",
         "description": "Saved setup version and its server-assigned identifier. This version cannot change.",
@@ -22718,7 +22547,7 @@
       },
       "CordonReason": {
         "type": "string",
-        "description": "Why the daemon has stopped offering new work to an operator-active host.",
+        "description": "Why the daemon has stopped assigning new work to an operator-active host.",
         "enum": [
           "missed_heartbeats"
         ]
@@ -25802,17 +25631,12 @@
           "state",
           "title",
           "etag",
-          "authoring_model_ref",
-          "cancelled_through"
+          "authoring_model_ref"
         ],
         "properties": {
           "authoring_model_ref": {
             "type": "string",
             "description": "Explicit model for future messages."
-          },
-          "cancelled_through": {
-            "type": "string",
-            "description": "Highest cancelled message sequence, as a decimal string."
           },
           "candidate": {
             "oneOf": [
@@ -26050,17 +25874,12 @@
           "state",
           "title",
           "etag",
-          "authoring_model_ref",
-          "cancelled_through"
+          "authoring_model_ref"
         ],
         "properties": {
           "authoring_model_ref": {
             "type": "string",
             "description": "Explicit model for future messages."
-          },
-          "cancelled_through": {
-            "type": "string",
-            "description": "Highest cancelled message sequence, as a decimal string."
           },
           "candidate": {
             "oneOf": [
@@ -29644,7 +29463,7 @@
             }
           }
         ],
-        "description": "Whose work a run runs.\n\nAbsent on a fleet's run, whose owner is the fleet its `event` names, so a\nfleet offer reads as it did before drafts shared the path."
+        "description": "Whose work a run runs.\n\nAbsent on a fleet's run, whose owner is the fleet its `event` names, so a\nfleet assignment reads as it did before drafts shared the path."
       },
       "RunPayload": {
         "type": "object",
@@ -29718,7 +29537,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RunOwnerRef",
-                "description": "Whose work this is. Absent on a fleet's run, whose owner is the fleet\n`turn.fleet_id` names. A draft's run names the draft here, and its\n`turn` is the draft's message: `turn_id` the message, `fleet_id` the\ndraft. Offered only to a protocol v3 runner."
+                "description": "Whose work this is. Absent on a fleet's run, whose owner is the fleet\n`turn.fleet_id` names. A draft's run names the draft here, and its\n`turn` is the draft's message: `turn_id` the message, `fleet_id` the\ndraft. Assigned only to a protocol v3 runner."
               },
               {
                 "type": "null"
@@ -30942,7 +30761,7 @@
       },
       "SetupWork": {
         "type": "object",
-        "description": "What a draft-owned offer carries beside its message and history.",
+        "description": "What a draft-owned assignment carries beside its message and history.",
         "required": [
           "sequence",
           "save_requested",
@@ -31231,7 +31050,7 @@
       },
       "Stopped": {
         "type": "object",
-        "description": "One request cancelled by this Stop operation.",
+        "description": "The draft turn one Stop answers, by its sequence on the draft.",
         "required": [
           "sequence",
           "state"
@@ -33557,7 +33376,7 @@
       },
       "TurnResume": {
         "type": "object",
-        "description": "Offers carry only this descriptor. A fenced read supplies private state and a pin.",
+        "description": "Assignments carry only this descriptor. A fenced read supplies private state and a pin.",
         "required": [
           "checkpoint_id",
           "generation",

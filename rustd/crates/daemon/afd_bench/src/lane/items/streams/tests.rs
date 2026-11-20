@@ -9,7 +9,7 @@ use futures_util::StreamExt as _;
 use tokio_util::sync::CancellationToken;
 
 use super::{UNSET, Watch, hold, latency_of};
-use crate::lane::tail::publish::{PROBE, frame_of};
+use crate::lane::items::publish::{PROBE, frame_of};
 
 fn frame(payload: String) -> Frame {
     Frame::activity(

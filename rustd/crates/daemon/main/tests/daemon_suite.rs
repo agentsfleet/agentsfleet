@@ -29,6 +29,8 @@
 //! `use super::*` and that path resolves against the directory of the file that
 //! declares it — which aggregation does not move.
 
+#[path = "support/e2e_steer_assignments.rs"]
+mod assignments;
 #[path = "support/definition_code.rs"]
 mod definition_code;
 #[path = "support/definition_install/mod.rs"]
@@ -53,8 +55,6 @@ mod e2e_retire;
 mod e2e_seed;
 #[path = "support/e2e_seed_keys.rs"]
 mod e2e_seed_keys;
-#[path = "support/e2e_steer_offers.rs"]
-mod offers;
 #[path = "support/e2e_steers.rs"]
 mod steers;
 use af_egress::testing::upstream as https;
