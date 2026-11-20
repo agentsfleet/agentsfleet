@@ -52,8 +52,8 @@ let fixture: SaveChatFixture;
 beforeEach(() => { fixture = new SaveChatFixture(); fixture.mount(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-async function requestSave(): Promise<void> {
-  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT_ID} />);
+async function requestSave(fleetPage = false): Promise<void> {
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT_ID} fleetPage={fleetPage} />);
   await screen.findByText("Which apps should it watch?");
   const input = screen.getByRole("textbox");
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
@@ -83,7 +83,7 @@ it("ends progress and preserves chat when the database refuses the save", async 
   await act(async () => fixture.finishModel(MESSAGE_STATE.completed, true));
   await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
-  expect(screen.getByText(SAVE, {exact: true})).toBeTruthy();
+  expect(screen.getAllByText(SAVE, {exact: true}).some((node) => node.tagName === "P"), "the person's Save message stays in the chat").toBe(true);
   expect(screen.getByRole("alert")).toBeTruthy();
   expect(fixture.saveAttempts).toBe(0);
 });
@@ -94,7 +94,7 @@ it("does not write a setup when the model turn fails", async () => {
   await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   expect(fixture.saveAttempts).toBe(0);
   expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
-  expect(screen.getByText(SAVE, {exact: true})).toBeTruthy();
+  expect(screen.getAllByText(SAVE, {exact: true}).some((node) => node.tagName === "P"), "the person's Save message stays in the chat").toBe(true);
 });
 
 it("keeps chatting available after the save message is refused", async () => {
@@ -113,4 +113,18 @@ it("keeps chatting available after the save message is refused", async () => {
   await screen.findByText("The instructions now include your latest decisions.");
   expect(fixture.saveAttempts).toBe(0);
   expect(screen.queryByText(ACKNOWLEDGEMENT)).toBeNull();
+});
+
+// Value: protects=opening the fleet a confirmed save made, from that fleet's own page; fails_when=Open fleet
+// navigates away, writes again or does nothing; seam=none; no_claim=server refresh success.
+it("opens the saved fleet from its own page by refreshing it", async () => {
+  await requestSave(true);
+  await act(async () => fixture.finishModel());
+  const open = await screen.findByRole("button", {name: "Open fleet"});
+  const writes = fixture.writes().length;
+  const refreshes = chatRouter.refresh.mock.calls.length;
+  fireEvent.click(open);
+  expect(chatRouter.refresh, "the click refreshes the fleet's page once").toHaveBeenCalledTimes(refreshes + 1);
+  expect(chatRouter.push).not.toHaveBeenCalled();
+  expect(fixture.writes()).toHaveLength(writes);
 });

@@ -189,3 +189,23 @@ for (const args of [["--save"], ["--save", "--name", "argo"], ["--apply", "--fle
     });
   });
 }
+
+test("--save and --apply refuse a review digest other than the inspected setup's, and write nothing", async () => {
+  const writes: string[] = [];
+  const other = REVIEW.review_digest.replace(/.$/, (last) => (last === "0" ? "1" : "0"));
+  await withApi(async (request) => {
+    const path = new URL(request.url).pathname;
+    if (request.method !== "GET") {
+      writes.push(path);
+      return Response.json(FLEET);
+    }
+    return Response.json(path.endsWith("/messages") ? EMPTY_PAGE : DRAFT);
+  }, async (_, origin) => {
+    for (const flag of ["--save", "--apply"]) {
+      const refused = await invoke(origin, [DRAFT_ID, "--no-input", flag, "--review-digest", other]);
+      expect(refused.code).not.toBe(0);
+      expect(refused.err).toContain("Supply the digest of the setup you inspected");
+    }
+  });
+  expect(writes).toEqual([]);
+});
