@@ -52,6 +52,20 @@
       ]
     ]
   },
+  "surfaces": {
+    "user": [
+      "cli/",
+      "ui/packages/app/",
+      "ui/packages/website/",
+      "public/openapi/",
+      "schema/"
+    ],
+    "docs": [
+      "docs/",
+      "README.md",
+      "public/openapi/"
+    ]
+  },
   "reuse": {
     "verify.lint": {
       "hermetic": true,
@@ -82,7 +96,8 @@
           "python3",
           "--version"
         ]
-      ]
+      ],
+      "inputs": []
     },
     "verify.unit": {
       "hermetic": true,
@@ -101,7 +116,8 @@
           "node",
           "--version"
         ]
-      ]
+      ],
+      "inputs": []
     },
     "verify.version": {
       "hermetic": true,
@@ -111,22 +127,9 @@
           "bash",
           "--version"
         ]
-      ]
+      ],
+      "inputs": []
     }
-  },
-  "surfaces": {
-    "user": [
-      "cli/",
-      "ui/packages/app/",
-      "ui/packages/website/",
-      "public/openapi/",
-      "schema/"
-    ],
-    "docs": [
-      "docs/",
-      "README.md",
-      "public/openapi/"
-    ]
   },
   "burst": {
     "setup": [
