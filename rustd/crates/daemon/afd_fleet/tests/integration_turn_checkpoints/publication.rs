@@ -25,7 +25,6 @@ pub(super) fn root(case: &Case, workspace: TurnWorkspace) -> TurnPrivateRoot {
         history: json!({"format":1,"scope":scope,"model":crate::seed::MODEL,
         "provider":crate::seed::PROVIDER,"root":{"messages":[{"User":"accepted-prefix"}],
         "driver":{"answers":["accepted-prefix"],"completed_steps":1},
-        "children":{"next":0,"started":0,"children":[]},
         "memory":{"pending":[],"superseded":[],"misses":0},"pinned":0,"folds":[]}})
         .to_string(),
     }

@@ -262,9 +262,12 @@ async fn test_concurrent_posts_never_pass_the_event_budget() {
             scene.token.clone(),
             std::sync::Arc::clone(&barrier),
         );
-        let body =
-            serde_json::to_vec(&json!({"fencing_token": fence, "calls": [record(n, &output)]}))
-                .expect("the body serializes");
+        // Each record names the run's own turn, as `post_records` fills it:
+        // a record naming none is skipped before the budget is reached.
+        let mut call = record(n, &output);
+        call["turn_id"] = json!(scene.turn_id.as_str());
+        let body = serde_json::to_vec(&json!({"fencing_token": fence, "calls": [call]}))
+            .expect("the body serializes");
         posts.spawn(async move {
             barrier.wait().await;
             let answer = http

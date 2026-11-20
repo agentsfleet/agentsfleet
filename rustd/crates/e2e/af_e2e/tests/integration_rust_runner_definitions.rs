@@ -102,7 +102,7 @@ async fn assert_readable_record(
 /// checked out at its default branch before the turn; the fleet runs the
 /// suite, fixes the script with a patch, runs the suite again and commits,
 /// and the trace holds what the thread shows: each call's status and exit
-/// code, the patch, and its `+N −M`.
+/// code, the patch, and its `+N -M`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_code_running_definition_roundtrip() {
@@ -142,7 +142,12 @@ fn assert_code_results(asked: &[Asked]) {
         results[0].starts_with(FAILED) && results[0].ends_with("Process exited with code 1"),
         "{results:#?}"
     );
-    assert!(results[1].ends_with("\n+1 \u{2212}1"), "{results:#?}");
+    assert_eq!(
+        results[1],
+        "Success. Updated the following files:\nM greeter/greet.sh\n\
+         Lines changed:\n\"greeter/greet.sh\" +1 -1",
+        "guffbolt's apply_patch names the file and its `+N -M`"
+    );
     assert_eq!(
         results[2].trim_end(),
         PASSED,

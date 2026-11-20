@@ -22,8 +22,8 @@ fn scope() -> TurnScope {
 
 fn saved(scope: &TurnScope, folds: &[FoldRef]) -> TurnPrivateRoot {
     TurnPrivateRoot {history: json!({"format":1,"scope":scope,"model":"accepted-model", "provider":"accepted-provider",
-        "root":{"messages":[{"kind":"opaque engine message"}],"driver":{"answers":["accepted answer"],"completed_steps":1},
-            "children":{},"memory":{},"pinned":0,"folds":folds}}).to_string()}
+        "root":{"messages":[{"kind":"opaque engine message"}],"driver":{"answers":["accepted answer"],"completed_steps":1,
+            "children":{"next":1,"started":1,"children":[]}},"memory":{},"pinned":0,"folds":folds}}).to_string()}
 }
 
 #[test]

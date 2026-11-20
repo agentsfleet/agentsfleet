@@ -16,6 +16,7 @@ use serde_json::json;
 use crate::definition_run::run_event;
 use crate::fake_model::{FakeModel, call, say};
 use crate::https::Upstream;
+use crate::integration_rust_runner::allow_all_egress;
 use crate::schedules::{KOLKATA, WEEKLY, schedules_held, scheduling};
 use crate::verbs::{FakeQStash, Told};
 
@@ -43,6 +44,7 @@ async fn a_fleet_runs_cron_add_creates_its_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let scene = scheduling(&mut supervisor, &qstash, SCHEDULING_FLEET).await;
+    allow_all_egress(&scene).await;
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, transcript) = FakeModel::new(vec![adding(WEEKLY), vec![say(ANSWER)]]);
 
@@ -75,6 +77,7 @@ async fn a_schedule_the_daemon_refuses_reaches_the_model_and_keeps_nothing() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let scene = scheduling(&mut supervisor, &qstash, SCHEDULING_FLEET).await;
+    allow_all_egress(&scene).await;
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, transcript) = FakeModel::new(vec![adding("61 * * * *"), vec![say(ANSWER)]]);
 
@@ -97,6 +100,7 @@ async fn a_fleet_not_offered_cron_add_creates_no_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let scene = scheduling(&mut supervisor, &qstash, TOOLLESS_FLEET).await;
+    allow_all_egress(&scene).await;
     let upstream = Upstream::serve(Vec::new()).await;
     let (model, transcript) = FakeModel::new(vec![adding(WEEKLY), vec![say(ANSWER)]]);
 

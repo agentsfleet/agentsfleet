@@ -38,13 +38,17 @@ const FIRST_PASS: Duration = Duration::from_secs(15);
 /// How often the rows are looked at while the pass runs.
 const POLL: Duration = Duration::from_millis(100);
 
-/// An unsettled line on a work no row names.
+/// An unsettled line on a work no row names, attributed as its writer
+/// attributes it (the `billing.usage_lines` schema): a fleet line names its
+/// fleet and turn, a setup line its run and the draft message it answered. A
+/// line naming no turn is one no writer leaves, and the sweep skips it.
 const INSERT_LINE: &str = "INSERT INTO billing.usage_lines \
-     (id, work_type, work_id, seq, kind, tenant_id, workspace_id, provider, model, posture, \
+     (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, turn_id, run_id, \
+      provider, model, posture, \
       requested_at, input_token_count, cached_input_token_count, cache_write_token_count, \
       cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
       unpriced_token_count, charged_nanos, created_at, updated_at) \
-     VALUES ($1, $2, $3, 0, 'model', $4, $4, 'fixture', 'fixture', 'platform', \
+     VALUES ($1, $2, $3, 0, 'model', $4, $4, $6, $7, $8, 'fixture', 'fixture', 'platform', \
              now(), 0, 0, 0, 0, 0, 0, 0, 0, $5, now(), now())";
 
 /// A receipt two days old, past the one-day replay window.
@@ -76,16 +80,30 @@ async fn test_the_first_sweep_settles_orphaned_lines_and_ends_expired_receipts()
         .insert(&mut seeding)
         .await
         .expect("the wallet seeds");
-    for work_type in [
-        afd_billing::sql::work::FLEET_RUN,
-        afd_billing::sql::work::SETUP_RUN,
+    let (fleet_work, setup_run) = (mint_id(), mint_id());
+    for (work_type, work_id, fleet, run) in [
+        (
+            afd_billing::sql::work::FLEET_RUN,
+            &fleet_work,
+            Some(mint_id()),
+            None,
+        ),
+        (
+            afd_billing::sql::work::SETUP_RUN,
+            &setup_run,
+            None,
+            Some(&setup_run),
+        ),
     ] {
         sqlx::query(INSERT_LINE)
             .bind(mint_id())
             .bind(work_type)
-            .bind(mint_id())
+            .bind(work_id)
             .bind(&tenant)
             .bind(LINE_NANOS)
+            .bind(fleet)
+            .bind(mint_id())
+            .bind(run)
             .execute(&mut seeding)
             .await
             .expect("the orphaned line seeds");

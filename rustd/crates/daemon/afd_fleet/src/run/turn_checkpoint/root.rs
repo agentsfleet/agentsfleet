@@ -38,9 +38,6 @@ struct Proof {
     messages: Vec<Box<RawValue>>,
     #[garde(skip)]
     driver: Driver,
-    #[serde(rename = "children")]
-    #[garde(skip)]
-    _children: Box<RawValue>,
     #[serde(rename = "memory")]
     #[garde(skip)]
     _memory: Box<RawValue>,
@@ -50,11 +47,20 @@ struct Proof {
     folds: Vec<FoldRef>,
 }
 
+/// `guffbolt`'s `DriveState`: the answers and steps proved here, and the
+/// rest, which the runner's codec owns, carried opaque. The run's children
+/// ride inside it, absent when the run started none.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Driver {
     answers: Vec<String>,
     completed_steps: u64,
+    #[serde(default, rename = "waiting")]
+    _waiting: Option<Box<RawValue>>,
+    #[serde(default, rename = "newest")]
+    _newest: Option<Box<RawValue>>,
+    #[serde(default, rename = "children")]
+    _children: Option<Box<RawValue>>,
 }
 
 #[derive(Validate)]
