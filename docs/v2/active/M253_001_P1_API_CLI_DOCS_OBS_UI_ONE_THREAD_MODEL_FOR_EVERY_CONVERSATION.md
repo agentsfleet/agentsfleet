@@ -273,8 +273,8 @@ Indy moved these here from #853: "PR853 - descope with feedback that the next la
 - **Query plans.** `EXPLAIN ANALYZE` runs on populated tables for every assign, renew, report and Stop statement.
 - **Docs.** Every architecture page speaks the new words, which §1's rule checks.
 
-- **Dimension 9.1** — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
-- **Dimension 9.2** — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
+- **Dimension 9.1** — DEFERRED to the end-of-M253 benchmark run — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
+- **Dimension 9.2** — DEFERRED to the end-of-M253 benchmark run — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
 
 ## Interfaces
 
@@ -400,6 +400,8 @@ An item on the public wire looks like this:
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 8 Blockers, 47 Majors, 29 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
 - **Open blockers** — none.
 - **Deferrals and transfers** —
+  - Dimensions 9.1 and 9.2 measure the final statements, so they run once M253_003 has changed them, beside the acceptance run.
+    > Owner (Indy, Nov 20, 2026): "Do we do now not after we complete the 25*003?" and "it could be done when M252_003 is run where the performance bench and the acceptance (either in burst e2e or gh are kicked off parallel)"
   - Dimensions 5.1 and 5.2 are missing behaviour, not just missing tests. `thread.items` has no `kind`, `tool`, `status`, `changes` or `run_id` columns, and runner input carries no turn id. They transfer to M253_002 §10, where guffbolt's API changes once with `CallRef`.
     > Owner (Indy, Nov 20, 2026): "Defer 5.1 to M253_002"
     > Owner (Indy, Nov 20, 2026): "Move 5.2 into M253_002 (Recommended)" and "5.2 can be moved to M253_002"
