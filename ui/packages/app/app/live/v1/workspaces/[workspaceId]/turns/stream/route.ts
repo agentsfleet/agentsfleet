@@ -9,7 +9,7 @@
 
 import { credential } from "@/lib/auth/credential";
 import { API_ORIGIN } from "@/lib/api/client";
-import { proxyEventStream } from "@/lib/api/event-stream-proxy";
+import { proxyTurnStream } from "@/lib/api/turn-stream-proxy";
 import { ERROR_CODE } from "@/lib/errors";
 
 export const runtime = "nodejs";
@@ -43,5 +43,5 @@ export async function GET(req: Request, { params }: Params) {
   const upstreamUrl =
     `${API_ORIGIN}/v1/workspaces/${encodeURIComponent(workspaceId)}/turns/stream`;
 
-  return proxyEventStream(req, upstreamUrl, token);
+  return proxyTurnStream(req, upstreamUrl, token);
 }

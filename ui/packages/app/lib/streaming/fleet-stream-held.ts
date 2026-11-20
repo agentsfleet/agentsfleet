@@ -1,6 +1,6 @@
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { AGENTSFLEET_TURN_STATUS, type FleetTurn } from "./fleet-stream-row";
 
 /**
  * Turns under this tab's own account whose tab it cannot tell yet.
@@ -20,7 +20,7 @@ export class HeldTurns {
   #frames = new Map<string, LiveFrame[]>();
 
   /** Takes `frame` when its turn is held, or starts holding a turn it opens. */
-  take(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
+  take(frame: LiveFrame, turns: readonly FleetTurn[]): boolean {
     const turnId = "turn_id" in frame ? frame.turn_id : null;
     if (turnId === null) return false;
     const held = this.#frames.get(turnId);
@@ -28,7 +28,7 @@ export class HeldTurns {
       held.push(frame);
       return true;
     }
-    if (!opensAWaitingSendsTurn(frame, events)) return false;
+    if (!opensAWaitingSendsTurn(frame, turns)) return false;
     this.#frames.set(turnId, [frame]);
     return true;
   }
@@ -36,9 +36,9 @@ export class HeldTurns {
   /** The frames now free to land, each turn's in arrival order: a turn the
    * thread holds a row for (the 202 named it), and every turn once no send
    * here awaits its 202. */
-  release(events: readonly FleetEvent[]): LiveFrame[] {
-    const waiting = events.some(isAwaitingAck);
-    return this.#take((turnId) => !waiting || events.some((event) => event.id === turnId));
+  release(turns: readonly FleetTurn[]): LiveFrame[] {
+    const waiting = turns.some(isAwaitingAck);
+    return this.#take((turnId) => !waiting || turns.some((turn) => turn.id === turnId));
   }
 
   /** The frames of the held turns among `turnIds`, which a backfill page is
@@ -60,12 +60,12 @@ export class HeldTurns {
 
 // Either frame can open a turn: the admitted frame normally comes first, but a
 // runner can run a send and announce it before the route publishes.
-function opensAWaitingSendsTurn(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
+function opensAWaitingSendsTurn(frame: LiveFrame, turns: readonly FleetTurn[]): boolean {
   if (frame.kind !== FRAME_KIND.TURN_ADMITTED && frame.kind !== FRAME_KIND.TURN_RECEIVED) return false;
-  return !events.some((event) => event.id === frame.turn_id)
-    && events.some((event) => isAwaitingAck(event) && event.sentAs === frame.actor);
+  return !turns.some((turn) => turn.id === frame.turn_id)
+    && turns.some((turn) => isAwaitingAck(turn) && turn.sentAs === frame.actor);
 }
 
-function isAwaitingAck(event: FleetEvent): boolean {
-  return event.status === AGENTSFLEET_EVENT_STATUS.OPTIMISTIC;
+function isAwaitingAck(turn: FleetTurn): boolean {
+  return turn.status === AGENTSFLEET_TURN_STATUS.OPTIMISTIC;
 }

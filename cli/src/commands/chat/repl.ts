@@ -42,7 +42,7 @@ export function dispatch(actions: ChatActions, text: string, output: Output): Ef
     case COMMAND.publish: return required(argument, "plugin label").pipe(Effect.andThen(() => actions.publish(argument)));
     case COMMAND.apply: return actions.apply();
     case COMMAND.stop: return actions.stop();
-    case COMMAND.model: return required(argument, "authoring model reference").pipe(Effect.andThen(() => actions.model(argument)));
+    case COMMAND.model: return required(argument, "setup model reference").pipe(Effect.andThen(() => actions.model(argument)));
     case COMMAND.remove: return actions.remove();
     case COMMAND.retry: return actions.retry();
     case COMMAND.help: return output.info(HELP);

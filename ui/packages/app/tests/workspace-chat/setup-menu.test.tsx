@@ -84,8 +84,8 @@ it("keeps an unfinished candidate unsavable and allows naming the conversation",
 });
 
 it("allows editing after Stop has cleared the pending turn", async () => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: {...DRAFT, cancelled_through: MESSAGE.sequence},
-    messages: [{...MESSAGE, state: "running"}]}} />);
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: DRAFT,
+    messages: [{...MESSAGE, state: "cancelled"}]}} />);
   expect(await setupAction(EDIT)).toHaveProperty("disabled", false);
   await chooseSetupAction(EDIT);
   expect(await screen.findByRole("dialog", {name: EDIT})).toBeTruthy();

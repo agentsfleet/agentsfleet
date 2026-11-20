@@ -2,7 +2,7 @@
 // app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/[turnId]/items/[itemId].
 //
 // The auth, error and streaming behaviour it shares with its siblings is
-// pinned in event-detail-route.test.ts; this pins what is its own: the fenced
+// pinned in turn-detail-route.test.ts; this pins what is its own: the fenced
 // call id reaches upstream encoded once, and a 404 (output not kept) reaches
 // the dialog unchanged.
 
@@ -39,7 +39,7 @@ const TURN_ID = "1790573387481-566";
 const CALL_ID = "7:3";
 const HTTP_NOT_FOUND = 404;
 const CONTENT_TYPE_JSON = "application/json";
-const NOT_KEPT_BODY = JSON.stringify({ error_code: "UZ-EVENT-404" });
+const NOT_KEPT_BODY = JSON.stringify({ error_code: "UZ-TURN-404" });
 const FULL_CALL = JSON.stringify({ call_id: CALL_ID, output: "a\nb", output_line_count: 2 });
 
 function call(callId: string): Promise<Response> {

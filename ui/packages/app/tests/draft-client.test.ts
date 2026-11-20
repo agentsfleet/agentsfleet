@@ -5,7 +5,7 @@ import { DRAFT_STATE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
-import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, PUBLICATION, REVIEW, SCHEDULE, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, PUBLICATION, REVIEW, SCHEDULE, TURN_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const {calls, ready, mutations} = fixture;
@@ -311,10 +311,21 @@ describe("private browser chat", () => {
     expect(instance.getSnapshot().messages).toEqual([]); expect(instance.getSnapshot().draft).toBeNull();
     await expect(instance.send("must not send")).rejects.toMatchObject({status: 400}); expect(calls).toHaveLength(before);
   });
-  it("Stop uses the observed durable watermark and reconciles the terminal result", async () => {
+  it("Stop PATCHes each unfinished request's turn, oldest first, and a finished one's 409 is no failure", async () => {
+    const queued = "0199a801-1000-7000-8000-0000000000f2";
+    let stopped = false;
+    fixture.override = ({path, method}) => {
+      if (method === "PATCH") { stopped = true; return path.endsWith(queued) ? response({error_code: "UZ-AGT-021"}, 409) : response({sequence: "1", state: "cancelled"}); }
+      const state = stopped ? MESSAGE_STATE.cancelled : MESSAGE_STATE.running;
+      return path.endsWith("/messages") ? response({items: [{...MESSAGE, state}, {...MESSAGE, sequence: "2", turn_id: queued,
+        state: stopped ? MESSAGE_STATE.cancelled : MESSAGE_STATE.queued}], next_cursor: null}) : undefined;
+    };
     const instance = await ready(true);
-    fixture.override = ({path}) => path.endsWith("/cancellations") ? response({cancelled_through: MESSAGE.sequence, stopped: [{sequence: MESSAGE.sequence, state: MESSAGE_STATE.cancelled}]}) : undefined;
-    await instance.stop(); expect(mutations()[0]?.body).toEqual({through_sequence: MESSAGE.sequence});
+    await instance.stop();
+    const turns = `/live/v1/workspaces/${WORKSPACE}/drafts/${DRAFT_ID}/turns`;
+    expect(mutations().map((call) => [call.method, call.path, call.body])).toEqual([
+      ["PATCH", `${turns}/${TURN_ID}`, {status: "cancelled"}], ["PATCH", `${turns}/${queued}`, {status: "cancelled"}]]);
+    expect(instance.getSnapshot()).toMatchObject({error: null, pending: false});
   });
   it.each([false, true])("closes a deleted draft stream without restoring data (disposed: %s)", async (disposed) => {
     fixture.override = ({path}) => path.endsWith("/messages")

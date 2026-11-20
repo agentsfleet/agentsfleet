@@ -1,9 +1,9 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { type TurnRow, type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import type { FleetRunSummary } from "@/lib/events/run-summary";
+import { type TurnRow, type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import type { FleetRunSummary } from "@/lib/turns/run-summary";
 import { streamWrapper, __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { useFleetRunSummary } from "./useFleetRunSummary";

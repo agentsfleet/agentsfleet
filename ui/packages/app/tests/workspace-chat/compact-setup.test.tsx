@@ -66,10 +66,10 @@ it("anchors saved setup to the last assistant in an older chat and handles histo
   const reply = {...MESSAGE, role: "assistant" as const, text: "Saved proposal from earlier chat"};
   const view: DraftView = {...client.getSnapshot(), fleet: FLEET, messages: [{...MESSAGE, text: HEY}],
     activities: [{turn_id: "unrelated", event_type: "activity", status: "recorded", created_at: "1970-01-01T00:00:01Z", request_json: "{"}],
-    previousDrafts: [{id: "earlier-chat", cancelledThrough: "0", messages: [older]}]};
+    previousDrafts: [{id: "earlier-chat", messages: [older]}]};
   const page = render(conversation(view));
   expect(before(screen.getByRole("region", {name: SUMMARY}), screen.getByText(HEY))).toBe(true);
-  page.rerender(conversation({...view, previousDrafts: [{id: "earlier-chat", cancelledThrough: "0", messages: [older, reply]}]}));
+  page.rerender(conversation({...view, previousDrafts: [{id: "earlier-chat", messages: [older, reply]}]}));
   const summary = screen.getByRole("region", {name: SUMMARY});
   expect(before(screen.getByText(reply.text), summary)).toBe(true);
   expect(before(summary, screen.getByText(HEY))).toBe(true);

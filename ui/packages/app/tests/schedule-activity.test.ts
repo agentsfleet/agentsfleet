@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { expect, it } from "vitest";
-import { fleetActivityText, readFleetActivity } from "@/lib/events/fleet-activity";
-import { triggerBodyFor } from "@/lib/events/event-summary";
-import { rowToEvent } from "@/lib/streaming/fleet-stream-row";
-import { SCHEDULE_EVENT, SCHEDULE_SNAPSHOT } from "./helpers/schedule-activity";
+import { fleetActivityText, readFleetActivity } from "@/lib/turns/fleet-activity";
+import { triggerBodyFor } from "@/lib/turns/turn-summary";
+import { rowToTurn } from "@/lib/streaming/fleet-stream-row";
+import { SCHEDULE_TURN, SCHEDULE_SNAPSHOT } from "./helpers/schedule-activity";
 
 it("reloads complete schedule lifecycle facts as non-runnable readable activity", () => {
   const facts = [
@@ -17,7 +17,7 @@ it("reloads complete schedule lifecycle facts as non-runnable readable activity"
     {kind: "schedule_removed", status: "removed", sync: "synced"},
     {kind: "schedule_expired", status: "expired", sync: "synced"},
   ];
-  const rows = facts.map((fact, index) => rowToEvent({...SCHEDULE_EVENT, actor: "system", event_type: "activity", status: "recorded",
+  const rows = facts.map((fact, index) => rowToTurn({...SCHEDULE_TURN, actor: "system", event_type: "activity", status: "recorded",
     turn_id: `schedule:${index}`, request_json: JSON.stringify({...SCHEDULE_SNAPSHOT, ...fact, secret: "private-diagnostic"})}));
   expect(rows.map(row => row.text)).toEqual([
     "Schedule At 9:00 AM (Asia/Kolkata) set up: Review support failures — 東京 🦉 · Registration pending",
@@ -47,9 +47,9 @@ it("refuses malformed schedule activity without exposing unrelated payload field
 });
 
 it("keeps fire messages readable while distinguishing native snapshots from older payloads", () => {
-  const bodies = [SCHEDULE_EVENT.request_json, JSON.stringify({message: "Check the support queue"}),
+  const bodies = [SCHEDULE_TURN.request_json, JSON.stringify({message: "Check the support queue"}),
     JSON.stringify({message: "", schedule: {description: "untrusted", schedule_id: 9}}), "{", "null", "[]"];
-  expect(bodies.map(request_json => triggerBodyFor({...SCHEDULE_EVENT, request_json}))).toEqual([
+  expect(bodies.map(request_json => triggerBodyFor({...SCHEDULE_TURN, request_json}))).toEqual([
     "Scheduled wake-up: Review support failures — 東京 🦉", "Schedule fired: Check the support queue",
     "Schedule fired", "cron received", "cron received", "cron received",
   ]);

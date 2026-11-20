@@ -1,12 +1,12 @@
 /**
  * fleet-thread.spec.ts — the operator's chat surface renders against the
- * durable event log for an authenticated user.
+ * durable turn log for an authenticated user.
  *
  * This acceptance surface pins authenticated mount, workspace navigation,
  * the transcript/composer sibling layout, optimistic steer rendering, and
  * the rule that browser requests never carry a client Authorization header.
  * Stream frame handling and reconnect behaviour are covered by the focused
- * registry and event-stream tests where frame timing is deterministic.
+ * registry and turn-stream tests where frame timing is deterministic.
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -17,7 +17,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { SSE_CONTENT_TYPE, sseFrame } from "./fixtures/sse";
 import { auditStream, documentIsMarked, markDocument, streamCount } from "./fixtures/soft-navigation";
-import { FRAME_KIND, streamFleetTurnsUrl } from "@/lib/api/events-types";
+import { FRAME_KIND, streamFleetTurnsUrl } from "@/lib/api/turns-types";
 import { expectEditSetupAvailable } from "./fixtures/private-chat";
 
 const CHAT_LABEL = "Fleet chat";
@@ -305,7 +305,7 @@ test.describe("fleet thread surface", () => {
   });
 });
 
-// Where a turn starts in the thread's frame: the first row its event renders.
+// Where a turn starts in the thread's frame: the first row it renders.
 function readTurn(root: Element, turnId: string) {
   const viewport = root.querySelector('[role="presentation"]')!;
   const turn = root.querySelector(`[data-message-id="${turnId}"]`)!;

@@ -113,18 +113,18 @@ describe("lib/api/tenant_billing", () => {
   });
 });
 
-// The single-event read the list split created. The list deliberately carries
+// The single-turn read the list split created. The list deliberately carries
 // no bodies, so this is the only client path that returns one — and the only
 // one that puts a caller-supplied identifier into a URL segment, which is why
 // the encoding assertion is here rather than left to the route.
-describe("lib/api/events", () => {
+describe("lib/api/turns", () => {
   it("getFleetTurn sends GET with bearer and returns the body the list omits", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({ turn_id: "ev_1", request_json: "{\"a\":1}", response_text: "done" }),
     });
-    const mod = await import("../lib/api/events");
+    const mod = await import("../lib/api/turns");
     const res = await mod.getFleetTurn("ws_1", "zom_1", "ev_1", "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1/turns/ev_1"),
@@ -138,7 +138,7 @@ describe("lib/api/events", () => {
 
   it("getFleetTurn percent-encodes an identifier that would otherwise open a path segment", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ turn_id: "x" }) });
-    const mod = await import("../lib/api/events");
+    const mod = await import("../lib/api/turns");
     await mod.getFleetTurn("ws_1", "zom_1", "ev/../admin", "tkn");
     const url = String(fetchMock.mock.calls[0]?.[0]);
     expect(url).toContain("ev%2F..%2Fadmin");

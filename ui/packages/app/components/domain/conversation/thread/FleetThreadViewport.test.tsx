@@ -9,7 +9,7 @@ import {
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 import { useOpenAtLatest } from "../../shared/chat/useOpenAtLatest";
-import { CONNECTION_STATUS, type ConnectionStatus } from "../stream/useFleetEventStream";
+import { CONNECTION_STATUS, type ConnectionStatus } from "../stream/useFleetTurnStream";
 
 const NO_MESSAGES: ThreadMessageLike[] = [];
 // An operator's turn with its reply still running, after an earlier one: the
@@ -51,8 +51,8 @@ function Detached() {
   return null;
 }
 
-function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupTurnId, work }: {
-  eventsCount?: number;
+function View({ turnsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupTurnId, work }: {
+  turnsCount?: number;
   messages?: ThreadMessageLike[];
   isRunning?: boolean;
   connectionStatus?: ConnectionStatus;
@@ -70,7 +70,7 @@ function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, conn
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetConversationLayout work={work}><FleetThreadViewport
         setup={setup} setupTurnId={setupTurnId}
-        eventsCount={eventsCount}
+        turnsCount={turnsCount}
         connectionStatus={connectionStatus}
         onRetry={() => {}}
         pending={[]}
@@ -103,7 +103,7 @@ describe("FleetThreadViewport scroll", () => {
 
     it("opens at the latest turn and lands again while settled history lays out", () => {
       const browser = stubBrowserLayout();
-      const frame = browser.frameOf(render(<View messages={SETTLED_TURN} eventsCount={1} />));
+      const frame = browser.frameOf(render(<View messages={SETTLED_TURN} turnsCount={1} />));
       browser.layout(frame.log);
       expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: LOG_PX, behavior: "instant" });
       expect(frame.viewport.scrollTop).toBe(600);
@@ -119,7 +119,7 @@ describe("FleetThreadViewport scroll", () => {
       ["types a draft", (frame: Frame) => { fireEvent.input(frame.composer, { target: { value: "Hold the rollout" } }); }, 600],
     ] as const)("stops landing once the reader %s", (_, act, held) => {
       const browser = stubBrowserLayout();
-      const frame = browser.frameOf(render(<View messages={SETTLED_TURN} eventsCount={1} />));
+      const frame = browser.frameOf(render(<View messages={SETTLED_TURN} turnsCount={1} />));
       browser.layout(frame.log);
       act(frame);
       frame.size.log = 1_300;
@@ -130,7 +130,7 @@ describe("FleetThreadViewport scroll", () => {
 
     it("keeps landing when the reader scrolls but stays at the latest turn", () => {
       const browser = stubBrowserLayout();
-      const frame = browser.frameOf(render(<View messages={SETTLED_TURN} eventsCount={1} />));
+      const frame = browser.frameOf(render(<View messages={SETTLED_TURN} turnsCount={1} />));
       browser.layout(frame.log);
       fireEvent.scroll(frame.viewport);
       frame.size.log = 1_300;
@@ -152,7 +152,7 @@ describe("FleetThreadViewport scroll", () => {
       const frame = browser.frameOf(view);
       browser.layout(frame.log);
       expect(frame.scrollTo).not.toHaveBeenCalled();
-      view.rerender(<View messages={SETTLED_TURN} eventsCount={1} />);
+      view.rerender(<View messages={SETTLED_TURN} turnsCount={1} />);
       browser.layout(frame.log, frame.content);
       expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: LOG_PX, behavior: "instant" });
       expect(frame.viewport.scrollTop).toBe(600);
@@ -164,7 +164,7 @@ describe("FleetThreadViewport scroll", () => {
       const frame = browser.frameOf(view);
       browser.layout(frame.log);
       for (const [text, log] of [["", 300], ["Green, and the canary is healthy.", 700]] as const) {
-        view.rerender(<View messages={FIRST_SEND(text)} eventsCount={1} isRunning />);
+        view.rerender(<View messages={FIRST_SEND(text)} turnsCount={1} isRunning />);
         frame.size.log = log;
         browser.layout(frame.log, frame.content);
       }
@@ -174,10 +174,10 @@ describe("FleetThreadViewport scroll", () => {
 
     it("lifts a sent turn to the top over a reserve, then holds it while the reply streams", () => {
       const browser = stubBrowserLayout();
-      const view = render(<View messages={SETTLED_TURN} eventsCount={1} />);
+      const view = render(<View messages={SETTLED_TURN} turnsCount={1} />);
       const frame = browser.frameOf(view);
       browser.layout(frame.log);
-      view.rerender(<View messages={RUNNING_TURN} eventsCount={2} isRunning />);
+      view.rerender(<View messages={RUNNING_TURN} turnsCount={2} isRunning />);
       const sent = view.container.querySelector<HTMLElement>(TOP_ANCHOR_USER);
       if (sent === null) throw new Error("the sent turn is not the top anchor");
       Object.defineProperties(sent, { offsetTop: { value: SENT_TOP_PX }, offsetHeight: { value: SENT_HEIGHT_PX } });
@@ -188,7 +188,7 @@ describe("FleetThreadViewport scroll", () => {
       const reserve = view.container.querySelector<HTMLElement>(RESERVE);
       expect(reserve?.style.height).toBe("220px");
       expect(reserve?.previousElementSibling?.getAttribute("data-message-id")).toBe("turn-1:reply");
-      view.rerender(<View messages={[...RUNNING_TURN.slice(0, 3), { id: "turn-1:reply", role: "assistant", content: "Rolling out to 5% of hosts." }]} eventsCount={2} isRunning />);
+      view.rerender(<View messages={[...RUNNING_TURN.slice(0, 3), { id: "turn-1:reply", role: "assistant", content: "Rolling out to 5% of hosts." }]} turnsCount={2} isRunning />);
       frame.size.log = 1_100;
       browser.layout(frame.log, frame.content, reserve?.previousElementSibling ?? frame.content);
       expect(frame.scrollTo).toHaveBeenCalledTimes(2);
@@ -198,11 +198,11 @@ describe("FleetThreadViewport scroll", () => {
 
     it("holds the view while another sender's reply streams in below the reader", () => {
       const browser = stubBrowserLayout();
-      const view = render(<View messages={SETTLED_TURN} eventsCount={1} />);
+      const view = render(<View messages={SETTLED_TURN} turnsCount={1} />);
       const frame = browser.frameOf(view);
       browser.layout(frame.log);
       for (const [text, log] of [["Checking", 1_200], ["Checking the canary rollout and its error budget.", 1_500]] as const) {
-        view.rerender(<View messages={TEAMMATE_REPLY(text)} eventsCount={2} />);
+        view.rerender(<View messages={TEAMMATE_REPLY(text)} turnsCount={2} />);
         frame.size.log = log;
         browser.layout(frame.log, frame.content);
       }
@@ -212,7 +212,7 @@ describe("FleetThreadViewport scroll", () => {
 
     it("holds the view when the window or the composer resizes", () => {
       const browser = stubBrowserLayout();
-      const view = render(<View messages={SETTLED_TURN} eventsCount={1} />);
+      const view = render(<View messages={SETTLED_TURN} turnsCount={1} />);
       const frame = browser.frameOf(view);
       browser.layout(frame.log);
       frame.size.frame = 300;
@@ -264,7 +264,7 @@ describe("FleetThreadViewport layout", () => {
       {id: "saved", role: "system", content: "Setup saved · v1"},
       {id: "after", role: "user", content: "Check performance"},
     ];
-    const view = render(<View messages={messages} eventsCount={3} setupTurnId="saved" setup={<h2>Setup saved · v1</h2>} />);
+    const view = render(<View messages={messages} turnsCount={3} setupTurnId="saved" setup={<h2>Setup saved · v1</h2>} />);
     const history = view.getByRole("log").textContent ?? "";
     expect(history.indexOf("Save this setup")).toBeLessThan(history.indexOf("Setup saved · v1"));
     expect(history.indexOf("Setup saved · v1")).toBeLessThan(history.indexOf("Check performance"));

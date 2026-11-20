@@ -77,7 +77,7 @@ export async function continueSavedDraft(base: string, read: () => DraftView, si
   if (!fleet.definition) throw new SetupUnavailable("The saved instructions could not be loaded.", 502);
   const previousDrafts = [...(read().previousDrafts ?? [])];
   if (!previousDrafts.some(previous => previous.id === view.draft.id)) {
-    previousDrafts.push({id: view.draft.id, cancelledThrough: view.draft.cancelled_through, messages: view.messages});
+    previousDrafts.push({id: view.draft.id, messages: view.messages});
   }
   return {source: {kind: SOURCE_KIND.fleet, fleet_id: fleet.id, setup_revision: fleet.setup_revision}, patch: {
     fleet, draft: null, messages: [], previousDrafts, savedSetupRevision: null, optimistic: null, liveReply: null, contextProgress: null,

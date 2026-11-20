@@ -8,7 +8,7 @@ import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
 import { readDecisionPolicy } from "@/lib/api/decision-policy";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
-import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND } from "@/lib/turns/fleet-activity";
 import { DRAFT, FLEET, REVIEW, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 const FIXTURE: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));

@@ -30,21 +30,21 @@ export class DraftReplies {
     if (current) {current.decoder.markGap(); this.#publish(current, {...current.reply, gapped: true});}
   }
 
-  reconcile(messages: readonly Message[], cutoff: string): void {
+  reconcile(messages: readonly Message[]): void {
     const reply = this.#current?.reply;
     if (!reply) return;
-    if (BigInt(reply.sequence) <= BigInt(cutoff) || messages.some(message => message.sequence === reply.sequence
+    if (messages.some(message => message.sequence === reply.sequence
       && message.role === MESSAGE_ROLE.assistant && !isRunning(message))) this.clear();
   }
 
-  accept(data: string, draft: string, cutoff: string, messages: readonly Message[]): boolean {
+  accept(data: string, draft: string, messages: readonly Message[]): boolean {
     if (data.length > MAX_FRAME_BYTES || encoder.encode(data).byteLength > MAX_FRAME_BYTES) return false;
     let value: unknown;
     try { value = JSON.parse(data); } catch { return false; }
     const parsed = DeltaSchema.safeParse(value);
     if (!parsed.success) return false;
     const frame = parsed.data;
-    if (frame.draft_id !== draft || BigInt(frame.sequence) <= BigInt(cutoff)
+    if (frame.draft_id !== draft
       || messages.some(message => message.sequence === frame.sequence && message.role === MESSAGE_ROLE.assistant && !isRunning(message))) return false;
     let current = this.#current;
     if (current && BigInt(frame.sequence) < BigInt(current.reply.sequence)) return false;

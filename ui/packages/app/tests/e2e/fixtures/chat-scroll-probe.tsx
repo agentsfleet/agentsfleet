@@ -1,11 +1,11 @@
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/conversation/thread/useFleetThreadEntries";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { useEffect, useState } from "react";
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
-import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 
 const OWNER = {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`};
 // `?tall=17,18` makes those answers taller than a settled row's layout placeholder.
@@ -18,7 +18,7 @@ const HISTORY: ThreadMessageLike[] = Array.from({length: 20}, (_, index) => [
 ]).flat();
 const REPLY_LINE = "Streamed evidence: the callback regression is still running.\n\n";
 
-/** Exercise real chat scrolling while only the incoming event boundary is simulated. */
+/** Exercise real chat scrolling while only the incoming turn boundary is simulated. */
 export function ChatScrollFixture() {
   const [messages, setMessages] = useState(HISTORY);
   const [running, setRunning] = useState(false);
@@ -46,7 +46,7 @@ export function ChatScrollFixture() {
     }});
   return <main className="flex h-dvh flex-col bg-background text-foreground">
     <AssistantRuntimeProvider runtime={runtime}>
-      <FleetThreadViewport eventsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
+      <FleetThreadViewport turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
         pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}}
         onRestored={() => {}} onDraft={() => {}} />
     </AssistantRuntimeProvider>

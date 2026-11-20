@@ -1,10 +1,10 @@
-import { type TurnRow } from "@/lib/api/events";
-import { FRAME_KIND, ROUTED_FRAME_KINDS, streamFleetTurnsUrl } from "@/lib/api/events-types";
-import type { FleetFacts } from "@/lib/events/run-summary";
+import { type TurnRow } from "@/lib/api/turns";
+import { FRAME_KIND, ROUTED_FRAME_KINDS, streamFleetTurnsUrl } from "@/lib/api/turns-types";
+import type { FleetFacts } from "@/lib/turns/run-summary";
 import { landFrames, onFrame, recoverGap, type LiveEntry } from "./fleet-stream-dispatch";
 import { mergeFacts } from "./fleet-stream-facts";
 import { foldRow, optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
-import { patchSnapshot, setEvents } from "./fleet-stream-snapshot";
+import { patchSnapshot, setTurns } from "./fleet-stream-snapshot";
 import { ChatConnection } from "./chat-connection";
 import { mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
 import {
@@ -34,11 +34,11 @@ export {
 // IDLE_RELEASE_MS after the last consumer detaches — anything longer
 // and we tear down so a never-revisited tab doesn't leak a connection.
 //
-// The initial event list is seeded from server-rendered data passed by
+// The initial turn list is seeded from server-rendered data passed by
 // the caller (no client-side backfill GET, no bearer token in the
 // browser); live updates ride the cookie-authed SSE route handler. A
 // reconnect open — never the initial one — additionally backfills the
-// frames published during the outage via the same-origin events proxy,
+// frames published during the outage via the same-origin turns proxy,
 // merged through the id-deduping mergeBackfill.
 
 
@@ -58,7 +58,7 @@ export class FleetStreams {
 private adopt(workspaceId: string, fleetId: string, initial: TurnRow[]): LiveEntry {
   const entry: LiveEntry = {
     ...createEntry(workspaceId, initial),
-    apply: (next, facts) => setEvents(entry, next, facts),
+    apply: (next, facts) => setTurns(entry, next, facts),
     isCurrent: () => this.#entries.get(fleetId) === entry,
   };
   watchRunningRows(entry, initial);
@@ -137,7 +137,7 @@ subscribe(
 reconcileServerRows(fleetId: string, rows: TurnRow[]): void {
   const entry = this.#entries.get(fleetId);
   if (!entry || rows.length === 0) return;
-  setEvents(entry, (prev) => mergeBackfill(prev, rows));
+  setTurns(entry, (prev) => mergeBackfill(prev, rows));
   watchRunningRows(entry, rows);
 }
 
@@ -174,7 +174,7 @@ appendOptimistic(
   if (!entry) return "";
   tempCounter += 1;
   const tempId = `optim-${tempCounter}`;
-  setEvents(entry, (prev) => [...prev, optimisticRow(tempId, text, actor, sentAs)]);
+  setTurns(entry, (prev) => [...prev, optimisticRow(tempId, text, actor, sentAs)]);
   return tempId;
 }
 
@@ -191,17 +191,17 @@ reconcileOptimistic(
     // The live run took it at its next model call, and that run's report
     // answers it under its own id: the row says it joined the run until then,
     // and its reply is watched like any other send's.
-    setEvents(entry, (prev) => foldRow(prev, tempId, realTurnId));
+    setTurns(entry, (prev) => foldRow(prev, tempId, realTurnId));
     watchReply(entry, fleetId, realTurnId, entry.apply, entry.isCurrent, false);
-    landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
+    landFrames(entry, fleetId, entry.held.release(entry.snapshot.turns));
     return false;
   }
-  const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realTurnId);
-  setEvents(entry, () => events);
-  // A replay's event may have run before this page held it, with no frame left
+  const { turns, alreadyComplete, loaded } = reconcileRows(entry.snapshot.turns, tempId, realTurnId);
+  setTurns(entry, () => turns);
+  // A replay's turn may have run before this page held it, with no frame left
   // to settle its row, so it is read now. One the page held settles from frames.
   watchReply(entry, fleetId, realTurnId, entry.apply, entry.isCurrent, replayed && !loaded);
-  landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
+  landFrames(entry, fleetId, entry.held.release(entry.snapshot.turns));
   return alreadyComplete;
 }
 
@@ -210,8 +210,8 @@ reconcileOptimistic(
 discardOptimistic(fleetId: string, tempId: string): void {
   const entry = this.#entries.get(fleetId);
   if (!entry) return;
-  setEvents(entry, (prev) => prev.filter((event) => event.id !== tempId));
-  landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
+  setTurns(entry, (prev) => prev.filter((turn) => turn.id !== tempId));
+  landFrames(entry, fleetId, entry.held.release(entry.snapshot.turns));
 }
 
 /** Closes streams and clears every cached reply on identity change or logout. */

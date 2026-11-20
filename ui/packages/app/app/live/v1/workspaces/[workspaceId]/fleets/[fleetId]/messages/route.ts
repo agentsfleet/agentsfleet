@@ -1,6 +1,6 @@
 // Same-origin steer proxy. The browser holds no bearer, so the chat's send
 // POSTs here and this handler mints the API-audience token server-side, as
-// the events proxies beside it do (docs/AUTH.md "SSE stream"), then calls the
+// the turns proxies beside it do (docs/AUTH.md "SSE stream"), then calls the
 // daemon through `steerFleet` — the operation id rides in the body, so the
 // policy's socket-drop replay re-sends the same operation.
 //

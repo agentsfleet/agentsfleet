@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { ACTOR } from "@/lib/events/event-summary";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 import { row, setupRegistryTests, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import {
   RECONNECT_ADVANCE_MS,
@@ -44,45 +44,45 @@ function waitThenReconnect(): void {
 }
 
 function steerStatus(): string | undefined {
-  return getSnapshot(Z_A).events.find((event) => event.id === STEER_ID)?.status;
+  return getSnapshot(Z_A).turns.find((turn) => turn.id === STEER_ID)?.status;
 }
 
 describe("fleet-stream-registry — a steer held during an outage", () => {
   it("should reach back to the waiting row's admission and settle it from the recovered row", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([
       row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() }),
-      row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.PROCESSED }),
+      row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_TURN_STATUS.PROCESSED }),
     ]));
     const release = subscribe(WS, Z_A, [row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
 
     waitThenReconnect();
-    expect(steerStatus()).toBe(AGENTSFLEET_EVENT_STATUS.QUEUED);
+    expect(steerStatus()).toBe(AGENTSFLEET_TURN_STATUS.QUEUED);
     await flushBackfill();
 
     const since = queryOf(0).get("since");
     expect(since).not.toBeNull();
     expect(Date.parse(since ?? "")).toBeLessThanOrEqual(ADMITTED_AT_MS);
-    expect(steerStatus()).toBe(AGENTSFLEET_EVENT_STATUS.PROCESSED);
+    expect(steerStatus()).toBe(AGENTSFLEET_TURN_STATUS.PROCESSED);
     release();
   });
 
   it("should start the waiting row when the recovered row says it is still running", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([
-      row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.RECEIVED }),
+      row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_TURN_STATUS.RECEIVED }),
     ]));
     const release = subscribe(WS, Z_A, [row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});
 
     waitThenReconnect();
     await flushBackfill();
 
-    expect(steerStatus()).toBe(AGENTSFLEET_EVENT_STATUS.RECEIVED);
+    expect(steerStatus()).toBe(AGENTSFLEET_TURN_STATUS.RECEIVED);
     release();
   });
 
   it("should never move the watermark back to the waiting row's admission", async () => {
     fetchSpy
       .mockResolvedValueOnce(pageWith([
-        row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_EVENT_STATUS.PROCESSED }),
+        row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_TURN_STATUS.PROCESSED }),
       ]))
       .mockResolvedValueOnce(pageWith([]));
     const release = subscribe(WS, Z_A, [row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() })], () => {});

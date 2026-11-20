@@ -3,15 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { summary } from "@/tests/helpers/task-reads";
 
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import { OUTCOME } from "@/lib/events/event-summary";
-import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
-import * as activity from "@/lib/events/fleet-activity";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
+import { OUTCOME } from "@/lib/turns/turn-summary";
+import { AGENTSFLEET_TURN_STATUS } from "@/lib/streaming/fleet-stream-row";
+import * as activity from "@/lib/turns/fleet-activity";
 import * as messageRenderers from "../../activity/messages/fleetMessageRenderers";
 import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 
 // The thread shell under a streamed reply, through the real runtime: every
-// flush hands the thread a new event array, and the counters below say who
+// flush hands the thread a new turn array, and the counters below say who
 // rendered because of it.
 const shell = vi.hoisted(() => ({
   user: "user_flush",
@@ -70,13 +70,13 @@ vi.mock("@/components/domain/conversation/composer/SteerComposer", async (import
   };
 });
 
-vi.mock("@/components/domain/conversation/stream/useFleetEventStream", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/domain/conversation/stream/useFleetEventStream")>();
-  return { ...actual, useFleetEventStream: shell.stream };
+vi.mock("@/components/domain/conversation/stream/useFleetTurnStream", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/domain/conversation/stream/useFleetTurnStream")>();
+  return { ...actual, useFleetTurnStream: shell.stream };
 });
 
 import { FleetThread } from "./FleetThread";
-import { CONNECTION_STATUS, convertEvent } from "../stream/useFleetEventStream";
+import { CONNECTION_STATUS, convertTurn } from "../stream/useFleetTurnStream";
 import { ANNOUNCEMENT_HOLD_MS, SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "../../activity/replies/FleetReplyAnnouncements";
 
 const FLUSHES = 100;
@@ -95,10 +95,10 @@ const STABLE = {
   reconcileOptimistic: vi.fn(),
   discardOptimistic: vi.fn(),
   retryConnection: vi.fn(),
-  convertEvent,
+  convertTurn,
 };
 
-function turn(reply: string, status: FleetEvent["status"]): FleetEvent {
+function turn(reply: string, status: FleetTurn["status"]): FleetTurn {
   return {
     id: TURN_ID,
     role: "user",
@@ -117,8 +117,8 @@ function thread() {
   return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} sources={{repositories: ["agentsfleet/agentsfleet"], access: "write", publication: "existing_pr"}} />;
 }
 
-function flush(view: ReturnType<typeof render>, event: FleetEvent) {
-  shell.stream.mockReturnValue({ ...STABLE, events: [event] });
+function flush(view: ReturnType<typeof render>, turn: FleetTurn) {
+  shell.stream.mockReturnValue({ ...STABLE, turns: [turn] });
   view.rerender(thread());
 }
 
@@ -140,8 +140,8 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
   const network = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({items: [summary()], next_cursor: null})).mockReturnValueOnce(pending.promise);
   vi.stubGlobal("fetch", network);
   try {
-    const events = [{...turn("Last confirmed answer", AGENTSFLEET_EVENT_STATUS.PROCESSED), tools: [{name: "file_write", args: {path: "src/repair.ts"}, startedAtMs: 0, ms: 1, done: true, status: "succeeded" as const}]}];
-    shell.stream.mockReturnValue({...STABLE, events});
+    const turns = [{...turn("Last confirmed answer", AGENTSFLEET_TURN_STATUS.PROCESSED), tools: [{name: "file_write", args: {path: "src/repair.ts"}, startedAtMs: 0, ms: 1, done: true, status: "succeeded" as const}]}];
+    shell.stream.mockReturnValue({...STABLE, turns});
     const view = render(thread());
     const draft = screen.getByRole("textbox", {name: /^Message your fleet/});
     fireEvent.change(draft, {target: {value: "Keep the existing redirect checks."}});
@@ -155,7 +155,7 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
     const detailSignal = network.mock.calls[1]?.[1]?.signal;
     expect(detailSignal?.aborted).toBe(false);
     expect(requestSignal?.aborted).toBe(false);
-    shell.stream.mockReturnValue({...STABLE, connectionStatus: CONNECTION_STATUS.REVOKED, events});
+    shell.stream.mockReturnValue({...STABLE, connectionStatus: CONNECTION_STATUS.REVOKED, turns});
     view.rerender(thread());
     expect(screen.queryByRole("region", {name: "Current work"})).toBeNull();
     expect(screen.queryByText("PR #123 repair")).toBeNull();
@@ -169,13 +169,13 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
   } finally {vi.unstubAllGlobals();}
 });
 
-it("does not decode runtime bodies as receipts and tolerates a recorded event with no payload", () => {
+it("does not decode runtime bodies as receipts and tolerates a recorded turn with no payload", () => {
   const decode = vi.spyOn(activity, "readFleetActivity");
   try {
-    shell.stream.mockReturnValue({...STABLE, events: [turn("Streaming", AGENTSFLEET_EVENT_STATUS.RECEIVED)]});
+    shell.stream.mockReturnValue({...STABLE, turns: [turn("Streaming", AGENTSFLEET_TURN_STATUS.RECEIVED)]});
     const view = render(thread());
     expect(decode).not.toHaveBeenCalled();
-    flush(view, {...turn("", AGENTSFLEET_EVENT_STATUS.RECORDED), role: "system"});
+    flush(view, {...turn("", AGENTSFLEET_TURN_STATUS.RECORDED), role: "system"});
     expect(decode).toHaveBeenCalledWith("");
     expect(screen.getByRole("log")).toBeTruthy();
   } finally {decode.mockRestore();}
@@ -184,8 +184,8 @@ it("does not decode runtime bodies as receipts and tolerates a recorded event wi
 it("does not rerun message renderers when surrounding thread controls change", () => {
   const paint = vi.spyOn(messageRenderers, "renderFleetMessage");
   try {
-    const first = turn("First answer", AGENTSFLEET_EVENT_STATUS.PROCESSED);
-    shell.stream.mockReturnValue({...STABLE, events: [first]});
+    const first = turn("First answer", AGENTSFLEET_TURN_STATUS.PROCESSED);
+    shell.stream.mockReturnValue({...STABLE, turns: [first]});
     const view = render(<FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} modelLabel="First model" />);
     paint.mockClear();
     view.rerender(<FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} modelLabel="Second model" />);
@@ -196,7 +196,7 @@ it("does not rerun message renderers when surrounding thread controls change", (
 
 describe("a streamed reply and the thread around it", () => {
   it("test_flush_leaves_the_shell_alone: 100 text flushes render neither the viewport nor the composer", () => {
-    shell.stream.mockReturnValue({ ...STABLE, events: [turn("", AGENTSFLEET_EVENT_STATUS.RECEIVED)] });
+    shell.stream.mockReturnValue({ ...STABLE, turns: [turn("", AGENTSFLEET_TURN_STATUS.RECEIVED)] });
     const view = render(thread());
     expect(shell.viewportRenders).toBeGreaterThan(0);
     expect(shell.composerCommits).toBeGreaterThan(0);
@@ -204,7 +204,7 @@ describe("a streamed reply and the thread around it", () => {
     shell.composerCommits = 0;
 
     for (let count = 1; count <= FLUSHES; count += 1) {
-      flush(view, turn(streamedWords(count), AGENTSFLEET_EVENT_STATUS.RECEIVED));
+      flush(view, turn(streamedWords(count), AGENTSFLEET_TURN_STATUS.RECEIVED));
     }
 
     expect(screen.getByText(new RegExp(`word${FLUSHES - 1}$`))).toBeTruthy();
@@ -213,7 +213,7 @@ describe("a streamed reply and the thread around it", () => {
   });
 
   it("test_backfill_walk_notifies_once: the transcript announces a settled reply once, and never while it streams", () => {
-    shell.stream.mockReturnValue({ ...STABLE, events: [turn("", AGENTSFLEET_EVENT_STATUS.RECEIVED)] });
+    shell.stream.mockReturnValue({ ...STABLE, turns: [turn("", AGENTSFLEET_TURN_STATUS.RECEIVED)] });
     const view = render(thread());
     const status = screen.getByTestId(SETTLED_REPLY_STATUS);
     // Every distinct text the polite status held, read after each flush.
@@ -227,14 +227,14 @@ describe("a streamed reply and the thread around it", () => {
     // The log is not a live region, so the growing answer is never read out.
     expect(screen.getByRole("log").getAttribute("aria-live")).toBe("off");
     for (let count = 1; count <= FLUSHES; count += 1) {
-      flush(view, turn(streamedWords(count), AGENTSFLEET_EVENT_STATUS.RECEIVED));
+      flush(view, turn(streamedWords(count), AGENTSFLEET_TURN_STATUS.RECEIVED));
       listen();
     }
     const answer = `${streamedWords(FLUSHES)} ${FINAL_WORD}`;
-    flush(view, turn(answer, AGENTSFLEET_EVENT_STATUS.PROCESSED));
+    flush(view, turn(answer, AGENTSFLEET_TURN_STATUS.PROCESSED));
     listen();
     // A settled reply whose text is corrected afterwards is not read out again.
-    flush(view, turn(`${answer} ${FINAL_WORD}`, AGENTSFLEET_EVENT_STATUS.PROCESSED));
+    flush(view, turn(`${answer} ${FINAL_WORD}`, AGENTSFLEET_TURN_STATUS.PROCESSED));
     listen();
 
     // Read as a bounded summary: the row holds the whole answer.
@@ -243,18 +243,18 @@ describe("a streamed reply and the thread around it", () => {
   });
 
   it("announces a second reply that settles with the same words as the first", () => {
-    const again = (status: FleetEvent["status"]): FleetEvent => ({ ...turn(FINAL_WORD, status), id: AGAIN_ID });
-    const first = turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.PROCESSED);
-    shell.stream.mockReturnValue({ ...STABLE, events: [turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.RECEIVED)] });
+    const again = (status: FleetTurn["status"]): FleetTurn => ({ ...turn(FINAL_WORD, status), id: AGAIN_ID });
+    const first = turn(FINAL_WORD, AGENTSFLEET_TURN_STATUS.PROCESSED);
+    shell.stream.mockReturnValue({ ...STABLE, turns: [turn(FINAL_WORD, AGENTSFLEET_TURN_STATUS.RECEIVED)] });
     const view = render(thread());
     flush(view, first);
     const status = screen.getByTestId(SETTLED_REPLY_STATUS);
     const firstWords = status.firstElementChild;
     expect(firstWords?.textContent).toBe(`${SENDER}: ${FINAL_WORD}`);
 
-    shell.stream.mockReturnValue({ ...STABLE, events: [first, again(AGENTSFLEET_EVENT_STATUS.RECEIVED)] });
+    shell.stream.mockReturnValue({ ...STABLE, turns: [first, again(AGENTSFLEET_TURN_STATUS.RECEIVED)] });
     view.rerender(thread());
-    shell.stream.mockReturnValue({ ...STABLE, events: [first, again(AGENTSFLEET_EVENT_STATUS.PROCESSED)] });
+    shell.stream.mockReturnValue({ ...STABLE, turns: [first, again(AGENTSFLEET_TURN_STATUS.PROCESSED)] });
     view.rerender(thread());
     // The same words in a new text node: a screen reader hears them again.
     expect(status.firstElementChild?.textContent).toBe(`${SENDER}: ${FINAL_WORD}`);
@@ -263,9 +263,9 @@ describe("a streamed reply and the thread around it", () => {
 
   it("clears the status once the announcement has had time to be read", () => {
     vi.useFakeTimers();
-    shell.stream.mockReturnValue({ ...STABLE, events: [turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.RECEIVED)] });
+    shell.stream.mockReturnValue({ ...STABLE, turns: [turn(FINAL_WORD, AGENTSFLEET_TURN_STATUS.RECEIVED)] });
     const view = render(thread());
-    flush(view, turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.PROCESSED));
+    flush(view, turn(FINAL_WORD, AGENTSFLEET_TURN_STATUS.PROCESSED));
     const status = screen.getByTestId(SETTLED_REPLY_STATUS);
     expect(status.textContent).toBe(`${SENDER}: ${FINAL_WORD}`);
     act(() => {
@@ -275,17 +275,17 @@ describe("a streamed reply and the thread around it", () => {
   });
 
   it("keeps the runtime's adapter across a render that changed no message", () => {
-    const events = [turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.PROCESSED)];
-    shell.stream.mockReturnValue({ ...STABLE, events });
+    const turns = [turn(FINAL_WORD, AGENTSFLEET_TURN_STATUS.PROCESSED)];
+    shell.stream.mockReturnValue({ ...STABLE, turns });
     const view = render(thread());
-    shell.stream.mockReturnValue({ ...STABLE, connectionStatus: CONNECTION_STATUS.RECONNECTING, events });
+    shell.stream.mockReturnValue({ ...STABLE, connectionStatus: CONNECTION_STATUS.RECONNECTING, turns });
     view.rerender(thread());
     expect(shell.adapters.length).toBeGreaterThan(1);
     expect(new Set(shell.adapters).size).toBe(1);
   });
 
   it("does not announce a reply that was already settled when the transcript opened", () => {
-    shell.stream.mockReturnValue({ ...STABLE, events: [turn(FINAL_WORD, AGENTSFLEET_EVENT_STATUS.PROCESSED)] });
+    shell.stream.mockReturnValue({ ...STABLE, turns: [turn(FINAL_WORD, AGENTSFLEET_TURN_STATUS.PROCESSED)] });
     render(thread());
     expect(screen.getByTestId(SETTLED_REPLY_STATUS).textContent).toBe("");
   });

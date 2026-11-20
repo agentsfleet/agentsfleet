@@ -51,7 +51,7 @@ const printFleetRows = (
     yield* output.printKeyValue({
       Name: z.name,
       Status: z.status,
-      Events: z.events_processed,
+      Turns: z.events_processed,
       Budget: formatDollars(z.budget_used_nanos),
       Waiting: waiting,
     });

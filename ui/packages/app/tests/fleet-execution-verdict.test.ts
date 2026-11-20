@@ -16,10 +16,10 @@ import {
   classifyApiFailure,
   classifyReportMissing,
   classifyStillRunning,
-  classifyTerminalEvent,
+  classifyTerminalTurn,
   classifyIdle,
   ENVIRONMENT_FAILURE_CLASSES,
-  EVENT_STATUS,
+  TURN_STATUS,
   ExecutionJourneyFailure,
   FAILURE_CLASS,
   failWith,
@@ -33,18 +33,18 @@ import {
 
 // A row shape per verdict, so each case reads as the row that produced it.
 function processed(reply: string | null): TerminalObservation {
-  return { status: EVENT_STATUS.processed, failure_label: null, failure_detail: null, response_text: reply };
+  return { status: TURN_STATUS.processed, failure_label: null, failure_detail: null, response_text: reply };
 }
 
 function failed(label: string | null, detail: string | null = null): TerminalObservation {
-  return { status: EVENT_STATUS.fleetError, failure_label: label, failure_detail: detail, response_text: null };
+  return { status: TURN_STATUS.fleetError, failure_label: label, failure_detail: detail, response_text: null };
 }
 
 describe("the terminal row is classified before it is trusted", () => {
   it("a processed row with a reply passes, and one without is a product defect", () => {
-    expect(classifyTerminalEvent(processed("ACK hello")).kind).toBe(VERDICT_KIND.passed);
+    expect(classifyTerminalTurn(processed("ACK hello")).kind).toBe(VERDICT_KIND.passed);
     for (const empty of [null, "", "   "]) {
-      const verdict = classifyTerminalEvent(processed(empty));
+      const verdict = classifyTerminalTurn(processed(empty));
       expect(verdict.kind, `reply ${JSON.stringify(empty)}`).toBe(VERDICT_KIND.product);
       expect(verdict).toMatchObject({ leg: JOURNEY_LEG.execute });
     }
@@ -52,10 +52,10 @@ describe("the terminal row is classified before it is trusted", () => {
 
   it("every environment class is named as environment, every product class as product", () => {
     for (const label of ENVIRONMENT_FAILURE_CLASSES) {
-      expect(classifyTerminalEvent(failed(label)).kind, label).toBe(VERDICT_KIND.environment);
+      expect(classifyTerminalTurn(failed(label)).kind, label).toBe(VERDICT_KIND.environment);
     }
     for (const label of PRODUCT_FAILURE_CLASSES) {
-      expect(classifyTerminalEvent(failed(label)).kind, label).toBe(VERDICT_KIND.product);
+      expect(classifyTerminalTurn(failed(label)).kind, label).toBe(VERDICT_KIND.product);
     }
     // The two lists partition the wire enum: nothing is on both, nothing on
     // neither. A class added to `FailureClass` without a home here fails the
@@ -68,16 +68,16 @@ describe("the terminal row is classified before it is trusted", () => {
 
   it("an unknown or absent failure class fails closed as a product defect", () => {
     for (const label of [null, "", "provider_hiccup"]) {
-      const verdict = classifyTerminalEvent(failed(label));
+      const verdict = classifyTerminalTurn(failed(label));
       expect(verdict.kind, JSON.stringify(label)).toBe(VERDICT_KIND.product);
     }
-    expect(classifyTerminalEvent({ ...failed(null), status: EVENT_STATUS.gateBlocked }).kind).toBe(
+    expect(classifyTerminalTurn({ ...failed(null), status: TURN_STATUS.gateBlocked }).kind).toBe(
       VERDICT_KIND.product,
     );
   });
 
   it("the failure line carries the class and the runner's own detail", () => {
-    const verdict = classifyTerminalEvent(failed(FAILURE_CLASS.runnerCrash, "provider returned 529"));
+    const verdict = classifyTerminalTurn(failed(FAILURE_CLASS.runnerCrash, "provider returned 529"));
     expect(verdict).toMatchObject({
       kind: VERDICT_KIND.environment,
       detail: `${FAILURE_CLASS.runnerCrash}: provider returned 529`,

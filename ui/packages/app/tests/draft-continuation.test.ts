@@ -221,8 +221,8 @@ it.each([false, true])("merges restored history without duplicating an already a
   const pending = Promise.withResolvers<Response>();
   fixture.override = () => pending.promise;
   const continuing = continueSavedDraft(BASE, () => view, new AbortController().signal);
-  view = {...view, previousDrafts: [{id: NEXT_DRAFT, cancelledThrough: "0", messages: [{...MESSAGE, text: "Earlier chat"}]},
-    ...(archived ? [{id: DRAFT_ID, cancelledThrough: "0", messages: [MESSAGE]}] : [])]};
+  view = {...view, previousDrafts: [{id: NEXT_DRAFT, messages: [{...MESSAGE, text: "Earlier chat"}]},
+    ...(archived ? [{id: DRAFT_ID, messages: [MESSAGE]}] : [])]};
   pending.resolve(response(FLEET_DETAIL));
   const next = await continuing;
   expect(next?.patch.previousDrafts?.map(draft => draft.id)).toEqual([NEXT_DRAFT, DRAFT_ID]);

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { ACTOR } from "@/lib/events/event-summary";
-import { convertEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
+import type { LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { ACTOR } from "@/lib/turns/turn-summary";
+import { convertTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { toReplyMessage } from "@/components/domain/activity/replies/fleetReplyMessage";
 import { applyLiveFrame } from "./fleet-stream-frames";
 import { foldRow, optimisticRow } from "./fleet-stream-optimistic";
-import { AGENTSFLEET_EVENT_STATUS, FOLDED_OUTCOME, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS, FOLDED_OUTCOME, type FleetTurn } from "./fleet-stream-row";
 
 const TURN_ID = "1725000000000-3";
 const TEAMMATE = `${ACTOR.STEER_PREFIX}user_bob`;
@@ -36,8 +36,8 @@ function received(message?: string): LiveFrame {
   };
 }
 
-function fold(frames: LiveFrame[]): FleetEvent[] {
-  return frames.reduce<FleetEvent[]>((rows, frame) => applyLiveFrame(rows, frame), []);
+function fold(frames: LiveFrame[]): FleetTurn[] {
+  return frames.reduce<FleetTurn[]>((rows, frame) => applyLiveFrame(rows, frame), []);
 }
 
 describe("a message waiting for a runner", () => {
@@ -49,28 +49,28 @@ describe("a message waiting for a runner", () => {
       role: "user",
       actor: TEAMMATE,
       text: TYPED,
-      status: AGENTSFLEET_EVENT_STATUS.QUEUED,
+      status: AGENTSFLEET_TURN_STATUS.QUEUED,
     });
     expect(row?.createdAt.getTime()).toBe(ADMITTED_AT);
     // It renders as a turn whose reply is queued: running, marked queued.
-    const message = convertEvent(row as FleetEvent);
+    const message = convertTurn(row as FleetTurn);
     expect(message.metadata?.custom?.queued).toBe(true);
-    expect(toReplyMessage(message, row as FleetEvent).status).toEqual({ type: "running" });
+    expect(toReplyMessage(message, row as FleetTurn).status).toEqual({ type: "running" });
   });
 
   it("test_received_moves_queued_row", () => {
     const rows = fold([admitted(), received(TYPED)]);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_TURN_STATUS.RECEIVED });
     expect(rows[0]?.createdAt.getTime()).toBe(RECEIVED_AT);
-    expect(convertEvent(rows[0] as FleetEvent).metadata?.custom?.queued).toBe(false);
+    expect(convertTurn(rows[0] as FleetTurn).metadata?.custom?.queued).toBe(false);
   });
 
   it("test_late_admitted_frame_keeps_status", () => {
     // A runner held the send and announced it before the route published.
     const rows = fold([received(), admitted()]);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_TURN_STATUS.RECEIVED });
   });
 
   it("keeps a row's own text over a late admitted frame's", () => {
@@ -80,7 +80,7 @@ describe("a message waiting for a runner", () => {
 
   it("names the typed words on a received frame that opens the row", () => {
     const rows = fold([received(TYPED)]);
-    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_TURN_STATUS.RECEIVED });
   });
 
   it("opens a row with no text when the frame carried none", () => {
@@ -91,7 +91,7 @@ describe("a message waiting for a runner", () => {
     // The first received frame carried no message; a redelivered one does.
     const rows = fold([received(), received(TYPED)]);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(rows[0]).toMatchObject({ text: TYPED, status: AGENTSFLEET_TURN_STATUS.RECEIVED });
   });
 
   it("stamps a waiting row with the browser clock when the frame has no instant", () => {
@@ -103,26 +103,26 @@ describe("a message waiting for a runner", () => {
 });
 
 // The 202 named a live run, which ended before it claimed the message; the
-// fleet's next run starts the message under its own event.
+// fleet's next run starts the message under its own turn.
 describe("a send labelled folded whose run never took it", () => {
-  function labelled(): FleetEvent[] {
+  function labelled(): FleetTurn[] {
     return foldRow([optimisticRow("temp", TYPED, TEAMMATE)], "temp", TURN_ID);
   }
 
   it("starts on its received frame and drops the label", () => {
     const rows = labelled();
-    expect(rows[0]).toMatchObject({ status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME });
+    expect(rows[0]).toMatchObject({ status: AGENTSFLEET_TURN_STATUS.FOLDED, outcome: FOLDED_OUTCOME });
 
     const [started, ...rest] = applyLiveFrame(rows, received());
 
     expect(rest).toEqual([]);
-    expect(started).toMatchObject({ id: TURN_ID, text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(started).toMatchObject({ id: TURN_ID, text: TYPED, status: AGENTSFLEET_TURN_STATUS.RECEIVED });
     expect(started?.outcome).not.toBe(FOLDED_OUTCOME);
   });
 
   it("reads as a running reply once its own run starts", () => {
     const [started] = applyLiveFrame(labelled(), received());
-    const row = started as FleetEvent;
-    expect(toReplyMessage(convertEvent(row), row).status).toEqual({ type: "running" });
+    const row = started as FleetTurn;
+    expect(toReplyMessage(convertTurn(row), row).status).toEqual({ type: "running" });
   });
 });

@@ -1,16 +1,16 @@
 import { readTaskActivityHistory, type TaskActivityHistory } from "../task-activity";
-import type { TurnDetail, TurnRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/turns";
 import type { ContextProgress } from "../context-progress";
 import { readNanos } from "@/lib/api/nanos";
-import { FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+import { FLEET_ACTIVITY } from "@/lib/turns/fleet-activity";
 import {
-  EVENT_STATUS,
+  TURN_STATUS,
   THREAD_STATUS,
   outcomeFor,
   replyBodyFor,
   roleFor,
   triggerBodyFor,
-} from "@/lib/events/event-summary";
+} from "@/lib/turns/turn-summary";
 import { readSavedTrace, type ToolArgs, type ToolOutcome } from "./fleet-stream-tool-trace";
 
 // The row model the live timeline is made of, the one conversion from a
@@ -35,16 +35,16 @@ export function text(value: unknown): string {
 
 // The server's durable statuses plus the one the browser owns: a submission
 // awaiting its server identifier. A refused submission leaves the timeline.
-export const AGENTSFLEET_EVENT_STATUS = {
-  RECEIVED: EVENT_STATUS.RECEIVED,
-  PROCESSED: EVENT_STATUS.PROCESSED,
-  AGENT_ERROR: EVENT_STATUS.FLEET_ERROR,
-  GATE_BLOCKED: EVENT_STATUS.GATE_BLOCKED,
-  CANCELLED: EVENT_STATUS.CANCELLED,
+export const AGENTSFLEET_TURN_STATUS = {
+  RECEIVED: TURN_STATUS.RECEIVED,
+  PROCESSED: TURN_STATUS.PROCESSED,
+  AGENT_ERROR: TURN_STATUS.FLEET_ERROR,
+  GATE_BLOCKED: TURN_STATUS.GATE_BLOCKED,
+  CANCELLED: TURN_STATUS.CANCELLED,
   QUEUED: THREAD_STATUS.QUEUED,
   RECORDED: FLEET_ACTIVITY.status,
   OPTIMISTIC: "optimistic",
-  // A send the fleet's live run took at its next model call. Its own event is
+  // A send the fleet's live run took at its next model call. Its own turn is
   // answered when that run reports, with the run's reply.
   FOLDED: "folded",
 } as const;
@@ -52,23 +52,23 @@ export const AGENTSFLEET_EVENT_STATUS = {
 /** What a folded send shows until the run it joined answers it. */
 export const FOLDED_OUTCOME = "Added to the current run";
 
-export type FleetEventStatus =
-  (typeof AGENTSFLEET_EVENT_STATUS)[keyof typeof AGENTSFLEET_EVENT_STATUS];
+export type FleetTurnStatus =
+  (typeof AGENTSFLEET_TURN_STATUS)[keyof typeof AGENTSFLEET_TURN_STATUS];
 
 // The statuses a turn ends in. Only these are final: `received` and `queued`
 // are still moving, and a page that read them can trail what the stream has
 // already shown.
 export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  AGENTSFLEET_EVENT_STATUS.PROCESSED,
-  AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
-  AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
-  AGENTSFLEET_EVENT_STATUS.CANCELLED,
-  AGENTSFLEET_EVENT_STATUS.RECORDED,
+  AGENTSFLEET_TURN_STATUS.PROCESSED,
+  AGENTSFLEET_TURN_STATUS.AGENT_ERROR,
+  AGENTSFLEET_TURN_STATUS.GATE_BLOCKED,
+  AGENTSFLEET_TURN_STATUS.CANCELLED,
+  AGENTSFLEET_TURN_STATUS.RECORDED,
 ]);
 
-// One tool the fleet called while working an event, as the three tool frames
+// One tool the fleet called while working a turn, as the three tool frames
 // describe it — started with no timing yet, progressing with elapsed time,
-// completed with the final wall time and its outcome — or as the event's saved
+// completed with the final wall time and its outcome — or as the turn's saved
 // trace records it.
 export type FleetToolCall = ToolOutcome & {
   name: string;
@@ -87,7 +87,7 @@ export type FleetToolCall = ToolOutcome & {
   closedAtSettle?: true;
 };
 
-export type FleetEvent = {
+export type FleetTurn = {
   id: string;
   role: "user" | "assistant" | "system";
   actor: string;
@@ -111,7 +111,7 @@ export type FleetEvent = {
    * that remounts mid-thought resumes the same clock. */
   reasoningStartedAtMs?: number;
   reasoningEndedAtMs?: number;
-  /** The streamed draft awaits the durable final event detail. */
+  /** The streamed draft awaits the durable final turn detail. */
   replyRecovering?: boolean;
   /** A replacement attempt has started; its final saved reply remains authoritative. */
   runRestarted?: true;
@@ -139,7 +139,7 @@ export type FleetEvent = {
    */
   failureDetail: string | null;
   createdAt: Date;
-  status: FleetEventStatus;
+  status: FleetTurnStatus;
   /** True while this locally submitted row still carries the browser clock.
    * The first server timestamp clears it so backfill can order the turn. */
   clientTimestamp?: boolean;
@@ -160,7 +160,7 @@ export type FleetEvent = {
   tokens?: number | null;
   wallMs?: number | null;
   costNanos?: string | null;
-  /** Tools called while working this event, in first-seen order. */
+  /** Tools called while working this turn, in first-seen order. */
   tools?: FleetToolCall[];
   /** Calls the saved trace dropped to stay inside its bounds. */
   omittedCallCount?: number;
@@ -168,10 +168,10 @@ export type FleetEvent = {
 };
 
 /** Ends an open reasoning span once; a span never opened stays unopened. */
-export function closeReasoningSpan(event: FleetEvent, nowMs: number): FleetEvent {
-  return event.reasoningStartedAtMs === undefined || event.reasoningEndedAtMs !== undefined
-    ? event
-    : { ...event, reasoningEndedAtMs: nowMs };
+export function closeReasoningSpan(turn: FleetTurn, nowMs: number): FleetTurn {
+  return turn.reasoningStartedAtMs === undefined || turn.reasoningEndedAtMs !== undefined
+    ? turn
+    : { ...turn, reasoningEndedAtMs: nowMs };
 }
 
 /// The payload stand-in for a turn whose body is not on hand — a live frame
@@ -182,11 +182,11 @@ export const EMPTY_PAYLOAD = "{}";
 // payload) and the fleet's reply (from response_text on the same row). Neither
 // clobbers the other, so an operator's own message survives reload and the
 // fleet's answer is never dropped or attributed to the operator.
-export function rowToEvent(row: TurnRow | TurnDetail): FleetEvent {
-  // A backfill row may or may not carry bodies. The events LIST carries none —
+export function rowToTurn(row: TurnRow | TurnDetail): FleetTurn {
+  // A backfill row may or may not carry bodies. The turns LIST carries none —
   // it is kept off oversized-attribute storage — so a turn reconstructed from
   // it renders its header and outcome, and its text arrives from the live
-  // stream or from the single-event read. A caller that already holds details
+  // stream or from the single-turn read. A caller that already holds details
   // passes them and nothing is lost.
   const bodies = row as Partial<TurnDetail>;
   const request_json = bodies.request_json ?? EMPTY_PAYLOAD;
@@ -203,7 +203,7 @@ export function rowToEvent(row: TurnRow | TurnDetail): FleetEvent {
     failureLabel: row.failure_label ?? null,
     failureDetail: row.failure_detail ?? null,
     createdAt: new Date(row.created_at),
-    status: row.status as FleetEventStatus,
+    status: row.status as FleetTurnStatus,
     tokens: figure(row.tokens),
     wallMs: figure(row.wall_ms),
     costNanos: readNanos(row.cost_nanos),
@@ -215,8 +215,8 @@ export function rowToEvent(row: TurnRow | TurnDetail): FleetEvent {
 
 /** Whether two rows render alike: every field equal, `createdAt` by its
  * instant and `custom` by the payload it carries. */
-export function sameEvent(a: FleetEvent, b: FleetEvent): boolean {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof FleetEvent)[]);
+export function sameTurn(a: FleetTurn, b: FleetTurn): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof FleetTurn)[]);
   return [...keys].every((key) => a[key] === b[key]
     || (key === "createdAt" && a.createdAt.getTime() === b.createdAt.getTime())
     || (key === "custom" && a.custom?.requestJson === b.custom?.requestJson));

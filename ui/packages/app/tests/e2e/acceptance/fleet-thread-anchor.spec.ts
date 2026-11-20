@@ -5,7 +5,7 @@
  * thread anchors a turn this tab sent and keeps room below it. */
 import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import type { ScheduledStream, TimedFrame } from "./fixtures/page-event-stream";
 import { withReplyPage } from "./fixtures/reply-page";
 import { sseFrame as frame } from "./fixtures/sse";

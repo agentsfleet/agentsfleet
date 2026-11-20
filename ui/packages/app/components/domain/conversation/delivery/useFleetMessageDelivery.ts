@@ -8,10 +8,10 @@ import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
 import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } from "./useFleetPendingSends";
 import { outcomeOf, releaseRoute, routeOf } from "./useFleetMessageRoute";
-import type { useFleetEventStream } from "../stream/useFleetEventStream";
+import type { useFleetTurnStream } from "../stream/useFleetTurnStream";
 import { postSteer } from "@/lib/api/fleet-steer";
 import { STEER_DISPOSITION, overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 import { SEND_MARK, sendMarks } from "@/lib/streaming/send-marks";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -53,7 +53,7 @@ export const SEND_TIMEOUT_MS = 30_000;
 // queues behind the send still out instead of overtaking it.
 const DELIVERY_TAILS = new Map<string, Promise<void>>();
 
-type StreamApi = ReturnType<typeof useFleetEventStream>;
+type StreamApi = ReturnType<typeof useFleetTurnStream>;
 type DeliveryCtx = {
   workspaceId: string;
   fleetId: string;
@@ -192,7 +192,7 @@ function useRestoredDraft(writers: PendingSendWriters) {
 // One send: recorded, painted, then POSTed behind the fleet's previous send.
 // Removing the browser-side queue let two rapid submissions race: their POSTs
 // could reach the server out of submission order, so "stop" could be assigned
-// an earlier event id than the "deploy" it was meant to follow.
+// an earlier turn id than the "deploy" it was meant to follow.
 function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
   const { workspaceId, fleetId, fleetName, sentAs, appendOptimistic, discardOptimistic, writers } = ctx;
   const acknowledged = useAcknowledgement(ctx);

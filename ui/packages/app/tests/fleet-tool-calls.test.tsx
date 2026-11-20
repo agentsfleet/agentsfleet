@@ -6,10 +6,10 @@ import { CLIPPED_EDIT_NOTE, OUTPUT_CUT_LABEL, SHOW_ALL_LABEL } from "@/component
 import { TOOL_CALLS_LABEL } from "@/components/domain/activity/tools/FleetToolCalls";
 import { EMPTY_OUTPUT, OUTPUT_UNAVAILABLE } from "@/components/domain/activity/tools/copy/tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
-import type { LiveFrame, SavedToolCall } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import type { LiveFrame, SavedToolCall } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame } from "@/lib/streaming/fleet-stream-frames";
-import { rowToEvent, type FleetEvent, type FleetEventStatus, type FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import { rowToTurn, type FleetTurn, type FleetTurnStatus, type FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { HEADERS } from "./fleet-tool-calls.fixtures";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { row } from "@/tests/helpers/fleet-stream-fixtures";
@@ -23,8 +23,8 @@ const RUNNING_FOR_MS = 2_000;
 const TICK_MS = 1_000;
 const DONE_MS = 700;
 const { SUCCEEDED, FAILED, INTERRUPTED } = TOOL_CALL_STATUS;
-const RECEIVED: FleetEventStatus = "received";
-const PROCESSED: FleetEventStatus = "processed";
+const RECEIVED: FleetTurnStatus = "received";
+const PROCESSED: FleetTurnStatus = "processed";
 const CALL_ID = "f1:0";
 const SUCCESS = "text-success";
 const DESTRUCTIVE = "text-destructive";
@@ -56,7 +56,7 @@ function running(over: Partial<FleetToolCall> & { name: string }): FleetToolCall
   return { startedAtMs: NOW - RUNNING_FOR_MS, ms: null, done: false, ...over };
 }
 
-function renderCalls(tools: FleetToolCall[], status: FleetEventStatus = PROCESSED, extra: Parameters<typeof ev>[0] | object = {}) {
+function renderCalls(tools: FleetToolCall[], status: FleetTurnStatus = PROCESSED, extra: Parameters<typeof ev>[0] | object = {}) {
   mockStream([ev({ id: "evt_tools", role: "user", actor: "operator", text: "Go", status, tools, ...extra })]);
   return renderThread();
 }
@@ -239,7 +239,7 @@ describe("FleetThread — tool cells", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     try {
       const tool = call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 });
-      const turn = (status: FleetEventStatus) => ev({ id: "evt_tools", role: "user", actor: "operator", text: "Go", status, tools: [tool] });
+      const turn = (status: FleetTurnStatus) => ev({ id: "evt_tools", role: "user", actor: "operator", text: "Go", status, tools: [tool] });
       const view = renderCalls([tool]);
       fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
       expect(await screen.findByRole("dialog")).toBeTruthy();
@@ -263,7 +263,7 @@ describe("FleetThread — tool cells", () => {
     ];
     const settled = { turn_id: "evt_reload", actor: "steer:user_abc", status: PROCESSED, response_text: "Done." };
     // Live: the same calls frame by frame through the reducer, then the turn settles.
-    let live: FleetEvent[] = [{ ...rowToEvent(row({ ...settled, status: RECEIVED })), role: "user" }];
+    let live: FleetTurn[] = [{ ...rowToTurn(row({ ...settled, status: RECEIVED })), role: "user" }];
     for (const savedCall of saved) {
       const { call_id, name, arguments: args, duration_ms, ...outcome } = savedCall;
       const frames: LiveFrame[] = [
@@ -272,9 +272,9 @@ describe("FleetThread — tool cells", () => {
       ];
       for (const frame of frames) live = applyLiveFrame(live, frame, NOW);
     }
-    live = live.map((event) => ({ ...event, status: PROCESSED }));
+    live = live.map((turn) => ({ ...turn, status: PROCESSED }));
     // Reloaded: the saved row the server reads, mapped the way the page maps it.
-    const reloaded: FleetEvent = { ...rowToEvent(row({ ...settled, tool_calls: { calls: saved, omitted_call_count: 0 } })), role: "user" };
+    const reloaded: FleetTurn = { ...rowToTurn(row({ ...settled, tool_calls: { calls: saved, omitted_call_count: 0 } })), role: "user" };
 
     const toolRegion = () => [...document.querySelectorAll("li[data-tool]")].map((cell) => cell.textContent);
     mockStream(live);

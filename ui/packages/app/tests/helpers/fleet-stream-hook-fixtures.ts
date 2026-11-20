@@ -1,7 +1,7 @@
 import { streamWrapper } from "./fleet-streams";
 import { renderHook } from "@testing-library/react";
-import { useFleetEventStream } from "@/components/domain/conversation/stream/useFleetEventStream";
-import type { TurnDetail, TurnRow } from "@/lib/api/events";
+import { useFleetTurnStream } from "@/components/domain/conversation/stream/useFleetTurnStream";
+import type { TurnDetail, TurnRow } from "@/lib/api/turns";
 
 export function row(over: Partial<TurnDetail> = {}): TurnDetail {
   const now = Date.UTC(2026, 4, 15, 18, 30, 0);
@@ -31,5 +31,5 @@ export const WS = "ws_1";
 export const ZID = "zomb_1";
 
 export function mount(initial: TurnRow[] = []) {
-  return renderHook(() => useFleetEventStream(WS, ZID, initial), {wrapper: streamWrapper});
+  return renderHook(() => useFleetTurnStream(WS, ZID, initial), {wrapper: streamWrapper});
 }

@@ -15,7 +15,7 @@ export type DraftRequestState =
 export type DraftView = {
   readonly draft: Draft | null;
   readonly messages: readonly Message[];
-  readonly previousDrafts?: readonly {readonly id: string; readonly cancelledThrough: string; readonly messages: readonly Message[]; readonly truncated?: boolean}[];
+  readonly previousDrafts?: readonly {readonly id: string; readonly messages: readonly Message[]; readonly truncated?: boolean}[];
   readonly conversationCursor?: string | null;
   readonly activityCursor?: string | null;
   readonly messagesStartingAfter?: string | null;

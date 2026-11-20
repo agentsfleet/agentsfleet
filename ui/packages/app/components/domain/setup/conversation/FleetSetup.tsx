@@ -5,7 +5,7 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { Button, Section } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, saveDoneText } from "@/lib/turns/fleet-activity";
 import { setupRecovery } from "@/lib/api/schedule-status";
 import { SetupChecks } from "../summary/SetupChecks";
 import { SetupQuestions } from "../summary/SetupQuestions";

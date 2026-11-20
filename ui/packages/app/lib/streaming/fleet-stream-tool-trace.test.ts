@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { rowToEvent } from "./fleet-stream-row";
+import { rowToTurn } from "./fleet-stream-row";
 import { TOOL_CALL_STATUS, readSavedTrace, readToolArgs, readToolOutcome } from "./fleet-stream-tool-trace";
 import { MS_PER_SECOND, row } from "@/tests/helpers/fleet-stream-fixtures";
 
-// An event's saved trace, narrowed where it enters the browser: the rows a
+// A turn's saved trace, narrowed where it enters the browser: the rows a
 // reload shows, and what a corrupt body leaves behind.
 
 const READ = "file_read";
@@ -26,25 +26,25 @@ describe("readSavedTrace", () => {
       ],
       omitted_call_count: 0,
     };
-    const event = rowToEvent(row({ tool_calls: trace }));
-    // Every call is finished and starts at the event's own instant: only its
+    const turn = rowToTurn(row({ tool_calls: trace }));
+    // Every call is finished and starts at the turn's own instant: only its
     // duration renders.
-    expect(event.tools).toEqual([
+    expect(turn.tools).toEqual([
       { name: READ, callId: CALL_ONE, startedAtMs: MS_PER_SECOND, ms: READ_MS, done: true, args: { path: PATH_A },
         status: TOOL_CALL_STATUS.SUCCEEDED, outputHead: "# agentsfleet", outputTail: "MIT", outputLineCount: 214 },
       { name: REQUEST, callId: CALL_TWO, startedAtMs: MS_PER_SECOND, ms: REQUEST_MS, done: true,
         args: { method: "POST", url: "https://example.test/deploy" },
         status: TOOL_CALL_STATUS.FAILED, outputHead: "HTTP 403", outputLineCount: 1, exitCode: 1 },
     ]);
-    expect(event.omittedCallCount).toBe(0);
+    expect(turn.omittedCallCount).toBe(0);
   });
 
   it("test_malformed_saved_trace_reads_absent", () => {
     // A body that is not a trace leaves the row without calls, and never throws.
     for (const tool_calls of ["x", 42, [], {}, { calls: "x" }, null, undefined]) {
-      const event = rowToEvent(row({ tool_calls: tool_calls as never }));
-      expect(event).not.toHaveProperty("tools");
-      expect(event).not.toHaveProperty("omittedCallCount");
+      const turn = rowToTurn(row({ tool_calls: tool_calls as never }));
+      expect(turn).not.toHaveProperty("tools");
+      expect(turn).not.toHaveProperty("omittedCallCount");
     }
   });
 

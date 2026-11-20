@@ -127,9 +127,8 @@ it("does not restore an old save refusal after a later conversational turn", asy
   expect(saves()).toEqual([]);
 });
 
-it("does not restore saving progress below a persisted Stop watermark", async () => {
-  fixture.current = {...DRAFT, cancelled_through: "1"};
-  messages = [{...MESSAGE, save_requested: true, state: MESSAGE_STATE.running}];
+it("does not restore saving progress for a stopped save request", async () => {
+  messages = [{...MESSAGE, save_requested: true, state: MESSAGE_STATE.cancelled}];
   const client = await fixture.ready(true);
   expect(client.getSnapshot()).toMatchObject({saveOperation: null, pending: false});
   expect(saves()).toEqual([]);

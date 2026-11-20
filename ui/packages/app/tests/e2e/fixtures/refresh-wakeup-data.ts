@@ -1,6 +1,6 @@
-import {rowToEvent, type FleetEvent} from "@/lib/streaming/fleet-stream-row";
+import {rowToTurn, type FleetTurn} from "@/lib/streaming/fleet-stream-row";
 import {SCHEDULE, WORKSPACE, FLEET_ID} from "@/tests/helpers/draft-fixtures";
-import {SCHEDULE_EVENT} from "@/tests/helpers/schedule-activity";
+import {SCHEDULE_TURN} from "@/tests/helpers/schedule-activity";
 import type {Schedule} from "@/lib/api/draft-types";
 
 export function visualWakeup(started: number): Schedule {
@@ -9,10 +9,10 @@ export function visualWakeup(started: number): Schedule {
     next_run_at: new Date(started + 30 * 60_000).toISOString()};
 }
 
-export function visualWakeupEvents(started: number): FleetEvent[] {
+export function visualWakeupTurns(started: number): FleetTurn[] {
   const schedule = visualWakeup(started);
   const at = (offset: number) => new Date(started + offset).toISOString();
-  const base = {...SCHEDULE_EVENT, workspace_id: WORKSPACE, fleet_id: FLEET_ID};
+  const base = {...SCHEDULE_TURN, workspace_id: WORKSPACE, fleet_id: FLEET_ID};
   return [
     {...base, turn_id: "schedule-request", actor: "steer:fixture-owner", event_type: "steer",
       request_json: JSON.stringify({message: "Watch pull request #58. When it merges, check the image build and let me know in Slack."}),
@@ -25,5 +25,5 @@ export function visualWakeupEvents(started: number): FleetEvent[] {
       schedule: {schedule_id: schedule.schedule_id, description: schedule.description}}),
       response_text: "Pull request #58 is still open. No new build to check.\n\nI’ll only notify you when something needs your attention.",
       wall_ms: 8000, cost_nanos: "120000000", created_at: at(-10_000), updated_at: at(-2000)},
-  ].map(rowToEvent);
+  ].map(rowToTurn);
 }

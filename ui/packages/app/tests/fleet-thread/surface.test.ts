@@ -1,18 +1,18 @@
-import { ev, mockStream, renderThread, renderThreadWithInitial, routerRefreshMock, serverEvent, threadElement } from "./harness";
+import { ev, mockStream, renderThread, renderThreadWithInitial, routerRefreshMock, serverTurn, threadElement } from "./harness";
 import { cloneElement, createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 
 describe("FleetThread — empty state", () => {
-  it("renders the waiting-for-activity hint when no events", () => {
+  it("renders the waiting-for-activity hint when no turns", () => {
     mockStream([]);
     renderThread();
     expect(
       screen.getByText(/Message this fleet or wait for its next trigger/i),
     ).toBeTruthy();
-    expect(screen.queryByText(/0 events/i)).toBeNull();
+    expect(screen.queryByText(/0 turns/i)).toBeNull();
   });
 });
 
@@ -48,7 +48,7 @@ describe("FleetThread — header chrome", () => {
     expect(screen.queryByRole("heading", { name: "Chat" })).toBeNull();
     expect(screen.queryByLabelText("Connection status: Live")).toBeNull();
     expect(screen.queryByRole("link", { name: "Steer" })).toBeNull();
-    expect(screen.queryByText(/1 events/)).toBeNull();
+    expect(screen.queryByText(/1 turns/)).toBeNull();
     // The transcript keeps its accessible name, which is the one place the
     // word "Chat" still earns its keep.
     expect(container.querySelector('[aria-label="Chat"][role="log"]')).toBeTruthy();
@@ -106,7 +106,7 @@ describe("FleetThread — the thread never re-runs the page", () => {
     const view = renderThread();
     mockStream([{ ...received, status: "processed" }]);
     view.rerender(threadElement());
-    renderThreadWithInitial([serverEvent()]);
+    renderThreadWithInitial([serverTurn()]);
     // The whole-page re-render per completion is the cost this shape retired.
     expect(routerRefreshMock).not.toHaveBeenCalled();
   });

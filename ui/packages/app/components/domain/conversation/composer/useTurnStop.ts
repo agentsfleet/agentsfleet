@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TurnRow } from "@/lib/api/events";
-import { stopTurn, TURN_STOP_KIND } from "@/lib/api/fleet-turn-stop";
+import type { TurnRow } from "@/lib/api/turns";
+import { fleetTurnDetailUrl } from "@/lib/api/turns-types";
+import { readTurnDetail, stopTurn, TURN_STOP_KIND } from "@/lib/api/turn-stop";
 import { readTurnDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { stoppableTurn } from "./stoppable-turn";
 
 export type TurnStop = {
@@ -16,7 +17,7 @@ export type TurnStop = {
 };
 
 /**
- * The composer's Stop over the fleet's live events. The answer is applied to
+ * The composer's Stop over the fleet's live turns. The answer is applied to
  * the thread as the saved row it is, so the turn reads "Stopped" even when no
  * frame announces the PATCH. A 409 means the answer landed first: the saved
  * row is read again and shown, with no alarm, because the answer stands.
@@ -24,10 +25,10 @@ export type TurnStop = {
 export function useTurnStop(
   workspaceId: string,
   fleetId: string,
-  events: readonly FleetEvent[],
+  turns: readonly FleetTurn[],
   reconcileRows: (rows: TurnRow[]) => void,
 ): TurnStop {
-  const turnId = useMemo(() => stoppableTurn(events), [events]);
+  const turnId = useMemo(() => stoppableTurn(turns), [turns]);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   const owner = useRef<AbortController | null>(null);
   useEffect(() => () => owner.current?.abort(), []);
@@ -38,8 +39,8 @@ export function useTurnStop(
     owner.current = controller;
     setStoppingId(turnId);
     void (async () => {
-      const result = await stopTurn(workspaceId, fleetId, turnId, controller.signal);
-      if (result.kind === TURN_STOP_KIND.STOPPED) reconcileRows([result.turn]);
+      const result = await stopTurn(fleetTurnDetailUrl(workspaceId, fleetId, turnId), controller.signal, readTurnDetail);
+      if (result.kind === TURN_STOP_KIND.STOPPED) reconcileRows([result.answer]);
       if (result.kind === TURN_STOP_KIND.FINISHED) {
         const saved = await readTurnDetailRoute(workspaceId, fleetId, turnId);
         if (saved.ok) reconcileRows([saved.data]);

@@ -16,7 +16,7 @@ import {
   fleetTurnItemUrl,
   streamFleetTurnsUrl,
   streamWorkspaceTurnsUrl,
-} from "@/lib/api/events-types";
+} from "@/lib/api/turns-types";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
 
 // The handlers load their credential and API origin at import; neither is

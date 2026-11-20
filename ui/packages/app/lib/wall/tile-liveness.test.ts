@@ -4,7 +4,7 @@ import { CONNECTION_STATUS } from "@/tests/helpers/fleet-streams";
 import {
   deriveTileLiveness,
   fleetRowState,
-  formatTileEvents,
+  formatTileTurns,
   formatTileSpend,
   SNAPSHOT_CAPPED_OR_ERRORED,
   tileShouldStream,
@@ -52,13 +52,13 @@ describe("tile footer is server truth (Inv. 2)", () => {
 
   it("renders large exact counters and rounds nanos to cents", () => {
     expect(formatTileSpend(9007199254740993n)).toBe("$9007199.25");
-    expect(formatTileEvents(9007199254740993n)).toBe("9007199254740993");
+    expect(formatTileTurns(9007199254740993n)).toBe("9007199254740993");
     expect(formatTileSpend(999999999n)).toBe("$1.00");
   });
 
-  it("renders zero and positive event counts", () => {
-    expect(formatTileEvents(0n)).toBe("0");
-    expect(formatTileEvents(7n)).toBe("7");
+  it("renders zero and positive turn counts", () => {
+    expect(formatTileTurns(0n)).toBe("0");
+    expect(formatTileTurns(7n)).toBe("7");
   });
 });
 

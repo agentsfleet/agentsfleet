@@ -28,7 +28,7 @@ const OPTIMISTIC_ROW = "optim-1";
 const LIST_ROUTE = `/live/v1/workspaces/${WORKSPACE}/fleets?`;
 const BOB_LOOKUP = `${LIST_ROUTE}name=agentbob`;
 const AT = "2026-11-19T00:00:00Z";
-const NO_EVENTS: never[] = [];
+const NO_TURNS: never[] = [];
 const NO_MESSAGES: ThreadMessageLike[] = [];
 
 const network = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>();
@@ -76,7 +76,7 @@ function composer(): AssistantRuntime["thread"]["composer"] {
   const { result } = renderHook(() => {
     const runtime = useRef<AssistantRuntime | null>(null);
     const { delivery } = useChat(HERE, HERE_NAME, vi.fn(), paint());
-    const previews = useFleetUploadPreviews({ workspaceId: WORKSPACE, fleetId: HERE, subject: SUBJECT, events: NO_EVENTS, onNew: delivery.onNew, runtime });
+    const previews = useFleetUploadPreviews({ workspaceId: WORKSPACE, fleetId: HERE, subject: SUBJECT, turns: NO_TURNS, onNew: delivery.onNew, runtime });
     const thread = useExternalStoreRuntime({ messages: NO_MESSAGES, convertMessage: (entry: ThreadMessageLike) => entry,
       onNew: previews.onNew, adapters: { attachments: previews.attachments } });
     useEffect(() => { runtime.current = thread; }, [thread]);

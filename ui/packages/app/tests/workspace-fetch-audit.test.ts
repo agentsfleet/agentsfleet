@@ -60,7 +60,7 @@ describe("workspace fetch acceptance audit", () => {
     recordWorkspaceFetchForAcceptance(
       "/v1/workspaces/ws_1/fleets/zom_1/turns/1700000000000-0",
     );
-    // The events LIST and the live tail are deliberately unaudited.
+    // The turns LIST and the live tail are deliberately unaudited.
     recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/turns?limit=25");
     recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/turns/stream");
 

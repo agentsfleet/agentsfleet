@@ -3,19 +3,19 @@
 import { useState } from "react";
 import nextDynamic from "next/dynamic";
 import { Button } from "@agentsfleet/design-system";
-import { EVENT_STATUS } from "@/lib/events/event-summary";
+import { TURN_STATUS } from "@/lib/turns/turn-summary";
 import { useFleetScope } from "../stream/FleetScope";
 
-const EventDetailsDialog = nextDynamic(() => import("../../events/EventDetailsDialog").then(module => module.EventDetailsDialog), {ssr: false});
+const TurnDetailsDialog = nextDynamic(() => import("../../turns/TurnDetailsDialog").then(module => module.TurnDetailsDialog), {ssr: false});
 
-/** Queued admissions have no event record to inspect until a run promotes them. */
+/** Queued admissions have no turn record to inspect until a run promotes them. */
 export function FleetRunDetails({turnId, status}: {turnId: string; status: string}) {
   const scope = useFleetScope();
   const [open, setOpen] = useState(false);
-  if (!scope || !Object.values(EVENT_STATUS).some(value => value === status)) return null;
+  if (!scope || !Object.values(TURN_STATUS).some(value => value === status)) return null;
   return <>
     <Button variant="link" size="sm" className="min-h-11 px-sm text-conversation text-muted-foreground sm:min-h-9" onClick={() => setOpen(true)}>Run details</Button>
-    {open ? <EventDetailsDialog row={{workspace_id: scope.workspaceId, fleet_id: scope.fleetId, turn_id: turnId}}
+    {open ? <TurnDetailsDialog row={{workspace_id: scope.workspaceId, fleet_id: scope.fleetId, turn_id: turnId}}
       refresh={status} onOpenChange={setOpen} /> : null}
   </>;
 }

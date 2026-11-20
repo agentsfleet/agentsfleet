@@ -232,7 +232,7 @@ function cancelledFor(path: string): () => Error {
 
 /**
  * `request` with an explicit retry configuration, for the callers that own
- * their replay decision — the steer POST, the thread and events reads. The
+ * their replay decision — the steer POST, the thread and turns reads. The
  * policy is `retry.ts`'s; its idempotency gate still refuses to replay a
  * non-idempotent method on a server 5xx.
  */

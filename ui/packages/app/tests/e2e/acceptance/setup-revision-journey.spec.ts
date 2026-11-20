@@ -13,7 +13,7 @@
 import { expect, test } from "@playwright/test";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { DraftSchema } from "@/lib/api/draft-types";
-import { saveDoneText } from "@/lib/events/fleet-activity";
+import { saveDoneText } from "@/lib/turns/fleet-activity";
 import { clientFor } from "./fixtures/api-client";
 import { signedInContext, signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";

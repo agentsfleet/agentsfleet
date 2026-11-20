@@ -37,7 +37,7 @@ vi.mock("@/lib/api/memory", () => ({
   forgetMemory: forgetMemoryMock,
   setMemoryAccess: setMemoryAccessMock,
 }));
-vi.mock("@/lib/api/events", () => ({
+vi.mock("@/lib/api/turns", () => ({
   getFleetTurn: getFleetTurnMock,
 }));
 
@@ -79,10 +79,10 @@ describe("fleet server actions — thin token-forwarders", () => {
     expect(listFleetsMock).toHaveBeenCalledWith("ws1", "tok", undefined);
   });
 
-  // The detail read the events list no longer carries. The identifier is the
+  // The detail read the turns list no longer carries. The identifier is the
   // only argument the row supplies, so its position is what a regression here
   // would scramble; the body it returns is the payload the list dropped.
-  it("getFleetTurnAction forwards ws, fleet and event with token last", async () => {
+  it("getFleetTurnAction forwards ws, fleet and turn with token last", async () => {
     const detail = { turn_id: "e1", request_json: "{}", response_text: "done" };
     getFleetTurnMock.mockResolvedValueOnce(detail);
     const r = await getFleetTurnAction("ws1", "z1", "e1");

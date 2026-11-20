@@ -8,7 +8,7 @@
  * reserved for single-workspace specs that own their workspace outright.
  *
  * Tenant/workspace itself is preserved across runs (idempotent bootstrap);
- * only fleets/credentials/events get torn down.
+ * only fleets/credentials/turns get torn down.
  *
  * global-teardown's backstop sweep (sweepLeakedFixtureFleets) lives here
  * too, next to the destructive-target guard every deletion must share.

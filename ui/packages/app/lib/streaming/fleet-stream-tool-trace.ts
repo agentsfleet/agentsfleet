@@ -1,9 +1,9 @@
 import * as v from "valibot";
 
-import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
+import type { FleetTurn, FleetToolCall } from "./fleet-stream-row";
 
 // A tool call's arguments and outcome, narrowed where they cross into the
-// browser: off a live frame, and off an event's saved trace. Each field
+// browser: off a live frame, and off a turn's saved trace. Each field
 // narrows on its own, so a malformed one reads as absent and the call still
 // renders without it — the frame's name and timing are what make a call, and
 // `fleet-stream-tool-frames` reads those. Also where a settled turn's calls
@@ -103,9 +103,9 @@ function outcomeOf({ status, output_head, output_tail, output_line_count, exit_c
 }
 
 /**
- * An event's saved trace as finished calls, or null when it carries none.
+ * A turn's saved trace as finished calls, or null when it carries none.
  * Only the difference between a call's start and its end renders, so every
- * call starts at `startedAtMs` — the event's own instant. A call too
+ * call starts at `startedAtMs` — the turn's own instant. A call too
  * malformed to render counts with the ones the runner left out, so the thread
  * still says something is missing.
  */
@@ -135,19 +135,19 @@ export function readSavedTrace(value: unknown, startedAtMs: number): SavedTrace 
 }
 
 /** Every call still open, closed as interrupted: a turn that ended ended them.
- * The same event back when none was open. */
-export function interruptOpenCalls(event: FleetEvent): FleetEvent {
-  const tools = event.tools;
-  if (tools === undefined || tools.every((call) => call.done)) return event;
+ * The same turn back when none was open. */
+export function interruptOpenCalls(turn: FleetTurn): FleetTurn {
+  const tools = turn.tools;
+  if (tools === undefined || tools.every((call) => call.done)) return turn;
   return {
-    ...event,
+    ...turn,
     tools: tools.map((call) => (call.done ? call : { ...call, done: true, status: TOOL_CALL_STATUS.INTERRUPTED, closedAtSettle: true })),
   };
 }
 
 /** Whether the turn closed any call itself rather than hearing how it ended. */
-export function closedAnyAtSettle(events: readonly FleetEvent[], turnId: string): boolean {
-  return events.find((event) => event.id === turnId)?.tools?.some((call) => call.closedAtSettle === true) ?? false;
+export function closedAnyAtSettle(turns: readonly FleetTurn[], turnId: string): boolean {
+  return turns.find((turn) => turn.id === turnId)?.tools?.some((call) => call.closedAtSettle === true) ?? false;
 }
 
 /**
@@ -156,7 +156,7 @@ export function closedAnyAtSettle(events: readonly FleetEvent[], turnId: string)
  * to the one already shown keeps its array, so a page restating a settled turn
  * re-renders nothing.
  */
-export function settleTools(row: FleetEvent, live: FleetEvent, hasSavedTrace: boolean): FleetEvent {
+export function settleTools(row: FleetTurn, live: FleetTurn, hasSavedTrace: boolean): FleetTurn {
   if (row.tools === undefined) {
     // A replacement's saved detail with no calls excludes the provisional old trace.
     if (live.runRestarted && hasSavedTrace) return row;

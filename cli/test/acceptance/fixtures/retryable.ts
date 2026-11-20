@@ -4,7 +4,7 @@
  * that runs them.
  *
  * Two sources answer "not yet" without saying anything about the request. The
- * daemon's admission shedding answers 429 and 503 with `Retry-After`, and
+ * daemon's load shedding answers 429 and 503 with `Retry-After`, and
  * `UZ-AUTH-004` rides 503 when the credential directory could not be asked.
  * The Cloudflare edge answers 502 with an HTML page for a daemon still
  * starting after a deploy, which is what turned the Nov 03, 2026 deploy lane

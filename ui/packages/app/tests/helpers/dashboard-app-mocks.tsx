@@ -93,7 +93,7 @@ export function tenantProviderMock() {
 }
 
 
-export function eventsMock() {
+export function turnsMock() {
   return { listWorkspaceTurns: listWorkspaceTurnsMock };
 }
 

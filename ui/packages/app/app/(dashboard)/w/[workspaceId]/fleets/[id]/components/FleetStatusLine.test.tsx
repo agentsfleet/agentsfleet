@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import FleetStatusLine from "./FleetStatusLine";
-import type { TurnDetail, TurnRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/turns";
 import {
   METRICS_COST_LABEL,
   METRICS_EMPTY,
@@ -10,12 +10,12 @@ import {
   METRICS_TIME_LABEL,
   METRICS_TOKENS_LABEL,
 } from "./console-copy";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { OUTCOME } from "@/lib/turns/turn-summary";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
 afterEach(() => cleanup());
 
-function event(over: Partial<TurnDetail> = {}): TurnDetail {
+function turn(over: Partial<TurnDetail> = {}): TurnDetail {
   return {
     turn_id: "evt_1",
     fleet_id: "agt_1",
@@ -60,7 +60,7 @@ const toneOf = (text: string | RegExp) => screen.getByText(text).closest("[data-
 
 describe("FleetStatusLine", () => {
   it("shows status, durable outcome, tokens, spend, and duration on one line", () => {
-    renderLine(event());
+    renderLine(turn());
     expect(screen.getByText("active")).toBeTruthy();
     // The line names the outcome rather than quoting the answer: the list read
     // carries no reply text, so a completed run with nothing else to say reads
@@ -76,7 +76,7 @@ describe("FleetStatusLine", () => {
     // The glyph is what a sighted reader sees; the label stays in the text so
     // a screen reader hears "Tokens 1,500" and the acceptance walk can grep
     // `Tokens\s*(\S+)` off the line's innerText, as it did off the old strip.
-    renderLine(event());
+    renderLine(turn());
     for (const label of [
       METRICS_STATUS_LABEL,
       METRICS_OUTCOME_LABEL,
@@ -91,15 +91,15 @@ describe("FleetStatusLine", () => {
   });
 
   it("lights the status cell only while the fleet is active", () => {
-    renderLine(event());
+    renderLine(turn());
     expect(toneOf("active")).toBe("pulse");
     cleanup();
-    renderLine(event(), 0, true, "archived");
+    renderLine(turn(), 0, true, "archived");
     expect(toneOf("Archived")).toBe("neutral");
   });
 
-  it("says a run is still working rather than naming its event type, and keeps the glyph turning", () => {
-    renderLine(event({ status: "received", event_type: "webhook", response_text: null }));
+  it("says a run is still working rather than naming its turn kind, and keeps the glyph turning", () => {
+    renderLine(turn({ status: "received", event_type: "webhook", response_text: null }));
     expect(screen.getByText(OUTCOME.WORKING)).toBeTruthy();
     expect(toneOf(OUTCOME.WORKING)).toBe("foreground");
     expect(line().querySelector('[class~="motion-safe:animate-spin"]')).not.toBeNull();
@@ -110,7 +110,7 @@ describe("FleetStatusLine", () => {
     [{ status: "fleet_error", event_type: "ticket", response_text: null }, OUTCOME.FAILED, "danger"],
     [{ status: "processed", event_type: "ticket", response_text: null }, OUTCOME.COMPLETED, "success"],
   ] as const)("derives every stored outcome fallback with its tone", (over, expected, tone) => {
-    renderLine(event(over));
+    renderLine(turn(over));
     expect(screen.getByText(expected)).toBeTruthy();
     expect(toneOf(expected)).toBe(tone);
     expect(line().querySelector('[class~="motion-safe:animate-spin"]')).toBeNull();
@@ -121,14 +121,14 @@ describe("FleetStatusLine", () => {
     // is null because the page statement does not select it. The strip used to
     // read that null as "no reply recorded" — while the thread underneath
     // rendered the reply. The sentence may state completion and nothing more.
-    renderLine(event({ status: "processed", response_text: null, failure_label: null }));
+    renderLine(turn({ status: "processed", response_text: null, failure_label: null }));
     expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(screen.queryByText(/no reply/i)).toBeNull();
   });
 
   it("renders a runner failure as a sentence, never as its raw tag, in the danger tone", () => {
     // The raw tag is what an operator saw here before: `startup_posture`.
-    renderLine(event({ status: "fleet_error", failure_label: "startup_posture", response_text: null }));
+    renderLine(turn({ status: "fleet_error", failure_label: "startup_posture", response_text: null }));
     expect(screen.getByText("Failed a startup safety check")).toBeTruthy();
     expect(screen.queryByText("startup_posture")).toBeNull();
     expect(toneOf("Failed a startup safety check")).toBe("danger");
@@ -137,14 +137,14 @@ describe("FleetStatusLine", () => {
   it("reads a processed row that still names a failure as a failure", () => {
     // The row's own classification wins over its status column: a label is a
     // recorded fault whatever the status says.
-    renderLine(event({ status: "processed", failure_label: "startup_posture" }));
+    renderLine(turn({ status: "processed", failure_label: "startup_posture" }));
     expect(toneOf("Failed a startup safety check")).toBe("danger");
   });
 
   it("omits the time rather than printing a broken one", () => {
     // A row whose stored timestamp does not read as a date still renders its
     // outcome; the line drops the time instead of showing "Invalid Date".
-    renderLine(event({ created_at: "not-an-instant" }));
+    renderLine(turn({ created_at: "not-an-instant" }));
     expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     expect(screen.queryByText(/invalid/i)).toBeNull();
     expect(line().querySelector("time")).toBeNull();
@@ -156,7 +156,7 @@ describe("FleetStatusLine", () => {
     // The relative label answers the question actually being asked, and the
     // absolute instant stays in the element's `dateTime` and its tooltip.
     const at = Date.UTC(2026, 6, 21, 10, 42, 17);
-    renderLine(event({ created_at: new Date(at).toISOString() }));
+    renderLine(turn({ created_at: new Date(at).toISOString() }));
     expect(screen.getByText(OUTCOME.COMPLETED)).toBeTruthy();
     const stamp = line().querySelector("time");
     expect(stamp?.getAttribute("datetime")).toBe(new Date(at).toISOString());
@@ -164,31 +164,31 @@ describe("FleetStatusLine", () => {
   });
 
   it("renders missing telemetry as unknown, never fabricated zero, and never a unit beside a dash", () => {
-    renderLine(event({ tokens: null, wall_ms: null, cost_nanos: null }));
+    renderLine(turn({ tokens: null, wall_ms: null, cost_nanos: null }));
     expect(screen.getAllByText("—")).toHaveLength(3);
     expect(screen.queryByText("$0.00")).toBeNull();
     expect(screen.queryByText("tok")).toBeNull();
   });
 
   it("shows every figure as unknown when the summary read failed, reported or not", () => {
-    renderLine(event(), 0, false);
+    renderLine(turn(), 0, false);
     expect(screen.getAllByText("—")).toHaveLength(3);
   });
 
   it("links pending approvals to the fleet approval section", () => {
-    renderLine(event(), 2);
+    renderLine(turn(), 2);
     const link = screen.getByRole("link", { name: /2 approvals waiting/i });
     expect(link.getAttribute("href")).toBe("/w/ws_1/fleets/agt_1#fleet-approvals");
     expect(link.closest("[data-tone]")?.getAttribute("data-tone")).toBe("warning");
   });
 
   it("names a single waiting approval in the singular", () => {
-    renderLine(event(), 1);
+    renderLine(turn(), 1);
     expect(screen.getByRole("link", { name: /^1 approval waiting/i })).toBeTruthy();
   });
 
   it("shows no approvals cell when none wait", () => {
-    renderLine(event(), 0);
+    renderLine(turn(), 0);
     expect(screen.queryByRole("link")).toBeNull();
   });
 

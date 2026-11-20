@@ -1,8 +1,8 @@
-import type { LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import type { LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { SEND_MARK } from "@/lib/streaming/send-marks";
 
-/** A send's marks in the order its events reach this tab. */
+/** A send's marks in the order its frames reach this tab. */
 export const IN_ORDER = [SEND_MARK.SEND, SEND_MARK.ACCEPTED, SEND_MARK.FIRST_FRAME, SEND_MARK.COMPLETE];
 
 /** A piece of `turnId`'s streamed answer. */

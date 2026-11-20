@@ -3,11 +3,11 @@ import Link from "next/link";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { CheckCircleIcon, WarningCircleIcon, CoinsIcon, HashIcon, HourglassIcon, CircleNotchIcon, TimerIcon } from "@phosphor-icons/react/ssr";
 import { cn, StatusLine, StatusLineItem, type StatusLineTone, Time } from "@agentsfleet/design-system";
-import type { RunFigures } from "@/lib/events/run-summary";
+import type { RunFigures } from "@/lib/turns/run-summary";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { formatMs } from "@/lib/utils";
-import { formatCount, runFigure } from "@/lib/events/run-figures-format";
-import { EVENT_STATUS, outcomeFor } from "@/lib/events/event-summary";
+import { formatCount, runFigure } from "@/lib/turns/run-figures-format";
+import { TURN_STATUS, outcomeFor } from "@/lib/turns/turn-summary";
 import { formatDollars } from "@/lib/money";
 import {
   METRICS_APPROVAL_LABEL,
@@ -39,7 +39,7 @@ type OutcomeCell = {
 
 // The line under the composer: status · latest outcome · tokens · spend ·
 // duration, and the approvals link when any wait. Every figure is a server
-// field off the event row — the line does no token→cost arithmetic;
+// field off the turn row — the line does no token→cost arithmetic;
 // `cost_nanos` is the summed telemetry credit, and a run with no telemetry
 // renders cost as "—", never a fabricated zero. The pending count is the
 // server's own, off the fleet detail and then off the live tail's frames, so
@@ -163,7 +163,7 @@ function Figure({
 
 // A sentence, never a machine tag. The runner's failure classes read as plain
 // English through the shared vocabulary, so this line cannot say
-// `startup_posture` where the events table says "Failed a startup safety
+// `startup_posture` where the turns table says "Failed a startup safety
 // check". The list read carries no bodies, so the line states the outcome
 // rather than quoting the answer — and, for a processed run, states only that
 // it completed. The tone and glyph follow the same classification the
@@ -180,13 +180,13 @@ function outcomeCell(latest: RunFigures | null, available: boolean): OutcomeCell
   const stamp = new Date(latest.created_at);
   const at = Number.isFinite(stamp.getTime()) ? stamp : null;
   const text = outcomeFor(latest);
-  if (latest.status === EVENT_STATUS.RECEIVED) {
+  if (latest.status === TURN_STATUS.RECEIVED) {
     return { text, tone: "foreground", Icon: CircleNotchIcon, live: true, at };
   }
-  if (latest.failure_label || latest.status === EVENT_STATUS.FLEET_ERROR) {
+  if (latest.failure_label || latest.status === TURN_STATUS.FLEET_ERROR) {
     return { text, tone: "danger", Icon: WarningCircleIcon, live: false, at };
   }
-  if (latest.status === EVENT_STATUS.GATE_BLOCKED) {
+  if (latest.status === TURN_STATUS.GATE_BLOCKED) {
     return { text, tone: "warning", Icon: HourglassIcon, live: false, at };
   }
   return { text, tone: "success", Icon: CheckCircleIcon, live: false, at };

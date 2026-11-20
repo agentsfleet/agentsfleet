@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { createDraftThreadProjection, draftThreadMessages } from "@/lib/api/draft-thread-messages";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
-import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/turns/fleet-activity";
 import { DRAFT, MESSAGE } from "./helpers/draft-fixtures";
 
 const HISTORY_COUNTS = [100, 1_000];
@@ -13,7 +13,7 @@ it("retains historical and receipt rows while a current answer changes", () => {
   const project = createDraftThreadProjection();
   const receipt = {turn_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
     created_at: MESSAGE.created_at, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "1"})};
-  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, previousDrafts: [{id: "earlier", cancelledThrough: "0", messages: [MESSAGE]}],
+  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, previousDrafts: [{id: "earlier", messages: [MESSAGE]}],
     activities: [receipt], messages: [{...MESSAGE, sequence: "2", role: "assistant" as const, state: "running" as const}]};
   const first = project(view);
   const next = project({...view, liveReply: {sequence: "2", stream: "stream", text: "Growing", gapped: false}});
@@ -47,7 +47,7 @@ it.each(["deadline", "cancelled", "provider_interrupted", "completion_unverified
 
 it("preserves unsettled usage after stopping without inventing a cause or retry text", () => {
   const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
-  const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: {...DRAFT, cancelled_through: MESSAGE.sequence},
+  const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}]});
   expect(rows).toMatchObject([{content: [{type: "text", text: ""}], metadata: {custom: {failure, retryText: undefined}}}]);
 });

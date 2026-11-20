@@ -1,0 +1,160 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useLayoutEffect, useSyncExternalStore } from "react";
+import type { ThreadMessageLike } from "@assistant-ui/react";
+import type { TurnRow } from "@/lib/api/turns";
+import { CONNECTION_STATUS, type ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
+import { useFleetStreams } from "./FleetStreamProvider";
+import {
+  AGENTSFLEET_TURN_STATUS,
+  type FleetTurn,
+  type FleetTurnStatus,
+} from "@/lib/streaming/fleet-stream-row";
+import { setTurnDetailReader } from "@/lib/streaming/fleet-stream-reply-registry";
+import { readTurnDetailRoute } from "@/lib/streaming/fleet-stream-detail-reader";
+
+// The chat is the only surface that shows reply text, so it installs the read
+// a reply uses when its stream lost the final words: the same-origin route, so
+// a send in flight never holds the read up, nor the read a send.
+setTurnDetailReader(readTurnDetailRoute);
+
+// Public re-exports so existing consumers keep their import surface.
+export {
+  CONNECTION_STATUS,
+  type ConnectionStatus,
+  type FleetTurn,
+  type FleetTurnStatus,
+};
+
+export type UseFleetTurnStreamResult = {
+  tasksSeq: number;
+  approvalsSeq: number;
+  turns: FleetTurn[];
+  connectionStatus: ConnectionStatus;
+  appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
+  reconcileOptimistic: (tempId: string, realTurnId: string, replayed: boolean, foldedInto?: string | null) => boolean;
+  discardOptimistic: (tempId: string) => void;
+  retryConnection: () => void;
+  /** Applies saved rows the page holds, such as the turn a Stop answered with. */
+  reconcileRows: (rows: TurnRow[]) => void;
+  convertTurn: (turn: FleetTurn) => ThreadMessageLike;
+};
+
+/**
+ * React boundary over the module-level fleet-stream registry. Multiple
+ * mounts of this hook for the same `fleetId` share one EventSource — and
+ * the connection survives a /dashboard ↔ /fleets/[id] round-trip up to
+ * the registry's idle release window.
+ *
+ * `initial` seeds the first subscriber's turn list from server-rendered
+ * data; the browser holds no token. Live updates arrive over the
+ * cookie-authenticated Server-Sent Events route handler. Later snapshots
+ * merge authoritative terminal rows without replacing newer live frames.
+ */
+export function useFleetTurnStream(
+  workspaceId: string,
+  fleetId: string,
+  initial: TurnRow[],
+): UseFleetTurnStreamResult {
+  // Hold the latest `initial` without making it a `subscribe` dependency:
+  // a fresh array identity each render must not resubscribe. Updating the
+  // ref every render (rather than capturing first-render only) keeps the
+  // value current if `fleetId` changes within a live instance — the
+  // registry ignores `initial` while subscribing to an existing entry; the
+  // reconciliation effect below handles later authoritative snapshots.
+  const initialRef = useRef(initial);
+  useLayoutEffect(() => { initialRef.current = initial; }, [initial]);
+  const streams = useFleetStreams();
+  const subscribeFn = useCallback(
+    (listener: () => void) =>
+      streams.subscribe(workspaceId, fleetId, initialRef.current, listener),
+    [streams, workspaceId, fleetId],
+  );
+  const snapshotFn = useCallback(() => streams.getSnapshot(fleetId), [streams, fleetId]);
+  const snapshot = useSyncExternalStore(subscribeFn, snapshotFn, snapshotFn);
+
+  useEffect(() => {
+    streams.reconcileServerRows(fleetId, initial);
+  }, [streams, fleetId, initial]);
+
+  const appendOptimistic = useCallback(
+    (text: string, actor: string, sentAs?: string) =>
+      streams.appendOptimistic(fleetId, text, actor, sentAs),
+    [streams, fleetId],
+  );
+  const reconcileOptimistic = useCallback(
+    (tempId: string, realTurnId: string, replayed: boolean, foldedInto: string | null = null) =>
+      streams.reconcileOptimistic(fleetId, tempId, realTurnId, replayed, foldedInto),
+    [streams, fleetId],
+  );
+  const discardOptimistic = useCallback(
+    (tempId: string) => streams.discardOptimistic(fleetId, tempId),
+    [streams, fleetId],
+  );
+  const retryConnection = useCallback(
+    () => streams.retryConnection(fleetId),
+    [streams, fleetId],
+  );
+  const reconcileRows = useCallback(
+    (rows: TurnRow[]) => streams.reconcileServerRows(fleetId, rows),
+    [streams, fleetId],
+  );
+
+  // There is deliberately no aggregate "the fleet is working" flag. The one
+  // that existed was true whenever ANY turn sat unfinished, so a single
+  // stranded run marked the fleet busy forever — and the composer, which read
+  // it, held every message from then on. Work is now reported per turn, on
+  // the row it belongs to, where a strand can only misreport itself.
+  return {
+    tasksSeq: snapshot.tasksSeq,
+    approvalsSeq: snapshot.approvalsSeq,
+    turns: snapshot.turns,
+    connectionStatus: snapshot.connectionStatus,
+
+    appendOptimistic,
+    reconcileOptimistic,
+    discardOptimistic,
+    retryConnection,
+    reconcileRows,
+    convertTurn,
+  };
+}
+
+/** The trigger message a row renders as. The thread compares its output to
+ * decide whether a trigger changed, so a field read here is compared too. */
+export function convertTurn(turn: FleetTurn): ThreadMessageLike {
+  return {
+    role: turn.role,
+    id: turn.id,
+    createdAt: turn.createdAt,
+    // Content carries the TRIGGER — the operator's message or the integration
+    // headline. The fleet's answer, reasoning and tool calls become parts of
+    // the reply message (`toReplyMessage`), so a reply never appears as
+    // operator speech.
+    content: [{ type: "text", text: turn.text }],
+    metadata: {
+      custom: {
+        actor: turn.actor,
+        requestJson: turn.custom?.requestJson,
+        status: turn.status,
+        // Waiting for a runner: this tab's own send before the daemon opened
+        // it, or any sender's message the thread read or admitted frame says
+        // is still on the queue.
+        queued: turn.clientTimestamp === true || turn.status === AGENTSFLEET_TURN_STATUS.QUEUED,
+        submittedAtMs: turn.submittedAtMs,
+        // The reply itself is not here: it is the reply message's content
+        // (`toReplyMessage`), and carrying it would change this message on
+        // every streamed word. What is here is the sentence to show when there
+        // is no reply (still working, blocked, failed).
+        replyRecovering: turn.replyRecovering,
+        runRestarted: turn.runRestarted,
+        restartAttempt: turn.restartAttempt,
+        outcome: turn.outcome,
+        // The failure CLASS, not the sentence — the renderer picks remediation
+        // guidance off it (a sentence cannot be matched against reliably).
+        failureLabel: turn.failureLabel,
+        failureDetail: turn.failureDetail,
+      },
+    },
+  };
+}

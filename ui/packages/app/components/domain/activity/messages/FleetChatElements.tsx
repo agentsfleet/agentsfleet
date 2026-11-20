@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { senderLabelFor } from "@/lib/events/event-summary";
+import { senderLabelFor } from "@/lib/turns/turn-summary";
 import { FleetMessageRow, FleetGroupRow, ROW_TONE, useSenderLabel } from "./FleetMessageRow";
 import { FleetMarkdown } from "../../shared/chat/FleetMarkdown";
 import { FleetReply } from "../replies/FleetReplyBody";

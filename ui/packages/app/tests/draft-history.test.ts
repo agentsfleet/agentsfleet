@@ -23,12 +23,11 @@ it("revisits an in-flight page and orders a late assistant beside its own user",
   const rows = await history.read("/draft", OWNER.signal);
   expect(cursors).toEqual([null, "second", null, "second"]);
   expect(rows.map((row) => `${row.sequence}:${row.role}`)).toEqual(["1:user", "1:assistant", "2:user"]);
-  expect(history.highest).toBe("2");
   await history.read("/draft", OWNER.signal);
   expect(cursors.at(-1)).toBe("second");
 });
 
-it("bounds retained private text and keeps a precise highest sequence", async () => {
+it("bounds retained private text and orders sequences past the safe integer range", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     const page = Number(new URL(url, "https://app.example.test").searchParams.get("starting_after") ?? 0);
     const items = Array.from({length: 25}, (_, index) => ({...MESSAGE,
@@ -39,9 +38,9 @@ it("bounds retained private text and keeps a precise highest sequence", async ()
   const rows = await history.read("/draft", OWNER.signal);
   expect(rows).toHaveLength(500);
   expect(rows[0]?.sequence).toBe("9007199254741018");
-  expect(history.highest).toBe("9007199254741517");
+  expect(rows.at(-1)?.sequence).toBe("9007199254741517");
   expect(history.truncated).toBe(true);
-  history.clear(); expect(history.highest).toBe("0"); expect(history.truncated).toBe(false);
+  history.clear(); expect(history.truncated).toBe(false);
 });
 
 it("bounds a repeating server cursor and never reports an incomplete walk as complete", async () => {
@@ -62,7 +61,9 @@ it("cancels a pending read before it can restore cleared private history", async
   const history = new DraftHistory(); const owner = new AbortController();
   const read = history.read("/draft", owner.signal);
   owner.abort(); history.clear(); pending.resolve(response({items: [MESSAGE], next_cursor: null}));
-  await expect(read).rejects.toThrow(); expect(history.highest).toBe("0");
+  await expect(read).rejects.toThrow();
+  vi.stubGlobal("fetch", vi.fn(async () => response({items: [], next_cursor: null})));
+  expect(await history.read("/draft", new AbortController().signal)).toEqual([]);
 });
 
 

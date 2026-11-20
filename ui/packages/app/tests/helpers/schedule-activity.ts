@@ -1,10 +1,10 @@
-import type { TurnDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/turns";
 import { SCHEDULE, WORKSPACE } from "./draft-fixtures";
 
 export const SCHEDULE_SNAPSHOT = {schedule_id: SCHEDULE.schedule_id, description: SCHEDULE.description,
   message: SCHEDULE.message, status: SCHEDULE.status, sync: SCHEDULE.sync};
 
-export const SCHEDULE_EVENT: TurnDetail = {workspace_id: WORKSPACE, fleet_id: SCHEDULE.fleet_id,
+export const SCHEDULE_TURN: TurnDetail = {workspace_id: WORKSPACE, fleet_id: SCHEDULE.fleet_id,
   turn_id: "0199a801-1000-7000-8000-000000000009", actor: `cron:${SCHEDULE.schedule_id}`, event_type: "cron",
   status: "processed", request_json: JSON.stringify({message: SCHEDULE.message,
     schedule: {schedule_id: SCHEDULE.schedule_id, description: SCHEDULE.description}}), response_text: null, tool_calls: null,

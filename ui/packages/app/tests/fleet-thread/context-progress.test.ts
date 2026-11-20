@@ -6,10 +6,10 @@ import { CONTEXT_STATE } from "@/lib/context-progress";
 const start = {generation: 1, state: CONTEXT_STATE.summarizing};
 const end = {generation: 1, state: CONTEXT_STATE.resuming};
 const TOOL_STARTED_AT_MS = 1_000;
-function event() { return ev({id: "summarizing-run", actor: "operator", role: "user", text: "Continue the investigation", status: "received"}); }
+function turn() { return ev({id: "summarizing-run", actor: "operator", role: "user", text: "Continue the investigation", status: "received"}); }
 
 it("announces summary progress once beside tools and a partial answer, then removes it on settlement", () => {
-  const running = {...event(), reply: "Original partial answer", contextProgress: start,
+  const running = {...turn(), reply: "Original partial answer", contextProgress: start,
     tools: [{name: "read_file", startedAtMs: TOOL_STARTED_AT_MS, ms: 10, done: true}]};
   mockStream([running]);
   const view = renderThread();
@@ -28,7 +28,7 @@ it("announces summary progress once beside tools and a partial answer, then remo
 });
 
 it("replaces the empty working indicator with one summary announcement", () => {
-  mockStream([{...event(), contextProgress: start}]);
+  mockStream([{...turn(), contextProgress: start}]);
   renderThread();
   const rows = document.querySelectorAll<HTMLElement>('[data-role="assistant"]');
   const reply = rows.item(rows.length - 1);
@@ -38,7 +38,7 @@ it("replaces the empty working indicator with one summary announcement", () => {
 });
 
 it("hides a recovered status hint and keeps the ordinary working indicator", () => {
-  mockStream([{...event(), contextProgress: start, contextProgressHidden: true}]);
+  mockStream([{...turn(), contextProgress: start, contextProgressHidden: true}]);
   renderThread();
   expect(screen.queryByText("Compacting context · This can take a few minutes")).toBeNull();
   expect(screen.getByRole("status", {name: "Working"})).toBeTruthy();

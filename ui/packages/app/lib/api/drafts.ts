@@ -17,11 +17,14 @@ import { createdDrawerPatch, drawerPatch } from "./draft-edits";
 import { applySavedSetup, continueSavedDraft, readFleetSetup, resumeSavedSetup, retrySavedSetup } from "./draft-continuation";
 import { editableSetup, readySetup, targetFleetSetup } from "./draft-ready-setup";
 import { updateSavedSetup } from "./draft-activity";
-import { chatRecovery } from "./draft-recovery";
+import { chatRecovery, unfinishedTurns } from "./draft-recovery";
+import { stopTurn, TURN_STOP_KIND } from "./turn-stop";
 import { REQUEST_METHOD, deleteDraft, definiteRefusal, losesAccess, setupErrorMessage, setupRequest, SetupUnavailable, type SetupRequest } from "./draft-request";
-import { CancellationSchema, DRAFT_STATE, DraftSchema, FleetSchema, MessageInputSchema, SETUP_HEADERS, ScheduleSchema, appliedNotice } from "./draft-types";
+import { DRAFT_STATE, DraftSchema, FleetSchema, MessageInputSchema, SETUP_HEADERS, ScheduleSchema, appliedNotice } from "./draft-types";
 import { SOURCE_KIND, START_KIND } from "./draft-vocabulary";
 import { scheduleSynced, scheduleSyncPath, type Schedule } from "./draft-schedules";
+
+const STOP_UNCONFIRMED = "Stop couldn’t be confirmed. Check the conversation, then try again.";
 
 export class DraftClient {
   readonly #owner = new AbortController();
@@ -244,8 +247,15 @@ export class DraftClient {
       this.#watching.stop();
       try {
         await this.#read(id);
-        await this.#request({path: `${this.#base}/drafts/${id}/cancellations`, method: REQUEST_METHOD.post,
-          body: {through_sequence: this.#history.highest}}, CancellationSchema);
+        const signal = AbortSignal.any([this.#owner.signal, this.#view.signal]);
+        // One PATCH per unfinished turn, oldest first: stopping a run's turn
+        // cancels every turn it serves, and a queued turn it has not taken
+        // needs its own.
+        for (const turn of unfinishedTurns(this.#snapshot.messages)) {
+          const result = await stopTurn(`${this.#base}/drafts/${encodeURIComponent(id)}/turns/${encodeURIComponent(turn)}`, signal, rereadAfterStop);
+          signal.throwIfAborted();
+          if (result.kind === TURN_STOP_KIND.FAILED) throw new SetupUnavailable(STOP_UNCONFIRMED, result.status);
+        }
         await this.#read(id);
       } finally { this.#startWatching(); }
     });
@@ -301,7 +311,7 @@ export class DraftClient {
     const signal = AbortSignal.any([this.#owner.signal, this.#view.signal, owner]);
     const {messages, draft} = await this.#history.synchronize(`${this.#base}/drafts/${id}`, signal).catch(cause => {signal.throwIfAborted(); throw cause;});
     signal.throwIfAborted();
-    this.#replies.reconcile(messages, draft.cancelled_through);
+    this.#replies.reconcile(messages);
     this.#update({...this.#lists.updateDraft(draft), ...messagePatch(this.#snapshot, draft, messages, this.#history.truncated)});
     const answer = latestSaveAnswer(messages);
     if (draft.state !== DRAFT_STATE.editing && draft.linked_fleet_id && answer?.save_requested) {
@@ -315,8 +325,8 @@ export class DraftClient {
     this.#watching.follow({id, path: `${this.#base}/drafts/${id}`, owner: this.#owner.signal, view: this.#view.signal,
       reconcile: async signal => { await this.#read(id, signal); return chatRecovery(this.#snapshot).canStop || Boolean(this.#snapshot.optimistic); },
       progress: {gap: () => this.#replies.gap(), delta: data => this.#snapshot.draft?.id === id
-        && this.#replies.accept(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages),
-        context: data => this.#snapshot.draft?.id === id && this.#replies.context(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages)},
+        && this.#replies.accept(data, id, this.#snapshot.messages),
+        context: data => this.#snapshot.draft?.id === id && this.#replies.context(data, id, this.#snapshot.messages)},
       finished: () => { if (chatRecovery(this.#snapshot).pending) this.#update({notice: "Still waiting for a result."}); },
       failed: cause => this.#failed(cause),
     });
@@ -342,3 +352,6 @@ export class DraftClient {
     this.#snapshot = projectDraftView(this.#snapshot, {...patch, ...this.#requests.view}); for (const listener of this.#listeners) listener();
   }
 }
+
+/** The draft's messages are read again after Stop, so the door's answer is not. */
+function rereadAfterStop(): true { return true; }

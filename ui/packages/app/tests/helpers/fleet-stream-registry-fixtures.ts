@@ -1,4 +1,4 @@
-import type { TurnDetail, TurnRow } from "@/lib/api/events";
+import type { TurnDetail, TurnRow } from "@/lib/api/turns";
 import { afterEach, beforeEach, vi } from "vitest";
 import { __resetRegistryForTests } from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "./fake-event-source";

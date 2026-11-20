@@ -19,7 +19,7 @@ export const REVIEW: Review = {effective: {definition: {schema_version: 1,
     network: {http_egress: "restricted", package_manager_domains: false, allow: []}, budget: {daily_nanos: String(NANOS_PER_USD)}},
   readiness: [], review_digest: "review-one", policy_semantics: "native-setup-1", observed_at: "1970-01-01T00:00:00Z"};
 export const DRAFT: Draft = {id: DRAFT_ID, state: DRAFT_STATE.editing, title: "Investigate failures", etag: '"draft-one"',
-  authoring_model_ref: MODEL_REF, cancelled_through: "0", review: REVIEW,
+  authoring_model_ref: MODEL_REF, review: REVIEW,
   candidate: {id: CANDIDATE_ID, revision: "1", definition: REVIEW.effective.definition, canonical_digest: "candidate-one", policy_semantics: REVIEW.policy_semantics}};
 export const FLEET: Fleet = {id: FLEET_ID, name: "repairer", status: "installing", etag: '"fleet-one"', setup_etag: '"setup-one"',
   setup_revision: "1", webhook_urls: [], setup: {state: "waiting", checks: [{kind: "credentials", subject: "github", state: "blocked",
@@ -33,7 +33,8 @@ export const PENDING_SCHEDULE: Schedule = {...SCHEDULE, sync: "syncing", run_sta
 export const FLEET_DETAIL = {...FLEET, definition: REVIEW.effective.definition, created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z",
   policy_semantics: REVIEW.policy_semantics, events_processed: "3", budget_used_nanos: "9007199254740993",
   pending_approvals: 2, memory_access: {read: true, publish: false}};
-export const MESSAGE: Message = {sequence: "1", operation_id: OPERATION_ID, role: MESSAGE_ROLE.user,
+export const TURN_ID = "0199a801-1000-7000-8000-000000000009";
+export const MESSAGE: Message = {turn_id: TURN_ID, sequence: "1", operation_id: OPERATION_ID, role: MESSAGE_ROLE.user,
   state: MESSAGE_STATE.completed, text: "Investigate failures", created_at: "1970-01-01T00:00:00Z"};
 export const MODEL: WorkspaceModel = {ref: MODEL_REF, label: "Authoring model", provider: "openai", model: "gpt-4o",
   context_window_tokens: 128000, max_output_tokens: 8192, eligibility: {authoring: true, runtime: true},

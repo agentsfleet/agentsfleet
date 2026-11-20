@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { __resetRegistryForTests, CONNECTION_STATUS, getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
 
 const WORKSPACE = "silence-workspace";

@@ -203,7 +203,7 @@ describe("setup route whitelist", () => {
     [["models"], METHOD.get], [["drafts"], METHOD.get], [["drafts"], METHOD.post],
     [["drafts", DRAFT_ID], METHOD.get], [["drafts", DRAFT_ID], METHOD.patch], [["drafts", DRAFT_ID], METHOD.delete],
     [["drafts", DRAFT_ID, "messages"], METHOD.get], [["drafts", DRAFT_ID, "messages"], METHOD.post],
-    [["drafts", DRAFT_ID, "cancellations"], METHOD.post], [["drafts", DRAFT_ID, "turns", "stream"], METHOD.get],
+    [["drafts", DRAFT_ID, "turns", "stream"], METHOD.get], [["drafts", DRAFT_ID, "turns", REVISION_ID], METHOD.patch],
     [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
     [["fleets", FLEET_ID, "authoring-context"], METHOD.get], [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
@@ -233,6 +233,8 @@ describe("setup route whitelist", () => {
     [["drafts", DRAFT_ID, "messages"], METHOD.patch],
     // Only Stop crosses this proxy for a turn: its read keeps the JSON read route.
     [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "turns", "invalid"], METHOD.patch],
+    [["drafts", DRAFT_ID, "turns", REVISION_ID], METHOD.get], [["drafts", DRAFT_ID, "turns", "invalid"], METHOD.patch],
+    [["drafts", DRAFT_ID, "cancellations"], METHOD.post],
     [["plugins"], METHOD.patch], [["plugins", PLUGIN_ID], METHOD.patch],
     [["plugins", ""], METHOD.get], [["plugins", PLUGIN_ID, "revisions"], METHOD.patch],
     [["plugins", PLUGIN_ID, "revisions", REVISION_ID], METHOD.post],

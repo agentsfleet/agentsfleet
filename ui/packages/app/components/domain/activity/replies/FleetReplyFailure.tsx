@@ -3,7 +3,7 @@
 import { memo, useMemo } from "react";
 import { useAui, useAuiState, type MessageState } from "@assistant-ui/react";
 import { useCurrentUser } from "@/lib/auth/client";
-import { isSteerBy, parsePayload } from "@/lib/events/event-summary";
+import { isSteerBy, parsePayload } from "@/lib/turns/turn-summary";
 import { ChatFailure } from "../../shared/chat/ChatFailure";
 import { messageOutcome } from "../messages/fleetFailureCopy";
 import { readFailureDetail, readFailureLabel, readReplyFigures, readRequestJson } from "../messages/fleetMessageReaders";

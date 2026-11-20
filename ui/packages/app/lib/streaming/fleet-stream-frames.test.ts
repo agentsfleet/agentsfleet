@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { type TurnRow, type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { HEADLINE, OUTCOME, THREAD_STATUS } from "@/lib/events/event-summary";
+import { type TurnRow, type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { HEADLINE, OUTCOME, THREAD_STATUS } from "@/lib/turns/turn-summary";
 import { maxServerCreatedAt, mergeBackfill, rfc3339Seconds } from "./fleet-stream-frames";
-import { AGENTSFLEET_EVENT_STATUS, FOLDED_OUTCOME, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS, FOLDED_OUTCOME, type FleetTurn } from "./fleet-stream-row";
 import { MS_PER_SECOND, evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 
 // The merge and the watermark: how a page of durable rows folds into the
@@ -16,26 +16,26 @@ describe("mergeBackfill", () => {
   // `turn_received`, and that frame is spent, so a regression here would hold
   // the row at "Queued" until the turn completes.
   it("should keep a received row running when a server page restates it as queued", () => {
-    const live = evt({ id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, text: "check the tests" });
+    const live = evt({ id: "e1", status: AGENTSFLEET_TURN_STATUS.RECEIVED, text: "check the tests" });
     const merged = mergeBackfill([live], [
       row({ turn_id: "e1", status: THREAD_STATUS.QUEUED, response_text: null }),
     ]);
 
     expect(merged).toHaveLength(1);
-    expect(merged[0]?.status).toBe(AGENTSFLEET_EVENT_STATUS.RECEIVED);
+    expect(merged[0]?.status).toBe(AGENTSFLEET_TURN_STATUS.RECEIVED);
     expect(merged[0]).toBe(live);
   });
 
   // The received frame fell in a gap, so the page is the only word that the
   // message's own run began after the run it was labelled folded into ended.
   it("should start a send labelled folded when a server page says its run began", () => {
-    const live = evt({ id: "e1", status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME, text: "and also this" });
+    const live = evt({ id: "e1", status: AGENTSFLEET_TURN_STATUS.FOLDED, outcome: FOLDED_OUTCOME, text: "and also this" });
     const merged = mergeBackfill([live], [
-      row({ turn_id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, response_text: null }),
+      row({ turn_id: "e1", status: AGENTSFLEET_TURN_STATUS.RECEIVED, response_text: null }),
     ]);
 
     expect(merged).toHaveLength(1);
-    expect(merged[0]).toMatchObject({ text: "and also this", status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(merged[0]).toMatchObject({ text: "and also this", status: AGENTSFLEET_TURN_STATUS.RECEIVED });
     expect(merged[0]?.outcome).not.toBe(FOLDED_OUTCOME);
   });
 
@@ -49,7 +49,7 @@ describe("mergeBackfill", () => {
   });
 
   it("test_backfill_keeps_unchanged_identity", () => {
-    const failed = row({ turn_id: "e2", status: AGENTSFLEET_EVENT_STATUS.AGENT_ERROR, created_at: new Date(2 * MS_PER_SECOND).toISOString(), failure_label: "timeout" });
+    const failed = row({ turn_id: "e2", status: AGENTSFLEET_TURN_STATUS.AGENT_ERROR, created_at: new Date(2 * MS_PER_SECOND).toISOString(), failure_label: "timeout" });
     const page = [
       row({ turn_id: "e1", status: "processed", created_at: new Date(MS_PER_SECOND).toISOString(), request_json: JSON.stringify({ message: "hi" }) }),
       failed,
@@ -75,7 +75,7 @@ describe("mergeBackfill", () => {
       [row({ turn_id: "server", status: "processed", created_at: new Date(3 * MS_PER_SECOND).toISOString() })],
     );
 
-    expect(merged.map((event) => event.id)).toEqual([
+    expect(merged.map((turn) => turn.id)).toEqual([
       "settled", "server", "pending-1", "pending-2",
     ]);
   });
@@ -125,7 +125,7 @@ describe("mergeBackfill", () => {
   });
 
   it("replaces a partial live row with a terminal backfill row of the same id", () => {
-    // An event that straddled an outage: live chunks accumulated a partial
+    // A turn that straddled an outage: live chunks accumulated a partial
     // text, the durable row carries the full final text + terminal status.
     const prev = [evt({ id: "e1", reply: "partial chu", status: "received" })];
     const merged = mergeBackfill(prev, [
@@ -164,7 +164,7 @@ describe("mergeBackfill", () => {
     expect(first?.text).toBe("are you alive");
   });
 
-  it("gives an integration event a headline instead of an empty body", () => {
+  it("gives an integration turn a headline instead of an empty body", () => {
     const [first] = mergeBackfill(
       [],
       [
@@ -191,7 +191,7 @@ describe("mergeBackfill", () => {
 
   it("keeps the live accumulation when the backfill row is still in progress", () => {
     // The live chunk stream is newer than the list snapshot for a running
-    // event — a "received" backfill row must not clobber it.
+    // turn — a "received" backfill row must not clobber it.
     const prev = [evt({ id: "e1", reply: "live chunks so far", status: "received" })];
     const merged = mergeBackfill(prev, [
       row({ turn_id: "e1", status: "received", response_text: "stale snapshot" }),

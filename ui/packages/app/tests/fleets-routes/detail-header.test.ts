@@ -67,7 +67,7 @@ describe("fleets routes — detail header and summary", () => {
   // no longer carries them — so each row is re-read as a detail. A detail that
   // fails must degrade to its list row: the turn keeps its header and outcome
   // and the page still renders. Without that arm the rejection propagates out
-  // of Promise.all and the whole fleet page dies on one bad event.
+  // of Promise.all and the whole fleet page dies on one bad turn.
   it("fleet transcript survives a turn whose detail re-read fails", async () => {
     const listRow = {
       turn_id: "ev_1",

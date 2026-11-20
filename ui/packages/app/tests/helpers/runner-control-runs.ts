@@ -5,7 +5,7 @@ import { RunDestination, RunKind, RunOutcome } from "./runner-control-types";
 const count = z.number().int().nonnegative();
 const text = z.string().min(1);
 
-// RunnerRunItem in afd_api_wire/src/operator.rs. A purged fleet or event
+// RunnerRunItem in afd_api_wire/src/operator.rs. A purged fleet or turn
 // leaves a retained run; its authorized destination is an explicit server fact.
 const RunnerRunSchema = z.object({
   id: text, fleet_id: text, fleet_name: z.string().nullable(), workspace_id: text,

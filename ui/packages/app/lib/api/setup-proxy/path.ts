@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const SETUP_METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
 const RESOURCE = {models: "models", drafts: "drafts", fleets: "fleets", plugins: "plugins"} as const;
-const SUFFIX = {tasks: "tasks", messages: "messages", cancellations: "cancellations", turns: "turns", stream: "stream",
+const SUFFIX = {tasks: "tasks", messages: "messages", turns: "turns", stream: "stream",
   revisions: "revisions", schedules: "schedules", sync: "sync", authoringContext: "authoring-context"} as const;
 const PAGE = ["limit", "starting_after"] as const;
 const uuid = z.uuidv7();
@@ -55,8 +55,9 @@ function draft(parts: readonly string[], method: string): MatchedRoute | undefin
     if (method === SETUP_METHOD.get) return PAGED;
     return method === SETUP_METHOD.post ? ORDINARY : undefined;
   }
-  if (parts.length === 3 && child === SUFFIX.cancellations && method === SETUP_METHOD.post) return ORDINARY;
   if (parts.length === 4 && child === SUFFIX.turns && tail === SUFFIX.stream && method === SETUP_METHOD.get) return {stream: true, query: []};
+  // Stop: a draft turn's status PATCH (`WorkspaceRoute::DraftTurn`).
+  if (parts.length === 4 && child === SUFFIX.turns && uuid.safeParse(tail).success && method === SETUP_METHOD.patch) return ORDINARY;
   return undefined;
 }
 

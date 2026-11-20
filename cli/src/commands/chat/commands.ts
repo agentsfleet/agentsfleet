@@ -42,7 +42,7 @@ export interface ChatOptions {
   readonly publish?: string | undefined;
 }
 
-const USAGE = "agentsfleet chat [draft-id] --model <authoring-ref>";
+const USAGE = "agentsfleet chat [draft-id] --model <setup-model-ref>";
 const DECIMAL_REVISION = /^[1-9][0-9]*$/u;
 const BYTES_PER_KIB = 1024;
 /** `MAX_DEFINITION_BYTES` in rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs: longer Definition text is refused there. */
@@ -113,7 +113,7 @@ function validate(options: ChatOptions) {
     if (options.candidateId && !options.operationId || options.setupEtag && !(setupRecovery && options.apply)) return yield* fail("Recovery identity fields require their matching --operation-id setup action");
     if (Boolean(options.publishTo) !== Boolean(options.pluginEtag) || options.publishTo && !options.publish) return yield* fail("Owned revision publication requires --publish, --publish-to and the inspected --plugin-etag");
     if (options.draftId) yield* requireValidId(options.draftId, "draft_id", USAGE);
-    if (!setupRecovery && !options.draftId && !options.model) return yield* fail("Choose an authoring model with --model");
+    if (!setupRecovery && !options.draftId && !options.model) return yield* fail("Choose a setup model with --model");
     if (options.draftId && (options.fleet && !setupRecovery || options.plugin || options.definition !== undefined || options.model)) return yield* fail("A resumed draft keeps its source and model; use /model for future messages");
     if (Number(Boolean(options.fleet)) + Number(Boolean(options.plugin)) + Number(options.definition !== undefined) > 1) return yield* fail("Choose one source: --fleet, --plugin or --definition");
     if (options.fleet) yield* requireValidId(options.fleet, "fleet_id", USAGE);

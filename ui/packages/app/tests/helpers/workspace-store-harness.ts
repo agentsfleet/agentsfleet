@@ -5,11 +5,11 @@ import type {
   WorkspaceControlFrame,
   WorkspaceHelloFrame,
   WorkspaceLiveFrame,
-} from "@/lib/api/events";
+} from "@/lib/api/turns";
 import type { BackfillOutcome, WorkspaceBackfillRequest } from "@/lib/streaming/fleet-stream-backfill";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { HEADLINE } from "@/lib/events/event-payload";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { HEADLINE } from "@/lib/turns/turn-payload";
 
 // The wall's store is proven against captured subscriptions rather than a fake
 // EventSource: the claims are about what the store does with a frame it was

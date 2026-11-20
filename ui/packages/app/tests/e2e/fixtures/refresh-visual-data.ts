@@ -1,5 +1,5 @@
-import {visualWakeupEvents} from "./refresh-wakeup-data";
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import {visualWakeupTurns} from "./refresh-wakeup-data";
+import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import type { TaskPage } from "@/lib/api/tasks";
 import { detail, summary, TASK_IDS } from "@/tests/helpers/task-reads";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
@@ -8,9 +8,9 @@ export const VISUAL_SCENARIOS = ["empty", "running", "completed", "activity", "w
 export type VisualScenario = typeof VISUAL_SCENARIOS[number];
 
 /** Explicit sample records, shared by the transcript and its Summary readers. */
-export function visualEvents(scenario: VisualScenario, started: number, includeCode = false): FleetEvent[] {
+export function visualTurns(scenario: VisualScenario, started: number, includeCode = false): FleetTurn[] {
   if (scenario === "empty") return [];
-  if (scenario === "wake-up") return visualWakeupEvents(started);
+  if (scenario === "wake-up") return visualWakeupTurns(started);
   const completed = scenario === "completed" || scenario === "activity";
   const tools: FleetToolCall[] = [
     tool("read", "http_request", {url: "https://api.github.com/repos/agentsfleet/platform-images/actions/runs"}, started),

@@ -1,11 +1,11 @@
 /** Native EventSource and the real page; fixture SSE/history responses select
  * delivery failures. Rust integration owns durable publication and recovery. */
 import type { Page } from "@playwright/test";
-import type { TurnRow, TurnsPage } from "@/lib/api/events";
+import type { TurnRow, TurnsPage } from "@/lib/api/turns";
 import { expect, test } from "@playwright/test";
 import { RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { formatCompactCount } from "@/lib/events/run-figures-format";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { formatCompactCount } from "@/lib/turns/run-figures-format";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref } from "./fixtures/nav";
@@ -46,7 +46,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   const historyPath = streamPath.replace(/\/stream$/, "");
   const counts = { streamRequests: 0, deliveredStreams: 0, historyReads: 0, pageRefreshes: 0 };
   const errors: string[] = [];
-  const row = eventRow(createdAt);
+  const row = turnRow(createdAt);
   // The daemon inlines the settled answer on the completion frame
   // (afd_fleet run/bracket.rs `publish_completion`); the browser shows it
   // without a detail read.
@@ -153,7 +153,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
   }
 });
 
-function eventRow(createdAt: number): Omit<TurnRow, "fleet_id" | "workspace_id"> {
+function turnRow(createdAt: number): Omit<TurnRow, "fleet_id" | "workspace_id"> {
   return {
     turn_id: TURN_ID, actor: `webhook:${LIVE_SENDER}`, event_type: "webhook", status: STATUS.PROCESSED,
     created_at: new Date(createdAt).toISOString(), updated_at: new Date(createdAt).toISOString(), tokens: LIVE_TOKENS, wall_ms: 2_500,
@@ -162,7 +162,7 @@ function eventRow(createdAt: number): Omit<TurnRow, "fleet_id" | "workspace_id">
   };
 }
 
-function openingFrames(complete: ReturnType<typeof eventRow>): string {
+function openingFrames(complete: ReturnType<typeof turnRow>): string {
   return [
     frame(FRAME_KIND.TURN_RECEIVED, {
       turn_id: TURN_ID, actor: complete.actor, created_at: complete.created_at,

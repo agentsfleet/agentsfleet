@@ -1,5 +1,5 @@
 import type { FleetSources } from "@/lib/fleet-sources";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { TaskDetails } from "../../tasks/use-task-details";
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
@@ -44,8 +44,8 @@ function PullRequestSection({title, records}: {title: string; records: PullReque
 }
 
 
-export function WorkChanges({events}: {events: readonly FleetEvent[]}) {
-  const changes = recordedChanges(events);
+export function WorkChanges({turns}: {turns: readonly FleetTurn[]}) {
+  const changes = recordedChanges(turns);
   if (!changes.length) return null;
   return <WorkSection title="Changes"><RecordedChangesDialog changes={changes}>
     <Button variant="ghost" size="compact" className="w-full justify-start gap-md px-0 text-left text-foreground">

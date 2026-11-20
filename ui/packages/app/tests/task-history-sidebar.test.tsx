@@ -30,22 +30,22 @@ it("retains Outputs when current work finishes and recovers them after reload fr
     return Response.json({...saved, context: {...saved.context, target: TARGET}});
   });
   vi.stubGlobal("fetch", network);
-  const events = history(TASK_IDS[0]);
-  const view = render(<TaskPanel {...SCOPE} events={events} />);
+  const turns = history(TASK_IDS[0]);
+  const view = render(<TaskPanel {...SCOPE} turns={turns} />);
   await screen.findByRole("region", {name: "Pull requests"});
   const outputs = () => within(screen.getByRole("region", {name: "Pull requests"}));
   await screen.findByRole("region", {name: "Pull requests"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(network).toHaveBeenCalledTimes(2);
-  view.rerender(<TaskPanel {...SCOPE} events={events.map(event => ({...event, reply: "More streamed words"}))} />);
+  view.rerender(<TaskPanel {...SCOPE} turns={turns.map(turn => ({...turn, reply: "More streamed words"}))} />);
   expect(network).toHaveBeenCalledTimes(2);
   unfinished = false;
-  view.rerender(<TaskPanel {...SCOPE} revision={1} events={events} />);
+  view.rerender(<TaskPanel {...SCOPE} revision={1} turns={turns} />);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
   expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
   expect(outputs().getByRole("link")).toHaveProperty("href", TARGET.url);
   view.unmount();
-  render(<TaskPanel {...SCOPE} events={events} />);
+  render(<TaskPanel {...SCOPE} turns={turns} />);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(6));
   expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
   await screen.findByRole("region", {name: "Pull requests"});
@@ -60,8 +60,8 @@ it("hides all metadata until list authorization, including loading after access 
   const network = vi.fn<typeof fetch>().mockReturnValueOnce(first.promise)
     .mockResolvedValueOnce(new Response(null, {status: 403})).mockReturnValueOnce(retry.promise);
   vi.stubGlobal("fetch", network);
-  const events = history(TASK_IDS[0]);
-  const view = render(<TaskPanel {...SCOPE} events={events} sources={SOURCES} />);
+  const turns = history(TASK_IDS[0]);
+  const view = render(<TaskPanel {...SCOPE} turns={turns} sources={SOURCES} />);
   expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Tasks"})).toBeNull();
   expect(network).toHaveBeenCalledTimes(1);
@@ -69,7 +69,7 @@ it("hides all metadata until list authorization, including loading after access 
   await screen.findByRole("region", {name: "Sources"});
   // The historical detail request receives 403; a new list authorization then fails too.
   await waitFor(() => expect(network).toHaveBeenCalledTimes(2));
-  view.rerender(<TaskPanel {...SCOPE} revision={1} events={events} sources={SOURCES} />);
+  view.rerender(<TaskPanel {...SCOPE} revision={1} turns={turns} sources={SOURCES} />);
   retry.resolve(new Response(null, {status: 403}));
   await screen.findByText("Current work is unavailable.");
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
@@ -82,8 +82,8 @@ it("hides all metadata until list authorization, including loading after access 
 
 it("bounds recent native history, ignores unowned or prose IDs and excludes current duplicates", () => {
   const ids = Array.from({length: 20}, (_, i) => `019a42b0-0000-7000-8000-${String(i).padStart(12, "0")}`);
-  const events = [evt({reply: TASK_IDS[1]}), ...history(...ids, null, TASK_IDS[0], ids[0]!)];
-  const recent = recentTaskIds(events, [summary()]);
+  const turns = [evt({reply: TASK_IDS[1]}), ...history(...ids, null, TASK_IDS[0], ids[0]!)];
+  const recent = recentTaskIds(turns, [summary()]);
   expect(recent).toHaveLength(16);
   expect(recent[0]).toBe(ids[0]);
   expect(recent).not.toContain(TASK_IDS[0]);

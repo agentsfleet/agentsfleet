@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame, parseLiveFrame } from "./fleet-stream-frames";
 import { TOOL_CALL_STATUS } from "./fleet-stream-tool-trace";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
@@ -57,7 +57,7 @@ describe("tool frames with required identifiers and outcomes", () => {
     expect(done[0]?.tools?.[0]).toBe(open[0]?.tools?.[0]);
     expect(done[0]?.tools?.[1]).toMatchObject({callId: SECOND, done: true, status: SUCCESS});
   });
-  it("drops a tool frame without an admitted event", () => {
+  it("drops a tool frame without an admitted turn", () => {
     const empty: ReturnType<typeof seed> = [];
     expect(applyLiveFrame(empty, started(), START)).toBe(empty);
   });

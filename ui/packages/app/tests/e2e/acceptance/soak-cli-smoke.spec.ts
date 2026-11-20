@@ -102,18 +102,18 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
     for (let index = 0; index < RUNTIME_TURNS; index++) {
       const input = `For project ${name}: ${runtimeMessage(index + 1)}`;
       const turn: Turn = {stage: "runtime", turn: index + 1, input, sentAt: new Date().toISOString(),
-        reference: {fleet: evidence.fleet, event: null}};
+        reference: {fleet: evidence.fleet, turn: null}};
       turns.push(turn);
       const steered = await spawnAgentsfleet(["--json", "fleet", "steer", evidence.fleet!, input], env, TURN_TIMEOUT_MS);
       turn.exit = steered.code; turn.doneAt = new Date().toISOString();
       if (steered.code !== 0) turn.stderr = steered.stderr.slice(-4000);
       const rows = (await runtimeHistory(client, `${base}/fleets/${evidence.fleet}`)).filter((row) => row.event_type === "chat");
-      const event = rows.find((row) => Steered.safeParse(JSON.parse(row.request_json)).data?.message === input);
-      turn.reference.event = event?.turn_id ?? null; turn.reply = event?.response_text ?? undefined; turn.state = event?.status;
+      const saved = rows.find((row) => Steered.safeParse(JSON.parse(row.request_json)).data?.message === input);
+      turn.reference.turn = saved?.turn_id ?? null; turn.reply = saved?.response_text ?? undefined; turn.state = saved?.status;
       expect(steered.code, `runtime turn ${index + 1} exit: ${steered.stderr}`).toBe(0);
-      expect(event?.status, `runtime turn ${index + 1}: ${event?.failure_label ?? ""}`).toBe("processed");
-      expect(event?.response_text?.trim().length, `runtime turn ${index + 1} reply text`).toBeGreaterThan(0);
-      console.log(JSON.stringify({cli: "runtime", turn: index + 1, event: event?.turn_id, status: "PASS"}));
+      expect(saved?.status, `runtime turn ${index + 1}: ${saved?.failure_label ?? ""}`).toBe("processed");
+      expect(saved?.response_text?.trim().length, `runtime turn ${index + 1} reply text`).toBeGreaterThan(0);
+      console.log(JSON.stringify({cli: "runtime", turn: index + 1, turn_id: saved?.turn_id, status: "PASS"}));
     }
 
     // History keeps every input once, in order, with its own reply.

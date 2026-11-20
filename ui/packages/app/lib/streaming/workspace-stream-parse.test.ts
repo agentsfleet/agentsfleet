@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { parseWorkspaceFrame } from "./workspace-stream-parse";
 
 const FLEET_A = "z_a";

@@ -2,7 +2,7 @@ import { ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, renderHook, screen } from "@testing-library/react";
 import { FIRST_VISIBLE_MEASURE, useFirstVisiblePaint } from "@/components/domain/activity/replies/useFirstVisiblePaint";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { OUTCOME } from "@/lib/turns/turn-summary";
 import { applyReplyGone } from "@/lib/streaming/fleet-stream-reply-frames";
 import { TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
 
@@ -149,7 +149,7 @@ describe("FleetThread — reasoning disclosure", () => {
     expect(screen.queryByRole("button", { name: "Copy reply" })).toBeNull();
   });
 
-  it("settles a reply whose event is gone with a line, and no loading label", () => {
+  it("settles a reply whose turn is gone with a line, and no loading label", () => {
     const recovering = ev({ role: "assistant", actor: "fleet", reply: "Partial draft", replyRecovering: true, status: "processed" });
     mockStream(applyReplyGone([recovering], recovering.id));
     renderThread();
@@ -199,16 +199,16 @@ describe("FleetThread — reasoning disclosure", () => {
     vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
     const measure = vi.spyOn(performance, "measure").mockImplementation(() => ({} as PerformanceMeasure));
     try {
-      const event = ev({ role: "assistant", actor: "fleet", status: "received", submittedAtMs: 1,
+      const turn = ev({ role: "assistant", actor: "fleet", status: "received", submittedAtMs: 1,
         tools: [{ name: TOOL_NAME.MEMORY_RECALL, startedAtMs: 1, ms: null, done: false }] });
-      mockStream([event]);
+      mockStream([turn]);
       const view = renderThread();
       expect(screen.getByRole("status", {name: "Working"})).toBeTruthy();
       expect(screen.queryByRole("button", {name: /^Tool activity:/})).toBeNull();
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       expect(measure).not.toHaveBeenCalled();
-      mockStream([{...event, tools: [...(event.tools ?? []), {name: TOOL_NAME.FILE_READ, startedAtMs: 2, ms: null, done: false}]}]);
+      mockStream([{...turn, tools: [...(turn.tools ?? []), {name: TOOL_NAME.FILE_READ, startedAtMs: 2, ms: null, done: false}]}]);
       view.rerender(threadElement());
       // The grouped command disclosure is visible before its individual calls.
       expect(screen.getByRole("button", {name: /^Tool activity:/})).toBeTruthy();
@@ -231,15 +231,15 @@ describe("FleetThread — reasoning disclosure", () => {
     });
     vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
     const measure = vi.spyOn(performance, "measure").mockImplementation(() => ({} as PerformanceMeasure));
-    const event = ev({ id: "evt_tool_then_answer", role: "user", actor: "operator", text: "Read the release checklist",
+    const turn = ev({ id: "evt_tool_then_answer", role: "user", actor: "operator", text: "Read the release checklist",
       status: "received", submittedAtMs: 1, tools: [{ name: TOOL_NAME.FILE_READ, startedAtMs: 1, ms: null, done: false }] });
     try {
-      mockStream([event]);
+      mockStream([turn]);
       const view = renderThread();
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       expect(measure).toHaveBeenCalledTimes(1);
-      mockStream([{ ...event, reply: "Answer", status: "processed" }]);
+      mockStream([{ ...turn, reply: "Answer", status: "processed" }]);
       view.rerender(threadElement());
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
@@ -262,7 +262,7 @@ describe("FleetThread — reasoning disclosure", () => {
     vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
     const measure = vi.spyOn(performance, "measure").mockImplementation(() => ({} as PerformanceMeasure));
     try {
-      // Three mounts: the same event and submission twice (one paint), and a
+      // Three mounts: the same turn and submission twice (one paint), and a
       // second submission of it (its own paint).
       renderHook(() => useFirstVisiblePaint("evt_same_id_two_fleets", 2, true));
       renderHook(() => useFirstVisiblePaint("evt_same_id_two_fleets", 2, true));

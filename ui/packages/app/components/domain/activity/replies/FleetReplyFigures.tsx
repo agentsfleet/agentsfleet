@@ -6,7 +6,7 @@ import {
 } from "@agentsfleet/design-system";
 
 import { formatDollars } from "@/lib/money";
-import { formatCompactCount, formatRunDuration, runFigure } from "@/lib/events/run-figures-format";
+import { formatCompactCount, formatRunDuration, runFigure } from "@/lib/turns/run-figures-format";
 import type { ReplyFigures } from "../messages/fleetMessageReaders";
 import { readTaskActivityHistory } from "@/lib/task-activity";
 import { TaskActivityTimeline } from "../../tasks/TaskActivityTimeline";

@@ -35,7 +35,7 @@ export interface ErrorInput {
   /**
    * What the operator was trying to do, in present-tense lowercase. Used
    * to construct the fallback when no errorCode matches. Examples:
-   *   "delete this Fleet", "store the credential", "load more events".
+   *   "delete this Fleet", "store the credential", "load more turns".
    */
   action: string;
 }

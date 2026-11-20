@@ -12,7 +12,7 @@ export type ChatActivityRowProps = {
 };
 
 /** An activity uses one icon, a short heading and the same local clock as turns. */
-export function ChatActivityRow({sender, title, headline, createdAt, messageRole, outcome, failed, annotation, detailsLabel = "View event", children}: ChatActivityRowProps) {
+export function ChatActivityRow({sender, title, headline, createdAt, messageRole, outcome, failed, annotation, detailsLabel = "View turn", children}: ChatActivityRowProps) {
   const Icon = title ? ClockIcon : BellIcon;
   return <div data-role={messageRole} data-compact="true" data-failed={failed || undefined}
     className="flex w-full min-w-0 items-start gap-md py-lg text-conversation leading-conversation text-muted-foreground">

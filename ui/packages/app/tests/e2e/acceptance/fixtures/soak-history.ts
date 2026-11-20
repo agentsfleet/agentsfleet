@@ -11,7 +11,7 @@ const ThreadItem = z.object({
   failure_label: z.string().nullable().optional(),
 });
 const ThreadPage = z.object({items: z.array(ThreadItem), next_cursor: z.string().nullable()});
-export type SoakEvent = z.infer<typeof ThreadItem>;
+export type SoakTurn = z.infer<typeof ThreadItem>;
 
 /** Read every page; a duplicate cursor must fail rather than hide older turns. */
 export async function draftHistory(client: ApiClient, scope: string): Promise<Message[]> {
@@ -37,8 +37,8 @@ export async function threadPage(client: ApiClient, scope: string, cursor: strin
   return ThreadPage.parse(await client.get<unknown>(`${scope}/messages?${query}`));
 }
 
-export async function runtimeHistory(client: ApiClient, scope: string): Promise<SoakEvent[]> {
-  const rows: SoakEvent[] = [];
+export async function runtimeHistory(client: ApiClient, scope: string): Promise<SoakTurn[]> {
+  const rows: SoakTurn[] = [];
   const seen = new Set<string>();
   let cursor: string | null = null;
   for (let page = 0; page < SOAK.maxHistoryPages; page++) {

@@ -3,8 +3,8 @@ import {
   type WorkspaceControlFrame,
   type WorkspaceHelloFrame,
   type WorkspaceLiveFrame,
-} from "@/lib/api/events";
-import { FRAME_KIND, ROUTED_FRAME_KINDS, streamWorkspaceTurnsUrl } from "@/lib/api/events-types";
+} from "@/lib/api/turns";
+import { FRAME_KIND, ROUTED_FRAME_KINDS, streamWorkspaceTurnsUrl } from "@/lib/api/turns-types";
 import { cancelPendingReconnect } from "@/lib/streaming/fleet-stream-reconnect";
 import { isWorkspaceFrame, parseWorkspaceFrame } from "@/lib/streaming/workspace-stream-parse";
 
@@ -19,7 +19,7 @@ import { isWorkspaceFrame, parseWorkspaceFrame } from "@/lib/streaming/workspace
 // Reconnect discipline mirrors fleet-stream-registry.ts: the connection
 // survives a route change up to IDLE_RELEASE_MS after its last subscriber
 // detaches, reconnects with capped backoff, and — on a reconnect open, never
-// the first — backfills the gap through the same-origin workspace events proxy.
+// the first — backfills the gap through the same-origin workspace turns proxy.
 // A wall that comes back inside that grace joins after the connection's
 // `hello`, so the entry keeps the newest set for it (see `lastGreeting`).
 // Frame validation lives in workspace-stream-parse.ts.
@@ -40,7 +40,7 @@ export type WorkspaceConnectionStatus =
 export type StatusListener = (status: WorkspaceConnectionStatus) => void;
 
 // The gap-recovery hook. The wall injects a workspace-scoped backfill walk here
-// (paging the durable events list) so this module stays free of fetch/proxy
+// (paging the durable turns list) so this module stays free of fetch/proxy
 // details and is unit-testable without a network. Called on every reconnect
 // open, never the first. `sinceMs` is the newest server-confirmed frame time,
 // or null before any has arrived.

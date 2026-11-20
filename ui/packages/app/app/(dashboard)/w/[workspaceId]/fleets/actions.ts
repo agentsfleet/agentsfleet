@@ -9,7 +9,7 @@ import {
   type FleetStatusSettable,
   type FleetStatusUpdate,
 } from "@/lib/api/fleets";
-import { getFleetTurn as apiGetFleetTurn, type TurnDetail } from "@/lib/api/events";
+import { getFleetTurn as apiGetFleetTurn, type TurnDetail } from "@/lib/api/turns";
 import { forgetMemory as apiForgetMemory, setMemoryAccess as apiSetMemoryAccess, listAllMemories } from "@/lib/api/memory";
 import type {
   MemoryAccess,
@@ -23,10 +23,10 @@ export async function listFleetsAction(
 }
 
 /**
- * One event's bodies, for a row the operator expanded.
+ * One turn's bodies, for a row the operator expanded.
  *
- * The events list carries no request or response body — it is kept off
- * oversized-attribute storage — so the dialog asks for them per event. It goes
+ * The turns list carries no request or response body — it is kept off
+ * oversized-attribute storage — so the dialog asks for them per turn. It goes
  * through an action rather than a browser fetch because the dashboard's
  * credential never leaves the server (lint: the ast-grep rule
  * app-client-credential).

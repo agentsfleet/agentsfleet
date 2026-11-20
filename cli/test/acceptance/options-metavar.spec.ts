@@ -212,7 +212,7 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.match(hit.url, /[?&]limit=50(&|$)/);
   });
 
-  it("events <id> --limit 100 --since 2h --actor 'steer:*' → GET ...events?actor=&since=&limit=", async () => {
+  it("fleet turns <id> --limit 100 --since 2h --actor 'steer:*' → GET .../turns?actor=&since=&limit=", async () => {
     clear();
     const result = await runFleetctl(
       ["fleet", "turns", FIXTURE_UUIDV7, "--limit", "100", "--since", "2h", "--actor", "steer:*", "--json"],

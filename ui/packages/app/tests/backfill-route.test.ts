@@ -3,7 +3,7 @@
 //
 // The non-stream sibling of sse-route.test.ts: same Clerk trust boundary
 // (cookie-authed browser → Bearer-only `agentsfleetd`), but a buffered JSON
-// events page instead of a piped stream. Coverage pins the auth, query
+// turns page instead of a piped stream. Coverage pins the auth, query
 // forwarding, and error-passthrough behavior the reconnect backfill
 // (fleet-stream-registry) depends on.
 

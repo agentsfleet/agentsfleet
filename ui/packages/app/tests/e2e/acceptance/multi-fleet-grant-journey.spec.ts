@@ -14,7 +14,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   anyRunnerLive,
   assertPassed,
-  classifyTerminalEvent,
+  classifyTerminalTurn,
   failWith,
   findRunFor,
   JOURNEY_LEG,
@@ -205,10 +205,10 @@ test.describe.serial("multi-fleet grant journey", () => {
       "a delivery whose grant already stands must run, not park",
     ).not.toBeNull();
 
-    // Every model turn is its own event. A continuation that asked again would
+    // Every model call is its own turn. A continuation that asked again would
     // raise a card mid-run, which is the defect M202 closed — so the inbox is
     // read after the run, not only after the install.
-    assertPassed(classifyTerminalEvent(await awaitTerminalTurn(workspaceId, fleet.id)));
+    assertPassed(classifyTerminalTurn(await awaitTerminalTurn(workspaceId, fleet.id)));
     expect(
       await observed(JOURNEY_LEG.observe, () =>
         pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleet.id),
@@ -246,7 +246,7 @@ test.describe.serial("multi-fleet grant journey", () => {
     );
 
     await messageFleet(page, workspaceId, fleet.id, `${MESSAGE_PREFIX}${uniqueTag()}`);
-    assertPassed(classifyTerminalEvent(await awaitTerminalTurn(workspaceId, fleet.id)));
+    assertPassed(classifyTerminalTurn(await awaitTerminalTurn(workspaceId, fleet.id)));
     await expectAnsweredOnScreen(page, workspaceId, fleet.id);
 
     // Both fleets spent something of their own, so the fall below is theirs and
@@ -255,7 +255,7 @@ test.describe.serial("multi-fleet grant journey", () => {
       const counters = await observed(JOURNEY_LEG.observe, () =>
         readFleetCounters(FIXTURE_KEY.regular, workspaceId, fleetId),
       );
-      expect(BigInt(counters.events_processed), `fleet ${fleetId} processed no event`).toBeGreaterThan(0n);
+      expect(BigInt(counters.events_processed), `fleet ${fleetId} processed no turn`).toBeGreaterThan(0n);
     }
     expect(
       await observed(JOURNEY_LEG.observe, () => chargedToFleets(FIXTURE_KEY.regular, both)),

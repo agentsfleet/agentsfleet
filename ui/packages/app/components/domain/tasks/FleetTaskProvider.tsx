@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { TaskPage, TaskSummary } from "@/lib/api/tasks";
 import type { FleetSources } from "@/lib/fleet-sources";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { Schedule } from "@/lib/api/draft-types";
 import type { TaskResource } from "./use-task-read";
 import type { TaskDetails } from "./use-task-details";
@@ -16,32 +16,32 @@ import { currentTaskRef, recentTaskIds } from "./task-references";
 
 export type FleetTaskProps = {
   workspaceId: string; fleetId: string; subject: string | null; revision: number;
-  events?: readonly FleetEvent[]; sources?: FleetSources; schedules?: readonly Schedule[];
+  turns?: readonly FleetTurn[]; sources?: FleetSources; schedules?: readonly Schedule[];
   approvals?: {count: number; href: string};
   approvalRevision?: number;
   readOnly?: boolean;
 };
 export type FleetTaskReadState = {scope: string; resource: TaskResource<TaskPage>; details: TaskDetails; references: readonly TaskReference[]; retry: () => void; retryDetails: () => void};
 type ViewState = FleetTaskProps & {read: FleetTaskReadState | null};
-/** What a linked-work card needs; stream events and schedules do not reach it. */
+/** What a linked-work card needs; stream turns and schedules do not reach it. */
 type LinkedWorkState = {subject: string | null; read: FleetTaskReadState | null};
 const EMPTY_DETAILS: TaskDetails = new Map();
 const EMPTY_TASKS: readonly TaskSummary[] = [];
-const EMPTY_EVENTS: readonly FleetEvent[] = [];
+const EMPTY_TURNS: readonly FleetTurn[] = [];
 const DetailContext = createContext<TaskDetails>(EMPTY_DETAILS);
 const ViewContext = createContext<ViewState | null>(null);
 const LinkedWorkContext = createContext<LinkedWorkState | null>(null);
 
 /** Key only the data owner: revocation must not remount the conversation draft. */
-export function FleetTaskProvider({children, workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly = false}: FleetTaskProps & {children: ReactNode}) {
-  const props = {workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly};
+export function FleetTaskProvider({children, workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly = false}: FleetTaskProps & {children: ReactNode}) {
+  const props = {workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly};
   const [read, publish] = useState<FleetTaskReadState | null>(null);
   const scope = `${props.subject}:${props.workspaceId}:${props.fleetId}`;
   const owned = props.subject && read?.scope === scope ? read : null;
   const details = owned && confirmed(owned.resource) ? owned.details : EMPTY_DETAILS;
   useEffect(() => {if (!subject) publish(null);}, [subject]);
-  const view = useMemo<ViewState>(() => ({workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly, read: owned}),
-    [workspaceId, fleetId, subject, revision, events, sources, schedules, approvals, approvalRevision, readOnly, owned]);
+  const view = useMemo<ViewState>(() => ({workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly, read: owned}),
+    [workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly, owned]);
   const linked = useMemo<LinkedWorkState>(() => ({subject, read: owned}), [subject, owned]);
   return <DetailContext value={details}><LinkedWorkContext value={linked}><ViewContext value={view}>
     {props.subject ? <TaskReadOwner key={scope} {...props} scope={scope} publish={publish} /> : null}
@@ -53,12 +53,12 @@ export const useFleetTaskDetails = () => useContext(DetailContext);
 export const useFleetTaskView = () => useContext(ViewContext);
 export const useFleetLinkedWork = () => useContext(LinkedWorkContext);
 
-function TaskReadOwner({workspaceId, fleetId, revision, events = EMPTY_EVENTS, scope, publish}: FleetTaskProps & {scope: string; publish: (read: FleetTaskReadState) => void}) {
+function TaskReadOwner({workspaceId, fleetId, revision, turns = EMPTY_TURNS, scope, publish}: FleetTaskProps & {scope: string; publish: (read: FleetTaskReadState) => void}) {
   const load = useCallback((signal: AbortSignal) => readTasks(workspaceId, fleetId, signal), [workspaceId, fleetId]);
   const {resource, retry} = useTaskRead(load, revision);
   const page = confirmed(resource);
   const tasks = page?.items ?? EMPTY_TASKS;
-  const historyKey = page ? recentTaskIds(events, tasks).join(",") : "";
+  const historyKey = page ? recentTaskIds(turns, tasks).join(",") : "";
   const references = useMemo<TaskReference[]>(() => [...tasks.map(currentTaskRef),
     ...historyKey.split(",").filter(Boolean).map(id => ({kind: "historical" as const, id}))], [tasks, historyKey]);
   const {details, retry: retryDetails} = useTaskDetails(workspaceId, fleetId, references);

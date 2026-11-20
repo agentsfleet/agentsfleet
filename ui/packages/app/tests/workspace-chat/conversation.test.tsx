@@ -7,7 +7,7 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
 import { SetupProgress } from "@/components/domain/setup/summary/SetupProgress";
 import { LOAD_MORE_COPY } from "@/components/domain/setup/conversation/DraftLoadMore";
-import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND } from "@/lib/turns/fleet-activity";
 import { ChatFixture, CHAT_PROPS } from "./fixture";
 import { DRAFT, FLEET, MESSAGE, MODEL, response } from "@/tests/helpers/draft-fixtures";
 
@@ -24,7 +24,7 @@ it("opens complete creator history from the workspace authoring route and permit
   const older = "0199a801-1000-7000-8000-000000000009";
   const load = vi.spyOn(client, "loadEarlierConversations").mockRejectedValue(new Error("History temporarily unavailable"));
   const view: DraftView = {...client.getSnapshot(), draft: DRAFT, messages: [MESSAGE], truncated: true, conversationCursor: "older",
-    previousDrafts: [{id: older, messages: [], cancelledThrough: "0", truncated: true}]};
+    previousDrafts: [{id: older, messages: [], truncated: true}]};
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
   expect(screen.getByRole("link", {name: "Open full conversation"}).getAttribute("href")).toBe(`/w/${CHAT_PROPS.workspace}/fleets/new?draft=${DRAFT.id}`);
   expect(screen.getByRole("link", {name: "Open full earlier conversation"}).getAttribute("href")).toBe(`/w/${CHAT_PROPS.workspace}/fleets/new?draft=${older}`);
@@ -89,13 +89,13 @@ it.each([false, true])("shows the new-fleet entrance only before an empty draft 
   }
 });
 
-it("stops authoring at the durable watermark and replaces Working with the terminal result", async () => {
+it("stops authoring through the turn's PATCH and replaces Working with the terminal result", async () => {
   fixture.messages = [{...MESSAGE, role: "assistant", text: undefined, state: "running"}];
   const base = fixture.fetch.getMockImplementation()!;
   fixture.fetch.mockImplementation(async (input, init) => {
-    if ((typeof input === "string" ? input : input instanceof URL ? input.href : input.url).endsWith("/cancellations")) {
+    if (init?.method === "PATCH" && (typeof input === "string" ? input : input instanceof URL ? input.href : input.url).endsWith(`/turns/${MESSAGE.turn_id}`)) {
       fixture.messages = [{...MESSAGE, role: "assistant", state: "cancelled", text: undefined}];
-      return response({cancelled_through: MESSAGE.sequence, stopped: [{sequence: MESSAGE.sequence, state: "cancelled"}]});
+      return response({sequence: MESSAGE.sequence, state: "cancelled"});
     }
     return base(input, init);
   });

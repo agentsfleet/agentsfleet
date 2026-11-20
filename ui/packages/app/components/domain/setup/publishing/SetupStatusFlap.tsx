@@ -9,7 +9,7 @@ import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { MESSAGE_STATE } from "@/lib/api/draft-types";
 import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, saveDoneText } from "@/lib/turns/fleet-activity";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { ChatProgressLabel } from "../../shared/chat/ChatProgressLabel";
 

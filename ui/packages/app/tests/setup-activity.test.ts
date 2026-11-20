@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { fleetActivityText, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+import { fleetActivityText, FLEET_ACTIVITY } from "@/lib/turns/fleet-activity";
 
 import { draftThreadMessages } from "@/lib/api/draft-thread-messages";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
@@ -39,7 +39,7 @@ it("reads a durable setup occurrence again after the client is recreated", async
 it("keeps setup saved before the next request and its working reply", () => {
   const later = {...MESSAGE, sequence: "2", state: "running", created_at: "2026-10-26T08:01:00Z"} as const;
   const projected = draftThreadMessages({...EMPTY_DRAFT_VIEW, messages: [later], activities: [RECEIPT],
-    previousDrafts: [{id: DRAFT_ID, cancelledThrough: "0", messages: [MESSAGE]}]});
+    previousDrafts: [{id: DRAFT_ID, messages: [MESSAGE]}]});
   expect(projected.map(row => row.id)).toEqual([`${DRAFT_ID}:1:user`, `activity:${RECEIPT.turn_id}`, "2:user", "2:assistant"]);
 });
 
@@ -86,7 +86,7 @@ it("does not expose extra fields carried by an otherwise valid access event", ()
 });
 
 // Value: protects=safe readable persisted activity summaries; fails_when=permission states reverse or an extra payload field leaks into chat;
-// why_new=existing valid-event assertions covered access only; seam=none; no_claim=database receipt storage.
+// why_new=existing valid-turn assertions covered access only; seam=none; no_claim=database receipt storage.
 it("renders saved readiness and each memory-sharing state from permitted activity fields only", () => {
   const hidden = "unapproved event payload";
   expect(fleetActivityText(JSON.stringify({kind: "setup_ready", revision: "3", body: hidden}))).toBe("Setup done · v3");

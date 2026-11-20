@@ -3,7 +3,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 
 import type { AppendMessage } from "@assistant-ui/react";
-import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
+import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/turns/turn-summary";
 import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
@@ -13,7 +13,7 @@ const TEST_SUBJECT = "user_fleet_thread";
 const {
   routerRefreshMock,
   postSteerMock,
-  useFleetEventStreamMock,
+  useFleetTurnStreamMock,
   capturedOnNew,
   capturedRun,
   signedIn,
@@ -23,7 +23,7 @@ const {
   threadPath: "/w/ws_thread/fleets/fleet_thread",
   routerRefreshMock: vi.fn(),
   postSteerMock: vi.fn(),
-  useFleetEventStreamMock: vi.fn(),
+  useFleetTurnStreamMock: vi.fn(),
   // Capture the `onNew` callback wired into the external-store runtime so a
   // test can drive it with content the composer UI never emits (e.g. an
   // image-only append) to reach `extractMessageText`'s no-text-part path.
@@ -76,25 +76,25 @@ vi.mock("@assistant-ui/react", async () => {
   };
 });
 
-vi.mock("@/components/domain/conversation/stream/useFleetEventStream", async () => {
+vi.mock("@/components/domain/conversation/stream/useFleetTurnStream", async () => {
   const actual = await vi.importActual<
-    typeof import("@/components/domain/conversation/stream/useFleetEventStream")
-  >("@/components/domain/conversation/stream/useFleetEventStream");
+    typeof import("@/components/domain/conversation/stream/useFleetTurnStream")
+  >("@/components/domain/conversation/stream/useFleetTurnStream");
   return {
     ...actual,
-    useFleetEventStream: useFleetEventStreamMock,
+    useFleetTurnStream: useFleetTurnStreamMock,
   };
 });
 
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import type { TurnDetail, TurnRow } from "@/lib/api/events";
-// The mocked module spreads the real one, so `convertEvent` is the production
+import type { TurnDetail, TurnRow } from "@/lib/api/turns";
+// The mocked module spreads the real one, so `convertTurn` is the production
 // converter: a row renders here exactly as the live stream would hand it over.
 import {
   CONNECTION_STATUS,
-  convertEvent,
-  type FleetEvent,
-} from "@/components/domain/conversation/stream/useFleetEventStream";
+  convertTurn,
+  type FleetTurn,
+} from "@/components/domain/conversation/stream/useFleetTurnStream";
 
 // ── Fixture builders ─────────────────────────────────────────────────────
 
@@ -107,8 +107,8 @@ export const THREAD_PATH = threadPath;
 export const FLEET_NAME = "github-pr-reviewer";
 
 export function ev(
-  over: Partial<FleetEvent> & { actor: string; role: FleetEvent["role"] },
-): FleetEvent {
+  over: Partial<FleetTurn> & { actor: string; role: FleetTurn["role"] },
+): FleetTurn {
   return {
     id: over.id ?? `e_${Math.random().toString(36).slice(2, 8)}`,
     role: over.role,
@@ -137,7 +137,7 @@ export function ev(
 }
 
 export type StreamMockOverrides = {
-  events?: FleetEvent[];
+  turns?: FleetTurn[];
   isRunning?: boolean;
   connectionStatus?: (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
   appendOptimistic?: ReturnType<typeof vi.fn>;
@@ -147,11 +147,11 @@ export type StreamMockOverrides = {
 };
 
 export function mockStream(
-  events: FleetEvent[],
-  opts?: Omit<StreamMockOverrides, "events">,
+  turns: FleetTurn[],
+  opts?: Omit<StreamMockOverrides, "turns">,
 ) {
-  useFleetEventStreamMock.mockReturnValue({
-    events,
+  useFleetTurnStreamMock.mockReturnValue({
+    turns,
     connectionStatus: opts?.connectionStatus ?? CONNECTION_STATUS.LIVE,
     isRunning: opts?.isRunning ?? false,
     appendOptimistic:
@@ -159,7 +159,7 @@ export function mockStream(
     reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
     discardOptimistic: opts?.discardOptimistic ?? vi.fn(),
     retryConnection: opts?.retryConnection ?? vi.fn(),
-    convertEvent,
+    convertTurn,
   });
 }
 
@@ -194,7 +194,7 @@ export function renderThreadWithInitial(initial: TurnRow[]) {
   return render(threadElement(initial));
 }
 
-export function serverEvent(over: Partial<TurnDetail> = {}): TurnDetail {
+export function serverTurn(over: Partial<TurnDetail> = {}): TurnDetail {
   const now = Date.UTC(2026, 4, 15, 9, 0, 0);
   return {
     turn_id: "event-server-terminal",
@@ -221,7 +221,7 @@ export function serverEvent(over: Partial<TurnDetail> = {}): TurnDetail {
 beforeEach(() => {
   routerRefreshMock.mockReset();
   postSteerMock.mockReset();
-  useFleetEventStreamMock.mockReset();
+  useFleetTurnStreamMock.mockReset();
   // The pending-send ledger is module-scoped and storage-mirrored by design
   // (it survives remounts and reloads); without this reset an entry recorded
   // in one test leaks its notice — and its restored text — into the next.
@@ -234,4 +234,4 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-export { routerRefreshMock, postSteerMock, useFleetEventStreamMock, capturedOnNew, capturedRun, signedIn };
+export { routerRefreshMock, postSteerMock, useFleetTurnStreamMock, capturedOnNew, capturedRun, signedIn };

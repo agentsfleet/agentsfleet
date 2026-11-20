@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "@/lib/streaming/fleet-stream-row";
 import type { ReplyContext } from "./fleet-reply-content";
 import { renderReplyPart } from "./FleetReplyParts";
 import { SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, SettledReplyStatus, spokenSummary } from "./FleetReplyAnnouncements";
 import { renderFleetMessage } from "../messages/fleetMessageRenderers";
 import { toReplyMessage } from "./fleetReplyMessage";
-import { convertEvent } from "../../conversation/stream/useFleetEventStream";
+import { convertTurn } from "../../conversation/stream/useFleetTurnStream";
 
 const REPLY: ReplyContext = {
   errored: false,
@@ -27,16 +27,16 @@ type PartInfo = Parameters<typeof renderReplyPart>[0];
 const REPLY_TEXT = "Opened the PR.";
 
 // One fleet reply through the real renderer, with no transcript around it.
-function Transcriptless({ status, text = REPLY_TEXT, restarted = false, announce = false, attempt = "2" }: { status: FleetEvent["status"]; text?: string; restarted?: boolean; announce?: boolean; attempt?: string }) {
-  const event: FleetEvent = {
+function Transcriptless({ status, text = REPLY_TEXT, restarted = false, announce = false, attempt = "2" }: { status: FleetTurn["status"]; text?: string; restarted?: boolean; announce?: boolean; attempt?: string }) {
+  const turn: FleetTurn = {
     id: REPLY.turnId, role: "assistant", actor: "fleet", text: "", reply: text, outcome: "",
     failureLabel: null, failureDetail: null, createdAt: new Date(0), status, runRestarted: restarted ? true : undefined,
     ...(restarted ? { restartAttempt: attempt } : {}),
   };
-  const runtime = useExternalStoreRuntime<FleetEvent>({
+  const runtime = useExternalStoreRuntime<FleetTurn>({
     isRunning: false,
-    messages: [event],
-    convertMessage: (row) => toReplyMessage(convertEvent(row), row),
+    messages: [turn],
+    convertMessage: (row) => toReplyMessage(convertTurn(row), row),
     onNew: async () => {},
   });
   const reply = (
@@ -61,7 +61,7 @@ describe("renderReplyPart", () => {
 
 describe("a reply's settling", () => {
   it("announces each observed restart once while keeping streamed output quiet", () => {
-    const status = AGENTSFLEET_EVENT_STATUS.RECEIVED;
+    const status = AGENTSFLEET_TURN_STATUS.RECEIVED;
     const view = render(<Transcriptless status={status} announce />);
     const spoken = screen.getByTestId(SETTLED_REPLY_STATUS);
     expect(spoken.textContent).toBe("");
@@ -76,15 +76,15 @@ describe("a reply's settling", () => {
   });
 
   it("shows a restart on its existing reply and keeps the marker after settlement", () => {
-    const view = render(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.RECEIVED} restarted />);
+    const view = render(<Transcriptless status={AGENTSFLEET_TURN_STATUS.RECEIVED} restarted />);
     expect(screen.getByText("Run restarted")).toBeTruthy();
-    view.rerender(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.PROCESSED} restarted />);
+    view.rerender(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} restarted />);
     expect(screen.getByText("Run restarted")).toBeTruthy();
     expect(screen.getByText(REPLY_TEXT)).toBeTruthy();
   });
 
   it("keeps selected reply text attached when the run completes", () => {
-    const view = render(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.RECEIVED} />);
+    const view = render(<Transcriptless status={AGENTSFLEET_TURN_STATUS.RECEIVED} />);
     const paragraph = screen.getByText(REPLY_TEXT);
     const range = document.createRange();
     range.selectNodeContents(paragraph);
@@ -92,7 +92,7 @@ describe("a reply's settling", () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
 
-    view.rerender(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.PROCESSED} />);
+    view.rerender(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} />);
 
     expect(paragraph.isConnected).toBe(true);
     expect(screen.getByText(REPLY_TEXT)).toBe(paragraph);
@@ -100,8 +100,8 @@ describe("a reply's settling", () => {
   });
 
   it("settles with nothing to announce to when no transcript is around it", () => {
-    const view = render(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.RECEIVED} />);
-    view.rerender(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.PROCESSED} />);
+    const view = render(<Transcriptless status={AGENTSFLEET_TURN_STATUS.RECEIVED} />);
+    view.rerender(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} />);
     expect(screen.getByText(REPLY_TEXT)).toBeTruthy();
     expect(screen.queryByTestId(SETTLED_REPLY_STATUS)).toBeNull();
   });
@@ -138,10 +138,10 @@ describe("spokenSummary", () => {
 
 it("resolves a late reference without replacing earlier reply text", () => {
   const first = "First paragraph.\n\nRead [docs][guide].\n\nStill writing";
-  const view = render(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.RECEIVED} text={first} />);
+  const view = render(<Transcriptless status={AGENTSFLEET_TURN_STATUS.RECEIVED} text={first} />);
   const paragraph = screen.getByText("First paragraph.");
   const final = "First paragraph.\n\nRead [docs][guide].\n\nFinal answer.\n\n[guide]: https://example.com/guide";
-  view.rerender(<Transcriptless status={AGENTSFLEET_EVENT_STATUS.PROCESSED} text={final} />);
+  view.rerender(<Transcriptless status={AGENTSFLEET_TURN_STATUS.PROCESSED} text={final} />);
   expect(screen.getByText("First paragraph.")).toBe(paragraph);
   expect(screen.getByRole("link", { name: "docs" }).getAttribute("href")).toBe("https://example.com/guide");
   expect(screen.getByText("Final answer.")).toBeTruthy();

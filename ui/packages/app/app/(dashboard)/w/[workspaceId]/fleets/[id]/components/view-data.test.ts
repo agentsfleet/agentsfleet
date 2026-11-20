@@ -5,7 +5,7 @@ const listAllMemoriesMock = vi.hoisted(() => vi.fn());
 const listWorkspaceMembersMock = vi.hoisted(() => vi.fn());
 const requestMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/api/events", () => ({
+vi.mock("@/lib/api/turns", () => ({
   listFleetMessages: listFleetMessagesMock,
 }));
 vi.mock("@/lib/api/memory", () => ({ listAllMemories: listAllMemoriesMock }));
@@ -58,7 +58,7 @@ describe("startChatData", () => {
     expect(runtimeModelLabel(await startChat().models, undefined)).toBe("Platform default model");
   });
 
-  it("test_chat_single_thread_fetch: chat starts ONE thread read and no event fan-out", () => {
+  it("test_chat_single_thread_fetch: chat starts ONE thread read and no turn fan-out", () => {
     resetMocks();
     const data = startChatData(ARGS);
 

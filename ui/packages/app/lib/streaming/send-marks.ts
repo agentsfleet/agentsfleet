@@ -1,5 +1,5 @@
-import type { LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import type { LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 
 /** The four `performance` marks one send leaves, each naming the send's
  * operation id in its detail, so overlapping sends never share a mark. */
@@ -12,7 +12,7 @@ export const SEND_MARKS_MAX = 64;
 type LeadMark = typeof SEND_MARK.SEND | typeof SEND_MARK.ACCEPTED;
 type AcceptedSend = {operationId: string; heard: boolean};
 
-/** This tab's accepted sends, by the event each 202 named, until that event's
+/** This tab's accepted sends, by the turn each 202 named, until that turn's
  * completion leaves its last mark. */
 export class SendMarks {
   #sends = new Map<string, AcceptedSend>();
@@ -29,10 +29,10 @@ export class SendMarks {
     leaveMark(name, operationId);
   }
 
-  /** Marks the first frame and the completion of an accepted send's event. A
+  /** Marks the first frame and the completion of an accepted send's turn. A
    * send's own frames wait for its 202, so these follow `af:accepted`. */
   frame(frame: LiveFrame): void {
-    // A gate resolved outside a run names no event.
+    // A gate resolved outside a run names no turn.
     const turnId = "turn_id" in frame ? frame.turn_id : null;
     if (turnId === null) return;
     const sent = this.#sends.get(turnId);

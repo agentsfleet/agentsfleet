@@ -44,17 +44,15 @@ export const ReviewSchema = z.object({
   policy_semantics: z.string(), observed_at: Instant,
 });
 export const AcceptedSchema = z.object({status: z.literal("accepted"), sequence: decimal, replayed: z.boolean()});
-export const CancellationSchema = z.object({cancelled_through: decimal,
-  stopped: z.array(z.object({sequence: decimal, state: z.literal(MESSAGE_STATE.cancelled)}))});
 export const DraftSchema = z.object({
   id: z.uuidv7(), state: z.enum(DRAFT_STATE), title: z.string(), etag: z.string(),
-  authoring_model_ref: z.string(), cancelled_through: decimal,
+  authoring_model_ref: z.string(),
   candidate: CandidateSchema.optional(), review: ReviewSchema.optional(), linked_fleet_id: z.uuidv7().optional(),
   publication: z.object({plugin_id: z.uuidv7(), revision_id: z.uuidv7(), canonical_digest: z.string()}).optional(),
 });
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
 export const MessageSchema = z.object({
-  save_requested: z.boolean().optional(), save_error_code: z.string().optional(),
+  turn_id: z.uuidv7(), save_requested: z.boolean().optional(), save_error_code: z.string().optional(),
   sequence: decimal, operation_id: z.uuidv7(), role: z.enum(MESSAGE_ROLE), state: z.enum(MESSAGE_STATE),
   text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
   failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string(),

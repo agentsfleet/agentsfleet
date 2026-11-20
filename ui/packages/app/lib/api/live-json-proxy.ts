@@ -1,8 +1,8 @@
 // What every same-origin JSON read under app/live answers with: the backfill
-// pages, one event's saved row, and one tool call in full. The browser holds
+// pages, one turn's saved row, and one tool call in full. The browser holds
 // no bearer, so each route names its upstream path and this mints the token,
 // guards the path and passes errors through, once for all of them. The two
-// stream routes use event-stream-proxy.ts instead, because an EventSource
+// stream routes use turn-stream-proxy.ts instead, because an EventSource
 // needs its own headers and refusal frame.
 //
 // See docs/AUTH.md "SSE stream: Next Route Handler injects Bearer" for the
@@ -17,7 +17,7 @@ const CONTENT_TYPE_TEXT = "text/plain";
 const UPSTREAM_PATH_PREFIX = "/v1";
 
 // Authed per-tenant JSON must never land in a shared cache: the URL varies by
-// workspace, fleet and event, not by user.
+// workspace, fleet and turn, not by user.
 const CACHE_CONTROL_NO_STORE = "no-store";
 
 // encodeURIComponent leaves '.' intact, so a bare '..'/'.' path param would
@@ -39,7 +39,7 @@ const HTTP_STATUS = {
  * Segments arrive raw and each is percent-encoded here; a dot-only one is
  * refused before a token is minted. Only `forwardedKeys` of the request's
  * query reach upstream, so a route never widens the surface it proxies. The
- * body streams through: a call's full output and one event's bodies are the
+ * body streams through: a call's full output and one turn's bodies are the
  * largest things these routes carry, and none has a reason to hold them.
  */
 export async function proxyJsonGet(

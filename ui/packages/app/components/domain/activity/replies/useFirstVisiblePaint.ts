@@ -15,16 +15,16 @@ const measuredPaints = new RecentPaints(RECENT_PAINTS);
 
 /** Record browser submit-to-visible time after the first reply, reasoning, or tool paint. */
 export function useFirstVisiblePaint(turnId: string, submittedAtMs: number | null, visible: boolean): void {
-  const measuredEvent = useRef<string | null>(null);
+  const measuredTurn = useRef<string | null>(null);
   useEffect(() => {
-    if (!visible || submittedAtMs === null || measuredEvent.current === turnId) return;
+    if (!visible || submittedAtMs === null || measuredTurn.current === turnId) return;
     const key = `${turnId}:${submittedAtMs}`;
     if (measuredPaints.has(key)) return;
     let secondFrame = 0;
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => {
         if (measuredPaints.has(key)) return;
-        measuredEvent.current = turnId;
+        measuredTurn.current = turnId;
         measuredPaints.add(key);
         performance.measure(FIRST_VISIBLE_MEASURE, { start: submittedAtMs, end: performance.now() });
       });

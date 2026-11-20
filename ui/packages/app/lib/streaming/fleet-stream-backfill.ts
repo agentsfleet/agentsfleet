@@ -1,8 +1,8 @@
-import { type TurnRow, type TurnsPage } from "@/lib/api/events";
-import { backfillFleetTurnsUrl, backfillWorkspaceTurnsUrl, type TurnsQuery } from "@/lib/api/events-types";
+import { type TurnRow, type TurnsPage } from "@/lib/api/turns";
+import { backfillFleetTurnsUrl, backfillWorkspaceTurnsUrl, type TurnsQuery } from "@/lib/api/turns-types";
 import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 
 // The reconnect gap-recovery walk. Split out of the registry's lifecycle file
 // so that file stays under the LENGTH GATE and the walk is testable without a
@@ -210,9 +210,9 @@ async function walkEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promis
 function recoveryAnchorMs(entry: Entry): number | null {
   let anchor = entry.serverSinceMs;
   if (anchor === null) return null;
-  for (const event of entry.snapshot.events) {
-    if (event.status === AGENTSFLEET_EVENT_STATUS.QUEUED) {
-      anchor = Math.min(anchor, event.createdAt.getTime());
+  for (const turn of entry.snapshot.turns) {
+    if (turn.status === AGENTSFLEET_TURN_STATUS.QUEUED) {
+      anchor = Math.min(anchor, turn.createdAt.getTime());
     }
   }
   return anchor;

@@ -26,7 +26,7 @@ export function editorPatch(editor: Editor, restoreCurrent = true) {
       current = {draft, messages, model: draft.authoring_model_ref, messagesStartingAfter: item.messages_starting_after};
     } else {
       if (messages.some(isRunning)) throw new SetupUnavailable("Finish or stop your earlier setup request before opening a new edit.", 409);
-      previousDrafts.push({id: draft.id, cancelledThrough: draft.cancelled_through, messages, truncated: item.truncated});
+      previousDrafts.push({id: draft.id, messages, truncated: item.truncated});
     }
   }
   return {...current, previousDrafts: previousDrafts.sort((a, b) => a.id.localeCompare(b.id)), fleet, schedules: fleet.schedules,

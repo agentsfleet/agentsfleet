@@ -166,7 +166,7 @@ it("does not leave an older result loading outside the reader's bounded history 
     return Response.json(path.includes("?limit=") ? {items: [], next_cursor: null} : detail(summary(path.split("/").at(-1), "done")));
   });
   vi.stubGlobal("fetch", fetcher);
-  render(<FleetTaskProvider {...SCOPE} events={[evt({taskActivity: activity(ids)})]}>
+  render(<FleetTaskProvider {...SCOPE} turns={[evt({taskActivity: activity(ids)})]}>
     <NativeTaskPrBadge activity={activity([ids[0]!])} />
   </FleetTaskProvider>);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(17));
@@ -178,16 +178,16 @@ it("does not leave an older result loading outside the reader's bounded history 
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("does not re-render a stable linked-work card for stream events it does not read", async () => {
+it("does not re-render a stable linked-work card for stream turns it does not read", async () => {
   network();
   const reads = vi.spyOn(taskActivity, "readTaskActivityHistory");
   // One element, reused: only a context change can re-render the card.
   const card = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />;
-  const events = (count: number) => Array.from({length: count}, (_, index) => evt({id: `text-${index}`, reply: `chunk ${index}`}));
-  const view = render(<FleetTaskProvider {...SCOPE} events={events(0)}>{card}</FleetTaskProvider>);
+  const turns = (count: number) => Array.from({length: count}, (_, index) => evt({id: `text-${index}`, reply: `chunk ${index}`}));
+  const view = render(<FleetTaskProvider {...SCOPE} turns={turns(0)}>{card}</FleetTaskProvider>);
   await screen.findByRole("link");
   const settled = reads.mock.calls.length;
-  for (let count = 1; count <= 20; count++) view.rerender(<FleetTaskProvider {...SCOPE} events={events(count)}>{card}</FleetTaskProvider>);
+  for (let count = 1; count <= 20; count++) view.rerender(<FleetTaskProvider {...SCOPE} turns={turns(count)}>{card}</FleetTaskProvider>);
   expect(reads.mock.calls.length).toBe(settled);
   expect(screen.getByRole("link")).toBeTruthy();
   reads.mockRestore();

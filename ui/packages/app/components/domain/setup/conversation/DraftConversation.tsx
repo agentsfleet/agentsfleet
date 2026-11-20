@@ -19,7 +19,7 @@ import { ChatComposer } from "../composer/ChatComposer";
 import { ChatThread } from "../../shared/chat/ChatThread";
 import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
 import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND } from "@/lib/turns/fleet-activity";
 import { DraftMessage, DraftRetryProvider } from "./DraftMessage";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { SetupApprovalSummary } from "../../approvals/SetupApprovalSummary";

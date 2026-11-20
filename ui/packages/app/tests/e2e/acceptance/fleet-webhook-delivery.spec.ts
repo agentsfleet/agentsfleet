@@ -22,7 +22,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
-import type { TurnsPage } from "@/lib/api/events";
+import type { TurnsPage } from "@/lib/api/turns";
 
 import { saveFixtureFleet } from "./fixtures/native-setup";
 import { clientFor } from "./fixtures/api-client";
@@ -30,7 +30,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   anyRunnerLive,
   classifyIdle,
-  EVENT_STATUS,
+  TURN_STATUS,
   failWith,
 } from "./fixtures/execution";
 import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
@@ -70,11 +70,11 @@ const HEADER_SIGNATURE = "x-hub-signature-256";
 const SIGNATURE_PREFIX = "sha256=";
 const HMAC_ALGORITHM = "sha256";
 
-const EVENT_TYPE_WEBHOOK = "webhook";
+const TURN_KIND_WEBHOOK = "webhook";
 const HTTP_ACCEPTED = 202;
 // Delivery → run → durable row rides the queue and the heartbeat cadence,
 // the same budget the other run-crossing journeys carry.
-const EVENT_ROW_TIMEOUT_MS = 120_000;
+const TURN_ROW_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 2_000;
 // Long enough for a second delivery to have become a second row if the
 // replay had not been suppressed; short enough not to be a wait. Derived
@@ -113,11 +113,11 @@ async function deliver(webhookUrl: string, body: Uint8Array, secret: string, del
   return { status: response.status, body: JSON.parse(text) as Accepted };
 }
 
-async function webhookEvents(workspaceId: string, fleetId: string) {
+async function webhookTurns(workspaceId: string, fleetId: string) {
   const page = await clientFor(FIXTURE_KEY.regular).get<TurnsPage>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/turns`,
   );
-  return page.items.filter((item) => item.event_type === EVENT_TYPE_WEBHOOK);
+  return page.items.filter((item) => item.event_type === TURN_KIND_WEBHOOK);
 }
 
 /** The workspace signing secret and saved fleet a delivery needs. */
@@ -162,12 +162,12 @@ async function awaitRun(workspaceId: string, fleetId: string): Promise<void> {
   const held = await expect
     .poll(
       async () => {
-        const [current] = await webhookEvents(workspaceId, fleetId);
-        return current?.status ?? EVENT_STATUS.received;
+        const [current] = await webhookTurns(workspaceId, fleetId);
+        return current?.status ?? TURN_STATUS.received;
       },
-      { timeout: EVENT_ROW_TIMEOUT_MS, intervals: [POLL_INTERVAL_MS] },
+      { timeout: TURN_ROW_TIMEOUT_MS, intervals: [POLL_INTERVAL_MS] },
     )
-    .not.toBe(EVENT_STATUS.received)
+    .not.toBe(TURN_STATUS.received)
     .then(() => true)
     .catch(() => false);
   if (!held) {
@@ -214,10 +214,10 @@ test.describe("fleet webhook delivery", () => {
     // The replay had its chance to become a second row across the grace above
     // plus the whole run wait; a count taken now is what proves it did not.
     await new Promise((resolve) => setTimeout(resolve, REPLAY_GRACE_MS));
-    const rows = await webhookEvents(workspaceId, fleetId);
+    const rows = await webhookTurns(workspaceId, fleetId);
     expect(rows, "the replay added no second event").toHaveLength(1);
     const [row] = rows;
     expect(row?.turn_id).toBe(first.body.turn_id);
-    expect(row?.status).not.toBe(EVENT_STATUS.gateBlocked);
+    expect(row?.status).not.toBe(TURN_STATUS.gateBlocked);
   });
 });

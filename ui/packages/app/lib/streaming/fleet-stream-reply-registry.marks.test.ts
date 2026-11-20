@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { IN_ORDER, chunkOf, completionOf, markedSends } from "@/tests/helpers/send-marks-fixtures";
 import { WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { createEntry } from "./fleet-stream-entry";
-import type { FleetEvent } from "./fleet-stream-row";
+import type { FleetTurn } from "./fleet-stream-row";
 import { dispatchReplyFrame } from "./fleet-stream-reply-registry";
 import { SEND_MARK, SEND_MARKS_MAX, sendMarks } from "./send-marks";
 
@@ -20,8 +20,8 @@ describe("a send's marks through the live stream", () => {
     sendMarks.mark(SEND_MARK.SEND, OPERATION_ID);
     sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, TURN_ID);
     const entry = createEntry(WS, []);
-    let events: FleetEvent[] = [];
-    const apply = vi.fn((next: (prev: FleetEvent[]) => FleetEvent[]) => { events = next(events); });
+    let turns: FleetTurn[] = [];
+    const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
     for (const frame of [chunkOf(TURN_ID), completionOf(TURN_ID)]) dispatchReplyFrame(entry, Z_A, frame, apply, () => true);
     expect(markedSends()).toEqual(IN_ORDER.map((name) => [name, OPERATION_ID]));
   });
@@ -35,7 +35,7 @@ describe("a send's marks through the live stream", () => {
     expect(markedSends().map(([, id]) => id)).toEqual([`capped-op-${SEND_MARKS_MAX}`, `capped-op-${SEND_MARKS_MAX}`]);
   });
 
-  it("leaves no frame mark for a frame that names no event, or an event no send here was accepted under", () => {
+  it("leaves no frame mark for a frame that names no turn, or a turn no send here was accepted under", () => {
     sendMarks.frame({ kind: FRAME_KIND.HELLO, fleet_ids: [] });
     sendMarks.frame({ kind: FRAME_KIND.GATE_RESOLVED, gate_id: "gate_1", turn_id: null, status: "approved", resolved_by: "someone", pending_approvals: 0 });
     sendMarks.frame(chunkOf("someone-elses-event"));

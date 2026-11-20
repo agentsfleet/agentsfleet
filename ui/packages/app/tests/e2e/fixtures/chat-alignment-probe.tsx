@@ -9,16 +9,16 @@ import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { SenderNamesProvider } from "@/components/domain/shared/identity/SenderNames";
 import { SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
-import { senderNamesFrom } from "@/lib/events/sender-names";
+import { senderNamesFrom } from "@/lib/turns/sender-names";
 import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from "@assistant-ui/react";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader";
 import { FleetConversationLayout } from "@/components/domain/shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
 import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
-import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/conversation/thread/useFleetThreadEntries";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FLEET_DETAIL, WORKSPACE, FLEET_ID, FLEET, DRAFT, MODEL, MESSAGE, REVIEW } from "@/tests/helpers/draft-fixtures";
 import { SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
@@ -47,7 +47,7 @@ export function ChatAlignmentFixture() {
   return <AppRouterContext value={router}><ChatFixtureShell>
     <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({...FLEET_DETAIL, name: "ci-repairer", status: "active"})} />
     <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={0} sources={{repositories: ["agentsfleet/linkwarden"], access: "write", publication: "existing_pr"}} />}>
-      <FleetThreadViewport modelLabel="MiniMax M3.1 Flash" eventsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
+      <FleetThreadViewport modelLabel="MiniMax M3.1 Flash" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
         pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
     </FleetConversationLayout></AssistantRuntimeProvider>
   </ChatFixtureShell></AppRouterContext>;

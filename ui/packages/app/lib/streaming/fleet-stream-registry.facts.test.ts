@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type TurnDetail, type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { NO_FACTS } from "@/lib/events/run-summary";
+import { type TurnDetail, type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { NO_FACTS } from "@/lib/turns/run-summary";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import {
   __resetRegistryForTests,
@@ -93,7 +93,7 @@ describe("fleet-stream-registry — fleet facts", () => {
     emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "evt_seed", pending_approvals: 1 });
     const after = getSnapshot(FLEET);
     expect(after.fleet).toEqual({ status: null, pendingApprovals: 1 });
-    expect(after.events).toBe(before.events);
+    expect(after.turns).toBe(before.turns);
     expect(after.latest).toBe(before.latest);
     release();
   });

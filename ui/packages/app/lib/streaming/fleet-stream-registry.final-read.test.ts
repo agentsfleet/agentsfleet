@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { OUTCOME } from "@/lib/turns/turn-summary";
 import { getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
 import { createEntry } from "./fleet-stream-entry";
 import { applyReplyDelta } from "./fleet-stream-reply-frames";
-import type { FleetEvent } from "./fleet-stream-row";
+import type { FleetTurn } from "./fleet-stream-row";
 import { dispatchReplyFrame, markReplyGap, setTurnDetailReader, settleRepliesFromBackfill, type TurnDetailReader } from "./fleet-stream-reply-registry";
 import { setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, fetchSpy, flushBackfill, pageWith, reconnect, reconnectAgain, MISSED_AT_MS, SEED_AT_MS } from "@/tests/helpers/fleet-stream-backfill-fixtures";
@@ -24,13 +24,13 @@ describe("fleet stream durable final read", () => {
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_late_activity", status: "processed", actor: "fleet", created_at: new Date().toISOString() });
-    await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Durable answer"));
+    await vi.waitFor(() => expect(getSnapshot(Z_A).turns[0]?.reply).toBe("Durable answer"));
     source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: "evt_late_activity", text: "PRIVATE late draft", stream_start: true, stream_contiguous: true, stream_seq: 0 });
     source.emit({ call_id: "late_tool", kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: "evt_late_activity", name: "late_tool", args_redacted: true });
     source.emit({ call_id: "late_tool", kind: FRAME_KIND.TOOL_CALL_PROGRESS, turn_id: "evt_late_activity", name: "late_tool", elapsed_ms: 1 });
     source.emit({ call_id: "late_tool", status: "succeeded", kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: "evt_late_activity", name: "late_tool", ms: 2 });
-    expect(getSnapshot(Z_A).events[0]?.reply).toBe("Durable answer");
-    expect(getSnapshot(Z_A).events[0]?.tools).toBeUndefined();
+    expect(getSnapshot(Z_A).turns[0]?.reply).toBe("Durable answer");
+    expect(getSnapshot(Z_A).turns[0]?.tools).toBeUndefined();
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
     release();
   });
@@ -44,7 +44,7 @@ describe("fleet stream durable final read", () => {
     const source = sourceAt(0);
     source.emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: "evt_transient", text: "Partial " });
     source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_transient", status: "processed" });
-    await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("Complete answer"));
+    await vi.waitFor(() => expect(getSnapshot(Z_A).turns[0]?.reply).toBe("Complete answer"));
     expect(getFleetTurnActionMock).toHaveBeenCalledTimes(2);
     release();
   });
@@ -52,17 +52,17 @@ describe("fleet stream durable final read", () => {
   it("keeps retrying a failed final read at a bounded rate and settles when detail returns", async () => {
     getFleetTurnActionMock.mockResolvedValue({ ok: false });
     const entry = createEntry(WS, []);
-    let events: FleetEvent[] = applyReplyDelta([], "evt_all_fail", { answer: "Partial", reasoning: "", thinking: false });
-    const apply = vi.fn((next: (prev: FleetEvent[]) => FleetEvent[]) => { events = next(events); });
+    let turns: FleetTurn[] = applyReplyDelta([], "evt_all_fail", { answer: "Partial", reasoning: "", thinking: false });
+    const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
     dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_all_fail", status: "processed" }, apply, () => true);
     await vi.advanceTimersByTimeAsync(400);
     expect(getFleetTurnActionMock).toHaveBeenCalledTimes(3);
-    expect(events[0]?.replyRecovering).toBe(true);
+    expect(turns[0]?.replyRecovering).toBe(true);
     expect(entry.replyGaps.has("evt_all_fail")).toBe(true);
     getFleetTurnActionMock.mockResolvedValue({ ok: true, data: row({ turn_id: "evt_all_fail", response_text: "Eventually available" }) });
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(events[0]?.reply).toBe("Eventually available");
-    expect(events[0]?.replyRecovering).toBe(false);
+    expect(turns[0]?.reply).toBe("Eventually available");
+    expect(turns[0]?.replyRecovering).toBe(false);
     expect(entry.replyRecoveries.has("evt_all_fail")).toBe(false);
     expect(entry.replyGaps.has("evt_all_fail")).toBe(false);
   });
@@ -72,32 +72,32 @@ describe("fleet stream durable final read", () => {
       .mockResolvedValueOnce({ ok: false, status: 401 })
       .mockResolvedValue({ ok: true, data: row({ turn_id: "evt_denied", response_text: "Recovered after login" }) });
     const entry = createEntry(WS, []);
-    let events: FleetEvent[] = applyReplyDelta([], "evt_denied", { answer: "Partial", reasoning: "", thinking: false });
-    const apply = vi.fn((next: (prev: FleetEvent[]) => FleetEvent[]) => { events = next(events); });
+    let turns: FleetTurn[] = applyReplyDelta([], "evt_denied", { answer: "Partial", reasoning: "", thinking: false });
+    const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
     dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_denied", status: "processed" }, apply, () => true);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(getFleetTurnActionMock).toHaveBeenCalledTimes(1);
-    expect(events[0]?.replyRecovering).toBe(true);
+    expect(turns[0]?.replyRecovering).toBe(true);
     await vi.advanceTimersByTimeAsync(55_000);
     expect(getFleetTurnActionMock).toHaveBeenCalledTimes(2);
-    expect(events[0]?.reply).toBe("Recovered after login");
-    expect(events[0]?.replyRecovering).toBe(false);
+    expect(turns[0]?.reply).toBe("Recovered after login");
+    expect(turns[0]?.replyRecovering).toBe(false);
   });
 
-  it("stops reading an event the read found gone, 404 or 410 alike", async () => {
+  it("stops reading a turn the read found gone, 404 or 410 alike", async () => {
     const PERMANENT_RETRY_MS = 60_000;
     for (const status of [404, 410]) {
       getFleetTurnActionMock.mockReset().mockResolvedValue({ ok: false, status });
       const entry = createEntry(WS, []);
       const turnId = `evt_gone_${status}`;
-      let events: FleetEvent[] = applyReplyDelta([], turnId, { answer: "Partial", reasoning: "", thinking: false });
-      const apply = vi.fn((next: (prev: FleetEvent[]) => FleetEvent[]) => { events = next(events); });
+      let turns: FleetTurn[] = applyReplyDelta([], turnId, { answer: "Partial", reasoning: "", thinking: false });
+      const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
       dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: turnId, status: "processed" }, apply, () => true);
       await vi.advanceTimersByTimeAsync(PERMANENT_RETRY_MS * 3);
       expect(getFleetTurnActionMock).toHaveBeenCalledTimes(1);
       expect(entry.replyRecoveries.has(turnId)).toBe(false);
       // Settled with a line, never left "Loading final reply".
-      expect(events[0]).toMatchObject({ status: "processed", reply: "", replyRecovering: false, outcome: OUTCOME.REPLY_GONE });
+      expect(turns[0]).toMatchObject({ status: "processed", reply: "", replyRecovering: false, outcome: OUTCOME.REPLY_GONE });
     }
   });
 
@@ -160,7 +160,7 @@ describe("fleet stream durable final read", () => {
     vi.useRealTimers();
     getFleetTurnActionMock.mockResolvedValue({ ok: true, data: row({ turn_id: "evt_terminal", response_text: "Durable" }) });
     const entry = createEntry(WS, []);
-    const apply = vi.fn((next: (prev: FleetEvent[]) => FleetEvent[]) => { next([]); });
+    const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { next([]); });
     dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.CHUNK, turn_id: "evt_terminal", text: "Draft", text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0 }, apply, () => current);
     settleRepliesFromBackfill(entry, Z_A, [row({ turn_id: "evt_terminal", status: "processed" })], apply, () => current);
     await vi.waitFor(() => expect(entry.replyStreams.has("evt_terminal")).toBe(false));
@@ -169,20 +169,20 @@ describe("fleet stream durable final read", () => {
     expect(entry.replyGaps.has("evt_terminal")).toBe(false);
   });
 
-  it("recovers a reclaimed event instead of feeding its new run into old reasoning", async () => {
+  it("recovers a reclaimed turn instead of feeding its new run into old reasoning", async () => {
     vi.useRealTimers();
     getFleetTurnActionMock.mockResolvedValue({ ok: true, data: row({ turn_id: "evt_reclaim", response_text: "New final answer" }) });
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_reclaim", text: "old attempt ", text_kind: "reasoning", stream_start: true, stream_contiguous: true, stream_seq: 0 });
-    await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reasoning).toBe("old attempt "));
+    await vi.waitFor(() => expect(getSnapshot(Z_A).turns[0]?.reasoning).toBe("old attempt "));
     source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_reclaim", text: "New answer PRIVATE", text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0 });
-    expect(getSnapshot(Z_A).events[0]?.reasoning).toBe("");
-    expect(getSnapshot(Z_A).events[0]?.reply).toBe("");
+    expect(getSnapshot(Z_A).turns[0]?.reasoning).toBe("");
+    expect(getSnapshot(Z_A).turns[0]?.reply).toBe("");
     source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_reclaim", status: "processed" });
-    await vi.waitFor(() => expect(getSnapshot(Z_A).events[0]?.reply).toBe("New final answer"));
+    await vi.waitFor(() => expect(getSnapshot(Z_A).turns[0]?.reply).toBe("New final answer"));
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
-    expect(getSnapshot(Z_A).events[0]?.reasoning).toBe("");
+    expect(getSnapshot(Z_A).turns[0]?.reasoning).toBe("");
     release();
   });
 
@@ -193,7 +193,7 @@ describe("fleet stream durable final read", () => {
     sourceAt(0).emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: "evt_late_gap", text: "PRIVATE mid-tool", stream_start: false });
     reconnect();
     await flushBackfill();
-    expect(getSnapshot(Z_A).events.find((event) => event.id === "evt_late_gap")?.reply).toBe("History answer");
+    expect(getSnapshot(Z_A).turns.find((turn) => turn.id === "evt_late_gap")?.reply).toBe("History answer");
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
     release();
   });
@@ -239,7 +239,7 @@ describe("fleet stream durable final read", () => {
   });
 });
 
-// An event that started and ended while the stream was away arrives only as a
+// A turn that started and ended while the stream was away arrives only as a
 // list row, which carries no bodies.
 describe("a body-less row a backfill brings in", () => {
   const STEER_ID = "evt_while_away";
@@ -257,7 +257,7 @@ describe("a body-less row a backfill brings in", () => {
     const source = reconnect();
     await flushBackfill();
     await vi.advanceTimersByTimeAsync(0);
-    expect(getSnapshot(Z_A).events.find((event) => event.id === STEER_ID)).toMatchObject({ text: ASKED, reply: ANSWERED });
+    expect(getSnapshot(Z_A).turns.find((turn) => turn.id === STEER_ID)).toMatchObject({ text: ASKED, reply: ANSWERED });
 
     // Another outage restating the same row reads nothing more.
     reconnectAgain(source);

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { __resetRegistryForTests, CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 import { setupRegistryTests, row, WS, Z_A, Z_B, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 
 setupRegistryTests();
@@ -38,7 +38,7 @@ describe("fleet-stream-registry — frames that change nothing", () => {
     const listener = vi.fn();
     // A running turn: a settled one drops every tool frame before the registry
     // compares anything, and the silence below would then prove nothing.
-    const running = row({ turn_id: "evt_tool", status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    const running = row({ turn_id: "evt_tool", status: AGENTSFLEET_TURN_STATUS.RECEIVED });
     const release = subscribe(WS, Z_A, [running], listener);
     const es = sourceAt(0);
     es.open();
@@ -57,7 +57,7 @@ describe("fleet-stream-registry — frames that change nothing", () => {
 });
 
 describe("fleet-stream-registry — server-rendered seed", () => {
-  it("seeds the event list from the initial rows and sorts ascending", () => {
+  it("seeds the turn list from the initial rows and sorts ascending", () => {
     const t0 = Date.UTC(2026, 4, 15, 18, 0, 0);
     const t1 = Date.UTC(2026, 4, 15, 18, 30, 0);
     const a = subscribe(WS, Z_A, [
@@ -65,7 +65,7 @@ describe("fleet-stream-registry — server-rendered seed", () => {
       row({ turn_id: "evt_older", created_at: new Date(t0).toISOString() }),
     ], () => {});
     const snap = getSnapshot(Z_A);
-    expect(snap.events.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
+    expect(snap.turns.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
     a();
   });
 
@@ -78,12 +78,12 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     const release = subscribe(WS, Z_A, seed, () => {});
     const tempId = appendOptimistic(Z_A, "one more", "steer:pending");
 
-    const events = getSnapshot(Z_A).events;
-    expect(events.length).toBe(200);
+    const turns = getSnapshot(Z_A).turns;
+    expect(turns.length).toBe(200);
     // Oldest settled dropped, newest settled kept, pending survives.
-    expect(events.some((e) => e.id === tempId)).toBe(true);
-    expect(events.some((e) => e.id === "evt_259")).toBe(true);
-    expect(events.some((e) => e.id === "evt_0")).toBe(false);
+    expect(turns.some((e) => e.id === tempId)).toBe(true);
+    expect(turns.some((e) => e.id === "evt_259")).toBe(true);
+    expect(turns.some((e) => e.id === "evt_0")).toBe(false);
     release();
   });
 
@@ -100,15 +100,15 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     );
     reconcileServerRows(Z_A, backfill);
 
-    const events = getSnapshot(Z_A).events;
-    expect(events.at(-1)?.id).toBe(tempId);
-    expect(events.length).toBeLessThanOrEqual(200 + 1);
+    const turns = getSnapshot(Z_A).turns;
+    expect(turns.at(-1)?.id).toBe(tempId);
+    expect(turns.length).toBeLessThanOrEqual(200 + 1);
     release();
   });
 
   it("seeds nothing (no client backfill GET) when initial is empty", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
-    expect(getSnapshot(Z_A).events).toEqual([]);
+    expect(getSnapshot(Z_A).turns).toEqual([]);
     // A single cookie-authed SSE connection opens; no bearer-authed fetch.
     expect(FakeEventSource.instances.length).toBe(1);
     a();
@@ -117,7 +117,7 @@ describe("fleet-stream-registry — server-rendered seed", () => {
   it("ignores the second subscriber's initial rows — the live entry is authoritative", () => {
     const a = subscribe(WS, Z_A, [row({ turn_id: "evt_first" })], () => {});
     const b = subscribe(WS, Z_A, [row({ turn_id: "evt_second" })], () => {});
-    const ids = getSnapshot(Z_A).events.map((e) => e.id);
+    const ids = getSnapshot(Z_A).turns.map((e) => e.id);
     expect(ids).toEqual(["evt_first"]);
     a();
     b();
@@ -137,7 +137,7 @@ describe("fleet-stream-registry — server-rendered seed", () => {
       }),
     ]);
 
-    expect(getSnapshot(Z_A).events[0]).toMatchObject({
+    expect(getSnapshot(Z_A).turns[0]).toMatchObject({
       id: "evt_live",
       status: "fleet_error",
       outcome: "Failed a startup safety check",

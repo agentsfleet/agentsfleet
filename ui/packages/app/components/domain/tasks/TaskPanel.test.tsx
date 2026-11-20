@@ -1,11 +1,11 @@
 import type { TaskSummary } from "@/lib/api/tasks";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TaskPanel } from "./TaskPanel";
-import { useFleetEventStream } from "../conversation/stream/useFleetEventStream";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { useFleetTurnStream } from "../conversation/stream/useFleetTurnStream";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { __resetRegistryForTests, streamWrapper } from "@/tests/helpers/fleet-streams";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
@@ -14,8 +14,8 @@ const SCOPE = {workspaceId: "workspace", fleetId: "linkwarden", subject: "indy",
 beforeEach(() => {FakeEventSource.install(); __resetRegistryForTests();});
 afterEach(() => {cleanup(); __resetRegistryForTests(); FakeEventSource.uninstall(); vi.unstubAllGlobals();});
 function LiveWork() {
-  const stream = useFleetEventStream(SCOPE.workspaceId, SCOPE.fleetId, []);
-  return <TaskPanel {...SCOPE} revision={stream.tasksSeq} events={stream.events} />;
+  const stream = useFleetTurnStream(SCOPE.workspaceId, SCOPE.fleetId, []);
+  return <TaskPanel {...SCOPE} revision={stream.tasksSeq} turns={stream.turns} />;
 }
 function page(items: TaskSummary[]): Response {return Response.json({items, next_cursor: null});}
 function requestPath(input: RequestInfo | URL): string {
@@ -218,15 +218,15 @@ it("keeps open work details usable when another queued task arrives before its d
     return path.endsWith(TASK_IDS[1]) ? second.promise : Response.json(detail(tasks[0]!));
   });
   vi.stubGlobal("fetch", network);
-  const events: FleetEvent[] = [{id: "assessment", role: "assistant", actor: "fleet", text: "", reply: "", outcome: "", failureLabel: null, failureDetail: null,
+  const turns: FleetTurn[] = [{id: "assessment", role: "assistant", actor: "fleet", text: "", reply: "", outcome: "", failureLabel: null, failureDetail: null,
     createdAt: new Date(), status: "processed", taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
       activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}}];
-  const view = render(<TaskPanel {...SCOPE} events={events} />);
+  const view = render(<TaskPanel {...SCOPE} turns={turns} />);
   await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   expect(await screen.findByText("Assessment recorded · goal progress")).toBeTruthy();
   tasks = [...tasks, summary(TASK_IDS[1], "ready")];
-  view.rerender(<TaskPanel {...SCOPE} events={events} revision={1} />);
+  view.rerender(<TaskPanel {...SCOPE} turns={turns} revision={1} />);
   const queued = await screen.findByRole("button", {name: /PR #124 repair.*Reading saved progress/});
   expect(queued.getAttribute("aria-expanded")).toBe("false");
   await userEvent.click(queued);

@@ -1,5 +1,5 @@
-import type { LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import type { LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { ERROR_CODE } from "@/lib/errors";
 
 // The one EventSource double for every Server-Sent Events test.

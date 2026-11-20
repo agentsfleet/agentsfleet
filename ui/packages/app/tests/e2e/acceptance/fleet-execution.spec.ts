@@ -20,7 +20,7 @@ import { executionInstructions } from "./fixtures/definition";
  * daemon holds — a product failure at the observe leg (RULE ECL).
  */
 import { expect, test, type Page } from "@playwright/test";
-import type { TurnDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/turns";
 import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -30,7 +30,7 @@ import {
   classifyApiFailure,
   classifyReportMissing,
   classifyStillRunning,
-  classifyTerminalEvent,
+  classifyTerminalTurn,
   classifyIdle,
   failWith,
   findRunFor,
@@ -72,8 +72,8 @@ const MESSAGE_PREFIX = "acceptance-probe-";
 // Mirrors of tile copy in `fleets/components/FleetTile.tsx`. Importing the
 // constants would pull a "use client" module — React and next/navigation with
 // it — into the Playwright process; the wall's own unit suite pins the copy.
-const TILE_IDLE_COPY = /Waiting for the next event\.|No live activity\.|Activity recorded/;
-const ACTIVITY_EVENT = "activity";
+const TILE_IDLE_COPY = /Waiting for the next turn\.|No live activity\.|Activity recorded/;
+const TURN_KIND_ACTIVITY = "activity";
 const MANAGE_FLEET_LABEL = "Manage fleet";
 // Every tile card carries its kind — live, snapshot or drained — as data.
 const TILE_CARD = "[data-kind]";
@@ -247,7 +247,7 @@ test.describe("fleet execution", () => {
       ),
       contentType: "application/json",
     });
-    assertPassed(classifyTerminalEvent(terminal));
+    assertPassed(classifyTerminalTurn(terminal));
 
     // The same reply, as the operator sees it: an assistant turn on the thread
     // with text in it. The row is what the daemon persisted; this is the
@@ -274,7 +274,7 @@ test.describe("fleet execution", () => {
     const controlHistory = await clientFor(FIXTURE_KEY.regular).get<{items: TurnDetail[]}>(
       `/v1/workspaces/${workspaceId}/fleets/${control.id}/messages`,
     );
-    expect(controlHistory.items.every(row => row.event_type === ACTIVITY_EVENT)).toBe(true);
+    expect(controlHistory.items.every(row => row.event_type === TURN_KIND_ACTIVITY)).toBe(true);
     expect(await findRunFor(control.id)).toBeNull();
     expect(streams.workspace, "the wall opens the workspace stream once").toBe(1);
     expect(streams.fleet, "the wall opens no per-fleet stream").toBe(0);

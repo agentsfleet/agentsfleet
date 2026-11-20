@@ -17,7 +17,7 @@ import { executionInstructions } from "./fixtures/definition";
  * renders the raw `fleet.*` server render instead looks identical until you
  * read the digits.
  * That is the defect this walk exists to catch, so "the copy changed" is not
- * accepted as evidence and the event count is compared as a number.
+ * accepted as evidence and the turn count is compared as a number.
  *
  * # Why two contexts and not two tabs
  *
@@ -38,7 +38,7 @@ import { executionInstructions } from "./fixtures/definition";
  * `formatTileSpend` renders two decimals. A run charged less than half a cent
  * cannot move that cell however correct the plumbing is, so the spend assertion
  * is made conditional on the SERVER's own before/after figures crossing a cent
- * boundary — measured, attached as evidence, never assumed. The event counter
+ * boundary — measured, attached as evidence, never assumed. The turn counter
  * carries the unconditional claim.
  */
 import { expect, test, type Page } from "@playwright/test";
@@ -47,7 +47,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { deriveFleetIdentity } from "@/lib/fleets/identity";
 import {
   assertPassed,
-  classifyTerminalEvent,
+  classifyTerminalTurn,
   JOURNEY_LEG,
 } from "./fixtures/execution";
 import { awaitTerminalTurn, messageFleet } from "./fixtures/chat-walk";
@@ -138,11 +138,11 @@ test.describe("wall live counters", () => {
     await expect(controlTile).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     const baseline = await readTileCounters(tile);
     const controlBaseline = await readTileCounters(controlTile);
-    expect(baseline.events, "the tile printed no event count to advance").not.toBeNull();
+    expect(baseline.turns, "the tile printed no turn count to advance").not.toBeNull();
 
     // ── The acting session messages the fleet, and the work finishes ──
     await messageFleet(page, workspaceId, fleetId, `${MESSAGE_PREFIX}${uniqueTag()}`);
-    assertPassed(classifyTerminalEvent(await awaitTerminalTurn(workspaceId, fleetId)));
+    assertPassed(classifyTerminalTurn(await awaitTerminalTurn(workspaceId, fleetId)));
     const spendAfter = (
       await observed(JOURNEY_LEG.observe, () =>
         readFleetCounters(FIXTURE_KEY.regular, workspaceId, fleetId),
@@ -166,12 +166,12 @@ test.describe("wall live counters", () => {
     });
 
     // ── The watching session's tile advanced, and it never reloaded ──
-    // The event count, as a number. The copy clearing is not accepted as
+    // The turn count, as a number. The copy clearing is not accepted as
     // evidence: it clears on any frame, including one whose figures the tile
     // then declines to read.
     await expect
-      .poll(async () => (await readTileCounters(tile)).events, { timeout: COUNTER_TIMEOUT_MS })
-      .toBeGreaterThan(baseline.events ?? 0);
+      .poll(async () => (await readTileCounters(tile)).turns, { timeout: COUNTER_TIMEOUT_MS })
+      .toBeGreaterThan(baseline.turns ?? 0);
 
     const advanced = await readTileCounters(tile);
     expect(advanced.spend, "the tile's spend cell went blank").not.toBe(TILE_FIGURE_ABSENT);
@@ -185,8 +185,8 @@ test.describe("wall live counters", () => {
 
     // Nothing else moved, and nothing was re-fetched to make it move.
     const controlAfter = await readTileCounters(controlTile);
-    expect(controlAfter.events, "an unmessaged fleet's tile advanced").toBe(
-      controlBaseline.events,
+    expect(controlAfter.turns, "an unmessaged fleet's tile advanced").toBe(
+      controlBaseline.turns,
     );
     expect(
       await navigationCount(watching.page),

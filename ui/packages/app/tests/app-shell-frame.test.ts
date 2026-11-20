@@ -49,7 +49,7 @@ describe("resolveActiveHref — single active winner", () => {
     // A resource-detail route collapses onto its section href.
     expect(resolveActiveHref(["/w/1/fleets"], "/w/1/fleets/abc")).toBe("/w/1/fleets");
     // Exact match on a plain sibling.
-    expect(resolveActiveHref(["/w/1/fleets", "/w/1/events"], "/w/1/events")).toBe("/w/1/events");
+    expect(resolveActiveHref(["/w/1/fleets", "/w/1/turns"], "/w/1/turns")).toBe("/w/1/turns");
     // Entry-redirect stubs never win, and an unmatched path lights nothing.
     expect(resolveActiveHref(["/", ""], "/")).toBe("");
     expect(resolveActiveHref(["/w/1/fleets"], "/unmatched")).toBe("");

@@ -16,7 +16,7 @@ export const chatCommand = () => Command.make("chat", {
   setupEtag: textFlag("setup-etag", "Original inspected fleet setup tag for uncertain Apply recovery", METAVAR.etag),
   publishTo: requiredIdFlag("publish-to", "Append a revision to this owned plugin").pipe(Flag.optional),
   pluginEtag: textFlag("plugin-etag", "Inspected plugin tag required by --publish-to", METAVAR.etag),
-  model: textFlag("model", "Authoring model reference for a new private draft", METAVAR.ref),
+  model: textFlag("model", "Setup model reference for a new private draft", METAVAR.ref),
   message: textFlag("message", "Send ordinary chat text and follow its durable outcome", METAVAR.text),
   fleet: textFlag("fleet", "Improve this existing fleet; no first message is needed", METAVAR.id),
   setupRevision: textFlag("setup-revision", "Exact fleet setup revision to improve", METAVAR.count),

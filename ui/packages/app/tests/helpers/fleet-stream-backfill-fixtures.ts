@@ -1,4 +1,4 @@
-import type { TurnRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/turns";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { FakeEventSource } from "./fake-event-source";
 import { row, sourceAt } from "./fleet-stream-registry-fixtures";

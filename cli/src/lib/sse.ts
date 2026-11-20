@@ -1,6 +1,6 @@
 // GET-based Server-Sent Events consumer.
 //
-// The events endpoint is GET. We consume frames via fetch +
+// The turn stream endpoint is GET. We consume frames via fetch +
 // ReadableStream, which lets us set Authorization headers (the native
 // EventSource API can not). A POST-based mirror module once sat beside
 // this one for the execute proxy; that caller and its module are gone,

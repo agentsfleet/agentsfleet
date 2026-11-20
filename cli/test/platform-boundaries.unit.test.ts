@@ -42,7 +42,7 @@ test("renders provider defaults as a terminal table", async () => {
 test("renders event history and a continuation cursor", async () => {
   fixture.respond = () => Response.json({items: [{id: RUNNER_ID, runner_id: RUNNER_ID,
     event_type: "runner_online", occurred_at: INSTANT, metadata: {}}], total: 1, next_cursor: RUNNER_ID});
-  const result = await fixture.run(["runners", "events", RUNNER_ID], "", true);
+  const result = await fixture.run(["runners", "history", RUNNER_ID], "", true);
   expect(result.code).toBe(0); expect(result.stdout).toContain("runner_online"); expect(result.stdout).toContain("Next page:");
 });
 

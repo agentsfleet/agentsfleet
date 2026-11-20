@@ -1,7 +1,7 @@
 /** A send whose answer never reached the page, the Claude.ai way: the row
  * leaves the thread, the text returns to the composer, and Resend delivers it
  * through the real steer route under the operation id it was first sent with
- * — so the daemon answers the first admission's event instead of running it
+ * — so the daemon answers the first admission's turn instead of running it
  * twice. Proven in the same page, and after a reload. */
 import type { Page, Request, Route } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -35,7 +35,7 @@ type Steers = { lostAnswers: number; operationIds: string[]; turnIds: string[] }
 type ResendPage = { workspaceId: string; fleetId: string; href: string; message: string };
 
 // A seeded fleet, and every steer POST seen: each goes through to the
-// daemon, and its operation id and the event id the daemon answered are read
+// daemon, and its operation id and the turn id the daemon answered are read
 // off the wire. With `loseFirstAnswer`, the first steer is admitted but its
 // answer never reaches the page — the acknowledgement lost on the way back.
 async function withResendPage(
@@ -120,7 +120,7 @@ test("test_failed_send_resend_journey", async ({ page }) => {
     await expect(composer.getByText(SEND_UNCONFIRMED)).toHaveCount(0);
     await expect(draft).toHaveValue("");
     // One operation, admitted once: Resend carried the first send's id, and
-    // the daemon answered it with the event it had already admitted. The
+    // the daemon answered it with the turn it had already admitted. The
     // checks above pass on the optimistic row, before that answer is back.
     await expect.poll(() => steers.turnIds.length).toBe(2);
     const [firstOperation, resentOperation] = steers.operationIds;

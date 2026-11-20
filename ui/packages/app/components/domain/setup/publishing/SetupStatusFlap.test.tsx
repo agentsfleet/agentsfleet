@@ -64,8 +64,8 @@ it("makes an unsaved proposal available for saving without a success tick", () =
   expect(screen.getByRole("status").getAttribute("data-setup-status")).toBe("attention");
 });
 
-it("does not keep refining after the durable stop watermark", () => {
-  render(<SetupStatusFlap showPublication view={{...EMPTY_DRAFT_VIEW, draft: {...DRAFT, cancelled_through: "1"}, messages: [{...MESSAGE, state: "running"}]}} workspace={WORKSPACE} />);
+it("does not keep refining after a stopped request", () => {
+  render(<SetupStatusFlap showPublication view={{...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [{...MESSAGE, state: "cancelled"}]}} workspace={WORKSPACE} />);
   expect(screen.getByRole("status").textContent).toBe("Setup ready to save");
 });
 

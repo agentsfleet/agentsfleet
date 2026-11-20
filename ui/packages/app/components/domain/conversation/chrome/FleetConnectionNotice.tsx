@@ -2,7 +2,7 @@
 
 import { Alert, Button } from "@agentsfleet/design-system";
 
-import { CONNECTION_STATUS, type ConnectionStatus } from "../stream/useFleetEventStream";
+import { CONNECTION_STATUS, type ConnectionStatus } from "../stream/useFleetTurnStream";
 
 const OFFLINE_MESSAGE = "Live updates are temporarily unavailable. We’re reconnecting automatically.";
 const RECONNECT_LABEL = "Retry now";

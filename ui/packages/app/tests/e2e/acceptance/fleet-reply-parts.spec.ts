@@ -3,7 +3,7 @@
  * and what the reply costs the main thread while it streams. */
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { formatMs } from "@/lib/utils";
 import { FIXTURE_KEY, FRAME_BUDGET_TAG } from "./fixtures/constants";
 import { sseFrame as frame } from "./fixtures/sse";
@@ -62,7 +62,7 @@ test("test_slack_received_uses_readable_label_without_empty_details", async ({pa
     })}]);
     await expect(chat.getByText("Slack", {exact: true})).toBeVisible();
     await expect(chat.getByText("Message received", {exact: true})).toBeVisible();
-    await expect(chat.getByRole("button", {name: "View event"})).toHaveCount(0);
+    await expect(chat.getByRole("button", {name: "View turn"})).toHaveCount(0);
     await expect(chat.getByRole("button", {name: "View message", exact: true})).toHaveCount(0);
   });
 });

@@ -1,5 +1,5 @@
-import type { TurnRow, LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import type { TurnRow, LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { factsOf } from "./fleet-stream-facts";
 import {
   applyDetail,
@@ -8,13 +8,13 @@ import {
   readMissingBodies,
   recoverFinalReply,
   refreshSavedTrace,
-  type ApplyEvents,
+  type ApplyTurns,
   type TurnDetailReader,
 } from "./fleet-stream-detail-recovery";
 import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
 import { applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
-import { AGENTSFLEET_EVENT_STATUS, TERMINAL_STATUSES } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS, TERMINAL_STATUSES } from "./fleet-stream-row";
 import { closedAnyAtSettle } from "./fleet-stream-tool-trace";
 import { ReplyStream } from "./reply-stream";
 import { sendMarks } from "./send-marks";
@@ -23,7 +23,7 @@ import { STREAM_SILENCE_TIMEOUT_MS } from "./stream-recovery-window";
 type ChunkFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>;
 type CompleteFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_COMPLETE }>;
 
-export type { ApplyEvents, TurnDetailReader } from "./fleet-stream-detail-recovery";
+export type { ApplyTurns, TurnDetailReader } from "./fleet-stream-detail-recovery";
 
 // The chat installs its reader here, so the registry names no transport and a
 // test can answer for it.
@@ -33,7 +33,7 @@ export function setTurnDetailReader(reader: TurnDetailReader | null): void {
   readTurnDetail = reader;
 }
 
-/** How long a running event may go without a frame before its row is read
+/** How long a running turn may go without a frame before its row is read
  * again: the stream's own silence window, so a quiet tool is never taken for a
  * lost ending sooner than a quiet stream would be. */
 export const REPLY_STALL_MS = STREAM_SILENCE_TIMEOUT_MS;
@@ -43,7 +43,7 @@ export function dispatchReplyFrame(
   entry: Entry,
   fleetId: string,
   frame: LiveFrame,
-  apply: ApplyEvents,
+  apply: ApplyTurns,
   isCurrent: () => boolean,
 ): boolean {
   sendMarks.frame(frame);
@@ -57,12 +57,12 @@ export function dispatchReplyFrame(
   return true;
 }
 
-// A completion ends the watch on its event; any other frame naming an event
+// A completion ends the watch on its turn; any other frame naming a turn
 // marks it heard now.
 function markHeard(entry: Entry, frame: LiveFrame): void {
   if (frame.kind === FRAME_KIND.TURN_COMPLETE) endWatch(entry, frame.turn_id);
   else if ("turn_id" in frame && typeof frame.turn_id === "string") {
-    // The daemon publishes an event's frames only after writing its row.
+    // The daemon publishes a turn's frames only after writing its row.
     entry.replyHeard.set(frame.turn_id, Date.now());
     entry.replyExists.add(frame.turn_id);
   }
@@ -73,9 +73,9 @@ function endWatch(entry: Entry, turnId: string): void {
   entry.replyExists.delete(turnId);
 }
 
-// One piece of a streamed reply, written through its event's decoder. A piece
+// One piece of a streamed reply, written through its turn's decoder. A piece
 // out of sequence closes the live pass; the saved detail supplies the rest.
-function writeChunk(entry: Entry, frame: ChunkFrame, apply: ApplyEvents, isCurrent: () => boolean): void {
+function writeChunk(entry: Entry, frame: ChunkFrame, apply: ApplyTurns, isCurrent: () => boolean): void {
   if (entry.replyGaps.has(frame.turn_id)) return;
   let decoder = entry.replyStreams.get(frame.turn_id);
   const alreadyOpen = decoder !== undefined;
@@ -100,13 +100,13 @@ function completeReply(
   entry: Entry,
   fleetId: string,
   frame: CompleteFrame,
-  apply: ApplyEvents,
+  apply: ApplyTurns,
   isCurrent: () => boolean,
 ): void {
   entry.completedReplies.add(frame.turn_id);
   const finalReply = typeof frame.final_reply === "string" ? frame.final_reply : null;
   const settle = () => {
-    // Set inside `apply`, which runs its update at once (`setEvents`).
+    // Set inside `apply`, which runs its update at once (`setTurns`).
     const seen = { closedCalls: false };
     apply((prev) => {
       const completed = applyLiveFrame(prev, frame);
@@ -125,7 +125,7 @@ function completeReply(
     entry.replyGaps.delete(frame.turn_id);
     // The answer came inline, but a call the turn closed itself may have ended
     // otherwise: the saved trace says how.
-    if (seen.closedCalls || entry.snapshot.events.some(event => event.id === frame.turn_id && event.runRestarted)) refreshSavedTrace(entry, fleetId, frame.turn_id, apply, isCurrent, readTurnDetail);
+    if (seen.closedCalls || entry.snapshot.turns.some(turn => turn.id === frame.turn_id && turn.runRestarted)) refreshSavedTrace(entry, fleetId, frame.turn_id, apply, isCurrent, readTurnDetail);
   };
   const decoder = entry.replyStreams.get(frame.turn_id);
   if (decoder === undefined) {
@@ -156,7 +156,7 @@ export function settleRepliesFromBackfill(
   entry: Entry,
   fleetId: string,
   rows: TurnRow[],
-  apply: ApplyEvents,
+  apply: ApplyTurns,
   isCurrent: () => boolean,
 ): void {
   for (const row of rows) {
@@ -198,19 +198,19 @@ export function disposeReplyStreams(entry: Entry): void {
   entry.traceReads.clear();
 }
 
-// A running event the stream stopped telling this tab about — its completion
+// A running turn the stream stopped telling this tab about — its completion
 // dropped while the stream stayed up — would keep its row running and its
-// Thought clock ticking. Each frame for the event marks it heard; the stream's
-// own traffic, every frame and heartbeat, sweeps for events unheard for
+// Thought clock ticking. Each frame for the turn marks it heard; the stream's
+// own traffic, every frame and heartbeat, sweeps for turns unheard for
 // `REPLY_STALL_MS` and reads each one's saved row, once per silence window,
 // until the row ends. No timer: a stream that falls silent altogether is the
 // recovery window's to reopen. `readNow` reads at once as well — a replayed
-// send whose event may have run before this page saw it.
+// send whose turn may have run before this page saw it.
 export function watchReply(
   entry: Entry,
   fleetId: string,
   turnId: string,
-  apply: ApplyEvents,
+  apply: ApplyTurns,
   isCurrent: () => boolean,
   readNow: boolean,
 ): void {
@@ -226,16 +226,16 @@ export function watchReply(
 export function watchRunningRows(entry: Entry, rows: readonly TurnRow[]): void {
   const nowMs = Date.now();
   for (const row of rows) {
-    if (row.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) continue;
+    if (row.status !== AGENTSFLEET_TURN_STATUS.RECEIVED) continue;
     // A server read showed it running, so its row exists.
     entry.replyExists.add(row.turn_id);
     if (!entry.replyHeard.has(row.turn_id)) entry.replyHeard.set(row.turn_id, nowMs);
   }
 }
 
-/** Reads every running event this tab has not heard from in `REPLY_STALL_MS`,
+/** Reads every running turn this tab has not heard from in `REPLY_STALL_MS`,
  * once per silence window. */
-export function readStalledReplies(entry: Entry, fleetId: string, apply: ApplyEvents, isCurrent: () => boolean): void {
+export function readStalledReplies(entry: Entry, fleetId: string, apply: ApplyTurns, isCurrent: () => boolean): void {
   const nowMs = Date.now();
   for (const [turnId, heardAtMs] of entry.replyHeard) {
     if (nowMs - heardAtMs < REPLY_STALL_MS) continue;
@@ -246,11 +246,11 @@ export function readStalledReplies(entry: Entry, fleetId: string, apply: ApplyEv
   }
 }
 
-/** A running event can predate the list watermark. Read its persisted progress
+/** A running turn can predate the list watermark. Read its persisted progress
  * after each coalesced gap recovery, even when new frames keep it from stalling.
  * One read at a time bounds the gap's detail traffic. */
-export async function recoverRunningReplies(entry: Entry, fleetId: string, apply: ApplyEvents, isCurrent: () => boolean): Promise<void> {
-  const ids = entry.snapshot.events.filter((event) => event.status === AGENTSFLEET_EVENT_STATUS.RECEIVED).map((event) => event.id);
+export async function recoverRunningReplies(entry: Entry, fleetId: string, apply: ApplyTurns, isCurrent: () => boolean): Promise<void> {
+  const ids = entry.snapshot.turns.filter((turn) => turn.status === AGENTSFLEET_TURN_STATUS.RECEIVED).map((turn) => turn.id);
   for (const turnId of ids) {
     if (!isCurrent()) return;
     // An older silence read may predate this gap. Wait for it, then read the
@@ -260,18 +260,18 @@ export async function recoverRunningReplies(entry: Entry, fleetId: string, apply
   }
 }
 
-// One read of an event this tab still shows running. An ended run settles its
+// One read of a turn this tab still shows running. An ended run settles its
 // row — status and figures from the row, the answer from its text, its live
 // pass closed — and leaves the watch, as does a row something else settled or
-// an event the read found gone. Any other failed read, or a run still going,
-// changes nothing: the watch reads it again. A 404 for an event whose row was
+// a turn the read found gone. Any other failed read, or a run still going,
+// changes nothing: the watch reads it again. A 404 for a turn whose row was
 // never known to exist is one still queued behind its admission — a replayed
 // send read before a runner took it — and is read again like any other miss.
 async function settleFromDetail(
   entry: Entry,
   fleetId: string,
   turnId: string,
-  apply: ApplyEvents,
+  apply: ApplyTurns,
   isCurrent: () => boolean,
 ): Promise<void> {
   if (!isCurrent()) return;
@@ -288,9 +288,9 @@ async function settleFromDetail(
   }
 }
 
-async function readRunningDetail(entry: Entry, fleetId: string, turnId: string, apply: ApplyEvents, isCurrent: () => boolean): Promise<void> {
-  const shown = entry.snapshot.events.find((event) => event.id === turnId);
-  if (shown?.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
+async function readRunningDetail(entry: Entry, fleetId: string, turnId: string, apply: ApplyTurns, isCurrent: () => boolean): Promise<void> {
+  const shown = entry.snapshot.turns.find((turn) => turn.id === turnId);
+  if (shown?.status !== AGENTSFLEET_TURN_STATUS.RECEIVED) {
     endWatch(entry, turnId);
     return;
   }
@@ -299,7 +299,7 @@ async function readRunningDetail(entry: Entry, fleetId: string, turnId: string, 
   const result = await read(entry.workspaceId, fleetId, turnId).catch(() => null);
   if (!isCurrent()) return;
   if (!result?.ok) {
-    // A failed read keeps the row as it is and reads again; a gone event ends
+    // A failed read keeps the row as it is and reads again; a gone turn ends
     // the reads and settles the row, since nothing is left to wait for.
     if (isGone(entry, turnId, result?.status)) {
       endWatch(entry, turnId);
@@ -308,7 +308,7 @@ async function readRunningDetail(entry: Entry, fleetId: string, turnId: string, 
     }
     return;
   }
-  if (result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) {
+  if (result.data.status === AGENTSFLEET_TURN_STATUS.RECEIVED) {
     entry.replyExists.add(turnId);
     apply((prev) => mergeBackfill(prev, [result.data]), {});
     return;

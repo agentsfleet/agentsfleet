@@ -2,7 +2,7 @@ import type { MessageState } from "@assistant-ui/react";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { CellState } from "../copy/tool-call-copy";
 import { readToolResult } from "../../replies/fleetReplyMessage";
-import { formatElapsed } from "@/lib/events/run-figures-format";
+import { formatElapsed } from "@/lib/turns/run-figures-format";
 import { CELL_STATE, cellState, toolCopy } from "../copy/tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "./tool-call-shape";
 import { pathArg, stringArg } from "./tool-call-text";

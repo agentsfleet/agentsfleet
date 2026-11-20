@@ -7,11 +7,11 @@
  * silently stops streaming.
  */
 
-import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "@/lib/streaming/fleet-stream-row";
 
 /** Sent by the operator, not yet acknowledged by the daemon. */
-export const STATUS_OPTIMISTIC = AGENTSFLEET_EVENT_STATUS.OPTIMISTIC;
+export const STATUS_OPTIMISTIC = AGENTSFLEET_TURN_STATUS.OPTIMISTIC;
 /** The fleet answered with an error rather than a reply. */
-export const STATUS_AGENT_ERROR = AGENTSFLEET_EVENT_STATUS.AGENT_ERROR;
+export const STATUS_AGENT_ERROR = AGENTSFLEET_TURN_STATUS.AGENT_ERROR;
 /** Accepted and in flight — the turn is still arriving. */
-export const STATUS_IN_FLIGHT = AGENTSFLEET_EVENT_STATUS.RECEIVED;
+export const STATUS_IN_FLIGHT = AGENTSFLEET_TURN_STATUS.RECEIVED;

@@ -2,7 +2,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { SCHEDULE } from "@/tests/helpers/draft-fixtures";
 import { useState } from "react";
 import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/conversation/thread/useFleetThreadEntries";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
 import { TASK_IDS } from "@/tests/helpers/task-reads";
 import { FleetTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
@@ -10,7 +10,7 @@ import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
 import { FleetConversationLayout } from "@/components/domain/shared/summary/FleetWorkSidebar";
 import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
-import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
@@ -33,7 +33,7 @@ export function TaskFixture() {
     <header className="shrink-0 border-b border-border px-xl py-lg"><h1 className="font-semibold">Linkwarden repairs</h1></header>
     <AssistantRuntimeProvider runtime={runtime}><SenderLabelProvider senderLabel="Linkwarden repair fleet across connected repositories">
       <FleetTaskProvider workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}}>
-      <FleetConversationLayout work={<TaskPanel workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}} />}><FleetThreadViewport eventsCount={2} connectionStatus={CONNECTION_STATUS.LIVE}
+      <FleetConversationLayout work={<TaskPanel workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}} />}><FleetThreadViewport turnsCount={2} connectionStatus={CONNECTION_STATUS.LIVE}
         pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}}
         onRestored={() => {}} onDraft={() => {}} modelLabel="Selected coding model" /></FleetConversationLayout>
       </FleetTaskProvider>

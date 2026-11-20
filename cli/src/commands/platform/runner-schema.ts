@@ -51,7 +51,7 @@ export const RunnerRegisteredSchema = Schema.Struct({runner_id: text, runner_tok
 export const RunnerRotatedSchema = Schema.Struct({id: text, runner_token: text});
 /** A tenant registration retried with its first key and body: the runner, never its token. */
 export const RegistrationReplaySchema = Schema.Struct({runner_id: text, assigned_policy: RunnerPolicySchema});
-export const RunnerEventsSchema = Schema.Struct({
+export const RunnerHistoryPageSchema = Schema.Struct({
   items: Schema.Array(Schema.Struct({id: text, runner_id: text, event_type: Schema.Enum(RunnerEventType), occurred_at: instant, metadata: Schema.Unknown})),
   total: Schema.NullOr(count), next_cursor: Schema.NullOr(text),
 });

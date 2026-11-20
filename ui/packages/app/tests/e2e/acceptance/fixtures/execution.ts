@@ -14,24 +14,24 @@
  * branch red and green without a runner in reach; the journey only calls it.
  */
 import type { RunnerRunResponse, RunnerListResponse } from "@/tests/helpers/runner-control";
-import type { TurnDetail, ThreadPage } from "@/lib/api/events";
+import type { TurnDetail, ThreadPage } from "@/lib/api/turns";
 import { RunOutcome } from "@/tests/helpers/runner-control-types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 
 // One spelling each for the statuses and failure classes this module reads
-// (RULE UFS). The event statuses mirror `lib/api/events.ts:TurnStatus`; the
+// (RULE UFS). The turn statuses mirror `lib/api/turns.ts:TurnStatus`; the
 // failure labels mirror `af_wire::report::FailureClass`
 // (rustd/crates/protocol/af_wire/src/report/mod.rs), serialised snake_case — the one type
 // the daemon and the runner both build against.
-export const EVENT_STATUS = {
+export const TURN_STATUS = {
   received: "received",
   processed: "processed",
   fleetError: "fleet_error",
   gateBlocked: "gate_blocked",
 } as const;
 
-export const EVENT_TYPE_CHAT = "chat";
+export const TURN_KIND_CHAT = "chat";
 
 export const FAILURE_CLASS = {
   startupPosture: "startup_posture",
@@ -153,13 +153,13 @@ export function assertPassed(verdict: ExecutionVerdict): void {
  * is a defect until somebody names it: failing closed here is what stops a new
  * failure class from shipping as "environment".
  */
-export function classifyTerminalEvent(row: TerminalObservation): ExecutionVerdict {
-  if (row.status === EVENT_STATUS.processed) {
+export function classifyTerminalTurn(row: TerminalObservation): ExecutionVerdict {
+  if (row.status === TURN_STATUS.processed) {
     const reply = row.response_text ?? "";
     if (reply.trim().length > 0) return { kind: VERDICT_KIND.passed };
     return { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute, detail: DETAIL_NO_REPLY };
   }
-  if (row.status === EVENT_STATUS.gateBlocked) {
+  if (row.status === TURN_STATUS.gateBlocked) {
     return { kind: VERDICT_KIND.product, leg: JOURNEY_LEG.execute, detail: DETAIL_GATE_BLOCKED };
   }
   const label = row.failure_label ?? "";
@@ -279,7 +279,7 @@ export async function countChatTurns(
   const page = await clientFor(handle).get<ThreadPage>(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
   );
-  return page.items.filter((item) => item.event_type === EVENT_TYPE_CHAT).length;
+  return page.items.filter((item) => item.event_type === TURN_KIND_CHAT).length;
 }
 
 /**
@@ -296,7 +296,7 @@ export async function readTerminalChatTurn(
     `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
   );
   const turn = page.items.find(
-    (item) => item.event_type === EVENT_TYPE_CHAT && item.status !== EVENT_STATUS.received,
+    (item) => item.event_type === TURN_KIND_CHAT && item.status !== TURN_STATUS.received,
   );
   return turn ?? null;
 }

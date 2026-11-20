@@ -1,11 +1,11 @@
 import * as v from "valibot";
 
 import { HTTP_STATUS_NOT_FOUND } from "@/lib/api/errors";
-import { fleetTurnItemUrl } from "@/lib/api/events-types";
+import { fleetTurnItemUrl } from "@/lib/api/turns-types";
 import { readToolArgs, type ToolArgs } from "./fleet-stream-tool-trace";
 
 // One tool call read in full, for the thread's "show all": over the same-origin
-// route, as the event re-read goes, so the token stays on the server and a
+// route, as the turn re-read goes, so the token stays on the server and a
 // send in flight never queues behind it.
 
 /** How long the read may take before the dialog falls back to what it has. */

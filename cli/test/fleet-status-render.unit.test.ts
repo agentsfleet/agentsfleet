@@ -65,7 +65,7 @@ const credentialsLayer = (): Layer.Layer<Credentials> =>
     clearAccessToken: Effect.die("unused"),
   });
 
-describe("agentsfleet fleet status — per-fleet events + budget", () => {
+describe("agentsfleet fleet status — per-fleet turns + budget", () => {
   test("a status mutation reports the server's actual outcome", async () => {
     const messages: string[] = [];
     const http = Layer.succeed(HttpClient, { request: <T,>() => Effect.succeed({ ...FLEET, status: "archived" } as T) });
@@ -95,13 +95,13 @@ describe("agentsfleet fleet status — per-fleet events + budget", () => {
     expect(rows[0]).toMatchObject({
       Name: "alpha",
       Status: "active",
-      Events: "7",
+      Turns: "7",
       Budget: "$3.00",
     });
     expect(rows[1]).toMatchObject({
       Name: "beta",
       Status: "archived",
-      Events: "0",
+      Turns: "0",
       Budget: "$0.00",
     });
   });

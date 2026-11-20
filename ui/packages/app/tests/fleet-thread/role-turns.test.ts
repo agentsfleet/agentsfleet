@@ -1,13 +1,13 @@
 import { FLEET_NAME, ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it } from "vitest";
 import { act, render, screen } from "@testing-library/react";
-import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
+import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/turns/turn-summary";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 
 describe("FleetThread — role rendering: turns and connection", () => {
   it("renders an operator steer and the fleet's reply as separate conversation turns", () => {
-    // A durable event can contain both the trigger and its response. The
+    // A durable turn can contain both the trigger and its response. The
     // transcript normalizes those into two assistant-ui message roots so
     // alignment, scrolling, and future actions remain message-scoped.
     mockStream([

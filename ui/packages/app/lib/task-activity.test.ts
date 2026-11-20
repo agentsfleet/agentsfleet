@@ -53,7 +53,7 @@ describe("task progress across stream loss", () => {
     expect(readTaskActivityHistory({items: [{...latest, progress: {...latest.progress,
       bytes: {acknowledged: -1, missing: 0, reused: 0}}}], truncated: false})).toBeUndefined();
   });
-  it("restores progress on a running event without replacing its streamed answer", () => {
+  it("restores progress on a running turn without replacing its streamed answer", () => {
     const live = evt({id: "e1", reply: "Working on the repair", taskActivity: {items: [stage("uploading", 8)], truncated: false}});
     const detail = row({status: "received", task_activity: {items: [stage("preparing"), stage("uploading", 3)], truncated: false}});
     const merged = mergeBackfill([live], [detail]);

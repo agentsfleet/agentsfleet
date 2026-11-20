@@ -51,7 +51,7 @@ describe("the recovery walk hands its rows over once", () => {
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(listener.mock.calls.length - heardBefore).toBe(1);
-    expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual([SEED, OLDEST, MIDDLE, NEWEST]);
+    expect(getSnapshot(Z_A).turns.map((turn) => turn.id)).toEqual([SEED, OLDEST, MIDDLE, NEWEST]);
     release();
   });
 

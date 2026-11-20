@@ -1,8 +1,8 @@
-import { latestFigures, sameFigures, type FleetFacts } from "@/lib/events/run-summary";
-import { capEvents } from "./fleet-stream-cap";
+import { latestFigures, sameFigures, type FleetFacts } from "@/lib/turns/run-summary";
+import { capTurns } from "./fleet-stream-cap";
 import type { Entry, FleetStreamSnapshot } from "./fleet-stream-entry";
 import { mergeFacts } from "./fleet-stream-facts";
-import type { FleetEvent } from "./fleet-stream-row";
+import type { FleetTurn } from "./fleet-stream-row";
 
 // An entry's one write path: its rows, the facts a frame spoke about the fleet,
 // and any other snapshot patch. Listeners hear of a write once, and only when
@@ -18,22 +18,22 @@ export function patchSnapshot(entry: Entry, patch: Partial<FleetStreamSnapshot>)
   notify(entry);
 }
 
-export function setEvents(
+export function setTurns(
   entry: Entry,
-  next: (prev: FleetEvent[]) => FleetEvent[],
+  next: (prev: FleetTurn[]) => FleetTurn[],
   spoken: Partial<FleetFacts> = {},
 ): void {
   // The one choke point every mutation flows through: the cap and the strip's
   // `latest` live here once, a completion's facts fold into the same write, and
   // a frame that changed nothing (a duplicate, a malformed one) notifies no one.
-  const events = capEvents(next(entry.snapshot.events));
+  const turns = capTurns(next(entry.snapshot.turns));
   const facts = spokenFacts(entry, spoken);
-  if (events === entry.snapshot.events && facts.fleet === undefined) return;
-  const latest = latestFigures(events);
+  if (turns === entry.snapshot.turns && facts.fleet === undefined) return;
+  const latest = latestFigures(turns);
   entry.snapshot = {
     ...entry.snapshot,
     ...facts,
-    events,
+    turns,
     latest: sameFigures(latest, entry.snapshot.latest) ? entry.snapshot.latest : latest,
   };
   notify(entry);

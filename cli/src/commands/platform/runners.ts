@@ -5,7 +5,7 @@ import { eventTime } from "../../lib/event-time.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { ADMIN_RUNNERS_PATH, decodePlatform, invalidInput, platformInput, platformPath, platformQuery, platformRequest, platformResult, readPlatformFile } from "./common.ts";
-import { RegistrationReplaySchema, RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerRunsSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
+import { RegistrationReplaySchema, RunnerDetailSchema, RunnerRegisteredSchema, RunnerHistoryPageSchema, RunnerLabelsSchema, RunnerRunsSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
 import { withRunnerTokenFile } from "./token.ts";
 import type { RunnerKind } from "./runner-kind.ts";
 import { v7 as uuidv7 } from "uuid";
@@ -69,7 +69,7 @@ export const runnerHistory = Effect.fn("runners.history")(function* (id: string,
   const body = yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id, `/${kind}`) + query});
   const output = yield* Output;
   if (kind === RunnerHistory.History) {
-    const page = yield* decodePlatform(RunnerEventsSchema, body);
+    const page = yield* decodePlatform(RunnerHistoryPageSchema, body);
     if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
     yield* output.printEntityTable({id: {key: "id", label: "ID"}, domain: [
       {key: "event_type", label: "EVENT"}, {key: "occurred_at", label: "OCCURRED"},

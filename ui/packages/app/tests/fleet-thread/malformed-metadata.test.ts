@@ -1,16 +1,16 @@
-import { ev, mockStream, renderThread, useFleetEventStreamMock } from "./harness";
+import { ev, mockStream, renderThread, useFleetTurnStreamMock } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { OUTCOME } from "@/lib/turns/turn-summary";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import { CONNECTION_STATUS, type FleetEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS, type FleetTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 
 describe("FleetThread — robustness against malformed metadata", () => {
-  it("does not throw when an event's custom.actor is a non-string", () => {
-    // Simulate a frame whose convertEvent emits metadata.custom with a
+  it("does not throw when a turn's custom.actor is a non-string", () => {
+    // Simulate a frame whose convertTurn emits metadata.custom with a
     // non-string actor. The renderer must degrade to an empty actor label
     // rather than throw.
-    const broken: FleetEvent = {
+    const broken: FleetTurn = {
       id: "e_broken",
       role: "system",
       actor: "" as unknown as string,
@@ -22,7 +22,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
       createdAt: new Date(Date.UTC(2026, 4, 15, 9, 0, 0)),
       status: "processed",
     };
-    const customAnyConverter = (e: FleetEvent) => ({
+    const customAnyConverter = (e: FleetTurn) => ({
       role: e.role,
       id: e.id,
       createdAt: e.createdAt,
@@ -35,13 +35,13 @@ describe("FleetThread — robustness against malformed metadata", () => {
         },
       },
     });
-    useFleetEventStreamMock.mockReturnValue({
-      events: [broken],
+    useFleetTurnStreamMock.mockReturnValue({
+      turns: [broken],
       connectionStatus: CONNECTION_STATUS.LIVE,
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      convertEvent: customAnyConverter,
+      convertTurn: customAnyConverter,
     });
     expect(() => renderThread()).not.toThrow();
     expect(screen.getByText(/config has non-string actor/)).toBeTruthy();
@@ -56,13 +56,13 @@ describe("FleetThread — robustness against malformed metadata", () => {
       actor: "steer:kishore@e2e.com",
       text: "non-string status",
     });
-    useFleetEventStreamMock.mockReturnValue({
-      events: [e],
+    useFleetTurnStreamMock.mockReturnValue({
+      turns: [e],
       connectionStatus: CONNECTION_STATUS.LIVE,
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      convertEvent: (m: FleetEvent) => ({
+      convertTurn: (m: FleetTurn) => ({
         role: m.role,
         id: m.id,
         createdAt: m.createdAt,
@@ -87,13 +87,13 @@ describe("FleetThread — robustness against malformed metadata", () => {
     // leaves it empty. The row must still carry its sender and its time —
     // the shape survives even when there is nothing to say.
     const e = ev({ role: "user", actor: "steer:user_3gkbg", text: "" });
-    useFleetEventStreamMock.mockReturnValue({
-      events: [e],
+    useFleetTurnStreamMock.mockReturnValue({
+      turns: [e],
       connectionStatus: CONNECTION_STATUS.LIVE,
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      convertEvent: (m: FleetEvent) => ({
+      convertTurn: (m: FleetTurn) => ({
         role: m.role,
         id: m.id,
         createdAt: m.createdAt,
@@ -117,19 +117,19 @@ describe("FleetThread — robustness against malformed metadata", () => {
   it("renders no operator bubble for a turn whose body the read never carried", () => {
     // The blank-pill regression. A completion frame for a run the timeline
     // never opened (a reconnect missed its `turn_received`) is rebuilt from
-    // the events-list shape, which selects no `request_json` and no
+    // the turns-list shape, which selects no `request_json` and no
     // `response_text` — so the turn arrives with an empty text part. Rendering
     // that as an operator row put an empty pill in the thread beside a bare
     // "Completed.", which reads as a message somebody sent with nothing in it.
     // Contrast the image-only case above: that one has content and keeps its row.
     const e = ev({ role: "user", actor: "steer:user_3gkbg", text: "" });
-    useFleetEventStreamMock.mockReturnValue({
-      events: [e],
+    useFleetTurnStreamMock.mockReturnValue({
+      turns: [e],
       connectionStatus: CONNECTION_STATUS.LIVE,
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
-      convertEvent: (m: FleetEvent) => ({
+      convertTurn: (m: FleetTurn) => ({
         role: m.role,
         id: m.id,
         createdAt: m.createdAt,
@@ -152,7 +152,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(viewport?.getAttribute("aria-label")).toBe("Chat");
   });
 
-  it("renders the backfill skeleton when CONNECTING with no events", () => {
+  it("renders the backfill skeleton when CONNECTING with no turns", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
     const { container } = renderThread();
     expect(
@@ -163,7 +163,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     ).toBeNull();
   });
 
-  it("renders the backfill skeleton when RECONNECTING with no events", () => {
+  it("renders the backfill skeleton when RECONNECTING with no turns", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
     const { container } = renderThread();
     expect(
@@ -171,7 +171,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     ).toBeTruthy();
   });
 
-  it("shows the idle empty-state hint (not skeleton) when LIVE with no events", () => {
+  it("shows the idle empty-state hint (not skeleton) when LIVE with no turns", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
     const { container } = renderThread();
     expect(
@@ -182,7 +182,7 @@ describe("FleetThread — robustness against malformed metadata", () => {
     ).toBeTruthy();
   });
 
-  it("never renders the skeleton once any event is present", () => {
+  it("never renders the skeleton once any turn is present", () => {
     mockStream(
       [ev({ role: "assistant", actor: "fleet", text: "first frame" })],
       {

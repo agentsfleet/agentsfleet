@@ -5,15 +5,15 @@
 // reason as `fleet-stream-frames.ts`: the registry's lifecycle file stays
 // under the length gate and the model stays readable on its own.
 
-import type { TurnRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/turns";
 import {
   NO_FACTS,
   latestFigures,
   type FleetFacts,
   type RunFigures,
-} from "@/lib/events/run-summary";
+} from "@/lib/turns/run-summary";
 import { maxServerCreatedAt, mergeBackfill } from "./fleet-stream-frames";
-import type { FleetEvent } from "./fleet-stream-row";
+import type { FleetTurn } from "./fleet-stream-row";
 import type { ReplyStream } from "./reply-stream";
 import { CHAT_CONNECTION_STATUS, type ChatConnection, type ChatConnectionStatus } from "./chat-connection";
 import { HeldTurns } from "./fleet-stream-held";
@@ -22,7 +22,7 @@ export const CONNECTION_STATUS = CHAT_CONNECTION_STATUS;
 export type ConnectionStatus = ChatConnectionStatus;
 
 export type FleetStreamSnapshot = {
-  events: FleetEvent[];
+  turns: FleetTurn[];
   connectionStatus: ConnectionStatus;
   // What the server render and the live tail last said about the fleet
   // itself: its lifecycle status and how many approvals wait on it. The
@@ -50,25 +50,25 @@ export type Listener = () => void;
 export type Entry = {
   workspaceId: string;
   snapshot: FleetStreamSnapshot;
-  /** Greatest daemon-owned attempt observed for each event. */
+  /** Greatest daemon-owned attempt observed for each turn. */
   replyAttempts: Map<string, string>;
   /** A committed completion closes activity before asynchronous decoding finishes. */
   completedReplies: Set<string>;
   replyStreams: Map<string, ReplyStream>;
   replyGaps: Set<string>;
   replyRecoveries: Set<string>;
-  /** Per running event, when this tab last heard a frame for it. */
+  /** Per running turn, when this tab last heard a frame for it. */
   replyHeard: Map<string, number>;
-  /** Running events whose saved row is known to exist: a frame named it, or a
+  /** Running turns whose saved row is known to exist: a frame named it, or a
    * server read showed it. Only for these does a 404 mean the row is gone; an
-   * event still queued behind its admission has no row yet. */
+   * turn still queued behind its admission has no row yet. */
   replyExists: Set<string>;
   /** Current detail reads shared by gap recovery and the silence sweep. */
   runningReads: Map<string, Promise<void>>;
-  /** Settled events a backfill brought in without a body, whose saved row has
+  /** Settled turns a backfill brought in without a body, whose saved row has
    * been read once for it. */
   bodyReads: Set<string>;
-  /** Settled events whose turn closed a call it never heard end, whose saved
+  /** Settled turns whose turn closed a call it never heard end, whose saved
    * trace has been read once for it. */
   traceReads: Set<string>;
   listeners: Set<Listener>;
@@ -88,7 +88,7 @@ export type Entry = {
 };
 
 export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
-  events: [],
+  turns: [],
   connectionStatus: CONNECTION_STATUS.CONNECTING,
 
   fleet: NO_FACTS,
@@ -99,18 +99,18 @@ export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
 }) as FleetStreamSnapshot;
 
 export function createEntry(workspaceId: string, initial: TurnRow[]): Entry {
-  const events = mergeBackfill([], initial);
+  const turns = mergeBackfill([], initial);
   return {
     workspaceId,
     snapshot: {
-      events,
+      turns,
       connectionStatus: CONNECTION_STATUS.CONNECTING,
 
       fleet: NO_FACTS,
       factsSeq: 0,
       tasksSeq: 0,
       approvalsSeq: 0,
-      latest: latestFigures(events),
+      latest: latestFigures(turns),
     },
     replyAttempts: new Map(),
     completedReplies: new Set(),

@@ -24,7 +24,7 @@ export const REVIEW: Review = {
 };
 export const DRAFT: Draft = {
   id: DRAFT_ID, state: DRAFT_STATE.editing, title: "Argo", etag: '"draft-1"', authoring_model_ref: MODEL,
-  cancelled_through: "0", candidate: {id: CANDIDATE_ID, revision: "1", definition: REVIEW.effective.definition,
+  candidate: {id: CANDIDATE_ID, revision: "1", definition: REVIEW.effective.definition,
     canonical_digest: "definition-1", policy_semantics: REVIEW.policy_semantics}, review: REVIEW,
 };
 export const FLEET: Fleet = {

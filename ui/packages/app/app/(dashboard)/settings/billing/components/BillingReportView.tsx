@@ -2,7 +2,7 @@
 
 import { Suspense, type ReactNode } from "react";
 import type { BillingReport } from "@/lib/api/billing_report";
-import { formatCompactCount, formatCount } from "@/lib/events/run-figures-format";
+import { formatCompactCount, formatCount } from "@/lib/turns/run-figures-format";
 import { DashboardPanel, TimeRange } from "@agentsfleet/design-system";
 import { formatBalance } from "@/lib/money";
 import { BillingFilters } from "./BillingFilters";

@@ -30,7 +30,7 @@ test("reads runner policy and counters without a workspace context", async () =>
 test("converts a relative event window to a wire instant", async () => {
   fixture.respond = () => Response.json({items: [], total: null, next_cursor: null});
   const before = Date.now();
-  const result = await fixture.run(["runners", "events", RUNNER_ID, "--since", "2h", "--event-type", "runner_online", "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, "--since", "2h", "--event-type", "runner_online", "--json"]);
   expect(result.code).toBe(0);
   const since = fixture.calls[0]?.url.searchParams.get("since") ?? "";
   expect(since).toMatch(/^\d{4}-\d\d-\d\dT.*Z$/u);
@@ -40,17 +40,17 @@ test("converts a relative event window to a wire instant", async () => {
 });
 
 test.each(["nonsense", "2026-02-30T00:00:00Z", "2026-11-10T24:00:00Z", "-2h", "2h30m"])("refuses invalid --since %s without a request", async (since) => {
-  const result = await fixture.run(["runners", "events", RUNNER_ID, `--since=${since}`, "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, `--since=${since}`, "--json"]);
   expect(result.code).toBe(4); expect(result.stderr).toContain("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
 });
 
 test("refuses reversed event bounds before HTTP", async () => {
-  const result = await fixture.run(["runners", "events", RUNNER_ID, "--since", "2026-11-10T01:00:00Z", "--until", "2026-11-10T00:00:00Z", "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, "--since", "2026-11-10T01:00:00Z", "--until", "2026-11-10T00:00:00Z", "--json"]);
   expect(result.code).toBe(4); expect(result.stderr).toContain("--until must be at or after --since"); expect(fixture.calls).toEqual([]);
 });
 
 test("refuses an unknown runner event type before HTTP", async () => {
-  const result = await fixture.run(["runners", "events", RUNNER_ID, "--event-type", "invented_event", "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, "--event-type", "invented_event", "--json"]);
   expect(result.code).toBe(4);
   expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT");
   expect(fixture.calls).toEqual([]);
@@ -130,7 +130,7 @@ test("platform runners shows automatic cordon and lift events", async () => {
   expect(JSON.parse(shown.stdout)).toMatchObject({status: "active", cordon});
   fixture.respond = () => Response.json({items: [{id: RUNNER_ID, runner_id: RUNNER_ID,
     event_type: "runner_uncordoned", occurred_at: cordon.cordoned_at, metadata: {reason: cordon.reason}}], total: 1, next_cursor: null});
-  const events = await fixture.run(["runners", "events", RUNNER_ID, "--event-type", "runner_uncordoned", "--json"]);
+  const events = await fixture.run(["runners", "history", RUNNER_ID, "--event-type", "runner_uncordoned", "--json"]);
   expect(events.code).toBe(0);
   expect(JSON.parse(events.stdout).items[0].event_type).toBe("runner_uncordoned");
 });
@@ -156,7 +156,7 @@ test("runner text shows quarantine independently of policy state", async () => {
 
 test("platform runners still call the admin path", async () => {
   fixture.respond = () => Response.json({items: [], total: 0, next_cursor: null});
-  for (const verb of [["list"], ["show", RUNNER_ID], ["events", RUNNER_ID], ["runs", RUNNER_ID], ["cordon", RUNNER_ID], ["drain", RUNNER_ID]]) {
+  for (const verb of [["list"], ["show", RUNNER_ID], ["history", RUNNER_ID], ["runs", RUNNER_ID], ["cordon", RUNNER_ID], ["drain", RUNNER_ID]]) {
     fixture.calls.length = 0;
     await fixture.run(["runners", ...verb, "--json"]);
     expect(fixture.calls[0]?.url.pathname.startsWith("/v1/admin/runners")).toBe(true);

@@ -3,9 +3,9 @@
  * it made from the composer. */
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import type { TurnsPage } from "@/lib/api/events";
+import type { TurnsPage } from "@/lib/api/turns";
 import { STEER_DISPOSITION, steerMessagesUrl, type SteerAccepted } from "@/lib/api/fleets-types";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { fixtureSubject, signInAs } from "./auth";
 import { FIXTURE_KEY } from "./constants";
 import { workspaceHref } from "./nav";

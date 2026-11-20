@@ -1,9 +1,9 @@
-import type { LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
+import type { LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import type { FleetTurn, FleetToolCall } from "./fleet-stream-row";
 import { readToolArgs, readToolOutcome, type ToolArgs, type ToolOutcome } from "./fleet-stream-tool-trace";
 
-// The three tool frames folded onto their event, split out of
+// The three tool frames folded onto their turn, split out of
 // `fleet-stream-frames` because a tool frame needs more than the others do: it
 // is untrusted at the field level, and it can repeat.
 //
@@ -35,7 +35,7 @@ type ToolStep = Omit<FleetToolCall, "startedAtMs" | "callId"> & { callId: string
 type StepFields = Pick<ToolStep, "args"> & ToolOutcome;
 
 /** `prev` with `frame` folded in, or `prev` itself when the frame changes nothing. */
-export function applyToolFrame(prev: FleetEvent[], frame: ToolFrame, nowMs: number): FleetEvent[] {
+export function applyToolFrame(prev: FleetTurn[], frame: ToolFrame, nowMs: number): FleetTurn[] {
   const step = readToolStep(frame);
   return step === null ? prev : applyToolStep(prev, frame.turn_id, step, nowMs);
 }
@@ -66,27 +66,27 @@ function timed(named: Pick<ToolStep, "name" | "callId">, value: unknown, done: b
   return { ...named, ms: value, done, opens: false, ...outcome };
 }
 
-/// A frame whose event has not arrived is dropped: `turn_received` always
-/// precedes its tool calls, and an invented event would put a message in the
+/// A frame whose turn has not arrived is dropped: `turn_received` always
+/// precedes its tool calls, and an invented turn would put a message in the
 /// thread the backfill duplicates. The first frame of a call stamps its start.
 function applyToolStep(
-  prev: FleetEvent[],
+  prev: FleetTurn[],
   turnId: string,
   step: ToolStep,
   nowMs: number,
-): FleetEvent[] {
+): FleetTurn[] {
   const index = prev.findIndex((e) => e.id === turnId);
-  const event = prev[index];
-  // Narrowed, not asserted: `index === -1` and `event === undefined` are the same
+  const turn = prev[index];
+  // Narrowed, not asserted: `index === -1` and `turn === undefined` are the same
   // fact, and letting the type system see it is cheaper than promising it.
-  if (event === undefined) return prev;
+  if (turn === undefined) return prev;
 
-  const tools = event.tools ?? [];
+  const tools = turn.tools ?? [];
   const merged = byCallId(tools, step, nowMs);
   if (merged === tools) return prev;
 
   const updated = [...prev];
-  updated[index] = { ...event, tools: merged };
+  updated[index] = { ...turn, tools: merged };
   return updated;
 }
 

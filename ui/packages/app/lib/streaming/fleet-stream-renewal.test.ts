@@ -1,7 +1,7 @@
 // Vitest is the app's coverage runner; approved for this change.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { __resetRegistryForTests, CONNECTION_STATUS, getSnapshot, retryConnection, subscribe } from "@/tests/helpers/fleet-streams";
 
 const WORKSPACE = "renewal-workspace";
@@ -78,7 +78,7 @@ it("should ignore stale errors, opens and messages after manual replacement", ()
   old.emitRaw(JSON.stringify({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "stale", actor: "fleet" }));
   expect(current().closed).toBe(false);
   expect(getSnapshot(FLEET).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
-  expect(getSnapshot(FLEET).events).toEqual([]);
+  expect(getSnapshot(FLEET).turns).toEqual([]);
   expect(fetch).not.toHaveBeenCalled();
 });
 

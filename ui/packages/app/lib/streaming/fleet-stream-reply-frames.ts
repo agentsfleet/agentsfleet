@@ -1,71 +1,71 @@
 import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
-import type { TurnDetail } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import type { TurnDetail } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame } from "./fleet-stream-frames";
-import { OUTCOME } from "@/lib/events/event-summary";
-import { AGENTSFLEET_EVENT_STATUS, closeReasoningSpan, rowToEvent, type FleetEvent } from "./fleet-stream-row";
+import { OUTCOME } from "@/lib/turns/turn-summary";
+import { AGENTSFLEET_TURN_STATUS, closeReasoningSpan, rowToTurn, type FleetTurn } from "./fleet-stream-row";
 import type { ReplyDelta } from "./reply-stream-decoder";
 
 /** Fold already classified text; model protocol never enters the row. */
 export function applyReplyDelta(
-  prev: FleetEvent[],
+  prev: FleetTurn[],
   turnId: string,
   delta: ReplyDelta,
   nowMs: number = Date.now(),
-): FleetEvent[] {
-  const index = prev.findIndex((event) => event.id === turnId);
+): FleetTurn[] {
+  const index = prev.findIndex((turn) => turn.id === turnId);
   if (index < 0) {
     const opened = applyLiveFrame(prev, { text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: turnId, text: delta.answer }, nowMs);
-    return opened.map((event) => event.id === turnId
-      ? stampReasoningSpan({ ...event, reasoning: delta.reasoning, thinking: delta.thinking }, delta, nowMs)
-      : event);
+    return opened.map((turn) => turn.id === turnId
+      ? stampReasoningSpan({ ...turn, reasoning: delta.reasoning, thinking: delta.thinking }, delta, nowMs)
+      : turn);
   }
-  return prev.map((event, at) => at === index ? stampReasoningSpan({
-    ...event,
-    reply: event.reply + delta.answer,
-    reasoning: (event.reasoning ?? "") + delta.reasoning,
+  return prev.map((turn, at) => at === index ? stampReasoningSpan({
+    ...turn,
+    reply: turn.reply + delta.answer,
+    reasoning: (turn.reasoning ?? "") + delta.reasoning,
     thinking: delta.thinking,
-    contextProgressHidden: event.contextProgress ? true : undefined,
-  }, delta, nowMs) : event);
+    contextProgressHidden: turn.contextProgress ? true : undefined,
+  }, delta, nowMs) : turn);
 }
 
 /** Mark a streamed draft as awaiting its durable ending. */
 export function applyReplyRecovery(
-  prev: FleetEvent[],
+  prev: FleetTurn[],
   turnId: string,
   clearDraft: boolean,
   nowMs: number = Date.now(),
-): FleetEvent[] {
-  return prev.map((event) => event.id === turnId ? closeReasoningSpan({
-    ...event,
-    reply: clearDraft ? "" : event.reply,
-    reasoning: clearDraft ? "" : event.reasoning,
+): FleetTurn[] {
+  return prev.map((turn) => turn.id === turnId ? closeReasoningSpan({
+    ...turn,
+    reply: clearDraft ? "" : turn.reply,
+    reasoning: clearDraft ? "" : turn.reasoning,
     thinking: false,
     replyRecovering: true,
     contextProgress: undefined,
-  }, nowMs) : event);
+  }, nowMs) : turn);
 }
 
-/** An event whose saved row is gone settles with no answer and says why. The
+/** A turn whose saved row is gone settles with no answer and says why. The
  * unconfirmed draft is dropped, and a row still running ends as failed, so its
  * clock and its wait both stop. */
-export function applyReplyGone(prev: FleetEvent[], turnId: string, nowMs: number = Date.now()): FleetEvent[] {
-  return prev.map((event) => event.id === turnId ? closeReasoningSpan({
-    ...event,
-    status: event.status === AGENTSFLEET_EVENT_STATUS.RECEIVED ? AGENTSFLEET_EVENT_STATUS.AGENT_ERROR : event.status,
+export function applyReplyGone(prev: FleetTurn[], turnId: string, nowMs: number = Date.now()): FleetTurn[] {
+  return prev.map((turn) => turn.id === turnId ? closeReasoningSpan({
+    ...turn,
+    status: turn.status === AGENTSFLEET_TURN_STATUS.RECEIVED ? AGENTSFLEET_TURN_STATUS.AGENT_ERROR : turn.status,
     reply: "",
     thinking: false,
     replyRecovering: false,
     contextProgress: undefined,
     outcome: OUTCOME.REPLY_GONE,
-  }, nowMs) : event);
+  }, nowMs) : turn);
 }
 
 /** A completed tool-result pass gets its authoritative answer from the row. */
-export function applyFinalReply(prev: FleetEvent[], detail: TurnDetail, nowMs: number = Date.now()): FleetEvent[] {
-  const index = prev.findIndex((event) => event.id === detail.turn_id);
-  const event = prev[index];
-  if (event === undefined) return [...prev, rowToEvent(detail)];
+export function applyFinalReply(prev: FleetTurn[], detail: TurnDetail, nowMs: number = Date.now()): FleetTurn[] {
+  const index = prev.findIndex((turn) => turn.id === detail.turn_id);
+  const turn = prev[index];
+  if (turn === undefined) return [...prev, rowToTurn(detail)];
   const activity = readTaskActivityHistory(detail.task_activity);
   const next = applyFinalReplyText(prev, detail.turn_id, detail.response_text ?? "", nowMs);
   return activity ? next.map(row => row.id === detail.turn_id ? {...row, taskActivity: mergeTaskActivity(row.taskActivity, activity)} : row) : next;
@@ -73,16 +73,16 @@ export function applyFinalReply(prev: FleetEvent[], detail: TurnDetail, nowMs: n
 
 /** The completion frame carries the same saved answer as the detail route. */
 export function applyFinalReplyText(
-  prev: FleetEvent[],
+  prev: FleetTurn[],
   turnId: string,
   reply: string,
   nowMs: number = Date.now(),
-): FleetEvent[] {
-  const index = prev.findIndex((event) => event.id === turnId);
-  const event = prev[index];
-  if (event === undefined) return prev;
+): FleetTurn[] {
+  const index = prev.findIndex((turn) => turn.id === turnId);
+  const turn = prev[index];
+  if (turn === undefined) return prev;
   const next = [...prev];
-  next[index] = closeReasoningSpan({ ...event, reply: reply.trim(), thinking: false, replyRecovering: false }, nowMs);
+  next[index] = closeReasoningSpan({ ...turn, reply: reply.trim(), thinking: false, replyRecovering: false }, nowMs);
   return next;
 }
 
@@ -91,12 +91,12 @@ export function applyFinalReplyText(
 // reopens the span, so the folded Thought counts every stretch, not the
 // first. The decoder emits one non-empty kind per delta (`#emit`), so a delta
 // without reasoning is answer text, and each end reads its own clock.
-function stampReasoningSpan(event: FleetEvent, delta: ReplyDelta, nowMs: number): FleetEvent {
-  if (delta.reasoning.length === 0) return closeReasoningSpan(event, nowMs);
-  return event.reasoningStartedAtMs === undefined ? { ...event, reasoningStartedAtMs: nowMs } : reopenReasoningSpan(event);
+function stampReasoningSpan(turn: FleetTurn, delta: ReplyDelta, nowMs: number): FleetTurn {
+  if (delta.reasoning.length === 0) return closeReasoningSpan(turn, nowMs);
+  return turn.reasoningStartedAtMs === undefined ? { ...turn, reasoningStartedAtMs: nowMs } : reopenReasoningSpan(turn);
 }
 
-function reopenReasoningSpan(event: FleetEvent): FleetEvent {
-  const { reasoningEndedAtMs, ...open } = event;
-  return reasoningEndedAtMs === undefined ? event : open;
+function reopenReasoningSpan(turn: FleetTurn): FleetTurn {
+  const { reasoningEndedAtMs, ...open } = turn;
+  return reasoningEndedAtMs === undefined ? turn : open;
 }

@@ -1,4 +1,4 @@
-import type { FleetToolCall, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import type { FleetToolCall, FleetTurnStatus } from "@/lib/streaming/fleet-stream-row";
 import { expect, it, vi, afterEach } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
@@ -69,7 +69,7 @@ it("offers the existing full-output view when a command's returned output is tru
   expect(await screen.findByText("Full command output")).toBeTruthy();
 });
 
-function renderTools(tools: (Partial<FleetToolCall> & {name: string})[], status: FleetEventStatus = "processed") {
+function renderTools(tools: (Partial<FleetToolCall> & {name: string})[], status: FleetTurnStatus = "processed") {
   mockStream([ev({id: "outcomes", role: "user", actor: "operator", text: "Review release", reply: "Recorded results.", status,
     tools: tools.map((tool, index) => ({startedAtMs: 1000, ms: 10, done: true, status: TOOL_CALL_STATUS.SUCCEEDED, callId: `call-${index}`, ...tool})),
   })]);

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useLayoutEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import type { TurnRow } from "@/lib/api/events";
-import type { FleetRunSummary } from "@/lib/events/run-summary";
+import type { TurnRow } from "@/lib/api/turns";
+import type { FleetRunSummary } from "@/lib/turns/run-summary";
 import { useFleetStreams } from "../stream/FleetStreamProvider";
 
 /**

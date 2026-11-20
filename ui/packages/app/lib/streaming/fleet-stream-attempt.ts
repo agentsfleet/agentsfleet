@@ -1,8 +1,8 @@
-import type { LiveFrame } from "@/lib/api/events";
+import type { LiveFrame } from "@/lib/api/turns";
 import type { Entry } from "./fleet-stream-entry";
-import type { ApplyEvents } from "./fleet-stream-detail-recovery";
+import type { ApplyTurns } from "./fleet-stream-detail-recovery";
 import * as v from "valibot";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { closeLivePass } from "./fleet-stream-detail-recovery";
 import { applyLiveFrame } from "./fleet-stream-frames";
 import { TERMINAL_STATUSES } from "./fleet-stream-row";
@@ -19,12 +19,12 @@ const OUTPUT_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /** Compare canonical decimal strings without losing a database bigint's precision. */
-export function acceptAttemptFrame(entry: Entry, frame: LiveFrame, apply: ApplyEvents): boolean {
+export function acceptAttemptFrame(entry: Entry, frame: LiveFrame, apply: ApplyTurns): boolean {
   if (!OUTPUT_KINDS.has(frame.kind)) return true;
   if (!("turn_id" in frame) || typeof frame.turn_id !== "string") return false;
   const turnId = frame.turn_id;
-  if (entry.completedReplies.has(turnId) || entry.snapshot.events.some(event =>
-    event.id === turnId && TERMINAL_STATUSES.has(event.status))) return false;
+  if (entry.completedReplies.has(turnId) || entry.snapshot.turns.some(turn =>
+    turn.id === turnId && TERMINAL_STATUSES.has(turn.status))) return false;
   const parsed = v.safeParse(FENCE, frame.fencing_token);
   if (!parsed.success) return false;
   const fence = parsed.output;
@@ -38,7 +38,7 @@ export function acceptAttemptFrame(entry: Entry, frame: LiveFrame, apply: ApplyE
   return frame.kind !== FRAME_KIND.RUN_RESTARTED;
 }
 
-function restart(entry: Entry, turnId: string, fence: string, apply: ApplyEvents): void {
+function restart(entry: Entry, turnId: string, fence: string, apply: ApplyTurns): void {
   closeLivePass(entry, turnId);
   entry.replyGaps.delete(turnId);
   entry.replyRecoveries.delete(turnId);
@@ -47,10 +47,10 @@ function restart(entry: Entry, turnId: string, fence: string, apply: ApplyEvents
   entry.traceReads.delete(turnId);
   apply(prev => applyLiveFrame(prev, {
     kind: FRAME_KIND.CHUNK, turn_id: turnId, text_kind: "answer", text: "",
-  }).map(event => event.id === turnId ? {
-    ...interruptOpenCalls(event), runRestarted: true, restartAttempt: fence, reply: "", reasoning: "",
+  }).map(turn => turn.id === turnId ? {
+    ...interruptOpenCalls(turn), runRestarted: true, restartAttempt: fence, reply: "", reasoning: "",
     thinking: false, reasoningStartedAtMs: undefined, reasoningEndedAtMs: undefined,
     replyRecovering: false, contextProgress: undefined, contextProgressHidden: undefined,
     taskActivity: undefined,
-  } : event), {});
+  } : turn), {});
 }

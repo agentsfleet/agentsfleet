@@ -2,7 +2,7 @@ import { z } from "zod";
 import { Instant } from "./decode";
 import { setupRequest } from "./draft-request";
 import { losesAccess } from "./draft-errors";
-import { FLEET_ACTIVITY, fleetActivityLabel, readFleetActivity, type FleetActivity } from "../events/fleet-activity";
+import { FLEET_ACTIVITY, fleetActivityLabel, readFleetActivity, type FleetActivity } from "../turns/fleet-activity";
 import type { Fleet } from "./draft-types";
 import type { DraftView } from "./draft-state";
 

@@ -12,7 +12,7 @@ export type RunnerKind = {
   readonly path: string;
   readonly description: string;
   readonly scopes: {readonly read: string; readonly write: string; readonly register: string};
-  /** Events and runs are operator history; a tenant's group omits them. */
+  /** History and runs are operator reads; a tenant's group omits them. */
   readonly history: boolean;
   /**
    * A tenant registration sends one Idempotency-Key per invocation and may

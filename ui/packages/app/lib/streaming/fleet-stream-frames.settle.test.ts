@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type LiveFrame, type SavedToolCall } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { type LiveFrame, type SavedToolCall } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
 import type { FleetToolCall } from "./fleet-stream-row";
 import { TOOL_CALL_STATUS } from "./fleet-stream-tool-trace";

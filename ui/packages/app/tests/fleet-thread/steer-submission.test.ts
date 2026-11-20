@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import userEvent from "@testing-library/user-event";
 import { getPendingSends } from "@/lib/streaming/pending-sends";
 import { MintUnavailable } from "@/lib/streaming/operation-id";
@@ -48,7 +48,7 @@ describe("FleetThread — steer submission", () => {
     mockStream([]);
     // Two rapid sends: the first resolves slowly, the second quickly. Without
     // serialisation the fast one's HTTP request would land first and the server would
-    // assign it the earlier event id — "stop" before "deploy".
+    // assign it the earlier turn id — "stop" before "deploy".
     const order: string[] = [];
     let releaseFirst: (() => void) | null = null;
     postSteerMock.mockImplementationOnce(

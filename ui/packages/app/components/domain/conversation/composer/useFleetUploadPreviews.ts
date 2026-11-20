@@ -3,18 +3,18 @@
 import { chatComposerText, chatMessageText } from "@/lib/chat-message-text";
 import { MessageNotSentError, type AppendMessage, type AssistantRuntime, type AttachmentAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import type { FleetThreadEntry } from "../thread/useFleetThreadEntries";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ENTRY_KIND } from "@/lib/events/event-grouping";
+import { ENTRY_KIND } from "@/lib/turns/turn-grouping";
 import { parseChatAddress } from "@/lib/chat-address";
 import { PreviewAttachmentAdapter } from "@/lib/api/preview-attachment-adapter";
 import { UPLOAD_PREVIEW_LABEL } from "@/lib/api/upload-preview";
 import { RENDER_KIND, RENDER_KIND_KEY, REPLY_ID_SUFFIX } from "../thread/useFleetThreadEntries";
 
-type Anchor = Pick<FleetEvent, "id" | "submittedAtMs">;
+type Anchor = Pick<FleetTurn, "id" | "submittedAtMs">;
 type PreviewEntry = {kind: "upload-preview"; key: string; anchors: readonly Anchor[]; message: ThreadMessageLike};
 export type FleetConversationEntry = FleetThreadEntry | PreviewEntry;
-type Props = {workspaceId: string; fleetId: string; subject: string | null; events: readonly Anchor[]; onNew: (message: AppendMessage) => Promise<void>;
+type Props = {workspaceId: string; fleetId: string; subject: string | null; turns: readonly Anchor[]; onNew: (message: AppendMessage) => Promise<void>;
   /** The runtime whose composer sends the files, read as an upload starts. */
   runtime?: RefObject<AssistantRuntime | null>};
 type AnchorIndex = {ids: Map<string, number>; local: Map<number, number>};
@@ -23,14 +23,14 @@ const MAX_ANCHORS = 16;
 const EMPTY_PREVIEWS: readonly PreviewEntry[] = [];
 const EMPTY_BREAKS: ReadonlySet<string> = new Set();
 
-/** Temporary receipts share the runtime, but never enter the durable event store. */
-export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, onNew, runtime}: Props) {
+/** Temporary receipts share the runtime, but never enter the durable turn store. */
+export function useFleetUploadPreviews({workspaceId, fleetId, subject, turns, onNew, runtime}: Props) {
   const owner = JSON.stringify([workspaceId, fleetId, subject]);
   const adapter = useMemo(() => new PreviewAttachmentAdapter(workspaceId, fleetId, subject), [workspaceId, fleetId, subject]);
   const attachments = useMemo(() => refusingAddressedUploads(adapter, runtime), [adapter, runtime]);
   const [preview, setPreview] = useState<{owner: string; entries: PreviewEntry[]}>({owner, entries: []});
-  const currentEvents = useRef(events);
-  useLayoutEffect(() => {currentEvents.current = events;}, [events]);
+  const currentTurns = useRef(turns);
+  useLayoutEffect(() => {currentTurns.current = turns;}, [turns]);
   useEffect(() => {adapter.connect(); return () => adapter.dispose();}, [adapter]);
   const receive = useCallback(async (message: AppendMessage) => {
     adapter.signal.throwIfAborted();
@@ -40,7 +40,7 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, o
     const id = files.map(file => file.id).join(":");
     const text = chatMessageText(message);
     const reply = files.flatMap(file => file.content.flatMap(part => part.type === "text" ? [part.text] : [])).join("\n");
-    const anchors = currentEvents.current.slice(-MAX_ANCHORS).reverse().map(event => ({id: event.id, submittedAtMs: event.submittedAtMs}));
+    const anchors = currentTurns.current.slice(-MAX_ANCHORS).reverse().map(turn => ({id: turn.id, submittedAtMs: turn.submittedAtMs}));
     const entries: PreviewEntry[] = [
       {kind: "upload-preview", key: `upload:${id}`, anchors, message: {id: `upload:${id}`, role: "user", createdAt: new Date(),
         content: text || "Attached files for preview", attachments: files, metadata: {custom: {actor: `steer:${subject}`, [RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, previewUpload: true}}}},
@@ -55,14 +55,14 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, o
   const groupBreaks = useMemo(() => {
     if (!entries.length) return EMPTY_BREAKS;
     const index: AnchorIndex = {ids: new Map(), local: new Map()};
-    events.forEach((event, position) => indexAnchor(index, event, position));
+    turns.forEach((turn, position) => indexAnchor(index, turn, position));
     const breaks = new Set<string>();
     for (const entry of entries) {
-      const next = events[anchorPosition(index, entry.anchors) + 1];
+      const next = turns[anchorPosition(index, entry.anchors) + 1];
       if (next) breaks.add(next.id);
     }
     return breaks;
-  }, [events, entries]);
+  }, [turns, entries]);
   return {attachments, onNew: receive, entries, groupBreaks};
 }
 
@@ -71,8 +71,8 @@ export function mergePreviewEntries(entries: FleetThreadEntry[], previews: reado
   if (!previews.length) return entries;
   const index: AnchorIndex = {ids: new Map(), local: new Map()};
   entries.forEach((entry, position) => {
-    for (const event of entry.kind === ENTRY_KIND.GROUP ? entry.events : [entry.event]) indexAnchor(index, event, position);
-    if (entry.kind === "reply") index.ids.set(entry.event.id.slice(0, -REPLY_ID_SUFFIX.length), position);
+    for (const turn of entry.kind === ENTRY_KIND.GROUP ? entry.turns : [entry.turn]) indexAnchor(index, turn, position);
+    if (entry.kind === "reply") index.ids.set(entry.turn.id.slice(0, -REPLY_ID_SUFFIX.length), position);
   });
   const slots = new Map<number, PreviewEntry[]>();
   for (const preview of previews) {
@@ -101,9 +101,9 @@ function refusingAddressedUploads(adapter: PreviewAttachmentAdapter, runtime: Pr
   };
 }
 
-function indexAnchor(index: AnchorIndex, event: Anchor, position: number): void {
-  index.ids.set(event.id, position);
-  if (event.submittedAtMs !== undefined) index.local.set(event.submittedAtMs, position);
+function indexAnchor(index: AnchorIndex, turn: Anchor, position: number): void {
+  index.ids.set(turn.id, position);
+  if (turn.submittedAtMs !== undefined) index.local.set(turn.submittedAtMs, position);
 }
 
 function anchorPosition(index: AnchorIndex, anchors: readonly Anchor[]): number {

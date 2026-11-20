@@ -14,7 +14,7 @@
  * can abort the delivery it is about to wait for.
  */
 import { expect, type Page } from "@playwright/test";
-import type { TurnDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/turns";
 import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FIXTURE_KEY } from "./constants";
 import {

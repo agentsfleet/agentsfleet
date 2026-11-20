@@ -4,26 +4,26 @@ import { SEND_LABEL } from "./steer-copy";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, renderHook, screen, waitFor } from "@testing-library/react";
 import { useFleetSteerQueue } from "@/components/domain/conversation/delivery/useFleetSteerQueue";
-import { ACTOR } from "@/lib/events/event-summary";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import { ACTOR } from "@/lib/turns/turn-summary";
+import { AGENTSFLEET_TURN_STATUS, type FleetTurnStatus } from "@/lib/streaming/fleet-stream-row";
 
 // The steer rides assistant-ui's queue: the thread reports the viewer's own
 // running reply as running, and Send stays open through it because the queue
 // takes every send to the one delivery path.
 
-const RUNNING_STATUS = AGENTSFLEET_EVENT_STATUS.RECEIVED;
-const SETTLED_STATUS = AGENTSFLEET_EVENT_STATUS.PROCESSED;
+const RUNNING_STATUS = AGENTSFLEET_TURN_STATUS.RECEIVED;
+const SETTLED_STATUS = AGENTSFLEET_TURN_STATUS.PROCESSED;
 const OWN_ACTOR = `${ACTOR.STEER_PREFIX}${SUBJECT}`;
 const TEAMMATE_ACTOR = `${ACTOR.STEER_PREFIX}user_teammate`;
 const SUBMITTED_AT_MS = 5_000;
 
 // A turn that reached this tab by frame alone.
-function turn(status: FleetEventStatus, actor = OWN_ACTOR) {
+function turn(status: FleetTurnStatus, actor = OWN_ACTOR) {
   return ev({ id: `evt_${status}`, role: "user", actor, text: "Run it", status });
 }
 
 // A turn this tab sent: its row carries the submit clock from the optimistic paint on.
-function sentHere(status: FleetEventStatus, actor = OWN_ACTOR) {
+function sentHere(status: FleetTurnStatus, actor = OWN_ACTOR) {
   return ev({ id: `evt_${status}`, role: "user", actor, text: "Run it", status, submittedAtMs: SUBMITTED_AT_MS });
 }
 

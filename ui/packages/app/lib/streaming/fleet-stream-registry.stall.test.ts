@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { OUTCOME } from "@/lib/turns/turn-summary";
 import { appendOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { REPLY_STALL_MS, setTurnDetailReader, type TurnDetailReader } from "./fleet-stream-reply-registry";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 import { IDLE_RELEASE_MS, setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { failedAction, fleetActionsMock, getFleetTurnActionMock, resetFleetTurnAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
 
-// Every running event's row reaches an ending the operator can see, even when
+// Every running turn's row reaches an ending the operator can see, even when
 // the frame that would have ended it never arrives.
 
 // Every write to any entry's rows, counted: a torn-down entry has no listener
@@ -17,14 +17,14 @@ vi.mock("./fleet-stream-snapshot", async (importActual) => {
   const actual = await importActual<typeof import("./fleet-stream-snapshot")>();
   return {
     ...actual,
-    setEvents: (...args: Parameters<typeof actual.setEvents>) => {
+    setTurns: (...args: Parameters<typeof actual.setTurns>) => {
       rowWrites.count += 1;
-      actual.setEvents(...args);
+      actual.setTurns(...args);
     },
   };
 });
 
-const { AGENT_ERROR, PROCESSED, RECEIVED } = AGENTSFLEET_EVENT_STATUS;
+const { AGENT_ERROR, PROCESSED, RECEIVED } = AGENTSFLEET_TURN_STATUS;
 const RAN = "evt_ran";
 const THINKING = "evt_thinking";
 const LATE = "evt_late";
@@ -50,10 +50,10 @@ beforeEach(() => {
 });
 
 function shown(turnId: string) {
-  return getSnapshot(Z_A).events.find((event) => event.id === turnId);
+  return getSnapshot(Z_A).turns.find((turn) => turn.id === turnId);
 }
 
-// A send answered as a replay of an event this page never held.
+// A send answered as a replay of a turn this page never held.
 function replayed(turnId: string): void {
   const tempId = appendOptimistic(Z_A, MESSAGE, ACTOR);
   reconcileOptimistic(Z_A, tempId, turnId, true);
@@ -75,7 +75,7 @@ describe("a replayed send", () => {
     replayed(RAN);
     await vi.advanceTimersByTimeAsync(0);
     expect(getFleetTurnActionMock).toHaveBeenCalledExactlyOnceWith(WS, Z_A, RAN);
-    expect(getSnapshot(Z_A).events).toHaveLength(1);
+    expect(getSnapshot(Z_A).turns).toHaveLength(1);
     expect(shown(RAN)).toMatchObject({ status: PROCESSED, reply: DEPLOYED, text: MESSAGE });
     // Settled, so the sweep reads nothing more.
     await keepaliveFor(REPLY_STALL_MS);
@@ -96,7 +96,7 @@ describe("a replayed send", () => {
     release();
   });
 
-  it("test_replayed_answer_settles_from_detail: a first read of 404 is an event still queued, and its row waits for it", async () => {
+  it("test_replayed_answer_settles_from_detail: a first read of 404 is a turn still queued, and its row waits for it", async () => {
     getFleetTurnActionMock.mockResolvedValueOnce(NOT_FOUND).mockResolvedValueOnce(SAVED);
     const release = subscribe(WS, Z_A, [], () => {});
     replayed(RAN);
@@ -125,7 +125,7 @@ describe("a replayed send", () => {
     release();
   });
 
-  it("an event a read once found running, then 404, settles as gone", async () => {
+  it("a turn a read once found running, then 404, settles as gone", async () => {
     getFleetTurnActionMock
       .mockResolvedValueOnce({ ok: true, data: row({ turn_id: RAN, actor: ACTOR, status: RECEIVED, response_text: null }) })
       .mockResolvedValueOnce(NOT_FOUND);
@@ -146,7 +146,7 @@ describe("a replayed send", () => {
     release();
   });
 
-  it("waits for frames when its event is loaded and still running", async () => {
+  it("waits for frames when its turn is loaded and still running", async () => {
     const release = subscribe(WS, Z_A, [], () => {});
     sourceAt(0).emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: RAN, actor: ACTOR });
     replayed(RAN);
@@ -155,7 +155,7 @@ describe("a replayed send", () => {
     release();
   });
 
-  it("test_replayed_answer_settles_from_detail: reads nothing for a replay whose settled event the page already holds", async () => {
+  it("test_replayed_answer_settles_from_detail: reads nothing for a replay whose settled turn the page already holds", async () => {
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: RAN, actor: ACTOR });
@@ -168,7 +168,7 @@ describe("a replayed send", () => {
     // Neither at once nor after a silence: the row it holds is already final.
     await keepaliveFor(REPLY_STALL_MS);
     expect(getFleetTurnActionMock).not.toHaveBeenCalled();
-    expect(getSnapshot(Z_A).events).toHaveLength(1);
+    expect(getSnapshot(Z_A).turns).toHaveLength(1);
     expect(shown(RAN)).toMatchObject({ status: PROCESSED, reply: DEPLOYED, outcome: settled?.outcome });
     release();
   });
@@ -194,7 +194,7 @@ describe("a replayed send", () => {
 
     release();
     await vi.advanceTimersByTimeAsync(IDLE_RELEASE_MS);
-    expect(getSnapshot(Z_A).events).toHaveLength(0);
+    expect(getSnapshot(Z_A).turns).toHaveLength(0);
 
     rowWrites.count = 0;
     answer({ ok: true, data: row({ turn_id: LATE, actor: ACTOR, status: PROCESSED, response_text: "Too late." }) });
@@ -261,7 +261,7 @@ describe("a running reply that stops hearing frames", () => {
     release();
   });
 
-  it.each([NOT_FOUND, GONE])("test_stall_read_retries_each_silence_window: stops reading an event its read found gone ($status), and settles its row", async (gone) => {
+  it.each([NOT_FOUND, GONE])("test_stall_read_retries_each_silence_window: stops reading a turn its read found gone ($status), and settles its row", async (gone) => {
     getFleetTurnActionMock.mockResolvedValue(gone);
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
@@ -277,12 +277,12 @@ describe("a running reply that stops hearing frames", () => {
     release();
   });
 
-  it("test_frame_ending_silence_reads_nothing: does not read the event whose frame ends a long silence", async () => {
+  it("test_frame_ending_silence_reads_nothing: does not read the turn whose frame ends a long silence", async () => {
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: THINKING, actor: ACTOR });
-    // The stream stays up without a word about this event for a whole window,
-    // and the next thing it says is about this event.
+    // The stream stays up without a word about this turn for a whole window,
+    // and the next thing it says is about this turn.
     await vi.advanceTimersByTimeAsync(KEEPALIVE_MS);
     source.heartbeat();
     await vi.advanceTimersByTimeAsync(KEEPALIVE_MS);
@@ -294,7 +294,7 @@ describe("a running reply that stops hearing frames", () => {
     release();
   });
 
-  it("forgets an event its completion frame ended", async () => {
+  it("forgets a turn its completion frame ended", async () => {
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
     source.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: THINKING, actor: ACTOR });

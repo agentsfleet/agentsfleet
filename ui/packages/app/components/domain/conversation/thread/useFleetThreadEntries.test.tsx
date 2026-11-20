@@ -2,9 +2,9 @@ import { isDeepStrictEqual } from "node:util";
 import { describe, expect, it } from "vitest";
 import { renderHook } from "@testing-library/react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS, type FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
-import { convertEvent as renderedTrigger } from "../stream/useFleetEventStream";
+import { convertTurn as renderedTrigger } from "../stream/useFleetTurnStream";
 import { sameValues, useFleetThreadEntries, type FleetThreadEntry } from "./useFleetThreadEntries";
 
 // What a streaming frame costs the settled history above it. assistant-ui
@@ -12,7 +12,7 @@ import { sameValues, useFleetThreadEntries, type FleetThreadEntry } from "./useF
 // `thread-message-converter.ts`), so a settled turn is converted again only
 // if its entry object changed. The mirror below keys the same way.
 
-const { PROCESSED, RECEIVED } = AGENTSFLEET_EVENT_STATUS;
+const { PROCESSED, RECEIVED } = AGENTSFLEET_TURN_STATUS;
 const OPERATOR = "steer:user_1";
 const USER = "user" as const;
 const LIVE = "live";
@@ -25,12 +25,12 @@ const SETTLED_TURNS = 100;
 // An operator turn splits into its trigger and its `:reply` message.
 const ENTRIES_PER_TURN = 2;
 
-function operatorTurn(index: number): FleetEvent {
+function operatorTurn(index: number): FleetTurn {
   return evt({ id: `turn-${index}`, role: USER, actor: OPERATOR, text: `ask ${index}`, reply: `answer ${index}`, status: PROCESSED });
 }
 
-function convertEvent(event: FleetEvent): ThreadMessageLike {
-  return { role: event.role, id: event.id, content: [{ type: "text", text: event.text }] };
+function convertTurn(turn: FleetTurn): ThreadMessageLike {
+  return { role: turn.role, id: turn.id, content: [{ type: "text", text: turn.text }] };
 }
 
 // The library's cache, reduced to what matters here: a message converts once
@@ -54,14 +54,14 @@ function converterMirror(convert: (entry: FleetThreadEntry) => ThreadMessageLike
 
 describe("useFleetThreadEntries", () => {
   it("keeps empty restarted integration replies visible and separate", () => {
-    const events = ["first", "second"].map((id) => evt({
+    const turns = ["first", "second"].map((id) => evt({
       id, role: "system", actor: "webhook:github", text: "delivery", reply: "", status: RECEIVED,
     }));
     const hook = renderHook(({ rows }) => useFleetThreadEntries(rows, renderedTrigger), {
-      initialProps: { rows: events },
+      initialProps: { rows: turns },
     });
     expect(hook.result.current.entries.map((entry) => entry.kind)).toEqual(["group"]);
-    hook.rerender({ rows: events.map((event) => ({ ...event, runRestarted: true })) });
+    hook.rerender({ rows: turns.map((turn) => ({ ...turn, runRestarted: true })) });
     expect(hook.result.current.entries.map((entry) => entry.kind)).toEqual(["trigger", "reply", "trigger", "reply"]);
     for (const entry of hook.result.current.entries.filter((row) => row.kind === "reply")) {
       const message = hook.result.current.convertEntry(entry);
@@ -72,8 +72,8 @@ describe("useFleetThreadEntries", () => {
   it("test_settled_entries_keep_identity_across_frames", () => {
     const settled = Array.from({ length: SETTLED_TURNS }, (_, index) => operatorTurn(index));
     const streaming = evt({ id: LIVE, role: USER, actor: OPERATOR, text: ASK, reply: PARTIAL, status: RECEIVED });
-    const hook = renderHook(({ events }) => useFleetThreadEntries(events, convertEvent), {
-      initialProps: { events: [...settled, streaming] },
+    const hook = renderHook(({ turns }) => useFleetThreadEntries(turns, convertTurn), {
+      initialProps: { turns: [...settled, streaming] },
     });
     const before = hook.result.current.entries;
     expect(before).toHaveLength((SETTLED_TURNS + 1) * ENTRIES_PER_TURN);
@@ -81,9 +81,9 @@ describe("useFleetThreadEntries", () => {
     mirror.pass(before);
     const first = mirror.conversions;
 
-    // One chunk lands on the streaming reply: the stream replaces that event
+    // One chunk lands on the streaming reply: the stream replaces that turn
     // and hands back every other one by reference.
-    hook.rerender({ events: [...settled, { ...streaming, reply: ANSWER }] });
+    hook.rerender({ turns: [...settled, { ...streaming, reply: ANSWER }] });
     const after = hook.result.current.entries;
     const settledCount = SETTLED_TURNS * ENTRIES_PER_TURN;
     for (let index = 0; index < settledCount; index += 1) {
@@ -97,18 +97,18 @@ describe("useFleetThreadEntries", () => {
 
   it("test_reply_delta_keeps_trigger_identity", () => {
     const streaming = evt({ id: LIVE, role: USER, actor: OPERATOR, text: ASK, reply: PARTIAL, status: RECEIVED });
-    const hook = renderHook(({ events }) => useFleetThreadEntries(events, renderedTrigger), {
-      initialProps: { events: [streaming] },
+    const hook = renderHook(({ turns }) => useFleetThreadEntries(turns, renderedTrigger), {
+      initialProps: { turns: [streaming] },
     });
     const [trigger, reply] = hook.result.current.entries;
 
-    hook.rerender({ events: [{ ...streaming, reply: ANSWER, reasoning: REASONING, thinking: true }] });
+    hook.rerender({ turns: [{ ...streaming, reply: ANSWER, reasoning: REASONING, thinking: true }] });
     const [sameTrigger, nextReply] = hook.result.current.entries;
     expect(sameTrigger).toBe(trigger);
     expect(nextReply).not.toBe(reply);
 
     // A change the trigger renders gives it a new object.
-    hook.rerender({ events: [{ ...streaming, reply: ANSWER, status: PROCESSED }] });
+    hook.rerender({ turns: [{ ...streaming, reply: ANSWER, status: PROCESSED }] });
     expect(hook.result.current.entries[0]).not.toBe(trigger);
   });
 
@@ -121,13 +121,13 @@ describe("useFleetThreadEntries", () => {
       id: "turn", role: USER, actor: OPERATOR, text: ASK, reply: PARTIAL, status: RECEIVED,
       custom: { requestJson: REQUEST_GO },
     });
-    const rendered: Partial<FleetEvent>[] = [
+    const rendered: Partial<FleetTurn>[] = [
       { createdAt: new Date(3_000) }, { text: "go again" }, { actor: "steer:user_2" },
       { custom: { requestJson: JSON.stringify({ message: "stop" }) } }, { status: PROCESSED }, { clientTimestamp: true },
       { submittedAtMs: 12 }, { replyRecovering: true }, { runRestarted: true }, { restartAttempt: "42" }, { outcome: "Stopped." },
       { failureLabel: "startup_posture" }, { failureDetail: "posture check failed" },
     ];
-    const unrendered: Partial<FleetEvent>[] = [
+    const unrendered: Partial<FleetTurn>[] = [
       { reply: ANSWER }, { reasoning: REASONING }, { thinking: true }, { reasoningStartedAtMs: 5 },
       { reasoningEndedAtMs: 6 }, { tools: [] }, { tokens: 3 }, { wallMs: 4 }, { costNanos: "5" },
       // Equal values in fresh objects render the same.
@@ -136,11 +136,11 @@ describe("useFleetThreadEntries", () => {
     for (const [changes, kept] of [[rendered, false], [unrendered, true]] as const) {
       for (const change of changes) {
         const next = { ...base, ...change };
-        const hook = renderHook(({ events }) => useFleetThreadEntries(events, renderedTrigger), {
-          initialProps: { events: [base] },
+        const hook = renderHook(({ turns }) => useFleetThreadEntries(turns, renderedTrigger), {
+          initialProps: { turns: [base] },
         });
         const [trigger] = hook.result.current.entries;
-        hook.rerender({ events: [next] });
+        hook.rerender({ turns: [next] });
         const reused = hook.result.current.entries[0] === trigger;
         expect(reused, JSON.stringify(change)).toBe(kept);
         expect(reused, JSON.stringify(change)).toBe(isDeepStrictEqual(renderedTrigger(base), renderedTrigger(next)));

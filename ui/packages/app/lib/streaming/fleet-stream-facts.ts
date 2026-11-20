@@ -1,7 +1,7 @@
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import type { FleetFacts } from "@/lib/events/run-summary";
+import type { FleetFacts } from "@/lib/turns/run-summary";
 import { figure } from "./fleet-stream-row";
 
 // What a live frame says about the FLEET rather than about a row: the

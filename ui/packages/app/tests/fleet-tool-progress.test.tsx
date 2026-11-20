@@ -2,7 +2,7 @@ import { ev, mockStream, renderThread, threadElement } from "./fleet-thread/harn
 import { expect, it } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { FleetToolCall, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import type { FleetToolCall, FleetTurnStatus } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
 import { TOOL_CALLS_LABEL } from "@/components/domain/activity/tools/FleetToolCalls";
@@ -15,7 +15,7 @@ function call(overrides: Partial<FleetToolCall> = {}): FleetToolCall {
   return {name: TOOL_NAME.SHELL, args: {command: COMMAND}, startedAtMs: Date.now(),
     done: true, status: SUCCEEDED, ms: 100, outputHead: OUTPUT, ...overrides};
 }
-function show(tools: FleetToolCall[], status: FleetEventStatus = "processed") {
+function show(tools: FleetToolCall[], status: FleetTurnStatus = "processed") {
   mockStream([ev({id: "progress-event", role: "user", actor: "operator", text: "Check performance", status, tools})]);
 }
 function openGroup(): void { fireEvent.click(screen.getByRole("button", {name: /^Tool activity:/})); }
