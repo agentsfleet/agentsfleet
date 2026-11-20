@@ -133,7 +133,7 @@ pub(crate) fn refused_calls() -> Vec<Call> {
         ),
     ]
 }
-pub(crate) fn mutations() -> Vec<guffbolt::Call> {
+pub(crate) fn mutations() -> Vec<Call> {
     vec![
         call(
             SCHEDULE,

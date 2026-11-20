@@ -78,7 +78,7 @@ pub fn leave(index: u8) -> Result<()> {
     Host.netfilter()?
         .acknowledged(rules::install_unowned(slot, &[]))?;
     // Both ends in the host's namespace, so the pair outlives every process.
-    let own = std::fs::File::open(OWN_NAMESPACE)?;
+    let own = fs::File::open(OWN_NAMESPACE)?;
     link::join(&mut Host.route()?, slot, own.as_fd())?;
     Ok(())
 }

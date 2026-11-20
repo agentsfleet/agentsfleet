@@ -80,7 +80,7 @@ fn sandbox_address(before: &[String]) -> Result<Ipv4Addr, Failed> {
 /// namespace, with the host's greeting.
 fn answer_on_host(port: u16) -> Result<(), Failed> {
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, port))?;
-    std::thread::spawn(move || {
+    thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
             let _said = stream.write_all(HOST_GREETING.as_bytes());
         }
