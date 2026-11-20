@@ -1,6 +1,6 @@
 [package]
 name = "afd_bench"
-description = "Measurement lanes for the paths a fleet's life runs through: what steer, run and delivery sustain, and which datastore gives out first."
+description = "Measurement lanes for the paths a fleet's life runs through: what intake, runs and delivery sustain, and which datastore gives out first."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -26,7 +26,7 @@ afd_fleet.workspace = true
 afd_memory.workspace = true
 # Enrolling the runners a run is issued to.
 afd_runner.workspace = true
-# The steer ingress path the steer lane drives.
+# The steer ingress path the intake lane drives.
 afd_turns.workspace = true
 # The rest of the run plane the drain composes: `Plane::run` walks past the
 # assignment into the payer's wallet (`afd_billing`), the provider
@@ -48,7 +48,7 @@ afd_fleet_lifecycle.workspace = true
 # The client the credential broker is built over. The drain never mints — its
 # fleets declare no integration — but the broker will not construct without one.
 reqwest.workspace = true
-# The delivery worker the outbound lane drives, and the trait its scripted
+# The delivery worker the delivery lane drives, and the trait its scripted
 # destination implements.
 afd_outbound.workspace = true
 # `Provider`, the connector an owed answer names.
@@ -56,7 +56,7 @@ afd_connector.workspace = true
 # The token the worker is stopped by.
 tokio-util.workspace = true
 # The live items stream per viewer and its stream ceiling, as the tenant
-# routes hold them: the items lane measures that path, not a copy of it.
+# routes hold them: the stream lane measures that path, not a copy of it.
 afd_sse.workspace = true
 # Pulling frames off an items stream, which is a `Stream`.
 futures-util.workspace = true

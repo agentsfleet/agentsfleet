@@ -33,8 +33,6 @@ pub mod runner_listener;
 pub(crate) mod runtime;
 #[cfg(test)]
 mod runtime_tests;
-#[cfg(test)]
-mod stream_ceiling_tests;
 
 pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};

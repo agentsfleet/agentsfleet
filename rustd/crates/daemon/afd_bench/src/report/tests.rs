@@ -64,7 +64,7 @@ const FLEETS: u64 = 1_000;
 
 /// A report carrying one of everything a lane reports.
 fn filled_report() -> Report {
-    let mut report = Report::new(Lane::Run, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Runs, Profile::Rig, Provenance::for_test());
     report.parameter("fleets", FLEETS);
     report.parameter("runners", 64);
     report.measurement(RATE_PER_SECOND, 812.5);
@@ -106,7 +106,7 @@ fn test_each_lane_writes_a_parseable_result() {
 #[test]
 fn test_a_result_carries_every_block_a_reader_needs() {
     let scratch = Scratch::new("blocks");
-    let path = scratch.join("run.rig.json");
+    let path = scratch.join("runs.rig.json");
 
     filled_report().write(&path).expect("writable");
     let raw = fs::read_to_string(&path).expect("readable");
@@ -132,7 +132,7 @@ fn test_a_result_carries_every_block_a_reader_needs() {
 #[test]
 fn test_a_partial_write_never_lands_on_the_result_path() {
     let scratch = Scratch::new("atomic");
-    let path = scratch.join("steer.rig.json");
+    let path = scratch.join("intake.rig.json");
 
     // A directory occupying the pending path makes the render land nowhere.
     let pending = path.with_extension("json.pending");
@@ -153,13 +153,13 @@ fn test_a_partial_write_never_lands_on_the_result_path() {
 #[test]
 fn test_an_unparseable_result_fails_the_comparison() {
     let scratch = Scratch::new("truncated");
-    let path = scratch.join("run.rig.json");
-    fs::write(&path, "{\"lane\": \"run\", \"profile\":").expect("writable");
+    let path = scratch.join("runs.rig.json");
+    fs::write(&path, "{\"lane\": \"runs\", \"profile\":").expect("writable");
 
     let refused = Report::read(&path).expect_err("a truncated result is not a measurement");
 
     assert!(
-        refused.to_string().contains("run.rig.json"),
+        refused.to_string().contains("runs.rig.json"),
         "the refusal must name the file, said: {refused}"
     );
 }
@@ -182,7 +182,7 @@ fn test_the_latency_block_is_spelled_once_for_every_lane() {
             .record(Duration::from_millis(10))
             .expect("recordable");
     }
-    let mut report = Report::new(Lane::Outbound, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Delivery, Profile::Rig, Provenance::for_test());
 
     report.latency(2.0, &latency);
 
@@ -194,7 +194,7 @@ fn test_the_latency_block_is_spelled_once_for_every_lane() {
 #[test]
 fn test_a_run_with_no_elapsed_time_reports_no_rate() {
     let latency = Latency::new().expect("buildable");
-    let mut report = Report::new(Lane::Steer, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Intake, Profile::Rig, Provenance::for_test());
 
     report.latency(0.0, &latency);
 
@@ -206,10 +206,10 @@ fn test_a_run_with_no_elapsed_time_reports_no_rate() {
 
 #[test]
 fn test_a_lane_and_profile_decide_the_result_path() {
-    let path = Lane::Run.result_path(Profile::Dev);
+    let path = Lane::Runs.result_path(Profile::Dev);
 
-    assert_eq!(path, Path::new(RESULTS_DIRECTORY).join("run.dev.json"));
-    assert_ne!(path, Lane::Run.baseline_path(Profile::Dev));
+    assert_eq!(path, Path::new(RESULTS_DIRECTORY).join("runs.dev.json"));
+    assert_ne!(path, Lane::Runs.baseline_path(Profile::Dev));
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn test_the_fixture_block_reads_off_the_ledger() {
 #[test]
 fn test_an_empty_distribution_reports_no_tail() {
     let latency = Latency::new().expect("buildable");
-    let mut report = Report::new(Lane::Steer, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Intake, Profile::Rig, Provenance::for_test());
 
     report.latency(2.0, &latency);
 
@@ -251,7 +251,7 @@ fn every_lane_parses_from_the_name_it_writes_its_files_under() {
 
 #[test]
 fn an_unknown_lane_is_refused_with_the_spellings_that_exist() {
-    let refused = "runs".parse::<Lane>();
+    let refused = "run".parse::<Lane>();
 
     let Some(crate::error::ErrorKind::UnknownLane { usage }) =
         refused.as_ref().err().map(crate::Error::kind)
@@ -272,7 +272,7 @@ fn a_result_whose_directory_cannot_be_made_names_that_directory() {
     let scratch = Scratch::new("unmakeable");
     let occupied = scratch.join("a-file");
     fs::write(&occupied, "").expect("the blocking file");
-    let path = occupied.join("run.rig.json");
+    let path = occupied.join("runs.rig.json");
 
     let refused = filled_report().write(&path);
 
@@ -289,7 +289,7 @@ fn a_result_that_cannot_land_names_its_destination_and_leaves_it_untouched() {
     let scratch = Scratch::new("unlandable");
     // A non-empty directory at the destination: the pending file writes
     // beside it, and only the rename can refuse.
-    let path = scratch.join("run.rig.json");
+    let path = scratch.join("runs.rig.json");
     fs::create_dir_all(path.join("occupant")).expect("the blocking directory");
 
     let refused = filled_report().write(&path);

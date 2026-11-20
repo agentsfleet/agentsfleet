@@ -4,12 +4,12 @@
 //! the thing that generates load and the thing that writes the file can be read
 //! and changed apart.
 
-pub mod cardinality;
-pub mod items;
-pub mod outbound;
+pub mod delivery;
+pub mod idle;
+pub mod intake;
 pub mod outcomes;
-pub mod run;
-pub mod steer;
+pub mod runs;
+pub mod stream;
 pub mod sweep;
 
 use tokio::task::JoinError;

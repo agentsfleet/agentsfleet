@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use afd_bench::datastores::Datastores;
 use afd_bench::fixture::RunPrefix;
-use afd_bench::lane::{run, sweep};
+use afd_bench::lane::{runs, sweep};
 use afd_bench::profile::Profile;
 use afd_bench::report::{Lane, Provenance, Report};
 use afd_db::{Migrator, config::DbRole, test_util::TestDatabase};
@@ -17,7 +17,7 @@ const FLEETS: u64 = 200;
 const RUNNERS: u64 = 8;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the exclusive benchmark rig's Postgres and NATS: run by hand after make bench-run with `cargo test -p afd_bench --all-features -- --ignored`"]
+#[ignore = "needs the exclusive benchmark rig's Postgres and NATS: run by hand after make bench-runs with `cargo test -p afd_bench --all-features -- --ignored`"]
 async fn test_ledger_assignment_lane_reports_round_trips() {
     let lane = database().await;
     let bus = afd_bus::test_util::lane()
@@ -27,7 +27,7 @@ async fn test_ledger_assignment_lane_reports_round_trips() {
         .await
         .expect("the benchmark rig answers");
     let prefix = RunPrefix::mint();
-    let parameters = run::Parameters {
+    let parameters = runs::Parameters {
         fleets: FLEETS,
         runners: RUNNERS,
         window: Duration::from_secs(30),
@@ -38,7 +38,7 @@ async fn test_ledger_assignment_lane_reports_round_trips() {
         datastore_image: "test-cluster".to_owned(),
         owned: true,
     };
-    let measured = run::run_both(Profile::Rig, provenance, parameters, &stores, &prefix).await;
+    let measured = runs::run_both(Profile::Rig, provenance, parameters, &stores, &prefix).await;
     let swept = sweep::everything(&stores.database, &prefix)
         .await
         .expect("all prefixed fixtures are swept even on a failure");
@@ -59,7 +59,7 @@ async fn database() -> TestDatabase {
 }
 
 /// A real event-write refusal must not publish an empty drain as a cheap one.
-async fn rejects_incomplete(stores: &Datastores, parameters: run::Parameters) {
+async fn rejects_incomplete(stores: &Datastores, parameters: runs::Parameters) {
     let mut connection = stores.database.acquire().await.expect("owned connection");
     sqlx::raw_sql(
         "CREATE FUNCTION fleet.refuse_bench_event() RETURNS trigger LANGUAGE plpgsql AS \
@@ -74,7 +74,7 @@ async fn rejects_incomplete(stores: &Datastores, parameters: run::Parameters) {
     drop(connection);
     let prefix = RunPrefix::mint();
     let mut report = Report::new(
-        Lane::Run,
+        Lane::Runs,
         Profile::Rig,
         Provenance {
             revision: "failure-proof".to_owned(),
@@ -82,7 +82,7 @@ async fn rejects_incomplete(stores: &Datastores, parameters: run::Parameters) {
             owned: true,
         },
     );
-    let measured = run::drain::run(Profile::Rig, parameters, stores, &prefix, &mut report).await;
+    let measured = runs::drain::run(Profile::Rig, parameters, stores, &prefix, &mut report).await;
     let swept = sweep::everything(&stores.database, &prefix)
         .await
         .expect("refused fixtures swept");

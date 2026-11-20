@@ -291,6 +291,13 @@ pub(crate) enum ErrorKind {
     #[error("under saturation {invariant} was broken {count} time(s)")]
     InvariantBroken { invariant: &'static str, count: u64 },
 
+    /// Raised after the result is written, so the run that disproved the
+    /// default is on disk beside the refusal.
+    #[error(
+        "afd_sse::MAX_STREAMS_DEFAULT is {default}, above {widest}, the widest stream rung measured inside its bounds"
+    )]
+    CeilingUnbacked { default: f64, widest: f64 },
+
     #[error(
         "run drain incomplete: expected {expected}, processed {processed}, failures {failures}"
     )]

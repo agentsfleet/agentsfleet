@@ -1,0 +1,162 @@
+//! Create the funded fleets, runners and admitted events owned by one drain.
+
+use std::sync::Arc;
+
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
+use af_wire::turn::TurnKind;
+use afd_approval::IntegrationGrants;
+use afd_billing::Accounts;
+use afd_credential::credential::platform::Platform;
+use afd_credential::credential::{Broker, Vendors};
+use afd_credential::provider::Providers;
+use afd_credential::secrets::Registry;
+use afd_db::test_util::WalletSeed;
+use afd_fleet::run::{RunService, Runs};
+use afd_gate::gate::Gates;
+use afd_memory::Memories;
+use afd_vault::Vault;
+
+use super::platform;
+use crate::datastores::Datastores;
+use crate::error::{Result, seed_refused};
+use crate::fixture::{FixtureLedger, RunPrefix};
+use crate::lane::runs::Parameters;
+use crate::lane::runs::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT, SeededFleet};
+use crate::statements;
+
+/// Where the drain's identifiers start, clear of the contended window's.
+///
+/// Both populations are seeded by one process, and an identifier is the pid
+/// plus an index: the drain starts high enough that no ladder a lane admits
+/// reaches it.
+pub(super) const INDEX_BASE: u64 = 0x1000_0000;
+
+/// A balance no drain can spend, so the credits gate never answers instead of
+/// the path under measurement.
+const DEEP_POOL_NANOS: i64 = 1_000_000_000_000;
+
+/// Suffix of the drain's placement tag, apart from the contended window's.
+const TAG_SUFFIX: &str = "drain-tag";
+
+/// Suffix of a drain runner's host id.
+const HOST_SUFFIX: &str = "drain-host";
+
+/// What the drain seeded, and what it must release itself.
+#[derive(Debug)]
+pub(super) struct Staged {
+    /// The fleets, one event each.
+    pub(super) fleets: Vec<SeededFleet>,
+    /// The runners that drain them.
+    pub(super) runners: Vec<super::super::seed::RunnerIdentity>,
+    /// The key the platform credential is sealed under.
+    kek: Arc<Kek>,
+}
+
+/// Seed the drain's population and the platform rows its runs resolve.
+///
+/// # Errors
+///
+/// Whatever Postgres refused, a credential that would not seal,
+/// and a platform default another run already holds.
+pub(super) async fn stage(
+    stores: &Datastores,
+    prefix: &RunPrefix,
+    parameters: Parameters,
+    ledger: &mut FixtureLedger,
+) -> Result<Staged> {
+    statements::install(&stores.database).await?;
+    let tag = prefix.name(TAG_SUFFIX);
+    let mut fleets = Vec::new();
+    for index in 0..parameters.fleets {
+        let fleet = seed::identities(INDEX_BASE + index)?;
+        seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
+        ledger.created(ROWS_PER_FLEET);
+        fleets.push(fleet);
+    }
+    fund(stores, &fleets).await?;
+    let mut staged = Staged {
+        fleets,
+        runners: Vec::new(),
+        kek: Arc::new(platform::minted_kek()?),
+    };
+    platform::stage(stores, &staged.kek, INDEX_BASE).await?;
+    for fleet in &staged.fleets {
+        seed::enqueue(&stores.database, &stores.bus, fleet, TurnKind::Chat).await?;
+    }
+    for index in 0..parameters.runners {
+        let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
+        let runner = seed::runner_identity(&stores.database, &host, &tag, 1, SEEDED_AT).await?;
+        staged.runners.push(runner);
+        ledger.created(ROWS_PER_RUNNER);
+    }
+    Ok(staged)
+}
+
+/// Give every tenant a deep wallet.
+async fn fund(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
+    let mut connection = stores.database.acquire().await?;
+    for fleet in fleets {
+        WalletSeed::new(&fleet.tenant, DEEP_POOL_NANOS)
+            .at(SEEDED_AT)
+            .insert(&mut *connection)
+            .await
+            .map_err(seed_refused)?;
+    }
+    Ok(())
+}
+
+impl Staged {
+    /// One in-process gateway session per seeded runner, over the lane's pool and Bus.
+    pub(super) async fn sessions(
+        &self,
+        stores: &Datastores,
+    ) -> Result<Vec<afd_gateway::test_util::RunnerConnection>> {
+        let (gateway, _) = super::connection::gateway(stores, &self.kek)?;
+        let mut sessions = Vec::with_capacity(self.runners.len());
+        for runner in &self.runners {
+            sessions.push(
+                super::connection::open(&gateway, runner, af_wire::run::AcceptedKinds::FLEET, 1)
+                    .await?,
+            );
+        }
+        Ok(sessions)
+    }
+}
+
+/// The daemon's run plane over the lane's pool and Bus, resolving the
+/// platform credential sealed under `kek`.
+///
+/// Composed the way the daemon's root composes it, with a broker over a
+/// deployment holding no platform app: a seeded fleet declares no
+/// integration, so nothing here is ever asked to mint.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a seeded fleet declares no integration, so the broker's vendor client never sends a request"
+)]
+pub(in crate::lane::runs) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> RunService {
+    let database = stores.database.clone();
+    RunService {
+        task_reports: None,
+        turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(kek)),
+        runs: Runs::new(database.clone(), stores.bus.clone(), Entropy::new()),
+        gates: Gates::new(database.clone(), stores.bus.clone(), Entropy::new()),
+        accounts: Accounts::new(database.clone()),
+        // The daemon wraps this in its outage policy and metrics; a bench
+        // lane reaches neither, so the bare ledger is the same money path.
+        biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
+            database.clone(),
+            Entropy::new(),
+            Arc::new(af_core::clock::SystemClock),
+        )),
+        memories: Memories::new(database.clone(), Entropy::new()),
+        providers: Providers::new(database.clone(), Arc::clone(kek), Entropy::new()),
+        vault: Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+        broker: Arc::new(Broker::new(
+            Arc::new(Registry::default()),
+            Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
+        )),
+        grants: IntegrationGrants::new(database, Entropy::new()),
+        thread: Arc::new(afd_turns::view::History::new(stores.database.clone())),
+    }
+}

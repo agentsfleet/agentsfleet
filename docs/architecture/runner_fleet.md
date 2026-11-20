@@ -1132,7 +1132,7 @@ The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_l
 
 The discovery counters describe gateway assign attempts without entity labels.
 The historical `run_polls_total` name counts these attempts; it does not imply runner run polling.
-Statement cost comes from `pg_stat_statements` in `make bench-run`.
+Statement cost comes from `pg_stat_statements` in `make bench-runs`.
 
 The fleet census publishes the unsettled turn count and oldest age (`agentsfleet_turn_backlog`, `agentsfleet_turn_backlog_oldest_age_seconds`).
 Use the maximum across replicas, since each census reads the deployment-wide ledger.

@@ -1,21 +1,13 @@
-# =============================================================================
-# BENCH — API benchmarks.
-#
-# `make bench` is the hey HTTP loadgen gate (requires `hey` in PATH — mise
-# installs it). It measures a URL, which is the only thing hey can measure.
-#
-# What the daemon's paths cost is the THROUGHPUT LANES further down —
-# bench-run, bench-steer, bench-outbound, bench-cardinality, bench-items. Those are Rust,
-# they drive the production types directly rather than a URL, and they are the
-# agentsfleetd benchmarks.
-# =============================================================================
+# `bench-http` loads a URL with `hey`. Every other lane is Rust that drives the
+# production types directly, the only way to split a cost between the bus and
+# Postgres.
 
-.PHONY: bench
+.PHONY: bench-http
 
-bench:  ## Run the Tier-2 hey HTTP loadgen gate against API_BENCH_URL (default: this worktree's daemon /healthz)
+bench-http:  ## HTTP p95 and error rate under hey load against API_BENCH_URL (default: this worktree's /healthz). Run when you change the HTTP stack
 	@mkdir -p .tmp
 	@command -v hey >/dev/null 2>&1 || { \
-	  echo "✗ hey is required for make bench. Install via:"; \
+	  echo "✗ hey is required for make bench-http. Install via:"; \
 	  echo "    mise use -g 'ubi:rakyll/hey@latest'"; \
 	  echo "  or:"; \
 	  echo "    go install github.com/rakyll/hey@latest"; \
@@ -26,7 +18,7 @@ bench:  ## Run the Tier-2 hey HTTP loadgen gate against API_BENCH_URL (default: 
 	 curl -fsS --max-time 3 "$$URL" >/dev/null 2>&1 || { \
 	   echo "✗ No live server at $$URL — Tier-2 bench needs a running API."; \
 	   echo "  Start it first:  FOLLOW_LOGS=0 make up"; \
-	   echo "  Or point bench at dev: API_BENCH_URL=https://api-dev.agentsfleet.net/healthz make bench"; \
+	   echo "  Or point bench at dev: API_BENCH_URL=https://api-dev.agentsfleet.net/healthz make bench-http"; \
 	   exit 1; \
 	 }; \
 	 METHOD="$${API_BENCH_METHOD:-GET}"; \
@@ -60,53 +52,19 @@ bench:  ## Run the Tier-2 hey HTTP loadgen gate against API_BENCH_URL (default: 
 	 awk -v p=$$P95_MS -v max=$$MAX_P95_MS 'BEGIN{if (p+0 > max+0) {print "✗ p95 " p "ms exceeds gate " max "ms"; exit 1}}'; \
 	 echo "✓ [agentsfleetd] Tier-2 hey loadgen passed"
 
-# ── Throughput lanes ─────────────────────────────────────────────────────────
-# What the steer, run, delivery and cardinality paths sustain, and which
-# datastore gives out first. Distinct from the loadgen above in the one way
-# that matters: `hey` measures a URL, and only the steer path IS one — these
-# drive the production types directly, which is the only way to attribute a
-# cost between the bus and Postgres.
-#
-# PROFILE decides scale, target and blast radius (rig | dev | prod), and the
-# lane refuses a parameter above its ceiling before it opens a connection.
-# The rig IS the compose stack the integration lane already owns, so these
-# targets depend on the same bring-up rather than standing up a second one.
-#
-# The BENCH_* datastore variables are set FROM the lane's TEST_* values here
-# rather than read as TEST_* in Rust: the bench code names one spelling, and
-# this file is where a deployed target would be substituted for it.
-#
-# `--manifest-path` rather than `cd $(RUSTD_DIR)`: a lane writes its result to
-# `bench/results/` relative to its working directory, and that directory is the
-# REPOSITORY root beside `bench/baselines/`, not the Rust workspace inside it.
+# PROFILE (rig | dev | prod) sets scale, target and blast radius; a lane refuses
+# a parameter above its profile's cap before it opens a connection.
 PROFILE ?= rig
 
-# The bus build every lane run is graded against, read from the one file that
-# pins it. Extracted rather than restated: a second spelling of the tag is a
-# second thing to keep true, and provenance naming a stale image describes a
-# run that did not happen.
+# Provenance names the bus build from the one file that pins it.
 DATASTORE_IMAGE := $(shell awk '/image: nats:/ { print $$2; exit }' docker-compose.yml)
 
-# The rig is owned by construction: compose brings it up under a project name
-# derived from this worktree's directory, and the lane resets it. A deployed
-# target overrides this, and only the exact word claims ownership — ownership is
-# what entitles a run to reset and to inject faults.
+# Only the exact word `owned` entitles a run to reset the rig and inject faults.
 BENCH_TARGET_OWNED ?= owned
 
-# The one environment every lane binary reads, and the one place a deployed
-# target would be substituted for the compose stack.
-#
-# The three provenance variables have no default inside the lane, and the lane
-# refuses to run without them. A result file nobody can date, attribute to a
-# server build, or tell apart from a run on somebody else's endpoint grades
-# nothing — and a lane that grades nothing must never look like one that grades
-# green. `GIT_COMMIT` is `make/build.mk`'s, so a result's revision and an
-# image's tag come from one variable rather than two that can disagree.
-#
-# Deferred (`=`, not `:=`) for exactly that reason: `make/test.mk` includes this
-# file before `make/build.mk` defines `GIT_COMMIT`, so an immediate expansion
-# would bake in an EMPTY revision — and an empty revision is the one value a
-# lane must never be handed, since it would refuse every run.
+# A lane refuses to run without its provenance. Deferred (`=`): make/build.mk
+# defines GIT_COMMIT after this file is included, and an empty revision would
+# refuse every run.
 BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 	BENCH_DATABASE_URL="$(TEST_DATABASE_URL)" \
 	BENCH_NATS_URL="$(TEST_NATS_URL)" \
@@ -114,61 +72,43 @@ BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 	BENCH_DATASTORE_IMAGE="$(DATASTORE_IMAGE)" \
 	BENCH_TARGET_OWNED="$(BENCH_TARGET_OWNED)"
 
-# `--release` is not a detail. A debug build measures rustc's unoptimised
-# output, which is the wrong system: the number would be a property of the
-# build profile rather than of the path.
+# `--release`: a debug build measures rustc's unoptimised output, not the path.
+# `--manifest-path`, not `cd`: a lane writes bench/results/ relative to the
+# repository root, beside bench/baselines/.
 BENCH_LANE_RUN := cargo run --release --locked --quiet --manifest-path $(RUSTD_DIR)/Cargo.toml --bin
 
-BENCH_LANES := bench-run bench-steer bench-outbound bench-cardinality bench-items
+BENCH_LANES := bench-runs bench-recovery bench-intake bench-delivery bench-idle bench-stream
 
-.PHONY: $(BENCH_LANES) bench-compare
+.PHONY: $(BENCH_LANES) bench-all bench-compare
 
-# On the rig every lane resets and migrates first, as the integration lane
-# does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`, which depends on the
-# reset, so `make -j` cannot run the two side by side). The migration gives a
-# fresh worktree the schema its seed needs (`identity.tenants`); the reset clears
-# the unsettled `thread.turns` rows the integration suite leaves, which a
-# run run would otherwise meet as candidates in every idle window. Only an owned rig: a dev
-# or prod profile points at a deployed database, and a rig whose
-# BENCH_TARGET_OWNED is overridden is not this run's to reset (see above), so a
-# bench never resets or migrates either.
-# Exactly the one word: `filter` alone finds `owned` anywhere in the value, so
-# an override of "owned no" would still claim the rig.
+# An owned rig resets and migrates before each lane: the integration suite leaves
+# unsettled turns a run would meet as candidates. A dev or prod target is never
+# reset. `filter` alone would accept "owned no", hence the word count.
 BENCH_RIG_OWNED := $(and $(filter owned,$(BENCH_TARGET_OWNED)),$(filter 1,$(words $(BENCH_TARGET_OWNED))))
 BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_STATE_DEP) _migrate-test-db)
 
-# The run lane runs two populations: the contended window it always ran, then
-# a drain through the full run and report verbs, whose idle cost it prints as
-# `drain_idle_statements=` — the line a reader, or a rubric, greps for.
-#
-# BENCH_SHAPE=saturation drives native gateway offers instead, setup chats and
-# fleets together, with twice as many hosts as the pool has connections unless
-# BENCH_RUNNERS says otherwise. It writes `run-saturation.rig.json`, never the
-# default result, and refuses any profile but the rig: exhausting a deployed
-# pool on purpose is an outage drill, not a measurement. A doubled run, an
-# oversubscribed host or a pool that did not recover exits non-zero.
+# saturation exhausts the pool on purpose, so it refuses any profile but the rig.
 BENCH_SHAPE ?= default
 
-bench-run:  ## Run throughput, then a drain: rate, p95, statements and commits per run, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst|recovery] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
-bench-steer:  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
-bench-outbound:  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
-bench-cardinality:  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
-# The live items stream's ladders: viewers on one fleet × payload size, then open
-# streams. The only lane that also subscribes, on the same NATS cluster the
-# others publish to.
-bench-items:  ## Live items stream: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
+bench-runs:  ## Runs per second, p95, statements and commits per run (BENCH_SHAPE=default|saturation|burst). Run when you change assign, renew or report SQL; thread, turn or run tables; the gateway
+bench-recovery:  ## Recovery burst through the full daemon and runner processes (BENCH_FLEETS=1|10|100|500). Run when you change checkpoints, respawn, run expiry
+bench-intake:  ## Accepted rate, p95 and readiness depth of intake. Run when you change message and webhook intake, the turn insert, wake publish
+bench-delivery:  ## Delivery rate, p95, head-of-line and retry cost. Run when you change deliveries to Slack or webhooks
+bench-idle:  ## Cost per idle fleet up a ladder. Run when you change anything that runs per fleet on a timer: sweeps, heartbeats, indexes
+bench-stream:  ## Allocations and p95 per frame, heap per stream; refuses an unbacked SSE_MAX_STREAMS_DEFAULT. Run when you change the live stream (SSE) and the NATS items path
 
-# Only the run lane has shapes, so it alone is handed BENCH_SHAPE.
-bench-run: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"
-ifeq ($(BENCH_SHAPE),recovery)
-# This shape boots the full daemon. Its harness owns the separate runner processes.
-bench-run: BENCH_LANE_RUN = cargo bench --profile dist --locked --manifest-path $(RUSTD_DIR)/Cargo.toml -p agentsfleetd --features test-util --bench
-endif
+bench-runs: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"
+# Boots the full daemon, so it is agentsfleetd's bench, not an afd_bench binary.
+bench-recovery: BENCH_LANE_RUN = cargo bench --profile dist --locked --manifest-path $(RUSTD_DIR)/Cargo.toml -p agentsfleetd --features test-util --bench
 
-# One recipe for every lane: the target names the lane binary after `bench-`.
+# The target names the binary after `bench-`.
 $(BENCH_LANES): bench-%: _ensure-test-infra $(BENCH_MIGRATE)
 	@echo "→ [$@] profile=$(PROFILE)$(if $(BENCH_LANE_SHAPE), shape=$(BENCH_SHAPE))"
 	@$(BENCH_LANE_SHAPE) $(BENCH_LANE_ENV) $(BENCH_LANE_RUN) $*
 
-bench-compare:  ## Delta between a result and its baseline (LANE=run PROFILE=rig) — always exit 0
+# One lane at a time, each on a fresh rig; `make -j` cannot overlap them.
+bench-all:  ## Every lane above except bench-http, in turn, stopping at the first failure. Run when you make a large refactor
+	@for lane in $(BENCH_LANES); do $(MAKE) --no-print-directory $$lane || exit 1; done
+
+bench-compare:  ## Delta between a result and its baseline (LANE=runs PROFILE=rig) — always exit 0
 	@$(BENCH_LANE_RUN) compare -- "$(LANE)" "$(PROFILE)"

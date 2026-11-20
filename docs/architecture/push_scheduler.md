@@ -184,13 +184,13 @@ A partitioned scheduler is not planned. It is built only if measured saturation 
 
 ## Baselines
 
-Measured on Indy's laptop on Nov 06, 2026, with `make bench-run PROFILE=rig`, each run on a reset rig. Each lane ran three times, and the run with the median headline value is committed in `bench/baselines/`. The lowest and highest values sit beside it.
+Measured on Indy's laptop on Nov 06, 2026, with `make bench-runs PROFILE=rig`, each run on a reset rig. Each lane ran three times, and the run with the median headline value is committed in `bench/baselines/`. The lowest and highest values sit beside it.
 
 The api-dev machines re-measure at deployment.
 
 A simulated chat is one run with a 10 s turn: two renewals and forty activity posts. The drain runs 200 fleets to 8 runners over a pool of 20.
 
-The headline is drain runs per second: 82.51, between 80.43 and 84.08. The median run is committed as `run.rig.json`.
+The headline is drain runs per second: 82.51, between 80.43 and 84.08. The median run is committed as `runs.rig.json`.
 
 | Path | Statements per chat (median run) | Lowest | Highest |
 |---|---|---|---|
@@ -211,17 +211,17 @@ The `task` path holds the durable-task reads PR #803 added to issue, renewal and
 
 A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets for 60 s. Runners hold each run for a 2 s turn. Today each message is a run of its own, so most wait.
 
-The headline is pickup p95: 54.2 s, between 53.4 s and 54.5 s. The median run is committed as `run-burst.rig.json`.
+The headline is pickup p95: 54.2 s, between 53.4 s and 54.5 s. The median run is committed as `runs-burst.rig.json`.
 
 In it, 29,953 messages were accepted, none were refused, and 29,729 were still idle at the close. Pickup p50 is 28.5 s and append p95 is 35.7 ms.
 
-With M242's folding, a live run takes its fleet's messages at each model call. Pickup p95 is 491.5 ms, between 489.0 ms and 491.8 ms, and that median run replaces `run-burst.rig.json`.
+With M242's folding, a live run takes its fleet's messages at each model call. Pickup p95 is 491.5 ms, between 489.0 ms and 491.8 ms, and that median run replaces `runs-burst.rig.json`.
 
 Of 30,000 messages, 4,564 folded and 25,212 still waited at the close, because 8 runners serve 50 fleets. The pickup percentiles count only the messages a run picked up.
 
 ### M242: one-statement intake
 
-Measured on Indy's laptop on Nov 07, 2026, with `make bench-steer PROFILE=rig`'s lane. Base `6ce61641d` and branch `43d828970` ran interleaved, each on a reset rig. The median branch run is committed as `steer.rig.json`.
+Measured on Indy's laptop on Nov 07, 2026, with `make bench-intake PROFILE=rig`'s lane. Base `6ce61641d` and branch `43d828970` ran interleaved, each on a reset rig. The median branch run is committed as `intake.rig.json`.
 
 | Shape | Base, three runs | Branch, three runs |
 |---|---|---|
@@ -240,9 +240,9 @@ M244 measured tail p99 and the broker-kill drill on both buses, against the same
 
 ### M244: previous broker against NATS
 
-Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`: three interleaved pairs, one run on each bus, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`.
+Measured on Indy's laptop on Nov 09, 2026, with `make bench-stream PROFILE=rig`: three interleaved pairs, one run on each bus, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`.
 
-Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, was committed as `tail.rig.json` (now `items.rig.json`); the wake ladder's runs below replaced it.
+Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, was committed as `tail.rig.json` (now `stream.rig.json`); the wake ladder's runs below replaced it.
 
 The viewer ladder keeps one frame in flight, so a frame's time is one trip through the bus and the fan-out. The stream ladder publishes to every stream at once and times each stream from the burst's start.
 
@@ -282,7 +282,7 @@ A size sweep ruled out the client's 65,535-byte read buffer, and the cause is op
 
 #### Wake ladder
 
-Measured on Indy's laptop on Nov 10, 2026, at `6b0caea35`, with `make bench-tail PROFILE=rig`: three runs, each on a reset rig.
+Measured on Indy's laptop on Nov 10, 2026, at `6b0caea35`, with `make bench-stream PROFILE=rig`: three runs, each on a reset rig.
 Each hub is a replica with its own NATS connection, listening on all 16 wake shards. A ring is timed from publish to the first hub that takes it, at most 64 rings are outstanding, and a ring untaken after 1 s is missed.
 
 | Hubs | p50 (ms), run 1 / 2 / 3 | p99 (ms), run 1 / 2 / 3 | Missed |
@@ -291,7 +291,7 @@ Each hub is a replica with its own NATS connection, listening on all 16 wake sha
 | 2 | 0.331 / 0.281 / 0.332 | 0.517 / 0.445 / 0.511 | 0 |
 | 4 | 0.461 / 0.378 / 0.424 | 1.303 / 0.606 / 0.983 | 0 |
 
-The median run by its 4,096-stream p99 (13.27, 12.62 and 11.90 ms) is run 2, committed as `tail.rig.json` (now `items.rig.json`).
+The median run by its 4,096-stream p99 (13.27, 12.62 and 11.90 ms) is run 2, committed as `tail.rig.json` (now `stream.rig.json`).
 
 #### Kill drills
 
@@ -314,7 +314,7 @@ The previous broker's self-hosted cluster had no failover of its own: its docume
 
 ### M245: twenty-one statements per chat
 
-Measured on Indy's laptop on Nov 11, 2026, with `make bench-run PROFILE=rig`. The runs were `main` at `93d66f476` and this branch at `480802c84`, three each, interleaved, each on a reset rig. The median branch run by statements per chat is committed as `run.rig.json`.
+Measured on Indy's laptop on Nov 11, 2026, with `make bench-runs PROFILE=rig`. The runs were `main` at `93d66f476` and this branch at `480802c84`, three each, interleaved, each on a reset rig. The median branch run by statements per chat is committed as `runs.rig.json`.
 
 | Path | `main`, median run | Branch, median run | Branch lowest | Branch highest |
 |---|---|---|---|---|

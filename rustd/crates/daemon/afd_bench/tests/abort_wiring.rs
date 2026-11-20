@@ -19,7 +19,7 @@ use std::time::Instant;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_bench::abort::{Abort, MINIMUM_SAMPLE};
-use afd_bench::lane::run::drive::{Shared, poll_until};
+use afd_bench::lane::runs::drive::{Shared, poll_until};
 use afd_fleet::run::Runs;
 
 /// Any v7-shaped runner id; the pass never reaches the row it would name.

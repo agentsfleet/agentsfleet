@@ -200,7 +200,7 @@ An uncontended successful assignment takes discovery, begin, the assignment stat
 The historical `agentsfleet_run_polls_total` counter now counts gateway assignment attempts.
 Divide the candidate counter by those attempts to measure assignment fan-out.
 
-Statement cost comes from `pg_stat_statements` in `make bench-run`, which counts what every crate sends.
+Statement cost comes from `pg_stat_statements` in `make bench-runs`, which counts what every crate sends.
 Use query latency and query plans alongside these ratios: one slow discovery statement still counts as one statement.
 
 #### Which recurring Postgres reads are index-served
@@ -299,7 +299,7 @@ The committed result sits beside each row in `bench/baselines/`.
 Absolute rates move with hardware; the shapes below do not. A baseline that moves takes its row here with it in the same commit.
 
 The steer and delivery rows were re-measured at `774f99cbd`.
-The run rows quote `run.rig.json` as committed at `c82badcb5`, and the M241 baselines below replace that file.
+The run rows quote `runs.rig.json` as committed at `c82badcb5`, and the M241 baselines below replace that file.
 The live-tail rows come from `e2d250172`, the revision the tail lane was built on.
 
 Latency columns moved with host load between runs on this shared machine; the counts beside them did not.
@@ -311,14 +311,14 @@ Statement and commit counts are Postgres's own: `pg_stat_statements` calls (tran
 | Path | What it costs | The number that decides |
 |------|---------------|-------------------------|
 | Stream comparison: contended run | 1 928 runs/s; 2.4 Postgres round trips per issued run by the poll's own tally, which M241_001 found undercounts; 27.8% of polls find nothing; p95 7.8 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | A run costs about two round trips under contention, down from 11.3 at `e2d250172`. |
-| Stream comparison: run through report (drain) | 50.0 Postgres statements and 26.8 commits per run issued, counting the polls that missed and the report. Throughput was 172 runs/s, with run p95 56.5 ms and report p95 21.5 ms. All 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-run`), measured before M225. An interim M225_001 build, since replaced by the wake ring, measured run p95 48.1 ms, report p95 16.9 ms and 176.9 runs/s. The wake-ring build is not yet re-measured. | What one event costs the scheduler and the ledger end to end through `Plane::run` and `Plane::report`, counted by Postgres rather than by the lane. |
+| Stream comparison: run through report (drain) | 50.0 Postgres statements and 26.8 commits per run issued, counting the polls that missed and the report. Throughput was 172 runs/s, with run p95 56.5 ms and report p95 21.5 ms. All 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-runs`), measured before M225. An interim M225_001 build, since replaced by the wake ring, measured run p95 48.1 ms, report p95 16.9 ms and 176.9 runs/s. The wake-ring build is not yet re-measured. | What one event costs the scheduler and the ledger end to end through `Plane::run` and `Plane::report`, counted by Postgres rather than by the lane. |
 | Stream comparison: steer ingress | 1.003 Postgres statements per steer and 2 191 accepted a second at p95 9.52 ms (8 submitters, 50 fleets), the median of three runs at `43d828970`; the base `6ce61641d` measured 4.004 statements and 1 260 a second. One fleet with 16 senders takes 933 a second, against 342 on the base ([push scheduler](push_scheduler.md#m242-one-statement-intake)) | Intake is one autocommit statement that locks the fleet row only for its own duration, so a busy fleet admits about 2.7 times as many messages a second. |
 | Historical serial delivery, healthy | 49.6 jobs/s per worker with one 250 ms destination in sixteen | Ten times the five-per-second estimate the refactor argument was made from, but see the next row. |
 | Historical serial delivery, head-of-line | the OTHER fifteen destinations' p95 3 752 ms against the slow one's 3 758 ms | With 6% of jobs slow, the healthy 94% wait exactly as long. One stream, one worker, one queue position at a time. |
 | Historical serial delivery, retry | 95.9% of the window in the ladder with two refusing destinations in sixteen (not re-measured at `774f99cbd`: the default run refuses nothing, and that baseline now carries a retry occupancy of 0) | Eight jobs that never resolve cost every job behind them the whole ladder. |
-| Setup chat claim under saturation | Before → after the claim stopped waiting on a held draft, medians of three runs each. Sampled open-transaction age p95 959 → 17 ms; chat run p95 3 006 → 707 ms; any-run p95 3 207 → 745 ms. Pool wait p95 28 → 13 ms; 41.7 → 62.7 runs/s. All six runs doubled no run, overran no host and recovered the pool. Shape: 40 hosts × 4 workers, a 20-connection pool, 5 chat tenants × 8 drafts and 200 fleets. One writer holds a tenant's drafts 1 s of every 1.25 s (`make bench-run BENCH_SHAPE=saturation`). The baseline `run-saturation.rig.json` is the before set's reset-rig run. | One busy draft used to hold its claim's host row for the whole write, so every tenant behind it waited. Skipped instead, the claim's transaction lasts only its own work. The chat tail left is the held tenant's drafts waiting for the writer's gaps. |
-| Live tail fan-out | 3.05–3.06 allocations per delivered frame with 1 024 viewers on one fleet, flat from 200 B to 64 KiB (3.12–3.14 at 256, 3.45–3.52 at 64, 31–36 at one); 8.3 / 10.2 / 20.0 µs of runtime busy time per delivered frame and publish-to-receive p95 3.1 / 4.1 / 7.4 ms at 1 024 viewers for 200 B / 4 KiB / 64 KiB; every frame delivered, no lag notice (`make bench-tail`) | About three allocations per viewer per frame: the hub's per-reader copy of the message and the SSE frame built from it. Fan-out cost grows with viewers × frames, and with payload size through the copy. |
-| Live tail streams | 13.5 KB of heap per open, idle per-fleet stream, flat from 64 to 4 096 streams (13 800 / 13 494 / 13 521 / 13 529 B), so 4 096 streams hold about 53 MiB; one frame sent to every stream arrives at p95 0.18 / 0.14 / 0.14 / 0.13 ms, none lost (`make bench-tail`, after the hub shared each frame; 21.7 KB per stream before) | Flat per stream: at the `SSE_MAX_STREAMS` default of 256 that is 3.3 MiB. Memory and latency bind nothing up to 4 096 streams; file descriptors bind first. |
+| Setup chat claim under saturation | Before → after the claim stopped waiting on a held draft, medians of three runs each. Sampled open-transaction age p95 959 → 17 ms; chat run p95 3 006 → 707 ms; any-run p95 3 207 → 745 ms. Pool wait p95 28 → 13 ms; 41.7 → 62.7 runs/s. All six runs doubled no run, overran no host and recovered the pool. Shape: 40 hosts × 4 workers, a 20-connection pool, 5 chat tenants × 8 drafts and 200 fleets. One writer holds a tenant's drafts 1 s of every 1.25 s (`make bench-runs BENCH_SHAPE=saturation`). The baseline `runs-saturation.rig.json` is the before set's reset-rig run. | One busy draft used to hold its claim's host row for the whole write, so every tenant behind it waited. Skipped instead, the claim's transaction lasts only its own work. The chat tail left is the held tenant's drafts waiting for the writer's gaps. |
+| Live tail fan-out | 3.05–3.06 allocations per delivered frame with 1 024 viewers on one fleet, flat from 200 B to 64 KiB (3.12–3.14 at 256, 3.45–3.52 at 64, 31–36 at one); 8.3 / 10.2 / 20.0 µs of runtime busy time per delivered frame and publish-to-receive p95 3.1 / 4.1 / 7.4 ms at 1 024 viewers for 200 B / 4 KiB / 64 KiB; every frame delivered, no lag notice (`make bench-stream`) | About three allocations per viewer per frame: the hub's per-reader copy of the message and the SSE frame built from it. Fan-out cost grows with viewers × frames, and with payload size through the copy. |
+| Live tail streams | 13.5 KB of heap per open, idle per-fleet stream, flat from 64 to 4 096 streams (13 800 / 13 494 / 13 521 / 13 529 B), so 4 096 streams hold about 53 MiB; one frame sent to every stream arrives at p95 0.18 / 0.14 / 0.14 / 0.13 ms, none lost (`make bench-stream`, after the hub shared each frame; 21.7 KB per stream before) | Flat per stream: at the `SSE_MAX_STREAMS` default of 256 that is 3.3 MiB. Memory and latency bind nothing up to 4 096 streams; file descriptors bind first. |
 
 An idle poll is one Postgres discovery probe on the ledger queue.
 Its database work depends on eligible active fleets as well as poll rate.
@@ -335,7 +335,7 @@ The rig measures one process against local datastores, which is a floor and not 
 
 ### Push scheduler baselines
 
-M241_001 replaced `run.rig.json` and added `run-burst.rig.json` on Nov 06, 2026.
+M241_001 replaced `runs.rig.json` and added `runs-burst.rig.json` on Nov 06, 2026.
 Each lane ran three times on a reset rig, and the committed file is the median run.
 [Push scheduler](push_scheduler.md#baselines) lists the statements per chat by path.
 
@@ -359,7 +359,7 @@ M244 re-measured every lane on core NATS at `2bea47c3d`, on Nov 10, 2026, with `
 Outbound and cardinality each ran three times, and the committed file is the median run.
 The run shapes and steer ran once.
 
-The drain ran three more times at `6b0caea35`, after M243's runner stream merged: 83.00, 91.97 and 86.54 runs per second, at 74.16, 74.16 and 74.165 statements per chat. The median run, 86.54, is committed as `run.rig.json`.
+The drain ran three more times at `6b0caea35`, after M243's runner stream merged: 83.00, 91.97 and 86.54 runs per second, at 74.16, 74.16 and 74.165 statements per chat. The median run, 86.54, is committed as `runs.rig.json`.
 Each run's idle window cost 0 statements, and a chat's activity path cost 0.
 
 | Lane | Number | Before M244 | On core NATS |
@@ -388,7 +388,7 @@ Steer now costs two Postgres statements where it cost one, and the second statem
 
 The heading keeps its old words because other pages cite it by text. These measurements predate the thread tables and keep the words used then.
 
-The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-run PROFILE=rig KEEP_TEST_STATE=1`.
+The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-runs PROFILE=rig KEEP_TEST_STATE=1`.
 The canonical coverage run reset the owned rig before measurement; benchmarks reused those migrated services and swept their own fixtures.
 Each row is the median of three runs on the shared development machine, with pool size 20.
 

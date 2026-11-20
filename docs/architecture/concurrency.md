@@ -390,7 +390,7 @@ A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back kee
 
 The skip logs `authoring_assignment_draft_skipped` at `debug`, because under contention it fires on every assignment pass of the walk. A skipped draft is passed over and kept. Its order by age resumes on the first assignment pass after the writer commits.
 
-`make bench-run BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat run p95 3 006 → 707 ms, 41.7 → 62.7 runs/s.
+`make bench-runs BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat run p95 3 006 → 707 ms, 41.7 → 62.7 runs/s.
 
 No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 

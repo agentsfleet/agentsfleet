@@ -44,7 +44,7 @@ pub use crate::frame::{
 };
 pub use crate::live::Live;
 pub use crate::resubscribe::Link;
-pub use crate::stream_limit::{StreamLimit, StreamPermit};
+pub use crate::stream_limit::{MAX_STREAMS_DEFAULT, StreamLimit, StreamPermit};
 pub use crate::tail::tail;
 
 /// How often an idle stream proves that its transport still carries events.

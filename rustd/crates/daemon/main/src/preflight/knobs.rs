@@ -117,21 +117,6 @@ pub(super) const POSTHOG_HOST_KNOB: &str = "POSTHOG_HOST";
 /// and a pub/sub map entry, so the right number is a property of the box.
 pub(super) const SSE_MAX_STREAMS_KNOB: &str = "SSE_MAX_STREAMS";
 
-/// The stream ceiling when the knob is unset.
-///
-/// Bound by FILE DESCRIPTORS, not by the tail itself: every stream holds a
-/// socket, nothing in this daemon raises `RLIMIT_NOFILE`, and a stock soft
-/// limit is 1,024. About 300 of those are spoken for before any stream — up
-/// to 256 admitted requests (`afd_http` `admission/mod.rs:62`), 20 per
-/// Postgres pool (`afd_db` `config.rs:52-60`), one NATS connection and the
-/// runtime's own — which leaves room for 256 and not for the next rung.
-///
-/// The tail holds up well past that. `make bench-items PROFILE=rig` on NATS
-/// (Nov 09, 2026, `docs/architecture/push_scheduler.md` §Baselines) burst
-/// 4,096 streams at a p99 of 9.83 ms with no frame undelivered, so a host with
-/// a raised descriptor limit can set the knob far higher.
-pub(super) const SSE_MAX_STREAMS_DEFAULT: usize = 256;
-
 /// Why a stream ceiling that will not parse refuses boot.
 pub(super) const WHY_SSE_MAX_STREAMS: &str =
     "a whole number of concurrent event streams, at least 1";

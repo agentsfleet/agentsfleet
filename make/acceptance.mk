@@ -1,22 +1,14 @@
-# =============================================================================
-# ACCEPTANCE — dashboard + CLI live-API acceptance e2e (local twins of CI)
-# =============================================================================
-
 .PHONY: acceptance acceptance-build acceptance-e2e acceptance-execution acceptance-cli
 
 ACCEPTANCE_SCOPE ?= full
 
-# The whole stack, built from this checkout and started on this Linux machine
-# (privileged Docker), then the suites. CI's on-demand workflow and every burst
-# machine run this; people start it through `orly burst`, not on a laptop.
+# The whole stack from this checkout on a Linux machine (privileged Docker);
+# people start it through `orly burst`, not on a laptop.
 acceptance:  ## Build and start the full stack on this Linux machine, then run acceptance (SUITE=e2e|cli|execution; default: both).
 	@bash deploy/local/acceptance.sh "$(SUITE)"
 
-# Local twins of the pipeline acceptance jobs — same command, env-driven target
-# (local / vercel.app / api-dev / api), so a developer runs exactly what CI runs.
-# Run both with: make acceptance-e2e acceptance-cli
-# `acceptance-execution` is one journey out of acceptance-e2e — the fleet that
-# executes to a real result — for the inner loop while that walk is being fixed.
+# Local twins of CI's acceptance jobs: same command, target from the environment.
+# `acceptance-execution` is one journey of acceptance-e2e, for the inner loop.
 
 acceptance-build:  ## Build the daemon, runner, CLI and dashboard for acceptance.
 	@bun scripts/build-acceptance.ts

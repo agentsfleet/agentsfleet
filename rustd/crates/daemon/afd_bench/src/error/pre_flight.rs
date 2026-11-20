@@ -73,6 +73,7 @@ impl Error {
             | ErrorKind::LiveSetFaulted { .. }
             | ErrorKind::NothingIssued { .. }
             | ErrorKind::InvariantBroken { .. }
+            | ErrorKind::CeilingUnbacked { .. }
             | ErrorKind::DrainIncomplete { .. } => false,
         }
     }

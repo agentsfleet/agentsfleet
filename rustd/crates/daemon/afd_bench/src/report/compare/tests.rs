@@ -21,7 +21,7 @@ const LARGER_POPULATION: u64 = 1_000;
 
 /// A report with one rate and one tail, for comparing against another.
 fn report_of(rate: f64, p95: f64) -> Report {
-    let mut report = Report::new(Lane::Run, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Runs, Profile::Rig, Provenance::for_test());
     report.measurement(RATE_PER_SECOND, rate);
     report.measurement(P95_MS, p95);
     report
@@ -48,7 +48,7 @@ fn scratch(label: &str) -> PathBuf {
 #[test]
 fn test_the_comparison_reports_a_delta_without_gating() {
     let directory = scratch("delta");
-    let result = directory.join("run.rig.json");
+    let result = directory.join("runs.rig.json");
     let baseline = directory.join("baseline.json");
     report_of(500.0, 40.0).write(&result).expect("writable");
     report_of(BASELINE_RATE, 20.0)
@@ -72,7 +72,7 @@ fn test_the_comparison_reports_a_delta_without_gating() {
 #[test]
 fn test_a_missing_baseline_reports_absence_rather_than_inventing_one() {
     let directory = scratch("absent");
-    let result = directory.join("run.rig.json");
+    let result = directory.join("runs.rig.json");
     report_of(500.0, 40.0).write(&result).expect("writable");
 
     let rendered = against_baseline(&result, &directory.join("nothing-here.json"))
@@ -88,13 +88,13 @@ fn test_a_missing_baseline_reports_absence_rather_than_inventing_one() {
 #[test]
 fn test_an_unparseable_result_is_the_one_thing_the_comparison_refuses() {
     let directory = scratch("truncated");
-    let result = directory.join("run.rig.json");
+    let result = directory.join("runs.rig.json");
     fs::write(&result, "not a report at all").expect("writable");
 
     let refused = against_baseline(&result, &directory.join("nothing-here.json"))
         .expect_err("a file that is not a result cannot be compared");
 
-    assert!(refused.to_string().contains("run.rig.json"));
+    assert!(refused.to_string().contains("runs.rig.json"));
     fs::remove_dir_all(&directory).expect("scratch is removable");
 }
 

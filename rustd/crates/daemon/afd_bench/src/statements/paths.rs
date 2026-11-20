@@ -92,7 +92,7 @@ impl Path {
 
 /// Fragments of normalized statement text, first match wins.
 ///
-/// Read off a `bench-run` drain on `main` `14539a73e`: each fragment is the
+/// Read off a `bench-runs` drain on `main` `14539a73e`: each fragment is the
 /// shortest text that names one product statement. When a statement changes,
 /// its row lands in `other` until its fragment follows.
 const FRAGMENTS: &[(&str, Path)] = &[

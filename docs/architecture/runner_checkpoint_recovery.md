@@ -360,18 +360,18 @@ The one-fleet rig check uses registered runner processes and a controlled model.
 Use an owned local rig whose database the target can reset.
 
 ```bash
-make bench-run PROFILE=rig BENCH_SHAPE=recovery BENCH_FLEETS=1 BENCH_WORKSPACES=shared
+make bench-recovery PROFILE=rig BENCH_FLEETS=1 BENCH_WORKSPACES=shared
 ```
 
 ```text
-→ [bench-run] profile=rig shape=recovery
-... Running benches/run/main.rs (<varies>)
+→ [bench-recovery] profile=rig
+... Running benches/recovery/main.rs (<varies>)
 {"shape":"recovery","workload":"api_only","fleets":1,...}
 ```
 
 The reported latency starts at the later of the old run and thread expiries and ends at the first restored model request. It also records issue and settlement timestamps.
 
-[Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/daemon/main/benches/run/measure.rs)
+[Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/daemon/main/benches/recovery/measure.rs)
 
 ## Implementation paths and symbols
 
