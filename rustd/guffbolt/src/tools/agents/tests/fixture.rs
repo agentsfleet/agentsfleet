@@ -12,7 +12,7 @@ use futures_util::stream::{self, BoxStream};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::agents::{Agents, Raise, Seat};
+use crate::agents::{Agents, Raise, Seat, TOOLS};
 use crate::conversation::Conversation;
 use crate::drive::{DriveState, Input};
 use crate::extension::Extension;
@@ -171,9 +171,10 @@ impl<'t> Family<'t> {
     }
 }
 
-/// The tools `agents` builds: the seven, and nothing else.
+/// The tools `agents` builds: the seven, and nothing else. `*` would add
+/// the tools that need no backend, such as `update_plan`.
 pub(super) fn tools(agents: &Agents) -> Tools<ContextTool<'_>> {
-    let config = ToolsConfig::new(["*"]).expect("one pattern");
+    let config = ToolsConfig::new(TOOLS).expect("seven names");
     Tools::builder()
         .with_agents(agents)
         .build(&config)
