@@ -1,6 +1,6 @@
 //! The model's proposal, read against the head candidate the caller lends:
-//! exact text anchors become native byte ranges, and an edit naming any
-//! other candidate is refused.
+//! exact text anchors become native byte ranges, an edit naming any other
+//! candidate is refused, and so is a first setup once a head exists.
 
 use serde::Deserialize;
 
@@ -121,6 +121,9 @@ pub(super) fn native(
         .map_err(|_untrusted| Rejection::InvalidArguments)?
         .into_inner();
     match proposal {
+        // A first setup is a draft's first: once the draft has a head, only an
+        // edit naming it may change the setup.
+        Proposal::Initialize { .. } if head.is_some() => Err(Rejection::StaleCandidate),
         Proposal::Initialize { definition } => Ok(Proposal::Initialize { definition }),
         Proposal::Edit {
             base_candidate_id,

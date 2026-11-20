@@ -88,8 +88,6 @@ fn test_every_fleet_producer_runs_its_body() {
     for wake in [ReadyWake::Ring, ReadyWake::Gap] {
         producers::fleet::ready_wake_failed(wake);
     }
-    producers::fleet::retention_swept(9);
-    producers::fleet::retention_failed();
     for placed in SteerPlaced::ALL {
         producers::fleet::fold::disposition(*placed);
     }

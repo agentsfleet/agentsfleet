@@ -1,6 +1,7 @@
 //! One error hull; private kinds preserve their causes and safe public meaning.
 
 use af_core::error_code::{self, ErrorCode};
+use af_wire::setup::FailureReason;
 
 pub(crate) mod raise;
 #[cfg(test)]
@@ -251,5 +252,57 @@ impl Error {
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         self.code() == error_code::INTERNAL_DB_UNAVAILABLE
+    }
+
+    /// The reason an assignment fails a setup turn for when this failure is
+    /// the turn's own: its model, its payer's balance, or a stored row it
+    /// reads. No retry heals one, so the turn fails and the pass goes on.
+    ///
+    /// `None` for the datastore or this host, which may pass on the next
+    /// pass and whose failed statement may have aborted the transaction: the
+    /// assignment rolls back. Exhaustive, so a new kind is classified before
+    /// it builds.
+    pub(crate) const fn turn_failure(&self) -> Option<FailureReason> {
+        match self.kind() {
+            ErrorKind::Model => Some(FailureReason::ModelUnavailable),
+            ErrorKind::Balance => Some(FailureReason::InsufficientBalance),
+            ErrorKind::Credential { source } if !source.is_retryable() => {
+                Some(FailureReason::ModelUnavailable)
+            }
+            // The wire names no reason for a stored row this build cannot
+            // read; the provider's is the one whose copy offers a retry.
+            ErrorKind::Stored { .. } | ErrorKind::StoredNumber { .. } => {
+                Some(FailureReason::ProviderFailed)
+            }
+            ErrorKind::Credential { .. }
+            | ErrorKind::Context { .. }
+            | ErrorKind::Cron { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::Archived
+            | ErrorKind::NameExists
+            | ErrorKind::Policy
+            | ErrorKind::State { .. }
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Replay
+            | ErrorKind::Review { .. }
+            | ErrorKind::Gone
+            | ErrorKind::Runner { .. }
+            | ErrorKind::TurnWrite { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Lifecycle { .. }
+            | ErrorKind::Token
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => None,
+        }
     }
 }

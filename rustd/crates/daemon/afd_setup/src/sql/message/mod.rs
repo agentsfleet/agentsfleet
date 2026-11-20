@@ -18,7 +18,8 @@ pub(crate) const ADVANCE: &str = include_str!("advance.sql");
 /// `$1` draft, `$2` cursor sequence, `$3` cursor role, `$4` and `$5` the
 /// in-flight statuses an answerless assistant role is hidden for, `$6` limit,
 /// `$7` the work type a draft run's lines carry, `$8` the runtime line kind,
-/// `$9` and `$10` the settled run statuses, `$11` the live run status.
+/// `$9` and `$10` the settled run statuses, `$11` the active run status,
+/// live while its lease holds.
 pub(crate) const PAGE: &str = include_str!("page.sql");
 
 /// The newest messages' states for a stream poll, with reported usage: its
@@ -26,7 +27,7 @@ pub(crate) const PAGE: &str = include_str!("page.sql");
 ///
 /// `$1` draft, `$2` limit, `$3` the work type a draft run's lines carry, `$4`
 /// the runtime line kind, `$5` and `$6` the settled run statuses, `$7` the
-/// live run status.
+/// active run status, live while its lease holds.
 pub(crate) const NOTICES: &str = include_str!("notices.sql");
 
 /// The running message, independently of the bounded notice tail.

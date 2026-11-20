@@ -191,6 +191,31 @@ impl Error {
         )
     }
 
+    /// Whether reading again could pass: the datastore would not answer, a
+    /// statement failed in flight, or this host could not draw entropy.
+    ///
+    /// The question a run's assignment turns on. A retryable failure rolls
+    /// its transaction back and leaves the work for the next pass. Anything
+    /// else is the stored selection or key itself, which no retry heals, so
+    /// the caller fails the one turn that named it rather than every pass
+    /// behind it. Exhaustive, so a new kind is classified before it builds.
+    #[must_use]
+    pub const fn is_retryable(&self) -> bool {
+        match self.kind() {
+            ErrorKind::Datastore { .. } | ErrorKind::Query { .. } | ErrorKind::Entropy { .. } => {
+                true
+            }
+            ErrorKind::Vault { source } => source.is_retryable(),
+            ErrorKind::ProviderMalformed { .. }
+            | ErrorKind::ProviderSecretMissing
+            | ErrorKind::DecisionCredentialMissing { .. }
+            | ErrorKind::DecisionCredentialInvalid { .. }
+            | ErrorKind::ProviderEndpoint { .. }
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::CredentialMissing => false,
+        }
+    }
+
     /// Whether a declared credential simply has no vault row.
     ///
     /// Answered separately because the remedy is the operator's and not this

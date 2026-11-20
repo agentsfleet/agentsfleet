@@ -14,17 +14,21 @@ const KEY_REQUIRED: &str = "Send one Idempotency-Key containing a UUIDv7";
 const REQUEST_FIELDS_ALLOWANCE_BYTES: usize = 16 * 1024;
 /// The largest body that carries one text.
 ///
-/// The text at the ceiling, every character at its widest JSON escape, plus
-/// the fields around it. A message typed into a running fleet, and a fleet's
-/// message to another, are read up to this, so the transport never refuses
-/// what the ceiling admits.
+/// The text at the ceiling, every character at the widest JSON escape a
+/// client may send (an astral character as a twelve-byte surrogate pair),
+/// plus the fields around it. A message typed into a running fleet, and a
+/// fleet's message to another, are read up to this, so the transport never
+/// refuses what the ceiling admits, and a text past the ceiling earns the
+/// ceiling's own refusal.
 pub const TEXT_BODY_BYTES_MAX: usize =
     af_validate::TEXT_MAX_JSON_BYTES + REQUEST_FIELDS_ALLOWANCE_BYTES;
-/// The largest setup request body: a draft created from a Definition at its
-/// cap, with a first message at the text ceiling, so the envelope never
+/// The largest setup request body.
+///
+/// A draft created from a Definition at its caps, with a first message at the
+/// text ceiling, each escaped as widely as a client may, so the envelope never
 /// refuses what the Definition parser and the ceiling admit.
 pub const SETUP_BODY_BYTES_MAX: usize =
-    af_fleet_runtime::definition::MAX_DEFINITION_BYTES + TEXT_BODY_BYTES_MAX;
+    af_validate::DEFINITION_MAX_JSON_BYTES + TEXT_BODY_BYTES_MAX;
 
 #[derive(garde::Validate)]
 struct Envelope<'a> {
@@ -169,8 +173,56 @@ mod tests {
         );
         assert_eq!(
             (SETUP_BODY_BYTES_MAX, TEXT_BODY_BYTES_MAX),
-            (12_861_440, 6_307_840)
+            (25_640_960, 12_599_296)
         );
+    }
+
+    /// `count` astral characters, each as the twelve-byte surrogate-pair
+    /// escape a client may send, inside a JSON string's quotes.
+    fn astral(count: usize) -> String {
+        format!("\"{}\"", r"\uD83D\uDE00".repeat(count))
+    }
+
+    /// A message one character past the ceiling, every character an escaped
+    /// astral one, still fits the text body, so the route answers it with the
+    /// ceiling's refusal rather than the transport's: the message's own bound
+    /// is what refuses it.
+    #[test]
+    fn a_message_past_the_ceiling_at_a_clients_widest_escape_meets_the_ceiling()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let operation = "\u{1}".repeat(200);
+        let sent = format!(
+            r#"{{"message":{},"operation_id":{}}}"#,
+            astral(TEXT_MAX_CHARS + 1),
+            serde_json::to_string(&operation).unwrap_or_default(),
+        );
+        assert!(sent.len() <= TEXT_BODY_BYTES_MAX, "{} bytes", sent.len());
+        let request: af_wire::turn::SteerRequest<'_> = serde_json::from_str(&sent)?;
+        let refused = garde::Validate::validate(&request).err();
+        assert!(
+            refused
+                .is_some_and(|report| report.iter().any(|(path, _)| path.to_string() == "message")),
+            "the message's own bound refuses it"
+        );
+        let at_ceiling = format!(r#"{{"message":{}}}"#, astral(TEXT_MAX_CHARS));
+        let request: af_wire::turn::SteerRequest<'_> = serde_json::from_str(&at_ceiling)?;
+        garde::Validate::validate(&request)?;
+        Ok(())
+    }
+
+    /// A create-draft body with both Definition texts and the message at their
+    /// caps, every character an escaped astral one, fits the setup envelope.
+    #[test]
+    fn a_maximal_create_body_at_a_clients_widest_escape_fits_the_envelope() {
+        let sent = format!(
+            r#"{{"operation_id":"01920000-0000-7000-8000-000000000001","source":{{"kind":"definition","definition":{{"schema_version":1,"description":{},"instructions_md":{},"config":{{"name":"maximal"}}}}}},"message":{}}}"#,
+            astral(MAX_DESCRIPTION_CHARS),
+            astral(TEXT_MAX_CHARS),
+            astral(TEXT_MAX_CHARS),
+        );
+        assert!(sent.len() > 24 * 1024 * 1024, "{} bytes", sent.len());
+        let parsed = body::<Value>(sent.as_bytes()).map(|document| document.is_object());
+        assert_eq!(parsed.ok(), Some(true), "{} bytes", sent.len());
     }
 
     #[test]

@@ -66,6 +66,8 @@ mod integration_gate_grants;
 mod integration_held_sandbox;
 #[path = "integration_issue_host.rs"]
 mod integration_issue_host;
+#[path = "integration_item_retention.rs"]
+mod integration_item_retention;
 mod integration_ledger_queue;
 #[path = "integration_ledger_reads.rs"]
 mod integration_ledger_reads;
@@ -138,6 +140,8 @@ mod integration_run_issue_lock_wait;
 mod integration_run_issue_refusals;
 #[path = "integration_run_plan.rs"]
 mod integration_run_plan;
+#[path = "integration_run_release.rs"]
+mod integration_run_release;
 #[path = "integration_run_started.rs"]
 mod integration_run_started;
 #[path = "integration_run_usage_flush.rs"]

@@ -19,7 +19,10 @@
 
 mod context;
 mod conversation;
+mod store;
 
+#[cfg(test)]
+mod context_gap_tests;
 #[cfg(test)]
 mod context_tests;
 #[cfg(test)]

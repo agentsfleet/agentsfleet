@@ -10,6 +10,7 @@
 //! none.
 
 mod context;
+mod failing;
 mod lock;
 pub(crate) mod model;
 mod preview;
@@ -18,14 +19,17 @@ mod refusal;
 mod report;
 mod sql;
 mod tool;
+mod turn;
 mod usage;
 
+pub(crate) use failing::reason_word;
+pub use failing::{EVENT_TURN_FAILED, log_turn_failed};
 pub use progress::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, TextKind};
 pub(crate) use sql::DELETE_RUNS;
 pub use tool::setup_tool;
 pub(crate) use usage::Metered;
 
-use af_core::{error_code, id::Uuid7};
+use af_core::id::Uuid7;
 use af_wire::setup::FailureReason;
 use afd_credential::provider::RegisteredModel;
 use jiff::Timestamp;
@@ -34,14 +38,16 @@ use sqlx::PgConnection;
 pub use context::ContextSave;
 pub use preview::PreviewChunk;
 pub use report::{SetupFinish, SetupReportScope};
+pub use turn::{SetupHead, SetupTurn, SetupTurnText};
 
+use self::failing::Failing;
 use self::lock::{DraftLock, Hint};
 use crate::{
     Drafts, Result,
     draft::read,
     error::raise::query,
     funnel::Owed,
-    types::{Candidate, DraftState, EDITING, MessageState, QUEUED, RUNNING},
+    types::{DraftState, EDITING, MessageState, QUEUED, RUNNING},
 };
 
 /// A draft an assignment may try, read without a lock.
@@ -75,95 +81,6 @@ struct HeadRow {
     save_requested: bool,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
-    held: bool,
-}
-
-/// One earlier turn of the draft's conversation. Its `Debug` hides both
-/// texts: they are the creator's private conversation.
-#[derive(Clone)]
-pub struct SetupTurnText {
-    /// The turn's position in the draft, which a saved context's watermark
-    /// counts in.
-    pub sequence: i64,
-    /// What the person asked.
-    pub message: String,
-    /// What setup answered.
-    pub answer: String,
-}
-
-/// The turn an assignment took, with everything the assignment carries. Its `Debug`
-/// names the draft and message only.
-pub struct SetupTurn {
-    /// The draft, which is also its thread's id.
-    pub draft_id: Uuid7,
-    /// The draft's workspace.
-    pub workspace_id: Uuid7,
-    /// The tenant who pays.
-    pub tenant_id: Uuid7,
-    /// The draft's creator, who sent the message.
-    pub user_id: Uuid7,
-    /// The message the run runs: its `turn_id`.
-    pub message_id: Uuid7,
-    /// The message's position in the draft.
-    pub sequence: i64,
-    /// When the message was accepted.
-    pub message_created_at: Timestamp,
-    /// The person's text.
-    pub user_text: String,
-    /// The person asked to save with this message.
-    pub save_requested: bool,
-    /// A lapsed draft run ran this message before; this assignment reassigns it.
-    pub reassigned: bool,
-    /// The model the message pinned, resolved and admitted.
-    pub model: RegisteredModel,
-    /// The draft's head candidate.
-    pub candidate: Option<SetupHead>,
-    /// Earlier answered turns, oldest first.
-    pub history: Vec<SetupTurnText>,
-}
-
-impl std::fmt::Debug for SetupTurnText {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SetupTurnText").finish_non_exhaustive()
-    }
-}
-
-impl std::fmt::Debug for SetupTurn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SetupTurn")
-            .field("draft_id", &self.draft_id)
-            .field("message_id", &self.message_id)
-            .field("sequence", &self.sequence)
-            .field("reassigned", &self.reassigned)
-            .finish_non_exhaustive()
-    }
-}
-
-/// The draft's head candidate as an assignment carries it.
-#[derive(Debug, Clone)]
-pub struct SetupHead {
-    /// The candidate a report's base names.
-    pub id: Uuid7,
-    /// Its revision, which a report's base names too.
-    pub revision: u64,
-    /// Its Definition, as JSON.
-    pub definition: serde_json::Value,
-}
-
-impl TryFrom<Candidate> for SetupHead {
-    type Error = crate::Error;
-
-    fn try_from(candidate: Candidate) -> Result<Self> {
-        Ok(Self {
-            revision: candidate
-                .revision
-                .parse()
-                .map_err(crate::error::raise::stored_number("revision"))?,
-            definition: serde_json::to_value(&candidate.definition)
-                .map_err(crate::error::raise::stored)?,
-            id: candidate.id,
-        })
-    }
 }
 
 /// What assigning one candidate found.
@@ -222,8 +139,14 @@ impl Drafts {
     ///
     /// A tenant's runner (`tenant_host`) never receives the platform model's
     /// key, so a head on the platform default passes, and blocks its draft for
-    /// that runner rather than being jumped. A refused model or balance fails
-    /// the message durably.
+    /// that runner rather than being jumped. A refused model or balance, a
+    /// stored key or selection that is wrong, and a head candidate this build
+    /// cannot read each fail the message durably and pass the draft, so one
+    /// draft's fault never stalls the walk.
+    ///
+    /// A running head is reassigned whether or not a run row still names it:
+    /// a runner's deletion cascades its runs away, and the head would
+    /// otherwise wait forever.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -251,38 +174,27 @@ impl Drafts {
         let Some(head) = head(connection, &draft).await? else {
             return Ok(SetupAssignment::Passed);
         };
-        let reassigned = head.status == RUNNING;
-        // A running head no draft run ran is not one a reassignment takes.
-        if (reassigned && !head.held) || (tenant_host && head.tenant_model_id.is_none()) {
+        if tenant_host && head.tenant_model_id.is_none() {
             return Ok(SetupAssignment::Passed);
         }
+        let reassigned = head.status == RUNNING;
+        let failing = Failing {
+            message: crate::funnel::Message {
+                workspace: &draft.workspace_id,
+                creator: &draft.user_id,
+                draft: &draft.id,
+            },
+            sequence: head.sequence,
+            running: reassigned,
+        };
         let reference = model::reference(head.tenant_model_id.clone());
         let model = match self.setup_model(connection, &draft, &reference).await {
             Ok(model) => model,
-            Err(error) => {
-                let reason = match error.code() {
-                    error_code::SETUP_MODEL => FailureReason::ModelUnavailable,
-                    error_code::SETUP_BALANCE => FailureReason::InsufficientBalance,
-                    _ => return Err(error),
-                };
-                let failed = Failing {
-                    message: crate::funnel::Message {
-                        workspace: &draft.workspace_id,
-                        creator: &draft.user_id,
-                        draft: &draft.id,
-                    },
-                    sequence: head.sequence,
-                    running: reassigned,
-                };
-                failed.fail(connection, reason, owed).await?;
-                return Ok(SetupAssignment::Passed);
-            }
+            Err(error) => return failing.refuse(connection, error, owed).await,
         };
-        let candidate = match &draft.head_candidate_id {
-            Some(id) => Some(SetupHead::try_from(
-                crate::candidate::read(connection, &draft.id, id).await?,
-            )?),
-            None => None,
+        let candidate = match head_candidate(connection, &draft).await {
+            Ok(candidate) => candidate,
+            Err(error) => return failing.refuse(connection, error, owed).await,
         };
         let history = history(connection, &draft.id, head.sequence).await?;
         Ok(SetupAssignment::Assigned(Box::new(SetupTurn {
@@ -363,36 +275,6 @@ impl Drafts {
     }
 }
 
-/// A message an assignment fails, from the status it holds.
-struct Failing<'a> {
-    message: crate::funnel::Message<'a>,
-    sequence: i64,
-    running: bool,
-}
-
-impl Failing<'_> {
-    /// Fails the message with [`crate::sql::message::FAIL`] and owes its
-    /// funnel record.
-    async fn fail(
-        &self,
-        connection: &mut PgConnection,
-        reason: FailureReason,
-        owed: &mut SetupOwed,
-    ) -> Result<()> {
-        let failed = MessageState::Failed.as_str();
-        sqlx::query(crate::sql::message::FAIL)
-            .bind(self.message.draft)
-            .bind(self.sequence)
-            .bind(failed)
-            .bind(reason_word(reason))
-            .bind(if self.running { RUNNING } else { QUEUED })
-            .execute(&mut *connection)
-            .await
-            .map_err(query(sql::CONTEXT))?;
-        owed.0.finished(connection, self.message, failed).await
-    }
-}
-
 async fn head(connection: &mut PgConnection, draft: &read::Locked) -> Result<Option<HeadRow>> {
     sqlx::query_as(sql::HEAD)
         .bind(&draft.id)
@@ -401,6 +283,18 @@ async fn head(connection: &mut PgConnection, draft: &read::Locked) -> Result<Opt
         .fetch_optional(connection)
         .await
         .map_err(query(sql::CONTEXT))
+}
+
+/// The draft's head candidate as an assignment carries it, if it has one.
+async fn head_candidate(
+    connection: &mut PgConnection,
+    draft: &read::Locked,
+) -> Result<Option<SetupHead>> {
+    let Some(id) = &draft.head_candidate_id else {
+        return Ok(None);
+    };
+    let candidate = crate::candidate::read(connection, &draft.id, id).await?;
+    Ok(Some(SetupHead::try_from(candidate)?))
 }
 
 async fn history(
@@ -428,63 +322,5 @@ async fn history(
         .collect())
 }
 
-/// The word a turn's `failure_reason` stores for `value`, its wire spelling.
-pub(crate) const fn reason_word(value: FailureReason) -> &'static str {
-    match value {
-        FailureReason::InsufficientBalance => "insufficient_balance",
-        FailureReason::ModelUnavailable => "model_unavailable",
-        FailureReason::ProviderFailed => "provider_failed",
-        FailureReason::ProviderUsageUnknown => "provider_usage_unknown",
-        FailureReason::FrameTooLarge => "frame_too_large",
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use af_wire::{report::FailureClass, setup::FailureReason};
-
-    use super::{SetupFinish, reason_word};
-
-    /// A run failed for its frame keeps that reason, so the person is told to
-    /// shorten the message; every other class, and none, is the provider's.
-    #[test]
-    fn a_frame_too_large_report_keeps_its_reason_and_any_other_is_the_providers() {
-        for (class, reason) in [
-            (
-                Some(FailureClass::FrameTooLarge),
-                FailureReason::FrameTooLarge,
-            ),
-            (
-                Some(FailureClass::RunnerCrash),
-                FailureReason::ProviderFailed,
-            ),
-            (
-                Some(FailureClass::TimeoutKill),
-                FailureReason::ProviderFailed,
-            ),
-            (None, FailureReason::ProviderFailed),
-        ] {
-            assert_eq!(SetupFinish::failure_of(class), reason, "{class:?}");
-        }
-        assert_eq!(reason_word(FailureReason::FrameTooLarge), "frame_too_large");
-    }
-
-    /// Turns store these words, and readers parse them back through serde:
-    /// every arm must spell its wire form.
-    #[test]
-    fn every_stored_failure_word_is_its_wire_spelling() {
-        for value in [
-            FailureReason::InsufficientBalance,
-            FailureReason::ModelUnavailable,
-            FailureReason::ProviderFailed,
-            FailureReason::ProviderUsageUnknown,
-            FailureReason::FrameTooLarge,
-        ] {
-            let wire = serde_json::to_value(value).ok();
-            assert_eq!(
-                wire.as_ref().and_then(serde_json::Value::as_str),
-                Some(reason_word(value))
-            );
-        }
-    }
-}
+mod tests;

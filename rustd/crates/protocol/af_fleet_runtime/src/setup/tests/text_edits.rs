@@ -190,6 +190,30 @@ fn an_edit_with_no_head_to_apply_to_is_refused_as_stale() -> Result<(), Box<dyn 
     Ok(())
 }
 
+// Value: protects=a first setup never replaces a draft's head wholesale; fails_when=the
+// head check on a first setup is dropped and the proposal is accepted on any draft.
+#[test]
+fn a_first_setup_on_a_draft_with_a_head_is_refused_as_stale()
+-> Result<(), Box<dyn std::error::Error>> {
+    let base = definition("current")?;
+    let first = || -> Result<Suggestion, Box<dyn std::error::Error>> {
+        Ok(serde_json::from_value(
+            json!({"kind":"initialize","definition":definition("replaced")?}),
+        )?)
+    };
+
+    let refused = native(first()?, Some(&head(&base, HEAD_REVISION)), None);
+    assert_eq!(refused.err(), Some(Rejection::StaleCandidate));
+
+    let accepted = native(first()?, None, None)
+        .map_err(|reason| format!("a first setup with no head was refused: {reason:?}"))?;
+    let Proposal::Initialize { definition } = accepted else {
+        return Err("a first setup read as an edit".into());
+    };
+    assert_eq!(definition.instructions_md(), "replaced");
+    Ok(())
+}
+
 // Value: protects=an empty editable instruction field can still receive its first text;
 // fails_when=empty anchors are rejected even when exactly one insertion position exists.
 #[test]

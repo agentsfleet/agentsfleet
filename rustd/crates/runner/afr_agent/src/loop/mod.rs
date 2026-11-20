@@ -277,3 +277,6 @@ mod compaction_tests;
 
 #[cfg(test)]
 mod fold_tests;
+
+#[cfg(test)]
+mod quiet_tests;

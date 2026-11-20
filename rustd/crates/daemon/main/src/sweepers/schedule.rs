@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn delayed_jobs_keep_their_first_pass_near_the_original_cadence() {
         let startup = Startup::new(5000);
-        for name in ["liveness", "retention", "census"] {
+        for name in ["liveness", "census", "billing"] {
             let first = startup.delayed_first_pass(name, Duration::from_secs(3600));
             assert!(first >= Duration::from_secs(3595));
             assert!(first <= Duration::from_secs(3600));
@@ -55,7 +55,7 @@ mod tests {
         }
         let fixed = Startup::new(0);
         assert_eq!(
-            fixed.delayed_first_pass("retention", Duration::from_secs(3600)),
+            fixed.delayed_first_pass("census", Duration::from_secs(3600)),
             Duration::from_secs(3600)
         );
         assert_eq!(

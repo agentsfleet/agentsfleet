@@ -50,7 +50,7 @@ async fn a_tenant_runner_is_not_assigned_a_platform_key_setup_run() {
 }
 
 /// A runner `tenant` registered, which has reported capable.
-async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7) -> Uuid7 {
+pub(super) async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7) -> Uuid7 {
     let request = enrolment_tagged(
         SandboxTier::LandlockFull,
         NetworkPolicy::AllowListEgress,
@@ -94,7 +94,7 @@ impl Case {
     }
 
     /// The draft's one turn, as it stands.
-    async fn turn_on_head(&self) -> super::TurnRow {
+    pub(super) async fn turn_on_head(&self) -> super::TurnRow {
         let id: Uuid7 = sqlx::query_scalar("SELECT id FROM thread.turns WHERE thread_id = $1")
             .bind(&self.draft.id)
             .fetch_one(&mut *self.connection().await)

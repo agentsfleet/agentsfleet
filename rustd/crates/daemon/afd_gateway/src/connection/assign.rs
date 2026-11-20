@@ -5,35 +5,33 @@ use af_observability::verb_span::{AssignStage, VerbClock};
 use af_stream::Encoder;
 use af_wire::{protocol::StreamKind, run::TaggedRun};
 use afd_fleet::run::{AssignRequest, AssignedRun, RecoveryScan};
-use tokio::time::Instant;
+use tokio::{sync::oneshot, time::Instant};
 
-use super::unframed::Unframed;
-use super::{AssignMode, AssignOutcome, ConnectionServices, Message, SchedulingState};
+use super::unframed::{Cause, Unsent};
+use super::{
+    AssignMode, AssignOutcome, ConnectionServices, Message, SchedulingState, io::StreamWriters,
+};
 use crate::{Operation, Result};
 
 /// What encoding an assignment came to: a frame ready to send, or a run its
 /// frame cannot carry, which is failed instead of sent.
 #[derive(Debug)]
 enum Encoded {
-    Framed(Box<AssignedRun>),
-    Unframed(Unframed),
+    Framed {
+        assigned: Box<AssignedRun>,
+        unsent: Unsent,
+    },
+    Unframed(Unsent),
 }
 
 impl ConnectionServices {
-    /// Reserve before policy assembly, then transfer the same charged bytes to the writer.
+    /// Serialize inside the assignment, charge the frame its exact length, then
+    /// hand the same charged bytes to the writer.
     pub(crate) async fn assign(&self, mode: AssignMode) -> Result<AssignOutcome> {
         let Some(state) = self.assign_state() else {
             return Ok(AssignOutcome::Empty);
         };
-        let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
-        let mut encoder = Encoder::reserve(
-            &self.gateway.inner.output_budget,
-            StreamKind::Work,
-            &self.handle.stop,
-            deadline,
-        )
-        .await?;
-        // After the reserve, so output backpressure is not read as selection time.
+        let mut encoder = Encoder::new(&self.gateway.inner.output_budget, StreamKind::Work);
         let mut clock = VerbClock::<AssignStage>::start();
         // A pass that reaches no stage leaves no span (the clock's own rule):
         // the 5 s probe's empty answer, and an assignment that failed before
@@ -48,28 +46,51 @@ impl ConnectionServices {
                 AssignOutcome::Empty
             });
         };
-        let assigned = match issued {
-            Encoded::Framed(assigned) => *assigned,
+        let (assigned, unsent) = match issued {
+            Encoded::Framed { assigned, unsent } => (*assigned, unsent),
             // Failed rather than sent: nothing reached the runner, so its
             // capacity is untouched and the next pass assigns afresh.
-            Encoded::Unframed(unframed) => {
-                self.fail_unframed(&unframed).await?;
+            Encoded::Unframed(unsent) => {
+                self.not_sent(&unsent, Cause::TooLarge).await?;
                 return Ok(AssignOutcome::Empty);
             }
         };
-        // A run larger than the room reserved up front is charged the rest here,
-        // after its transaction, before a byte of it is sent.
+        // The run is committed. A frame that never reaches the writer releases
+        // its run back to the queue rather than leave it to lapse on a runner
+        // that never heard of it.
+        let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
+        let run = assigned.run_id.clone();
+        let handed = self.hand_over(encoder, assigned, deadline).await;
+        let sent = match handed {
+            Ok(flushed) => StreamWriters::flushed(flushed, &self.handle.stop, deadline).await,
+            Err(error) => {
+                self.cache.forget(&run);
+                if let Err(release) = self.not_sent(&unsent, Cause::Undelivered).await {
+                    crate::Gateway::observe(&release, Operation::Assign);
+                }
+                Err(error)
+            }
+        };
+        clock.mark(AssignStage::Send);
+        sent?;
+        Ok(AssignOutcome::Issued)
+    }
+
+    /// Charges the frame, records the run as this runner's, and hands the
+    /// frame to the writer. A refusal here means no byte of it left.
+    async fn hand_over(
+        &self,
+        encoder: Encoder,
+        assigned: AssignedRun,
+        deadline: Instant,
+    ) -> Result<oneshot::Receiver<()>> {
         let frame = encoder.finish(&self.handle.stop, deadline).await?;
         self.cache
             .insert(assigned, self.gateway.inner.dependencies.wall_clock.now())?;
         self.handle.snapshot.lock().issued()?;
-        let sent = self
-            .output
-            .send(StreamKind::Work, frame, &self.handle.stop, deadline)
-            .await;
-        clock.mark(AssignStage::Send);
-        sent?;
-        Ok(AssignOutcome::Issued)
+        self.output
+            .enqueue(StreamKind::Work, frame, &self.handle.stop, deadline)
+            .await
     }
 
     /// Credits are advisory; the issue transaction still proves physical capacity.
@@ -151,10 +172,14 @@ fn encode_assignment(
     run: TaggedRun<'_>,
     assigned: AssignedRun,
 ) -> Result<Encoded> {
+    let unsent = Unsent::of(&run);
     let message = Message::Run { run };
-    if let Some(unframed) = Unframed::of(&message) {
-        return Ok(Encoded::Unframed(unframed));
+    if !Unsent::fits(&message) {
+        return Ok(Encoded::Unframed(unsent));
     }
     encoder.frame(&message)?;
-    Ok(Encoded::Framed(Box::new(assigned)))
+    Ok(Encoded::Framed {
+        assigned: Box::new(assigned),
+        unsent,
+    })
 }

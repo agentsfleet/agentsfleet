@@ -4,8 +4,8 @@
 //! The count is a metric and never a row: Postgres keeps the runs themselves,
 //! and an operator reads the totals in Grafana. Counting after the commit
 //! rather than inside the statement means a transaction that rolls back counts
-//! nothing. The retention sweep's expiries are counted by `afd_runner`, which
-//! runs that sweep.
+//! nothing. An expiry is counted when the assignment that takes the lapsed
+//! run's work over commits.
 
 use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::RunnerRun;

@@ -23,6 +23,12 @@ pub(super) const FUNDED: i64 = 1_000 * NANOS_PER_USD;
 const SECRET_REF: &str = "setup-model";
 const PROVIDER: &str = "openai";
 const KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+/// A provider body the plane opens and then refuses: its key is empty.
+const EMPTY_KEY: &[u8] = br#"{"provider":"openai","api_key":""}"#;
+const RESEAL: &str = "\
+UPDATE vault.secrets SET dek_ciphertext=$3,dek_nonce=$4,dek_tag=$5,secret_nonce=$6,
+secret_ciphertext=$7,secret_tag=$8,kek_version=$9,updated_at=now()
+WHERE workspace_id=$1 AND key_name=$2";
 const IDENTITY: &str = "SELECT tenant_id, workspace_id FROM fleet.fleets WHERE id = $1";
 const PERSON: &str = "\
 INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
@@ -38,7 +44,8 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,now(),now())";
 pub(super) struct Seat {
     pub(super) tenant: Uuid7,
     workspace: Uuid7,
-    owner: Uuid7,
+    /// The draft's creator, whose personal tenant is the seat's.
+    pub(super) owner: Uuid7,
     entry: Uuid7,
     catalogue: Uuid7,
 }
@@ -110,6 +117,33 @@ impl Seat {
             .execute(&mut *connection)
             .await
             .expect("the sealed owner key");
+    }
+
+    /// Reseals the seat's model key as a body with an empty key: the
+    /// selection still resolves, and the key it names will not serve.
+    pub(super) async fn break_key(&self, database: &Db) {
+        let kek = Kek::from_hex(KEK_HEX).expect("fixture key");
+        let sealed = Sealer::new()
+            .seal(
+                &kek,
+                &Aad::new(self.workspace.as_str(), SECRET_REF),
+                EMPTY_KEY,
+            )
+            .expect("the fixture key seals");
+        let resealed = sqlx::query(RESEAL)
+            .bind(&self.workspace)
+            .bind(SECRET_REF)
+            .bind(sealed.wrapped_dek())
+            .bind(sealed.dek_nonce().as_slice())
+            .bind(sealed.dek_tag().as_slice())
+            .bind(sealed.payload_nonce().as_slice())
+            .bind(sealed.payload_ciphertext())
+            .bind(sealed.payload_tag().as_slice())
+            .bind(sealed.kek_version())
+            .execute(&mut *database.acquire().await.expect("reseal"))
+            .await
+            .expect("the seat's key is resealed");
+        assert_eq!(resealed.rows_affected(), 1, "the seat holds one model key");
     }
 
     /// Drafts over `database`: the primary's pool, or a replica's.

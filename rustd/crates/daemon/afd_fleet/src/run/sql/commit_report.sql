@@ -154,7 +154,8 @@ WITH scope AS MATERIALIZED (
   SET status = $5,
       last_metered_at = m.metered_until,
       -- The run ended at its report. Its cursor then meets its deadline, so it
-      -- leaves the metering sweep's partial index instead of riding it for 30 days.
+      -- leaves the metering sweep's partial index instead of riding it for as
+      -- long as the row is kept.
       run_expires_at = m.metered_until,
       updated_at = now()
   FROM measured m

@@ -122,6 +122,15 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `.orly/LOCAL.md` | EDIT | the layer rule names `rustd/guffbolt` as the one crate outside `rustd/crates/` (decision D12) |
 | `docs/architecture/runner_fleet.md`, `runner_protocol.md`, `billing_and_provider_keys.md`, `docs/AUTH.md` | EDIT | setup runs; setup keys ride the run |
 | `docs/v2/pending/M253_002_P1_API_DOCS_INFRA_OBS_ONE_HARNESS_FOR_SETUP_AND_FLEETS.md` | CREATE | this spec, moved to `active/` then `done/` |
+| `rustd/crates/daemon/afd_runner/src/sweep/retention/**`, `afd_runner/src/sql/sweep/{delete_terminal_runs_batch,delete_aged_runner_events_batch,expire_abandoned_active_runs_batch}.sql` | DELETE | the retention sweeper and its statements (§14) |
+| `rustd/crates/daemon/afd_runner/src/{sweep/mod.rs,sql/mod.rs,sql/sweep/mod.rs}`, `afd_runner/tests/integration_sweeps/**` | EDIT | no retention module, consts or cases; the sweep lane proves liveness only (§14) |
+| `rustd/crates/daemon/main/src/{sweepers/mod.rs,sweepers/schedule.rs,config/maintenance.rs,config/maintenance_tests.rs}`, `main/tests/integration_serve.rs` | EDIT | no `sweeper:retention`, no `[maintenance.runner_history]`; Dimension 14.4's test (§14) |
+| `rustd/crates/protocol/af_observability/src/{metrics/census.tsv,metrics/declared/fleet.rs,metrics/label/runner_run.rs,producers/fleet/**}`, `af_observability/tests/producers_drive.rs` | EDIT | `agentsfleet_runner_retention_swept_total` and `agentsfleet_runner_retention_sweep_failures_total` go (§14) |
+| `rustd/crates/daemon/afd_db/schema/*_thread_runs.sql`, `*_runner_history.sql`, `afd_db/tests/integration_migrate/roles.rs` | EDIT | the two retention-only indexes and `runner.history`'s DELETE grant go (§14) |
+| `rustd/crates/daemon/afd_api_operator/src/handler/operator/runs.rs`, `public/openapi.json` | EDIT | the runner runs route no longer promises a 30-day window (§14) |
+| `rustd/crates/daemon/afd_fleet_lifecycle/{src/sql/mod.rs,tests/integration_purge_runs.rs}`, `rustd/Cargo.toml` | EDIT | comments no longer name a retention window (§14) |
+| `deploy/fly/agentsfleetd-dev/agentsfleetd.toml`, `deploy/fly/agentsfleetd-prod/agentsfleetd.toml` | EDIT | drop `[maintenance.runner_history]`; Indy approved this edit (§14) |
+| `docs/architecture/{concurrency,runner_fleet,thread_model,postgres_schemas}.md` | EDIT | finished runs and runner events are kept until a retention policy is chosen (§14) |
 | `CHANGELOG.md` | EDIT | setup on runners |
 | `~/Projects/docs` branch `chore/m253-one-harness-changelog` | EDIT | runner protocol page and changelog |
 
@@ -213,10 +222,10 @@ The answer's text deltas reach the daemon, which publishes them on the thread's 
 
 - **Dimension 5.1** — DONE — a setup turn gets an answer and a candidate → Test `a_setup_run_answer_writes_the_next_candidate` (integration): message 2 asking for a first version. Expected: the turn is answered, and the draft gains candidate revision 1.
 - **Dimension 5.2** — DONE — no sandbox for setup → Test `a_setup_run_builds_no_sandbox` (integration): a setup run. Expected: no sandbox prepared, and the run still answers.
-- **Dimension 5.3** — the report check is a safety net → Test `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` (integration): a report carrying a definition the daemon refuses. Expected: no candidate, the turn answered with its text, and one `setup_proposal_refused` event.
-- **Dimension 5.4** — a stale fence writes nothing → Test `a_superseded_setup_run_report_is_refused` (integration): a report at fence 1 after fence 2 was assigned. Expected: refused with `RUN_STALE_FENCING_TOKEN` (`UZ-RUN-005`), and no candidate.
-- **Dimension 5.5** — an expired setup run is rerun → Test `an_expired_setup_run_reruns_the_turn` (integration): a runner that stops renewing. Expected: the turn is assigned again at the next fence, up to `af_core::limits::EVENT_RUNS_MAX` runs, then fails with `ProviderUsageUnknown`.
-- **Dimension 5.6** — no platform key for a tenant runner → Test `a_tenant_runner_is_not_assigned_a_platform_key_setup_run` (integration): a draft using platform inference and a tenant runner. Expected: no assignment to that runner.
+- **Dimension 5.3** — DONE — the report check is a safety net → Test `a_report_whose_proposal_fails_the_daemon_check_writes_no_candidate` (integration): a report carrying a definition the daemon refuses. Expected: no candidate, the turn answered with its text, and one `setup_proposal_refused` event.
+- **Dimension 5.4** — DONE — a stale fence writes nothing → Test `a_superseded_setup_run_report_is_refused` (integration): a report at fence 1 after fence 2 was assigned. Expected: refused with `RUN_STALE_FENCING_TOKEN` (`UZ-RUN-005`), and no candidate.
+- **Dimension 5.5** — DONE — an expired setup run is rerun → Test `an_expired_setup_run_reruns_the_turn` (integration): a runner that stops renewing. Expected: the turn is assigned again at the next fence, up to `af_core::limits::EVENT_RUNS_MAX` runs, then fails with `ProviderUsageUnknown`.
+- **Dimension 5.6** — DONE — no platform key for a tenant runner → Test `a_tenant_runner_is_not_assigned_a_platform_key_setup_run` (integration): a draft using platform inference and a tenant runner. Expected: no assignment to that runner.
 
 ### §6 — A long setup keeps its compacted context
 
@@ -225,7 +234,7 @@ The draft's `memory.context_checkpoints` row holds the compacted setup history a
 guffbolt's window hook compacts when the window fills, and the saved state is the hook's output.
 
 - **Dimension 6.1** — DONE — the context loads on the next turn → Test `the_next_setup_turn_loads_the_saved_context` (integration): turn 20 after a compaction. Expected: its first request holds the saved summary, and none of the turns the summary replaced.
-- **Dimension 6.2** — a stale run cannot overwrite → Test `a_superseded_setup_run_cannot_save_context` (integration): a save at fence 1 after fence 2 saved. Expected: refused with `RUN_STALE_FENCING_TOKEN`, and fence 2's row unchanged.
+- **Dimension 6.2** — DONE — a stale run cannot overwrite → Test `a_superseded_setup_run_cannot_save_context` (integration): a save at fence 1 after fence 2 saved. Expected: refused with `RUN_STALE_FENCING_TOKEN`, and fence 2's row unchanged.
 
 ### §7 — Setup's last gaps close
 
@@ -233,8 +242,8 @@ Two gaps close here:
 - **Usage on notices.** A setup turn's notice reads usage from `billing.usage_lines` for its run, not from dispatch receipts (`observe/rows.rs:98-107`).
 - **Refused proposals are recorded.** A proposal refused at report is logged with its `error_code` and kept as the turn's failure detail.
 
-- **Dimension 7.1** — notices show run usage → Test `a_setup_notice_reports_the_runs_usage` (integration): a settled setup run with 1,200 input tokens. Expected: the notice shows 1,200.
-- **Dimension 7.2** — a refused proposal is recorded → Test `a_refused_report_proposal_logs_its_error_code` (integration): §5.3's case. Expected: one `setup_proposal_refused` event with `error_code`, `draft_id` and `run_id`.
+- **Dimension 7.1** — DONE — notices show run usage → Test `a_setup_notice_reports_the_runs_usage` (integration): a settled setup run with 1,200 input tokens. Expected: the notice shows 1,200.
+- **Dimension 7.2** — DONE — a refused proposal is recorded → Test `a_refused_report_proposal_logs_its_error_code` (integration): §5.3's case. Expected: one `setup_proposal_refused` event with `error_code`, `draft_id` and `run_id`.
 
 ### §8 — The daemon makes no model call
 
@@ -293,7 +302,7 @@ Text the model reads names no host product: no "fleet", "workspace", "daemon" or
 
 Each input reaching a run carries its turn id. guffbolt notes the newest turn when a step begins and records it with the `CallRef`, and the daemon refuses an item naming a turn the run does not serve.
 
-- **Dimension 10.1** (was M253_001 5.1) — an edit records its counts → Test `an_edit_item_records_path_and_line_counts` (integration): a run editing `src/a.rs` by +24 −8. Expected: one `edit` item with those counts.
+- **Dimension 10.1** (was M253_001 5.1) — DONE — an edit records its counts → Test `an_edit_item_records_path_and_line_counts` (integration): a run editing `src/a.rs` by +24 −8. Expected: one `edit` item with those counts.
 - **Dimension 10.2** (was M253_001 5.2) — DONE — items name the newest turn → Test `items_after_a_second_message_name_the_second_turn` (unit): input arrives before step 3. Expected: steps 1 and 2 name turn 1, and step 3 names turn 2.
 
 ### §11 — Text has one ceiling, codex's
@@ -301,7 +310,7 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
 Fleet instructions (32,768 characters), a setup chat message (32,768 bytes) and a message typed into a running fleet (8,192 bytes) lose their limits. One ceiling replaces them, as codex's server keeps (`MAX_USER_INPUT_TEXT_CHARS = 1 << 20`, `codex-rs/protocol/src/user_input.rs:11`): 1,048,576 characters, declared once, refused with a sentence naming the ceiling. Below it, the limit a person meets is the model's context window, which every call already checks. The model's `message` tool loses its 4,096-byte and 8-posts-per-run limits; the channel's own limit refuses what it cannot take. Anything else the text still crosses (a bus frame, a runner frame, the HTTP framework's default body size) is found by the tests below and reported, not hidden.
 
 - **Dimension 11.1** — DONE — a long setup message is answered → Test `a_setup_message_over_32_kib_is_answered` (integration): a 200 KiB message. Expected: stored, sent to the setup run, and answered, or the model's context refusal.
-- **Dimension 11.2** — a long fleet message reaches the run → Test `a_fleet_message_over_8_kib_reaches_the_run` (integration): a 64 KiB message to a running fleet. Expected: the run receives it whole.
+- **Dimension 11.2** — DONE — a long fleet message reaches the run → Test `a_fleet_message_over_8_kib_reaches_the_run` (integration): a 64 KiB message to a running fleet. Expected: the run receives it whole.
 - **Dimension 11.3** — DONE — long instructions save → Test `instructions_over_32k_characters_save` (unit): 100,000 characters. Expected: the definition parses and saves.
 - **Dimension 11.4** — DONE — text past the ceiling is refused clearly → Test `a_message_past_the_ceiling_is_refused_naming_it` (unit): 1,048,577 characters. Expected: refused with a sentence naming 1,048,576, and nothing stored.
 - **Dimension 11.5** — DONE — the model's posts are not capped → Test `the_message_tool_posts_long_and_often` (unit): a 10,000-byte post and a ninth post in one run. Expected: both sent.
@@ -330,7 +339,7 @@ After §8's deletion, the crates follow Microsoft's Pragmatic Rust Guidelines (h
 - **Dimension 12.3** — DONE — folder and prefix match → Test `every_crate_folder_names_its_crate_and_its_prefix_matches_its_layer` (unit). Negative twin `a_crate_in_the_wrong_folder_is_named`.
 - **Dimension 12.4** — DONE — the runner links no datastore client → Test `the_runner_graph_names_no_datastore_client` (unit): normal and build edges from `agentsfleet_runner`. Expected: no `sqlx`, no `async-nats`, no `af_core` feature `sqlx`. Negative twin `a_runner_crate_enabling_af_core_sqlx_is_refused`.
 - **Dimension 12.5** — DONE — lower layers hold no SQL → Test `foundation_and_protocol_crates_hold_no_sql` (unit). Expected: no `*.sql` under `foundation/` or `protocol/`.
-- **Dimension 12.6** — the moved store still refuses a stale run → Test `a_save_at_a_superseded_fence_is_refused` (integration, `afd_setup`). Expected: `RUN_STALE_FENCING_TOKEN`, row unchanged.
+- **Dimension 12.6** — DONE — the moved store still refuses a stale run → Test `a_save_at_a_superseded_fence_is_refused` (integration, `afd_setup`). Expected: `RUN_STALE_FENCING_TOKEN`, row unchanged.
 - **Dimension 12.7** — DONE — one public path per item → Test `no_crate_re_exports_another_workspace_crates_items` (unit): scan `rustd/crates/**/src` for `pub use` of a workspace crate. Expected: none outside the crate that owns the item.
 - **Dimension 12.8** — DONE — a handler names only its plane's services → Test `no_handler_crate_names_the_shared_services_hub` (unit). Expected: no `afd_api_*` crate bounds a handler by `afd_http::Services`; each bounds by its own plane trait.
 - **Dimension 12.9** — DONE — the unit shards follow the layers → Test `every_crate_runs_in_exactly_one_unit_shard` (unit): the shard lists in `make/test-unit.mk` against the workspace members. Expected: every crate in one shard, none in two, and each shard a layer group.
@@ -353,15 +362,17 @@ The tools follow codex's names (`codex-rs/core/src/tools/handlers/multi_agents_s
 
 ### §14 — Dead weight goes
 
-Three things the schema sign-off found are removed, before production, with no compatibility path.
+Three things the schema sign-off found, and the runner retention sweeper, are removed, before production, with no compatibility path.
 
 - **Plugins.** The paused fleet library (`setup.plugin_entries`, `setup.plugin_revisions`, `afd_setup/src/plugin/`, the Plugin routes, the app's `/plugins` page and starters) is deleted end to end.
 - **`runner.lifetime_counters`.** Four per-runner tallies upserted in seven run statements and read only by the operator's runner detail. They become one OpenTelemetry counter, `agentsfleet_runner_runs_total{runner_id, outcome}`, emitted where a run settles or expires, and the table goes.
 - **`runner.registration_receipts`.** A replay carried no token (`afd_runner/src/register.rs:27-29`), so the receipt never made a retry useful. A host registers once: `(tenant_id, host_id)` is unique on `runner.runners`, a retry answers `409` naming the runner, and the caller recovers with the tenant's token rotation. HTTP-IDEMKEY's natural-key exception is generalised in orly's source rule (own branch and PR in `~/Projects/orly`) and re-materialised here with `orly update`.
+- **The runner retention sweeper.** `sweeper:retention` deleted finished runs and per-run runner events past `keep_days` and flipped `active` runs past it to `expired`. It goes with its statements, its `[maintenance.runner_history]` settings, its two metrics, the two indexes only its deletes used (`idx_runs_status_updated_at`, `idx_history_event_type_created_at`) and `api_runtime`'s DELETE on `runner.history`. Finished runs and runner events are kept until a retention policy is chosen.
 
 - **Dimension 14.1** — DONE — Plugins are gone → Test `no_plugin_table_route_or_page_remains` (unit): no `setup.plugin_*` schema file or statement, no Plugin route in the route inventory, no `/plugins` app page. Expected: none.
 - **Dimension 14.2** — DONE — run outcomes are metrics → Test `a_settled_run_counts_its_outcome_on_its_runner` (unit): a run that succeeds, one that fails and one that expires. Expected: `agentsfleet_runner_runs_total` rises once per outcome with the runner's id, and no statement names `runner.lifetime_counters`.
 - **Dimension 14.3** — DONE — a host registers once → Test `a_retried_registration_of_one_host_answers_409_naming_the_runner` (integration): the same `(tenant, host_id)` twice. Expected: one runner; the second answers `409` with its id; a rotation then gives a token that connects.
+- **Dimension 14.4** — no retention sweeper runs → Test `a_runner_history_section_is_refused_as_an_unknown_key` (unit): a daemon config file holding `[maintenance.runner_history]` with `keep_days = 30`. Expected: the build is refused, naming the config file knob and `runner_history`.
 
 ## Interfaces
 
@@ -432,6 +443,7 @@ Three things the schema sign-off found are removed, before production, with no c
 | guffbolt's Pushover tool | `git grep -n -w "Pushover" -- rustd/guffbolt` | no output |
 | `Context`'s three seam fields | `git grep -n -E "pub (env|outbound|memory):" -- rustd/guffbolt/src/tools/mod.rs` | no output |
 | `afr_tools`'s second memory layer | `git grep -n -w "MemoryBackend" -- rustd` | no output |
+| the runner retention sweeper | `git grep -n -E "RetentionSettings|DELETE_TERMINAL_RUNS_BATCH|EXPIRE_ABANDONED|DELETE_AGED_RUNNER_EVENTS|sweeper:retention|retention_swept" -- rustd deploy` | no output |
 
 ## Out of Scope
 
@@ -517,7 +529,9 @@ Three things the schema sign-off found are removed, before production, with no c
   - > Owner (Indy, Nov 19, 2026): "Ensure the rust code for individual files is 99% and overall is 99% if possible or else stick to the numbers we have currently." — context: coverage targets 99% per file and overall, never below the 98% line and 95% patch floors.
   - > Owner (Indy, Nov 19, 2026): "E2E cloud burst" — context: Linux proof, paid, his go per run.
   - > Owner (Indy, Nov 19, 2026): "I think i did the elephant goldfish brainstrome before." and "youalready have the context" — context: orly-spec step 2.
+  - > Owner (Indy, Nov 21, 2026): "Live with the turn (Recommended)" — context: gstack review finding 5, `thread.items` cascading from `thread.runs`; `run_id` becomes `ON DELETE SET NULL` and items cascade from their turn, so run retention and runner deletion keep a turn's tool and edit detail.
+  - > Owner (Indy, Nov 21, 2026): "i dont need that crap sweeper remove that, i can figure a way later" — context: §14, Dimension 14.4. The runner retention sweeper goes; finished runs and runner events are kept until a retention policy is chosen.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 9 Blockers, 39 Majors, 30 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
-- **Verification evidence** — Nov 21, 2026, commit `2cde5c0d4` (CI runs `44799161892` unit, `44799161727` integration): 8.1, 8.3, 9.1, 9.2, 9.3, 9.4, 9.5, 9.7, 10.2, 11.4, 11.6, 11.8, 11.9, 12.1, 12.2, 12.3, 12.4, 12.5, 12.7, 12.8, 12.9, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 14.1, 14.2, 14.3 passed. Earlier: Nov 20, 2026, commit `6f97d0ef1`: each DONE Dimension from §4 on names a test that passed in CI run `44756156167` (unit) or `44756156230` (integration), or on E2E Networks VM 30591 (`make test-integration-rustd`). 9.5 and 11.6 failed there; the rest did not run because a lane stops at its first failing suite.
+- **Verification evidence** — Nov 21, 2026, commit `2135b648e` (CI run `44807275124` integration): 5.3, 5.4, 5.5, 5.6, 6.2, 7.1, 7.2, 10.1, 11.2, 12.6 passed. Commit `2cde5c0d4` (CI runs `44799161892` unit, `44799161727` integration): 8.1, 8.3, 9.1, 9.2, 9.3, 9.4, 9.5, 9.7, 10.2, 11.4, 11.6, 11.8, 11.9, 12.1, 12.2, 12.3, 12.4, 12.5, 12.7, 12.8, 12.9, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 14.1, 14.2, 14.3 passed. Earlier: Nov 20, 2026, commit `6f97d0ef1`: each DONE Dimension from §4 on names a test that passed in CI run `44756156167` (unit) or `44756156230` (integration), or on E2E Networks VM 30591 (`make test-integration-rustd`). 9.5 and 11.6 failed there; the rest did not run because a lane stops at its first failing suite.
 - **Open blockers** — none.
 - **Deferrals and transfers** — none.

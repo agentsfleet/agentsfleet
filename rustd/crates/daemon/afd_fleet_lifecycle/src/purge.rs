@@ -23,9 +23,10 @@
 //!
 //! Runner runs are the one child the purge deletes by hand. `thread.runs`
 //! holds no foreign key to the fleet, so a SETTLED run outlives it as runner
-//! history for its own 30-day window, with the fleet shown as deleted. A LIVE
-//! run would name a fleet that no longer exists, so the purge deletes those
-//! in the same transaction, before the row, as the cascade used to.
+//! history, kept until a retention policy is chosen, with the fleet shown as
+//! deleted. A LIVE run would name a fleet that no longer exists, so the purge
+//! deletes those in the same transaction, before the row, as the cascade used
+//! to.
 //!
 //! `billing.usage_lines` survives deliberately, WITH its attribution:
 //! `fleet_id` is no foreign key, so a charge the wallet was already debited for

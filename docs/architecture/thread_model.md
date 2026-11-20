@@ -155,7 +155,7 @@ One row per thing a run did. It replaces `fleet.tool_calls`.
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
 | `id` | `UUID` PK | no | `tool_calls.id` | the item id |
-| `run_id` | `UUID` | no | `event_id` + `fencing_token` | FK `thread.runs(id)` ON DELETE CASCADE |
+| `run_id` | `UUID` | yes | `event_id` + `fencing_token` | FK `thread.runs(id)` ON DELETE SET NULL: NULL once the run row is deleted |
 | `turn_id` | `UUID` | no | `event_id` | FK `thread.turns(id)` ON DELETE CASCADE: the turn newest when the item's step began |
 | `thread_id`, `workspace_id` | `UUID` | no | `fleet_id`, `workspace_id` | FKs ON DELETE CASCADE: the detail route authorizes without a join |
 | `sequence` | `BIGINT` | no | `sequence` | order within the run; unique with `run_id`, which makes a retried post write once |
@@ -166,6 +166,8 @@ One row per thing a run did. It replaces `fleet.tool_calls`.
 | `changes` | `JSONB` | yes | new | for `edit`: an array of `{path, added, removed}` |
 
 An item is written when its call finishes, as records are posted today. When a resumed run settles a turn, the report deletes that turn's items from every other run.
+
+An item lives as long as its turn. When its run row is deleted, as a runner's deletion cascades to its runs, the item stays with `run_id` set to NULL. The item detail then finds the run's head turn by the fence the run stamped on that turn.
 
 ## thread.deliveries
 
@@ -187,7 +189,7 @@ Unique `(turn_id, provider, destination)`, so one turn can owe a Slack answer an
 
 ## runner.history
 
-It replaces `runner.events`, column for column, except that `event_type` becomes `kind`. It keeps the append-only trigger, the retention sweep, and the unique `(runner_id, last_seen_at)` index for offline events.
+It replaces `runner.events`, column for column, except that `event_type` becomes `kind`. It keeps the append-only trigger and the unique `(runner_id, last_seen_at)` index for offline events. Its rows are kept until a retention policy is chosen; no sweep deletes them.
 
 ## Tables that point at the replaced ones
 

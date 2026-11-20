@@ -15,12 +15,6 @@ fn timer_and_queue_bounds_refuse_before_services_open() -> TestResult {
         ("maintenance", "startup_spread_ms = 5001"),
         ("maintenance.runner_liveness", "batch_size = 0"),
         ("maintenance.runner_liveness", "interval_seconds = 0"),
-        ("maintenance.runner_history", "keep_days = 0"),
-        (
-            "maintenance.runner_history",
-            "idle_interval_seconds = 5\nbacklog_interval_seconds = 6",
-        ),
-        ("maintenance.runner_history", "max_batches = 0"),
         (
             "maintenance.billing",
             "interval_seconds = 10\nretry_oldest_after_seconds = 9",
@@ -75,6 +69,22 @@ fn partial_maintenance_sections_keep_their_own_defaults() -> TestResult {
     assert_eq!(limits.loops.billing.retry_oldest_after_seconds, 60);
     assert_eq!(limits.loops.startup_spread_ms, 5000);
     assert_eq!(limits.liveness.batch_size, 100);
-    assert_eq!(limits.retention.keep_days, 30);
+    Ok(())
+}
+
+/// No retention sweeper runs (Indy, Nov 21, 2026), so its old section is an
+/// unknown key the file is refused for, not a setting quietly ignored.
+#[test]
+fn a_runner_history_section_is_refused_as_an_unknown_key() -> TestResult {
+    let environment = MapEnv::default();
+    let mut file = tempfile::NamedTempFile::new()?;
+    writeln!(file, "[maintenance.runner_history]\nkeep_days = 30")?;
+    let failure = ConfigBuilder::new(&environment)
+        .file(Some(file.path()))
+        .build()
+        .err()
+        .ok_or("a retention section must refuse")?;
+    assert_eq!(failure.knobs(), [FILE_KNOB]);
+    assert!(failure.to_string().contains("runner_history"), "{failure}");
     Ok(())
 }

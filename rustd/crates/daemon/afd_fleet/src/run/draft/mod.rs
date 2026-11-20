@@ -23,13 +23,17 @@
 
 mod assign;
 mod context;
+mod issue;
+mod payload;
 mod renew;
 mod report;
+mod route;
+mod take;
 
 use af_core::id::Uuid7;
 
-pub use assign::DraftAssignment;
 pub use context::DraftContext;
+pub use payload::DraftAssignment;
 
 /// What a session keeps about a draft-owned run it assigned: the draft, so
 /// its renewals, report and live answer take the draft's path.

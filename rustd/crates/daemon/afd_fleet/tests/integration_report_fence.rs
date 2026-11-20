@@ -65,8 +65,8 @@ async fn test_a_superseded_report_commits_nothing() {
     );
     assert_nothing_landed(&held, "a superseded holder writes none of the four").await;
 
-    // The same empty assignment for a different reason: the retention sweep removed
-    // the row while this very late report was in flight. There is nothing left
+    // The same empty assignment for a different reason: the row was deleted
+    // while this very late report was in flight. There is nothing left
     // to report against and nothing stored to hand back, so it is refused like
     // a lost fence rather than acknowledged like a settled run.
     held.fixtures.delete_run(run_id).await;

@@ -51,7 +51,7 @@ fn summary() -> String {
 
 /// A checkpoint of `run`'s draft at `generation`, covering through
 /// `covered_through`, measured for `model`'s identity.
-fn checkpoint(run: &RunPayload<'_>, model: Option<&str>, covered_through: u64) -> Value {
+pub(super) fn checkpoint(run: &RunPayload<'_>, model: Option<&str>, covered_through: u64) -> Value {
     let identity = super::context::identity(SCOPE.to_owned(), run);
     json!({
         "format_version": 1,

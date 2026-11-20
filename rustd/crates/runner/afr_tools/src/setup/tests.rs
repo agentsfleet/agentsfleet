@@ -240,6 +240,29 @@ async fn an_unknown_kind_or_a_bare_proposal_gets_the_fixed_correction() -> Resul
 }
 
 #[tokio::test]
+async fn a_first_setup_on_a_draft_with_a_head_is_refused_and_names_the_head()
+-> Result<(), Box<dyn Error>> {
+    let tool = head_at(2)?;
+
+    let refused = call(
+        &tool,
+        &json!({"proposal": {"kind": "initialize", "definition": document()}}),
+    )
+    .await;
+
+    assert_eq!(refused.error_code, Some(ErrorCode::new("stale_candidate")));
+    assert_eq!(
+        refused.text,
+        format!(
+            "[stale_candidate] No changes were applied. The current candidate is {ID} at revision 2. \
+             Name that identifier and revision \"2\" as the base and return a corrected propose_setup call."
+        )
+    );
+    assert_eq!(tool.kept(), None, "the head is not replaced wholesale");
+    Ok(())
+}
+
+#[tokio::test]
 async fn a_first_setup_is_kept_with_no_base() -> Result<(), Box<dyn Error>> {
     let tool = Propose::new(FleetSetup::new(None, Some(SAID.to_owned()), false));
 

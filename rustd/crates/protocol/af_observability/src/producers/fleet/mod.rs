@@ -1,8 +1,8 @@
 //! What the runner plane, the sweepers and the account paths record.
 //!
 //! The handles are claimed here and the recording functions are split by the
-//! path that calls them: [`runner`] is the per-runner table's, and what is left here is the account, run-poll,
-//! readiness and retention paths — each of which is one or two call sites.
+//! path that calls them: [`runner`] is the per-runner table's, and what is left here is the account, run-poll
+//! and readiness paths — each of which is one or two call sites.
 
 pub mod cache;
 pub mod census;
@@ -75,8 +75,6 @@ pub struct Handles {
     delivery_stage: Histogram<f64>,
     ready_wake_failures: Counter<u64>,
     report_answers: Counter<u64>,
-    retention_swept: Counter<u64>,
-    retention_failures: Counter<u64>,
     turns: Counter<u64>,
     runner_failures: Counter<u64>,
     runner_failures_overflow: Counter<u64>,
@@ -122,9 +120,6 @@ impl Handles {
             ready_wake_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,
             report_answers: instruments.counter_u64(&declared::RUNNER_REPORT_ANSWERS_TOTAL)?,
-            retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
-            retention_failures: instruments
-                .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
             turns: instruments.counter_u64(&declared::TURNS_TOTAL)?,
             runner_failures: instruments.counter_u64(&declared::RUNNER_FAILURES_TOTAL)?,
             runner_failures_overflow: instruments
@@ -241,20 +236,6 @@ pub fn ready_wake_failed(wake: ReadyWake) {
             .fleet
             .ready_wake_failures
             .add(1, &[KeyValue::new(semconv::LABEL_KIND, wake.as_str())]);
-    }
-}
-
-/// Records what one retention pass deleted.
-pub fn retention_swept(rows: u64) {
-    if let Some(producers) = installed() {
-        producers.fleet.retention_swept.add(rows, &[]);
-    }
-}
-
-/// Records a retention pass that did not finish.
-pub fn retention_failed() {
-    if let Some(producers) = installed() {
-        producers.fleet.retention_failures.add(1, &[]);
     }
 }
 

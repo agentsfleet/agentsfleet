@@ -6,7 +6,8 @@ use af_core::id::Uuid7;
 use af_wire::{
     activity::{ActivityFrame, ActivityRequest, StreamTextKind},
     context::ContextProgress,
-    fold::FoldRequest,
+    fold::{FoldRequest, FoldResponse},
+    protocol::{Answer, MESSAGE_BYTES_MAX},
 };
 use afd_setup::setup_run::PreviewChunk;
 use garde::Validate as _;
@@ -102,7 +103,9 @@ impl ConnectionServices {
             .operation(Operation::Folds, async {
                 let id = Uuid7::parse(run)?;
                 request.validate()?;
-                Ok(self.runs.folds(&self.handle.runner, &id, request).await?)
+                let mut response = self.runs.folds(&self.handle.runner, &id, request).await?;
+                within_frame(&mut response, request_id, run)?;
+                Ok(response)
             })
             .await;
         self.send(&Message::Folded {
@@ -113,3 +116,27 @@ impl ConnectionServices {
         .await
     }
 }
+
+/// Cuts a fold's reply to what one frame carries beside its envelope.
+///
+/// A fold takes up to `FOLDS_PER_ASSIGNMENT_MAX` messages, each up to the
+/// text ceiling, so together they can pass the frame, which the encoder would
+/// refuse on every retry. The messages left out stay assigned to the run, and
+/// its next fold, after the last one it read, returns them.
+fn within_frame(response: &mut FoldResponse<'_>, request_id: NonZeroU64, run: &str) -> Result<()> {
+    let empty = Message::Folded {
+        request_id,
+        run_id: run.into(),
+        answer: Answer::Ok {
+            response: FoldResponse::default(),
+        },
+    };
+    let envelope = af_validate::serialized_len(&empty)?
+        .saturating_sub(af_validate::serialized_len(&FoldResponse::default())?);
+    response.keep_within(MESSAGE_BYTES_MAX.saturating_sub(envelope))?;
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "progress_tests.rs"]
+mod tests;

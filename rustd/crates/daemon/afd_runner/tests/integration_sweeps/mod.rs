@@ -14,20 +14,17 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::liveness::Liveness;
-use afd_runner::sweep::retention::Retention;
 use jiff::Timestamp;
 
-/// Long before any retention window, and after the never-seen sentinel.
+/// Long ago, and after the never-seen sentinel.
 const OLD: Timestamp = Timestamp::constant(1, 0);
 /// Passes the lane's backlog may take to drain: far past any lane's runners
 /// over the liveness batch.
 const MAX_DRAIN_PASSES: usize = 64;
-static SWEEP_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn liveness_and_retention_converge_real_runner_rows() {
-    let _lane = SWEEP_LANE.lock().await;
+async fn liveness_converges_real_runner_rows() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
 
@@ -61,13 +58,6 @@ async fn liveness_and_retention_converge_real_runner_rows() {
     converge(&liveness).await;
     assert_eq!(fixture.offline_events().await, 1);
 
-    let retention = Retention::new(fixture.database.clone());
-    let retained = retention.sweep().await.expect("retention sweeps real rows");
-    assert!(retained.changed >= 4);
-    assert!(!fixture.run_exists(&fixture.reported_run).await);
-    assert_eq!(fixture.run_state(&fixture.unknown_run).await, "expired");
-    assert!(!fixture.runner_event_exists(&fixture.old_event).await);
-
     fixture.cleanup().await;
 }
 
@@ -86,8 +76,6 @@ struct Fixture {
     stale_run: Uuid7,
     cordoned_run: Uuid7,
     unknown_run: Uuid7,
-    reported_run: Uuid7,
-    old_event: Uuid7,
 }
 
 impl Fixture {
@@ -107,8 +95,6 @@ impl Fixture {
             stale_run: mint_id(),
             cordoned_run: mint_id(),
             unknown_run: mint_id(),
-            reported_run: mint_id(),
-            old_event: mint_id(),
             lane,
         }
     }
@@ -152,27 +138,6 @@ impl Fixture {
         ).await
     }
 
-    async fn run_exists(&self, run: &Uuid7) -> bool {
-        self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM thread.runs WHERE id = $1)",
-            run,
-        )
-        .await
-    }
-
-    async fn run_state(&self, run: &Uuid7) -> String {
-        self.scalar("SELECT status FROM thread.runs WHERE id = $1", run)
-            .await
-    }
-
-    async fn runner_event_exists(&self, event: &Uuid7) -> bool {
-        self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.history WHERE id = $1)",
-            event,
-        )
-        .await
-    }
-
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
@@ -190,78 +155,6 @@ impl Fixture {
         drop(self.database);
         self.lane.cleanup().await;
     }
-}
-
-/// Past the retention window by a day: due for deletion on any pass.
-const AGED: Timestamp = Timestamp::constant(86_400, 0);
-
-/// Rows one retention cycle may delete from one table: its batch ceiling
-/// times its batch limit, as the module note on saturation states them.
-const CYCLE_CEILING: i64 = 8 * 1_000;
-
-/// Rows past [`CYCLE_CEILING`]: what is left for the following cycle.
-const LEFT_OVER: i64 = 500;
-
-/// A cycle that fills every batch it is allowed comes back in a minute; the
-/// one after, which drains what was left, idles again.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
-    // Every retention pass in the lane deletes from the same tables; the
-    // sweep above runs one, so the two take turns.
-    let _lane = SWEEP_LANE.lock().await;
-    let fixture = Fixture::create().await;
-    let mut connection = fixture.database.acquire().await.expect("an API connection");
-    afd_db::test_util::RunnerSeed::new(
-        &fixture.stale,
-        afd_state::sql::RUNNER_STATUS_ACTIVE,
-        crate::rows::POLICY,
-    )
-    .at(OLD)
-    .insert(&mut *connection)
-    .await
-    .expect("the runner row seeds");
-    sqlx::query(
-        "INSERT INTO runner.history (id, runner_id, event_type, metadata, created_at) \
-         SELECT uuidv7(), $1, 'run_acquired', '{}', $2::timestamptz \
-         FROM generate_series(1, $3::bigint)",
-    )
-    .bind(&fixture.stale)
-    .bind(jiff_sqlx::ToSqlx::to_sqlx(AGED))
-    .bind(CYCLE_CEILING + LEFT_OVER)
-    .execute(&mut *connection)
-    .await
-    .expect("the aged backlog seeds");
-    drop(connection);
-
-    let retention = Retention::new(fixture.database.clone());
-    let idle = retention.interval();
-    let first = retention.sweep().await.expect("retention sweeps real rows");
-    assert!(
-        first.changed >= u64::try_from(CYCLE_CEILING).expect("a row count"),
-        "the cycle deleted its whole ceiling: {first:?}"
-    );
-    assert!(
-        retention.interval() < idle,
-        "a cycle that hit its ceiling comes back sooner"
-    );
-
-    retention
-        .sweep()
-        .await
-        .expect("retention sweeps the remainder");
-    assert_eq!(
-        fixture
-            .scalar::<i64>(
-                "SELECT count(*) FROM runner.history WHERE runner_id = $1",
-                &fixture.stale,
-            )
-            .await,
-        0,
-        "the second cycle drained what the first left"
-    );
-    assert_eq!(retention.interval(), idle, "a drained cycle idles again");
-    fixture.cleanup().await;
 }
 
 async fn converge(liveness: &Liveness) {

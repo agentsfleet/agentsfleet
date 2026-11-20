@@ -154,7 +154,6 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
         supervisor.inventory(),
         vec![
             agentsfleetd::sweepers::LIVENESS,
-            agentsfleetd::sweepers::RETENTION,
             agentsfleetd::sweepers::FLEET_CENSUS,
             agentsfleetd::sweepers::TASKS,
             agentsfleetd::sweepers::TASK_STORAGE,

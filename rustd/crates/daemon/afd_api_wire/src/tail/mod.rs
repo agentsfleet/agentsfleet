@@ -308,15 +308,39 @@ pub struct FrameText<'a> {
 }
 
 impl<'a> FrameText<'a> {
-    /// `text`, kept to at most `max_bytes` of UTF-8.
+    /// `text`, kept to at most `max_bytes` once written as a JSON string,
+    /// its two quotes aside: the size it takes in the frame. Escaping can
+    /// widen a character to six bytes, so its UTF-8 length is no bound.
     #[must_use]
     pub fn within(text: &'a str, max_bytes: usize) -> Self {
-        let (head, rest) = text.split_at(text.floor_char_boundary(max_bytes));
+        if af_validate::serialized_within(text, max_bytes.saturating_add(2)) {
+            return Self {
+                text,
+                trimmed: false,
+            };
+        }
+        let mut used = 0_usize;
+        let end = text
+            .char_indices()
+            .find_map(|(at, character)| {
+                used = used.saturating_add(escaped_len(character));
+                (used > max_bytes).then_some(at)
+            })
+            .unwrap_or(text.len());
+        let (head, rest) = text.split_at(end);
         Self {
             text: head,
             trimmed: !rest.is_empty(),
         }
     }
+}
+
+/// The bytes `character` takes inside a JSON string, as serde writes it.
+fn escaped_len(character: char) -> usize {
+    let mut utf8 = [0; 4];
+    let alone: &str = character.encode_utf8(&mut utf8);
+    // Measuring a string cannot fail; were it to, the widest escape stands in.
+    af_validate::serialized_len(alone).map_or(6, |quoted| quoted.saturating_sub(2))
 }
 
 #[cfg(test)]

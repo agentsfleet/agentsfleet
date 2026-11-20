@@ -64,12 +64,11 @@ impl Fixtures {
             .expect("the run cursor advances");
     }
 
-    /// Removes one run row, as the retention sweep does once it is old
-    /// enough.
+    /// Removes one run row out from under a report.
     ///
-    /// The race it stands in for is narrow and real: a report loads its run,
-    /// the sweep removes the row, and the assignment then matches nothing for a
-    /// reason that is neither a lost fence nor a settled run.
+    /// The race it stands in for is narrow: a report loads its run, the row
+    /// is deleted, and the assignment then matches nothing for a reason that
+    /// is neither a lost fence nor a settled run.
     pub(crate) async fn delete_run(&self, run: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query("DELETE FROM thread.runs WHERE id = $1")

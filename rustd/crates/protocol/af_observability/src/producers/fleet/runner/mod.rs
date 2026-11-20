@@ -53,9 +53,8 @@ pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
 
 /// Records `count` runs on one runner under `outcome`: issued to it, or ended.
 ///
-/// A count rather than one call per run, because the retention sweep expires
-/// a runner's abandoned runs a batch at a time. Called after the transaction
-/// that made the change commits, so a rolled-back one counts nothing.
+/// Called after the transaction that made the change commits, so a rolled-back
+/// one counts nothing.
 pub fn runs(runner_id: &str, outcome: RunnerRun, count: u64) {
     if let Some(producers) = installed() {
         let label = producers.fleet.runners.admit(runner_id);

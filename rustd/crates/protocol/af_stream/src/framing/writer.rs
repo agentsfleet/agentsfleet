@@ -176,13 +176,7 @@ mod tests {
     #[tokio::test]
     async fn an_encoder_flushes_without_emitting_and_hides_its_bytes() -> Result<()> {
         let budget = Budget::default();
-        let mut encoder = super::super::Encoder::reserve(
-            &budget,
-            StreamKind::Control,
-            &CancellationToken::new(),
-            deadline(),
-        )
-        .await?;
+        let mut encoder = super::super::Encoder::new(&budget, StreamKind::Control);
         encoder.frame(&"private")?;
         assert_eq!(format!("{encoder:?}"), "Encoder { .. }");
         let frame = encoder

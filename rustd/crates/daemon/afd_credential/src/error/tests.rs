@@ -75,6 +75,23 @@ fn a_vault_failure_answers_with_the_vault_crates_own_code() -> Result<(), &'stat
     Ok(())
 }
 
+/// A stored selection or key that is wrong stays wrong on every read, so an
+/// assignment fails the one turn naming it; a statement or an outage may
+/// pass on the next pass, so it rolls back instead. An envelope that will not
+/// open is the key's own fault.
+#[test]
+fn only_a_datastore_or_host_failure_is_retryable() -> Result<(), &'static str> {
+    for (label, failure) in configured_kinds() {
+        assert!(!failure.is_retryable(), "{label}");
+    }
+    let unopened = Error::from(afd_vault::Error::from(crypto_failure()?));
+    assert!(!unopened.is_retryable(), "an envelope that will not open");
+
+    assert!(super::query("retry query")(sqlx::Error::PoolClosed).is_retryable());
+    assert!(super::entropy_drained(crypto_failure()?).is_retryable());
+    Ok(())
+}
+
 /// An identifier that could not be minted answers the internal code.
 ///
 /// A host that cannot draw randomness is a failure of this instance rather than

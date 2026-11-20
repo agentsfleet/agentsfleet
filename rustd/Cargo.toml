@@ -278,7 +278,7 @@ afd_memory = { path = "crates/daemon/afd_memory" }
 # Delivering answers back to connectors.
 afd_outbound = { path = "crates/daemon/afd_outbound" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
-# liveness, the assertion verdict, and the offline/retention sweepers. The two
+# liveness, the assertion verdict, and the liveness and census sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
 afd_runner = { path = "crates/daemon/afd_runner" }
 # Setup drafts and candidates, the daemon half of a setup run, and the draft's

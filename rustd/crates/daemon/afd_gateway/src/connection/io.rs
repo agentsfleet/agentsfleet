@@ -101,13 +101,39 @@ impl StreamWriters {
         stop: &CancellationToken,
         deadline: Instant,
     ) -> Result<()> {
+        let flushed = self.enqueue(kind, frame, stop, deadline).await?;
+        Self::flushed(flushed, stop, deadline).await
+    }
+
+    /// Hands `frame` to its stream's writer. A refusal means the frame never
+    /// left this connection: a queue send that did not complete sent nothing.
+    /// The receiver completes once the writer has flushed it.
+    pub(super) async fn enqueue(
+        &self,
+        kind: StreamKind,
+        frame: OwnedFrame,
+        stop: &CancellationToken,
+        deadline: Instant,
+    ) -> Result<oneshot::Receiver<()>> {
         let sender = self.0.get(&kind).ok_or(ErrorKind::Protocol)?;
         let (flushed, completion) = oneshot::channel();
         within(stop, deadline, Operation::Write, async {
             sender
                 .send(PendingWrite { frame, flushed })
                 .await
-                .map_err(crate::error::closed_send)?;
+                .map_err(crate::error::closed_send)
+        })
+        .await?;
+        Ok(completion)
+    }
+
+    /// Waits for the writer to flush a frame [`Self::enqueue`] handed it.
+    pub(super) async fn flushed(
+        completion: oneshot::Receiver<()>,
+        stop: &CancellationToken,
+        deadline: Instant,
+    ) -> Result<()> {
+        within(stop, deadline, Operation::Write, async {
             completion.await?;
             Ok(())
         })

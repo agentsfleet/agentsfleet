@@ -130,7 +130,7 @@ const GRANTS: [(&str, &str, &[Verb]); 76] = [
     ("runner.decision_calls", "api_runtime", KEPT),
     ("runner.decision_payloads", "api_runtime", READ_WRITE),
     ("thread.threads", "api_runtime", KEPT),
-    ("runner.history", "api_runtime", WRITE_ONCE),
+    ("runner.history", "api_runtime", APPEND_ONLY),
     ("runner.turn_recovery", "api_runtime", READ_WRITE),
     ("runner.turn_checkpoints", "api_runtime", READ_WRITE),
     ("runner.turn_checkpoint_pages", "api_runtime", READ_WRITE),

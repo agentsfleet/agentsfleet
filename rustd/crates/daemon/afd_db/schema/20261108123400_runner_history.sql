@@ -1,5 +1,5 @@
--- Append-only; DELETE serves the retention sweep. `last_seen_at` is set only on offline events, to
--- the heartbeat observed, so two sweeps over one gap write one row.
+-- Append-only, and kept until a retention policy is chosen. `last_seen_at` is set only on offline
+-- events, to the heartbeat observed, so two sweeps over one gap write one row.
 CREATE TABLE runner.history (
     id            UUID PRIMARY KEY,
     runner_id     UUID   NOT NULL REFERENCES runner.runners(id) ON DELETE CASCADE,
@@ -18,8 +18,6 @@ CREATE INDEX idx_history_runner_id_created_at_id
 CREATE INDEX idx_history_runner_id_event_type_created_at_id
     ON runner.history (runner_id, event_type, created_at DESC, id DESC);
 
-CREATE INDEX idx_history_event_type_created_at ON runner.history (event_type, created_at);
-
 CREATE FUNCTION runner.events_refuse_update() RETURNS trigger AS $$
 BEGIN
     RAISE EXCEPTION 'events is append-only';
@@ -30,4 +28,4 @@ CREATE TRIGGER trg_history_refuse_update
     BEFORE UPDATE ON runner.history
     FOR EACH ROW EXECUTE FUNCTION runner.events_refuse_update();
 
-GRANT SELECT, INSERT, DELETE ON runner.history TO api_runtime;
+GRANT SELECT, INSERT ON runner.history TO api_runtime;

@@ -52,47 +52,6 @@ pub const CORDON_SILENT_RUNNER: &str = include_str!("cordon_silent_runner.sql");
 /// event id, `$6` event type, `$7` the from-status key, `$8` the to-status key.
 pub const MARK_DRAINED_IF_IDLE: &str = include_str!("mark_drained_if_idle.sql");
 
-/// One batch of settled runs past the retention window.
-///
-/// `updated_at`, not `created_at`, is the retention clock: settle and expiry
-/// both stamp it, so the window counts from the settlement the API documents.
-/// `FOR UPDATE SKIP LOCKED` because every replica runs its own sweeper, and
-/// with it concurrent sweepers take disjoint batches.
-///
-/// `$1` the terminal statuses, `$2` the retention window, `$3` the batch limit.
-pub const DELETE_TERMINAL_RUNS_BATCH: &str = include_str!("delete_terminal_runs_batch.sql");
-
-/// One batch of per-work event rows past the retention window.
-///
-/// Per-work tags only. The LIFECYCLE tags — enrolment, going offline, draining
-/// — are never eligible, because they are the record of what a host did over
-/// its whole life and an operator reading a six-month-old incident needs them.
-///
-/// No row lock: `api_runtime` holds no UPDATE on `runner.history`, so Postgres
-/// would refuse one, and two sweeps meeting one row only means the second
-/// waits and finds it gone.
-///
-/// `$1` the deletable event types, `$2` the retention window, `$3` the batch
-/// limit.
-pub const DELETE_AGED_RUNNER_EVENTS_BATCH: &str =
-    include_str!("delete_aged_runner_events_batch.sql");
-
-/// One batch of abandoned `active` runs, flipped to `expired`.
-///
-/// The rows nothing will ever settle: a fleet whose events stopped arriving is
-/// never re-held, so the reassignment path never reaches its stranded run. What
-/// makes an age-keyed flip safe here is the renewal CEILING — a run anything
-/// still holds is at most `MAX_RUNTIME` stale, and the retention window is
-/// longer than that, so a row past it is provably abandoned.
-///
-/// Answers one row per runner, `runner_id` and `expired_count`, so the caller
-/// counts each expiry on its runner once the batch commits.
-///
-/// `$1` the active status, `$2` the retention window, `$3` expired, `$4` the
-/// batch limit.
-pub const EXPIRE_ABANDONED_ACTIVE_RUNS_BATCH: &str =
-    include_str!("expire_abandoned_active_runs_batch.sql");
-
 /// Every fleet, counted by its stored status.
 ///
 /// No `WHERE` and no `LIMIT`: the answer is one row per distinct status, so

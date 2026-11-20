@@ -18,7 +18,7 @@ use std::sync::Arc;
 use af_crypto::entropy::Entropy;
 use af_observability::Analytics;
 use afd_db::Db;
-use afd_runner::sweep::{self, census::Census, liveness::Liveness, retention::Retention};
+use afd_runner::sweep::{self, census::Census, liveness::Liveness};
 
 use crate::supervisor::Supervisor;
 
@@ -36,9 +36,6 @@ mod tasks;
 
 /// The supervised name of the liveness sweeper.
 pub const LIVENESS: &str = "sweeper:liveness";
-
-/// The supervised name of the retention sweeper.
-pub const RETENTION: &str = "sweeper:retention";
 
 /// The supervised name of the fleet census sweeper.
 pub const FLEET_CENSUS: &str = "sweeper:fleet-census";
@@ -109,15 +106,6 @@ fn spawn_runner_maintenance(
     );
     supervisor.spawn(LIVENESS, move |token| {
         sweep::run_starting_in(liveness, token, delay)
-    });
-
-    let retention = Retention::new(database.clone()).with_settings(&policy.retention);
-    let delay = startup.delayed_first_pass(
-        RETENTION,
-        std::time::Duration::from_secs(policy.retention.idle_interval_seconds),
-    );
-    supervisor.spawn(RETENTION, move |token| {
-        sweep::run_starting_in(retention, token, delay)
     });
 
     // Reads only: the fleet count the dashboard draws, sampled from the table

@@ -4,15 +4,18 @@
 //!
 //! Idempotent by run and fence: the settlement flips the run only while it
 //! is active under its own fence, so a replayed report finds it settled, rolls
-//! back and writes nothing a second time. A stale fence, and a run another
-//! assignment expired, are refused and write nothing; the dead holder's last
-//! slice is the expiry sweep's to bill.
+//! back and writes nothing a second time. It still retries the save's
+//! activation and trigger registration, which an earlier copy may have failed
+//! after its commit, and which are idempotent. A stale fence, and a run another
+//! assignment expired, are refused: only the request lines the runner reported
+//! are logged, on their own, and the dead holder's last runtime slice is the
+//! expiry sweep's to bill.
 
 use af_core::id::Uuid7;
 use af_wire::report::{Outcome, ReportRequest};
 use garde::Validate as _;
 use jiff::Timestamp;
-use sqlx::FromRow as _;
+use sqlx::{Connection as _, FromRow as _};
 
 use super::DraftRun;
 use super::renew::requested;
@@ -32,6 +35,21 @@ struct Settled {
     moved_runs: i64,
     run_status: Option<String>,
     fence_holds: Option<bool>,
+}
+
+impl Settled {
+    /// Why a settlement that moved no run refuses the report; `None` when
+    /// the run is settled already, by this report's earlier copy.
+    fn refusal(&self) -> Option<crate::Error> {
+        match self.run_status.as_deref() {
+            Some(status) if sql::report_statement::is_settled(status) => None,
+            // Expired by the assignment that took its turn at a higher fence, as a
+            // fleet's superseded report is refused (`report::finalize`).
+            Some(sql::RUN_STATUS_EXPIRED) => Some(stale_fence()),
+            _ if self.fence_holds == Some(false) => Some(stale_fence()),
+            _ => Some(run_lost()),
+        }
+    }
 }
 
 impl RunService {
@@ -110,15 +128,14 @@ impl RunService {
         let settled = Settled::from_row(&row).map_err(query(CONTEXT))?;
         if settled.moved_runs == 0 {
             drop(tx);
-            return match settled.run_status.as_deref() {
-                // Settled already, by this report's earlier copy: nothing more to write.
-                Some(status) if sql::report_statement::is_settled(status) => Ok(()),
-                // Expired by the assignment that took its turn at a higher fence, as a
-                // fleet's superseded report is refused (`report::finalize`).
-                Some(sql::RUN_STATUS_EXPIRED) => Err(stale_fence()),
-                _ if settled.fence_holds == Some(false) => Err(stale_fence()),
-                _ => Err(run_lost()),
+            let Some(refusal) = settled.refusal() else {
+                // The earlier copy's commit may have been followed by a failed
+                // activation, which the replay owes again.
+                return after_report(creations, scope.as_ref()).await;
             };
+            self.log_refused(&run_id, &run, &pricing, &request.requests.0, now)
+                .await?;
+            return Err(refusal);
         }
         let requests = &request.requests.0;
         let settlement = match SliceColumns::from_row(&row)
@@ -151,11 +168,42 @@ impl RunService {
             .await?;
         runner_runs::reported(runner, succeeded);
         log_settled(&run, request, now);
-        if let Some(scope) = &scope {
-            Box::pin(creations.after_setup_report(scope)).await?;
-        }
+        after_report(creations, scope.as_ref()).await
+    }
+
+    /// Logs the request lines a refused report carries, in a transaction of
+    /// their own, as a refused renewal does: the usage the runner spent is
+    /// owed whoever settles the run. A line is keyed by its run, kind and
+    /// sequence, so a retried copy logs it once.
+    async fn log_refused(
+        &self,
+        run_id: &Uuid7,
+        run: &DraftRun,
+        pricing: &Pricing,
+        requests: &[af_wire::usage::RequestUsage],
+        now: Timestamp,
+    ) -> Result<()> {
+        let Some(known) = requested(pricing, run_id, run, requests, now)? else {
+            return Ok(());
+        };
+        let mut connection = self.runs.pool().acquire().await?;
+        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
+        self.log_draft(&mut tx, Some(&known), now).await?;
+        tx.commit().await.map_err(query(CONTEXT))?;
         Ok(())
     }
+}
+
+/// After a report committed, or a replay found its earlier copy had: retries
+/// a requested save's activation and registers its triggers. Idempotent.
+async fn after_report(
+    creations: &afd_setup::Creations,
+    scope: Option<&afd_setup::setup_run::SetupReportScope>,
+) -> Result<()> {
+    if let Some(scope) = scope {
+        Box::pin(creations.after_setup_report(scope)).await?;
+    }
+    Ok(())
 }
 
 /// Logs a committed draft run's report, once, at `info`: how it ended, how

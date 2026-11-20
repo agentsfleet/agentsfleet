@@ -14,8 +14,7 @@ closed_set! {
         Succeeded => "succeeded",
         /// The runner reported the run failed, or a person stopped it.
         Failed => "failed",
-        /// The runner went silent, and a later assignment or the retention
-        /// sweep expired the run.
+        /// The runner went silent, and a later assignment expired the run.
         Expired => "expired",
     }
 }

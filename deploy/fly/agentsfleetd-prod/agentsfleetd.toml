@@ -95,13 +95,6 @@ pass_timeout_seconds = 30
 interval_seconds = 300
 pass_timeout_seconds = 240
 
-[maintenance.runner_history]
-idle_interval_seconds = 3_600
-backlog_interval_seconds = 60
-keep_days = 30
-batch_size = 1_000
-max_batches = 8
-
 [maintenance.outbound_delivery]
 interval_seconds = 30
 

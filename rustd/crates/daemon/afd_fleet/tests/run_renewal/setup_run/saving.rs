@@ -127,3 +127,80 @@ async fn a_proposed_cron_becomes_the_saved_fleets_schedule() {
     );
     case.cleanup().await;
 }
+
+/// The saved fleet's lifecycle status.
+async fn fleet_status(case: &Case, fleet: &Uuid7) -> String {
+    sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")
+        .bind(fleet)
+        .fetch_one(&mut *case.connection().await)
+        .await
+        .expect("the saved fleet")
+}
+
+// Value: protects=a save whose activation failed after the report committed is
+// activated by the runner's resent report; fails_when=a replayed report returns
+// without the save's after-commit step; why_new=the replay branch skipped
+// activation and trigger registration; seam=report_draft over live Postgres, the
+// activation refused once by a fixture trigger on the private database.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_resent_save_report_activates_the_fleet_its_first_copy_could_not() {
+    let case = Case::queued().await;
+    let proposing = case.take_on_host().await;
+    let text = definition(SCHEDULE);
+    case.report(&processed(&proposing, Some(proposal(&proposing, &text))))
+        .await
+        .expect("the proposing turn settles");
+    case.send_saving().await;
+    let saving = case.take_on_host().await;
+
+    // The private database holds this one fleet, so the trigger refuses only
+    // its activation.
+    let refusal = afd_db::test_util::refusal::Refusal::install(
+        &case.running.fixtures.shared_lane().url(),
+        "fleet.fleets",
+        "activate",
+        case.draft.id.as_str(),
+        "NEW.status = 'active' AND OLD.status = 'installing'",
+        "RAISE EXCEPTION 'fixture refusal'",
+    )
+    .await
+    .expect("the fixture refusal installs");
+    case.report(&processed(&saving, None))
+        .await
+        .expect_err("the report committed, and its activation failed after it");
+    let fleet = case
+        .saved_fleet()
+        .await
+        .expect("the committed report saved a fleet");
+    assert_eq!(fleet_status(&case, &fleet).await, "installing");
+    drop(refusal);
+
+    case.report(&processed(&saving, None))
+        .await
+        .expect("the resent report settles as a replay");
+
+    assert_eq!(
+        fleet_status(&case, &fleet).await,
+        "active",
+        "the replay activated the fleet"
+    );
+    assert_eq!(
+        schedules(&case, &fleet).await,
+        vec![(
+            SCHEDULE.to_owned(),
+            "UTC".to_owned(),
+            "Daily check".to_owned()
+        )],
+        "with the trigger the setup declared"
+    );
+    assert_eq!(
+        case.runs()
+            .await
+            .last()
+            .map(|(_fence, status)| status.clone()),
+        Some(afd_state::sql::RUN_STATUS_REPORTED.to_owned()),
+        "the run settled once"
+    );
+    case.cleanup().await;
+}

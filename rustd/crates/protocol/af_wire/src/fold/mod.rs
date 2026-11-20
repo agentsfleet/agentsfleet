@@ -14,7 +14,8 @@ use std::borrow::Cow;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// The most messages one assignment takes: a burst is read in batches, oldest first.
+/// The most messages one assignment takes: a burst is read in batches, oldest
+/// first. A reply is also cut to one frame ([`FoldResponse::keep_within`]).
 pub const FOLDS_PER_ASSIGNMENT_MAX: u16 = 32;
 
 /// `POST /v1/runners/me/runs/{run_id}/folds` request.
@@ -58,6 +59,31 @@ pub struct FoldResponse<'a> {
     /// The messages, oldest first.
     #[serde(borrow)]
     pub inputs: Vec<FoldedInput<'a>>,
+}
+
+impl FoldResponse<'_> {
+    /// Keeps the oldest inputs whose reply serializes within `bytes_max`, and
+    /// always the first, so a run is never answered with nothing while
+    /// messages wait. The rest stay assigned to the run, and its next fold,
+    /// which starts after the last message it read, returns them.
+    ///
+    /// # Errors
+    /// Preserves a serializer failure; the reply is then left whole.
+    pub fn keep_within(&mut self, bytes_max: usize) -> Result<(), serde_json::Error> {
+        let mut bytes = af_validate::serialized_len(&FoldResponse::default())?;
+        let mut kept = 0;
+        for input in &self.inputs {
+            // Every input after the first adds the comma before it.
+            let added = af_validate::serialized_len(input)? + usize::from(kept > 0);
+            bytes = bytes.saturating_add(added);
+            if kept > 0 && bytes > bytes_max {
+                break;
+            }
+            kept += 1;
+        }
+        self.inputs.truncate(kept);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

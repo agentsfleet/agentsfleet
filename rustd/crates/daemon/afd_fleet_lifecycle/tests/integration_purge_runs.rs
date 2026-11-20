@@ -3,7 +3,7 @@
 //! `thread.runs` holds no foreign key to the fleet, so nothing cascades: the
 //! purge deletes the live run itself, because one left behind would name a
 //! fleet that no longer exists to the renew and report paths. The settled run
-//! stays as the runner's history, for its own retention window.
+//! stays as the runner's history.
 //!
 //! `#[ignore]`d; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]

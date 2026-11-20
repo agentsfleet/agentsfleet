@@ -451,7 +451,7 @@ The runner detail read (API reference › Fleet) answers the runner and its live
 
 Runs acquired, succeeded, failed and expired per runner are the metric `agentsfleet_runner_runs_total`, read in Grafana (§"The four per-runner families"). Each count is recorded after the transaction that moved the run commits, so a rolled-back transaction counts nothing. A stopped run counts as failed.
 
-`acquired` follows the run insert's commit, `succeeded` and `failed` the report's settle, and `expired` the reclaim flip or the retention sweep. A retried report or assignment that wins no row counts nothing, by the same guards that make the transitions exactly-once.
+`acquired` follows the run insert's commit, `succeeded` and `failed` the report's settle, and `expired` the reclaim flip. A retried report or assignment that wins no row counts nothing, by the same guards that make the transitions exactly-once.
 
 The live-now summary reads `thread.runs`, scoped to currently-active rows.
 
@@ -477,27 +477,9 @@ On `runner.history`, `idx_history_runner_id_event_type_created_at_id` serves the
 
 A partial index was rejected there. The tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and the index-usage integration lane pins both the shapes and the plans.
 
-**History is bounded, not integral.** The retention sweeper in `afd_runner` deletes terminal-status runs in bounded batches once 30 days pass from settlement.
+**History is kept until a retention policy is chosen.** No sweeper deletes finished runs or runner events (Indy, Nov 21, 2026). `thread.runs` and `runner.history` grow with every assignment and every run event.
 
-The sweeper starts with the other sweepers in the daemon binary. The clock is `updated_at`, which settle and reclaim both stamp, so a run acquired long ago and settled yesterday keeps its full window.
-
-Only the per-run event tags are eligible: `PER_WORK_EVENTS` in `afd_runner`'s retention sweep, meaning `run_acquired` and `run_released`. The lifecycle tags are the Activity feed's entire content and are kept at any age.
-
-Live rows can never age into the sweep. The predicate excludes them, and a compile-time assertion in the sweep's tests keeps `MAX_RUNTIME` below the window. Every renewal stamps `updated_at`, so a run anything still holds is at most twelve hours stale against a thirty-day cutoff.
-
-**The sweeper is also the run status column's only clock-driven writer.**
-
-The runner's report, the fleet's next assignment through `queue::ASSIGN_HEAD`, and fleet deletion can also move a run out of `active`. Those three changes are not time-based.
-
-That leaves a gap. A run whose runner died, whose turn was settled terminally elsewhere, on a fleet nobody messages again, would stay `active` forever. The age-keyed event sweep would prune its per-work records anyway, leaving an eternal "running" run with no history behind it.
-
-The sweep flips such rows to `expired` past the same cutoff and counts each one on its runner as `expired`, as reclaim does. It then lets them age out through their own window.
-
-A cycle that fills every batch re-arms within the minute rather than idling the hour, so a backlog cannot outrun the sweeper. A failed cycle increments `agentsfleet_runner_retention_sweep_failures_total`, because the swept series alone cannot tell a sweeper that is not running from one that fails every pass.
-
-`idx_runs_status_updated_at` and `idx_history_event_type_created_at` serve the sweep's own `DELETE`s. They take `FOR UPDATE SKIP LOCKED`, so each replica's sweeper claims a disjoint batch.
-
-Pruning never lowers a run count, because the counts are metrics of transitions and not rows.
+No clock moves a run out of `active`. The runner's report, the fleet's next assignment through `queue::ASSIGN_HEAD`, and fleet deletion do. A run whose runner died, on a fleet nobody messages again, stays `active` past its `run_expires_at`. The expiry sweeper still bills its last slice.
 
 Pagination: [HTTP standard](../../.orly/standards/domains/http-responses.md) HTTP-PAGE and the API reference introduction.
 

@@ -182,9 +182,9 @@ An idle `instance_name` draft selection chooses the validated instance slug inde
 
 `InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch allows 64 configuration operations and 32 instruction edits, with 1,048,576 replacement characters total. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
 
-The serialized Definition or edit batch is bounded at 6,400 KiB. A setup HTTP body may hold that Definition and a first message at the text ceiling. Each is counted at its widest JSON escape, so the body may be 12,861,440 bytes (`SETUP_BODY_BYTES_MAX`).
+The serialized Definition or edit batch is bounded at 6,400 KiB. A setup HTTP body may hold that Definition and a first message at the text ceiling. Each is counted at the widest escape a client may send, 12 bytes for an escaped astral character, so the body may be 25,640,960 bytes (`SETUP_BODY_BYTES_MAX`).
 
-A body carrying one text, such as a fleet message, may be 6,307,840 bytes (`TEXT_BODY_BYTES_MAX`). The daemon reads that much on those routes, and the app's proxies read the same (`afd_http/tests/fixtures/body_limits.json`).
+A body carrying one text, such as a fleet message, may be 12,599,296 bytes (`TEXT_BODY_BYTES_MAX`). The daemon reads that much on those routes, and the app's proxies read the same (`afd_http/tests/fixtures/body_limits.json`).
 
 A run carrying that text reaches its runner in one frame of at most 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`). See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
 

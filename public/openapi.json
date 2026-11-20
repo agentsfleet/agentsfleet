@@ -1519,7 +1519,7 @@
           "Runners"
         ],
         "summary": "List a runner's work assignments",
-        "description": "Lists a runner's work assignments newest first, with fleet outcomes and failure reasons. Requires platform administrator access. Continue with `next_cursor` as `starting_after`.\n\n`destination` is `available` for a fleet in your account, `fleet_deleted` after deletion, or `not_permitted` in another account. Fleet and event fields become null when their records are removed.\n\nCompleted assignments remain for 30 days after settlement. Running or renewing assignments are retained. Assignments abandoned by a dead runner expire after the same window, then receive their own retention window.\n\nAcquisition and release activity remains for 30 days after each event; other runner lifecycle activity is retained.",
+        "description": "Lists a runner's work assignments newest first, with fleet outcomes and failure reasons. Requires platform administrator access. Continue with `next_cursor` as `starting_after`.\n\n`destination` is `available` for a fleet in your account, `fleet_deleted` after deletion, or `not_permitted` in another account. Fleet and event fields become null when their records are removed.\n\nAssignments and runner activity are kept, whatever their state, until a retention policy is chosen.",
         "operationId": "list_platform_runner_runs",
         "parameters": [
           {
@@ -1534,7 +1534,7 @@
           {
             "name": "starting_after",
             "in": "query",
-            "description": "Run identifier from this runner's previous `next_cursor`. It must match the current workspace and fleet filters. If retention removed it, restart from the first page.",
+            "description": "Run identifier from this runner's previous `next_cursor`. It must match the current workspace and fleet filters. If the run was removed, restart from the first page.",
             "required": false,
             "schema": {
               "type": "string"

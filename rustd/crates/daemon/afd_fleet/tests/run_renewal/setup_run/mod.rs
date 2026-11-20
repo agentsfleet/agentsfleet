@@ -22,12 +22,14 @@ use crate::rows::{LAPSE, Row};
 mod context;
 mod expiry;
 mod failed;
+mod faults;
 mod mint;
 mod notice;
 mod page;
 mod placement;
 mod progress;
 mod refused;
+mod released;
 mod saving;
 mod superseded;
 

@@ -65,8 +65,6 @@ CREATE INDEX idx_runs_runner_id_created_at_id
 CREATE INDEX idx_runs_runner_id_status_run_expires_at
     ON thread.runs (runner_id, status, run_expires_at);
 
-CREATE INDEX idx_runs_status_updated_at ON thread.runs (status, updated_at);
-
 -- Partial, so it holds only the metering backlog: expired runs not yet billed to expiry.
 CREATE INDEX idx_runs_run_expires_at_unbilled
     ON thread.runs (run_expires_at)

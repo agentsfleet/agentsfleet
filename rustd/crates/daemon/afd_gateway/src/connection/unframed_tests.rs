@@ -1,5 +1,5 @@
-//! Which assignments are too large for one frame, and the failure report one
-//! of them earns.
+//! Which assignments are too large for one frame, and the failure report a
+//! run that was never sent earns.
 
 #![expect(
     clippy::expect_used,
@@ -11,7 +11,7 @@ use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::report::{FailureClass, Outcome};
 use serde_json::{Value, json};
 
-use super::{Message, Unframed, detail};
+use super::{Cause, Message, Remedy, Unsent, detail};
 
 /// A fleet run's assignment, as the daemon frames one.
 const RUN: &str = r#"{"type":"run","run":{"kind":"fleet","run_id":"0190d5c2-7e1a-7000-8000-00000000e001","fencing_token":4,"run_expires_at":"1970-01-01T00:00:00.931Z","event":{"turn_id":"0190d5c2-7e1a-7000-8000-00000000e002","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"steer:user_1","event_type":"chat","request_json":"{\"message\":\"hi\"}","created_at":"1970-01-01T00:00:00.426Z"},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","history":[],"resume_hold":false,"inputs_waiting":false,"owner":{"kind":"fleet","fleet_id":"fleet_id"}}}"#;
@@ -30,7 +30,7 @@ fn run_with(instructions: &str) -> String {
 fn a_run_that_fits_its_frame_is_not_failed() {
     let framed = run_with("Triage the support queue.");
     let message: Message<'_> = serde_json::from_str(&framed).expect("a run frame");
-    assert_eq!(Unframed::of(&message), None);
+    assert!(Unsent::fits(&message));
 }
 
 /// [`RUN`] carrying the most text a run can: its instructions, a setup
@@ -66,7 +66,7 @@ fn a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed() {
     for (character, every_text) in [('界', 9_437_184), ('\u{1}', 19_922_944)] {
         let framed = ceiling_run(character);
         let message: Message<'_> = serde_json::from_str(&framed).expect("a run frame");
-        assert_eq!(Unframed::of(&message), None, "{character:?}");
+        assert!(Unsent::fits(&message), "{character:?}");
         let bytes = af_validate::serialized_len(&message).expect("the frame measures");
         assert!(
             bytes > every_text,
@@ -82,14 +82,20 @@ fn a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed() {
 fn a_run_past_its_frame_is_named_for_failing() {
     let unframed = run_with(&"x".repeat(MESSAGE_BYTES_MAX));
     let message: Message<'_> = serde_json::from_str(&unframed).expect("a run frame");
+    assert!(!Unsent::fits(&message));
+    let run = match &message {
+        Message::Run { run } => Some(run),
+        _ => None,
+    }
+    .expect("the fixture is a run frame");
     assert_eq!(
-        Unframed::of(&message),
-        Some(Unframed {
+        Unsent::of(run),
+        Unsent {
             run_id: "0190d5c2-7e1a-7000-8000-00000000e001".to_owned(),
             turn_id: "0190d5c2-7e1a-7000-8000-00000000e002".to_owned(),
             fencing_token: 4,
             draft: false,
-        })
+        }
     );
 }
 
@@ -98,7 +104,7 @@ fn a_run_past_its_frame_is_named_for_failing() {
 /// draft's settlement, and a fleet's carries none.
 #[test]
 fn the_failure_report_names_its_class_and_code() {
-    let fleet = Unframed {
+    let fleet = Unsent {
         run_id: "run".to_owned(),
         turn_id: "turn".to_owned(),
         fencing_token: 9,
@@ -114,10 +120,18 @@ fn the_failure_report_names_its_class_and_code() {
     assert_eq!(report.requests.0.len(), 0);
     assert_eq!(report.setup, None);
 
-    let draft = Unframed {
+    let draft = Unsent {
         draft: true,
         ..fleet
     };
     let report = draft.report(&said);
     assert_eq!(report.setup.map(|setup| setup.proposal), Some(None));
+}
+
+/// A frame too large for any retry settles its run; a frame that never
+/// reached the writer, which another pass can send, releases it.
+#[test]
+fn a_permanent_fault_settles_and_a_transient_one_releases() {
+    assert_eq!(Cause::TooLarge.remedy(), Remedy::Settle);
+    assert_eq!(Cause::Undelivered.remedy(), Remedy::Release);
 }

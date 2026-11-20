@@ -147,3 +147,138 @@ fn a_call_that_is_not_an_edit_is_a_tool_call_item() {
     assert_eq!(records[0].tool, UPDATE_PLAN.name());
     assert_eq!(records[0].changes, Vec::new());
 }
+
+/// A tool environment rooted in a scratch directory holding `src/a.rs`: one
+/// kept line, eight lines an edit replaces, and one more kept line.
+struct Desk {
+    directory: tempfile::TempDir,
+    env: guffbolt::tools::LocalEnv,
+}
+
+/// The eight lines the edit takes out.
+fn removed() -> String {
+    let mut text = String::new();
+    for line in 1..=8 {
+        text.push_str("old line ");
+        text.push_str(&line.to_string());
+        text.push('\n');
+    }
+    text
+}
+
+/// The twenty-four lines it puts in their place.
+fn added() -> String {
+    let mut text = String::new();
+    for line in 1..=24 {
+        text.push_str("new line ");
+        text.push_str(&line.to_string());
+        text.push('\n');
+    }
+    text
+}
+
+impl Desk {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        std::fs::create_dir_all(directory.path().join("src"))?;
+        let text = format!("fn keep() {{}}\n{}fn tail() {{}}\n", removed());
+        std::fs::write(directory.path().join("src/a.rs"), text)?;
+        let env = guffbolt::tools::LocalEnv::new(directory.path())?;
+        Ok(Self { directory, env })
+    }
+
+    /// Runs `edit` with the real `file_edit` tool, as a loop dispatches it.
+    async fn edit(&self, edit: &Call) -> Result<ToolOutput, Box<dyn std::error::Error>> {
+        let config = guffbolt::tools::ToolsConfig::new(["file_edit"])?;
+        let tools = guffbolt::Tools::builder()
+            .with_env(&self.env)
+            .build(&config)?;
+        let at = guffbolt::CallRef {
+            step: 1,
+            index: 0,
+            call_id: "call-1".to_owned(),
+        };
+        let context = guffbolt::tools::Context {
+            call_ref: &at,
+            run_id: RUN_ID,
+            wake: None,
+        };
+        Ok(tools.dispatch(&edit.name, &edit.arguments, context).await)
+    }
+}
+
+/// A `file_edit` call replacing `old` with the twenty-four new lines.
+fn file_edit(old: &str) -> Call {
+    Call {
+        name: "file_edit".to_owned(),
+        arguments: serde_json::json!({"path": "src/a.rs", "old_text": old, "new_text": added()}),
+        ..planned()
+    }
+}
+
+/// The edit item's counts come from what a real edit did to a real file:
+/// eight lines out and twenty-four in, read from the report the tool wrote,
+/// never typed into the test.
+#[tokio::test]
+async fn a_real_file_edit_carries_the_lines_it_changed() -> Result<(), Box<dyn std::error::Error>> {
+    let desk = Desk::new()?;
+    let edit = file_edit(&removed());
+    let output = desk.edit(&edit).await?;
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let scrub = scrub();
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
+
+    ran(&ledger, &edit, Some(output));
+    let (trace, records) = ledger.finish();
+    frames.taken();
+
+    let expected = vec![FileChange {
+        path: "src/a.rs".into(),
+        added: 24,
+        removed: 8,
+    }];
+    assert_eq!(records.len(), 1, "one edit item");
+    assert_eq!(
+        (records[0].kind, records[0].status),
+        (ItemKind::Edit, ItemStatus::Succeeded)
+    );
+    assert_eq!(records[0].changes, expected);
+    assert_eq!(trace.calls[0].changes, expected);
+    assert_eq!(
+        std::fs::read_to_string(desk.directory.path().join("src/a.rs"))?,
+        format!("fn keep() {{}}\n{}fn tail() {{}}\n", added()),
+        "the file on disk holds the edit"
+    );
+    Ok(())
+}
+
+/// A real edit the tool refuses changes nothing, and its item counts nothing.
+#[tokio::test]
+async fn a_real_file_edit_that_finds_no_text_carries_no_changes()
+-> Result<(), Box<dyn std::error::Error>> {
+    let desk = Desk::new()?;
+    let edit = file_edit("text the file does not hold\n");
+    let output = desk.edit(&edit).await?;
+    assert!(output.error_code.is_some(), "{}", output.text);
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let scrub = scrub();
+    let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
+
+    ran(&ledger, &edit, Some(output));
+    let (_trace, records) = ledger.finish();
+    frames.taken();
+
+    assert_eq!(
+        (records[0].kind, records[0].status),
+        (ItemKind::Edit, ItemStatus::Failed)
+    );
+    assert_eq!(records[0].changes, Vec::new());
+    assert_eq!(
+        std::fs::read_to_string(desk.directory.path().join("src/a.rs"))?,
+        format!("fn keep() {{}}\n{}fn tail() {{}}\n", removed()),
+        "the file is unchanged"
+    );
+    Ok(())
+}

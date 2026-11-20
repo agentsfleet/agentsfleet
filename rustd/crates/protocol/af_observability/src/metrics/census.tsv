@@ -96,8 +96,6 @@ agentsfleet_runner_stream_native_pto_total	counter	u64	1	cumulative	-	-	fixed:1	
 agentsfleet_runner_stream_native_retransmitted_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	stream bytes sent again after transport loss
 agentsfleet_fleet_ready_wake_queue_events_total	counter	u64	1	cumulative	outcome	-	fixed:3	no	saturation	queued duplicate and evicted fleet reminders; the replica probe still discovers durable work
 agentsfleet_fleets	gauge	u64	{fleet}	-	status	-	fixed:5	yes	traffic	installed fleets by lifecycle status; active is the leasable set, a rising paused count is the anomaly gate holding work
-agentsfleet_runner_retention_swept_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	retention pruning throughput
-agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	retention sweeps failing
 agentsfleet_turns_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, refused and over-budget turn intakes
 agentsfleet_turn_backlog	gauge	u64	{row}	-	-	-	fixed:1	no	saturation	unsettled fleet turns, counted by the fleet census; use max across replicas
 agentsfleet_turn_backlog_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled fleet turn; absent when the census cannot read Postgres

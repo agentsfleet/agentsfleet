@@ -84,14 +84,6 @@ pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =
 /// Labels: `status`.
 pub const FLEETS: Declared<GaugeKind> = Declared::new("agentsfleet_fleets");
 
-/// Retention pruning throughput.
-pub const RUNNER_RETENTION_SWEPT_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_runner_retention_swept_total");
-
-/// Retention sweeps failing.
-pub const RUNNER_RETENTION_SWEEP_FAILURES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_runner_retention_sweep_failures_total");
-
 /// Accepted and replayed turns, database refusals, and budget refusals.
 ///
 /// Labels: `outcome`.

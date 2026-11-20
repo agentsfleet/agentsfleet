@@ -1,4 +1,5 @@
-//! Reserve frame memory before a service assembles and serializes borrowed output.
+//! Serialize borrowed output inside a producer that cannot wait, then charge
+//! the frame its exact length once.
 
 use af_wire::protocol::StreamKind;
 use serde::Serialize;
@@ -8,20 +9,25 @@ use tokio_util::sync::CancellationToken;
 use super::{Budget, OwnedFrame, writer::Buffer};
 use crate::{Result, limits::Length};
 
-/// Room reserved before a payload exists. Nearly every frame fits in it, so
-/// it is charged before its bytes are; a larger frame owes the rest, which
-/// [`Encoder::finish`] waits for before the frame can be sent.
-const RESERVED_BYTES: usize = 2 * 1024 * 1024;
-
 /// A frame being built inside a producer that cannot wait for memory, such
 /// as the transaction that chooses an assignment. Dropping it zeroes its
-/// bytes and returns its reservation.
+/// bytes and returns its charge.
+///
+/// It never holds part of a charge while it waits for the rest: a frame is
+/// charged its whole length in one reservation, so encoders waiting on a
+/// busy pool cannot each hold a slice of it and starve one another, or a
+/// small frame queued behind them.
 pub struct Encoder {
     budget: Budget,
     kind: StreamKind,
-    reservation: OwnedSemaphorePermit,
+    framed: Option<Framed>,
+}
+
+/// A serialized frame and, when the pool had room at once, its charge.
+struct Framed {
     buffer: Buffer,
-    owed: usize,
+    length: usize,
+    charge: Option<OwnedSemaphorePermit>,
 }
 
 impl std::fmt::Debug for Encoder {
@@ -31,194 +37,60 @@ impl std::fmt::Debug for Encoder {
 }
 
 impl Encoder {
-    /// Reserve `RESERVED_BYTES` before invoking a payload producer, so a
-    /// pool under pressure delays the producer rather than its frame.
-    ///
-    /// # Errors
-    /// Preserves memory-pressure deadlines and caller cancellation.
-    pub async fn reserve(
-        budget: &Budget,
-        kind: StreamKind,
-        stop: &CancellationToken,
-        deadline: Instant,
-    ) -> Result<Self> {
-        let reservation = budget.reserve(kind, RESERVED_BYTES, stop, deadline).await?;
-        Ok(Self {
+    /// An encoder that has charged nothing yet.
+    #[must_use]
+    pub fn new(budget: &Budget, kind: StreamKind) -> Self {
+        Self {
             budget: budget.clone(),
             kind,
-            reservation,
-            buffer: Buffer::default(),
-            owed: 0,
-        })
+            framed: None,
+        }
     }
 
-    /// Serialize `value` at its measured length, without waiting. Bytes past
-    /// the reserved room are owed and charged by [`Self::finish`].
+    /// Serialize `value` at its measured length, without waiting. The frame
+    /// is charged its exact length now when the pool has room; otherwise
+    /// [`Self::finish`] waits for that charge.
     ///
     /// # Errors
     /// Refuses a value past its stream's ceiling, or a failed serialization.
     pub fn frame<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
         let length = Length::measure(value, self.kind)?;
+        // Dropped before a replacement is allocated, so its charge returns first.
+        self.framed = None;
+        let charge = self.budget.try_reserve(self.kind, length.bytes).ok();
         let mut buffer = Buffer::exact(&length);
         buffer.fill(value)?;
-        self.owed = length.bytes.saturating_sub(self.reservation.num_permits());
-        self.buffer = buffer;
+        self.framed = Some(Framed {
+            buffer,
+            length: length.bytes,
+            charge,
+        });
         Ok(())
     }
 
-    /// Charge whatever [`Self::frame`] owed, then hand the frame and its
-    /// charge over together.
+    /// Charge the frame its exact length, when [`Self::frame`] could not,
+    /// then hand the frame and its charge over together.
     ///
     /// # Errors
     /// Refuses an empty frame; preserves memory-pressure deadlines and
-    /// caller cancellation while waiting for an owed charge.
-    pub async fn finish(
-        mut self,
-        stop: &CancellationToken,
-        deadline: Instant,
-    ) -> Result<OwnedFrame> {
-        if self.owed > 0 {
-            let owed = self
-                .budget
-                .reserve(self.kind, self.owed, stop, deadline)
-                .await?;
-            self.reservation.merge(owed);
-        }
-        self.buffer.finish(self.reservation, self.kind)
+    /// caller cancellation while waiting for the charge.
+    pub async fn finish(self, stop: &CancellationToken, deadline: Instant) -> Result<OwnedFrame> {
+        let Some(framed) = self.framed else {
+            Length::prove(0, self.kind)?;
+            return Err(crate::error::ErrorKind::Protocol.into());
+        };
+        let charge = match framed.charge {
+            Some(charge) => charge,
+            None => {
+                self.budget
+                    .reserve(self.kind, framed.length, stop, deadline)
+                    .await?
+            }
+        };
+        framed.buffer.finish(charge, self.kind)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Encoder, RESERVED_BYTES};
-    use crate::Budget;
-    use af_wire::protocol::{MESSAGE_BYTES_MAX, StreamKind};
-    use tokio::time::Instant;
-    use tokio_util::sync::CancellationToken;
-
-    fn deadline() -> Instant {
-        Instant::now() + std::time::Duration::from_secs(5)
-    }
-
-    #[tokio::test]
-    async fn a_small_frame_keeps_only_its_bytes_of_the_reserved_room() -> crate::Result<()> {
-        let budget = Budget::default();
-        let available = budget.available(StreamKind::Work);
-        let mut encoder = Encoder::reserve(
-            &budget,
-            StreamKind::Work,
-            &CancellationToken::new(),
-            deadline(),
-        )
-        .await?;
-        assert_eq!(
-            available - budget.available(StreamKind::Work),
-            RESERVED_BYTES
-        );
-        encoder.frame(&"assignment")?;
-        let frame = encoder
-            .finish(&CancellationToken::new(), deadline())
-            .await?;
-        assert_eq!(frame.as_bytes(), br#""assignment""#);
-        assert_eq!(available - budget.available(StreamKind::Work), 12);
-        drop(frame);
-        assert_eq!(budget.available(StreamKind::Work), available);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn a_frame_past_the_reserved_room_is_charged_its_whole_length() -> crate::Result<()> {
-        let budget = Budget::default();
-        let available = budget.available(StreamKind::Work);
-        let value = "x".repeat(RESERVED_BYTES * 3);
-        let mut encoder = Encoder::reserve(
-            &budget,
-            StreamKind::Work,
-            &CancellationToken::new(),
-            deadline(),
-        )
-        .await?;
-        encoder.frame(&value)?;
-        let frame = encoder
-            .finish(&CancellationToken::new(), deadline())
-            .await?;
-        assert_eq!(frame.as_bytes().len(), RESERVED_BYTES * 3 + 2);
-        assert_eq!(
-            available - budget.available(StreamKind::Work),
-            RESERVED_BYTES * 3 + 2
-        );
-        drop(frame);
-        assert_eq!(budget.available(StreamKind::Work), available);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn an_owed_charge_waits_for_room_and_is_cancellable() -> crate::Result<()> {
-        let budget = Budget::new(RESERVED_BYTES, RESERVED_BYTES * 2)?;
-        let stop = CancellationToken::new();
-        let mut encoder = Encoder::reserve(&budget, StreamKind::Work, &stop, deadline()).await?;
-        encoder.frame(&"x".repeat(RESERVED_BYTES * 3))?;
-        let finishing = encoder.finish(&stop, deadline());
-        tokio::pin!(finishing);
-        assert!(
-            std::future::poll_fn(|cx| std::task::Poll::Ready(
-                finishing.as_mut().poll(cx).is_pending()
-            ))
-            .await
-        );
-        stop.cancel();
-        let refused = finishing
-            .await
-            .err()
-            .ok_or(crate::error::ErrorKind::Protocol)?;
-        assert_eq!(refused.reason(), crate::Reason::Cancelled);
-        assert_eq!(budget.available(StreamKind::Work), RESERVED_BYTES * 2);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn a_value_past_the_frame_ceiling_is_refused_and_owes_nothing() -> crate::Result<()> {
-        let budget = Budget::default();
-        let available = budget.available(StreamKind::Work);
-        let mut encoder = Encoder::reserve(
-            &budget,
-            StreamKind::Work,
-            &CancellationToken::new(),
-            deadline(),
-        )
-        .await?;
-        let refused = encoder
-            .frame(&"x".repeat(MESSAGE_BYTES_MAX))
-            .err()
-            .ok_or(crate::error::ErrorKind::Protocol)?;
-        assert_eq!(refused.reason(), crate::Reason::Protocol);
-        drop(encoder);
-        assert_eq!(budget.available(StreamKind::Work), available);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn finishing_without_a_frame_is_refused() -> crate::Result<()> {
-        let budget = Budget::default();
-        let available = budget.available(StreamKind::Work);
-        let encoder = Encoder::reserve(
-            &budget,
-            StreamKind::Work,
-            &CancellationToken::new(),
-            deadline(),
-        )
-        .await?;
-        let refused = encoder
-            .finish(&CancellationToken::new(), deadline())
-            .await
-            .err()
-            .ok_or(crate::error::ErrorKind::Protocol)?;
-        assert_eq!(refused.reason(), crate::Reason::Protocol);
-        assert!(
-            std::error::Error::source(&refused)
-                .is_some_and(<dyn std::error::Error>::is::<garde::Report>)
-        );
-        assert_eq!(budget.available(StreamKind::Work), available);
-        Ok(())
-    }
-}
+#[path = "encoder_tests.rs"]
+mod tests;

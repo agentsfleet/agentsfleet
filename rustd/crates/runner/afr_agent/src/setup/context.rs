@@ -14,16 +14,24 @@
 //! daemon sent none neither skips a turn for a saved summary nor compacts.
 //! A run whose load failed compacts in memory and saves nothing: it knows no
 //! version to save over.
+//!
+//! A watermark covers every turn up to it, so a compaction claims only what
+//! the run read: its history must reach back to the saved summary's
+//! watermark, or, with none, hold the draft's turns whole. The daemon sends
+//! the newest answered turns under its bounds, so a turn older than the run's
+//! oldest is one the run never read, and no compaction claims it.
 
-use af_context::{Checkpoint, CheckpointStore, Compaction, Group, Identity, PortFuture};
+use af_context::{Checkpoint, Compaction, Group, Identity};
 use af_secrets::Scrub;
-use af_wire::context::ContextSaveRequest;
-use af_wire::run::{RunPayload, SetupCandidate};
+use af_wire::run::{
+    HISTORY_BYTES_MAX, HISTORY_TURNS_MAX, RunPayload, SetupCandidate, TURN_TEXT_BYTES_MAX,
+};
 use guffbolt::{Message, Replay};
 use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
 
 use super::SetupContext;
+use super::store::{Store, usable};
 use crate::engine::EventSink;
 use crate::error::Result;
 use crate::events::compaction::Notifications;
@@ -38,9 +46,6 @@ const KEEP_RECENT_TURNS: usize = 2;
 /// another model, window or estimate is not read back.
 const ESTIMATOR: &str = "setup-estimator-v1";
 const EVENT_LOAD_FAILED: &str = "setup_context_load_failed";
-const EVENT_IGNORED: &str = "setup_context_ignored";
-const EVENT_UNREADABLE: &str = "setup_context_unreadable";
-const EVENT_SAVED: &str = "setup_context_saved";
 
 /// One earlier turn of the draft: what the person asked and what setup
 /// answered, named by its place in the draft when the daemon named it.
@@ -64,6 +69,9 @@ pub(super) struct Saved<'a> {
     earlier: Vec<Earlier>,
     /// Whether every earlier turn carries its sequence.
     named: bool,
+    /// Whether the run read every answered turn after the watermark, so a
+    /// compaction of its earlier turns claims none it never read.
+    whole: bool,
 }
 
 impl<'a> Saved<'a> {
@@ -104,6 +112,7 @@ impl<'a> Saved<'a> {
             checkpoint,
             earlier: earlier(run, scrub, named, covered),
             named,
+            whole: reaches_back(run, covered),
         }
     }
 
@@ -126,7 +135,9 @@ impl<'a> Saved<'a> {
 
     /// The compaction of the oldest earlier turns, all but the newest
     /// [`KEEP_RECENT_TURNS`], halved until `fits` admits its summary request;
-    /// none when no turn can be compacted.
+    /// none when no turn can be compacted, or when the run's history does not
+    /// reach back to the watermark, so the summary would claim turns the run
+    /// never read.
     ///
     /// # Errors
     /// A turn cannot be quoted, or `fits` cannot measure.
@@ -136,7 +147,7 @@ impl<'a> Saved<'a> {
         mut fits: impl FnMut(&Compaction) -> af_context::Result<bool>,
     ) -> af_context::Result<Option<Compaction>> {
         let take = self.earlier.len().saturating_sub(KEEP_RECENT_TURNS);
-        if !self.named || take == 0 {
+        if !self.named || !self.whole || take == 0 {
             return Ok(None);
         }
         let groups = self
@@ -196,6 +207,8 @@ impl<'a> Saved<'a> {
             |value| progress.observe(value),
         )
         .await?;
+        // The compaction took the oldest turns in order, so the rest still
+        // follow its watermark whole.
         let covered = checkpoint.covered_through;
         self.earlier
             .retain(|turn| turn.sequence.is_some_and(|sequence| sequence > covered));
@@ -267,39 +280,27 @@ pub(super) fn identity(scope: String, run: &RunPayload<'_>) -> Identity {
     }
 }
 
-/// The stored `document`, when it is a valid checkpoint of `identity` the
-/// run can place: one whose watermark names turns, which `named` says. A
-/// document that does not parse or validate is a corrupt store and logs a
-/// warning; a valid one written for another identity is expected after a
-/// model or prompt change and logs at `info`.
-fn usable(
-    document: serde_json::Value,
-    identity: &Identity,
-    named: bool,
-    run_id: &str,
-) -> Option<Checkpoint> {
-    let read = serde_json::from_value::<Checkpoint>(document)
-        .map_err(crate::Error::from)
-        .and_then(|checkpoint| {
-            checkpoint.validate_document()?;
-            Ok(checkpoint)
-        });
-    let checkpoint = match read {
-        Ok(checkpoint) => checkpoint,
-        Err(corrupt) => {
-            // The code alone: a parse failure can quote the stored text.
-            let error_code = corrupt.code().as_str();
-            tracing::warn!(event = EVENT_UNREADABLE, error_code, run_id);
-            return None;
-        }
-    };
-    let placeable = Some(checkpoint)
-        .filter(|checkpoint| checkpoint.belongs_to(identity))
-        .filter(|_| named);
-    if placeable.is_none() {
-        tracing::info!(event = EVENT_IGNORED, run_id);
+/// Whether `run`'s history holds every answered turn after the watermark
+/// `covered`. The daemon sends the newest answered turns, so a history that
+/// reaches a turn the saved summary covers holds every one after it; with no
+/// summary, it holds the draft whole when neither of the daemon's bounds cut
+/// it: fewer turns than [`HISTORY_TURNS_MAX`], and room under
+/// [`HISTORY_BYTES_MAX`] for one more whole turn.
+fn reaches_back(run: &RunPayload<'_>, covered: Option<u64>) -> bool {
+    let sequences = run
+        .owner
+        .setup()
+        .map_or(&[][..], |work| work.history_sequences.as_slice());
+    if let Some(through) = covered {
+        return sequences.first().is_some_and(|oldest| *oldest <= through);
     }
-    placeable
+    let bytes: usize = run
+        .history
+        .iter()
+        .map(|turn| turn.message.len() + turn.answer.len())
+        .sum();
+    run.history.len() < HISTORY_TURNS_MAX
+        && bytes.saturating_add(2 * TURN_TEXT_BYTES_MAX) <= HISTORY_BYTES_MAX
 }
 
 /// `run`'s earlier turns, oldest first and scrubbed, without those a saved
@@ -334,42 +335,4 @@ fn earlier(run: &RunPayload<'_>, scrub: &Scrub, named: bool, covered: Option<u64
             })
         })
         .collect()
-}
-
-/// Publishes a compaction's checkpoint: through the context verb at the
-/// version the run last read or saved, or in memory for a run that read none.
-struct Store<'s> {
-    context: &'s dyn SetupContext,
-    fencing_token: u64,
-    saving: bool,
-    version: &'s mut u64,
-}
-
-impl CheckpointStore for Store<'_> {
-    fn commit(&mut self, expected_generation: u64, checkpoint: Checkpoint) -> PortFuture<'_, ()> {
-        Box::pin(async move {
-            if expected_generation != *self.version {
-                return Err(af_context::Error::stale());
-            }
-            if !self.saving {
-                *self.version = checkpoint.generation;
-                return Ok(());
-            }
-            let request = ContextSaveRequest {
-                fencing_token: self.fencing_token,
-                resource_version: expected_generation,
-                checkpoint: serde_json::to_value(&checkpoint)
-                    .map_err(af_context::Error::boundary)?,
-            };
-            let saved = self
-                .context
-                .save(request)
-                .await
-                .map_err(af_context::Error::boundary)?;
-            *self.version = saved.resource_version;
-            let (generation, covered_through) = (checkpoint.generation, checkpoint.covered_through);
-            tracing::info!(event = EVENT_SAVED, generation, covered_through);
-            Ok(())
-        })
-    }
 }

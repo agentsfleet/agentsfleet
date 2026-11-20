@@ -6,79 +6,23 @@
 //! earlier run. A draft's report takes the draft and then the thread, and holds
 //! no host row, so the two never wait on each other.
 
-use std::borrow::Cow;
-
 use af_core::id::Uuid7;
-use af_crypto::secret::SecretString;
-use af_wire::{
-    policy::{ExecutionPolicy, NetworkPolicy},
-    run::{
-        HISTORY_BYTES_MAX, Owner, RunKind, RunPayload, SetupCandidate, SetupWork,
-        TURN_TEXT_BYTES_MAX, Turn,
-    },
-    setup::FailureReason,
-    turn::{TurnEnvelope, TurnKind},
-};
-use afd_billing::rates::Posture;
-use afd_runner::capacity::choice::Ticket;
-use afd_setup::setup_run::{SetupAssignment, SetupHint, SetupOwed, SetupTurn, setup_tool};
+use af_wire::{run::RunKind, setup::FailureReason};
+use afd_runner::capacity::{Held, choice::Ticket};
+use afd_setup::setup_run::{SetupAssignment, SetupHint, SetupOwed};
 use jiff::Timestamp;
-use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 
-use super::DraftTarget;
+use super::DraftAssignment;
+use super::issue::Issue;
 use crate::error::{Result, query};
-use crate::run::{AssignedRun, RunOwner, RunService, runner_runs, sql};
+use crate::run::{RunOwner, RunService, runner_runs};
 
 /// What query failures name the draft assignment as.
-const CONTEXT: &str = "assign a draft run";
-
-/// The one tool a setup run offers.
-const PROPOSE_SETUP: &str = "propose_setup";
+pub(super) const CONTEXT: &str = "assign a draft run";
 
 /// Logged at `info` once a draft run's assignment commits.
 const EVENT_ASSIGNED: &str = "setup_run_assigned";
-
-/// A committed draft run, ready to render as its assignment.
-///
-/// Holds the key the assignment carries, so the payload borrows it rather than
-/// copying a secret into an owned string.
-#[derive(Debug)]
-pub struct DraftAssignment {
-    run_id: Uuid7,
-    fence: i64,
-    expires_at: Timestamp,
-    turn: SetupTurn,
-    api_key: SecretString,
-    inference_host: Box<str>,
-    tool: serde_json::Value,
-}
-
-/// [`sql::shared::ASSIGN_THREAD`]'s winning row, by column name.
-#[derive(sqlx::FromRow)]
-struct Won {
-    fencing_token: i64,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    run_expires_at: Timestamp,
-}
-
-/// [`sql::shared::EXPIRE_PRIOR_RUN`]'s row, by column name.
-#[derive(sqlx::FromRow)]
-struct Prior {
-    predecessor_run_id: Option<Uuid7>,
-    expired_runner_id: Option<Uuid7>,
-    earlier_runs: i64,
-}
-
-/// What taking a draft's thread came to.
-struct Taken {
-    /// The thread and whether the assignment reassigns the turn; `None` when
-    /// the draft yields nothing now.
-    won: Option<(Won, bool)>,
-    /// The lapsed holder whose run the assignment expired, counted once the
-    /// transaction commits.
-    expired: Option<Uuid7>,
-}
 
 /// What one candidate's assignment came to.
 enum Placement {
@@ -93,8 +37,12 @@ impl RunService {
     /// Assigns the oldest waiting draft turn `runner` may run, under the
     /// pass's placement `ticket`, and commits its run.
     ///
+    /// A draft whose model, balance, stored key or head candidate is at fault
+    /// has its turn failed and is passed, so one broken draft never stalls the
+    /// walk or the fleet work after it.
+    ///
     /// # Errors
-    /// Reports a datastore that would not answer, and a key that would not open.
+    /// Reports a datastore that would not answer.
     pub async fn assign_draft(
         &self,
         drafts: &afd_setup::Drafts,
@@ -129,17 +77,8 @@ impl RunService {
         else {
             return Ok(Placement::Busy);
         };
-        if !host.can_assign() || !ticket.permits_revision(host.run_version(), RunKind::Setup) {
-            return Ok(Placement::Busy);
-        }
-        // Before any write: a foreign runner leaves no run and no failure behind.
-        if !host.serves() {
-            afd_runner::capacity::refused_placement(
-                runner,
-                afd_runner::capacity::PlacementRefusal::ForeignTenant,
-                RunKind::Setup.as_str(),
-            );
-            return Ok(Placement::Skipped);
+        if let Some(refused) = refusal(&host, ticket, runner) {
+            return Ok(refused);
         }
         let mut owed = SetupOwed::default();
         let turn = match drafts
@@ -148,23 +87,17 @@ impl RunService {
         {
             SetupAssignment::Assigned(turn) => *turn,
             SetupAssignment::Passed | SetupAssignment::Busy => {
-                tx.commit().await.map_err(query(CONTEXT))?;
-                owed.settle(drafts);
+                commit(tx, owed, drafts, None).await?;
                 return Ok(Placement::Skipped);
             }
         };
         // The key the runner calls the model with, opened in this transaction
         // under the same locks that pinned the model, before any run exists.
-        let Some(route) = self
-            .providers
-            .registered_route(&mut tx, &turn.tenant_id, &turn.model)
-            .await?
-        else {
+        let Some(route) = self.route(&mut tx, &turn).await? else {
             drafts
                 .fail_setup_turn(&mut tx, &turn, FailureReason::ModelUnavailable, &mut owed)
                 .await?;
-            tx.commit().await.map_err(query(CONTEXT))?;
-            owed.settle(drafts);
+            commit(tx, owed, drafts, None).await?;
             return Ok(Placement::Skipped);
         };
         let owner = RunOwner::Draft(turn.draft_id.clone());
@@ -172,11 +105,7 @@ impl RunService {
             .take_thread(&mut tx, drafts, runner, &turn, &mut owed)
             .await?;
         let Some((won, reassignment)) = taken.won else {
-            tx.commit().await.map_err(query(CONTEXT))?;
-            owed.settle(drafts);
-            if let Some(expired) = &taken.expired {
-                runner_runs::expired(expired);
-            }
+            commit(tx, owed, drafts, taken.expired.as_ref()).await?;
             return Ok(Placement::Skipped);
         };
         let issue = Issue {
@@ -194,246 +123,48 @@ impl RunService {
             return Ok(Placement::Busy);
         };
         drafts.start_setup_turn(&mut tx, &turn).await?;
-        tx.commit().await.map_err(query(CONTEXT))?;
-        owed.settle(drafts);
-        if let Some(expired) = &taken.expired {
-            runner_runs::expired(expired);
-        }
+        commit(tx, owed, drafts, taken.expired.as_ref()).await?;
         runner_runs::acquired(runner);
         log_assigned(&turn.draft_id, &run_id, runner, won.fencing_token);
-        let tool = setup_tool(turn.candidate.is_some());
-        Ok(Placement::Issued(Box::new(DraftAssignment {
-            run_id,
-            fence: won.fencing_token,
-            expires_at: won.run_expires_at,
-            turn,
-            api_key: route.api_key,
-            inference_host: route.inference_host,
-            tool,
-        })))
-    }
-
-    /// Wins the draft's thread, bumping its fence, and expires the lapsed run
-    /// that ran the turn before: the thread and whether this assignment reassigns the
-    /// turn, and whose run it expired. No thread when a live runner still holds it,
-    /// or when the turn's runs lapsed [`af_core::limits::EVENT_RUNS_MAX`] times,
-    /// which fails it and frees the thread rather than reassigning it forever.
-    async fn take_thread(
-        &self,
-        tx: &mut sqlx::PgConnection,
-        drafts: &afd_setup::Drafts,
-        runner: &Uuid7,
-        turn: &SetupTurn,
-        owed: &mut SetupOwed,
-    ) -> Result<Taken> {
-        let owner = RunOwner::Draft(turn.draft_id.clone());
-        let won: Option<Won> = sqlx::query_as(sql::shared::ASSIGN_THREAD)
-            .bind(owner.fleet_id())
-            .bind(owner.draft_id())
-            .bind(runner)
-            .bind(self.runs.clock().ttl())
-            .bind(self.runs.clock().offline_after())
-            .bind(sql::RUNNER_STATUS_ACTIVE)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-        let Some(won) = won else {
-            return Ok(Taken {
-                won: None,
-                expired: None,
-            });
-        };
-        let prior: Prior = sqlx::query_as(sql::shared::EXPIRE_PRIOR_RUN)
-            .bind(owner.fleet_id())
-            .bind(owner.draft_id())
-            .bind(&turn.message_id)
-            .bind(sql::RUN_STATUS_ACTIVE)
-            .bind(sql::RUN_STATUS_EXPIRED)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-        let expired = prior.expired_runner_id;
-        if prior.earlier_runs < i64::from(af_core::limits::EVENT_RUNS_MAX) {
-            let reassignment = prior.predecessor_run_id.is_some();
-            return Ok(Taken {
-                won: Some((won, reassignment)),
-                expired,
-            });
-        }
-        // Every earlier run lapsed unreported: the turn is lost, not retried forever.
-        drafts
-            .fail_setup_turn(&mut *tx, turn, FailureReason::ProviderUsageUnknown, owed)
-            .await?;
-        sqlx::query(sql::shared::RELEASE_RUNLESS_THREAD)
-            .bind(owner.thread_id())
-            .bind(won.fencing_token)
-            .execute(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-        Ok(Taken { won: None, expired })
-    }
-
-    /// Writes the draft's run under its assignment's fence with
-    /// [`sql::shared::INSERT_RUN`]: the run's id, or `None` when the host
-    /// filled or the fence or the placement choice moved.
-    async fn issue_draft(
-        &self,
-        tx: &mut sqlx::PgConnection,
-        issue: Issue<'_>,
-        now: Timestamp,
-    ) -> Result<Option<Uuid7>> {
-        let run_id = self.runs.entropy().uuid7(now)?;
-        let audit_id = self.runs.entropy().uuid7(now)?;
-        let kind = if issue.reassignment {
-            "reassigned"
-        } else {
-            "fresh"
-        };
-        let metadata = std::collections::BTreeMap::from([
-            (afd_runner::sql::meta::RUN_ID, run_id.as_str()),
-            (
-                afd_runner::sql::meta::TURN_ID,
-                issue.turn.message_id.as_str(),
-            ),
-            (afd_runner::sql::meta::KIND, kind),
-        ]);
-        let posture = if issue.turn.model.platform_managed {
-            Posture::Platform
-        } else {
-            Posture::SelfManaged
-        };
-        let created: Option<jiff_sqlx::Timestamp> = sqlx::query_scalar(sql::shared::INSERT_RUN)
-            .bind(&run_id)
-            .bind(issue.runner)
-            .bind(issue.owner.fleet_id())
-            .bind(issue.owner.draft_id())
-            .bind(&issue.turn.workspace_id)
-            .bind(&issue.turn.tenant_id)
-            .bind(&issue.turn.message_id)
-            .bind(issue.turn.message_created_at.to_sqlx())
-            .bind(posture.as_str())
-            .bind(issue.turn.model.provider.as_ref())
-            .bind(issue.turn.model.model.as_ref())
-            .bind(issue.fence)
-            .bind(sql::RUN_STATUS_ACTIVE)
-            .bind(&audit_id)
-            .bind(afd_runner::sql::event_type::RUN_ACQUIRED)
-            .bind(sqlx::types::Json(metadata))
-            .bind(None::<sqlx::types::Json<serde_json::Value>>)
-            .bind(issue.held_until.to_sqlx())
-            .bind(issue.run_version)
-            .bind(issue.owner.kind().as_str())
-            .bind(i64::try_from(issue.max_runtime.as_secs()).unwrap_or(i64::MAX))
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-        Ok(created.map(|_created| run_id))
+        let (fence, expires_at) = (won.fencing_token, won.run_expires_at);
+        let assignment = DraftAssignment::new(run_id, fence, expires_at, turn, route);
+        Ok(Placement::Issued(Box::new(assignment)))
     }
 }
 
-/// What [`RunService::issue_draft`] writes, by name.
-struct Issue<'a> {
-    runner: &'a Uuid7,
-    owner: &'a RunOwner,
-    turn: &'a SetupTurn,
-    fence: i64,
-    held_until: Timestamp,
-    run_version: i64,
-    reassignment: bool,
-    max_runtime: std::time::Duration,
+/// Why `host` takes no draft from `runner` under `ticket`, if it does not:
+/// busy when it is full or the choice moved, skipped when it serves another
+/// tenant.
+fn refusal(host: &Held, ticket: Ticket, runner: &Uuid7) -> Option<Placement> {
+    if !host.can_assign() || !ticket.permits_revision(host.run_version(), RunKind::Setup) {
+        return Some(Placement::Busy);
+    }
+    // Before any write: a foreign runner leaves no run and no failure behind.
+    if !host.serves() {
+        afd_runner::capacity::refused_placement(
+            runner,
+            afd_runner::capacity::PlacementRefusal::ForeignTenant,
+            RunKind::Setup.as_str(),
+        );
+        return Some(Placement::Skipped);
+    }
+    None
 }
 
-impl DraftAssignment {
-    /// What the session keeps beside the assignment.
-    #[must_use]
-    pub fn assigned(&self) -> AssignedRun {
-        AssignedRun {
-            run_id: self.run_id.clone(),
-            expires_at: self.expires_at,
-            target: None,
-            reported: None,
-            draft: Some(DraftTarget {
-                draft_id: self.turn.draft_id.clone(),
-            }),
-        }
+/// Commits the assignment's transaction, then reports what it owes and counts
+/// the lapsed holder whose run it `expired`.
+async fn commit(
+    tx: sqlx::Transaction<'_, sqlx::Postgres>,
+    owed: SetupOwed,
+    drafts: &afd_setup::Drafts,
+    expired: Option<&Uuid7>,
+) -> Result<()> {
+    tx.commit().await.map_err(query(CONTEXT))?;
+    owed.settle(drafts);
+    if let Some(expired) = expired {
+        runner_runs::expired(expired);
     }
-
-    /// The assignment: a [`RunPayload`] the draft owns, borrowing the key this
-    /// value holds.
-    #[must_use]
-    pub fn payload(&self) -> RunPayload<'_> {
-        let turn = &self.turn;
-        let model = &turn.model;
-        let candidate = turn.candidate.as_ref().map(|head| SetupCandidate {
-            id: Cow::Owned(head.id.to_string()),
-            revision: head.revision,
-            definition: head.definition.clone(),
-        });
-        let instructions = self
-            .tool
-            .get("description")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        let context_tokens = u32::try_from(model.context_window_tokens).unwrap_or_default();
-        let request = serde_json::json!({ (af_wire::turn::MESSAGE): turn.user_text });
-        let (history, history_sequences) = history(turn);
-        RunPayload {
-            run_id: Cow::Owned(self.run_id.to_string()),
-            fencing_token: u64::try_from(self.fence).unwrap_or_default(),
-            setup_revision_id: None,
-            turn_resume: None,
-            run_expires_at: self.expires_at,
-            event: TurnEnvelope {
-                turn_id: Cow::Owned(turn.message_id.to_string()),
-                // A draft's run names its draft where a fleet's names its fleet.
-                fleet_id: Cow::Owned(turn.draft_id.to_string()),
-                workspace_id: Cow::Owned(turn.workspace_id.to_string()),
-                actor: Cow::Owned(turn.user_id.to_string()),
-                event_type: TurnKind::Chat,
-                request_json: Cow::Owned(request.to_string()),
-                created_at: turn.message_created_at,
-            },
-            policy: ExecutionPolicy {
-                network_policy: NetworkPolicy::default(),
-                tools: vec![Cow::Borrowed(PROPOSE_SETUP)],
-                secrets_map: None,
-                mintable: Vec::new(),
-                provider: Cow::Borrowed(&model.provider),
-                inference: model.inference.clone(),
-                model_context_tokens: context_tokens,
-                api_key: Cow::Borrowed(self.api_key.expose()),
-                inference_host: Cow::Borrowed(&self.inference_host),
-                base_url: model.base_url.as_deref().map(Cow::Borrowed),
-                repository_binding: None,
-                http_origin_policies: Vec::new(),
-                context: afd_gate::policy::context::resolve(
-                    None,
-                    afd_gate::policy::context::Overlay {
-                        cap_tokens: context_tokens,
-                        model: &model.model,
-                    },
-                ),
-            },
-            instructions: Cow::Borrowed(instructions),
-            history,
-            resume_hold: false,
-            decision: None,
-            task: None,
-            durable_tasks: false,
-            memory: None,
-            inputs_waiting: false,
-            owner: Owner::Draft {
-                draft_id: Cow::Owned(turn.draft_id.to_string()),
-                setup: Box::new(SetupWork {
-                    sequence: u64::try_from(turn.sequence).unwrap_or_default(),
-                    candidate,
-                    save_requested: turn.save_requested,
-                    tool: self.tool.clone(),
-                    history_sequences,
-                }),
-            },
-        }
-    }
+    Ok(())
 }
 
 /// Logs a committed draft run's assignment, once, at `info`.
@@ -446,40 +177,4 @@ fn log_assigned(draft: &Uuid7, run: &Uuid7, runner: &Uuid7, fencing_token: i64) 
         runner_id,
         fencing_token
     );
-}
-
-/// The draft's earlier turns, oldest first, and each one's sequence, within a
-/// fleet chat's caps: each text cut at [`TURN_TEXT_BYTES_MAX`] on a character
-/// boundary, and the oldest dropped until the rest fit [`HISTORY_BYTES_MAX`].
-fn history(turn: &SetupTurn) -> (Vec<Turn<'_>>, Vec<u64>) {
-    let cut = |text: &str| -> String {
-        text.split_at(text.floor_char_boundary(TURN_TEXT_BYTES_MAX))
-            .0
-            .to_owned()
-    };
-    let turns: Vec<(Turn<'_>, u64)> = turn
-        .history
-        .iter()
-        .map(|earlier| {
-            let text = Turn {
-                message: Cow::Owned(cut(&earlier.message)),
-                answer: Cow::Owned(cut(&earlier.answer)),
-            };
-            (text, u64::try_from(earlier.sequence).unwrap_or_default())
-        })
-        .collect();
-    let mut total: usize = turns
-        .iter()
-        .map(|(t, _)| t.message.len() + t.answer.len())
-        .sum();
-    turns
-        .into_iter()
-        .skip_while(|(t, _)| {
-            let over = total > HISTORY_BYTES_MAX;
-            if over {
-                total -= t.message.len() + t.answer.len();
-            }
-            over
-        })
-        .unzip()
 }

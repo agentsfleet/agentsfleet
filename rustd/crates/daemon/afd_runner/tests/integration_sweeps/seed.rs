@@ -1,6 +1,5 @@
 //! The rows [`Fixture::seed`] writes: the stale, draining, cordoned and
-//! unknown-status runners, the fleets and runs they hold, and the aged event
-//! retention retires.
+//! unknown-status runners, and the fleets and runs they hold.
 //!
 //! Split from [`super`] at the line between writing the fixture and reading it
 //! back; the test and its assertions stay there.
@@ -9,9 +8,7 @@ use std::time::Duration;
 
 use af_core::clock;
 use afd_db::test_util::{FleetSeed, RunnerSeed, TenantSeed, WorkspaceSeed};
-use afd_state::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE, RUN_STATUS_REPORTED};
-use jiff::Timestamp;
-use jiff_sqlx::ToSqlx as _;
+use afd_state::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE};
 
 use super::{Fixture, OLD};
 use crate::rows::{self, POLICY, RunRow};
@@ -23,8 +20,8 @@ const THREAD_HELD_FOR: Duration = Duration::from_mins(1);
 const UNMODELLED_STATUS: &str = "future_state";
 
 impl Fixture {
-    /// The tenant, its workspace, four runners in four states, three fleets,
-    /// their runs, and one per-work event old enough to retire.
+    /// The tenant, its workspace, four runners in four states, three fleets
+    /// and their runs.
     pub(super) async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         TenantSeed::new(&self.tenant)
@@ -39,7 +36,7 @@ impl Fixture {
             .expect("the workspace seeds");
         self.seed_runners(&mut connection).await;
         self.seed_fleets(&mut connection).await;
-        self.seed_events_and_runs(&mut connection).await;
+        self.seed_runs(&mut connection).await;
     }
 
     /// The stale runner last beat [`OLD`]; the other three beat just now, so
@@ -76,35 +73,14 @@ impl Fixture {
         }
     }
 
-    async fn seed_events_and_runs(&self, connection: &mut sqlx::PgConnection) {
+    async fn seed_runs(&self, connection: &mut sqlx::PgConnection) {
         let runs = [
-            (
-                &self.stale,
-                &self.stale_fleet,
-                &self.stale_run,
-                RUN_STATUS_ACTIVE,
-            ),
-            (
-                &self.cordoned,
-                &self.cordoned_fleet,
-                &self.cordoned_run,
-                RUN_STATUS_ACTIVE,
-            ),
-            (
-                &self.unknown,
-                &self.unknown_fleet,
-                &self.unknown_run,
-                RUN_STATUS_ACTIVE,
-            ),
-            (
-                &self.stale,
-                &self.stale_fleet,
-                &self.reported_run,
-                RUN_STATUS_REPORTED,
-            ),
+            (&self.stale, &self.stale_fleet, &self.stale_run),
+            (&self.cordoned, &self.cordoned_fleet, &self.cordoned_run),
+            (&self.unknown, &self.unknown_fleet, &self.unknown_run),
         ];
         let held_until = clock::after(clock::now(), THREAD_HELD_FOR);
-        for (runner, fleet, run, status) in runs {
+        for (runner, fleet, run) in runs {
             rows::payload(
                 connection,
                 RunRow {
@@ -113,29 +89,13 @@ impl Fixture {
                     fleet,
                     workspace: &self.workspace,
                     tenant: &self.tenant,
-                    status,
+                    status: RUN_STATUS_ACTIVE,
                     expires_at: OLD,
                     stamped_at: Some(OLD),
                 },
             )
             .await;
-            if status == RUN_STATUS_ACTIVE {
-                rows::thread(connection, (fleet, runner), held_until, None, Some(OLD)).await;
-            }
+            rows::thread(connection, (fleet, runner), held_until, None, Some(OLD)).await;
         }
-        self.seed_aged_event(connection, OLD).await;
-    }
-
-    async fn seed_aged_event(&self, connection: &mut sqlx::PgConnection, at: Timestamp) {
-        sqlx::query(
-            "INSERT INTO runner.history (id, runner_id, event_type, metadata, created_at) \
-             VALUES ($1, $2, 'run_acquired', '{}', $3::timestamptz)",
-        )
-        .bind(&self.old_event)
-        .bind(&self.stale)
-        .bind(at.to_sqlx())
-        .execute(connection)
-        .await
-        .expect("the aged per-work event seeds");
     }
 }
