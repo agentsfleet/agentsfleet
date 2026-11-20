@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{RUNS_MAX, StreamKind};
 use crate::activity::ActivityRequest;
+use crate::context::{ContextLoadRequest, ContextSaveRequest};
 use crate::fold::FoldRequest;
 use crate::report::{RenewRequest, ReportRequest};
 use crate::run::AcceptedKinds;
@@ -205,6 +206,32 @@ pub enum Up<
         #[garde(dive)]
         request: Cow<'a, crate::run::TurnCheckpointCommand>,
     },
+    /// A setup run reads its draft's compacted context, under its fence.
+    ContextLoad {
+        /// Echoed by the loaded-context answer.
+        #[garde(skip)]
+        request_id: NonZeroU64,
+        /// The setup run; the daemon derives the draft from it.
+        #[serde(borrow)]
+        #[garde(length(bytes, min = 36, max = 36))]
+        run_id: Cow<'a, str>,
+        /// The fence the run holds.
+        #[garde(dive)]
+        request: ContextLoadRequest,
+    },
+    /// A setup run saves its draft's compacted context, under its fence.
+    ContextSave {
+        /// Echoed by the saved-context answer.
+        #[garde(skip)]
+        request_id: NonZeroU64,
+        /// The setup run; the daemon derives the draft from it.
+        #[serde(borrow)]
+        #[garde(length(bytes, min = 36, max = 36))]
+        run_id: Cow<'a, str>,
+        /// The fence, the version it expects, and the checkpoint.
+        #[garde(dive)]
+        request: Cow<'a, ContextSaveRequest>,
+    },
 }
 
 impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
@@ -216,9 +243,11 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
                 StreamKind::Reports
             }
             Self::Progress { .. } => StreamKind::Progress,
-            Self::Folds { .. } | Self::AuthoringModel { .. } | Self::AuthoringActivity { .. } => {
-                StreamKind::Work
-            }
+            Self::Folds { .. }
+            | Self::ContextLoad { .. }
+            | Self::ContextSave { .. }
+            | Self::AuthoringModel { .. }
+            | Self::AuthoringActivity { .. } => StreamKind::Work,
             Self::Hello { .. }
             | Self::Confirm { .. }
             | Self::Ready { .. }
@@ -244,6 +273,8 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
             | Self::AuthoringRenew { request_id, .. }
             | Self::AuthoringReport { request_id, .. }
             | Self::TurnCheckpoint { request_id, .. }
+            | Self::ContextLoad { request_id, .. }
+            | Self::ContextSave { request_id, .. }
             | Self::Folds { request_id, .. } => Some(*request_id),
             Self::Ready { .. } | Self::Progress { .. } => None,
         }

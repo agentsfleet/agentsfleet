@@ -86,6 +86,18 @@ pub(super) enum Other<
         run_id: Cow<'a, str>,
         request: Cow<'a, crate::run::TurnCheckpointCommand>,
     },
+    ContextLoad {
+        request_id: NonZeroU64,
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        request: crate::context::ContextLoadRequest,
+    },
+    ContextSave {
+        request_id: NonZeroU64,
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        request: Cow<'a, crate::context::ContextSaveRequest>,
+    },
 }
 
 // Both enums carry the same fields; forwarding stays exhaustive as variants change.
@@ -148,6 +160,16 @@ impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O,
                 request
             },
             TurnCheckpoint {
+                request_id,
+                run_id,
+                request
+            },
+            ContextLoad {
+                request_id,
+                run_id,
+                request
+            },
+            ContextSave {
                 request_id,
                 run_id,
                 request

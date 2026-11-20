@@ -6,7 +6,8 @@
 //! `history` the draft's earlier turns, and its policy offers one tool,
 //! `propose_setup`, with no sandbox. The runner applies proposals in memory
 //! and reports the final setup once; the daemon re-checks it in the report
-//! transaction and writes at most one candidate.
+//! transaction and writes at most one candidate. The draft's compacted
+//! context rides the fenced context verb (`crate::context`), not the payload.
 
 use std::borrow::Cow;
 
@@ -70,6 +71,13 @@ pub struct SetupWork<'a> {
     /// The `propose_setup` tool's definition: its description and parameters.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub tool: serde_json::Value,
+    /// Each [`super::RunPayload::history`] turn's position in the draft's
+    /// conversation, oldest first and in step with it: the sequence a saved
+    /// context's watermark counts in. A run skips the turns a loaded context
+    /// covers, and compacts only turns it can name. Empty from a daemon that
+    /// sends none: the run then neither skips nor compacts a turn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history_sequences: Vec<u64>,
 }
 
 /// The setup a turn proposed, as one final Definition on one base.

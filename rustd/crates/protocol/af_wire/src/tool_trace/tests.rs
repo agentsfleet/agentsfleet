@@ -29,6 +29,7 @@ fn call(call_id: &str) -> ToolTraceCall<'static> {
         output_line_count: Some(214),
         exit_code: None,
         duration_ms: 12,
+        changes: Vec::new(),
     }
 }
 

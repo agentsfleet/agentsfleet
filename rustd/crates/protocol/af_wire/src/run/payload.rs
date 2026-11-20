@@ -89,7 +89,7 @@ pub struct RunPayload<'a> {
     /// Whose work this is. Absent on a fleet's run, whose owner is the fleet
     /// `turn.fleet_id` names. A draft's run names the draft here, and its
     /// `turn` is the draft's message: `turn_id` the message, `fleet_id` the
-    /// draft. Assigned only to a protocol v3 runner.
+    /// draft. Assigned only to a protocol v4 runner.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<super::Owner<'a>>,
     /// A draft's setup turn: present exactly when `owner` names a draft.

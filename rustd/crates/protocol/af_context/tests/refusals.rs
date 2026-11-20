@@ -182,3 +182,34 @@ fn should_use_the_physical_window_when_the_operating_allowance_is_zero() {
     assert!(!window.needs_compaction(8_999));
     assert!(window.needs_compaction(9_000));
 }
+
+// Value: a superseded setup run's context save answers the run plane's stale-fence
+// code, the one a superseded report answers, so the runner reads both refusals alike.
+#[test]
+fn a_stale_fence_refusal_answers_the_run_planes_code() {
+    let error = af_context::Error::stale_fence();
+    assert_eq!(error.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
+    assert!(error.is_stale_fence());
+    assert!(!error.is_stale(), "a stale fence is not a stale version");
+}
+
+// Value: a save that lost the version race keeps the internal code, so a stale
+// version is never read as a superseded run.
+#[test]
+fn a_stale_version_refusal_is_not_a_stale_fence() {
+    let error = af_context::Error::stale();
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
+    assert!(!error.is_stale_fence());
+}
+
+// Value: the fence a save names reaches the statement as the stored bigint; one
+// past it names no thread, so it is refused before any write.
+#[cfg(feature = "postgres")]
+#[test]
+fn a_fence_no_thread_can_hold_is_refused_as_stale() {
+    use af_context::repository::stored_fence;
+    assert_eq!(stored_fence(2).unwrap(), 2);
+    let past = stored_fence(u64::MAX).unwrap_err();
+    assert!(past.is_stale_fence());
+    assert_eq!(past.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
+}

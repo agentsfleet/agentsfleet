@@ -8,10 +8,13 @@ pub use up::{Renewal, Up};
 
 /// The newest revision, negotiated before the server accepts a runner session.
 ///
-/// It adds draft-owned runs on the common run path: a v3 runner may be
-/// assigned a [`crate::run::RunPayload`] whose `owner` names a setup draft.
-/// The daemon accepts every [`Revision`] and answers the one the runner sent.
-pub const VERSION: &str = "agentsfleet.runner.v3";
+/// It runs setup on the common run path: a v4 runner may be assigned a
+/// [`crate::run::RunPayload`] whose `owner` names a setup draft, and it reads
+/// and saves that draft's compacted context with [`Up::ContextLoad`] and
+/// [`Up::ContextSave`]. The daemon accepts every [`Revision`] and answers the
+/// one the runner sent. No runner shipped v3, the draft run without the
+/// context verb, so v3 is not a revision this build speaks.
+pub const VERSION: &str = "agentsfleet.runner.v4";
 /// The revision before setup rode the common run path: its runner is never
 /// assigned a draft-owned run, and keeps the separate authoring run.
 pub const VERSION_V2: &str = "agentsfleet.runner.v2";
@@ -22,7 +25,7 @@ pub enum Revision {
     /// [`VERSION_V2`].
     V2,
     /// [`VERSION`].
-    V3,
+    V4,
 }
 
 impl Revision {
@@ -31,7 +34,7 @@ impl Revision {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::V2 => VERSION_V2,
-            Self::V3 => VERSION,
+            Self::V4 => VERSION,
         }
     }
 
@@ -40,7 +43,7 @@ impl Revision {
     pub fn parse(raw: &str) -> Option<Self> {
         match raw {
             VERSION_V2 => Some(Self::V2),
-            VERSION => Some(Self::V3),
+            VERSION => Some(Self::V4),
             _ => None,
         }
     }
@@ -48,7 +51,7 @@ impl Revision {
     /// Whether a runner on this revision may be assigned a draft-owned run.
     #[must_use]
     pub const fn assigns_draft_runs(self) -> bool {
-        matches!(self, Self::V3)
+        matches!(self, Self::V4)
     }
 }
 /// Application version; independent of the negotiated HTTP version.

@@ -175,6 +175,28 @@ pub enum Down<
         #[serde(borrow)]
         answer: Answer<'a, FoldResponse<'a>>,
     },
+    /// A setup run's draft context, or why the run may not read it.
+    ContextLoaded {
+        /// Identifier of the context-load request.
+        request_id: NonZeroU64,
+        /// Run whose read this answers.
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        /// The stored context, or a classified refusal.
+        #[serde(borrow)]
+        answer: Answer<'a, crate::context::ContextLoadResponse>,
+    },
+    /// A setup run's context save, stored or refused.
+    ContextSaved {
+        /// Identifier of the context-save request.
+        request_id: NonZeroU64,
+        /// Run whose save this answers.
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        /// The stored version, or a classified refusal.
+        #[serde(borrow)]
+        answer: Answer<'a, crate::context::ContextSaveResponse>,
+    },
     /// Exact ordinary checkpoint command result; all correlation fields are echoed.
     TurnCheckpoint {
         /// Transport request identity.
@@ -217,6 +239,8 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
             | Self::TurnCheckpoint { .. } => StreamKind::Reports,
             Self::Run { .. }
             | Self::Folded { .. }
+            | Self::ContextLoaded { .. }
+            | Self::ContextSaved { .. }
             | Self::AuthoringModelResult { .. }
             | Self::AuthoringActivityAck { .. } => StreamKind::Work,
             Self::Welcome { .. }
@@ -246,6 +270,8 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
             | Self::AuthoringReportAck { request_id, .. }
             | Self::ReportAck { request_id, .. }
             | Self::TurnCheckpoint { request_id, .. }
+            | Self::ContextLoaded { request_id, .. }
+            | Self::ContextSaved { request_id, .. }
             | Self::Folded { request_id, .. } => Some(*request_id),
             Self::Run { .. } | Self::Policy { .. } | Self::Cancel { .. } | Self::GoAway { .. } => {
                 None

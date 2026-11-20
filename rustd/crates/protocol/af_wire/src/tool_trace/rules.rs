@@ -10,7 +10,7 @@ use crate::activity::CALL_ID_MAX_BYTES;
 
 use super::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, TRACE_MAX_BYTES, ToolTrace, ToolTraceCall, TraceRejection,
-    edge_fits, encoded_len, fields_free_of_nul, free_of_nul,
+    changes_free_of_nul, edge_fits, encoded_len, fields_free_of_nul, free_of_nul,
 };
 
 /// The smallest call number: calls count from 1.
@@ -39,7 +39,8 @@ pub(super) fn call_free_of_nul<C: ?Sized>(call: &ToolTraceCall<'_>, _context: &C
     let clean = free_of_nul(&call.call_id)
         && free_of_nul(&call.name)
         && edges.into_iter().flatten().all(free_of_nul)
-        && fields_free_of_nul(&call.arguments);
+        && fields_free_of_nul(&call.arguments)
+        && changes_free_of_nul(&call.changes);
     refuse_unless(clean, TraceRejection::HoldsNul)
 }
 

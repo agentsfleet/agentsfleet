@@ -14,13 +14,24 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
-use crate::tool_trace::{encoded_len, fields_free_of_nul, free_of_nul};
+use crate::tool_trace::{
+    CHANGES_MAX, FileChange, changes_free_of_nul, encoded_len, fields_free_of_nul, free_of_nul,
+};
+
+mod item;
+pub use self::item::{ItemKind, ItemStatus};
 
 /// The smallest call number: calls count from 1.
 const CALL_NUMBER_MIN: u64 = 1;
 
 /// The largest call number the stored column, a `bigint`, can hold.
 const CALL_NUMBER_MAX: u64 = i64::MAX.unsigned_abs();
+
+/// The longest tool name a record may carry.
+pub const ITEM_TOOL_MAX_BYTES: usize = 256;
+
+/// A turn id's length in bytes: a version 7 UUID in its canonical text form.
+const TURN_ID_BYTES: usize = 36;
 
 /// The path garde reports the record-wide NUL rule under: the record itself.
 const PATH_RECORD: &str = "";
@@ -97,11 +108,39 @@ pub struct ToolCallRecord<'a> {
     /// Whether the runner cut the output to fit.
     #[garde(skip)]
     pub truncated: bool,
+    /// The turn that was newest when the call's step began: the run's own,
+    /// or one a person sent while it worked and its conversation read. A turn
+    /// the run does not serve is refused.
+    #[serde(borrow)]
+    #[garde(
+        length(bytes, min = TURN_ID_BYTES, max = TURN_ID_BYTES),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    )]
+    pub turn_id: Cow<'a, str>,
+    /// What kind of thing the call was.
+    #[garde(skip)]
+    pub kind: ItemKind,
+    /// The tool it called, 1 to 256 bytes.
+    #[serde(borrow)]
+    #[garde(length(bytes, min = 1, max = ITEM_TOOL_MAX_BYTES))]
+    pub tool: Cow<'a, str>,
+    /// How it ended.
+    #[garde(skip)]
+    pub status: ItemStatus,
+    /// For an edit: each file it changed and the lines it added and removed,
+    /// at most 64. Absent for any other call.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(length(max = CHANGES_MAX), dive)]
+    pub changes: Vec<FileChange<'a>>,
 }
 
 /// Every string a record carries, arguments included, is free of NUL.
 fn record_free_of_nul<C: ?Sized>(record: &ToolCallRecord<'_>, _context: &C) -> garde::Result {
-    if free_of_nul(&record.output) && fields_free_of_nul(&record.arguments) {
+    let clean = free_of_nul(&record.output)
+        && free_of_nul(&record.tool)
+        && fields_free_of_nul(&record.arguments)
+        && changes_free_of_nul(&record.changes);
+    if clean {
         Ok(())
     } else {
         Err(garde::Error::new(HOLDS_NUL))
@@ -176,6 +215,9 @@ pub enum DetailRejection {
     TooLarge,
     /// Keeping it would carry the event past [`DETAIL_EVENT_MAX_BYTES`].
     OverBudget,
+    /// It names a turn the run does not serve: neither the run's own nor one
+    /// its conversation read.
+    UnservedTurn,
 }
 
 impl DetailRejection {
@@ -186,6 +228,7 @@ impl DetailRejection {
             Self::Malformed => "malformed",
             Self::TooLarge => "too_large",
             Self::OverBudget => "over_budget",
+            Self::UnservedTurn => "unserved_turn",
         }
     }
 }
@@ -233,6 +276,10 @@ pub struct ToolCallDetail<'a> {
     pub output_line_count: u64,
     /// Whether the output was cut to fit 65536 bytes.
     pub truncated: bool,
+    /// For an edit: each file it changed and the lines it added and
+    /// removed. Absent for any other call.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<FileChange<'a>>,
 }
 
 #[cfg(test)]

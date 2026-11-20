@@ -134,3 +134,87 @@ fn unknown_stream_kinds_are_never_substituted() {
     }
     assert_eq!(StreamKind::parse("unknown"), None);
 }
+
+#[test]
+fn the_runner_protocol_is_v4_and_no_runner_speaks_v3() {
+    use af_wire::protocol::{Revision, VERSION, VERSION_V2};
+    assert_eq!(VERSION, "agentsfleet.runner.v4");
+    assert_eq!(Revision::parse(VERSION), Some(Revision::V4));
+    assert_eq!(Revision::parse(VERSION_V2), Some(Revision::V2));
+    assert_eq!(Revision::parse("agentsfleet.runner.v3"), None);
+    assert!(Revision::V4.assigns_draft_runs());
+    assert!(!Revision::V2.assigns_draft_runs());
+}
+
+#[test]
+fn the_context_verb_rides_the_work_stream_and_answers_its_request() -> serde_json::Result<()> {
+    let load_text = json!({"type": "context_load", "request_id": 3,
+        "run_id": RUN, "request": {"fencing_token": 2}})
+    .to_string();
+    let load: Up<'_> = serde_json::from_str(&load_text)?;
+    let save_text = json!({"type": "context_save", "request_id": 4,
+        "run_id": RUN, "request": {"fencing_token": 2, "resource_version": 1,
+            "checkpoint": {"generation": 2}}})
+    .to_string();
+    let save: Up<'_> = serde_json::from_str(&save_text)?;
+    for (up, id) in [(&load, 3), (&save, 4)] {
+        up.validate().map_err(serde_json::Error::custom)?;
+        assert_eq!(up.stream_kind(), StreamKind::Work);
+        assert_eq!(up.request_id().map(std::num::NonZeroU64::get), Some(id));
+    }
+    let loaded_text = json!({"type": "context_loaded",
+        "request_id": 3, "run_id": RUN, "answer": {"status": "ok", "response": {
+            "scope": "draft:x", "resource_version": 0}}})
+    .to_string();
+    let loaded: Down<'_> = serde_json::from_str(&loaded_text)?;
+    let Down::ContextLoaded {
+        answer: Answer::Ok { response },
+        ..
+    } = &loaded
+    else {
+        return Err(serde_json::Error::custom("the load did not answer"));
+    };
+    assert_eq!(
+        (response.resource_version, response.checkpoint.is_none()),
+        (0, true)
+    );
+    assert_eq!(loaded.stream_kind(), StreamKind::Work);
+    let refused_text = json!({"type": "context_saved",
+        "request_id": 4, "run_id": RUN, "answer": {"status": "refused",
+            "error_code": "UZ-RUN-005", "detail": "superseded", "retryable": false}})
+    .to_string();
+    let refused: Down<'_> = serde_json::from_str(&refused_text)?;
+    assert!(matches!(
+        refused,
+        Down::ContextSaved {
+            answer: Answer::Refused { .. },
+            ..
+        }
+    ));
+    assert_eq!(refused.request_id().map(std::num::NonZeroU64::get), Some(4));
+    Ok(())
+}
+
+#[test]
+fn a_context_fence_no_thread_can_hold_is_refused() -> serde_json::Result<()> {
+    let past = u64::MAX;
+    let load_text = json!({"type": "context_load", "request_id": 1,
+        "run_id": RUN, "request": {"fencing_token": past}})
+    .to_string();
+    let load: Up<'_> = serde_json::from_str(&load_text)?;
+    let report = required(load.validate().err())?;
+    assert!(report.to_string().contains("fencing_token"), "{report}");
+    Ok(())
+}
+
+#[test]
+fn a_context_save_never_prints_its_checkpoint() {
+    let save = af_wire::context::ContextSaveRequest {
+        fencing_token: 2,
+        resource_version: 1,
+        checkpoint: json!({"summary": {"goal": "a private goal"}}),
+    };
+    let printed = format!("{save:?}");
+    assert!(!printed.contains("a private goal"), "{printed}");
+    assert!(printed.contains("resource_version"), "{printed}");
+}

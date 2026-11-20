@@ -110,6 +110,7 @@ fn completed_frame() -> super::ToolCallCompleted<'static> {
         output_tail: None,
         output_line_count: None,
         exit_code: None,
+        changes: Vec::new(),
     }
 }
 
@@ -181,5 +182,43 @@ fn a_completion_edge_past_its_bound_is_unusable() {
     assert!(
         chunk("text", StreamTextKind::Answer).outcome_usable(),
         "a chunk carries no edges"
+    );
+}
+
+#[test]
+fn a_completed_edit_carries_its_changes_and_past_their_bound_is_unusable() {
+    use crate::tool_trace::{CHANGES_MAX, FileChange};
+    let change = |path: String| FileChange {
+        path: Cow::Owned(path),
+        added: 24,
+        removed: 8,
+    };
+    let edited = |changes: Vec<FileChange<'static>>| {
+        ActivityFrame::ToolCallCompleted(super::ToolCallCompleted {
+            name: Cow::Borrowed("apply_patch"),
+            changes,
+            ..completed_frame()
+        })
+    };
+    let one = edited(vec![change("src/a.rs".to_owned())]);
+    assert!(one.outcome_usable());
+    let text = serde_json::to_string(&one).expect("encodes");
+    assert!(
+        text.contains(r#""changes":[{"path":"src/a.rs","added":24,"removed":8}]"#),
+        "{text}"
+    );
+    let back: ActivityFrame<'_> = serde_json::from_str(&text).expect("decodes");
+    assert_eq!(back, one);
+    let many = (0..=CHANGES_MAX)
+        .map(|file| change(format!("f{file}")))
+        .collect();
+    assert!(!edited(many).outcome_usable(), "65 files");
+    assert!(
+        !edited(vec![change(String::new())]).outcome_usable(),
+        "no path"
+    );
+    assert!(
+        !edited(vec![change("a\u{0}.rs".to_owned())]).outcome_usable(),
+        "a NUL in a path"
     );
 }
