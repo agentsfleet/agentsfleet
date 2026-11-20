@@ -18,9 +18,10 @@ use std::time::Duration;
 
 use tracing::Span;
 
+use crate::drive::Mark;
 use crate::step::{Ending, Listen, Step};
 use crate::tool::{ErrorCode, ToolOutput};
-use crate::transcript::Call;
+use crate::transcript::{Call, CallRef};
 
 /// How one model call ended, `F` being the embedder's failure.
 #[derive(Debug)]
@@ -63,6 +64,12 @@ pub enum CallOutcome {
 pub struct CallEnd<'a> {
     /// The call the model made.
     pub call: &'a Call,
+    /// Where the call sits in its conversation.
+    pub at: &'a CallRef,
+    /// The newest input mark when the call's step began: what the embedder
+    /// named the input the model had read when it asked for the call. None
+    /// before any marked input ([`crate::Input`]).
+    pub mark: Option<&'a Mark>,
     /// The span it ran in.
     pub span: &'a Span,
     /// How long it took, from its start to its end.

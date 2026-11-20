@@ -3,8 +3,8 @@
 //!
 //! The parser and the chunk matching are Codex's own, copied at a pinned
 //! commit (`../../../vendor/apply_patch/NOTICE`). What is ours: the path gate on
-//! every hunk, the reads and writes through the environment, and the count the
-//! thread's cell shows. Every hunk is read and computed before the first
+//! every hunk, the reads and writes through the environment, and each file's
+//! lines added and removed (`super::changes`). Every hunk is read and computed before the first
 //! write, each from what the hunks before it leave, as Codex applies them one
 //! after another: a patch with a hunk that does not apply changes nothing.
 //! That check knows a file by the path a hunk spells, and a link inside the
@@ -23,6 +23,7 @@ use bytes::Bytes;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use super::changes::{Change, report};
 use super::{Answer, failed, inside, settled, too_long, whole};
 use crate::tool::ToolOutput;
 use crate::tools::env::{Env, MAX_READ_BYTES};
@@ -41,8 +42,6 @@ const UPDATED: &str = "Success. Updated the following files:";
 const ADDED: char = 'A';
 const MODIFIED: char = 'M';
 const DELETED: char = 'D';
-/// The minus of the thread's `+N −M` cell.
-const MINUS: char = '−';
 /// What a hunk on a path an earlier hunk moved away or deleted reads back
 /// after the path.
 const REMOVED_EARLIER: &str = "was moved or deleted earlier in this patch";
@@ -152,7 +151,7 @@ impl Handler for ApplyPatch {
     const DESCRIPTION: &'static str = "Edit files in the working directory with one patch in \
         apply_patch's grammar: add, update and delete hunks, each path relative to the \
         working directory. Every hunk is checked before any file changes; the answer lists each \
-        file and ends with the lines added and removed.";
+        file and ends with each file's lines added and removed.";
     type Arguments = Patch;
 
     async fn run(&self, arguments: Patch, context: Context<'_>) -> ToolOutput {
@@ -292,8 +291,8 @@ async fn delete(env: &dyn Env, path: &str) -> Result<(), ToolOutput> {
         .map_err(|failure| failed(&failure))
 }
 
-/// What the model reads back: Codex's summary, then the count the thread's
-/// cell shows on its own last line.
+/// What the model reads back: Codex's summary, then each file's lines added
+/// and removed, a file several hunks touched counted once.
 fn summary(planned: &[Planned<'_>]) -> String {
     let mut text = UPDATED.to_owned();
     for mark in [ADDED, MODIFIED, DELETED] {
@@ -308,13 +307,24 @@ fn summary(planned: &[Planned<'_>]) -> String {
             text.push_str(path);
         }
     }
-    let (added, removed) = planned
-        .iter()
-        .map(Planned::counts)
-        .fold((0, 0), |(added, removed), (more, fewer)| {
-            (added + more, removed + fewer)
-        });
-    format!("{text}\n+{added} {MINUS}{removed}")
+    let mut changes: Vec<Change> = Vec::new();
+    for hunk in planned {
+        let (_mark, path) = hunk.listed();
+        let (added, removed) = hunk.counts();
+        let added = u64::try_from(added).unwrap_or(u64::MAX);
+        let removed = u64::try_from(removed).unwrap_or(u64::MAX);
+        if let Some(change) = changes.iter_mut().find(|change| change.path == path) {
+            change.added = change.added.saturating_add(added);
+            change.removed = change.removed.saturating_add(removed);
+        } else {
+            changes.push(Change {
+                path: path.to_owned(),
+                added,
+                removed,
+            });
+        }
+    }
+    report(&text, &changes)
 }
 
 #[cfg(test)]

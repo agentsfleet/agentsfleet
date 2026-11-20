@@ -4,6 +4,7 @@ use std::future::ready;
 
 use tokio_util::sync::CancellationToken;
 
+use crate::drive::Input;
 use crate::model::{Model, Request};
 use crate::observe::Observe;
 use crate::tool::{ToolFuture, ToolSpec};
@@ -33,9 +34,11 @@ pub trait Conversation: Send + Sync {
     fn transcript(&mut self) -> &mut Transcript;
 
     /// The input that arrived since the last call, each piece as the model
-    /// may read it; the loop joins it onto the transcript. Input taken after
-    /// an answer follows that answer, which the loop has remembered first.
-    fn take_input(&mut self) -> impl Future<Output = Vec<String>> + Send;
+    /// may read it and marked with where it came from, when the embedder
+    /// names that; the loop joins it onto the transcript and keeps the newest
+    /// mark. Input taken after an answer follows that answer, which the loop
+    /// has remembered first.
+    fn take_input(&mut self) -> impl Future<Output = Vec<Input>> + Send;
 
     /// What the next model call sends of the transcript, asked once the input
     /// is taken: the whole transcript, or a copy fitted to the model's

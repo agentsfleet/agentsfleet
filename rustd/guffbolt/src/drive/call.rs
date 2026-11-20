@@ -7,18 +7,21 @@ use std::time::Instant;
 
 use tracing::{Instrument as _, Span};
 
+use super::Mark;
 use crate::conversation::Conversation;
 use crate::observe::{CallEnd, Observe};
 use crate::tool::{ToolFuture, ToolOutput};
 use crate::transcript::{Call, CallRef};
 
-/// Runs `call`, which sits at `call_ref`, or answers it unrun when its step
-/// was `cut` at the output limit, its arguments possibly incomplete. `None`
-/// when the loop was stopped before the call started or while it ran.
+/// Runs `call`, which sits at `call_ref` in a step that began with `mark`
+/// the newest input's, or answers it unrun when its step was `cut` at the
+/// output limit, its arguments possibly incomplete. `None` when the loop was
+/// stopped before the call started or while it ran.
 pub(super) async fn run<C: Conversation + ?Sized>(
     conversation: &C,
     call: &Call,
     call_ref: &CallRef,
+    mark: Option<&Mark>,
     cut: bool,
 ) -> Option<ToolOutput> {
     let stop = conversation.stop();
@@ -28,7 +31,7 @@ pub(super) async fn run<C: Conversation + ?Sized>(
     // Opened before its work exists, so the work is always dropped first:
     // a call the work's own drop ends, such as one inside it, ends before
     // this one.
-    let open = Open::start(conversation.observer(), call);
+    let open = Open::start(conversation.observer(), call, call_ref, mark);
     let work: ToolFuture<'_> = if cut {
         Box::pin(ready(ToolOutput::cut(&call.name)))
     } else {
@@ -48,6 +51,8 @@ pub(super) async fn run<C: Conversation + ?Sized>(
 struct Open<'a, O: Observe<F> + ?Sized, F> {
     observer: &'a O,
     call: &'a Call,
+    at: &'a CallRef,
+    mark: Option<&'a Mark>,
     span: Span,
     started: Instant,
     /// What the observer keeps of the call; taken when the call ends, so it
@@ -56,12 +61,14 @@ struct Open<'a, O: Observe<F> + ?Sized, F> {
 }
 
 impl<'a, O: Observe<F> + ?Sized, F> Open<'a, O, F> {
-    /// Tells `observer` that `call` starts.
-    fn start(observer: &'a O, call: &'a Call) -> Self {
+    /// Tells `observer` that `call`, at `at`, starts.
+    fn start(observer: &'a O, call: &'a Call, at: &'a CallRef, mark: Option<&'a Mark>) -> Self {
         let (kept, span) = observer.call_started(call);
         Self {
             observer,
             call,
+            at,
+            mark,
             span,
             started: Instant::now(),
             kept: Some(kept),
@@ -81,6 +88,8 @@ impl<'a, O: Observe<F> + ?Sized, F> Open<'a, O, F> {
         if let Some(kept) = self.kept.take() {
             let end = CallEnd {
                 call: self.call,
+                at: self.at,
+                mark: self.mark,
                 span: &self.span,
                 duration: self.started.elapsed(),
                 output,

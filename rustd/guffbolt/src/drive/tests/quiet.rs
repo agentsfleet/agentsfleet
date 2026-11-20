@@ -18,6 +18,7 @@ use crate::agents::{
     Agents, Caps, ChildFuture, Children, Kind, Narrow, Parent, Pause, Raise, Seat, Spawned, Status,
 };
 use crate::conversation::Conversation;
+use crate::drive::Input;
 use crate::extension::{Budget, Extension, Plain};
 use crate::model::Request;
 use crate::observe::{CallEnd, Observe};
@@ -181,7 +182,7 @@ impl Conversation for Root<'_> {
         &mut self.transcript
     }
 
-    fn take_input(&mut self) -> impl Future<Output = Vec<String>> + Send {
+    fn take_input(&mut self) -> impl Future<Output = Vec<Input>> + Send {
         ready(Vec::new())
     }
 

@@ -1,9 +1,9 @@
-//! The four memory tools, over the run's [`MemoryStore`].
+//! The four memory tools, over the [`MemoryStore`] each is built with.
 //!
-//! Each reads or writes the store the embedder lends and words its answer
-//! from what the store did, so a tool never assumes where memory lives: a
-//! process's own map ([`LocalMemory`]), or a service that keeps it for later
-//! runs and shares it between agents.
+//! Each reads or writes its store and words its answer from what the store
+//! did, so a tool never assumes where memory lives: a process's own map
+//! ([`LocalMemory`]), or a service that keeps it for later runs and shares it
+//! between agents.
 
 mod local;
 
@@ -160,16 +160,17 @@ pub struct Forget {
     key: String,
 }
 
-/// Stores one memory for this run and every later one.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MemoryStoreTool;
+backed! {
+    /// Stores one memory for this run and every later one.
+    MemoryStoreTool over MemoryStore
+}
 
-impl Handler for MemoryStoreTool {
+impl Handler for MemoryStoreTool<'_> {
     const NAME: &'static str = "memory_store";
     const DESCRIPTION: &'static str = "Remember a fact for later runs under a stable key.";
     type Arguments = Store;
 
-    async fn run(&self, arguments: Store, context: Context<'_>) -> ToolOutput {
+    async fn run(&self, arguments: Store, _context: Context<'_>) -> ToolOutput {
         let Store {
             key,
             content,
@@ -183,29 +184,30 @@ impl Handler for MemoryStoreTool {
             category: category.unwrap_or_else(|| CORE_CATEGORY.to_owned()),
             reach: visibility.unwrap_or_default(),
         };
-        match context.memory.store(memory).await {
+        match self.backend.store(memory).await {
             Ok(()) => ToolOutput::succeeded(stored),
             Err(refused) => refused.into(),
         }
     }
 }
 
-/// Finds memories by the words they hold.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MemoryRecall;
+backed! {
+    /// Finds memories by the words they hold.
+    MemoryRecall over MemoryStore
+}
 
-impl Handler for MemoryRecall {
+impl Handler for MemoryRecall<'_> {
     const NAME: &'static str = "memory_recall";
     const DESCRIPTION: &'static str =
         "Read remembered facts whose key or content holds the query, key matches first.";
     type Arguments = Recall;
 
-    async fn run(&self, arguments: Recall, context: Context<'_>) -> ToolOutput {
+    async fn run(&self, arguments: Recall, _context: Context<'_>) -> ToolOutput {
         let limit = arguments
             .limit
             .unwrap_or(RECALL_DEFAULT)
             .min(RECALL_LIMIT_MAX);
-        match context.memory.recall(&arguments.query, limit).await {
+        match self.backend.recall(&arguments.query, limit).await {
             Ok(recalled) => ToolOutput::succeeded(
                 lines(&recalled, |found| {
                     format!("{} ({}): {}", found.key, label(found), found.content)
@@ -217,18 +219,19 @@ impl Handler for MemoryRecall {
     }
 }
 
-/// Lists what is remembered.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MemoryList;
+backed! {
+    /// Lists what is remembered.
+    MemoryList over MemoryStore
+}
 
-impl Handler for MemoryList {
+impl Handler for MemoryList<'_> {
     const NAME: &'static str = "memory_list";
     const DESCRIPTION: &'static str =
         "List the keys and categories of every remembered fact, newest first.";
     type Arguments = List;
 
-    async fn run(&self, arguments: List, context: Context<'_>) -> ToolOutput {
-        match context.memory.list(arguments.category.as_deref()).await {
+    async fn run(&self, arguments: List, _context: Context<'_>) -> ToolOutput {
+        match self.backend.list(arguments.category.as_deref()).await {
             Ok(listed) => ToolOutput::succeeded(
                 lines(&listed, |found| format!("{} ({})", found.key, label(found)))
                     .unwrap_or_else(|| LISTED_NOTHING.to_owned()),
@@ -238,20 +241,21 @@ impl Handler for MemoryList {
     }
 }
 
-/// Forgets one memory for the rest of the run.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MemoryForget;
+backed! {
+    /// Forgets one memory for the rest of the run.
+    MemoryForget over MemoryStore
+}
 
-impl Handler for MemoryForget {
+impl Handler for MemoryForget<'_> {
     const NAME: &'static str = "memory_forget";
     const DESCRIPTION: &'static str = "Forget a remembered fact for the rest of this run. The stored \
                                        copy stays, including one this run already saved; store the \
                                        key again to replace it.";
     type Arguments = Forget;
 
-    async fn run(&self, arguments: Forget, context: Context<'_>) -> ToolOutput {
+    async fn run(&self, arguments: Forget, _context: Context<'_>) -> ToolOutput {
         let key = arguments.key;
-        match context.memory.forget(&key).await {
+        match self.backend.forget(&key).await {
             Ok(Forgot::ForThisRun) => ToolOutput::succeeded(format!("{key} {FORGOT}")),
             Ok(Forgot::Unknown) => ToolOutput::succeeded(format!("{FORGOT_NOTHING} {key}")),
             Err(refused) => refused.into(),

@@ -2,7 +2,9 @@
 //! its observer as each one happens.
 
 mod call;
+mod mark;
 mod state;
+pub use mark::{Input, Mark};
 pub use state::DriveState;
 
 use std::time::Instant;
@@ -17,6 +19,8 @@ use crate::step::{Ending, Step, Waiting};
 use crate::tool::{ErrorCode, ToolOutput};
 use crate::transcript::{CallRef, Message};
 use crate::window::{Fitted, Window};
+
+use self::mark::take_input;
 
 /// What joins two answering steps' text in one [`Ending::Answered`].
 pub const ANSWER_JOIN: &str = "\n\n";
@@ -93,7 +97,8 @@ where
 }
 
 /// Every step, in order, until one ends the loop. `begun` counts the steps
-/// begun, so a loop its budget cuts short still says how far it got.
+/// begun, so a loop its budget cuts short still says how far it got. Each
+/// step notes the newest input mark as it begins, and its calls carry it.
 async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
     conversation: &mut C,
     extension: &mut E,
@@ -103,9 +108,10 @@ async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
     loop {
         *begun += 1;
         let number = *begun;
-        if take_input(conversation).await {
+        if take_input(conversation, state).await {
             taken(number, false);
         }
+        let mark = state.newest.clone();
         if let Some(ending) = extension.before_model(conversation, number, state).await {
             break ending;
         }
@@ -131,7 +137,7 @@ async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
             }
         }
         let at = state.completed_steps().saturating_add(1);
-        let (results, asked) = run_calls(conversation, &step, at).await;
+        let (results, asked) = run_calls(conversation, &step, at, mark.as_ref()).await;
         remember(conversation, step, results);
         state.completed();
         if conversation.stop().is_cancelled() {
@@ -155,18 +161,6 @@ enum Next<F> {
     Again,
     /// The loop ends answered, with every answer in `answers`.
     Done,
-}
-
-/// Joins the input that arrived since the last call onto the transcript;
-/// answers whether any came.
-async fn take_input<C: Conversation + ?Sized>(conversation: &mut C) -> bool {
-    let input = conversation.take_input().await;
-    let took = !input.is_empty();
-    let transcript = conversation.transcript();
-    for text in input {
-        transcript.join(text);
-    }
-    took
 }
 
 /// Makes model call `number`: the embedder's request, sending `window` and
@@ -207,13 +201,15 @@ async fn sample<C: Conversation + ?Sized>(
 /// Runs the calls of `step`, the conversation's step `at`, in order, or
 /// answers each unrun when the step was cut, and answers their results:
 /// fewer than its calls when the loop was stopped partway. Each call is
-/// dispatched with its [`CallRef`]. A call that asked the person a question
+/// dispatched with its [`CallRef`], and ends carrying `mark`, the newest
+/// input's when the step began. A call that asked the person a question
 /// has no result yet: it is the question the run waits on, and a second
 /// question in the same step is answered that one is asked at a time.
 async fn run_calls<C: Conversation + ?Sized>(
     conversation: &mut C,
     step: &Step,
     at: u64,
+    mark: Option<&Mark>,
 ) -> (Vec<Message>, Option<Waiting>) {
     let mut results = Vec::with_capacity(step.calls.len());
     let mut asked: Option<Waiting> = None;
@@ -223,7 +219,8 @@ async fn run_calls<C: Conversation + ?Sized>(
             index,
             call_id: call.id.clone(),
         };
-        let Some(mut output) = call::run(&*conversation, call, &call_ref, step.cut).await else {
+        let Some(mut output) = call::run(&*conversation, call, &call_ref, mark, step.cut).await
+        else {
             break;
         };
         if let Some(question) = output.asks.take() {
@@ -319,7 +316,7 @@ where
     if !said.trim().is_empty() {
         state.answers.push(said);
     }
-    if take_input(conversation).await {
+    if take_input(conversation, state).await {
         taken(number, true);
         return Next::Again;
     }

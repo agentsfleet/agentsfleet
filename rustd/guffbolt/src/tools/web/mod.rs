@@ -1,16 +1,14 @@
 //! The web tools: each drafts a request, sends it through the run's
 //! [`Outbound`](crate::tools::Outbound) hook, and words what came back.
 //!
-//! `http_request`, `web_fetch` and `pushover` differ only in the request they
-//! draft and how they word the answer; admission, the transport, the mask
-//! and the refusal are the hook's, so every tool's request obeys one policy.
+//! `http_request` and `web_fetch` differ only in the request they draft and
+//! how they word the answer; admission, the transport, the mask and the
+//! refusal are the hook's, so every tool's request obeys one policy.
 
 pub mod http_request;
-pub mod pushover;
 pub mod web_fetch;
 
 pub use self::http_request::HttpRequest;
-pub use self::pushover::Pushover;
 pub use self::web_fetch::WebFetch;
 
 use crate::tool::ToolOutput;

@@ -225,6 +225,28 @@ pub trait Tool<Cx>: Describe {
         Cx: 'a;
 }
 
+/// A boxed tool describes itself as the tool it holds, so an embedder can wrap
+/// a set it was built as boxes.
+impl<T: Describe + ?Sized> Describe for Box<T> {
+    fn spec(&self) -> ToolSpec<'_> {
+        (**self).spec()
+    }
+
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+}
+
+/// A boxed tool runs as the tool it holds.
+impl<Cx, T: Tool<Cx> + ?Sized> Tool<Cx> for Box<T> {
+    fn call<'a>(&'a self, arguments: &'a Value, cx: Cx) -> ToolFuture<'a>
+    where
+        Cx: 'a,
+    {
+        (**self).call(arguments, cx)
+    }
+}
+
 /// The tools one loop holds: those offered to the model, in the order it is
 /// told them, and those held unoffered.
 ///
@@ -260,7 +282,7 @@ impl<T: Describe + ?Sized> Tools<T> {
 
     /// The names offered, in order.
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.offered.iter().map(|tool| tool.name())
+        self.offered.iter().map(Describe::name)
     }
 
     /// The specs offered, in order.
@@ -273,6 +295,13 @@ impl<T: Describe + ?Sized> Tools<T> {
     /// once a search loaded it.
     pub fn held_specs(&self) -> impl Iterator<Item = ToolSpec<'_>> {
         self.unoffered.iter().map(|tool| tool.spec())
+    }
+
+    /// The tools offered, in order, for an embedder that lends its calls a
+    /// context of its own and so wraps each tool in its own type.
+    #[must_use]
+    pub fn into_offered(self) -> Vec<Box<T>> {
+        self.offered
     }
 
     /// Runs one call to `name`, lending it `cx`; a name the loop holds no tool
@@ -307,7 +336,7 @@ impl<T: Describe + ?Sized> Tools<T> {
 
 impl<T: Describe + ?Sized> fmt::Debug for Tools<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let unoffered: Vec<&str> = self.unoffered.iter().map(|tool| tool.name()).collect();
+        let unoffered: Vec<&str> = self.unoffered.iter().map(Describe::name).collect();
         f.debug_struct("Tools")
             .field("offered", &self.names().collect::<Vec<_>>())
             .field("unoffered", &unoffered)

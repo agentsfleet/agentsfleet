@@ -68,10 +68,10 @@
 //! [`DriveState::resume`] answers the question later.
 //!
 //! The `tools` feature adds `tools`: commands, files, patches, the web,
-//! memory, MCP servers, questions, deferred tools and the clock, each run
-//! through a seam the embedder fills (`tools::Env`, `tools::Outbound`,
-//! `tools::MemoryStore`), with host-process defaults for a standalone
-//! harness.
+//! memory, schedules, a line to the conversation, a notification, MCP
+//! servers, questions, deferred tools and the clock. Each tool takes the
+//! backend it calls when `tools::ToolsBuilder` builds it, with host-process
+//! defaults for a standalone harness.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
@@ -90,7 +90,7 @@ mod transcript;
 mod window;
 
 pub use self::conversation::Conversation;
-pub use self::drive::{ANSWER_JOIN, DriveState, drive};
+pub use self::drive::{ANSWER_JOIN, DriveState, Input, Mark, drive};
 pub use self::extension::{Answer, Budget, Extension, Plain};
 pub use self::model::{Chunk, End, Hosted, Model, Request, TextKind, Usage};
 pub use self::observe::{CallEnd, CallOutcome, Observe, StepEnd, StepOutcome, Unobserved};

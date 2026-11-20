@@ -1,6 +1,7 @@
 //! What the model reads from the generic tools names no host product: every
-//! built-in tool's name, description and parameters, the answers and
-//! refusals they read back, and the values memory's visibility takes.
+//! tool the builder builds, its name, description and parameters, the
+//! answers and refusals they read back, and the values memory's visibility
+//! takes.
 
 #![expect(
     clippy::expect_used,
@@ -12,13 +13,14 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use crate::tools::env::Env as _;
+use crate::tools::fake::Fake;
 use crate::tools::files::FileRead;
 use crate::tools::mcp::{ListMcpResourceTemplates, ListMcpResources, ReadMcpResource, Server};
 use crate::tools::memory::{Memory, MemoryForget, MemoryStoreTool, Reach};
 use crate::tools::outbound::Allowlist;
 use crate::tools::process::{Git, Shell};
 use crate::tools::search::{Deferred, ToolSearch};
-use crate::tools::{Context, ContextTool, Local, LocalMemory, Typed, code, standard};
+use crate::tools::{Context, ContextTool, Local, LocalMemory, ToolsConfig, Typed, code};
 use crate::{CallRef, Describe as _, Tool as _, ToolSpec};
 
 /// The words that name a host product rather than the harness.
@@ -73,21 +75,23 @@ fn values(schema: &Value) -> Vec<String> {
     }
 }
 
-/// Every tool the crate builds: the standard set, `tool_search`, and the
-/// three MCP resource tools. An MCP server's own tools are the server's
-/// words, not the crate's.
-fn built_in() -> Vec<Box<ContextTool>> {
+/// Every tool the crate builds: every built-in over a backend for each, which
+/// `*` offers, then `tool_search` and the three MCP resource tools. An MCP
+/// server's own tools are the server's words, not the crate's.
+fn built_in<'run>(local: &'run Local, fake: &'run Fake) -> Vec<Box<ContextTool<'run>>> {
     let servers: Vec<Arc<Server>> = Vec::new();
-    let mut tools = standard();
-    tools.push(Box::new(Typed::new(ToolSearch::new(Arc::new(
-        Deferred::default(),
-    )))));
-    tools.push(Box::new(Typed::new(ListMcpResources::new(servers.clone()))));
-    tools.push(Box::new(Typed::new(ListMcpResourceTemplates::new(
-        servers.clone(),
-    ))));
-    tools.push(Box::new(Typed::new(ReadMcpResource::new(servers))));
-    tools
+    local
+        .builder()
+        .with_scheduler(fake)
+        .with_channel(fake)
+        .with_notifier(fake)
+        .with_tool(Typed::new(ToolSearch::new(Arc::new(Deferred::default()))))
+        .with_tool(Typed::new(ListMcpResources::new(servers.clone())))
+        .with_tool(Typed::new(ListMcpResourceTemplates::new(servers.clone())))
+        .with_tool(Typed::new(ReadMcpResource::new(servers)))
+        .build(&ToolsConfig::new(["*"]).expect("one pattern"))
+        .expect("every backend is given")
+        .into_offered()
 }
 
 /// Where the one call each case makes sits: the first of step 1.
@@ -112,7 +116,8 @@ fn guffbolt_tool_specs_name_no_host_product() {
         ["fleet", "workspace", "agentsfleetd", "daemon"],
         "the check finds each host word it looks for"
     );
-    let tools = built_in();
+    let (local, fake) = (local(), Fake::answering(Ok(String::new())));
+    let tools = built_in(&local, &fake);
 
     let found: Vec<String> = tools
         .iter()
@@ -128,8 +133,8 @@ fn guffbolt_tool_specs_name_no_host_product() {
 
     assert_eq!(
         tools.len(),
-        34,
-        "the standard 30, tool_search and the three MCP resource tools are each checked"
+        42,
+        "the 38 built-ins, tool_search and the three MCP resource tools are each checked"
     );
     assert_eq!(
         found,
@@ -174,7 +179,7 @@ async fn refusals_and_answers_name_no_host_product() {
             "[sandbox_unavailable] this call has no environment to run in",
         ),
         (
-            Typed::new(MemoryForget)
+            Typed::new(MemoryForget::new(&local.memory))
                 .call(&json!({"key": "deploy:target"}), cx)
                 .await,
             "deploy:target is forgotten for the rest of this run; the stored copy stays until a \
@@ -200,7 +205,7 @@ async fn refusals_and_answers_name_no_host_product() {
 #[tokio::test]
 async fn a_memory_is_private_unless_the_model_names_it_shared() {
     let local = local();
-    let store = Typed::new(MemoryStoreTool);
+    let store = Typed::new(MemoryStoreTool::new(&local.memory));
     let visibility = store
         .spec()
         .parameters
@@ -246,7 +251,7 @@ async fn a_memory_is_private_unless_the_model_names_it_shared() {
 #[tokio::test]
 async fn a_visibility_outside_private_and_shared_is_refused() {
     let local = local();
-    let store = Typed::new(MemoryStoreTool);
+    let store = Typed::new(MemoryStoreTool::new(&local.memory));
     let at = first_call();
 
     for named in ["workspace", "fleet", "Shared", "", "共有"] {

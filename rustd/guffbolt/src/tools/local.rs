@@ -1,17 +1,19 @@
-//! Everything a standalone harness lends its generic tools, in one place:
-//! this host's processes and files under one directory, HTTPS to the public
-//! hosts an allowlist names, a memory that lives as long as the process, and
-//! the sessions and wake a run keeps.
+//! Everything a standalone harness builds its generic tools over, in one
+//! place: this host's processes and files under one directory, HTTPS to the
+//! public hosts an allowlist names, a memory that lives as long as the
+//! process, and the sessions and wake a run keeps.
 //!
 //! An embedder that runs untrusted work, or holds what a command must not
-//! read, builds its [`Context`] over its own sandbox instead.
+//! read, builds its tools and its [`Context`] over its own sandbox instead.
 
 use std::io;
 use std::path::Path;
 
-use crate::CallRef;
 use crate::tools::outbound::Allowlist;
-use crate::tools::{Context, LocalEnv, LocalMemory, LocalOutbound, Sessions, Wake};
+use crate::tools::{
+    Context, ContextTool, LocalEnv, LocalMemory, LocalOutbound, Sessions, ToolsBuilder, Wake,
+};
+use crate::{CallRef, Tools};
 
 /// A standalone run's environment, network, memory, sessions and wake.
 #[derive(Debug)]
@@ -55,13 +57,22 @@ impl Local {
         })
     }
 
+    /// A builder over this run's environment, network and memory; add a
+    /// scheduler, a channel, a notifier or tools of your own before building.
+    #[must_use]
+    pub fn builder(&self) -> ToolsBuilder<'_> {
+        Tools::<ContextTool<'_>>::builder()
+            .with_env(&self.env)
+            .with_outbound(&self.outbound)
+            .with_memory(&self.memory)
+    }
+
     /// What the call at `call_ref` is lent.
     #[must_use]
     pub fn context<'a>(&'a self, call_ref: &'a CallRef) -> Context<'a> {
         Context {
             env: Some(&self.env),
             outbound: &self.outbound,
-            memory: &self.memory,
             sessions: &self.sessions,
             image_input: self.image_input,
             repository: None,

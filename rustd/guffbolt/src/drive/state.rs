@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::Mark;
 use crate::step::Waiting;
 use crate::transcript::{Message, Transcript};
 
@@ -23,6 +24,10 @@ pub struct DriveState {
     /// on none, so a state saved before a run could wait reads the same.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) waiting: Option<Waiting>,
+    /// The newest mark of the input the loop took; absent before any marked
+    /// input, so a state saved before input carried marks reads the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) newest: Option<Mark>,
 }
 
 impl DriveState {
@@ -50,6 +55,12 @@ impl DriveState {
     #[must_use]
     pub const fn waiting(&self) -> Option<&Waiting> {
         self.waiting.as_ref()
+    }
+
+    /// The newest mark of the input the loop took, if any input was marked.
+    #[must_use]
+    pub const fn newest(&self) -> Option<&Mark> {
+        self.newest.as_ref()
     }
 
     /// Answers the question the run waits on with `answer`, which the model

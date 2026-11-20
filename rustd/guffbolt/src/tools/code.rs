@@ -61,3 +61,7 @@ pub const BROWSER_UNAVAILABLE: ErrorCode = ErrorCode::new("browser_unavailable")
 pub const MCP_FAILED: ErrorCode = ErrorCode::new("mcp_failed");
 /// No MCP server of the run has the name the call gave.
 pub const MCP_SERVER_NOT_FOUND: ErrorCode = ErrorCode::new("mcp_server_not_found");
+/// No schedule the scheduler holds has the id the call named.
+pub const SCHEDULE_NOT_FOUND: ErrorCode = ErrorCode::new("schedule_not_found");
+/// The scheduler could not keep what the call changed.
+pub const SCHEDULE_UNSAVED: ErrorCode = ErrorCode::new("schedule_unsaved");

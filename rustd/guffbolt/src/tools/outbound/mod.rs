@@ -3,7 +3,7 @@
 //! ```text
 //!  http_request ─┐
 //!  web_fetch ────┼─► Outbound::send ──► admit, rewrite or refuse ──► the network
-//!  pushover ─────┤   Outbound::secret: a credential the tool places itself
+//!  a notifier ───┤   Outbound::secret: a credential the sender places itself
 //!  MCP over HTTP ┘   Outbound::connect: a server a client connects to
 //!                    Outbound::lookup: how that client looks a name up
 //! ```

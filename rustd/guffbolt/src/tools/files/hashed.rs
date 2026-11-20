@@ -19,6 +19,7 @@ use bytes::Bytes;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use super::changes::{Change, report};
 use super::{Answer, failed, inside, settled, whole};
 use crate::tool::ToolOutput;
 use crate::tools::process::env_of;
@@ -149,15 +150,17 @@ async fn edit(context: &Context<'_>, arguments: &Range) -> Answer {
         }
     };
     let edited = spliced(&text, &lines, from, to, &arguments.new_text);
+    let change = Change::between(path, &text, &edited);
     env.write_file(path, Bytes::from(edited))
         .await
         .map_err(|failure| failed(&failure))?;
-    Ok(ToolOutput::succeeded(format!(
+    let said = format!(
         "Edited {path}: {} was line {}, {} lines replaced",
         arguments.target,
         from + 1,
         to - from + 1
-    )))
+    );
+    Ok(ToolOutput::succeeded(report(&said, &[change])))
 }
 
 /// `text` with lines `from..=to` replaced by `new_text`, which gets a newline

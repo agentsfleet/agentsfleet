@@ -58,6 +58,8 @@ impl Observe<Failure> for Scripted {
 
     fn call_ended(&self, _kept: (), end: CallEnd<'_>) {
         self.note(format!("call {} {:?}", end.call.id, end.outcome()));
+        let mark = end.mark.map(|mark| mark.as_str().to_owned());
+        lock(&self.ended_marks).push((end.at.step, mark));
         if let (Some(mask), Some(output)) = (self.mask, end.output) {
             mask.clone_into(&mut output.text);
         }

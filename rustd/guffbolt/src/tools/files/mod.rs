@@ -3,7 +3,8 @@
 //! `file_write`, `file_append`, `file_delete` and `file_edit` live here;
 //! `file_read` pages in `read`, the hashed pair and `apply_patch` beside it,
 //! `image` shows the model a picture, and `ls`, `find` and `grep` look
-//! around.
+//! around. Each tool that changes a file's lines ends its answer with the
+//! lines it added and removed (`changes`).
 //!
 //! Every path is checked here before any call: `..` and an absolute path
 //! outside the environment's root are refused with a code, and nothing is
@@ -24,12 +25,14 @@ use crate::tools::process::{env_of, unavailable};
 use crate::tools::{Context, Handler, code};
 
 pub mod apply_patch;
+pub mod changes;
 pub mod hashed;
 pub mod image;
 pub mod listing;
 pub mod read;
 
 pub use self::apply_patch::ApplyPatch;
+pub use self::changes::Change;
 pub use self::hashed::{FileEditHashed, FileReadHashed};
 pub use self::image::ImageTool;
 pub use self::listing::{Find, Grep, Ls};
@@ -174,11 +177,17 @@ async fn write(context: &Context<'_>, arguments: Content) -> Answer {
     let env = env_of(context)?;
     let path = inside(env, &arguments.path)?;
     let bytes = arguments.content.len();
+    // Read before the write so the answer can count what it replaced; a file
+    // that cannot be read whole as text is written uncounted.
+    let replaced = changes::before(env, path).await;
+    let change = replaced.map(|before| Change::between(path, &before, &arguments.content));
     env.write_file(path, Bytes::from(arguments.content))
         .await
         .map_err(|failure| failed(&failure))?;
-    Ok(ToolOutput::succeeded(format!(
-        "Wrote {bytes} bytes to {path}"
+    let text = format!("Wrote {bytes} bytes to {path}");
+    Ok(ToolOutput::succeeded(changes::report(
+        &text,
+        change.as_slice(),
     )))
 }
 
@@ -201,12 +210,12 @@ async fn append(context: &Context<'_>, arguments: Content) -> Answer {
     let env = env_of(context)?;
     let path = inside(env, &arguments.path)?;
     let bytes = arguments.content.len();
+    let change = Change::between(path, "", &arguments.content);
     env.append_file(path, Bytes::from(arguments.content))
         .await
         .map_err(|failure| failed(&failure))?;
-    Ok(ToolOutput::succeeded(format!(
-        "Appended {bytes} bytes to {path}"
-    )))
+    let text = format!("Appended {bytes} bytes to {path}");
+    Ok(ToolOutput::succeeded(changes::report(&text, &[change])))
 }
 
 /// Removes a file.
@@ -265,12 +274,14 @@ async fn edit(context: &Context<'_>, arguments: &Replacement) -> Answer {
         ));
     }
     let edited = text.replacen(&arguments.old_text, &arguments.new_text, 1);
+    let change = Change::between(path, &text, &edited);
     env.write_file(path, Bytes::from(edited))
         .await
         .map_err(|failure| failed(&failure))?;
-    Ok(ToolOutput::succeeded(format!(
+    let text = format!(
         "Replaced {} bytes with {} bytes in {path}",
         arguments.old_text.len(),
         arguments.new_text.len()
-    )))
+    );
+    Ok(ToolOutput::succeeded(changes::report(&text, &[change])))
 }

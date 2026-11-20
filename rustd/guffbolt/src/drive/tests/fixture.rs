@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::script::{ASK_USER, Cue, Failure, Script, TOOL, lock, user};
 use crate::conversation::Conversation;
+use crate::drive::{Input, Mark};
 use crate::model::Request;
 use crate::step::Ending;
 use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
@@ -125,6 +126,11 @@ pub(super) struct Scripted {
     pub(super) heard: Mutex<Vec<String>>,
     /// Where each call the loop dispatched sits, in order.
     dispatched: Mutex<Vec<CallRef>>,
+    /// The mark each input arrives with, by its text; input not named here
+    /// arrives unmarked.
+    pub(super) marks: HashMap<&'static str, &'static str>,
+    /// Each call's step and the mark its end carried, in order.
+    pub(super) ended_marks: Mutex<Vec<(u64, Option<String>)>>,
 }
 
 impl Scripted {
@@ -151,6 +157,17 @@ impl Scripted {
     /// Where each call the loop dispatched sits, in order.
     pub(super) fn dispatched(&self) -> Vec<CallRef> {
         lock(&self.dispatched).clone()
+    }
+
+    /// `text` arrives now, before the next model call.
+    pub(super) fn sends(&self, text: &'static str) {
+        lock(&self.arrived).push(text);
+        lock(&self.pending).push(text);
+    }
+
+    /// Each call's step and the mark its end carried, in order.
+    pub(super) fn ended_marks(&self) -> Vec<(u64, Option<String>)> {
+        lock(&self.ended_marks).clone()
     }
 
     /// The input `cues` hold for `number`, when they hold any, arrives now.
@@ -217,9 +234,18 @@ impl Conversation for Scripted {
         &mut self.transcript
     }
 
-    fn take_input(&mut self) -> impl Future<Output = Vec<String>> + Send {
+    fn take_input(&mut self) -> impl Future<Output = Vec<Input>> + Send {
         let taken = std::mem::take(&mut *lock(&self.pending));
-        ready(taken.into_iter().map(str::to_owned).collect())
+        let marks = &self.marks;
+        ready(
+            taken
+                .into_iter()
+                .map(|text| Input {
+                    text: text.to_owned(),
+                    mark: marks.get(text).copied().map(Mark::new),
+                })
+                .collect(),
+        )
     }
 
     fn window(&mut self) -> impl Future<Output = Fitted<Failure>> + Send {

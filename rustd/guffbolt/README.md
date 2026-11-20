@@ -46,9 +46,9 @@ use std::sync::mpsc::{Receiver, channel};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 use guffbolt::{
-    Call, CallRef, Chunk, Conversation, Describe, DriveState, End, Ending, Message, Model, Plain,
-    Request, TextKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools, Transcript, Unobserved, Window,
-    drive,
+    Call, CallRef, Chunk, Conversation, Describe, DriveState, End, Ending, Input, Message, Model,
+    Plain, Request, TextKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools, Transcript, Unobserved,
+    Window, drive,
 };
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -136,8 +136,9 @@ impl Conversation for Chat {
         &mut self.transcript
     }
 
-    async fn take_input(&mut self) -> Vec<String> {
-        self.inbox.get_mut().map(|inbox| inbox.try_iter().collect()).unwrap_or_default()
+    async fn take_input(&mut self) -> Vec<Input> {
+        let inbox = self.inbox.get_mut();
+        inbox.map(|inbox| inbox.try_iter().map(Input::from).collect()).unwrap_or_default()
     }
 
     // `window` keeps its default, which sends the whole transcript.
@@ -213,6 +214,8 @@ async fn main() {
 ```
 
 `take_input` runs before every model call and once after an answer. A message sent while a tool runs reaches the next call. One sent while the model writes its answer runs one more step, and reaches the model after that answer.
+
+A piece of input may carry a `Mark`, your name for where it came from, such as the message's id: `Input::marked(text, Mark::new(id))`. The loop reads no mark. It keeps the newest one taken, notes it as each step begins, and hands it to your observer with each call's `CallRef` in `CallEnd`, so a record of the call can say which message was newest when the model asked for it.
 
 Cancel the token `stop` returns to stop the loop. `guffbolt` races each model call and each tool call against it. `called` runs after each call that answered, and defaults to doing nothing.
 
@@ -357,8 +360,8 @@ use guffbolt::agents::{
     Agents, Caps, ChildFuture, Children, Narrow, Parent, Raise, Seat, Status, Tether,
 };
 use guffbolt::{
-    Call, CallRef, Chunk, Conversation, DriveState, End, Ending, Message, Model, Plain, Request,
-    TextKind, ToolFuture, ToolOutput, ToolSpec, Transcript, Unobserved, Window, drive,
+    Call, CallRef, Chunk, Conversation, DriveState, End, Ending, Input, Message, Model, Plain,
+    Request, TextKind, ToolFuture, ToolOutput, ToolSpec, Transcript, Unobserved, Window, drive,
 };
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -446,8 +449,9 @@ impl Conversation for Chat<'_> {
         &mut self.transcript
     }
 
-    async fn take_input(&mut self) -> Vec<String> {
-        self.tether.as_mut().map(Tether::sent).unwrap_or_default()
+    async fn take_input(&mut self) -> Vec<Input> {
+        let sent = self.tether.as_mut().map(Tether::sent).unwrap_or_default();
+        sent.into_iter().map(Input::from).collect()
     }
 
     fn model(&self) -> &Lead {
@@ -610,41 +614,54 @@ async fn answered<C: Conversation>(
 
 ## The `tools` feature
 
-The `tools` feature adds tools that work on a machine and on the network. Each tool reaches the outside world only through a seam you fill: `Env` for processes and files, `Outbound` for network requests, `MemoryStore` for memories. `Local` fills all three for a harness on your own machine.
+The `tools` feature adds tools that work on a machine, on the network, with memory, with schedules, and with the people a run works for. A backend is what a tool calls to do its work, and each tool takes its backend when it is built, as pi's tools take their operations. `Tools::builder()` builds the set a loop holds: give it each backend with a `with_*` setter, add tools of your own with `with_tool`, and `build` the tools a startup `ToolsConfig` names.
 
 ```toml
 [dependencies]
 guffbolt = { git = "https://github.com/agentsfleet/agentsfleet", features = ["tools"] }
 ```
 
-| Seam | Tools | Local default |
-|---|---|---|
-| `Env` | `shell`, `exec_command`, `write_stdin`, `git`, `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
-| `Outbound` | `http_request`, `web_fetch`, `pushover`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the public hosts an `Allowlist` names |
-| `MemoryStore` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
-| none | `update_plan`, `ask_user`, `tool_search`, `current_time`, `sleep` | |
+| Backend | Setter | Tools | Local default |
+|---|---|---|---|
+| `Env` | `with_env` | `shell`, `exec_command`, `write_stdin`, `git`, `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
+| `Outbound` | `with_outbound` | `http_request`, `web_fetch`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the public hosts an `Allowlist` names |
+| `MemoryStore` | `with_memory` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
+| `Scheduler` | `with_scheduler` | `cron_add`, `cron_list`, `cron_update`, `cron_remove`, `cron_run`, `cron_runs`, `schedule` | `LocalScheduler`: a file under a directory you name |
+| `Channel` | `with_channel` | `message` | `LocalChannel`: each line handed to your callback |
+| `Notifier` | `with_notifier` | `notify` | none: every notifier is a vendor's |
+| none | | `update_plan`, `ask_user`, `current_time`, `sleep` | |
 
-A tool is a `Handler`: its arguments are a type, and the model is told that type's JSON Schema. `Typed` makes a handler a `Tool` lent a `tools::Context` per call, which carries the call's `CallRef`. `tools::standard()` boxes every tool that needs nothing else.
+A `ToolsConfig` lists tool names, and a single `*` matches a family, such as `mcp__docs__*` for a server's tools, the way pi's `--tools read,grep,'mcp__radius__*'` does. A name whose backend you did not give stops `build` with `MissingBackend`, naming the tool and the backend, before any step runs. A pattern offers only what the builder can build, so `*` alone offers everything you gave a backend for.
+
+A tool is a `Handler`: its arguments are a type, and the model is told that type's JSON Schema. `Typed` makes a handler a `Tool` lent a `tools::Context` per call, which carries the call's `CallRef`. A backend that acts outside the process derives its idempotency key from that `CallRef`, so a retried call keeps it. `Local` holds the local environment, network and memory, and `Local::builder` starts a builder over them.
 
 ```rust,no_run
 use guffbolt::tools::outbound::Allowlist;
-use guffbolt::tools::process::Shell;
-use guffbolt::{CallRef, Tool as _};
-use guffbolt::tools::{Local, Typed};
+use guffbolt::tools::{Local, LocalChannel, LocalScheduler, ToolsConfig};
+use guffbolt::CallRef;
 use serde_json::json;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let local = Local::new("run-1", ".", Allowlist::Hosts(vec!["docs.rs".to_owned()]))?;
-    let shell = Typed::new(Shell);
+    let scheduler = LocalScheduler::open(".jobs")?;
+    let channel = LocalChannel::new(|line| println!("{line}"));
+    let config = ToolsConfig::new(["shell", "memory_*", "cron_add", "message"])?;
+    let tools = local
+        .builder()
+        .with_scheduler(&scheduler)
+        .with_channel(&channel)
+        .build(&config)?;
     // Where the call sits; your `dispatch` hands you this.
     let at = CallRef { step: 1, index: 0, call_id: "call-1".to_owned() };
 
-    let output = shell.call(&json!({ "command": "echo hi" }), local.context(&at)).await;
+    let output = tools.dispatch("shell", &json!({ "command": "echo hi" }), local.context(&at)).await;
     assert_eq!(output.text, "hi\n");
     Ok(())
 }
 ```
+
+A tool of your own takes its own backend in its `new`, so it needs no change to `guffbolt`. To share it, publish the backend's trait beside it, as `guffbolt` publishes `Scheduler`, and add the tool with `with_tool`.
 
 `LocalEnv` runs every command as the user that runs the harness, with that user's reach. Run untrusted work in a sandbox, and give its tools an `Env` that sends each call there. Never give them `LocalEnv` on a host that holds a secret a command must not read, such as a provider key.
 
@@ -694,17 +711,17 @@ impl Outbound for Offline {
 
 ### MemoryStore
 
-The memory tools read and write a `MemoryStore`. A store keeps its own lock, so every method takes `&self`. `LocalMemory` is a map that lives as long as the process. Save `LocalMemory::entries` and seed the next run with `LocalMemory::seeded` to keep memories between runs.
+The memory tools read and write the `MemoryStore` they are built with. A store keeps its own lock, so every method takes `&self`. `LocalMemory` is a map that lives as long as the process. Save `LocalMemory::entries` and seed the next run with `LocalMemory::seeded` to keep memories between runs.
 
 ```rust
-use guffbolt::tools::memory::{LocalMemory, Memory, MemoryRecall, Reach};
+use guffbolt::tools::memory::{LocalMemory, Memory, Reach};
 use guffbolt::tools::outbound::Allowlist;
-use guffbolt::tools::{Local, Typed};
-use guffbolt::{CallRef, Tool as _};
+use guffbolt::tools::{Local, ToolsConfig};
+use guffbolt::CallRef;
 use serde_json::json;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut local = Local::new("run-2", ".", Allowlist::Any)?;
     local.memory = LocalMemory::seeded(vec![Memory {
         key: "deploy:target".to_owned(),
@@ -712,18 +729,24 @@ async fn main() -> std::io::Result<()> {
         category: "core".to_owned(),
         reach: Reach::Private,
     }]);
-    let recall = Typed::new(MemoryRecall);
+    let tools = local.builder().build(&ToolsConfig::new(["memory_recall"])?)?;
     let at = CallRef { step: 1, index: 0, call_id: "call-1".to_owned() };
 
-    let output = recall.call(&json!({ "query": "deploy" }), local.context(&at)).await;
+    let output = tools.dispatch("memory_recall", &json!({ "query": "deploy" }), local.context(&at)).await;
     assert_eq!(output.text, "deploy:target (core): staging first");
     Ok(())
 }
 ```
 
+### Scheduler, Channel and Notifier
+
+The schedule tools ask the `Scheduler` they are built with, and read back its answer as it came. `LocalScheduler` keeps its jobs in a file under the directory you name, so they survive a restart. It keeps no clock: call `LocalScheduler::due` when you like, and it hands over each job whose moment has come, once. A recurring job moves on to its next moment, and a one-off job is retired.
+
+`message` posts a line to the conversation through a `Channel`. `LocalChannel` hands each line to your callback. `notify` sends a notification through a `Notifier`. `guffbolt` ships no local notifier, because every notifier is a vendor's: yours holds the vendor's credential and sends through your network policy.
+
 ### MCP servers
 
-`tools::mcp` is a Model Context Protocol (MCP) client over the official `rmcp` SDK. `Server::stdio` starts a server through your `Env`, so it runs where your commands run. `Server::http` connects over streamable HTTP once your `Outbound` admits the URL. `Server::tools` offers each of the server's tools as `mcp__<server>__<tool>`. `ListMcpResources`, `ListMcpResourceTemplates` and `ReadMcpResource` list and read its resources.
+`tools::mcp` is a Model Context Protocol (MCP) client over the official `rmcp` SDK. `Server::stdio` starts a server through your `Env`, so it runs where your commands run. `Server::http` connects over streamable HTTP once your `Outbound` admits the URL. `Server::tools` offers each of the server's tools as `mcp__<server>__<tool>`; add them with `with_tool`, and name them in a `ToolsConfig` as `mcp__<server>__*`. `ListMcpResources`, `ListMcpResourceTemplates` and `ReadMcpResource` list and read its resources.
 
 ```rust,no_run
 use std::sync::Arc;
@@ -732,11 +755,11 @@ use guffbolt::tools::env::{Env, LocalEnv, Spawn};
 use guffbolt::tools::mcp::{ReadMcpResource, Server};
 use guffbolt::tools::{ContextTool, Typed};
 
-async fn connect() -> Result<Vec<Box<ContextTool>>, Box<dyn std::error::Error>> {
+async fn connect() -> Result<Vec<Box<ContextTool<'static>>>, Box<dyn std::error::Error>> {
     let env: Arc<dyn Env> = Arc::new(LocalEnv::new(".")?);
     let spawn = Spawn::program("npx").args(["-y", "@modelcontextprotocol/server-everything"]);
     let server = Arc::new(Server::stdio("everything", env, &spawn).await?);
-    let mut tools: Vec<Box<ContextTool>> = Vec::new();
+    let mut tools: Vec<Box<ContextTool<'static>>> = Vec::new();
     for tool in server.tools().await? {
         tools.push(Box::new(tool));
     }
@@ -755,7 +778,7 @@ A run with many tools, such as every tool of several MCP servers, can hold most 
 
 `bytes` carries an image a call read. Without `tools`, `guffbolt` links no model client, HTTP stack or secret store.
 
-The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, and `url` to tell an address literal from a name. It adds `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `jiff` for `current_time` and `thiserror` for the vendored `apply_patch` parser. Tokio's process, file, network and runtime features serve `LocalEnv` and the host's lookup. On Unix, `rustix` kills a process's group and opens its pseudo-terminal.
+The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, and `url` to tell an address literal from a name. It adds `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `jiff` for `current_time`, `schedule` and a job's zone, `philiprehberger-cron-parser` for `LocalScheduler`'s next moment, and `thiserror` for the vendored `apply_patch` parser. Tokio's process, file, network and runtime features serve `LocalEnv` and the host's lookup. On Unix, `rustix` kills a process's group and opens its pseudo-terminal.
 
 A provider's record of a step rides it as an opaque `Replay`. `guffbolt` saves it and hands it back unopened to the provider that wrote it.
 
