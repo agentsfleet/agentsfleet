@@ -1,6 +1,6 @@
 //! Recoverable edit errors retain call identity while withholding executable changes.
 
-use super::super::edits::tests::candidate;
+use super::super::tests::candidate;
 use super::proposal;
 use crate::{Result, model::provider::tools::TOOL};
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName};

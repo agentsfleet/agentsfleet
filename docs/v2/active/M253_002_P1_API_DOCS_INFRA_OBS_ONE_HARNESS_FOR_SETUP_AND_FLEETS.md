@@ -177,7 +177,7 @@ Today the loop ends `Waiting` at once (`drive/mod.rs:137-139`). It will first ta
 
 ### §4 — `propose_setup` checks a proposal and hands refusals back to the model
 
-guffbolt's proposal tool works over a `Document` trait with three methods. `schema()` is what the model sees, `apply(head, proposal)` applies the rules, and `base()` is the revision to match. agentsfleet's `FleetSetup` keeps today's proposal: `kind`, `base_candidate_id`, `base_candidate_revision`, `config_ops` and `instruction_edits`. It applies them with `af_fleet_runtime::definition::edit`, then `Definition::parse` and `validate_initial_generation`.
+guffbolt's proposal tool works over a `Document` trait with three methods. `schema()` is what the model sees, `apply(head, proposal)` applies the rules, and `base()` is the revision to match. agentsfleet's `FleetSetup` keeps today's proposal: `kind`, `base_candidate_id`, `base_candidate_revision`, `config_ops` and `instruction_edits`. It applies them with `af_fleet_runtime::definition::edit`, then `Definition::parse`; `validate_initial_generation` checks a first setup only, so an edit keeps today's 32K instruction cap instead of the first setup's 12K. The proposal rules (normalisation, the person's wording, text anchors, the stale-base check and the first-setup check) live once, in `af_fleet_runtime::setup`; the daemon's attempt path calls them until §8 deletes it.
 
 Cron syntax checking moves from `afd_cron/src/validate.rs` into `af_fleet_runtime`, so runner and daemon share one check.
 

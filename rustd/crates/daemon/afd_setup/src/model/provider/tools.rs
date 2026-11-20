@@ -1,21 +1,17 @@
-//! Native setup tool schema; the person supplies conversational instructions.
+//! The setup tool as the Responses API defines a function; its name,
+//! description and parameters are the shared `af_fleet_runtime::setup` ones.
 
 use super::{KEY_DESCRIPTION, KEY_TYPE};
+use af_fleet_runtime::setup;
 use serde_json::{Value, json};
 
-pub(in crate::model) const TOOL: &str = "propose_setup";
+pub(in crate::model) const TOOL: &str = setup::NAME;
 
 pub(in crate::model) fn tool(editing: bool) -> Value {
     json!({
         KEY_TYPE:"function", "name":TOOL,
-        KEY_DESCRIPTION:"Call this tool only when the person's newest message asks to create or change the setup. \
-            Do not call it for a question, a greeting or an approval such as Save, Keep it or OK; answer those in plain text. \
-            Return a setup proposal for native validation. This tool does not save or run a fleet. \
-            Include only the settings the person asked for. When the fleet needs a fact the person has not given, \
-            such as which repository to work on, ask them one question instead of calling this tool. \
-            When they gave no budget, choose a small daily budget, say which in your reply, \
-            and ask them to confirm or change it before they save.",
-        "parameters":super::schema::parameters(editing)
+        KEY_DESCRIPTION:setup::DESCRIPTION,
+        "parameters":setup::parameters(editing)
     })
 }
 

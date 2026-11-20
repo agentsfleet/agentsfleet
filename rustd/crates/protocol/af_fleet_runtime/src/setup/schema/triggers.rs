@@ -1,9 +1,10 @@
 //! Trigger shapes come from the native runtime vocabulary rather than a prompt template.
 
-use af_fleet_runtime::config::{
+use serde_json::{Value, json};
+
+use crate::config::{
     KIND_CRON, KIND_MENTION, KIND_WEBHOOK, VERIFIED_WEBHOOK_SOURCES, WebhookFamily,
 };
-use serde_json::{Value, json};
 
 pub(super) fn schema() -> Value {
     json!({"type":"array", "items":{"oneOf":[

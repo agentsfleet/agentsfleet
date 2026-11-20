@@ -1,12 +1,12 @@
 //! Translate the closed run protocol into the SDK's typed conversation.
 
 use super::super::ModelCallInput;
-use super::PROPOSAL_ARGUMENT;
 use super::tools::{TOOL, tool};
 use crate::{
     Result,
     error::{ErrorKind, raise::stored},
 };
+use af_fleet_runtime::setup::PROPOSAL_ARGUMENT;
 use af_wire::{
     authoring::{ModelMessage, ProposalCall},
     inference::InferenceApi,

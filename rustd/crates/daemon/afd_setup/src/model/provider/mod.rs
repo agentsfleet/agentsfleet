@@ -1,16 +1,13 @@
 //! Daemon-owned credentials and a single physical send through the selected model API.
 
+mod call;
 mod dispatch;
-mod edits;
 mod network;
 mod rejections;
 mod request;
 mod resolver;
 mod response;
-mod schema;
 mod tools;
-mod triggers;
-mod verbatim;
 
 #[cfg(test)]
 mod tests;
@@ -25,15 +22,10 @@ pub(in crate::model) use rejections::validate_key;
 pub use network::Network;
 pub(in crate::model) use tools::tool as setup_tool;
 
-/// The Responses API keys and item kinds this adapter both writes and reads.
-///
-/// One spelling for the request builder, the tool schema and the decoder, so an
-/// item the daemon sends is recognised by the same name when it comes back.
+/// The Responses API key naming a tool's kind, as the tool definition spells it.
 const KEY_TYPE: &str = "type";
-/// The JSON Schema keyword describing a tool, field, or policy object.
+/// The Responses API key carrying a tool's description.
 const KEY_DESCRIPTION: &str = "description";
-/// The single argument carries the native proposal object without JSON-in-JSON.
-const PROPOSAL_ARGUMENT: &str = "proposal";
 pub(super) use request::body;
 pub(super) use response::{Decoded, decode, decode_summary, refuse_for_save, refuse_invalid_edits};
 

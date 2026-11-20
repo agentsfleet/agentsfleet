@@ -10,6 +10,8 @@ mod rejections;
 mod wire;
 
 use super::*;
+use crate::types::Candidate;
+use af_core::{id::Uuid7, money::NANOS_PER_USD};
 use af_crypto::secret::SecretString;
 use af_wire::inference::{InferenceApi, ModelInference};
 use rig_core::{completion::CompletionRequest, message::Message};
@@ -282,4 +284,23 @@ fn provider_response_diagnostics_keep_status_without_private_reply_bytes() {
         }
         assert_eq!(response.status, status);
     }
+}
+
+/// The head candidate an edit names, at revision 1, with `text` as its instructions.
+pub(in crate::model::provider) fn candidate(
+    text: &str,
+) -> Result<Candidate, Box<dyn std::error::Error>> {
+    Ok(Candidate {
+        id: Uuid7::parse("01900000-0000-7000-8000-000000000001")?,
+        revision: "1".into(),
+        definition: serde_json::from_value(json!({
+            "schema_version":1,"description":"Answer questions.","instructions_md":text,
+            "config":{"name":"text-edits","x-agentsfleet":{
+                "tools":[],"credentials":[],"network":{"allow":[]},
+                "gates":{"timeout_ms":60000,"rules":[]},"budget":{"daily_nanos":NANOS_PER_USD.to_string()}
+            }}
+        }))?,
+        canonical_digest: String::new(),
+        policy_semantics: af_fleet_runtime::definition::POLICY_SEMANTICS.into(),
+    })
 }

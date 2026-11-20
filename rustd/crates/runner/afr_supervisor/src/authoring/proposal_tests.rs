@@ -1,6 +1,7 @@
-//! A first setup is proved by the daemon's validator before it is submitted.
+//! A first setup is proved by the daemon's validator before it is submitted;
+//! what the validator says is `af_fleet_runtime::setup`'s, tested there.
 
-use super::{initial_refusal, invalid_setup};
+use super::initial_refusal;
 use crate::{Result, error};
 use af_wire::authoring::{Proposal, REFUSAL_TEXT_BYTES_MAX};
 use serde_json::{Map, Value, json};
@@ -31,59 +32,6 @@ fn a_valid_first_setup_is_submitted_unchanged() {
         initial_refusal(&setup("Answers support questions", None)),
         None
     );
-}
-
-#[test]
-fn a_missing_description_names_the_field_to_the_model() -> Result<()> {
-    let Some(detail) = initial_refusal(&setup("", None)) else {
-        return Err(error::config("an empty description was accepted"));
-    };
-    let text = invalid_setup(&detail);
-    assert_eq!(
-        text,
-        "No changes were applied. The setup is invalid: `description` is required and was not set. \
-         Fix that, keep only the settings the person asked for, and return a corrected propose_setup call."
-    );
-    assert_eq!(detail.field(), Some("description"));
-    Ok(())
-}
-
-#[test]
-fn an_unknown_setup_key_names_that_key_and_logs_only_the_block() -> Result<()> {
-    let unknown = setup(
-        "Answers support questions",
-        Some(("schedule_hint", json!("Every weekday at nine"))),
-    );
-    let Some(detail) = initial_refusal(&unknown) else {
-        return Err(error::config("an unknown key was accepted"));
-    };
-    assert_eq!(
-        detail.text(),
-        "`schedule_hint` is not a known `x-agentsfleet` key"
-    );
-    // The model hears the key it wrote; the log names only the block, and the
-    // value it held reaches neither.
-    assert_eq!(detail.field(), Some("x-agentsfleet"));
-    assert!(!invalid_setup(&detail).contains("Every weekday"));
-    Ok(())
-}
-
-#[test]
-fn a_value_of_the_wrong_shape_is_named_by_position_never_by_value() -> Result<()> {
-    let shaped = setup(
-        "Answers support questions",
-        Some(("tools", json!("Private wording from the person"))),
-    );
-    let Some(detail) = initial_refusal(&shaped) else {
-        return Err(error::config("a text tool list was accepted"));
-    };
-    assert!(
-        !detail.text().contains("Private wording"),
-        "{}",
-        detail.text()
-    );
-    assert_eq!(detail.field(), None);
-    Ok(())
 }
 
 #[test]

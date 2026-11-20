@@ -12,12 +12,11 @@ use afd_credential::provider::RegisteredModel;
 use garde::Validate as _;
 use rig_core::{
     completion::{CompletionResponse, FinishReason},
-    message::{AssistantContent, ToolCall},
+    message::AssistantContent,
 };
-use serde::Deserialize;
 
 use super::super::{ModelCallInput, ModelCallResult, budget};
-use super::tools::TOOL;
+use super::call::proposal;
 use crate::{Result, error::ErrorKind};
 
 #[cfg(test)]
@@ -35,12 +34,6 @@ mod first_setup;
 #[cfg(test)]
 #[path = "tests/edit_refusal.rs"]
 mod edit_refusal;
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Arguments {
-    proposal: super::edits::Suggestion,
-}
 
 pub(in crate::model) struct Decoded {
     pub(in crate::model) result: Option<ModelCallResult>,
@@ -209,52 +202,6 @@ fn latest_said(request: &garde::Valid<ModelCallInput>) -> Option<&str> {
             af_wire::authoring::ModelMessage::Assistant { .. }
             | af_wire::authoring::ModelMessage::Tool { .. } => None,
         })
-}
-
-fn proposal(
-    item: &ToolCall,
-    candidate: Option<&crate::types::Candidate>,
-    said: Option<&str>,
-) -> Result<ProposalCall<Definition, ConfigOp, InstructionEdit>> {
-    if item.function.name.as_str() != TOOL {
-        return Err(ErrorKind::Provider.into());
-    }
-    // A locally generated SDK id is not a provider acknowledgement.
-    let id = item.id.provider().ok_or(ErrorKind::Provider)?.as_str();
-    let arguments =
-        super::schema::settle(serde_json::Value::Object(item.function.arguments.clone()));
-    let converted = if item.function.invalid_arguments.is_some() {
-        Err(ProposalRejection::InvalidArguments)
-    } else {
-        serde_json::from_value::<Arguments>(arguments.clone())
-            .map_err(|_untrusted| ProposalRejection::InvalidArguments)
-            .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
-    };
-    let call = match converted {
-        Ok(proposal) => ProposalCall::Proposed {
-            id: id.into(),
-            proposal,
-        },
-        Err(reason) => ProposalCall::Refused {
-            id: id.into(),
-            reason,
-            detail: (reason == ProposalRejection::InvalidArguments)
-                .then(|| checked(&arguments))
-                .flatten(),
-        },
-    };
-    call.validate().map_err(|_untrusted| ErrorKind::Provider)?;
-    Ok(call)
-}
-
-/// The native checker's own account of a first setup it refuses.
-///
-/// serde's message for the same failure quotes the refused value, so it is
-/// dropped above; the checker's sentence names keys and rules, never a value.
-fn checked(arguments: &serde_json::Value) -> Option<RefusalDetail> {
-    let definition = arguments.get(super::PROPOSAL_ARGUMENT)?.get("definition")?;
-    let failure = Definition::parse(&definition.to_string()).err()?;
-    RefusalDetail::new(failure.field(), &failure.told())
 }
 
 /// Refuses every proposal a Save earns, as a message that asks for no change.

@@ -2,7 +2,7 @@
 
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
-use af_fleet_runtime::Definition;
+use af_fleet_runtime::setup::{self, Rejection};
 use af_wire::authoring::{
     ActivityEvent, ActivityRequest, ModelMessage, Proposal, ProposalCall, ProposalRejection,
     RefusalDetail, Run,
@@ -19,7 +19,7 @@ pub(super) async fn apply(
     let (call_id, proposal) = match call {
         ProposalCall::Proposed { id, proposal } => (id, proposal),
         ProposalCall::Refused { id, reason, detail } => {
-            let refusal = refusal_kind(*reason);
+            let refusal = rejection(*reason).kind();
             // The field is the checker's own spelling; its sentence may name
             // authored text, so only the model hears that.
             let field = detail.as_ref().and_then(RefusalDetail::field);
@@ -32,7 +32,7 @@ pub(super) async fn apply(
             );
             let text = detail
                 .as_ref()
-                .map_or_else(|| feedback(*reason).to_owned(), invalid_setup);
+                .map_or_else(|| rejection(*reason).feedback().to_owned(), invalid_setup);
             return Ok((
                 ModelMessage::Tool {
                     call_id: id.clone(),
@@ -131,48 +131,23 @@ pub(super) fn initial_refusal(proposal: &Proposal) -> Option<RefusalDetail> {
     let Proposal::Initialize { definition } = proposal else {
         return None;
     };
-    let failure = Definition::parse(&definition.to_string())
-        .and_then(|parsed| parsed.validate_initial_generation())
-        .err()?;
+    let failure = setup::initial_refusal(&definition.to_string())?;
     RefusalDetail::new(failure.field(), &failure.told())
 }
 
 /// What the model hears when the checker named the field to fix.
 fn invalid_setup(detail: &RefusalDetail) -> String {
-    format!(
-        "No changes were applied. The setup is invalid: {}. Fix that, keep only the settings the person asked for, and return a corrected propose_setup call.",
-        detail.text()
-    )
+    setup::invalid_setup(detail.text())
 }
 
-/// The stable log name of a refusal the daemon decided while reading the call.
-const fn refusal_kind(reason: ProposalRejection) -> &'static str {
+/// The shared refusal a wire reason names.
+const fn rejection(reason: ProposalRejection) -> Rejection {
     match reason {
-        ProposalRejection::InvalidArguments => "invalid_arguments",
-        ProposalRejection::InstructionsMissing => "instructions_missing",
-        ProposalRejection::InstructionsAmbiguous => "instructions_ambiguous",
-        ProposalRejection::EditNotRequested => "edit_not_requested",
-        ProposalRejection::StaleCandidate => "stale_candidate",
-    }
-}
-
-const fn feedback(reason: ProposalRejection) -> &'static str {
-    match reason {
-        ProposalRejection::InvalidArguments => {
-            "No changes were applied. Correct the propose_setup arguments using the fixed schema. For initialize, every setting except name goes inside x-agentsfleet, settings the person did not ask for are omitted, and budget.daily_nanos is a decimal string. For edit, base_candidate_revision is a decimal string and instruction edits use kind=append or kind=replace, never byte offsets."
-        }
-        ProposalRejection::InstructionsMissing => {
-            "No changes were applied. The old_text did not match the current instructions_md. Copy a unique exact substring, including whitespace, without adding bullet markers. To add instructions, use kind=append with only the new text. Return a corrected propose_setup call."
-        }
-        ProposalRejection::InstructionsAmbiguous => {
-            "No changes were applied. The old_text matches more than one position in instructions_md. Include enough exact surrounding text to identify one position. Return a corrected propose_setup call."
-        }
-        ProposalRejection::EditNotRequested => {
-            "No changes were applied. The newest message does not ask to change the setup. Answer the question without proposing an edit."
-        }
-        ProposalRejection::StaleCandidate => {
-            "No changes were applied. Use the current candidate identifier and decimal revision from the current candidate or most recent accepted proposal receipt. Return a corrected propose_setup call."
-        }
+        ProposalRejection::InvalidArguments => Rejection::InvalidArguments,
+        ProposalRejection::InstructionsMissing => Rejection::InstructionsMissing,
+        ProposalRejection::InstructionsAmbiguous => Rejection::InstructionsAmbiguous,
+        ProposalRejection::EditNotRequested => Rejection::EditNotRequested,
+        ProposalRejection::StaleCandidate => Rejection::StaleCandidate,
     }
 }
 

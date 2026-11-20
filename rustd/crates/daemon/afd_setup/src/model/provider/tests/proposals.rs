@@ -1,6 +1,6 @@
 //! Model-visible types and daemon decoding agree on the revision representation.
 
-use super::super::edits::tests::candidate;
+use super::super::tests::candidate;
 use super::proposal;
 use crate::Result;
 use crate::model::provider::tools::{TOOL, tool};
@@ -37,69 +37,6 @@ fn the_model_sees_the_native_edit_revision_type() {
     );
 }
 
-// Value: protects=new drafts expose native policy types before a paid tool call;
-// fails_when=the model guesses empty strings for arrays or a number for a decimal string.
-#[test]
-fn initialization_exposes_policy_collection_and_scalar_types() {
-    let schema = tool(false);
-    let block = "/parameters/properties/proposal/properties/definition/properties/config/properties/x-agentsfleet/properties";
-    for path in [
-        "tools",
-        "credentials",
-        "triggers",
-        "network/properties/allow",
-    ] {
-        assert_eq!(
-            schema.pointer(&format!("{block}/{path}/type")),
-            Some(&json!("array"))
-        );
-    }
-    assert_eq!(
-        schema.pointer(&format!("{block}/budget/properties/daily_nanos/type")),
-        Some(&json!("string"))
-    );
-}
-
-// Value: protects=customer-requested HTTP settings are visible to the authoring model;
-// fails_when=the closed proposal schema excludes fields accepted by native validation.
-#[test]
-fn initialization_exposes_reviewed_http_destination_settings() {
-    let schema = tool(false);
-    let network = "/parameters/properties/proposal/properties/definition/properties/config/properties/x-agentsfleet/properties/network/properties";
-    assert_eq!(
-        schema.pointer(&format!("{network}/http_egress/enum")),
-        Some(&json!(["restricted", "public"]))
-    );
-    assert_eq!(
-        schema.pointer(&format!("{network}/package_manager_domains/type")),
-        Some(&json!("boolean"))
-    );
-}
-
-// Value: protects=only the action permitted by the locked draft consumes context;
-// fails_when=initialization fields are sent during edits or edits without a base.
-#[test]
-fn proposal_shapes_match_the_authoritative_candidate_state() {
-    for (editing, kind) in [(false, "initialize"), (true, "edit")] {
-        let schema = tool(editing);
-        let fields = "/parameters/properties/proposal/properties";
-        assert_eq!(
-            schema.pointer(&format!("{fields}/kind/enum")),
-            Some(&json!([kind]))
-        );
-        assert_eq!(
-            schema.pointer(&format!("{fields}/definition")).is_some(),
-            !editing
-        );
-        assert_eq!(
-            schema
-                .pointer(&format!("{fields}/base_candidate_id"))
-                .is_some(),
-            editing
-        );
-    }
-}
-
 // Value: protects=typed initial policy survives native decoding, while malformed
 // empty collections cannot be coerced into authority by the provider adapter.
 #[test]
@@ -127,21 +64,6 @@ fn initialization_requires_native_policy_types() -> Result<(), Box<dyn std::erro
         }
     }
     Ok(())
-}
-
-// Value: protects=the model selects exact source text instead of guessing UTF-8 offsets;
-// fails_when=the tool requires byte arithmetic that can cut intact instruction words.
-#[test]
-fn instruction_edits_use_exact_text_anchors_instead_of_model_counted_offsets() {
-    let schema = tool(true);
-    let fields =
-        "/parameters/properties/proposal/properties/instruction_edits/items/oneOf/0/properties";
-    assert_eq!(
-        schema.pointer(&format!("{fields}/old_text/type")),
-        Some(&json!("string"))
-    );
-    assert!(schema.pointer(&format!("{fields}/start_byte")).is_none());
-    assert!(schema.pointer(&format!("{fields}/end_byte")).is_none());
 }
 
 // Value: protects=valid native edits decode while numeric revisions cannot be coerced;

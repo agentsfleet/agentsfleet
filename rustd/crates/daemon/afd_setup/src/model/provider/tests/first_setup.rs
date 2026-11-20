@@ -1,13 +1,10 @@
 //! A first setup holds only what the person asked for, and a refusal names what to fix.
 
 use super::proposal;
-use crate::model::provider::tools::{TOOL, tool};
+use crate::model::provider::tools::TOOL;
 use af_core::money::NANOS_PER_USD;
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName};
 use serde_json::{Value, json};
-
-/// The form's sentence for every optional setting.
-const OMIT: &str = "Omit unless the person asks for it.";
 
 /// A first setup that acknowledges messages, with the configuration a test chooses.
 fn first_setup(config: &Value) -> Result<ToolCall, Box<dyn std::error::Error>> {
@@ -34,69 +31,6 @@ fn decoded(config: &Value) -> Result<Value, Box<dyn std::error::Error>> {
         None,
         None,
     )?)?)
-}
-
-// Value: protects=a plain fleet is offered only the settings a person asks for;
-// fails_when=the form shows gates as open objects, requires tools or advertises defaults.
-#[test]
-fn the_first_setup_form_asks_only_for_a_name_and_a_budget() {
-    let schema = tool(false);
-    let block = "/parameters/properties/proposal/properties/definition/properties/config/properties/x-agentsfleet";
-    assert_eq!(
-        schema.pointer(&format!("{block}/required")),
-        Some(&json!(["budget"]))
-    );
-    assert!(
-        schema
-            .pointer(&format!("{block}/properties/gates"))
-            .is_none()
-    );
-    for setting in ["tools", "credentials", "network"] {
-        assert_eq!(
-            schema.pointer(&format!("{block}/properties/{setting}/description")),
-            Some(&json!(OMIT)),
-            "{setting}"
-        );
-    }
-    // Triggers add the one thing a plain fleet is tempted to declare: chat is never one.
-    let triggers = schema
-        .pointer(&format!("{block}/properties/triggers/description"))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    assert!(
-        triggers.starts_with("Omit unless the person asks for one."),
-        "{triggers}"
-    );
-    assert!(
-        triggers.contains("Chat and steer messages always reach a fleet"),
-        "{triggers}"
-    );
-    let placement = schema
-        .pointer(&format!("{block}/description"))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    assert!(
-        placement.contains("budget included, never beside it"),
-        "{placement}"
-    );
-    let text = schema.to_string();
-    assert!(
-        !text.contains("Default "),
-        "a description advertises a default"
-    );
-    let guidance = schema
-        .get("description")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    assert!(
-        guidance.contains("ask them one question instead of calling this tool"),
-        "{guidance}"
-    );
-    assert!(
-        guidance.contains("ask them to confirm or change it before they save"),
-        "{guidance}"
-    );
-    assert!(text.contains("never invent approval or hashes"));
 }
 
 // Value: protects=omitting tools and naming no repository mean none in a model's first setup;

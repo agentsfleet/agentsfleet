@@ -52,6 +52,7 @@ pub mod name;
 #[cfg(feature = "openapi")]
 mod openapi;
 mod optional;
+pub mod setup;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 

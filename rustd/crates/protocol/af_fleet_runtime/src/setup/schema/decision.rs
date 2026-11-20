@@ -1,14 +1,14 @@
 //! The proposal tool exposes the same fixed roles the native setup validates.
 
-use af_fleet_runtime::config::decision::{
-    ASSOCIATION_CRITERIA, INTENT_OPTIONS, MAX_COMPLETION_STATEMENTS, NEXT_ACTION_OPTIONS,
-    NOUL_CRITERIA,
-};
 use serde_json::{Map, Value, json};
 
 use super::{
     KEY_ITEMS, KEY_MAX_ITEMS, KEY_MAX_LENGTH, KEY_MIN_LENGTH, KEY_PATTERN, KEY_TYPE, TYPE_ARRAY,
     TYPE_STRING, object,
+};
+use crate::config::decision::{
+    ASSOCIATION_CRITERIA, INTENT_OPTIONS, MAX_COMPLETION_STATEMENTS, NEXT_ACTION_OPTIONS,
+    NOUL_CRITERIA,
 };
 
 const KEY_QUESTION: &str = "question";

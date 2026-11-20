@@ -18,16 +18,17 @@ use serde_json::{Map, Value, json};
 
 use super::{
     KEY_CONFIG, KEY_CONFIG_OPS, KEY_DEFINITION, KEY_INSTRUCTION_EDITS, KEY_KIND, KEY_POLICY,
-    KEY_REPOSITORIES, KEY_TOOLS, KEY_VALUE, KIND_EDIT, KIND_INITIALIZE, PROPOSAL_ARGUMENT,
-    REPOSITORY_SETTINGS,
+    KEY_REPOSITORIES, KEY_TOOLS, KEY_VALUE, KIND_EDIT, KIND_INITIALIZE, REPOSITORY_SETTINGS,
 };
+use crate::setup::PROPOSAL_ARGUMENT;
 
 /// The key the model wraps a list's entries in.
 const ITEM: &str = "item";
 
 /// The tool arguments with a first setup's omissions spelled as none, an edit's
 /// omitted lists spelled as empty and each edited value's wrapped list unwrapped.
-pub(in crate::model::provider) fn settle(mut arguments: Value) -> Value {
+#[must_use]
+pub fn settle(mut arguments: Value) -> Value {
     if let Some(proposal) = edit_proposal(&mut arguments) {
         for list in [KEY_CONFIG_OPS, KEY_INSTRUCTION_EDITS] {
             proposal.entry(list).or_insert_with(|| json!([]));
@@ -100,3 +101,7 @@ fn first_setup_settings(arguments: &mut Value) -> Option<&mut Map<String, Value>
         .get_mut(KEY_POLICY)?
         .as_object_mut()
 }
+
+#[cfg(test)]
+#[path = "../tests/settle.rs"]
+mod tests;

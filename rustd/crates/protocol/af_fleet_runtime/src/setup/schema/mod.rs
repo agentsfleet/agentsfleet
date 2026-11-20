@@ -2,18 +2,24 @@
 
 mod decision;
 mod settle;
+mod triggers;
 
-pub(super) use settle::settle;
+pub use settle::settle;
 
-use super::{KEY_DESCRIPTION, KEY_TYPE, PROPOSAL_ARGUMENT};
-use af_fleet_runtime::definition::{
+use serde_json::{Value, json};
+
+use super::PROPOSAL_ARGUMENT;
+use super::proposal::{CANDIDATE_ID_BYTES, REVISION_DIGITS_MAX};
+use crate::config::HttpEgress;
+use crate::definition::{
     DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS,
     MAX_INITIAL_INSTRUCTIONS_CHARS, MAX_INSTRUCTION_EDITS, MAX_INSTRUCTIONS_CHARS,
 };
-use af_wire::authoring::DECIMAL_BYTES_MAX;
-use af_wire::policy::HttpEgress;
-use serde_json::{Value, json};
 
+/// The JSON Schema keyword naming a value's type.
+const KEY_TYPE: &str = "type";
+/// The JSON Schema keyword describing a field or a policy object.
+const KEY_DESCRIPTION: &str = "description";
 const KEY_ENUM: &str = "enum";
 const KEY_MIN_LENGTH: &str = "minLength";
 const KEY_MAX_LENGTH: &str = "maxLength";
@@ -72,7 +78,10 @@ const LEAVE_OUT: &str = "Leave this out when the edit makes no change of this ki
 /// What every repository setting tells the model.
 const WITH_REPOSITORY: &str = "Only together with repositories.";
 
-pub(super) fn parameters(editing: bool) -> Value {
+/// The tool's parameters: an edit of the head candidate while `editing`, a
+/// first setup otherwise, so only the action the draft allows takes context.
+#[must_use]
+pub fn parameters(editing: bool) -> Value {
     let proposal = if editing {
         edit()
     } else {
@@ -91,8 +100,8 @@ fn edit() -> Value {
     object(
         &json!({
             KEY_KIND:{KEY_TYPE:TYPE_STRING,KEY_ENUM:[KIND_EDIT]},
-            KEY_BASE_CANDIDATE_ID:{KEY_TYPE:TYPE_STRING,KEY_MIN_LENGTH:36,KEY_MAX_LENGTH:36},
-            KEY_BASE_CANDIDATE_REVISION:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN,KEY_MIN_LENGTH:1,KEY_MAX_LENGTH:DECIMAL_BYTES_MAX,
+            KEY_BASE_CANDIDATE_ID:{KEY_TYPE:TYPE_STRING,KEY_MIN_LENGTH:CANDIDATE_ID_BYTES,KEY_MAX_LENGTH:CANDIDATE_ID_BYTES},
+            KEY_BASE_CANDIDATE_REVISION:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN,KEY_MIN_LENGTH:1,KEY_MAX_LENGTH:REVISION_DIGITS_MAX,
                 KEY_DESCRIPTION:"Copy the current candidate revision exactly as a string, such as '1'. Never a number."},
             KEY_CONFIG_OPS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_CONFIG_OPS,KEY_ITEMS:config_operation()}), LEAVE_OUT),
             KEY_INSTRUCTION_EDITS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_INSTRUCTION_EDITS,KEY_ITEMS:instruction_edit()}), LEAVE_OUT)
@@ -138,7 +147,7 @@ fn configuration() -> Value {
                 KEY_PROPERTIES:{
                     KEY_TOOLS:described(list(&json!({KEY_TYPE:TYPE_STRING})), OMIT),
                     "credentials":described(list(&json!({KEY_TYPE:TYPE_STRING})), OMIT),
-                    "triggers":described(super::triggers::schema(), TRIGGERS_HELP),
+                    "triggers":described(triggers::schema(), TRIGGERS_HELP),
                     "network":described(network(), OMIT),
                     "decision_policy":described(decision::policy(),
                         "Omit for ordinary fleets. Only when the person asks for owner-reviewed routing and completion questions."),
@@ -242,3 +251,7 @@ fn instruction_edit() -> Value {
     );
     json!({KEY_ONE_OF:[replace,append]})
 }
+
+#[cfg(test)]
+#[path = "../tests/schema.rs"]
+mod tests;

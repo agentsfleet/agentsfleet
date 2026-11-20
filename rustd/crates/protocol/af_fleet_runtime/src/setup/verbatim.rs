@@ -2,7 +2,7 @@
 //!
 //! Asked to add an instruction "exactly as written", a model often copies the
 //! words but retypes the punctuation: curly quotes become straight ones, an
-//! em dash becomes a hyphen. The daemon holds the person's message, so it does
+//! em dash becomes a hyphen. The caller holds the person's message, so it does
 //! not have to trust the copy. A line of model text that matches one span of
 //! that message up to those typographic differences is replaced by the span's
 //! original bytes. Anything else, including a changed letter, stays as the
