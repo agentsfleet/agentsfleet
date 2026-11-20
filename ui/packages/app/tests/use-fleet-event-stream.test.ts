@@ -109,6 +109,13 @@ describe("useFleetEventStream", () => {
     expect(FakeEventSource.instances[0]).toBe(source);
   });
 
+  it("applies a saved row the page holds, such as the turn a Stop answered with", async () => {
+    const { result } = mount([row({ status: "received", response_text: null })]);
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+    act(() => result.current.reconcileRows([row({ status: "cancelled", response_text: null })]));
+    await waitFor(() => expect(result.current.events[0]).toMatchObject({ status: "cancelled" }));
+  });
+
   it("maps actor → role: steer:* → user, webhook:* → system, fleet → assistant", async () => {
     const { result } = mount([
       row({ turn_id: "u", actor: "steer:alice@example.com" }),

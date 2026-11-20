@@ -54,6 +54,8 @@ describe("stopTurn", () => {
     expect(await stop()).toEqual({ kind: TURN_STOP_KIND.FAILED });
     fetchMock.mockResolvedValueOnce(answer(200, { ok: true }));
     expect(await stop()).toEqual({ kind: TURN_STOP_KIND.FAILED });
+    fetchMock.mockResolvedValueOnce(new Response("<html>", { status: 200 }));
+    expect(await stop()).toEqual({ kind: TURN_STOP_KIND.FAILED });
   });
 
   it("reads a sign-in redirect as a failure, never as the turn", async () => {

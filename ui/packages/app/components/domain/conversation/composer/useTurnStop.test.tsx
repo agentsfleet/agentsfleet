@@ -77,6 +77,34 @@ describe("useTurnStop", () => {
     await waitFor(() => expect(reconcile).toHaveBeenCalledWith([answered]));
   });
 
+  it("leaves the thread alone when the saved answer cannot be read again", async () => {
+    stopTurn.mockResolvedValueOnce({ kind: TURN_STOP_KIND.FINISHED });
+    readTurnDetailRoute.mockResolvedValueOnce({ ok: false });
+    const reconcile = vi.fn();
+    const { result } = renderHook(() => useTurnStop(WORKSPACE, FLEET, [event(FIRST, "received")], reconcile));
+    act(() => result.current.stop());
+    await waitFor(() => expect(result.current.stopping).toBe(false));
+    expect(readTurnDetailRoute).toHaveBeenCalledWith(WORKSPACE, FLEET, FIRST);
+    expect(reconcile).not.toHaveBeenCalled();
+  });
+
+  it("keeps a later turn's Stop pressed when an earlier Stop answers", async () => {
+    let answerFirst: (value: unknown) => void = () => {};
+    stopTurn.mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }));
+    stopTurn.mockImplementationOnce(() => new Promise(() => {}));
+    const reconcile = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ events }) => useTurnStop(WORKSPACE, FLEET, events, reconcile),
+      { initialProps: { events: [event(FIRST, "received")] } },
+    );
+    act(() => result.current.stop());
+    rerender({ events: [event(FIRST, "processed"), event(SECOND, "received")] });
+    act(() => result.current.stop());
+    expect(result.current.stopping).toBe(true);
+    await act(async () => answerFirst({ kind: TURN_STOP_KIND.FAILED }));
+    expect(result.current.stopping).toBe(true);
+  });
+
   it("is hidden and does nothing while no turn runs", () => {
     const reconcile = vi.fn();
     const { result } = renderHook(() => useTurnStop(WORKSPACE, FLEET, [event(FIRST, "processed")], reconcile));
