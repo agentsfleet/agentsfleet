@@ -129,7 +129,7 @@ impl SessionSender {
         let kind = message.stream_kind();
         let priority = matches!(
             message,
-            Up::Ping { .. } | Up::RenewBatch { .. } | Up::Ready { .. } | Up::AuthoringRenew { .. }
+            Up::Ping { .. } | Up::RenewBatch { .. } | Up::Ready { .. }
         );
         let frame = af_stream::encode(message, &self.budget, kind, &self.stop, deadline).await?;
         if matches!(message, Up::TurnCheckpoint { .. }) {

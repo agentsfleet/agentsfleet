@@ -107,7 +107,7 @@ impl Channel {
 
 fn assign(id: &str) -> Proof<Vec<u8>> {
     let message: Down<'_> = Down::Run {
-        run: TaggedRun::<serde_json::Value>::Fleet(Box::new(payload(id, FLEET_ID))),
+        run: TaggedRun::Fleet(Box::new(payload(id, FLEET_ID))),
     };
     Ok(serde_json::to_vec(&message)?)
 }

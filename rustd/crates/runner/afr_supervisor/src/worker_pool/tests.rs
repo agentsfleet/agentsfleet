@@ -52,7 +52,7 @@ async fn assign(rig: &Rig, id: &str, fleet: &str) -> TestResult<Assigned> {
     let (budget, _) = Budget::duplex(MemoryLimits::default());
     let session = CancellationToken::new();
     let message: Down<'_> = Down::Run {
-        run: TaggedRun::<serde_json::Value>::Fleet(Box::new(payload(id, fleet))),
+        run: TaggedRun::Fleet(Box::new(payload(id, fleet))),
     };
     let frame = af_stream::encode(
         &message,

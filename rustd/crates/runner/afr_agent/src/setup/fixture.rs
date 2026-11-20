@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{SetupContext, SetupOutput, SetupRun};
 use crate::Meter;
+use crate::engine::EventSink;
 
 /// The draft the run's turn is on, which a checkpoint's scope names.
 const DRAFT: &str = "019f0000-0000-7000-8000-0000000000d1";
@@ -159,12 +160,22 @@ pub(super) async fn run_setup(
     context: &dyn SetupContext,
 ) -> crate::Result<SetupOutput> {
     let dropped = |_frame: ActivityFrame<'static>| {};
+    run_setup_heard(connect, run, context, &dropped).await
+}
+
+/// Runs `run` to its end over `connect`, its frames sent to `events`.
+pub(super) async fn run_setup_heard(
+    connect: &dyn Connect,
+    run: &RunPayload<'_>,
+    context: &dyn SetupContext,
+    events: &dyn EventSink,
+) -> crate::Result<SetupOutput> {
     let meter = Meter::default();
     let stop = CancellationToken::new();
     let setup = SetupRun {
         run,
         context,
-        events: &dropped,
+        events,
         meter: &meter,
         stop: &stop,
     };

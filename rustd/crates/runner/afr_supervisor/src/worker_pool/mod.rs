@@ -143,11 +143,6 @@ impl Worker {
                     )
                     .await?;
             }
-            TaggedRun::Authoring(run) => {
-                self.lessee
-                    .author(&run, assigned.registration.stop.clone())
-                    .await?;
-            }
         }
         Ok(true)
     }

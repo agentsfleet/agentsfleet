@@ -21,12 +21,6 @@ pub struct RuntimeSettings {
     /// Batched host renewal cadence; cannot exceed the existing safe cadence.
     #[garde(range(min = 100, max = 5000))]
     pub renewal_interval_ms: u64,
-    /// Authoring renewal cadence; absolute accepted deadlines still win.
-    #[garde(range(min = 100, max = 10_000))]
-    pub authoring_renewal_interval_ms: u64,
-    /// Pause after a retryable authoring renewal failure.
-    #[garde(range(min = 1, max = 250))]
-    pub authoring_renewal_retry_ms: u64,
     /// Required file restores queue; optional captures skip when admission is full.
     #[garde(range(min = 1, max = 16))]
     pub max_concurrent_file_operations: usize,
@@ -58,8 +52,6 @@ impl RuntimePolicy {
             daemon_initial_backoff_ms: 250,
             daemon_max_backoff_ms: 30_000,
             renewal_interval_ms: 5000,
-            authoring_renewal_interval_ms: 10_000,
-            authoring_renewal_retry_ms: 250,
             max_concurrent_file_operations: 2,
         },
     };

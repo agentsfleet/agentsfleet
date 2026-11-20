@@ -7,6 +7,8 @@ use std::error::Error;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use af_providers::{Connect, Provider};
+use af_wire::activity::ActivityFrame;
+use af_wire::context::{ContextProgress, ContextState};
 use af_wire::policy::ExecutionPolicy;
 use af_wire::run::RunPayload;
 use futures_util::StreamExt as _;
@@ -14,7 +16,7 @@ use futures_util::stream::BoxStream;
 use guffbolt::{Chunk, End, Message, Request, TextKind, Usage};
 use serde_json::{Value, json};
 
-use super::fixture::{Context, FENCE, SCOPE, run_setup, setup_payload};
+use super::fixture::{Context, FENCE, SCOPE, run_setup, run_setup_heard, setup_payload};
 use crate::fixture::{Script, say};
 use crate::{Completed, ResultOutcome};
 
@@ -236,6 +238,44 @@ async fn a_full_window_compacts_the_oldest_turns_and_saves_the_summary() -> Test
         assert!(!sent.contains(&compacted), "{compacted} was sent: {sent:?}");
     }
     assert!(sent.contains(&"message four") && sent.contains(&"message five"));
+    Ok(())
+}
+
+/// The draft stream's `context.progress` keeps a producer: a setup run's
+/// compaction reports summarizing, then resuming at the generation it saved,
+/// as `context_progress` frames the daemon republishes.
+#[tokio::test]
+async fn a_setup_compaction_reports_its_progress() -> TestResult {
+    let model = Sized::default();
+    let run = setup_payload(&FIVE, WINDOW, None);
+    let context = Context::stored(4, None);
+    let heard = Mutex::new(Vec::new());
+    let events = |frame: ActivityFrame<'static>| {
+        if let ActivityFrame::ContextProgress(progress) = frame {
+            heard
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(progress);
+        }
+    };
+
+    let output = run_setup_heard(&model, &run, &context, &events).await?;
+
+    assert_eq!(output.result.outcome, ResultOutcome::Completed(Completed));
+    let heard = heard.into_inner().unwrap_or_else(PoisonError::into_inner);
+    assert_eq!(
+        heard,
+        [
+            ContextProgress {
+                generation: 5,
+                state: ContextState::Summarizing,
+            },
+            ContextProgress {
+                generation: 5,
+                state: ContextState::Resuming,
+            },
+        ]
+    );
     Ok(())
 }
 

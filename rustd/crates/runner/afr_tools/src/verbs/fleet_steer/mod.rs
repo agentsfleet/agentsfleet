@@ -27,7 +27,7 @@ pub(crate) struct Steer {
     /// The fleet to ask: its `fleet_id` from `fleet_activity`, or from the
     /// first line of a message another fleet sent this one.
     fleet_id: String,
-    /// What to ask it, in plain words. At most 8192 bytes.
+    /// What to ask it, in plain words. At most 1,048,576 characters.
     text: String,
 }
 

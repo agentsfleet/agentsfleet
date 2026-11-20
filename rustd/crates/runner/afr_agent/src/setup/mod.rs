@@ -145,6 +145,7 @@ pub(crate) async fn run(connect: &dyn Connect, setup: SetupRun<'_>) -> Result<Se
         provider: provider.as_ref(),
         scrub: &scrub,
         live: Live::new(setup.events, &scrub, started),
+        events: setup.events,
         meter: setup.meter,
         stop: setup.stop,
         tool: &tool,

@@ -5,10 +5,10 @@ use af_core::error_code::{self, ErrorCode};
 use super::{CLOSED, RunVerbs as _, ScheduleCall, Unanswered, answered};
 use crate::runtime::ToolErrorCode;
 
-/// The five codes a model acts on differently each name their own tool error.
+/// The four codes a model acts on differently each name their own tool error.
 #[test]
 fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
-    let cases: [(ErrorCode, ToolErrorCode); 5] = [
+    let cases: [(ErrorCode, ToolErrorCode); 4] = [
         (
             error_code::SCHEDULE_CAP_REACHED,
             ToolErrorCode::ScheduleCapReached,
@@ -24,10 +24,6 @@ fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
         (
             error_code::MESSAGE_NO_CHANNEL,
             ToolErrorCode::MessageNoChannel,
-        ),
-        (
-            error_code::MESSAGE_LIMIT_REACHED,
-            ToolErrorCode::MessageLimitReached,
         ),
     ];
     for (code, tool) in cases {

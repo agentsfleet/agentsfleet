@@ -44,14 +44,6 @@ pub(crate) enum Verb {
     Open,
     /// Liveness, capability, assignment.
     Heartbeat,
-    /// Scoped private model invocation; never automatically redispatched.
-    AuthoringModel,
-    /// Native proposal receipt for a private authoring attempt.
-    AuthoringActivity,
-    /// Retain an unexpired authoring run.
-    AuthoringRenew,
-    /// Independent authoring accounting and optional answer.
-    AuthoringReport,
     /// More time on a held run.
     Renew,
     /// Live-tail frames for a held run.
@@ -136,13 +128,9 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 45] = [
+    pub(crate) const ALL: [Self; 41] = [
         Self::Open,
         Self::Heartbeat,
-        Self::AuthoringModel,
-        Self::AuthoringActivity,
-        Self::AuthoringRenew,
-        Self::AuthoringReport,
         Self::Renew,
         Self::Progress,
         Self::Report,
@@ -205,10 +193,6 @@ impl Verb {
             Self::ScheduleDelete => Method::Delete,
             Self::Open
             | Self::Heartbeat
-            | Self::AuthoringModel
-            | Self::AuthoringActivity
-            | Self::AuthoringRenew
-            | Self::AuthoringReport
             | Self::Renew
             | Self::Progress
             | Self::Report
@@ -240,10 +224,6 @@ impl Verb {
         match self {
             Self::Open => "stream_open",
             Self::Heartbeat => "heartbeat",
-            Self::AuthoringModel => "authoring_model",
-            Self::AuthoringActivity => "authoring_activity",
-            Self::AuthoringRenew => "authoring_renew",
-            Self::AuthoringReport => "authoring_report",
             Self::Renew => "renew",
             Self::Progress => "progress",
             Self::Report => "report",
@@ -292,10 +272,6 @@ impl Verb {
             Self::Load | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::Open
             | Self::Heartbeat
-            | Self::AuthoringModel
-            | Self::AuthoringActivity
-            | Self::AuthoringRenew
-            | Self::AuthoringReport
             | Self::Renew
             | Self::Progress
             | Self::Report

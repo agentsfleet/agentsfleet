@@ -76,10 +76,6 @@ impl RunnerApi for HttpRunnerApi {
                 | super::Verb::Progress
                 | super::Verb::Report
                 | super::Verb::Folds
-                | super::Verb::AuthoringModel
-                | super::Verb::AuthoringActivity
-                | super::Verb::AuthoringRenew
-                | super::Verb::AuthoringReport
         ) {
             return Err(error::ErrorKind::StreamProtocol.into());
         }

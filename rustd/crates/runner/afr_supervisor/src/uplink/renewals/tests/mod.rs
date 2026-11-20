@@ -55,19 +55,25 @@ async fn recovery_shares_confirmed_deadlines_and_retires_them_before_final_deliv
 -> crate::Result<()> {
     let registry = Arc::new(Renewals::default());
     let fleet = Uuid7::parse(crate::test_util::RUN_ID)?;
-    let authoring = Uuid7::parse(crate::authoring::tests::payload().run_id.as_str())?;
+    let second = Uuid7::parse("019a3c00-0000-7000-8000-0000000000a2")?;
     let now = Instant::now();
     let fleet = registry.register(
         &fleet,
         Arc::new(afr_agent::Meter::default()),
         now + Duration::from_secs(3),
     )?;
-    let authoring = registry.authoring(&authoring, now + Duration::from_secs(2))?;
+    let second = registry
+        .register(
+            &second,
+            Arc::new(afr_agent::Meter::default()),
+            now + Duration::from_secs(2),
+        )?
+        .lifetime;
     assert_eq!(
         registry.recovery_deadline(now + Duration::from_secs(7)),
         now + Duration::from_secs(2)
     );
-    authoring.extend(now + Duration::from_secs(6));
+    second.extend(now + Duration::from_secs(6));
     assert_eq!(
         registry.recovery_deadline(now + Duration::from_secs(7)),
         now + Duration::from_secs(3)
@@ -78,7 +84,7 @@ async fn recovery_shares_confirmed_deadlines_and_retires_them_before_final_deliv
         now + Duration::from_secs(6)
     );
     tokio::time::advance(Duration::from_secs(6)).await;
-    drop(authoring);
+    drop(second);
     assert_eq!(
         registry.recovery_deadline(Instant::now() + Duration::from_secs(7)),
         now + Duration::from_secs(13)

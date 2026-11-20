@@ -1,4 +1,7 @@
-//! Child summaries stay private; root progress carries no generated notes.
+//! A compaction's notices: summarizing, resuming once its checkpoint
+//! committed, or interrupted. Child summaries stay private; root progress
+//! carries no generated notes. A fleet run's window hook and a setup run's
+//! both emit these, as `context_progress` frames the daemon republishes.
 
 use af_context::{Compaction, Progress};
 use af_wire::{
@@ -8,7 +11,7 @@ use af_wire::{
 
 use crate::engine::EventSink;
 
-pub(super) struct Notifications<'a> {
+pub(crate) struct Notifications<'a> {
     sink: &'a dyn EventSink,
     generation: u64,
     visible: bool,
@@ -17,7 +20,7 @@ pub(super) struct Notifications<'a> {
 }
 
 impl<'a> Notifications<'a> {
-    pub(super) fn new(sink: &'a dyn EventSink, task: &Compaction, visible: bool) -> Self {
+    pub(crate) fn new(sink: &'a dyn EventSink, task: &Compaction, visible: bool) -> Self {
         Self {
             sink,
             generation: task.expected_generation.saturating_add(1),
@@ -27,7 +30,7 @@ impl<'a> Notifications<'a> {
         }
     }
 
-    pub(super) fn observe(&mut self, progress: Progress) {
+    pub(crate) fn observe(&mut self, progress: Progress) {
         match progress {
             Progress::Read(_) => {}
             Progress::Summarizing => {

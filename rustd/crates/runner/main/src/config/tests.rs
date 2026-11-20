@@ -20,8 +20,6 @@ daemon_max_attempts = 5
 daemon_initial_backoff_ms = 250
 daemon_max_backoff_ms = 30_000
 renewal_interval_ms = 5000
-authoring_renewal_interval_ms = 10_000
-authoring_renewal_retry_ms = 250
 max_concurrent_file_operations = 2
 ";
 

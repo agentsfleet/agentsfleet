@@ -67,7 +67,6 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
         ),
         (ToolErrorCode::ScheduleNotRunnable, "schedule_not_runnable"),
         (ToolErrorCode::MessageNoChannel, "message_no_channel"),
-        (ToolErrorCode::MessageLimitReached, "message_limit_reached"),
         (ToolErrorCode::AgentsfleetdRefused, "agentsfleetd_refused"),
         (
             ToolErrorCode::AgentsfleetdUnreachable,

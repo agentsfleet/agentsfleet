@@ -223,7 +223,7 @@ fn run(
         crate::supervisor_recovery::Config::configure(&mut run)?;
     }
     // Assignments use the daemon's tagged run encoding.
-    Ok(serde_json::to_value(
-        af_wire::run::TaggedRun::<'_, Value>::Fleet(Box::new(run)),
-    )?)
+    Ok(serde_json::to_value(af_wire::run::TaggedRun::Fleet(
+        Box::new(run),
+    ))?)
 }

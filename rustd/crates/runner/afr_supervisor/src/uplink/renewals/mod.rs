@@ -28,17 +28,10 @@ pub(crate) enum Renewed {
     Refused(ErrorCode),
 }
 
-enum Duty {
-    Fleet {
-        meter: Arc<Meter>,
-        updates: watch::Sender<Option<Renewed>>,
-    },
-    Authoring,
-}
-
 struct Run {
     deadline: Arc<Mutex<Instant>>,
-    duty: Duty,
+    meter: Arc<Meter>,
+    updates: watch::Sender<Option<Renewed>>,
 }
 
 pub(crate) struct Renewals {
@@ -71,18 +64,20 @@ impl Renewals {
         deadline: Instant,
     ) -> Result<Registration> {
         let (updates, watching) = watch::channel(None);
-        let lifetime = self.insert(run, deadline, Duty::Fleet { meter, updates })?;
+        let lifetime = self.insert(run, deadline, meter, updates)?;
         Ok(Registration {
             lifetime,
             updates: watching,
         })
     }
 
-    pub(crate) fn authoring(self: &Arc<Self>, run: &Uuid7, deadline: Instant) -> Result<Lifetime> {
-        self.insert(run, deadline, Duty::Authoring)
-    }
-
-    fn insert(self: &Arc<Self>, run: &Uuid7, deadline: Instant, duty: Duty) -> Result<Lifetime> {
+    fn insert(
+        self: &Arc<Self>,
+        run: &Uuid7,
+        deadline: Instant,
+        meter: Arc<Meter>,
+        updates: watch::Sender<Option<Renewed>>,
+    ) -> Result<Lifetime> {
         let slot = Arc::clone(&self.slots)
             .try_acquire_owned()
             .map_err(crate::error::stream_protocol)?;
@@ -92,7 +87,8 @@ impl Renewals {
             Entry::Vacant(entry) => {
                 entry.insert(Arc::new(Run {
                     deadline: Arc::clone(&deadline),
-                    duty,
+                    meter,
+                    updates,
                 }));
             }
         }
@@ -189,18 +185,15 @@ impl Renewals {
             .map(|entry| (entry.key().clone(), Arc::clone(entry.value())))
             .collect();
         runs.into_iter()
-            .filter_map(|(id, run)| {
-                let Duty::Fleet { meter, .. } = &run.duty else {
-                    return None;
-                };
+            .map(|(id, run)| {
                 let request = af_wire::report::RenewRequest {
-                    requests: meter.unrecorded(),
+                    requests: run.meter.unrecorded(),
                 };
                 let renewal = Renewal {
                     run_id: id.to_string().into(),
                     request,
                 };
-                Some((id, renewal))
+                (id, renewal)
             })
             .collect()
     }
@@ -211,9 +204,7 @@ impl Renewals {
             let Some(run) = run else {
                 continue;
             };
-            let Duty::Fleet { updates, .. } = &run.duty else {
-                continue;
-            };
+            let updates = &run.updates;
             // Releasing the shard before watch notification permits concurrent retirements.
             match answer {
                 Outcome::Accepted(response) => {

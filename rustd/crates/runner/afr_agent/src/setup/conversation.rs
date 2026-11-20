@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Span;
 
 use super::context::Saved;
-use crate::engine::Meter;
+use crate::engine::{EventSink, Meter};
 use crate::events::Live;
 use crate::spans;
 
@@ -34,6 +34,8 @@ pub(super) struct Shared<'a> {
     pub(super) scrub: &'a Scrub,
     /// The answer's text, streamed live.
     pub(super) live: Live<'a>,
+    /// Where the run's frames go: a compaction's progress among them.
+    pub(super) events: &'a dyn EventSink,
     pub(super) meter: &'a Meter,
     pub(super) stop: &'a CancellationToken,
     /// `propose_setup`, the run's one tool; a clone the run reads what it
@@ -148,7 +150,7 @@ impl<'a> SetupLoop<'a> {
             };
             let mut notes = Notes(&self.shared);
             self.saved
-                .compact(task, &mut notes, self.shared.stop)
+                .compact(task, &mut notes, self.shared.events, self.shared.stop)
                 .await?;
         }
     }

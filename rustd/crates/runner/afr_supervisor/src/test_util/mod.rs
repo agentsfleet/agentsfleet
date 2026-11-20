@@ -73,14 +73,9 @@ impl Healthy {
     /// own.
     pub(crate) fn to(&self, verb: Option<Verb>) -> Value {
         match verb {
-            // Authoring fixtures must provide their attempt-bound receipts.
+            // Durable-task fixtures supply their native receipts explicitly.
             Some(
-                Verb::AuthoringModel
-                | Verb::AuthoringActivity
-                | Verb::AuthoringRenew
-                | Verb::AuthoringReport
-                // Durable-task fixtures also supply their native receipts explicitly.
-                | Verb::TaskInputs
+                Verb::TaskInputs
                 | Verb::TaskBindings
                 | Verb::TaskInputReceipt
                 | Verb::TaskDecisionReserve

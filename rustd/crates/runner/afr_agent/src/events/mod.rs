@@ -7,6 +7,8 @@
 //! each kind keeps its own scrub carry so a secret split across chunks is never
 //! sent (`docs/architecture/runner_fleet.md` §"Live activity (the SSE tail)").
 
+pub(crate) mod compaction;
+
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;

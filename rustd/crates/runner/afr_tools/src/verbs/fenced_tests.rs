@@ -320,17 +320,25 @@ async fn an_undelivered_line_is_a_failed_call() {
     );
 }
 
+/// Nothing on the runner bounds a line's length or a run's count: a
+/// 10,000-byte post and a ninth post in one run both reach the verb whole and
+/// read back as posted.
 #[tokio::test]
-async fn a_spent_budget_is_its_own_error() {
-    let (output, _asked) = posted(
-        Err(Unanswered::Refused(Some(
-            af_core::error_code::MESSAGE_LIMIT_REACHED,
-        ))),
-        "one more",
-    )
-    .await;
+async fn the_message_tool_posts_long_and_often() {
+    let verbs = RecordingVerbs::answering(Ok(String::new()), Ok(true));
+    let run = run_with(&verbs);
+    let long = "w".repeat(10_000);
+    let mut said = vec![long.clone()];
+    said.extend((2..=9).map(|line| format!("line {line}")));
+    for text in &said {
+        let output = call_built(&run, "message", json!({ "text": text })).await;
+        assert_eq!(output.error_code, None, "{text:.20}");
+        assert_eq!(output.text, "posted to the conversation");
+    }
+    let asked = verbs.asked();
+    assert_eq!(asked.len(), 9);
     assert_eq!(
-        output.error_code,
-        Some(ToolErrorCode::MessageLimitReached.into())
+        asked,
+        said.into_iter().map(Asked::Message).collect::<Vec<_>>()
     );
 }

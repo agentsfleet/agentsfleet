@@ -31,13 +31,6 @@ pub(crate) enum Expected {
         operation: af_wire::run::CheckpointOperationId,
         kind: af_wire::run::TurnCheckpointKind,
     },
-    AuthoringModel {
-        run: af_core::id::Uuid7,
-        dispatch: String,
-    },
-    AuthoringActivity(af_core::id::Uuid7),
-    AuthoringRenew(af_core::id::Uuid7),
-    AuthoringReport(af_core::id::Uuid7),
 }
 
 struct Pending {
@@ -154,23 +147,8 @@ impl Expected {
             (Self::Report(expected), Down::ReportAck { run_id, .. })
             | (Self::Folds(expected), Down::Folded { run_id, .. })
             | (Self::ContextLoad(expected), Down::ContextLoaded { run_id, .. })
-            | (Self::ContextSave(expected), Down::ContextSaved { run_id, .. })
-            | (Self::AuthoringActivity(expected), Down::AuthoringActivityAck { run_id, .. })
-            | (Self::AuthoringRenew(expected), Down::AuthoringRenewed { run_id, .. })
-            | (Self::AuthoringReport(expected), Down::AuthoringReportAck { run_id, .. }) => {
+            | (Self::ContextSave(expected), Down::ContextSaved { run_id, .. }) => {
                 expected.as_str() == run_id
-            }
-            (
-                Self::AuthoringModel { run, dispatch },
-                Down::AuthoringModelResult { run_id, answer, .. },
-            ) => {
-                run.as_str() == run_id
-                    && match answer {
-                        af_wire::protocol::Answer::Ok { response } => {
-                            &response.dispatch_id == dispatch
-                        }
-                        af_wire::protocol::Answer::Refused { .. } => true,
-                    }
             }
             (Self::Renewed(expected), Down::Renewed { runs, .. }) => {
                 let ids: std::collections::HashSet<_> =

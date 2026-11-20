@@ -33,7 +33,6 @@ pub mod error;
 pub mod workspace_clone;
 
 mod activity;
-mod authoring;
 mod client;
 mod credentials;
 mod downlink;

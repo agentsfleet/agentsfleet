@@ -56,13 +56,13 @@ async fn test_two_worker_hold_transfers_count_each_sandbox_once() {
 }
 
 #[tokio::test]
-async fn test_authoring_occupancy_preserves_the_keeper_reserve() {
+async fn test_setup_occupancy_preserves_the_keeper_reserve() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
     hold(&holds, &engine, FLEET_A).await.unwrap();
-    let author = holds.occupy(Occupant::Authoring { run: id(FLEET_B) });
+    let setup = holds.occupy(Occupant::Setup { run: id(FLEET_B) });
     assert_eq!(fleets(&holds).await, Vec::<String>::new());
-    drop(author);
+    drop(setup);
     assert!(hold(&holds, &engine, FLEET_A).await.is_some());
     holds.shutdown().await;
 }
@@ -92,10 +92,10 @@ async fn cancelled_park_and_guard_drop_leave_no_busy_reservation() {
 }
 
 #[tokio::test]
-async fn concurrent_authoring_guard_drops_release_only_their_own_attempts() {
+async fn concurrent_setup_guard_drops_release_only_their_own_runs() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    let keeper = holds.occupy(Occupant::Authoring { run: id(RUN) });
+    let keeper = holds.occupy(Occupant::Setup { run: id(RUN) });
     let barrier = Arc::new(Barrier::new(100));
     let mut workers = tokio::task::JoinSet::new();
     for _ in 0..100 {
@@ -105,7 +105,7 @@ async fn concurrent_authoring_guard_drops_release_only_their_own_attempts() {
             let run = af_crypto::entropy::Entropy::new()
                 .uuid7(af_core::clock::now())
                 .unwrap();
-            let guard = holds.occupy(Occupant::Authoring { run });
+            let guard = holds.occupy(Occupant::Setup { run });
             barrier.wait().await;
             drop(guard);
         });
@@ -115,7 +115,7 @@ async fn concurrent_authoring_guard_drops_release_only_their_own_attempts() {
     }
     assert!(
         hold(&holds, &engine, FLEET_A).await.is_none(),
-        "the original author still owns a worker"
+        "the original setup run still owns a worker"
     );
     drop(keeper);
     assert!(hold(&holds, &engine, FLEET_A).await.is_some());

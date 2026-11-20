@@ -46,9 +46,9 @@ async fn should_record_non_string_panics_without_losing_the_response() {
 #[tokio::test]
 async fn should_reject_an_unexpected_request_and_fail_the_owning_test() {
     let (api, calls) = fake(crate::test_support::daemon(|_| None));
-    let failure = api.send(call(Verb::AuthoringModel)).await.unwrap_err();
+    let failure = api.send(call(Verb::TaskInputs)).await.unwrap_err();
     assert!(
-        failure.to_string().contains("authoring_model call (500)"),
+        failure.to_string().contains("task_inputs call (500)"),
         "{failure}"
     );
     let panic = catch_unwind(AssertUnwindSafe(|| drop(calls))).unwrap_err();

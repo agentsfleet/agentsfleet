@@ -47,11 +47,8 @@ impl Dispatch<'_> {
         }
         match message {
             Down::Run { ref run } => {
-                let id: &str = match run {
-                    TaggedRun::Fleet(run) => run.run_id.as_ref(),
-                    TaggedRun::Authoring(run) => run.run_id.as_str(),
-                };
-                let id = Uuid7::parse(id)?;
+                let TaggedRun::Fleet(run) = run;
+                let id = Uuid7::parse(&run.run_id)?;
                 self.assign(frame, id)?;
             }
             Down::Cancel { run_id, error_code } => {
@@ -294,7 +291,7 @@ mod tests {
                 error_code: af_core::error_code::RUN_CANCELLED.as_str().into(),
             },
             Down::Run {
-                run: TaggedRun::<serde_json::Value>::Fleet(Box::new(payload(RUN_ID, FLEET_ID))),
+                run: TaggedRun::Fleet(Box::new(payload(RUN_ID, FLEET_ID))),
             },
         ];
         for message in messages {

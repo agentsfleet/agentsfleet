@@ -209,10 +209,6 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
             request,
         } => json!({"type":"context_saved", "request_id":request_id, "run_id":run_id,
             "answer":answer(api, Verb::ContextSave, request.as_ref()).await?}),
-        message @ (Up::AuthoringModel { .. }
-        | Up::AuthoringActivity { .. }
-        | Up::AuthoringRenew { .. }
-        | Up::AuthoringReport { .. }) => authoring_reply(api, message).await?,
         Up::Ping { request_id } => json!({"type":"pong", "request_id":request_id}),
         Up::Progress { request, .. } => return activity_reply(api, &request).await,
         Up::Ready { .. } => return Ok(None),
@@ -221,36 +217,6 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
         }
     };
     Ok(Some(reply))
-}
-
-async fn authoring_reply(api: &dyn RunnerApi, message: Up<'_>) -> Result<Value> {
-    Ok(match message {
-        Up::AuthoringModel {
-            request_id,
-            run_id,
-            request,
-        } => json!({"type":"authoring_model_result", "request_id":request_id,
-            "run_id":run_id, "answer":answer(api, Verb::AuthoringModel, &request).await?}),
-        Up::AuthoringActivity {
-            request_id,
-            run_id,
-            request,
-        } => json!({"type":"authoring_activity_ack", "request_id":request_id,
-            "run_id":run_id, "answer":answer(api, Verb::AuthoringActivity, &request).await?}),
-        Up::AuthoringRenew {
-            request_id,
-            run_id,
-            request,
-        } => json!({"type":"authoring_renewed", "request_id":request_id,
-            "run_id":run_id, "answer":answer(api, Verb::AuthoringRenew, &request).await?}),
-        Up::AuthoringReport {
-            request_id,
-            run_id,
-            request,
-        } => json!({"type":"authoring_report_ack", "request_id":request_id,
-            "run_id":run_id, "answer":answer(api, Verb::AuthoringReport, &request).await?}),
-        _ => panic!("an authoring reply requires an authoring request"),
-    })
 }
 
 async fn checkpoint_reply(

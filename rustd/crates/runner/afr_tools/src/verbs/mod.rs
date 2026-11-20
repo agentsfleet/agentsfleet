@@ -165,9 +165,6 @@ impl Unanswered {
             Self::Refused(Some(code)) if code == error_code::MESSAGE_NO_CHANNEL => {
                 ToolErrorCode::MessageNoChannel
             }
-            Self::Refused(Some(code)) if code == error_code::MESSAGE_LIMIT_REACHED => {
-                ToolErrorCode::MessageLimitReached
-            }
             Self::Refused(_other) => ToolErrorCode::AgentsfleetdRefused,
         }
     }

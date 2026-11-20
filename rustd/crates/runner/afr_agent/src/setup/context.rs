@@ -24,7 +24,9 @@ use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
 
 use super::SetupContext;
+use crate::engine::EventSink;
 use crate::error::Result;
+use crate::events::compaction::Notifications;
 
 /// What labels the head candidate the turn edits, so the model reads it as
 /// data, never as an instruction.
@@ -163,7 +165,9 @@ impl<'a> Saved<'a> {
     }
 
     /// Runs `task` through `summarizer` and saves its checkpoint, then drops
-    /// the earlier turns it covers.
+    /// the earlier turns it covers. `events` hears the compaction's
+    /// progress, which the daemon republishes as the draft's
+    /// `context.progress`.
     ///
     /// # Errors
     /// The summary call failed or was cut, the run stopped, or the save was
@@ -172,6 +176,7 @@ impl<'a> Saved<'a> {
         &mut self,
         task: Compaction,
         summarizer: &mut impl af_context::Summarizer,
+        events: &dyn EventSink,
         stop: &CancellationToken,
     ) -> af_context::Result<()> {
         let mut store = Store {
@@ -180,9 +185,15 @@ impl<'a> Saved<'a> {
             saving: self.saving,
             version: &mut self.version,
         };
-        let checkpoint =
-            af_context::execute(task, summarizer, &mut store, || stop.is_cancelled(), |_| {})
-                .await?;
+        let mut progress = Notifications::new(events, &task, true);
+        let checkpoint = af_context::execute(
+            task,
+            summarizer,
+            &mut store,
+            || stop.is_cancelled(),
+            |value| progress.observe(value),
+        )
+        .await?;
         let covered = checkpoint.covered_through;
         self.earlier
             .retain(|turn| turn.sequence.is_some_and(|sequence| sequence > covered));
