@@ -3,7 +3,8 @@
 //! A message keeps the operation key that queued it, which its page returns;
 //! the 24-hour retry window is `setup.replay_receipts`, swept long before
 //! the message goes. Its usage is the attempt's dispatch receipts, summed once
-//! a report was acknowledged, never a message column.
+//! a report was acknowledged, or its draft runs' usage lines, never a message
+//! column.
 
 /// `$1` id, `$2` draft, `$3` sequence, `$4` operation, `$5` status, `$6` tenant
 /// model (NULL for the platform default), `$7` user text.
@@ -13,11 +14,14 @@ pub(crate) const INSERT: &str = include_str!("insert.sql");
 pub(crate) const ADVANCE: &str = include_str!("advance.sql");
 
 /// One page of user and assistant roles, with each message's retry key and
-/// reported usage.
+/// reported usage: an attempt's dispatch receipts, or a draft run's usage
+/// lines, as [`NOTICES`] reads them.
 ///
 /// `$1` draft, `$2` cursor sequence, `$3` cursor role, `$4` and `$5` the
 /// in-flight statuses an answerless assistant role is hidden for, `$6` limit,
-/// `$7` the known usage word, `$8` and `$9` the unresolved dispatch statuses.
+/// `$7` the known usage word, `$8` and `$9` the unresolved dispatch statuses,
+/// `$10` the work type a draft run's lines carry, `$11` the runtime line
+/// kind, `$12` and `$13` the settled run statuses, `$14` the live run status.
 pub(crate) const PAGE: &str = include_str!("page.sql");
 
 /// The newest messages' states for a stream poll, with reported usage: an

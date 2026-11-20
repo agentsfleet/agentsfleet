@@ -109,6 +109,8 @@ mod integration_runner_fleets_paging;
 mod integration_runner_messages;
 #[path = "integration_runner_messages_fence.rs"]
 mod integration_runner_messages_fence;
+#[path = "integration_runner_schedule_tool.rs"]
+mod integration_runner_schedule_tool;
 #[path = "integration_runner_schedules.rs"]
 mod integration_runner_schedules;
 #[path = "integration_runner_schedules_edit.rs"]
@@ -140,6 +142,8 @@ mod integration_rust_runner_nested;
 mod integration_rust_runner_repairs;
 #[path = "integration_rust_runner_reviews.rs"]
 mod integration_rust_runner_reviews;
+#[path = "integration_rust_runner_setup/mod.rs"]
+mod integration_rust_runner_setup;
 #[path = "integration_rust_runner_telemetry.rs"]
 mod integration_rust_runner_telemetry;
 #[path = "integration_serve.rs"]

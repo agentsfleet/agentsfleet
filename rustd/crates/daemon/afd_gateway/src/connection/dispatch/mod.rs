@@ -9,6 +9,7 @@ use super::{ConnectionServices, Message, Request, io::IncomingFrame};
 use crate::{Result, error::ErrorKind};
 
 mod authoring;
+mod context;
 mod heartbeat;
 mod progress;
 mod renewal;
@@ -94,6 +95,19 @@ impl ConnectionServices {
                 self.turn_checkpoint(request_id, &run_id, request.as_ref())
                     .await?;
             }
+            Up::ContextLoad {
+                request_id,
+                run_id,
+                request,
+            } => self.context_load(request_id, &run_id, &request).await?,
+            Up::ContextSave {
+                request_id,
+                run_id,
+                request,
+            } => {
+                self.context_save(request_id, &run_id, request.as_ref())
+                    .await?;
+            }
             Up::Progress { run_id, request } => self.progress(&run_id, &request).await?,
             Up::Ready {
                 credits,
@@ -146,6 +160,8 @@ fn operation(message: &Request<'_>) -> &'static str {
         Up::Report { .. } => "report",
         Up::Folds { .. } => "folds",
         Up::TurnCheckpoint { .. } => "turn_checkpoint",
+        Up::ContextLoad { .. } => "context_load",
+        Up::ContextSave { .. } => "context_save",
         Up::Progress { .. } => "progress",
         Up::Ready { .. } => "ready",
         Up::AuthoringModel { .. } => "authoring_model",

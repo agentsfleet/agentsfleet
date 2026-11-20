@@ -197,10 +197,11 @@ WITH scope AS MATERIALIZED (
 ), closed AS (
   SELECT * FROM settled WHERE closed
 ), dropped AS (
-  -- A reassigned run's records are of a run whose answer does not stand.
+  -- A reassigned run's records are of a run whose answer does not stand: every item another
+  -- run of this turn kept, whichever turn each names.
   DELETE FROM thread.items t
-  USING moved m
-  WHERE t.fleet_id = m.fleet_id AND t.turn_id = m.turn_id AND t.fencing_token <> m.fencing_token
+  USING moved m, thread.runs r
+  WHERE t.run_id = r.id AND r.fleet_id = m.fleet_id AND r.turn_id = m.turn_id AND r.id <> m.id
 ), released AS (
   -- The thread's resume context rides the same update that releases the run,
   -- since one statement may change a row once.

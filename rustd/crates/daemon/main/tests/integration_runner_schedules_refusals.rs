@@ -47,7 +47,7 @@ async fn refuses(cases: impl FnOnce(&Assigned) -> Vec<Case>) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_run_that_is_not_held() {
-    refuses(|held| {
+    Box::pin(refuses(|held| {
         vec![
             (
                 Method::GET,
@@ -65,7 +65,7 @@ async fn test_schedules_refuse_a_run_that_is_not_held() {
             ),
             (Method::GET, held.path(""), None, 400, "UZ-REQ-001"),
         ]
-    })
+    }))
     .await;
 }
 
@@ -73,7 +73,7 @@ async fn test_schedules_refuse_a_run_that_is_not_held() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_body_they_do_not_take() {
-    refuses(|held| {
+    Box::pin(refuses(|held| {
         let fence = held.fence;
         vec![
             (
@@ -115,7 +115,7 @@ async fn test_schedules_refuse_a_body_they_do_not_take() {
                 "UZ-REQ-001",
             ),
         ]
-    })
+    }))
     .await;
 }
 
@@ -124,7 +124,7 @@ async fn test_schedules_refuse_a_body_they_do_not_take() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_schedule_that_is_not_held() {
-    refuses(|held| {
+    Box::pin(refuses(|held| {
         let fence = json!({"fencing_token": held.fence});
         vec![
             (
@@ -163,7 +163,7 @@ async fn test_schedules_refuse_a_schedule_that_is_not_held() {
                 "UZ-SCHED-002",
             ),
         ]
-    })
+    }))
     .await;
 }
 
@@ -171,7 +171,7 @@ async fn test_schedules_refuse_a_schedule_that_is_not_held() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_runs_refuse_a_page_they_do_not_serve() {
-    refuses(|held| {
+    Box::pin(refuses(|held| {
         let runs = held.fenced(&format!("/{UNKNOWN}/runs"));
         vec![
             (
@@ -189,6 +189,6 @@ async fn test_schedule_runs_refuse_a_page_they_do_not_serve() {
                 "UZ-REQ-001",
             ),
         ]
-    })
+    }))
     .await;
 }

@@ -89,6 +89,41 @@ async fn seed_scheduler_bag(scene: &Scenario, admin: &Uuid7, qstash: &FakeQStash
     .await;
 }
 
+/// A booted daemon whose scheduler is `qstash`, its fleet holding the
+/// document `config`; no run is taken. The scheduler credentials are the
+/// admin workspace's `qstash` bag, read on use, as production reads them;
+/// nothing reaches the daemon by env.
+pub(crate) async fn scheduling(
+    supervisor: &mut Supervisor,
+    qstash: &FakeQStash,
+    config: &str,
+) -> Scenario {
+    let admin = unique_ids().0;
+    let extra = [(PLATFORM_ADMIN_WORKSPACE_KNOB, admin.as_str())];
+    let scene = scenario_with(supervisor, None, &extra, config).await;
+    seed_scheduler_bag(&scene, &admin, qstash).await;
+    scene
+}
+
+/// How many schedules of `source` `scene`'s fleet holds, or of any source.
+pub(crate) async fn schedules_held(scene: &Scenario, source: Option<Source>) -> i64 {
+    let statement = match source {
+        Some(_) => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1 AND source = $2",
+        None => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1 AND $2 = ''",
+    };
+    let mut connection = (scene.booted.database.acquire())
+        .await
+        .expect("a connection");
+    sqlx::query(statement)
+        .bind(&scene.fleet)
+        .bind(source.map_or("", Source::as_str))
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the count runs")
+        .try_get(0)
+        .expect("an integer")
+}
+
 /// A booted daemon pointed at `qstash`, its run taken.
 pub(crate) struct Assigned {
     pub(crate) scene: Scenario,
@@ -103,12 +138,7 @@ const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
 
 impl Assigned {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
-        // The scheduler credentials are the admin workspace's `qstash` bag, read
-        // on use, as production reads them; nothing reaches the daemon by env.
-        let admin = unique_ids().0;
-        let extra = [(PLATFORM_ADMIN_WORKSPACE_KNOB, admin.as_str())];
-        let scene = scenario_with(supervisor, None, &extra, FLEET_CONFIG_JSON).await;
-        seed_scheduler_bag(&scene, &admin, qstash).await;
+        let scene = scheduling(supervisor, qstash, FLEET_CONFIG_JSON).await;
         #[expect(
             clippy::disallowed_methods,
             reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
@@ -176,19 +206,7 @@ impl Assigned {
 
     /// How many schedules of `source` the fleet holds, or of any source.
     pub(crate) async fn held(&self, source: Option<Source>) -> i64 {
-        let statement = match source {
-            Some(_) => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1 AND source = $2",
-            None => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1 AND $2 = ''",
-        };
-        let mut connection = self.connection().await;
-        sqlx::query(statement)
-            .bind(&self.scene.fleet)
-            .bind(source.map_or("", Source::as_str))
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the count runs")
-            .try_get(0)
-            .expect("an integer")
+        schedules_held(&self.scene, source).await
     }
 
     /// Writes a schedule straight into the table, as a person's surface or

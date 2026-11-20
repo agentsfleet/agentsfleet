@@ -15,6 +15,9 @@ categories.workspace = true
 test-util = ["af_core/test-util", "afd_db/test-util", "afd_bus/test-util"]
 
 [dependencies]
+# A setup run's saved context crosses the wire as an opaque document; the
+# gateway decodes it into the checkpoint both halves check.
+af_context.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
 af_fleet_runtime.workspace = true
 af_observability.workspace = true

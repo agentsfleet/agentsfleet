@@ -32,3 +32,28 @@ fn a_kept_record_answers_in_full_under_its_canonical_id() {
     assert_eq!(answered["truncated"], false);
     assert_eq!(answered["truncated_arguments"], false);
 }
+
+#[test]
+fn an_edits_record_answers_with_each_files_counts() {
+    let row = ToolCallRow::fixture("Success.")
+        .with_changes(r#"[{"path":"src/a.rs","added":24,"removed":8}]"#);
+    let call = parse_call_id("7:1").expect("a call id");
+    let answered = serde_json::to_value(detail(call, &row)).expect("encodes");
+    assert_eq!(
+        answered["changes"],
+        serde_json::json!([{"path": "src/a.rs", "added": 24, "removed": 8}])
+    );
+}
+
+#[test]
+fn a_record_that_changed_nothing_answers_no_changes() {
+    let call = parse_call_id("7:1").expect("a call id");
+    for row in [
+        ToolCallRow::fixture("ran"),
+        // A column this build cannot read answers as no changes, never a 500.
+        ToolCallRow::fixture("ran").with_changes("not a list"),
+    ] {
+        let answered = serde_json::to_value(detail(call, &row)).expect("encodes");
+        assert!(answered.get("changes").is_none(), "{answered}");
+    }
+}

@@ -109,6 +109,7 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
             output_tail: None,
             output_line_count: None,
             exit_code: None,
+            changes: Vec::new(),
         }),
         ActivityFrame::ToolCallProgress(ToolCallProgress {
             name: TOOL,

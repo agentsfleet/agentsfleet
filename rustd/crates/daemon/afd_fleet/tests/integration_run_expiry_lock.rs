@@ -51,8 +51,12 @@ const RUN_LIVE: &str = "SELECT run_expires_at > clock_timestamp() FROM thread.ru
 const BLOCKING: &str =
     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
 
-/// One finished call's record, as a runner posts it.
-const RECORD: &str = r#"{"call_number":1,"arguments":{},"truncated_arguments":false,"output":"ok","output_line_count":1,"truncated":false}"#;
+/// One finished call's record of `turn`, as a runner posts it.
+fn record(turn: &str) -> String {
+    format!(
+        r#"{{"call_number":1,"arguments":{{}},"truncated_arguments":false,"output":"ok","output_line_count":1,"truncated":false,"turn_id":"{turn}","kind":"tool_call","tool":"shell","status":"succeeded"}}"#
+    )
+}
 
 /// The thread a message-capable event was asked from.
 const THREAD: &str = "C0FIXTURE/1700000000.000200";
@@ -171,8 +175,9 @@ async fn test_tool_call_records_refuse_a_run_lapsed_in_the_wait() {
     let held = held().await;
     let run = &held.issued.run_id;
     let post = format!(
-        r#"{{"fencing_token":{},"calls":[{RECORD}]}}"#,
-        held.fence.as_u64()
+        r#"{{"fencing_token":{},"calls":[{}]}}"#,
+        held.fence.as_u64(),
+        record(held.turn_id.as_str())
     );
     let post: ToolCallRecordsRequest<'_> = serde_json::from_str(&post).expect("a well-formed post");
     let plane = held.fixtures.plane();

@@ -6,14 +6,21 @@
 //! superseded writes nothing. Best-effort for the run — a record that breaks a
 //! bound is skipped and counted, and the run's answer never depends on a post.
 //!
-//! # The budget is per event and per fence
+//! # The budget is per run
 //!
-//! Settlement keeps one fence's records (the report statement drops the rest,
+//! Settlement keeps one run's records (the report statement drops the rest,
 //! as `DELETE_OTHER_FENCES` does for a post), so the set an
 //! operator can open is one run's. A reassigned run therefore starts with
 //! the whole budget rather than inheriting a dead run's spend.
+//!
+//! # Each record names a turn the run serves
+//!
+//! A record names the turn newest when its call's step began: the run's own,
+//! or one a person sent that its conversation folded in. A record naming any
+//! other turn is skipped as `unserved_turn` and counted, and the statement
+//! that writes the rest joins only a served turn, so none is ever stored.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use af_core::id::Uuid7;
 use af_wire::tool_detail::{
@@ -83,6 +90,41 @@ fn narrow_all<'a>(calls: &[RawToolCallRecord<'a>]) -> (BTreeMap<u64, Admissible<
     (kept, skipped)
 }
 
+/// The candidates whose turn is one of `served`, and a skip for each that
+/// names another.
+fn serving<'a>(
+    candidates: BTreeMap<u64, Admissible<'a>>,
+    served: &BTreeSet<String>,
+) -> (BTreeMap<u64, Admissible<'a>>, Vec<Skip>) {
+    let mut kept = BTreeMap::new();
+    let mut unserved = Vec::new();
+    for (number, admissible) in candidates {
+        if served.contains(admissible.record.turn_id.as_ref()) {
+            kept.insert(number, admissible);
+        } else {
+            unserved.push(Skip {
+                position: admissible.position,
+                reason: DetailRejection::UnservedTurn,
+                bytes: admissible.bytes,
+            });
+        }
+    }
+    (kept, unserved)
+}
+
+/// Every turn `candidates` name, once each. The record's own bound proved
+/// each a canonical version 7 UUID, so none is lost to the parse.
+fn named_turns(candidates: &BTreeMap<u64, Admissible<'_>>) -> Vec<Uuid7> {
+    let named: BTreeSet<&str> = candidates
+        .values()
+        .map(|admissible| admissible.record.turn_id.as_ref())
+        .collect();
+    named
+        .into_iter()
+        .filter_map(|turn| Uuid7::parse(turn).ok())
+        .collect()
+}
+
 /// The records that fit what the event has left, lowest call number first.
 ///
 /// `spent` is everything the run already keeps, and `replaced` what each
@@ -121,7 +163,8 @@ enum Kept {
     NoRun,
     /// The run is not the fleet's current holder, or the post is not its own.
     Fenced(LiveRun),
-    /// Written: how many records, and those that did not fit.
+    /// Written: how many records, and those refused for the budget or for
+    /// naming a turn the run does not serve.
     Stored {
         target: LiveRun,
         stored: usize,
@@ -135,8 +178,8 @@ impl RunService {
     /// # Errors
     /// Refuses a run that is not this runner's or not live, and a holder the
     /// fleet has superseded; neither writes anything. Reports a datastore that
-    /// would not answer. A record refused for its shape, a bound or the
-    /// event's budget is counted, not an error.
+    /// would not answer. A record refused for its shape, a bound, the run's
+    /// budget or a turn the run does not serve is counted, not an error.
     pub async fn record_tool_calls(
         &self,
         runner_id: &Uuid7,

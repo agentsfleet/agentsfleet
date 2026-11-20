@@ -23,6 +23,8 @@ pub enum Operation {
     Folds,
     /// Capture or restore ordinary event-owned recovery state.
     TurnCheckpoint,
+    /// Read or save a setup run's compacted draft context.
+    Context,
     /// Write and flush a complete frame.
     Write,
     /// Finish accepted requests and close the connection.
@@ -43,6 +45,7 @@ impl Operation {
             Self::Report => "report",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
+            Self::Context => "context",
             Self::Model => "model",
             Self::Write => "write",
             Self::Drain => "drain",
@@ -62,6 +65,7 @@ impl std::fmt::Display for Operation {
             Self::Report => "settling a report",
             Self::Folds => "reading pending inputs",
             Self::TurnCheckpoint => "saving or restoring a turn checkpoint",
+            Self::Context => "reading or saving a setup context",
             Self::Write => "sending a response",
             Self::Model => "calling the authoring model",
             Self::Drain => "closing the runner connection",

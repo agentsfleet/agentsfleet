@@ -64,6 +64,13 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
         output: Cow::Borrowed(&row.output),
         output_line_count: u64::try_from(row.output_line_count).unwrap_or_default(),
         truncated: row.truncated,
+        // The column holds the list the record verb narrowed, so its text
+        // always parses; the default is the parser's signature.
+        changes: row
+            .changes
+            .as_deref()
+            .and_then(|text| serde_json::from_str(text).ok())
+            .unwrap_or_default(),
     }
 }
 

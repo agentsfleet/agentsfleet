@@ -8,7 +8,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::activity::ActivityFrame;
-use af_wire::tool_trace::{ToolCallStatus, fenced_call_id};
+use af_wire::tool_trace::{FileChange, ToolCallStatus, fenced_call_id};
 use serde::Serialize;
 use serde_json::value::RawValue;
 
@@ -95,6 +95,9 @@ enum Frame<'a> {
         output_line_count: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         exit_code: Option<i32>,
+        /// An edit's files and the lines each gained and lost.
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        changes: &'a [FileChange<'a>],
     },
 }
 
@@ -158,6 +161,7 @@ impl<'a> Published<'a> {
                 output_tail: body.output_tail.as_deref(),
                 output_line_count: body.output_line_count,
                 exit_code: body.exit_code,
+                changes: &body.changes,
             },
         };
         Ok(Self {

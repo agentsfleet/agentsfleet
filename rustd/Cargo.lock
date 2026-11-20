@@ -931,6 +931,7 @@ dependencies = [
 name = "afd_gateway"
 version = "0.78.0"
 dependencies = [
+ "af_context",
  "af_core",
  "af_crypto",
  "af_fleet_runtime",
@@ -1544,6 +1545,7 @@ version = "0.78.0"
 dependencies = [
  "af_core",
  "af_egress",
+ "af_fleet_runtime",
  "af_validate",
  "af_wire",
  "afr_executor",
@@ -4731,6 +4733,7 @@ dependencies = [
  "futures-util",
  "html2text",
  "jiff 1.0.0",
+ "philiprehberger-cron-parser",
  "rcgen",
  "regex",
  "reqwest",
@@ -4740,6 +4743,7 @@ dependencies = [
  "schemars 1.2.3",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-rustls",

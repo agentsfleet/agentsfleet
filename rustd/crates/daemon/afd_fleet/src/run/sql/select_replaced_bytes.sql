@@ -1,4 +1,4 @@
 SELECT t.sequence, t.byte_count
 FROM thread.items t
-WHERE t.fleet_id = $1 AND t.turn_id = $2 AND t.fencing_token = $3
-  AND t.sequence = ANY($4::bigint[])
+WHERE t.run_id = $1
+  AND t.sequence = ANY($2::bigint[])

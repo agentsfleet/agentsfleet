@@ -27,8 +27,12 @@ use crate::rows::{LAPSE, Row};
 /// The thread a message-capable event was asked from.
 const THREAD: &str = "C0FIXTURE/1700000000.000100";
 
-/// One finished call's record, as a runner posts it.
-const RECORD: &str = r#"{"call_number":1,"arguments":{},"truncated_arguments":false,"output":"ok","output_line_count":1,"truncated":false}"#;
+/// One finished call's record of `turn`, as a runner posts it.
+fn record(turn: &str) -> String {
+    format!(
+        r#"{{"call_number":1,"arguments":{{}},"truncated_arguments":false,"output":"ok","output_line_count":1,"truncated":false,"turn_id":"{turn}","kind":"tool_call","tool":"shell","status":"succeeded"}}"#
+    )
+}
 
 /// The runner's own live run answers its standing; another token, another
 /// runner and a lapsed run are each refused.
@@ -160,7 +164,8 @@ async fn test_tool_call_records_keep_only_under_the_live_fence() {
     let held = held().await;
     let plane = held.fixtures.plane();
     let run = held.issued.run_id.as_str();
-    let post = |token: u64| format!(r#"{{"fencing_token":{token},"calls":[{RECORD}]}}"#);
+    let record = record(held.turn_id.as_str());
+    let post = |token: u64| format!(r#"{{"fencing_token":{token},"calls":[{record}]}}"#);
     let (live, stale) = (post(held.fence.as_u64()), post(held.fence.as_u64() + 1));
     let live: ToolCallRecordsRequest<'_> = serde_json::from_str(&live).expect("a well-formed post");
     let stale: ToolCallRecordsRequest<'_> =

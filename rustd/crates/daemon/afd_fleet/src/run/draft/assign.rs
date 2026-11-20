@@ -346,6 +346,7 @@ impl DraftAssignment {
             .unwrap_or_default();
         let context_tokens = u32::try_from(model.context_window_tokens).unwrap_or_default();
         let request = serde_json::json!({ (af_wire::turn::MESSAGE): turn.user_text });
+        let (history, history_sequences) = history(turn);
         RunPayload {
             run_id: Cow::Owned(self.run_id.to_string()),
             fencing_token: u64::try_from(self.fence).unwrap_or_default(),
@@ -384,7 +385,7 @@ impl DraftAssignment {
                 ),
             },
             instructions: Cow::Borrowed(instructions),
-            history: history(turn),
+            history,
             resume_hold: false,
             decision: None,
             task: None,
@@ -399,37 +400,44 @@ impl DraftAssignment {
                 candidate,
                 save_requested: turn.save_requested,
                 tool: self.tool.clone(),
+                history_sequences,
             }),
         }
     }
 }
 
-/// The draft's earlier turns, oldest first, within a fleet chat's caps: each
-/// text cut at [`TURN_TEXT_BYTES_MAX`] on a character boundary, and the oldest
-/// dropped until the rest fit [`HISTORY_BYTES_MAX`].
-fn history(turn: &SetupTurn) -> Vec<Turn<'_>> {
+/// The draft's earlier turns, oldest first, and each one's sequence, within a
+/// fleet chat's caps: each text cut at [`TURN_TEXT_BYTES_MAX`] on a character
+/// boundary, and the oldest dropped until the rest fit [`HISTORY_BYTES_MAX`].
+fn history(turn: &SetupTurn) -> (Vec<Turn<'_>>, Vec<u64>) {
     let cut = |text: &str| -> String {
         text.split_at(text.floor_char_boundary(TURN_TEXT_BYTES_MAX))
             .0
             .to_owned()
     };
-    let turns: Vec<Turn<'_>> = turn
+    let turns: Vec<(Turn<'_>, u64)> = turn
         .history
         .iter()
-        .map(|earlier| Turn {
-            message: Cow::Owned(cut(&earlier.message)),
-            answer: Cow::Owned(cut(&earlier.answer)),
+        .map(|earlier| {
+            let text = Turn {
+                message: Cow::Owned(cut(&earlier.message)),
+                answer: Cow::Owned(cut(&earlier.answer)),
+            };
+            (text, u64::try_from(earlier.sequence).unwrap_or_default())
         })
         .collect();
-    let mut total: usize = turns.iter().map(|t| t.message.len() + t.answer.len()).sum();
+    let mut total: usize = turns
+        .iter()
+        .map(|(t, _)| t.message.len() + t.answer.len())
+        .sum();
     turns
         .into_iter()
-        .skip_while(|t| {
+        .skip_while(|(t, _)| {
             let over = total > HISTORY_BYTES_MAX;
             if over {
                 total -= t.message.len() + t.answer.len();
             }
             over
         })
-        .collect()
+        .unzip()
 }

@@ -107,6 +107,7 @@ fn every_frame(call_id: &'static str) -> [ActivityFrame<'static>; 4] {
             output_tail: None,
             output_line_count: None,
             exit_code: None,
+            changes: Vec::new(),
         }),
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
@@ -238,6 +239,7 @@ fn test_published_completed_carries_outcome() {
         output_tail: Some(Cow::Borrowed("exit")),
         output_line_count: Some(40),
         exit_code: Some(2),
+        changes: Vec::new(),
     });
     let value = published(&frame);
     assert_eq!(value["kind"], "tool_call_completed");
@@ -255,12 +257,38 @@ fn test_published_completed_carries_outcome() {
         "output_tail",
         "output_line_count",
         "exit_code",
+        "changes",
     ] {
         assert!(
             bare.get(absent).is_none(),
             "no {absent} is invented: {bare}"
         );
     }
+}
+
+#[test]
+fn a_published_edit_carries_each_files_counts() {
+    use af_wire::tool_trace::{FileChange, ToolCallStatus};
+    let frame = ActivityFrame::ToolCallCompleted(ToolCallCompleted {
+        name: Cow::Borrowed("apply_patch"),
+        ms: 2,
+        call_id: Cow::Borrowed(RUNNER_CALL),
+        status: ToolCallStatus::Succeeded,
+        output_head: None,
+        output_tail: None,
+        output_line_count: Some(3),
+        exit_code: None,
+        changes: vec![FileChange {
+            path: Cow::Borrowed("src/a.rs"),
+            added: 24,
+            removed: 8,
+        }],
+    });
+    let value = published(&frame);
+    assert_eq!(
+        value["changes"],
+        serde_json::json!([{"path": "src/a.rs", "added": 24, "removed": 8}])
+    );
 }
 
 /// A batch the queue would not take costs the tail, and the debug line says

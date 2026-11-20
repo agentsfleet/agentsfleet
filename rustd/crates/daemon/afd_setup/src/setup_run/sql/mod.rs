@@ -42,3 +42,7 @@ pub(super) const PREVIEW: &str = include_str!("preview.sql");
 
 /// Deletes a deleted draft's active runs. `$1` draft, `$2` active.
 pub(crate) const DELETE_RUNS: &str = include_str!("delete_runs.sql");
+
+/// The draft a setup run's context save names, if the run is a draft run of
+/// this runner's. `$1` run, `$2` runner.
+pub(super) const DRAFT_OF_RUN: &str = include_str!("draft_of_run.sql");

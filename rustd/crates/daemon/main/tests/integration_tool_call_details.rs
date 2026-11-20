@@ -27,15 +27,18 @@ use sqlx::AssertSqlSafe;
 use crate::e2e::{Scenario, scenario};
 use crate::integration_tool_trace::tenant_reader;
 use crate::tail::run;
-use crate::wire::{json as body_of, post, report_body};
+use crate::wire::{json as body_of, post};
 
-/// One record of `call_number` whose output is `output`, with no arguments.
+/// One `shell` call's record of `call_number` whose output is `output`, with
+/// no arguments. [`post_records`] names the turn it belongs to.
 pub(crate) fn record(call_number: u64, output: &str) -> Value {
     json!({"call_number": call_number, "arguments": {}, "truncated_arguments": false,
-           "output": output, "output_line_count": output.lines().count(), "truncated": false})
+           "output": output, "output_line_count": output.lines().count(), "truncated": false,
+           "kind": "tool_call", "tool": "shell", "status": "succeeded"})
 }
 
-/// Posts `calls` under `fence`, answering the status and the body.
+/// Posts `calls` under `fence`, answering the status and the body. A record
+/// naming no turn is posted naming the scenario's, the run's own.
 pub(crate) async fn post_records(
     http: &reqwest::Client,
     scene: &Scenario,
@@ -43,6 +46,18 @@ pub(crate) async fn post_records(
     calls: &[Value],
 ) -> (u16, Value) {
     let path = format!("/v1/runners/me/runs/{run_id}/items");
+    let calls: Vec<Value> = calls
+        .iter()
+        .cloned()
+        .map(|mut call| {
+            if let Some(fields) = call.as_object_mut() {
+                fields
+                    .entry("turn_id")
+                    .or_insert_with(|| json!(scene.turn_id.as_str()));
+            }
+            call
+        })
+        .collect();
     let body = json!({"fencing_token": fence, "calls": calls});
     let response = post(http, scene, &path, &body).await;
     let status = response.status().as_u16();
@@ -78,7 +93,7 @@ pub(crate) async fn rows(scene: &Scenario) -> i64 {
 }
 
 /// How many records the scenario's event keeps under `fence`.
-async fn rows_at(scene: &Scenario, fence: u64) -> i64 {
+pub(crate) async fn rows_at(scene: &Scenario, fence: u64) -> i64 {
     scalar(
         scene,
         "SELECT count(*) FROM thread.items t \
@@ -199,56 +214,6 @@ async fn test_event_detail_budget_caps_records() {
         one_post.len() > DETAIL_POST_MAX_BYTES,
         "four would not fit a post"
     );
-    supervisor.shutdown().await;
-    scene.cleanup().await;
-}
-
-/// A dead run's record, as a reassignment would have left it, under `fence`.
-async fn plant_dead_record(scene: &Scenario, fence: u64) {
-    let dead = afd_db::test_util::mint_id();
-    execute(
-        scene,
-        &format!(
-            "INSERT INTO thread.items \
-             (id, workspace_id, fleet_id, turn_id, fencing_token, sequence, arguments, \
-              truncated_arguments, output, output_line_count, truncated, byte_count, \
-              created_at, updated_at) \
-             SELECT '{dead}'::uuid, workspace_id, thread_id, id, {fence}, 1, '{{}}'::jsonb, \
-                    false, 'dead', 1, false, 256, now(), now() \
-             FROM thread.turns WHERE thread_id = $1 AND id = $2"
-        ),
-    )
-    .await;
-}
-
-/// Dimension 1.6. Settlement keeps only the settling fence's records, and the
-/// current run's first post already clears a dead run's.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_settle_drops_dead_run_details() {
-    let mut supervisor = Supervisor::new();
-    let (scene, http, run_id, fence) = held(&mut supervisor).await;
-    plant_dead_record(&scene, fence - 1).await;
-    let (status, _) = post_records(&http, &scene, (&run_id, fence), &[record(1, "live")]).await;
-    assert_eq!(status, 200);
-    assert_eq!(
-        (
-            rows_at(&scene, fence - 1).await,
-            rows_at(&scene, fence).await
-        ),
-        (0, 1),
-        "the current run's post clears the dead run's record"
-    );
-
-    plant_dead_record(&scene, fence - 1).await;
-    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.turn_id, fence)).await;
-    assert!(settled.is_ok(), "native report refused: {settled:?}");
-    assert_eq!(
-        rows_at(&scene, fence - 1).await,
-        0,
-        "settlement drops it too"
-    );
-    assert_eq!(rows_at(&scene, fence).await, 1, "the settling run's stays");
     supervisor.shutdown().await;
     scene.cleanup().await;
 }

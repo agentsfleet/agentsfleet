@@ -14,12 +14,13 @@ use crate::view::error::{self, Result};
 /// What the read was doing, for the operator's log line.
 const CONTEXT_TOOL_CALL: &str = "read one tool call's record";
 
-/// One call by event, fence and number, inside its workspace and fleet.
+/// One call by turn, fence and number, inside its workspace and fleet.
 ///
-/// A call record names its event by `turn_id` inside its fleet; the call's
-/// number in its run's run is the record's `sequence`.
+/// The turn is the one the call's run was assigned for, which the thread
+/// shows the call under; the record itself names the turn newest when its
+/// step began. The call's number in its run is the record's `sequence`.
 ///
-/// `$1` workspace, `$2` fleet, `$3` event, `$4` fence, `$5` call number.
+/// `$1` workspace, `$2` fleet, `$3` turn, `$4` fence, `$5` call number.
 const SELECT_TOOL_CALL: &str = include_str!("select_tool_call.sql");
 
 /// Which call a read names: the two halves of its `{fence}:{n}` id.
@@ -45,6 +46,9 @@ pub struct ToolCallRow {
     pub output_line_count: i64,
     /// Whether the runner cut the output to fit.
     pub truncated: bool,
+    /// For an edit, each file it changed and the lines it added and removed,
+    /// as the wire spells the list; none for any other call.
+    pub changes: Option<String>,
 }
 
 /// The row a suite outside this crate needs to construct.
@@ -59,6 +63,16 @@ impl ToolCallRow {
             output: output.to_owned(),
             output_line_count: i64::try_from(output.lines().count()).unwrap_or(i64::MAX),
             truncated: false,
+            changes: None,
+        }
+    }
+
+    /// The same record, an edit whose `changes` column holds `changes`.
+    #[must_use]
+    pub fn with_changes(self, changes: &str) -> Self {
+        Self {
+            changes: Some(changes.to_owned()),
+            ..self
         }
     }
 }

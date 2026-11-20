@@ -15,20 +15,24 @@
 //!   runs on the platform model, whose key the run carries.
 //! - A short `max_runtime_seconds`, the setup turn's wall, so one runaway
 //!   costs minutes.
-//! - No sandbox and one tool, `propose_setup`; no checkpoint. A lapsed run is
-//!   reassigned and reruns its message from the start, at most
+//! - No sandbox and one tool, `propose_setup`; no turn checkpoint. A lapsed
+//!   run is reassigned and reruns its message from the start, at most
 //!   [`af_core::limits::EVENT_RUNS_MAX`] runs, then the message fails.
-//! - Assigned only to a protocol v3 runner; a v2 runner keeps the authoring
+//! - The draft's compacted context, read through the fenced context verb
+//!   (`context`) and saved through `afd_setup`'s fenced save.
+//! - Assigned only to a protocol v4 runner; a v2 runner keeps the authoring
 //!   attempt path (`afd_setup::run`) until the runner's setup agent
 //!   replaces it.
 
 mod assign;
+mod context;
 mod renew;
 mod report;
 
 use af_core::id::Uuid7;
 
 pub use assign::DraftAssignment;
+pub use context::DraftContext;
 
 /// What a session keeps about a draft-owned run it assigned: the draft, so
 /// its renewals, report and live answer take the draft's path.

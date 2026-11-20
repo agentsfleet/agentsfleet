@@ -13,6 +13,7 @@
 //! runner's setup agent replaces it. Each path refuses a draft the other holds:
 //! a live attempt here, a live draft thread there.
 
+mod context;
 mod preview;
 mod refusal;
 mod report;
@@ -26,6 +27,7 @@ use afd_credential::provider::RegisteredModel;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 
+pub use context::ContextSave;
 pub use preview::PreviewChunk;
 pub use report::{SetupFinish, SetupReportScope};
 
@@ -82,6 +84,9 @@ struct HeadRow {
 /// texts: they are the creator's private conversation.
 #[derive(Clone)]
 pub struct SetupTurnText {
+    /// The turn's position in the draft, which a saved context's watermark
+    /// counts in.
+    pub sequence: i64,
     /// What the person asked.
     pub message: String,
     /// What setup answered.
@@ -428,7 +433,7 @@ async fn history(
     draft: &Uuid7,
     sequence: i64,
 ) -> Result<Vec<SetupTurnText>> {
-    let rows: Vec<(String, String)> = sqlx::query_as(sql::HISTORY)
+    let rows: Vec<(i64, String, String)> = sqlx::query_as(sql::HISTORY)
         .bind(draft)
         .bind(sequence)
         .bind(MessageState::Completed.as_str())
@@ -440,6 +445,10 @@ async fn history(
     Ok(rows
         .into_iter()
         .rev()
-        .map(|(message, answer)| SetupTurnText { message, answer })
+        .map(|(sequence, message, answer)| SetupTurnText {
+            sequence,
+            message,
+            answer,
+        })
         .collect())
 }
