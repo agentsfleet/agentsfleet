@@ -320,6 +320,7 @@ After §8's deletion, the crates follow Microsoft's Pragmatic Rust Guidelines (h
 6. Each item has one public path: the cross-crate `pub use` aliases go.
 7. `afd_http::Services` splits into one trait per plane, each in its `afd_api_*` crate, so a handler names only the services it calls.
 8. The layer rule is a unit test.
+9. The unit-test shards (`make/test-unit.mk`: `test-unit-rustd-runner`, `-daemon`, `-daemon-libs`) are rechecked against the regrouped layers: each crate runs in exactly one shard, and a shard is a layer group, so a crate move cannot drop or double a crate's tests.
 
 - **Dimension 12.1** — every edge obeys its layer → Test `every_crate_depends_on_its_own_layer_or_lower` (unit): the workspace manifests, with dev, build and target tables. Expected: no edge to a higher layer, none between `runner/` and `daemon/`, none into `e2e/`. Negative twin `a_daemon_crate_naming_a_runner_crate_is_refused`.
 - **Dimension 12.2** — no dev-dependency cycle → Test `no_crate_dev_depends_on_a_crate_that_depends_on_it` (unit). Expected: none. Negative twin `a_planted_dev_cycle_is_named`.
@@ -329,6 +330,7 @@ After §8's deletion, the crates follow Microsoft's Pragmatic Rust Guidelines (h
 - **Dimension 12.6** — the moved store still refuses a stale run → Test `a_save_at_a_superseded_fence_is_refused` (integration, `afd_setup`). Expected: `RUN_STALE_FENCING_TOKEN`, row unchanged.
 - **Dimension 12.7** — one public path per item → Test `no_crate_re_exports_another_workspace_crates_items` (unit): scan `rustd/crates/**/src` for `pub use` of a workspace crate. Expected: none outside the crate that owns the item.
 - **Dimension 12.8** — a handler names only its plane's services → Test `no_handler_crate_names_the_shared_services_hub` (unit). Expected: no `afd_api_*` crate bounds a handler by `afd_http::Services`; each bounds by its own plane trait.
+- **Dimension 12.9** — the unit shards follow the layers → Test `every_crate_runs_in_exactly_one_unit_shard` (unit): the shard lists in `make/test-unit.mk` against the workspace members. Expected: every crate in one shard, none in two, and each shard a layer group.
 
 VERIFY: `rustd/guffbolt` is unchanged by §12; the test count before and after each move is equal (`cargo test --workspace --all-features -- --list --include-ignored`); the Linux kernel lane passes after step 4.
 
@@ -502,6 +504,7 @@ Three things the schema sign-off found are removed, before production, with no c
   - > Owner (Indy, Nov 20, 2026): "I prefer 128 prior to that ensure you ultrathink why 128 and how can you fix by 64, if you make 64 will it be like oneway 32? if so i am fine with 64 and move on" — context: §11.9. The data buffer is shared by both directions, so a 64 MiB buffer gives 32 MiB each way; the frame is 32 MiB, and the Fly daemon configs move from 48 MiB to 64 MiB (owner-approved deploy edit).
   - > Owner (Indy, Nov 20, 2026): "Delete the two lines (Recommended)" — context: §8, `authoring_renewal_*` in `deploy/baremetal/agentsfleet-runner.toml`.
   - > Owner (Indy, Nov 20, 2026): "we are not in prod yet, so i think you should think in that aspect and codify, so no backward compatibility needed. In fact when M252 milestone is merged, we will teardown dev db." — context: codified in `.orly/LOCAL.md`.
+  - > Owner (Indy, Nov 20, 2026): "Is the test-unit-rustd the correct separation? Add that question when you abstract and devour the crates." — context: §12 step 9, Dimension 12.9.
   - > Owner (Indy, Nov 20, 2026): "Just complete code first" and "The tests can be verified later on is what i meant" — context: the rest of M253_002. Each Section lands with its tests written and compiled (`fmt`, `clippy -D warnings`); the tests run together at the end on two E2E Networks virtual machines and CI, and a Dimension is marked DONE only after its test passes there.
   - > Owner (Indy, Nov 20, 2026): "I prefer this  leaving it out and trusting the model to find `propose_change` and its a harness ability to detect and ask back or what" — context: §9.8. guffbolt's `git` tool no longer points the model at `propose_change`; its refusal of a remote reaches the model as the tool result, and agentsfleet adds no hint.
   - > Owner (Indy, Nov 19, 2026): "donot do the lint, test-unit, test-integration check but rather do it at the end of every workstream. but for every dimension do cargo check, cargo fmt (clippy) so we know code compiles." — context: per-Dimension compile checks; S rows at the end of each Workstream.
