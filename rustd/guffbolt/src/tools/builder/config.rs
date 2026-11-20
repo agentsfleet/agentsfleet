@@ -32,6 +32,9 @@ impl Pattern {
     }
 }
 
+/// What reading a tools config answers.
+pub(super) type Result<T, E = InvalidPattern> = core::result::Result<T, E>;
+
 /// An entry that is neither a name nor a pattern with one `*`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidPattern(String);
@@ -73,7 +76,7 @@ impl ToolsConfig {
     ///
     /// # Errors
     /// An entry is empty or holds more than one `*`.
-    pub fn new<I, S>(entries: I) -> Result<Self, InvalidPattern>
+    pub fn new<I, S>(entries: I) -> Result<Self>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -81,7 +84,7 @@ impl ToolsConfig {
         let patterns = entries
             .into_iter()
             .map(|entry| parsed(entry.as_ref()))
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<_>>()?;
         Ok(Self { patterns })
     }
 
@@ -92,7 +95,7 @@ impl ToolsConfig {
 }
 
 /// `entry` as a pattern, or why it is none.
-fn parsed(entry: &str) -> Result<Pattern, InvalidPattern> {
+fn parsed(entry: &str) -> Result<Pattern> {
     let refused = || InvalidPattern(entry.to_owned());
     if entry.is_empty() {
         return Err(refused());

@@ -11,15 +11,17 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
 
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use super::pause::Ask;
-use super::{Caps, Census, Counted, Kind, Me, Status};
+use super::{Caps, Kind, Me, Status};
 use crate::drive::DriveState;
 use crate::transcript::Message;
+
+mod saved;
+mod tools;
 
 /// One child, as the book keeps it.
 #[derive(Debug)]
@@ -137,178 +139,6 @@ impl Agents {
     #[must_use]
     pub fn new(caps: Caps) -> (Self, Requests) {
         Self::restored(caps, &DriveState::default())
-    }
-
-    /// The children `state` saved, under `caps`, and where the root reads
-    /// each turn to start.
-    ///
-    /// Every child `state` holds was idle or closed when it was saved, as
-    /// one saved under a [`super::Pause`] is: each comes back as it was,
-    /// its transcript with it, and the ids and counts go on from where they
-    /// were. A child saved running, which no pause allows, comes back
-    /// interrupted.
-    #[must_use]
-    pub fn restored(caps: Caps, state: &DriveState) -> (Self, Requests) {
-        let census = state.children();
-        let root = CancellationToken::new();
-        let mut book = Book {
-            next: census.next,
-            started: census.started,
-            ..Book::default()
-        };
-        for counted in &census.children {
-            let life = book
-                .children
-                .get(&counted.parent)
-                .map_or(&root, |parent| &parent.life)
-                .child_token();
-            let status = match &counted.status {
-                Status::Running => Status::Interrupted,
-                other => other.clone(),
-            };
-            if status != Status::Closed {
-                book.open += 1;
-            }
-            book.children
-                .insert(counted.id, child_of(counted, status, life));
-        }
-        let (turns, turn_requests) = mpsc::unbounded_channel();
-        let (pauses, pause_requests) = mpsc::unbounded_channel();
-        let shared = Shared {
-            book: Mutex::new(book),
-            caps,
-            turns,
-            pauses,
-            gate: Arc::new(AtomicBool::new(false)),
-            root,
-        };
-        let requests = Requests {
-            turns: turn_requests,
-            pauses: pause_requests,
-        };
-        (Self(Arc::new(shared)), requests)
-    }
-
-    /// Waits for child `id`'s turn to end, or for `timeout` to pass, and
-    /// answers where it is; `None` for an id no child has. With no timeout
-    /// it waits as long as the caller does.
-    pub async fn wait(&self, id: u64, timeout: Option<Duration>) -> Option<Status> {
-        let mut watched = self.book().children.get(&id)?.status.subscribe();
-        let ended = match timeout {
-            Some(limit) => tokio::time::timeout(limit, watched.wait_for(Status::is_final))
-                .await
-                .ok()
-                .and_then(|ended| ended.ok().map(|status| status.clone())),
-            None => watched
-                .wait_for(Status::is_final)
-                .await
-                .ok()
-                .map(|status| status.clone()),
-        };
-        Some(ended.unwrap_or_else(|| watched.borrow().clone()))
-    }
-
-    /// Every child, oldest first.
-    #[must_use]
-    pub fn list(&self) -> Vec<Listed> {
-        self.book()
-            .children
-            .iter()
-            .map(|(id, child)| Listed {
-                agent_id: *id,
-                status: child.status.borrow().kind(),
-                depth: child.depth,
-                calls: child.calls,
-            })
-            .collect()
-    }
-
-    /// Queues `message` for child `id`: a running child reads it on its next
-    /// step, an idle one with its next turn. Whether it was taken, which a
-    /// closed child never does; `None` for an id no child has.
-    #[must_use]
-    pub fn send(&self, id: u64, message: String) -> Option<bool> {
-        let mut book = self.book();
-        let child = book.children.get_mut(&id)?;
-        let open = *child.status.borrow() != Status::Closed;
-        if open {
-            child.inbox.push(message);
-        }
-        drop(book);
-        Some(open)
-    }
-
-    /// Hands child `id` `message` as another task: an idle child runs a turn
-    /// over its transcript, a running one reads it on its next step. Whether
-    /// it was taken, which a closed child, or an idle one while the children
-    /// are paused, never does; `None` for an id no child has.
-    #[must_use]
-    pub fn follow_up(&self, id: u64, message: String) -> Option<bool> {
-        let mut book = self.book();
-        let paused = self.paused();
-        let child = book.children.get_mut(&id)?;
-        let status = child.status.borrow().clone();
-        let taken = match status {
-            Status::Closed => false,
-            Status::Running => {
-                child.inbox.push(message);
-                true
-            }
-            Status::Done(_) | Status::Failed(_) | Status::Interrupted if paused => false,
-            Status::Done(_) | Status::Failed(_) | Status::Interrupted => {
-                child.inbox.push(message);
-                child.status.send_replace(Status::Running);
-                book.running += 1;
-                // Queued under the same lock, so a pause granted after it
-                // sees the turn waiting.
-                let _after_the_run = self.0.turns.send(id);
-                true
-            }
-        };
-        drop(book);
-        Some(taken)
-    }
-
-    /// Ends child `id`'s running turn where it is, and answers the status it
-    /// had; the child stays open for another task. `None` for an id no child
-    /// has.
-    #[must_use]
-    pub fn interrupt(&self, id: u64) -> Option<Kind> {
-        let book = self.book();
-        let child = book.children.get(&id)?;
-        let before = child.status.borrow().kind();
-        if let Some(turn) = &child.turn {
-            turn.cancel();
-        }
-        drop(book);
-        Some(before)
-    }
-
-    /// Closes child `id` and every open child it started, and answers the
-    /// status it had. An idle child closes here; a running one closes as
-    /// its turn, stopped here, ends. `None` for an id no child has.
-    #[must_use]
-    pub fn close(&self, id: u64) -> Option<Kind> {
-        let mut book = self.book();
-        let before = book.children.get(&id)?.status.borrow().kind();
-        let mut closing = vec![id];
-        while let Some(next) = closing.pop() {
-            closing.extend(
-                book.children
-                    .iter()
-                    .filter(|(_, child)| child.parent == next)
-                    .map(|(id, _)| *id),
-            );
-            book.close(next);
-        }
-        drop(book);
-        Some(before)
-    }
-
-    /// The caps this run's children are held to.
-    #[must_use]
-    pub fn caps(&self) -> Caps {
-        self.0.caps
     }
 
     /// Reserves a child of `parent` at its next depth, holding `tools`,
@@ -446,30 +276,6 @@ impl Agents {
         book.running = 0;
     }
 
-    /// Every child as it is now, oldest first, with the run's counts.
-    pub(super) fn census_now(&self) -> Census {
-        let book = self.book();
-        let children = book
-            .children
-            .iter()
-            .map(|(id, child)| Counted {
-                id: *id,
-                parent: child.parent,
-                depth: child.depth,
-                calls: child.calls,
-                tools: child.tools.clone(),
-                status: child.status.borrow().clone(),
-                transcript: child.transcript.clone(),
-                state: child.state.clone(),
-            })
-            .collect();
-        Census {
-            next: book.next,
-            started: book.started,
-            children,
-        }
-    }
-
     /// The book, whatever a panicking holder left: every change to it is a
     /// few fields set under one lock, so a panic leaves it whole.
     pub(super) fn book(&self) -> MutexGuard<'_, Book> {
@@ -503,23 +309,5 @@ impl Book {
                 self.open = self.open.saturating_sub(1);
             }
         }
-    }
-}
-
-/// The child `counted` saves, as `status`, its life `life`.
-fn child_of(counted: &Counted, status: Status, life: CancellationToken) -> Child {
-    let (status, _watched) = watch::channel(status);
-    Child {
-        parent: counted.parent,
-        depth: counted.depth,
-        tools: counted.tools.clone(),
-        calls: counted.calls,
-        status,
-        inbox: Vec::new(),
-        life,
-        turn: None,
-        transcript: counted.transcript.clone(),
-        state: counted.state.clone(),
-        closing: false,
     }
 }

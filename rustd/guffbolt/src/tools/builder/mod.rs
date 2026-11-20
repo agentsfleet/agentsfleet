@@ -79,6 +79,9 @@ impl fmt::Display for Backend {
     }
 }
 
+/// What building a run's tools answers.
+pub type Result<T, E = MissingBackend> = core::result::Result<T, E>;
+
 /// A tool the config names whose backend the builder was never given.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MissingBackend {
@@ -241,7 +244,7 @@ impl<'run> ToolsBuilder<'run> {
     /// # Errors
     /// A name in `config` is a built-in tool whose backend this builder was
     /// not given; nothing is built.
-    pub fn build(self, config: &ToolsConfig) -> Result<Tools<ContextTool<'run>>, MissingBackend> {
+    pub fn build(self, config: &ToolsConfig) -> Result<Tools<ContextTool<'run>>> {
         let given = self.given;
         let mut added: Vec<Option<Box<ContextTool<'run>>>> =
             self.added.into_iter().map(Some).collect();
@@ -285,11 +288,7 @@ impl<'run> Given<'run> {
     /// Appends to `offered` each built-in tool `pattern` matches that it does
     /// not hold yet: a name whose backend is missing refuses, and a family
     /// pattern passes over it.
-    fn built_ins(
-        self,
-        pattern: &Pattern,
-        offered: &mut Vec<Box<ContextTool<'run>>>,
-    ) -> Result<(), MissingBackend> {
+    fn built_ins(self, pattern: &Pattern, offered: &mut Vec<Box<ContextTool<'run>>>) -> Result<()> {
         for built_in in &catalog::TOOLS {
             let name = built_in.name;
             if !pattern.matches(name) || holds(offered, name) {

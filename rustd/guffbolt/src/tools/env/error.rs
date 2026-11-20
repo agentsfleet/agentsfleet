@@ -1,6 +1,7 @@
 //! Why an environment call failed, sorted the way a tool reads it.
 
 use std::fmt;
+use std::sync::Arc;
 
 /// The log code a failure carries when its environment names none.
 const ENV_FAILED: &str = "env_failed";
@@ -23,14 +24,21 @@ pub enum EnvErrorKind {
     Unavailable,
 }
 
-/// An environment call that failed: its kind, what the model reads, and what
-/// a log line records.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What a fallible environment call answers.
+pub(crate) type Result<T, E = EnvError> = core::result::Result<T, E>;
+
+/// A failure an environment call carries as its cause.
+type Cause = Arc<dyn std::error::Error + Send + Sync>;
+
+/// An environment call that failed: its kind, what the model reads, what a
+/// log line records, and the failure that caused it, when one did.
+#[derive(Debug, Clone)]
 pub struct EnvError {
     kind: EnvErrorKind,
     message: String,
     log_code: &'static str,
     log_reason: String,
+    source: Option<Cause>,
 }
 
 impl EnvError {
@@ -44,7 +52,15 @@ impl EnvError {
             log_reason: message.clone(),
             message,
             log_code: ENV_FAILED,
+            source: None,
         }
+    }
+
+    /// The same failure, caused by `source`, which its `source()` answers.
+    #[must_use]
+    pub fn caused_by(mut self, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        self.source = Some(Arc::new(source));
+        self
     }
 
     /// The same failure, logged under the embedder's `code` with `reason`,
@@ -111,4 +127,10 @@ impl fmt::Display for EnvError {
     }
 }
 
-impl std::error::Error for EnvError {}
+impl std::error::Error for EnvError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn std::error::Error + 'static))
+    }
+}

@@ -29,16 +29,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Url;
-use reqwest::header::{HeaderName, HeaderValue};
+use reqwest::header::{HeaderName, HeaderValue, InvalidHeaderName, InvalidHeaderValue};
+use rmcp::ServiceError;
 use rmcp::model::{CallToolRequestParams, CallToolResult};
-use rmcp::service::RunningService;
+use rmcp::service::{ClientInitializeError, RunningService};
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{RoleClient, ServiceExt as _};
 use serde_json::Value;
+use tokio::time::error::Elapsed;
 
 use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
-use crate::tools::env::{Env, Spawn};
+use crate::tools::env::{Env, EnvError, Spawn};
 use crate::tools::outbound::{Outbound, Refused, client, reachable};
 use crate::tools::{Context, code};
 
@@ -56,28 +58,118 @@ pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
 /// What the outbound hook names an MCP connection's tool as.
 const TOOL: &str = "mcp";
 
-/// Why a server could not be reached, or would not answer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct McpError(String);
+/// What a fallible MCP call answers.
+pub type Result<T, E = McpError> = core::result::Result<T, E>;
 
-impl McpError {
-    fn new(why: impl fmt::Display) -> Self {
-        Self(why.to_string())
-    }
+/// Why a server could not be reached, or would not answer. Each kind but a
+/// refusal holds the failure that caused it, as its `source()`.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum McpError {
+    /// The run's environment would not start the server's process.
+    Spawn(EnvError),
+    /// The server would not initialize its session.
+    Initialize(Box<ClientInitializeError>),
+    /// The outbound hook refused the server, or its host is or resolves to a
+    /// private address: the code and sentence the model reads.
+    Refused(Refused),
+    /// The URL the hook admitted is not a URL.
+    Url(url::ParseError),
+    /// A header the hook asked to carry has a name HTTP refuses.
+    HeaderName(InvalidHeaderName),
+    /// A header the hook asked to carry has a value HTTP refuses.
+    HeaderValue(InvalidHeaderValue),
+    /// The HTTP client would not build.
+    Client(reqwest::Error),
+    /// The server did not answer within [`CALL_TIMEOUT`].
+    Timeout(Elapsed),
+    /// The server answered a request with an error.
+    Service(Box<ServiceError>),
 }
 
 impl fmt::Display for McpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        match self {
+            Self::Spawn(_) => f.write_str("the server's process would not start"),
+            Self::Initialize(_) => f.write_str("the server would not initialize"),
+            Self::Refused(refused) => write!(f, "[{}] {}", refused.code, refused.detail),
+            Self::Url(_) => f.write_str("the admitted URL is not one"),
+            Self::HeaderName(_) => f.write_str("an admitted header's name is not one"),
+            Self::HeaderValue(_) => f.write_str("an admitted header's value is not one"),
+            Self::Client(_) => f.write_str("the HTTP client would not build"),
+            Self::Timeout(_) => write!(f, "the server did not answer within {CALL_TIMEOUT:?}"),
+            Self::Service(_) => f.write_str("the server would not answer"),
+        }
     }
 }
 
-impl std::error::Error for McpError {}
+impl std::error::Error for McpError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Spawn(source) => Some(source),
+            Self::Initialize(source) => Some(&**source),
+            Self::Refused(_) => None,
+            Self::Url(source) => Some(source),
+            Self::HeaderName(source) => Some(source),
+            Self::HeaderValue(source) => Some(source),
+            Self::Client(source) => Some(source),
+            Self::Timeout(source) => Some(source),
+            Self::Service(source) => Some(&**source),
+        }
+    }
+}
 
-/// A refused connection, as the model reads it: its code, then its sentence.
 impl From<Refused> for McpError {
     fn from(refused: Refused) -> Self {
-        Self::new(format!("[{}] {}", refused.code, refused.detail))
+        Self::Refused(refused)
+    }
+}
+
+impl From<EnvError> for McpError {
+    fn from(source: EnvError) -> Self {
+        Self::Spawn(source)
+    }
+}
+
+impl From<ClientInitializeError> for McpError {
+    fn from(source: ClientInitializeError) -> Self {
+        Self::Initialize(Box::new(source))
+    }
+}
+
+impl From<url::ParseError> for McpError {
+    fn from(source: url::ParseError) -> Self {
+        Self::Url(source)
+    }
+}
+
+impl From<InvalidHeaderName> for McpError {
+    fn from(source: InvalidHeaderName) -> Self {
+        Self::HeaderName(source)
+    }
+}
+
+impl From<InvalidHeaderValue> for McpError {
+    fn from(source: InvalidHeaderValue) -> Self {
+        Self::HeaderValue(source)
+    }
+}
+
+impl From<reqwest::Error> for McpError {
+    fn from(source: reqwest::Error) -> Self {
+        Self::Client(source)
+    }
+}
+
+impl From<Elapsed> for McpError {
+    fn from(source: Elapsed) -> Self {
+        Self::Timeout(source)
+    }
+}
+
+impl From<ServiceError> for McpError {
+    fn from(source: ServiceError) -> Self {
+        Self::Service(Box::new(source))
     }
 }
 
@@ -101,14 +193,10 @@ impl Server {
     ///
     /// # Errors
     /// The process would not start, or the server would not initialize.
-    pub async fn stdio(
-        name: impl Into<String>,
-        env: Arc<dyn Env>,
-        spawn: &Spawn,
-    ) -> Result<Self, McpError> {
-        let process = env.spawn(spawn).await.map_err(McpError::new)?;
+    pub async fn stdio(name: impl Into<String>, env: Arc<dyn Env>, spawn: &Spawn) -> Result<Self> {
+        let process = env.spawn(spawn).await?;
         let transport = EnvStdio::new(env, process);
-        let service = ().serve(transport).await.map_err(McpError::new)?;
+        let service = ().serve(transport).await?;
         Ok(Self {
             name: name.into(),
             service,
@@ -121,28 +209,22 @@ impl Server {
     /// # Errors
     /// The hook refused the URL, its host is or resolves to a private
     /// address (`[egress_denied]`), or the server would not initialize.
-    pub async fn http(
-        name: impl Into<String>,
-        url: &str,
-        outbound: &dyn Outbound,
-    ) -> Result<Self, McpError> {
+    pub async fn http(name: impl Into<String>, url: &str, outbound: &dyn Outbound) -> Result<Self> {
         let admitted = outbound.connect(TOOL, url).await?;
         let lookup = outbound.lookup();
-        let target = Url::parse(&admitted.url).map_err(McpError::new)?;
+        let target = Url::parse(&admitted.url)?;
         reachable(&target, &*lookup).await?;
         let mut headers = HashMap::new();
         for (name, value) in admitted.headers {
-            let name = HeaderName::try_from(name).map_err(McpError::new)?;
-            let value = HeaderValue::try_from(value).map_err(McpError::new)?;
+            let name = HeaderName::try_from(name)?;
+            let value = HeaderValue::try_from(value)?;
             headers.insert(name, value);
         }
         let config =
             StreamableHttpClientTransportConfig::with_uri(admitted.url).custom_headers(headers);
-        let client = client(CALL_TIMEOUT, lookup)
-            .build()
-            .map_err(McpError::new)?;
+        let client = client(CALL_TIMEOUT, lookup).build()?;
         let transport = StreamableHttpClientTransport::with_client(client, config);
-        let service = ().serve(transport).await.map_err(McpError::new)?;
+        let service = ().serve(transport).await?;
         Ok(Self {
             name: name.into(),
             service,
@@ -159,11 +241,8 @@ impl Server {
     ///
     /// # Errors
     /// The server would not list its tools.
-    pub async fn tools(self: &Arc<Self>) -> Result<Vec<McpTool>, McpError> {
-        let listed = tokio::time::timeout(CALL_TIMEOUT, self.service.list_all_tools())
-            .await
-            .map_err(McpError::new)?
-            .map_err(McpError::new)?;
+    pub async fn tools(self: &Arc<Self>) -> Result<Vec<McpTool>> {
+        let listed = tokio::time::timeout(CALL_TIMEOUT, self.service.list_all_tools()).await??;
         Ok(listed
             .into_iter()
             .map(|tool| McpTool {

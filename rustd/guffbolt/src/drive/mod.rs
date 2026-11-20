@@ -11,14 +11,13 @@ use std::time::Instant;
 
 use tracing::Instrument as _;
 
-use crate::agents::{Me, SPAWN_AGENT};
+use crate::agents::Me;
 use crate::conversation::Conversation;
 use crate::extension::{Answer, Budget, Extension};
 use crate::model::Model as _;
 use crate::observe::{Observe as _, StepEnd, StepOutcome};
 use crate::step::{Ending, Step, Waiting};
-use crate::tool::{ErrorCode, ToolOutput};
-use crate::transcript::{CallRef, Message};
+use crate::transcript::Message;
 use crate::window::{Fitted, Window};
 
 use self::mark::take_input;
@@ -32,10 +31,6 @@ const EVENT_INPUT_TAKEN: &str = "loop_input_taken";
 const EVENT_BUDGET_SPENT: &str = "loop_budget_spent";
 /// The loop ended.
 const EVENT_ENDED: &str = "loop_ended";
-/// What a second question in one step reads back: one is asked at a time.
-const ONE_QUESTION: &str = "another call of this step already asked the person a question; \
-                            ask this one after the answer arrives";
-
 /// Runs `conversation`'s steps, with `extension`'s additions, to their end.
 ///
 /// The extension's budget bounds the whole loop: a loop it stops ends
@@ -166,12 +161,12 @@ async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
                 Next::Done => break Ending::Answered(state.answers.join(ANSWER_JOIN)),
             }
         }
-        let at = Place {
+        let at = call::Place {
             step: state.completed_steps().saturating_add(1),
             mark: mark.as_ref(),
             me,
         };
-        let (results, asked) = run_calls(conversation, &step, at).await;
+        let (results, asked) = call::run_calls(conversation, &step, at).await;
         remember(conversation, step, results);
         state.completed();
         if conversation.stop().is_cancelled() {
@@ -230,74 +225,6 @@ async fn sample<C: Conversation + ?Sized>(
         outcome,
     });
     read
-}
-
-/// Where a step's calls sit: the conversation's step number, the newest
-/// input's mark when it began, and the loop that asked.
-#[derive(Clone, Copy)]
-struct Place<'a> {
-    step: u64,
-    mark: Option<&'a Mark>,
-    me: Me,
-}
-
-/// Runs the calls of `step`, at `at`, in order, or answers each unrun when
-/// the step was cut, and answers their results: fewer than its calls when
-/// the loop was stopped partway. Each call is dispatched with its
-/// [`CallRef`], and ends carrying the newest input's mark when the step
-/// began. A call that asked the person a question has no result yet: it is
-/// the question the run waits on, and a second question in the same step is
-/// answered that one is asked at a time. A step that starts a child keeps a
-/// copy of the transcript before it, which a child forked from this loop
-/// starts from.
-async fn run_calls<C: Conversation + ?Sized>(
-    conversation: &mut C,
-    step: &Step,
-    at: Place<'_>,
-) -> (Vec<Message>, Option<Waiting>) {
-    let mut results = Vec::with_capacity(step.calls.len());
-    let mut asked: Option<Waiting> = None;
-    let spawns = step.calls.iter().any(|call| call.name == SPAWN_AGENT);
-    let history = if spawns {
-        conversation.transcript().messages().to_vec()
-    } else {
-        Vec::new()
-    };
-    for (call, index) in step.calls.iter().zip(0_u64..) {
-        let call_ref = CallRef {
-            step: at.step,
-            index,
-            call_id: call.id.clone(),
-        };
-        let lent = call::Lent {
-            call_ref: &call_ref,
-            mark: at.mark,
-            me: at.me,
-            history: &history,
-        };
-        let Some(mut output) = call::run(&*conversation, call, lent, step.cut).await else {
-            break;
-        };
-        if let Some(question) = output.asks.take() {
-            if asked.is_none() {
-                asked = Some(Waiting {
-                    call_id: call.id.clone(),
-                    question,
-                });
-                conversation.called().await;
-                continue;
-            }
-            output = ToolOutput::failed(ErrorCode::QUESTION_PENDING, ONE_QUESTION);
-        }
-        // The image a call read rides its result alone.
-        results.push(Message::ToolResult {
-            call_id: call.id.clone(),
-            output: output.text,
-            image: output.image,
-        });
-        conversation.called().await;
-    }
-    (results, asked)
 }
 
 /// Ends the loop waiting on `waiting` once the conversation is quiet, so no

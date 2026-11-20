@@ -12,6 +12,8 @@ use crate::tools::env::{Env, EnvError, EnvErrorKind, Process, ProcessEvent, Stre
 
 /// What ends one message.
 const NEWLINE: u8 = b'\n';
+/// What the model reads when a message to the server would not serialize.
+const UNWRITABLE: &str = "a message to the MCP server would not serialize";
 
 /// A server process the environment runs, spoken to over its pipes.
 #[derive(Debug)]
@@ -54,8 +56,9 @@ impl Transport<RoleClient> for EnvStdio {
             Bytes::from(line)
         });
         async move {
-            let line = line
-                .map_err(|failure| EnvError::new(EnvErrorKind::Unavailable, failure.to_string()))?;
+            let line = line.map_err(|failure| {
+                EnvError::new(EnvErrorKind::Unavailable, UNWRITABLE).caused_by(failure)
+            })?;
             env.write(id, line).await
         }
     }

@@ -31,6 +31,7 @@ use tokio::sync::{Notify, mpsc};
 use tokio::time::Instant;
 
 use self::process::Watch;
+use super::error::Result;
 use super::{
     DirEntry, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Listing, Process,
     ProcessId, Spawn, pipe,
@@ -87,7 +88,7 @@ impl LocalEnv {
 
     /// `path` under the root, or the refusal: no `..`, no absolute path
     /// outside the root, and no link out of it along the way.
-    async fn resolve(&self, path: &str) -> Result<PathBuf, EnvError> {
+    async fn resolve(&self, path: &str) -> Result<PathBuf> {
         let given = Path::new(path);
         let relative = given.strip_prefix(&self.root).unwrap_or(given);
         let climbs = relative.components().any(|part| {
@@ -113,7 +114,7 @@ impl LocalEnv {
         Ok(full)
     }
 
-    async fn start(&self, spawn: &Spawn) -> Result<Process, EnvError> {
+    async fn start(&self, spawn: &Spawn) -> Result<Process> {
         let (program, args) = spawn
             .argv()
             .split_first()

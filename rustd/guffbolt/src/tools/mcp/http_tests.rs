@@ -1,6 +1,7 @@
 //! An MCP server over HTTP is never reached at a private address: not when
 //! its name resolves to one, not when its hook admits a private literal, and
-//! not when its name turns private between the check and the connection.
+//! not when its name turns private between the check and the connection. A
+//! connection refused for any other reason keeps that reason as its cause.
 
 #![expect(
     clippy::expect_used,
@@ -14,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
-use super::Server;
+use super::{McpError, Server};
 use crate::tools::code;
 use crate::tools::outbound::testing::{Counted, FixedLookup};
 use crate::tools::outbound::{
@@ -163,4 +164,20 @@ async fn mcp_http_client_refuses_a_name_that_turns_private_after_admission() {
         0,
         "the private address got no connection"
     );
+}
+
+#[tokio::test]
+async fn mcp_http_failure_names_its_kind_and_keeps_its_cause() {
+    let outbound = AdmitAll {
+        lookup: Arc::new(FixedLookup::default()),
+    };
+
+    let failure = Server::http("docs", "::not a url", &outbound)
+        .await
+        .expect_err("not a URL");
+    let cause = std::error::Error::source(&failure).map(ToString::to_string);
+
+    assert!(matches!(failure, McpError::Url(_)), "{failure:?}");
+    assert_eq!(failure.to_string(), "the admitted URL is not one");
+    assert_eq!(cause.as_deref(), Some("relative URL without a base"));
 }

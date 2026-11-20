@@ -1,6 +1,6 @@
-//! One tool call, from its start to its end: opened before it runs or is
-//! refused, run inside the observer's span against the loop's stop, and ended
-//! exactly once.
+//! A step's tool calls, in order, and each one from its start to its end:
+//! opened before it runs or is refused, run inside the observer's span
+//! against the loop's stop, and ended exactly once.
 //!
 //! A subagent call answers with an order rather than its result; the order
 //! runs here, inside the call, in the place of the loop that made it, so the
@@ -12,11 +12,84 @@ use std::time::Instant;
 use tracing::{Instrument as _, Span};
 
 use super::Mark;
-use crate::agents::{Caller, Me};
+use crate::agents::{Caller, Me, SPAWN_AGENT};
 use crate::conversation::Conversation;
 use crate::observe::{CallEnd, Observe};
-use crate::tool::{ToolFuture, ToolOutput};
+use crate::step::{Step, Waiting};
+use crate::tool::{ErrorCode, ToolFuture, ToolOutput};
 use crate::transcript::{Call, CallRef, Message};
+
+/// What a second question in one step reads back: one is asked at a time.
+const ONE_QUESTION: &str = "another call of this step already asked the person a question; \
+                            ask this one after the answer arrives";
+
+/// Where a step's calls sit: the conversation's step number, the newest
+/// input's mark when it began, and the loop that asked.
+#[derive(Clone, Copy)]
+pub(super) struct Place<'a> {
+    pub(super) step: u64,
+    pub(super) mark: Option<&'a Mark>,
+    pub(super) me: Me,
+}
+
+/// Runs the calls of `step`, at `at`, in order, or answers each unrun when
+/// the step was cut, and answers their results: fewer than its calls when
+/// the loop was stopped partway. Each call is dispatched with its
+/// [`CallRef`], and ends carrying the newest input's mark when the step
+/// began. A call that asked the person a question has no result yet: it is
+/// the question the run waits on, and a second question in the same step is
+/// answered that one is asked at a time. A step that starts a child keeps a
+/// copy of the transcript before it, which a child forked from this loop
+/// starts from.
+pub(super) async fn run_calls<C: Conversation + ?Sized>(
+    conversation: &mut C,
+    step: &Step,
+    at: Place<'_>,
+) -> (Vec<Message>, Option<Waiting>) {
+    let mut results = Vec::with_capacity(step.calls.len());
+    let mut asked: Option<Waiting> = None;
+    let spawns = step.calls.iter().any(|call| call.name == SPAWN_AGENT);
+    let history = if spawns {
+        conversation.transcript().messages().to_vec()
+    } else {
+        Vec::new()
+    };
+    for (call, index) in step.calls.iter().zip(0_u64..) {
+        let call_ref = CallRef {
+            step: at.step,
+            index,
+            call_id: call.id.clone(),
+        };
+        let lent = Lent {
+            call_ref: &call_ref,
+            mark: at.mark,
+            me: at.me,
+            history: &history,
+        };
+        let Some(mut output) = run(&*conversation, call, lent, step.cut).await else {
+            break;
+        };
+        if let Some(question) = output.asks.take() {
+            if asked.is_none() {
+                asked = Some(Waiting {
+                    call_id: call.id.clone(),
+                    question,
+                });
+                conversation.called().await;
+                continue;
+            }
+            output = ToolOutput::failed(ErrorCode::QUESTION_PENDING, ONE_QUESTION);
+        }
+        // The image a call read rides its result alone.
+        results.push(Message::ToolResult {
+            call_id: call.id.clone(),
+            output: output.text,
+            image: output.image,
+        });
+        conversation.called().await;
+    }
+    (results, asked)
+}
 
 /// What one call is run with: where it sits, the newest input's mark when its
 /// step began, the loop that made it, and that loop's transcript before the

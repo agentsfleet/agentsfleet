@@ -332,5 +332,5 @@ impl Outbound for LocalOutbound {
 }
 
 #[cfg(test)]
-#[path = "local_tests.rs"]
+#[path = "local_tests/mod.rs"]
 mod tests;
