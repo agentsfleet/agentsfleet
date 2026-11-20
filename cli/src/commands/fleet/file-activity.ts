@@ -1,23 +1,35 @@
-import { diffLines } from "diff";
-import { isRecord, isString } from "../../lib/guards.ts";
+import { isNumber, isRecord, isString } from "../../lib/guards.ts";
 import { activityText } from "./task-activity.ts";
 
-/** Recorded edit inputs are a local diff, never proof of repository publication. */
-export function fileActivity(name: string, args: unknown, status: string): string | undefined {
-  if (!isRecord(args)) return undefined;
-  const label = status === "succeeded" ? "Confirmed local edit" : "Requested local edit";
-  if (name === "apply_patch" && isString(args["patch"])) {
-    return `${label} · not a publication\n${activityText(args["patch"])}`;
+/** The tools whose recorded changes are an edit's files and line counts. */
+const EDIT_TOOLS: ReadonlySet<string> = new Set(["file_write", "file_append", "file_edit", "file_edit_hashed", "apply_patch"]);
+const SUCCEEDED = "succeeded";
+const MINUS = "−";
+
+/** One file an edit changed, as the runner's file tool counted it. */
+type FileChange = { path: string; added: number; removed: number };
+
+const isCount = (value: unknown): value is number => isNumber(value) && Number.isSafeInteger(value) && value >= 0;
+
+/** Every recorded change, or none when any entry is not one: a count the CLI
+ * cannot vouch for is not printed. */
+function readChanges(value: unknown): FileChange[] {
+  if (!Array.isArray(value)) return [];
+  const changes: FileChange[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || !isString(entry["path"]) || entry["path"] === "" || !isCount(entry["added"]) || !isCount(entry["removed"])) return [];
+    changes.push({ path: entry["path"], added: entry["added"], removed: entry["removed"] });
   }
-  if (name !== "file_edit" || !isString(args["path"]) || !isString(args["old_text"]) || !isString(args["new_text"])) return undefined;
-  // Bound both the input and edit search, as the chat diff renderer does.
-  const before = activityText(args["old_text"]);
-  const after = activityText(args["new_text"]);
-  const changes = diffLines(before, after, {maxEditLength: 1000, ignoreNewlineAtEof: true})
-    ?? [{value: before, removed: true}, {value: after, added: true}];
-  const rows = changes.flatMap(change => {
-    const prefix = change.added ? "+ " : change.removed ? "- " : "  ";
-    return change.value.replace(/\n$/u, "").split("\n").map(line => `${prefix}${line}`);
-  });
-  return activityText(`${label}: ${args["path"]} · not a publication\n${rows.join("\n")}`);
+  return changes;
+}
+
+/** A succeeded edit's files and line counts, read from the changes the runner
+ * recorded, never worked out from its arguments. A local edit, never proof of
+ * repository publication. */
+export function fileActivity(name: string, changes: unknown, status: string): string | undefined {
+  if (!EDIT_TOOLS.has(name) || status !== SUCCEEDED) return undefined;
+  const files = readChanges(changes);
+  if (files.length === 0) return undefined;
+  const rows = files.map(file => `${file.path} +${file.added} ${MINUS}${file.removed}`);
+  return activityText(`Confirmed local edit · not a publication\n${rows.join("\n")}`);
 }

@@ -88,3 +88,30 @@ describe("readToolOutcome", () => {
     }
   });
 });
+
+describe("an edit's recorded changes", () => {
+  const changes = [{ path: "src/a.rs", added: 24, removed: 8 }];
+
+  it("should read an edit's files and counts off a completion and a saved call", () => {
+    expect(readToolOutcome({ status: TOOL_CALL_STATUS.SUCCEEDED, changes })?.changes).toEqual(changes);
+    const saved = { call_id: "3", name: "apply_patch", status: TOOL_CALL_STATUS.SUCCEEDED, duration_ms: 5, changes };
+    expect(readSavedTrace({ calls: [saved], omitted_call_count: 0 }, MS_PER_SECOND)?.calls[0]?.changes).toEqual(changes);
+  });
+
+  it("should read no changes when none, or none it can vouch for, were recorded", () => {
+    for (const recorded of [
+      undefined,
+      [],
+      [{ path: "", added: 1, removed: 0 }],
+      [{ path: "a.rs", added: -1, removed: 0 }],
+      [{ path: "a.rs", added: 1.5, removed: 0 }],
+      [{ path: "a.rs", added: 1 }],
+      [changes[0], { path: 7, added: 1, removed: 0 }],
+      { path: "a.rs", added: 1, removed: 0 },
+    ]) {
+      const outcome = readToolOutcome({ status: TOOL_CALL_STATUS.SUCCEEDED, changes: recorded });
+      expect(outcome, JSON.stringify(recorded)).not.toBeNull();
+      expect(outcome?.changes, JSON.stringify(recorded)).toBeUndefined();
+    }
+  });
+});

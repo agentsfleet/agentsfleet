@@ -2,7 +2,7 @@ import { ev, mockStream, renderThread as renderToolThread, threadElement } from 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 
-import { CLIPPED_EDIT_NOTE, OUTPUT_CUT_LABEL, SHOW_ALL_LABEL } from "@/components/domain/activity/tools/FleetToolCallBody";
+import { OUTPUT_CUT_LABEL, SHOW_ALL_LABEL } from "@/components/domain/activity/tools/FleetToolCallBody";
 import { TOOL_CALLS_LABEL } from "@/components/domain/activity/tools/FleetToolCalls";
 import { EMPTY_OUTPUT, OUTPUT_UNAVAILABLE } from "@/components/domain/activity/tools/copy/tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-call-shape";
@@ -191,26 +191,23 @@ describe("FleetThread — tool cells", () => {
     expect(headerOf(shell!)).not.toContain("exit");
   });
 
-  it("test_edit_cell_renders_diff", () => {
+  it("test_edit_cell_renders_its_recorded_changes", () => {
     renderCalls([
-      call({ name: TOOL_NAME.FILE_EDIT, args: { path: "/workspace/deploy.yaml", old_text: "a\nb", new_text: "a\nc\nd" } }),
+      call({ name: TOOL_NAME.FILE_EDIT, args: { path: "/workspace/deploy.yaml", old_text: "a\nb", new_text: "a\nc\nd" },
+        changes: [{ path: "deploy.yaml", added: 24, removed: 8 }] }),
       call({ name: TOOL_NAME.FILE_EDIT_HASHED, args: { path: "big.md", old_text: "x".repeat(300), new_text: "y" }, callId: CALL_ID }),
     ]);
-    const [edit, clipped] = cells();
+    const [edit, unrecorded] = cells();
     expect(headerOf(edit!)).toMatch(/^Edited file Success$/);
-    const rows = [...edit!.querySelectorAll("[data-diff]")];
-    expect(rows.map((row) => [row.getAttribute("data-diff"), row.textContent])).toEqual([
-      ["context", "a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
-    ]);
-    expect(rows[1]!.className).toContain("bg-destructive/10");
-    expect(rows[2]!.className).toContain("bg-success/10");
-    // The diff is input; the returned output has its own empty state.
+    // The counts are the runner's, not the one-each-way the arguments would give.
+    expect([...edit!.querySelectorAll("[data-changed-file]")].map((file) => file.textContent)).toEqual(["deploy.yaml"]);
+    expect(edit!.textContent).toContain("deploy.yaml +24 −8");
+    expect(edit!.querySelector("[data-diff]")).toBeNull();
+    // The changes are input; the returned output has its own empty state.
     expect(edit!.textContent).toContain(EMPTY_OUTPUT);
-    // Arguments the runner may have cut short draw no diff and no counts.
-    expect(headerOf(clipped!)).toMatch(/^Edited file Success$/);
-    expect(clipped!.querySelector("[data-diff]")).toBeNull();
-    expect(within(clipped!).getByText(CLIPPED_EDIT_NOTE, { exact: false })).toBeTruthy();
-    expect(within(clipped!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
+    // An edit the runner recorded no change for draws no lines and no counts.
+    expect(headerOf(unrecorded!)).toMatch(/^Edited file Success$/);
+    expect(unrecorded!.querySelector("[data-diff], [data-changed-file]")).toBeNull();
   });
 
   it("should open a call in full from show all, and close it again", async () => {
@@ -322,8 +319,8 @@ describe("FleetThread — tool cells", () => {
   it("test_failed_edit_shows_its_error", () => {
     renderCalls([call({ name: TOOL_NAME.FILE_EDIT, status: FAILED, args: { path: "d.yaml", old_text: "a", new_text: "b" }, outputHead: "old_text not found", outputLineCount: 1 })]);
     const [edit] = cells();
-    // What it tried stays visible; the error says it did not apply.
-    expect(edit!.querySelectorAll("[data-diff]")).toHaveLength(2);
+    // A failed edit changed nothing, so it counts nothing; the error says it did not apply.
+    expect(edit!.querySelector("[data-changed-file], [data-diff]")).toBeNull();
     expect(edit!.textContent).toContain("└old_text not found");
     expect(headerOf(edit!)).toContain("Failed");
   });

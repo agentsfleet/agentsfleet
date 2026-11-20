@@ -2,7 +2,7 @@ import * as v from "valibot";
 
 import { HTTP_STATUS_NOT_FOUND } from "@/lib/api/errors";
 import { fleetTurnItemUrl } from "@/lib/api/turns-types";
-import { readToolArgs, type ToolArgs } from "./fleet-stream-tool-trace";
+import { FILE_CHANGES, readToolArgs, type FileChange, type ToolArgs } from "./fleet-stream-tool-trace";
 
 // One tool call read in full, for the thread's "show all": over the same-origin
 // route, as the turn re-read goes, so the token stays on the server and a
@@ -25,6 +25,8 @@ export type ToolCallFull = {
   output: string;
   /** The output passed the full read's cap and ends early. */
   outputTruncated: boolean;
+  /** An edit's files and the lines each gained and lost, as recorded. */
+  changes: readonly FileChange[];
 };
 
 export type ToolCallRead =
@@ -37,6 +39,7 @@ const DETAIL = v.object({
   truncated_arguments: v.fallback(v.boolean(), false),
   output: v.string(),
   truncated: v.fallback(v.boolean(), false),
+  changes: FILE_CHANGES,
 });
 
 export type ToolCallAt = { workspaceId: string; fleetId: string; turnId: string; callId: string };
@@ -56,10 +59,10 @@ export async function readToolCall(at: ToolCallAt, signal: AbortSignal): Promise
     if (!res.ok) return { kind: TOOL_CALL_READ.FAILED };
     const parsed = v.safeParse(DETAIL, await res.json());
     if (!parsed.success) return { kind: TOOL_CALL_READ.FAILED };
-    const { arguments: args, truncated_arguments, output, truncated } = parsed.output;
+    const { arguments: args, truncated_arguments, output, truncated, changes } = parsed.output;
     return {
       kind: TOOL_CALL_READ.FULL,
-      call: { args: readToolArgs(args), argsTruncated: truncated_arguments, output, outputTruncated: truncated },
+      call: { args: readToolArgs(args), argsTruncated: truncated_arguments, output, outputTruncated: truncated, changes: changes ?? [] },
     };
   } catch {
     // Aborted, timed out, dropped, or an unreadable body.

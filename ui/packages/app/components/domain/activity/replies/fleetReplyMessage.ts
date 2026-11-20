@@ -9,6 +9,7 @@ import {
   type FleetToolCall,
 } from "@/lib/streaming/fleet-stream-row";
 import {
+  FILE_CHANGES,
   TOOL_CALL_STATUS,
   TOOL_CALL_STATUS_SCHEMA,
   type ToolArgs,
@@ -44,6 +45,7 @@ const TOOL_RESULT = v.object({
   outputLineCount: v.fallback(v.optional(v.number()), undefined),
   exitCode: v.fallback(v.optional(v.number()), undefined),
   callId: v.fallback(v.optional(v.string()), undefined),
+  changes: FILE_CHANGES,
 });
 
 export type ToolResult = v.InferOutput<typeof TOOL_RESULT>;
@@ -181,6 +183,6 @@ function partFields(tool: FleetToolCall): PartFields {
   return fields;
 }
 
-function toolResult({ status, outputHead, outputTail, outputLineCount, exitCode, callId }: FleetToolCall): ToolResult {
-  return { status, outputHead, outputTail, outputLineCount, exitCode, callId };
+function toolResult({ status, outputHead, outputTail, outputLineCount, exitCode, callId, changes }: FleetToolCall): ToolResult {
+  return { status, outputHead, outputTail, outputLineCount, exitCode, callId, changes: changes === undefined ? undefined : [...changes] };
 }

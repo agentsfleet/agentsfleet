@@ -15,7 +15,8 @@ import { FleetCommandResult } from "./FleetCommandResult";
 export function ToolCallDetails({name, args, argsText, outcome, state, onShowAll}: {
   name: string; args: ToolArgs | undefined; argsText: string | undefined; outcome: ToolResult | undefined; state: CellState; onShowAll: (() => void) | undefined;
 }) {
-  const copy = useMemo(() => toolCopy(name, args), [name, args]);
+  const changes = outcome?.changes;
+  const copy = useMemo(() => toolCopy(name, args, changes), [name, args, changes]);
   const status = CELL_COPY[state];
   return <DashboardPanel padding="none" className="overflow-hidden rounded-lg bg-card">
       <div className="flex items-center justify-between gap-sm border-b border-border px-lg py-sm text-label text-muted-foreground"><span>Action · {name}</span>{argsText === undefined ? null : <CopyButton value={argsText} label="Copy input" />}</div>

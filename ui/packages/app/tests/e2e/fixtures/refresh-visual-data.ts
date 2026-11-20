@@ -17,7 +17,8 @@ export function visualTurns(scenario: VisualScenario, started: number, includeCo
     tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running", scenario === "error"),
     ...(completed ? [
       tool("file", "file_read", {path: "release.yaml"}, started),
-      tool("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}, started),
+      {...tool("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}, started),
+        changes: [{path: "release.yaml", added: 1, removed: 1}]},
       tool("report", "custom_release_report", {release: "current"}, started),
       tool("manifest", "file_write", {path: "runner-image.yaml"}, started),
       tool("notes", "file_write", {path: "release-notes.md"}, started),

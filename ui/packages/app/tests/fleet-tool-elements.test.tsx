@@ -9,15 +9,17 @@ it("keeps commands, reads, edits and a new tool readable inside one reply", () =
   const {container} = renderTools([
     {name: "exec_command", args: {cmd: "printf ready\nprintf checked"}, status: TOOL_CALL_STATUS.FAILED, outputHead: "permission denied", exitCode: 2},
     {name: "file_read", args: {path: "/workspace/app.ts"}, outputHead: "export const ready = true;"},
-    {name: "file_edit", args: {path: "/workspace/app.ts", old_text: "ready = false", new_text: "ready = true"}},
+    {name: "file_edit", args: {path: "/workspace/app.ts", old_text: "ready = false", new_text: "ready = true"},
+      changes: [{path: "app.ts", added: 1, removed: 1}]},
     {name: "custom_release_report", args: {release: "秋"}, outputHead: "Release report recorded"},
   ]);
   const command = screen.getByLabelText("Command result");
   expect(command.querySelector("code")?.textContent).toBe("printf ready\nprintf checked");
   expect(screen.getByText("permission denied")).toBeTruthy();
   expect(screen.getByText("export const ready = true;")).toBeTruthy();
-  expect(container.querySelector('[data-diff="removed"]')?.textContent).toContain("ready = false");
-  expect(container.querySelector('[data-diff="added"]')?.textContent).toContain("ready = true");
+  const edit = container.querySelector('[data-tool="file_edit"]');
+  expect(edit?.querySelector("[data-changed-file]")?.textContent).toBe("app.ts");
+  expect(edit?.textContent).toContain("app.ts +1 −1");
   expect(screen.getByText("Release report recorded")).toBeTruthy();
   expect(container.textContent).not.toMatch(/not supported|unsupported/i);
   const failed = container.querySelector('[data-tool="exec_command"]');
@@ -47,7 +49,8 @@ it("does not claim success when the runner returns no outcome status", () => {
   const cell = container.querySelector('[data-tool="file_edit"]');
   expect(cell?.getAttribute("data-state")).toBe("settled");
   expect(cell?.textContent).not.toContain("Success");
-  expect(cell?.querySelector('[data-diff="added"]')?.textContent).toContain("new");
+  // No change recorded: no counts and no lines worked out of the arguments.
+  expect(cell?.querySelector("[data-changed-file], [data-diff]")).toBeNull();
 });
 
 it("keeps an unfinished command unconfirmed while its output is still arriving", () => {

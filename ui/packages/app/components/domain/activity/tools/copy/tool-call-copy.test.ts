@@ -77,16 +77,18 @@ describe("toolCopy", () => {
     expect(outputPreview("a\nb\nc\nd", 9, TOOL_CALL_STATUS.SUCCEEDED, "z").cut).toBe(false);
   });
 
-  it("diffs an edit or a patch whole for a full read, and nothing it cannot compare", () => {
-    expect(fullDiff(TOOL_NAME.FILE_EDIT_HASHED, { old_text: CLIPPED, new_text: "b" })?.removed).toBe(1);
-    expect(fullDiff(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y\n+z" })).toMatchObject({ added: 2, removed: 1 });
-    // Not kept, tagged by line rather than old text, or not an edit: no diff.
+  it("draws an edit or a patch whole for a full read, and nothing it cannot compare", () => {
+    expect(fullDiff(TOOL_NAME.FILE_EDIT_HASHED, { old_text: CLIPPED, new_text: "b" })?.[0]).toEqual({ kind: DIFF_ROW.REMOVED, text: CLIPPED });
+    expect(fullDiff(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y\n+z" })).toEqual([
+      { kind: DIFF_ROW.REMOVED, text: "x" }, { kind: DIFF_ROW.ADDED, text: "y" }, { kind: DIFF_ROW.ADDED, text: "z" },
+    ]);
+    // Not kept, tagged by line rather than old text, or not an edit: no rows.
     expect(fullDiff(TOOL_NAME.FILE_EDIT, undefined)).toBeNull();
     expect(fullDiff(TOOL_NAME.FILE_EDIT_HASHED, { path: "a.md", target: "L10:abc", new_text: "b" })).toBeNull();
     expect(fullDiff(TOOL_NAME.FILE_WRITE, { old_text: "a" })).toBeNull();
     // A patch argument that is missing reads as an empty patch; an edit with no new text removes.
-    expect(fullDiff(TOOL_NAME.APPLY_PATCH, {})).toEqual({ rows: [], added: 0, removed: 0 });
-    expect(fullDiff(TOOL_NAME.FILE_EDIT, { old_text: "gone" })).toMatchObject({ added: 0, removed: 1 });
+    expect(fullDiff(TOOL_NAME.APPLY_PATCH, {})).toEqual([]);
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { old_text: "gone" })).toEqual([{ kind: DIFF_ROW.REMOVED, text: "gone" }]);
   });
 
   it("names a hashed edit's line when it carries no old text to diff", () => {
@@ -101,18 +103,29 @@ describe("toolCopy", () => {
     expect(headerOf(TOOL_NAME.FILE_WRITE, { path: PATH }, CELL_STATE.INTERRUPTED)).toBe(`Interrupted ${SHOWN_PATH}`);
   });
 
-  it("counts a write's lines only when its content arrived whole", () => {
-    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH, content: "a\nb\n" }).addedLines).toBe(2);
-    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH, content: CLIPPED }).addedLines).toBeUndefined();
-    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH }).addedLines).toBeUndefined();
+  it("names an edit's files and counts as the runner recorded them", () => {
+    const changes = [{ path: "src/a.rs", added: 24, removed: 8 }, { path: "README.md", added: 1, removed: 0 }];
+    for (const name of [TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_APPEND, TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.APPLY_PATCH]) {
+      expect(toolCopy(name, { path: PATH, content: "a\nb\n" }, changes)).toMatchObject({
+        target: "src/a.rs, README.md", body: { kind: TOOL_BODY.CHANGES, changes },
+      });
+    }
+    // The arguments' own path never stands in for a recorded one.
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: "other.md", old_text: "a", new_text: "b" }, changes).target).toBe("src/a.rs, README.md");
   });
 
-  it("diffs an edit whole, and refuses to diff one the runner may have cut", () => {
-    expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: PATH, old_text: "a", new_text: "b" }).body)
-      .toEqual({ kind: TOOL_BODY.DIFF, diff: { rows: [{ kind: DIFF_ROW.REMOVED, text: "a" }, { kind: DIFF_ROW.ADDED, text: "b" }], added: 1, removed: 1 } });
-    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, old_text: CLIPPED, new_text: "b" }).body).toEqual({ kind: TOOL_BODY.CLIPPED_EDIT });
-    // No old text: nothing to diff against, so no diff drawn as all-new lines.
-    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH }).body).toEqual({ kind: TOOL_BODY.OUTPUT });
+  it("counts nothing from an edit's arguments when the runner recorded no change", () => {
+    // Running, failed, or recorded before the runner counted: the path asked for, no counts.
+    expect(toolCopy(TOOL_NAME.FILE_WRITE, { path: PATH, content: "a\nb\n" })).toEqual({
+      verbs: { running: "Writing", done: "Wrote" }, target: SHOWN_PATH, body: { kind: TOOL_BODY.OUTPUT },
+    });
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, old_text: "a", new_text: "b" }, []).body).toEqual({ kind: TOOL_BODY.OUTPUT });
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, old_text: CLIPPED, new_text: "b" }).body).toEqual({ kind: TOOL_BODY.OUTPUT });
+    // A patch's files would be read out of its text: none is named.
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y" })).toEqual({
+      verbs: { running: "Editing", done: "Edited" }, target: "", body: { kind: TOOL_BODY.OUTPUT },
+    });
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, undefined).target).toBe(ARGS_NOT_RECORDED);
   });
 
   it("puts a command's first line on the header, two more on the rail, and counts the rest", () => {

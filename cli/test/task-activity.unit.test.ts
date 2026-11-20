@@ -3,12 +3,43 @@ import { ActivityPrinter, activityText } from "../src/commands/fleet/task-activi
 import { ToolActivityPrinter } from "../src/commands/fleet/tool-activity.ts";
 import { fileActivity } from "../src/commands/fleet/file-activity.ts";
 
-test("local edit previews distinguish requested changes from confirmed edits", () => {
-  const args = {path: "src/app.ts", old_text: "before", new_text: "after"};
-  expect(fileActivity("file_edit", args, "succeeded")).toBe("Confirmed local edit: src/app.ts · not a publication\n- before\n+ after");
-  expect(fileActivity("file_edit", args, "failed")).toStartWith("Requested local edit:");
-  expect(fileActivity("file_edit", {...args, old_text: null}, "succeeded")).toBeUndefined();
-  expect(fileActivity("shell", args, "succeeded")).toBeUndefined();
+test("a confirmed edit prints the files and counts the runner recorded", () => {
+  const changes = [{path: "src/a.rs", added: 24, removed: 8}, {path: "README.md", added: 1, removed: 0}];
+  expect(fileActivity("apply_patch", changes, "succeeded"))
+    .toBe("Confirmed local edit · not a publication\nsrc/a.rs +24 −8\nREADME.md +1 −0");
+  for (const tool of ["file_write", "file_append", "file_edit", "file_edit_hashed"]) {
+    expect(fileActivity(tool, changes, "succeeded")).toStartWith("Confirmed local edit");
+  }
+});
+
+test("an edit with no change the CLI can vouch for prints none", () => {
+  const changes = [{path: "src/a.rs", added: 24, removed: 8}];
+  // Not succeeded, not an edit, or nothing recorded.
+  expect(fileActivity("file_edit", changes, "failed")).toBeUndefined();
+  expect(fileActivity("shell", changes, "succeeded")).toBeUndefined();
+  expect(fileActivity("file_edit", undefined, "succeeded")).toBeUndefined();
+  expect(fileActivity("file_edit", [], "succeeded")).toBeUndefined();
+  // One entry the CLI cannot read drops the list rather than printing part of it.
+  for (const broken of [
+    [{path: "", added: 1, removed: 0}],
+    [{path: "a.rs", added: -1, removed: 0}],
+    [{path: "a.rs", added: 1.5, removed: 0}],
+    [{path: "a.rs", added: 1}],
+    [...changes, "a.rs +1 -0"],
+    {path: "a.rs", added: 1, removed: 0},
+  ]) expect(fileActivity("file_edit", broken, "succeeded")).toBeUndefined();
+});
+
+test("an edit's arguments are never diffed into a preview", () => {
+  const lines: string[] = [];
+  const printer = new ToolActivityPrinter(line => lines.push(line));
+  printer.frame("tool_call_completed", {name: "file_edit", status: "succeeded", call_id: "1",
+    args_redacted: {path: "x", old_text: "before", new_text: "after"}});
+  expect(lines[0]).not.toContain("- before");
+  expect(lines[0]).toContain('"old_text": "before"');
+  printer.history({calls: [{call_id: "9:2", name: "file_edit", arguments: {path: "x"}, status: "succeeded", duration_ms: 3,
+    changes: [{path: "x", added: 2, removed: 1}]}]});
+  expect(lines[1]).toContain("x +2 −1");
 });
 
 test("byte progress labels distinguish acknowledged, missing and reused ciphertext", () => {
@@ -57,9 +88,9 @@ test("command output preserves failures, exit codes and bounded terminal-safe pr
 });
 
 
-test("file previews retain unchanged context and strip complete terminal sequences", () => {
-  const preview = fileActivity("file_edit", {path: "x", old_text: "same\nbefore\nend", new_text: "same\nafter\nend"}, "succeeded");
-  expect(preview).toContain("  same\n- before\n+ after\n  end");
+test("recorded paths and activity text strip complete terminal sequences", () => {
+  const changes = [{path: "x\u001b[31m.rs", added: 1, removed: 0}];
+  expect(fileActivity("file_edit", changes, "succeeded")).toContain("x.rs +1 −0");
   expect(activityText("\u001b[31mred\u001b[0m\u001b]8;;https://evil.example\u0007link\u001b]8;;\u0007")).toBe("redlink");
 });
 
@@ -74,15 +105,10 @@ test("older server observations cannot repeat changed missing-byte estimates", (
   expect(lines).toHaveLength(1);
 });
 
-test("patch previews stay local and expensive diffs fall back to a bounded replacement", () => {
-  expect(fileActivity("apply_patch", {patch: "*** Update File: x\n-old\n+new\u001b[31m"}, "succeeded"))
-    .toBe("Confirmed local edit · not a publication\n*** Update File: x\n-old\n+new");
-  const before = Array.from({length: 501}, (_, index) => `a${index}`).join("\n");
-  const after = Array.from({length: 501}, (_, index) => `b${index}`).join("\n");
-  const preview = fileActivity("file_edit", {path: "large", old_text: before, new_text: after}, "succeeded");
-  expect(preview).toContain("- a0\n- a1");
-  expect(preview).toContain("- a500\n+ b0");
-  expect(preview).toEndWith("+ b500");
+test("a patch prints its recorded files, never its text", () => {
+  expect(fileActivity("apply_patch", {patch: "*** Update File: x\n-old\n+new"}, "succeeded")).toBeUndefined();
+  expect(fileActivity("apply_patch", [{path: "x", added: 1, removed: 1}], "succeeded"))
+    .toBe("Confirmed local edit · not a publication\nx +1 −1");
 });
 
 test("long event streams bound replay memory while retaining recent stage deduplication", () => {

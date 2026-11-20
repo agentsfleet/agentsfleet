@@ -16,7 +16,7 @@ import {
 import { TOOL_CALL_READ, readToolCall, type ToolCallFull, type ToolCallRead } from "@/lib/streaming/fleet-tool-call-reader";
 import { FleetPayloadDisclosure } from "../messages/FleetPayloadDisclosure";
 import type { FleetScope } from "../../conversation/stream/FleetScope";
-import { DiffRows } from "./FleetToolCallBody";
+import { ChangedFiles, DiffRows } from "./FleetToolCallBody";
 import type { ToolResult } from "../replies/fleetReplyMessage";
 import { fullDiff } from "./copy/tool-call-copy";
 import { outputLines } from "./presentation/tool-call-text";
@@ -96,10 +96,11 @@ function ReadBody({ read, name, outcome }: { read: ToolCallRead | null; name: st
 
 function FullCall({ call, name }: { call: ToolCallFull; name: string }) {
   const diff = useMemo(() => fullDiff(name, call.args), [name, call.args]);
+  const changed = call.changes.length === 0 ? null : <ChangedFiles changes={call.changes} />;
   const rows = useMemo(() => outputLines(call.output).map((text, index) => ({ number: index + 1, text })), [call.output]);
   return (
     <>
-      {diff === null ? null : <div className="font-mono text-label leading-mono"><DiffRows diff={diff} /></div>}
+      {diff === null ? changed : <div className="font-mono text-label leading-mono"><DiffRows rows={diff} changes={call.changes} /></div>}
       <NumberedOutput rows={rows} copyValue={call.output} />
       {call.outputTruncated ? <p className={NOTE_CLASS}>{OUTPUT_CUT_NOTE}</p> : null}
       {call.argsTruncated ? <p className={NOTE_CLASS}>{ARGS_NOT_KEPT_NOTE}</p> : null}

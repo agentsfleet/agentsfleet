@@ -24,8 +24,9 @@ export function CodeDiff({
   lines,
 }: {
   filename: string;
-  additions: number;
-  deletions: number;
+  /** Lines added, shown beside `deletions` when both are known. */
+  additions?: number;
+  deletions?: number;
   lines: readonly DiffLine[];
 }) {
   return (
@@ -35,12 +36,14 @@ export function CodeDiff({
     >
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
         <span className="text-foreground/90">{filename}</span>
-        <span className={cn(mono, "tabular-nums")}>
-          <span className="text-emerald-600 dark:text-emerald-400">
-            +{additions}
-          </span>{" "}
-          <span className="text-red-600 dark:text-red-400">−{deletions}</span>
-        </span>
+        {additions === undefined || deletions === undefined ? null : (
+          <span className={cn(mono, "tabular-nums")}>
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{additions}
+            </span>{" "}
+            <span className="text-red-600 dark:text-red-400">−{deletions}</span>
+          </span>
+        )}
       </div>
       <div className={codeScroll}>
         <div className={codeSurface}>

@@ -74,6 +74,9 @@ export type SavedToolCall = {
   output_line_count?: number;
   exit_code?: number;
   duration_ms: number;
+  /** An edit's files and the lines each gained and lost, as the runner's
+   * file tool counted them; absent for any other call. */
+  changes?: { path: string; added: number; removed: number }[];
 };
 
 

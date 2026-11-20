@@ -27,8 +27,8 @@ export class ToolActivityPrinter {
     const duration = payload["ms"] ?? payload["elapsed_ms"];
     const lines = [`[tool] ${name} ${status}${typeof duration === "number" && Number.isFinite(duration) && duration >= 0 ? ` ${duration}ms` : ""}`];
     const args = payload["args_redacted"];
-    const diff = fileActivity(name, args, status);
-    if (diff !== undefined) lines.push(diff);
+    const edited = fileActivity(name, payload["changes"], status);
+    if (edited !== undefined) lines.push(edited);
     else if (isRecord(args)) lines.push(JSON.stringify(args, null, 2));
     const head = payload["output_head"];
     const tail = payload["output_tail"];
