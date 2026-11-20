@@ -249,9 +249,9 @@ The daemon's `[inference]` and `[authoring.turn]` sections go; the 300-second se
 
 **Implementation default:** the dev database is reset after merge, per Indy's "Rule holds, reset dev".
 
-- **Dimension 8.1** — no setup model frame remains → Test `the_runner_protocol_has_no_setup_model_frames` (unit): every `Down` variant's tag. Expected: none carries a model call.
+- **Dimension 8.1** — DONE — no setup model frame remains → Test `the_runner_protocol_has_no_setup_model_frames` (unit): every `Down` variant's tag. Expected: none carries a model call.
 - **Dimension 8.2** — DONE — another protocol version is refused → Test `a_runner_on_another_protocol_version_is_refused` (integration): hello with an unknown version. Expected: `UZ-RUN-023`, and no run assigned.
-- **Dimension 8.3** — no setting feeds setup runs → Test `setup_limits_are_constants` (unit): `afd_setup`'s limits. Expected: 300-second runtime from a constant, and no `TurnSettings` type remains.
+- **Dimension 8.3** — DONE — no setting feeds setup runs → Test `setup_limits_are_constants` (unit): `afd_setup`'s limits. Expected: 300-second runtime from a constant, and no `TurnSettings` type remains.
 
 ### §9 — guffbolt is extended one way: each tool takes its backend
 
@@ -276,13 +276,13 @@ Each call gets a `CallRef`: its step, its index in the step, and the provider's 
 
 Text the model reads names no host product: no "fleet", "workspace", "daemon" or "agentsfleet". Memory's `Reach` becomes `private` and `shared`.
 
-- **Dimension 9.1** — a missing backend stops startup → Test `a_tool_without_its_backend_refuses_to_start` (unit): a config naming `cron_add` and a builder with no scheduler. Expected: an error naming `cron_add` and the scheduler, and no loop starts.
-- **Dimension 9.2** — a third party's tool needs no guffbolt edit → Test `a_third_party_tool_takes_its_own_backend` (unit): a test trait `Crm`, its backend, and a tool built with it and added through `with_tool`. Expected: the tool's answer carries the backend's value.
-- **Dimension 9.3** — the config picks the offered tools → Test `the_startup_config_offers_only_named_tools` (unit): `["file_read", "memory_store", "mcp__docs__*"]` with a docs MCP server holding two tools. Expected: exactly those four tools are offered.
-- **Dimension 9.4** — the local scheduler survives a restart → Test `local_scheduler_returns_a_due_job_after_reopening` (integration): add a job, drop the scheduler, reopen its directory, then call `due` past the moment. Expected: the job, once.
-- **Dimension 9.5** — agentsfleetd backs a fleet's scheduling → Test `a_fleet_runs_cron_add_creates_its_schedule` (integration): a fleet run calls `cron_add`. Expected: one schedule for the fleet, as today.
+- **Dimension 9.1** — DONE — a missing backend stops startup → Test `a_tool_without_its_backend_refuses_to_start` (unit): a config naming `cron_add` and a builder with no scheduler. Expected: an error naming `cron_add` and the scheduler, and no loop starts.
+- **Dimension 9.2** — DONE — a third party's tool needs no guffbolt edit → Test `a_third_party_tool_takes_its_own_backend` (unit): a test trait `Crm`, its backend, and a tool built with it and added through `with_tool`. Expected: the tool's answer carries the backend's value.
+- **Dimension 9.3** — DONE — the config picks the offered tools → Test `the_startup_config_offers_only_named_tools` (unit): `["file_read", "memory_store", "mcp__docs__*"]` with a docs MCP server holding two tools. Expected: exactly those four tools are offered.
+- **Dimension 9.4** — DONE — the local scheduler survives a restart → Test `local_scheduler_returns_a_due_job_after_reopening` (integration): add a job, drop the scheduler, reopen its directory, then call `due` past the moment. Expected: the job, once.
+- **Dimension 9.5** — DONE — agentsfleetd backs a fleet's scheduling → Test `a_fleet_runs_cron_add_creates_its_schedule` (integration): a fleet run calls `cron_add`. Expected: one schedule for the fleet, as today.
 - **Dimension 9.6** — DONE — Pushover is a notifier backend → Test `pushover_backend_sends_through_the_egress_guard` (unit, `afr_tools`): `notify` with the Pushover backend. Expected: one request to Pushover's host, through the run's egress guard.
-- **Dimension 9.7** — a retried call keeps its reference → Test `a_retried_call_keeps_its_call_ref` (unit): a backend that fails once, then the retry. Expected: both attempts see the same `CallRef`.
+- **Dimension 9.7** — DONE — a retried call keeps its reference → Test `a_retried_call_keeps_its_call_ref` (unit): a backend that fails once, then the retry. Expected: both attempts see the same `CallRef`.
 - **Dimension 9.8** — DONE — the model reads no host product → Test `guffbolt_tool_specs_name_no_host_product` (unit): every built-in tool's spec. Expected: no "fleet", "workspace", "daemon" or "agentsfleet".
 
 ### §10 — Items record edits and the newest turn (from M253_001 §5)
@@ -292,7 +292,7 @@ Text the model reads names no host product: no "fleet", "workspace", "daemon" or
 Each input reaching a run carries its turn id. guffbolt notes the newest turn when a step begins and records it with the `CallRef`, and the daemon refuses an item naming a turn the run does not serve.
 
 - **Dimension 10.1** (was M253_001 5.1) — an edit records its counts → Test `an_edit_item_records_path_and_line_counts` (integration): a run editing `src/a.rs` by +24 −8. Expected: one `edit` item with those counts.
-- **Dimension 10.2** (was M253_001 5.2) — items name the newest turn → Test `items_after_a_second_message_name_the_second_turn` (unit): input arrives before step 3. Expected: steps 1 and 2 name turn 1, and step 3 names turn 2.
+- **Dimension 10.2** (was M253_001 5.2) — DONE — items name the newest turn → Test `items_after_a_second_message_name_the_second_turn` (unit): input arrives before step 3. Expected: steps 1 and 2 name turn 1, and step 3 names turn 2.
 
 ### §11 — Text has one ceiling, codex's
 
@@ -301,12 +301,12 @@ Fleet instructions (32,768 characters), a setup chat message (32,768 bytes) and 
 - **Dimension 11.1** — DONE — a long setup message is answered → Test `a_setup_message_over_32_kib_is_answered` (integration): a 200 KiB message. Expected: stored, sent to the setup run, and answered, or the model's context refusal.
 - **Dimension 11.2** — a long fleet message reaches the run → Test `a_fleet_message_over_8_kib_reaches_the_run` (integration): a 64 KiB message to a running fleet. Expected: the run receives it whole.
 - **Dimension 11.3** — DONE — long instructions save → Test `instructions_over_32k_characters_save` (unit): 100,000 characters. Expected: the definition parses and saves.
-- **Dimension 11.4** — text past the ceiling is refused clearly → Test `a_message_past_the_ceiling_is_refused_naming_it` (unit): 1,048,577 characters. Expected: refused with a sentence naming 1,048,576, and nothing stored.
+- **Dimension 11.4** — DONE — text past the ceiling is refused clearly → Test `a_message_past_the_ceiling_is_refused_naming_it` (unit): 1,048,577 characters. Expected: refused with a sentence naming 1,048,576, and nothing stored.
 - **Dimension 11.5** — DONE — the model's posts are not capped → Test `the_message_tool_posts_long_and_often` (unit): a 10,000-byte post and a ninth post in one run. Expected: both sent.
-- **Dimension 11.6** — the ceiling is reachable → Test `a_setup_message_at_the_ceiling_in_three_byte_characters_is_accepted` (integration): 1,048,576 three-byte characters through the app's setup proxy and the daemon's setup and steer routes. Expected: accepted; one character more is refused, and the setup chat shows "Input exceeds the maximum length of 1,048,576 characters."
+- **Dimension 11.6** — DONE — the ceiling is reachable → Test `a_setup_message_at_the_ceiling_in_three_byte_characters_is_accepted` (integration): 1,048,576 three-byte characters through the app's setup proxy and the daemon's setup and steer routes. Expected: accepted; one character more is refused, and the setup chat shows "Input exceeds the maximum length of 1,048,576 characters."
 - **Dimension 11.7** — DONE — a run that cannot be framed fails at once → Test `a_run_too_large_for_its_frame_fails_with_its_code` (integration): a run payload past the runner frame. Expected: the turn fails at assignment with a named code, with no lapse and no reassignment; a fleet-to-fleet message stores its words once.
-- **Dimension 11.8** — a long message keeps its live frame → Test `a_long_message_is_trimmed_in_its_tail_frame` (unit): a 1 MiB message. Expected: its tail frame carries at most 64 KiB of the text, marked trimmed, and the stored turn holds it whole.
-- **Dimension 11.9** — a run carries anything the routes accept → Test `a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed` (unit): instructions and a message each at 1,048,576 three-byte characters. Expected: the run frame encodes within the runner frame ceiling, 32 MiB. The data buffer is shared by both directions (`af_stream/src/framing/memory.rs:19-22`), so its 64 MiB floor holds one 32 MiB frame each way; the worst run the routes accept is about 12.6 MiB.
+- **Dimension 11.8** — DONE — a long message keeps its live frame → Test `a_long_message_is_trimmed_in_its_tail_frame` (unit): a 1 MiB message. Expected: its tail frame carries at most 64 KiB of the text, marked trimmed, and the stored turn holds it whole.
+- **Dimension 11.9** — DONE — a run carries anything the routes accept → Test `a_run_carrying_ceiling_instructions_and_a_ceiling_message_is_framed` (unit): instructions and a message each at 1,048,576 three-byte characters. Expected: the run frame encodes within the runner frame ceiling, 32 MiB. The data buffer is shared by both directions (`af_stream/src/framing/memory.rs:19-22`), so its 64 MiB floor holds one 32 MiB frame each way; the worst run the routes accept is about 12.6 MiB.
 
 ### §12 — Crates are grouped small, by Microsoft's guidelines
 
@@ -323,15 +323,15 @@ After §8's deletion, the crates follow Microsoft's Pragmatic Rust Guidelines (h
 9. The unit-test shards (`make/test-unit.mk`: `test-unit-rustd-runner`, `-daemon`, `-daemon-libs`) are rechecked against the regrouped layers: each crate runs in exactly one shard, and a shard is a layer group, so a crate move cannot drop or double a crate's tests.
 10. The Rust coverage shards (`make/test-integration-rustd.mk`) follow the same layer groups, guffbolt gets its own shard with a 99% line floor, and each crate is covered in exactly one shard.
 
-- **Dimension 12.1** — every edge obeys its layer → Test `every_crate_depends_on_its_own_layer_or_lower` (unit): the workspace manifests, with dev, build and target tables. Expected: no edge to a higher layer, none between `runner/` and `daemon/`, none into `e2e/`. Negative twin `a_daemon_crate_naming_a_runner_crate_is_refused`.
-- **Dimension 12.2** — no dev-dependency cycle → Test `no_crate_dev_depends_on_a_crate_that_depends_on_it` (unit). Expected: none. Negative twin `a_planted_dev_cycle_is_named`.
-- **Dimension 12.3** — folder and prefix match → Test `every_crate_folder_names_its_crate_and_its_prefix_matches_its_layer` (unit). Negative twin `a_crate_in_the_wrong_folder_is_named`.
-- **Dimension 12.4** — the runner links no datastore client → Test `the_runner_graph_names_no_datastore_client` (unit): normal and build edges from `agentsfleet_runner`. Expected: no `sqlx`, no `async-nats`, no `af_core` feature `sqlx`. Negative twin `a_runner_crate_enabling_af_core_sqlx_is_refused`.
-- **Dimension 12.5** — lower layers hold no SQL → Test `foundation_and_protocol_crates_hold_no_sql` (unit). Expected: no `*.sql` under `foundation/` or `protocol/`.
+- **Dimension 12.1** — DONE — every edge obeys its layer → Test `every_crate_depends_on_its_own_layer_or_lower` (unit): the workspace manifests, with dev, build and target tables. Expected: no edge to a higher layer, none between `runner/` and `daemon/`, none into `e2e/`. Negative twin `a_daemon_crate_naming_a_runner_crate_is_refused`.
+- **Dimension 12.2** — DONE — no dev-dependency cycle → Test `no_crate_dev_depends_on_a_crate_that_depends_on_it` (unit). Expected: none. Negative twin `a_planted_dev_cycle_is_named`.
+- **Dimension 12.3** — DONE — folder and prefix match → Test `every_crate_folder_names_its_crate_and_its_prefix_matches_its_layer` (unit). Negative twin `a_crate_in_the_wrong_folder_is_named`.
+- **Dimension 12.4** — DONE — the runner links no datastore client → Test `the_runner_graph_names_no_datastore_client` (unit): normal and build edges from `agentsfleet_runner`. Expected: no `sqlx`, no `async-nats`, no `af_core` feature `sqlx`. Negative twin `a_runner_crate_enabling_af_core_sqlx_is_refused`.
+- **Dimension 12.5** — DONE — lower layers hold no SQL → Test `foundation_and_protocol_crates_hold_no_sql` (unit). Expected: no `*.sql` under `foundation/` or `protocol/`.
 - **Dimension 12.6** — the moved store still refuses a stale run → Test `a_save_at_a_superseded_fence_is_refused` (integration, `afd_setup`). Expected: `RUN_STALE_FENCING_TOKEN`, row unchanged.
-- **Dimension 12.7** — one public path per item → Test `no_crate_re_exports_another_workspace_crates_items` (unit): scan `rustd/crates/**/src` for `pub use` of a workspace crate. Expected: none outside the crate that owns the item.
-- **Dimension 12.8** — a handler names only its plane's services → Test `no_handler_crate_names_the_shared_services_hub` (unit). Expected: no `afd_api_*` crate bounds a handler by `afd_http::Services`; each bounds by its own plane trait.
-- **Dimension 12.9** — the unit shards follow the layers → Test `every_crate_runs_in_exactly_one_unit_shard` (unit): the shard lists in `make/test-unit.mk` against the workspace members. Expected: every crate in one shard, none in two, and each shard a layer group.
+- **Dimension 12.7** — DONE — one public path per item → Test `no_crate_re_exports_another_workspace_crates_items` (unit): scan `rustd/crates/**/src` for `pub use` of a workspace crate. Expected: none outside the crate that owns the item.
+- **Dimension 12.8** — DONE — a handler names only its plane's services → Test `no_handler_crate_names_the_shared_services_hub` (unit). Expected: no `afd_api_*` crate bounds a handler by `afd_http::Services`; each bounds by its own plane trait.
+- **Dimension 12.9** — DONE — the unit shards follow the layers → Test `every_crate_runs_in_exactly_one_unit_shard` (unit): the shard lists in `make/test-unit.mk` against the workspace members. Expected: every crate in one shard, none in two, and each shard a layer group.
 
 VERIFY: `rustd/guffbolt` is unchanged by §12; the test count before and after each move is equal (`cargo test --workspace --all-features -- --list --include-ignored`); the Linux kernel lane passes after step 4.
 
@@ -341,13 +341,13 @@ Subagents are a guffbolt capability, end to end. guffbolt owns the tools, the re
 
 The tools follow codex's names (`codex-rs/core/src/tools/handlers/multi_agents_spec.rs`): `spawn_agent` (with `fork_turns`, starting the child from the parent's last turns), `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent` and `interrupt_agent`. A finished child goes idle, keeping its transcript, and takes a `followup_task` until `close_agent` or the loop ends. There is no `resume_agent`: children live inside one loop, and the loop's own resume brings them back.
 
-- **Dimension 13.1** — a finished child takes a follow-up → Test `a_finished_child_takes_a_followup_task_with_its_transcript` (unit, guffbolt). Expected: the child runs again and its request holds its earlier turns.
-- **Dimension 13.2** — a child can start from the parent's turns → Test `spawn_agent_with_fork_turns_starts_from_the_parents_last_turns` (unit, guffbolt). Expected: the child's first request holds the parent's last N turns, and none before.
-- **Dimension 13.3** — close ends a child → Test `close_agent_ends_an_idle_child_and_frees_its_seat` (unit, guffbolt). Expected: the child ends, `list_agents` shows it closed, and the run may start another within its caps.
-- **Dimension 13.4** — the tools are guffbolt's, named as codex names them → Test `the_subagent_tools_are_guffbolts_and_named_as_codex_names_them` (unit, guffbolt). Expected: the seven names, built through `ToolsBuilder`, and covered by `guffbolt_tool_specs_name_no_host_product`.
-- **Dimension 13.5** — a loop's end still ends its children → Test `a_run_that_ends_ends_its_idle_children` (unit, guffbolt). Expected: every idle or running child ends `interrupted`.
-- **Dimension 13.6** — a resumed loop brings its children back → Test `a_resumed_loop_restores_its_children_from_drive_state` (unit, guffbolt). Expected: each child's transcript and status return from the saved `DriveState`.
-- **Dimension 13.7** — agentsfleet holds no subagent code → Test `agentsfleet_defines_no_subagent_tool` (unit): `afr_agent/src/nested/` is gone, and no `afr_*` crate names a subagent tool. Expected: a fleet run offers the seven tools through guffbolt alone.
+- **Dimension 13.1** — DONE — a finished child takes a follow-up → Test `a_finished_child_takes_a_followup_task_with_its_transcript` (unit, guffbolt). Expected: the child runs again and its request holds its earlier turns.
+- **Dimension 13.2** — DONE — a child can start from the parent's turns → Test `spawn_agent_with_fork_turns_starts_from_the_parents_last_turns` (unit, guffbolt). Expected: the child's first request holds the parent's last N turns, and none before.
+- **Dimension 13.3** — DONE — close ends a child → Test `close_agent_ends_an_idle_child_and_frees_its_seat` (unit, guffbolt). Expected: the child ends, `list_agents` shows it closed, and the run may start another within its caps.
+- **Dimension 13.4** — DONE — the tools are guffbolt's, named as codex names them → Test `the_subagent_tools_are_guffbolts_and_named_as_codex_names_them` (unit, guffbolt). Expected: the seven names, built through `ToolsBuilder`, and covered by `guffbolt_tool_specs_name_no_host_product`.
+- **Dimension 13.5** — DONE — a loop's end still ends its children → Test `a_run_that_ends_ends_its_idle_children` (unit, guffbolt). Expected: every idle or running child ends `interrupted`.
+- **Dimension 13.6** — DONE — a resumed loop brings its children back → Test `a_resumed_loop_restores_its_children_from_drive_state` (unit, guffbolt). Expected: each child's transcript and status return from the saved `DriveState`.
+- **Dimension 13.7** — DONE — agentsfleet holds no subagent code → Test `agentsfleet_defines_no_subagent_tool` (unit): `afr_agent/src/nested/` is gone, and no `afr_*` crate names a subagent tool. Expected: a fleet run offers the seven tools through guffbolt alone.
 
 ### §14 — Dead weight goes
 
@@ -357,9 +357,9 @@ Three things the schema sign-off found are removed, before production, with no c
 - **`runner.lifetime_counters`.** Four per-runner tallies upserted in seven run statements and read only by the operator's runner detail. They become one OpenTelemetry counter, `agentsfleet_runner_runs_total{runner_id, outcome}`, emitted where a run settles or expires, and the table goes.
 - **`runner.registration_receipts`.** A replay carried no token (`afd_runner/src/register.rs:27-29`), so the receipt never made a retry useful. A host registers once: `(tenant_id, host_id)` is unique on `runner.runners`, a retry answers `409` naming the runner, and the caller recovers with the tenant's token rotation. HTTP-IDEMKEY's natural-key exception is generalised in orly's source rule (own branch and PR in `~/Projects/orly`) and re-materialised here with `orly update`.
 
-- **Dimension 14.1** — Plugins are gone → Test `no_plugin_table_route_or_page_remains` (unit): no `setup.plugin_*` schema file or statement, no Plugin route in the route inventory, no `/plugins` app page. Expected: none.
-- **Dimension 14.2** — run outcomes are metrics → Test `a_settled_run_counts_its_outcome_on_its_runner` (unit): a run that succeeds, one that fails and one that expires. Expected: `agentsfleet_runner_runs_total` rises once per outcome with the runner's id, and no statement names `runner.lifetime_counters`.
-- **Dimension 14.3** — a host registers once → Test `a_retried_registration_of_one_host_answers_409_naming_the_runner` (integration): the same `(tenant, host_id)` twice. Expected: one runner; the second answers `409` with its id; a rotation then gives a token that connects.
+- **Dimension 14.1** — DONE — Plugins are gone → Test `no_plugin_table_route_or_page_remains` (unit): no `setup.plugin_*` schema file or statement, no Plugin route in the route inventory, no `/plugins` app page. Expected: none.
+- **Dimension 14.2** — DONE — run outcomes are metrics → Test `a_settled_run_counts_its_outcome_on_its_runner` (unit): a run that succeeds, one that fails and one that expires. Expected: `agentsfleet_runner_runs_total` rises once per outcome with the runner's id, and no statement names `runner.lifetime_counters`.
+- **Dimension 14.3** — DONE — a host registers once → Test `a_retried_registration_of_one_host_answers_409_naming_the_runner` (integration): the same `(tenant, host_id)` twice. Expected: one runner; the second answers `409` with its id; a rotation then gives a token that connects.
 
 ## Interfaces
 
@@ -516,6 +516,6 @@ Three things the schema sign-off found are removed, before production, with no c
   - > Owner (Indy, Nov 19, 2026): "E2E cloud burst" — context: Linux proof, paid, his go per run.
   - > Owner (Indy, Nov 19, 2026): "I think i did the elephant goldfish brainstrome before." and "youalready have the context" — context: orly-spec step 2.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 9 Blockers, 39 Majors, 30 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
-- **Verification evidence** — Nov 20, 2026, commit `6f97d0ef1`: each DONE Dimension from §4 on names a test that passed in CI run `44756156167` (unit) or `44756156230` (integration), or on E2E Networks VM 30591 (`make test-integration-rustd`). 9.5 and 11.6 failed there; the rest did not run because a lane stops at its first failing suite.
+- **Verification evidence** — Nov 21, 2026, commit `2cde5c0d4` (CI runs `44799161892` unit, `44799161727` integration): 8.1, 8.3, 9.1, 9.2, 9.3, 9.4, 9.5, 9.7, 10.2, 11.4, 11.6, 11.8, 11.9, 12.1, 12.2, 12.3, 12.4, 12.5, 12.7, 12.8, 12.9, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 14.1, 14.2, 14.3 passed. Earlier: Nov 20, 2026, commit `6f97d0ef1`: each DONE Dimension from §4 on names a test that passed in CI run `44756156167` (unit) or `44756156230` (integration), or on E2E Networks VM 30591 (`make test-integration-rustd`). 9.5 and 11.6 failed there; the rest did not run because a lane stops at its first failing suite.
 - **Open blockers** — none.
 - **Deferrals and transfers** — none.

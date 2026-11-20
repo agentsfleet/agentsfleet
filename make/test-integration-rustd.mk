@@ -120,7 +120,7 @@ RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # because it needs root and a real kernel.
 RUSTD_COVERAGE_REPORTS := $(RUSTD_SHARDS) kernel
 
-_RUSTD_COVER := cargo llvm-cov --locked --no-report --all-features
+_RUSTD_COVER := cargo llvm-cov --locked --no-report --all-features --no-fail-fast
 _rustd_packages = $(foreach package,$(1),-p $(package))
 # The packages of shard $(1): its folders' crates, less the skipped ones.
 _rustd_shard = $(filter-out $(RUSTD_COVER_SKIP),$(call _rustd_dirs,$(RUSTD_COVER_$(1)_DIRS)))
