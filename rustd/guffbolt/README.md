@@ -46,8 +46,9 @@ use std::sync::mpsc::{Receiver, channel};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 use guffbolt::{
-    Call, Chunk, Conversation, Describe, DriveState, End, Ending, Message, Model, Plain, Request,
-    TextKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools, Transcript, Unobserved, Window, drive,
+    Call, CallRef, Chunk, Conversation, Describe, DriveState, End, Ending, Message, Model, Plain,
+    Request, TextKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools, Transcript, Unobserved, Window,
+    drive,
 };
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -166,7 +167,7 @@ impl Conversation for Chat {
         }
     }
 
-    fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a> {
+    fn dispatch<'a>(&'a self, call: &'a Call, _call_ref: &'a CallRef) -> ToolFuture<'a> {
         // Each call is lent the chat's notes; a name `tools` holds no tool for is refused.
         self.tools.dispatch(&call.name, &call.arguments, &self.notes)
     }
@@ -341,6 +342,8 @@ A tool implements `Describe`, which gives the model its name, description and pa
 
 A tool answers with a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` to show the model and a question it asks the person. `guffbolt` answers a call from a step cut at the output limit with `ToolOutput::cut`, `[output_limit_reached]`, and never runs it.
 
+`dispatch` gets each call's `CallRef` with the call: its step, its index in that step, and the provider's call id. Lend it to a tool whose backend acts outside your process, so the backend derives its idempotency key from it. A tool that retries a call keeps its `CallRef`, so the backend can drop the repeat. The step counts every step your `DriveState` completed, so a resumed loop never reuses an earlier call's `CallRef`.
+
 ## Sub-agents
 
 A tool call can start a child, which is another loop with its own transcript and a narrower set of its parent's tools. `guffbolt::agents` keeps every child's state, inbox and stop, and refuses one past the run's `Caps`.
@@ -354,8 +357,8 @@ use guffbolt::agents::{
     Agents, Caps, ChildFuture, Children, Narrow, Parent, Raise, Seat, Status, Tether,
 };
 use guffbolt::{
-    Call, Chunk, Conversation, DriveState, End, Ending, Message, Model, Plain, Request, TextKind,
-    ToolFuture, ToolOutput, ToolSpec, Transcript, Unobserved, Window, drive,
+    Call, CallRef, Chunk, Conversation, DriveState, End, Ending, Message, Model, Plain, Request,
+    TextKind, ToolFuture, ToolOutput, ToolSpec, Transcript, Unobserved, Window, drive,
 };
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -477,7 +480,7 @@ impl Conversation for Chat<'_> {
         }
     }
 
-    fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a> {
+    fn dispatch<'a>(&'a self, call: &'a Call, _call_ref: &'a CallRef) -> ToolFuture<'a> {
         if call.name != DELEGATE || !self.tools.0.contains(&DELEGATE) {
             return Box::pin(ready(ToolOutput::not_offered(&call.name)));
         }
@@ -621,12 +624,12 @@ guffbolt = { git = "https://github.com/agentsfleet/agentsfleet", features = ["to
 | `MemoryStore` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
 | none | `update_plan`, `ask_user`, `tool_search`, `current_time`, `sleep` | |
 
-A tool is a `Handler`: its arguments are a type, and the model is told that type's JSON Schema. `Typed` makes a handler a `Tool` lent a `tools::Context` per call, and `tools::standard()` boxes every tool that needs nothing else.
+A tool is a `Handler`: its arguments are a type, and the model is told that type's JSON Schema. `Typed` makes a handler a `Tool` lent a `tools::Context` per call, which carries the call's `CallRef`. `tools::standard()` boxes every tool that needs nothing else.
 
 ```rust,no_run
-use guffbolt::Tool as _;
 use guffbolt::tools::outbound::Allowlist;
 use guffbolt::tools::process::Shell;
+use guffbolt::{CallRef, Tool as _};
 use guffbolt::tools::{Local, Typed};
 use serde_json::json;
 
@@ -634,8 +637,10 @@ use serde_json::json;
 async fn main() -> std::io::Result<()> {
     let local = Local::new("run-1", ".", Allowlist::Hosts(vec!["docs.rs".to_owned()]))?;
     let shell = Typed::new(Shell);
+    // Where the call sits; your `dispatch` hands you this.
+    let at = CallRef { step: 1, index: 0, call_id: "call-1".to_owned() };
 
-    let output = shell.call(&json!({ "command": "echo hi" }), local.context()).await;
+    let output = shell.call(&json!({ "command": "echo hi" }), local.context(&at)).await;
     assert_eq!(output.text, "hi\n");
     Ok(())
 }
@@ -692,10 +697,10 @@ impl Outbound for Offline {
 The memory tools read and write a `MemoryStore`. A store keeps its own lock, so every method takes `&self`. `LocalMemory` is a map that lives as long as the process. Save `LocalMemory::entries` and seed the next run with `LocalMemory::seeded` to keep memories between runs.
 
 ```rust
-use guffbolt::Tool as _;
 use guffbolt::tools::memory::{LocalMemory, Memory, MemoryRecall, Reach};
 use guffbolt::tools::outbound::Allowlist;
 use guffbolt::tools::{Local, Typed};
+use guffbolt::{CallRef, Tool as _};
 use serde_json::json;
 
 #[tokio::main(flavor = "current_thread")]
@@ -708,8 +713,9 @@ async fn main() -> std::io::Result<()> {
         reach: Reach::Private,
     }]);
     let recall = Typed::new(MemoryRecall);
+    let at = CallRef { step: 1, index: 0, call_id: "call-1".to_owned() };
 
-    let output = recall.call(&json!({ "query": "deploy" }), local.context()).await;
+    let output = recall.call(&json!({ "query": "deploy" }), local.context(&at)).await;
     assert_eq!(output.text, "deploy:target (core): staging first");
     Ok(())
 }

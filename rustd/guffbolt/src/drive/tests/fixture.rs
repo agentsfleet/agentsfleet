@@ -15,20 +15,21 @@ use crate::conversation::Conversation;
 use crate::model::Request;
 use crate::step::Ending;
 use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
-use crate::transcript::{Call, Message, Transcript};
+use crate::transcript::{Call, CallRef, Message, Transcript};
 use crate::window::{Fitted, Window};
 
 /// The output limit a fitted window sets.
 pub(super) const FITTED_LIMIT: u32 = 64;
 
-/// What the scripted conversation lends each call: the call's id.
-type Lent<'c> = &'c str;
+/// What the scripted conversation lends each call: where the call sits.
+pub(super) type Lent<'c> = &'c CallRef;
 
 /// A scripted tool, as the conversation holds it.
-type Held = dyn for<'c> Tool<Lent<'c>>;
+pub(super) type Held = dyn for<'c> Tool<Lent<'c>>;
 
 /// The tools a scripted run holds: `deploy`, which answers its call's id,
-/// and `ask_user`, which asks the person the question it is given.
+/// and `ask_user`, which asks the person the question it is given; a case
+/// offers more ([`Scripted::offering`]).
 pub(super) struct Kit(Tools<Held>);
 
 impl Default for Kit {
@@ -60,7 +61,7 @@ impl<'c> Tool<Lent<'c>> for Deploy {
     where
         Lent<'c>: 'a,
     {
-        Box::pin(ready(ToolOutput::succeeded(cx)))
+        Box::pin(ready(ToolOutput::succeeded(cx.call_id.as_str())))
     }
 }
 
@@ -122,6 +123,8 @@ pub(super) struct Scripted {
     pub(super) ran: AtomicUsize,
     /// What the observer heard, in order.
     pub(super) heard: Mutex<Vec<String>>,
+    /// Where each call the loop dispatched sits, in order.
+    dispatched: Mutex<Vec<CallRef>>,
 }
 
 impl Scripted {
@@ -137,6 +140,17 @@ impl Scripted {
             stop,
             ..Self::default()
         }
+    }
+
+    /// The same run, offering `tool` after its own.
+    pub(super) fn offering(mut self, tool: Box<Held>) -> Self {
+        self.tools.0.offer(tool);
+        self
+    }
+
+    /// Where each call the loop dispatched sits, in order.
+    pub(super) fn dispatched(&self) -> Vec<CallRef> {
+        lock(&self.dispatched).clone()
     }
 
     /// The input `cues` hold for `number`, when they hold any, arrives now.
@@ -250,13 +264,12 @@ impl Conversation for Scripted {
         }
     }
 
-    fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a> {
+    fn dispatch<'a>(&'a self, call: &'a Call, call_ref: &'a CallRef) -> ToolFuture<'a> {
+        lock(&self.dispatched).push(call_ref.clone());
         if self.calls_hang {
             return Box::pin(pending());
         }
-        self.tools
-            .0
-            .dispatch(&call.name, &call.arguments, call.id.as_str())
+        self.tools.0.dispatch(&call.name, &call.arguments, call_ref)
     }
 
     fn stop(&self) -> &CancellationToken {

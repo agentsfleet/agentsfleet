@@ -19,7 +19,7 @@ use af_egress::testing::{CountingMint, RecordingTransport, Sent};
 use af_wire::policy::ExecutionPolicy;
 use afr_executor::{Client, Executor};
 use afr_memory::Loaded;
-use guffbolt::ToolOutput;
+use guffbolt::{CallRef, ToolOutput};
 use jiff::Timestamp;
 use tokio::task::JoinHandle;
 
@@ -102,17 +102,28 @@ impl Live {
     }
 }
 
+/// Where the one call a suite makes sits: the first of step 1.
+fn first_call() -> CallRef {
+    CallRef {
+        step: 1,
+        index: 0,
+        call_id: "call-1-0".to_owned(),
+    }
+}
+
 /// Calls `tool` with `arguments` from the supervisor, with `run`'s state.
 pub(crate) async fn call(
     tool: &CatalogTool,
     run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
+    let call_ref = first_call();
     tool.call(
         &arguments,
         ToolContext {
             executor: None,
             run,
+            call_ref: &call_ref,
         },
     )
     .await
@@ -126,11 +137,13 @@ pub(crate) async fn call_in(
     run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
+    let call_ref = first_call();
     tool.call(
         &arguments,
         ToolContext {
             executor: Some(executor),
             run,
+            call_ref: &call_ref,
         },
     )
     .await

@@ -2,7 +2,7 @@
 //! run's sandbox, egress guard and memory through the harness's seams.
 //!
 //! ```text
-//!  router ─► ToolContext { executor, run } ─► Generic<T>::call
+//!  router ─► ToolContext { executor, run, call_ref } ─► Generic<T>::call
 //!               executor ─► SandboxEnv  ─┐
 //!               run.egress ─► Egressed ├─► guffbolt::tools::Context ─► T::call
 //!               run.memory ─► RunMemory   ─┘
@@ -88,6 +88,7 @@ where
                 sessions: &run.sessions,
                 image_input: run.image_input,
                 repository,
+                call_ref: cx.call_ref,
                 run_id: run.run_id,
                 wake: None,
             };

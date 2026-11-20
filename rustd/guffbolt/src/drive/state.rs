@@ -11,7 +11,9 @@ use crate::transcript::{Message, Transcript};
 ///
 /// Model calls are numbered within one run: a resumed loop numbers its calls
 /// from 1 again, so an extension's first-call step still runs even when the
-/// loop completed steps before.
+/// loop completed steps before. A [`crate::CallRef`]'s step goes on from the
+/// completed steps instead, so a resumed loop's calls never reuse an earlier
+/// call's reference.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DriveState {

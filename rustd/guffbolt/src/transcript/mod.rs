@@ -25,6 +25,33 @@ pub struct Call {
     pub arguments: Value,
 }
 
+/// Where one tool call sits in its conversation.
+///
+/// The loop hands it to [`crate::Conversation::dispatch`] with the call, so
+/// a tool reads it from what its call is lent, and a backend that acts
+/// outside the process derives its idempotency key from it. The same place
+/// in the conversation always yields the same reference. A tool that retries
+/// a call keeps it, and so does a journalled call an embedder sends again on
+/// resume. A resumed loop that asks the model again makes new calls, with new
+/// references.
+///
+/// It names one call within one conversation. An embedder whose run holds
+/// several loops, such as a root and its children, adds what names the loop.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CallRef {
+    /// The step that asked for the call, from 1. It counts every step the
+    /// conversation's [`crate::DriveState`] completed, so a resumed loop goes
+    /// on from the saved steps, while the step number its observer hears
+    /// starts at 1 again.
+    pub step: u64,
+    /// The call's place among its step's calls, from 0, in the order the
+    /// model asked for them.
+    pub index: u64,
+    /// The provider's id for the call, as [`Call::id`] carries it.
+    pub call_id: String,
+}
+
 /// What a provider needs back on the next step to continue its own reasoning:
 /// thinking blocks with their signatures, a reasoning trace, the identity of
 /// an output item.

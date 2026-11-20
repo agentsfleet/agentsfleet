@@ -17,7 +17,7 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN};
 use afr_tools::{Run, ToolErrorCode};
 
-use super::tests::{Counting, catalog, routed};
+use super::tests::{Counting, catalog, first_call, routed};
 
 /// How long the run's build takes in each test.
 const BUILD_TAKES: Duration = Duration::from_millis(40);
@@ -50,7 +50,8 @@ async fn a_sandbox_call_mid_build_waits_then_runs_in_that_sandbox() {
     let tool = routed(&selection, &FILE_READ);
     let (tally, recorded) = Tally::new();
     let (arguments, run) = (serde_json::json!({}), Run::default());
-    let call = tool.run(&arguments, &slot, &run);
+    let at = first_call();
+    let call = tool.run(&arguments, &slot, &run, &at);
     let build = async {
         tokio::time::sleep(BUILD_TAKES).await;
         slot.fill(Ok(&executor))
@@ -77,7 +78,8 @@ async fn a_sandbox_call_mid_build_answers_the_failures_class() {
         let tool = routed(&selection, &FILE_READ);
         let (tally, recorded) = Tally::new();
         let (arguments, run) = (serde_json::json!({}), Run::default());
-        let call = tool.run(&arguments, &slot, &run);
+        let at = first_call();
+        let call = tool.run(&arguments, &slot, &run, &at);
         let build = async {
             tokio::time::sleep(BUILD_TAKES).await;
             slot.fill(Err(class))
@@ -107,7 +109,8 @@ async fn a_supervisor_call_never_waits_on_the_build() {
 
     let (arguments, run) = (serde_json::json!({}), Run::default());
 
-    let call = tool.run(&arguments, &slot, &run);
+    let at = first_call();
+    let call = tool.run(&arguments, &slot, &run, &at);
     let output = tokio::time::timeout(BUILD_TAKES, call).await;
 
     assert!(
@@ -127,7 +130,8 @@ async fn a_sandbox_call_after_the_build_records_no_wait() {
 
     let (arguments, run) = (serde_json::json!({}), Run::default());
 
-    let call = tool.run(&arguments, &slot, &run);
+    let at = first_call();
+    let call = tool.run(&arguments, &slot, &run, &at);
     let output = bounded(scoped(tally, call)).await;
 
     assert_eq!(output.error_code, None, "{}", output.text);

@@ -19,7 +19,7 @@ use crate::tools::outbound::Allowlist;
 use crate::tools::process::{Git, Shell};
 use crate::tools::search::{Deferred, ToolSearch};
 use crate::tools::{Context, ContextTool, Local, LocalMemory, Typed, code, standard};
-use crate::{Describe as _, Tool as _, ToolSpec};
+use crate::{CallRef, Describe as _, Tool as _, ToolSpec};
 
 /// The words that name a host product rather than the harness.
 const HOST_WORDS: [&str; 4] = ["agentsfleet", "daemon", "fleet", "workspace"];
@@ -90,6 +90,15 @@ fn built_in() -> Vec<Box<ContextTool>> {
     tools
 }
 
+/// Where the one call each case makes sits: the first of step 1.
+fn first_call() -> CallRef {
+    CallRef {
+        step: 1,
+        index: 0,
+        call_id: "call-1".to_owned(),
+    }
+}
+
 /// A standalone run over the temporary directory, open to any public host.
 fn local() -> Local {
     Local::new("run-1", std::env::temp_dir(), Allowlist::Any)
@@ -138,7 +147,8 @@ async fn refusals_and_answers_name_no_host_product() {
         category: "core".to_owned(),
         reach: Reach::Private,
     }]);
-    let cx = local.context();
+    let at = first_call();
+    let cx = local.context(&at);
     let without_env = Context { env: None, ..cx };
 
     let answers = [
@@ -209,7 +219,11 @@ async fn a_memory_is_private_unless_the_model_names_it_shared() {
             "stored c",
         ),
     ] {
-        assert_eq!(store.call(&arguments, local.context()).await.text, stored);
+        let at = first_call();
+        assert_eq!(
+            store.call(&arguments, local.context(&at)).await.text,
+            stored
+        );
     }
 
     assert_eq!(values(&visibility), ["private", "shared"]);
@@ -233,12 +247,13 @@ async fn a_memory_is_private_unless_the_model_names_it_shared() {
 async fn a_visibility_outside_private_and_shared_is_refused() {
     let local = local();
     let store = Typed::new(MemoryStoreTool);
+    let at = first_call();
 
     for named in ["workspace", "fleet", "Shared", "", "共有"] {
         let refused = store
             .call(
                 &json!({"key": "a", "content": "one", "visibility": named}),
-                local.context(),
+                local.context(&at),
             )
             .await;
 

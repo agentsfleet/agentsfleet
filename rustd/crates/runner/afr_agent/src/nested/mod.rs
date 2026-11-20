@@ -21,7 +21,7 @@ use guffbolt::tools::{NoArguments, Schema};
 use guffbolt::{Describe, Tool, ToolFuture, ToolSpec};
 
 pub(crate) use self::recovery::ChildRecovery;
-use crate::harness::Harness;
+use crate::router::Lent;
 
 /// How deep a child may be: the root is 0, and a child this deep is offered
 /// no nested tool.
@@ -62,15 +62,17 @@ impl Describe for NestedTool {
     }
 }
 
-impl<'call, 's, 'run> Tool<&'call Harness<'s, 'run>> for NestedTool {
+impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for NestedTool {
     fn call<'a>(
         &'a self,
         arguments: &'a serde_json::Value,
-        cx: &'call Harness<'s, 'run>,
+        cx: Lent<'call, 's, 'run>,
     ) -> ToolFuture<'a>
     where
-        &'call Harness<'s, 'run>: 'a,
+        Lent<'call, 's, 'run>: 'a,
     {
+        // The nested tools need only the loop.
+        let cx = cx.harness;
         // Each runs when the ledger polls it, inside the call's span, never
         // when the call is looked up.
         match self.nested {

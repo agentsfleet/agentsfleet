@@ -3,10 +3,11 @@
 //! drives it.
 
 use af_wire::memory::MemoryDelta;
-use guffbolt::{Call, Fitted, Request, ToolFuture, ToolSpec, Transcript, Window};
+use guffbolt::{Call, CallRef, Fitted, Request, ToolFuture, ToolSpec, Transcript, Window};
 use tokio_util::sync::CancellationToken;
 
 use super::{EVENT_CHECKPOINT_FAILED, Harness};
+use crate::router::Lent;
 
 impl Harness<'_, '_> {
     /// The messages a person sent the fleet since the root's last
@@ -140,8 +141,14 @@ impl guffbolt::Conversation for Harness<'_, '_> {
         }
     }
 
-    fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a> {
-        self.router.dispatch(&call.name, &call.arguments, self)
+    /// Lends the call the loop and its place, which a catalog handler is
+    /// lent in turn.
+    fn dispatch<'a>(&'a self, call: &'a Call, call_ref: &'a CallRef) -> ToolFuture<'a> {
+        let lent = Lent {
+            harness: self,
+            call_ref,
+        };
+        self.router.dispatch(&call.name, &call.arguments, lent)
     }
 
     /// What the model said and called, as the transcript keeps it: scrubbed,

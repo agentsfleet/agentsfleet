@@ -13,7 +13,7 @@ use afr_supervisor::workspace_clone::{Mirrors, Request};
 use afr_tools::catalog::{GIT, SHELL};
 use afr_tools::sandbox::Checkout;
 use afr_tools::{Catalog, Run, Selection, ToolContext};
-use guffbolt::ToolOutput;
+use guffbolt::{CallRef, ToolOutput};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -139,11 +139,17 @@ async fn work(
         .await?;
     let run = Run::default().with_checkouts(vec![checkout]);
     let mut outputs = Vec::with_capacity(calls.len());
-    for (name, arguments) in calls {
+    for (step, (name, arguments)) in (1_u64..).zip(calls) {
         let tool = selection.tool(name).ok_or("the runner hosts it")?;
+        let call_ref = CallRef {
+            step,
+            index: 0,
+            call_id: format!("call-{step}"),
+        };
         let context = ToolContext {
             executor: Some(sandbox.executor()),
             run: &run,
+            call_ref: &call_ref,
         };
         outputs.push(tool.call(arguments, context).await);
     }

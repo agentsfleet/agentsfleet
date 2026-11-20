@@ -77,7 +77,8 @@ SPEC AUTHORING RULES (the one comment that survives):
 |------|--------|-----|
 | `rustd/guffbolt/**` | CREATE | the harness: loop, tools, sub-agents, window hook, extensions, observer, README |
 | `rustd/guffbolt/src/tools/propose/**` | CREATE | the proposal tool and its `Document` trait (§4) |
-| `rustd/guffbolt/src/tools/builder/**` | CREATE | `ToolsBuilder`, `CallRef` and the startup tool config (§9) |
+| `rustd/guffbolt/src/tools/builder/**` | CREATE | `ToolsBuilder` and the startup tool config (§9) |
+| `rustd/guffbolt/src/transcript/mod.rs` | EDIT | `CallRef`, beside `Call`: `Conversation::dispatch` takes it, so it builds without the `tools` feature (§9) |
 | `rustd/guffbolt/src/tools/{schedule,message,notify}/**` | CREATE | generic cron, schedule, message and notify tools over their backends (§9) |
 | `rustd/guffbolt/src/tools/web/pushover.rs` | DELETE | Pushover becomes a `Notifier` backend in `afr_tools` (§9) |
 | `rustd/crates/runner/afr_tools/src/verbs/**`, `src/pushover/**`, `src/generic/memory.rs` | EDIT | agentsfleetd-backed `Scheduler`, `Channel` and `Notifier` backends replace the verb tools; `MemoryBackend` folds into guffbolt's `MemoryStore` (§9) |
@@ -259,7 +260,7 @@ Local defaults stay honest:
 - `LocalChannel` hands each line to a callback the embedder gives it.
 - guffbolt ships no local `Notifier`, because every notifier is a vendor.
 
-Each call gets a `CallRef`: its step, its index in the step, and the provider's call id. A backend derives its idempotency key from it, as agentsfleet's item `(run_id, sequence)` does in M253_003. A retried call keeps its `CallRef`, and so does a journalled call that a resume sends again. A resume that asks the model again makes new calls, which M253_003's recovery note covers.
+Each call gets a `CallRef`: its step, its index in the step, and the provider's call id. A backend derives its idempotency key from it, as agentsfleet's item `(run_id, sequence)` does in M253_003. A retried call keeps its `CallRef`, and so does a journalled call that a resume sends again. A resume that asks the model again makes new calls, which M253_003's recovery note covers. `step` counts the conversation's completed steps plus one, so a resumed run numbers its steps after the saved ones and never repeats an earlier `(step, index)`; a per-run count restarts at 1 and would make a backend drop a new call as a repeat. `CallRef` is `Clone`, not `Copy`, because the call id is an owned string.
 
 Text the model reads names no host product: no "fleet", "workspace", "daemon" or "agentsfleet". Memory's `Reach` becomes `private` and `shared`.
 
@@ -411,6 +412,8 @@ Each input reaching a run carries its turn id. guffbolt notes the newest turn wh
   - > Owner (Indy, Nov 20, 2026): "Yes i prefer the proposal" — context: §9, one extension pattern.
   - > Owner (Indy, Nov 20, 2026): "use standard rust specific like `with` or so, so its obvious on what the builder will retun. I assume the Tool builders builds more." — context: §9, `ToolsBuilder` with `with_*` setters that builds the whole `Tools` set.
   - > Owner (Indy, Nov 20, 2026): "is capability a good word or abstraction" and then "Backends via builder (Recommended)" — context: §9. "Capability" already has many meanings in `rustd` (auth, Linux sandbox capability sets, decision models, the runner's task capability), and a type-keyed registry hides a tool's needs until it is called. So each tool takes its backend when it is built.
+  - > Owner (Indy, Nov 20, 2026): "Just complete code first" and "The tests can be verified later on is what i meant" — context: the rest of M253_002. Each Section lands with its tests written and compiled (`fmt`, `clippy -D warnings`); the tests run together at the end on two E2E Networks virtual machines and CI, and a Dimension is marked DONE only after its test passes there.
+  - > Owner (Indy, Nov 20, 2026): "I prefer this  leaving it out and trusting the model to find `propose_change` and its a harness ability to detect and ask back or what" — context: §9.8. guffbolt's `git` tool no longer points the model at `propose_change`; its refusal of a remote reaches the model as the tool result, and agentsfleet adds no hint.
   - > Owner (Indy, Nov 19, 2026): "donot do the lint, test-unit, test-integration check but rather do it at the end of every workstream. but for every dimension do cargo check, cargo fmt (clippy) so we know code compiles." — context: per-Dimension compile checks; S rows at the end of each Workstream.
   - > Owner (Indy, Nov 19, 2026): "Ensure the rust code for individual files is 99% and overall is 99% if possible or else stick to the numbers we have currently." — context: coverage targets 99% per file and overall, never below the 98% line and 95% patch floors.
   - > Owner (Indy, Nov 19, 2026): "E2E cloud burst" — context: Linux proof, paid, his go per run.

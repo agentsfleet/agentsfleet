@@ -9,6 +9,7 @@
 use std::io;
 use std::path::Path;
 
+use crate::CallRef;
 use crate::tools::outbound::Allowlist;
 use crate::tools::{Context, LocalEnv, LocalMemory, LocalOutbound, Sessions, Wake};
 
@@ -54,9 +55,9 @@ impl Local {
         })
     }
 
-    /// What one call is lent.
+    /// What the call at `call_ref` is lent.
     #[must_use]
-    pub fn context(&self) -> Context<'_> {
+    pub fn context<'a>(&'a self, call_ref: &'a CallRef) -> Context<'a> {
         Context {
             env: Some(&self.env),
             outbound: &self.outbound,
@@ -64,6 +65,7 @@ impl Local {
             sessions: &self.sessions,
             image_input: self.image_input,
             repository: None,
+            call_ref,
             run_id: &self.run_id,
             wake: Some(&self.wake),
         }

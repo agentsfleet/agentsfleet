@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use crate::model::{Model, Request};
 use crate::observe::Observe;
 use crate::tool::{ToolFuture, ToolSpec};
-use crate::transcript::{Call, Transcript};
+use crate::transcript::{Call, CallRef, Transcript};
 use crate::window::{Fitted, Window};
 
 /// One loop's conversation, as the embedder keeps it: where its input comes
@@ -58,10 +58,12 @@ pub trait Conversation: Send + Sync {
     /// model, the instructions and the rest are the embedder's.
     fn request<'a>(&'a self, window: &'a Window, tools: &'a [ToolSpec<'a>]) -> Request<'a>;
 
-    /// Runs `call` with whatever this loop lends it. A name the loop holds no
-    /// tool for answers [`crate::ToolOutput::not_offered`] through
+    /// Runs `call`, which sits at `call_ref`, with whatever this loop lends
+    /// it; a tool whose backend acts outside the process is lent `call_ref`
+    /// too, so the backend can tell a retry from a new call. A name the loop
+    /// holds no tool for answers [`crate::ToolOutput::not_offered`] through
     /// [`crate::Tools::dispatch`].
-    fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a>;
+    fn dispatch<'a>(&'a self, call: &'a Call, call_ref: &'a CallRef) -> ToolFuture<'a>;
 
     /// Hides from the transcript what must never reach a model again, such
     /// as a secret the model wrote, before a step's text and calls enter it.

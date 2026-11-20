@@ -4,6 +4,7 @@
 use std::fmt;
 
 use afr_executor::Executor;
+use guffbolt::CallRef;
 use guffbolt::tools::code;
 
 use crate::run::Run;
@@ -34,6 +35,8 @@ pub struct ToolContext<'call, 'run> {
     pub executor: Option<&'call dyn Executor>,
     /// What every call of the run shares.
     pub run: &'call Run<'run>,
+    /// Where the call sits in its loop's conversation.
+    pub call_ref: &'call CallRef,
 }
 
 /// One handler the catalog hosts: a `guffbolt` tool lent one run's

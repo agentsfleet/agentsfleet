@@ -98,7 +98,7 @@ pub use self::step::{Ending, Listen, Step, Waiting};
 pub use self::tool::{
     Describe, ErrorCode, Image, ImageKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools,
 };
-pub use self::transcript::{Call, Message, Replay, Transcript};
+pub use self::transcript::{Call, CallRef, Message, Replay, Transcript};
 pub use self::window::{Fitted, Window};
 
 /// The README's examples, compiled and run as doctests by the unit lane, so

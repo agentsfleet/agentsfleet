@@ -23,7 +23,7 @@ use crate::model::Request;
 use crate::observe::{CallEnd, Observe};
 use crate::step::{Ending, Listen, Waiting};
 use crate::tool::{ToolFuture, ToolOutput, ToolSpec};
-use crate::transcript::{Call, Transcript};
+use crate::transcript::{Call, CallRef, Transcript};
 use crate::window::Window;
 
 /// The tool that starts a child beside the root and answers its id at once.
@@ -210,7 +210,7 @@ impl Conversation for Root<'_> {
         }
     }
 
-    fn dispatch<'a>(&'a self, call: &'a Call) -> ToolFuture<'a> {
+    fn dispatch<'a>(&'a self, call: &'a Call, _call_ref: &'a CallRef) -> ToolFuture<'a> {
         let output = match call.name.as_str() {
             SPAWN => self.spawn(&call.arguments),
             ASK_USER => {

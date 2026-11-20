@@ -3,6 +3,7 @@
 mod process;
 
 use super::Harness;
+use crate::router::Lent;
 use af_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
 use afr_executor::Spawn;
 use afr_tools::{SandboxEnv, ToolErrorCode};
@@ -51,16 +52,16 @@ impl Describe for Propose {
     }
 }
 
-impl<'call, 's, 'run> Tool<&'call Harness<'s, 'run>> for Propose {
+impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for Propose {
     fn call<'a>(
         &'a self,
         arguments: &'a serde_json::Value,
-        cx: &'call Harness<'s, 'run>,
+        cx: Lent<'call, 's, 'run>,
     ) -> ToolFuture<'a>
     where
-        &'call Harness<'s, 'run>: 'a,
+        Lent<'call, 's, 'run>: 'a,
     {
-        Box::pin(cx.publish_task(arguments))
+        Box::pin(cx.harness.publish_task(arguments))
     }
 }
 

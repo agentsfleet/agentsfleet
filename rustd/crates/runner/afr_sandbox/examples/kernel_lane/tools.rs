@@ -8,7 +8,7 @@ use af_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use afr_tools::catalog::SHELL;
 use afr_tools::{Catalog, Run, ToolContext, ToolErrorCode};
-use guffbolt::ToolOutput;
+use guffbolt::{CallRef, ToolOutput};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
@@ -64,10 +64,16 @@ pub(crate) fn shell_calls(
         let sandbox = engine.prepare(request).await?;
         let run = Run::default();
         let mut outputs = Vec::with_capacity(calls.len());
-        for arguments in calls {
+        for (step, arguments) in (1_u64..).zip(calls) {
+            let call_ref = CallRef {
+                step,
+                index: 0,
+                call_id: format!("call-{step}"),
+            };
             let context = ToolContext {
                 executor: Some(sandbox.executor()),
                 run: &run,
+                call_ref: &call_ref,
             };
             outputs.push(tool.call(arguments, context).await);
         }

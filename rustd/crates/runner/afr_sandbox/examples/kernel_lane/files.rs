@@ -11,7 +11,7 @@ use afr_tools::catalog::{
     FILE_READ_HASHED, FILE_WRITE, IMAGE, SHELL,
 };
 use afr_tools::{Catalog, Run, ToolContext, ToolErrorCode};
-use guffbolt::ToolOutput;
+use guffbolt::{CallRef, ToolOutput};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
@@ -78,12 +78,18 @@ fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<Too
         let sandbox = engine.prepare(request).await?;
         let run = Run::default().with_image_input(true);
         let mut outputs = Vec::with_capacity(steps.len());
-        for step in steps {
+        for (number, step) in (1_u64..).zip(steps) {
             let (name, arguments) = step(&outputs);
             let tool = selection.tool(name).ok_or("the runner hosts it")?;
+            let call_ref = CallRef {
+                step: number,
+                index: 0,
+                call_id: format!("call-{number}"),
+            };
             let context = ToolContext {
                 executor: Some(sandbox.executor()),
                 run: &run,
+                call_ref: &call_ref,
             };
             outputs.push(tool.call(&arguments, context).await);
         }

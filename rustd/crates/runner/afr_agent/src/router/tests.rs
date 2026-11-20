@@ -4,8 +4,8 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use af_wire::tool_trace::ToolCallStatus;
 use afr_executor::{
@@ -16,7 +16,7 @@ use afr_tools::stub::{STUB_PATH, Stub};
 use afr_tools::{Catalog, CatalogTool, Entry, Run, Runtime, Selection, ToolContext, ToolErrorCode};
 use bytes::Bytes;
 use guffbolt::Message;
-use guffbolt::{Describe, Tool, ToolFuture, ToolSpec};
+use guffbolt::{CallRef, Describe, Tool, ToolFuture, ToolSpec};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -80,6 +80,15 @@ pub(super) fn catalog() -> Catalog {
     Catalog::new(vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)])
 }
 
+/// Where the one call each case makes sits: the first of step 1.
+pub(super) fn first_call() -> CallRef {
+    CallRef {
+        step: 1,
+        index: 0,
+        call_id: "call-1-0".to_owned(),
+    }
+}
+
 /// The handler `selection` offers for `entry`, as a loop routes it.
 pub(super) fn routed<'c>(selection: &Selection<'c>, entry: &Entry) -> Routed<'c> {
     Routed::new(selection.tool(entry.name()).unwrap(), entry.runtime())
@@ -94,7 +103,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     let (arguments, run) = (json!({}), Run::default());
 
     let supervised = routed(&selection, &UPDATE_PLAN)
-        .run(&arguments, &slot, &run)
+        .run(&arguments, &slot, &run, &first_call())
         .await;
     assert_eq!(supervised.error_code, None);
     assert_eq!(
@@ -104,7 +113,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     );
 
     let sandboxed = routed(&selection, &FILE_READ)
-        .run(&arguments, &slot, &run)
+        .run(&arguments, &slot, &run, &first_call())
         .await;
     assert_eq!(sandboxed.error_code, None);
     assert_eq!(sandboxed.text, "file_read");
@@ -118,7 +127,7 @@ async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
 
     let output = routed(&selection, &FILE_READ)
-        .run(&json!({}), &slot, &Run::default())
+        .run(&json!({}), &slot, &Run::default(), &first_call())
         .await;
 
     assert_eq!(
@@ -215,7 +224,7 @@ async fn a_handler_routed_as_the_providers_is_never_run() {
     let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
 
     let output = Routed::new(&counted, Runtime::Provider)
-        .run(&json!({}), &slot, &Run::default())
+        .run(&json!({}), &slot, &Run::default(), &first_call())
         .await;
 
     assert_eq!(
@@ -228,4 +237,55 @@ async fn a_handler_routed_as_the_providers_is_never_run() {
             .starts_with("[hosted_tool_unavailable] update_plan ")
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0, "the handler never ran");
+}
+
+/// A handler that keeps where each call it ran sits.
+#[derive(Debug)]
+struct Placed {
+    served: Box<CatalogTool>,
+    seen: Arc<Mutex<Vec<CallRef>>>,
+}
+
+impl Describe for Placed {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.served.spec()
+    }
+}
+
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Placed {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        self.seen.lock().unwrap().push(cx.call_ref.clone());
+        self.served.call(arguments, cx)
+    }
+}
+
+/// A backend derives its idempotency key from where the call sits, so the
+/// router lends the handler the reference the loop dispatched the call with.
+#[tokio::test]
+async fn a_routed_call_lends_its_handler_where_the_call_sits() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let placed = Placed {
+        served: Stub::boxed(&UPDATE_PLAN),
+        seen: Arc::clone(&seen),
+    };
+    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let at = CallRef {
+        step: 3,
+        index: 1,
+        call_id: "call-3-1".to_owned(),
+    };
+
+    let output = Routed::new(&placed, Runtime::Supervisor)
+        .run(&json!({}), &slot, &Run::default(), &at)
+        .await;
+
+    assert_eq!(output.error_code, None, "{}", output.text);
+    assert_eq!(*seen.lock().unwrap(), [at]);
 }

@@ -15,7 +15,7 @@ use crate::model::Model as _;
 use crate::observe::{Observe as _, StepEnd, StepOutcome};
 use crate::step::{Ending, Step, Waiting};
 use crate::tool::{ErrorCode, ToolOutput};
-use crate::transcript::Message;
+use crate::transcript::{CallRef, Message};
 use crate::window::{Fitted, Window};
 
 /// What joins two answering steps' text in one [`Ending::Answered`].
@@ -130,7 +130,8 @@ async fn steps<C: Conversation + ?Sized, E: Extension<C>>(
                 Next::Done => break Ending::Answered(state.answers.join(ANSWER_JOIN)),
             }
         }
-        let (results, asked) = run_calls(conversation, &step).await;
+        let at = state.completed_steps().saturating_add(1);
+        let (results, asked) = run_calls(conversation, &step, at).await;
         remember(conversation, step, results);
         state.completed();
         if conversation.stop().is_cancelled() {
@@ -203,19 +204,26 @@ async fn sample<C: Conversation + ?Sized>(
     read
 }
 
-/// Runs `step`'s calls in order, or answers each unrun when the step was
-/// cut, and answers their results: fewer than its calls when the loop was
-/// stopped partway. A call that asked the person a question has no result
-/// yet: it is the question the run waits on, and a second question in the
-/// same step is answered that one is asked at a time.
+/// Runs the calls of `step`, the conversation's step `at`, in order, or
+/// answers each unrun when the step was cut, and answers their results:
+/// fewer than its calls when the loop was stopped partway. Each call is
+/// dispatched with its [`CallRef`]. A call that asked the person a question
+/// has no result yet: it is the question the run waits on, and a second
+/// question in the same step is answered that one is asked at a time.
 async fn run_calls<C: Conversation + ?Sized>(
     conversation: &mut C,
     step: &Step,
+    at: u64,
 ) -> (Vec<Message>, Option<Waiting>) {
     let mut results = Vec::with_capacity(step.calls.len());
     let mut asked: Option<Waiting> = None;
-    for call in &step.calls {
-        let Some(mut output) = call::run(&*conversation, call, step.cut).await else {
+    for (call, index) in step.calls.iter().zip(0_u64..) {
+        let call_ref = CallRef {
+            step: at,
+            index,
+            call_id: call.id.clone(),
+        };
+        let Some(mut output) = call::run(&*conversation, call, &call_ref, step.cut).await else {
             break;
         };
         if let Some(question) = output.asks.take() {

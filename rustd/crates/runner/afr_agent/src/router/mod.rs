@@ -9,7 +9,7 @@
 
 use std::future::ready;
 
-use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
+use guffbolt::{CallRef, Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
 use tokio::time::Instant;
 
 use afr_executor::{ExecutorSource, Outcome};
@@ -22,8 +22,18 @@ use crate::harness::Harness;
 /// What a call to a provider-hosted tool the provider did not run reads back.
 const HOSTED_ELSEWHERE: &str = "runs at the model provider, and this provider offers none";
 
-/// A tool one loop holds, lent the loop itself for each call.
-pub(crate) type LoopTool<'s, 'run> = dyn for<'call> Tool<&'call Harness<'s, 'run>> + 's;
+/// What a loop lends one call: the loop itself, and where the call sits in
+/// its conversation.
+#[derive(Clone, Copy)]
+pub(crate) struct Lent<'call, 's, 'run> {
+    /// The loop the call belongs to.
+    pub(crate) harness: &'call Harness<'s, 'run>,
+    /// Where the call sits, which a catalog handler is lent in turn.
+    pub(crate) call_ref: &'call CallRef,
+}
+
+/// A tool one loop holds, lent the loop and the call's place for each call.
+pub(crate) type LoopTool<'s, 'run> = dyn for<'call> Tool<Lent<'call, 's, 'run>> + 's;
 
 /// Routes one loop's tool calls.
 pub(crate) struct Router<'s, 'run> {
@@ -58,19 +68,19 @@ impl<'s, 'run> Router<'s, 'run> {
         self.tools.specs().collect()
     }
 
-    /// Runs one call to `name` with `arguments`, lending it `harness`. A
+    /// Runs one call to `name` with `arguments`, lending it `lent`. A
     /// provider-hosted name reached here because the provider ran no such
     /// tool, and is refused as the provider's.
     pub(crate) fn dispatch<'a>(
         &'a self,
         name: &'a str,
         arguments: &'a serde_json::Value,
-        harness: &'a Harness<'s, 'run>,
+        lent: Lent<'a, 's, 'run>,
     ) -> ToolFuture<'a> {
         if self.selection.hosts(name) {
             return Box::pin(ready(hosted_elsewhere(name)));
         }
-        self.tools.dispatch(name, arguments, harness)
+        self.tools.dispatch(name, arguments, lent)
     }
 }
 
@@ -89,13 +99,15 @@ impl<'s> Routed<'s> {
         Self { handler, runtime }
     }
 
-    /// Runs one call where the handler's runtime says: with `run`, and
-    /// with the sandbox's executor from `executor` for a sandbox-side call.
+    /// Runs the call at `call_ref` where the handler's runtime says: with
+    /// `run`, and with the sandbox's executor from `executor` for a
+    /// sandbox-side call.
     pub(crate) async fn run(
         &self,
         arguments: &serde_json::Value,
         executor: &dyn ExecutorSource,
         run: &Run<'_>,
+        call_ref: &CallRef,
     ) -> ToolOutput {
         let name = self.handler.name();
         let executor = match self.runtime {
@@ -107,7 +119,14 @@ impl<'s> Routed<'s> {
             Runtime::Provider => return hosted_elsewhere(name),
         };
         self.handler
-            .call(arguments, ToolContext { executor, run })
+            .call(
+                arguments,
+                ToolContext {
+                    executor,
+                    run,
+                    call_ref,
+                },
+            )
             .await
     }
 }
@@ -118,17 +137,17 @@ impl Describe for Routed<'_> {
     }
 }
 
-impl<'call, 's, 'run> Tool<&'call Harness<'s, 'run>> for Routed<'s> {
+impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for Routed<'s> {
     fn call<'a>(
         &'a self,
         arguments: &'a serde_json::Value,
-        cx: &'call Harness<'s, 'run>,
+        cx: Lent<'call, 's, 'run>,
     ) -> ToolFuture<'a>
     where
-        &'call Harness<'s, 'run>: 'a,
+        Lent<'call, 's, 'run>: 'a,
     {
-        let shared = cx.shared;
-        Box::pin(self.run(arguments, shared.executor, &shared.run))
+        let shared = cx.harness.shared;
+        Box::pin(self.run(arguments, shared.executor, &shared.run, cx.call_ref))
     }
 }
 

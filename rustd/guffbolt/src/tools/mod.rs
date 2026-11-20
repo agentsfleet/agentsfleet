@@ -45,6 +45,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
+use crate::transcript::CallRef;
 
 pub use self::clock::Wake;
 pub use self::env::{Env, LocalEnv};
@@ -58,7 +59,7 @@ pub use self::schema::{NoArguments, Schema};
 pub type ContextTool = dyn for<'c> Tool<Context<'c>>;
 
 /// What a generic tool is lent for one call: where it runs, where it sends,
-/// where it remembers, and the run it belongs to.
+/// where it remembers, where the call sits, and the run it belongs to.
 ///
 /// The embedder builds one per call from what its run holds; every field is
 /// a borrow, so building one costs nothing.
@@ -79,6 +80,9 @@ pub struct Context<'a> {
     /// The directory `git` runs in, relative to the environment's root; the
     /// root when `None`.
     pub repository: Option<&'a str>,
+    /// Where the call sits in its conversation; a backend that acts outside
+    /// the process derives its idempotency key from it.
+    pub call_ref: &'a CallRef,
     /// What names the run on the tools' log lines.
     pub run_id: &'a str,
     /// Woken when new input reaches the run, so `sleep` wakes early.

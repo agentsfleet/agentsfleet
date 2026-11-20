@@ -7,6 +7,7 @@
 //! seeded interleavings at the loop and checks the one invariant: an answer
 //! never ignores input that arrived before it.
 
+mod call_ref;
 mod extension;
 mod fixture;
 mod heard;

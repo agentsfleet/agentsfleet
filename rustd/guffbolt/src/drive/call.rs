@@ -10,14 +10,15 @@ use tracing::{Instrument as _, Span};
 use crate::conversation::Conversation;
 use crate::observe::{CallEnd, Observe};
 use crate::tool::{ToolFuture, ToolOutput};
-use crate::transcript::Call;
+use crate::transcript::{Call, CallRef};
 
-/// Runs `call`, or answers it unrun when its step was `cut` at the output
-/// limit, its arguments possibly incomplete. `None` when the loop was
-/// stopped before the call started or while it ran.
+/// Runs `call`, which sits at `call_ref`, or answers it unrun when its step
+/// was `cut` at the output limit, its arguments possibly incomplete. `None`
+/// when the loop was stopped before the call started or while it ran.
 pub(super) async fn run<C: Conversation + ?Sized>(
     conversation: &C,
     call: &Call,
+    call_ref: &CallRef,
     cut: bool,
 ) -> Option<ToolOutput> {
     let stop = conversation.stop();
@@ -31,7 +32,7 @@ pub(super) async fn run<C: Conversation + ?Sized>(
     let work: ToolFuture<'_> = if cut {
         Box::pin(ready(ToolOutput::cut(&call.name)))
     } else {
-        conversation.dispatch(call)
+        conversation.dispatch(call, call_ref)
     };
     let work = work.instrument(open.span.clone());
     let output = tokio::select! {
