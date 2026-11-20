@@ -147,7 +147,7 @@ async fn fleets_read_refuses_a_fleet_from_another_workspace() {
 }
 
 /// A settled run, another runner's run, and a holder a
-/// reclaim superseded read nothing.
+/// reassignment superseded read nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleets_read_refuses_a_run_the_runner_does_not_hold() {

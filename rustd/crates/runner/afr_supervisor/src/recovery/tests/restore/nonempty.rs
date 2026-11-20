@@ -94,7 +94,7 @@ fn native(
         objects: vec![object],
     })?;
     Ok(test_support::plane(move |call| match call.verb {
-        Verb::Activity => test_support::json(&serde_json::json!({})),
+        Verb::Progress => test_support::json(&serde_json::json!({})),
         Verb::TaskCheckpointAuthorizations => {
             let input = call.body.as_ref().and_then(|bytes| {
                 serde_json::from_slice::<CheckpointAuthorizationInput>(bytes).ok()

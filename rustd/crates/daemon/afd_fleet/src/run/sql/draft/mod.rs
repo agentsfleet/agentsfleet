@@ -1,4 +1,4 @@
-//! The draft kind's own run statement. Its claim, renewal and settlement run
+//! The draft kind's own run statement. Its assignment, renewal and settlement run
 //! the shared statements ([`super::shared`]); the draft's rows are
 //! `afd_setup::setup_run`'s.
 

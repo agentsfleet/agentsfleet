@@ -8,7 +8,7 @@ const CONTEXT: &str = "read current authoring work";
 
 #[cfg(feature = "test-util")]
 impl crate::Drafts {
-    /// The compiled admission statement, for real database query-plan measurements.
+    /// The compiled pending-work statement, for real database query-plan measurements.
     pub const CURRENT_ATTEMPT_QUERY: &'static str = sql::PENDING;
 }
 

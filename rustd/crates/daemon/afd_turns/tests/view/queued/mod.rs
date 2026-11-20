@@ -36,7 +36,7 @@ const BODY: &str = r#"{"message": "wait for me"}"#;
 /// A first page's size, as the dashboard asks for it.
 const PAGE: i64 = 26;
 
-/// What a claim writes to the turn when a runner takes it: its fence.
+/// What an assignment writes to the turn when a runner takes it: its fence.
 const MARK_DELIVERED: &str = "UPDATE thread.turns SET run_fence = 1 \
      WHERE thread_id = $1 AND run_fence IS NULL";
 
@@ -45,8 +45,8 @@ const MARK_DELIVERED: &str = "UPDATE thread.turns SET run_fence = 1 \
 const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_turns_thread_id_created_at_id"];
 
 /// Ledger history, most of it delivered and settled, across many fleets of one workspace:
-/// `$1` tenant, `$2` instant, `$3` fleets, `$4` admissions per fleet. Each
-/// admission is a millisecond after the one before it.
+/// `$1` tenant, `$2` instant, `$3` fleets, `$4` turns per fleet. Each
+/// turn is a millisecond after the one before it.
 const SEED_LEDGER: &str = "
 WITH workspace AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)

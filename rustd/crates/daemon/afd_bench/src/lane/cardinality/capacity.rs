@@ -1,4 +1,4 @@
-//! Measure the admission ledger's backlog at population: rows admitted and not yet delivered.
+//! Measure the turn ledger's backlog at population: rows admitted and not yet delivered.
 
 use af_core::clock;
 use af_crypto::entropy::Entropy;
@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::report::{Report, count};
 
 /// Measurement keys. The `ledger_` prefix says the figure came from the
-/// admission ledger in Postgres.
+/// turn ledger in Postgres.
 const LEDGER_BACKLOG_ROWS: &str = "ledger_backlog_rows";
 const LEDGER_BACKLOG_OLDEST_AGE_MS: &str = "ledger_backlog_oldest_age_ms";
 

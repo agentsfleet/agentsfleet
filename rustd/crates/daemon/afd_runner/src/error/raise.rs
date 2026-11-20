@@ -132,7 +132,7 @@ pub(crate) fn tenant_managed() -> Error {
 /// sample is a change in THIS file, next to the kind.
 ///
 /// # Panics
-/// When the admission plane stops declaring the outage kind this lifts. That
+/// When the turns crate stops declaring the outage kind this lifts. That
 /// is a change in that crate's contract rather than a runtime condition, and
 /// stopping here names it at the sample rather than at whichever assertion
 /// happens to read the wrong value first — the reasoning
@@ -180,12 +180,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         // than restated here, so a sample is the only way that delegation is
         // ever executed.
         (
-            "admission",
+            "turns",
             afd_turns::error::one_of_each_kind()
                 .into_iter()
                 .find(|(kind, _error)| *kind == "datastore")
                 .map(|(_kind, error)| Error::from(error))
-                .expect("the admission sample declares an outage kind"),
+                .expect("the turns sample declares an outage kind"),
         ),
     ]
 }

@@ -4,7 +4,7 @@ use super::{Fleet, Method, StatusCode, json, json_body, mint, send};
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_policy_marker_change_refuses_new_admissions_but_preserves_accepted_replay() {
+async fn a_policy_marker_change_refuses_new_turns_but_preserves_accepted_replay() {
     let logs = af_core::test_util::trace::Capture::install();
     let fleet = Fleet::create().await;
     let key = mint();

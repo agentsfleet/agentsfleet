@@ -143,14 +143,14 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("vault", ErrorKind::Vault { source: vault }.into()),
         (
-            "admission unreachable",
+            "turn unreachable",
             ErrorKind::TurnWrite {
                 source: unreachable,
             }
             .into(),
         ),
         (
-            "admission answered",
+            "turn answered",
             ErrorKind::TurnWrite { source: answered }.into(),
         ),
         (

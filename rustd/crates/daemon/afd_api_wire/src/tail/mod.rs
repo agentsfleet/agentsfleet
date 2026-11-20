@@ -150,7 +150,7 @@ pub enum TailFrame<'a> {
     RunRestarted {
         /// Stable turn receiving the replacement attempt.
         turn_id: Cow<'a, str>,
-        /// Complete decimal slot fence, safe for JavaScript comparison.
+        /// Complete decimal thread fence, safe for JavaScript comparison.
         fencing_token: Cow<'a, str>,
         /// Issue commit's stored timestamp.
         #[serde(with = "af_wire::instant")]
@@ -165,7 +165,7 @@ pub enum TailFrame<'a> {
     },
     /// A person's message was accepted and waits for a runner.
     ///
-    /// Published once, by the steer route, after the admission commits and
+    /// Published once, by the steer route, after the turn commits and
     /// before the 202, so every screen on the fleet shows the message while
     /// it waits. A replayed send publishes nothing: its first send did.
     TurnAdmitted {
@@ -179,7 +179,7 @@ pub enum TailFrame<'a> {
         /// Another fleet's steer leads with its sender line, so its message
         /// runs past that bound by the length of that line.
         message: Cow<'a, str>,
-        /// When the admission was recorded.
+        /// When the turn was recorded.
         #[serde(with = "af_wire::instant")]
         created_at: jiff::Timestamp,
     },

@@ -1,8 +1,8 @@
-//! Claim a slot and its exact oldest unsettled turn in one transaction.
+//! Assign a thread and its exact oldest unsettled turn in one transaction.
 
 use af_core::id::Uuid7;
 
-use af_observability::metrics::label::fleet::HeldClaim;
+use af_observability::metrics::label::fleet::HeldAssignment;
 use af_observability::producers;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -13,18 +13,18 @@ use crate::error::{Result, query};
 use crate::run::affinity::{self, Fence};
 use crate::run::assignment::{RecoveryKey, RecoveryScan};
 use crate::run::envelope::{Acquired, HeadKind, Kind, Opened};
-use crate::run::event::{Delivery, Received};
 use crate::run::installed::FleetWithSession;
 use crate::run::sql::{self, queue};
 use crate::run::store::Runs;
+use crate::run::turn::{Delivery, Received};
 use afd_credential::provider::cache::PlatformKeyKey;
 
-/// Query context shared by the claim's transaction operations.
-const CONTEXT: &str = "admissions ledger claim";
+/// Query context shared by the assignment's transaction operations.
+const CONTEXT: &str = "turn ledger assignment";
 
-/// The admission row whose slot and fence the transaction just won.
+/// The turn row whose thread and fence the transaction just won.
 #[derive(Debug, sqlx::FromRow)]
-struct Admission {
+struct HeadTurn {
     predecessor_run_id: Option<Uuid7>,
     turn_id: Uuid7,
     workspace_id: Uuid7,
@@ -39,7 +39,7 @@ struct Admission {
     run_expires_at: Timestamp,
     held: bool,
     holder: Option<Uuid7>,
-    reclaimed: bool,
+    reassigned: bool,
     earlier_runs: i64,
     tenant_id: Uuid7,
     #[sqlx(flatten)]
@@ -50,14 +50,14 @@ struct Admission {
     opened: OpenedRow,
 }
 
-/// The fleet's memory flags, as the claim read them.
+/// The fleet's memory flags, as the assignment read them.
 #[derive(Debug, sqlx::FromRow)]
 struct MemoryScope {
     memory_reads_workspace: bool,
     memory_publishes_workspace: bool,
 }
 
-/// The event the claim opened or met on the turn, and the fleet's counters.
+/// The event the assignment opened or met on the turn, and the fleet's counters.
 #[derive(Debug, sqlx::FromRow)]
 struct OpenedRow {
     inserted: bool,
@@ -82,7 +82,7 @@ struct Candidate {
 }
 
 impl Runs {
-    /// A bounded candidate scan followed by atomic slot-and-head claims.
+    /// A bounded candidate scan followed by atomic thread-and-head assignments.
     pub(super) async fn ledger_counted(
         &self,
         runner: &Uuid7,
@@ -112,7 +112,7 @@ impl Runs {
             .bind(crate::task::DECISION_POLICY_PATH)
             .bind(recovery.is_some())
             .bind(after.map(|key| key.created.to_sqlx()))
-            .bind(after.map(|key| &key.admission))
+            .bind(after.map(|key| &key.turn))
             .bind(self.checkpoint_resume_enabled())
             .bind(afd_credential::provider::PLATFORM_MODEL_REF)
             .fetch_all(&mut *connection)
@@ -121,11 +121,11 @@ impl Runs {
         cost.candidates_scanned = u64::try_from(candidates.len()).unwrap_or(u64::MAX);
         for candidate in &candidates {
             if let Some(acquired) = self
-                .ledger_claim(&mut connection, &candidate.fleet_id, runner)
+                .ledger_assign(&mut connection, &candidate.fleet_id, runner)
                 .await?
             {
                 if let Some(scan) = recovery {
-                    record_claim(scan);
+                    record_assignment(scan);
                 }
                 producers::fleet::run_started(started(acquired.kind));
                 affinity::count_resumed(&acquired);
@@ -138,15 +138,15 @@ impl Runs {
         Ok(None)
     }
 
-    /// Roll back the slot too when the head is parked, locked, or gone.
-    async fn ledger_claim(
+    /// Roll back the thread too when the head is parked, locked, or gone.
+    async fn ledger_assign(
         &self,
         connection: &mut sqlx::PgConnection,
         fleet: &Uuid7,
         runner: &Uuid7,
     ) -> Result<Option<Acquired>> {
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
-        let row: Option<Admission> = sqlx::query_as(queue::CLAIM_HEAD)
+        let row: Option<HeadTurn> = sqlx::query_as(queue::ASSIGN_HEAD)
             .bind(fleet)
             .bind(runner)
             .bind(self.clock().ttl())
@@ -173,16 +173,16 @@ impl Runs {
         let acquired = row.acquired(fleet, runner);
         transaction.commit().await.map_err(query(CONTEXT))?;
         if displaced_hold {
-            producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);
+            producers::fleet::hold::assigned(HeldAssignment::OtherAfterLapse);
         }
         Ok(Some(acquired))
     }
 }
 
-fn record_claim(scan: &mut RecoveryScan) {
+fn record_assignment(scan: &mut RecoveryScan) {
     if scan.after.is_some() {
-        scan.claims_after_skip += 1;
-        if scan.claims_after_skip >= MAX_CANDIDATES_PER_POLL {
+        scan.assignments_after_skip += 1;
+        if scan.assignments_after_skip >= MAX_CANDIDATES_PER_POLL {
             *scan = RecoveryScan::default();
         }
     }
@@ -194,7 +194,7 @@ fn record_page_end(scan: &mut RecoveryScan, mut candidates: Vec<Candidate>) {
     {
         scan.after = Some(RecoveryKey {
             created: last.turn_created_at,
-            admission: last.turn_id,
+            turn: last.turn_id,
         });
         scan.deferred = true;
     } else {
@@ -202,13 +202,13 @@ fn record_page_end(scan: &mut RecoveryScan, mut candidates: Vec<Candidate>) {
     }
 }
 
-impl Admission {
+impl HeadTurn {
     /// Build the same downstream envelope from the committed ledger payload.
     fn acquired(self, fleet: &Uuid7, runner: &Uuid7) -> Acquired {
-        // The outer join finds a prior run only when the admission has been
+        // The outer join finds a prior run only when the turn has been
         // issued before.
-        let kind = if self.reclaimed {
-            Kind::Reclaim
+        let kind = if self.reassigned {
+            Kind::Reassigned
         } else {
             Kind::Fresh
         };

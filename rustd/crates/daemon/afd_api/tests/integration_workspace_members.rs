@@ -284,7 +284,7 @@ async fn test_platform_write_acts_attributed() {
     assert_eq!(
         members.admitted_actors().await,
         [operator.actor()],
-        "one admission, attributed to the operator"
+        "one turn, attributed to the operator"
     );
 
     members.cleanup().await;

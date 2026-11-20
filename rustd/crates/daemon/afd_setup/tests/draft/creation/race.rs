@@ -8,7 +8,7 @@
 //! hanging it.
 
 use super::super::{fixture::now, mint};
-use super::fixture::{Case, NO_ADMISSIONS};
+use super::fixture::{Case, NO_TURNS};
 use af_core::{error_code, id::Uuid7};
 use afd_setup::{
     Result, SavedFleet,
@@ -197,7 +197,7 @@ async fn a_archive_committed_while_activation_waits_refuses_that_activation() {
         "activation saw the committed Archive"
     );
     assert_eq!(refused.setup.state, "cancelled");
-    assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&fleet).await, NO_TURNS);
     let restored = c.base.drafts.read(c.base.access(), &draft).await;
     assert_eq!(restored.expect("draft").state, DraftState::Editing);
     Arc::into_inner(c).expect("tasks joined").cleanup().await;
@@ -274,7 +274,7 @@ async fn an_activation_committed_first_makes_the_concurrent_archive_stale() {
     assert_eq!(stale.etag(), Some(activated.etag.as_str()));
     let current = c.creations.read(c.base.access(), &fleet).await;
     assert_eq!(current.expect("fleet").status, "active");
-    assert_eq!(c.admissions(&fleet).await.len(), 1);
+    assert_eq!(c.turns(&fleet).await.len(), 1);
     let closed = c.base.drafts.read(c.base.access(), &draft).await;
     assert_eq!(closed.expect("draft").state, DraftState::Closed);
     Arc::into_inner(c).expect("tasks joined").cleanup().await;

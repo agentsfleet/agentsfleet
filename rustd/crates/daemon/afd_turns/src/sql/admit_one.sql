@@ -5,7 +5,7 @@
 -- $5 dedupe key (a steer's is `<fleet_id>:<operation_id>`) · $6 payload digest ·
 -- $7 actor · $8 event type · $9 request JSON · $10 deployment ceiling ·
 -- $11 current deployment estimate · $12/$13 reply connector and address ·
--- $14 earlier admission in this workspace to copy a reply from ·
+-- $14 earlier turn in this workspace to copy a reply from ·
 -- $15 this build's setup policy stamp · $16 runnable status, or NULL for any ·
 -- $17 the status a new turn waits in.
 

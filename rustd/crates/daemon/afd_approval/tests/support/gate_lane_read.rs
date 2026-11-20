@@ -67,7 +67,7 @@ impl Lane {
             .flatten()
     }
 
-    /// The continuation remains available for a ledger claim.
+    /// The continuation remains available for a ledger assignment.
     pub(crate) async fn continuation_is_unsettled(&self, action: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         sqlx::query_scalar::<_, bool>(
@@ -75,7 +75,7 @@ impl Lane {
              WHERE producer = $1 AND producer_key = $2",
         )
         .bind(afd_turns::Producer::GateContinuation.as_str())
-        // The admission key is TEXT: the gate's action id, spelled out.
+        // The turn key is TEXT: the gate's action id, spelled out.
         .bind(action.as_str())
         .fetch_optional(&mut *connection)
         .await

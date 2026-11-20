@@ -54,7 +54,7 @@ async fn test_mint_scope_is_the_presenting_runners_run() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_mint_refuses_a_superseded_active_run() {
-    // A reclaim moves the fleet's sequence past a run before the issue that
+    // A reassignment moves the fleet's sequence past a run before the issue that
     // expires its row, so a row that is `active` and unexpired is not proof
     // the run still holds the fleet. The mint scope is checked against the
     // affinity row's sequence, as the memory fence and report are.

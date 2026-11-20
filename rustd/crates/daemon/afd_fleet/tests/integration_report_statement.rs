@@ -45,7 +45,7 @@ pub(crate) async fn reported(held: &Held) -> Reported {
         .expect("the run is the runner's")
 }
 
-/// The seeded admission asks for its answer back on a Slack thread.
+/// The seeded turn asks for its answer back on a Slack thread.
 async fn owe_to_slack(held: &Held) {
     sqlx::query("UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1")
         .bind(&held.turn_id)
@@ -53,7 +53,7 @@ async fn owe_to_slack(held: &Held) {
         .bind(THREAD)
         .execute(&mut *held.fixtures.database.acquire().await.expect("producer"))
         .await
-        .expect("the admission names a destination");
+        .expect("the turn names a destination");
 }
 
 async fn scalar(held: &Held, statement: &'static str, id: &Uuid7) -> i64 {
@@ -138,8 +138,8 @@ async fn one_statement_report_commits_every_write() {
             .bind(&held.fleet)
             .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
             .await
-            .expect("the slot reads");
-    assert!(released, "the slot is released");
+            .expect("the thread reads");
+    assert!(released, "the thread is released");
     let lines: i64 = scalar(
         &held,
         "SELECT count(*) FROM billing.usage_lines WHERE work_id = $1",
@@ -158,7 +158,7 @@ async fn one_statement_report_commits_every_write() {
     held.fixtures.cleanup().await;
 }
 
-// Value: protects=a reclaimed run's report writes nothing but its known
+// Value: protects=a reassigned run's report writes nothing but its known
 // request lines; fails_when=the fence leaves the statement's guard, or the
 // refused statement's locks outlive it and the known lines wait on them;
 // why_new=the guard moved into the one statement; seam=none; no_claim=what the
@@ -174,7 +174,7 @@ async fn one_statement_report_refuses_stale_fence() {
         .await;
     crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
         .await
-        .expect("the spare reclaims the lapsed fleet");
+        .expect("the spare is reassigned the lapsed fleet");
 
     let committed = held
         .runs

@@ -103,11 +103,7 @@ pub(super) fn storage(fixture: &Decisions<'_>) -> Tasks {
         Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("fixture key")),
         client,
     ));
-    Tasks::new(
-        case.held.runs.clone(),
-        case.admissions.clone(),
-        dependencies,
-    )
+    Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies)
 }
 
 pub(super) fn input(

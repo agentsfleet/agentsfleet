@@ -10,22 +10,22 @@ use super::{
 
 mod race;
 pub(super) mod support;
-use support::{claimable, expire, issue, selected, set};
+use support::{assignable, expire, issue, selected, set};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn configured_off_blocks_initial_source_discovery_and_claim_until_enabled() {
+async fn configured_off_blocks_initial_source_discovery_and_assignment_until_enabled() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         expire(case).await;
         set(case, false).await;
         assert!(
-            !claimable(case).await,
-            "direct claim also checks saved policy"
+            !assignable(case).await,
+            "direct assignment also checks saved policy"
         );
         assert!(selected(case).await.is_none());
         set(case, true).await;
-        assert!(claimable(case).await);
+        assert!(assignable(case).await);
         assert!(selected(case).await.is_some());
         fixture.model.finish().await.expect("model cleanup");
     })
@@ -38,7 +38,7 @@ async fn configured_off_preserves_ordinary_chat_placement() {
     exercise(async |case| {
         expire(case).await;
         set(case, false).await;
-        assert!(claimable(case).await);
+        assert!(assignable(case).await);
         let acquired = selected(case)
             .await
             .expect("ordinary chat remains eligible");
@@ -49,16 +49,16 @@ async fn configured_off_preserves_ordinary_chat_placement() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn configured_edit_after_claim_is_rechecked_before_issuing_a_source_run() {
+async fn configured_edit_after_assignment_is_rechecked_before_issuing_a_source_run() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         expire(case).await;
-        let acquired = selected(case).await.expect("enabled source claimed");
+        let acquired = selected(case).await.expect("enabled source assigned");
         refuse_after_edit(case, &acquired).await;
         set(case, true).await;
         assert!(
             issue(case, &acquired).await.is_some(),
-            "refused issue preserves claim"
+            "refused issue preserves assignment"
         );
         fixture.model.finish().await.expect("model cleanup");
     })
@@ -139,7 +139,7 @@ async fn continuation(case: &Case) {
         .await
         .expect("queued task");
     set(case, false).await;
-    assert!(!claimable(case).await);
+    assert!(!assignable(case).await);
     assert!(selected(case).await.is_none());
     assert_eq!(
         case.tasks
@@ -149,7 +149,7 @@ async fn continuation(case: &Case) {
         before
     );
     set(case, true).await;
-    assert!(claimable(case).await);
+    assert!(assignable(case).await);
     assert!(selected(case).await.is_some());
 }
 

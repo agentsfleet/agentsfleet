@@ -10,15 +10,15 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use sqlx::Connection as _;
-const CONTEXT: &str = "admission queue transition";
+const CONTEXT: &str = "turn queue transition";
 
 impl Runs {
-    /// Park and free the slot atomically. An answer that already committed is
+    /// Park and free the thread atomically. An answer that already committed is
     /// visible to the second statement; an answer waiting on this lock un-parks
     /// after this transaction commits. Neither ordering can strand the row.
     ///
     /// # Errors
-    /// Preserves database failures. A superseded claim changes nothing.
+    /// Preserves database failures. A superseded assignment changes nothing.
     pub async fn park(&self, fleet: &Uuid7, event: &Uuid7, fence: Fence) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
@@ -60,7 +60,7 @@ impl Runs {
             .map_err(query(CONTEXT))
     }
 
-    /// Suppress a terminal event without allowing a stale claimant to clear it.
+    /// Suppress a terminal event without allowing a stale holder to clear it.
     pub(crate) async fn settle_terminal(&self, acquired: &super::Acquired) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;

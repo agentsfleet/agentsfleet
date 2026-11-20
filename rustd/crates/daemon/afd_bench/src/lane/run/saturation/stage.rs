@@ -40,7 +40,7 @@ pub(super) const INDEX_BASE: u64 = 0x2000_0000;
 
 /// Tenants whose drafts compete for one poll.
 ///
-/// Several, because the claim this shape exists to measure walks candidates
+/// Several, because the assignment this shape exists to measure walks candidates
 /// across tenants, and one tenant would never show one stalling another.
 pub(super) const TENANTS: u64 = 5;
 

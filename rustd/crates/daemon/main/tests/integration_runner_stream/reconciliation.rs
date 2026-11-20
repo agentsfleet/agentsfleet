@@ -151,7 +151,7 @@ async fn reconcile(transport: Transport) -> Proof {
         wire::pointer(&assigned, "/run/event/turn_id"),
         omitted_event.as_str()
     );
-    let (replacement, fence) = wire::claim(wire::pointer(&assigned, "/run"));
+    let (replacement, fence) = wire::run_and_fence(wire::pointer(&assigned, "/run"));
     assert_ne!(replacement, omitted.id.as_str());
     assert!(fence > omitted.fence);
     current.close().await;

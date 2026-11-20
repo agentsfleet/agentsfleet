@@ -89,7 +89,7 @@ const RETIRED_WEBHOOK_ROUTES: usize = 1;
 /// Current-work collection/detail and run-scoped decision reservation/receipt.
 const DURABLE_TASK_ADDITIONS: usize = 16;
 
-/// The run route a running fleet claims the messages it receives through.
+/// The run route a running fleet is assigned the messages it receives through.
 const FOLD_ADDITIONS: usize = 1;
 /// Native runner sessions replace the polling routes as the runtime wiring completes.
 const RUNNER_STREAM_ADDITIONS: usize = 1;

@@ -57,7 +57,7 @@ pub(super) async fn assert_credential_and_duplicate_refusals(
     scene.native_session().await.capacity(2);
     assert!(
         !wait_without_assignment(scene, async || { false }).await,
-        "a second free worker must not receive the same fleet's active admission"
+        "a second free worker must not receive the same fleet's active turn"
     );
     assert_eq!(run_rows(scene).await, 1);
 }

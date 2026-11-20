@@ -13,7 +13,7 @@ const IDLE_FLEETS: &str = "INSERT INTO fleet.fleets \
 
 // Value: protects=empty-ledger idle cost; fails_when=discovery visits every idle
 // fleet; why_new=backlog tests do not grow idle fleet population; seam=none;
-// no_claim=constant server work when unsettled admissions exist.
+// no_claim=constant server work when unsettled turns exist.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_empty_ledger_skips_fleet_scans_at_twenty_thousand_idle_fleets() {

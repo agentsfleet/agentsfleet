@@ -23,7 +23,7 @@
 //! answer's marker names the fleet and the event; each line is stamped as an
 //! interim line and adds its run and its number there
 //! (`afd_connector::slack::Part`), so a repeat of a line finds only that line,
-//! a reclaimed run's first line is not the dead run's, and a repeat of the
+//! a reassigned run's first line is not the dead run's, and a repeat of the
 //! answer is never silenced by one.
 //!
 //! # A line is posted as literal text

@@ -1,4 +1,4 @@
-//! Notification errors leave accepted work durable; rejected admission never publishes.
+//! Notification errors leave accepted work durable; rejected turn never publishes.
 
 use super::{
     Fallible,
@@ -52,12 +52,8 @@ async fn a_silent_notification_is_bounded_and_does_not_lose_acceptance() -> Fall
         logged.get("reason").map_or("", String::as_str),
         "notification timeout",
     );
-    let (mut rings, admissions) = over_bus(&lane).await?;
-    let replayed = admit(
-        &admissions,
-        steer(&lane, lane.fleet.as_str(), ReplyTo::None),
-    )
-    .await?;
+    let (mut rings, turns) = over_bus(&lane).await?;
+    let replayed = admit(&turns, steer(&lane, lane.fleet.as_str(), ReplyTo::None)).await?;
     assert!(replayed.replayed);
     assert_eq!(replayed.stored.id, admitted.stored.id);
     assert_eq!(rings.taken().await?, [lane.fleet.as_str()]);
@@ -69,11 +65,11 @@ async fn a_silent_notification_is_bounded_and_does_not_lose_acceptance() -> Fall
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_invalid_fleet_scope_records_nothing_and_sends_no_notification() -> Fallible {
     let lane = Lane::seed().await?;
-    let (mut rings, admissions) = over_bus(&lane).await?;
+    let (mut rings, turns) = over_bus(&lane).await?;
     let wrong = afd_db::test_util::mint_id();
     let mut request = steer(&lane, lane.fleet.as_str(), ReplyTo::None);
     request.workspace = &wrong;
-    let refused = admissions
+    let refused = turns
         .admit(request)
         .await
         .err()

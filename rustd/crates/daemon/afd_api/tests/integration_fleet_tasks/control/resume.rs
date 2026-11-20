@@ -1,4 +1,4 @@
-//! Resume stays in the native admission queue and refuses foreign children.
+//! Resume stays in the native turn queue and refuses foreign children.
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::test_util::TestDatabase;
@@ -186,7 +186,7 @@ async fn task_resume_policy_refusal_rolls_back_with_the_original_state() {
         .bind(&fixture.base.fleet)
         .execute(&mut *connection)
         .await
-        .expect("setup unavailable for new admissions");
+        .expect("setup unavailable for new turns");
     drop(connection);
     let response = patch(
         &router,

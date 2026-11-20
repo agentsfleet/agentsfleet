@@ -179,7 +179,7 @@ async fn the_fleet_verbs_reach_their_paths_with_the_fence() {
     let fence = format!("fencing_token={FENCING}");
     assert_eq!(sent[0].verb, Verb::FleetList);
     assert_eq!(sent[0].path, format!("{root}/fleets?{fence}&limit=3"));
-    assert_eq!(sent[1].verb, Verb::FleetEvents);
+    assert_eq!(sent[1].verb, Verb::FleetTurns);
     assert_eq!(
         sent[1].path,
         format!("{root}/fleets/{SCHEDULE}/turns?{fence}&starting_after=c+1")

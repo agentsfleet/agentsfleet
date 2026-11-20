@@ -35,13 +35,13 @@ pub(super) struct Authoring {
 /// so every surface below reports its funnel steps and moves money the same
 /// way. The setup wraps the drafts, the model calls wrap the drafts and the
 /// shared provider store, and the creations wrap the setup and the shared
-/// admissions ledger — so the order below is the dependency order, not a
+/// turns ledger — so the order below is the dependency order, not a
 /// preference.
 pub(super) fn authoring(
     drafts: afd_setup::Drafts,
     kek: &Arc<Kek>,
     providers: &Providers,
-    admissions: &Turns,
+    turns: &Turns,
     transport: afd_setup::Network,
     decisions: Option<&af_core::id::Uuid7>,
 ) -> Authoring {
@@ -49,11 +49,11 @@ pub(super) fn authoring(
     let decision_client = transport.guarded_client();
     let mut models =
         afd_setup::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
-            .with_progress(admissions.streams());
+            .with_progress(turns.streams());
     if let Some(admin) = decisions {
         models = models.with_decisions(admin.clone(), decision_client);
     }
-    let creations = afd_setup::Creations::new(setup.clone(), admissions.clone());
+    let creations = afd_setup::Creations::new(setup.clone(), turns.clone());
     Authoring {
         drafts,
         setup,
@@ -82,7 +82,7 @@ pub(super) struct Outbound {
 pub(super) struct OutboundParts {
     pub(super) schedule: ScheduleConfig,
     pub(super) admin: Option<af_core::id::Uuid7>,
-    pub(super) admissions: Turns,
+    pub(super) turns: Turns,
     pub(super) vendor_client: reqwest::Client,
     pub(super) slack_api_base: String,
 }
@@ -104,13 +104,13 @@ pub(super) fn outbound(database: &Db, kek: &Arc<Kek>, parts: OutboundParts) -> O
     let OutboundParts {
         schedule,
         admin,
-        admissions,
+        turns,
         vendor_client,
         slack_api_base,
     } = parts;
     let upstream = platform::qstash(database, kek, admin, schedule);
-    let bus = admissions.streams();
-    let schedules = config::schedule_plane(database, Arc::clone(&upstream), admissions);
+    let bus = turns.streams();
+    let schedules = config::schedule_plane(database, Arc::clone(&upstream), turns);
     let interjector = platform::interjector(database, kek, vendor_client.clone(), slack_api_base);
     let connectors = platform::connect_flow(database, kek, &bus, vendor_client);
     Outbound {

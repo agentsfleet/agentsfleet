@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_fleet::run::sql::{self, queue::CLAIM_HEAD};
+use afd_fleet::run::sql::{self, queue::ASSIGN_HEAD};
 use afd_turns::Turns;
 use sqlx::Connection as _;
 
@@ -43,7 +43,7 @@ async fn deadline_case(first_gate_first: bool) {
         next(&runs, &runner).await.is_none(),
         "live gates block the head and tail"
     );
-    assert_blocked_claim(&fixtures, &fleet, &runner).await;
+    assert_blocked_assignment(&fixtures, &fleet, &runner).await;
     let (early, last) = if first_gate_first {
         (&other, &specific)
     } else {
@@ -54,7 +54,7 @@ async fn deadline_case(first_gate_first: bool) {
         next(&runs, &runner).await.is_none(),
         "one matching gate is still live"
     );
-    assert_blocked_claim(&fixtures, &fleet, &runner).await;
+    assert_blocked_assignment(&fixtures, &fleet, &runner).await;
     lapse(&fixtures, last).await;
     let resumed = next(&runs, &runner)
         .await
@@ -72,7 +72,10 @@ async fn assert_answerable(fixtures: &Fixtures, fleet: &Uuid7, specific: &Uuid7)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
         .await
         .expect("pending cards");
-    assert_eq!(count, 3, "discovery and claim do not expire approval cards");
+    assert_eq!(
+        count, 3,
+        "discovery and assignment do not expire approval cards"
+    );
     approve(fixtures, specific).await;
 }
 
@@ -99,8 +102,8 @@ async fn approve(fixtures: &Fixtures, action: &Uuid7) {
     drop(inbox);
 }
 
-// Value: protects=standing access cannot loop through claim and park after its
-// deadline; fails_when=deadline alone wakes it; seam=real approval and slot rows.
+// Value: protects=standing access cannot loop through assignment and park after its
+// deadline; fails_when=deadline alone wakes it; seam=real approval and thread rows.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
@@ -118,7 +121,7 @@ async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
         next(&runs, &runner).await.is_none(),
         "only an answer resolves access"
     );
-    assert_blocked_claim(&fixtures, &fleet, &runner).await;
+    assert_blocked_assignment(&fixtures, &fleet, &runner).await;
     approve(&fixtures, &action).await;
     assert_eq!(
         next(&runs, &runner).await.expect("answered access").turn_id,
@@ -152,16 +155,23 @@ async fn lapse(fixtures: &Fixtures, action: &Uuid7) {
         .expect("deadline in the past");
 }
 
-async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) {
-    let mut connection = fixtures.database.acquire().await.expect("claim connection");
+async fn assert_blocked_assignment(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("assignment connection");
     let before: i64 =
         sqlx::query_scalar("SELECT fencing_token FROM thread.threads WHERE fleet_id=$1")
             .bind(fleet)
             .fetch_one(&mut *connection)
             .await
-            .expect("slot before refusal");
-    let mut tx = connection.begin().await.expect("direct claim transaction");
-    let row = sqlx::query(CLAIM_HEAD)
+            .expect("thread before refusal");
+    let mut tx = connection
+        .begin()
+        .await
+        .expect("direct assignment transaction");
+    let row = sqlx::query(ASSIGN_HEAD)
         .bind(fleet)
         .bind(runner)
         .bind(af_core::timing::RUN_TTL)
@@ -179,16 +189,16 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *tx)
         .await
-        .expect("claim checks the same gate rule");
+        .expect("assignment checks the same gate rule");
     assert!(row.is_none());
     tx.rollback()
         .await
-        .expect("empty claim rolls back the slot");
+        .expect("empty assignment rolls back the thread");
     let after: i64 =
         sqlx::query_scalar("SELECT fencing_token FROM thread.threads WHERE fleet_id=$1")
             .bind(fleet)
             .fetch_one(&mut *connection)
             .await
-            .expect("slot after refusal");
+            .expect("thread after refusal");
     assert_eq!(after, before);
 }

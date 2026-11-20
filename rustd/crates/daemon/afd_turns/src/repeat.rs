@@ -14,16 +14,16 @@ use crate::error::{Result, query};
 use crate::{Producer, Turns, sql};
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_FIND_REPEATED: &str = "find a repeated admission";
+const CONTEXT_FIND_REPEATED: &str = "find a repeated turn";
 
-/// An admission row as recorded under a producer's key: an earlier call's
-/// when read back here, or the one an admission just wrote or met.
+/// A turn row as recorded under a producer's key: an earlier call's
+/// when read back here, or the one an intake just wrote or met.
 ///
 /// Decoded straight from [`sql::SELECT_REPEATED`], and assembled from the
 /// answer row of [`sql::ADMIT_ONE`], whose columns are named after these fields.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Repeated {
-    /// The event id the row's admission was answered with: the row's own
+    /// The event id the row's turn was answered with: the row's own
     /// `UUIDv7`, as text.
     pub id: Uuid7,
     /// The payload digest it was admitted with, which a retry is checked
@@ -37,7 +37,7 @@ pub struct Repeated {
 }
 
 impl Turns {
-    /// The admission `producer` recorded under `key`, or `None` when the key
+    /// The turn `producer` recorded under `key`, or `None` when the key
     /// is new.
     ///
     /// # Errors

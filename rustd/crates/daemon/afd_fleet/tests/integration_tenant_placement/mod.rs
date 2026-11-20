@@ -1,5 +1,5 @@
 //! Against a live datastore: a tenant's runner takes only its
-//! tenant's work, never work that carries the platform model key, and the claim
+//! tenant's work, never work that carries the platform model key, and the assignment
 //! and the issue each refuse on their own.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -37,7 +37,7 @@ impl Owner {
         }
     }
 
-    /// A fleet on `model` with one queued admission.
+    /// A fleet on `model` with one queued turn.
     async fn fleet(&self, fixtures: &Fixtures, model: &str) -> Uuid7 {
         let fleet = mint_id();
         fixtures
@@ -152,9 +152,9 @@ async fn runs_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
     .await
 }
 
-/// Whether a claim took `fleet`'s thread: creation writes it at fence 0, and
-/// only a winning claim raises the fence.
-async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
+/// Whether an assignment took `fleet`'s thread: creation writes it at fence 0, and
+/// only a winning assignment raises the fence.
+async fn thread_taken(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
     scalar(
         fixtures,
         "SELECT count(*) FROM thread.threads WHERE fleet_id = $1 AND fencing_token > 0",
@@ -164,18 +164,18 @@ async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
         > 0
 }
 
-/// `fleet`'s slot as a claim leaves it: its fence, deadline and holder.
-async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>) {
+/// `fleet`'s thread as an assignment leaves it: its fence, deadline and holder.
+async fn thread(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>) {
     sqlx::query_as(
         "SELECT fencing_token, run_expires_at::text, last_runner_id FROM thread.threads WHERE fleet_id = $1",
     )
     .bind(fleet)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
     .await
-    .expect("the slot reads")
+    .expect("the thread reads")
 }
 
-/// Lapses `fleet`'s claim, as an expired run leaves it.
+/// Lapses `fleet`'s assignment, as an expired run leaves it.
 async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
     sqlx::query(
         "UPDATE thread.threads SET run_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
@@ -183,16 +183,16 @@ async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
     .bind(fleet)
     .execute(&mut *fixtures.database.acquire().await.expect("a connection"))
     .await
-    .expect("the claim lapses");
+    .expect("the assignment lapses");
 }
 
-/// The claim statement alone, bound as the ledger binds it; whether it claimed.
-async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool {
+/// The assignment statement alone, bound as the ledger binds it; whether it assigned.
+async fn assign_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool {
     use afd_fleet::run::sql;
     use sqlx::Connection as _;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
-    let mut transaction = connection.begin().await.expect("a claim transaction");
-    let claimed = sqlx::query(sql::queue::CLAIM_HEAD)
+    let mut transaction = connection.begin().await.expect("an assignment transaction");
+    let assigned = sqlx::query(sql::queue::ASSIGN_HEAD)
         .bind(fleet)
         .bind(runner)
         .bind(af_core::timing::RUN_TTL)
@@ -210,18 +210,18 @@ async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool 
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *transaction)
         .await
-        .expect("the claim answers")
+        .expect("the assignment answers")
         .is_some();
-    // As the ledger does: a claim that took no head rolls its slot write back.
-    if claimed {
-        transaction.commit().await.expect("the claim commits");
+    // As the ledger does: an assignment that took no head rolls its thread write back.
+    if assigned {
+        transaction.commit().await.expect("the assignment commits");
     } else {
         transaction
             .rollback()
             .await
-            .expect("the refused claim rolls back");
+            .expect("the refused assignment rolls back");
     }
-    claimed
+    assigned
 }
 
 const SELF_MANAGED: &str = afd_billing::sql::posture::SELF_MANAGED;

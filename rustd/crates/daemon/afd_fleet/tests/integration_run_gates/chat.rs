@@ -129,8 +129,8 @@ impl Chat {
         &self.fleet
     }
 
-    /// `runner`'s claim on this fleet, or nothing while another holds it.
-    pub(super) async fn claim(&self, runner: &Uuid7) -> Option<afd_fleet::run::Acquired> {
+    /// `runner`'s assignment on this fleet, or nothing while another holds it.
+    pub(super) async fn assign(&self, runner: &Uuid7) -> Option<afd_fleet::run::Acquired> {
         let runs = self.fixtures.runs();
         crate::seed::select_fleet(&runs, runner, &self.fleet).await
     }
@@ -147,9 +147,9 @@ impl Chat {
         runner: &Uuid7,
         now: Timestamp,
     ) -> Issued {
-        let claimed = self.claim(runner).await.expect("the fleet is leasable");
+        let assigned = self.assign(runner).await.expect("the fleet is leasable");
         let answer = plane
-            .claim_selected(claimed, runner, now)
+            .assign_selected(assigned, runner, now)
             .await
             .expect("every gate verdict is a decision, not a fault");
         assert!(answer.is_some(), "the run was refused: {answer:?}");

@@ -267,12 +267,12 @@ async fn route<D: Services>(
 /// failed webhook — a delivery fails when this handler is down or takes longer
 /// than ten seconds, and recovering it is a manual click in the App's delivery
 /// log or an operator script walking the REST API. So a leg that fails BEFORE
-/// its admission row commits, and every leg after it in this loop, is not
+/// its turn row commits, and every leg after it in this loop, is not
 /// merely delayed: nothing holds that work and no sender will offer it again.
 ///
 /// Which makes the loop's order load-bearing and the ten seconds a deadline
 /// rather than a target — signature verification, fleet resolution and one
-/// admission per subscribed fleet all spend the same budget, and fan-out width
+/// turn per subscribed fleet all spend the same budget, and fan-out width
 /// is what spends it fastest.
 async fn fan_out<D: Services>(
     services: &Arc<D>,

@@ -9,8 +9,7 @@ use axum::{Router, response::Response};
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
-const ADMISSIONS: &str =
-    "SELECT count(*) FROM thread.turns WHERE thread_id=$1 AND producer IS NOT NULL";
+const TURNS: &str = "SELECT count(*) FROM thread.turns WHERE thread_id=$1 AND producer IS NOT NULL";
 /// The first run every Save-and-run case asks for.
 const RUN_NOW: &str = "Investigate the failed build.";
 
@@ -63,7 +62,7 @@ async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
     case.cleanup().await;
 }
 
-/// Saves with `run_now` while the admission backlog has no room: the fleet is
+/// Saves with `run_now` while the turn backlog has no room: the fleet is
 /// active, its first run is `blocked`, and nothing was admitted.
 async fn save_with_a_blocked_first_run(
     case: &Case,
@@ -96,11 +95,11 @@ async fn resume(case: &Case, router: &Router, path: &str, tag: &str) -> Response
 }
 
 async fn count(case: &Case, fleet: &Value) -> i64 {
-    sqlx::query_scalar(ADMISSIONS)
+    sqlx::query_scalar(TURNS)
         .bind(crate::authoring::id_field(&fleet["id"]))
-        .fetch_one(&mut *case.base.db.acquire().await.expect("admission connection"))
+        .fetch_one(&mut *case.base.db.acquire().await.expect("turn connection"))
         .await
-        .expect("count this fleet's durable admissions")
+        .expect("count this fleet's durable turns")
 }
 
 #[tokio::test]
@@ -124,7 +123,7 @@ async fn a_lost_notification_keeps_the_first_run_accepted_through_reload_and_ret
     assert_eq!(body["status"], "active");
     assert_eq!(
         body["start"]["state"], "accepted",
-        "a committed admission is accepted despite the lost notification"
+        "a committed turn is accepted despite the lost notification"
     );
     let event = accepted_after_reload(&case, &path).await;
     assert_eq!(

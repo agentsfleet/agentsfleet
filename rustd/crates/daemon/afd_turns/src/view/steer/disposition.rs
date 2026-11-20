@@ -1,8 +1,8 @@
 //! Where an accepted steer went, decided from what the ledger saw.
 //!
-//! A live run claims, at its next model call, the messages a person sends in
+//! A live run is assigned, at its next model call, the messages a person sends in
 //! its conversation: a durable task through `pending_inputs.sql`, any other
-//! run through `claim_inputs.sql`, which also stops at the first message of
+//! run through `assign_inputs.sql`, which also stops at the first message of
 //! that conversation it must not fold. Such a send is `folded`. A send with
 //! nothing waiting and no live run starts a run of its own. Anything else
 //! waits its turn.
@@ -27,7 +27,7 @@ pub struct Placed {
 /// machine's; a run that is not a durable task only when no message it must
 /// not pass waits ahead of it.
 ///
-/// `message_id` is the admission this answer is for. A retry of the send that
+/// `message_id` is the turn this answer is for. A retry of the send that
 /// started the live run meets that run as its head, and a message cannot fold
 /// into the run it began, so it is `started` again. A fresh message never
 /// matches: the run it sees was admitted before it.
@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(
             of(&live_task(), ACTOR_MACHINE, LATER).disposition,
             SteerDisposition::Queued,
-            "a durable task never claims a machine's send"
+            "a durable task is never assigned a machine's send"
         );
 
         let plain = with_run(|live| live.durable_task = false);

@@ -48,14 +48,14 @@ pub(crate) enum Verb {
     AuthoringModel,
     /// Native proposal receipt for a private authoring attempt.
     AuthoringActivity,
-    /// Retain an unexpired authoring slot.
+    /// Retain an unexpired authoring run.
     AuthoringRenew,
     /// Independent authoring accounting and optional answer.
     AuthoringReport,
     /// More time on a held run.
     Renew,
     /// Live-tail frames for a held run.
-    Activity,
+    Progress,
     /// A run's terminal result.
     Report,
     /// A fleet's memory at run start.
@@ -82,15 +82,15 @@ pub(crate) enum Verb {
     ScheduleRun,
     /// A schedule's runs.
     ScheduleRuns,
-    /// A line said to the held event's thread.
+    /// A line said to the held turn's thread.
     Message,
     /// The held fleet's workspace's fleets.
     FleetList,
-    /// One fleet's recent events, as the held fleet reads them.
-    FleetEvents,
+    /// One fleet's recent turns, as the held fleet reads them.
+    FleetTurns,
     /// Work the held fleet puts on another fleet.
     FleetSteer,
-    /// The messages a person sent while the run works, claimed for it.
+    /// The messages a person sent while the run works, assigned to it.
     Folds,
     /// Native event-owned recovery command.
     TurnCheckpoint,
@@ -140,7 +140,7 @@ impl Verb {
         Self::AuthoringRenew,
         Self::AuthoringReport,
         Self::Renew,
-        Self::Activity,
+        Self::Progress,
         Self::Report,
         Self::Load,
         Self::Capture,
@@ -156,7 +156,7 @@ impl Verb {
         Self::ScheduleRuns,
         Self::Message,
         Self::FleetList,
-        Self::FleetEvents,
+        Self::FleetTurns,
         Self::FleetSteer,
         Self::Folds,
         Self::TurnCheckpoint,
@@ -186,7 +186,7 @@ impl Verb {
             | Self::ScheduleList
             | Self::ScheduleRuns
             | Self::FleetList
-            | Self::FleetEvents
+            | Self::FleetTurns
             | Self::TaskInputs
             | Self::TaskEffects
             | Self::TaskEffect
@@ -204,7 +204,7 @@ impl Verb {
             | Self::AuthoringRenew
             | Self::AuthoringReport
             | Self::Renew
-            | Self::Activity
+            | Self::Progress
             | Self::Report
             | Self::Capture
             | Self::Recall
@@ -237,13 +237,13 @@ impl Verb {
             Self::AuthoringRenew => "authoring_renew",
             Self::AuthoringReport => "authoring_report",
             Self::Renew => "renew",
-            Self::Activity => "activity",
+            Self::Progress => "progress",
             Self::Report => "report",
             Self::Load => "load",
             Self::Capture => "capture",
             Self::Recall => "recall",
             Self::Mint => "mint",
-            Self::Items => "records",
+            Self::Items => "items",
             Self::Me => "me",
             Self::ScheduleCreate => "schedule_create",
             Self::ScheduleList => "schedule_list",
@@ -253,7 +253,7 @@ impl Verb {
             Self::ScheduleRuns => "schedule_runs",
             Self::Message => "message",
             Self::FleetList => "fleet_list",
-            Self::FleetEvents => "fleet_events",
+            Self::FleetTurns => "fleet_turns",
             Self::FleetSteer => "fleet_steer",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
@@ -287,7 +287,7 @@ impl Verb {
             | Self::AuthoringRenew
             | Self::AuthoringReport
             | Self::Renew
-            | Self::Activity
+            | Self::Progress
             | Self::Report
             | Self::Mint
             | Self::Items
@@ -300,7 +300,7 @@ impl Verb {
             | Self::ScheduleRuns
             | Self::Message
             | Self::FleetList
-            | Self::FleetEvents
+            | Self::FleetTurns
             | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint

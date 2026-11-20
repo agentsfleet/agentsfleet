@@ -54,8 +54,8 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     ("RunPayload", &["memory"]),
     // Where a steer went is new, and folding may reshape it.
     ("SteerAccepted", &["disposition", "folded_into_turn_id"]),
-    // A run claiming the messages its fleet receives is new, and so is the
-    // runner release that reads the claim.
+    // A run assigned the messages its fleet receives is new, and so is the
+    // runner release that reads the assignment.
     ("FoldResponse", &["inputs"]),
     ("FoldedInput", &["turn_id", "sequence", "text"]),
     // The fleet-to-fleet verbs are new, and so is the runner release that

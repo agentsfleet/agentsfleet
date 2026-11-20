@@ -38,7 +38,7 @@
 //! Each lane's connection to the integration lane's NATS carries activity
 //! frames and wake notifications, and a test subscribes through the same
 //! handle the inbox publishes on.
-//! Continuations commit to the admissions ledger; notification failure cannot
+//! Continuations commit to the turn ledger; notification failure cannot
 //! undo them.
 #![expect(
     clippy::expect_used,
@@ -100,7 +100,7 @@ pub(crate) struct Lane {
     /// provenance unreadable.
     _database: TestDatabase,
     pub(crate) pool: Db,
-    /// The bus the lane's inbox and admissions publish on, and the one its
+    /// The bus the lane's inbox and turns publish on, and the one its
     /// tests subscribe through.
     pub(crate) bus: Handle,
     pub(crate) inbox: Inbox,

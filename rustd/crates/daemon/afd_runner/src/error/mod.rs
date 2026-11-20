@@ -108,8 +108,8 @@ pub(crate) enum ErrorKind {
 
     /// A revoked runner still holds a live or unbilled run and was asked to retire.
     ///
-    /// The run row is what the liveness sweep releases the fleet's slot
-    /// through; retiring the runner under it would strand the slot until the
+    /// The run row is what the liveness sweep releases the fleet's thread
+    /// through; retiring the runner under it would strand the thread until the
     /// run's own expiry. The sweep clears it on its next pass.
     #[error("a runner still holding an active run cannot have its record retired")]
     RunnerStillRunning,

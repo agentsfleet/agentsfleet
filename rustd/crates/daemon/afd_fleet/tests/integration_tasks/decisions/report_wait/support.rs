@@ -120,7 +120,7 @@ pub(super) async fn counts(case: &Case, task: &Uuid7) -> (i64, i64, i64, i64, i6
     sqlx::query_as("SELECT (SELECT count(*) FROM thread.turns WHERE task_id=$1 AND producer='task_continuation' AND settled_at IS NULL), (SELECT COALESCE(max(task_generation),0) FROM thread.turns WHERE task_id=$1 AND producer='task_continuation' AND settled_at IS NULL), (SELECT count(*) FROM fleet.task_waits WHERE task_id=$1 AND cancelled_at IS NULL), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$2), (SELECT count(*) FROM thread.turns WHERE thread_id=$3)")
         .bind(task).bind(&case.held.run_key).bind(&case.held.fleet)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("ledger observer"))
-        .await.expect("native continuation, waits, accounting and admissions")
+        .await.expect("native continuation, waits, accounting and turns")
 }
 
 pub(super) fn assert_counts(counts: (i64, i64, i64, i64, i64), state: TaskState) {

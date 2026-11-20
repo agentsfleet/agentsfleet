@@ -1,4 +1,4 @@
-//! The transaction owns host, slot and run locks through its final decision.
+//! The transaction owns host, thread and run locks through its final decision.
 
 use af_core::id::Uuid7;
 use afd_billing::biller::Settlement;

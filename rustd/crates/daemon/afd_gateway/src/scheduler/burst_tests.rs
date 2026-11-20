@@ -39,7 +39,7 @@ async fn drain_burst(fleets: usize) -> TestResult {
     wake.recheck();
     let result = tokio::time::timeout(
         Duration::from_secs(1),
-        claims_drained(&completed, &remaining),
+        assignments_drained(&completed, &remaining),
     )
     .await;
     stop.cancel();
@@ -68,7 +68,7 @@ fn schedule(
     })
 }
 
-async fn claims_drained(completed: &Notify, remaining: &AtomicUsize) {
+async fn assignments_drained(completed: &Notify, remaining: &AtomicUsize) {
     loop {
         let observed = completed.notified();
         if remaining.load(Ordering::SeqCst) == 0 {

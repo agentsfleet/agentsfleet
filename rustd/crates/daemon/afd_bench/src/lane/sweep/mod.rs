@@ -25,7 +25,7 @@ const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
 /// A run's owed answers, by row id.
 const DELETE_DELIVERIES: &str = include_str!("sql/delete_deliveries.sql");
 
-/// A run's fleets; their revisions, events and slots go with them.
+/// A run's fleets; their revisions, events and threads go with them.
 const DELETE_FLEETS: &str = include_str!("sql/delete_fleets.sql");
 
 /// A run's setup chat attempts, which hold no key to the workspace (money

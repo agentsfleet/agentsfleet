@@ -89,7 +89,7 @@ impl Creations {
         let announcement = self
             .insert(&mut tx, &id, &captured, instance, &checked, now)
             .await?;
-        afd_turns::view::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+        afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.streams()))
             .await
             .map_err(query(CONTEXT))?;
         Ok(id)

@@ -21,7 +21,7 @@ async fn an_unfunded_wallet_cannot_dispatch_an_already_admitted_attempt() {
         .bind(&f.tenant)
         .execute(&mut *f.connection().await)
         .await
-        .expect("funding removed after admission");
+        .expect("funding removed after assignment");
     let error = calls
         .call(&f.runner, &a.run, fixture::request(&a))
         .await

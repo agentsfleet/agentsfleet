@@ -22,7 +22,7 @@ const CONTEXT_LOAD: &str = "report run load";
 /// the data fault it is.
 #[derive(Debug, Clone)]
 pub struct Reported {
-    /// The fleet whose slot this run holds.
+    /// The fleet whose thread this run holds.
     pub fleet_id: Uuid7,
     /// The workspace the work belongs to.
     pub workspace_id: Uuid7,

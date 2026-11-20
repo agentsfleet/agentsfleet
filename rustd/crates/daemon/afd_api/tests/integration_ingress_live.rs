@@ -7,7 +7,7 @@
 //! covered lines: the delegating adapter and the SQL behind it never run.
 //!
 //! These do run them. The row comes out of `fleet.revisions`, the secret out of
-//! `vault.secrets`, and the claim lands in the live admission ledger — so a
+//! `vault.secrets`, and the claim lands in the live turns ledger — so a
 //! delivery here crosses the same three stores in the same order the daemon
 //! crosses them.
 //!
@@ -18,7 +18,7 @@
 //! there. What lives here is only what a stub cannot answer honestly: that the
 //! stored document resolves to the binding the reader believes it does, that
 //! the sealed credential opens to the secret the wall then verifies against,
-//! and that an admission reaches the ledger.
+//! and that a turn reaches the ledger.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -88,7 +88,7 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
     // The whole order in one pass, and the only test that proves the stores
     // answer at all: the binding is read from the head `fleet.revisions` document,
     // the secret is opened out of `vault.secrets`, the tag verifies against it,
-    // and the claim reaches the admission ledger. A stub can answer each of
+    // and the claim reaches the turns ledger. A stub can answer each of
     // those; none of them can be WRONG under a stub, which is what this is here
     // to catch.
     let fixture = Fixture::create().await;
@@ -123,7 +123,7 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_same_delivery_arriving_twice_is_claimed_once() {
-    // At-most-once over the REAL admission ledger, which is the half a stub
+    // At-most-once over the REAL turns ledger, which is the half a stub
     // cannot prove: the claim is the ledger's unique producer key in Postgres, so
     // a scripted store asserting "the handler asked for a claim" says nothing
     // about whether the ledger would have granted it twice.

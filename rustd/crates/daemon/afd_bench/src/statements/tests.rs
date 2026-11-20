@@ -58,7 +58,7 @@ fn an_earlier_reading_past_the_later_one_saturates_rather_than_wraps() {
 
 /// A table of three fragments, the third overlapping the first's statement.
 const TABLE: &[(&str, Path)] = &[
-    ("FROM thread.threads", Path::Claim),
+    ("FROM thread.threads", Path::Assign),
     ("FROM billing.wallets", Path::Gates),
     ("thread.threads", Path::Report),
 ];
@@ -81,7 +81,7 @@ fn statements_by_path_sum_to_total() {
     let per = per_run(&totals, 10);
     let of = |path: Path| per.as_ref().and_then(|per| per.get(&path)).copied();
 
-    assert_eq!(of(Path::Claim), Some(1.0));
+    assert_eq!(of(Path::Assign), Some(1.0));
     assert_eq!(of(Path::Gates), Some(1.5));
     assert_eq!(of(Path::Report), Some(0.5));
     assert_eq!(
@@ -101,12 +101,12 @@ fn unmatched_statement_counts_as_other() {
 
 #[test]
 fn shared_statement_counts_in_its_first_path() {
-    // Both the Claim and the Report fragment match; the earlier entry wins.
+    // Both the Assign and the Report fragment match; the earlier entry wins.
     let totals = by_path_with(TABLE, &[cost("SELECT * FROM thread.threads", 4)]);
 
     assert_eq!(
         (
-            totals.get(&Path::Claim).copied(),
+            totals.get(&Path::Assign).copied(),
             totals.get(&Path::Report).copied()
         ),
         (Some(4), Some(0))
@@ -115,7 +115,7 @@ fn shared_statement_counts_in_its_first_path() {
 
 #[test]
 fn no_runs_reports_no_ratio() {
-    let totals: BTreeMap<Path, u64> = BTreeMap::from([(Path::Claim, 9)]);
+    let totals: BTreeMap<Path, u64> = BTreeMap::from([(Path::Assign, 9)]);
 
     assert!(
         per_run(&totals, 0).is_none(),
@@ -150,9 +150,9 @@ fn the_costliest_statements_come_first() {
 /// belongs to.
 const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
     (
-        "claim_turn_head.sql",
-        afd_fleet::run::sql::queue::CLAIM_HEAD,
-        Path::Claim,
+        "assign_turn_head.sql",
+        afd_fleet::run::sql::queue::ASSIGN_HEAD,
+        Path::Assign,
     ),
     (
         "select_gates.sql",
@@ -190,8 +190,8 @@ const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
         Path::Report,
     ),
     (
-        "claim_inputs.sql",
-        afd_fleet::run::sql::run::CLAIM_INPUTS,
+        "assign_inputs.sql",
+        afd_fleet::run::sql::run::ASSIGN_INPUTS,
         Path::Fold,
     ),
 ];

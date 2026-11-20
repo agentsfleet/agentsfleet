@@ -123,12 +123,12 @@ pub(super) async fn replacement(
 
 pub(super) async fn adopted(scene: &Scenario, winner: &Winner, ids: &[Uuid7]) -> Checked {
     let mut connection = scene.booted.database.acquire().await?;
-    let claims: Vec<(Uuid7, i64, bool)> = sqlx::query_as(
-        "SELECT input_claim_run_id,input_claim_fence,settled_at IS NOT NULL FROM thread.turns WHERE id=ANY($1::uuid[])")
+    let inputs: Vec<(Uuid7, i64, bool)> = sqlx::query_as(
+        "SELECT input_run_id,input_fence,settled_at IS NOT NULL FROM thread.turns WHERE id=ANY($1::uuid[])")
         .bind(ids).fetch_all(&mut *connection).await?;
-    assert_eq!(claims.len(), 2);
+    assert_eq!(inputs.len(), 2);
     assert!(
-        claims
+        inputs
             .iter()
             .all(|(run, fence, settled)| run == &winner.run && *fence == winner.fence && !settled)
     );

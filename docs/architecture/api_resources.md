@@ -325,7 +325,7 @@ Fleet renewal and report messages carry at most 512 provider usage records (`af_
 Each renewal answer includes its run's `recorded_through` acknowledgement.
 The report carries the remaining records and uses its original run identity when retried.
 
-The native `folds` request carries `fencing_token` and `after_sequence`, returning at most 32 inputs (`FOLDS_PER_CLAIM_MAX`).
+The native `folds` request carries `fencing_token` and `after_sequence`, returning at most 32 inputs (`FOLDS_PER_ASSIGNMENT_MAX`).
 Only a successful report settles inputs through its `folded_through_sequence`.
 
 A setup run carries the scoped model capability and current candidate identity, revision and definition when present.

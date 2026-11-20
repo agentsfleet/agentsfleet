@@ -1,4 +1,4 @@
-//! Read durable event, usage and unsettled admission counts after the drain.
+//! Read durable event, usage and unsettled turn counts after the drain.
 
 use af_core::id::Uuid7;
 use af_core::turn::status::PROCESSED;
@@ -16,7 +16,7 @@ pub(super) struct Settled {
     pub(super) processed: u64,
     /// Ledger rows charged to the drained fleets.
     pub(super) ledger_rows: u64,
-    /// Unsettled admissions belonging to the drained fleets.
+    /// Unsettled turns belonging to the drained fleets.
     pub(super) unsettled_rows: u64,
 }
 
@@ -58,7 +58,7 @@ pub(super) async fn read(stores: &Datastores, fleets: &[SeededFleet]) -> Result<
                 .bind(&ids)
                 .fetch_one(&mut *connection)
                 .await?,
-            "unsettled admissions",
+            "unsettled turns",
         )?,
     })
 }

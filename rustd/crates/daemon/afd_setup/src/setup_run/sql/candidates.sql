@@ -1,9 +1,9 @@
 -- Drafts whose head message a draft-owned run may take, oldest head first. A hint only:
--- the claim rereads every fact under the draft's lock.
+-- the assignment rereads every fact under the draft's lock.
 --
 -- The head is the oldest message still queued or running; a stopped one is cancelled. A running
 -- head is taken again only when a draft run ran it before (`thread.runs.turn_id` is the
--- message): that run lapsed, so this claim reassigns it. A running head the authoring
+-- message): that run lapsed, so this assignment reassigns it. A running head the authoring
 -- attempt path owns waits for that path.
 --
 -- $1 the editing draft status · $2 the queued message status · $3 the running message status ·
@@ -36,9 +36,9 @@ SELECT d.id AS id, d.workspace_id AS workspace_id, d.tenant_id AS tenant_id,
                     WHERE l.turn_id = head.id AND l.draft_id = d.id))
    -- A tenant runner never receives the platform model key. Tested on the head, so a head
    -- on the platform default blocks its draft for this runner instead of being jumped, as
-   -- the fleet claim's head does (`afd_fleet/.../claim_turn_head.sql`).
+   -- the fleet assignment's head does (`afd_fleet/.../assign_turn_head.sql`).
    AND (h.platform_owned OR head.tenant_model_id IS NOT NULL)
-   -- One live run per draft: its slot's id is the draft's.
+   -- One live run per draft: its thread's id is the draft's.
    AND NOT EXISTS (SELECT 1 FROM thread.threads s
                     WHERE s.id = d.id AND s.run_expires_at > statement_timestamp())
    -- Setup turns the authoring path still runs; this term goes with setup.attempts. Only

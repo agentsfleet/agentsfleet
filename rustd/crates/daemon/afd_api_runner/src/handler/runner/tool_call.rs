@@ -8,7 +8,7 @@
 //! waits on a post.
 //!
 //! Fenced as the memory push is (`afd_fleet::run::tool_detail`): the run
-//! must be this runner's and live, and a holder a reclaim has superseded is
+//! must be this runner's and live, and a holder a reassignment has superseded is
 //! refused. Each record is read on its own, so one of the wrong shape or over
 //! a bound is counted in the answer and the rest are kept.
 

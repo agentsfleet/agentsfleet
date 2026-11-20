@@ -140,7 +140,7 @@ impl AgentEngine for Loop {
                 root.context = context::State::new(recovered.pinned);
                 root.folded_through = recovered.folds.last().map_or(0, |fold| fold.sequence);
                 root.folded_inputs = recovered.folds;
-                root.claim_answered = false;
+                root.assignment_answered = false;
                 recovery_boundary::restored(&run);
             }
             let ending = children.beside(&shared, root.drive()).await;
@@ -185,10 +185,10 @@ pub(crate) struct Harness<'s, 'run> {
     folded_through: i64,
     folded_inputs: Vec<crate::engine::FoldRef>,
     turn_checkpoint: Option<af_wire::run::TurnResume>,
-    /// Whether the daemon's claim already answered this loop's next fold ask:
+    /// Whether the daemon's assignment already answered this loop's next fold ask:
     /// its run said no later message waited, so the ask before the first
-    /// model call would claim nothing. Spent by that ask.
-    claim_answered: bool,
+    /// model call would be assigned nothing. Spent by that ask.
+    assignment_answered: bool,
 }
 
 impl Harness<'_, '_> {

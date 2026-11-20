@@ -10,7 +10,7 @@ use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply as ReplyTo, Turns};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-/// Who the fixture's admission says raised it.
+/// Who the fixture's turn says raised it.
 const ACTOR: &str = "fixture:receipt";
 
 /// The body the fixture admits.
@@ -50,7 +50,7 @@ impl<T> Run<T> {
 }
 
 impl Run<afd_turns::Result<Admitted>> {
-    /// The admission the run committed, or the refusal it met, as its text.
+    /// The turn the run committed, or the refusal it met, as its text.
     pub(crate) fn admitted(&self) -> Result<&Admitted, String> {
         self.outcome.as_ref().map_err(ToString::to_string)
     }
@@ -124,7 +124,7 @@ pub(super) fn silent() -> Handle {
     Handle::new(Silent)
 }
 
-/// The lane's admissions over an in-process bus, and its one reader of every
+/// The lane's turns over an in-process bus, and its one reader of every
 /// thread's wake, for a case that drives the server half to read the rings.
 pub(super) async fn over_bus(lane: &Lane) -> Fallible<(Rings, Turns)> {
     let (bus, server) = afd_bus::test_util::detached()?;
@@ -132,37 +132,34 @@ pub(super) async fn over_bus(lane: &Lane) -> Fallible<(Rings, Turns)> {
     Ok((rings, over(lane, bus)))
 }
 
-/// The lane's admissions over the integration lane's NATS, for a case that
+/// The lane's turns over the integration lane's NATS, for a case that
 /// reads no wake ring.
 pub(super) async fn over_lane(lane: &Lane) -> Fallible<Turns> {
     let bus = afd_bus::test_util::lane().await?;
     Ok(over(lane, bus))
 }
 
-/// The lane's admissions over `bus`.
+/// The lane's turns over `bus`.
 pub(super) fn over(lane: &Lane, bus: Handle) -> Turns {
     install_subscriber();
     Turns::for_tests(lane.database.clone(), bus)
 }
 
-pub(super) async fn confirm(admissions: &Turns, lane: &Lane) -> Fallible<afd_turns::Confirmation> {
-    admissions
+pub(super) async fn confirm(turns: &Turns, lane: &Lane) -> Fallible<afd_turns::Confirmation> {
+    turns
         .confirm(Producer::Steer, lane.fleet.as_str())
         .await?
         .ok_or_else(|| "the committed row confirms".into())
 }
 
-/// Admits one event for `lane`'s fleet through `admissions`, recording what
-/// the admission logged on this thread.
+/// Admits one event for `lane`'s fleet through `turns`, recording what
+/// the turn logged on this thread.
 #[expect(
     clippy::future_not_send,
     reason = "awaits `recording` and its thread-local `Capture`; one thread polls it"
 )]
-pub(crate) async fn admit_against(
-    lane: &Lane,
-    admissions: &Turns,
-) -> Run<afd_turns::Result<Admitted>> {
-    recording(admissions.admit(IncomingTurn {
+pub(crate) async fn admit_against(lane: &Lane, turns: &Turns) -> Run<afd_turns::Result<Admitted>> {
+    recording(turns.admit(IncomingTurn {
         producer: Producer::Steer,
         key: Key::Repeated(lane.fleet.as_str()),
         fleet: &lane.fleet,

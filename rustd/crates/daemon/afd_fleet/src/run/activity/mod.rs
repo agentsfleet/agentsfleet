@@ -12,7 +12,7 @@
 //! fleet it holds no run on and write into somebody else's live tail.
 //!
 //! Ordinary cosmetic frames remain available after supersession. Durable task
-//! progress additionally checks and locks current slot and run ownership in
+//! progress additionally checks and locks current thread and run ownership in
 //! its write statement before assigning daemon observation sequences. The fence
 //! also scopes call ids a run publishes (`activity/published.rs`).
 //!
@@ -67,14 +67,14 @@ pub struct Target {
     /// Expired or superseded holders can publish cosmetic frames but cannot
     /// contribute a latency sample to the active-run histogram.
     pub timing_eligible: bool,
-    /// The run's fencing token, distinct per claim of the fleet. Kept as the
+    /// The run's fencing token, distinct per assignment of the fleet. Kept as the
     /// column's own `i64`: it only scopes a cosmetic id, so a value this daemon
     /// never writes is no reason to refuse the tail.
     pub fence: i64,
 }
 
 impl Runs {
-    /// Retain task observations only while the supplied run still owns its slot.
+    /// Retain task observations only while the supplied run still owns its thread.
     /// Returns no history when ownership changed or a competing transaction holds it.
     ///
     /// # Errors

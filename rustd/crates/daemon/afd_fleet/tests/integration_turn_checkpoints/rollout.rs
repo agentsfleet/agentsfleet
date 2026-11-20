@@ -47,7 +47,8 @@ async fn disabled_resume_preserves_the_head_and_fence_until_enabled() -> Checked
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn disabled_resume_keeps_existing_reclaim_for_an_event_without_a_checkpoint() -> Checked {
+async fn disabled_resume_keeps_existing_reassignment_for_an_event_without_a_checkpoint() -> Checked
+{
     let mut case = Case::with_fixtures(Fixtures::create_isolated().await).await?;
     case.runs = case.runs.clone().with_checkpoint_resume(false);
     case.replace().await?;
@@ -147,7 +148,7 @@ async fn assert_preserved(case: &Case, saved: &af_wire::run::TurnResume) -> Chec
         case.counts().await?.3.map(|id| id.to_string()).as_deref(),
         Some(saved.checkpoint_id.0.as_str())
     );
-    // A later admission cannot wake past a checkpointed ordinary head while disabled.
+    // A later turn cannot wake past a checkpointed ordinary head while disabled.
     crate::queue::enqueue(
         &case.fixtures.database,
         &case.acquired.fleet_id,

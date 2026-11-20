@@ -1,4 +1,4 @@
-//! Failed approval parking must not retain an otherwise idle fleet claim.
+//! Failed approval parking must not retain an otherwise idle fleet assignment.
 
 use std::error::Error as _;
 
@@ -25,16 +25,16 @@ const FAIL_RELEASE: &str = "CREATE FUNCTION fleet.refuse_park() RETURNS trigger 
     CREATE TRIGGER refuse_park BEFORE UPDATE OF run_expires_at ON thread.threads \
     FOR EACH ROW EXECUTE FUNCTION fleet.refuse_park()";
 
-// Value: protects=failed park releases claim; fails_when=park error escapes cleanup;
+// Value: protects=failed park releases assignment; fails_when=park error escapes cleanup;
 // why_new=successful parks cannot expose rollback; seam=isolated database trigger.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_failed_park_stamp_releases_the_claim_and_retries_after_approval() {
+async fn a_failed_park_stamp_releases_the_assignment_and_retries_after_approval() {
     // Boxed: the whole delivery path rides in this future.
     Box::pin(assert_failed_park_recovers(FAIL_STAMP)).await;
 }
 
-// Value: protects=partial park rollback; fails_when=slot-write failure retains claim;
+// Value: protects=partial park rollback; fails_when=thread-write failure retains assignment;
 // why_new=stamp-write failure precedes partial work; seam=isolated database trigger.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -49,8 +49,8 @@ async fn assert_failed_park_recovers(injection: &'static str) {
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let action = seed_gate(&fixtures, &seeded, "pending").await;
-    let claimed = claim(&fixtures, &seeded).await;
-    let fence = claimed.fence.as_i64();
+    let assigned = assign(&fixtures, &seeded).await;
+    let fence = assigned.fence.as_i64();
     let owner = fixtures.open(DbRole::Migrator).await;
     sqlx::raw_sql(injection)
         .execute(&mut *owner.acquire().await.expect("isolated owner"))
@@ -59,25 +59,25 @@ async fn assert_failed_park_recovers(injection: &'static str) {
 
     let failure = fixtures
         .plane()
-        .claim_selected(claimed, &seeded.runner, fixtures.enrolled_at())
+        .assign_selected(assigned, &seeded.runner, fixtures.enrolled_at())
         .await
         .expect_err("the park transaction fails");
     assert_original_park_error(&failure);
     assert_eq!(
-        admission_state(&fixtures, &seeded.turn_id).await,
+        turn_state(&fixtures, &seeded.turn_id).await,
         (false, false, Some(fence))
     );
     assert!(
-        fixtures.slot_is_free(&seeded.fleet).await,
-        "a failed park must free its committed claim immediately"
+        fixtures.thread_is_free(&seeded.fleet).await,
+        "a failed park must free its committed assignment immediately"
     );
 
     approve(&fixtures, &seeded, &action).await;
-    let retry = claim(&fixtures, &seeded).await;
+    let retry = assign(&fixtures, &seeded).await;
     assert_eq!(retry.turn_id, seeded.turn_id);
     assert!(
         retry.fence.as_i64() > fence,
-        "retry takes a fresh fenced claim"
+        "retry takes a fresh fenced assignment"
     );
     drop(retry);
     owner.close().await;
@@ -94,7 +94,7 @@ fn assert_original_park_error(failure: &afd_fleet::Error) {
     assert_eq!(cause.message(), "injected park failure");
 }
 
-async fn admission_state(fixtures: &Fixtures, event: &Uuid7) -> (bool, bool, Option<i64>) {
+async fn turn_state(fixtures: &Fixtures, event: &Uuid7) -> (bool, bool, Option<i64>) {
     sqlx::query_as(
         "SELECT parked_at IS NOT NULL, settled_at IS NOT NULL, run_fence \
         FROM thread.turns WHERE id = $1",
@@ -102,7 +102,7 @@ async fn admission_state(fixtures: &Fixtures, event: &Uuid7) -> (bool, bool, Opt
     .bind(event)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
     .await
-    .expect("admission after rollback")
+    .expect("turn after rollback")
 }
 
 async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {

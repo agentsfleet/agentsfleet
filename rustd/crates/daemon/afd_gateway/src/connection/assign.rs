@@ -24,11 +24,11 @@ impl ConnectionServices {
             deadline,
         )
         .await?;
-        // After the reserve, so output backpressure is not read as claim time.
+        // After the reserve, so output backpressure is not read as selection time.
         let mut clock = VerbClock::<AssignStage>::start();
         // A pass that reaches no stage leaves no span (the clock's own rule):
-        // the 5 s probe's empty answer, and a claim that failed before
-        // selecting. A claim the gates refused reached a stage and keeps one.
+        // the 5 s probe's empty answer, and an assignment that failed before
+        // selecting. An assignment the gates refused reached a stage and keeps one.
         let (assigned, deferred) = self
             .select_assignment(mode, &state, &mut encoder, &mut clock)
             .await?;
@@ -108,7 +108,7 @@ impl ConnectionServices {
             .operation(Operation::Assign, async {
                 Ok(self
                     .runs
-                    .claim_with(
+                    .assign_with(
                         &self.drafts,
                         request,
                         self.accepted,

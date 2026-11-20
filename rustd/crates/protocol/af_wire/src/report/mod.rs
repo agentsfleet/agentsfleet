@@ -156,7 +156,7 @@ pub struct ReportCheckpoint<'a> {
 
 /// Native runner report — one batched write keyed by event id.
 //
-// The fencing token is echoed and verified: a reclaimed holder carrying a token
+// The fencing token is echoed and verified: a holder a reassignment superseded, carrying a token
 // below the fleet's live sequence is refused. No runner id — the token owns the
 // identity.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -209,7 +209,7 @@ pub struct ReportRequest<'a> {
     )]
     pub held_until: Option<jiff::Timestamp>,
     /// The last folded message a completed model call read, by sequence:
-    /// every message the run claimed up to it settles with this report's
+    /// every message the run was assigned up to it settles with this report's
     /// answer. Absent when the run folded nothing, and ignored unless the run
     /// succeeded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -233,7 +233,7 @@ pub struct ReportRequest<'a> {
 pub struct AcceptedHold {
     /// Run that parked the sandbox; a later run's hold is independent.
     pub run_id: String,
-    /// Slot fence under which this hold was accepted.
+    /// Thread fence under which this hold was accepted.
     pub fencing_token: u64,
     /// Deadline saved by the daemon, capped by its idle policy.
     #[serde(with = "crate::instant")]

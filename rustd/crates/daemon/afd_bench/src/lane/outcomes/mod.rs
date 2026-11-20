@@ -88,7 +88,7 @@ impl Outcomes {
     ///
     /// Measured from OUTSIDE the path, which does not publish a per-operation
     /// reason: under contention a miss is dominated by work another task took
-    /// first, so this is an upper bound on wasted claims, not a count.
+    /// first, so this is an upper bound on wasted assignments, not a count.
     #[must_use]
     pub fn wasted_fraction(&self) -> f64 {
         ratio(self.misses, self.attempts())

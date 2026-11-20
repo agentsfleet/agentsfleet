@@ -28,20 +28,20 @@ WITH RECURSIVE blocked(pid) AS (
 )
 SELECT count(*) FROM blocked WHERE pid <> $1";
 
-/// Where A's late renewal lands relative to B's re-admission.
+/// Where A's late renewal lands relative to B's reassignment.
 #[derive(Debug, Clone, Copy)]
 enum Late {
     /// Answered before B polls at all.
     Answered,
-    /// Both wait on the host lock, the renewal queued ahead of the admission.
+    /// Both wait on the host lock, the renewal queued ahead of the assignment.
     QueuedAhead,
-    /// Both wait on the host lock, the admission queued ahead of the renewal.
+    /// Both wait on the host lock, the assignment queued ahead of the renewal.
     QueuedBehind,
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_two_replicas_expiry_readmission_and_late_renewal_leave_one_holder() {
+async fn test_two_replicas_expiry_reassignment_and_late_renewal_leave_one_holder() {
     for order in [Late::Answered, Late::QueuedAhead, Late::QueuedBehind] {
         let finished = Box::pin(tokio::time::timeout(DEADLOCK_BOUND, scenario(order))).await;
         assert!(
@@ -71,7 +71,7 @@ async fn scenario(order: Late) {
     );
     assert_ne!(
         readmitted, running.run,
-        "{label}: re-admission is a new run"
+        "{label}: reassignment is a new run"
     );
     let outcome = Outcome {
         order: &label,
@@ -84,7 +84,7 @@ async fn scenario(order: Late) {
     running.cleanup().await;
 }
 
-/// A's late renewal and B's re-admission, in the order `order` names.
+/// A's late renewal and B's reassignment, in the order `order` names.
 async fn race(order: Late, running: &Running, replica: &Replica) -> ((Uuid7, Uuid7), Renewed) {
     match order {
         Late::Answered => {

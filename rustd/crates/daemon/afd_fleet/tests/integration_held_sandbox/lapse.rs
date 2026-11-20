@@ -1,6 +1,6 @@
-//! A hold that no longer binds, on the paths beside the claim: another
+//! A hold that no longer binds, on the paths beside the assignment: another
 //! runner's candidate scan assigns a lapsed or silent hold's fleet, and an
-//! empty claim on a lapsed hold lets its hint go as an unheld fleet's would.
+//! empty assignment on a lapsed hold lets its hint go as an unheld fleet's would.
 
 #![expect(
     clippy::expect_used,
@@ -10,7 +10,7 @@
 use af_core::id::Uuid7;
 use af_core::timing::{RUN_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
-use super::{hold, live, slot};
+use super::{hold, live, thread};
 use crate::rows::Row;
 use crate::seed::{self, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -30,7 +30,7 @@ async fn lapse_hold(fixtures: &Fixtures, fleet: &Uuid7, holder: &Uuid7, lapse: L
         Lapse::Deadline => {
             let past = SANDBOX_HOLD_IDLE.saturating_mul(2);
             fixtures
-                .age(Row::Slot(fleet), "hold_expires_at", past)
+                .age(Row::Thread(fleet), "hold_expires_at", past)
                 .await;
         }
         Lapse::Silence => {
@@ -43,7 +43,7 @@ async fn lapse_hold(fixtures: &Fixtures, fleet: &Uuid7, holder: &Uuid7, lapse: L
 }
 
 /// Whether another runner's poll runs a fleet whose hold `lapse` ended. The
-/// poll reaches the claim only through the candidate scan, so a fleet the scan
+/// poll reaches the assignment only through the candidate scan, so a fleet the scan
 /// filters is never held.
 async fn assigned_to_another(lapse: Lapse) -> bool {
     let fixtures = Fixtures::create().await;
@@ -75,7 +75,7 @@ async fn assigned_to_another(lapse: Lapse) -> bool {
 async fn test_another_runners_poll_is_assigned_a_lapsed_hold() {
     assert!(
         assigned_to_another(Lapse::Deadline).await,
-        "a hold past its deadline binds nobody, at the scan as at the claim"
+        "a hold past its deadline binds nobody, at the scan as at the assignment"
     );
 }
 
@@ -88,11 +88,11 @@ async fn test_another_runners_poll_is_assigned_a_silent_holders_fleet() {
     );
 }
 
-/// The holder's empty claim on a hold that has lapsed drops the hint, as an
-/// empty claim on a fleet nobody holds does: only a live hold keeps it.
+/// The holder's empty assignment on a hold that has lapsed drops the hint, as an
+/// empty assignment on a fleet nobody holds does: only a live hold keeps it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
+async fn test_an_empty_assignment_on_a_lapsed_hold_drops_the_hint() {
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let runs = fixtures.runs();
@@ -107,15 +107,15 @@ async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
     .await;
     lapse_hold(&fixtures, &fleet, &holder, Lapse::Deadline).await;
 
-    let claimed = runs
-        .claim(&fleet, &holder, RUN_TTL)
+    let assigned = runs
+        .assign(&fleet, &holder, RUN_TTL)
         .await
         .expect("answers")
         .expect("the holder wins");
-    runs.release(&fleet, claimed.fence)
+    runs.release(&fleet, assigned.fence)
         .await
-        .expect("an empty claim lets go");
+        .expect("an empty assignment lets go");
 
-    assert_eq!(slot(&fixtures, &fleet).await.1, None, "the hint goes");
+    assert_eq!(thread(&fixtures, &fleet).await.1, None, "the hint goes");
     fixtures.cleanup().await;
 }

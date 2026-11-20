@@ -16,7 +16,7 @@ categories.workspace = true
 # the VALIDATING door rather than a bypass of it, which is the opposite of the
 # `from_parts` seams `GatePolicy` and `RepositoryBinding` carry — see
 # `Binding::stored` for why a shortcut would have nothing to shorten.
-# Forwarded rather than bare: `error::one_of_each_kind` samples an admission
+# Forwarded rather than bare: `error::one_of_each_kind` samples a turn
 # failure through `afd_turns`'s own sample builder, which lives behind
 # that crate's `test-util`. Building the sample by hand instead would let this
 # crate's idea of a ledger outage drift from the ledger's. `af_crypto`'s is
@@ -81,7 +81,7 @@ tracing.workspace = true
 af_crypto.workspace = true
 afd_db = { workspace = true, features = ["test-util"] }
 serde_json.workspace = true
-# The unreachable admissions ledger and its bus, and `Capture`, which reads back
+# The unreachable turn ledger and its bus, and `Capture`, which reads back
 # that a refused credential name logs nothing.
 afd_turns = { workspace = true, features = ["test-util"] }
 afd_bus = { workspace = true, features = ["test-util"] }

@@ -173,12 +173,7 @@ async fn assert_accounted(case: &Case, task_id: &Uuid7, reason: &str) {
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("financial observer"))
         .await.expect("task and measured charge committed together");
     assert_eq!(stored, (reason.to_owned(), 1));
-    assert!(
-        case.held
-            .fixtures
-            .admission_settled(&case.held.turn_id)
-            .await
-    );
+    assert!(case.held.fixtures.turn_settled(&case.held.turn_id).await);
 }
 
 #[tokio::test]
@@ -209,13 +204,7 @@ async fn malformed_stale_and_unpaid_semantic_reports_never_prepare_a_permit() {
                 before
             );
         }
-        assert!(
-            !case
-                .held
-                .fixtures
-                .admission_settled(&case.held.turn_id)
-                .await
-        );
+        assert!(!case.held.fixtures.turn_settled(&case.held.turn_id).await);
         assert_eq!(case.counts().await, (1, 1, 1));
     })
     .await;

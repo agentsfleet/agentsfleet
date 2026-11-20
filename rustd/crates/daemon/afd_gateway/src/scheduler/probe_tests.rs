@@ -5,11 +5,11 @@ use super::*;
 type RecordedProbes = Arc<parking_lot::Mutex<Vec<Vec<Uuid7>>>>;
 type SchedulerJob = tokio::task::JoinHandle<crate::Result<()>>;
 
-// Value: protects=an unclaimable wake costs no discovery scan per connection;
+// Value: protects=an unassignable wake costs no discovery scan per connection;
 // fails_when=the pass runs before or without the pending probe; why_new=the
 // probe gate; seam=the injected probe; no_claim=recovery generations skip it.
 #[tokio::test(start_paused = true)]
-async fn a_wake_with_nothing_pending_asks_no_connection_to_claim() -> TestResult {
+async fn a_wake_with_nothing_pending_asks_no_connection_to_assign() -> TestResult {
     let registry = Arc::new(Registry::default());
     let mut connection = ConnectionFixture::new(1)?;
     let _registration = connection.register(&registry)?;
@@ -80,7 +80,7 @@ async fn a_failed_probe_still_runs_the_pass() -> TestResult {
     Ok(())
 }
 
-// Value: protects=a wake costs a tenant runner with nothing to take no claim;
+// Value: protects=a wake costs a tenant runner with nothing to take no assignment;
 // fails_when=the pass assigns a runner the probe named idle, or the probe is
 // not asked about every connected runner; why_new=the idle skip; seam=the
 // injected probe.

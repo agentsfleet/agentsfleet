@@ -25,7 +25,7 @@ async fn should_keep_one_draft_for_replayed_producer_event() {
     )
     .expect("the producer answers a canonical event id");
     assert_replayed_receipts(&receipts, &event, &scene.turn_id);
-    producer.assert_admission(&scene, &event).await;
+    producer.assert_turn(&scene, &event).await;
     let remote = Remote::new(
         LINKWARDEN,
         &branch_for(event.as_str()),
@@ -53,7 +53,7 @@ async fn should_keep_one_draft_for_replayed_producer_event() {
         producer.deliver(&scene).await,
         serde_json::json!({"turn_id": event, "replayed": true})
     );
-    producer.assert_admission(&scene, &event).await;
+    producer.assert_turn(&scene, &event).await;
     assert_one_execution(&scene, &event).await;
     assert_eq!(
         (remote.state().ref_posts, remote.state().draft_posts),

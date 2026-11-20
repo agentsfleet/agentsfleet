@@ -91,11 +91,11 @@ async fn a_busy_runner_remembers_recovery_when_its_worker_becomes_free() {
     let next = assigned(&scene).await;
     assert_eq!(
         next.fleet, scene.fleet,
-        "returning capacity must serve the older unhinted admission"
+        "returning capacity must serve the older unhinted turn"
     );
     wire::report(&scene, &zero_usage(&next))
         .await
-        .expect("the old admission settles");
+        .expect("the old turn settles");
     cleanup(scene, owner, database, supervisor).await;
 }
 
@@ -160,10 +160,7 @@ impl Population {
         for number in 1..count {
             let (fleet, workspace) = seed_fleet(scene, &common).await;
             let source = Hot {
-                admissions: Turns::for_tests(
-                    scene.booted.database.clone(),
-                    scene.booted.bus.clone(),
-                ),
+                turns: Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone()),
                 fleet: fleet.clone(),
                 workspace,
             };
@@ -247,14 +244,14 @@ async fn set_status(database: &Db, fleets: &[Uuid7], status: FleetStatus) {
 
 #[derive(Clone)]
 struct Hot {
-    admissions: Turns,
+    turns: Turns,
     fleet: Uuid7,
     workspace: Uuid7,
 }
 
 impl Hot {
     async fn admit(&self) {
-        self.admissions
+        self.turns
             .admit(IncomingTurn {
                 producer: Producer::Steer,
                 key: Key::Unrepeatable,
@@ -267,7 +264,7 @@ impl Hot {
             })
             .await
             .expect("hot work commits and publishes its real broker wake");
-        self.admissions
+        self.turns
             .streams()
             .publish(
                 &afd_bus::Subject::ThreadWake(self.fleet.clone()),

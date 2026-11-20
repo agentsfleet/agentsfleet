@@ -89,14 +89,14 @@ pub struct Fired {
 #[derive(Debug, Clone)]
 pub struct Fire {
     /// Where the fire is accepted, before anything is queued.
-    admissions: Turns,
+    turns: Turns,
 }
 
 impl Fire {
     /// Binds the appender to an already-connected ledger.
     #[must_use]
-    pub const fn new(admissions: Turns) -> Self {
-        Self { admissions }
+    pub const fn new(turns: Turns) -> Self {
+        Self { turns }
     }
 
     /// Admits one verified fire, at most once however often it arrives. A
@@ -122,7 +122,7 @@ impl Fire {
         let request_json = body(schedule, target)?;
 
         let admitted = self
-            .admissions
+            .turns
             .admit(IncomingTurn {
                 producer: Producer::ScheduleFire,
                 key: Key::Repeated(&key),
@@ -151,7 +151,7 @@ impl Fire {
         let schedule_id = schedule.as_str();
         let workspace_id = target.workspace.as_str();
         if !replayed {
-            afd_turns::view::activity::announce(&self.admissions.streams(), fleet).await;
+            afd_turns::view::activity::announce(&self.turns.streams(), fleet).await;
         }
         {
             let (fleet_id, event) = (&fleet, &"schedule_fire_appended");

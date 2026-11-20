@@ -46,7 +46,7 @@ pub use state::TaskState;
 
 /// Maximum unfinished objectives a fleet can retain.
 pub const UNFINISHED_MAX: u32 = 16;
-/// Maximum human admissions read at one safe boundary.
+/// Maximum human turns read at one safe boundary.
 pub const INPUT_BATCH_MAX: usize = 4;
 /// Maximum immutable interpreted actions from one admitted message.
 pub const ITEMS_MAX: usize = 4;

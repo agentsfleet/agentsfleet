@@ -1,4 +1,4 @@
-//! A retained activation accepts only its own confirmed admission, and retries
+//! A retained activation accepts only its own confirmed turn, and retries
 //! preserve its fleet and event while confirmation is unavailable.
 
 use super::super::{fixture::now, mint};
@@ -84,7 +84,7 @@ impl Retained {
         assert!(error_code.is_none());
         assert_eq!(self.case.fleet_count().await, 1);
         assert_eq!(
-            self.case.admissions(&saved.id).await.as_slice(),
+            self.case.turns(&saved.id).await.as_slice(),
             std::slice::from_ref(&self.event)
         );
     }
@@ -141,15 +141,15 @@ async fn a_confirmation_for_another_event_cannot_accept_the_initial_run() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_admission() {
+async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_turn() {
     let retained = Retained::create("confirm-outage").await;
     retained.pending(retained.event.as_str()).await;
-    let admissions = Turns::new(
+    let turns = Turns::new(
         afd_db::test_util::unreachable_db(),
         retained.case.bus.clone(),
         Entropy::new(),
     );
-    let creations = Creations::new(retained.case.setup.clone(), admissions);
+    let creations = Creations::new(retained.case.setup.clone(), turns);
     let log = Capture::install();
     retained
         .retry(&creations, false, retained.event.as_str())

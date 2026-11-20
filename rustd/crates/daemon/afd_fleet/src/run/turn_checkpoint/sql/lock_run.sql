@@ -2,7 +2,7 @@ WITH held AS MATERIALIZED (
     SELECT l.id, l.runner_id, l.fleet_id, l.workspace_id, l.turn_id,
            l.setup_revision_id, l.fencing_token AS fence,
            l.run_expires_at, l.model, l.provider,
-           s.fencing_token AS slot_fence, s.run_expires_at AS slot_expires_at,
+           s.fencing_token AS thread_fence, s.run_expires_at AS thread_expires_at,
            f.status AS fleet_status
     FROM thread.runs l
     JOIN thread.threads s
@@ -13,5 +13,5 @@ WITH held AS MATERIALIZED (
     FOR UPDATE OF l
 )
 SELECT id, fleet_id, workspace_id, turn_id, setup_revision_id,
-       fence, run_expires_at, slot_fence, slot_expires_at, fleet_status, model, provider
+       fence, run_expires_at, thread_fence, thread_expires_at, fleet_status, model, provider
 FROM held

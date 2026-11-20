@@ -7,7 +7,7 @@ import { evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 const ID = "019f0000-0000-7000-8000-000000000001";
 
 function stage(phase: TaskActivity["progress"]["phase"], completed = 0): TaskActivity {
-  return {kind: "task_transfer_progress", progress: {activity_id: ID, task_id: ID, source_admission_id: null,
+  return {kind: "task_transfer_progress", progress: {activity_id: ID, task_id: ID, source_turn_id: null,
     operation: "capture", phase, provider: null, model: null, completed, total: 10}};
 }
 

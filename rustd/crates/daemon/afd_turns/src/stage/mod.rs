@@ -1,4 +1,4 @@
-//! Activation can commit its fleet transition and admission in one Postgres transaction.
+//! Activation can commit its fleet transition and turn in one Postgres transaction.
 
 pub(crate) mod insert;
 mod verdict;
@@ -7,10 +7,10 @@ use crate::{Admitted, IncomingTurn, Key, Result, Turns};
 use af_core::{clock, id::Uuid7};
 use sqlx::PgConnection;
 
-/// An immutable admission whose external budget reads completed before taking locks.
+/// An immutable turn whose external budget reads completed before taking locks.
 #[derive(Debug)]
 pub struct PreparedTurn<'a> {
-    admission: IncomingTurn<'a>,
+    turn: IncomingTurn<'a>,
     row_id: Uuid7,
     estimate: u64,
 }
@@ -20,19 +20,19 @@ impl Turns {
     ///
     /// # Errors
     /// Preserves capacity, entropy and datastore failures without recording acceptance.
-    pub async fn prepare<'a>(&self, admission: IncomingTurn<'a>) -> Result<PreparedTurn<'a>> {
+    pub async fn prepare<'a>(&self, turn: IncomingTurn<'a>) -> Result<PreparedTurn<'a>> {
         let now = clock::now();
         Ok(PreparedTurn {
-            admission,
+            turn,
             row_id: self.entropy.uuid7(now)?,
             estimate: self.deployment_estimate(now).await,
         })
     }
 
-    /// Records the prepared admission on the caller's transaction, without queue I/O.
+    /// Records the prepared turn on the caller's transaction, without queue I/O.
     ///
     /// The caller must commit before confirming acceptance. A rollback removes both
-    /// the admission and its surrounding activation. `confirm` reads the saved
+    /// the turn and its surrounding activation. `confirm` reads the saved
     /// producer identity and rings the wake subject after the commit.
     ///
     /// # Errors
@@ -43,7 +43,7 @@ impl Turns {
         connection: &mut PgConnection,
         prepared: PreparedTurn<'_>,
     ) -> Result<Admitted> {
-        let key = match prepared.admission.key {
+        let key = match prepared.turn.key {
             Key::Repeated(key) => key,
             Key::Unrepeatable => prepared.row_id.as_str(),
         };
@@ -51,9 +51,9 @@ impl Turns {
             .insert_on(
                 connection,
                 &prepared.row_id,
-                &prepared.admission,
+                &prepared.turn,
                 key,
-                &prepared.admission.payload_digest(),
+                &prepared.turn.payload_digest(),
                 insert::Gates {
                     estimate: prepared.estimate,
                     runnable: None,

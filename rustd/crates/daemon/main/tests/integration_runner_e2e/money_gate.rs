@@ -28,7 +28,7 @@ async fn test_run_money_gate_refusal() {
         "the native heartbeat carries its assignment"
     );
 
-    // Durable refusal proves the claim ran; silence alone would not.
+    // Durable refusal proves the assignment ran; silence alone would not.
     let refused = wait_without_assignment(&scene, async || {
         event_column(&scene, &scene.turn_id, "status")
             .await
@@ -48,7 +48,7 @@ async fn test_run_money_gate_refusal() {
     assert_eq!(
         balance(&scene).await,
         Some(0),
-        "the refused claim charges nothing"
+        "the refused assignment charges nothing"
     );
 
     // Stop background tasks before releasing the scenario's placement guard.

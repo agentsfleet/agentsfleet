@@ -185,7 +185,7 @@ impl WorkspaceTurns for History {
 /// What the steer verb acts through.
 ///
 /// Its own trait rather than a method on [`WorkspaceTurns`], because it is
-/// its own store: the reads hold a Postgres pool, and this holds the admission
+/// its own store: the reads hold a Postgres pool, and this holds the turn
 /// ledger and the bus it notifies through — which is exactly the seam a suite
 /// proving the refusal matrix must not have to construct.
 pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
@@ -207,7 +207,7 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     ) -> impl Future<Output = EventResult<Steered>> + Send;
 
     /// Puts one fleet's message on another fleet's stream, behind `guard`:
-    /// the sender's run, proved again inside the admission's transaction.
+    /// the sender's run, proved again inside the turn's transaction.
     ///
     /// # Errors
     /// As [`afd_turns::view::Steer::append_from_fleet`]: a guard that does not

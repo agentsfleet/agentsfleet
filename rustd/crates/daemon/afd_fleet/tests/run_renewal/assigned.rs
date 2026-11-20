@@ -1,4 +1,4 @@
-//! One poll, both kinds accepted: the host's freed slot goes to the queued
+//! One poll, both kinds accepted: the host's freed thread goes to the queued
 //! authoring turn when authoring is the kind the host is owed next.
 //!
 //! The runtime run the fixture issued made runtime the host's last kind, so
@@ -21,7 +21,7 @@ async fn test_a_poll_accepting_both_kinds_places_the_owed_authoring_turn() {
     let answer = running
         .fixtures
         .plane()
-        .claim_with(
+        .assign_with(
             &drafts,
             AssignRequest {
                 runner: &running.runner,

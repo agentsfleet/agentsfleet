@@ -40,7 +40,7 @@ use crate::services::{RunPlane as _, Services, WorkspaceFleets as _, WorkspaceTu
 /// The scoped event a fleets read that failed is logged under.
 const EVENT_FAILED: &str = "runner_fleets_failed";
 
-/// The `current_state` a holder a reclaim superseded names.
+/// The `current_state` a holder a reassignment superseded names.
 pub(super) const STATE_SUPERSEDED: &str = "superseded";
 
 /// The refusal a fleet path segment that is not an identifier earns.
@@ -173,7 +173,7 @@ pub(crate) async fn events<D: Services>(
 }
 
 /// Proves `run_id` is `runner`'s live run under `token`, naming
-/// `superseded` when a reclaim took it.
+/// `superseded` when a reassignment took it.
 pub(super) async fn proven<D: Services>(
     services: &D,
     runner: &Uuid7,

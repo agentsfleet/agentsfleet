@@ -65,7 +65,7 @@ async fn with_responder(fixture: Fixture) -> (Fixture, axum::Router) {
 /// The admitted event's body for `event_id`.
 async fn told(fixture: &Fixture, event_id: &str) -> Value {
     let admitted = fixture
-        .admission(&key(&fixture.team, event_id))
+        .turn(&key(&fixture.team, event_id))
         .await
         .expect("the mention was admitted");
     serde_json::from_str(&admitted.request_json).expect("the event body is JSON")

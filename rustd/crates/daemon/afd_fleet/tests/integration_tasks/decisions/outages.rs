@@ -173,11 +173,7 @@ async fn unconfirmed(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReser
     dependencies.biller = Arc::new(FailOpen::new(LedgerBiller::on_system_clock(
         unreachable_db(),
     )));
-    let unconfirmed = Tasks::new(
-        case.held.runs.clone(),
-        case.admissions.clone(),
-        dependencies,
-    );
+    let unconfirmed = Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies);
     let failure = unconfirmed
         .reserve_decision(case.run(), input)
         .await

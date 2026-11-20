@@ -1,17 +1,17 @@
 //! A draft's setup turn on the common run path: the draft's half of the
-//! claim, the report and the live answer.
+//! assignment, the report and the live answer.
 //!
-//! The run bookkeeping (slot, fence, run row, renewal, settlement) is the
+//! The run bookkeeping (thread, fence, run row, renewal, settlement) is the
 //! shared statements' in `afd_fleet::run::sql::shared`, which `afd_fleet`
 //! runs. What lives here is what reads or writes the draft's own rows, inside
-//! the transaction `afd_fleet` holds: which message a claim takes and what its
-//! assignment carries, the message's start and finish, and the one candidate a
+//! the transaction `afd_fleet` holds: which message an assignment takes and what it
+//! carries, the message's start and finish, and the one candidate a
 //! report may write. The runner makes every model call; this crate makes none
 //! on this path.
 //!
 //! The authoring attempt path (`crate::run`) runs beside this one until the
 //! runner's setup agent replaces it. Each path refuses a draft the other holds:
-//! a live attempt here, a live draft slot there.
+//! a live attempt here, a live draft thread there.
 
 mod preview;
 mod report;
@@ -36,19 +36,19 @@ use crate::{
     model::{self, budget},
     run::{
         FINISHED,
-        claim::selection::{self, DraftLock, Hint},
+        assign::selection::{self, DraftLock, Hint},
         pending,
         report::verdict,
     },
     types::{CANCELLED, Candidate, DraftState, EDITING, MessageState, QUEUED, RUNNING},
 };
 
-/// A draft a claim may try, read without a lock.
+/// A draft an assignment may try, read without a lock.
 #[derive(Debug, Clone)]
 pub struct SetupHint {
-    /// The draft, which is also its slot's id.
+    /// The draft, which is also its thread's id.
     pub draft_id: Uuid7,
-    /// The tenant whose host lock the claim takes for it.
+    /// The tenant whose host lock the assignment takes for it.
     pub tenant_id: Uuid7,
     workspace_id: Uuid7,
     user_id: Uuid7,
@@ -87,10 +87,10 @@ pub struct SetupTurnText {
     pub answer: String,
 }
 
-/// The turn a claim admitted, with everything its assignment carries. Its `Debug`
+/// The turn an assignment took, with everything the assignment carries. Its `Debug`
 /// names the draft and message only.
 pub struct SetupTurn {
-    /// The draft, which is also its slot's id.
+    /// The draft, which is also its thread's id.
     pub draft_id: Uuid7,
     /// The draft's workspace.
     pub workspace_id: Uuid7,
@@ -108,8 +108,8 @@ pub struct SetupTurn {
     pub user_text: String,
     /// The person asked to save with this message.
     pub save_requested: bool,
-    /// A lapsed draft run ran this message before; the claim reassigns it.
-    pub reclaim: bool,
+    /// A lapsed draft run ran this message before; this assignment reassigns it.
+    pub reassigned: bool,
     /// The model the message pinned, resolved and admitted.
     pub model: RegisteredModel,
     /// The draft's head candidate.
@@ -130,7 +130,7 @@ impl std::fmt::Debug for SetupTurn {
             .field("draft_id", &self.draft_id)
             .field("message_id", &self.message_id)
             .field("sequence", &self.sequence)
-            .field("reclaim", &self.reclaim)
+            .field("reassigned", &self.reassigned)
             .finish_non_exhaustive()
     }
 }
@@ -162,18 +162,18 @@ impl TryFrom<Candidate> for SetupHead {
     }
 }
 
-/// What admitting one candidate found.
+/// What assigning one candidate found.
 #[derive(Debug)]
-pub enum SetupAdmission {
-    /// The draft is locked and its head message admitted.
-    Admitted(Box<SetupTurn>),
+pub enum SetupAssignment {
+    /// The draft is locked and its head message assigned.
+    Assigned(Box<SetupTurn>),
     /// Nothing this draft may run to this runner now.
     Passed,
     /// Another transaction holds the draft or its creator.
     Busy,
 }
 
-/// Funnel steps a claim or report owes once its transaction commits.
+/// Funnel steps an assignment or report owes once its transaction commits.
 #[derive(Debug, Default)]
 #[must_use = "owed steps are reported only by `settle`, after the commit"]
 pub struct SetupOwed(Owed);
@@ -201,7 +201,7 @@ impl Drafts {
     }
 
     /// Drafts whose head message a draft run may take for `runner`, oldest
-    /// head first. Hints only: [`Drafts::admit_setup_turn`] rereads each.
+    /// head first. Hints only: [`Drafts::assign_setup_turn`] rereads each.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -228,7 +228,7 @@ impl Drafts {
             .collect())
     }
 
-    /// Locks `hint`'s draft and admits its head message in the claim's
+    /// Locks `hint`'s draft and assigns its head message in the assignment's
     /// transaction: the creator still holds the draft, no other turn holds it,
     /// the message's model resolves, and the payer's balance covers a turn.
     ///
@@ -239,13 +239,13 @@ impl Drafts {
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn admit_setup_turn(
+    pub async fn assign_setup_turn(
         &self,
         connection: &mut PgConnection,
         hint: &SetupHint,
         tenant_host: bool,
         owed: &mut SetupOwed,
-    ) -> Result<SetupAdmission> {
+    ) -> Result<SetupAssignment> {
         let locking = Hint {
             id: hint.draft_id.clone(),
             workspace_id: hint.workspace_id.clone(),
@@ -254,19 +254,19 @@ impl Drafts {
         };
         let draft = match selection::lock_draft(connection, &locking, &mut owed.0).await? {
             DraftLock::Locked(draft) => *draft,
-            DraftLock::Passed => return Ok(SetupAdmission::Passed),
-            DraftLock::Busy => return Ok(SetupAdmission::Busy),
+            DraftLock::Passed => return Ok(SetupAssignment::Passed),
+            DraftLock::Busy => return Ok(SetupAssignment::Busy),
         };
         if draft.status != DraftState::Editing || pending::running(connection, &draft).await? {
-            return Ok(SetupAdmission::Passed);
+            return Ok(SetupAssignment::Passed);
         }
         let Some(head) = head(connection, &draft).await? else {
-            return Ok(SetupAdmission::Passed);
+            return Ok(SetupAssignment::Passed);
         };
-        let reclaim = head.status == RUNNING;
+        let reassigned = head.status == RUNNING;
         // A running head no draft run ran belongs to the attempt path.
-        if (reclaim && !head.held) || (tenant_host && head.tenant_model_id.is_none()) {
-            return Ok(SetupAdmission::Passed);
+        if (reassigned && !head.held) || (tenant_host && head.tenant_model_id.is_none()) {
+            return Ok(SetupAssignment::Passed);
         }
         let reference = model::reference(head.tenant_model_id.clone());
         let model = match self.setup_model(connection, &draft, &reference).await {
@@ -280,10 +280,10 @@ impl Drafts {
                 let failed = Failing {
                     draft: &draft,
                     sequence: head.sequence,
-                    running: reclaim,
+                    running: reassigned,
                 };
                 failed.fail(connection, reason, owed).await?;
-                return Ok(SetupAdmission::Passed);
+                return Ok(SetupAssignment::Passed);
             }
         };
         let candidate = match &draft.head_candidate_id {
@@ -293,7 +293,7 @@ impl Drafts {
             None => None,
         };
         let history = history(connection, &draft.id, head.sequence).await?;
-        Ok(SetupAdmission::Admitted(Box::new(SetupTurn {
+        Ok(SetupAssignment::Assigned(Box::new(SetupTurn {
             draft_id: draft.id.clone(),
             workspace_id: draft.workspace_id.clone(),
             tenant_id: draft.tenant_id.clone(),
@@ -303,7 +303,7 @@ impl Drafts {
             message_created_at: head.created_at,
             user_text: head.user_text,
             save_requested: head.save_requested,
-            reclaim,
+            reassigned,
             model,
             candidate,
             history,
@@ -324,8 +324,8 @@ impl Drafts {
         Ok(model)
     }
 
-    /// Marks the admitted message running, in the claim's transaction, once
-    /// its run is written. A reclaimed message is running already.
+    /// Marks the assigned message running, in the assignment's transaction, once
+    /// its run is written. A reassigned message is running already.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -345,7 +345,7 @@ impl Drafts {
         Ok(())
     }
 
-    /// Fails the admitted message durably, in the claim's transaction: its
+    /// Fails the assigned message durably, in the assignment's transaction: its
     /// runs lapsed too often for another reassign
     /// ([`FailureReason::ProviderUsageUnknown`], the attempt path's reason for
     /// a lost turn), or its model's key no longer opens
@@ -366,7 +366,7 @@ impl Drafts {
             .bind(turn.sequence)
             .bind(failed)
             .bind(verdict::reason(reason))
-            .bind(if turn.reclaim { RUNNING } else { QUEUED })
+            .bind(if turn.reassigned { RUNNING } else { QUEUED })
             .execute(&mut *connection)
             .await
             .map_err(query(sql::CONTEXT))?;

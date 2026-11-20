@@ -19,7 +19,7 @@ async fn fill_capacity(case: &Case) -> TaskBindings {
         .await
         .expect("first goals");
     for round in 1..5 {
-        let source = case.claimed_source().await;
+        let source = case.assigned_source().await;
         let plan = case.source_plan(
             source,
             &format!("more-goals-{round}"),
@@ -41,7 +41,7 @@ async fn capacity(case: &Case) {
     let first = fill_capacity(case).await;
     let before = case.counts().await;
     assert_eq!((before.0, before.1), (15, 15));
-    let source = case.claimed_source().await;
+    let source = case.assigned_source().await;
     let plan = case.source_plan(source, "two-at-capacity", 2, TaskLimits::default());
     let with_source = case.counts().await;
     assert_eq!(with_source, (before.0, before.1, before.2 + 1));
@@ -88,7 +88,7 @@ async fn recovered_plan(
     case: &Case,
     plan: &afd_fleet::task::PreparedPlan,
     retry: &TaskBindings,
-    admissions: i64,
+    turns: i64,
 ) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let replay = tasks
@@ -106,5 +106,5 @@ async fn recovered_plan(
             .len(),
         16
     );
-    assert_eq!(case.counts().await, (17, 17, admissions));
+    assert_eq!(case.counts().await, (17, 17, turns));
 }

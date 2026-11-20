@@ -164,14 +164,14 @@ pub enum Down<
         #[serde(borrow)]
         answer: Answer<'a, ReportResponse>,
     },
-    /// Pending input claimed under the requesting run's fence.
+    /// Pending input assigned under the requesting run's fence.
     Folded {
         /// Identifier of the folds request.
         request_id: NonZeroU64,
         /// Run whose input inbox receives this answer.
         #[serde(borrow)]
         run_id: Cow<'a, str>,
-        /// Claimed inputs or classified refusal.
+        /// Assigned inputs or classified refusal.
         #[serde(borrow)]
         answer: Answer<'a, FoldResponse<'a>>,
     },

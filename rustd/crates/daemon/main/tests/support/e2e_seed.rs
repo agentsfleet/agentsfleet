@@ -24,7 +24,7 @@
 //! cousins, and live in `e2e_seed_keys.rs`: they change when the vault's
 //! envelope does, not when the pull path does.
 //!
-//! `e2e_event` commits the admission after these fleet dependencies exist.
+//! `e2e_event` commits the turn after these fleet dependencies exist.
 #![allow(
     dead_code,
     reason = "test support: shared by several test binaries, each using a subset"

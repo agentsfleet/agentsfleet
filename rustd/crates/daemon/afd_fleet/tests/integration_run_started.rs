@@ -41,8 +41,8 @@ const KIND: &str = "kind";
 /// The label a fresh grant carries.
 const FRESH: &str = "fresh";
 
-/// The label a reclaim carries.
-const RECLAIMED: &str = "reclaimed";
+/// The label a reassignment carries.
+const REASSIGNED: &str = "reassigned";
 
 /// A fresh grant moves the `fresh` series.
 #[tokio::test]
@@ -71,13 +71,13 @@ async fn test_fresh_grant_counts_one_run() {
     fixtures.cleanup().await;
 }
 
-/// A reclaim over a lapsed holder moves the `reclaimed` series.
+/// A reassignment over a lapsed holder moves the `reassigned` series.
 ///
-/// Reaching the reclaim path needs an issued run row, exactly as
-/// `test_a_lapsed_run_is_reclaimed_not_re_pulled` sets one up.
+/// Reaching the reassignment path needs an issued run row, exactly as
+/// `test_a_lapsed_run_is_reassigned_not_re_pulled` sets one up.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_reclaim_counts_as_reclaimed() {
+async fn test_reassignment_counts_as_reassigned() {
     let capture = Capture::install();
     let fixtures = Fixtures::create().await;
     let Seeded {
@@ -106,21 +106,21 @@ async fn test_reclaim_counts_as_reclaimed() {
     )
     .await
     .expect("the run row must be written")
-    .expect("the claim is still held");
+    .expect("the assignment is still held");
 
-    let before = capture.sum(RUNS_STARTED, &[(KIND, RECLAIMED)]);
+    let before = capture.sum(RUNS_STARTED, &[(KIND, REASSIGNED)]);
     fixtures
-        .age(Row::Slot(&fleet), "run_expires_at", LAPSE)
+        .age(Row::Thread(&fleet), "run_expires_at", LAPSE)
         .await;
-    let reclaimed = seed::select_fleet(&runs, &second, &fleet)
+    let reassigned = seed::select_fleet(&runs, &second, &fleet)
         .await
-        .expect("a lapsed claim is winnable");
-    assert_eq!(reclaimed.kind, Kind::Reclaim);
+        .expect("a lapsed assignment is winnable");
+    assert_eq!(reassigned.kind, Kind::Reassigned);
 
-    let after = capture.sum(RUNS_STARTED, &[(KIND, RECLAIMED)]);
+    let after = capture.sum(RUNS_STARTED, &[(KIND, REASSIGNED)]);
     assert!(
         after > before,
-        "a reclaim moves the reclaimed series: {before} -> {after}"
+        "a reassignment moves the reassigned series: {before} -> {after}"
     );
 
     fixtures.cleanup().await;

@@ -43,7 +43,7 @@ async fn blocked(case: &Case, capture: &Capture) {
         .bind(&case.held.turn_id)
         .execute(&mut *blocker)
         .await
-        .expect("hold source after slot can be acquired");
+        .expect("hold source after thread can be acquired");
     statement_timeout(&tasks, case, &input, capture).await;
     cancellation(&tasks, case, &input, capture, &database).await;
     blocker.rollback().await.expect("release source blocker");
@@ -53,7 +53,7 @@ async fn blocked(case: &Case, capture: &Capture) {
         tasks.reserve_decision(case.run(), &input),
     )
     .await
-    .expect("original fleet slot is usable after cancellation")
+    .expect("original fleet thread is usable after cancellation")
     .expect("same accepted source recovers");
     assert!(result.into_parts().0);
     assert_eq!(fixture.counts().await, (1, 1, 0));
@@ -84,7 +84,7 @@ pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
             case.held.fixtures.bus().clone(),
             af_crypto::entropy::Entropy::new(),
         ),
-        case.admissions.clone(),
+        case.turns.clone(),
         fixture.dependencies.clone(),
     );
     (database, tasks)

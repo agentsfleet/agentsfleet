@@ -2,7 +2,7 @@
 
 use super::{Probe, notifications, pass};
 use crate::{
-    connection::{AssignOutcome, ClaimRequest, ConnectionHandle},
+    connection::{AssignOutcome, ConnectionHandle, PassRequest},
     registry::{Registration, Registry},
 };
 use af_core::id::Uuid7;
@@ -25,21 +25,21 @@ fn everyone() -> Probe {
 
 struct ConnectionFixture {
     handle: Arc<ConnectionHandle>,
-    requests: mpsc::Receiver<ClaimRequest>,
+    requests: mpsc::Receiver<PassRequest>,
 }
 
 impl ConnectionFixture {
     fn new(number: usize) -> TestResult<Self> {
         let id = Uuid7::parse(&format!("019f0000-0000-7000-8000-{number:012x}"))?;
-        let (handle, requests) = ConnectionHandle::fixture_with_claims(id.clone(), id);
+        let (handle, requests) = ConnectionHandle::fixture_with_passes(id.clone(), id);
         Ok(Self { handle, requests })
     }
 
-    async fn request(&mut self) -> TestResult<ClaimRequest> {
+    async fn request(&mut self) -> TestResult<PassRequest> {
         Ok(
             tokio::time::timeout(Duration::from_secs(1), self.requests.recv())
                 .await?
-                .ok_or("claim queue closed")?,
+                .ok_or("pass queue closed")?,
         )
     }
 
@@ -49,7 +49,7 @@ impl ConnectionFixture {
 }
 
 #[tokio::test(start_paused = true)]
-async fn rings_coalesce_into_one_claim_pass() -> TestResult {
+async fn rings_coalesce_into_one_assignment_pass() -> TestResult {
     let registry = Arc::new(Registry::default());
     let mut connection = ConnectionFixture::new(1)?;
     let _registration = connection.register(&registry)?;
@@ -109,7 +109,7 @@ async fn a_one_ring_pass_ends_at_its_first_run() -> TestResult {
         .map_err(|unsent| format!("pass lost its run answer {unsent:?}"))?;
     tokio::select! {
         result = job => result??,
-        extra = first.requests.recv() => assert!(extra.is_none(), "one ring issued a second claim on its first host"),
+        extra = first.requests.recv() => assert!(extra.is_none(), "one ring issued a second assignment on its first host"),
         extra = second.requests.recv() => assert!(extra.is_none(), "one ring continued after its first run"),
     }
     assert!(matches!(
@@ -124,7 +124,7 @@ async fn a_one_ring_pass_ends_at_its_first_run() -> TestResult {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
+async fn an_empty_pass_over_five_sessions_makes_five_assignments() -> TestResult {
     let mut connections = (1..=5)
         .map(ConnectionFixture::new)
         .collect::<TestResult<Vec<_>>>()?;
@@ -133,7 +133,7 @@ async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
         .map(|connection| Arc::clone(&connection.handle))
         .collect();
     let job = tokio::spawn(pass(candidates, 100));
-    let mut claims = 0;
+    let mut assignments = 0;
     for connection in &mut connections {
         connection
             .request()
@@ -141,10 +141,10 @@ async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
             .reply
             .send(AssignOutcome::Empty)
             .map_err(|unsent| format!("pass lost its empty answer {unsent:?}"))?;
-        claims += 1;
+        assignments += 1;
     }
     job.await??;
-    assert_eq!(claims, 5);
+    assert_eq!(assignments, 5);
     assert!(connections.iter_mut().all(|connection| matches!(
         connection.requests.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)
@@ -153,7 +153,7 @@ async fn an_empty_pass_over_five_sessions_makes_five_claims() -> TestResult {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_ring_reaches_a_later_eligible_host_when_the_first_claim_is_empty() -> TestResult {
+async fn a_ring_reaches_a_later_eligible_host_when_the_first_assignment_is_empty() -> TestResult {
     let mut first = ConnectionFixture::new(1)?;
     let mut second = ConnectionFixture::new(2)?;
     let job = tokio::spawn(pass(
@@ -217,7 +217,7 @@ async fn several_rings_spend_one_budget_across_connections() -> TestResult {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_unknown_claim_outcome_stops_the_pass_before_another_host() -> TestResult {
+async fn an_unknown_assignment_outcome_stops_the_pass_before_another_host() -> TestResult {
     let mut first = ConnectionFixture::new(1)?;
     let mut second = ConnectionFixture::new(2)?;
     let job = tokio::spawn(pass(

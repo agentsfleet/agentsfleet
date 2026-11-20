@@ -45,7 +45,7 @@ pub(crate) enum ErrorKind {
         #[from]
         source: afd_runner::Error,
     },
-    #[error("the initial runtime admission could not be recorded")]
+    #[error("the initial runtime turn could not be recorded")]
     TurnWrite {
         #[from]
         source: afd_turns::Error,

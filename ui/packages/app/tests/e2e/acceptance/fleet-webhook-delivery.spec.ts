@@ -11,9 +11,9 @@ import { executionInstructions, WEBHOOK_EVENT_WORKFLOW_RUN, fixtureDefinition, w
  * runner runs the one event, and the fleet's history carries exactly one
  * webhook row after both posts.
  *
- * The replay is byte-identical on purpose. The daemon keys its claim on the
+ * The replay is byte-identical on purpose. The daemon keys its turn on the
  * digest of the signed body, never on the delivery header, so a resender
- * cannot mint a fresh claim by varying a header GitHub does not sign. The
+ * cannot mint a fresh turn by varying a header GitHub does not sign. The
  * fleet-authored REVIEW half of this proof needs a real repository and the
  * GitHub App installed on it, which is a live pass beside this journey, not
  * a fixture this one can arrange.
@@ -144,7 +144,7 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
  * Waits for a runner to take the event, or reports why nobody did.
  *
  * NO row exists until a runner runs the event. The ingress writes nothing to
- * `fleet.events` — it admits the delivery to the admissions ledger and answers
+ * the history — it admits the delivery as a queued turn and answers
  * 202, and the row is
  * written by the run (`afd_ingress::deliver`, module note: "the row appears
  * when the runner runs the event, and a daemon that inserted one at ingress

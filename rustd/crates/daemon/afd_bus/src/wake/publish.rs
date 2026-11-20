@@ -27,7 +27,7 @@ pub async fn publish(bus: &Handle, owner: Uuid7) {
             &"turn_wake_ring_failed",
             &logged.error_code,
             &logged.reason,
-            format_args!("notification was lost; the next Postgres probe finds the admission"),
+            format_args!("notification was lost; the next Postgres probe finds the turn"),
         );
         tracing::warn!(message, event, error_code, reason, thread_id);
     };

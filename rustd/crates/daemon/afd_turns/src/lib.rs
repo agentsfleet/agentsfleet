@@ -1,4 +1,4 @@
-//! One durable admission per producer key. The committed row is the work queue.
+//! One durable turn per producer key. The committed row is the work queue.
 //! Notifications are best-effort hints; polling Postgres always finds accepted work.
 
 // A dependency listed but unused is a supply-chain and compile-time cost with
@@ -37,7 +37,7 @@ pub use self::repeat::Repeated;
 pub use self::run_facts::PersonSteer;
 pub use self::stage::PreparedTurn;
 
-/// What an admission decided.
+/// What admitting a turn decided.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Admitted {
     /// Whether an earlier call already admitted this key.
@@ -52,11 +52,11 @@ pub struct Admitted {
 /// What a steer's disposition is named from: [`Turns::run_facts`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunFacts {
-    /// The run holding the fleet's slot, when its run has not expired.
+    /// The run holding the fleet's thread, when its run has not expired.
     pub live_run: Option<LiveRun>,
     /// Whether a message waits that this one must not pass: with no live
-    /// run, any earlier unsettled admission; with one, an earlier message in
-    /// the run's conversation that the run's claim stops at.
+    /// run, any earlier unsettled turn; with one, an earlier message in
+    /// the run's conversation that the run's assignment stops at.
     pub earlier_waiting: bool,
 }
 

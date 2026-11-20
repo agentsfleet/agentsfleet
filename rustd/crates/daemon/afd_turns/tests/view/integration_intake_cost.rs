@@ -1,6 +1,6 @@
-//! An admitted steer costs its admission statement and one read of the run
+//! An admitted steer costs its turn statement and one read of the run
 //! facts its disposition is named from, and a repeat costs the same and
-//! writes nothing. Every other producer's admission is the one statement.
+//! writes nothing. Every other producer's turn is the one statement.
 //!
 //! A private database, because `pg_stat_statements` counts per database and a
 //! parallel suite's calls on the shared lane would land in the count.
@@ -120,7 +120,7 @@ impl Private {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_accepted_steer_costs_its_admission_and_one_read() -> Outcome {
+async fn an_accepted_steer_costs_its_turn_and_one_read() -> Outcome {
     let private = Private::open().await?;
     private.send(None).await?;
     let (calls, control) = (

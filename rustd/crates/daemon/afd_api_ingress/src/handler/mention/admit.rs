@@ -1,5 +1,5 @@
 //! A mention routing gave one fleet: its thread read back, the fleet's message
-//! composed, one admission recorded.
+//! composed, one turn recorded.
 //!
 //! Split from `mention.rs`, which parses, resolves and routes.
 //!
@@ -8,7 +8,7 @@
 //! The read waits on Slack for up to its deadline. Everything this path read
 //! from the database before it — the workspace, the bot's token, the
 //! subscribers — was read and its connection returned by the time routing
-//! answered, and the admission acquires its own afterwards. What reaches the
+//! answered, and the turn intake acquires its own afterwards. What reaches the
 //! read is a token, not a workspace, so the seam has nothing to open a
 //! connection with (RULE CNX).
 //!
@@ -16,7 +16,7 @@
 //!
 //! The person asked something; the fleet can still answer it without the
 //! thread. A read that timed out or that Slack refused leaves one line naming
-//! why in the thread's place, and the admission goes ahead.
+//! why in the thread's place, and the turn goes ahead.
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
@@ -48,7 +48,7 @@ pub(super) struct Routed<'a> {
 /// Reads the thread back, composes the fleet's message and admits it.
 ///
 /// # Errors
-/// A datastore that would not take the admission, as the 503 a provider
+/// A datastore that would not take the turn, as the 503 a provider
 /// retries. A thread that could not be read is not an error.
 pub(super) async fn routed<D: Services>(
     services: &D,

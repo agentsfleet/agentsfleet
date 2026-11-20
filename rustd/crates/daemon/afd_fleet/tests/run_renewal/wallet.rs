@@ -13,7 +13,7 @@ use super::{
     seat::{FUNDED, Seat},
 };
 use crate::rows::Row;
-use afd_setup::{Claimed, Drafts};
+use afd_setup::{AssignedDraft, Drafts};
 
 use af_core::{clock, id::Uuid7};
 use af_wire::authoring::{Accounting, Knowledge, Outcome, Report, Reported};
@@ -164,7 +164,7 @@ async fn renew_and_settle(running: &Running, biller: &LedgerBiller) -> (Renewed,
 async fn report_and_relay(
     running: &Running,
     drafts: &Drafts,
-    run: &Claimed,
+    run: &AssignedDraft,
     biller: &LedgerBiller,
 ) -> afd_setup::Result<Reported> {
     let attempt = WorkKey::AuthoringAttempt(Uuid7::parse(&run.attempt_id).expect("a v7 attempt"));
@@ -222,7 +222,7 @@ async fn queued<A, B>(
     (first, second)
 }
 
-fn accounting(run: &Claimed) -> Report {
+fn accounting(run: &AssignedDraft) -> Report {
     Report::Accounting {
         accounting: Accounting {
             fence: run.fence.clone(),
@@ -241,7 +241,7 @@ fn accounting(run: &Claimed) -> Report {
     }
 }
 
-fn run_id(run: &Claimed) -> Uuid7 {
+fn run_id(run: &AssignedDraft) -> Uuid7 {
     Uuid7::parse(&run.run_id).expect("the run names a UUIDv7")
 }
 

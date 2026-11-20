@@ -1,7 +1,7 @@
 //! Setup records pending approval and cannot reinterpret it as consent.
 
 use super::super::{fixture::now, mint};
-use super::fixture::{Case, NO_ADMISSIONS, check};
+use super::fixture::{Case, NO_TURNS, check};
 use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_approval::{Decision, Inbox, IntegrationGrants, Origin, Resolution, Wanted};
 use afd_setup::types::{CheckKind, SaveSource, Start};
@@ -146,7 +146,7 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
     let ready = c.save(&key, request).await;
     assert_eq!(ready.id, saved.id);
     assert_eq!(ready.status, "active");
-    assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&saved.id).await, NO_TURNS);
     c.cleanup().await;
 }
 
@@ -183,7 +183,7 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
     assert_eq!(retried.setup.state, "waiting");
     let after = cards(&c, &saved.id).await;
     assert_eq!(after.len(), 1, "a denial is not re-asked: {after:?}");
-    assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&saved.id).await, NO_TURNS);
     c.cleanup().await;
 }
 
@@ -271,7 +271,7 @@ async fn concurrent_retries_open_one_card_for_the_one_missing_grant() {
     );
     assert_eq!(opened[0].1, "pending");
     assert_eq!(c.fleet_count().await, 1);
-    assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&fleet).await, NO_TURNS);
     Arc::try_unwrap(c)
         .ok()
         .expect("all retry clones dropped")

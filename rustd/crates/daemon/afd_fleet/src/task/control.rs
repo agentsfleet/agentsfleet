@@ -1,4 +1,4 @@
-//! Human controls share the fleet slot and retain all cumulative usage.
+//! Human controls share the fleet thread and retain all cumulative usage.
 
 use af_core::id::Uuid7;
 use af_wire::task::TaskState;
@@ -42,7 +42,7 @@ pub(super) async fn apply(
         None
     };
     let prepared = match continuation.as_ref() {
-        Some(wake) => Some(tasks.admissions.prepare(wake.admission()).await?),
+        Some(wake) => Some(tasks.turns.prepare(wake.turn()).await?),
         None => None,
     };
     // Cancellation closes the socket, so a blocked statement holds no lock.
@@ -130,10 +130,10 @@ async fn queue(
 ) -> Result<()> {
     if let Some(prepared) = prepared {
         let admitted = tasks
-            .admissions
+            .turns
             .stage(&mut *connection, prepared)
             .await
-            .map_err(|source| crate::error::ErrorKind::TaskControlAdmission {
+            .map_err(|source| crate::error::ErrorKind::TaskControlTurn {
                 state: previous,
                 source,
             })?;

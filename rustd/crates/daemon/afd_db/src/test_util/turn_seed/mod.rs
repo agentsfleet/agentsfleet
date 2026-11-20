@@ -8,7 +8,7 @@
 //! The actor, type and status are arguments because their spellings live above
 //! this crate; the request body is an empty object, which every reader of the
 //! column accepts. A run names the event by its turn's `id`, the table's key.
-//! The row has no admission behind it, so it is written settled: no claim
+//! The row has no producer behind it, so it is written settled: no assignment
 //! takes it.
 
 use af_core::id::Uuid7;

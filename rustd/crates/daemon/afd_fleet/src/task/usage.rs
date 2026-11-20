@@ -32,7 +32,7 @@ pub(crate) async fn record(
     let Some(owner) = owner else {
         return Ok(true);
     };
-    // Existing metering already owns slot/run. No host or parent lock follows this task lock.
+    // Existing metering already owns thread/run. No host or parent lock follows this task lock.
     let _task: Option<String> = sqlx::query_scalar(sql::LOCK_TASK)
         .bind(&owner.task)
         .bind(&owner.fleet)

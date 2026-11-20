@@ -11,7 +11,7 @@
 //! # Parse once, share the result
 //!
 //! [`FleetConfig`] is `Send + Sync` and holds no borrow of the document it was
-//! read from, so a claim can parse it once and hand every downstream gate an
+//! read from, so an assignment can parse it once and hand every downstream gate an
 //! `Arc` of the same value. A gate that needs one field reads it off that
 //! value rather than parsing the whole document again per request.
 

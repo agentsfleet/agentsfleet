@@ -1,4 +1,4 @@
-//! A refusal frees the claim; a gate parks its admission until the answer.
+//! A refusal frees the assignment; a gate parks its turn until the answer.
 
 use super::seed::{seed_gate, seed_provider_resolution};
 use super::*;
@@ -18,9 +18,9 @@ const REVIEWER: &str = "fixture:human";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_stop_releases_the_claim() {
-    // A refusal used to return with the claim still held, so the fleet's next
-    // event waited out the claim's lifetime behind an event that was over.
+async fn test_stop_releases_the_assignment() {
+    // A refusal used to return with the assignment still held, so the fleet's next
+    // event waited out the assignment's lifetime behind an event that was over.
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
@@ -33,23 +33,23 @@ async fn test_stop_releases_the_claim() {
         tenant,
     };
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
     assert!(answer.is_none(), "a refused event issued a run: {answer:?}");
     assert!(
-        fixtures.slot_is_free(&seeded.fleet).await,
-        "the refusal freed the claim at once, not a claim's lifetime later"
+        fixtures.thread_is_free(&seeded.fleet).await,
+        "the refusal freed the assignment at once, not an assignment's lifetime later"
     );
     assert_eq!(
         fixtures
-            .text(Row::Slot(&seeded.fleet), COLUMN_LAST_RUNNER)
+            .text(Row::Thread(&seeded.fleet), COLUMN_LAST_RUNNER)
             .await,
         None,
-        "a claim that ran nothing leaves no sticky hint, or a fleet that keeps \
+        "an assignment that ran nothing leaves no sticky hint, or a fleet that keeps \
          stopping would be tried first for this runner on every poll"
     );
 
-    // One millisecond on is the next poll; a held claim would refuse it.
+    // One millisecond on is the next poll; a held assignment would refuse it.
     let next = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
     let held = crate::seed::select_fleet(&fixtures.runs(), &seeded.runner, &seeded.fleet)
         .await
@@ -62,7 +62,7 @@ async fn test_stop_releases_the_claim() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_approval_resolution_runs_next_poll() {
-    // A park frees the slot. Resolution un-parks the same admission before
+    // A park frees the thread. Resolution un-parks the same turn before
     // landing its continuation, so the original delivery runs first.
     crate::support::install_subscriber();
     let fixtures = Fixtures::create().await;
@@ -71,25 +71,25 @@ async fn test_approval_resolution_runs_next_poll() {
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let action = seed_gate(&fixtures, &seeded, "pending").await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
     assert!(
         answer.is_none(),
         "an unanswered gate issued a run: {answer:?}"
     );
     assert!(
-        fixtures.slot_is_free(&seeded.fleet).await,
-        "the park freed the claim"
+        fixtures.thread_is_free(&seeded.fleet).await,
+        "the park freed the assignment"
     );
     assert!(
         parked(&fixtures, &seeded.turn_id).await,
-        "the admission is durably parked"
+        "the turn is durably parked"
     );
 
     approve_parked(&fixtures, &seeded, &action).await;
     assert!(
         !parked(&fixtures, &seeded.turn_id).await,
-        "the answer durably unparked the admission"
+        "the answer durably unparked the turn"
     );
 
     let held = crate::seed::select_fleet(&fixtures.runs(), &seeded.runner, &seeded.fleet)
@@ -105,7 +105,7 @@ async fn test_approval_resolution_runs_next_poll() {
 
 // Value: protects=an unanswered approval cannot strand the queue;
 // fails_when=deadline reconsideration cannot reach gate evaluation and settlement;
-// why_new=claim-only tests cannot prove tail progress; seam=Postgres and the bus.
+// why_new=assignment-only tests cannot prove tail progress; seam=Postgres and the bus.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event() {
@@ -114,19 +114,19 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let action = seed_gate(&fixtures, &seeded, afd_api_wire::approval::status::PENDING).await;
-    let claimed = claim(&fixtures, &seeded).await;
-    assert!(drive(&fixtures, &seeded, claimed).await.is_none());
+    let assigned = assign(&fixtures, &seeded).await;
+    assert!(drive(&fixtures, &seeded, assigned).await.is_none());
     assert!(parked(&fixtures, &seeded.turn_id).await);
     let workspace = seed::workspace_of(&fixtures, &seeded.fleet).await;
     let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
     sqlx::query("UPDATE fleet.approval_gates SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1")
         .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("deadline"))
         .await.expect("elapsed approval deadline");
-    let resumed = claim(&fixtures, &seeded).await;
+    let resumed = assign(&fixtures, &seeded).await;
     assert_eq!(resumed.turn_id, seeded.turn_id);
     assert!(drive(&fixtures, &seeded, resumed).await.is_none());
     assert_expired_settlement(&fixtures, &seeded.turn_id, &action).await;
-    let next = claim(&fixtures, &seeded).await;
+    let next = assign(&fixtures, &seeded).await;
     assert_eq!(
         next.turn_id, later,
         "expiry released the tail without a sweeper"
@@ -138,7 +138,7 @@ async fn assert_expired_settlement(fixtures: &Fixtures, event: &Uuid7, action: &
     let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM thread.turns a JOIN fleet.approval_gates g ON g.fleet_id=a.thread_id WHERE a.id=$1 AND g.action_id=$2")
         .bind(event).bind(action)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("settlement observer"))
-        .await.expect("settled admission and answerable approval");
+        .await.expect("settled turn and answerable approval");
     assert_eq!(state, (true, true));
 }
 

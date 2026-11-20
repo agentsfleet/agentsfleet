@@ -3,7 +3,7 @@ use super::*;
 /// Work on the platform model never reaches a
 /// tenant runner, and a platform runner still takes it.
 // Value: protects=the platform key stays on platform hosts; fails_when=the
-// head's model test is dropped from the scan or the claim; why_new=the model filter;
+// head's model test is dropped from the scan or the assignment; why_new=the model filter;
 // seam=none.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -22,10 +22,10 @@ async fn platform_model_work_never_reaches_a_tenant_runner() {
             "poll {poll}: no candidate"
         );
     }
-    assert!(!slotted(&fixtures, &fleet).await, "no slot write");
+    assert!(!thread_taken(&fixtures, &fleet).await, "no thread write");
     assert!(
-        !claim_head(&fixtures, &fleet, &t_runner).await,
-        "the claim alone refuses too"
+        !assign_head(&fixtures, &fleet, &t_runner).await,
+        "the assignment alone refuses too"
     );
     assert_eq!(runs_of(&fixtures, &t_runner).await, 0, "no run");
 
@@ -51,7 +51,7 @@ async fn issue_refuses_platform_posture_on_a_tenant_runner() {
     let t_runner = tenant_runner(&fixtures, &t.tenant, &t.tag).await;
     let held = select_fleet(&runs, &t_runner, &fleet)
         .await
-        .expect("T's runner claims");
+        .expect("T's runner is assigned");
 
     let captured = af_core::test_util::trace::Capture::install();
     let issued = issue(&fixtures, &runs, &t_runner, &held, &t.tenant, PLATFORM).await;
@@ -68,7 +68,7 @@ async fn issue_refuses_platform_posture_on_a_tenant_runner() {
 /// platform model.
 const PLATFORM_CONFIG: &str = r#"{"name":"moved","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
-/// Runs one statement about `fleet` or an admission, on a connection borrowed
+/// Runs one statement about `fleet` or a turn, on a connection borrowed
 /// for that statement.
 async fn execute(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) {
     sqlx::query(statement)
@@ -81,7 +81,7 @@ async fn execute(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) {
 // Value: protects=a hold keeps a fleet for its tenant holder even after its
 // head moves to the platform model, and only its expiry frees the fleet for a
 // platform runner; fails_when=the model filter or the hold rule drops the
-// other; why_new=the model filter; seam=the slot's hold, set as a report leaves it.
+// other; why_new=the model filter; seam=the thread's hold, set as a report leaves it.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn held_fleet_on_the_platform_model_waits_for_its_hold() {

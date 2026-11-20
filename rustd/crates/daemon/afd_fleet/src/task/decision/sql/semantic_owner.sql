@@ -15,6 +15,6 @@ WHERE c.id = $1 AND l.fleet_id = f.id AND l.workspace_id = f.workspace_id
   AND l.fencing_token = c.fencing_token AND s.fencing_token = c.fencing_token
   AND l.run_expires_at > clock_timestamp() AND s.run_expires_at > clock_timestamp()
   AND (l.turn_id = c.source_turn_id
-       OR (a.input_claim_run_id = l.id AND a.input_claim_fence = c.fencing_token))
+       OR (a.input_run_id = l.id AND a.input_fence = c.fencing_token))
   AND (a.producer <> $5 OR connector.slack_person_allowed(a.workspace_id, a.actor, $6, $7, $8))
   AND (l.task_id IS NULL OR fleet.task_person_allowed(l.task_id, $5, $6, $7, $8))

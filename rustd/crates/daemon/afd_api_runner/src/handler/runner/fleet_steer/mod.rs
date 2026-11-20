@@ -3,7 +3,7 @@
 //!
 //! # A person's steer in every field but four
 //!
-//! The admission is the one a person's message makes, through the statement
+//! The turn is the one a person's message makes, through the statement
 //! that decides the target, a repeat, its status and the deployment ceiling.
 //! The actor names the sending fleet, the stored body names it too, the reply
 //! destination is copied from the event the sender runs, and the key is the
@@ -11,9 +11,9 @@
 //!
 //! # The run is proved twice
 //!
-//! Once to learn the sender, and again inside the admission's transaction
+//! Once to learn the sender, and again inside the turn's transaction
 //! through the write guard a schedule write uses, so a runner whose run a
-//! reclaim took after the first proof writes nothing.
+//! reassignment took after the first proof writes nothing.
 //!
 //! # Nothing limits the targets, the chain or the count
 //!
@@ -77,7 +77,7 @@ const DETAIL_NOT_ACTIVE: &str = "Fleet is not active";
 /// The refusal the same key already holding other words earns.
 const DETAIL_CONFLICT: &str = "This steer was already sent with different words";
 
-/// The refusal a holder a reclaim superseded earns, found inside the write.
+/// The refusal a holder a reassignment superseded earns, found inside the write.
 const DETAIL_SUPERSEDED: &str = "A newer runner holds this run";
 
 /// The `current_state` a steer to the sending fleet names.
@@ -203,7 +203,7 @@ fn settled(
     }
 }
 
-/// The refusal an admission that did not land earns, through the accessors
+/// The refusal a turn that did not land earns, through the accessors
 /// the steer's error already carries.
 fn refusal_of(error: afd_turns::view::Error) -> Refusal {
     if error.is_fleet_absent() {
@@ -226,7 +226,7 @@ fn refusal_of(error: afd_turns::view::Error) -> Refusal {
 }
 
 /// Tells every screen on the target the message was admitted, before a
-/// runner takes it. Once: a repeat carries no admission instant.
+/// runner takes it. Once: a repeat carries no intake instant.
 async fn announce<D: Services>(
     services: &D,
     target: &Uuid7,

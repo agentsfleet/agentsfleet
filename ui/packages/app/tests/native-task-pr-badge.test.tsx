@@ -11,7 +11,7 @@ import { detail, summary, TASK_IDS } from "./helpers/task-reads";
 const SCOPE = {workspaceId: "workspace", fleetId: "fleet", subject: "indy", revision: 0};
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 function activity(ids: (string | null)[]): TaskActivityHistory {
-  return {items: ids.map(id => ({kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: id, source_admission_id: null,
+  return {items: ids.map(id => ({kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: id, source_turn_id: null,
     operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}})), truncated: false};
 }
 function response() {

@@ -73,7 +73,7 @@ pub struct TurnCheckpointRef {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TurnCheckpointCommand {
-    /// Current run and slot must both prove this fence.
+    /// Current run and thread must both prove this fence.
     #[garde(range(min = 1, max = i64::MAX as u64))]
     pub fencing_token: u64,
     /// Reconnect retries retain this identity with new transport request IDs.

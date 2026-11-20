@@ -1,6 +1,6 @@
 //! The root folds what its fleet receives while it works: a message sent
-//! before or during the run reaches the next model call, the claim advances
-//! past what was read, and only an answered run says how far it read.
+//! before or during the run reaches the next model call, the assignment
+//! advances past what was read, and only an answered run says how far it read.
 
 mod fixture;
 
@@ -20,7 +20,7 @@ async fn a_message_waiting_when_the_run_starts_joins_its_opening_turn() -> crate
     let script = Script::new([vec![say("Deployed to staging.")]]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(0, 7, "actually, use staging");
+    inbox.on_assignment(0, 7, "actually, use staging");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     let opening = users(&script, 0);
     assert_eq!(
@@ -38,7 +38,7 @@ async fn a_message_waiting_when_the_run_starts_joins_its_opening_turn() -> crate
     Ok(())
 }
 
-/// The claims one answering run asks for, under a run whose
+/// The assignments one answering run asks for, under a run whose
 /// `inputs_waiting` is `waiting`.
 async fn answered(waiting: bool) -> crate::Result<Vec<i64>> {
     let script = Script::new([vec![say("Deployed to staging.")]]);
@@ -49,11 +49,11 @@ async fn answered(waiting: bool) -> crate::Result<Vec<i64>> {
     Ok(inbox.asked())
 }
 
-// Value: protects=a run whose claim found nothing waiting skips the ask
+// Value: protects=a run whose assignment found nothing waiting skips the ask
 // before its first model call, and asks after the answer; fails_when=the skip
 // never happens, swallows the ask after the answer, or fires on a run that
-// said true; why_new=that ask moved into the claim;
-// seam=none; no_claim=what the daemon computes, which its claim test proves.
+// said true; why_new=that ask moved into the assignment;
+// seam=none; no_claim=what the daemon computes, which its assignment test proves.
 #[tokio::test]
 async fn first_model_call_skips_the_answered_fold_ask() -> crate::Result<()> {
     assert_eq!(answered(false).await?, [0], "one ask, after the answer");
@@ -69,7 +69,7 @@ async fn a_message_sent_while_tools_run_is_read_by_the_next_call() -> crate::Res
     ]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(1, 9, "and tag it");
+    inbox.on_assignment(1, 9, "and tag it");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     assert!(
         !users(&script, 0).iter().any(|said| said.contains("tag it")),
@@ -84,7 +84,7 @@ async fn a_message_sent_while_tools_run_is_read_by_the_next_call() -> crate::Res
     assert_eq!(
         inbox.asked(),
         [0, 0, 9],
-        "nothing was read before claim 1, and the claim after the answer asks past it"
+        "nothing was read before assignment 1, and the assignment after the answer asks past it"
     );
     Ok(())
 }
@@ -97,7 +97,7 @@ async fn a_message_sent_while_the_answer_is_written_gets_one_more_turn() -> crat
     ]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(1, 11, "wait, staging not prod");
+    inbox.on_assignment(1, 11, "wait, staging not prod");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     assert_eq!(
         script.sent().len(),
@@ -121,7 +121,7 @@ async fn a_correction_sent_while_the_answer_is_written_follows_that_answer() -> 
     ]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(1, 11, "wait, staging not prod");
+    inbox.on_assignment(1, 11, "wait, staging not prod");
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     let expected: Vec<_> = shape(&script, 0)
         .into_iter()
@@ -147,7 +147,7 @@ async fn a_correction_after_tool_calls_follows_the_answer_it_interrupted() -> cr
     ]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(2, 12, "wait, staging not prod");
+    inbox.on_assignment(2, 12, "wait, staging not prod");
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     let expected: Vec<_> = shape(&script, 1)
         .into_iter()
@@ -169,26 +169,26 @@ async fn a_blank_answer_after_a_correction_adds_nothing_to_the_reply() -> crate:
     let script = Script::new([vec![say("Deployed to prod.")], vec![say("  ")]]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(1, 11, "wait, staging not prod");
+    inbox.on_assignment(1, 11, "wait, staging not prod");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     assert_eq!(output.result.content, "Deployed to prod.");
     Ok(())
 }
 
 #[tokio::test]
-async fn the_claim_moves_past_what_the_run_read() -> crate::Result<()> {
+async fn the_assignment_moves_past_what_the_run_read() -> crate::Result<()> {
     let script = Script::new([
         vec![call("c1", HTTP_REQUEST.name(), serde_json::json!({}))],
         vec![say("Done.")],
     ]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(0, 3, "first");
+    inbox.on_assignment(0, 3, "first");
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     assert_eq!(
         inbox.asked(),
         [0, 3, 3],
-        "every claim after the read asks past the message already read"
+        "every assignment after the read asks past the message already read"
     );
     Ok(())
 }
@@ -207,7 +207,7 @@ async fn a_message_the_inbox_replays_is_joined_once() -> crate::Result<()> {
             text: "only once".to_owned(),
         },
         replays: 2,
-        claims: AtomicUsize::new(0),
+        assignments: AtomicUsize::new(0),
     };
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     let joined: usize = users(&script, 1)
@@ -220,7 +220,7 @@ async fn a_message_the_inbox_replays_is_joined_once() -> crate::Result<()> {
 }
 
 #[tokio::test]
-async fn a_stop_during_the_claim_joins_nothing() -> crate::Result<()> {
+async fn a_stop_during_the_assignment_joins_nothing() -> crate::Result<()> {
     let script = Script::new([vec![say("unreachable")]]);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let stop = CancellationToken::new();
@@ -230,7 +230,7 @@ async fn a_stop_during_the_claim_joins_nothing() -> crate::Result<()> {
         !users(&script, 0)
             .iter()
             .any(|said| said.contains("too late")),
-        "a claim the stop overtook hands the run nothing"
+        "an assignment the stop overtook hands the run nothing"
     );
     assert_eq!(
         output.result.outcome,
@@ -263,7 +263,7 @@ async fn a_failed_run_reports_no_cursor_so_its_folds_run_again() -> crate::Resul
     let script = Script::failing(vec![], lost);
     let payload = payload(&[HTTP_REQUEST.name()], unbounded());
     let inbox = Arriving::default();
-    inbox.on_claim(0, 5, "are you there?");
+    inbox.on_assignment(0, 5, "are you there?");
     let output = run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     assert_eq!(
         output.result.outcome,

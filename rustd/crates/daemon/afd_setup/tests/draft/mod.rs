@@ -5,7 +5,7 @@
     reason = "fixture preconditions fail the proof loudly"
 )]
 
-mod admission;
+mod assignment;
 mod attempt;
 mod biller;
 mod cleanup;

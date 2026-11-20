@@ -53,15 +53,15 @@ pub const FLEET_STATUS_ACTIVE: &str = "active";
 
 /// The status a REPORTED run is flipped into.
 ///
-/// The claim-and-settle statement is the sole `active` → `reported` writer,
+/// The report's settle statement is the sole `active` → `reported` writer,
 /// and it flips this row in the same statement that charges the final slice —
 /// so a run can never be `reported` with its last slice unbilled, nor billed
 /// twice by a retry that finds the row already flipped.
 pub const RUN_STATUS_REPORTED: &str = "reported";
 
-/// The status a reclaimed run is flipped INTO.
+/// The status a run lost to reassignment is flipped INTO.
 ///
-/// The reclaim statement is the sole `active` → `expired` writer, so this
+/// The expiry statement is the sole `active` → `expired` writer, so this
 /// spelling and [`RUN_STATUS_ACTIVE`] are the two halves of one predicate and
 /// belong beside each other.
 pub const RUN_STATUS_EXPIRED: &str = "expired";

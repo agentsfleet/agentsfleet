@@ -13,7 +13,7 @@ use crate::{
         AssignedRun, Billed, Issued, Target,
         answer::{Context, payload},
         history,
-        pull::{AdmittedFleetWork, Assigned, RunService, Step, claim_lost},
+        pull::{AdmittedFleetWork, Assigned, RunService, Step, assignment_lost},
     },
 };
 
@@ -47,9 +47,9 @@ impl RunService {
             )
             .await?
         else {
-            return Ok(claim_lost(runner, &admitted.acquired));
+            return Ok(assignment_lost(runner, &admitted.acquired));
         };
-        if admitted.acquired.kind == crate::run::Kind::Reclaim {
+        if admitted.acquired.kind == crate::run::Kind::Reassigned {
             self.runs
                 .publish_restarted(&admitted.acquired, &issued)
                 .await;

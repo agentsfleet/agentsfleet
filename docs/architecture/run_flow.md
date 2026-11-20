@@ -125,7 +125,7 @@ The heading keeps its old words so links to it stay stable. The gateway assigns 
 An expired run exposes the same unsettled turn. Redelivery keeps its turn id, intake time and prior billing identity.
 
 A report settles the turn in the transaction that records usage, terminal state, checkpoint, thread release and any owed delivery.
-See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, notifications and recovery limits.
+See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets, notifications and recovery limits.
 
 ---
 
@@ -283,7 +283,7 @@ So writing "post the review" in the instructions (which the fixture already does
 
 **A chat message uses the same intake path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` turn (`afd_turns`'s steer module).
 
-The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the fleet's one thread (`queue::CLAIM_HEAD`, `afd_fleet`'s run queue). It then starts a run of its own.
+The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the fleet's one thread (`queue::ASSIGN_HEAD`, `afd_fleet`'s run queue). It then starts a run of its own.
 
 With a run live, the message folds into it, and the 202 also carries `folded_into_turn_id`.
 The run takes it through the native `folds` request before its next model call; the run's answer becomes its reply.
@@ -383,7 +383,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
   Heartbeats run every 10 seconds; a sandbox hold lasts 10 minutes.
 
 - Assignment and intake: at most 64 candidate fleets per assign pass; no per-fleet turn cap.
-  [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) describe the sampled deployment budget.
+  [Queue limits](./datastore_scaling.md#the-turns-ledger-is-the-queue) describe the sampled deployment budget.
 
 ---
 

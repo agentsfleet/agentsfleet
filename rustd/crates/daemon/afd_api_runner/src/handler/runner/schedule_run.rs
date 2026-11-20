@@ -4,7 +4,7 @@
 //! A run is an event whose actor is `cron:<schedule_id>`, which a `QStash` fire
 //! and a run-now both record (`afd_cron::schedule_actor`). Running now admits
 //! through the same producer `QStash`'s callback does, keyed by the event the
-//! run runs, so a retried post, from this run or one a reclaim handed the
+//! run runs, so a retried post, from this run or one a reassignment handed the
 //! event to, answers the run it already created rather than a second one. A
 //! run joins this list once a runner has taken it: until then it is queued
 //! work, not history.
@@ -66,8 +66,8 @@ const STATE_FLEET_UNREADABLE: &str = "unknown";
 /// The refusal a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "starting_after must be a next_cursor this daemon returned";
 
-/// What a run-now's admission key names after the schedule: the event the
-/// asking run runs, so every retry of one run is one run, across a reclaim.
+/// What a run-now's turn key names after the schedule: the event the
+/// asking run runs, so every retry of one run is one run, across a reassignment.
 const RUN_KEY_PREFIX: &str = "run:";
 
 /// Fires a schedule of the fleet's now.

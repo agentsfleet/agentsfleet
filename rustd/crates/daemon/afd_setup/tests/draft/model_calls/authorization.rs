@@ -82,7 +82,7 @@ async fn credential_revocation_denies_completed_result_replay() {
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn losing_tool_support_after_admission_prevents_physical_dispatch() {
+async fn losing_tool_support_after_assignment_prevents_physical_dispatch() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
@@ -98,7 +98,7 @@ async fn losing_tool_support_after_admission_prevents_physical_dispatch() {
         .bind(sqlx::types::Json(settings))
         .execute(&mut *f.connection().await)
         .await
-        .expect("remove proposal tool support after admission");
+        .expect("remove proposal tool support after assignment");
     let error = calls
         .call(&f.runner, &attempt.run, fixture::request(&attempt))
         .await

@@ -1,10 +1,10 @@
-//! §7 against live datastores — an empty claim commits none of the four.
+//! §7 against live datastores — an empty assignment commits none of the four.
 //!
 //! Dimension 7.3's other half. The fence is what a transaction could silently
-//! break: wrap four writes around a claim and it is easy to end up committing
-//! the three that carry no guard of their own. Both cases here drive a claim
+//! break: wrap four writes around an assignment and it is easy to end up committing
+//! the three that carry no guard of their own. Both cases here drive an assignment
 //! that matches no row and assert the same emptiness; what differs is WHY the
-//! claim missed, which is the distinction the disposition read exists to make
+//! assignment missed, which is the distinction the disposition read exists to make
 //! and the reason neither is answered the way a settled run is.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
@@ -38,14 +38,14 @@ async fn test_a_superseded_report_commits_nothing() {
     // The holder dies and its work is taken back, which bumps the fleet's
     // fencing sequence past the token the first run carries.
     held.fixtures
-        .age(Row::Slot(&held.fleet), "run_expires_at", LAPSE)
+        .age(Row::Thread(&held.fleet), "run_expires_at", LAPSE)
         .await;
-    let reclaimed = crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
+    let reassigned = crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
         .await
-        .expect("a lapsed claim is winnable");
+        .expect("a lapsed assignment is winnable");
     assert!(
-        reclaimed.fence > held.fence,
-        "the reclaim must outrank the holder it displaced, or this test proves nothing"
+        reassigned.fence > held.fence,
+        "the reassignment must outrank the holder it displaced, or this test proves nothing"
     );
 
     let fenced = runs
@@ -65,7 +65,7 @@ async fn test_a_superseded_report_commits_nothing() {
     );
     assert_nothing_landed(&held, "a superseded holder writes none of the four").await;
 
-    // The same empty claim for a different reason: the retention sweep removed
+    // The same empty assignment for a different reason: the retention sweep removed
     // the row while this very late report was in flight. There is nothing left
     // to report against and nothing stored to hand back, so it is refused like
     // a lost fence rather than acknowledged like a settled run.

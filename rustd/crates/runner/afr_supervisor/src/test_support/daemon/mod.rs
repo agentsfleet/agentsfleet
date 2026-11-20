@@ -143,7 +143,7 @@ where
     ) -> crate::Result<()> {
         self.0
             .send(Call {
-                verb: crate::client::Verb::Activity,
+                verb: crate::client::Verb::Progress,
                 path: std::borrow::Cow::Borrowed(af_wire::paths::RUNNER_STREAM),
                 body: Some(bytes::Bytes::from(
                     serde_json::to_vec(request).map_err(error::encode)?,

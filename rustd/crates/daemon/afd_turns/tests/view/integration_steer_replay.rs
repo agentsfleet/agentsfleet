@@ -24,7 +24,7 @@ use afd_turns::view::disposition::{Placed, SteerDisposition};
 use afd_turns::view::{ACTOR_MACHINE, Steer};
 use tracing::Level;
 
-use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with};
+use crate::integration_steer_retry::{REQUEST_JSON, append_with, turns_for};
 use crate::support::TurnsLane;
 use af_core::test_util::trace::Capture;
 
@@ -53,16 +53,16 @@ async fn test_operation_ids_are_scoped_to_the_fleet() {
     let first = TurnsLane::open().await;
     let second = TurnsLane::open().await;
 
-    let on_first = append_with(&Steer::new(first.admissions()), &first, Some(OPERATION)).await;
-    let on_second = append_with(&Steer::new(second.admissions()), &second, Some(OPERATION)).await;
+    let on_first = append_with(&Steer::new(first.turns()), &first, Some(OPERATION)).await;
+    let on_second = append_with(&Steer::new(second.turns()), &second, Some(OPERATION)).await;
 
     assert_ne!(
         on_first, on_second,
         "one id on two fleets must not answer with the other fleet's event -- \
          the unique key is global, so the fleet has to be inside it"
     );
-    assert_eq!(admissions_for(&first, OPERATION).await, 1);
-    assert_eq!(admissions_for(&second, OPERATION).await, 1);
+    assert_eq!(turns_for(&first, OPERATION).await, 1);
+    assert_eq!(turns_for(&second, OPERATION).await, 1);
 }
 
 /// A ledger whose deployment ceiling is spent: nothing new is admitted.
@@ -70,7 +70,7 @@ async fn test_operation_ids_are_scoped_to_the_fleet() {
 /// A ceiling of zero rather than a small count, because the estimate samples
 /// the whole lane's rows and a parallel suite could cross a count first.
 fn spent(lane: &TurnsLane) -> Steer {
-    Steer::new(lane.admissions().with_budgets(Budgets {
+    Steer::new(lane.turns().with_budgets(Budgets {
         deployment_backlog: 0,
     }))
 }
@@ -81,7 +81,7 @@ fn spent(lane: &TurnsLane) -> Steer {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replay_bypasses_the_deployment_ceiling() {
     let lane = TurnsLane::open().await;
-    let admitted = append_with(&Steer::new(lane.admissions()), &lane, Some(OPERATION)).await;
+    let admitted = append_with(&Steer::new(lane.turns()), &lane, Some(OPERATION)).await;
     let steer = spent(&lane);
     // The ceiling is now spent. The retry is the same message, already
     // accepted, and must be answered as such: the first event, marked a replay.
@@ -117,8 +117,8 @@ async fn test_replay_bypasses_the_deployment_ceiling() {
         refused.is_datastore_unavailable(),
         "a spent budget invites the retry an outage does: {refused}"
     );
-    assert_eq!(admissions_for(&lane, FRESH_OPERATION).await, 0);
-    // A steer without an id names no admission to repeat, so the capacity
+    assert_eq!(turns_for(&lane, FRESH_OPERATION).await, 0);
+    // A steer without an id names no turn to repeat, so the capacity
     // refusal stands.
     let keyless = steer
         .append(
@@ -143,7 +143,7 @@ async fn test_replay_bypasses_the_deployment_ceiling() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_drift_under_spent_budget_is_a_conflict() {
     let lane = TurnsLane::open().await;
-    append_with(&Steer::new(lane.admissions()), &lane, Some(OPERATION)).await;
+    append_with(&Steer::new(lane.turns()), &lane, Some(OPERATION)).await;
     let steer = spent(&lane);
     let refused = steer
         .append(
@@ -156,23 +156,23 @@ async fn test_drift_under_spent_budget_is_a_conflict() {
         .await
         .expect_err("a changed message under a reused id is refused");
     assert!(refused.is_operation_conflict(), "{refused}");
-    assert_eq!(admissions_for(&lane, OPERATION).await, 1);
+    assert_eq!(turns_for(&lane, OPERATION).await, 1);
 }
 
 /// A row the ledger will not take is the caller's error: neither a capacity
 /// refusal to retry nor a repeat to answer.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_an_admission_the_ledger_refuses_is_an_error() {
+async fn test_a_turn_the_ledger_refuses_is_an_error() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
 
-    // No fleet row holds this id, so the admission's foreign key refuses it.
+    // No fleet row holds this id, so the turn's foreign key refuses it.
     let unheld = mint_id();
     let refused = steer
         .append(&unheld, &lane.workspace, ACTOR_MACHINE, REQUEST_JSON, None)
         .await
-        .expect_err("an admission for a fleet the ledger does not hold is refused");
+        .expect_err("a turn for a fleet the ledger does not hold is refused");
     assert!(!refused.is_operation_conflict(), "{refused}");
     assert!(
         !refused.is_datastore_unavailable(),
@@ -185,7 +185,7 @@ async fn test_an_admission_the_ledger_refuses_is_an_error() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_payload_drift_is_refused() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
 
     let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
     let logs = Capture::install();
@@ -235,7 +235,7 @@ async fn test_payload_drift_is_refused() {
     );
     assert_eq!(refused.code(), error_code::AGENTSFLEET_OPERATION_CONFLICT);
     assert_eq!(
-        admissions_for(&lane, OPERATION).await,
+        turns_for(&lane, OPERATION).await,
         1,
         "the refusal admits nothing: one row, the first message's"
     );
@@ -304,8 +304,8 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
     }
     // The twin lands through the holder's own transaction, then the lock goes.
     let key = [lane.fleet.as_str(), operation].join(crate::integration_steer_retry::KEY_SEPARATOR);
-    let admissions = lane.admissions();
-    let prepared = admissions
+    let turns = lane.turns();
+    let prepared = turns
         .prepare(afd_turns::IncomingTurn {
             producer: afd_turns::Producer::Steer,
             key: afd_turns::Key::Repeated(&key),
@@ -318,7 +318,7 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
         })
         .await
         .expect("prepare the twin");
-    let twin = admissions
+    let twin = turns
         .stage(&mut hold, prepared)
         .await
         .expect("stage the twin");
@@ -339,5 +339,5 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
             folded_into_turn_id: None,
         }
     );
-    assert_eq!(admissions_for(&lane, operation).await, 1);
+    assert_eq!(turns_for(&lane, operation).await, 1);
 }

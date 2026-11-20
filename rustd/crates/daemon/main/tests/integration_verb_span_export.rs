@@ -240,7 +240,7 @@ async fn test_event_identity_joins_the_verb_spans() {
         (
             semconv::SPAN_FLEET_ASSIGN,
             [
-                semconv::ATTR_ASSIGN_CLAIM_MS,
+                semconv::ATTR_ASSIGN_SELECT_MS,
                 semconv::ATTR_ASSIGN_ADMIT_MS,
                 semconv::ATTR_ASSIGN_ISSUE_MS,
                 semconv::ATTR_ASSIGN_ENCODE_MS,
@@ -282,7 +282,7 @@ async fn test_event_identity_joins_the_verb_spans() {
 }
 
 /// Once the one event is reported, the gateway's later assignment passes select
-/// nothing and record nothing: every assignment span reached `claim`, and only one
+/// nothing and record nothing: every assignment span reached `select`, and only one
 /// names this chat's event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -300,7 +300,7 @@ async fn test_empty_assignment_pass_records_no_span() {
     let assignments: Vec<_> = exported.named(semconv::SPAN_FLEET_ASSIGN).collect();
     for assignment in &assignments {
         assert!(
-            attribute(assignment, semconv::ATTR_ASSIGN_CLAIM_MS).is_some(),
+            attribute(assignment, semconv::ATTR_ASSIGN_SELECT_MS).is_some(),
             "an empty pass recorded a span: {assignment:?}"
         );
     }

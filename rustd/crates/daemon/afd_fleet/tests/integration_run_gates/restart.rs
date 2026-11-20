@@ -25,11 +25,11 @@ async fn fresh_issue_and_unissued_reservation_publish_no_restart() -> Checked {
     chat.run(&chat.runner, clock::now()).await;
     assert_eq!(restarts(&chat, &mut reader).await?, [] as [Value; 0]);
     expire(&chat).await?;
-    let claimed = chat
-        .claim(&chat.spare)
+    let assigned = chat
+        .assign(&chat.spare)
         .await
         .ok_or("replacement reservation")?;
-    assert_eq!(claimed.kind, Kind::Reclaim);
+    assert_eq!(assigned.kind, Kind::Reassigned);
     assert_eq!(restarts(&chat, &mut reader).await?, [] as [Value; 0]);
     assert_eq!(issued(&chat).await?, 1);
     drop(reader);
@@ -39,7 +39,7 @@ async fn fresh_issue_and_unissued_reservation_publish_no_restart() -> Checked {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn one_hundred_contending_claimers_publish_one_committed_restart() -> Checked {
+async fn one_hundred_contending_runners_publish_one_committed_restart() -> Checked {
     let chat = Chat::open().await;
     let event = chat
         .ask(TurnKind::Chat, "Resume interrupted work", clock::now())
@@ -51,22 +51,22 @@ async fn one_hundred_contending_claimers_publish_one_committed_restart() -> Chec
         .bus()
         .subscribe(&Subject::ThreadItems(chat.fleet().clone()))
         .await?;
-    let claims: Vec<_> = join_all((0..100).map(|_| chat.claim(&chat.spare)))
+    let assignments: Vec<_> = join_all((0..100).map(|_| chat.assign(&chat.spare)))
         .await
         .into_iter()
         .flatten()
         .collect();
-    assert_eq!(claims.len(), 1);
-    let selected = claims
+    assert_eq!(assignments.len(), 1);
+    let selected = assignments
         .into_iter()
         .next()
         .ok_or("one replacement reservation")?;
-    assert_eq!(selected.kind, Kind::Reclaim);
+    assert_eq!(selected.kind, Kind::Reassigned);
     assert_eq!(restarts(&chat, &mut reader).await?, [] as [Value; 0]);
     let reply = chat
         .fixtures
         .plane()
-        .claim_selected(selected.clone(), &chat.spare, clock::now())
+        .assign_selected(selected.clone(), &chat.spare, clock::now())
         .await?;
     assert!(reply.is_some());
     let frames = restarts(&chat, &mut reader).await?;
@@ -96,8 +96,11 @@ async fn an_issue_refused_after_reservation_publishes_no_restart() -> Checked {
         .await;
     chat.run(&chat.runner, clock::now()).await;
     expire(&chat).await?;
-    let selected = chat.claim(&chat.spare).await.ok_or("replacement claim")?;
-    assert_eq!(selected.kind, Kind::Reclaim);
+    let selected = chat
+        .assign(&chat.spare)
+        .await
+        .ok_or("replacement assignment")?;
+    assert_eq!(selected.kind, Kind::Reassigned);
     sqlx::query(
         "UPDATE runner.runners SET cordon_reason=$2,cordoned_at=clock_timestamp() WHERE id=$1",
     )
@@ -113,7 +116,7 @@ async fn an_issue_refused_after_reservation_publishes_no_restart() -> Checked {
     let answer = chat
         .fixtures
         .plane()
-        .claim_selected(selected, &chat.spare, clock::now())
+        .assign_selected(selected, &chat.spare, clock::now())
         .await?;
     assert!(answer.is_none());
     assert_eq!(restarts(&chat, &mut reader).await?, [] as [Value; 0]);

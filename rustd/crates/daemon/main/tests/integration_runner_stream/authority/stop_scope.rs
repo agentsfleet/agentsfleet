@@ -11,9 +11,9 @@ use afd_auth::{credential::CredentialKind, minted::Minted};
 use afd_db::test_util::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed, mint_id};
 
 // Value: protects=a queued turn Stop cancels is never assigned;
-// fails_when=the claim still takes a cancelled turn;
+// fails_when=the assignment still takes a cancelled turn;
 // why_new=no route cancelled a fleet turn before §8;
-// seam=the HTTP PATCH, then the production claim over a real native connection.
+// seam=the HTTP PATCH, then the production assignment over a real native connection.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn stopping_a_queued_turn_cancels_it_without_a_run() -> TestResult {

@@ -190,7 +190,7 @@ async fn blocked(case: &Case) {
     due(&fixture, std::slice::from_ref(&call)).await;
     let (database, tasks) = super::timeouts::single_connection(&fixture).await;
     let backing = &case.held.fixtures.database;
-    let mut connection = backing.acquire().await.expect("slot blocker");
+    let mut connection = backing.acquire().await.expect("fleet table blocker");
     let mut blocker = connection.begin().await.expect("owned transaction");
     sqlx::query("LOCK TABLE fleet.fleets IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *blocker)
@@ -223,7 +223,7 @@ async fn blocked(case: &Case) {
     blocker
         .rollback()
         .await
-        .expect("release independent slot lock");
+        .expect("release independent fleet table lock");
     let swept = timeout(
         Duration::from_secs(5),
         tasks.maintain_decisions(&mut DecisionMaintenanceCursor::default()),

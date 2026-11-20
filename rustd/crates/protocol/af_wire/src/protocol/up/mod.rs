@@ -179,7 +179,7 @@ pub enum Up<
         #[garde(skip)]
         request: Box<Cow<'a, ReportRequest<'a>>>,
     },
-    /// Claim pending inputs at a model-call boundary under the run fence.
+    /// Assign pending inputs at a model-call boundary under the run fence.
     Folds {
         /// Echoed by the folded-input answer.
         #[garde(skip)]

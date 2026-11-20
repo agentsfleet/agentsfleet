@@ -24,10 +24,10 @@
 //! # What the pass never does
 //!
 //! It writes no `thread.turns` row. Every outcome below is a decision the
-//! CALLER applies once — the same discipline [`Admission`](crate::run::Admission)
-//! states for the money gates, and for the same reason: a refusal that forgot
-//! its row and one that wrote it twice are both unrepresentable when the value
-//! is the only thing that decides.
+//! CALLER applies once — the same discipline the run plane's money gates
+//! follow, for the same reason: a refusal that forgot its row and one that
+//! wrote it twice are both unrepresentable when the value is the only thing
+//! that decides.
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;

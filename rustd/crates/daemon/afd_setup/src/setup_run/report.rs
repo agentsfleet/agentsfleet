@@ -98,7 +98,7 @@ pub struct SetupFinish<'a> {
 impl Creations {
     /// Locks `draft`, the owner a setup run's report settles, and reads the
     /// message `message` it ran. Run first in the report's transaction, before
-    /// the run and its slot are locked. `None` once the draft is deleted:
+    /// the run and its thread are locked. `None` once the draft is deleted:
     /// the report then settles the run and its usage and writes nothing else.
     ///
     /// # Errors

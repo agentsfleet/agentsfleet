@@ -120,7 +120,7 @@ impl Healthy {
             // A healthy daemon with no message waiting for the run.
             Some(Verb::Folds) => value(&FoldResponse::default()),
             Some(
-                Verb::Activity
+                Verb::Progress
                 | Verb::Report
                 | Verb::Mint
                 | Verb::ScheduleCreate
@@ -131,7 +131,7 @@ impl Healthy {
                 | Verb::ScheduleRuns
                 | Verb::Message
                 | Verb::FleetList
-                | Verb::FleetEvents
+                | Verb::FleetTurns
                 | Verb::FleetSteer,
             )
             | None => value(&ReportResponse { ok: true, hold: None }),

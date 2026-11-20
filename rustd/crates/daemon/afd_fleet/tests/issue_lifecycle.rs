@@ -1,4 +1,4 @@
-//! A selected admission cannot acquire execution after its fleet was archived.
+//! A selected turn cannot acquire execution after its fleet was archived.
 
 use std::time::Duration;
 

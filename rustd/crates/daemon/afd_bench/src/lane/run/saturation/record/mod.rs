@@ -28,10 +28,10 @@ const CHAT_RUNS: &str = "chat_runs";
 /// Measurement key: fleet runs issued.
 const FLEET_RUNS: &str = "fleet_runs";
 
-/// Measurement key: claims made, run or not.
-const CLAIMS: &str = "claims";
+/// Measurement key: assignments made, run or not.
+const ASSIGNMENTS: &str = "assignments";
 
-/// Measurement key: claims and renewals the path refused.
+/// Measurement key: assignments and renewals the path refused.
 const FAILURES: &str = "failures";
 
 /// Measurement key: chat renewals the path accepted.
@@ -133,7 +133,7 @@ impl Window {
         let mut put = |key: &str, value: f64| report.measurement(key, value);
         put(CHAT_RUNS, count(self.tally.chat));
         put(FLEET_RUNS, count(self.tally.fleet));
-        put(CLAIMS, count(self.tally.claims));
+        put(ASSIGNMENTS, count(self.tally.assignments));
         put(FAILURES, count(self.tally.failures));
         put(RENEWALS, count(self.tally.renewals));
         put(SLOW_HOLDS, count(self.slow_holds));

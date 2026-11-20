@@ -76,9 +76,9 @@ async fn every_pass_runs_every_round_in_the_order_given() {
     let trace: Trace = Arc::default();
     let reconcile = Recording::new("reconcile", &trace, Some(swept(3, 1)));
     let replay = Recording::new("replay", &trace, Some(swept(5, 2)));
-    let reclaim = Recording::new("reclaim", &trace, Some(swept(7, 7)));
+    let expire = Recording::new("expire", &trace, Some(swept(7, 7)));
 
-    let tally = rebuild(&[&reconcile, &replay, &reclaim], 2)
+    let tally = rebuild(&[&reconcile, &replay, &expire], 2)
         .await
         .expect("no pass fails");
 
@@ -87,10 +87,10 @@ async fn every_pass_runs_every_round_in_the_order_given() {
         [
             "reconcile",
             "replay",
-            "reclaim",
+            "expire",
             "reconcile",
             "replay",
-            "reclaim"
+            "expire"
         ],
         "a round is the passes in the order given, and a rebuild is the rounds in order"
     );

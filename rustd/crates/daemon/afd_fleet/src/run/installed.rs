@@ -1,18 +1,18 @@
-//! The claim read: what a fleet IS, at the moment a runner takes its slot.
-//! Beside it, the renewal's ceiling read (`Runs::stored_config`), which
-//! reads the same stored config whatever the fleet's status.
+//! The assignment read: what a fleet IS when a runner takes its thread.
+//! Beside it, the renewal's ceiling read (`Runs::stored_config`) reads
+//! the same stored config whatever the fleet's status.
 //!
-//! The claim read is one statement, run once per claim. [`super::assign`] has
-//! already decided WHICH fleet; this reads the installed shape that fleet's
-//! run is built from — the config the gates judge against, the prose the run
-//! is given, and the session it continues.
+//! The assignment read is one statement, run once per assignment.
+//! [`super::assign`] has already decided WHICH fleet; this reads the
+//! installed shape that fleet's run is built from — the config the gates
+//! judge against, the prose the run is given, and the session it continues.
 //!
 //! # Why the parse is cached by revision id and nothing else
 //!
 //! A fleet's config is what the money gates price, what the approval gate
 //! judges, and what the execution policy is assembled from. An operator who
 //! narrows a fleet's tools or lowers its budget expects the NEXT run to obey
-//! the change. The claim read returns the revision id beside the document, and
+//! the change. The assignment read returns the revision id beside the document, and
 //! the parse is cached under that id ([`crate::run::cache`]). Revisions are
 //! append-only, so a cached entry can only answer for the document it was
 //! parsed from, and an edit is a new head revision whose id misses. A cache on
@@ -28,7 +28,7 @@ use crate::run::sql;
 use crate::run::store::Runs;
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_INSTALLED: &str = "fleet claim read";
+const CONTEXT_INSTALLED: &str = "fleet assignment read";
 
 /// Statement name for the renewal's ceiling read.
 const CONTEXT_STORED_CONFIG: &str = "fleet ceiling read";
@@ -89,7 +89,7 @@ impl Runs {
     /// not a missing row: the selection pass filters on status, so reaching
     /// here with a fleet that is not active means it was archived in the
     /// window between selection and this read. The caller answers no-work and
-    /// the claim lapses on its own, as it does for every archived fleet.
+    /// the assignment lapses on its own, as it does for every archived fleet.
     ///
     /// A fleet whose row is gone answers `None` for the same reason: there is
     /// nothing to run and nothing for an operator to fix.
@@ -126,14 +126,14 @@ impl Runs {
         }
     }
 
-    /// The fleet the claim statement read, as installed. The claim admits only
+    /// The fleet the assignment statement read, as installed. The assignment admits only
     /// an active fleet, so this answers `None` only for a row this daemon would
     /// not run either.
     ///
     /// # Errors
     /// As [`Self::installed`]: an unreadable document, a setup this daemon
     /// cannot run, or a task whose accepted setup no longer fits.
-    pub(crate) async fn installed_claimed(
+    pub(crate) async fn installed_assigned(
         &self,
         opened: &crate::run::envelope::Opened,
     ) -> Result<Option<Installed>> {
@@ -200,7 +200,7 @@ impl Runs {
 
     /// The config stored for `fleet_id` now, whatever the fleet's status.
     ///
-    /// The renewal's ceiling read, beside the claim read above. Unlike
+    /// The renewal's ceiling read, beside the assignment read above. Unlike
     /// [`Self::installed`], an archived fleet still answers: a run in flight
     /// keeps renewing under the fleet's stored ceiling, so the ceiling has to
     /// stay readable after the fleet is archived; an archived fleet's config
@@ -245,7 +245,7 @@ pub(crate) fn parse_for_save(document: &str) -> Result<Definition> {
 }
 
 /// [`sql::fleet::SELECT_FLEET_WITH_THREAD`]'s row, and the same columns of
-/// the claim statement's: the fleet, its head revision and its session, each
+/// the assignment statement's: the fleet, its head revision and its session, each
 /// revision column absent until one is installed.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub(crate) struct FleetWithSession {

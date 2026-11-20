@@ -47,7 +47,7 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
             outcome.original_event.clone(),
             afd_runner::sql::RUN_STATUS_EXPIRED.to_owned()
         ),
-        "{order}: re-admission retires the original holder's row"
+        "{order}: reassignment retires the original holder's row"
     );
     assert_eq!(
         live_holders(running).await,
@@ -57,7 +57,7 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
     assert_eq!(
         event_runs(running, outcome.original_event).await,
         2,
-        "{order}: one expired and one re-admitted run; no third admission"
+        "{order}: one expired and one reassigned run; no third assignment"
     );
     assert_host_full(running, order).await;
     let pricing = afd_fleet::run::usage::Pricing::load(
@@ -106,8 +106,8 @@ async fn event_runs(running: &Running, event: &Uuid7) -> i64 {
         .expect("runs for the event")
 }
 
-/// The census both admission paths lock before admitting — fleet issue and
-/// authoring claim alike — reports a full host that refuses another run.
+/// The census both assignment paths lock before assigning — fleet issue and
+/// authoring assignment alike — reports a full host that refuses another run.
 pub(super) async fn assert_host_full(running: &Running, order: &str) {
     let mut connection = running.fixtures.database.acquire().await.expect("census");
     let (workers, occupied): (i64, i64) = sqlx::query_as(HOST_OCCUPANCY)
@@ -125,12 +125,15 @@ pub(super) async fn assert_host_full(running: &Running, order: &str) {
     let capacity = afd_runner::capacity::lock(
         &mut tx,
         &running.runner,
-        afd_runner::capacity::Claimant::Existing,
+        afd_runner::capacity::Work::Existing,
         None,
     )
     .await
     .expect("lock host")
     .expect("host exists");
-    assert!(!capacity.can_claim(), "{order}: no further admission fits");
+    assert!(
+        !capacity.can_assign(),
+        "{order}: no further assignment fits"
+    );
     tx.rollback().await.expect("release census");
 }

@@ -2,12 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The durable objective's state, independent of its current admission.
+/// The durable objective's state, independent of its current turn.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskState {
-    /// Eligible for one existing admission/run attempt.
+    /// Eligible for one run of an existing turn.
     Ready,
     /// A current run is advancing this objective.
     Running,

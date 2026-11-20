@@ -3,7 +3,7 @@
 //! Split from `integration_steer_replay.rs` at the length cap. The read-back
 //! that answers a repeat is not atomic with the insert, so two sends can both
 //! reach the insert; these prove the ledger's unique key, and the read-back the
-//! steer layer runs when the insert meets a row, still give one admission and
+//! steer layer runs when the insert meets a row, still give one turn and
 //! one honest answer each. The last two prove a key never answers with an
 //! event that belongs to another caller or another fleet.
 //!
@@ -19,7 +19,7 @@ use afd_turns::view::{ACTOR_MACHINE, Steer};
 use afd_turns::{IncomingTurn, Key, Producer, Reply};
 
 use crate::integration_steer_replay::{CHANGED_JSON, OPERATION};
-use crate::integration_steer_retry::{KEY_SEPARATOR, REQUEST_JSON, admissions_for, append_with};
+use crate::integration_steer_retry::{KEY_SEPARATOR, REQUEST_JSON, append_with, turns_for};
 use crate::support::TurnsLane;
 
 /// Rounds of two concurrent sends per race test: enough that the two reach
@@ -35,7 +35,7 @@ const OTHER_ACTOR: &str = "steer:user_other";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_racing_repeats_admit_once() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     for round in 0..RACE_ROUNDS {
         let operation = format!("{OPERATION}-same-{round}");
         let (first, second) = tokio::join!(
@@ -43,7 +43,7 @@ async fn test_racing_repeats_admit_once() {
             append_with(&steer, &lane, Some(&operation)),
         );
         assert_eq!(first, second, "round {round}: one id, one event");
-        assert_eq!(admissions_for(&lane, &operation).await, 1, "round {round}");
+        assert_eq!(turns_for(&lane, &operation).await, 1, "round {round}");
     }
 }
 
@@ -53,7 +53,7 @@ async fn test_racing_repeats_admit_once() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_racing_drift_is_refused() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     for round in 0..RACE_ROUNDS {
         let operation = format!("{OPERATION}-drift-{round}");
         let outcomes: [_; 2] = tokio::join!(
@@ -83,7 +83,7 @@ async fn test_racing_drift_is_refused() {
             })
             .count();
         assert_eq!((admitted, refused), (1, 1), "round {round}: {outcomes:?}");
-        assert_eq!(admissions_for(&lane, &operation).await, 1, "round {round}");
+        assert_eq!(turns_for(&lane, &operation).await, 1, "round {round}");
     }
 }
 
@@ -93,7 +93,7 @@ async fn test_racing_drift_is_refused() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_reused_id_by_another_caller_is_refused() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     append_with(&steer, &lane, Some(OPERATION)).await;
     let refused = steer
         .append(
@@ -106,7 +106,7 @@ async fn test_reused_id_by_another_caller_is_refused() {
         .await
         .expect_err("another caller's reuse is refused");
     assert!(refused.is_operation_conflict(), "{refused}");
-    assert_eq!(admissions_for(&lane, OPERATION).await, 1);
+    assert_eq!(turns_for(&lane, OPERATION).await, 1);
 }
 
 /// A row some other fleet holds under the key a steer composes is refused, not
@@ -119,7 +119,7 @@ async fn test_a_key_another_fleet_holds_is_refused() {
     // A row admitted for one fleet whose key spells the other fleet's.
     let foreign_key = [steered.fleet.as_str(), OPERATION].join(KEY_SEPARATOR);
     holder
-        .admissions()
+        .turns()
         .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(&foreign_key),
@@ -132,7 +132,7 @@ async fn test_a_key_another_fleet_holds_is_refused() {
         })
         .await
         .expect("the holder's row is admitted");
-    let refused = Steer::new(steered.admissions())
+    let refused = Steer::new(steered.turns())
         .append(
             &steered.fleet,
             &steered.workspace,
@@ -157,7 +157,7 @@ const RACING_REPEATS: usize = 100;
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
     let lane = std::sync::Arc::new(TurnsLane::open().await);
-    let steer = std::sync::Arc::new(Steer::new(lane.admissions()));
+    let steer = std::sync::Arc::new(Steer::new(lane.turns()));
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(CONCURRENT_SENDS));
     let mut sends = tokio::task::JoinSet::new();
     for _ in 0..CONCURRENT_SENDS {
@@ -198,7 +198,7 @@ async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_hundred_racing_repeats_admit_one_row() {
     let lane = std::sync::Arc::new(TurnsLane::open().await);
-    let steer = std::sync::Arc::new(Steer::new(lane.admissions()));
+    let steer = std::sync::Arc::new(Steer::new(lane.turns()));
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(RACING_REPEATS));
     let operation = format!("{OPERATION}-hundred");
     let mut sends = tokio::task::JoinSet::new();
@@ -219,5 +219,5 @@ async fn test_a_hundred_racing_repeats_admit_one_row() {
         events.insert(sent.expect("a send task"));
     }
     assert_eq!(events.len(), 1, "one key, one event: {events:?}");
-    assert_eq!(admissions_for(&lane, &operation).await, 1);
+    assert_eq!(turns_for(&lane, &operation).await, 1);
 }

@@ -1,4 +1,4 @@
-//! Financial settlement exhausts original limits without minting another admission.
+//! Financial settlement exhausts original limits without minting another turn.
 use super::{
     fixture::{Case, exercise, id},
     report_settlement::request,
@@ -172,16 +172,16 @@ async fn report_after_preparation_deadline(
         .acquire()
         .await
         .expect("commit barrier");
-    // The report statement locks the fleet's slot before it measures the
-    // slice; holding the slot holds the report there.
-    let mut held = connection.begin().await.expect("slot barrier");
+    // The report statement locks the fleet's thread before it measures the
+    // slice; holding the thread holds the report there.
+    let mut held = connection.begin().await.expect("thread barrier");
     let pid: i32 = sqlx::query_scalar(
         "SELECT pg_backend_pid() FROM thread.threads WHERE fleet_id=$1 FOR UPDATE",
     )
     .bind(&case.scope.fleet_id)
     .fetch_one(&mut *held)
     .await
-    .expect("hold the report's slot row");
+    .expect("hold the report's thread row");
     let mut untimed = af_observability::verb_span::VerbClock::untimed();
     let reporting = plane.report_with(&case.held.runner, report, now, None, &mut untimed);
     let release = async {
@@ -220,7 +220,7 @@ async fn observe_report_commit(case: &Case, pid: i32) {
                     .expect("report lock observer"),
             )
             .await
-            .expect("native commit slot lock wait");
+            .expect("native commit thread lock wait");
             if blocked {
                 break;
             }
@@ -256,7 +256,7 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
                 .expect("producer"),
         )
         .await
-        .expect("the admission asks for its answer on a thread");
+        .expect("the turn asks for its answer on a thread");
         let task = bind(
             case,
             TaskLimits {

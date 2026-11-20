@@ -1,4 +1,4 @@
-//! Ledger claims use real runtime-role transactions and a bus that never answers.
+//! Ledger assignments use real runtime-role transactions and a bus that never answers.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -20,7 +20,7 @@ mod delivery;
 mod ordering;
 mod parking;
 mod parking_commit;
-mod reclaim;
+mod reassignment;
 mod recovery_page;
 mod settlement;
 
@@ -36,8 +36,8 @@ const FINISH: &str = "UPDATE thread.turns SET settled_at = now() WHERE id = $1";
 const STAMPS: &str = "SELECT a.run_fence, s.fencing_token FROM thread.turns a \
     LEFT JOIN thread.threads s ON s.fleet_id = a.thread_id WHERE a.id = $1";
 const LOCK: &str = "SELECT id FROM thread.turns WHERE id = $1 FOR UPDATE";
-/// The fence a fleet's thread holds before its first claim.
-const UNCLAIMED: Option<i64> = Some(0);
+/// The fence a fleet's thread holds before its first assignment.
+const UNASSIGNED: Option<i64> = Some(0);
 
 async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7 {
     let id = afd_db::test_util::mint_id();
@@ -72,14 +72,14 @@ async fn stamps(fixtures: &Fixtures, event: &Uuid7) -> (Option<i64>, Option<i64>
                 .expect("runtime connection"),
         )
         .await
-        .expect("queue and slot fences")
+        .expect("queue and thread fences")
 }
 
 async fn next(runs: &Runs, runner: &Uuid7) -> Option<Acquired> {
     tokio::time::timeout(WITHIN, runs.select(runner, &[]))
         .await
-        .expect("claim never waits on the admission head")
-        .expect("valid claim")
+        .expect("assignment never waits on the turn head")
+        .expect("valid assignment")
 }
 
 #[tokio::test]
@@ -92,7 +92,7 @@ async fn test_fleet_rows_run_in_order_behind_a_park() {
     for _ in 0..3 {
         events.push(enqueue(&fixtures, &fleet, &workspace).await);
     }
-    let head = events.first().expect("three admissions");
+    let head = events.first().expect("three turns");
     parking::seed_gate(&fixtures, &fleet, &workspace).await;
     let mut connection = fixtures
         .database
@@ -109,7 +109,7 @@ async fn test_fleet_rows_run_in_order_behind_a_park() {
         next(&runs, &runner).await.is_none(),
         "park holds later rows"
     );
-    assert_eq!(stamps(&fixtures, head).await, (None, UNCLAIMED));
+    assert_eq!(stamps(&fixtures, head).await, (None, UNASSIGNED));
     sqlx::query(PARK)
         .bind(head)
         .bind(false)
@@ -139,12 +139,12 @@ async fn finish(runs: &Runs, connection: &mut sqlx::PgConnection, acquired: Acqu
         .expect("fixture settled");
     runs.release(&acquired.fleet_id, acquired.fence)
         .await
-        .expect("slot free");
+        .expect("thread free");
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
+async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_thread() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
@@ -164,8 +164,8 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
     assert!(next(&runs, &runner).await.is_none());
     assert_eq!(
         stamps(&fixtures, &head).await,
-        (None, UNCLAIMED),
-        "empty claim rolls the slot back"
+        (None, UNASSIGNED),
+        "empty assignment rolls the thread back"
     );
     transaction.rollback().await.expect("unlock head");
     assert_eq!(
@@ -179,12 +179,12 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
+async fn test_assignment_decode_fault_rolls_back_both_the_fence_and_the_turn() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     // Postgres accepts this timestamp, while the application timestamp bridge
-    // refuses it. Failure occurs after slot and admission updates in the query.
+    // refuses it. Failure occurs after thread and turn updates in the query.
     let mut connection = fixtures
         .database
         .acquire()
@@ -199,19 +199,21 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
     let refused = runs
         .select(&runner, &[])
         .await
-        .expect_err("invalid timestamp refuses claim");
+        .expect_err("invalid timestamp refuses assignment");
     assert!(
-        refused.to_string().contains("admissions ledger claim"),
+        refused.to_string().contains("turn ledger assignment"),
         "{refused}"
     );
-    assert_eq!(stamps(&fixtures, &event).await, (None, UNCLAIMED));
+    assert_eq!(stamps(&fixtures, &event).await, (None, UNASSIGNED));
     sqlx::query("UPDATE thread.turns SET created_at = $2 WHERE id = $1")
         .bind(&event)
         .bind(fixtures.enrolled_at().to_sqlx())
         .execute(&mut *connection)
         .await
         .expect("remove injected fault");
-    let acquired = next(&runs, &runner).await.expect("no leaked lock or slot");
+    let acquired = next(&runs, &runner)
+        .await
+        .expect("no leaked lock or thread");
     assert_eq!(acquired.fence.as_i64(), 1);
     assert_eq!(stamps(&fixtures, &event).await, (Some(1), Some(1)));
     drop(connection);
@@ -221,12 +223,12 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_locked_slot_is_skipped_without_changing_the_admission() {
+async fn a_locked_thread_is_skipped_without_changing_the_turn() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let runs = fixtures.runs_with_dead_bus();
-    let first = next(&runs, &runner).await.expect("first claim");
+    let first = next(&runs, &runner).await.expect("first assignment");
     let mut connection = fixtures.database.acquire().await.expect("database");
     sqlx::query(
         "UPDATE thread.threads SET run_expires_at = now()-interval '1 second' WHERE fleet_id=$1",
@@ -234,23 +236,23 @@ async fn a_locked_slot_is_skipped_without_changing_the_admission() {
     .bind(&fleet)
     .execute(&mut *connection)
     .await
-    .expect("expire slot");
+    .expect("expire thread");
     let mut lock = connection.begin().await.expect("lock transaction");
     sqlx::query("SELECT fleet_id FROM thread.threads WHERE fleet_id=$1 FOR UPDATE")
         .bind(&fleet)
         .execute(&mut *lock)
         .await
-        .expect("hold slot");
+        .expect("hold thread");
     assert!(next(&runs, &runner).await.is_none());
     assert_eq!(
         stamps(&fixtures, &event).await.0,
         Some(first.fence.as_i64())
     );
-    lock.rollback().await.expect("release slot");
+    lock.rollback().await.expect("release thread");
     assert!(
         next(&runs, &runner)
             .await
-            .expect("claim after release")
+            .expect("assignment after release")
             .fence
             > first.fence
     );

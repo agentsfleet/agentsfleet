@@ -110,7 +110,7 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         afd_http::openapi::path::Fleet,
         ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged."),
         ("limit" = Option<String>, Query),
-        ("event_type" = Option<String>, Query, description = "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued admissions. Omit for the mixed thread, including queued messages."),
+        ("event_type" = Option<String>, Query, description = "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued turns. Omit for the mixed thread, including queued messages."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ThreadResponse<'_>),

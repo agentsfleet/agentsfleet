@@ -39,7 +39,7 @@ const ERROR_RATE: &str = "error_rate";
 const CANDIDATES_PER_POLL: &str = "candidates_per_poll";
 
 /// Measurement key: the fraction of polls that produced no work.
-const WASTED_CLAIM_RATE: &str = "wasted_claim_rate";
+const WASTED_ASSIGNMENT_RATE: &str = "wasted_assignment_rate";
 
 /// Measurement key: whether the contended window ended at exhaustion (1) or
 /// at its deadline (0), so a reader knows which the rate is over.
@@ -119,7 +119,7 @@ async fn drive_all(
         let runner = runner.clone();
         let shared = Arc::clone(shared);
         // Per runner, because the thing under measurement is what happens when
-        // R of them reach the same admissions queue at the same instant.
+        // R of them reach the same turn queue at the same instant.
         tasks.push(tokio::spawn(async move {
             drive::poll_until(&runs, &runner, &shared).await
         }));
@@ -148,7 +148,7 @@ impl Window {
         report.measurement(FAILURES, count(self.outcomes.failures));
         report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
         report.measurement(EXHAUSTED, if self.exhausted { 1.0 } else { 0.0 });
-        report.measurement(WASTED_CLAIM_RATE, self.outcomes.wasted_fraction());
+        report.measurement(WASTED_ASSIGNMENT_RATE, self.outcomes.wasted_fraction());
         report.measurement(
             CANDIDATES_PER_POLL,
             ratio(self.counters.candidates, self.counters.polls),

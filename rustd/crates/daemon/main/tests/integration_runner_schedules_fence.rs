@@ -1,6 +1,6 @@
 //! A fleet's schedule write proves its run on the write's own transaction.
 //!
-//! The handler's standing check lets go before the write; a reclaim landing
+//! The handler's standing check lets go before the write; a reassignment landing
 //! between the two would let the old holder write. `WriteFence` proves the
 //! run again, under a shared lock on its row, on the transaction that writes.
 
@@ -17,7 +17,7 @@ use agentsfleetd::supervisor::Supervisor;
 use crate::schedules::Assigned;
 use crate::verbs::FakeQStash;
 
-/// Greptile on #731: an old holder resumed after a reclaim must not write.
+/// Greptile on #731: an old holder resumed after a reassignment must not write.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_write_fence_holds_only_for_the_live_holder() {
@@ -45,12 +45,12 @@ async fn test_a_write_fence_holds_only_for_the_live_holder() {
         "a token the run was not issued does not hold"
     );
 
-    // A reclaim moves the fleet's live sequence past the old holder's token.
+    // A reassignment moves the fleet's live sequence past the old holder's token.
     sqlx::query("UPDATE thread.threads SET fencing_token = fencing_token + 1 WHERE fleet_id = $1")
         .bind(&assigned.scene.fleet)
         .execute(&mut *connection)
         .await
-        .expect("the reclaim lands");
+        .expect("the reassignment lands");
     assert!(
         !held.holds(&mut connection).await.expect("the read answers"),
         "the superseded holder no longer holds"

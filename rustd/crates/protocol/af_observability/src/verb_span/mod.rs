@@ -70,10 +70,10 @@ stages!(
 );
 
 stages!(
-    /// An assignment that selected work, from the claim to the stream write.
+    /// An assignment that selected work, from the selection to the stream write.
     AssignStage, semconv::SPAN_FLEET_ASSIGN {
-        /// Selection and the slot claim.
-        Claim => semconv::ATTR_ASSIGN_CLAIM_MS,
+        /// Selection and the thread assignment.
+        Select => semconv::ATTR_ASSIGN_SELECT_MS,
         /// Delivery, payer, provider and gates.
         Admit => semconv::ATTR_ASSIGN_ADMIT_MS,
         /// The policy and the issue commit, or the refusal or fault that ends

@@ -1,11 +1,11 @@
 //! A run proved on the transaction of the write it guards.
 //!
 //! [`crate::run::pull::RunService::standing`] proves a run and lets go: right for
-//! a read, and wrong for a write that lands afterwards, since a reclaim can take
+//! a read, and wrong for a write that lands afterwards, since a reassignment can take
 //! the fleet in between. [`WriteFence`] proves the same run again, on the
-//! write's own transaction and under a shared lock on the run row. A reclaim,
+//! write's own transaction and under a shared lock on the run row. A reassignment,
 //! a renew and a settle each update that row, so each waits for the write to
-//! commit, and an old holder resumed after a reclaim writes nothing.
+//! commit, and an old holder resumed after a reassignment writes nothing.
 
 use std::pin::Pin;
 

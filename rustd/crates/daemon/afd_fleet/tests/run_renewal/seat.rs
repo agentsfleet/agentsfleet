@@ -1,5 +1,5 @@
 //! The held fleet's own tenant also authors: an owner, a priced model behind a
-//! sealed key, a funded wallet, and queued turns the production admission
+//! sealed key, a funded wallet, and queued turns the production assignment
 //! places on the same host as the runtime run.
 
 use super::fixture::Running;
@@ -10,7 +10,7 @@ use afd_db::{
     test_util::{ModelSeed, mint_id},
 };
 use afd_setup::{
-    Access, Claimed, Drafts,
+    Access, AssignedDraft, Drafts,
     types::{CreateDraft, Draft, Source},
 };
 
@@ -150,12 +150,16 @@ impl Seat {
             .draft
     }
 
-    /// The production admission transaction, pointed at this seat's draft.
-    pub(super) async fn admit(drafts: &Drafts, runner: &Uuid7, draft: &Draft) -> Option<Claimed> {
+    /// The production assignment transaction, pointed at this seat's draft.
+    pub(super) async fn admit(
+        drafts: &Drafts,
+        runner: &Uuid7,
+        draft: &Draft,
+    ) -> Option<AssignedDraft> {
         drafts
-            .claim_queued(runner, &draft.id)
+            .assign_queued(runner, &draft.id)
             .await
-            .expect("admission answers")
+            .expect("assignment answers")
     }
 
     /// Removes the one global row the seat wrote; the lane reset owns the rest.

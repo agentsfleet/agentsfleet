@@ -64,18 +64,18 @@ pub struct Inbox {
     /// Where an approved gate's continuation is accepted, before anything is
     /// queued. Distinct from [`Self::bus`], which still publishes the
     /// answer frame a watcher sees.
-    admissions: Turns,
+    turns: Turns,
 }
 
 impl Inbox {
     /// A queue over `database`, continuing approved runs through
-    /// `admissions` and announcing them on `queue`.
+    /// `turns` and announcing them on `queue`.
     #[must_use]
-    pub const fn new(database: Db, bus: Handle, admissions: Turns) -> Self {
+    pub const fn new(database: Db, bus: Handle, turns: Turns) -> Self {
         Self {
             database,
             bus,
-            admissions,
+            turns,
         }
     }
 

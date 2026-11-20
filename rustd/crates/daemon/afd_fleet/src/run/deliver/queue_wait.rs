@@ -1,11 +1,11 @@
 //! How long a fresh event waited for a runner, as `runner_run_issued` logs
 //! it.
 //!
-//! The admission's stamp to the run's write, both on the daemon replicas'
+//! The turn's stamp to the run's write, both on the daemon replicas'
 //! clocks rather than the runner's, which is another machine's. The poll's own
 //! reads and writes count, measured from its start on the monotonic clock.
 //!
-//! Only an entry read new logs one. A reclaimed run's stamp predates the run
+//! Only an entry read new logs one. A reassigned run's stamp predates the run
 //! it replaces, and an owed entry, a parked event a person just answered or a
 //! re-poll after a fault, waited on something other than a runner. Two
 //! replicas' clocks can disagree by a few milliseconds, so a wait that reads

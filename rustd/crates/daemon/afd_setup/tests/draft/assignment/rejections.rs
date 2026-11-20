@@ -1,0 +1,262 @@
+//! Key failures finish chat while real dispatch receipts and wallet holds settle.
+
+mod races;
+
+use super::{Fixture, assign, funded, mint, now, queue};
+use af_core::{error_code, id::Uuid7};
+use af_crypto::{entropy::Entropy, secret::Kek};
+use af_wire::authoring::{
+    Accounting, FailureReason, Knowledge, Meter, ModelCall, ModelMessage, ModelRequest, Outcome,
+    Report,
+};
+use af_wire::inference::InferenceApi;
+use afd_setup::types::{MessageQuery, SendMessage};
+use afd_setup::{AssignedDraft, ModelCalls, ProviderRequest, ProviderResponse, Transport};
+use afd_vault::{SecretBody, SecretName, Vault};
+use serde_json::{Value, json};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+const KEY: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+const TEXT: &str = "Check setup with this credential";
+const LEDGER: &str = "SELECT a.status,a.usage_unknown,(SELECT count(*) FROM setup.dispatches WHERE attempt_id=a.id) FROM setup.attempts a WHERE id=$1";
+
+#[derive(Debug)]
+struct Provider {
+    count: AtomicUsize,
+    status: u16,
+    body: Value,
+}
+
+#[async_trait::async_trait]
+impl Transport for Provider {
+    async fn send(&self, _request: ProviderRequest) -> afd_setup::Result<ProviderResponse> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        let (headers, body) = crate::provider_wire::body(
+            self.status,
+            serde_json::to_vec(&self.body).expect("provider JSON"),
+        );
+        Ok(ProviderResponse {
+            status: self.status,
+            headers,
+            body,
+        })
+    }
+}
+
+async fn replace(f: &Fixture, key: &str) {
+    let raw = serde_json::value::RawValue::from_string(
+        json!({"provider":"openai","api_key":key}).to_string(),
+    )
+    .expect("key envelope");
+    let body = SecretBody::parse(&raw).expect("sealed key body");
+    Vault::new(
+        f.db.clone(),
+        Arc::new(Kek::from_hex(KEY).expect("fixture key")),
+        Entropy::new(),
+    )
+    .replace(
+        &f.workspace,
+        &SecretName::parse("authoring-model").expect("key name"),
+        &body,
+    )
+    .await
+    .expect("replace credential before assignment");
+}
+
+async fn call<T: Transport + 'static>(
+    f: &Fixture,
+    run: &AssignedDraft,
+    provider: Arc<T>,
+) -> afd_setup::Result<afd_setup::ModelCallResult> {
+    let providers = afd_credential::provider::Providers::new(
+        f.db.clone(),
+        Arc::new(Kek::from_hex(KEY).expect("fixture key")),
+        Entropy::new(),
+    );
+    ModelCalls::new(f.drafts.clone(), providers, provider)
+        .call(
+            &f.runner,
+            &Uuid7::parse(&run.run_id).expect("run"),
+            ModelCall {
+                capability_token: run.model_access.token.clone(),
+                attempt_id: run.attempt_id.clone(),
+                fence: run.fence.clone(),
+                dispatch_id: mint().to_string(),
+                call_index: 1,
+                request: ModelRequest {
+                    messages: vec![ModelMessage::User { text: TEXT.into() }],
+                    max_output_tokens: 64,
+                },
+            },
+        )
+        .await
+}
+
+async fn state(f: &Fixture, run: &AssignedDraft) -> (String, bool, i64) {
+    sqlx::query_as(LEDGER)
+        .bind(Uuid7::parse(&run.attempt_id).expect("attempt"))
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("durable accounting state")
+}
+
+async fn settled(f: &Fixture, run: &AssignedDraft, calls: u32) {
+    let report = unknown_report(run, calls);
+    let id = Uuid7::parse(&run.run_id).expect("run");
+    for replayed in [false, true] {
+        let ack = f
+            .drafts
+            .report(&f.runner, &id, report.clone())
+            .await
+            .expect("failure settles");
+        assert!(ack.settled);
+        assert_eq!(ack.state, Outcome::Failed);
+        assert_eq!(ack.replayed, replayed);
+    }
+    f.relay(&run.attempt_id).await;
+    assert_eq!(
+        state(f, run).await,
+        ("settled".into(), false, i64::from(calls))
+    );
+    let draft = Uuid7::parse(&run.draft_id).expect("draft");
+    let page = f
+        .drafts
+        .messages(
+            f.access(),
+            &draft,
+            MessageQuery {
+                limit: 20,
+                starting_after: None,
+            },
+        )
+        .await
+        .expect("failure transcript");
+    let failure = page
+        .items
+        .iter()
+        .find_map(|message| message.failure.as_ref())
+        .expect("visible failure");
+    assert_eq!(failure.reason, FailureReason::ModelUnavailable);
+    assert_eq!(failure.recovery_action, "choose_authoring_model");
+}
+
+fn unknown_report(run: &AssignedDraft, calls: u32) -> Report {
+    Report::Terminal {
+        answer: None,
+        accounting: Accounting {
+            fence: run.fence.clone(),
+            report_id: mint().to_string(),
+            outcome: Outcome::Failed,
+            failure_reason: Some(FailureReason::ProviderUsageUnknown),
+            usage: Meter {
+                knowledge: Knowledge::Unknown,
+                calls,
+                input_tokens: None,
+                output_tokens: None,
+                runtime_ms: 1,
+                provider_cost_nanos: None,
+            },
+        },
+    }
+}
+
+// Value: protects=malformed keys never cross durable dispatch or hold unknown usage;
+// fails_when=header parsing happens only after intent; seam=physical provider.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn should_release_unused_hold_when_key_contains_a_literal_newline() {
+    Box::pin(malformed_key(InferenceApi::Responses, "fixture-key\n")).await;
+}
+
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn should_reject_before_intent_when_gemini_key_decodes_to_a_newline() {
+    Box::pin(malformed_key(InferenceApi::Gemini, "fixture-key%0A")).await;
+}
+
+async fn malformed_key(api: InferenceApi, key: &str) {
+    let f = funded(2).await;
+    sqlx::query("UPDATE model.platform_models SET inference=jsonb_set(inference,ARRAY['api'],$2::jsonb) WHERE id=$1")
+        .bind(&f.catalogue[0])
+        .bind(json!(api))
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("select the persisted inference API");
+    replace(&f, key).await;
+    let draft = queue(&f, TEXT).await;
+    let run = assign(&f, &draft).await.expect("assignment");
+    let provider = Arc::new(Provider {
+        count: AtomicUsize::new(0),
+        status: 200,
+        body: json!({}),
+    });
+    let fault = call(&f, &run, Arc::clone(&provider))
+        .await
+        .expect_err("invalid header key");
+    assert_eq!(fault.code(), error_code::AUTHORING_MODEL);
+    assert!(!fault.to_string().contains("fixture-key"));
+    assert_eq!(provider.count.load(Ordering::Relaxed), 0);
+    assert_eq!(state(&f, &run).await, ("active".into(), false, 0));
+    settled(&f, &run, 0).await;
+    replace(&f, "repaired-fixture-key").await;
+    f.drafts
+        .send(
+            f.access(),
+            &draft.id,
+            SendMessage {
+                save: false,
+                message: TEXT.into(),
+                operation_id: mint(),
+            },
+            now(),
+        )
+        .await
+        .expect("fresh message after repair without Stop");
+    assert!(assign(&f, &draft).await.is_some());
+    f.cleanup().await;
+}
+
+// Value: protects=explicit authentication rejection is known, failed, and charged once;
+// fails_when=missing usage on a rejected request retains an unknown hold forever.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn authentication_rejection_fails_and_settles_without_cancelling_the_chat() {
+    let f = funded(2).await;
+    let draft = queue(&f, TEXT).await;
+    let run = assign(&f, &draft).await.expect("assignment");
+    let provider = Arc::new(Provider {
+        count: AtomicUsize::new(0),
+        status: 401,
+        body: json!({"error":{"code":401,"message":"Invalid credentials"}}),
+    });
+    let fault = call(&f, &run, Arc::clone(&provider))
+        .await
+        .expect_err("invalid credentials");
+    assert_eq!(fault.code(), error_code::AUTHORING_MODEL);
+    assert_eq!(provider.count.load(Ordering::Relaxed), 1);
+    assert_eq!(state(&f, &run).await, ("active".into(), false, 1));
+    settled(&f, &run, 1).await;
+    f.drafts
+        .read(f.access(), &draft.id)
+        .await
+        .expect("chat available");
+    assert_ne!(f.turn_status(&draft.id, 1).await, "cancelled");
+    f.drafts
+        .send(
+            f.access(),
+            &draft.id,
+            SendMessage {
+                save: false,
+                message: TEXT.into(),
+                operation_id: mint(),
+            },
+            now(),
+        )
+        .await
+        .expect("no unresolved provider work");
+    assert!(assign(&f, &draft).await.is_some());
+    f.cleanup().await;
+}

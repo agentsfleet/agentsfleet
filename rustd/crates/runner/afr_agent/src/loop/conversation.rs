@@ -9,25 +9,25 @@ use tokio_util::sync::CancellationToken;
 use super::{EVENT_CHECKPOINT_FAILED, Harness};
 
 impl Harness<'_, '_> {
-    /// The messages a person sent the fleet since the root's last claim,
-    /// claimed for this run; a stopped loop claims none, and neither does an
-    /// ask the run's claim already answered.
-    async fn claim_folded(&mut self) -> Vec<String> {
-        if std::mem::take(&mut self.claim_answered) {
+    /// The messages a person sent the fleet since the root's last
+    /// assignment, assigned to this run; a stopped loop is assigned none, and
+    /// neither is an ask the run's assignment already answered.
+    async fn assign_folded(&mut self) -> Vec<String> {
+        if std::mem::take(&mut self.assignment_answered) {
             return Vec::new();
         }
         let shared = self.shared;
-        let mut claimed = tokio::select! {
+        let mut assigned = tokio::select! {
             biased;
             () = self.stop.cancelled() => return Vec::new(),
-            claimed = shared.inbox.claim(self.folded_through) => claimed,
+            assigned = shared.inbox.assign(self.folded_through) => assigned,
         };
         // An inbox that replays a message must not join it twice.
-        claimed.retain(|folded| folded.sequence > self.folded_through);
-        if let Some(last) = claimed.iter().map(|folded| folded.sequence).max() {
+        assigned.retain(|folded| folded.sequence > self.folded_through);
+        if let Some(last) = assigned.iter().map(|folded| folded.sequence).max() {
             self.folded_through = last;
         }
-        claimed
+        assigned
             .into_iter()
             .map(|folded| {
                 self.folded_inputs.push(crate::engine::FoldRef {
@@ -91,7 +91,7 @@ impl guffbolt::Conversation for Harness<'_, '_> {
     async fn take_input(&mut self) -> Vec<String> {
         let sent = match self.child.as_mut() {
             Some(tether) => tether.sent(),
-            None => self.claim_folded().await,
+            None => self.assign_folded().await,
         };
         let scrub = self.shared.scrub;
         sent.into_iter()

@@ -6,7 +6,7 @@
 //! Every verb here proves the run first (`afd_fleet::run::Standing`) and
 //! acts on the fleet that run runs. Nothing in a body or a query names a
 //! fleet, so a runner cannot reach another fleet's schedules, and a holder a
-//! reclaim has superseded is refused before any schedule is read.
+//! reassignment has superseded is refused before any schedule is read.
 //!
 //! # A fleet reads every schedule and changes only its own
 //!
@@ -207,7 +207,7 @@ pub(super) async fn standing<D: Services>(
 }
 
 /// The run a write under `run_id` proves again, on the write's own
-/// transaction: [`standing`] lets go, and a reclaim can land before the write.
+/// transaction: [`standing`] lets go, and a reassignment can land before the write.
 pub(super) fn write_fence(runner: &Uuid7, run_id: &str, token: u64) -> Result<WriteFence, Refusal> {
     Ok(WriteFence::new(runner.clone(), run(run_id)?, token))
 }

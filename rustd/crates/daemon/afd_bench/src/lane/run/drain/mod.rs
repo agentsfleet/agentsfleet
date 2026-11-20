@@ -32,7 +32,7 @@ use crate::report::Report;
 const RUNS: &str = "drain_runs";
 
 /// Measurement key: production assignment entries driven by notifications and capacity.
-const CLAIMS: &str = "drain_assignment_claims";
+const ASSIGNMENTS: &str = "drain_assignments";
 
 /// Measurement key: zero when every native operation completed.
 const FAILURES: &str = "drain_failures";
@@ -69,7 +69,7 @@ const EVENTS_PROCESSED: &str = "drain_events_processed";
 /// Measurement key: ledger rows per seeded event; two is a receive and a run.
 const LEDGER_ROWS_PER_EVENT: &str = "drain_ledger_rows_per_event";
 
-/// Measurement key: unsettled admissions remaining after the drain.
+/// Measurement key: unsettled turns remaining after the drain.
 const UNSETTLED_ROWS: &str = "drain_unsettled_rows";
 
 /// Measurement key: statements served while sessions have no work.
@@ -169,7 +169,7 @@ async fn measure(
     Ok(())
 }
 
-/// Include the serving path's admission settlement in its drain cost.
+/// Include the serving path's turn settlement in its drain cost.
 async fn drain(
     sessions: Vec<RunnerConnection>,
     parameters: Parameters,

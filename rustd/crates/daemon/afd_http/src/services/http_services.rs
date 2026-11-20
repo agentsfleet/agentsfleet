@@ -54,7 +54,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// supplies whatever answers.
     type Runs: RunPlane;
 
-    /// The run verb's plane: claims, gates, money, credentials.
+    /// The run verb's plane: assignments, gates, money, credentials.
     ///
     /// Separate from [`Services::runners`] because they are different
     /// questions over different tables — the runner store answers "what is
@@ -68,7 +68,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// Opens or attaches a lane after the common guard proves its principal.
     fn runner_streams(&self) -> &Self::RunnerStreams;
 
-    /// Authoritative task lifecycle over the same fleet run and admission stores.
+    /// Authoritative task lifecycle over the same fleet run and turn stores.
     fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle;
 
     /// What the device-flow login surface acts through.
@@ -179,7 +179,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What the signed-ingress routes act through.
     ///
     /// An associated type for the reason [`Services::Fleets`] is one: the
-    /// concrete store holds the admission ledger and the bus it notifies
+    /// concrete store holds the turn ledger and the bus it notifies
     /// through, so a suite proving the refusal matrix in front of these routes
     /// must not need to build one.
     type Ingress: WebhookIngress;

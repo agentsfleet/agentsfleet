@@ -142,7 +142,7 @@ struct RunRow {
     failure_reason: Option<String>,
     failure_detail: Option<String>,
     wall_ms: Option<i64>,
-    is_reclaim: bool,
+    is_reassignment: bool,
 }
 
 impl RunRow {
@@ -160,8 +160,8 @@ impl RunRow {
             actor: self.actor.map(Cow::Owned),
             failure_label: self.failure_reason.map(Cow::Owned),
             failure_detail: self.failure_detail.map(Cow::Owned),
-            kind: if self.is_reclaim {
-                RunKind::Reclaim
+            kind: if self.is_reassignment {
+                RunKind::Reassigned
             } else {
                 RunKind::Fresh
             },

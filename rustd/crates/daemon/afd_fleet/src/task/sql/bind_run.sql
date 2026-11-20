@@ -12,7 +12,7 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), timed AS MATERIAL
     WHERE l.id = $2 AND l.runner_id = $3
       AND l.task_id IS NULL AND l.fleet_id = t.fleet_id AND l.workspace_id = t.workspace_id
     RETURNING l.id, t.id AS task_id, l.fleet_id, l.fencing_token, l.run_expires_at
-), slot AS (
+), moved_thread AS (
     UPDATE thread.threads s SET run_expires_at = b.run_expires_at, updated_at = now()
     FROM bound b WHERE s.fleet_id = b.fleet_id AND s.fencing_token = b.fencing_token
     RETURNING s.fleet_id
@@ -20,4 +20,4 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), timed AS MATERIAL
 UPDATE fleet.tasks t SET used_model_nanos = t.used_model_nanos + (
     SELECT COALESCE(sum(u.charged_nanos), 0) FROM billing.usage_lines u
     WHERE u.work_type = $4 AND u.work_id = $2 AND u.kind = $5), updated_at = now()
-FROM bound WHERE t.id = bound.task_id AND EXISTS (SELECT 1 FROM slot)
+FROM bound WHERE t.id = bound.task_id AND EXISTS (SELECT 1 FROM moved_thread)

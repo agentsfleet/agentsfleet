@@ -58,12 +58,12 @@ pub(crate) struct Seeded<const N: usize> {
     pub(crate) tenant: Uuid7,
 }
 
-/// A fleet with one admission and `N` enrolled runners.
+/// A fleet with one turn and `N` enrolled runners.
 pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
     seeded_for(fixtures, ACTOR, REQUEST_JSON).await
 }
 
-/// A fleet admission with the actor and complete request this scenario owns.
+/// A fleet turn with the actor and complete request this scenario owns.
 pub(crate) async fn seeded_for<const N: usize>(
     fixtures: &Fixtures,
     actor: &str,
@@ -92,7 +92,7 @@ pub(crate) async fn seeded_for<const N: usize>(
 /// before it polls.
 ///
 /// A host that has never reported reads degraded, and a degraded host may
-/// claim nothing; without this beat every seeded runner would be refused at
+/// be assigned nothing; without this beat every seeded runner would be refused at
 /// issue for a reason no run test is about.
 pub(crate) async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
     let request = HeartbeatRequest {
@@ -109,7 +109,7 @@ pub(crate) async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
         .expect("the first beat lands");
 }
 
-/// The fleet and its runners, before any admission.
+/// The fleet and its runners, before any turn.
 ///
 /// Split out of [`seeded`] because an ordering test chooses when to admit rows,
 /// and [`seeded`] admits one

@@ -255,7 +255,7 @@ omit its model and review then resolves the tenant default.
 | Table | Purpose | Notes |
 |---|---|---|
 | `threads` | One conversation per fleet and per draft: next fencing token, sticky runner, warm sandbox hold, resume bookmark | `ck_threads_one_owner`: exactly one of `fleet_id` and `draft_id`, and `id` equals it; `resume_context` is the report's resume bookmark |
-| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_claim_run_id` and `input_claim_fence` stamp a message a live run took; `task_activity` keeps at most 128 public stages / 120 KB |
+| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `task_activity` keeps at most 128 public stages / 120 KB |
 | `runs` | One turn handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, draft, turn, task or historical model revision |
 | `items` | Full arguments and output of each tool call a run made | `UNIQUE (turn_id, fencing_token, sequence)`; cascades with its turn |
 | `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` defers a released row |

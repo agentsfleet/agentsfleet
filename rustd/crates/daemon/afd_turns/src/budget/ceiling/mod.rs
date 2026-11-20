@@ -1,6 +1,6 @@
-//! Sample the deployment backlog without walking it on every admission.
-//! The estimate adds this process's admissions to the last sample.
-//! Settlements can make it overstate the backlog; sibling admissions can make it understate it until the next sample.
+//! Sample the deployment backlog without walking it on every turn.
+//! The estimate adds this process's turns to the last sample.
+//! Settlements can make it overstate the backlog; sibling turns can make it understate it until the next sample.
 
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::Duration;
@@ -9,16 +9,16 @@ use jiff::Timestamp;
 
 use crate::budget::DEPLOYMENT_BACKLOG_BUDGET;
 
-/// How many admissions pass between samples.
+/// How many turns pass between samples.
 ///
 /// The sample's cost is one walk of the waiting rows, so this is the divisor
-/// that turns it into a per-admission cost: at the ceiling, a walk of
-/// [`DEPLOYMENT_BACKLOG_BUDGET`] rows spread over this many admissions.
+/// that turns it into a per-turn cost: at the ceiling, a walk of
+/// [`DEPLOYMENT_BACKLOG_BUDGET`] rows spread over this many turns.
 const SAMPLE_EVERY: u64 = 1_000;
 
 /// How stale the figure may be while the estimate is within budget.
 ///
-/// A local counter already covers this process's own admissions, so the only
+/// A local counter already covers this process's own turns, so the only
 /// thing this bounds is how long the figure trails a sibling replica's.
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -43,7 +43,7 @@ const NEVER: i64 = i64::MIN;
 const _: () = {
     assert!(
         SAMPLE_EVERY > 0,
-        "a zero divisor samples on every admission, which is the cost this exists to remove"
+        "a zero divisor samples on every turn, which is the cost this exists to remove"
     );
     assert!(
         SAMPLE_EVERY <= DEPLOYMENT_BACKLOG_BUDGET,
@@ -58,14 +58,14 @@ const _: () = {
     );
 };
 
-/// The sampled unsettled backlog, and the admissions counted onto it.
+/// The sampled unsettled backlog, and the turns counted onto it.
 ///
 /// One per ledger, shared by every clone of it, so the figure a sample
-/// publishes is the figure the next admission reads. Held behind
+/// publishes is the figure the next turn reads. Held behind
 /// [`crate::Turns`]; `budget.rs` owns the refresh that writes it.
 #[derive(Debug)]
 pub(crate) struct Ceiling {
-    /// Unsettled admissions at the last sample.
+    /// Unsettled turns at the last sample.
     sampled: AtomicU64,
     /// Turns this process has committed since that read.
     since: AtomicU64,
@@ -87,7 +87,7 @@ impl Default for Ceiling {
 }
 
 impl Ceiling {
-    /// The last sample plus this process's subsequent admissions.
+    /// The last sample plus this process's subsequent turns.
     ///
     /// Saturating, so a counter that has outrun the figure it rides on cannot
     /// wrap into a small number and admit a deployment that should refuse.
@@ -97,7 +97,7 @@ impl Ceiling {
             .saturating_add(self.since.load(Ordering::Relaxed))
     }
 
-    /// Counts one committed admission onto the figure.
+    /// Counts one committed turn onto the figure.
     pub(crate) fn admitted(&self) {
         self.since.fetch_add(1, Ordering::Relaxed);
     }
@@ -127,7 +127,7 @@ impl Ceiling {
     ///
     /// The loser does NOT re-read the figure (RULE CAS): the winner may be
     /// mid-publish, and a torn pair reads worse than the value the loser
-    /// already has. It proceeds on its own estimate and the next admission
+    /// already has. It proceeds on its own estimate and the next turn
     /// picks up the fresh one.
     pub(crate) fn claim(&self) -> Claim<'_> {
         let won = self
@@ -165,7 +165,7 @@ impl Claim<'_> {
 
     /// Publishes a figure read while this claim was held.
     ///
-    /// Only the count captured when the claim was taken comes off: admissions
+    /// Only the count captured when the claim was taken comes off: turns
     /// committed while the read was in flight stay counted, because the figure
     /// may predate them. They are counted twice at worst, which overstates the
     /// backlog and refuses early — the direction this whole figure errs in.

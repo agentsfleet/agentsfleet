@@ -3,7 +3,7 @@
 //! event, with no approval asked for.
 //!
 //! Split from the binding cases beside it. The events arrive through the
-//! admission ledger under the Slack producer and its key, as the mention route
+//! turn ledger under the Slack producer and its key, as the mention route
 //! admits them, rather than straight onto the stream: the ledger's key is what
 //! makes a redelivery the same event, and so the same branch.
 
@@ -13,7 +13,7 @@ use afd_turns::{Admitted, IncomingTurn, Key, Producer, Turns};
 
 use super::seed::seed_provider_resolution;
 use super::*;
-use crate::recovery_seed::{admission, ledger};
+use crate::recovery_seed::{incoming_turn, ledger};
 
 /// One Slack mention, admitted as the mention route admits it.
 async fn admit_mention(ledger: &Turns, fleet: &Uuid7, workspace: &Uuid7, key: &str) -> Admitted {
@@ -22,7 +22,7 @@ async fn admit_mention(ledger: &Turns, fleet: &Uuid7, workspace: &Uuid7, key: &s
             producer: Producer::SlackMention,
             key: Key::Repeated(key),
             event_type: TurnKind::Chat,
-            ..admission(fleet, workspace, key)
+            ..incoming_turn(fleet, workspace, key)
         })
         .await
         .expect("the ledger admits the mention")
@@ -52,8 +52,8 @@ async fn one_slack_request_is_one_attempt() {
         turn_id: first.stored.id.clone(),
         tenant,
     };
-    let claimed = claim(&fixtures, &ready).await;
-    let answer = drive(&fixtures, &ready, claimed).await;
+    let assigned = assign(&fixtures, &ready).await;
+    let answer = drive(&fixtures, &ready, assigned).await;
     assert!(
         answer.is_some(),
         "a Slack-requested write event was held rather than held: {answer:?}"

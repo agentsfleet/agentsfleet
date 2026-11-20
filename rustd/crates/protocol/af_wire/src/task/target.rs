@@ -17,7 +17,7 @@ pub enum TaskTarget {
         repository_id: u64,
         /// Accepted pull request number.
         number: u32,
-        /// Writable non-protected branch selected by native admission.
+        /// Writable non-protected branch selected by the native turn.
         branch: String,
         /// Accepted base branch.
         base: String,

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
-    /// The workspace owner's balance cannot cover admission or renewal.
+    /// The workspace owner's balance cannot cover assignment or renewal.
     InsufficientBalance,
     /// The pinned authoring model is no longer eligible.
     ModelUnavailable,

@@ -22,7 +22,7 @@
 //!   scheduler ──► verifier    HS256 over two keys, body bound into the token
 //!                   │
 //!                   ▼
-//!                 fire        admission ledger row, at most once
+//!                 fire        turn ledger row, at most once
 //! ```
 //!
 //! # The two halves never share a decision

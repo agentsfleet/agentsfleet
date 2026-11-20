@@ -9,7 +9,7 @@
 //!
 //! The reverse order looks tidier — end the work, then bill for it — and it
 //! loses money on the cap path. A run that reaches `MAX_RUNTIME` is racing
-//! the reclaim sweep, and the sweep bumps `fencing_token`. Settle first and the
+//! the reassignment sweep, and the sweep bumps `fencing_token`. Settle first and the
 //! affinity lock inside the statement holds the sweep off until the charge
 //! commits. Settle second and the sweep wins the fence, the settle is refused,
 //! and the last slice of a twelve-hour run is never charged to anyone.
@@ -18,7 +18,7 @@
 //! money first, and the narrative log is closed afterwards from a position
 //! where nothing can take it away. Since §7 that position is the same
 //! TRANSACTION rather than merely the next statement: the result, the session
-//! cursor and the freed slot commit with the charge or not at all, so there is
+//! cursor and the freed thread commit with the charge or not at all, so there is
 //! no interval in which a tenant is charged for a run whose answer was never
 //! written. [`crate::run::commit`] carries that argument.
 //!

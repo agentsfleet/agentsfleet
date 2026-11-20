@@ -1,5 +1,5 @@
 -- Whether a draft run may still publish its draft's live answer: the runner's own active
--- run, unexpired, still its slot's holder, on a message still running, with the draft's
+-- run, unexpired, still its thread's holder, on a message still running, with the draft's
 -- creator as the reader's subject.
 --
 -- $1 run · $2 runner · $3 active run status · $4 running message status

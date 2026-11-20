@@ -46,7 +46,7 @@ pub(super) fn next_step(answer: ReportAnswer, repriced: bool) -> Step {
 
 /// Ends a statement that wrote nothing before the caller takes another
 /// connection: a dropped transaction's rollback waits for its connection's
-/// next use, and the connection is still held, so the slot and run locks it
+/// next use, and the connection is still held, so the thread and run locks it
 /// took would block the caller's own next statement on the same run.
 pub(super) async fn release(transaction: sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
     transaction.rollback().await.map_err(query(CONTEXT_COMMIT))

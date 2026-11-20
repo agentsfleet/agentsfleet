@@ -78,7 +78,7 @@ impl Reservation<'_> {
     async fn on(&self, connection: &mut PgConnection) -> Result<Allocation> {
         let mut tx = transaction::begin(connection).await?;
         let current = guard::run(&mut tx, self.run).await?;
-        // A peer may have committed while this request waited for the slot.
+        // A peer may have committed while this request waited for the thread lock.
         if let Some(call) = row::find(&mut tx, self.operation()).await? {
             return self.replay(call);
         }

@@ -1,8 +1,8 @@
-//! Issue's refusals that are not about the claim: a host that may not take
-//! work, and an event the admission ledger never minted.
+//! Issue's refusals that are not about the assignment: a host that may not take
+//! work, and an event the turn ledger never minted.
 //!
 //! `integration_run_issue.rs` proves the fenced insert. These prove the two
-//! checks around it — the host row the insert locks, and the admission stamp
+//! checks around it — the host row the insert locks, and the turn stamp
 //! the narrative log owes — each answer a verdict rather than a fault.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs them.
@@ -20,7 +20,7 @@ use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
 
 /// A host the daemon does not know, and a host whose verdict went degraded,
-/// are issued no run; the claim stays good, so the same host takes it once
+/// are issued no run; the assignment stays good, so the same host takes it once
 /// its verdict clears.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -74,6 +74,6 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_run() {
 
     assert!(unknown.is_none(), "a host with no row takes no work");
     assert!(degraded.is_none(), "a degraded host takes no work");
-    assert!(cleared.is_some(), "the claim survived both refusals");
+    assert!(cleared.is_some(), "the assignment survived both refusals");
     fixtures.cleanup().await;
 }

@@ -61,7 +61,7 @@ garde.workspace = true
 serde_json.workspace = true
 af_inference.workspace = true
 afd_admin.workspace = true
-# The one admission ledger every producer in this process shares.
+# The one turns ledger every producer in this process shares.
 afd_turns.workspace = true
 # The client every credential exchange is posted through. Built here rather than
 # inside the broker because a connection pool and a deadline are composition-root

@@ -58,7 +58,7 @@ pub(super) async fn apply(
     let changed = origin.accepted_revision_id != adoption.goal_revision_id.as_str();
     let wake = origin.wake(scope, task, eligible && changed)?;
     let prepared = match &wake {
-        Some(wake) => Some(tasks.admissions.prepare(wake.admission()).await?),
+        Some(wake) => Some(tasks.turns.prepare(wake.turn()).await?),
         None => None,
     };
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
@@ -97,10 +97,10 @@ pub(super) async fn apply(
         update_goal(&mut tx, task, adoption, &current, &questions, eligible).await?;
         if eligible {
             let admitted = tasks
-                .admissions
+                .turns
                 .stage(&mut tx, prepared.ok_or(TaskRefusal::StaleState)?)
                 .await
-                .map_err(|source| ErrorKind::TaskControlAdmission {
+                .map_err(|source| ErrorKind::TaskControlTurn {
                     state: current.context.state,
                     source,
                 })?;

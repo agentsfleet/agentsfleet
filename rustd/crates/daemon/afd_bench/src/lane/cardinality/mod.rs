@@ -5,7 +5,7 @@ pub mod capacity;
 mod probe;
 
 use self::probe::{
-    FLEETS_TABLE_BYTES, admission_read_ms, candidate_ms, postgres_at_population, table_sizes,
+    FLEETS_TABLE_BYTES, candidate_ms, postgres_at_population, table_sizes, turn_read_ms,
 };
 use crate::datastores::Datastores;
 use crate::error::Result;
@@ -21,8 +21,8 @@ const LADDER: &str = "ladder_fleets";
 /// Series key: candidate query latency at each rung, milliseconds.
 const CANDIDATE_MS: &str = "candidate_ms";
 
-/// Series key: one admission head read latency at each rung, milliseconds.
-const ADMISSION_READ_MS: &str = "admission_read_ms";
+/// Series key: one turn head read latency at each rung, milliseconds.
+const TURN_READ_MS: &str = "turn_read_ms";
 
 /// How many rungs the ladder has below its ceiling, each ten times the last.
 ///
@@ -128,7 +128,7 @@ async fn climb(
 }
 
 /// Seed the fleets `indices` names, ready to run, noting the last one
-/// seeded in `last_fleet` — the fleet the rung's admission read is timed on.
+/// seeded in `last_fleet` — the fleet the rung's turn read is timed on.
 async fn seed_rung(
     stores: &Datastores,
     prefix: &RunPrefix,
@@ -163,8 +163,8 @@ async fn measure_rung(
     );
     push(
         report,
-        ADMISSION_READ_MS,
-        admission_read_ms(&stores.database, &Uuid7::parse(last_fleet)?).await?,
+        TURN_READ_MS,
+        turn_read_ms(&stores.database, &Uuid7::parse(last_fleet)?).await?,
     );
     Ok(())
 }

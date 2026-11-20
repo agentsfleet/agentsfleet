@@ -19,7 +19,7 @@ use crate::metrics::label::scheduler as scheduler_labels;
 use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
-/// Where a sent message went, and the folds a live run claimed and settled.
+/// Where a sent message went, and the folds a live run was assigned and settled.
 fn fold_products() -> [(&'static str, usize); 2] {
     [
         (
@@ -257,8 +257,8 @@ fn fleet_products() -> [(&'static str, usize); 10] {
             fleet_labels::HistoryCut::ALL.len(),
         ),
         (
-            fleet::RUN_HELD_CLAIMS_TOTAL.wire_name(),
-            fleet_labels::HeldClaim::ALL.len(),
+            fleet::RUN_HELD_ASSIGNMENTS_TOTAL.wire_name(),
+            fleet_labels::HeldAssignment::ALL.len(),
         ),
     ]
 }

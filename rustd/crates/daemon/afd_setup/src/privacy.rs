@@ -36,7 +36,7 @@ pub(crate) async fn purge(
     id: &Uuid7,
 ) -> Result<Vec<(Uuid7, Uuid7)>> {
     // No foreign key reaches thread.runs from a draft, so its live runs go here;
-    // its slot goes with the draft's own cascade.
+    // its thread goes with the draft's own cascade.
     let killed: Vec<(Uuid7, Uuid7)> = sqlx::query_as(crate::setup_run::DELETE_RUNS)
         .bind(id)
         .bind(afd_runner::sql::RUN_STATUS_ACTIVE)

@@ -13,8 +13,8 @@ use af_wire::protocol::StreamKind;
 use serde_json::json;
 
 // Value: protects=the host lock rechecks credential and connection after waiting;
-// fails_when=an old native claim issues work or an old renewal advances expiry;
-// why_new=capacity-store tests bypass the native gateway and claim owner;
+// fails_when=an old native assignment issues work or an old renewal advances expiry;
+// why_new=capacity-store tests bypass the native gateway and assignment owner;
 // seam=real daemons and Postgres locks; direct row replacement models lost notifications.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -23,7 +23,7 @@ async fn stale_native_grants_cannot_survive_rotation_or_supersession_at_the_host
     for transport in [Transport::H2, Transport::H3] {
         for replacement in [Replacement::Rotate, Replacement::Supersede] {
             let fixture = Fixture::start().await?;
-            stale_claim(&fixture, transport, replacement).await?;
+            stale_assignment(&fixture, transport, replacement).await?;
             fixture.finish().await?;
             let fixture = Fixture::start().await?;
             stale_renewal(&fixture, transport, replacement).await?;
@@ -33,7 +33,7 @@ async fn stale_native_grants_cannot_survive_rotation_or_supersession_at_the_host
     Ok(())
 }
 
-async fn stale_claim(
+async fn stale_assignment(
     fixture: &Fixture,
     transport: Transport,
     replacement: Replacement,

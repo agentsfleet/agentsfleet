@@ -220,7 +220,7 @@ it("keeps open work details usable when another queued task arrives before its d
   vi.stubGlobal("fetch", network);
   const turns: FleetTurn[] = [{id: "assessment", role: "assistant", actor: "fleet", text: "", reply: "", outcome: "", failureLabel: null, failureDetail: null,
     createdAt: new Date(), status: "processed", taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
-      activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
+      activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}}];
   const view = render(<TaskPanel {...SCOPE} turns={turns} />);
   await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));

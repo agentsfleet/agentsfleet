@@ -37,7 +37,7 @@ fn an_unsampled_ceiling_is_due_however_recently_the_process_started() {
     );
     assert!(
         ceiling.due(at(0), 0, BUDGET),
-        "the first admission of a process has to take the first sample"
+        "the first turn of a process has to take the first sample"
     );
     assert!(
         ceiling.due(Timestamp::MIN, 0, BUDGET),
@@ -54,12 +54,12 @@ fn the_estimate_is_the_sample_plus_what_was_admitted_after_it() {
     assert_eq!(
         ceiling.estimate(),
         102,
-        "two admissions after the sample are two rows the sample cannot know about"
+        "two turns after the sample are two rows the sample cannot know about"
     );
 }
 
 #[test]
-fn a_published_figure_keeps_counting_admissions_that_raced_the_read() {
+fn a_published_figure_keeps_counting_turns_that_raced_the_read() {
     let ceiling = sampled(0);
     let claim = ceiling.claim();
     // Three producers commit while the figure is in flight. The figure may
@@ -71,12 +71,12 @@ fn a_published_figure_keeps_counting_admissions_that_raced_the_read() {
     assert_eq!(
         ceiling.estimate(),
         13,
-        "a figure of 10 read before three racing admissions still owes all three"
+        "a figure of 10 read before three racing turns still owes all three"
     );
 }
 
 #[test]
-fn a_published_figure_takes_off_the_admissions_it_already_counted() {
+fn a_published_figure_takes_off_the_turns_it_already_counted() {
     let ceiling = sampled(0);
     ceiling.admitted();
     ceiling.admitted();
@@ -85,7 +85,7 @@ fn a_published_figure_takes_off_the_admissions_it_already_counted() {
     assert_eq!(
         ceiling.estimate(),
         10,
-        "admissions committed before the read are in the figure, not beside it"
+        "turns committed before the read are in the figure, not beside it"
     );
 }
 
@@ -131,7 +131,7 @@ fn a_refusing_figure_is_due_sooner_than_a_healthy_one() {
 }
 
 #[test]
-fn the_admission_divisor_makes_a_fresh_figure_due() {
+fn the_turn_divisor_makes_a_fresh_figure_due() {
     let ceiling = sampled(0);
     for _ in 0..SAMPLE_EVERY {
         ceiling.admitted();

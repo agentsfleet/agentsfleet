@@ -244,7 +244,7 @@ const UNKNOWN: i64 = i64::MIN;
 /// The newest catalogue version and each fleet's head revision this replica
 /// has read.
 ///
-/// Every claim reads both, so a host's renewal frame can name them without
+/// Every assignment reads both, so a host's renewal frame can name them without
 /// its pre-read. The renewal statement guards on both, so a
 /// stale value writes nothing; the run takes the per-run path, and the
 /// fleet is forgotten until a read answers it again.

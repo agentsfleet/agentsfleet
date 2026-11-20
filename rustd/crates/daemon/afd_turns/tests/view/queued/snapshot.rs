@@ -8,7 +8,7 @@ const READ_CALLS: &str = "SELECT COALESCE(sum(calls),0)::bigint FROM pg_stat_sta
     WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) \
       AND userid=(SELECT oid FROM pg_roles WHERE rolname='agentsfleet_api') \
       AND query ILIKE '%thread.turns%'";
-/// A claim's delivered state: the turn stamped with a fence and its event opened, in place.
+/// An assignment's delivered state: the turn stamped with a fence and its event opened, in place.
 const DELIVER: &str = "UPDATE thread.turns \
     SET status=$2, opened_at=now(), run_fence=1, updated_at=now() WHERE id=$1";
 

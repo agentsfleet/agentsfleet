@@ -61,7 +61,7 @@ pub mod meta {
     pub const TO_STATUS: &str = "to_status";
     /// The run a `run_acquired` row is about.
     pub const RUN_ID: &str = "run_id";
-    /// The fleet that run claimed.
+    /// The fleet that run was assigned.
     pub const FLEET_ID: &str = "fleet_id";
     /// The event the run is executing.
     ///
@@ -69,7 +69,7 @@ pub mod meta {
     /// itself a runner EVENT — the key names the agentsfleet event, not this
     /// audit row.
     pub const AGENTSFLEET_EVENT_ID: &str = "event_id";
-    /// Whether the run was a fresh pull or a reclaim.
+    /// Whether the run was a fresh pull or a reassignment.
     pub const KIND: &str = "kind";
 }
 
@@ -99,6 +99,6 @@ pub mod event_type {
     /// The closing bracket of [`RUN_ACQUIRED`]: the two are written by the
     /// two ends of one run's life, and an operator reading a runner's history
     /// pairs them. Only the REPORT path writes this — a run that lapsed is
-    /// expired by the reclaim sweep and never released.
+    /// expired by the expiry sweep and never released.
     pub const RUN_RELEASED: &str = "run_released";
 }

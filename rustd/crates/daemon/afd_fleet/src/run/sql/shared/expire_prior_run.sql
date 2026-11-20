@@ -1,10 +1,11 @@
--- The reclaim both kinds share. A claim that takes work its slot held before expires that
--- work's newest earlier run, still active only when its holder lapsed without reporting,
--- and tallies the expiry against that holder. The caller holds the slot its claim won, so
--- the lock order is slot, then run, as in the fleet's claim (`claim_turn_head.sql`).
+-- The reassignment both kinds share. An assignment that takes work its thread held before
+-- expires that work's newest earlier run, still active only when its holder lapsed without
+-- reporting, and tallies the expiry against that holder. The caller holds the thread its
+-- assignment won, so the lock order is thread, then run, as in the fleet's assignment
+-- (`assign_turn_head.sql`).
 --
 -- $1 the owning fleet, NULL for a draft · $2 the owning draft, NULL for a fleet ·
--- $3 the event or draft message claimed · $4 active status · $5 expired status
+-- $3 the event or draft message assigned · $4 active status · $5 expired status
 WITH prior_run AS MATERIALIZED (
   SELECT l.id
   FROM thread.runs l
@@ -24,7 +25,7 @@ WITH prior_run AS MATERIALIZED (
   ON CONFLICT (runner_id) DO UPDATE
     SET expired_count = c.expired_count + 1, updated_at = now()
 )
--- The runs this work was issued before this claim. A report settles its work, so each
+-- The runs this work was issued before this assignment. A report settles its work, so each
 -- one is a run that lapsed without reporting.
 SELECT p.id AS predecessor_run_id,
        (SELECT count(*) FROM thread.runs x

@@ -11,14 +11,14 @@ use super::{Fallible, lane::Lane, queue::over_lane};
 /// fleet's id answers nothing, and a second delivery stamps nothing.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn destination_lookup_is_scoped_to_the_admission_and_fleet() -> Fallible {
+async fn destination_lookup_is_scoped_to_the_turn_and_fleet() -> Fallible {
     let lane = Lane::seed().await?;
-    let admissions = over_lane(&lane).await?;
+    let turns = over_lane(&lane).await?;
     let stated = ReplyTo::To {
         connector: CONNECTOR,
         address: THREAD,
     };
-    let admitted = admit(&admissions, steer(&lane, mint_id().as_str(), stated)).await?;
+    let admitted = admit(&turns, steer(&lane, mint_id().as_str(), stated)).await?;
     let id = &admitted.stored.id;
     let mut connection = lane.database.acquire().await?;
 
@@ -49,16 +49,16 @@ async fn destination_lookup_is_scoped_to_the_admission_and_fleet() -> Fallible {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_inherited_destination_is_copied_from_the_named_row() -> Fallible {
     let lane = Lane::seed().await?;
-    let admissions = over_lane(&lane).await?;
+    let turns = over_lane(&lane).await?;
     let stated = ReplyTo::To {
         connector: CONNECTOR,
         address: THREAD,
     };
-    let earlier = admit(&admissions, steer(&lane, mint_id().as_str(), stated)).await?;
+    let earlier = admit(&turns, steer(&lane, mint_id().as_str(), stated)).await?;
     let inherited = ReplyTo::Inherit {
         turn_id: &earlier.stored.id,
     };
-    let later = admit(&admissions, steer(&lane, mint_id().as_str(), inherited)).await?;
+    let later = admit(&turns, steer(&lane, mint_id().as_str(), inherited)).await?;
 
     let copied: (Option<String>, Option<String>) =
         sqlx::query_as("SELECT reply_provider, reply_address FROM thread.turns WHERE id = $1")

@@ -1,6 +1,6 @@
 //! The capacity handoff is serialized before an expiring report decides its hold.
 
-use super::{report::processed, slot};
+use super::{report::processed, thread};
 use crate::{
     report_seed::{DEEP_POOL, Held, held_in},
     seed::{self, ACTOR, MODEL, POSTURE, PROVIDER, REQUEST_JSON},
@@ -35,7 +35,7 @@ EXECUTE FUNCTION runner.pause_hold_fixture()";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits() -> Checked {
     let held = held_in(Fixtures::create_isolated().await).await;
-    let next = next_admission(&held).await?;
+    let next = next_turn(&held).await?;
     let migrator = held.fixtures.open(DbRole::Migrator).await;
     let mut connection = migrator.acquire().await?;
     sqlx::raw_sql(HOLD_TRIGGER)
@@ -60,7 +60,7 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
     );
     let report = reported?;
     let (waited, issued) = attempted?;
-    let recorded = slot(&held.fixtures, &held.fleet).await.0;
+    let recorded = thread(&held.fixtures, &held.fleet).await.0;
     drop(connection);
     migrator.close().await;
     held.fixtures.cleanup().await;
@@ -82,7 +82,7 @@ async fn a_hold_decided_before_expiry_keeps_the_worker_until_the_report_commits(
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_expired_report_can_settle_after_another_fleet_takes_the_worker() -> Checked {
     let held = held_in(Fixtures::create_isolated().await).await;
-    let next = next_admission(&held).await?;
+    let next = next_turn(&held).await?;
     let expiry = shorten_run(&held).await?;
     wait_for_expiry(&held, expiry).await?;
     let issued = issue(&held, &next).await?;
@@ -99,12 +99,12 @@ async fn an_expired_report_can_settle_after_another_fleet_takes_the_worker() -> 
         )
         .await?;
     assert!(report.hold.is_none(), "late settlement cannot add a hold");
-    assert_eq!(slot(&held.fixtures, &held.fleet).await.0, None);
+    assert_eq!(thread(&held.fixtures, &held.fleet).await.0, None);
     held.fixtures.cleanup().await;
     Ok(())
 }
 
-async fn next_admission(held: &Held) -> Checked<Next> {
+async fn next_turn(held: &Held) -> Checked<Next> {
     let fixtures = &held.fixtures;
     let seeded = seed::seeded_for::<0>(fixtures, ACTOR, REQUEST_JSON).await;
     let mut connection = fixtures.database.acquire().await?;
@@ -124,7 +124,7 @@ async fn next_admission(held: &Held) -> Checked<Next> {
     fixtures.seed_wallet(&seeded.tenant, DEEP_POOL).await;
     let acquired = seed::select_fleet(&held.runs, &held.runner, &seeded.fleet)
         .await
-        .ok_or("second fleet is not provisionally claimable")?;
+        .ok_or("second fleet is not provisionally assignable")?;
     Ok(Next {
         acquired,
         tenant: seeded.tenant,

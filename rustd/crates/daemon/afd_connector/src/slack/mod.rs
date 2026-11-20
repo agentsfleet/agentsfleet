@@ -1,7 +1,7 @@
 //! Where in a Slack thread an answer belongs.
 //!
 //! One type for both ends of the round trip: the mention producer writes it
-//! into the admission as the reply destination, and the outbound poster reads
+//! into the turn as the reply destination, and the outbound poster reads
 //! it back off the delivery job. A shared type is what keeps the two from
 //! spelling a key differently and stranding every answer owed under the old
 //! spelling. The same address is what [`replies`] reads the thread back from.

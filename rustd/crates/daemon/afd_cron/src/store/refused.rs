@@ -52,7 +52,7 @@ pub enum Refused {
     /// This fleet already registered that upstream key.
     DuplicateKey,
     /// The run a fleet's write came under no longer holds the fleet: a
-    /// reclaim took it between the caller's check and the write.
+    /// reassignment took it between the caller's check and the write.
     ///
     /// Only a guarded write answers it (`store::guarded`); a person's
     /// schedule edit holds no run.

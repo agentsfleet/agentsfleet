@@ -82,7 +82,7 @@ impl TaskRecovery {
         history.root.check()?;
         if !history.root.folds.is_empty() {
             return Err(crate::error::recovery_invalid(
-                "native task history cannot contain ordinary fold claims",
+                "native task history cannot contain ordinary folds",
             ));
         }
         // Goal adoption changes authority, not the identity of authenticated

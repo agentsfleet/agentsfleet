@@ -97,7 +97,7 @@ impl Producer {
         response.json().await.expect("the producer receipt is JSON")
     }
 
-    pub(crate) async fn assert_admission(&self, scene: &Scenario, event: &Uuid7) {
+    pub(crate) async fn assert_turn(&self, scene: &Scenario, event: &Uuid7) {
         let mut connection = scene
             .booted
             .database
@@ -107,7 +107,7 @@ impl Producer {
         let rows: Vec<(Uuid7, Uuid7, Uuid7, String)> = sqlx::query_as(
             "SELECT id, thread_id, workspace_id, request_json::text FROM thread.turns WHERE producer=$1 AND producer_key=$2")
             .bind(afd_turns::Producer::SlackMention.as_str()).bind(format!("{}:EvSameSignedRepair", self.team))
-            .fetch_all(&mut *connection).await.expect("the admission reads");
+            .fetch_all(&mut *connection).await.expect("the turn reads");
         assert_eq!(rows.len(), 1);
         assert_eq!(
             (&rows[0].0, &rows[0].1, &rows[0].2),

@@ -56,7 +56,7 @@ fn rendered(frame: &TailFrame<'_>) -> (String, Value) {
     (text, value)
 }
 
-/// A steer's admission, as the route publishes it.
+/// A steer's turn, as the route publishes it.
 fn admitted() -> TailFrame<'static> {
     TailFrame::TurnAdmitted {
         turn_id: Cow::Borrowed("1725000000000-3"),
@@ -182,7 +182,7 @@ fn should_spell_a_runless_gates_event_as_null() {
 /// `turn_complete` reads short by exactly the events awaiting a human. A
 /// frame-by-frame assertion is what keeps a later variant from being added
 /// without them. `turn_admitted` is the one frame left out, and on purpose:
-/// no counter moves at admission, and reading them would put a query on every
+/// no counter moves at intake, and reading them would put a query on every
 /// steer's path to its 202.
 #[test]
 fn should_carry_the_counters_on_every_frame_kind() {

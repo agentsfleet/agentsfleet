@@ -4,7 +4,7 @@ use super::authority;
 use af_core::id::Uuid7;
 use afd_auth::directory::Digest;
 
-/// The claim owner, proved under the same host lock as the physical capacity.
+/// The assignment owner, proved under the same host lock as the physical capacity.
 pub enum Guard<'a> {
     /// A trusted domain call for an enrolled host.
     Enrolled(&'a Uuid7),

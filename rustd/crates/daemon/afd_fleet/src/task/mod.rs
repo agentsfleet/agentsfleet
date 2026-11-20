@@ -1,4 +1,4 @@
-//! Durable objective ownership within the existing admission and run path.
+//! Durable objective ownership within the existing turn and run path.
 //!
 //! The store owns native rows and transitions. Its pool remains the run
 //! store's private pool, and task work never introduces a competing queue.
@@ -90,21 +90,17 @@ pub(crate) async fn settle_report(
 #[derive(Debug, Clone)]
 pub struct Tasks {
     runs: Runs,
-    admissions: afd_turns::Turns,
+    turns: afd_turns::Turns,
     dependencies: TaskDependencies,
 }
 
 impl Tasks {
     /// Uses the same database, entropy and run authority as the fleet plane.
     #[must_use]
-    pub const fn new(
-        runs: Runs,
-        admissions: afd_turns::Turns,
-        dependencies: TaskDependencies,
-    ) -> Self {
+    pub const fn new(runs: Runs, turns: afd_turns::Turns, dependencies: TaskDependencies) -> Self {
         Self {
             runs,
-            admissions,
+            turns,
             dependencies,
         }
     }

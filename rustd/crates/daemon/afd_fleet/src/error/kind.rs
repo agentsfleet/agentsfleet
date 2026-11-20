@@ -70,7 +70,7 @@ pub(crate) enum ErrorKind {
         #[source]
         source: sqlx::Error,
     },
-    #[error("task continuation admission failed")]
+    #[error("task continuation turn write failed")]
     TurnWrite {
         #[source]
         source: afd_turns::Error,
@@ -98,7 +98,7 @@ pub(crate) enum ErrorKind {
         source: std::num::TryFromIntError,
     },
     #[error("the task continuation could not be admitted")]
-    TaskControlAdmission {
+    TaskControlTurn {
         state: af_wire::task::TaskState,
         #[source]
         source: afd_turns::Error,
@@ -131,7 +131,7 @@ pub(crate) enum ErrorKind {
         #[source]
         source: af_context::Error,
     },
-    #[error("private authoring admission could not complete")]
+    #[error("private authoring assignment could not complete")]
     Authoring {
         #[source]
         source: afd_setup::Error,

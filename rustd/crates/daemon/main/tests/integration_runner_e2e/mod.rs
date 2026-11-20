@@ -61,7 +61,7 @@ async fn test_runner_suite_vs_rust_daemon() {
 
     refusals::assert_unknown_credential_is_refused(&http, &scene).await;
     prove_runner_ready(&http, &scene).await;
-    let (run_id, fence) = claim_seeded_run(&scene).await;
+    let (run_id, fence) = assigned_seeded_run(&scene).await;
     prove_live_run_satellites(&http, &scene, &run_id).await;
     capture_memory(&http, &scene, &run_id, fence).await;
     settle_report(&scene, &run_id, fence).await;
@@ -98,7 +98,7 @@ async fn prove_runner_ready(http: &reqwest::Client, scene: &Scenario) {
     );
 }
 
-async fn claim_seeded_run(scene: &Scenario) -> (String, u64) {
+async fn assigned_seeded_run(scene: &Scenario) -> (String, u64) {
     // Receiving once retains the worker registration until report acknowledgement.
     wait_for_seeded_assignment(scene).await
 }
@@ -227,7 +227,7 @@ async fn assert_settled(scene: &Scenario, run_id: &str, before: Option<i64>) {
     assert_eq!(
         run_column(scene, run_id, "status").await.as_deref(),
         Some("reported"),
-        "the run is flipped, which is what stops the reclaim sweep re-issuing it"
+        "the run is flipped, which is what stops the expiry sweep re-issuing it"
     );
     assert!(
         ledger_rows(scene).await >= 1,

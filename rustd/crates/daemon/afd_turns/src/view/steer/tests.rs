@@ -35,7 +35,7 @@ fn should_not_read_another_producers_actor_as_a_steer() {
     }
 }
 
-/// A budget refusal, as the admission ledger raises one.
+/// A budget refusal, as the turn ledger raises one.
 fn over_capacity() -> crate::Error {
     crate::error::one_of_each_kind()
         .into_iter()

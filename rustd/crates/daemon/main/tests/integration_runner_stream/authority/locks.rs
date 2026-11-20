@@ -22,7 +22,7 @@ impl HostLock {
     pub(super) async fn hold(scene: &Scenario) -> TestResult<Self> {
         let mut transaction =
             Transaction::begin(scene.booted.database.acquire().await?, None).await?;
-        // Let admission foreign keys take KEY SHARE before the issue reaches its host lock.
+        // Let the assignment's foreign keys take KEY SHARE before the issue reaches its host lock.
         let blocker = sqlx::query_scalar(
             "SELECT pg_backend_pid() FROM runner.runners WHERE id=$1 FOR NO KEY UPDATE",
         )

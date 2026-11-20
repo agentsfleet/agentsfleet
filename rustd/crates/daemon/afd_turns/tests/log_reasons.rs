@@ -1,7 +1,7 @@
-//! What an admission says when neither Postgres nor the bus answers.
+//! What a turn says when neither Postgres nor the bus answers.
 //!
 //! No datastore, deliberately: the pool points at a reserved port and the
-//! bus is one no broker answers for. One admission walks two
+//! bus is one no broker answers for. One turn walks two
 //! failure arms in order — the deployment ceiling the pool would not count,
 //! and the row the pool would not commit — and each says why in a `reason` free of the registry code, which
 //! the refusal line carries in its own field, and of a captured backtrace.
@@ -16,7 +16,7 @@ use af_core::test_util::trace::Capture;
 use af_wire::turn::TurnKind;
 use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 
-/// The fleet and workspace the admission names; nothing answers, so any will do.
+/// The fleet and workspace the turn names; nothing answers, so any will do.
 const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
 
 /// The `reason` an event carried, proven free of a code prefix and of a
@@ -34,15 +34,15 @@ fn told_reason(capture: &Capture, event: &str) -> String {
 }
 
 #[tokio::test]
-async fn a_refused_admission_reason_carries_no_code_prefix() {
+async fn a_refused_turn_reason_carries_no_code_prefix() {
     let capture = Capture::install();
-    let admissions = Turns::for_tests(
+    let turns = Turns::for_tests(
         afd_db::test_util::unreachable_db(),
         afd_bus::test_util::unreachable(),
     );
     let fleet = Uuid7::parse(FLEET).expect("a canonical fleet identifier");
 
-    let refused = admissions
+    let refused = turns
         .admit(IncomingTurn {
             producer: Producer::ScheduleFire,
             key: Key::Repeated("log-reasons"),
@@ -56,10 +56,10 @@ async fn a_refused_admission_reason_carries_no_code_prefix() {
         .await
         .expect_err("a pool that will not answer commits nothing");
 
-    told_reason(&capture, "admission_ceiling_unread");
-    told_reason(&capture, "admission_failed");
+    told_reason(&capture, "turn_ceiling_unread");
+    told_reason(&capture, "turn_refused");
     assert_eq!(
-        capture.only("admission_failed").field("error_code"),
+        capture.only("turn_refused").field("error_code"),
         Some(refused.code().as_str())
     );
 }

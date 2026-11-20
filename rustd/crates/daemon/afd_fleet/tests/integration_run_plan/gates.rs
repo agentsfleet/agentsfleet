@@ -68,10 +68,10 @@ async fn probe_plans(
     for mode in ["force_custom_plan", "force_generic_plan"] {
         run(connection, &format!("SET LOCAL plan_cache_mode={mode}")).await;
         let discovery = prepared::candidates(connection, runner).await;
-        run(connection, "SAVEPOINT claim_probe").await;
-        let claim = prepared::claim(connection, fleet, runner).await;
-        run(connection, "ROLLBACK TO SAVEPOINT claim_probe").await;
-        for (name, plan) in [("discovery", discovery), ("claim", claim)] {
+        run(connection, "SAVEPOINT assignment_probe").await;
+        let assignment = prepared::assign(connection, fleet, runner).await;
+        run(connection, "ROLLBACK TO SAVEPOINT assignment_probe").await;
+        for (name, plan) in [("discovery", discovery), ("assignment", assignment)] {
             assert_gate_work(&plan);
             if mode == "force_generic_plan" {
                 assert!(
@@ -121,7 +121,7 @@ fn assert_dense_work(plan: &serde_json::Value) {
         );
         assert_bounded_rows(scan);
         // The block budget for a dense pile-up is deferred to M243, which
-        // replaces the per-second poll with ring-driven claim passes. With
+        // replaces the per-second poll with ring-driven assignment passes. With
         // honest uuid statistics the planner walks the `expires_at` index past
         // this fixture's dead row versions (Indy, Nov 08, 2026: "There is a
         // spec that is working to remove the 1 second poll, M243 ... If not i

@@ -33,7 +33,7 @@ const QUOTE: char = '\'';
 /// One parsed condition.
 ///
 /// Borrowed from the authored string rather than owned: it is parsed on the
-/// claim path, consulted once, and dropped — allocating three `Box<str>` per
+/// assignment path, consulted once, and dropped — allocating three `Box<str>` per
 /// rule per run would be work with no product.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Condition<'a> {

@@ -129,7 +129,7 @@ impl Creations {
             .ok_or(ErrorKind::Gone)?;
             (revision, afd_turns::view::activity::Announcement::default())
         };
-        afd_turns::view::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+        afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.streams()))
             .await
             .map_err(query(CONTEXT))?;
         Ok(revision)

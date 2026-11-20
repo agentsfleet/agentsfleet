@@ -140,7 +140,7 @@ pub enum RunOutcome {
     Succeeded,
     /// Its fleet turn settled as a fleet error.
     Failed,
-    /// This holder was superseded by a reclaim.
+    /// This holder was superseded by a reassignment.
     Expired,
     /// A person stopped its turn, and the run reported stopped.
     Stopped,
@@ -161,15 +161,15 @@ pub enum RunDestination {
     NotPermitted,
 }
 
-/// Whether the run was the turn's first claim or a later reclaim.
+/// Whether the run was the turn's first assignment or a later reassignment.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunKind {
-    /// First claim of the fleet turn.
+    /// First assignment of the fleet turn.
     Fresh,
-    /// Claim after an earlier holder expired.
-    Reclaim,
+    /// Assignment after an earlier holder expired.
+    Reassigned,
 }
 
 /// One run in a runner's newest-first operator history.
@@ -208,7 +208,7 @@ pub struct RunnerRunItem<'a> {
     /// Terminal failure explanation, when one was stored.
     #[serde(borrow)]
     pub failure_detail: Option<Cow<'a, str>>,
-    /// Whether this was the first claim or a reclaim.
+    /// Whether this was the first assignment or a reassignment.
     pub kind: RunKind,
     /// Monotonic holder generation.
     pub fencing_token: i64,
@@ -232,7 +232,7 @@ pub struct RunnerRunItem<'a> {
     /// Holder deadline.
     #[serde(with = "af_wire::instant")]
     pub run_expires_at: jiff::Timestamp,
-    /// Claim instant.
+    /// Assignment instant.
     #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
@@ -275,7 +275,7 @@ mod tests {
                 outcome: RunOutcome::Failed,
                 failure_label: Some(Cow::Borrowed("provider_error")),
                 failure_detail: Some(Cow::Borrowed("upstream refused")),
-                kind: RunKind::Reclaim,
+                kind: RunKind::Reassigned,
                 fencing_token: 2,
                 provider: Cow::Borrowed("anthropic"),
                 model: Cow::Borrowed("claude-opus-4-1"),
@@ -306,7 +306,7 @@ mod tests {
                     "outcome": "failed",
                     "failure_label": "provider_error",
                     "failure_detail": "upstream refused",
-                    "kind": "reclaim",
+                    "kind": "reassigned",
                     "fencing_token": 2,
                     "provider": "anthropic",
                     "model": "claude-opus-4-1",

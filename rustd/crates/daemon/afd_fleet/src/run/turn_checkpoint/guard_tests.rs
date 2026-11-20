@@ -7,14 +7,14 @@ use af_wire::run::{TURN_CHECKPOINT_FORMAT, TurnCheckpointBegin, TurnWorkspace};
 #[test]
 fn a_checkpoint_fence_must_equal_both_current_owners() {
     assert!(guard::exact_fence(7, 7, 7));
-    for (run, slot, presented) in [
+    for (run, thread, presented) in [
         (6, 7, 6),
         (8, 7, 8),
         (7, 7, 6),
         (0, 0, 0),
         (-1, -1, u64::MAX),
     ] {
-        assert!(!guard::exact_fence(run, slot, presented));
+        assert!(!guard::exact_fence(run, thread, presented));
     }
 }
 

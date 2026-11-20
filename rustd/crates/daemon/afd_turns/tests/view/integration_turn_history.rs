@@ -1,7 +1,7 @@
 //! Dimension 4.9 — an admitted event is named by its `thread.turns` row id,
 //! and the history keyset `(created_at, turn_id)` reads two such events in one
 //! millisecond newest-first, each once, across a page boundary. An id no
-//! admission minted names nothing.
+//! turn minted names nothing.
 //!
 //! Lives here rather than beside the receipts in `afd_turns`, because the
 //! history read is this crate's and `afd_turns` cannot depend on it.
@@ -21,7 +21,7 @@ use crate::support::TurnsLane;
 /// The one millisecond both events are recorded at.
 const SHARED_INSTANT: Timestamp = Timestamp::constant(1_800_000_000, 7_000_000);
 
-fn admission<'a>(lane: &'a TurnsLane, key: &'a str) -> IncomingTurn<'a> {
+fn turn<'a>(lane: &'a TurnsLane, key: &'a str) -> IncomingTurn<'a> {
     IncomingTurn {
         producer: Producer::Steer,
         key: Key::Repeated(key),
@@ -36,17 +36,17 @@ fn admission<'a>(lane: &'a TurnsLane, key: &'a str) -> IncomingTurn<'a> {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn two_admissions_in_one_millisecond_list_once_newest_first() {
+async fn two_turns_in_one_millisecond_list_once_newest_first() {
     let lane = TurnsLane::open().await;
-    let ledger = lane.admissions();
+    let ledger = lane.turns();
     let mut ids = Vec::new();
     for name in ["first", "second"] {
         let key = format!("{}-{name}", lane.fleet);
         let admitted = ledger
-            .admit(admission(&lane, &key))
+            .admit(turn(&lane, &key))
             .await
-            .expect("the admission is taken");
-        // Delivered as the worker records it: under the admission's own id,
+            .expect("the turn is taken");
+        // Delivered as the worker records it: under the turn's own id,
         // both at one instant so only the id can break the tie.
         lane.seed_event(&admitted.stored.id, SHARED_INSTANT).await;
         ids.push(admitted.stored.id);
@@ -81,7 +81,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
     }
     assert_eq!(walked, newest_first, "each listed once, in keyset order");
 
-    let first = ids.first().expect("two admissions were made");
+    let first = ids.first().expect("two turns were made");
     let found = history
         .detail(workspace, fleet, first)
         .await
@@ -92,10 +92,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
         .detail(workspace, fleet, &mint_id())
         .await
         .expect("the detail reads");
-    assert!(
-        unadmitted.is_none(),
-        "an id no admission minted names nothing"
-    );
+    assert!(unadmitted.is_none(), "an id no turn minted names nothing");
 
     lane.cleanup().await;
 }

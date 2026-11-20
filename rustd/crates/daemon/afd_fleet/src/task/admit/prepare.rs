@@ -1,4 +1,4 @@
-//! Identities and ordinary admission preparation precede native lifecycle locks.
+//! Identities and ordinary turn preparation precede native lifecycle locks.
 
 use super::super::{
     PreparedItem, PreparedPlan, TaskBinding, TaskScope, Tasks, continuation::Continuation,

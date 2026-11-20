@@ -8,7 +8,7 @@ import { useFleetScope } from "../stream/FleetScope";
 
 const TurnDetailsDialog = nextDynamic(() => import("../../turns/TurnDetailsDialog").then(module => module.TurnDetailsDialog), {ssr: false});
 
-/** Queued admissions have no turn record to inspect until a run promotes them. */
+/** A queued turn has no record to inspect until a run is assigned it. */
 export function FleetRunDetails({turnId, status}: {turnId: string; status: string}) {
   const scope = useFleetScope();
   const [open, setOpen] = useState(false);

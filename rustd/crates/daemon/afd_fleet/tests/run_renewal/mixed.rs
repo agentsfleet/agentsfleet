@@ -16,7 +16,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::run::{AcceptedKinds, RunKind};
 use afd_db::{Db, config::DbRole};
 use afd_fleet::run::Renewed;
-use afd_setup::{Claimed, Drafts, types::Draft};
+use afd_setup::{AssignedDraft, Drafts, types::Draft};
 use std::time::Duration;
 
 /// Every ordering finishes inside this, or the test fails rather than hangs.
@@ -25,20 +25,20 @@ const LIVE_AUTHORING: &str = "\
 SELECT run_id FROM setup.attempts
 WHERE runner_id = $1 AND status = $2 AND run_expires_at > clock_timestamp()";
 
-/// Where A's late renewal lands relative to B's authoring admission.
+/// Where A's late renewal lands relative to B's authoring assignment.
 #[derive(Debug, Clone, Copy)]
 enum Late {
     /// Answered before B admits at all.
     Answered,
-    /// Both wait on the host lock, the renewal queued ahead of the admission.
+    /// Both wait on the host lock, the renewal queued ahead of the assignment.
     QueuedAhead,
-    /// Both wait on the host lock, the admission queued ahead of the renewal.
+    /// Both wait on the host lock, the assignment queued ahead of the renewal.
     QueuedBehind,
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_expired_runtime_renewal_and_authoring_admission_share_one_slot() {
+async fn test_expired_runtime_renewal_and_authoring_assignment_share_one_slot() {
     for order in [Late::Answered, Late::QueuedAhead, Late::QueuedBehind] {
         let finished = Box::pin(tokio::time::timeout(DEADLOCK_BOUND, scenario(order))).await;
         assert!(
@@ -75,7 +75,7 @@ async fn scenario(order: Late) {
     );
     assert_host_full(&running, &label).await;
     let next = afd_runner::Runners::new(running.fixtures.database.clone(), Entropy::new())
-        .claim_assignment(&running.runner, AcceptedKinds::ALL)
+        .assignment_ticket(&running.runner, AcceptedKinds::ALL)
         .await
         .expect("the next poll reads its preference")
         .expect("the host exists");
@@ -89,13 +89,13 @@ async fn scenario(order: Late) {
     running.cleanup().await;
 }
 
-/// A's late renewal and B's admission, in the order `order` names.
+/// A's late renewal and B's assignment, in the order `order` names.
 async fn race(
     order: Late,
     running: &Running,
     replica: &AuthoringReplica,
     draft: &Draft,
-) -> (Option<Claimed>, Renewed) {
+) -> (Option<AssignedDraft>, Renewed) {
     let admit = || Seat::admit(&replica.drafts, &running.runner, draft);
     match order {
         Late::Answered => {

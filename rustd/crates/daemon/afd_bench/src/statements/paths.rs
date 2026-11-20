@@ -16,9 +16,9 @@ use super::queries::QueryCost;
 /// One part of a chat's cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Path {
-    /// Finding and claiming the fleet's head admission, and the delivery
-    /// writes and reads that follow the claim.
-    Claim,
+    /// Finding and assigning the fleet's head turn, and the delivery
+    /// writes and reads that follow the assignment.
+    Assign,
     /// Admission and renewal gates: policy, money, approvals, grants and the
     /// provider and key a run is delivered with.
     Gates,
@@ -54,7 +54,7 @@ pub enum Path {
 impl Path {
     /// Every path, in report order.
     pub const ALL: [Self; 13] = [
-        Self::Claim,
+        Self::Assign,
         Self::Gates,
         Self::Pricing,
         Self::Issue,
@@ -73,7 +73,7 @@ impl Path {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Claim => "claim",
+            Self::Assign => "assign",
             Self::Gates => "gates",
             Self::Pricing => "pricing",
             Self::Issue => "issue",
@@ -125,24 +125,24 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "SELECT r.id, r.definition::text AS definition FROM fleet.revisions r WHERE r.id = ANY(",
         Path::Meter,
     ),
-    // Fold: `claim_inputs.sql`.
+    // Fold: `assign_inputs.sql`.
     ("head.sequence AS head_sequence", Path::Fold),
-    // Claim: the candidate scan, the slot-and-head claim (which
+    // Assign: the candidate scan, the thread-and-head assignment (which
     // opens the event and stamps the fence itself), the turn lock, the
     // folded turns' opening and the counters read.
-    ("eligible AS MATERIALIZED", Path::Claim),
-    ("FOR NO KEY UPDATE OF s SKIP LOCKED", Path::Claim),
+    ("eligible AS MATERIALIZED", Path::Assign),
+    ("FOR NO KEY UPDATE OF s SKIP LOCKED", Path::Assign),
     (
         "UPDATE thread.turns t SET status = CASE WHEN t.opened_at IS NULL",
-        Path::Claim,
+        Path::Assign,
     ),
-    ("WITH slot AS MATERIALIZED", Path::Claim),
+    ("WITH held_thread AS MATERIALIZED", Path::Assign),
     (
         "SELECT COALESCE((SELECT k.event_count FROM fleet.activity_counters",
-        Path::Claim,
+        Path::Assign,
     ),
     // Gates.
-    // The one admission statement (afd_turns `admit_one.sql`).
+    // The one turn intake statement (afd_turns `admit_one.sql`).
     ("WITH locked_fleet AS MATERIALIZED", Path::Gates),
     ("SELECT w.balance_nanos, w.exhausted_at", Path::Gates),
     ("WITH floors AS", Path::Gates),
@@ -192,7 +192,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Host,
     ),
     ("UPDATE runner.runners SET run_version", Path::Host),
-    // The placement choice an assignment reads before it claims (`choice.sql`).
+    // The placement choice an assignment reads before it assigns (`choice.sql`).
     (
         "SELECT run_version, last_run_type FROM runner.runners",
         Path::Host,
@@ -210,7 +210,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // Activity has no fragment: a session authorizes its run once, when it
     // opens, so a live-tail post of a plain chat sends no statement and the
     // path reads zero. A durable task's progress frame runs
-    // `run/activity/task_history.sql`, whose text the claim fragments above
+    // `run/activity/task_history.sql`, whose text the assign fragments above
     // already match; the chat drain sends none. A statement a post starts
     // sending lands in `other`, which every drain reports.
     // Report.
@@ -234,7 +234,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Task,
     ),
     ("SELECT t.id AS task_id, t.status, t.generation", Path::Task),
-    ("a.task_generation AS admission_generation", Path::Task),
+    ("a.task_generation AS turn_generation", Path::Task),
     (
         "task_execution_deadline_at) AS execution_deadline",
         Path::Task,

@@ -18,13 +18,13 @@ pub struct Waiting {
 }
 
 impl Waiting {
-    /// Whether a claim pass may help; a false positive costs one bounded pass.
+    /// Whether an assignment pass may help; a false positive costs one bounded pass.
     #[must_use]
     pub const fn pending(&self) -> bool {
         self.pending
     }
 
-    /// The probed tenant runners whose tenant has nothing waiting: a claim on
+    /// The probed tenant runners whose tenant has nothing waiting: an assignment on
     /// one of them cannot run, so the pass skips it.
     #[must_use]
     pub fn idle(&self) -> &[Uuid7] {

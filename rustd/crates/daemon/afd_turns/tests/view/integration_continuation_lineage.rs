@@ -160,7 +160,7 @@ async fn lineage_kept_when_approval_writes_first() {
 
 /// A redelivery that knows no predecessor never clears one already stored.
 ///
-/// The run path re-runs this statement on every reclaim and every re-poll,
+/// The run path re-runs this statement on every reassignment and every re-poll,
 /// always binding `None`. A conflict arm that overwrote rather than coalesced
 /// would erase the lineage on the first redelivery after the answer.
 #[tokio::test(flavor = "multi_thread")]

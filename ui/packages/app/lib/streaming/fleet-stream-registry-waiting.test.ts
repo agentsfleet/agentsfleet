@@ -17,7 +17,7 @@ setupRegistryTests();
 setupBackfillTests();
 
 const STEER_ID = "evt_steer";
-// The steer's admission instant: its history row carries this, not its run.
+// The steer's intake instant: its history row carries this, not its run.
 const ADMITTED_AT_MS = Date.UTC(2026, 4, 15, 18, 30, 0);
 // A durable row a minute later, which is where the watermark stands.
 const SEEDED_AT_MS = ADMITTED_AT_MS + 60_000;
@@ -48,7 +48,7 @@ function steerStatus(): string | undefined {
 }
 
 describe("fleet-stream-registry — a steer held during an outage", () => {
-  it("should reach back to the waiting row's admission and settle it from the recovered row", async () => {
+  it("should reach back to the waiting row's intake and settle it from the recovered row", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([
       row({ turn_id: SEED_ID, created_at: new Date(SEEDED_AT_MS).toISOString() }),
       row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_TURN_STATUS.PROCESSED }),
@@ -79,7 +79,7 @@ describe("fleet-stream-registry — a steer held during an outage", () => {
     release();
   });
 
-  it("should never move the watermark back to the waiting row's admission", async () => {
+  it("should never move the watermark back to the waiting row's intake", async () => {
     fetchSpy
       .mockResolvedValueOnce(pageWith([
         row({ turn_id: STEER_ID, created_at: new Date(ADMITTED_AT_MS).toISOString(), status: AGENTSFLEET_TURN_STATUS.PROCESSED }),

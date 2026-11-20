@@ -66,7 +66,7 @@ The deploy workflows bring the NATS app up before the daemon.
 `scripts/ensure_fly_app.sh` waits until every NATS machine passes its `/healthz` check, so a daemon never deploys against a bus that refuses it.
 The daemon reaches NATS over Fly's private network in plaintext `nats://`.
 
-### The admissions ledger is the queue
+### The turns ledger is the queue
 
 The heading keeps its old words because other pages link to it. The queue is the unsettled rows of `thread.turns`.
 

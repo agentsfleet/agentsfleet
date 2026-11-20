@@ -190,7 +190,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
 
 /// A release read that fails answers no release, and says why: the runner
 /// keeps its holds one beat longer while the beat itself lands. The same
-/// listed fleet, which no slot of this runner's holds, is answered back for
+/// listed fleet, which no thread of this runner's holds, is answered back for
 /// release while the read works, so the empty answer is the failure's.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

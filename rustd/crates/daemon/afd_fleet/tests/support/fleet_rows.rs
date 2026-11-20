@@ -15,7 +15,7 @@ use sqlx::AssertSqlSafe;
 
 use crate::support::Fixtures;
 
-/// Far enough to put any deadline a claim, an issue or a renewal wrote behind
+/// Far enough to put any deadline an assignment, an issue or a renewal wrote behind
 /// the database clock: each lies at most one run lifetime ahead of it.
 pub(crate) const LAPSE: std::time::Duration = af_core::timing::RUN_TTL.saturating_mul(2);
 
@@ -28,11 +28,11 @@ pub(crate) enum Row<'a> {
     /// A `thread.runs` row, by run id.
     Run(&'a Uuid7),
     /// A fleet's `thread.threads` row, by fleet id.
-    Slot(&'a Uuid7),
+    Thread(&'a Uuid7),
     /// A fleet's `thread.threads` row, by fleet id.
     Session(&'a Uuid7),
     /// A `thread.turns` row, by its id, which is the logical event id.
-    Admission(&'a Uuid7),
+    Turn(&'a Uuid7),
     /// An `setup.attempts` row, by attempt id.
     Attempt(&'a Uuid7),
     /// A fleet's opened `thread.turns` row, its event, by fleet id and turn
@@ -74,9 +74,9 @@ impl<'a> Row<'a> {
         match self {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
             Self::Run(id) => ("thread.runs", "id = $1", id, None),
-            Self::Slot(fleet) => ("thread.threads", "fleet_id = $1", fleet, None),
+            Self::Thread(fleet) => ("thread.threads", "fleet_id = $1", fleet, None),
             Self::Session(fleet) => ("thread.threads", "id = $1", fleet, None),
-            Self::Admission(id) => ("thread.turns", "id = $1", id, None),
+            Self::Turn(id) => ("thread.turns", "id = $1", id, None),
             Self::Attempt(id) => ("setup.attempts", "id = $1", id, None),
             Self::Event(fleet, event) => (
                 "thread.turns",
@@ -170,10 +170,10 @@ impl Fixtures {
 
 impl Fixtures {
     /// Lapses both deadlines a holder that stopped renewing leaves behind: its
-    /// run's and its fleet's slot's.
+    /// run's and its fleet's thread's.
     pub(crate) async fn lapse_holder(&self, run: &Uuid7, fleet: &Uuid7) {
         self.age(Row::Run(run), "run_expires_at", LAPSE).await;
-        self.age(Row::Slot(fleet), "run_expires_at", LAPSE).await;
+        self.age(Row::Thread(fleet), "run_expires_at", LAPSE).await;
     }
 }
 

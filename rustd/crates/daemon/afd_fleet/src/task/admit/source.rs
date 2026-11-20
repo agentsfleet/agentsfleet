@@ -1,4 +1,4 @@
-//! Source identity is proved from native admissions, never model prose.
+//! Source identity is proved from native turns, never model prose.
 
 use af_core::id::Uuid7;
 use afd_turns::Producer;
@@ -15,8 +15,8 @@ pub(in crate::task) struct Source {
     pub(in crate::task) request_json: String,
     pub(super) reply_provider: Option<String>,
     pub(super) reply_address: Option<String>,
-    input_claim_run_id: Option<Uuid7>,
-    input_claim_fence: Option<i64>,
+    input_run_id: Option<Uuid7>,
+    input_fence: Option<i64>,
 }
 
 pub(in crate::task) async fn lock(
@@ -26,17 +26,17 @@ pub(in crate::task) async fn lock(
     plan: &PreparedPlan,
 ) -> Result<Source> {
     let source = load(connection, current, &plan.source_turn_id).await?;
-    check_claim(&source, run, current, &plan.source_turn_id)?;
+    check_assignment(&source, run, current, &plan.source_turn_id)?;
     Ok(source)
 }
 
 pub(in crate::task) async fn load(
     connection: &mut PgConnection,
     current: &RunRow,
-    admission: &af_core::id::Uuid7,
+    turn: &af_core::id::Uuid7,
 ) -> Result<Source> {
     let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
-        .bind(admission)
+        .bind(turn)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(afd_connector::Provider::Slack.id())
@@ -49,15 +49,15 @@ pub(in crate::task) async fn load(
     Ok(source)
 }
 
-pub(in crate::task) fn check_claim(
+pub(in crate::task) fn check_assignment(
     source: &Source,
     run: TaskRun<'_>,
     current: &RunRow,
-    admission: &af_core::id::Uuid7,
+    turn: &af_core::id::Uuid7,
 ) -> Result<()> {
-    let owns_claim = source.input_claim_run_id.as_ref() == Some(run.run_id)
-        && source.input_claim_fence == Some(current.fence);
-    if admission.as_str() != current.source_turn_id && !owns_claim {
+    let owns_assignment = source.input_run_id.as_ref() == Some(run.run_id)
+        && source.input_fence == Some(current.fence);
+    if turn.as_str() != current.source_turn_id && !owns_assignment {
         return Err(TaskRefusal::StaleState.into());
     }
     Ok(())
@@ -148,8 +148,8 @@ mod tests {
             request_json: r#"{"message":"fix it"}"#.to_owned(),
             reply_provider: None,
             reply_address: None,
-            input_claim_run_id: None,
-            input_claim_fence: None,
+            input_run_id: None,
+            input_fence: None,
         }
     }
 

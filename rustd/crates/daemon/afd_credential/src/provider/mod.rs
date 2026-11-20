@@ -13,7 +13,7 @@
 //! ```
 //!
 //! The platform default is the one reference a replica may answer from memory:
-//! when the run claim's witnesses name a held entry ([`cache`]) the vault is
+//! when the run assignment's witnesses name a held entry ([`cache`]) the vault is
 //! not read at all. A tenant's own entry is read every time.
 //!
 //! # Where this crate keeps it, and where it may have to move

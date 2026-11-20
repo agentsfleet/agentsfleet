@@ -22,7 +22,7 @@ pub(super) struct Held {
 pub(super) async fn assign(native: &mut Native) -> TestResult<Held> {
     let frame = native.expect(StreamKind::Work, "run").await;
     let run = wire::pointer(&frame, "/run");
-    let (id, fence) = wire::claim(run);
+    let (id, fence) = wire::run_and_fence(run);
     Ok(Held {
         run: id,
         fence,

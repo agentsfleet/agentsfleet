@@ -1,4 +1,4 @@
-//! The heartbeat's hold reconcile reaches its slots through the partial index
+//! The heartbeat's hold reconcile reaches its threads through the partial index
 //! `schema/1820` builds for it, under the generic plan a prepared statement
 //! settles on.
 //!
@@ -7,10 +7,10 @@
 //! when the statement's own predicate implies the index's whatever the binds
 //! are, which `hold_expires_at IS NOT NULL`, a literal in both, does. An index
 //! whose predicate drifted from the statement's would leave every beat of
-//! every runner reading each slot that runner was ever last on.
+//! every runner reading each thread that runner was ever last on.
 //!
 //! The plan is asked of a database of this test's own, migrated from
-//! `schema/`, seeded with mostly unheld slots in a transaction that rolls
+//! `schema/`, seeded with mostly unheld threads in a transaction that rolls
 //! back, and analysed, so its statistics describe the spread and nothing else:
 //! the shape `afd_turns`' `integration_list_plans/mod.rs` set. That suite asks
 //! `EXPLAIN (GENERIC_PLAN)`, which cannot type every parameter; here the text
@@ -38,16 +38,16 @@ use sqlx::{AssertSqlSafe, PgConnection, Row as _};
 /// The index under test.
 const HELD_INDEX: &str = "idx_threads_last_runner_id_held";
 
-/// The spreads the plan is asked against, as `(runners, slots per runner, one
-/// slot in this many held)`: a small fleet and a larger one, because the
+/// The spreads the plan is asked against, as `(runners, threads per runner, one
+/// thread in this many held)`: a small fleet and a larger one, because the
 /// choice between an index and a scan turns on how many rows are expected.
 const SPREADS: [(i32, i32, i32); 2] = [(8, 125, 20), (40, 250, 50)];
 
 /// The instant every seeded row is stamped at.
 const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
-/// Runners, a fleet per slot, and the slots, dealt round the runners, every
-/// `$5`th held: `$1` tenant, `$2` instant, `$3` runners, `$4` slots each.
+/// Runners, a fleet per thread, and the threads, dealt round the runners, every
+/// `$5`th held: `$1` tenant, `$2` instant, `$3` runners, `$4` threads each.
 const SEED_SPREAD: &str = "
 WITH workspace AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
@@ -72,19 +72,19 @@ WITH workspace AS (
            1, $2, $2
       FROM workspace, generate_series(1, $3 * $4) f
     RETURNING id
-), slots AS (
+), threads AS (
     SELECT id, row_number() OVER (ORDER BY id) - 1 AS n FROM fleets
 )
 INSERT INTO thread.threads
   (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
    created_at, updated_at)
-SELECT slots.id, slots.id, ranked.id, 1, $2,
-       CASE WHEN slots.n % $5 = 0 THEN $2 + interval '1 millisecond' END,
+SELECT threads.id, threads.id, ranked.id, 1, $2,
+       CASE WHEN threads.n % $5 = 0 THEN $2 + interval '1 millisecond' END,
        $2, $2
-  FROM slots JOIN ranked ON ranked.rank = slots.n % $3";
+  FROM threads JOIN ranked ON ranked.rank = threads.n % $3";
 
 /// Refreshes the statistics the plan is costed from.
-const ANALYZE_SLOTS: &str = "ANALYZE thread.threads";
+const ANALYZE_THREADS: &str = "ANALYZE thread.threads";
 
 /// Plans every prepared statement once for all binds, as a cached plan does.
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
@@ -148,7 +148,7 @@ async fn generic_plan(
         .execute(&mut *connection)
         .await
         .expect("the spread must insert");
-    run(&mut connection, ANALYZE_SLOTS).await;
+    run(&mut connection, ANALYZE_THREADS).await;
     run(&mut connection, FORCE_GENERIC).await;
     run(
         &mut connection,

@@ -39,7 +39,7 @@ impl Error {
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }

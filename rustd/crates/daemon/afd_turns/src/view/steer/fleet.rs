@@ -5,8 +5,8 @@
 //! the event the sender is running, so the target answers where the sender
 //! was asked. The key is derived here, never named by a caller.
 //!
-//! It runs behind the run's write guard, inside the admission's own
-//! transaction, so a runner whose run a reclaim took writes nothing. It
+//! It runs behind the run's write guard, inside the turn's own
+//! transaction, so a runner whose run a reassignment took writes nothing. It
 //! computes no disposition: a fleet's steer never folds into a live run, and
 //! its sender does not wait to learn where it went.
 
@@ -14,7 +14,7 @@ use crate::Unheld;
 use af_core::id::Uuid7;
 use afd_db::Precondition;
 
-use super::admission::{fleet_operation_id, fleet_steer_admission, scoped_key};
+use super::intake::{fleet_operation_id, fleet_steer_turn, scoped_key};
 use super::{Steer, answer_repeat};
 use crate::view::error::Result;
 
@@ -97,7 +97,7 @@ impl Steer {
         let actor = fleet_actor(steer.sender_fleet);
         let operation = fleet_operation_id(steer.sender_event, steer.masked_text);
         let key = scoped_key(steer.target.as_str(), &operation);
-        let admission = fleet_steer_admission(
+        let turn = fleet_steer_turn(
             steer.target,
             steer.workspace,
             &actor,
@@ -105,23 +105,19 @@ impl Steer {
             &key,
             steer.sender_event,
         );
-        let admitted = match self
-            .admissions
-            .admit_runnable_guarded(admission, guard)
-            .await
-        {
+        let admitted = match self.turns.admit_runnable_guarded(turn, guard).await {
             Ok(Ok(admitted)) => admitted,
             Ok(Err(unheld)) => return Ok(Err(unheld)),
             Err(refused) if refused.is_over_capacity() => {
                 return self
-                    .repeat_despite(&admission, refused)
+                    .repeat_despite(&turn, refused)
                     .await
                     .map(|turn_id| Ok(FleetSteered::repeat(turn_id)));
             }
             Err(failed) => return Err(failed.into()),
         };
         if admitted.replayed {
-            return answer_repeat(&admission, admitted.stored)
+            return answer_repeat(&turn, admitted.stored)
                 .map(|turn_id| Ok(FleetSteered::repeat(turn_id)));
         }
         Ok(Ok(FleetSteered {
@@ -135,7 +131,7 @@ impl Steer {
 mod tests {
     use af_core::id::Uuid7;
 
-    use super::super::admission::fleet_operation_id;
+    use super::super::intake::fleet_operation_id;
     use super::{FLEET_ACTOR_PREFIX, fleet_actor, is_fleet_actor};
     use crate::view::steer::{ACTOR_MACHINE, is_steer_actor, steer_actor};
 

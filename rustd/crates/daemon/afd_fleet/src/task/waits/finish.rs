@@ -43,7 +43,7 @@ pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
         .as_ref()
         .is_ok_and(|snapshot| actionable(snapshot, &probe.owner))
     {
-        Some(tasks.admissions.prepare(wake.admission()).await?)
+        Some(tasks.turns.prepare(wake.turn()).await?)
     } else {
         None
     };
@@ -198,7 +198,7 @@ async fn consume(
         .begin()
         .await
         .map_err(query("begin wait continuation savepoint"))?;
-    let admitted = match tasks.admissions.stage(&mut savepoint, prepared).await {
+    let admitted = match tasks.turns.stage(&mut savepoint, prepared).await {
         Ok(admitted) => admitted,
         Err(fault)
             if fault.is_over_capacity()

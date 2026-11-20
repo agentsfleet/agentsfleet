@@ -169,17 +169,17 @@ describe("fleet stream durable final read", () => {
     expect(entry.replyGaps.has("evt_terminal")).toBe(false);
   });
 
-  it("recovers a reclaimed turn instead of feeding its new run into old reasoning", async () => {
+  it("recovers a reassigned turn instead of feeding its new run into old reasoning", async () => {
     vi.useRealTimers();
-    getFleetTurnActionMock.mockResolvedValue({ ok: true, data: row({ turn_id: "evt_reclaim", response_text: "New final answer" }) });
+    getFleetTurnActionMock.mockResolvedValue({ ok: true, data: row({ turn_id: "evt_reassigned", response_text: "New final answer" }) });
     const release = subscribe(WS, Z_A, [], () => {});
     const source = sourceAt(0);
-    source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_reclaim", text: "old attempt ", text_kind: "reasoning", stream_start: true, stream_contiguous: true, stream_seq: 0 });
+    source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_reassigned", text: "old attempt ", text_kind: "reasoning", stream_start: true, stream_contiguous: true, stream_seq: 0 });
     await vi.waitFor(() => expect(getSnapshot(Z_A).turns[0]?.reasoning).toBe("old attempt "));
-    source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_reclaim", text: "New answer PRIVATE", text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0 });
+    source.emit({ kind: FRAME_KIND.CHUNK, turn_id: "evt_reassigned", text: "New answer PRIVATE", text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0 });
     expect(getSnapshot(Z_A).turns[0]?.reasoning).toBe("");
     expect(getSnapshot(Z_A).turns[0]?.reply).toBe("");
-    source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_reclaim", status: "processed" });
+    source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_reassigned", status: "processed" });
     await vi.waitFor(() => expect(getSnapshot(Z_A).turns[0]?.reply).toBe("New final answer"));
     expect(JSON.stringify(getSnapshot(Z_A))).not.toContain("PRIVATE");
     expect(getSnapshot(Z_A).turns[0]?.reasoning).toBe("");

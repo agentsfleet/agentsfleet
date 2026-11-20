@@ -1,6 +1,6 @@
 //! Typed event selection is separate from connection decisions, following Exonum's handler pattern.
 
-use super::assignments::{AssignTrigger, ClaimRequest};
+use super::assignments::{AssignTrigger, PassRequest};
 use super::{io::IncomingFrame, streams::StreamReceivers, supervisor::ConnectionSupervisor};
 use crate::{Result, error::ErrorKind};
 use af_wire::protocol::StreamKind;
@@ -45,7 +45,7 @@ pub(super) trait EventHandler {
 pub(super) struct EventSource {
     pub(super) frames: StreamReceivers,
     pub(super) commands: mpsc::Receiver<Command>,
-    pub(super) claims: mpsc::Receiver<ClaimRequest>,
+    pub(super) passes: mpsc::Receiver<PassRequest>,
 }
 
 impl EventSource {
@@ -69,8 +69,8 @@ impl EventSource {
             }
             () = handle.rechecks.notified(), if !connection.command_running => Ok(ConnectionEvent::Command(Command::Recheck)),
             frame = self.frames.control.recv(), if connection.slots.available(StreamKind::Control) => frame_event(frame),
-            claim = self.claims.recv(), if !connection.assign_running => {
-                Ok(ConnectionEvent::AssignRequested(AssignTrigger::Pass(claim.ok_or(ErrorKind::Closed)?)))
+            pass = self.passes.recv(), if !connection.assign_running => {
+                Ok(ConnectionEvent::AssignRequested(AssignTrigger::Pass(pass.ok_or(ErrorKind::Closed)?)))
             }
             () = handle.assignments.notified(), if !connection.assign_running => Ok(ConnectionEvent::AssignRequested(AssignTrigger::Ready)),
             frame = self.frames.reports.recv(), if connection.slots.available(StreamKind::Reports) => frame_event(frame),

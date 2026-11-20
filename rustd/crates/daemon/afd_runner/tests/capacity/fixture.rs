@@ -107,7 +107,7 @@ impl Fixture {
         .await;
     }
 
-    /// A hold is a slot deadline, independent of the preceding run's status.
+    /// A hold is a thread deadline, independent of the preceding run's status.
     pub(super) async fn hold(&self, until: Timestamp) -> Uuid7 {
         use jiff_sqlx::ToSqlx as _;
         let mut connection = self.owner.acquire().await.expect("hold seed connection");
@@ -142,11 +142,11 @@ impl Fixture {
 
     pub(super) async fn capacity(
         &self,
-        claimant: afd_runner::capacity::Claimant<'_>,
+        work: afd_runner::capacity::Work<'_>,
     ) -> afd_runner::capacity::Capacity {
         let mut connection = self.db.acquire().await.expect("capacity connection");
         let mut tx = connection.begin().await.expect("capacity transaction");
-        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, claimant, None)
+        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, work, None)
             .await
             .expect("locked census")
             .expect("seeded host exists");
@@ -171,35 +171,35 @@ impl Fixture {
         .expect("the runtime run's expiry moves");
     }
 
-    pub(super) async fn try_claim(&self) -> bool {
-        let mut connection = self.db.acquire().await.expect("claim connection");
-        let mut tx = connection.begin().await.expect("claim transaction");
+    pub(super) async fn try_assign(&self) -> bool {
+        let mut connection = self.db.acquire().await.expect("assignment connection");
+        let mut tx = connection.begin().await.expect("assignment transaction");
         let capacity = afd_runner::capacity::lock(
             &mut tx,
             &self.runner,
-            afd_runner::capacity::Claimant::Authoring,
+            afd_runner::capacity::Work::Authoring,
             None,
         )
         .await
         .expect("lock host")
         .expect("isolated host exists");
-        let accepted = capacity.can_claim();
+        let accepted = capacity.can_assign();
         if accepted {
             self.authoring(&mut tx, clock::after(capacity.now(), LIVE_FOR))
                 .await;
         }
-        tx.commit().await.expect("commit the guarded claim");
+        tx.commit().await.expect("commit the guarded assignment");
         accepted
     }
 
     /// Takes the host row's lock on a connection of its own, the way a
-    /// concurrent claimant on another replica holds it.
+    /// concurrent assignment on another replica holds it.
     pub(super) async fn lock_host(&self, tx: &mut Transaction<'_, Postgres>) {
         sqlx::query("SELECT 1 FROM runner.runners WHERE id = $1 FOR UPDATE")
             .bind(&self.runner)
             .execute(&mut **tx)
             .await
-            .expect("the competing claimant locks the host");
+            .expect("the competing assignment locks the host");
     }
 
     pub(super) async fn cleanup(self) {

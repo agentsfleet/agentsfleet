@@ -63,7 +63,7 @@ impl Shared {
 #[derive(Debug)]
 pub(super) struct Tally {
     /// Entries in a notified or capacity assignment pass.
-    pub(super) claims: u64,
+    pub(super) assignments: u64,
     /// Runs issued to this runner.
     pub(super) held: u64,
     /// Runs that arrived carrying their fleet's memory window. One that
@@ -80,7 +80,7 @@ impl Tally {
     /// An empty tally.
     pub(super) fn new() -> Result<Self> {
         Ok(Self {
-            claims: 0,
+            assignments: 0,
             held: 0,
             memory_windows: 0,
             run_latency: Latency::new()?,
@@ -94,7 +94,7 @@ impl Tally {
     ///
     /// When the two latency distributions will not merge.
     pub(super) fn absorb(&mut self, other: &Self) -> Result<()> {
-        self.claims += other.claims;
+        self.assignments += other.assignments;
         self.held += other.held;
         self.memory_windows += other.memory_windows;
         self.run_latency.merge(&other.run_latency)?;
@@ -102,7 +102,7 @@ impl Tally {
     }
 }
 
-/// Drive a capacity pass, then await a real notification after an empty claim.
+/// Drive a capacity pass, then await a real notification after an empty assignment.
 ///
 /// # Errors
 /// Preserves frame, domain and histogram failures.
@@ -115,7 +115,7 @@ pub(super) async fn drive(
     let abort = shared.abort.token();
     while shared.open() {
         generations.borrow_and_update();
-        tally.claims += 1;
+        tally.assignments += 1;
         let issued = step(&mut session, shared, &mut tally).await?;
         if !issued {
             tokio::select! {
@@ -291,7 +291,7 @@ async fn ask(
     Ok(through)
 }
 
-/// How long a simulated model call takes: a held turn claims new messages
+/// How long a simulated model call takes: a held turn takes new messages
 /// before each one, as a runner does before every model call.
 const MODEL_CALL: Duration = Duration::from_millis(500);
 

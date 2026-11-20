@@ -120,7 +120,7 @@ pub(super) const SELECT_THREAD_FINISHED_BEFORE: &str =
 mod actor;
 pub(super) use self::actor::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
 
-/// The unified thread reads also cover waiting admissions in one snapshot.
+/// The unified thread reads also cover waiting turns in one snapshot.
 #[cfg(feature = "test-util")]
 pub const QUEUED_READ_TEXTS: [(&str, &str); 2] = [
     ("waiting", SELECT_THREAD_PAGE),

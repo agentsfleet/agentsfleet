@@ -137,7 +137,7 @@ impl Archive {
 
     fn respond(&mut self, call: &Call) -> Answer {
         match call.verb {
-            Verb::Activity => json(&serde_json::json!({})),
+            Verb::Progress => json(&serde_json::json!({})),
             Verb::TaskCheckpointPlan => self.planned(call),
             Verb::TaskCheckpointObjectsRegister => self.registered(call),
             Verb::TaskCheckpointPageWrite => self.written(call),
@@ -288,7 +288,7 @@ async fn drain(calls: &mut Calls) -> Vec<Call> {
         let mut observed = Vec::new();
         loop {
             let call = calls.recv().await.unwrap();
-            let done = if call.verb == Verb::Activity {
+            let done = if call.verb == Verb::Progress {
                 let value: serde_json::Value = body(&call);
                 matches!(
                     value
@@ -320,7 +320,7 @@ fn config_failure(error: &crate::Error, expected: &str) {
 fn phases(calls: &[Call]) -> Vec<String> {
     calls
         .iter()
-        .filter(|call| call.verb == Verb::Activity)
+        .filter(|call| call.verb == Verb::Progress)
         .map(|call| {
             let value: serde_json::Value = body(call);
             value

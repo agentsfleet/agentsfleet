@@ -1,4 +1,4 @@
-//! Reclaimed durable work uses the ordinary plane and its current setup proof.
+//! Reassigned durable work uses the ordinary plane and its current setup proof.
 use super::{
     super::fixture::{exercise, id},
     fixture::Decisions,
@@ -10,7 +10,7 @@ pub(super) mod support;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn reclaimed_task_attaches_to_one_ordinary_run_with_original_generation_and_deadline() {
+async fn reassigned_task_attaches_to_one_ordinary_run_with_original_generation_and_deadline() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         let default = support::provider(&fixture).await;
@@ -18,9 +18,9 @@ async fn reclaimed_task_attaches_to_one_ordinary_run_with_original_generation_an
         let task = fixture.bind_goal().await;
         let task_id = id(&task.task_id);
         support::expire(case).await;
-        let acquired = support::claim(case).await;
+        let acquired = support::assign(case).await;
         let fence = acquired.fence.as_i64();
-        let run = reclaimed(case, acquired).await;
+        let run = reassigned(case, acquired).await;
         assert_eq!(
             run.pointer("/task/task_id"),
             Some(&serde_json::json!(task.task_id))
@@ -55,18 +55,18 @@ async fn reclaimed_task_attaches_to_one_ordinary_run_with_original_generation_an
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn changed_setup_blocks_reclaimed_task_without_issuing_another_run() {
+async fn changed_setup_blocks_reassigned_task_without_issuing_another_run() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
         let task_id = id(&task.task_id);
         support::expire(case).await;
-        // The setup changes before the reclaim, which reads it in its claim.
+        // The setup changes before the reassignment, which reads it in its assignment.
         let config = serde_json::json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
             "budget":{"daily_nanos":"900000000"},"decision_policy":super::fixture::policy()}});
         case.held.fixtures.native_config(&case.held.fleet, &config.to_string()).await;
-        let acquired = support::claim(case).await;
-        let body = case.held.fixtures.plane().claim_selected(acquired, &case.held.runner, af_core::clock::now()).await.expect("changed authority is a native refusal");
+        let acquired = support::assign(case).await;
+        let body = case.held.fixtures.plane().assign_selected(acquired, &case.held.runner, af_core::clock::now()).await.expect("changed authority is a native refusal");
         assert!(body.is_none());
         support::assert_blocked(case, &task_id).await;
         fixture.model.finish().await.expect("model fixture cleanup");
@@ -87,7 +87,7 @@ async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_assigned_again() {
         let task_id = id(&task.task_id);
         support::expire(case).await;
         for _holder in 1..af_core::limits::EVENT_RUNS_MAX {
-            let run = reclaimed(case, support::claim(case).await).await;
+            let run = reassigned(case, support::assign(case).await).await;
             let lapsed = id(run
                 .get("run_id")
                 .and_then(Value::as_str)
@@ -98,9 +98,9 @@ async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_assigned_again() {
                 .await;
         }
 
-        let acquired = support::claim(case).await;
+        let acquired = support::assign(case).await;
         let counted = acquired.earlier_runs;
-        let run = reclaimed(case, acquired).await;
+        let run = reassigned(case, acquired).await;
 
         assert_eq!(
             counted,
@@ -132,7 +132,7 @@ async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_assigned_again() {
     clippy::future_not_send,
     reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
 )]
-pub(super) async fn reclaimed(
+pub(super) async fn reassigned(
     case: &super::super::fixture::Case,
     acquired: afd_fleet::run::Acquired,
 ) -> Value {
@@ -141,9 +141,9 @@ pub(super) async fn reclaimed(
         .held
         .fixtures
         .plane()
-        .claim_selected(acquired, &case.held.runner, af_core::clock::now())
+        .assign_selected(acquired, &case.held.runner, af_core::clock::now())
         .await
-        .expect("ordinary reclaim and full issuance");
+        .expect("ordinary reassignment and full issuance");
 
     let reasons: Vec<_> = capture
         .events()

@@ -31,9 +31,9 @@ pub use store::TurnCheckpoints;
 pub struct TurnRun<'a> {
     /// Authenticated physical runner.
     pub runner_id: &'a Uuid7,
-    /// Existing ordinary run; this path never allocates another slot.
+    /// Existing ordinary run; this path never allocates another thread.
     pub run_id: &'a Uuid7,
-    /// Current run and slot must both equal this fence.
+    /// Current run and thread must both equal this fence.
     pub fencing_token: u64,
 }
 

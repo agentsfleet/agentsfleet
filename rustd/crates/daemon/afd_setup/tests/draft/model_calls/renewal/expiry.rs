@@ -14,7 +14,7 @@ WHERE id=$1";
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn renewal_extends_only_a_live_slot_and_keeps_its_capability_binding() {
+async fn renewal_extends_only_a_live_attempt_and_keeps_its_capability_binding() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;

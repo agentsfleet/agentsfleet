@@ -11,6 +11,6 @@ SELECT true
                                    WHERE c.thread_id = $1
                                      AND c.sequence = latest.message_sequence
                                      AND c.status = $3))
-    -- A draft run's live slot holds the draft too: its slot's id is the draft's.
+    -- A draft run's live thread holds the draft too: its id is the draft's.
     OR EXISTS (SELECT 1 FROM thread.threads s
                 WHERE s.id = $1 AND s.run_expires_at > clock_timestamp())

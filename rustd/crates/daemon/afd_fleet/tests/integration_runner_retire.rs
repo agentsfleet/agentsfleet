@@ -82,8 +82,8 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 
 /// A revoked runner keeps its record while a run of its is still active.
 ///
-/// The run row is what the liveness sweep releases the fleet's slot
-/// through; retiring the runner under it would strand the slot until the
+/// The run row is what the liveness sweep releases the fleet's thread
+/// through; retiring the runner under it would strand the thread until the
 /// run's own expiry. Once the run is gone the record retires as usual.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -106,7 +106,7 @@ async fn test_a_assigned_runner_keeps_its_record_until_the_run_is_gone() {
     let held = crate::seed::select_fleet(&fixtures.runs(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
-    // The run row references the event's row, which the claim opened.
+    // The run row references the event's row, which the assignment opened.
     let issued = fixtures
         .runs()
         .issue(
@@ -122,7 +122,7 @@ async fn test_a_assigned_runner_keeps_its_record_until_the_run_is_gone() {
         )
         .await
         .expect("the run row must be written")
-        .expect("the claim is still held");
+        .expect("the assignment is still held");
     let run = issued.run_id;
 
     fixtures

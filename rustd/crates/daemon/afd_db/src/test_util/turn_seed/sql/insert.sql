@@ -1,5 +1,5 @@
--- A seeded event has no admission behind it, so it is opened and settled at birth, as a
--- history-only receipt is: no claim takes it.
+-- A seeded event has no producer behind it, so it is opened and settled at birth, as a
+-- history-only receipt is: no assignment takes it.
 INSERT INTO thread.turns
   (thread_id, workspace_id, id, actor, kind, status, request_json,
    opened_at, settled_at, created_at, updated_at)

@@ -121,7 +121,7 @@ async fn assert_history_pages(history: &RunnerRunHistory, fixtures: &Fixtures, r
     let succeeded = second.items.first().expect("the succeeded row is present");
     let expired = second.items.get(1).expect("the expired row is present");
     assert_eq!(succeeded.outcome, RunOutcome::Succeeded);
-    assert_eq!(succeeded.kind, RunKind::Reclaim);
+    assert_eq!(succeeded.kind, RunKind::Reassigned);
     assert_eq!(expired.outcome, RunOutcome::Expired);
 }
 

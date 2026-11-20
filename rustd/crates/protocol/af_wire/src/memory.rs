@@ -153,7 +153,7 @@ pub struct MemoryPushRequest<'a> {
     /// The run authorizing this write.
     #[serde(borrow)]
     pub run_id: Cow<'a, str>,
-    /// Monotonic guard; a reclaimed holder is rejected.
+    /// Monotonic guard; a holder a reassignment superseded is rejected.
     pub fencing_token: u64,
     /// The items to remember.
     #[serde(borrow)]
@@ -235,7 +235,7 @@ const fn is_false(granted: &bool) -> bool {
 
 /// `POST /v1/runners/me/memory/{fleet_id}/recall` request.
 //
-// Fenced like a push: a holder a reclaim superseded reads nothing.
+// Fenced like a push: a holder a reassignment superseded reads nothing.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -244,7 +244,7 @@ pub struct MemoryRecallRequest<'a> {
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = MAX_KEY_LEN))]
     pub run_id: Cow<'a, str>,
-    /// Monotonic guard; a reclaimed holder is rejected.
+    /// Monotonic guard; a holder a reassignment superseded is rejected.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Text to find in a key or content, ignoring case; empty matches all.

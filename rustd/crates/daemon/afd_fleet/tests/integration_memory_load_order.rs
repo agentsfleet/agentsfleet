@@ -1,6 +1,6 @@
 //! Which live run a load trusts when one runner briefly holds two.
 //!
-//! A reclaim can leave the superseded run and its successor both live on one
+//! A reassignment can leave the superseded run and its successor both live on one
 //! runner for a moment. The fence a load reads must be the successor's, by
 //! fencing token: tokens rise with every issue, where `created_at` is one
 //! daemon replica's clock, and a replica running behind stamps the successor
@@ -59,7 +59,7 @@ async fn test_load_trusts_the_higher_token_over_the_clock() {
 }
 
 /// Inserts the successor and raises the fleet's live sequence to its token,
-/// as a won claim does.
+/// as a won assignment does.
 async fn issue_earlier_successor(run: &report_seed::Held) {
     let mut connection = run
         .fixtures

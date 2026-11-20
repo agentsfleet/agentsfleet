@@ -74,7 +74,7 @@ impl<'a> Decisions<'a> {
         dependencies.admin_workspace = Some(case.scope.workspace_id.clone());
         let tasks = Tasks::new(
             case.held.runs.clone(),
-            case.admissions.clone(),
+            case.turns.clone(),
             dependencies.clone(),
         );
         let vault = Vault::new(

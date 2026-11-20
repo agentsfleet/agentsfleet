@@ -48,10 +48,10 @@ async fn connect_and_declare(scene: &Scenario) {
         scene.booted.bus.clone(),
         Entropy::new(),
     )
-    .claim(&scene.fleet, &scene.runner_id, std::time::Duration::ZERO)
+    .assign(&scene.fleet, &scene.runner_id, std::time::Duration::ZERO)
     .await
-    .expect("initial affinity claim")
-    .expect("new fleet is unclaimed");
+    .expect("initial thread assignment")
+    .expect("new fleet is unassigned");
 }
 
 /// How many approval cards this fixture's fleet has raised.
@@ -79,7 +79,7 @@ where
         .bind(&scene.fleet)
         .execute(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
-        .expect("expire the previous no-work claim");
+        .expect("expire the previous no-work assignment");
             afd_bus::wake::publish(&scene.booted.bus, scene.fleet.clone()).await;
             reached.await
         }
@@ -132,18 +132,18 @@ async fn refusal_drains(preended: bool) {
     assert_eq!(
         gate_cards(&scene).await,
         1,
-        "the session claim raised its approval card"
+        "the session assignment raised its approval card"
     );
     deny(&scene).await;
     preend(&scene, preended).await;
-    wait_without_assignment(&scene, "the denied admission never settled", async || {
+    wait_without_assignment(&scene, "the denied turn never settled", async || {
         sqlx::query_scalar::<_, bool>(
             "SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1",
         )
         .bind(&scene.turn_id)
         .fetch_one(&mut *scene.booted.database.acquire().await.expect("connection"))
         .await
-        .expect("admission settlement reads")
+        .expect("turn settlement reads")
     })
     .await;
     let first_label = event_column(&scene, &scene.turn_id, LABEL).await;
@@ -212,7 +212,7 @@ async fn preend(scene: &Scenario, preended: bool) {
 
 fn assert_denied_labels(first_label: Option<&str>, settled: bool, second_label: Option<&str>) {
     assert_eq!(first_label, Some(af_core::turn::label::GRANT_DENIED));
-    assert!(settled, "a terminal refusal must settle its admission");
+    assert!(settled, "a terminal refusal must settle its turn");
     assert_eq!(
         second_label,
         Some(af_core::turn::label::GRANT_DENIED),

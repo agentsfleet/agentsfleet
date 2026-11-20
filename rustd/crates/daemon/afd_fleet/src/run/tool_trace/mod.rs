@@ -4,11 +4,11 @@
 //! # A call id is scoped to the run that sent it
 //!
 //! The runner numbers a run's tool calls from 1 and repeats the number on every
-//! frame of one call. A reclaimed run re-runs the SAME event
+//! frame of one call. A reassigned run re-runs the SAME event
 //! and the runner's counter starts over, so the dead run's
 //! call 1 and the new run's call 1 would carry one id, and a reader pairing
 //! calls on that id alone would merge two calls. Prefixing the run's fence,
-//! which is distinct per claim, gives every run of an event its own ids. The
+//! which is distinct per assignment, gives every run of an event its own ids. The
 //! live frames and the stored trace use the same prefix, so a thread reloaded
 //! after a run pairs its rows with the frames it watched live.
 //!

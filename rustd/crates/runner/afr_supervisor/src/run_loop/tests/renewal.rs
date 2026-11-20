@@ -136,7 +136,7 @@ async fn a_renewal_refused_before_the_fleet_is_free_never_starts_the_run() {
     let mut rig = rig(renewal_lost, FakeEngine::default(), Behaviour::Answer);
     let (turns, coordinator) = FleetTurns::start();
     tokio::spawn(coordinator);
-    let _busy = turns.claim(&Uuid7::parse(FLEET_ID).unwrap()).await;
+    let _busy = turns.assign(&Uuid7::parse(FLEET_ID).unwrap()).await;
 
     rig.lessee
         .run(

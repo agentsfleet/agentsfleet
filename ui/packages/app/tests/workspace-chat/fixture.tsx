@@ -24,7 +24,7 @@ export class ChatFixture {
   failPublish = false;
   publicationAttempts = 0;
   readonly publicationKeys = new Set<string>();
-  readonly admissions = new Map<string, string>();
+  readonly turns = new Map<string, string>();
   readonly fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const path = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "http://app.test").pathname;
     const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
@@ -43,13 +43,13 @@ export class ChatFixture {
     if (path.includes("/fleets/") && path.endsWith("/messages")) return response({items: [], next_cursor: null});
     if (path.endsWith("/messages") && call.method === "POST") {
       const request = body as {operation_id: string; message: string; save?: boolean};
-      const replay = this.admissions.get(request.operation_id);
+      const replay = this.turns.get(request.operation_id);
       if (replay) return response({status: "accepted", sequence: replay, replayed: true}, 202);
       if (request.save) {this.saveAttempts++;if (this.failSave && this.saveAttempts === 1) throw new TypeError("network interrupted");}
       const sequence = String(BigInt(this.messages.at(-1)?.sequence ?? "0") + 1n);
       const user: Message = {...MESSAGE, sequence, operation_id: request.operation_id, text: request.message, save_requested: request.save, created_at: new Date().toISOString()};
       this.messages = [...this.messages, user, {...user, role: "assistant", text: request.save ? "Your setup is saved." : "Your setup is ready."}];
-      this.admissions.set(request.operation_id, sequence);
+      this.turns.set(request.operation_id, sequence);
       if (request.save) this.draft = {...this.draft, state: "closed", linked_fleet_id: FLEET_ID};
       return response({status: "accepted", sequence, replayed: false}, 202);
     }

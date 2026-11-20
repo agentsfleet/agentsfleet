@@ -1,8 +1,8 @@
 //! The one transaction a terminal report commits, and what it answers.
 //!
 //! A plain chat's report is one statement ([`crate::run::sql::report_statement`]):
-//! the metered slice and its lines, the run and admission settled, the
-//! event closed, the session checkpointed, the slot released, the delivery
+//! the metered slice and its lines, the run and turn settled, the
+//! event closed, the session checkpointed, the thread released, the delivery
 //! owed and the audit row, under the run's own row lock and no host lock
 //!. A durable task's settlement and a run's folds stay statements
 //! of their own in the same transaction, after it: the task's settlement reads

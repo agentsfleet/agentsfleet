@@ -27,14 +27,14 @@ pub(super) async fn assert_point_lookups(connection: &mut PgConnection, held: &H
             .expect("per-fleet backlog");
         run(connection, "ANALYZE thread.turns").await;
         let plan = meter_plan(connection, held).await;
-        assert_indexed_admission(&plan, size);
+        assert_indexed_turn(&plan, size);
         run(connection, "ROLLBACK TO SAVEPOINT meter_backlog").await;
     }
     run(connection, "DEALLOCATE ledger_meter").await;
     run(connection, "ANALYZE thread.turns").await;
 }
 
-fn assert_indexed_admission(plan: &serde_json::Value, size: i32) {
+fn assert_indexed_turn(plan: &serde_json::Value, size: i32) {
     let scans: Vec<_> = relation_scans(plan, "turns")
         .into_iter()
         .filter(|node| {

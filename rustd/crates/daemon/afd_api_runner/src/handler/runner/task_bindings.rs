@@ -19,7 +19,7 @@ const MALFORMED: &str = "Task interpretation exceeds its supported shape or boun
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = af_wire::paths::RUN_TASK_BINDINGS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_accept_task_bindings", summary = "Accept a complete native task interpretation",
-    description = "Checks accounted current intent and association answers, whole-message multiplicity, pinned item digests and native source spans. Accepts every item in one transaction. Conversation never creates a task; independent new work joins the existing FIFO admission path. Existing PR targets require exact human assignment, reviewed workflows and current grants.",
+    description = "Checks accounted current intent and association answers, whole-message multiplicity, pinned item digests and native source spans. Accepts every item in one transaction. Conversation never creates a task; independent new work joins the existing FIFO turn queue. Existing PR targets require exact human assignment, reviewed workflows and current grants.",
     params(("run_id" = String, Path, description = "Current run UUIDv7.")), request_body = TaskBindingsInput,
     responses((status = 201, body = af_wire::task::TaskBindingsResponse<'_>, description = "Complete interpretation accepted"),
         (status = 200, body = af_wire::task::TaskBindingsResponse<'_>, description = "Immutable interpretation replay"),

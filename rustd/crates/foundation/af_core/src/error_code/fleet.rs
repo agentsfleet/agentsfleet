@@ -52,9 +52,9 @@ pub const RUN_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN-010")
 /// The run moved to another runner before this renewal.
 ///
 /// Reached when the fence no longer holds or the row is no longer `active`, and
-/// also when the run row advanced but the affinity slot did not — a
-/// half-applied renewal is reported LOST rather than renewed, because the slot
-/// can be reclaimed before the deadline the reply would name.
+/// also when the run row advanced but the thread did not — a
+/// half-applied renewal is reported LOST rather than renewed, because the thread
+/// can be reassigned before the deadline the reply would name.
 pub const RUN_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 
 /// The tenant's credit pool cannot fund another slice of this run.
@@ -117,7 +117,7 @@ pub const MESSAGE_NO_CHANNEL: ErrorCode = ErrorCode::declare("UZ-RUN-019");
 /// A 409 carrying `current_state`, and per run rather than per window: the
 /// bound is on how much one run says to a person's thread, so waiting does not
 /// lift it and a 429 would tell a client to retry into the same refusal. A
-/// reclaimed run starts its own count.
+/// reassigned run starts its own count.
 pub const MESSAGE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-RUN-020");
 
 /// A newer connection owns this runner; the superseded process must halt.
@@ -144,10 +144,10 @@ pub const RUNNER_REGISTRATION_KEY_REUSED: ErrorCode = ErrorCode::declare("UZ-RUN
 /// tenant holds; the tenant rotates its own runners.
 pub const RUNNER_TENANT_MANAGED: ErrorCode = ErrorCode::declare("UZ-RUN-026");
 
-/// Issue refused a placement the claim should already have filtered.
+/// Issue refused a placement the assignment should already have filtered.
 ///
 /// Log-only: a foreign tenant's runner, or a tenant runner assigned work that
-/// would carry a platform model key. Any occurrence means the claim has a hole.
+/// would carry a platform model key. Any occurrence means the assignment has a hole.
 pub const RUNNER_PLACEMENT_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-027");
 
 /// Present recovery state cannot run under the replacement's current setup.

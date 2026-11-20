@@ -1,0 +1,48 @@
+//! Hints never authorize assignment; the guarded transaction rereads every fact.
+
+pub(super) const CONTEXT: &str = "assign queued authoring message";
+pub(super) const SCAN_LIMIT: i64 = 64;
+
+/// Drafts with queued work and no running attempt, oldest request first.
+///
+/// `$1` the editing draft status, `$2` the queued message status, `$3` the
+/// settled attempt statuses, `$4` limit, `$5` the polling runner, `$6` the
+/// cancelled turn status.
+pub(super) const CANDIDATES: &str = include_str!("candidates.sql");
+
+/// The creator's row, shared, refusing rather than waiting when another
+/// transaction holds it. `$1` user.
+pub(super) const HOLD_USER: &str = include_str!("hold_user.sql");
+
+/// The draft's row, refusing rather than waiting when another transaction
+/// holds it. `$1` draft.
+pub(super) const HOLD_DRAFT: &str = include_str!("hold_draft.sql");
+
+/// Postgres's `lock_not_available`, which a `NOWAIT` lock raises when the row
+/// is held.
+pub(super) const LOCK_NOT_AVAILABLE: &str = "55P03";
+
+/// The draft's next queued message, with its pinned model.
+///
+/// `$1` draft, `$2` the queued status.
+pub(super) const MESSAGE: &str = include_str!("message.sql");
+
+/// `$1` draft, `$2` the assigned sequence, `$3` limit.
+pub(super) const HISTORY: &str = include_str!("history.sql");
+
+/// The assigned attempt; counters start at zero and stamps are the database's.
+///
+/// `$1` id, `$2` run, `$3` runner, `$4` workspace, `$5` tenant, `$6` creator,
+/// `$7` draft, `$8` sequence, `$9` fencing token, `$10` model token hash,
+/// `$11` model snapshot, `$12` status, `$13` run expiry, `$14` deadline,
+/// `$15` reserved nanos.
+pub(super) const INSERT: &str = include_str!("insert.sql");
+
+/// `$1` draft, `$2` sequence, `$3` the running status, `$4` the queued status.
+pub(super) const RUNNING: &str = include_str!("running.sql");
+
+/// Cancels a revoked creator's queued messages.
+///
+/// `$1` draft, `$2` workspace, `$3` tenant, `$4` creator, `$5` the cancelled
+/// status, `$6` the queued status.
+pub(super) const CANCEL_REVOKED: &str = include_str!("cancel_revoked.sql");

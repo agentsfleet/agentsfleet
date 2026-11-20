@@ -1,8 +1,8 @@
 //! §2 against live datastores — the assignment pass end to end.
 //!
 //! `integration_run_affinity.rs` proves the pieces underneath this: the
-//! atomic claim, the fence, the guarded release. What is here is the pass that
-//! USES them — readiness peek, candidate query, claim, then reclaim-or-fresh —
+//! atomic assignment, the fence, the guarded release. What is here is the pass that
+//! USES them — readiness peek, candidate query, assignment, then reassignment-or-fresh —
 //! which is the only place their ordering is observable.
 //!
 //! The ordering is the thing worth testing. Any one step passing in isolation
@@ -47,7 +47,11 @@ async fn test_select_assigns_a_ready_fleets_event() {
         .await
         .expect("a ready fleet holding an event is leasable");
 
-    assert_eq!(acquired.kind, Kind::Fresh, "a first pull is not a reclaim");
+    assert_eq!(
+        acquired.kind,
+        Kind::Fresh,
+        "a first pull is not a reassignment"
+    );
     assert_eq!(acquired.fleet_id.as_str(), fleet);
     assert_eq!(
         acquired.turn_id, turn_id,
@@ -103,13 +107,13 @@ async fn test_a_fleet_is_discovered_without_any_notification() {
 /// A second runner polling the same fleet gets nothing while the first holds
 /// it — and reads no event doing so.
 ///
-/// The claim precedes the read, which is what makes the loser's poll free of
+/// The assignment precedes the read, which is what makes the loser's poll free of
 /// side effects. If the order were reversed the loser would consume the entry
-/// from the stream and then fail to claim, stranding it.
+/// from the stream and then lose the assignment, stranding it.
 ///
-/// # Why the lapsed re-poll is a FRESH pull here and not a reclaim
+/// # Why the lapsed re-poll is a FRESH pull here and not a reassignment
 ///
-/// Reclaim reads `thread.runs` for a still-`active` row, and this
+/// Reassignment reads `thread.runs` for a still-`active` row, and this
 /// suite never writes one: `select` ASSIGNS work, and the row is written by
 /// the issue verb, which does not exist yet. So the fleet has no dead holder
 /// to take work back from, and the pass correctly falls through to the fresh
@@ -117,12 +121,12 @@ async fn test_a_fleet_is_discovered_without_any_notification() {
 /// first pass, and pending-first re-delivers it.
 ///
 /// That is the pending-gate re-poll path, and asserting it is worth more than
-/// asserting nothing: it proves the entry is not lost when a claim lapses
-/// before a run is issued. The reclaim-through-`select` assertion belongs
+/// asserting nothing: it proves the entry is not lost when an assignment lapses
+/// before a run is issued. The reassignment-through-`select` assertion belongs
 /// with the issue verb, which is what makes the precondition reachable.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
+async fn test_a_second_runner_is_refused_while_the_assignment_is_live() {
     let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
@@ -135,8 +139,8 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
         .await
         .expect("the fleet is leasable");
 
-    // A full rotation: one poll could miss the claimed fleet's partition and
-    // answer `None` for a reason that has nothing to do with the claim.
+    // A full rotation: one poll could miss the assigned fleet's partition and
+    // answer `None` for a reason that has nothing to do with the assignment.
     let refused = seed::select_fleet(&runs, &second, &fleet).await;
     assert!(
         refused.is_none(),
@@ -144,20 +148,20 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     );
 
     // Past the holder's expiry the same fleet becomes winnable again, and the
-    // SAME event comes back re-fenced rather than being lost with the claim.
+    // SAME event comes back re-fenced rather than being lost with the assignment.
     fixtures
-        .age(Row::Slot(&fleet), "run_expires_at", LAPSE)
+        .age(Row::Thread(&fleet), "run_expires_at", LAPSE)
         .await;
     // Scoped like the two acquisitions above it. `seeded::<2>` leaves a second
     // fleet leasable, so an unscoped poll could win THAT one and then be
-    // compared, event id and fence, against a claim it never displaced.
+    // compared, event id and fence, against an assignment it never displaced.
     let regained = seed::select_fleet(&runs, &second, &fleet)
         .await
-        .expect("a lapsed claim is winnable");
+        .expect("a lapsed assignment is winnable");
 
     assert_eq!(
         regained.turn_id, held.turn_id,
-        "the entry survives a lapsed claim; it is re-delivered, never dropped"
+        "the entry survives a lapsed assignment; it is re-delivered, never dropped"
     );
     assert!(
         regained.fence > held.fence,
@@ -168,7 +172,7 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     assert_eq!(
         regained.kind,
         Kind::Fresh,
-        "with no run row written there is no dead holder to reclaim from — \
+        "with no run row written there is no dead holder to reassign from — \
          see this test's own documentation"
     );
 

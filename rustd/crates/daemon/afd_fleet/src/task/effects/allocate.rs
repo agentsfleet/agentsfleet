@@ -1,4 +1,4 @@
-//! Reserve exact immutable publication identity under the task's existing slot.
+//! Reserve exact immutable publication identity under the task's existing thread.
 
 use super::row::Effect;
 use crate::{

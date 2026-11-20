@@ -152,7 +152,7 @@ impl<'a> FleetSeed<'a> {
         self
     }
 
-    /// The setup revision the fleet selects, which admission and the run
+    /// The setup revision the fleet selects, which turn intake and the run
     /// path both require. Numbers it [`FIRST_SETUP_REVISION`] unless
     /// [`FleetSeed::versions`] named one.
     pub const fn setup(mut self, revision: SetupRevision<'a>) -> Self {

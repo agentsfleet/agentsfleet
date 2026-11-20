@@ -1,4 +1,4 @@
-//! Retry broker subscriptions without turning each retry into another database claim pass.
+//! Retry broker subscriptions without turning each retry into another database assignment pass.
 
 use crate::{Gateway, Operation, Result, error::ErrorKind};
 use af_core::error_code::{Coded as _, Logged};

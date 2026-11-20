@@ -1,4 +1,4 @@
-//! Report result, usage, cursor, slot, and admission settlement commit together.
+//! Report result, usage, cursor, thread, and turn settlement commit together.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -109,7 +109,7 @@ async fn assert_the_retry_commits_all_four(
     );
     assert!(
         owed.is_none(),
-        "this run's event reached the stream without an admission, so it names no \
+        "this run's event reached the stream without a turn, so it names no \
          destination and nothing is owed; the report-owes-destination suite proves the \
          owed branch"
     );
@@ -157,7 +157,7 @@ async fn assert_the_repeat_changes_nothing(
     assert!(
         matches!(repeated, Committed::AlreadySettled),
         "this runner settled this run, so the repeat is told so — a superseded holder is \
-         the other empty claim, and collapsing the two refuses a finished run forever"
+         the other empty assignment, and collapsing the two refuses a finished run forever"
     );
     assert_all_four_landed(held, slice).await;
 }
@@ -198,7 +198,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         ..
     } = committed
     else {
-        unreachable!("the run is this runner's and still active, so the claim wins")
+        unreachable!("the run is this runner's and still active, so the assignment wins")
     };
     assert_eq!(
         charged.as_i64(),
@@ -237,7 +237,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
             .bind(&held.turn_id)
             .fetch_one(&mut *held.fixtures.database.acquire().await.expect("database"))
             .await
-            .expect("admission settlement");
+            .expect("turn settlement");
     assert!(settled, "the successful report settles its queue row");
 
     let run_id = &held.issued.run_id;
@@ -289,8 +289,8 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
         "the session resumes after the event this run executed, not before it: {cursor}"
     );
     assert!(
-        held.fixtures.slot_is_free(&held.fleet).await,
-        "the slot is free, and freed in the same commit — a fresh run can no longer race a \
+        held.fixtures.thread_is_free(&held.fleet).await,
+        "the thread is free, and freed in the same commit — a fresh run can no longer race a \
          half-written finalize because there is no half-written state to race"
     );
 }

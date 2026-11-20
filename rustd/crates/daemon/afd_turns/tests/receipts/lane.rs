@@ -50,7 +50,7 @@ impl Lane {
 
     async fn seed_fleet(&self) -> Fallible {
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ARCHIVED)
-            .name("admission-fixture-fleet")
+            .name("turn-fixture-fleet")
             .at(SEEDED_AT)
             .native_setup()
             .insert(&mut *self.database.acquire().await?)

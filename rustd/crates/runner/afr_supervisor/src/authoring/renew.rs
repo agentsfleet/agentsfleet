@@ -1,4 +1,4 @@
-//! A retry can consume only the time remaining on the original live slot.
+//! A retry can consume only the time remaining on the original live run.
 
 use super::meter::Observed;
 use crate::{Result, client::ControlPlane, error};

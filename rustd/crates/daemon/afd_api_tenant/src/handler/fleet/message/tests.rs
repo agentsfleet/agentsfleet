@@ -28,7 +28,7 @@ fn at(ordinal: i64) -> jiff::Timestamp {
         .expect("a fixture instant is in range")
 }
 
-/// An event id, spelled the way the admission ledger mints one.
+/// An event id, spelled the way the turn ledger mints one.
 fn entry_id(ordinal: i64) -> af_core::id::Uuid7 {
     af_core::id::Uuid7::parse(&format!("0199a0b0-0000-7000-8000-{ordinal:012x}"))
         .expect("a fixture id is a UUIDv7")

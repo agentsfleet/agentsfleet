@@ -89,11 +89,11 @@ pub struct SaveFleet {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StartState {
-    /// Durable admission or its receipt is not yet confirmed.
+    /// Durable turn or its receipt is not yet confirmed.
     Pending,
-    /// The admission has its saved queue receipt.
+    /// The turn has its saved queue receipt.
     Accepted,
-    /// Capacity refused before a durable admission existed.
+    /// Capacity refused before a durable turn existed.
     Blocked,
 }
 
@@ -107,7 +107,7 @@ pub enum StartOutcome {
     RunNow {
         /// `pending`, `accepted` or `blocked`.
         state: StartState,
-        /// Present once a durable admission exists.
+        /// Present once a durable turn exists.
         #[serde(skip_serializing_if = "Option::is_none")]
         turn_id: Option<String>,
         /// Stable public refusal code when blocked.

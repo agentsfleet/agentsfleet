@@ -23,7 +23,7 @@ async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion()
     let id = &row.schedule_id;
     let store = &lane.store;
     let target = store.fire_target(id).await.expect("read").expect("row");
-    let fire = Fire::new(lane.admissions());
+    let fire = Fire::new(lane.turns());
     let accepted = fire
         .deliver(id, &target, "first-fire")
         .await

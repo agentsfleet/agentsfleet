@@ -18,18 +18,21 @@ async fn one_fleet_runs_one_at_a_time_and_others_do_not_wait() {
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
     let other = Uuid7::parse(RUN_ID).unwrap();
 
-    let held = turns.claim(&fleet).await.unwrap();
-    let waiting = tokio::time::timeout(Duration::from_secs(1), turns.claim(&fleet)).await;
-    let elsewhere = turns.claim(&other).await;
+    let held = turns.assign(&fleet).await.unwrap();
+    let waiting = tokio::time::timeout(Duration::from_secs(1), turns.assign(&fleet)).await;
+    let elsewhere = turns.assign(&other).await;
     let queued = tokio::spawn({
         let turns = turns.clone();
         let fleet = fleet.clone();
-        async move { turns.claim(&fleet).await.is_some() }
+        async move { turns.assign(&fleet).await.is_some() }
     });
     tokio::task::yield_now().await;
     drop(held);
 
-    assert!(waiting.is_err(), "a busy fleet makes the next claim wait");
+    assert!(
+        waiting.is_err(),
+        "a busy fleet makes the next assignment wait"
+    );
     assert!(elsewhere.is_some(), "a different fleet is not held up");
     assert!(
         queued.await.unwrap(),
@@ -38,16 +41,16 @@ async fn one_fleet_runs_one_at_a_time_and_others_do_not_wait() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_claimer_that_gave_up_does_not_keep_the_fleet() {
+async fn a_requester_that_gave_up_does_not_keep_the_fleet() {
     let (turns, coordinator) = FleetTurns::start();
     tokio::spawn(coordinator);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
-    let held = turns.claim(&fleet).await.unwrap();
-    // This claimer gives up while it waits; its grant is never read.
-    let abandoned = tokio::time::timeout(Duration::from_millis(10), turns.claim(&fleet)).await;
+    let held = turns.assign(&fleet).await.unwrap();
+    // This requester gives up while it waits; its grant is never read.
+    let abandoned = tokio::time::timeout(Duration::from_millis(10), turns.assign(&fleet)).await;
     drop(held);
 
-    let next = tokio::time::timeout(Duration::from_secs(1), turns.claim(&fleet)).await;
+    let next = tokio::time::timeout(Duration::from_secs(1), turns.assign(&fleet)).await;
 
     assert!(abandoned.is_err());
     assert!(
@@ -57,13 +60,13 @@ async fn a_claimer_that_gave_up_does_not_keep_the_fleet() {
 }
 
 #[tokio::test]
-async fn a_claim_after_the_coordinator_stopped_gets_nothing() {
+async fn an_assignment_after_the_coordinator_stopped_gets_nothing() {
     let (turns, coordinator) = FleetTurns::start();
     drop(coordinator);
 
     assert!(
         turns
-            .claim(&Uuid7::parse(FLEET_ID).unwrap())
+            .assign(&Uuid7::parse(FLEET_ID).unwrap())
             .await
             .is_none()
     );

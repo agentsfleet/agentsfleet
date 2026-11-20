@@ -75,15 +75,15 @@ async fn counted() -> (Fixtures, afd_db::Db) {
     (fixtures, owner)
 }
 
-/// The pass over a claimed event, and every statement it sent.
+/// The pass over an assigned event, and every statement it sent.
 async fn driven(
     fixtures: &Fixtures,
     owner: &afd_db::Db,
     seeded: &Ready,
 ) -> (Option<serde_json::Value>, Ran) {
-    let claimed = claim(fixtures, seeded).await;
+    let assigned = assign(fixtures, seeded).await;
     let window = Window::open(owner).await;
-    let answer = drive(fixtures, seeded, claimed).await;
+    let answer = drive(fixtures, seeded, assigned).await;
     (answer, window.close().await)
 }
 
@@ -163,7 +163,7 @@ async fn gates_read_fault_keeps_each_posture() {
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, GATED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    let claimed = claim(&fixtures, &seeded).await;
+    let assigned = assign(&fixtures, &seeded).await;
     // The gates read is the run path's only reader of the grants table
     // before the issue, so refusing it fails that read alone.
     let mut connection = owner.acquire().await.expect("owner");
@@ -173,7 +173,7 @@ async fn gates_read_fault_keeps_each_posture() {
         .expect("refuse the gates read");
 
     let log = Capture::install();
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
     let budget = log.only("run_budget_unavailable").fields;
     let lookup = log.only("gate_ref_lookup_failed").fields;
     drop(log);

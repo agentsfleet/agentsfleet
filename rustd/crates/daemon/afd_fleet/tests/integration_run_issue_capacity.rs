@@ -154,7 +154,7 @@ async fn a_failed_task_source_attach_restores_the_exact_idle_hold_and_issue_tall
     let warm = required(seed::select_fleet(&case.runs, &case.runner, &case.warm).await)?;
     let before = case.stamp().await?;
     let mut connection = case.fixtures.database.acquire().await?;
-    // Deleting a task clears its foreign key while retaining its claimed generation.
+    // Deleting a task clears its foreign key while retaining its assigned generation.
     sqlx::query("UPDATE thread.turns SET task_generation=1 WHERE id=$1")
         .bind(&warm.turn_id)
         .execute(&mut *connection)

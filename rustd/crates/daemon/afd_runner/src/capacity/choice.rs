@@ -42,7 +42,7 @@ impl Runners {
     ///
     /// # Errors
     /// Preserves datastore and column failures; a removed host has no assignment.
-    pub async fn claim_assignment(
+    pub async fn assignment_ticket(
         &self,
         runner: &Uuid7,
         accepted: AcceptedKinds,

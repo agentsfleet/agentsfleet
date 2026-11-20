@@ -20,7 +20,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 // length cap. Every send is one operation: named before the optimistic append,
 // held in the fleet's ledger until the daemon's 202 is reconciled, and sent
 // again under the same name by Resend, so the daemon answers the first
-// admission instead of running a second. A send that fails leaves the thread;
+// turn instead of running a second. A send that fails leaves the thread;
 // its text goes back to the composer the way Claude.ai does it — the handler
 // rejects with assistant-ui's `MessageNotSentError` and the composer restores
 // the draft it cleared — and its ledger entry keeps the recovery.
@@ -152,7 +152,7 @@ export function useOpenFleet(workspaceId: string): (fleetId: string) => void {
 
 // The draft a failure put back, and the id it was sent under. Only that draft,
 // sent unchanged, reuses the id: the same words typed later are a new message,
-// and an old id would replay an old admission and run nothing.
+// and an old id would replay an old turn and run nothing.
 function useRestoredDraft(writers: PendingSendWriters) {
   const restored = useRef<Restored | null>(null);
 

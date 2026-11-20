@@ -1,4 +1,4 @@
-//! Measure admission latency, database cost and unsettled backlog under concurrent producers.
+//! Measure turn intake latency, database cost and unsettled backlog under concurrent producers.
 
 use af_core::id::Uuid7;
 use core::time::Duration;
@@ -234,17 +234,17 @@ async fn append_until(
     Ok(outcomes)
 }
 
-/// Sample the admission backlog until told to stop.
+/// Sample the turn backlog until told to stop.
 ///
 /// A separate task rather than a reading taken by each submitter: the depth is
 /// a property of the index over TIME, and a sample taken inside an append loop
 /// would be a sample taken at whatever rate that loop happened to run. It
 /// stops on the lane's signal, not on the deadline, so an aborted window does
 /// not leave it running alone.
-async fn sample_depth(admissions: Turns, stop: CancellationToken) -> Vec<f64> {
+async fn sample_depth(turns: Turns, stop: CancellationToken) -> Vec<f64> {
     let mut series = Vec::new();
     while !stop.is_cancelled() {
-        if let Ok(backlog) = admissions.backlog().await {
+        if let Ok(backlog) = turns.backlog().await {
             series.push(count(backlog.rows));
         }
         tokio::select! {

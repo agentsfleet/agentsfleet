@@ -1,5 +1,5 @@
-//! A run claims the messages a person sent its fleet through the run's fence,
-//! and a claim that goes wrong costs it no message.
+//! A run is assigned the messages a person sent its fleet through the run's
+//! fence, and an assignment that goes wrong costs it no message.
 
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
@@ -12,22 +12,22 @@ use crate::client::{Call, Verb};
 use crate::error;
 use crate::test_support::{Answer, drain, json, plane};
 
-/// Where the run had read to when it claimed.
+/// Where the run had read to when it asked for an assignment.
 const AFTER: i64 = 7;
 
-/// What one claim answered, what it sent, and what it logged.
-struct Claimed {
+/// What one assignment answered, what it sent, and what it logged.
+struct Assigned {
     folded: Vec<Folded>,
     sent: Vec<Call>,
     capture: Capture,
 }
 
-/// One claim after [`AFTER`] against a daemon that answers it with `answer`.
+/// One assignment after [`AFTER`] against a daemon that answers it with `answer`.
 #[expect(
     clippy::future_not_send,
     reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
 )]
-async fn claim(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Claimed {
+async fn assign(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Assigned {
     let capture = Capture::install();
     let (plane, mut calls) = plane(answer);
     let run = Uuid7::parse(RUN_ID).unwrap();
@@ -40,8 +40,8 @@ async fn claim(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Clai
         &host.stop,
         &host.decisions,
     );
-    let folded = verbs.claim(AFTER).await;
-    Claimed {
+    let folded = verbs.assign(AFTER).await;
+    Assigned {
         folded,
         sent: drain(&mut calls),
         capture,
@@ -65,40 +65,40 @@ fn warnings(capture: &Capture) -> Vec<CapturedEvent> {
         .collect()
 }
 
-/// The claim's own events, in the order raised; the control plane's call
+/// The assignment's own events, in the order raised; the control plane's call
 /// records between them are its own.
-fn claim_events(capture: &Capture) -> Vec<String> {
+fn assignment_events(capture: &Capture) -> Vec<String> {
     let events = capture.events();
     events
         .iter()
         .filter_map(|event| event.field("event"))
-        .filter(|name| name.starts_with("fold_claim_"))
+        .filter(|name| name.starts_with("fold_assignment_"))
         .map(str::to_owned)
         .collect()
 }
 
-/// A claim that failed hands the run nothing, logs one `warn` naming the
+/// An assignment that failed hands the run nothing, logs one `warn` naming the
 /// registry code and the place it asked from, and sends no second request.
-fn assert_failed_claim(claimed: &Claimed, code: ErrorCode) {
-    assert!(claimed.folded.is_empty(), "{:?}", claimed.folded);
-    assert_eq!(claimed.sent.len(), 1, "a failed claim is not retried");
-    let failed = claimed.capture.only("fold_claim_failed");
+fn assert_failed_assignment(assigned: &Assigned, code: ErrorCode) {
+    assert!(assigned.folded.is_empty(), "{:?}", assigned.folded);
+    assert_eq!(assigned.sent.len(), 1, "a failed assignment is not retried");
+    let failed = assigned.capture.only("fold_assignment_failed");
     assert_eq!(failed.level, tracing::Level::WARN);
     assert_eq!(failed.field("error_code"), Some(code.as_str()));
     assert_eq!(failed.field("after_sequence"), Some("7"));
-    assert_eq!(warnings(&claimed.capture).len(), 2);
-    let command = claimed.capture.only("runner_command_failed");
+    assert_eq!(warnings(&assigned.capture).len(), 2);
+    let command = assigned.capture.only("runner_command_failed");
     assert_eq!(command.field("verb"), Some("folds"));
     assert_eq!(command.field("error_code"), Some(code.as_str()));
     assert_eq!(
-        claim_events(&claimed.capture),
-        ["fold_claim_started", "fold_claim_failed"]
+        assignment_events(&assigned.capture),
+        ["fold_assignment_started", "fold_assignment_failed"]
     );
 }
 
 #[tokio::test]
-async fn a_claim_of_two_messages_hands_them_over_oldest_first() {
-    let claimed = claim(|_call| {
+async fn an_assignment_of_two_messages_hands_them_over_oldest_first() {
+    let assigned = assign(|_call| {
         json(&FoldResponse {
             inputs: vec![input(8, "use staging"), input(9, "and tag it")],
         })
@@ -106,7 +106,7 @@ async fn a_claim_of_two_messages_hands_them_over_oldest_first() {
     .await;
 
     assert_eq!(
-        claimed.folded,
+        assigned.folded,
         [
             Folded {
                 turn_id: input(8, "").turn_id.into_owned(),
@@ -120,8 +120,8 @@ async fn a_claim_of_two_messages_hands_them_over_oldest_first() {
             },
         ]
     );
-    assert_eq!(claimed.sent.len(), 1, "one claim is one request");
-    let call = claimed.sent.first().unwrap();
+    assert_eq!(assigned.sent.len(), 1, "one assignment is one request");
+    let call = assigned.sent.first().unwrap();
     assert_eq!(call.verb, Verb::Folds);
     let body: serde_json::Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
     assert_eq!(
@@ -131,31 +131,31 @@ async fn a_claim_of_two_messages_hands_them_over_oldest_first() {
 }
 
 #[tokio::test]
-async fn a_claim_logs_where_it_asked_from_and_how_many_it_took() {
-    let claimed = claim(|_call| {
+async fn an_assignment_logs_where_it_asked_from_and_how_many_it_took() {
+    let assigned = assign(|_call| {
         json(&FoldResponse {
             inputs: vec![input(8, "use staging"), input(9, "and tag it")],
         })
     })
     .await;
 
-    let started = claimed.capture.only("fold_claim_started");
+    let started = assigned.capture.only("fold_assignment_started");
     assert_eq!(started.level, tracing::Level::DEBUG);
     assert_eq!(started.field("after_sequence"), Some("7"));
-    let completed = claimed.capture.only("fold_claim_completed");
+    let completed = assigned.capture.only("fold_assignment_completed");
     assert_eq!(completed.level, tracing::Level::DEBUG);
     assert_eq!(completed.field("after_sequence"), Some("7"));
-    assert_eq!(completed.field("claimed"), Some("2"));
-    assert!(warnings(&claimed.capture).is_empty());
+    assert_eq!(completed.field("assigned"), Some("2"));
+    assert!(warnings(&assigned.capture).is_empty());
     assert_eq!(
-        claim_events(&claimed.capture),
-        ["fold_claim_started", "fold_claim_completed"]
+        assignment_events(&assigned.capture),
+        ["fold_assignment_started", "fold_assignment_completed"]
     );
 }
 
 #[tokio::test]
-async fn a_refused_claim_hands_the_run_nothing_and_logs_the_daemons_code() {
-    let claimed = claim(|call| {
+async fn a_refused_assignment_hands_the_run_nothing_and_logs_the_daemons_code() {
+    let assigned = assign(|call| {
         Answer::Fail(error::refused(
             call.verb,
             409,
@@ -164,22 +164,22 @@ async fn a_refused_claim_hands_the_run_nothing_and_logs_the_daemons_code() {
     })
     .await;
 
-    assert_failed_claim(&claimed, error_code::RUN_STALE_FENCING_TOKEN);
+    assert_failed_assignment(&assigned, error_code::RUN_STALE_FENCING_TOKEN);
 }
 
 #[tokio::test]
 async fn an_unavailable_daemon_hands_the_run_nothing_and_logs_the_verbs_code() {
-    let claimed = claim(|call| Answer::Fail(error::unavailable(call.verb, 503))).await;
+    let assigned = assign(|call| Answer::Fail(error::unavailable(call.verb, 503))).await;
 
-    assert_failed_claim(&claimed, Verb::Folds.code());
+    assert_failed_assignment(&assigned, Verb::Folds.code());
 }
 
-/// A reply that is not the shape `agentsfleetd` documents claims nothing, so
-/// the next claim asks again from the same place.
+/// A reply that is not the shape `agentsfleetd` documents assigns the run nothing, so
+/// the next assignment asks again from the same place.
 #[tokio::test]
 async fn an_unreadable_reply_hands_the_run_nothing_and_logs_the_verbs_code() {
-    let claimed = claim(|_call| json(&serde_json::json!(["not", "a", "reply"]))).await;
+    let assigned = assign(|_call| json(&serde_json::json!(["not", "a", "reply"]))).await;
 
-    // The undecodable reply closes the session, so the claim reports its stream cut.
-    assert_failed_claim(&claimed, error_code::RUN_STREAM_DISCONNECTED);
+    // The undecodable reply closes the session, so the assignment reports its stream cut.
+    assert_failed_assignment(&assigned, error_code::RUN_STREAM_DISCONNECTED);
 }

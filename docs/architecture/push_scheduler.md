@@ -40,7 +40,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 |---|---|---|
 | Message accepted, in order | `thread.turns` | The runner's pending input, re-read at each model call |
 | Run assigned, and its fence | `thread.threads`, `thread.runs` | The runner's connection, rebuilt from Postgres on reconnect |
-| Message folded into a run | `thread.turns.input_claim_run_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
+| Message folded into a run | `thread.turns.input_run_id` and `input_fence` (#803; `assign_inputs.sql` for any other run) | None |
 | Run deadline | `thread.runs.run_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines` and the billing relay | None |
 | Outbound reply owed | `thread.deliveries` | A NATS ping wakes a worker; a 30 s scan is the backstop |
@@ -335,5 +335,5 @@ Measured on Indy's laptop on Nov 11, 2026, with `make bench-run PROFILE=rig`. Th
 
 Branch run p95 was 37.2, 42.7 and 28.4 ms, and report p95 was 11.9, 13.7 and 11.7 ms. `main`'s run p95 was 126.5, 48.0 and 53.2 ms. Drain runs per second: branch 206.9, 197.6 and 211.6; `main` 75.2, 126.7 and 116.2.
 
-`main` has no `fold` path: its classifier had no fragment for `claim_inputs.sql`, so those statements sat in `other`. `shared` is the foreign-key and counter-trigger statements Postgres runs inside the writes, about 5 of its 7. The pricing path's 0.035 is the price book's first read per model as the cache warms.
+`main` has no `fold` path: its classifier had no fragment for `assign_inputs.sql`, so those statements sat in `other`. `shared` is the foreign-key and counter-trigger statements Postgres runs inside the writes, about 5 of its 7. The pricing path's 0.035 is the price book's first read per model as the cache warms.
 

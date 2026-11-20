@@ -99,7 +99,7 @@ async fn test_a_host_counts_each_kind_and_stops_at_the_population() {
     );
     let window = shared(2, Instant::now() + WINDOW);
     let tally = run(&host, &window).await;
-    assert_eq!((tally.chat, tally.fleet, tally.claims), (1, 1, 3));
+    assert_eq!((tally.chat, tally.fleet, tally.assignments), (1, 1, 3));
     assert_eq!(tally.failures, 0);
     assert_eq!(tally.run_latency.count(), 2, "only runs are timed");
     assert_eq!(window.held.load(Ordering::Relaxed), 2);
@@ -113,7 +113,7 @@ async fn test_a_host_renews_what_it_holds_every_round() {
     script.extend([Assigned::Nothing, Assigned::Nothing, Assigned::Fleet]);
     let host = Scripted::new(script, true);
     let tally = run(&host, &shared(3, Instant::now() + WINDOW)).await;
-    // Rounds fire before claims 4 and 8, each over the two chat runs held.
+    // Rounds fire before assignments 4 and 8, each over the two chat runs held.
     assert_eq!(host.renewed.load(Ordering::Relaxed), 4);
     assert_eq!((tally.renewals, tally.failures), (4, 0));
 }
@@ -131,7 +131,7 @@ async fn test_a_refused_renewal_is_counted_not_propagated() {
 async fn test_a_passed_deadline_polls_nothing() {
     let host = Scripted::new(vec![Assigned::Fleet], true);
     let tally = run(&host, &shared(1, Instant::now())).await;
-    assert_eq!(tally.claims, 0);
+    assert_eq!(tally.assignments, 0);
 }
 
 #[tokio::test]
@@ -141,7 +141,7 @@ async fn test_tallies_absorb_every_count_and_sample() {
     let mut total = run(&one, &shared(1, Instant::now() + WINDOW)).await;
     let theirs = run(&other, &shared(1, Instant::now() + WINDOW)).await;
     total.absorb(&theirs).expect("latencies merge");
-    assert_eq!((total.claims, total.chat, total.fleet), (2, 1, 1));
+    assert_eq!((total.assignments, total.chat, total.fleet), (2, 1, 1));
     assert_eq!(total.run_latency.count(), 2);
 }
 

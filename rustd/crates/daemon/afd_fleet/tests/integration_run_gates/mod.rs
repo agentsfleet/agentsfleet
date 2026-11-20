@@ -1,6 +1,6 @@
-//! The gate chain over a claimed event, entered where a suite can steer it.
+//! The gate chain over an assigned event, entered where a suite can steer it.
 //!
-//! Every gate below the claim is proven on its own elsewhere — `installed()`
+//! Every gate below the assignment is proven on its own elsewhere — `installed()`
 //! against an archived fleet, the money gates against a drained ledger,
 //! `Gates::check` against a recorded decision. What no suite reached is the
 //! ORDER above them: which of `Plane::run`'s endings each verdict becomes,
@@ -8,10 +8,10 @@
 //!
 //! # Three things stand between a test and that chain
 //!
-//! **The claim.** `Plane::run` opens by asking the readiness index for work,
+//! **The assignment.** `Plane::run` opens by asking the readiness index for work,
 //! and that call peeks ONE partition per invocation against a cursor the whole
-//! process shares. Everything below the claim is deterministic, so the claim is
-//! made here and the verb entered at `Plane::claim_selected`.
+//! process shares. Everything below the assignment is deterministic, so the assignment is
+//! made here and the verb entered at `Plane::assign_selected`.
 //!
 //! **The event type.** `seed::EVENT_TYPE` is `"steer"`, and `TurnKind::parse`
 //! accepts `chat`, `webhook`, `cron` and `continuation` — nothing else. So
@@ -131,7 +131,7 @@ const PROVIDER_KEY_KIND: &str = "provider_key";
 
 /// A fleet with one runner and one `chat` event waiting on its stream.
 struct Ready {
-    /// The runner that will claim the event.
+    /// The runner the event will be assigned to.
     runner: Uuid7,
     /// The fleet holding it.
     fleet: Uuid7,
@@ -162,21 +162,25 @@ async fn ready(fixtures: &Fixtures) -> Ready {
     }
 }
 
-/// Claims `ready`'s event, leaving the verb un-entered.
+/// Assigns `ready`'s event, leaving the verb un-entered.
 ///
 /// Split from [`drive`] because the case below has to act BETWEEN the two: a
-/// fleet archived after its event was claimed is a window that exists only here.
-async fn claim(fixtures: &Fixtures, ready: &Ready) -> Acquired {
+/// fleet archived after its event was assigned is a window that exists only here.
+async fn assign(fixtures: &Fixtures, ready: &Ready) -> Acquired {
     crate::seed::select_fleet(&fixtures.runs(), &ready.runner, &ready.fleet)
         .await
         .expect("the fleet is leasable")
 }
 
-/// Runs the gate chain over an already-claimed event.
-async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> Option<serde_json::Value> {
+/// Runs the gate chain over an already-assigned event.
+async fn drive(
+    fixtures: &Fixtures,
+    ready: &Ready,
+    assigned: Acquired,
+) -> Option<serde_json::Value> {
     fixtures
         .plane()
-        .claim_selected(claimed, &ready.runner, fixtures.enrolled_at())
+        .assign_selected(assigned, &ready.runner, fixtures.enrolled_at())
         .await
         .expect("every gate verdict is a decision, not a fault")
 }

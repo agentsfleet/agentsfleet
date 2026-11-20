@@ -19,14 +19,14 @@ pub(super) struct Current {
     pub turn_id: Uuid7,
     pub setup_revision_id: Option<Uuid7>,
     pub fence: i64,
-    pub slot_fence: i64,
+    pub thread_fence: i64,
     pub fleet_status: String,
     pub model: String,
     pub provider: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub run_expires_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub slot_expires_at: jiff::Timestamp,
+    pub thread_expires_at: jiff::Timestamp,
 }
 
 #[derive(sqlx::FromRow)]
@@ -62,7 +62,7 @@ impl<'a> TurnRunGuard<'a> {
             .filter(|host| host.can_continue())
             .ok_or_else(run_lost)?;
         let current = current(&mut tx, presented).await?;
-        if !exact_fence(current.fence, current.slot_fence, presented.fencing_token) {
+        if !exact_fence(current.fence, current.thread_fence, presented.fencing_token) {
             return Err(stale_fence());
         }
         if current.fleet_status != sql::FLEET_STATUS_ACTIVE {
@@ -87,7 +87,7 @@ impl<'a> TurnRunGuard<'a> {
         let now = now.to_jiff();
         if !live(
             self.current.run_expires_at,
-            self.current.slot_expires_at,
+            self.current.thread_expires_at,
             now,
         ) {
             return Err(run_lost());
@@ -138,7 +138,7 @@ async fn current(connection: &mut PgConnection, presented: TurnRun<'_>) -> Resul
         .bind(presented.runner_id)
         .fetch_optional(&mut *connection)
         .await
-        .map_err(query("hold turn slot"))?
+        .map_err(query("hold turn thread"))?
         .ok_or_else(run_not_found)?;
     sqlx::query_as(include_str!("sql/lock_run.sql"))
         .bind(presented.run_id)
@@ -175,10 +175,10 @@ pub(super) fn id(value: &CheckpointOperationId) -> Result<Uuid7> {
     Uuid7::parse(&value.0).map_err(|_invalid| TurnCheckpointRefusal::Incompatible.into())
 }
 
-pub(super) fn exact_fence(run: i64, slot: i64, presented: u64) -> bool {
-    run > 0 && run == slot && u64::try_from(run) == Ok(presented)
+pub(super) fn exact_fence(run: i64, thread: i64, presented: u64) -> bool {
+    run > 0 && run == thread && u64::try_from(run) == Ok(presented)
 }
 
-pub(super) fn live(run: jiff::Timestamp, slot: jiff::Timestamp, now: jiff::Timestamp) -> bool {
-    run > now && slot > now
+pub(super) fn live(run: jiff::Timestamp, thread: jiff::Timestamp, now: jiff::Timestamp) -> bool {
+    run > now && thread > now
 }

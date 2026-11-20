@@ -8,7 +8,7 @@ use super::of;
 use crate::run::envelope::{Acquired, Kind};
 use crate::run::test_dead::{self, AT};
 
-/// How long after admission the run is written in these cases.
+/// How long after intake the run is written in these cases.
 const WAITED: Duration = Duration::from_millis(350);
 
 /// A fresh event `redelivered` or not, admitted at [`AT`].
@@ -21,7 +21,7 @@ fn acquired(kind: Kind, redelivered: bool) -> Acquired {
     }
 }
 
-/// The run's write, [`WAITED`] after the admission.
+/// The run's write, [`WAITED`] after intake.
 fn issued() -> Timestamp {
     af_core::clock::after(AT, WAITED)
 }
@@ -34,10 +34,10 @@ fn test_a_new_read_logs_its_wait() {
     );
 }
 
-/// A reclaimed run's stamp predates the run it replaces.
+/// A reassigned run's stamp predates the run it replaces.
 #[test]
-fn test_a_reclaimed_run_logs_no_wait() {
-    assert_eq!(of(&acquired(Kind::Reclaim, false), issued()), None);
+fn test_a_reassigned_run_logs_no_wait() {
+    assert_eq!(of(&acquired(Kind::Reassigned, false), issued()), None);
 }
 
 /// An owed entry, a parked event a person just answered say, waited on
@@ -51,7 +51,7 @@ fn test_a_redelivered_entry_logs_no_wait() {
 /// wait, so it reads as none rather than less than none.
 #[test]
 fn test_clock_skew_never_logs_a_negative_wait() {
-    let before_admission = af_core::clock::before(AT, Duration::from_millis(10));
+    let before_intake = af_core::clock::before(AT, Duration::from_millis(10));
 
-    assert_eq!(of(&acquired(Kind::Fresh, false), before_admission), Some(0));
+    assert_eq!(of(&acquired(Kind::Fresh, false), before_intake), Some(0));
 }

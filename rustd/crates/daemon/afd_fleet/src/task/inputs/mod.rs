@@ -1,4 +1,4 @@
-//! Safe-boundary reads use the source conversation and the existing fleet slot.
+//! Safe-boundary reads use the source conversation and the existing fleet thread.
 
 mod recover;
 

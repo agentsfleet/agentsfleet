@@ -19,7 +19,7 @@ impl Error {
             ErrorKind::Datastore { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. } => true,
-            ErrorKind::TaskControlAdmission { ref source, .. } => source.is_datastore_unavailable(),
+            ErrorKind::TaskControlTurn { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::TaskMutation { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
@@ -104,7 +104,7 @@ impl Error {
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
@@ -172,7 +172,7 @@ impl Error {
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }

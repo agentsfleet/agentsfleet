@@ -9,7 +9,7 @@ use crate::run::envelope::Acquired;
 /// The single stable reason logged by both waiting-for-approval paths.
 const AWAITING_APPROVAL: &str = "a human owes an answer";
 
-/// Continue, leave work available, or park the admission until a gate answer.
+/// Continue, leave work available, or park the turn until a gate answer.
 pub(in crate::run) enum Step<T> {
     /// Carry on, with this.
     Go(T),
@@ -33,7 +33,7 @@ impl<T> Step<T> {
 
 /// A run written and rendered: the bytes a runner reads.
 ///
-/// The claim is the run's now, so it is the one ending that keeps it.
+/// The assignment is the run's now, so it is the one ending that keeps it.
 pub(in crate::run) struct Assigned<T>(pub(in crate::run) T);
 
 /// A gate's wait, as an ending.
@@ -50,16 +50,16 @@ pub(super) fn waited<T>(runner_id: &Uuid7, waiting: Waiting) -> Step<T> {
     }
 }
 
-/// The pass outlived its claim, so the run was not written.
-const EVENT_CLAIM_LOST: &str = "run_claim_lost";
+/// The pass outlived its assignment, so the run was not written.
+const EVENT_ASSIGNMENT_LOST: &str = "run_assignment_lost";
 
-/// The no-work answer for a pass whose claim was superseded or lapsed before
+/// The no-work answer for a pass whose assignment was superseded or lapsed before
 /// its run was written.
 ///
-/// A stop, so the fleet keeps its mark and whoever holds the slot now serves
+/// A stop, so the fleet keeps its mark and whoever holds the thread now serves
 /// the entry. The release the stop owes is fenced on this pass's token, so it
-/// cannot free the slot the new holder won.
-pub(in crate::run) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> Step<T> {
+/// cannot free the thread the new holder won.
+pub(in crate::run) fn assignment_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> Step<T> {
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let runner = runner_id.as_str();
@@ -68,10 +68,10 @@ pub(in crate::run) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> S
     let fence = acquired.fence.as_i64();
     {
         let (event, runner_id, fencing_token, message) = (
-            &EVENT_CLAIM_LOST,
+            &EVENT_ASSIGNMENT_LOST,
             &runner,
             &fence,
-            format_args!("the pass outlived its claim; no run was written"),
+            format_args!("the pass outlived its assignment; no run was written"),
         );
         tracing::info!(
             message,
@@ -82,12 +82,12 @@ pub(in crate::run) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> S
             fencing_token
         );
     };
-    no_work(runner_id, CLAIM_LOST_REASON);
+    no_work(runner_id, ASSIGNMENT_LOST_REASON);
     Step::Stop
 }
 
-/// The no-work reason a lost claim answers with.
-const CLAIM_LOST_REASON: &str = "the claim lapsed before the run was written";
+/// The no-work reason a lost assignment answers with.
+const ASSIGNMENT_LOST_REASON: &str = "the assignment lapsed before the run was written";
 
 #[cfg(test)]
 mod tests {
@@ -126,17 +126,17 @@ mod tests {
     }
 
     /// A pass whose run insert lost its fence answers no-work, as a stop:
-    /// the newer holder keeps its claim.
+    /// the newer holder keeps its assignment.
     #[cfg(feature = "test-util")]
     #[test]
-    fn a_lost_claim_answers_no_work_as_a_stop() {
+    fn a_lost_assignment_answers_no_work_as_a_stop() {
         use crate::run::test_dead;
 
         let runner = runner();
-        let step = super::claim_lost::<()>(&runner, &test_dead::acquired());
+        let step = super::assignment_lost::<()>(&runner, &test_dead::acquired());
         assert!(
             matches!(step, Step::Stop),
-            "a lost claim is the no-work answer, and never a run"
+            "a lost assignment is the no-work answer, and never a run"
         );
     }
 

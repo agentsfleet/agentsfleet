@@ -1,7 +1,7 @@
 //! A chat run's earlier turns, as the plane hands them to a runner.
 //!
 //! `integration_run_history.rs` proves the read; these drive the path around
-//! it: `RunService::claim_selected` issues a run, `RunService::report` ends it, and the
+//! it: `RunService::assign_selected` issues a run, `RunService::report` ends it, and the
 //! next run's payload carries what that report left. They live under this
 //! suite because an issued run needs the provider seed only it owns.
 
@@ -35,7 +35,7 @@ async fn test_follow_up_run_carries_the_previous_turn() {
 }
 
 /// Two messages queued at once: the second waits while the first holds the
-/// fleet's slot, then runs after the first's report and reads it as a
+/// fleet's thread, then runs after the first's report and reads it as a
 /// finished turn.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -49,7 +49,7 @@ async fn test_second_message_waits_for_the_first_and_carries_it() {
         .await;
 
     let first = chat.run(&chat.runner, chat.fixtures.enrolled_at()).await;
-    let waiting = chat.claim(&chat.spare).await;
+    let waiting = chat.assign(&chat.spare).await;
     chat.answer(
         &chat.runner,
         &first,

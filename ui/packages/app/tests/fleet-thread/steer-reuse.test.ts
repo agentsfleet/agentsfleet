@@ -9,7 +9,7 @@ import { PENDING_SEND_STATE, getPendingSends } from "@/lib/streaming/pending-sen
 // Which send an operation id belongs to. Only a failed send's own draft —
 // returned by assistant-ui, or restored from the ledger on a remount — sent
 // unchanged, reuses that send's id. New words get a new one, even the same
-// words: an old id would replay an old admission and run nothing.
+// words: an old id would replay an old turn and run nothing.
 
 const SCOPE = { subject: SUBJECT, workspaceId: WS, fleetId: ZID };
 

@@ -83,7 +83,7 @@ async fn source(case: &Case, reply: Reply<'_>) -> Uuid7 {
     let actor = afd_turns::view::steer_actor("native_task_owner");
     let request = json!({"message": GOALS.join("; ")}).to_string();
     let admitted = case
-        .admissions
+        .turns
         .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key.as_str()),
@@ -98,7 +98,7 @@ async fn source(case: &Case, reply: Reply<'_>) -> Uuid7 {
         .expect("separate human source with original reply destination");
     let source = admitted.stored.id.clone();
     assert_ne!(source.as_str(), case.held.turn_id);
-    case.claim(&source).await;
+    case.assign(&source).await;
     source
 }
 
@@ -263,7 +263,7 @@ fn assert_event(event: &Value) {
 async fn interpreted(case: &Case, source: &Uuid7) {
     // PreparedPlan::from_parts supplies accepted meaning without a paid model call.
     // Its original source must also carry the persisted interpretation boundary.
-    let updated = sqlx::query("UPDATE thread.turns SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_claim_run_id=$2 AND interpreted_at IS NULL")
+    let updated = sqlx::query("UPDATE thread.turns SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_run_id=$2 AND interpreted_at IS NULL")
         .bind(source).bind(&case.held.run_key)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("accepted interpretation fixture"))
         .await.expect("accepted source interpretation boundary");

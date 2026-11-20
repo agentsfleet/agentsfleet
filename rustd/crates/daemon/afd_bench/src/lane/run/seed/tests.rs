@@ -19,8 +19,8 @@ use crate::lane::sweep;
 /// An index clear of every lane's population, so this fleet is this test's.
 const LIVE_INDEX: u64 = 0x2000_0000;
 
-/// The fleet's admitted turns, with whether a claim has taken each.
-const SELECT_ADMISSIONS: &str =
+/// The fleet's admitted turns, with whether an assignment has taken each.
+const SELECT_TURNS: &str =
     "SELECT id, run_fence IS NOT NULL FROM thread.turns WHERE thread_id = $1";
 
 #[test]
@@ -64,9 +64,9 @@ fn test_two_indexes_never_collide_within_a_kind() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: run by hand with `cargo test -p afd_bench --all-features -- --ignored` under the lane's environment"]
-async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
+async fn test_a_seeded_event_stands_on_its_turn_row_and_is_stamped_once() {
     let database = TestDatabase::shared().open(DbRole::Api, &[]).await;
-    // The admission row is the proof; the wake it publishes has no reader.
+    // The turn row is the proof; the wake it publishes has no reader.
     let bus = afd_bus::test_util::lane()
         .await
         .expect("the lane's NATS: export TEST_NATS_URL as the integration lane does");
@@ -83,20 +83,20 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     .expect("a ready fleet seeds");
 
     let mut connection = database.acquire().await.expect("a connection");
-    let rows: Vec<(Uuid7, bool)> = sqlx::query_as(SELECT_ADMISSIONS)
+    let rows: Vec<(Uuid7, bool)> = sqlx::query_as(SELECT_TURNS)
         .bind(&seeded.fleet)
         .fetch_all(&mut *connection)
         .await
-        .expect("the admissions read");
-    let [(admission, delivered)] = rows.as_slice() else {
-        panic!("one seeded event stands on exactly one admission row: {rows:?}");
+        .expect("the turns read");
+    let [(turn, delivered)] = rows.as_slice() else {
+        panic!("one seeded event stands on exactly one turn row: {rows:?}");
     };
     assert!(!delivered, "seeded work is still waiting");
     drop(connection);
-    assert_delivery_receipts(&database, &bus, &prefix, admission).await;
+    assert_delivery_receipts(&database, &bus, &prefix, turn).await;
     let delivered: bool =
         sqlx::query_scalar("SELECT run_fence IS NOT NULL FROM thread.turns WHERE id=$1")
-            .bind(admission)
+            .bind(turn)
             .fetch_one(&mut *database.acquire().await.expect("connection"))
             .await
             .expect("durable delivery");
@@ -110,7 +110,7 @@ async fn assert_delivery_receipts(
     database: &afd_db::Db,
     bus: &afd_bus::Handle,
     prefix: &RunPrefix,
-    admission: &Uuid7,
+    turn: &Uuid7,
 ) {
     let runner = super::runner(
         database,
@@ -128,10 +128,10 @@ async fn assert_delivery_receipts(
     let acquired = runs
         .select(&runner, &[])
         .await
-        .expect("claim")
+        .expect("assignment")
         .expect("work");
-    assert_eq!(&acquired.turn_id, admission);
-    // The claim statement opened the event row, so its first claim answers a
+    assert_eq!(&acquired.turn_id, turn);
+    // The assignment statement opened the event row, so its first assignment answers a
     // first delivery.
     assert_eq!(
         acquired.opened.received.delivery,

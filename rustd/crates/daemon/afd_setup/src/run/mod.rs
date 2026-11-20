@@ -1,6 +1,6 @@
 //! Authoring machine mutations share the same live subject and run fence.
 
-pub(crate) mod claim;
+pub(crate) mod assign;
 pub(crate) mod failure;
 pub(crate) mod guard;
 pub(crate) mod meter;
@@ -11,7 +11,7 @@ pub(crate) mod sql;
 
 use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 
-pub use claim::Claimed;
+pub use assign::AssignedDraft;
 
 /// Machine proposals use the drawer's exact Definition and edit types.
 pub type ActivityInput = af_wire::authoring::ActivityRequest<Definition, ConfigOp, InstructionEdit>;

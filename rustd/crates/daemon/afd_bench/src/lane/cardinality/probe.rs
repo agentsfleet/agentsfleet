@@ -99,7 +99,7 @@ pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &Uuid7) -> Resul
 }
 
 /// Median indexed head lookup latency over the unsettled ledger.
-pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &Uuid7) -> Result<f64> {
+pub(super) async fn turn_read_ms(database: &afd_db::Db, fleet: &Uuid7) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
     let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
@@ -113,7 +113,7 @@ pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &Uuid7) -> R
     median_ms(samples).ok_or_else(|| {
         ErrorKind::CounterUnreadable {
             datastore: POSTGRES,
-            field: "admission head samples",
+            field: "turn head samples",
         }
         .into()
     })

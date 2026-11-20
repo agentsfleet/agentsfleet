@@ -1,4 +1,4 @@
-//! Candidate plans bound admission reads to one oldest row per eligible fleet.
+//! Candidate plans bound turn reads to one oldest row per eligible fleet.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -12,8 +12,8 @@ use sqlx::{AssertSqlSafe, PgConnection};
 
 use crate::support::Fixtures;
 
-#[path = "integration_run_plan/claim.rs"]
-mod claim;
+#[path = "integration_run_plan/assignment.rs"]
+mod assignment;
 #[path = "integration_run_plan/gates.rs"]
 mod gates;
 #[path = "integration_run_plan/idle.rs"]

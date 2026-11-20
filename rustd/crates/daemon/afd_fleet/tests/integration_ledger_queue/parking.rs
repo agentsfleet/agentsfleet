@@ -21,27 +21,27 @@ const GATE: &str = "INSERT INTO fleet.approval_gates
       $4, '', now(), now(), NULL)";
 
 // Value: protects=answer-first park ordering; fails_when=park uses a stale gate;
-// why_new=the resolver must now wait for an admission lock, so hold the earlier slot;
+// why_new=the resolver must now wait for a turn lock, so hold the earlier thread;
 // seam=none; no_claim=park-first ordering, covered separately.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
+async fn an_answer_during_the_park_lock_wait_cannot_strand_the_turn() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let runs = fixtures.runs_with_dead_bus();
-    let acquired = next(&runs, &runner).await.expect("claim");
+    let acquired = next(&runs, &runner).await.expect("assignment");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let mut connection = fixtures.database.acquire().await.expect("blocker");
     let mut blocker = connection
         .begin()
         .await
-        .expect("hold slot before admission lock");
+        .expect("hold thread before turn lock");
     let pid: i32 = sqlx::query_scalar(HOLD)
         .bind(&fleet)
         .fetch_one(&mut *blocker)
         .await
-        .expect("fleet slot locked");
+        .expect("fleet thread locked");
     let (parked, ()) = tokio::join!(
         runs.park(&acquired.fleet_id, &event, acquired.fence),
         answer_while_blocked(&fixtures, &action, pid, blocker)
@@ -80,21 +80,21 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uu
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_stale_claim_cannot_park_or_release_its_replacement() {
+async fn a_stale_assignment_cannot_park_or_release_its_replacement() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let runs = fixtures.runs_with_dead_bus();
-    let old = next(&runs, &runner).await.expect("first claim");
+    let old = next(&runs, &runner).await.expect("first assignment");
     seed_gate(&fixtures, &fleet, &workspace).await;
     fixtures
         .age(
-            crate::rows::Row::Slot(&fleet),
+            crate::rows::Row::Thread(&fleet),
             "run_expires_at",
             crate::rows::LAPSE,
         )
         .await;
-    let current = next(&runs, &rival).await.expect("replacement claim");
+    let current = next(&runs, &rival).await.expect("replacement assignment");
     assert!(current.fence.as_i64() > old.fence.as_i64());
     runs.park(&old.fleet_id, &event, old.fence)
         .await
@@ -108,7 +108,7 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
     .bind(&rival)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
     .await
-    .expect("the replacement still owns the slot");
+    .expect("the replacement still owns the thread");
     assert_eq!(
         state,
         (false, Some(current.fence.as_i64()), current.fence.as_i64())
@@ -116,7 +116,7 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
     runs.park(&current.fleet_id, &event, current.fence)
         .await
         .expect("the current holder can park");
-    assert!(fixtures.slot_is_free(&fleet).await);
+    assert!(fixtures.thread_is_free(&fleet).await);
     drop(runs);
     fixtures.cleanup().await;
 }
@@ -164,5 +164,5 @@ pub(super) async fn wait_for_park(fixtures: &Fixtures, pid: i32) {
         }
     })
     .await
-    .expect("park reaches the held admission");
+    .expect("park reaches the held turn");
 }

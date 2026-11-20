@@ -32,7 +32,7 @@ const fn input_page_size() -> u32 {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskHumanInput {
-    /// Native source admission identity used for decision and consumption.
+    /// Native source turn identity used for decision and consumption.
     pub source_turn_id: String,
     /// Native FIFO position, independent of task-local input positions.
     pub sequence: u64,
@@ -60,12 +60,12 @@ pub struct TaskInputCandidate {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskInputsResponse<'a> {
-    /// Native admission owned by this run, including signed continuation events.
+    /// Native turn owned by this run, including signed continuation events.
     pub source_turn_id: String,
     /// Installed revision under which a new human interpretation may bind.
     pub accepted_revision_id: Option<String>,
     /// Complete current human message, absent for native machine continuations.
-    /// Its presence is established from native admission authority.
+    /// Its presence is established from native turn authority.
     pub current_message: Option<String>,
     /// Ascending native message order.
     pub inputs: Vec<TaskHumanInput>,
@@ -81,7 +81,7 @@ pub struct TaskInputsResponse<'a> {
         skip_serializing_if = "Option::is_none"
     )]
     pub execution_deadline: Option<jiff::Timestamp>,
-    /// Current admission's complete saved meaning, including a conversation-only replay.
+    /// Current turn's complete saved meaning, including a conversation-only replay.
     pub current_interpretation: Option<TaskAcceptedInterpretation>,
     /// At most sixteen unfinished native objectives.
     pub tasks: Vec<TaskInputCandidate>,
@@ -140,7 +140,7 @@ pub struct TaskRecoveredItem {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskAcceptedInput {
-    /// Original native admission, retained even after queue settlement.
+    /// Original native turn, retained even after queue settlement.
     pub source_turn_id: String,
     /// Immutable complete interpretation digest.
     pub plan_digest: String,

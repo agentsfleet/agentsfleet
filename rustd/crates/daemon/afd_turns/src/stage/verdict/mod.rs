@@ -11,7 +11,7 @@ use crate::admit::Ledger;
 use crate::error::{ErrorKind, Result, query};
 
 /// Context a malformed answer row carries.
-const CONTEXT: &str = "read the admission answer";
+const CONTEXT: &str = "read the turn answer";
 
 /// The statement's one answer row.
 #[derive(Debug, sqlx::FromRow)]
@@ -31,7 +31,7 @@ pub(crate) struct Answer {
     pub(crate) created_at: Option<jiff_sqlx::Timestamp>,
 }
 
-/// What the caller bound: the status a runnable admission needs, and the
+/// What the caller bound: the status a runnable turn needs, and the
 /// deployment ceiling it was checked against.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Bound {

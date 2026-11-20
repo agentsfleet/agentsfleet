@@ -3,9 +3,9 @@
 //!
 //! # What one iteration is
 //!
-//! One [`Host::assign`] — in production `Plane::claim`, the verb the runner
+//! One [`Host::assign`] — in production `RunService::assign_with`, the verb the runner
 //! route serves, which tries a setup chat and a fleet run in the order the
-//! host's ticket names — timed end to end. Every [`RENEW_EVERY`] claims the host
+//! host's ticket names — timed end to end. Every [`RENEW_EVERY`] assignments the host
 //! renews each chat run it holds, so renewals compete for the pool the way a
 //! host mid-conversation makes them compete.
 //!
@@ -88,7 +88,7 @@ impl Shared {
 #[derive(Debug)]
 pub(super) struct Tally {
     /// Polls made, run or not.
-    pub(super) claims: u64,
+    pub(super) assignments: u64,
     /// Setup chat runs issued to this host.
     pub(super) chat: u64,
     /// Fleet runs issued to this host.
@@ -99,7 +99,7 @@ pub(super) struct Tally {
     pub(super) renewals: u64,
     /// How long an assignment that issued a run of either kind took.
     pub(super) run_latency: Latency,
-    /// How long an assignment that issued a setup chat run took: the tail a claim
+    /// How long an assignment that issued a setup chat run took: the tail an assignment
     /// waiting on a locked draft shows in.
     pub(super) chat_latency: Latency,
 }
@@ -108,7 +108,7 @@ impl Tally {
     /// An empty tally.
     pub(super) fn new() -> Result<Self> {
         Ok(Self {
-            claims: 0,
+            assignments: 0,
             chat: 0,
             fleet: 0,
             failures: 0,
@@ -124,7 +124,7 @@ impl Tally {
     ///
     /// When the two latency distributions will not merge.
     pub(super) fn absorb(&mut self, other: &Self) -> Result<()> {
-        self.claims += other.claims;
+        self.assignments += other.assignments;
         self.chat += other.chat;
         self.fleet += other.fleet;
         self.failures += other.failures;
@@ -152,8 +152,8 @@ pub(super) async fn drive<H: Host>(host: &H, runner: &Uuid7, shared: &Shared) ->
     let stop = shared.abort.token();
     let mut held = Vec::new();
     while shared.open() {
-        tally.claims += 1;
-        if tally.claims % RENEW_EVERY == 0 {
+        tally.assignments += 1;
+        if tally.assignments % RENEW_EVERY == 0 {
             for run in &held {
                 let renewed = renewal(host.renew(runner, run).await);
                 tally.renewals += u64::from(renewed);
@@ -201,7 +201,7 @@ fn renewal(result: Result<()>) -> bool {
     }
 }
 
-/// Idle capacity sends no repeated claim; held authoring work still renews on its clock.
+/// Idle capacity sends no repeated assignment; held authoring work still renews on its clock.
 async fn wait<H: Host>(
     host: &H,
     runner: &Uuid7,

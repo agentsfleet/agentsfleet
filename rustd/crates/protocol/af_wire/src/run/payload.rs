@@ -46,7 +46,7 @@ pub struct RunPayload<'a> {
     /// Exact committed ordinary-turn state; private bytes require a fenced native read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_resume: Option<super::TurnResume>,
-    /// The instant after which the turn becomes reclaimable.
+    /// The instant after which the turn becomes reassignable.
     #[serde(with = "crate::instant")]
     pub run_expires_at: jiff::Timestamp,
     /// The turn to run.
@@ -83,8 +83,8 @@ pub struct RunPayload<'a> {
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub memory: Option<crate::memory::MemoryLoadResponse<'a>>,
     /// Whether a later message waited in the run's conversation when the
-    /// daemon claimed it. False lets the run skip its first fold ask; a
-    /// message that lands after the claim folds on the ask after the answer.
+    /// daemon assigned it. False lets the run skip its first fold ask; a
+    /// message that lands after the assignment folds on the ask after the answer.
     pub inputs_waiting: bool,
     /// Whose work this is. Absent on a fleet's run, whose owner is the fleet
     /// `turn.fleet_id` names. A draft's run names the draft here, and its

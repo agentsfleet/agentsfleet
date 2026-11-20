@@ -9,7 +9,7 @@
 //! failing to save.
 
 use super::super::{fixture::now, mint, refusal::Refusal};
-use super::fixture::{Case, NO_ADMISSIONS, check};
+use super::fixture::{Case, NO_TURNS, check};
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
@@ -21,7 +21,7 @@ use afd_setup::{
 use afd_turns::{Budgets, Turns};
 
 /// The initial run each case asks for, so a repeated stage would show as a
-/// second admission.
+/// second turn.
 const RUN: &str = "Run once setup finishes";
 fn run_now() -> Start {
     Start::RunNow {
@@ -57,18 +57,18 @@ async fn retained(c: &Case, key: &Uuid7, request: SaveFleet) -> SavedFleet {
     first
 }
 
-/// Retries finish the fleet once: one admission, one stream event, and a
+/// Retries finish the fleet once: one turn, one stream event, and a
 /// repeated retry neither admits nor appends again.
 async fn assert_finishes_once(c: &Case, key: &Uuid7, request: SaveFleet, fleet: &Uuid7) {
     let finished = c.save(key, request.clone()).await;
     assert_eq!(&finished.id, fleet);
     let event = accepted(&finished).to_owned();
-    let rows = c.admissions(fleet).await;
-    assert_eq!(rows.len(), 1, "one initial admission: {rows:?}");
+    let rows = c.turns(fleet).await;
+    assert_eq!(rows.len(), 1, "one initial turn: {rows:?}");
     assert_eq!(rows.first().map(Uuid7::as_str), Some(event.as_str()));
     let again = c.save(key, request).await;
     assert_eq!(accepted(&again), event);
-    assert_eq!(c.admissions(fleet).await, rows);
+    assert_eq!(c.turns(fleet).await, rows);
     assert_eq!(c.fleet_count().await, 1);
 }
 
@@ -109,7 +109,7 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
         matches!(stalled.start, StartOutcome::RunNow { turn_id: None, .. }),
         "the staged run rolled back with the activation"
     );
-    assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&fleet).await, NO_TURNS);
     let saving = c.base.drafts.read(c.base.access(), &draft).await;
     assert_eq!(
         saving.expect("draft stays linked").state,
@@ -153,6 +153,6 @@ async fn an_initial_run_over_the_deployment_backlog_budget_activates_blocked() {
         "the run names the capacity refusal: {:?}",
         saved.start
     );
-    assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&saved.id).await, NO_TURNS);
     c.cleanup().await;
 }

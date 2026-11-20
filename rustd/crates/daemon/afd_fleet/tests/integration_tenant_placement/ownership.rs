@@ -2,7 +2,7 @@ use super::*;
 
 /// The live matrix matches the rule.
 // Value: protects=a tenant runner takes only its tenant's work and a platform
-// runner any; fails_when=the scan or claim drops the owner, or refuses
+// runner any; fails_when=the scan or assignment drops the owner, or refuses
 // everything; why_new=the ownership filter; seam=none.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -33,18 +33,21 @@ async fn cross_tenant_placement_matrix() {
         select_fleet(&runs, &u_runner, &foreign).await.is_none(),
         "U's runner sees no candidate"
     );
-    assert!(!slotted(&fixtures, &foreign).await, "and writes no slot");
+    assert!(
+        !thread_taken(&fixtures, &foreign).await,
+        "and writes no thread"
+    );
     assert_eq!(runs_of(&fixtures, &u_runner).await, 0, "and holds no run");
     fixtures.cleanup().await;
 }
 
-/// The claim alone refuses a foreign runner.
-// Value: protects=the claim statement is the control, not the scan;
-// fails_when=the claim's `fleet` step stops joining the runner; why_new=the claim filter;
+/// The assignment alone refuses a foreign runner.
+// Value: protects=the assignment statement is the control, not the scan;
+// fails_when=the assignment's `fleet` step stops joining the runner; why_new=the assignment filter;
 // seam=none.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn claim_statement_refuses_a_foreign_runner() {
+async fn assignment_statement_refuses_a_foreign_runner() {
     let fixtures = Fixtures::create().await;
     let t = Owner::new();
     let fleet = t.fleet(&fixtures, TENANT_MODEL).await;
@@ -53,26 +56,26 @@ async fn claim_statement_refuses_a_foreign_runner() {
     let u_runner = tenant_runner(&fixtures, &u, &t.tag).await;
 
     assert!(
-        claim_head(&fixtures, &fleet, &t_runner).await,
-        "T's runner claims"
+        assign_head(&fixtures, &fleet, &t_runner).await,
+        "T's runner is assigned"
     );
     lapse(&fixtures, &fleet).await;
-    let before = slot(&fixtures, &fleet).await;
+    let before = thread(&fixtures, &fleet).await;
     assert!(
-        !claim_head(&fixtures, &fleet, &u_runner).await,
+        !assign_head(&fixtures, &fleet, &u_runner).await,
         "U's runner is refused"
     );
     assert_eq!(
-        slot(&fixtures, &fleet).await,
+        thread(&fixtures, &fleet).await,
         before,
-        "the slot, its fence and deadline are untouched"
+        "the thread, its fence and deadline are untouched"
     );
     assert!(
-        claim_head(&fixtures, &fleet, &t_runner).await,
-        "and T's runner still claims"
+        assign_head(&fixtures, &fleet, &t_runner).await,
+        "and T's runner is still assigned"
     );
     assert_eq!(
-        slot(&fixtures, &fleet).await.0,
+        thread(&fixtures, &fleet).await.0,
         before.0 + 1,
         "with the next fence"
     );
@@ -80,7 +83,7 @@ async fn claim_statement_refuses_a_foreign_runner() {
 }
 
 /// Issue refuses a foreign runner under the host lock.
-// Value: protects=issue holds even when the claim lets a placement through;
+// Value: protects=issue holds even when the assignment lets a placement through;
 // fails_when=the host lock stops binding the work's tenant; why_new=the issue
 // re-check; seam=an Acquired handed straight to issue.
 #[tokio::test]
@@ -95,7 +98,7 @@ async fn issue_refuses_a_foreign_runner_under_the_host_lock() {
     let u_runner = tenant_runner(&fixtures, &u, &t.tag).await;
     let held = select_fleet(&runs, &t_runner, &fleet)
         .await
-        .expect("T's runner claims");
+        .expect("T's runner is assigned");
 
     let captured = af_core::test_util::trace::Capture::install();
     let issued = issue(&fixtures, &runs, &u_runner, &held, &t.tenant, SELF_MANAGED).await;

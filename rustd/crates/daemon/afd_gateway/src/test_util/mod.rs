@@ -240,7 +240,7 @@ fn handle(
     stop: CancellationToken,
 ) -> Arc<ConnectionHandle> {
     let (commands, _) = mpsc::channel(1);
-    let (claims, _) = mpsc::channel(1);
+    let (passes, _) = mpsc::channel(1);
     Arc::new(ConnectionHandle {
         runner: authority.runner().clone(),
         connection_id: authority.connection().clone(),
@@ -249,7 +249,7 @@ fn handle(
         liveness: Liveness::default(),
         superseded: CancellationToken::new(),
         assignments: Notify::new(),
-        claims,
+        passes,
         recovery_scan: parking_lot::Mutex::default(),
         rechecks: Notify::new(),
         commands,

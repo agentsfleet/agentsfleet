@@ -3,7 +3,7 @@
 //!
 //! Split out because the dimension has two shapes and they belong in separate
 //! files — one proves the four writes commit together, the other proves an
-//! empty claim commits none of them — while the fixture between them is the
+//! empty assignment commits none of them — while the fixture between them is the
 //! same run reported the same way.
 
 use af_core::id::Uuid7;
@@ -43,7 +43,7 @@ pub(crate) const LEDGER_ROWS_AFTER_SETTLE: i64 = 1;
 /// One terminal report over the seeded run, carrying `response_text`.
 ///
 /// The verdict is clean on every call: what varies is whether Postgres will
-/// store the answer and whether the claim can still win. Holding everything
+/// store the answer and whether the assignment can still win. Holding everything
 /// else fixed is what makes the wallet assertions read as one run reported
 /// more than once.
 pub(crate) fn report<'a>(
@@ -80,11 +80,11 @@ pub(crate) fn report<'a>(
 
 /// Not one of the four writes reached the datastore.
 ///
-/// `why` names the route that got here, because three different empty claims
+/// `why` names the route that got here, because three different empty assignments
 /// share this assertion set and a bare failure would not say which one broke.
 pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
-    let settled = held.fixtures.admission_settled(&held.turn_id).await;
-    assert!(!settled, "{why}: the admission remains runnable");
+    let settled = held.fixtures.turn_settled(&held.turn_id).await;
+    assert!(!settled, "{why}: the turn remains runnable");
 
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,

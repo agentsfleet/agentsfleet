@@ -1,9 +1,9 @@
 //! Writing the run: the durable record that a runner owns a fleet's work.
 //!
 //! The last write of the run verb, and the one that makes everything before
-//! it observable. Until this row exists a claim is a slot reservation nobody
-//! can report against — which is also why the reclaim path is unreachable
-//! without it: reclaim looks for a still-`active` run row, and only this
+//! it observable. Until this row exists an assignment is a thread reservation nobody
+//! can report against — which is also why the reassignment path is unreachable
+//! without it: reassignment looks for a still-`active` run row, and only this
 //! writes one.
 //!
 //! # The metering cursor starts with the row
@@ -11,7 +11,7 @@
 //! Every run writes its own cursor, `last_metered_at`, in the statement that
 //! writes the row, so no run can land over a cursor left from a previous
 //! run: the renewal reads it for each slice's delta, and a stale one
-//! over-charges the first renewal. A reclaimed run is a new row with its own
+//! over-charges the first renewal. A reassigned run is a new row with its own
 //! cursor, so it bills only the time its own holder ran.
 
 use af_core::id::Uuid7;
@@ -34,7 +34,7 @@ const CONTEXT_ISSUE: &str = "run issue";
 ///
 /// Carried in rather than resolved here: the gates resolve what the run bills
 /// and then it issues, so the key it billed is the key it delivers — one
-/// resolution, no rotation between the two. A reclaim passes the same gates
+/// resolution, no rotation between the two. A reassignment passes the same gates
 /// again, so it carries its own resolution rather than the dead holder's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Billed<'a> {
@@ -62,7 +62,7 @@ pub struct Issued {
     pub decision: Option<Box<DecisionAssignment>>,
     /// Frozen native task and recovery state.
     pub task: Option<af_wire::task::TaskContext<'static>>,
-    /// Actual slot deadline after task limits were applied.
+    /// Actual thread deadline after task limits were applied.
     pub expires_at: Timestamp,
 }
 
@@ -75,9 +75,9 @@ impl Runs {
     /// see a run with no audit row, a tally that has drifted from the rows it
     /// counts, or a fresh run metering from a previous run's cursor.
     ///
-    /// `None` when the claim that earned `acquired` is no longer this pass's:
+    /// `None` when the assignment that earned `acquired` is no longer this pass's:
     /// its fence was superseded or it lapsed, so another runner may already
-    /// hold the same entry. Nothing is written, and the claim is not this
+    /// hold the same entry. Nothing is written, and the assignment is not this
     /// pass's to release.
     ///
     /// # Errors
@@ -94,9 +94,9 @@ impl Runs {
             .await
     }
 
-    /// [`Self::issue`] under the claim's setup proof, as delivery issues: a
-    /// fleet whose head moved since the claim gets no run, and a plain
-    /// admission reads no task source.
+    /// [`Self::issue`] under the assignment's setup proof, as delivery issues: a
+    /// fleet whose head moved since the assignment gets no run, and a plain
+    /// turn reads no task source.
     ///
     /// # Errors
     /// As [`Self::issue`].
@@ -172,14 +172,14 @@ impl Runs {
     }
 
     /// Whether the locked host may take this run before the insert counts
-    /// its workers and rechecks the claim's deadline itself.
+    /// its workers and rechecks the assignment's deadline itself.
     fn permits_issue(
         &self,
         host: afd_runner::capacity::Held,
         runner_id: &Uuid7,
         billed: &Billed<'_>,
     ) -> bool {
-        if !host.can_claim()
+        if !host.can_assign()
             || !self
                 .ticket()
                 .is_none_or(|ticket| ticket.permits_revision(host.run_version(), RunKind::Fleet))
@@ -254,7 +254,7 @@ fn record_issued(
 const EVENT_RUN_ISSUED: &str = "run_issued";
 
 /// The placement a tenant's runner may not take: another tenant's work, or work
-/// whose model key is the platform's. The claim filters both; this is the check
+/// whose model key is the platform's. The assignment filters both; this is the check
 /// under the host lock that a hole in that filter cannot pass.
 fn placement_refusal(
     host: afd_runner::capacity::Held,

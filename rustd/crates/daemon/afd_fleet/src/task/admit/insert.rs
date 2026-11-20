@@ -1,4 +1,4 @@
-//! Typed writes use the transaction whose source and slot are already locked.
+//! Typed writes use the transaction whose source and thread are already locked.
 
 use af_core::id::Uuid7;
 use af_wire::task::TaskState;
@@ -114,15 +114,15 @@ pub(super) async fn run(
     Ok(())
 }
 
-pub(super) async fn admission(
+pub(super) async fn bind_turn(
     connection: &mut PgConnection,
-    admission: &Uuid7,
+    turn: &Uuid7,
     binding: &TaskBinding,
 ) -> Result<()> {
     sqlx::query(sql::BIND_TURN)
         .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
         .bind(&binding.item_id)
-        .bind(admission)
+        .bind(turn)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

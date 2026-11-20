@@ -1,19 +1,19 @@
 //! The fleet kind's own run statements on `thread.threads` and
-//! `thread.runs`: the claim, the fence, and the row that records who owns a
-//! fleet's work. The slot verbs every kind runs are [`super::shared`].
+//! `thread.runs`: the assignment, the fence, and the row that records who owns a
+//! fleet's work. The thread verbs every kind runs are [`super::shared`].
 //!
-//! # The claim is the whole concurrency design
+//! # The assignment is the whole concurrency design
 //!
-//! The slot upsert inside `claim_turn_head.sql` is one conditional UPSERT
-//! and it carries three jobs at once: it wins the fleet iff the slot is free or
-//! its prior claim expired,
+//! The thread upsert inside `assign_turn_head.sql` is one conditional UPSERT
+//! and it carries three jobs at once: it wins the fleet iff the thread is free or
+//! its prior assignment expired,
 //! it bumps the monotonic `fencing_token`, and it records the sticky-routing
-//! hint. Exactly one of N racing runners takes the row. Crucially the claim
+//! hint. Exactly one of N racing runners takes the row. Crucially the assignment
 //! PRECEDES the event read, so a loser has consumed no event and nothing is
 //! orphaned — which is why `test_run_affinity_race` asserts one run row and
 //! one no-work reply rather than counting retries.
 //!
-//! A fleet's slot is keyed by the fleet's id, so the fleet's statements here
+//! A fleet's thread is keyed by the fleet's id, so the fleet's statements here
 //! read `thread.threads.fleet_id` and `thread.runs.fleet_id`, which a draft's
 //! rows leave NULL and so never match.
 
@@ -21,23 +21,23 @@ mod row;
 
 pub use self::row::{INSERT_RUN_WITH_TURN, RunRow};
 
-/// Claims for a live run's run the messages its fleet received after the
+/// Assigns to a live run the messages its fleet received after the
 /// run's own, oldest first.
 ///
 /// It stops at the first parked or task-bound message. `$1` run, `$2`
 /// runner, `$3` fence, `$4` active status, `$5` read-after sequence, `$6`
 /// limit.
 ///
-/// One statement: it proves the run and its fence itself, so a claim before
-/// every model call costs one round trip. Idempotent for its run, so a
-/// claim whose answer was lost reads the same messages again.
-pub const CLAIM_INPUTS: &str = include_str!("claim_inputs.sql");
+/// One statement: it proves the run and its fence itself, so an assignment before
+/// every model call costs one round trip. Idempotent for its run, so an
+/// assignment whose answer was lost reads the same messages again.
+pub const ASSIGN_INPUTS: &str = include_str!("assign_inputs.sql");
 
-/// Settles the messages a run claimed and a completed model call read.
+/// Settles the messages a run assigned and a completed model call read.
 ///
 /// It runs in a succeeded report's transaction: `$1` fleet, `$2` run, `$3`
 /// fence, `$4` read-through sequence. Answers each one, so its own event and
-/// reply can be written; a claimed message nobody read stays for the next run.
+/// reply can be written; an assigned message nobody read stays for the next run.
 pub const SETTLE_FOLDS: &str = include_str!("settle_folds.sql");
 
 /// What one run authorises a mint to reach.
@@ -55,7 +55,7 @@ pub const SETTLE_FOLDS: &str = include_str!("settle_folds.sql");
 ///   a stale run id cannot mint past the run it was issued for.
 /// - `l.fencing_token >= COALESCE(a.fencing_token, l.fencing_token)` — and to
 ///   the run still HOLDING the fleet. A run row stays `active` after a
-///   reclaim moves the fleet past it, until the reclaim's issue expires it; the
+///   reassignment moves the fleet past it, until the reassignment's issue expires it; the
 ///   affinity row's sequence is the live authority, as the fence reads in
 ///   `crate::run::fence` treat it.
 ///

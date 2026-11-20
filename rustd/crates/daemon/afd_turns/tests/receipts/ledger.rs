@@ -42,8 +42,8 @@ pub(super) fn steer<'a>(lane: &'a Lane, key: &'a str, reply: ReplyTo<'a>) -> Inc
     }
 }
 
-pub(super) async fn admit(admissions: &Turns, admission: IncomingTurn<'_>) -> Fallible<Admitted> {
-    Ok(admissions.admit(admission).await?)
+pub(super) async fn admit(turns: &Turns, turn: IncomingTurn<'_>) -> Fallible<Admitted> {
+    Ok(turns.admit(turn).await?)
 }
 
 async fn stamps(lane: &Lane, id: &Uuid7) -> Fallible<Stamps> {
@@ -56,17 +56,17 @@ async fn stamps(lane: &Lane, id: &Uuid7) -> Fallible<Stamps> {
     .await?)
 }
 
-/// The event id an admission answers with is its row's `UUIDv7`, and a retry
+/// The event id a turn answers with is its row's `UUIDv7`, and a retry
 /// under the same key answers the same one.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
     let lane = Lane::seed().await?;
-    let admissions = over_lane(&lane).await?;
+    let turns = over_lane(&lane).await?;
     let key = mint_id();
 
-    let first = admit(&admissions, steer(&lane, key.as_str(), ReplyTo::None)).await?;
-    let retried = admit(&admissions, steer(&lane, key.as_str(), ReplyTo::None)).await?;
+    let first = admit(&turns, steer(&lane, key.as_str(), ReplyTo::None)).await?;
+    let retried = admit(&turns, steer(&lane, key.as_str(), ReplyTo::None)).await?;
 
     let row: Uuid7 = sqlx::query_scalar("SELECT id FROM thread.turns WHERE producer_key = $1")
         .bind(key.as_str())
@@ -88,9 +88,9 @@ async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
     let lane = Lane::seed().await?;
-    let admissions = over_lane(&lane).await?;
+    let turns = over_lane(&lane).await?;
 
-    let admitted = admit(&admissions, steer(&lane, mint_id().as_str(), ReplyTo::None)).await?;
+    let admitted = admit(&turns, steer(&lane, mint_id().as_str(), ReplyTo::None)).await?;
     let row = stamps(&lane, &admitted.stored.id).await?;
 
     assert!(
@@ -102,26 +102,26 @@ async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
     Ok(())
 }
 
-/// Two admissions staged in one transaction share its `now()` to the
+/// Two turns staged in one transaction share its `now()` to the
 /// microsecond, and still sort in the order they were inserted: inside one
 /// instant, `sequence` decides.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn two_admissions_in_one_instant_order_by_their_sequence() -> Fallible {
+async fn two_turns_in_one_instant_order_by_their_sequence() -> Fallible {
     let lane = Lane::seed().await?;
-    let admissions = over_lane(&lane).await?;
+    let turns = over_lane(&lane).await?;
     let (first_key, second_key) = (mint_id(), mint_id());
-    let first = admissions
+    let first = turns
         .prepare(steer(&lane, first_key.as_str(), ReplyTo::None))
         .await?;
-    let second = admissions
+    let second = turns
         .prepare(steer(&lane, second_key.as_str(), ReplyTo::None))
         .await?;
 
     let mut connection = lane.database.acquire().await?;
     let mut transaction = connection.begin().await?;
-    let first = admissions.stage(&mut transaction, first).await?;
-    let second = admissions.stage(&mut transaction, second).await?;
+    let first = turns.stage(&mut transaction, first).await?;
+    let second = turns.stage(&mut transaction, second).await?;
     transaction.commit().await?;
     drop(connection);
 

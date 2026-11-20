@@ -41,5 +41,5 @@ pub use self::model::{
     Network, ProviderRequest, ProviderResponse, TextKind, Transport,
 };
 pub use self::observe::{Notice, Observation, View};
-pub use self::run::{ActivityInput, Claimed};
+pub use self::run::{ActivityInput, AssignedDraft};
 pub use self::setup::Setup;

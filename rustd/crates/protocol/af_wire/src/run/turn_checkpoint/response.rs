@@ -57,7 +57,7 @@ pub struct TurnCheckpointRead {
     /// Complete authenticated private root; debug output is redacted.
     #[garde(dive)]
     pub root: TurnPrivateRoot,
-    /// Exact saved admissions, independently checked against root bytes.
+    /// Exact saved turns, independently checked against root bytes.
     #[garde(length(max = 16_384), dive)]
     pub folds: Vec<FoldRef>,
 }

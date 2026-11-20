@@ -29,7 +29,7 @@ use afd_fleet::run::sql::meter::Metering;
 use crate::integration_held_sandbox::report::processed;
 use crate::report_seed::{Held, held};
 
-/// A host's degraded verdict, which bars it from claiming and renewing alike.
+/// A host's degraded verdict, which bars it from assigning and renewing alike.
 const DEGRADE_HOST: &str = "UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1";
 const HOST_DEGRADED: &str = "cgroup controller missing";
 
@@ -252,7 +252,7 @@ async fn test_a_runner_with_no_run_or_no_host_row_gets_no_work() {
     let window = plane.load(&held.spare, &held.fleet).await;
     let capture = Capture::install();
     let answer = plane
-        .claim_with(
+        .assign_with(
             &drafts,
             afd_fleet::run::AssignRequest {
                 runner: &stranger,

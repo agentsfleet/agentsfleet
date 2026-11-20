@@ -3,7 +3,7 @@
 //!
 //! Split from [`super`] by concern (RULE FLL): that module decides WHETHER an
 //! event runs, and this one is what happens once the answer is no — including
-//! the claim read that produces one of those noes. They change
+//! the assignment read that produces one of those noes. They change
 //! for different reasons — a new gate moves the decision, a new `failure_label`
 //! moves the ending — and the file cap forced the cut at a seam the two
 //! already had.
@@ -18,17 +18,17 @@ use crate::error::{Error, Result};
 use crate::run::admit::{Declined, Refusal};
 use crate::run::answer::{EVENT_ABANDONED, EVENT_REFUSED, no_work};
 use crate::run::envelope::Acquired;
-use crate::run::event::{DETAIL_RUNS_LAPSED, Delivery, Ended};
 use crate::run::installed::Installed;
+use crate::run::turn::{DETAIL_RUNS_LAPSED, Delivery, Ended};
 
-/// The no-work reason for a fleet archived between selection and claim.
-const FLEET_ARCHIVED: &str = "the fleet was archived between selection and claim";
+/// The no-work reason for a fleet archived between selection and assignment.
+const FLEET_ARCHIVED: &str = "the fleet was archived between selection and assignment";
 
 /// A fleet whose unreadable config could not even be recorded as such.
 pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
 
 impl RunService {
-    /// The installed fleet behind a claim, or the answer that ends the pass.
+    /// The installed fleet behind an assignment, or the answer that ends the pass.
     ///
     /// Three of the four arms end it, which is why this is a
     /// [`Step`](super::step::Step) rather than an `Option`: an archived fleet, an
@@ -39,11 +39,11 @@ impl RunService {
         acquired: &Acquired,
         runner_id: &Uuid7,
     ) -> Result<Step<Installed>> {
-        match self.runs.installed_claimed(&acquired.opened).await {
+        match self.runs.installed_assigned(&acquired.opened).await {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
             // fleet that is not active means it was archived in the window
-            // between selection and this read. The pass frees the claim; the
+            // between selection and this read. The pass frees the assignment; the
             // archive already cleared the mark.
             Ok(None) => {
                 no_work(runner_id, FLEET_ARCHIVED);
@@ -133,8 +133,8 @@ impl RunService {
     /// End an event whose runs kept lapsing, then answer no-work.
     ///
     /// Logged under its own event, apart from a gate's refusal. The fleet's
-    /// next event is claimable the moment this commits: the ending settles
-    /// the admission that was holding the queue's head.
+    /// next event is assignable the moment this commits: the ending settles
+    /// the turn that was holding the queue's head.
     pub(super) async fn abandoned(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<()> {
         let ended = self.runs.abandon(acquired).await?;
         self.close_tail(ended).await;
@@ -233,7 +233,7 @@ impl RunService {
             // later.
             //
             // This is not hypothetical tidying. The write races whatever else
-            // holds the deployment: a fleet row removed between the claim and
+            // holds the deployment: a fleet row removed between the assignment and
             // this insert takes its foreign keys with it, and the poll that
             // happened to be ending that fleet's event answered `500 Database
             // error` to a runner with no stake in any of it — which is the

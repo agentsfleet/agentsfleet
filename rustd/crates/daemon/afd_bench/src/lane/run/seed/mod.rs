@@ -105,7 +105,7 @@ pub fn placement_tag(prefix: &RunPrefix) -> String {
     prefix.name("tag")
 }
 
-/// Seed the fleet before the steer lane measures admission.
+/// Seed the fleet before the steer lane measures turn intake.
 ///
 /// # Errors
 ///
@@ -122,7 +122,7 @@ pub async fn empty_fleet(
     Ok(seeded)
 }
 
-/// Seed a fleet with one unsettled admission.
+/// Seed a fleet with one unsettled turn.
 ///
 /// # Errors
 ///
@@ -292,7 +292,7 @@ pub(in crate::lane::run) async fn runner_identity(
     let digest = enrolled.token.digest().clone();
     let runner = enrolled.runner_id;
     // The first beat a real host sends before it polls. A host that has never
-    // reported reads degraded and may claim nothing, so without it every poll
+    // reported reads degraded and may be assigned nothing, so without it every poll
     // would be refused for a reason this lane is not about.
     let beat = HeartbeatRequest {
         capability_report: Some(capable()),

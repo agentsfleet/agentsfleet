@@ -1,6 +1,6 @@
 //! An event whose runs keep lapsing is ended, and its fleet's queue moves.
 //!
-//! A lapsed run is reclaimed and its event runs again from the start, which
+//! A lapsed run is reassigned and its event runs again from the start, which
 //! is the recovery a dead runner needs. An event that outlives every runner it
 //! is given would be re-held without end and hold the head of its fleet's
 //! queue, so the pass counts the runs an event was issued and stops at the
@@ -11,7 +11,7 @@ use af_core::test_util::trace::Capture;
 use af_core::turn::label::RUN_EXPIRED;
 use af_core::turn::status::FLEET_ERROR;
 use afd_fleet::run::Billed;
-use afd_fleet::run::event::DETAIL_RUNS_LAPSED;
+use afd_fleet::run::turn::DETAIL_RUNS_LAPSED;
 
 use super::seed::seed_provider_resolution;
 use super::*;
@@ -51,11 +51,11 @@ async fn chat(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7 {
 async fn lapse(fixtures: &Fixtures, seeded: &Ready, times: u32) {
     let runs = fixtures.runs();
     for _holder in 0..times {
-        let claimed = claim(fixtures, seeded).await;
+        let assigned = assign(fixtures, seeded).await;
         let issued = runs
             .issue(
                 &seeded.runner,
-                &claimed,
+                &assigned,
                 Billed {
                     tenant_id: &seeded.tenant,
                     posture: POSTURE,
@@ -66,7 +66,7 @@ async fn lapse(fixtures: &Fixtures, seeded: &Ready, times: u32) {
             )
             .await
             .expect("the run row must be written")
-            .expect("the claim is still held");
+            .expect("the assignment is still held");
         fixtures.lapse_holder(&issued.run_id, &seeded.fleet).await;
     }
 }
@@ -79,14 +79,14 @@ async fn an_event_whose_every_run_lapsed_is_ended_as_failed_and_frees_the_queue(
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     lapse(&fixtures, &seeded, EVENT_RUNS_MAX).await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let counted = claimed.earlier_runs;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let counted = assigned.earlier_runs;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert_eq!(
         counted,
         i64::from(EVENT_RUNS_MAX),
-        "the claim counts every run the event was issued"
+        "the assignment counts every run the event was issued"
     );
     assert!(answer.is_none(), "a fourth run was issued: {answer:?}");
     assert_eq!(
@@ -102,7 +102,7 @@ async fn an_event_whose_every_run_lapsed_is_ended_as_failed_and_frees_the_queue(
     );
 
     let next = chat(&fixtures, &seeded.fleet, &workspace).await;
-    let held = claim(&fixtures, &seeded).await;
+    let held = assign(&fixtures, &seeded).await;
     assert_eq!(
         (held.turn_id, held.earlier_runs),
         (next, 0),
@@ -120,8 +120,8 @@ async fn an_event_one_lapse_short_of_the_cap_is_assigned_again() {
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     lapse(&fixtures, &seeded, EVENT_RUNS_MAX - 1).await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(answer.is_some(), "the last run the cap allows was refused");
     assert_eq!(
@@ -141,10 +141,10 @@ async fn an_event_ended_at_the_cap_is_logged_as_abandoned_and_never_as_a_refusal
     let fixtures = Fixtures::create().await;
     let (seeded, _workspace) = funded(&fixtures).await;
     lapse(&fixtures, &seeded, EVENT_RUNS_MAX).await;
-    let claimed = claim(&fixtures, &seeded).await;
+    let assigned = assign(&fixtures, &seeded).await;
     let log = Capture::install();
 
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(answer.is_none(), "a fourth run was issued: {answer:?}");
     let line = log.only("runner_run_abandoned");

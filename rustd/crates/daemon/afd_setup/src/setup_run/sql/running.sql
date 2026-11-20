@@ -1,4 +1,4 @@
--- The message a draft run takes, running from its claim on. A reclaimed message is
+-- The message a draft run takes, running from its assignment on. A reassigned message is
 -- already running and matches nothing.
 --
 -- $1 draft · $2 sequence · $3 the running status · $4 the queued status

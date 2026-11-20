@@ -37,22 +37,22 @@ impl<'a> From<Option<&'a super::recovery::State>> for Recovered<'a> {
     }
 }
 
-/// An inbox that claims nothing.
+/// An inbox that is assigned nothing.
 ///
 /// A durable task reads what people send it as task inputs, and the daemon's
-/// fold claim (`claim_inputs.sql`) refuses a run that carries a task, so
+/// fold assignment (`assign_inputs.sql`) refuses a run that carries a task, so
 /// asking it would cost a round trip for an empty answer.
 #[derive(Debug)]
 struct Closed;
 
 #[async_trait::async_trait]
 impl afr_agent::Inbox for Closed {
-    async fn claim(&self, _after_sequence: i64) -> Vec<afr_agent::Folded> {
+    async fn assign(&self, _after_sequence: i64) -> Vec<afr_agent::Folded> {
         Vec::new()
     }
 }
 
-/// Where a run claims the messages its fleet received while it works: nowhere
+/// Where a run is assigned the messages its fleet received while it works: nowhere
 /// for a durable task, through the run's own fence for every other run.
 fn inbox_of<'a>(
     task: Option<&afr_agent::PreparedTask>,
@@ -164,7 +164,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Inbox for Waiting {
-        async fn claim(&self, _after_sequence: i64) -> Vec<Folded> {
+        async fn assign(&self, _after_sequence: i64) -> Vec<Folded> {
             vec![Folded {
                 turn_id: "019f0000-0000-7000-8000-000000000001".to_owned(),
                 sequence: 1,
@@ -177,7 +177,7 @@ mod tests {
         PreparedTask {
             execution_deadline: None,
             inputs: TaskInputsResponse {
-                source_turn_id: "admission".to_owned(),
+                source_turn_id: "turn".to_owned(),
                 accepted_revision_id: None,
                 current_message: None,
                 inputs: Vec::new(),
@@ -193,17 +193,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_durable_task_claims_no_folded_message() {
+    async fn a_durable_task_is_assigned_no_folded_message() {
         let run = Waiting;
         assert_eq!(
-            inbox_of(Some(&task()), &run).claim(0).await,
+            inbox_of(Some(&task()), &run).assign(0).await,
             Vec::<Folded>::new()
         );
     }
 
     #[tokio::test]
-    async fn every_other_run_claims_through_its_run() {
+    async fn every_other_run_is_assigned_through_its_run() {
         let run = Waiting;
-        assert_eq!(inbox_of(None, &run).claim(0).await.len(), 1);
+        assert_eq!(inbox_of(None, &run).assign(0).await.len(), 1);
     }
 }

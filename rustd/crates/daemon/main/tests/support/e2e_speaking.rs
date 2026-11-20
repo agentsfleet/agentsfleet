@@ -90,7 +90,7 @@ impl Speaking {
             .expect("the run row")
     }
 
-    /// Moves the fleet's live sequence past every run it has, as a reclaim
+    /// Moves the fleet's live sequence past every run it has, as a reassignment
     /// does.
     pub(crate) async fn supersede(&self) {
         let mut connection = self

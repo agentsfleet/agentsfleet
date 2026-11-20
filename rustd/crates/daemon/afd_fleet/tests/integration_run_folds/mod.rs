@@ -1,7 +1,7 @@
-//! A live run claims what its fleet receives while it works, and its report
+//! A live run is assigned what its fleet receives while it works, and its report
 //! settles what it read, against live Postgres.
 //!
-//! The claim is one statement and the settle three more, so these drive the
+//! The assignment is one statement and the settle three more, so these drive the
 //! run store rather than the whole plane: what they prove is which rows the
 //! statements touch, in which order, under which fence.
 //!
@@ -9,7 +9,7 @@
 //! datastores; `make test-integration-rustd` is the only lane that runs them.
 #![cfg(feature = "test-util")]
 
-mod claims;
+mod assignments;
 mod conversations;
 mod limits;
 mod settles;

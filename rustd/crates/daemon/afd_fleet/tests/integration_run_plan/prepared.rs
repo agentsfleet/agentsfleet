@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use afd_fleet::run::sql::{
     self,
-    queue::{CLAIM_HEAD, SELECT_CANDIDATES},
+    queue::{ASSIGN_HEAD, SELECT_CANDIDATES},
 };
 use sqlx::{AssertSqlSafe, PgConnection};
 
@@ -13,14 +13,14 @@ pub(super) async fn prepare(connection: &mut PgConnection) {
     run(connection, &format!("PREPARE gate_candidates (text,uuid,bigint,interval,text,uuid[],uuid,text,text,text,text[],boolean,timestamptz,uuid,boolean,text) AS {SELECT_CANDIDATES}")).await;
     run(
         connection,
-        &format!("PREPARE gate_claim (uuid,uuid,interval,interval,text,text,text,text,text,text,text[],text,text,boolean,text) AS {CLAIM_HEAD}"),
+        &format!("PREPARE gate_assignment (uuid,uuid,interval,interval,text,text,text,text,text,text,text[],text,text,boolean,text) AS {ASSIGN_HEAD}"),
     )
     .await;
 }
 
 pub(super) async fn release(connection: &mut PgConnection) {
     run(connection, "DEALLOCATE gate_candidates").await;
-    run(connection, "DEALLOCATE gate_claim").await;
+    run(connection, "DEALLOCATE gate_assignment").await;
 }
 
 pub(super) async fn candidates(connection: &mut PgConnection, runner: &Uuid7) -> serde_json::Value {
@@ -32,7 +32,7 @@ pub(super) async fn candidates(connection: &mut PgConnection, runner: &Uuid7) ->
     explain(connection, &format!("gate_candidates('{active}','{runner}',64,'{offline} seconds','{runner_active}','{{}}',NULL,{task},false,NULL,NULL,true,'{model}')")).await
 }
 
-pub(super) async fn claim(
+pub(super) async fn assign(
     connection: &mut PgConnection,
     fleet: &Uuid7,
     runner: &Uuid7,
@@ -46,7 +46,7 @@ pub(super) async fn claim(
     let fleet_active = sql::FLEET_STATUS_ACTIVE;
     let received = af_core::turn::status::RECEIVED;
     let model = afd_credential::provider::PLATFORM_MODEL_REF;
-    explain(connection, &format!("gate_claim('{fleet}','{runner}','{ttl} seconds','{offline} seconds','{runner_active}','{active}','{expired}',{task},'{fleet_active}','{received}',true,'{model}')")).await
+    explain(connection, &format!("gate_assignment('{fleet}','{runner}','{ttl} seconds','{offline} seconds','{runner_active}','{active}','{expired}',{task},'{fleet_active}','{received}',true,'{model}')")).await
 }
 
 async fn explain(connection: &mut PgConnection, invocation: &str) -> serde_json::Value {

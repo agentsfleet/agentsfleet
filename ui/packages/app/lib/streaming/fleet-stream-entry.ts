@@ -61,7 +61,7 @@ export type Entry = {
   replyHeard: Map<string, number>;
   /** Running turns whose saved row is known to exist: a frame named it, or a
    * server read showed it. Only for these does a 404 mean the row is gone; an
-   * turn still queued behind its admission has no row yet. */
+   * turn still queued has no row yet. */
   replyExists: Set<string>;
   /** Current detail reads shared by gap recovery and the silence sweep. */
   runningReads: Map<string, Promise<void>>;

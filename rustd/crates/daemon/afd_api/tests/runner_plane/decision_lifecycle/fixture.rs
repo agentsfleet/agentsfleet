@@ -94,15 +94,15 @@ impl Fixture {
         );
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
         let bus = harness::bus().await;
-        let admissions = Turns::for_tests(database.clone(), bus.clone());
+        let turns = Turns::for_tests(database.clone(), bus.clone());
         let runs = Runs::new(database.clone(), bus, Entropy::new());
-        let run = acquire(&runs, &admissions, &owner, &runner).await;
+        let run = acquire(&runs, &turns, &owner, &runner).await;
         let key = format!("decision-http-fixture-{}", mint_id());
         save_key(&database, &owner.workspace, &key).await;
         let mut dependencies = harness::task_dependencies(database.clone());
         dependencies.admin_workspace = Some(owner.workspace.clone());
         dependencies.storage = Some(storage::build(&database, &owner).await);
-        let tasks = Tasks::new(runs, admissions, dependencies);
+        let tasks = Tasks::new(runs, turns, dependencies);
         let router = harness::Fleet::live(
             database.clone(),
             "native_decision_http",
@@ -215,12 +215,12 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
         .expect("exactly two registered runners")
 }
 
-async fn acquire(runs: &Runs, admissions: &Turns, owner: &Owner, runner: &Runner) -> Run {
-    let admitted = admit(admissions, owner).await;
+async fn acquire(runs: &Runs, turns: &Turns, owner: &Owner, runner: &Runner) -> Run {
+    let admitted = admit(turns, owner).await;
     let acquired = runs
         .select(&runner.id, &[])
         .await
-        .expect("native claim")
+        .expect("native assignment")
         .expect("owned work is runnable");
     assert_eq!(
         (&acquired.fleet_id, &acquired.turn_id),
@@ -249,10 +249,10 @@ async fn acquire(runs: &Runs, admissions: &Turns, owner: &Owner, runner: &Runner
     }
 }
 
-async fn admit(admissions: &Turns, owner: &Owner) -> Uuid7 {
+async fn admit(turns: &Turns, owner: &Owner) -> Uuid7 {
     let body = json!({"message":setup::MESSAGE}).to_string();
     let key = mint_id();
-    let admitted = admissions
+    let admitted = turns
         .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key.as_str()),
@@ -284,7 +284,7 @@ async fn save_key(database: &Db, workspace: &Uuid7, key: &str) {
 
 async fn heartbeat(store: &Runners, runner: &Uuid7) {
     // Decision-enabled fleets require explicit durable-task support even
-    // before their human admission has been bound to a task.
+    // before their human turn has been bound to a task.
     let beat = store
         .heartbeat(
             runner,

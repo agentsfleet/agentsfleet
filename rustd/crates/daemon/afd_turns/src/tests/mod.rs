@@ -36,7 +36,7 @@ static WORKSPACE: LazyLock<Uuid7> =
 static OTHER_WORKSPACE: LazyLock<Uuid7> =
     LazyLock::new(|| afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0999"));
 
-/// An admission whose fields a test then varies one at a time.
+/// A turn whose fields a test then varies one at a time.
 fn sample() -> IncomingTurn<'static> {
     IncomingTurn {
         producer: Producer::Webhook,
@@ -80,8 +80,8 @@ fn every_producer_spells_itself_and_no_two_spell_alike() {
 /// every retry look like drift.
 #[test]
 fn one_payload_digests_the_same_however_often_it_is_admitted() {
-    let admission = sample();
-    assert_eq!(admission.payload_digest(), admission.payload_digest());
+    let turn = sample();
+    assert_eq!(turn.payload_digest(), turn.payload_digest());
 }
 
 /// Changing any digested field changes the digest.
@@ -106,9 +106,9 @@ fn every_digested_field_changes_the_digest() {
             ..sample()
         },
     ];
-    for admission in varied {
+    for turn in varied {
         assert_ne!(
-            admission.payload_digest(),
+            turn.payload_digest(),
             base,
             "a changed field left the digest alone"
         );

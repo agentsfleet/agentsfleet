@@ -25,7 +25,7 @@ pub struct TaskEffectInput {
     /// Stable identity; a lost acknowledgement must reuse this operation.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub operation_id: String,
-    /// Current slot fence.
+    /// Current thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current selected task and generation.
@@ -138,7 +138,7 @@ pub struct TaskEffectsPage {
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskEffectQuery {
-    /// Current fleet-slot fence.
+    /// Current fleet-thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
 }

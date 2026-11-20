@@ -225,7 +225,7 @@ impl Run<'_> {
 
     /// Releases the fleet's held sandbox for a run refused before a sandbox
     /// was chosen. Such a run settles with no hold, so the daemon records
-    /// none and answers the fleet's next claim with `resume_hold` false: the
+    /// none and answers the fleet's next assignment with `resume_hold` false: the
     /// held sandbox could never be resumed, only wait out its idle window in
     /// a worker's hold slot.
     fn release_hold(&self) {

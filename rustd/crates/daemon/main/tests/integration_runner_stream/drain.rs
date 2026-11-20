@@ -26,9 +26,10 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
         native.heartbeat().await;
         native.ready().await;
         let assignment = native.expect(StreamKind::Work, "run").await;
-        let (run, _) = wire::claim(assignment.pointer("/run").expect("native response field"));
-        // The renewal takes no host lock; it waits on its fleet's slot.
-        let (host, blocker) = hold_slot(&scene, &run).await;
+        let (run, _) =
+            wire::run_and_fence(assignment.pointer("/run").expect("native response field"));
+        // The renewal takes no host lock; it waits on its fleet's thread.
+        let (host, blocker) = hold_thread(&scene, &run).await;
         native
             .send(
                 StreamKind::Control,
@@ -38,7 +39,7 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
                 }),
             )
             .await;
-        wait_for_slot_wait(&scene, blocker).await;
+        wait_for_thread_wait(&scene, blocker).await;
         let drain = scene.booted.drain.clone();
         let settled = tokio::spawn(async move { drain.settle(DRAIN_TIMEOUT).await });
         scene.booted.drain.accepting().cancelled().await;
@@ -70,7 +71,7 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
     }
 }
 
-async fn hold_slot(scene: &Scenario, run: &str) -> (Transaction<'static, Postgres>, i32) {
+async fn hold_thread(scene: &Scenario, run: &str) -> (Transaction<'static, Postgres>, i32) {
     let mut host = Transaction::begin(
         scene
             .booted
@@ -94,11 +95,11 @@ async fn hold_slot(scene: &Scenario, run: &str) -> (Transaction<'static, Postgre
     .bind(&run)
     .fetch_one(&mut *host)
     .await
-    .expect("hold the run's slot");
+    .expect("hold the run's thread");
     (host, blocker)
 }
 
-async fn wait_for_slot_wait(scene: &Scenario, blocker: i32) {
+async fn wait_for_thread_wait(scene: &Scenario, blocker: i32) {
     tokio::time::timeout(STREAM_ANSWER_TIMEOUT, async {
         loop {
             let waiting: bool = sqlx::query_scalar(
@@ -122,5 +123,5 @@ async fn wait_for_slot_wait(scene: &Scenario, blocker: i32) {
         }
     })
     .await
-    .expect("renewal reaches the held slot lock");
+    .expect("renewal reaches the held thread lock");
 }

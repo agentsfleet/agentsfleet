@@ -15,7 +15,7 @@ async fn test_kind_preference_survives_a_new_store_handle() {
     let fixture = Fixture::create(2).await;
     let runners = Runners::new(fixture.db.clone(), Entropy::new());
     let ticket = runners
-        .claim_assignment(&fixture.runner, AcceptedKinds::ALL)
+        .assignment_ticket(&fixture.runner, AcceptedKinds::ALL)
         .await
         .expect("choice read")
         .expect("host exists");
@@ -27,7 +27,7 @@ async fn test_kind_preference_survives_a_new_store_handle() {
     place_authoring(&fixture, ticket).await;
     let replica = Runners::new(fixture.db.clone(), Entropy::new());
     let next = replica
-        .claim_assignment(&fixture.runner, AcceptedKinds::ALL)
+        .assignment_ticket(&fixture.runner, AcceptedKinds::ALL)
         .await
         .expect("other replica choice")
         .expect("host exists");
@@ -40,7 +40,7 @@ async fn test_kind_preference_survives_a_new_store_handle() {
     let census = capacity::lock(
         &mut tx,
         &fixture.runner,
-        afd_runner::capacity::Claimant::Authoring,
+        afd_runner::capacity::Work::Authoring,
         None,
     )
     .await
@@ -64,7 +64,7 @@ async fn place_authoring(fixture: &Fixture, ticket: Ticket) {
     let census = capacity::lock(
         &mut tx,
         &fixture.runner,
-        afd_runner::capacity::Claimant::Authoring,
+        afd_runner::capacity::Work::Authoring,
         None,
     )
     .await
@@ -91,7 +91,7 @@ async fn test_failed_placement_does_not_advance_preference() {
     let fixture = Fixture::create(1).await;
     let runners = Runners::new(fixture.db.clone(), Entropy::new());
     let ticket = runners
-        .claim_assignment(&fixture.runner, AcceptedKinds::ALL)
+        .assignment_ticket(&fixture.runner, AcceptedKinds::ALL)
         .await
         .expect("choice")
         .expect("host");
@@ -100,7 +100,7 @@ async fn test_failed_placement_does_not_advance_preference() {
     let census = capacity::lock(
         &mut tx,
         &fixture.runner,
-        afd_runner::capacity::Claimant::Authoring,
+        afd_runner::capacity::Work::Authoring,
         None,
     )
     .await
@@ -116,7 +116,7 @@ async fn test_failed_placement_does_not_advance_preference() {
     let census = capacity::lock(
         &mut tx,
         &fixture.runner,
-        afd_runner::capacity::Claimant::Authoring,
+        afd_runner::capacity::Work::Authoring,
         None,
     )
     .await
@@ -129,7 +129,7 @@ async fn test_failed_placement_does_not_advance_preference() {
     tx.rollback().await.expect("release guard");
     drop(connection);
     let fleet_only = runners
-        .claim_assignment(&fixture.runner, AcceptedKinds::FLEET)
+        .assignment_ticket(&fixture.runner, AcceptedKinds::FLEET)
         .await
         .expect("fleet-only choice")
         .expect("host");

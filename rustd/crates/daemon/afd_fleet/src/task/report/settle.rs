@@ -285,7 +285,7 @@ async fn continue_ready(
     settlement: TaskSettlement<'_>,
     reason: Option<&str>,
 ) -> Result<Option<&'static str>> {
-    let Some(admission) = settlement.admission else {
+    let Some(turn) = settlement.turn else {
         transition(
             connection,
             current,
@@ -302,8 +302,8 @@ async fn continue_ready(
     let admitted = match settlement
         .plan
         .tasks
-        .admissions
-        .stage(&mut savepoint, admission)
+        .turns
+        .stage(&mut savepoint, turn)
         .await
     {
         Ok(admitted) => admitted,
@@ -332,7 +332,7 @@ async fn continue_ready(
         .bind(&admitted.stored.id)
         .execute(&mut *savepoint)
         .await
-        .map_err(query("bind continuation before report releases its slot"))?;
+        .map_err(query("bind continuation before report releases its thread"))?;
     savepoint
         .commit()
         .await

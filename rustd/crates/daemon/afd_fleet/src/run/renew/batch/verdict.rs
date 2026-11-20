@@ -32,7 +32,7 @@ pub(super) struct Judged {
     pub(super) admitted: Option<bool>,
     pub(super) has_task: Option<bool>,
     pub(super) extended_until: Option<jiff_sqlx::Timestamp>,
-    pub(super) slot_moved: bool,
+    pub(super) thread_moved: bool,
 }
 
 /// What one run's row decided.
@@ -79,7 +79,7 @@ impl Judged {
         if !self.found || !held(self.host_renews) {
             return Verdict::Lost;
         }
-        // The cancel mark before the turn's admission, as the per-run path asks
+        // The cancel mark before the turn's intake, as the per-run path asks
         // (`extend.rs`): Stop settles the turn it marks, and its run must hear
         // `cancelled`, not `lost`.
         if held(self.cancelled) {
@@ -101,9 +101,9 @@ impl Judged {
             return Verdict::OverBudget;
         }
         match self.extended_until {
-            // Both rows moved, or the run is lost: a deadline the slot does
-            // not honour would run the child past a reclaim.
-            Some(until) if self.slot_moved => Verdict::Extended(until.to_jiff()),
+            // Both rows moved, or the run is lost: a deadline the thread does
+            // not honour would run the child past a reassignment.
+            Some(until) if self.thread_moved => Verdict::Extended(until.to_jiff()),
             _ => Verdict::Lost,
         }
     }

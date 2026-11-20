@@ -3,7 +3,7 @@
 use super::probe_ticks;
 use crate::scheduler::Probe;
 use crate::{
-    connection::{AssignOutcome, ClaimRequest, ConnectionHandle},
+    connection::{AssignOutcome, ConnectionHandle, PassRequest},
     registry::{Registration, Registry},
     scheduler::notifications,
 };
@@ -20,7 +20,7 @@ type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sy
 
 struct ReplicaFixture {
     registry: Arc<Registry>,
-    requests: Vec<mpsc::Receiver<ClaimRequest>>,
+    requests: Vec<mpsc::Receiver<PassRequest>>,
     registrations: Vec<Registration>,
 }
 
@@ -31,9 +31,9 @@ impl ReplicaFixture {
         let mut registrations = Vec::new();
         for number in 1..=50 {
             let id = Uuid7::parse(&format!("019f0000-0000-7000-8000-{number:012x}"))?;
-            let (connection, claims) = ConnectionHandle::fixture_with_claims(id.clone(), id);
+            let (connection, passes) = ConnectionHandle::fixture_with_passes(id.clone(), id);
             registrations.push(registry.register_fixture(&connection)?);
-            requests.push(claims);
+            requests.push(passes);
         }
         Ok(Self {
             registry,

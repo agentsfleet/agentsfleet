@@ -50,7 +50,7 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
 }
 
 // Value: protects=wrapped subsystem failures keep their codes and causes;
-// fails_when=authoring flattens runner/admission/approval errors into a generic refusal;
+// fails_when=authoring flattens runner/turn/approval errors into a generic refusal;
 // why_new=happy-path services never produce every subsystem failure;
 // seam=existing subsystem failure fixtures; no_claim=live datastore outages.
 #[test]

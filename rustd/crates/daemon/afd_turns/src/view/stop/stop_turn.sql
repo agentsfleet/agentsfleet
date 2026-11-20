@@ -1,8 +1,8 @@
 -- Stop: a person ends one turn of a thread, a fleet's or a setup draft's alike, in one
--- statement. It locks the thread first, as a claim, a renewal and a report do, so it
+-- statement. It locks the thread first, as an assignment, a renewal and a report do, so it
 -- queues behind any of them rather than deadlocking against one.
 --
--- An unsettled turn is cancelled and settled, so no claim takes it again. When a live run
+-- An unsettled turn is cancelled and settled, so no assignment takes it again. When a live run
 -- serves it, the run gets its durable cancel mark, and every turn that run serves is
 -- cancelled with it: the turn it took as its head and every message it folded in. A turn
 -- a run has not taken stays queued. A waiting turn's open approval closes with it.
@@ -23,7 +23,7 @@ WITH thread AS MATERIALIZED (
   FOR NO KEY UPDATE OF s
 ), target AS MATERIALIZED (
   SELECT t.id, t.sequence, t.status, t.settled_at IS NOT NULL AS settled, t.run_fence,
-         t.input_claim_run_id, t.input_claim_fence
+         t.input_run_id, t.input_fence
   FROM thread.turns t
   JOIN thread ON thread.id = t.thread_id
   WHERE t.id = $3 AND t.workspace_id = $1
@@ -37,7 +37,7 @@ WITH thread AS MATERIALIZED (
   JOIN thread.runs r ON COALESCE(r.fleet_id, r.draft_id) = $2
   WHERE NOT t.settled AND r.status = $5
     AND ((r.turn_id = t.id AND r.fencing_token = COALESCE(t.run_fence, r.fencing_token))
-         OR (r.id = t.input_claim_run_id AND r.fencing_token = t.input_claim_fence))
+         OR (r.id = t.input_run_id AND r.fencing_token = t.input_fence))
   FOR UPDATE OF r
 ), marked AS (
   UPDATE thread.runs r
@@ -57,7 +57,7 @@ WITH thread AS MATERIALIZED (
     AND (t.id = target.id OR EXISTS (
       SELECT 1 FROM run
       WHERE (t.id = run.turn_id AND t.run_fence = run.fencing_token)
-         OR (t.input_claim_run_id = run.id AND t.input_claim_fence = run.fencing_token)))
+         OR (t.input_run_id = run.id AND t.input_fence = run.fencing_token)))
   RETURNING t.id
 ), closed AS (
   UPDATE fleet.approval_gates g

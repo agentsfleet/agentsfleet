@@ -163,7 +163,7 @@ async fn guarded(fixture: &Fixture, native: &mut Native) -> Result<()> {
     assert_eq!(
         census(fixture).await?,
         (0, 1),
-        "refused work remains an unsettled admission"
+        "refused work remains an unsettled turn"
     );
     recovered(fixture, native).await
 }

@@ -1,7 +1,7 @@
 //! Guard reads acquire wallet, current subject, draft and attempt in that order.
 
 /// Current chat work: the newest attempt still running a turn Stop has not
-/// cancelled, or a draft run's live slot. A stopped attempt keeps only its
+/// cancelled, or a draft run's live thread. A stopped attempt keeps only its
 /// accounting.
 ///
 /// `$1` draft, `$2` the settled attempt statuses, `$3` the cancelled turn

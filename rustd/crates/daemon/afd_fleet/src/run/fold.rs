@@ -1,5 +1,5 @@
 //! A live run folding in the messages a person sends in its conversation
-//! while it works: the claim before each model call, and the settle its
+//! while it works: the assignment before each model call, and the settle its
 //! report makes for every message a completed call read.
 //!
 //! A folded message is answered the way a durable task's folded input is
@@ -10,7 +10,7 @@
 use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::FoldOutcome;
 use af_observability::producers;
-use af_wire::fold::{FOLDS_PER_CLAIM_MAX, FoldRequest, FoldResponse, FoldedInput};
+use af_wire::fold::{FOLDS_PER_ASSIGNMENT_MAX, FoldRequest, FoldResponse, FoldedInput};
 use sqlx::PgConnection;
 
 use afd_turns::view::Closed;
@@ -22,20 +22,20 @@ use crate::run::sql;
 use crate::run::store::Runs;
 use crate::run::verdict::{Terminal, Verdict};
 
-/// The context a claim that failed carries.
-const CONTEXT_CLAIM: &str = "claim a run's folded messages";
+/// The context an assignment that failed carries.
+const CONTEXT_ASSIGN: &str = "assign a run's folded messages";
 /// The context a settle that failed carries.
 const CONTEXT_SETTLE: &str = "settle a run's folded messages";
 /// The context an event that would not open carries.
 const CONTEXT_OPEN: &str = "open the folded messages' events before completing them";
-/// A claim answered a run: per model call, so at `debug` (LOG-HOT).
-const EVENT_CLAIMED: &str = "folds_claimed";
+/// An assignment answered a run: per model call, so at `debug` (LOG-HOT).
+const EVENT_FOLDS_ASSIGNED: &str = "folds_assigned";
 /// A committed report settled the messages its run folded and read.
 const EVENT_SETTLED: &str = "folds_settled";
 
-/// One claimed message, as the claim reads it.
+/// One assigned message, as the assignment reads it.
 #[derive(Debug, sqlx::FromRow)]
-struct ClaimedRow {
+struct AssignedRow {
     id: Uuid7,
     sequence: i64,
     request_json: String,
@@ -76,7 +76,7 @@ impl Folds {
 
 impl RunService {
     /// The messages `run_id`'s fleet received after `request.after_sequence`,
-    /// claimed for the run, oldest first. See [`Runs::claim_folds`].
+    /// assigned for the run, oldest first. See [`Runs::assign_folds`].
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -87,7 +87,7 @@ impl RunService {
         request: &FoldRequest,
     ) -> Result<FoldResponse<'static>> {
         self.runs
-            .claim_folds(
+            .assign_folds(
                 runner_id,
                 run_id,
                 request.fencing_token,
@@ -99,15 +99,15 @@ impl RunService {
 
 impl Runs {
     /// The messages `run_id`'s fleet received after `after_sequence`,
-    /// claimed for the run under `fencing_token`, oldest first.
+    /// assigned for the run under `fencing_token`, oldest first.
     ///
-    /// A run that is not this runner's, not live, or superseded claims
+    /// A run that is not this runner's, not live, or superseded assignments
     /// nothing, which reads as no message: the run learns it lost the run
     /// from its renewal, as it would without this call.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn claim_folds(
+    pub async fn assign_folds(
         &self,
         runner_id: &Uuid7,
         run_id: &Uuid7,
@@ -116,13 +116,13 @@ impl Runs {
     ) -> Result<FoldResponse<'static>> {
         let fence = i64::try_from(fencing_token).unwrap_or(i64::MAX);
         let mut connection = self.pool().acquire().await?;
-        let rows: Vec<ClaimedRow> = sqlx::query_as(sql::run::CLAIM_INPUTS)
+        let rows: Vec<AssignedRow> = sqlx::query_as(sql::run::ASSIGN_INPUTS)
             .bind(run_id)
             .bind(runner_id)
             .bind(fence)
             .bind(sql::RUN_STATUS_ACTIVE)
             .bind(after_sequence)
-            .bind(i64::from(FOLDS_PER_CLAIM_MAX))
+            .bind(i64::from(FOLDS_PER_ASSIGNMENT_MAX))
             .bind(afd_turns::Producer::Steer.as_str())
             .bind(afd_turns::view::ACTOR_MACHINE)
             .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
@@ -132,12 +132,12 @@ impl Runs {
             .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
             .fetch_all(&mut *connection)
             .await
-            .map_err(query(CONTEXT_CLAIM))?;
-        let (run, claimed, event) = (run_id.as_str(), rows.len(), EVENT_CLAIMED);
-        tracing::debug!(run_id = run, after_sequence, claimed, event);
+            .map_err(query(CONTEXT_ASSIGN))?;
+        let (run, assigned, event) = (run_id.as_str(), rows.len(), EVENT_FOLDS_ASSIGNED);
+        tracing::debug!(run_id = run, after_sequence, assigned, event);
         producers::fleet::fold::folds(
-            FoldOutcome::Claimed,
-            u64::try_from(claimed).unwrap_or(u64::MAX),
+            FoldOutcome::Assigned,
+            u64::try_from(assigned).unwrap_or(u64::MAX),
         );
         Ok(FoldResponse {
             inputs: rows
@@ -153,7 +153,7 @@ impl Runs {
         })
     }
 
-    /// Settles the messages `run` claimed and a completed model call read,
+    /// Settles the messages `run` assigned and a completed model call read,
     /// through `read_through`, inside the report's transaction, and gives
     /// each its own event closed with `answer`: three statements however many
     /// messages there are. A run that read nothing (`None`) settles nothing.

@@ -84,7 +84,7 @@ pub(super) fn completed(call_id: &'static str, ms: i64) -> ActivityFrame<'static
 pub(super) fn posted_frames(calls: &[crate::client::Call]) -> Vec<Vec<String>> {
     calls
         .iter()
-        .filter(|call| call.verb == Verb::Activity)
+        .filter(|call| call.verb == Verb::Progress)
         .map(|call| {
             let body: serde_json::Value =
                 serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
@@ -246,7 +246,7 @@ fn a_frame_is_measured_as_encoded() {
 #[tokio::test(start_paused = true)]
 async fn a_failed_post_is_only_logged() {
     let (plane, mut calls) =
-        activities(|_call| Answer::Fail(error::unavailable(Verb::Activity, 503)));
+        activities(|_call| Answer::Fail(error::unavailable(Verb::Progress, 503)));
     let run = Uuid7::parse(RUN_ID).unwrap();
     let (sink, mut pump) = channel(&plane, &run);
     sink.emit(tool(TOOL));

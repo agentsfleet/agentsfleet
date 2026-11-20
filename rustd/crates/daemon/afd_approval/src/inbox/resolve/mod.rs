@@ -174,7 +174,7 @@ impl Inbox {
     /// and the run that followed from the answer — reopening the first would
     /// erase the fact that a person was ever asked.
     ///
-    /// Idempotent on the gate's ACTION: the admission is keyed by it, and
+    /// Idempotent on the gate's ACTION: the turn is keyed by it, and
     /// the row insert carries the `turn_id` conflict arm, so a
     /// retried resolve continues the run exactly once.
     ///
@@ -186,7 +186,7 @@ impl Inbox {
         let actor = format!("{CONTINUATION_ACTOR_PREFIX}{turn_id}");
         let kind = af_wire::turn::TurnKind::Continuation.as_str();
         let admitted = self
-            .admissions
+            .turns
             .admit(afd_turns::IncomingTurn {
                 producer: afd_turns::Producer::GateContinuation,
                 // The gate's ACTION, which a retried resolve repeats: two
@@ -214,11 +214,11 @@ impl Inbox {
                 turn_id: Cow::Borrowed(admitted.stored.id.as_str()),
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
-                // The admission's own instant, which the ledger stamped and
+                // The turn's own instant, which the ledger stamped and
                 // a thread page keys this event on.
                 created_at: admitted.stored.created_at,
                 // A continuation carries no typed words: a person's message
-                // is announced on its own admission.
+                // is announced on its own turn.
                 message: None,
                 counters,
             };
@@ -230,7 +230,7 @@ impl Inbox {
         Ok(Some(admitted.stored.id))
     }
 
-    /// Inserts the continuation row the admission keyed, answering whether
+    /// Inserts the continuation row the turn keyed, answering whether
     /// THIS call landed it and, when it did, the fleet's counters after it.
     ///
     /// Counters are read after the row landed, on the same connection: the

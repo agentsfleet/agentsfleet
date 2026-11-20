@@ -107,7 +107,7 @@ async fn a_retried_notice_is_owed_again() {
         "the notice names the fleets to choose from: {}",
         notice.answer
     );
-    assert_eq!(fixture.admissions().await, 0, "a notice admits no event");
+    assert_eq!(fixture.turns().await, 0, "a notice admits no event");
 
     fixture.cleanup().await;
 }

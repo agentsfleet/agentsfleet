@@ -28,7 +28,7 @@ fn the_current_holder_presenting_its_own_token_holds() -> Checked {
     Ok(())
 }
 
-/// A reclaim bumped the fleet's sequence past this run's token.
+/// A reassignment bumped the fleet's sequence past this run's token.
 #[test]
 fn a_superseded_holder_does_not() -> Checked {
     assert!(!payload(LIVE - 1, LIVE)?.holds(3));

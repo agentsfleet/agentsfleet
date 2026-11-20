@@ -44,7 +44,7 @@ pub(super) async fn issue<'a>(
     let deadline = owned
         .current
         .run_expires_at
-        .min(owned.current.slot_expires_at)
+        .min(owned.current.thread_expires_at)
         .min(owned.snapshot.context.expires_at);
     if deadline <= af_core::clock::now() {
         return Err(TaskRefusal::StaleState.into());
@@ -120,7 +120,7 @@ pub(super) async fn confirm(tasks: &Tasks, effect: &Effect, commit: &str) -> Res
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("protect any remaining publication parent"))?;
-    let _slot: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_THREAD)
+    let _thread: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_THREAD)
         .bind(&effect.fleet_id)
         .fetch_optional(&mut *tx)
         .await

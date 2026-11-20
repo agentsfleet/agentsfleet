@@ -23,7 +23,7 @@
 //! is the record of that — a test asserts on the `event_id` the route composed,
 //! which is the route's own output.
 //!
-//! It does not prove the at-most-once claim. That is the admission ledger's
+//! It does not prove the at-most-once claim. That is the turns ledger's
 //! unique producer key in Postgres ([`afd_turns::Turns`]), and a claim
 //! re-implemented here would agree with the suite whatever the ledger did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering

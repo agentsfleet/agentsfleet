@@ -6,15 +6,15 @@ use afd_turns::Producer;
 use super::fixture::{Case, exercise};
 
 /// Binding a plan queues its continuations as task-bound messages after the
-/// run's own. A plain run's claim takes what was sent before them and stops
+/// run's own. A plain run's assignment takes what was sent before them and stops
 /// at the first, as it stops at a parked message.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_task_bound_message_stops_a_live_runs_fold() {
-    exercise(claim_around_bound_continuations).await;
+    exercise(assign_around_bound_continuations).await;
 }
 
-async fn claim_around_bound_continuations(case: &Case) {
+async fn assign_around_bound_continuations(case: &Case) {
     let held = &case.held;
     let actor = afd_turns::view::steer_actor("native_task_owner");
     let before = case
@@ -31,12 +31,12 @@ async fn claim_around_bound_continuations(case: &Case) {
         waiting_task_bound(case).await > 0,
         "task-bound continuations wait, unparked, behind the test_run"
     );
-    // The bind made this run a durable task's, which claims nothing. Making
+    // The bind made this run a durable task's, which is assigned nothing. Making
     // it a plain run again leaves the bound continuations as the only thing
-    // that can stop the claim.
+    // that can stop the assignment.
     assert_eq!(
         held.runs
-            .claim_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
+            .assign_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
             .await
             .expect("bound task fold refusal")
             .inputs
@@ -44,12 +44,12 @@ async fn claim_around_bound_continuations(case: &Case) {
         0
     );
     clear_task_binding(case).await;
-    let claimed = held
+    let assigned = held
         .runs
-        .claim_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
+        .assign_folds(&held.runner, &held.issued.run_id, held.fence.as_u64(), 0)
         .await
-        .expect("the claim reaches the datastore");
-    let ids: Vec<&str> = claimed
+        .expect("the assignment reaches the datastore");
+    let ids: Vec<&str> = assigned
         .inputs
         .iter()
         .map(|input| input.turn_id.as_ref())
@@ -82,7 +82,7 @@ async fn clear_task_binding(case: &Case) {
             .expect("connection"),
     )
     .await
-    .expect("the run and its admission become an ordinary test_run");
+    .expect("the run and its turn become an ordinary test_run");
 }
 
 /// The unsettled, unparked, task-bound messages after the run's own.

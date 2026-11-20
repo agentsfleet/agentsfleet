@@ -3,7 +3,7 @@
 //! The schedules and messages verbs act on a fleet the request never names:
 //! the runner names its RUN, and the fleet, the workspace and the event are
 //! read from the run row. A body therefore cannot reach another fleet's
-//! schedules or another event's thread, and a holder a reclaim has superseded
+//! schedules or another event's thread, and a holder a reassignment has superseded
 //! is refused before anything is read or written on its behalf.
 
 use af_core::id::Uuid7;
@@ -72,7 +72,7 @@ pub(crate) fn fence_holds(fence: i64, live_seq: i64, presented: u64) -> bool {
     fence_current(fence, live_seq) && u64::try_from(fence).is_ok_and(|own| own == presented)
 }
 
-/// Its first half, for a verb that presents no token (a load): no reclaim
+/// Its first half, for a verb that presents no token (a load): no reassignment
 /// has moved the fleet past the run whose own token is `fence`.
 pub(crate) const fn fence_current(fence: i64, live_seq: i64) -> bool {
     fence >= live_seq

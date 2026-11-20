@@ -1,6 +1,6 @@
 //! Ending a window: every task started is joined before any failure is answered.
 //!
-//! A task left running when the window errors keeps claiming, renewing and
+//! A task left running when the window errors keeps assigning, renewing and
 //! reading while the caller releases the platform rows and sweeps the fixtures
 //! beneath it. So the first failure is held until the last task has ended.
 

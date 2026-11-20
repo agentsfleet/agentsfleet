@@ -83,7 +83,7 @@ impl Wake {
         }
     }
 
-    /// Enqueue the fleet before notifying sessions; duplicate admissions still notify.
+    /// Enqueue the fleet before notifying sessions; duplicate turns still notify.
     pub fn ring(&self, fleet: Uuid7) {
         let outcome = self.lock().ring(fleet);
         producers::fleet::runner::stream::wake_queue(outcome);
@@ -123,7 +123,7 @@ impl Wake {
         self.lock().take()
     }
 
-    /// Scheduling reads locality preferences without consuming the claim's reminder.
+    /// Scheduling reads locality preferences without consuming the assignment's reminder.
     #[must_use]
     pub fn fleets(&self) -> std::collections::HashSet<Uuid7> {
         self.lock().fleets()

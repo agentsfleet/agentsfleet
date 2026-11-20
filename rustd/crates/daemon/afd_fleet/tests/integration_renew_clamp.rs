@@ -74,7 +74,7 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
 /// report a result into a run it no longer holds.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_renew_after_reclaim_is_lost() {
+async fn test_renew_after_reassignment_is_lost() {
     let Held {
         fixtures,
         runs,
@@ -91,18 +91,18 @@ async fn test_renew_after_reclaim_is_lost() {
 
     // The holder stalls past its TTL and the work is taken back.
     fixtures
-        .age(Row::Slot(&fleet), "run_expires_at", LAPSE)
+        .age(Row::Thread(&fleet), "run_expires_at", LAPSE)
         .await;
     crate::seed::select_fleet(&runs, &second, &fleet)
         .await
-        .expect("a lapsed claim is winnable");
+        .expect("a lapsed assignment is winnable");
 
     assert_eq!(
         extend(&runs, run, &first, (&run_key, &pricing), now)
             .await
             .expect("a lost renewal is an answer, not a fault"),
         Renewed::Lost,
-        "the reclaim expired this run, so its former holder must terminate its child"
+        "the reassignment expired this run, so its former holder must terminate its child"
     );
 
     fixtures.cleanup().await;
@@ -193,11 +193,11 @@ async fn assert_full_ttl(held: &Held) {
     );
     assert_eq!(
         fixtures
-            .instant(Row::Slot(&held.fleet), "run_expires_at")
+            .instant(Row::Thread(&held.fleet), "run_expires_at")
             .await,
         Some(af_core::clock::after(renewed_at, RUN_TTL)),
-        "the SLOT moves with the run — advancing one without the other is what \
-         gets a healthy run reclaimed mid-flight"
+        "the THREAD moves with the run — advancing one without the other is what \
+         gets a healthy run reassigned mid-flight"
     );
 }
 

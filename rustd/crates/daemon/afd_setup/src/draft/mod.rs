@@ -87,7 +87,7 @@ impl Drafts {
 
     /// Hints, after the commit that queued a message on `draft`, that a draft
     /// run may take it. One wake key names the owner, fleet or draft, by its
-    /// slot's id. Lossy: a lost hint costs one 5 s probe.
+    /// thread's id. Lossy: a lost hint costs one 5 s probe.
     pub(crate) async fn wake_setup(&self, draft: &Uuid7) {
         if let Some(bus) = &self.bus {
             afd_bus::wake::publish(bus, draft.clone()).await;
@@ -120,14 +120,14 @@ impl Drafts {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &Uuid7,
-        claimant: afd_runner::capacity::Claimant<'_>,
+        work: afd_runner::capacity::Work<'_>,
         work_tenant: Option<&Uuid7>,
     ) -> Result<Option<afd_runner::capacity::Capacity>> {
         Ok(match &self.authority {
             Some(authority) => {
-                afd_runner::capacity::lock(tx, (runner, authority), claimant, work_tenant).await?
+                afd_runner::capacity::lock(tx, (runner, authority), work, work_tenant).await?
             }
-            None => afd_runner::capacity::lock(tx, runner, claimant, work_tenant).await?,
+            None => afd_runner::capacity::lock(tx, runner, work, work_tenant).await?,
         })
     }
 
@@ -139,7 +139,7 @@ impl Drafts {
     ) -> Result<()> {
         if self.authority.is_some() {
             let host = self
-                .lock_host_capacity(tx, runner, afd_runner::capacity::Claimant::Existing, None)
+                .lock_host_capacity(tx, runner, afd_runner::capacity::Work::Existing, None)
                 .await?
                 .ok_or(crate::error::ErrorKind::Hidden)?;
             if !host.can_renew() {

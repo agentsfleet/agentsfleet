@@ -1,4 +1,4 @@
-//! Where an admission's answer goes: recorded by its producer, copied by a
+//! Where a turn's answer goes: recorded by its producer, copied by a
 //! continuation, and never half-written.
 //!
 //! Driven through `Turns::admit` and read back with the shipped
@@ -21,7 +21,7 @@ use af_wire::turn::TurnKind;
 use afd_db::test_util::mint_id;
 use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply, sql};
 
-use crate::recovery_seed::{admission, ledger, producer_key};
+use crate::recovery_seed::{incoming_turn, ledger, producer_key};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -46,7 +46,7 @@ const NO_SURFACE: [Producer; 4] = [
     Producer::ScheduleFire,
 ];
 
-/// A webhook admission that states `reply`.
+/// A webhook turn that states `reply`.
 fn replying<'a>(
     fleet: &'a Uuid7,
     workspace: &'a Uuid7,
@@ -55,7 +55,7 @@ fn replying<'a>(
 ) -> IncomingTurn<'a> {
     IncomingTurn {
         reply,
-        ..admission(fleet, workspace, key)
+        ..incoming_turn(fleet, workspace, key)
     }
 }
 
@@ -79,9 +79,9 @@ async fn destination(
 }
 
 /// Admits and answers the ledger's reply, failing loudly on a refusal.
-async fn admit(fixtures: &Fixtures, admission: IncomingTurn<'_>) -> Admitted {
+async fn admit(fixtures: &Fixtures, turn: IncomingTurn<'_>) -> Admitted {
     ledger(fixtures)
-        .admit(admission)
+        .admit(turn)
         .await
         .expect("the ledger admits")
 }
@@ -103,7 +103,7 @@ async fn existing_producers_record_no_reply_destination() {
             IncomingTurn {
                 producer,
                 key: Key::Repeated(&key),
-                ..admission(&fleet, &workspace, &key)
+                ..incoming_turn(&fleet, &workspace, &key)
             },
         )
         .await;
@@ -182,7 +182,7 @@ async fn continuation_inherits_the_resumed_destination() {
     )
     .await;
     let silent_key = producer_key(&fleet, "asked-nowhere");
-    let silent = admit(&fixtures, admission(&fleet, &workspace, &silent_key)).await;
+    let silent = admit(&fixtures, incoming_turn(&fleet, &workspace, &silent_key)).await;
 
     // An id this ledger never minted.
     let foreign = mint_id();
@@ -203,7 +203,7 @@ async fn continuation_inherits_the_resumed_destination() {
                 key: Key::Repeated(&key),
                 event_type: TurnKind::Continuation,
                 reply: Reply::Inherit { turn_id },
-                ..admission(&fleet, &workspace, &key)
+                ..incoming_turn(&fleet, &workspace, &key)
             },
         )
         .await;
@@ -218,7 +218,7 @@ async fn continuation_inherits_the_resumed_destination() {
 }
 
 /// Dimension 1.4 — a retried key naming another thread keeps the first
-/// admission's, and is seen as drift.
+/// turn's, and is seen as drift.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn retried_key_with_a_new_destination_keeps_the_first() {

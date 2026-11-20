@@ -26,13 +26,13 @@ impl Run<'_> {
             Ok(needs) => needs,
             Err(refusal) => return self.unhosted(&refusal).into(),
         };
-        let claimed = tokio::select! {
-            turn = turns.claim(&self.ids.fleet) => turn,
+        let assigned = tokio::select! {
+            turn = turns.assign(&self.ids.fleet) => turn,
             () = self.interrupt.cancelled() => {
                 return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL).into();
             }
         };
-        let Some(_turn) = claimed else {
+        let Some(_turn) = assigned else {
             return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
         };
         let verbs = crate::verbs::FencedVerbs::new(

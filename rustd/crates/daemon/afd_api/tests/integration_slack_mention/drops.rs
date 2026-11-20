@@ -1,6 +1,6 @@
 //! What a verified mention never admits, and what it answers instead.
 //!
-//! Split from the admission cases beside it: those assert one ledger row and
+//! Split from the turn cases beside it: those assert one ledger row and
 //! its fields, and every case here asserts the opposite — the drop reason or
 //! the refusal on the wire, and a ledger with nothing new in it.
 
@@ -35,7 +35,7 @@ async fn a_mention_by_the_bot_itself_is_dropped() {
         Some("bot_message"),
         "{document}"
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
 
     fixture.cleanup().await;
 }
@@ -115,7 +115,7 @@ async fn wall_still_refuses_before_parsing() {
         StatusCode::UNAUTHORIZED,
         "a replayed old mention is refused"
     );
-    assert_eq!(fixture.admissions().await, 0, "neither reached the ledger");
+    assert_eq!(fixture.turns().await, 0, "neither reached the ledger");
 
     fixture.cleanup().await;
 }
@@ -136,7 +136,7 @@ async fn a_signed_body_that_is_not_json_is_dropped_as_unreadable() {
         Some("unreadable_body"),
         "{document}"
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
 
     fixture.cleanup().await;
 }
@@ -176,7 +176,7 @@ async fn a_mapped_team_with_no_bot_grant_is_dropped_as_unmapped() {
         Some("team_not_mapped"),
         "{document}"
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
 
     fixture.cleanup().await;
 }
@@ -207,7 +207,7 @@ async fn a_connected_long_team_identity_does_not_create_an_implicit_fleet() {
             "{document}"
         );
     }
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     assert_eq!(unconfigured_state(&fixture).await, before);
     fixture.cleanup().await;
 }

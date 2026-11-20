@@ -76,7 +76,7 @@ impl Registry {
             .collect()
     }
 
-    /// Connections a pass may ask to claim, skipping the `idle` runners.
+    /// Connections a pass may ask to assign, skipping the `idle` runners.
     pub(crate) fn candidates(
         &self,
         fleets: &std::collections::HashSet<Uuid7>,

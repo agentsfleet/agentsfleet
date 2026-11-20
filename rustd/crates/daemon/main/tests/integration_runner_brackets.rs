@@ -38,7 +38,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
     let scene = scenario(&mut supervisor).await;
 
     // Subscribed BEFORE the run: the opening bracket is published by the
-    // claim itself, and pub/sub keeps nothing for a reader that arrives late.
+    // assignment itself, and pub/sub keeps nothing for a reader that arrives late.
     let mut tail = crate::tail::tail_of(&scene.fleet).await;
     settle().await;
 
@@ -63,8 +63,8 @@ async fn test_bracket_frames_open_and_close_a_run() {
 
 /// A run refused at a gate closes the run on the tail too.
 ///
-/// An exhausted tenant's admission ends the event `gate_blocked`. The same
-/// claim opens and closes its row, so a tail watcher receives both brackets.
+/// An exhausted tenant's turn ends the event `gate_blocked`. The same
+/// assignment opens and closes its row, so a tail watcher receives both brackets.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_refused_run_closes_the_run_on_the_tail() {
@@ -90,7 +90,7 @@ async fn test_a_refused_run_closes_the_run_on_the_tail() {
     .await;
     assert!(
         refused,
-        "the exhausted tenant's claim ends the event at the money gate"
+        "the exhausted tenant's assignment ends the event at the money gate"
     );
 
     let opened = next_frame(&mut tail)

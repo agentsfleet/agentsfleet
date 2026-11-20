@@ -42,7 +42,7 @@ CREATE TABLE runner.runners (
     durable_tasks_enabled BOOLEAN NOT NULL DEFAULT true,
     -- Ownership is stated at registration, never inferred from a missing tenant: a
     -- platform runner takes every tenant's work, so it must be named as one. Both
-    -- columns are fixed after insert (trigger below). Read by the run claim and
+    -- columns are fixed after insert (trigger below). Read by the run assignment and
     -- candidate scan, setup candidates, the host lock and the runner statements.
     platform_owned BOOLEAN NOT NULL,
     tenant_id UUID REFERENCES identity.tenants (id) ON DELETE CASCADE,

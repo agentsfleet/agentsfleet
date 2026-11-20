@@ -41,12 +41,12 @@ use afd_ingress::error::{detail, one_of_each_kind};
 /// changes sides has to be moved by hand.
 /// The kinds a sender should retry against.
 ///
-/// `admission unreachable` is one of them: the acceptance could not be written
+/// `turn unreachable` is one of them: the acceptance could not be written
 /// because the ledger's datastore was gone, which is the same incident as this
 /// crate's own pool being gone and earns the same answer. It replaced
 /// `queue unreachable` when the append stopped being this crate's to make.
 /// `delivery unreachable` is the same incident for a notice's ledger.
-const OUTAGES: &[&str] = &["datastore", "admission unreachable", "delivery unreachable"];
+const OUTAGES: &[&str] = &["datastore", "turn unreachable", "delivery unreachable"];
 
 /// Everything every error surface owes, graded once by
 /// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
@@ -114,9 +114,7 @@ fn no_sentence_names_which_internal_failure_it_was() {
     // signature passes.
     let opaque: Vec<&'static str> = one_of_each_kind()
         .into_iter()
-        .filter(|(label, _error)| {
-            ["vault", "admission answered", "config unreadable"].contains(label)
-        })
+        .filter(|(label, _error)| ["vault", "turn answered", "config unreadable"].contains(label))
         .map(|(_label, error)| error.detail())
         .collect();
 

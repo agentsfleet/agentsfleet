@@ -227,7 +227,7 @@ pub const LABEL_STATUS: &str = "status";
 pub const LABEL_FAULT: &str = "fault";
 
 /// Which kind of thing a count is split by, where one family counts two
-/// causes of the same event — a run started fresh or by reclaim.
+/// causes of the same event — a run started fresh or by reassignment.
 pub const LABEL_KIND: &str = "kind";
 
 /// Which of the run path's in-process caches a lookup asked.

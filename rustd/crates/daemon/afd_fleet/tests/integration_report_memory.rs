@@ -133,7 +133,7 @@ async fn test_report_memory_lands_before_the_settle() {
     assert_eq!(
         (
             stored(&held).await,
-            held.fixtures.admission_settled(&held.turn_id).await,
+            held.fixtures.turn_settled(&held.turn_id).await,
             settled.completed_at.is_some_and(|at| at >= held.now),
             published.field("run_id"),
         ),
@@ -168,7 +168,7 @@ async fn test_superseded_report_writes_no_memory() {
         (
             refused,
             stored(&held).await,
-            held.fixtures.admission_settled(&held.turn_id).await,
+            held.fixtures.turn_settled(&held.turn_id).await,
         ),
         (Err(error_code::RUN_STALE_FENCING_TOKEN), Vec::new(), false)
     );
@@ -214,7 +214,7 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
         (
             kept,
             metrics.sum(TRUNCATED, &[]) - truncated_before,
-            held.fixtures.admission_settled(&held.turn_id).await,
+            held.fixtures.turn_settled(&held.turn_id).await,
         ),
         (first_fifteen, 5, true),
         "fifteen kept, five counted as cut, the report settled"
@@ -252,7 +252,7 @@ async fn test_failed_capture_still_settles() {
 
     assert_eq!(
         (
-            held.fixtures.admission_settled(&held.turn_id).await,
+            held.fixtures.turn_settled(&held.turn_id).await,
             (
                 failed
                     .field("error_code")

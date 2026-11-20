@@ -17,7 +17,7 @@ use super::{
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_held_oldest_slot_does_not_starve_a_later_fleet() {
+async fn a_held_oldest_thread_does_not_starve_a_later_fleet() {
     exercise(later_fleet).await;
 }
 
@@ -107,7 +107,7 @@ async fn held_pass(
     blocker
         .rollback()
         .await
-        .expect("release still-held oldest slot");
+        .expect("release still-held oldest thread");
     arriving
 }
 
@@ -272,21 +272,21 @@ fn failed_diagnostics(capture: &Capture) {
 }
 
 pub(super) async fn extra_unissued(fixture: &Decisions<'_>) -> Uuid7 {
-    let source = fixture.case.claimed_source().await;
+    let source = fixture.case.assigned_source().await;
     let mut input: DecisionReservationInput = fixture
         .reservation(DecisionAssessment::Message, None)
         .into_inner();
     input.source_turn_id = source.to_string();
     let input = garde::Unvalidated::new(input)
         .validate()
-        .expect("distinct claimed human source");
+        .expect("distinct assigned human source");
     let call = unissued(fixture, &input).await;
     // Input settlement remains separate work. Seed its completed-source state
     // so this financial fixture preserves FIFO ordering.
-    let finished = sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND input_claim_run_id=$2 AND input_claim_fence=$3 AND settled_at IS NULL")
+    let finished = sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND input_run_id=$2 AND input_fence=$3 AND settled_at IS NULL")
         .bind(source).bind(&fixture.case.held.run_key).bind(fixture.case.held.fence.as_i64())
         .execute(&mut *fixture.case.held.fixtures.database.acquire().await.expect("owned completed input"))
-        .await.expect("preceding claimed input finishes before the next source");
+        .await.expect("preceding assigned input finishes before the next source");
     assert_eq!(finished.rows_affected(), 1);
     call
 }

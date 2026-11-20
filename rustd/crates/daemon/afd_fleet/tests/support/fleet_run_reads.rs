@@ -1,4 +1,4 @@
-//! The run-side writes and the row chain a claim needs to exist.
+//! The run-side writes and the row chain an assignment needs to exist.
 //!
 //! `fleet_fixtures.rs` reads columns of any row through [`Row`]; these stage
 //! `thread.runs`, `thread.threads`, and the tenant → workspace → fleet
@@ -20,7 +20,7 @@ use crate::support::Fixtures;
 /// dollar a day. Suites that need another install their own over it.
 const SEEDED_NATIVE_CONFIG: &str = r#"{"name":"seeded","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
 
-/// The `thread.threads` column a claim's expiry lives in.
+/// The `thread.threads` column an assignment's expiry lives in.
 pub(crate) const COLUMN_HELD_UNTIL: &str = "run_expires_at";
 
 /// The `thread.threads` sticky hint: which runner last held the fleet.
@@ -68,7 +68,7 @@ impl Fixtures {
     /// enough.
     ///
     /// The race it stands in for is narrow and real: a report loads its run,
-    /// the sweep removes the row, and the claim then matches nothing for a
+    /// the sweep removes the row, and the assignment then matches nothing for a
     /// reason that is neither a lost fence nor a settled run.
     pub(crate) async fn delete_run(&self, run: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
@@ -171,13 +171,13 @@ impl Fixtures {
         now.to_jiff()
     }
 
-    /// Whether `fleet`'s slot is free: its claim's deadline is already behind
-    /// the database clock, so the next claim may take it.
-    pub(crate) async fn slot_is_free(&self, fleet: &Uuid7) -> bool {
+    /// Whether `fleet`'s thread is free: its assignment's deadline is already behind
+    /// the database clock, so the next assignment may take it.
+    pub(crate) async fn thread_is_free(&self, fleet: &Uuid7) -> bool {
         let deadline = self
-            .instant(Row::Slot(fleet), COLUMN_HELD_UNTIL)
+            .instant(Row::Thread(fleet), COLUMN_HELD_UNTIL)
             .await
-            .expect("the fleet has a slot row");
+            .expect("the fleet has a thread row");
         deadline < self.database_now().await
     }
 

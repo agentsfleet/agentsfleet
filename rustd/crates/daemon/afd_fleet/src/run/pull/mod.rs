@@ -24,7 +24,7 @@ use afd_gate::gate::{Check, Gates};
 use afd_vault::Vault;
 
 #[cfg(feature = "test-util")]
-mod claimed;
+mod assigned;
 mod held;
 mod refuse;
 mod select;
@@ -32,7 +32,7 @@ mod step;
 #[cfg(all(test, feature = "test-util"))]
 mod tests;
 
-pub(in crate::run) use self::step::{Assigned, Step, claim_lost};
+pub(in crate::run) use self::step::{Assigned, Step, assignment_lost};
 
 /// A finished event's redelivery was acknowledged and not executed.
 const EVENT_TERMINAL_SUPPRESSED: &str = "terminal_redelivery_suppressed";
@@ -48,7 +48,7 @@ const REDELIVERED_FINISHED: &str = "the redelivered event had already finished";
 /// and the request path borrow it.
 #[derive(Debug, Clone)]
 pub struct RunService {
-    /// Claims, rows, and the narrative log.
+    /// Assignments, rows, and the narrative log.
     pub runs: Runs,
     /// Native task report evidence, sharing the request-path task owner.
     pub task_reports: Option<std::sync::Arc<dyn crate::task::TaskReportOwner>>,
@@ -95,7 +95,7 @@ pub struct RunService {
     pub thread: std::sync::Arc<dyn crate::run::Thread>,
 }
 
-/// What the claim and the gates settled, before the policy is built.
+/// What the assignment and the gates settled, before the policy is built.
 pub(super) struct AdmittedFleetWork {
     /// The work, and the fleet it belongs to.
     pub(super) acquired: Acquired,
@@ -120,8 +120,8 @@ impl RunService {
         self
     }
 
-    /// Run gates after selection under the slot and admission fences.
-    async fn admit_claimed(
+    /// Run gates after selection under the thread and turn fences.
+    async fn admit_assigned(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
@@ -136,10 +136,10 @@ impl RunService {
             Err(ended) => return Ok(ended),
         };
 
-        // The claim statement opened the event row and stamped delivery.
+        // The assignment statement opened the event row and stamped delivery.
         let received = acquired.opened.received;
         let delivery = received.delivery;
-        if delivery == crate::run::event::Delivery::Terminal {
+        if delivery == crate::run::turn::Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
         }
         // A run that outlived this many holders will not finish on another,
@@ -157,7 +157,7 @@ impl RunService {
         // The tail's opening bracket, once per row: a redelivery found the row
         // already there, and its watchers already hold the marker. The counters
         // were read after the row landed, because the insert is what moves them.
-        if delivery == crate::run::event::Delivery::First {
+        if delivery == crate::run::turn::Delivery::First {
             self.runs
                 .publish_received(&acquired, received.opened_at, received.counters)
                 .await;
@@ -183,7 +183,7 @@ impl RunService {
                 .map(|()| Step::Stop);
         };
 
-        // The payer is the fleet row's tenant, which the claim read: the
+        // The payer is the fleet row's tenant, which the assignment read: the
         // provider resolves against it and the gates bill it.
         let read = Ok(Some(acquired.opened.tenant_id.clone()));
         let tenant = match payer_gate(read, &acquired.workspace_id)? {
@@ -214,7 +214,7 @@ impl RunService {
         }))
     }
 
-    /// A durable ending suppresses execution and settles the admission under its fence.
+    /// A durable ending suppresses execution and settles the turn under its fence.
     async fn finished(
         &self,
         acquired: &Acquired,
@@ -273,7 +273,7 @@ impl RunService {
     }
 
     /// The credit gate's floor, priced from the book cached at the catalogue
-    /// version the claim read: a warm replica reads no price.
+    /// version the assignment read: a warm replica reads no price.
     async fn estimate(
         &self,
         acquired: &Acquired,

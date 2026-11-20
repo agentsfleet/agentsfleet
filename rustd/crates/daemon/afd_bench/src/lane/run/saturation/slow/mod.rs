@@ -1,14 +1,14 @@
 //! A slow writer: one tenant's drafts held locked, over and over, while the
 //! window runs.
 //!
-//! The failure this workstream exists to measure is a chat claim arriving
+//! The failure this workstream exists to measure is a chat assignment arriving
 //! while some other write holds a draft's lock — a slow revision apply, a
 //! long edit — and waiting on it with its host row held, so every other
 //! tenant's message on that poll waits too. Production writes that slow are
 //! rare and unscheduled; this makes one deterministic. Every [`HOLD`] it takes
 //! the first chat tenant's draft rows `FOR UPDATE` on a connection of its own,
-//! keeps them, and lets go for [`GAP`]. A claim that waits on them shows in the
-//! chat run tail; a claim that skips them does not.
+//! keeps them, and lets go for [`GAP`]. An assignment that waits on them shows in the
+//! chat run tail; an assignment that skips them does not.
 //!
 //! The connection is outside the pool on purpose: a writer holding a pooled
 //! connection would also shrink the pool, and the two effects would read as

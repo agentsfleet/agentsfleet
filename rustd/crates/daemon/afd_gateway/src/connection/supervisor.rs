@@ -111,7 +111,7 @@ impl ConnectionSupervisor {
                 let outcome = if mode == AssignMode::Ordinary
                     && services.handle.snapshot.lock().recovery_pending.is_some()
                 {
-                    // Only the replica's bounded drain issues recovery claims.
+                    // Only the replica's bounded drain issues recovery assignments.
                     services.gateway.inner.dependencies.wake.recheck();
                     AssignOutcome::Deferred
                 } else {

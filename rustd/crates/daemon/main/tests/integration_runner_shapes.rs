@@ -212,5 +212,5 @@ async fn assert_settled_in_the_ledger(scene: &Scenario) {
     .fetch_one(&mut *scene.booted.database.acquire().await.expect("database"))
     .await
     .expect("accepted event remains in the ledger");
-    assert!(settled, "the report settled the admission it held");
+    assert!(settled, "the report settled the turn it held");
 }

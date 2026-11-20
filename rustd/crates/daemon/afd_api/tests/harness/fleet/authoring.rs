@@ -1,4 +1,4 @@
-//! Native authoring stores share one fixture database, key and admission ledger.
+//! Native authoring stores share one fixture database, key and turns ledger.
 
 use super::*;
 

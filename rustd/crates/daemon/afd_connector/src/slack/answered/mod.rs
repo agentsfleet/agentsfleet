@@ -50,7 +50,7 @@ pub const INTERIM_EVENT_TYPE: &str = "agentsfleet_interim";
 /// under the ten seconds a shutdown waits for an attempt in flight.
 pub const ANSWER_CHECK_DEADLINE: Duration = Duration::from_secs(3);
 
-/// How far before the question's admission the read starts, in seconds.
+/// How far before the question's turn the read starts, in seconds.
 ///
 /// The event id's instant is this daemon's clock and a message's `ts` is
 /// Slack's; five minutes covers any skew between the two by a wide margin
@@ -80,7 +80,7 @@ pub struct AnswerMarker {
 
 /// One interim line's place: the run that said it, and its number there.
 ///
-/// The run is part of it because the count is the run's: a reclaimed
+/// The run is part of it because the count is the run's: a reassigned
 /// run numbers its lines from one again, and its first line must not read
 /// as the dead run's first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

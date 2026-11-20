@@ -8,7 +8,7 @@ use super::*;
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_thread_read_includes_queued_steers() {
     let lane = TurnsLane::open().await;
-    let steered = Steer::new(lane.admissions())
+    let steered = Steer::new(lane.turns())
         .append(&lane.fleet, &lane.workspace, ACTOR, BODY, None)
         .await
         .expect("the steer is admitted");
@@ -37,13 +37,11 @@ async fn test_thread_read_includes_queued_steers() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_thread_read_dedupes_assigned_steer() {
     let lane = TurnsLane::open().await;
-    let steered = Steer::new(lane.admissions())
+    let steered = Steer::new(lane.turns())
         .append(&lane.fleet, &lane.workspace, ACTOR, BODY, None)
         .await
         .expect("the steer is admitted");
-    let admitted_at = steered
-        .admitted_at
-        .expect("a fresh admission has an instant");
+    let admitted_at = steered.admitted_at.expect("a fresh turn has an instant");
     let mut connection = lane.connection().await;
     sqlx::query(MARK_DELIVERED)
         .bind(&lane.fleet)

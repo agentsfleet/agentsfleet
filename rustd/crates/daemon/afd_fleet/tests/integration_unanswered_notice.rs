@@ -2,7 +2,7 @@
 //!
 //! Three endings write no answer: a run that failed before it wrote any text,
 //! an event a gate refused, and an event ended after its runs kept lapsing.
-//! Each owes the admission's thread one fixed notice through the delivery
+//! Each owes the turn's thread one fixed notice through the delivery
 //! ledger. What must not change is proven beside it: a clean run that wrote
 //! nothing still owes nothing, an event asked from nowhere owes nothing
 //! however it ends, and the event row never carries the notice as though the
@@ -23,7 +23,7 @@ use af_core::turn::label::{BALANCE_EXHAUSTED, RUN_EXPIRED};
 use af_core::turn::status::FLEET_ERROR;
 use af_wire::report::FailureClass;
 use afd_fleet::run::admit::Refusal;
-use afd_fleet::run::event::DETAIL_RUNS_LAPSED;
+use afd_fleet::run::turn::DETAIL_RUNS_LAPSED;
 use afd_fleet::run::{Acquired, Committed, Ended, Verdict};
 use afd_turns::{Producer, Reply};
 use futures_util::future::join_all;
@@ -79,8 +79,8 @@ async fn run_ending(stage: &Stage, verdict: Verdict<'_>, answer: &str) -> Commit
         .expect("the report must reach the datastore")
 }
 
-/// The fleet's next event, claimed and open, with no run reporting on it.
-async fn claimed(stage: &Stage) -> Acquired {
+/// The fleet's next event, assigned and open, with no run reporting on it.
+async fn assigned(stage: &Stage) -> Acquired {
     crate::seed::select_fleet(&stage.runs, &stage.runner, &stage.fleet)
         .await
         .expect("the fleet is leasable")
@@ -172,7 +172,7 @@ async fn a_run_asked_from_nowhere_owes_nothing_however_it_ends() {
 async fn an_event_refused_by_racing_passes_owes_its_thread_one_refusal() {
     let stage = stage().await;
     stage.admit_thread("refused-in-a-thread").await;
-    let acquired = claimed(&stage).await;
+    let acquired = assigned(&stage).await;
     let barrier = Barrier::new(REFUSERS);
     let active = AtomicUsize::new(0);
     let peak = AtomicUsize::new(0);
@@ -208,7 +208,7 @@ async fn an_event_refused_by_racing_passes_owes_its_thread_one_refusal() {
     assert_eq!(
         (ended, fenced),
         (1, REFUSERS - 1),
-        "one pass ends the event, and every other finds its admission settled"
+        "one pass ends the event, and every other finds its turn settled"
     );
     assert_eq!(
         answers(&stage).await,
@@ -229,7 +229,7 @@ async fn an_event_refused_at_a_gate_and_asked_from_nowhere_owes_nothing() {
     stage
         .admit(Producer::Webhook, "refused-from-a-webhook", Reply::None)
         .await;
-    let acquired = claimed(&stage).await;
+    let acquired = assigned(&stage).await;
 
     let ended = stage
         .runs
@@ -248,7 +248,7 @@ async fn an_event_refused_at_a_gate_and_asked_from_nowhere_owes_nothing() {
 async fn an_event_ended_after_its_runs_lapsed_owes_its_thread_the_notice() {
     let stage = stage().await;
     let event = stage.admit_thread("lapsed-in-a-thread").await;
-    let acquired = claimed(&stage).await;
+    let acquired = assigned(&stage).await;
 
     let ended = stage
         .runs

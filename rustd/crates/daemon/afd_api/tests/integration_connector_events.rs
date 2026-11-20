@@ -208,7 +208,7 @@ async fn a_retried_delivery_is_answered_identically_and_still_acts_on_nothing() 
     // A provider's at-least-once delivery, which is the ordinary case rather
     // than an adversarial one. For an event the route does not act on,
     // idempotence is held because nothing is written; a mention's retry is
-    // held by the admission ledger, which `integration_slack_mention` proves.
+    // held by the turns ledger, which `integration_slack_mention` proves.
     let fixture = Fixture::create().await;
     fixture.seed(Configured::Signing).await;
     let router = fixture.router();

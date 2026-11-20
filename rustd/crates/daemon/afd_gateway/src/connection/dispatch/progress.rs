@@ -1,4 +1,4 @@
-//! Cosmetic progress uses the live target cache; input claims keep their database fence.
+//! Cosmetic progress uses the live target cache; input assignments keep their database fence.
 
 use std::num::NonZeroU64;
 

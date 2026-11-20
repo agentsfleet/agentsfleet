@@ -13,7 +13,7 @@ use crate::run::test_dead;
 async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
     let mut issued = 0;
     let answer = test_dead::plane()
-        .claim_fleet_with(
+        .assign_fleet_with(
             &mut crate::run::AssignRequest {
                 runner: &test_dead::id(9),
                 held: &[],

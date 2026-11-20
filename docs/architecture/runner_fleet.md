@@ -484,7 +484,7 @@ Live rows can never age into the sweep. The predicate excludes them, and a compi
 
 **The sweeper is also the run status column's only clock-driven writer.**
 
-The runner's report, the fleet's next assignment through `queue::CLAIM_HEAD`, and fleet deletion can also move a run out of `active`. Those three changes are not time-based.
+The runner's report, the fleet's next assignment through `queue::ASSIGN_HEAD`, and fleet deletion can also move a run out of `active`. Those three changes are not time-based.
 
 That leaves a gap. A run whose runner died, whose turn was settled terminally elsewhere, on a fleet nobody messages again, would stay `active` forever. The age-keyed event sweep would prune its per-work records anyway, leaving an eternal "running" run with no history behind it.
 
@@ -918,7 +918,7 @@ The gates run before the run is issued and charge nothing. The issued run's hold
 ## Datastore topology
 
 PostgreSQL owns the inbound turn queue, owed deliveries and device-login sessions. Core NATS carries items, wake notifications, runner commands and the delivery ping.
-The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
+The [datastore design](./datastore_scaling.md#the-turns-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
 
 An assignment takes the fleet's thread row before its exact oldest unsettled turn. Both fences advance in one transaction.
 

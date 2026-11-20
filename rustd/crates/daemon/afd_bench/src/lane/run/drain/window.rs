@@ -11,7 +11,7 @@ use super::runner::{self, Shared, Tally};
 use super::settled::Settled;
 use super::turn::Turn;
 use super::{
-    CLAIMS, COMMITS_PER_RUN, EVENT_ROWS, EVENTS, EVENTS_PROCESSED, FAILURES, IDLE_COMMITS,
+    ASSIGNMENTS, COMMITS_PER_RUN, EVENT_ROWS, EVENTS, EVENTS_PROCESSED, FAILURES, IDLE_COMMITS,
     IDLE_STATEMENTS, LEDGER_ROWS_PER_EVENT, MEMORY_WINDOWS_PER_RUN, REPORT_P95_MS, RUN_P95_MS,
     RUNNER_ROLE, RUNS, RUNS_PER_SECOND, STATEMENTS_PER_RUN, UNSETTLED_ROWS,
 };
@@ -135,7 +135,7 @@ impl Window {
     pub(super) fn record(&self, report: &mut Report, events: u64, settled: Settled) {
         let held = self.tally.held;
         report.measurement(RUNS, count(held));
-        report.measurement(CLAIMS, count(self.tally.claims));
+        report.measurement(ASSIGNMENTS, count(self.tally.assignments));
         report.measurement(FAILURES, 0.0);
         report.measurement(RUNS_PER_SECOND, per_second(held, self.length.as_secs_f64()));
         if !self.tally.run_latency.is_empty() {

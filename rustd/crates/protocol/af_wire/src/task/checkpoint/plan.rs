@@ -31,7 +31,7 @@ impl CheckpointMode {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointPlanInput {
-    /// Existing fleet-slot authority.
+    /// Existing fleet-thread authority.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Retry identity; replay returns this exact plan.

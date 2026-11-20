@@ -231,7 +231,7 @@ mod tests {
 
     /// The lock-timeout fixture answers every accessor `sqlx` reaches for, and
     /// `afd_db` reads its state as a bound reached, which is what makes the
-    /// admission error a retryable `TimedOut`.
+    /// turn error a retryable `TimedOut`.
     #[test]
     fn the_lock_wait_fixture_answers_every_accessor_and_reads_as_a_bound_reached() {
         let mut boxed: Box<dyn sqlx::error::DatabaseError> = Box::new(LockWaitExpired);

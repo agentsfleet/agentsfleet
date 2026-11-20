@@ -58,10 +58,10 @@ where
     }
 }
 
-/// One message a person sent the fleet while the run works, claimed for it.
+/// One message a person sent the fleet while the run works, assigned to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Folded {
-    /// Stable admission identity retained for exact checkpoint publication and adoption.
+    /// Stable turn identity retained for exact checkpoint publication and adoption.
     pub turn_id: String,
     /// Its place in the fleet's order; the report names the last one read.
     pub sequence: i64,
@@ -71,13 +71,14 @@ pub struct Folded {
 
 /// Where a run's root takes the messages a person sends while it works.
 ///
-/// The loop claims before each model call. A claim never fails the run: an
-/// implementation logs what went wrong and answers nothing, and the next claim
-/// asks again from the same place, so a lost answer loses no message.
+/// The loop asks for an assignment before each model call. An assignment never
+/// fails the run: an implementation logs what went wrong and answers nothing,
+/// and the next assignment asks again from the same place, so a lost answer
+/// loses no message.
 #[async_trait::async_trait]
 pub trait Inbox: Send + Sync + fmt::Debug {
     /// The messages sent after `after_sequence`, oldest first.
-    async fn claim(&self, after_sequence: i64) -> Vec<Folded>;
+    async fn assign(&self, after_sequence: i64) -> Vec<Folded>;
 }
 
 /// Writes a run's memory back while it runs, fenced like the push before the
@@ -162,7 +163,7 @@ pub struct RunOutput {
     /// Each finished call's full record, posted before the report.
     pub records: Vec<ToolCallRecord<'static>>,
     /// The last folded message a completed model call read, when the run
-    /// answered: each message claimed up to it is answered by this result.
+    /// answered: each message assigned up to it is answered by this result.
     pub folded_through_sequence: Option<i64>,
 }
 

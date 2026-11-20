@@ -10,7 +10,7 @@ import {
 
 import { chatComposerText, chatMessageDraft } from "@/lib/chat-message-text";
 
-// The fleet's daemon is the queue: its admission ledger orders every steer, so
+// The fleet's daemon is the queue: its turn ledger orders every steer, so
 // no lane here ever holds a message. Once a runtime has a queue, assistant-ui
 // sends every new message through it — to `steer` while a reply runs, to
 // `enqueue` when idle — and never through `onNew`. That is what lets the

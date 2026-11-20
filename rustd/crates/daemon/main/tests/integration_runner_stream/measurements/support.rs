@@ -64,7 +64,7 @@ pub(super) async fn assign(scene: &Scenario, native: &mut Native) -> Result<Held
         .get("run")
         .ok_or("the native assignment lacks its run")?;
     assert_eq!(run.pointer("/event/turn_id"), Some(&json!(scene.turn_id)));
-    let (id, fence) = wire::claim(run);
+    let (id, fence) = wire::run_and_fence(run);
     Ok(Held { id, fence })
 }
 

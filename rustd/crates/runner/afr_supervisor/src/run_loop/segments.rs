@@ -9,9 +9,9 @@
 //! Five segments tile the run: the memory load, the sandbox from sizing
 //! through repository checkout, the model's turns, the tools those
 //! turns called, and the settle from hold-or-destroy to the posted report.
-//! What they leave of the wall time is the admission, the turn claim and the
-//! drain wait. The first token is inside the model's time and is logged beside
-//! them. A segment a run never reached is absent from the line, never zero:
+//! What they leave of the wall time is the admission, the turn assignment and
+//! the drain wait. The first token is inside the model's time and is logged
+//! beside them. A segment a run never reached is absent from the line, never zero:
 //! an operator reading `sandbox_ms=0` would take it for a held sandbox.
 //!
 //! Three parts split the sandbox segment and tile no more than it: the egress

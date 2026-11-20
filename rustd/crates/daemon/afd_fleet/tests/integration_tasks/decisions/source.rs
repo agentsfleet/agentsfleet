@@ -151,5 +151,5 @@ async fn source_snapshot(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
                 .expect("native source observer"),
         )
         .await
-        .expect("entire admitted source and claim state")
+        .expect("entire admitted source and assignment state")
 }

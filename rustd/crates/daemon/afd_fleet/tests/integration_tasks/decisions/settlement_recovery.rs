@@ -95,7 +95,7 @@ async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {
     );
     let down = Tasks::new(
         fixture.case.held.runs.clone(),
-        fixture.case.admissions.clone(),
+        fixture.case.turns.clone(),
         dependencies,
     );
     let request = request(body);
@@ -185,7 +185,7 @@ async fn completed_run(fixture: &Decisions<'_>) -> i64 {
             .iter()
             .any(|event| event.field("event") == Some("run_release_deferred"))
     );
-    assert!(held.fixtures.admission_settled(&held.turn_id).await);
+    assert!(held.fixtures.turn_settled(&held.turn_id).await);
     // What the report charged: every line of the run that is not a decision
     // call's, which the receipts charged on their own.
     sqlx::query_scalar(

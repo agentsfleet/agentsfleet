@@ -11,14 +11,14 @@ use jiff::Timestamp;
 enum Half {
     /// The run row, which the runner's kill deadline reads.
     Run,
-    /// The fleet's slot, which the next claim reads.
-    Slot,
+    /// The fleet's thread, which the next assignment reads.
+    Thread,
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_delayed_renewal_cannot_revive_an_expired_run_or_affinity() {
-    for expired_half in [Half::Run, Half::Slot] {
+    for expired_half in [Half::Run, Half::Thread] {
         let running = Running::create().await;
         expire(&running, expired_half).await;
         let before = snapshot(&running).await;
@@ -35,12 +35,12 @@ async fn test_delayed_renewal_cannot_revive_an_expired_run_or_affinity() {
 async fn expire(running: &Running, half: Half) {
     let row = match half {
         Half::Run => Row::Run(&running.run),
-        Half::Slot => Row::Slot(&running.fleet),
+        Half::Thread => Row::Thread(&running.fleet),
     };
     running.fixtures.age(row, "run_expires_at", LAPSE).await;
 }
 
-/// The run's deadline, the run's meter stamp and the slot's deadline.
+/// The run's deadline, the run's meter stamp and the thread's deadline.
 pub(super) async fn snapshot(running: &Running) -> (Timestamp, Timestamp, Timestamp) {
     let fixtures = &running.fixtures;
     let stamp = async |row, column| {
@@ -52,6 +52,6 @@ pub(super) async fn snapshot(running: &Running) -> (Timestamp, Timestamp, Timest
     (
         stamp(Row::Run(&running.run), "run_expires_at").await,
         stamp(Row::Run(&running.run), "last_metered_at").await,
-        stamp(Row::Slot(&running.fleet), "run_expires_at").await,
+        stamp(Row::Thread(&running.fleet), "run_expires_at").await,
     )
 }

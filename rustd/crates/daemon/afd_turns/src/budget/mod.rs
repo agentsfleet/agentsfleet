@@ -1,4 +1,4 @@
-//! The deployment ceiling: an estimate of unsettled admissions across every
+//! The deployment ceiling: an estimate of unsettled turns across every
 //! fleet, sampled on a cadence, refusing new work once it reaches the budget.
 //! No per-fleet cap exists.
 
@@ -12,7 +12,7 @@ pub const DEPLOYMENT_BACKLOG_BUDGET: u64 = 100_000;
 
 const _: () = assert!(
     DEPLOYMENT_BACKLOG_BUDGET > 0,
-    "a zero ceiling refuses every admission"
+    "a zero ceiling refuses every turn"
 );
 
 /// The ceiling one ledger admits under.
@@ -23,7 +23,7 @@ const _: () = assert!(
 /// through [`Turns::with_budgets`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Budgets {
-    /// Estimated unsettled admissions across the deployment.
+    /// Estimated unsettled turns across the deployment.
     pub deployment_backlog: u64,
 }
 
@@ -54,7 +54,7 @@ impl Turns {
             }
             Err(unread) => {
                 let Logged { error_code, reason } = unread.logged();
-                tracing::debug!(error_code, reason, event = "admission_ceiling_unread",);
+                tracing::debug!(error_code, reason, event = "turn_ceiling_unread",);
                 estimate
             }
         }

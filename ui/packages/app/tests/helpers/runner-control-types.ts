@@ -24,7 +24,7 @@ export enum RunOutcome {
 
 export enum RunKind {
   Fresh = "fresh",
-  Reclaim = "reclaim",
+  Reassigned = "reassigned",
 }
 
 export enum RunDestination {

@@ -100,14 +100,14 @@ impl Fixtures {
             .expect("the ledger count must run")
     }
 
-    /// Whether the admission can still be claimed after a report attempt.
-    pub(crate) async fn admission_settled(&self, event: &Uuid7) -> bool {
+    /// Whether the turn can still be assigned after a report attempt.
+    pub(crate) async fn turn_settled(&self, event: &Uuid7) -> bool {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
             .bind(event)
             .fetch_one(&mut *connection)
             .await
-            .expect("the admission settlement read must run")
+            .expect("the turn settlement read must run")
     }
 
     /// Ends an event out of band, as an earlier delivery of the same logical

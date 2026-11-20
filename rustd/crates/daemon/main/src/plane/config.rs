@@ -136,19 +136,19 @@ pub struct LoginConfig {
 }
 
 /// The schedule plane over `scheduler`: the management service and its
-/// scheduler client, and the fire verb over the shared admissions ledger.
+/// scheduler client, and the fire verb over the shared turns ledger.
 pub(super) fn schedule_plane(
     database: &Db,
     scheduler: Arc<dyn afd_cron::Scheduler>,
-    admissions: afd_turns::Turns,
+    turns: afd_turns::Turns,
 ) -> afd_api::SchedulePlane {
     afd_api::SchedulePlane::new(
         afd_cron::ScheduleService::new(
             afd_cron::Schedules::new(database.clone(), Entropy::new())
-                .with_activity_streams(admissions.streams()),
+                .with_activity_streams(turns.streams()),
             scheduler,
         ),
-        afd_cron::Fire::new(admissions),
+        afd_cron::Fire::new(turns),
         Entropy::new(),
     )
 }

@@ -77,7 +77,7 @@ impl Error {
             | ErrorKind::Outbound { .. }
             | ErrorKind::Rejected { .. }
             | ErrorKind::TaskMutation { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }

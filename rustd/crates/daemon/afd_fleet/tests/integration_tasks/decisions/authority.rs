@@ -100,7 +100,7 @@ async fn refused(
     foreign: &str,
     before: &TaskSnapshot,
 ) {
-    let source_before = admission(fixture, &fixture.case.held.turn_id).await;
+    let source_before = turn(fixture, &fixture.case.held.turn_id).await;
     for (version, expected) in [
         (None, error_code::TASK_INVALID_TARGET),
         (
@@ -131,7 +131,7 @@ async fn refused(
         assert_eq!(fault.code(), expected);
         assert_eq!(fixture.goal_snapshot(task).await, *before);
         assert_eq!(
-            admission(fixture, &fixture.case.held.turn_id).await,
+            turn(fixture, &fixture.case.held.turn_id).await,
             source_before
         );
         assert_eq!(fixture.counts().await, (0, 0, 0));
@@ -147,7 +147,7 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
             &afd_turns::view::steer_actor("goal-owner"),
         )
         .await;
-    let source_before = admission(fixture, &source).await;
+    let source_before = turn(fixture, &source).await;
     let mut input = (*fixture.goal_reservation(task)).clone();
     input.source_turn_id = source.to_string();
     let input = garde::Unvalidated::new(input)
@@ -157,14 +157,14 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
         .tasks
         .reserve_decision(fixture.case.run(), &input)
         .await
-        .expect_err("another admission cannot own the goal assessment");
+        .expect_err("another turn cannot own the goal assessment");
     assert_eq!(fault.code(), error_code::TASK_INVALID_TARGET);
-    assert_eq!(admission(fixture, &source).await, source_before);
+    assert_eq!(turn(fixture, &source).await, source_before);
     assert_eq!(fixture.goal_snapshot(task).await, *before);
     assert_eq!(fixture.counts().await, (0, 0, 0));
 }
 
-async fn admission(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
+async fn turn(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
     sqlx::query_scalar("SELECT to_jsonb(a) FROM thread.turns a WHERE id=$1")
         .bind(source)
         .fetch_one(
@@ -178,5 +178,5 @@ async fn admission(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
                 .expect("source observer"),
         )
         .await
-        .expect("complete original admission")
+        .expect("complete original turn")
 }

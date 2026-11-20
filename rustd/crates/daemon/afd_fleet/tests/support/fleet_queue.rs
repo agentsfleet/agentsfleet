@@ -1,4 +1,4 @@
-//! Deterministic admissions-ledger fixtures: queued `thread.turns` rows.
+//! Deterministic turns-ledger fixtures: queued `thread.turns` rows.
 //!
 //! Shared-database tests scope rows by fleet. Tests asserting deployment-wide
 //! candidate or backlog counts use a private database.
@@ -9,7 +9,7 @@
 
 use af_core::id::Uuid7;
 
-/// Place a durable admission with the fixture's deterministic event clock.
+/// Place a durable turn with the fixture's deterministic event clock.
 pub(crate) async fn enqueue(
     database: &afd_db::Db,
     fleet: &Uuid7,
@@ -27,6 +27,6 @@ pub(crate) async fn enqueue(
         .bind(request_json).bind(created_at.to_sqlx())
         .bind(af_core::turn::status::QUEUED)
         .execute(&mut *database.acquire().await.expect("runtime connection"))
-        .await.expect("durable admission");
+        .await.expect("durable turn");
     event
 }

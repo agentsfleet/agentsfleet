@@ -1,7 +1,7 @@
 /** A send whose answer never reached the page, the Claude.ai way: the row
  * leaves the thread, the text returns to the composer, and Resend delivers it
  * through the real steer route under the operation id it was first sent with
- * — so the daemon answers the first admission's turn instead of running it
+ * — so the daemon answers the first turn instead of running it
  * twice. Proven in the same page, and after a reload. */
 import type { Page, Request, Route } from "@playwright/test";
 import { expect, test } from "@playwright/test";

@@ -1,7 +1,7 @@
 //! A holder that cannot run keeps no fleet closed. A degraded runner is
 //! answered no work, and one an operator drained is refused at
 //! authentication, so its hold binds nobody even while its last beat is
-//! recent: another runner's poll is assigned the fleet and its claim wins.
+//! recent: another runner's poll is assigned the fleet and its assignment wins.
 
 #![expect(
     clippy::expect_used,
@@ -13,7 +13,7 @@ use af_core::timing::SANDBOX_HOLD_IDLE;
 use afd_fleet::run::sql::RUNNER_STATUS_DRAINED;
 use jiff::Timestamp;
 
-use super::{hold, live, slot};
+use super::{hold, live, thread};
 use crate::seed::{self, Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -50,7 +50,7 @@ impl Unfit {
 }
 
 /// Whether another runner's poll runs a fleet whose holder beat at
-/// enrolment, held it live, and then became `unfit`; and the slot after.
+/// enrolment, held it live, and then became `unfit`; and the thread after.
 async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), Uuid7) {
     let fixtures = Fixtures::create().await;
     let Seeded {
@@ -71,7 +71,7 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), 
     unfit.apply(&fixtures, &holder).await;
 
     let found = seed::select_fleet(&runs, &other, &fleet).await;
-    let after = slot(&fixtures, &fleet).await;
+    let after = thread(&fixtures, &fleet).await;
 
     fixtures.cleanup().await;
     (found.is_some(), after, other)
@@ -89,7 +89,7 @@ async fn test_a_degraded_holders_fleet_is_assigned_by_another_runner() {
     assert_eq!(
         after,
         (None, Some(other)),
-        "the winner's claim clears the hold"
+        "the winner's assignment clears the hold"
     );
 }
 
@@ -105,6 +105,6 @@ async fn test_a_drained_holders_fleet_is_assigned_by_another_runner() {
     assert_eq!(
         after,
         (None, Some(other)),
-        "the winner's claim clears the hold"
+        "the winner's assignment clears the hold"
     );
 }

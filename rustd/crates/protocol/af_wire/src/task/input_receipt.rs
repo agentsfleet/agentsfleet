@@ -34,7 +34,7 @@ impl TaskInputMode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskInputReceiptInput {
-    /// Current slot fence.
+    /// Current thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Stable acknowledgement identity.

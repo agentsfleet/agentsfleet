@@ -16,7 +16,7 @@ pub fn disposition(placed: SteerPlaced) {
     }
 }
 
-/// Records `messages` a live run's claim took, or its report answered.
+/// Records `messages` a live run's assignment took, or its report answered.
 pub fn folds(outcome: FoldOutcome, messages: u64) {
     if messages == 0 {
         return;

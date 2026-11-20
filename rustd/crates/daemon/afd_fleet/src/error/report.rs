@@ -4,7 +4,7 @@
 //! that module's own header draws. A refusal there says the system worked and
 //! the answer is no; every constructor here says the system did not work — a
 //! statement Postgres would not run, a column holding a value this daemon
-//! cannot read, an object store that answered with a fault, an admission the
+//! cannot read, an object store that answered with a fault, a turn the
 //! producer wrote wrong.
 //!
 //! Splitting them was the file cap's doing and it improved the module: what is
@@ -30,7 +30,7 @@ pub(crate) fn vault_data_invalid() -> Error {
 ///
 /// Its own kind rather than a saturating read, and the direction is why.
 /// [`Fence::as_u64`](crate::run::Fence::as_u64) saturates a negative token to
-/// ZERO because zero is below every token a claim can mint, so a corrupt row
+/// ZERO because zero is below every token an assignment can mint, so a corrupt row
 /// fences ITSELF out. The live sequence a memory push is checked against runs
 /// the other way: saturating it to zero would put it below every token in
 /// existence and admit every stale holder. There is no safe value, so there is

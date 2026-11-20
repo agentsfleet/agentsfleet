@@ -57,7 +57,7 @@ async fn full_page(
         .database
         .acquire()
         .await
-        .expect("owned slot holder");
+        .expect("owned thread holder");
     let mut blocked = connection.begin().await.expect("oldest native owner");
     let _pid = lock_thread(&mut blocked, oldest.case).await;
     let mut cursor = DecisionMaintenanceCursor::default();

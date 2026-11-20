@@ -99,7 +99,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
 /// A continuation the run path already opened is not announced twice.
 ///
 /// Both writers run `INSERT_TURN` against `(fleet_id, turn_id)`, and
-/// the admission ledger hands them the SAME id, because the gate's action is
+/// the turn ledger hands them the SAME id, because the gate's action is
 /// the repeated key. Whichever lands second converges on the first's row,
 /// `RETURNING (xmax = 0)` reports `inserted = false`, and the frame must stay
 /// home: a console that heard `turn_received` twice would count one run as
@@ -195,7 +195,7 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
         .expect("the seeded gate held a run's event");
     let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
 
-    // The run path, played by hand: the same admission the resolve is about
+    // The run path, played by hand: the same turn the resolve is about
     // to ask for, then the row it would have written. Keyed on the gate's
     // action, so the resolve's own `admit` returns this very id.
     let admitted = Turns::for_tests(lane.pool.clone(), lane.bus.clone())
@@ -210,7 +210,7 @@ async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
             reply: afd_turns::Reply::None,
         })
         .await
-        .expect("the admission ledger accepts the continuation");
+        .expect("the turn ledger accepts the continuation");
     // The statement answers `inserted` first, which is the column this reads.
     let landed: bool = sqlx::query_scalar(afd_turns::view::sql::INSERT_TURN)
         .bind(&lane.fleet)

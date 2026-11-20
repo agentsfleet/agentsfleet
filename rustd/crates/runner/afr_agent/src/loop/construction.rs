@@ -50,7 +50,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             folded_through: 0,
             folded_inputs: Vec::new(),
             turn_checkpoint: shared.payload.turn_resume.clone(),
-            claim_answered: !shared.payload.inputs_waiting,
+            assignment_answered: !shared.payload.inputs_waiting,
         };
         if root.task.is_some() {
             root.live.hide_reasoning();
@@ -99,7 +99,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             folded_through: 0,
             folded_inputs: Vec::new(),
             turn_checkpoint: None,
-            claim_answered: false,
+            assignment_answered: false,
         };
         child.router.hold(Box::new(publication::Propose));
         child

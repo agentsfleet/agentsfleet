@@ -7,7 +7,7 @@
 //! the one place a reviewer reads every statement the plane runs.
 //!
 //! So the pool is OWNED here and the verbs are methods, split one concern per
-//! file — [`super::affinity`] is the claim and the fence, and the modules
+//! file — [`super::affinity`] is the assignment and the fence, and the modules
 //! beside it add the gates and the row.
 
 use af_crypto::entropy::Entropy;
@@ -46,14 +46,14 @@ impl Runs {
         self
     }
 
-    /// Gate retries of ordinary admissions carrying a committed checkpoint.
+    /// Gate retries of ordinary turns carrying a committed checkpoint.
     #[must_use]
     pub fn with_checkpoint_resume(mut self, enabled: bool) -> Self {
         self.resume_from_checkpoint = enabled;
         self
     }
 
-    /// Whether this replica may reclaim an ordinary checkpointed admission.
+    /// Whether this replica may reassign an ordinary checkpointed turn.
     #[must_use]
     pub const fn checkpoint_resume_enabled(&self) -> bool {
         self.resume_from_checkpoint
@@ -111,19 +111,14 @@ impl Runs {
                 afd_runner::capacity::lock(
                     tx,
                     (runner, authority),
-                    afd_runner::capacity::Claimant::Existing,
+                    afd_runner::capacity::Work::Existing,
                     None,
                 )
                 .await?
             }
             None => {
-                afd_runner::capacity::lock(
-                    tx,
-                    runner,
-                    afd_runner::capacity::Claimant::Existing,
-                    None,
-                )
-                .await?
+                afd_runner::capacity::lock(tx, runner, afd_runner::capacity::Work::Existing, None)
+                    .await?
             }
         })
     }

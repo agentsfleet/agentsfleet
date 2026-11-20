@@ -61,20 +61,20 @@ pub struct GatewayDependencies {
     pub analytics: af_observability::Analytics,
 }
 
-/// Bounded daemon scheduler work; one connection still owns one claim at a time.
+/// Bounded daemon scheduler work; one connection still owns one assignment at a time.
 #[derive(Debug, Clone, Copy)]
 pub struct RecoverySettings {
-    /// Maximum active claims across credited hosts.
-    pub max_concurrent_claims: std::num::NonZeroUsize,
+    /// Maximum active assignments across credited hosts.
+    pub max_concurrent_assignments: std::num::NonZeroUsize,
     /// Independent lost-notification probe cadence.
     pub assign_fallback: std::time::Duration,
 }
 
 impl Default for RecoverySettings {
     fn default() -> Self {
-        const CLAIMS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
+        const ASSIGNMENTS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
         Self {
-            max_concurrent_claims: CLAIMS,
+            max_concurrent_assignments: ASSIGNMENTS,
             assign_fallback: af_core::timing::ASSIGN_FALLBACK_TICK,
         }
     }

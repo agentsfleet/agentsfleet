@@ -31,9 +31,9 @@ async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
         .expect("the enrolled runner opens a native session");
     report(&mut session, &fixture, 2, Some("timeout_kill")).await;
     let bus = harness::bus().await;
-    let admissions = Turns::for_tests(fixture.database.clone(), bus.clone());
+    let turns = Turns::for_tests(fixture.database.clone(), bus.clone());
     let runs = Runs::new(fixture.database.clone(), bus, Entropy::new());
-    fixture.run = acquire(&runs, &admissions, &fixture.owner, &fixture.runner).await;
+    fixture.run = acquire(&runs, &turns, &fixture.owner, &fixture.runner).await;
     report(&mut session, &fixture, 3, None).await;
     let exits: Vec<_> = recorded
         .events()

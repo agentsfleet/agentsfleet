@@ -1,4 +1,4 @@
-//! Accepted means the initial admission committed with the fleet activation.
+//! Accepted means the initial turn committed with the fleet activation.
 
 use super::super::{ACTIVE, Creations};
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
 use af_core::id::Uuid7;
 use afd_turns::Producer;
 
-/// An initial run whose committed admission could not be read back yet.
+/// An initial run whose committed turn could not be read back yet.
 const EVENT_UNCONFIRMED: &str = "fleet_initial_run_unconfirmed";
 
 impl Creations {
@@ -30,7 +30,7 @@ impl Creations {
             return Ok(());
         };
         let confirmation = match self
-            .admissions
+            .turns
             .confirm(Producer::Steer, &super::key(fleet))
             .await
         {

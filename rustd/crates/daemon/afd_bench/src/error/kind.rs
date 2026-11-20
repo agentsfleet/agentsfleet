@@ -71,7 +71,7 @@ pub(crate) enum ErrorKind {
     #[error("the outbound ledger would not take an owed answer")]
     OutboundPathFaulted { source: afd_outbound::Error },
 
-    #[error("the admission ledger would not answer")]
+    #[error("the turn ledger would not answer")]
     LedgerUnreadable { source: afd_turns::Error },
 
     /// Raised rather than summed to zero: a datastore that answered its

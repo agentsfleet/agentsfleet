@@ -14,7 +14,7 @@
 //! Inventing a cause for it would put a Postgres error on a path Postgres
 //! never saw (`RUST_ERROR_STANDARD` rule 4's second half).
 //!
-//! # An admission answers for itself
+//! # A turn answers for itself
 //!
 //! A steer whose ledger row would not commit is one this daemon has NOT
 //! accepted, so the refusal travels. It answers the LEDGER's code and

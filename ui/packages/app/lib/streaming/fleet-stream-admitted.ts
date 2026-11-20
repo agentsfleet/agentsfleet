@@ -61,7 +61,7 @@ export function startWaiting(turn: FleetTurn): FleetTurn {
 // ── internals ────────────────────────────────────────────────────────────
 
 // A row that has not begun its own run: queued, or labelled folded by a 202
-// whose live run then ended without claiming it. The daemon runs such a
+// whose live run then ended without being assigned it. The daemon runs such a
 // message like any queued one, so its received frame must start it; left
 // labelled, the row would read "Added to the current run" through its own run.
 function awaitsOwnRun(turn: FleetTurn): boolean {

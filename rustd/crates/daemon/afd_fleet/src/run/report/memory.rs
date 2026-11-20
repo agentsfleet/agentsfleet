@@ -5,7 +5,7 @@
 //!                                  └ fenced; a failure is logged, the report settles
 //! ```
 //!
-//! Before the commit, because the commit frees the fleet's slot: a run for
+//! Before the commit, because the commit frees the fleet's thread: a run for
 //! the fleet cannot issue until then, so the next run's window reads what
 //! this run learned. In its own transaction under the memory role, because the
 //! settle's runs under the run role and a run store that could write

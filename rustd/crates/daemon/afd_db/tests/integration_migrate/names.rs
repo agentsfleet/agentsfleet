@@ -80,7 +80,7 @@ async fn test_table_and_key_names_follow_rules() {
 fn test_singular_reads_the_pointer_name_a_table_takes() {
     assert_eq!(singular("plugin_entries"), "plugin_entry");
     assert_eq!(singular("revisions"), "revision");
-    assert_eq!(singular("slots"), "slot");
+    assert_eq!(singular("threads"), "thread");
 }
 
 /// Scope dimensions repeat their target only inside a composite reference.

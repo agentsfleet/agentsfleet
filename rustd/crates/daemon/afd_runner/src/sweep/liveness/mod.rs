@@ -7,10 +7,10 @@
 //!
 //! # Three things happen to a runner that went quiet
 //!
-//! It is recorded offline, ONCE per stale episode; the affinity slots it still
-//! takes no new work through a separate automatic cordon; and
+//! It is recorded offline, ONCE per stale episode; the threads it still holds
+//! take no new work, through a separate automatic cordon; and
 //! if an operator asked it to drain, the drain is finished now that its last
-//! live run is gone. Reclaim still waits for the original run deadline.
+//! live run is gone. Reassignment still waits for the original run deadline.
 //!
 //! # A never-seen runner is `registered`, not offline
 //!

@@ -84,7 +84,7 @@ describe("FleetThread — reply figures", () => {
 
 it("keeps routine task assessment in native run details even when no usage was reported", () => {
   const taskActivity = {truncated: false, items: [{kind: "task_decision_completed", progress: {
-    activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_admission_id: null,
+    activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_turn_id: null,
     operation: "goal", phase: "recorded", provider: null, model: null, completed: 1, total: 1}}]} as const;
   mockStream([{...ev({role: "user", actor: "operator", text: "Go", reply: "Done.", status: PROCESSED}), taskActivity: {...taskActivity, items: [...taskActivity.items]}}]);
   renderThread();

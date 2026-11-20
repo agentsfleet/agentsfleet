@@ -1,4 +1,4 @@
-//! A replacement uses the actual reclaim and issue paths under a greater fence.
+//! A replacement uses the actual reassignment and issue paths under a greater fence.
 
 use super::{Case, Checked, required};
 use af_core::id::Uuid7;
@@ -19,7 +19,7 @@ impl Case {
         let acquired = required(
             crate::seed::select_fleet(&self.runs, &self.foreign, &self.acquired.fleet_id).await,
         )?;
-        assert_eq!(acquired.kind, Kind::Reclaim);
+        assert_eq!(acquired.kind, Kind::Reassigned);
         assert!(acquired.fence > self.acquired.fence);
         let installed = required(self.runs.installed(&acquired.fleet_id).await?)?;
         let revision = required(installed.issue_revision)?;

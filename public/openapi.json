@@ -5770,7 +5770,7 @@
           "Runners"
         ],
         "summary": "Accept a complete native task interpretation",
-        "description": "Checks accounted current intent and association answers, whole-message multiplicity, pinned item digests and native source spans. Accepts every item in one transaction. Conversation never creates a task; independent new work joins the existing FIFO admission path. Existing PR targets require exact human assignment, reviewed workflows and current grants.",
+        "description": "Checks accounted current intent and association answers, whole-message multiplicity, pinned item digests and native source spans. Accepts every item in one transaction. Conversation never creates a task; independent new work joins the existing FIFO turn queue. Existing PR targets require exact human assignment, reviewed workflows and current grants.",
         "operationId": "runner_accept_task_bindings",
         "parameters": [
           {
@@ -7946,7 +7946,7 @@
           {
             "name": "fencing_token",
             "in": "path",
-            "description": "Current fleet-slot fence.",
+            "description": "Current fleet-thread fence.",
             "required": true,
             "schema": {
               "type": "integer",
@@ -15422,7 +15422,7 @@
           {
             "name": "event_type",
             "in": "query",
-            "description": "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued admissions. Omit for the mixed thread, including queued messages.",
+            "description": "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued turns. Omit for the mixed thread, including queued messages.",
             "required": false,
             "schema": {
               "type": "string"
@@ -22261,7 +22261,7 @@
           "fencing_token": {
             "type": "integer",
             "format": "int64",
-            "description": "Existing fleet-slot authority.",
+            "description": "Existing fleet-thread authority.",
             "minimum": 0
           },
           "format_version": {
@@ -24095,7 +24095,7 @@
           "fencing_token": {
             "type": "integer",
             "format": "int64",
-            "description": "Existing fleet-slot fence issued with the run.",
+            "description": "Existing fleet-thread fence issued with the run.",
             "minimum": 0
           },
           "operation_id": {
@@ -26650,7 +26650,7 @@
       },
       "FoldResponse": {
         "type": "object",
-        "description": "`POST /v1/runners/me/runs/{run_id}/folds` reply: the messages claimed\nfor the run, oldest first, at most [`FOLDS_PER_CLAIM_MAX`].",
+        "description": "`POST /v1/runners/me/runs/{run_id}/folds` reply: the messages assigned\nto the run, oldest first, at most [`FOLDS_PER_ASSIGNMENT_MAX`].",
         "required": [
           "inputs"
         ],
@@ -26668,7 +26668,7 @@
       },
       "FoldedInput": {
         "type": "object",
-        "description": "One message the fleet received, claimed for the run, whatever sent it: a\nsteer, a webhook, a chat mention or a schedule fire.",
+        "description": "One message the fleet received, assigned to the run, whatever sent it: a\nsteer, a webhook, a chat mention or a schedule fire.",
         "required": [
           "turn_id",
           "sequence",
@@ -27345,7 +27345,7 @@
           "fencing_token": {
             "type": "integer",
             "format": "int64",
-            "description": "Monotonic guard; a reclaimed holder is rejected.",
+            "description": "Monotonic guard; a holder a reassignment superseded is rejected.",
             "minimum": 0
           },
           "memory": {
@@ -27375,7 +27375,7 @@
           "fencing_token": {
             "type": "integer",
             "format": "int64",
-            "description": "Monotonic guard; a reclaimed holder is rejected.",
+            "description": "Monotonic guard; a holder a reassignment superseded is rejected.",
             "minimum": 0
           },
           "limit": {
@@ -29402,10 +29402,10 @@
       },
       "RunKind": {
         "type": "string",
-        "description": "Whether the run was the turn's first claim or a later reclaim.",
+        "description": "Whether the run was the turn's first assignment or a later reassignment.",
         "enum": [
           "fresh",
-          "reclaim"
+          "reassigned"
         ]
       },
       "RunOutcome": {
@@ -29514,7 +29514,7 @@
           },
           "inputs_waiting": {
             "type": "boolean",
-            "description": "Whether a later message waited in the run's conversation when the\ndaemon claimed it. False lets the run skip its first fold ask; a\nmessage that lands after the claim folds on the ask after the answer."
+            "description": "Whether a later message waited in the run's conversation when the\ndaemon assigned it. False lets the run skip its first fold ask; a\nmessage that lands after the assignment folds on the ask after the answer."
           },
           "instructions": {
             "type": "string",
@@ -29555,7 +29555,7 @@
           "run_expires_at": {
             "type": "string",
             "format": "date-time",
-            "description": "The instant after which the turn becomes reclaimable."
+            "description": "The instant after which the turn becomes reassignable."
           },
           "run_id": {
             "type": "string",
@@ -30055,7 +30055,7 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Claim instant."
+            "description": "Assignment instant."
           },
           "destination": {
             "$ref": "#/components/schemas/RunDestination",
@@ -30104,7 +30104,7 @@
           },
           "kind": {
             "$ref": "#/components/schemas/RunKind",
-            "description": "Whether this was the first claim or a reclaim."
+            "description": "Whether this was the first assignment or a reassignment."
           },
           "metered_cached_tokens": {
             "type": "integer",
@@ -31235,7 +31235,7 @@
           },
           "source_turn_id": {
             "type": "string",
-            "description": "Original native admission, retained even after queue settlement."
+            "description": "Original native turn, retained even after queue settlement."
           },
           "task": {
             "$ref": "#/components/schemas/DecisionTaskVersion",
@@ -31341,7 +31341,7 @@
               "string",
               "null"
             ],
-            "description": "Exact original admission, when assessing human intent."
+            "description": "Exact original turn, when assessing human intent."
           },
           "task_id": {
             "type": [
@@ -31515,7 +31515,7 @@
           "fencing_token": {
             "type": "integer",
             "format": "int64",
-            "description": "Current slot fence.",
+            "description": "Current thread fence.",
             "minimum": 0
           },
           "items": {
@@ -31535,7 +31535,7 @@
           },
           "source_turn_id": {
             "type": "string",
-            "description": "Complete native source admission; queued human claims use this same ID."
+            "description": "Complete native source turn; queued human turns use this same ID."
           }
         },
         "additionalProperties": false
@@ -31747,7 +31747,7 @@
           },
           "target": {
             "$ref": "#/components/schemas/TaskTarget",
-            "description": "Exact target selected by native admission, never changed by recovered notes."
+            "description": "Exact target selected by the native turn, never changed by recovered notes."
           },
           "task_id": {
             "type": "string",
@@ -31881,7 +31881,7 @@
           "fencing_token": {
             "type": "integer",
             "format": "int64",
-            "description": "Current slot fence.",
+            "description": "Current thread fence.",
             "minimum": 0
           },
           "operation_id": {
@@ -31990,7 +31990,7 @@
           },
           "source_turn_id": {
             "type": "string",
-            "description": "Native source admission identity used for decision and consumption."
+            "description": "Native source turn identity used for decision and consumption."
           }
         }
       },
@@ -32060,7 +32060,7 @@
           "fencing_token": {
             "type": "integer",
             "format": "int64",
-            "description": "Current slot fence.",
+            "description": "Current thread fence.",
             "minimum": 0
           },
           "item_id": {
@@ -32164,7 +32164,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/TaskAcceptedInterpretation",
-                "description": "Current admission's complete saved meaning, including a conversation-only replay."
+                "description": "Current turn's complete saved meaning, including a conversation-only replay."
               },
               {
                 "type": "null"
@@ -32176,7 +32176,7 @@
               "string",
               "null"
             ],
-            "description": "Complete current human message, absent for native machine continuations.\nIts presence is established from native admission authority."
+            "description": "Complete current human message, absent for native machine continuations.\nIts presence is established from native turn authority."
           },
           "current_task": {
             "oneOf": [
@@ -32213,7 +32213,7 @@
           },
           "source_turn_id": {
             "type": "string",
-            "description": "Native admission owned by this run, including signed continuation events."
+            "description": "Native turn owned by this run, including signed continuation events."
           },
           "tasks": {
             "type": "array",
@@ -32520,7 +32520,7 @@
       },
       "TaskState": {
         "type": "string",
-        "description": "The durable objective's state, independent of its current admission.",
+        "description": "The durable objective's state, independent of its current turn.",
         "enum": [
           "ready",
           "running",
@@ -32625,7 +32625,7 @@
               },
               "branch": {
                 "type": "string",
-                "description": "Writable non-protected branch selected by native admission."
+                "description": "Writable non-protected branch selected by the native turn."
               },
               "head": {
                 "type": "string",

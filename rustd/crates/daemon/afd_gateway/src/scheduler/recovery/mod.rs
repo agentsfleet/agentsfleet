@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 pub(super) async fn notifications(
     registry: &Registry,
     wake: &Wake,
-    claims: usize,
+    assignments: usize,
     stop: &CancellationToken,
 ) -> Result<()> {
     let mut generations = wake.generations();
@@ -25,7 +25,7 @@ pub(super) async fn notifications(
                 &std::collections::HashSet::new(),
                 &std::collections::HashSet::new(),
             );
-            drain::drain(credited, claims, stop).await;
+            drain::drain(credited, assignments, stop).await;
             wake.recovered(recovery);
         }
         tokio::select! {

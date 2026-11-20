@@ -63,7 +63,7 @@ pub(crate) async fn next_assignment(scene: &Scenario) -> Assigned {
 }
 
 /// The assignment of `turn_id`, when it is the only work the runner is waiting on:
-/// an assignment of any other event fails the test, since it would hold the slot.
+/// an assignment of any other event fails the test, since it would hold the thread.
 pub(crate) async fn assigned(scene: &Scenario, turn_id: &Uuid7) -> Assigned {
     let assignment = next_assignment(scene).await;
     assert_eq!(

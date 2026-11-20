@@ -250,7 +250,7 @@ impl Assigned {
             .expect("the fixture statement runs");
     }
 
-    /// Moves the fleet's live sequence past this run's, as a reclaim does.
+    /// Moves the fleet's live sequence past this run's, as a reassignment does.
     pub(crate) async fn supersede(&self) {
         self.on_fleet(
             "UPDATE thread.threads SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
@@ -259,7 +259,7 @@ impl Assigned {
     }
 
     /// Records that a schedule's fire woke the held event, as a `QStash`
-    /// callback's admission would.
+    /// callback's turn would.
     pub(crate) async fn run_woken_by_schedule(&self) {
         let mut connection = self.connection().await;
         sqlx::query(

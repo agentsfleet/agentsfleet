@@ -1,10 +1,10 @@
-//! Who won a claim on a held fleet, as the held-claims counter records it.
-//! The holder's claim counts only when its event resumes the hold, so it is
-//! read through the run the claim hands out.
+//! Who won an assignment on a held fleet, as the held-assignments counter records it.
+//! The holder's assignment counts only when its event resumes the hold, so it is
+//! read through the run the assignment hands out.
 //!
 //! The counter is process-wide and the suite's tests run in parallel, so a
-//! claim here is read as a movement of its own series rather than an exact
-//! total: other held-sandbox tests claim held fleets at the same time.
+//! assignment here is read as a movement of its own series rather than an exact
+//! total: other held-sandbox tests assign held fleets at the same time.
 
 #![expect(
     clippy::expect_used,
@@ -22,34 +22,34 @@ use crate::rows::{LAPSE, Row};
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 
-/// The family a won claim on a held fleet counts under.
-const HELD_CLAIMS: &str = "agentsfleet_run_held_claims_total";
+/// The family a won assignment on a held fleet counts under.
+const HELD_ASSIGNMENTS: &str = "agentsfleet_run_held_assignments_total";
 
 /// Its one label, and the two outcomes it names.
 const OUTCOME: &str = "outcome";
 const HOLDER: &str = "holder";
 const OTHER_AFTER_LAPSE: &str = "other_after_lapse";
 
-/// Claims one test makes in a row. Well past every held claim a neighbour in
+/// Assignments one test makes in a row. Well past every held assignment a neighbour in
 /// this suite makes, so a counter moved by neighbours cannot pass for them.
-const CLAIMS_IN_A_ROW: u64 = 16;
+const ASSIGNMENTS_IN_A_ROW: u64 = 16;
 
-/// When a hold made here lapses: after every claim one test makes in a row.
+/// When a hold made here lapses: after every assignment one test makes in a row.
 fn until(fixtures: &Fixtures) -> Timestamp {
     fixtures.after(SANDBOX_HOLD_IDLE)
 }
 
 /// The series `outcome` names, read now.
-fn claims(capture: &Capture, outcome: &str) -> u64 {
-    capture.sum(HELD_CLAIMS, &[(OUTCOME, outcome)])
+fn assignments(capture: &Capture, outcome: &str) -> u64 {
+    capture.sum(HELD_ASSIGNMENTS, &[(OUTCOME, outcome)])
 }
 
-/// `runner` wins `fleet`'s slot.
+/// `runner` wins `fleet`'s thread.
 async fn wins(runs: &Runs, fleet: &Uuid7, runner: &Uuid7) {
-    runs.claim(fleet, runner, RUN_TTL)
+    runs.assign(fleet, runner, RUN_TTL)
         .await
-        .expect("the claim answers")
-        .expect("the slot is won");
+        .expect("the assignment answers")
+        .expect("the thread is won");
 }
 
 /// A fleet holding an event, whose one runner is live and holds its sandbox.
@@ -69,7 +69,7 @@ async fn held(fixtures: &Fixtures) -> Seeded<1> {
 }
 
 /// The holder runs its held fleet at `now`, and the run row is written,
-/// so the run left to lapse is one the next claim reclaims.
+/// so the run left to lapse is one the next assignment reassigns.
 async fn runs_at(runs: &Runs, seeded: &Seeded<1>, now: Timestamp) -> Acquired {
     let [holder] = &seeded.runners;
     let acquired = seed::select_fleet(runs, holder, &seeded.fleet)
@@ -84,73 +84,73 @@ async fn runs_at(runs: &Runs, seeded: &Seeded<1>, now: Timestamp) -> Acquired {
     runs.issue(holder, &acquired, billed, now)
         .await
         .expect("the run row is written")
-        .expect("the claim is still held");
+        .expect("the assignment is still held");
     acquired
 }
 
 /// The holder's fresh event resumes its live hold, and counts as the
-/// holder's claim.
+/// holder's assignment.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_the_holders_claim_counts_as_the_holders() {
+async fn test_the_holders_assignment_counts_as_the_holders() {
     let capture = Capture::install();
     let fixtures = Fixtures::create().await;
     let seeded = held(&fixtures).await;
-    let before = claims(&capture, HOLDER);
+    let before = assignments(&capture, HOLDER);
 
     let fresh = runs_at(&fixtures.runs(), &seeded, fixtures.enrolled_at()).await;
 
-    let after = claims(&capture, HOLDER);
+    let after = assignments(&capture, HOLDER);
     assert!(fresh.resume_hold, "the fresh event resumes the hold");
     assert!(after > before, "{before} -> {after}");
     fixtures.cleanup().await;
 }
 
-/// The holder's reclaims on its live hold count nothing: each starts its
+/// The holder's reassignments on its live hold count nothing: each starts its
 /// event clean, since the first attempt may have run in the held sandbox.
-/// Bounded for the module note's reason: the reclaims move the holder
+/// Bounded for the module note's reason: the reassignments move the holder
 /// series by fewer than their own number.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_the_holders_reclaims_on_a_live_hold_count_nothing() {
+async fn test_the_holders_reassignments_on_a_live_hold_count_nothing() {
     let capture = Capture::install();
     let fixtures = Fixtures::create().await;
     let seeded = held(&fixtures).await;
     let runs = fixtures.runs();
     let first = runs_at(&runs, &seeded, fixtures.enrolled_at()).await;
     assert_eq!(first.kind, Kind::Fresh);
-    let before = claims(&capture, HOLDER);
+    let before = assignments(&capture, HOLDER);
 
-    for _reclaim in 0..CLAIMS_IN_A_ROW {
-        // The holder's run outlives its slot: the next claim reclaims it.
+    for _reassignment in 0..ASSIGNMENTS_IN_A_ROW {
+        // The holder's run outlives its thread: the next assignment reassigns it.
         fixtures
-            .age(Row::Slot(&seeded.fleet), "run_expires_at", LAPSE)
+            .age(Row::Thread(&seeded.fleet), "run_expires_at", LAPSE)
             .await;
         let run = runs_at(&runs, &seeded, fixtures.enrolled_at()).await;
-        assert_eq!(run.kind, Kind::Reclaim);
-        assert!(!run.resume_hold, "a reclaim builds fresh");
+        assert_eq!(run.kind, Kind::Reassigned);
+        assert!(!run.resume_hold, "a reassignment builds fresh");
     }
 
-    let moved = claims(&capture, HOLDER) - before;
+    let moved = assignments(&capture, HOLDER) - before;
     assert!(
-        moved < CLAIMS_IN_A_ROW,
-        "{CLAIMS_IN_A_ROW} reclaims on a live hold moved the holder series by {moved}"
+        moved < ASSIGNMENTS_IN_A_ROW,
+        "{ASSIGNMENTS_IN_A_ROW} reassignments on a live hold moved the holder series by {moved}"
     );
     fixtures.cleanup().await;
 }
 
 /// The lapse is the holder's: it fell silent while its hold stood. A hold
-/// past its own deadline is no hold, and a claim over it counts nothing.
+/// past its own deadline is no hold, and an assignment over it counts nothing.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() {
+async fn test_another_runners_assignment_after_a_lapse_counts_as_other_after_lapse() {
     let capture = Capture::install();
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(&runs, &fixtures, &fleet, &holder, until(&fixtures)).await;
-    let before = claims(&capture, OTHER_AFTER_LAPSE);
+    let before = assignments(&capture, OTHER_AFTER_LAPSE);
 
     let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
     fixtures
@@ -158,45 +158,45 @@ async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() 
         .await;
     wins(&runs, &fleet, &other).await;
 
-    let after = claims(&capture, OTHER_AFTER_LAPSE);
+    let after = assignments(&capture, OTHER_AFTER_LAPSE);
     assert!(after > before, "{before} -> {after}");
     fixtures.cleanup().await;
 }
 
-/// Claims on a fleet nobody holds count under neither outcome. Bounded
-/// rather than exact, for the reason the module note gives: the claims made
+/// Assignments on a fleet nobody holds count under neither outcome. Bounded
+/// rather than exact, for the reason the module note gives: the assignments made
 /// here move the counter by fewer than their own number.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_claims_on_an_unheld_fleet_count_nothing() {
+async fn test_assignments_on_an_unheld_fleet_count_nothing() {
     let capture = Capture::install();
     let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, runners) = seeded_parts::<2>(&fixtures).await;
     let runs = fixtures.runs();
     let before = (
-        claims(&capture, HOLDER),
-        claims(&capture, OTHER_AFTER_LAPSE),
+        assignments(&capture, HOLDER),
+        assignments(&capture, OTHER_AFTER_LAPSE),
     );
 
-    let rounds = usize::try_from(CLAIMS_IN_A_ROW).expect("sixteen fits a usize");
+    let rounds = usize::try_from(ASSIGNMENTS_IN_A_ROW).expect("sixteen fits a usize");
     for runner in runners.iter().cycle().take(rounds) {
-        let claimed = runs
-            .claim(&fleet, runner, RUN_TTL)
+        let assigned = runs
+            .assign(&fleet, runner, RUN_TTL)
             .await
-            .expect("the claim answers")
-            .expect("a free slot is won");
-        runs.release(&fleet, claimed.fence)
+            .expect("the assignment answers")
+            .expect("a free thread is won");
+        runs.release(&fleet, assigned.fence)
             .await
-            .expect("an empty claim lets go");
+            .expect("an empty assignment lets go");
     }
 
     let moved = (
-        claims(&capture, HOLDER) - before.0,
-        claims(&capture, OTHER_AFTER_LAPSE) - before.1,
+        assignments(&capture, HOLDER) - before.0,
+        assignments(&capture, OTHER_AFTER_LAPSE) - before.1,
     );
     assert!(
-        moved.0 < CLAIMS_IN_A_ROW && moved.1 < CLAIMS_IN_A_ROW,
-        "{CLAIMS_IN_A_ROW} unheld claims moved the held-claims counter by {moved:?}"
+        moved.0 < ASSIGNMENTS_IN_A_ROW && moved.1 < ASSIGNMENTS_IN_A_ROW,
+        "{ASSIGNMENTS_IN_A_ROW} unheld assignments moved the held-assignments counter by {moved:?}"
     );
     fixtures.cleanup().await;
 }

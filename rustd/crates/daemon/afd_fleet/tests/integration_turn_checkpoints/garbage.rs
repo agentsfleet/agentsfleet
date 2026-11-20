@@ -54,14 +54,14 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
 }
 
 fn tasks(files: &Files) -> Tasks {
-    let admissions = afd_turns::Turns::new(
+    let turns = afd_turns::Turns::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),
     );
     let mut dependencies = TaskDependencies::from(&files.case.fixtures.plane());
     dependencies.storage = Some(files.storage.clone());
-    Tasks::new(files.case.runs.clone(), admissions, dependencies)
+    Tasks::new(files.case.runs.clone(), turns, dependencies)
 }
 
 async fn orphan(files: &Files) -> Checked<Uuid7> {

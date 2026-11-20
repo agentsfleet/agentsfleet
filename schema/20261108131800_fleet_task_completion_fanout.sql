@@ -1,5 +1,5 @@
 -- Acknowledged evidence fanout stays separate from immutable signed receipts.
--- This cursor never owns execution; only a current wait can append an admission.
+-- This cursor never owns execution; only a current wait can append a turn.
 CREATE TABLE fleet.task_completion_fanout (
     task_completion_id UUID PRIMARY KEY REFERENCES fleet.task_completions (id) ON DELETE CASCADE,
     after_wait_id UUID,

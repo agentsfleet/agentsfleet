@@ -26,8 +26,8 @@ async fn a_runaway_trip_archives_the_fleet_and_ends_its_event() {
     set_config(&fixtures, &seeded.fleet, RUNAWAY_AT_ONE).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(answer.is_none(), "a runaway issued a run: {answer:?}");
     let status: String = sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")

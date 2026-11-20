@@ -12,8 +12,8 @@
 //! `TestDatabase::shared` — `afd_runner` and `afd_tenant` — are deliberately
 //! NOT aggregated for that reason.
 
+mod assignment_selection;
 mod authoring_compaction;
-mod claim_selection;
 mod decision_receipts;
 
 #[path = "inference_images.rs"]

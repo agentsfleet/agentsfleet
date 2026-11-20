@@ -71,7 +71,7 @@ pub(crate) fn capable_beat() -> Value {
 /// Read together because they are only ever used together, and a helper that
 /// answered one of them would be a second place for a caller to pair a run
 /// with the wrong fence.
-pub(crate) fn claim(run: &Value) -> (String, u64) {
+pub(crate) fn run_and_fence(run: &Value) -> (String, u64) {
     (
         field(run, "run_id")
             .as_str()

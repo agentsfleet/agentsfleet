@@ -2,7 +2,7 @@
 //!
 //! The draft and attempt are locked before the host row, never after: a busy
 //! draft then keeps this renewal waiting while it holds nothing of the
-//! runner's, so the runner's polls for every other tenant go on. The claim, the
+//! runner's, so the runner's polls for every other tenant go on. The assignment, the
 //! one path that holds a host and then asks for a draft, takes the draft
 //! `NOWAIT`, so the two never wait on each other. Retiring a revoked runner is
 //! the one opposite order left: its delete holds the runner row while the key's
@@ -39,12 +39,7 @@ impl Drafts {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let mut guarded = guard::bound(&mut tx, runner, run, &counters).await?;
         let host = self
-            .lock_host_capacity(
-                &mut tx,
-                runner,
-                afd_runner::capacity::Claimant::Existing,
-                None,
-            )
+            .lock_host_capacity(&mut tx, runner, afd_runner::capacity::Work::Existing, None)
             .await?
             .ok_or(ErrorKind::Hidden)?;
         if !host.can_renew() {

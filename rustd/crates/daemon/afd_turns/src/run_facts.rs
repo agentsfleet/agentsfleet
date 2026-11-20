@@ -1,8 +1,8 @@
-//! The facts a steer's disposition is named from, read after its admission
+//! The facts a steer's disposition is named from, read after its turn
 //! committed. See `sql/run_facts.sql`.
 
 use af_core::id::Uuid7;
-use af_wire::fold::FOLDS_PER_CLAIM_MAX;
+use af_wire::fold::FOLDS_PER_ASSIGNMENT_MAX;
 
 use crate::error::{Result, query};
 use crate::{LiveRun, Producer, RunFacts, Turns, sql};
@@ -10,8 +10,8 @@ use crate::{LiveRun, Producer, RunFacts, Turns, sql};
 /// The context a run-facts read that failed carries.
 const CONTEXT_RUN_FACTS: &str = "read a steer's run facts";
 
-/// How many claims' worth of messages after the run's own the read looks at.
-const CLAIMS_LOOKED_AT: i64 = 2;
+/// How many assignments' worth of messages after the run's own the read looks at.
+const ASSIGNMENTS_LOOKED_AT: i64 = 2;
 
 /// The statement's one row.
 #[derive(Debug, sqlx::FromRow)]
@@ -33,7 +33,7 @@ pub struct PersonSteer<'a> {
 }
 
 impl Turns {
-    /// What a steer `admission` on `fleet` meets: the fleet's live run, if
+    /// What a steer `turn` on `fleet` meets: the fleet's live run, if
     /// any, and whether a message it must not pass waits ahead of it.
     ///
     /// A message the ledger does not hold on `fleet` meets nothing.
@@ -43,18 +43,18 @@ impl Turns {
     pub async fn run_facts(
         &self,
         fleet: &Uuid7,
-        admission: &Uuid7,
+        turn: &Uuid7,
         person: PersonSteer<'_>,
     ) -> Result<RunFacts> {
         let mut connection = self.database.acquire().await?;
         let row: Option<FactsRow> = sqlx::query_as(sql::RUN_FACTS)
             .bind(fleet)
-            .bind(admission)
+            .bind(turn)
             .bind(afd_state::sql::RUN_STATUS_ACTIVE)
             .bind(Producer::Steer.as_str())
             .bind(person.machine_actor)
             .bind(person.actor_pattern)
-            .bind(CLAIMS_LOOKED_AT * i64::from(FOLDS_PER_CLAIM_MAX))
+            .bind(ASSIGNMENTS_LOOKED_AT * i64::from(FOLDS_PER_ASSIGNMENT_MAX))
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_RUN_FACTS))?;

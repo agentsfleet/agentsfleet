@@ -203,7 +203,7 @@ async function walkEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promis
   }
 }
 
-// A waiting row's history row carries its admission time, so a message held
+// A waiting row's history row carries its intake time, so a message held
 // during an outage lands below the watermark when it waited longer than the
 // overlap. The walk reaches back to the oldest message this thread still shows
 // as waiting; the watermark itself never moves back for it.

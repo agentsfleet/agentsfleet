@@ -144,14 +144,14 @@ fn test_interim_marker_is_not_the_answer() {
     assert!(!stamp.contains(ANSWER_EVENT_TYPE), "{stamp}");
 }
 
-/// A reclaimed run numbers its lines from one again: its first line is not
+/// A reassigned run numbers its lines from one again: its first line is not
 /// the dead run's first, so a repeat of it is never skipped as posted.
 #[test]
-fn test_reclaimed_run_line_is_not_the_dead_run_line() {
+fn test_reassigned_run_line_is_not_the_dead_run_line() {
     let (_, dead) = stamped(&line(RUN, 1));
-    let reclaimed = line("0195b4ba-8d3a-7a11-8abc-0000000000bb", 1);
+    let reassigned = line("0195b4ba-8d3a-7a11-8abc-0000000000bb", 1);
 
-    assert!(!dead.carries(&reclaimed, BOT_USER));
+    assert!(!dead.carries(&reassigned, BOT_USER));
     assert!(
         !dead.carries(&line(RUN, 2), BOT_USER),
         "another line of one run"

@@ -26,5 +26,5 @@ pub(crate) const SELECT_RUNNER_RUN_CURSOR: &str = include_str!("select_runner_ru
 /// page size · `$5` and `$6` the boundary's `created_at` and id, both NULL for
 /// the first page, where the boundary falls back to `infinity` so the one
 /// statement seeks `idx_runs_runner_id_created_at_id` either way. A run is
-/// a reclaim when an earlier fencing token held the same event.
+/// a reassignment when an earlier fencing token held the same event.
 pub(crate) const SELECT_RUNNER_RUN_PAGE: &str = include_str!("select_runner_run_page.sql");

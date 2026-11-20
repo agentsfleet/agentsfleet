@@ -5,7 +5,7 @@
 //! bag the wall verifies against, the install row the team resolves through,
 //! the sealed grant the bot's identity is read from, and fleet rows whose
 //! stored configurations are ones Save accepts. The bus is unreachable;
-//! admission commits to Postgres and its notification may fail independently.
+//! a turn commits to Postgres and its notification may fail independently.
 //!
 //! Slack is a loopback. A routed mention reads its thread back before it is
 //! admitted, and the connectors' exchange is pinned at [`FakeSlack`] so that
@@ -39,7 +39,7 @@ pub(super) const BOT_USER: &str = "UBOTFIXTURE";
 /// What every fixture person's subject starts with.
 const SUBJECT_PREFIX: &str = "user_live_slack_mention_";
 
-/// One admission row, as the ledger holds it.
+/// One turn row, as the ledger holds it.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Admitted {
     pub(super) fleet: Uuid7,
@@ -220,8 +220,8 @@ impl Fixture {
         fleet
     }
 
-    /// The admission a mention key produced, if any.
-    pub(super) async fn admission(&self, key: &str) -> Option<Admitted> {
+    /// The turn a mention key produced, if any.
+    pub(super) async fn turn(&self, key: &str) -> Option<Admitted> {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_as::<
             _,
@@ -242,7 +242,7 @@ impl Fixture {
         .bind(key)
         .fetch_optional(&mut *connection)
         .await
-        .expect("the admission reads")
+        .expect("the turn reads")
         .map(
             |(fleet, actor, event_type, request_json, reply_provider, reply_address)| Admitted {
                 fleet,
@@ -255,8 +255,8 @@ impl Fixture {
         )
     }
 
-    /// How many mention admissions this fixture's team produced.
-    pub(super) async fn admissions(&self) -> i64 {
+    /// How many mention turns this fixture's team produced.
+    pub(super) async fn turns(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
             "SELECT COUNT(*) FROM thread.turns \
@@ -266,7 +266,7 @@ impl Fixture {
         .bind(&self.team)
         .fetch_one(&mut *connection)
         .await
-        .expect("the admission count reads")
+        .expect("the turn count reads")
     }
 
     async fn seal(&self, workspace: &Uuid7, key: &str, document: &str) {

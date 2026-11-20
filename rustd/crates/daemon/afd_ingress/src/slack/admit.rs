@@ -1,4 +1,4 @@
-//! A routed mention becomes one admission, owed back to its thread.
+//! A routed mention becomes one turn, owed back to its thread.
 
 use af_core::id::Uuid7;
 use af_wire::turn::TurnKind;
@@ -39,7 +39,7 @@ impl Ingress {
     ///
     /// Keyed `<team_id>:<event_id>`: the provider signs the body the event id
     /// rides in and repeats it on every retry, so a retry answers the first
-    /// admission and a forged repeat cannot vary the key without breaking the
+    /// turn and a forged repeat cannot vary the key without breaking the
     /// signature. The reply destination is the thread, so the answer is owed
     /// back to where the question was asked.
     ///
@@ -59,7 +59,7 @@ impl Ingress {
         let key = format!("{team_id}:{event_id}");
         let actor = format!("{connector}:{team_id}:{user}");
         Ok(self
-            .admissions
+            .turns
             .admit(IncomingTurn {
                 producer: Producer::SlackMention,
                 key: Key::Repeated(&key),

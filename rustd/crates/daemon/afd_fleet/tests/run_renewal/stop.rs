@@ -31,7 +31,7 @@ struct Taken {
 // Value: protects=Stop ends a setup draft's running turn as it ends a fleet's;
 // fails_when=the draft door skips the run's mark or hint, or the report answers the turn;
 // why_new=the draft Stop was a sequence watermark, with no per-turn door;
-// seam=the production draft claim, Drafts::stop_turn over a real bus, and report_draft.
+// seam=the production draft assignment, Drafts::stop_turn over a real bus, and report_draft.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn stopping_a_running_draft_turn_ends_its_setup_run() {
@@ -97,7 +97,7 @@ async fn take_draft_run(running: &Running, drafts: &afd_setup::Drafts) -> Taken 
     running
         .fixtures
         .plane()
-        .claim_with(
+        .assign_with(
             drafts,
             AssignRequest {
                 runner: &running.runner,

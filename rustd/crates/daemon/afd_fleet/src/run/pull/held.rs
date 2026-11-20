@@ -1,11 +1,11 @@
-//! The claim a pass holds once it wins a fleet, and the one place it is let
+//! The assignment a pass holds once it wins a fleet, and the one place it is let
 //! go.
 //!
-//! Every ending that issues no run frees the claim — a refusal, a retry, a
+//! Every ending that issues no run frees the assignment — a refusal, a retry, a
 //! park, a fault — and it is freed here, after the pass has its answer, so a
 //! stop added later cannot forget to. Each of those endings used to return
-//! with the claim still held, and the fleet's next event waited out the
-//! claim's whole lifetime behind an answer that had already been given.
+//! with the assignment still held, and the fleet's next event waited out the
+//! assignment's whole lifetime behind an answer that had already been given.
 
 use std::time::Instant;
 
@@ -29,11 +29,11 @@ struct Held {
 }
 
 impl RunService {
-    /// Runs a claimed pass, marking the admission, the issue and the assignment's
+    /// Runs an assigned pass, marking the admission, the issue and the assignment's
     /// encoding on `clock`. The issue ends where `emit` is called, or where the
-    /// delivery returns without calling it, so a refused claim shows `issue`
+    /// delivery returns without calling it, so a refused assignment shows `issue`
     /// and no `encode`.
-    pub(super) async fn run_claimed_with<T, F>(
+    pub(super) async fn run_assigned_with<T, F>(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
@@ -52,7 +52,7 @@ impl RunService {
             turn_id: acquired.turn_id.clone(),
         };
         clock.identify(held.turn_id.as_str(), held.fleet_id.as_str());
-        let admitted = self.admit_claimed(acquired, runner_id, now).await;
+        let admitted = self.admit_assigned(acquired, runner_id, now).await;
         clock.mark(AssignStage::Admit);
         let pass = match admitted.map(Step::proceed) {
             Ok(Ok(admitted)) => {
@@ -100,7 +100,7 @@ impl RunService {
         }
     }
 
-    /// Frees the claim through the one best-effort release every
+    /// Frees the assignment through the one best-effort release every
     /// run-less ending shares.
     async fn let_go(&self, held: &Held) {
         self.runs.let_go(&held.fleet_id, held.fence).await;
@@ -116,24 +116,24 @@ mod tests {
 
     use af_core::test_util::trace::Capture;
 
-    use crate::run::affinity::EVENT_CLAIM_RELEASE_FAILED;
+    use crate::run::affinity::EVENT_ASSIGNMENT_RELEASE_FAILED;
     use crate::run::test_dead;
 
-    /// A fault after the claim reaches the caller as the fault, and the claim
+    /// A fault after the assignment reaches the caller as the fault, and the assignment
     /// is still let go — here the release is refused too, so it is logged
-    /// under the fault's own code and the claim lapses at its expiry instead.
+    /// under the fault's own code and the assignment lapses at its expiry instead.
     #[tokio::test]
     async fn should_raise_the_fault_and_log_a_release_the_datastore_refuses() {
         let log = Capture::install();
         // Its setup is parsed through the definitions cache.
         let _counted = test_dead::CACHE_LOOKUPS.lock().await;
-        // Installed, so the pass gets past the setup the claim carried and
+        // Installed, so the pass gets past the setup the assignment carried and
         // reaches its first read after it, which a dead datastore refuses.
         let acquired = test_dead::acquired_installed();
         let fleet = acquired.fleet_id.clone();
 
         let fault = test_dead::plane()
-            .run_claimed_with(
+            .run_assigned_with(
                 acquired,
                 &test_dead::id(9),
                 test_dead::AT,
@@ -142,12 +142,12 @@ mod tests {
                 &mut |_run, _metadata| (),
             )
             .await
-            .expect_err("a read after the claim with no datastore is a fault, not a decision");
+            .expect_err("a read after the assignment with no datastore is a fault, not a decision");
 
-        // The first read after the claim is the credential plane's, because the
-        // claim carries the setup; whichever read it is, its fault is the
+        // The first read after the assignment is the credential plane's, because the
+        // assignment carries the setup; whichever read it is, its fault is the
         // caller's, and the release below carries the same code.
-        let line = log.only(EVENT_CLAIM_RELEASE_FAILED).fields;
+        let line = log.only(EVENT_ASSIGNMENT_RELEASE_FAILED).fields;
         assert_eq!(
             line.get("fleet_id").map(String::as_str),
             Some(fleet.as_str())

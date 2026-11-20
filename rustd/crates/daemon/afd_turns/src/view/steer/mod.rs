@@ -6,7 +6,7 @@
 //! # A steer is admitted like every other producer
 //!
 //! It is not a row this daemon inserts and then hopes a runner notices. It
-//! goes through the admission ledger every other producer — webhook, cron,
+//! goes through the turn ledger every other producer — webhook, cron,
 //! continuation — already goes through, and the turn's event opens
 //! when the runner runs it. That is what makes a steer
 //! indistinguishable from every other way a run starts, and it is why there
@@ -24,7 +24,7 @@
 //! the caller knows which one it is making, and one request field lets it
 //! say which: `operation_id`, repeated across a retry. Present, it is the
 //! ledger's `producer_key` and the retry conflicts on
-//! `UNIQUE (producer, producer_key)` — answered with the first admission's
+//! `UNIQUE (producer, producer_key)` — answered with the first turn's
 //! event, one run, one charge. Absent, the ledger mints one and two identical
 //! messages stay two operations.
 //!
@@ -54,10 +54,10 @@
 //!
 //! # Announcing is the route's, and best-effort
 //!
-//! [`Steer::announce`] puts an `turn_admitted` frame on the fleet's live tail
+//! [`Steer::announce`] puts a `turn_admitted` frame on the fleet's live tail
 //! so every screen shows the message while it waits for a runner. The route
 //! calls it with the words it read, after [`Steer::append`] answered with an
-//! admission instant; a repeat has none, because its first send announced it.
+//! intake instant; a repeat has none, because its first send announced it.
 //! A frame the queue refuses is logged by the publisher and costs nothing
 //! else: the message is durable, and a reload reads it from the ledger.
 
@@ -68,8 +68,8 @@ use afd_api_wire::tail::TailFrame;
 
 use crate::view::error::{Result, operation_conflict};
 
-mod admission;
-use admission::{scoped_key, steer_admission};
+mod intake;
+use intake::{scoped_key, steer_turn};
 mod fleet;
 pub use fleet::{FLEET_ACTOR_PREFIX, FleetSteer, FleetSteered, fleet_actor, is_fleet_actor};
 
@@ -121,7 +121,7 @@ pub struct Steered {
     pub placed: disposition::Placed,
     /// When THIS call admitted the message, or `None` when an
     /// earlier send of the same operation id already had — one field rather
-    /// than a flag beside an instant, since a fresh admission always has one
+    /// than a flag beside an instant, since a fresh turn always has one
     /// and a repeat never does.
     pub admitted_at: Option<jiff::Timestamp>,
 }
@@ -148,14 +148,14 @@ impl Steered {
 /// The ingress side of the narrative log.
 #[derive(Debug, Clone)]
 pub struct Steer {
-    admissions: Turns,
+    turns: Turns,
 }
 
 impl Steer {
-    /// Admits through `admissions`.
+    /// Admits through `turns`.
     #[must_use]
-    pub const fn new(admissions: Turns) -> Self {
-        Self { admissions }
+    pub const fn new(turns: Turns) -> Self {
+        Self { turns }
     }
 
     /// Puts one message on the fleet's stream, answering with its event id and
@@ -180,8 +180,8 @@ impl Steer {
         operation_id: Option<&str>,
     ) -> Result<Steered> {
         let key = operation_id.map(|operation| scoped_key(fleet.as_str(), operation));
-        let admission = steer_admission(fleet, workspace, actor, request_json, key.as_deref());
-        let admitted = match self.admissions.admit_runnable(admission).await {
+        let turn = steer_turn(fleet, workspace, actor, request_json, key.as_deref());
+        let admitted = match self.turns.admit_runnable(turn).await {
             Ok(admitted) => admitted,
             Err(refused) if refused.is_over_capacity() => {
                 // The insert never ran, so no live-run facts came back.
@@ -190,7 +190,7 @@ impl Steer {
                     folded_into_turn_id: None,
                 };
                 return self
-                    .repeat_despite(&admission, refused)
+                    .repeat_despite(&turn, refused)
                     .await
                     .map(|turn_id| Steered::repeat(turn_id, queued));
             }
@@ -202,7 +202,7 @@ impl Steer {
             // this caller's answer only if the row holds this caller's payload.
             let run = self.run_facts(fleet, &admitted.stored.id).await;
             let placed = disposition::of(&run, actor, admitted.stored.id.as_str());
-            return answer_repeat(&admission, admitted.stored)
+            return answer_repeat(&turn, admitted.stored)
                 .map(|turn_id| Steered::repeat(turn_id, placed));
         }
 
@@ -223,24 +223,24 @@ impl Steer {
         })
     }
 
-    /// What the steer `admission` meets on `fleet`, for its disposition.
+    /// What the steer `turn` meets on `fleet`, for its disposition.
     ///
     /// Best-effort, as the label is advisory: the message is already
     /// committed, so a read that fails answers `queued`, which the message
     /// then is or does better than, and is logged rather than refused.
-    async fn run_facts(&self, fleet: &Uuid7, admission: &Uuid7) -> RunFacts {
+    async fn run_facts(&self, fleet: &Uuid7, turn: &Uuid7) -> RunFacts {
         let pattern = format!("{ACTOR_PREFIX}%");
         let person = PersonSteer {
             machine_actor: ACTOR_MACHINE,
             actor_pattern: &pattern,
         };
-        match self.admissions.run_facts(fleet, admission, person).await {
+        match self.turns.run_facts(fleet, turn, person).await {
             Ok(facts) => facts,
             Err(unread) => {
                 let error_code = unread.code().as_str();
                 tracing::warn!(
                     fleet_id = %fleet,
-                    turn_id = %admission,
+                    turn_id = %turn,
                     error_code,
                     event = "steer_run_facts_unread",
                 );
@@ -265,33 +265,29 @@ impl Steer {
             return;
         };
         let subject = afd_bus::Subject::ThreadItems(fleet);
-        let publication = self
-            .admissions
-            .streams()
-            .publish_frame(&subject, frame)
-            .await;
+        let publication = self.turns.streams().publish_frame(&subject, frame).await;
         afd_bus::observe_notification(&subject, publication);
     }
 
     /// A capacity refusal, unless the key is a repeat: then its event.
     async fn repeat_despite(
         &self,
-        admission: &IncomingTurn<'_>,
+        turn: &IncomingTurn<'_>,
         refused: crate::Error,
     ) -> Result<String> {
-        despite(self.repeat_of(admission).await, refused)
+        despite(self.repeat_of(turn).await, refused)
     }
 
-    /// The first admission's event for a keyed steer with the same payload,
+    /// The first turn's event for a keyed steer with the same payload,
     /// looked up for the paths that never reached the insert.
-    async fn repeat_of(&self, admission: &IncomingTurn<'_>) -> Result<Option<String>> {
-        let Key::Repeated(key) = admission.key else {
+    async fn repeat_of(&self, turn: &IncomingTurn<'_>) -> Result<Option<String>> {
+        let Key::Repeated(key) = turn.key else {
             return Ok(None);
         };
-        self.admissions
-            .find_repeated(admission.producer, key)
+        self.turns
+            .find_repeated(turn.producer, key)
             .await?
-            .map(|repeated| answer_repeat(admission, repeated))
+            .map(|repeated| answer_repeat(turn, repeated))
             .transpose()
     }
 }
@@ -318,10 +314,10 @@ fn despite(repeat: Result<Option<String>>, refused: crate::Error) -> Result<Stri
 /// so a different person reusing the id is a conflict too, never a read of
 /// somebody else's event; and a row some other fleet holds under this key is
 /// refused the same way rather than answered.
-fn answer_repeat(admission: &IncomingTurn<'_>, repeated: Repeated) -> Result<String> {
-    let cause = if repeated.fleet != *admission.fleet {
+fn answer_repeat(turn: &IncomingTurn<'_>, repeated: Repeated) -> Result<String> {
+    let cause = if repeated.fleet != *turn.fleet {
         CONFLICT_CAUSE_FLEET
-    } else if repeated.digest != admission.payload_digest() {
+    } else if repeated.digest != turn.payload_digest() {
         CONFLICT_CAUSE_PAYLOAD
     } else {
         return Ok(repeated.id.into());
@@ -330,7 +326,7 @@ fn answer_repeat(admission: &IncomingTurn<'_>, repeated: Repeated) -> Result<Str
     // refusal itself logs at debug like every other caller fault. The cause is
     // a fixed word, so the warn never carries the message or the key.
     let code = error_code::AGENTSFLEET_OPERATION_CONFLICT.as_str();
-    let fleet_id = admission.fleet;
+    let fleet_id = turn.fleet;
     let turn_id = repeated.id.as_str();
     {
         let (error_code, event) = (&code, &"steer_operation_conflict");

@@ -6,7 +6,7 @@ use super::{ATTR_AGENT_ID, ATTR_TURN_ID};
 /// The span one steer leaves: admission to the announce.
 pub const SPAN_FLEET_STEER: &str = "fleet.steer";
 
-/// The span one assignment that selected work leaves: claim to the stream write.
+/// The span one assignment that selected work leaves: selection to the stream write.
 pub const SPAN_FLEET_ASSIGN: &str = "fleet.assign";
 
 /// The span one terminal report leaves: the run read to the acknowledgement.
@@ -24,8 +24,8 @@ pub const ATTR_STEER_ADMIT_MS: &str = "agentsfleet.steer.admit_ms";
 /// The steer verb's `announce` stage, in whole milliseconds.
 pub const ATTR_STEER_ANNOUNCE_MS: &str = "agentsfleet.steer.announce_ms";
 
-/// The assignment verb's `claim` stage, in whole milliseconds.
-pub const ATTR_ASSIGN_CLAIM_MS: &str = "agentsfleet.assign.claim_ms";
+/// The assignment verb's `select` stage, in whole milliseconds.
+pub const ATTR_ASSIGN_SELECT_MS: &str = "agentsfleet.assign.select_ms";
 
 /// The assignment verb's `admit` stage, in whole milliseconds.
 pub const ATTR_ASSIGN_ADMIT_MS: &str = "agentsfleet.assign.admit_ms";
@@ -76,7 +76,7 @@ pub const VERB_SPAN_KEYS: &[&str] = &[
     ATTR_AGENT_ID,
     ATTR_STEER_ADMIT_MS,
     ATTR_STEER_ANNOUNCE_MS,
-    ATTR_ASSIGN_CLAIM_MS,
+    ATTR_ASSIGN_SELECT_MS,
     ATTR_ASSIGN_ADMIT_MS,
     ATTR_ASSIGN_ISSUE_MS,
     ATTR_ASSIGN_ENCODE_MS,

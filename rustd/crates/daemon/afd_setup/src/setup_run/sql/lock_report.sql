@@ -1,4 +1,4 @@
--- The draft a draft run's report finishes, locked before the run and its slot, and the
+-- The draft a draft run's report finishes, locked before the run and its thread, and the
 -- message the run ran. No row once the draft is deleted.
 --
 -- $1 draft · $2 the message the run ran

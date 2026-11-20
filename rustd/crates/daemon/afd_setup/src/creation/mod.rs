@@ -28,7 +28,7 @@ pub use system::SystemSetup;
 #[derive(Debug, Clone)]
 pub struct Creations {
     pub(crate) setup: Setup,
-    admissions: Turns,
+    turns: Turns,
     grants: IntegrationGrants,
     schedules: afd_cron::Schedules,
     /// What a chat save registers an active fleet's trigger schedules
@@ -57,12 +57,12 @@ impl Creations {
     }
 
     pub(crate) fn activity_streams(&self) -> afd_bus::Handle {
-        self.admissions.streams()
+        self.turns.streams()
     }
 
     /// Shares the daemon's ledger, queue, pool and credential inspection service.
     #[must_use]
-    pub fn new(setup: Setup, admissions: Turns) -> Self {
+    pub fn new(setup: Setup, turns: Turns) -> Self {
         Self {
             schedules: afd_cron::Schedules::new(
                 setup.drafts.database.clone(),
@@ -73,7 +73,7 @@ impl Creations {
                 setup.drafts.entropy.clone(),
             ),
             setup,
-            admissions,
+            turns,
             registrar: None,
         }
     }

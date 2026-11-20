@@ -6,7 +6,7 @@
 -- transaction made under the run's own lock. A potential sandbox hold
 -- shares the host lock through commit to serialize with worker placement.
 --
--- Lock the fleet's scope before the optional host, slot and run.
+-- Lock the fleet's scope before the optional host, thread and run.
 -- READ COMMITTED re-reads a locked row's latest version,
 -- so the run's cursor is current, and the runtime line is numbered by its
 -- slice's start: a racing renewal waiting on the same lock bills a later slice
@@ -54,8 +54,8 @@ WITH scope AS MATERIALIZED (
     AND r.degraded_reason IS NULL AND r.status = ANY($54::text[])
     AND ($52::text IS NULL OR (r.token_hash = $52 AND r.connection_id IS NOT DISTINCT FROM $53::uuid))
   FOR SHARE OF r
-), locked_slot AS MATERIALIZED (
-  SELECT s.fleet_id, s.fencing_token, s.run_expires_at AS slot_expires_at,
+), locked_thread AS MATERIALIZED (
+  SELECT s.fleet_id, s.fencing_token, s.run_expires_at AS thread_expires_at,
          h.id IS NOT NULL AS hold_authorized
   FROM thread.threads s
   JOIN scope sc ON sc.id = s.fleet_id
@@ -67,13 +67,13 @@ WITH scope AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at,
          l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence,
-         a.slot_expires_at, a.hold_authorized
+         a.thread_expires_at, a.hold_authorized
   FROM thread.runs l
-  JOIN locked_slot a ON a.fleet_id = l.fleet_id
+  JOIN locked_thread a ON a.fleet_id = l.fleet_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF l
 ), instant AS MATERIALIZED (
-  -- Read once the slot and run locks are held, so the slice is measured to
+  -- Read once the thread and run locks are held, so the slice is measured to
   -- the moment the report owns the run, never before a lock wait.
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM probe) locked
 ), catalogue AS MATERIALIZED (
@@ -160,7 +160,7 @@ WITH scope AS MATERIALIZED (
   FROM measured m
   WHERE l.id = m.id
   RETURNING l.id, l.fleet_id, l.turn_id, l.fencing_token, l.workspace_id,
-            m.run_expires_at, m.slot_expires_at, m.hold_authorized,
+            m.run_expires_at, m.thread_expires_at, m.hold_authorized,
             (SELECT checked_at FROM instant) AS checked_at
 ), settled AS (
   -- Settles the turn and, while its event is still open, closes it with the run's answer:
@@ -197,7 +197,7 @@ WITH scope AS MATERIALIZED (
 ), closed AS (
   SELECT * FROM settled WHERE closed
 ), dropped AS (
-  -- A reclaimed run's records are of a run whose answer does not stand.
+  -- A reassigned run's records are of a run whose answer does not stand.
   DELETE FROM thread.items t
   USING moved m
   WHERE t.fleet_id = m.fleet_id AND t.turn_id = m.turn_id AND t.fencing_token <> m.fencing_token
@@ -207,7 +207,7 @@ WITH scope AS MATERIALIZED (
   UPDATE thread.threads s
   SET run_expires_at = clock_timestamp() - interval '1 millisecond', updated_at = now(),
       resume_context = $37::jsonb,
-      hold_expires_at = CASE WHEN m.run_expires_at > m.checked_at AND m.slot_expires_at > m.checked_at
+      hold_expires_at = CASE WHEN m.run_expires_at > m.checked_at AND m.thread_expires_at > m.checked_at
                              AND m.hold_authorized
                              AND $38::timestamptz > clock_timestamp()
                              THEN LEAST($38::timestamptz, clock_timestamp() + $39::interval) END
@@ -233,7 +233,7 @@ WITH scope AS MATERIALIZED (
   SELECT $43, $2, $44::text, $45::jsonb, NULL, now() FROM moved
 )
 SELECT
-    (SELECT count(*) FROM moved)::bigint AS claimed,
+    (SELECT count(*) FROM moved)::bigint AS moved_runs,
     (SELECT hold_expires_at FROM released) AS accepted_hold,
     -- A locking read answers the latest committed version, so a copy that
     -- waited behind the one that settled sees it settled, not its snapshot.

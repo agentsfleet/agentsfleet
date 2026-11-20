@@ -10,7 +10,7 @@ async fn completed_report_carries_memory_and_fence_without_a_separate_push() {
     assert_eq!(report["fencing_token"], FENCING);
     assert_eq!(report["memory"][0]["key"], "k");
     assert_eq!(report[OUTCOME], PROCESSED);
-    assert!(position(&calls, Verb::Activity).is_some());
+    assert!(position(&calls, Verb::Progress).is_some());
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
     assert!(
         !rig.home
@@ -24,7 +24,7 @@ async fn completed_report_carries_memory_and_fence_without_a_separate_push() {
 
 #[tokio::test(start_paused = true)]
 async fn queued_native_activity_needs_no_daemon_acknowledgement_before_the_report() {
-    let stalled: Special = |call| (call.verb == Verb::Activity).then_some(Answer::Stall);
+    let stalled: Special = |call| (call.verb == Verb::Progress).then_some(Answer::Stall);
     let mut rig = rig(stalled, FakeEngine::default(), Behaviour::Answer);
     let started = Instant::now();
 

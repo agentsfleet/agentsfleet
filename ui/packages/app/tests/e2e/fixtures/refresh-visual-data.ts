@@ -32,7 +32,7 @@ export function visualTurns(scenario: VisualScenario, started: number, includeCo
     wallMs: completed ? 138_000 : null, tokens: null, costNanos: completed ? "340000000" : null,
     custom: {requestJson: JSON.stringify({message: "Update the runner image using the release checklist. Run the scans, then ask me before publishing."})},
     ...(completed ? {taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
-      activity_id: TASK_IDS[1], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
+      activity_id: TASK_IDS[1], task_id: TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}} : {})}];
 }
 

@@ -1,4 +1,4 @@
-//! Enrol compatible source/replacement hosts and seed real ordinary admissions.
+//! Enrol compatible source/replacement hosts and seed real ordinary turns.
 
 use super::{Checked, e2e::Scenario, e2e_seed, model::Model, process::Worker, seed};
 use af_core::{

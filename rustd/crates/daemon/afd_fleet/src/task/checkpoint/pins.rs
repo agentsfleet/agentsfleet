@@ -18,7 +18,7 @@ pub(super) async fn insert(
     run: TaskRun<'_>,
     kind: &str,
 ) -> Result<Pin> {
-    // The live task/slot lock proves a replacement fence before releasing the prior reader.
+    // The live task/thread lock proves a replacement fence before releasing the prior reader.
     sqlx::query(include_str!("sql/pin_replace.sql"))
         .bind(&plan.id)
         .bind(kind)

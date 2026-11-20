@@ -20,7 +20,7 @@ pub struct TurnSnapshot {
     pub scope: TurnScope,
     /// Last acknowledged descriptor; publication compares this exact head.
     pub previous: Option<TurnResume>,
-    /// Exact incorporated admissions, checked against the private root at commit.
+    /// Exact incorporated turns, checked against the private root at commit.
     pub folds: Vec<FoldRef>,
     /// Bounded versioned root; no model credential or prior usage meter.
     pub history: Zeroizing<Vec<u8>>,

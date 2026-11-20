@@ -77,7 +77,7 @@ A history-only receipt, such as an activity or a model change, is written opened
 | `token_count`, `wall_ms` | `BIGINT` | yes | `events` | usage shown on the turn; NULL until a run reports |
 | `failure_reason`, `failure_detail` | `TEXT` | yes | `events`, `messages.failure_reason` | why a turn failed |
 | `resumes_turn_id` | `UUID` | yes | `events.resumes_event_id` | FK `thread.turns(id)` ON DELETE SET NULL: a continuation names the turn it resumes |
-| `run_fence`, `input_claim_run_id`, `input_claim_fence` | `BIGINT`, `UUID`, `BIGINT` | yes | `admissions` | the fence of the claim that took the turn as its head, and of the run whose conversation folded it in. No foreign key: a fence outlives its run |
+| `run_fence`, `input_run_id`, `input_fence` | `BIGINT`, `UUID`, `BIGINT` | yes | `admissions` | the fence of the assignment that took the turn as its head, and of the run whose conversation folded it in. No foreign key: a fence outlives its run |
 | `opened_at` | `TIMESTAMPTZ(3)` | yes | new | when the fleet's event opened; history reads and the activity counter read only opened turns |
 | `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions`; `messages.finished_at` | waiting on an approval; read by a task; finished. A setup turn settles when it finishes |
 | `task_id`, `task_item_id`, `task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(task_id, thread_id, workspace_id)` to `fleet.tasks` and `(task_item_id, thread_id, workspace_id)` to `fleet.task_items`, ON DELETE SET NULL on the id column, as today |
@@ -105,7 +105,7 @@ The fleet queue reads that scan across threads require `producer IS NOT NULL`. A
 
 `admissions.delivered_at` is dropped: a redelivery is a turn whose `run_fence` is already set, and `thread.deliveries` is the one record of delivery. `admissions.event_created_at` is dropped, because it always equalled `created_at`.
 
-Still to come, from the design: one `run_id` replacing `run_fence` and the `input_claim_*` pair, and the status renames below. The renames wait for the public-surface rename, because the stored words reach the wire.
+Still to come, from the design: one `run_id` replacing `run_fence` and the `input_run_id`, `input_fence` pair, and the status renames below. The renames wait for the public-surface rename, because the stored words reach the wire.
 
 ### Status map
 
@@ -203,7 +203,7 @@ Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and 
 | `thread.deliveries` | `event_id` | `turn_id` (done). No FK yet: a Slack notice owes a delivery that names its own row id (`afd_ingress/src/slack/notice.rs`), so it has no turn |
 | `thread.runs` | `event_id`, `event_created_at` | `turn_id`, `turn_created_at` (done). No FK yet: a settled run outlives its owner, so the FK arrives with the `thread_id` change |
 | `billing.usage_lines` | `event_id`, `authoring_attempt_id` | `turn_id`, `run_id` (done; `run_id` names a setup run, a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` values are unchanged |
-| `runner.decision_calls` | `source_admission_id` | `source_turn_id` (done). No FK: the call outlives its run and turn |
+| `runner.decision_calls` | `source_turn_id` | `source_turn_id` (done). No FK: the call outlives its run and turn |
 | `fleet.task_items`, `fleet.task_interpretations` | `admission_id` | `turn_id` (done). No FK: an interpretation receipt outlives its source turn |
 
 ## Bus subjects

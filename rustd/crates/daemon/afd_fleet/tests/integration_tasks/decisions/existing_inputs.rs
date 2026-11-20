@@ -25,7 +25,7 @@ async fn paid_steer_and_refresh_append_once_to_the_running_task() {
             let fixture = Decisions::create(case).await;
             let task = fixture.bind_goal().await;
             let task_id = id(&task.task_id);
-            let source = case.claimed_source().await;
+            let source = case.assigned_source().await;
             let input = proposed(&fixture, &source, &task.task_id, action).await;
             let accepted = fixture
                 .tasks
@@ -63,7 +63,7 @@ async fn paid_existing_input_refuses_missing_and_foreign_task_without_partial_wr
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
         let task_id = id(&task.task_id);
-        let source = case.claimed_source().await;
+        let source = case.assigned_source().await;
         let input = proposed(&fixture, &source, &task.task_id, TaskInputAction::Steer).await;
         let before = case.counts().await;
         for (target, code) in [
@@ -122,7 +122,7 @@ pub(super) async fn proposed(
     reservation.source_turn_id = source.to_string();
     let reservation = garde::Unvalidated::new(reservation)
         .validate()
-        .expect("claimed message reservation");
+        .expect("assigned message reservation");
     let (_, body) = fixture.reserve(&reservation).await;
     let request = request(&body);
     let mut result = known_result(&request);

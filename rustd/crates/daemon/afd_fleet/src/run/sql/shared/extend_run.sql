@@ -1,13 +1,13 @@
--- The renewal both kinds share: the run and its slot moved to one clamped deadline under
+-- The renewal both kinds share: the run and its thread moved to one clamped deadline under
 -- the run's fence, and the runtime since the run's cursor measured, in one statement.
 -- Both rows move or neither does. The caller holds the host row and has run
--- `lock_cancelled.sql`, which takes the slot and run locks in this order and refuses a
+-- `lock_cancelled.sql`, which takes the thread and run locks in this order and refuses a
 -- cancelled run; the owner's own liveness check and the slice's usage line are its own
 -- statements, in the same transaction.
 --
 -- $1 run · $2 runner · $3 milliseconds per second · $4 active status · $5 run TTL ·
 -- $6 the most a run may run
-WITH locked_slot AS MATERIALIZED (
+WITH locked_thread AS MATERIALIZED (
     SELECT s.id, s.fencing_token, s.run_expires_at
     FROM thread.threads s JOIN thread.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
@@ -17,9 +17,9 @@ WITH locked_slot AS MATERIALIZED (
            l.run_expires_at, l.last_metered_at,
            l.created_at + LEAST($6::interval, make_interval(secs => l.max_runtime_seconds))
                AS hard_cap,
-           s.id AS slot_id, s.fencing_token AS live_fence, s.run_expires_at AS slot_expires_at
+           s.id AS thread_id, s.fencing_token AS live_fence, s.run_expires_at AS thread_expires_at
     FROM thread.runs l
-    JOIN locked_slot s ON s.id = COALESCE(l.fleet_id, l.draft_id)
+    JOIN locked_thread s ON s.id = COALESCE(l.fleet_id, l.draft_id)
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF l
 ), instant AS MATERIALIZED (
@@ -35,18 +35,18 @@ WITH locked_slot AS MATERIALIZED (
     CROSS JOIN instant i
     WHERE p.fencing_token = p.live_fence
       AND p.hard_cap > i.checked_at
-      AND p.run_expires_at > i.checked_at AND p.slot_expires_at > i.checked_at
+      AND p.run_expires_at > i.checked_at AND p.thread_expires_at > i.checked_at
 ), moved AS (
     UPDATE thread.runs l
     SET run_expires_at = g.capped, last_metered_at = g.metered_until, updated_at = now()
     FROM guard g
     WHERE l.id = g.id
     RETURNING l.run_expires_at
-), slot AS (
+), moved_thread AS (
     UPDATE thread.threads s
     SET run_expires_at = g.capped, updated_at = now()
     FROM guard g
-    WHERE s.id = g.slot_id
+    WHERE s.id = g.thread_id
     RETURNING s.id
 )
 SELECT

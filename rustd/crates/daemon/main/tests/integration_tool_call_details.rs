@@ -203,7 +203,7 @@ async fn test_event_detail_budget_caps_records() {
     scene.cleanup().await;
 }
 
-/// A dead run's record, as a reclaim would have left it, under `fence`.
+/// A dead run's record, as a reassignment would have left it, under `fence`.
 async fn plant_dead_record(scene: &Scenario, fence: u64) {
     let dead = afd_db::test_util::mint_id();
     execute(

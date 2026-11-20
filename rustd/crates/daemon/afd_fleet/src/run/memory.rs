@@ -4,14 +4,14 @@
 //! # They authorize differently
 //!
 //! Load asks "does this runner hold a live run on this fleet, and has no
-//! reclaim moved the fleet past it" — a read of a fleet's own memory by the
+//! reassignment moved the fleet past it" — a read of a fleet's own memory by the
 //! runner currently running it.
 //!
 //! Capture and recall ask more. The body names the run, exactly as a report
 //! does; the statement cross-checks that run against the path's fleet, so a
 //! runner cannot reach one fleet's memory holding another's run; and the
 //! token is fenced by the rule report and renew apply — it must be the run's
-//! own, and the run must still hold the fleet — so a holder a reclaim has
+//! own, and the run must still hold the fleet — so a holder a reassignment has
 //! already superseded reads and writes nothing, whatever token it presents.
 //!
 //! The fence statements in [`crate::run::fence`] scope the run to this
@@ -24,7 +24,7 @@
 //!
 //! Reads use a live fence observation. Capture holds the fleet grant row and
 //! the run on the write transaction, then rechecks the run after writing.
-//! A reclaim waits for that transaction, and a delayed superseded capture
+//! A reassignment waits for that transaction, and a delayed superseded capture
 //! cannot replace the new holder's entry.
 
 use af_core::id::Uuid7;

@@ -7,11 +7,11 @@ use super::fixture::{LAPSED_BY, LIVE_FOR};
 use af_core::clock;
 use sqlx::Connection as _;
 
-/// How long the competing claimant holds the host lock.
+/// How long the competing assignment holds the host lock.
 const LOCK_HELD_FOR: Duration = Duration::from_millis(600);
 
 /// How long the seeded run has left when the wait starts: well inside the
-/// hold, so it lapses while the claim is queued behind the lock.
+/// hold, so it lapses while the assignment is queued behind the lock.
 const LAPSES_IN: Duration = Duration::from_millis(200);
 
 #[tokio::test(flavor = "multi_thread")]
@@ -20,11 +20,11 @@ async fn test_runtime_and_authoring_runs_count_together() {
     let fixture = Fixture::create(2).await;
     fixture.runtime(clock::after(clock::now(), LIVE_FOR)).await;
     assert!(
-        fixture.try_claim().await,
-        "one remaining slot accepts authoring"
+        fixture.try_assign().await,
+        "one remaining worker accepts authoring"
     );
     assert!(
-        !fixture.try_claim().await,
+        !fixture.try_assign().await,
         "runtime plus authoring exhaust the host"
     );
     fixture.cleanup().await;
@@ -54,25 +54,25 @@ async fn test_expired_status_active_rows_do_not_occupy_capacity() {
         .expect("expired status-active attempt seeds");
     drop(connection);
     assert!(
-        fixture.try_claim().await,
-        "expiry alone frees the slot before sweep"
+        fixture.try_assign().await,
+        "expiry alone frees the worker before sweep"
     );
     fixture.cleanup().await;
 }
 
-/// Dimension 4.8 — a run that lapsed while the claimant waited on the host
+/// Dimension 4.8 — a run that lapsed while the assignment waited on the host
 /// lock no longer occupies the host: the census reads the clock once the lock
-/// is held, never at the instant the claim asked for it.
+/// is held, never at the instant the assignment asked for it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_expiry_checks_read_clock_after_lock() {
     let fixture = Fixture::create(1).await;
     // Seeded long-lived, so the refusal below cannot race the expiry: a slow
     // run (coverage instrumentation) once let a 200 ms run lapse before the
-    // first claim finished, and that claim then succeeded.
+    // first assignment finished, and that assignment then succeeded.
     fixture.runtime(clock::after(clock::now(), LIVE_FOR)).await;
     assert!(
-        !fixture.try_claim().await,
+        !fixture.try_assign().await,
         "the live run fills the only worker"
     );
 
@@ -85,12 +85,12 @@ async fn test_expiry_checks_read_clock_after_lock() {
         tokio::time::sleep(LOCK_HELD_FOR).await;
         held.rollback()
             .await
-            .expect("the competing claimant lets go");
+            .expect("the competing assignment lets go");
     };
-    let (claimed, ()) = tokio::join!(fixture.try_claim(), release);
+    let (assigned, ()) = tokio::join!(fixture.try_assign(), release);
 
     assert!(
-        claimed,
+        assigned,
         "the run lapsed during the wait, so the census must not count it"
     );
     drop(holder);

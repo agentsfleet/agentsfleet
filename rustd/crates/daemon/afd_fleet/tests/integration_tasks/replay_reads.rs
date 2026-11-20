@@ -8,7 +8,7 @@ use tokio::time::{interval, timeout};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn accepted_replays_share_slot_and_run_read_locks() {
+async fn accepted_replays_share_thread_and_run_read_locks() {
     exercise(async |case| {
         let plan = case.plan("shared-receipt", 3);
         let first = case
@@ -22,7 +22,7 @@ async fn accepted_replays_share_slot_and_run_read_locks() {
             .bind(&case.held.fleet)
             .fetch_one(&mut *reader)
             .await
-            .expect("shared slot lock");
+            .expect("shared thread lock");
         sqlx::query("SELECT id FROM thread.runs WHERE id=$1 FOR SHARE")
             .bind(&case.held.run_key)
             .fetch_one(&mut *reader)
@@ -61,7 +61,7 @@ async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
         .bind(&case.held.fleet)
         .fetch_one(&mut *writer)
         .await
-        .expect("exclusive slot lock");
+        .expect("exclusive thread lock");
         let change = async {
             waiting(case, pid).await;
             sqlx::query(

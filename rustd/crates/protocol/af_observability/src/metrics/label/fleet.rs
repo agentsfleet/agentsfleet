@@ -191,7 +191,7 @@ closed_set! {
     IncomingTurnOutcome {
         /// The ledger row committed.
         Accepted => "accepted",
-        /// Seen before; the first admission's identity stands.
+        /// Seen before; the first turn's identity stands.
         Replayed => REPLAYED,
         /// The durable write failed and the producer must retry.
         Refused => "refused",
@@ -213,11 +213,11 @@ closed_set! {
 }
 
 closed_set! {
-    /// Who won the claim on a fleet whose slot named a sandbox held live at
-    /// the claim. A hold past its deadline is no hold, and counts nothing.
-    HeldClaim {
+    /// Who won the assignment on a fleet whose thread named a sandbox held live
+    /// at the assignment. A hold past its deadline is no hold, and counts nothing.
+    HeldAssignment {
         /// The runner holding the fleet's sandbox, which continues in it.
-        /// Counted when its run resumes the hold, so a reclaim, which
+        /// Counted when its run resumes the hold, so a reassignment, which
         /// starts clean, counts nothing.
         Holder => "holder",
         /// Another runner, once the holder fell silent or could no longer
@@ -285,10 +285,10 @@ closed_set! {
     /// Two rather than two families: an operator reads them as one line split
     /// by cause, and `sum()` over one family stays the count of runs begun.
     RunStart {
-        /// An admission claimed for the first time.
+        /// A turn assigned for the first time.
         Fresh => "fresh",
         /// A lapsed holder's event, re-held under a higher fence.
-        Reclaimed => "reclaimed",
+        Reassigned => "reassigned",
     }
 }
 
@@ -327,8 +327,8 @@ closed_set! {
 closed_set! {
     /// What became of a message a live run took from its fleet.
     FoldOutcome {
-        /// A claim took it for the run.
-        Claimed => "claimed",
+        /// An assignment took it for the run.
+        Assigned => "assigned",
         /// The run's report answered it.
         Settled => "settled"
     }

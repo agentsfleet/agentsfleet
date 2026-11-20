@@ -36,7 +36,7 @@ async fn resolve_during_park(expire: bool) {
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let runs = fixtures.runs_with_dead_bus();
-    let acquired = next(&runs, &runner).await.expect("claim");
+    let acquired = next(&runs, &runner).await.expect("assignment");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut blocker = owner.acquire().await.expect("owner");

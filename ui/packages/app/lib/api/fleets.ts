@@ -94,7 +94,7 @@ export async function deleteFleet(
 // optimistic UI frame against the live SSE stream's matching TURN_RECEIVED —
 // or read a replayed turn that ran before the page saw it. The body carries the caller's
 // operation id, so the policy's socket-drop replay (`retry.ts`) re-sends the
-// same operation and the daemon answers the first admission.
+// same operation and the daemon answers the first turn.
 export async function steerFleet(
   workspaceId: string,
   fleetId: string,

@@ -18,7 +18,7 @@ async fn exhausted(case: &Case) {
         .bind(case.run(), &case.plan("bounded-goals", 3))
         .await
         .expect("initial goals");
-    let source = case.claimed_source().await;
+    let source = case.assigned_source().await;
     let fourth = tasks
         .bind(
             case.run(),

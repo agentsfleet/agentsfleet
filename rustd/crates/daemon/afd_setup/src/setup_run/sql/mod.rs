@@ -1,12 +1,12 @@
 //! The draft kind's own statements on the common run path. The run
-//! bookkeeping itself (slot, run, renewal, settlement) is
+//! bookkeeping itself (thread, run, renewal, settlement) is
 //! `afd_fleet::run::sql::shared`'s; these read and write only the draft's
 //! rows beside it, in the same transactions.
 
 /// Names the setup-run statements in a query failure.
 pub(super) const CONTEXT: &str = "draft run setup turn";
 
-/// How many drafts one claim pass walks.
+/// How many drafts one assignment pass walks.
 pub(super) const SCAN_LIMIT: i64 = 64;
 
 /// Drafts whose head message a draft run may take.

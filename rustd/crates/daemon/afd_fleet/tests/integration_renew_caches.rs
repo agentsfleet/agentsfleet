@@ -129,7 +129,7 @@ fn daily_ceiling(nanos: i64) -> String {
 // revision another plane applied, with no signal between them;
 // fails_when=the kept frame judges the cached revision's ceiling;
 // why_new=a frame renews from kept facts and the replica's last-read head;
-// seam=none; no_claim=a new run, whose claim returns the head's document.
+// seam=none; no_claim=a new run, whose assignment returns the head's document.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn config_cache_follows_new_head_revision() {

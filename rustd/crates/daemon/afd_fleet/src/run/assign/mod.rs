@@ -1,4 +1,4 @@
-//! One bounded Postgres discovery pass per gateway claim. The admission is the queue.
+//! One bounded Postgres discovery pass per gateway assignment. The turn is the queue.
 
 use crate::{
     error::Result,
@@ -22,8 +22,9 @@ struct PollCost {
 }
 
 impl Runs {
-    /// Select the oldest eligible admission of one fleet, fenced with its slot.
-    /// Each triggered claim probes Postgres; the daemon's recovery tick covers lost notifications.
+    /// Select the oldest eligible turn of one fleet, fenced with its thread.
+    /// Each triggered assignment probes Postgres; the daemon's recovery tick covers lost
+    /// notifications.
     ///
     /// # Errors
     /// Preserves database failures and malformed stored identifiers.
@@ -56,7 +57,7 @@ impl Runs {
 pub(crate) const fn started(kind: Kind) -> RunStart {
     match kind {
         Kind::Fresh => RunStart::Fresh,
-        Kind::Reclaim => RunStart::Reclaimed,
+        Kind::Reassigned => RunStart::Reassigned,
     }
 }
 

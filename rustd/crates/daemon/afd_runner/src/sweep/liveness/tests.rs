@@ -69,7 +69,7 @@ fn a_clock_that_went_backwards_does_not_make_a_runner_stale() {
     // A last-seen stamp in the FUTURE is what an NTP correction or a clock skew
     // between two database replicas produces. It reads as no time elapsed —
     // the safe direction, because the alternative reports a live runner
-    // offline and releases the slots it is actively using.
+    // offline and releases the threads it is actively using.
     assert!(
         !seen_at(clock::after(NOW, RUNNER_OFFLINE_AFTER))
             .is_stale(af_core::timing::RunClock::default())

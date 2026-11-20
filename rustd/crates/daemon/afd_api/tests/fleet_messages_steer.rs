@@ -182,7 +182,7 @@ async fn the_message_bound_is_measured_on_the_decoded_bytes() {
 
 /// A well-formed steer reaches the store, and the outage is a 503.
 ///
-/// No status read runs before the admission, so this proves the message got
+/// No status read runs before the turn is written, so this proves the message got
 /// past the body reader and the ledger's one statement is what refused, not
 /// that a steer was silently accepted into a queue nobody polls.
 #[tokio::test]

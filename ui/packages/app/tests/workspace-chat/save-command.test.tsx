@@ -98,10 +98,10 @@ it("does not write a setup when the model turn fails", async () => {
 });
 
 it("keeps chatting available after the save message is refused", async () => {
-  const admission = Promise.withResolvers<Response>();
-  fixture.messageResponse = admission.promise;
+  const turn = Promise.withResolvers<Response>();
+  fixture.messageResponse = turn.promise;
   await requestSave();
-  await act(async () => admission.resolve(response({}, 409)));
+  await act(async () => turn.resolve(response({}, 409)));
   await screen.findByRole("alert");
   await waitFor(() => expect(screen.queryByText(SAVING, {exact: true})).toBeNull());
   fireEvent.change(screen.getByRole("textbox"), {target: {value: "Which apps can it watch?"}});

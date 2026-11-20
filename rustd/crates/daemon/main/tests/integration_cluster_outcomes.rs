@@ -12,9 +12,9 @@
 //! arm names the hazard it closes, and each is a failure that shows up only at
 //! run time and looks like nothing in a log:
 //!
-//! - a second admission must be a second turn in the `thread.turns`
+//! - a second turn must be a second row in the `thread.turns`
 //!   ledger, not a replay of the first;
-//! - an admission rings the wake ring (`af.thread.<id>.wake`) and the scheduler
+//! - a turn rings the wake ring (`af.thread.<id>.wake`) and the scheduler
 //!   reads the ledger's candidates, so an assignment that never arrives is a runner
 //!   idling beside work;
 //! - a live frame is published on whichever NATS node the daemon holds, so a
@@ -76,16 +76,16 @@ async fn prove_capabilities(scene: &Scenario) {
     );
 }
 
-/// A second admission onto a fleet whose ledger already holds one.
+/// A second turn onto a fleet whose ledger already holds one.
 ///
 /// # The hazard
 ///
-/// Admission is at most once per key: a repeat of one operation returns the
+/// Intake is at most once per key: a repeat of one operation returns the
 /// event it already admitted. A key that collided across two distinct
 /// operations would answer the second with the first's event, and the work
 /// would silently never run. The seed's key is minted per call, so the second
-/// admission must be a new event.
-async fn a_second_admission_is_a_second_event(scene: &Scenario) -> Uuid7 {
+/// turn must be a new event.
+async fn a_second_turn_is_a_second_event(scene: &Scenario) -> Uuid7 {
     let second = scene.enqueue_event(SUPPORTED_EVENT).await;
     assert_ne!(
         second, scene.turn_id,
@@ -98,7 +98,7 @@ async fn a_second_admission_is_a_second_event(scene: &Scenario) -> Uuid7 {
 ///
 /// # The hazard
 ///
-/// Readiness is the Postgres admissions ledger: an admission commits a row in
+/// Readiness is the Postgres turns ledger: intake commits a row in
 /// `thread.turns`, then rings the NATS wake ring for the fleet's thread,
 /// and the scheduler reads the ledger's candidates and pushes an assignment down
 /// the runner's stream. A scheduler that never heard the ring, or read a
@@ -108,7 +108,7 @@ async fn the_runner_is_assigned_the_fleets_oldest_event(scene: &Scenario) -> (St
     // Other fleets' heads may be assigned first: candidates are ordered at
     // random among eligible fleets. `wait_for_seeded_assignment` reads assignments until
     // this scenario's own event arrives, which is the OLDEST unsettled
-    // admission on this fleet.
+    // turn on this fleet.
     wait_for_seeded_assignment(scene).await
 }
 
@@ -184,7 +184,7 @@ async fn a_report_settles_once(scene: &Scenario, run_id: &str, fence: u64) {
     assert_eq!(
         run_column(scene, run_id, "status").await.as_deref(),
         Some("reported"),
-        "the run is terminal, which is what stops the reclaim sweep re-issuing it"
+        "the run is terminal, which is what stops the expiry sweep re-issuing it"
     );
 
     let logged = ledger_rows(scene).await;
@@ -212,10 +212,10 @@ async fn a_report_settles_once(scene: &Scenario, run_id: &str, fence: u64) {
 /// # The hazard
 ///
 /// The fleet still holds the second event this suite admitted, and that
-/// admission's wake ring fired before the first run settled. A settle that
-/// closed more than its own admission leaves the documented outcome intact on
+/// turn's wake ring fired before the first run settled. A settle that
+/// closed more than its own turn leaves the documented outcome intact on
 /// THIS report and loses the next event entirely, which is why the remaining
-/// work is claimed rather than counted.
+/// work is assigned rather than counted.
 async fn the_fleet_is_still_discoverable_for_its_remaining_work(
     scene: &Scenario,
     second_event: &Uuid7,
@@ -232,7 +232,7 @@ async fn test_cluster_preserves_application_outcomes() {
     let mut supervisor = Supervisor::new();
     let scene = scenario(&mut supervisor).await;
     prove_capabilities(&scene).await;
-    let second_event = a_second_admission_is_a_second_event(&scene).await;
+    let second_event = a_second_turn_is_a_second_event(&scene).await;
     let (run_id, fence) = the_runner_is_assigned_the_fleets_oldest_event(&scene).await;
     a_frame_crosses_the_cluster_to_its_subscriber(&scene, &run_id).await;
     a_report_settles_once(&scene, &run_id, fence).await;

@@ -88,7 +88,7 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
     crate::test_support::bounded("native decision progress", async {
         while requests
             .iter()
-            .filter(|call| call.verb == Verb::Activity)
+            .filter(|call| call.verb == Verb::Progress)
             .count()
             < 2
         {
@@ -121,7 +121,7 @@ fn preflight_reply(
             assert_eq!(*receipt.pointer("/receipt/cause").unwrap(), "preflight");
             json(&acknowledged())
         }
-        Verb::Activity => json(&serde_json::json!({})),
+        Verb::Progress => json(&serde_json::json!({})),
         _ => Answer::Fail(crate::error::config("unexpected decision request")),
     }
 }
@@ -217,7 +217,7 @@ fn failed_dispatch(api: &str, purpose: &str, fault: &str) -> serde_json::Value {
 fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpose: &str) {
     let authorities: Vec<_> = requests
         .iter()
-        .filter(|call| call.verb != Verb::Activity)
+        .filter(|call| call.verb != Verb::Progress)
         .map(|call| call.verb)
         .collect();
     assert_eq!(
@@ -226,7 +226,7 @@ fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpos
     );
     let progress: Vec<serde_json::Value> = requests
         .iter()
-        .filter(|call| call.verb == Verb::Activity)
+        .filter(|call| call.verb == Verb::Progress)
         .map(|call| serde_json::from_slice(call.body.as_ref().unwrap()).unwrap())
         .collect();
     assert_eq!(
@@ -272,7 +272,7 @@ fn receipt_retries(
                 json(&acknowledged())
             }
         }
-        Verb::Activity => json(&serde_json::json!({})),
+        Verb::Progress => json(&serde_json::json!({})),
         _ => Answer::Fail(crate::error::config("unexpected decision request")),
     }
 }

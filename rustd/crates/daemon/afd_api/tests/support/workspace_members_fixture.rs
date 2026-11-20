@@ -156,7 +156,7 @@ impl Members {
         .bind(&self.fleet)
         .fetch_all(&mut *connection)
         .await
-        .expect("John's fleet's admissions read")
+        .expect("John's fleet's turns read")
     }
 
     /// How many sends `invite` has counted, read from its row.

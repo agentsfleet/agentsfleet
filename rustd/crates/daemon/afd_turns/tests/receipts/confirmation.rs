@@ -1,4 +1,4 @@
-//! A committed admission stays accepted even when every notification fails.
+//! A committed turn stays accepted even when every notification fails.
 
 use super::{
     Fallible,
@@ -10,12 +10,12 @@ use super::{
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn notification_failure_cannot_downgrade_committed_acceptance() -> Fallible {
     let lane = Lane::seed().await?;
-    let admissions = over(&lane, afd_bus::test_util::unreachable());
-    let first = admit_against(&lane, &admissions).await;
+    let turns = over(&lane, afd_bus::test_util::unreachable());
+    let first = admit_against(&lane, &turns).await;
     let id = first.admitted()?.stored.id.clone();
     let confirmed = recording(async {
-        let once = confirm(&admissions, &lane).await?;
-        let again = confirm(&admissions, &lane).await?;
+        let once = confirm(&turns, &lane).await?;
+        let again = confirm(&turns, &lane).await?;
         Fallible::<_>::Ok((once, again))
     })
     .await;
@@ -35,9 +35,9 @@ async fn notification_failure_cannot_downgrade_committed_acceptance() -> Fallibl
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn confirming_an_absent_key_does_not_publish_or_create_work() -> Fallible {
     let lane = Lane::seed().await?;
-    let (mut rings, admissions) = over_bus(&lane).await?;
+    let (mut rings, turns) = over_bus(&lane).await?;
     assert_eq!(
-        admissions
+        turns
             .confirm(afd_turns::Producer::Steer, lane.fleet.as_str())
             .await?,
         None

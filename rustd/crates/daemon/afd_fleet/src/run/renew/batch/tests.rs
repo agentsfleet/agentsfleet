@@ -33,7 +33,7 @@ fn passing() -> Judged {
         admitted: Some(true),
         has_task: Some(false),
         extended_until: Some(jiff_sqlx::Timestamp::from(test_dead::AT)),
-        slot_moved: true,
+        thread_moved: true,
     }
 }
 
@@ -58,7 +58,7 @@ fn each_failed_check_answers_as_the_per_run_path_would() {
         (|row| row.priced_as_held = Some(false), Verdict::Moved),
         (|row| row.ceilings_current = Some(false), Verdict::Moved),
         (|row| row.over_budget = Some(true), Verdict::OverBudget),
-        (|row| row.slot_moved = false, Verdict::Lost),
+        (|row| row.thread_moved = false, Verdict::Lost),
         (|row| row.extended_until = None, Verdict::Lost),
     ];
     for (index, (fail, expected)) in cases.into_iter().enumerate() {

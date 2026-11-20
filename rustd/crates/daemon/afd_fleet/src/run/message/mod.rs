@@ -81,7 +81,7 @@ impl RunService {
             .count_message(&standing.run_id, request.fencing_token)
             .await?;
         let Some(part) = counted else {
-            // No slot taken: the run is at its cap, or a reclaim superseded the
+            // No thread taken: the run is at its cap, or a reassignment superseded the
             // holder after its standing was read. The second read says which.
             let Standing { run_id, .. } = standing;
             self.standing(runner_id, run_id, request.fencing_token)

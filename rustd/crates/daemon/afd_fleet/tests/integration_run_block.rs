@@ -128,10 +128,10 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     let second = runs
         .block(&acquired, Refusal::labelled(SECOND_LABEL))
         .await
-        .expect_err("a settled admission refuses another mutation");
+        .expect_err("a settled turn refuses another mutation");
 
     assert!(matches!(first, Ended::Now(_)));
-    // The settled admission refuses a second terminal mutation.
+    // The settled turn refuses a second terminal mutation.
     assert_eq!(second.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
     let (label, detail) = failure_of(&fixtures, fleet, event).await;
     assert_eq!(label, FIRST_LABEL, "the first refusal must stand");

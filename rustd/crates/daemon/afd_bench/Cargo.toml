@@ -29,7 +29,7 @@ afd_runner.workspace = true
 # The steer ingress path the steer lane drives.
 afd_turns.workspace = true
 # The rest of the run plane the drain composes: `Plane::run` walks past the
-# claim into the payer's wallet (`afd_billing`), the provider
+# assignment into the payer's wallet (`afd_billing`), the provider
 # (`afd_credential`), the vault (`afd_vault`), the approval gate (`afd_gate`)
 # and the standing grants (`afd_approval`). The drain builds the same plane the daemon's root builds,
 # so each is here for the same reason `afd_fleet` is: a copy would not be the
@@ -38,7 +38,7 @@ afd_billing.workspace = true
 afd_credential.workspace = true
 afd_gate.workspace = true
 afd_approval.workspace = true
-# The setup chat half of the production poll: `Plane::claim` admits chat
+# The setup chat half of the production poll: `RunService::assign_with` admits chat
 # work through `Drafts`, and the saturation shape seeds its drafts through
 # `Drafts::create`, the route's own write path.
 afd_setup.workspace = true

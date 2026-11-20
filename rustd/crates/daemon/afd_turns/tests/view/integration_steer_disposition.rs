@@ -43,11 +43,11 @@ INSERT INTO thread.runs
 VALUES ($1, $2, $3, $4, $5, $6, now(),
         'platform', 'test', 'test', now(), 1, now() + interval '1 hour', $7, 0, now(), now())";
 
-/// Opens a waiting turn as the claim does when a run takes it.
+/// Opens a waiting turn as the assignment does when a run takes it.
 const OPEN_TURN: &str =
     "UPDATE thread.turns SET opened_at = now(), status = $2, updated_at = now() WHERE id = $1";
 
-const INSERT_SLOT: &str = "\
+const INSERT_THREAD: &str = "\
 INSERT INTO thread.threads
   (id, fleet_id, last_runner_id, fencing_token, run_expires_at, created_at, updated_at)
 VALUES ($1, $1, $2, 1, now() + interval '1 hour', now(), now())
@@ -82,7 +82,7 @@ fn placed(disposition: SteerDisposition, joined: Option<&str>) -> Placed {
 }
 
 /// Makes the run `head` began the fleet's live run: a runner, the event the
-/// run serves, an active run on it and the fleet's slot held under it.
+/// run serves, an active run on it and the fleet's thread held under it.
 async fn go_live(lane: &TurnsLane, head: &str) -> Outcome {
     let head = Uuid7::parse(head)?;
     let runner = mint_id();
@@ -90,7 +90,7 @@ async fn go_live(lane: &TurnsLane, head: &str) -> Outcome {
     RunnerSeed::new(&runner, afd_state::sql::RUNNER_STATUS_ACTIVE, POLICY)
         .insert(&mut *connection)
         .await?;
-    // The send wrote the head's turn; a claim opens it, as here.
+    // The send wrote the head's turn; an assignment opens it, as here.
     sqlx::query(OPEN_TURN)
         .bind(&head)
         .bind(status::RECEIVED)
@@ -106,7 +106,7 @@ async fn go_live(lane: &TurnsLane, head: &str) -> Outcome {
         .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .execute(&mut *connection)
         .await?;
-    sqlx::query(INSERT_SLOT)
+    sqlx::query(INSERT_THREAD)
         .bind(&lane.fleet)
         .bind(&runner)
         .execute(&mut *connection)
@@ -114,11 +114,11 @@ async fn go_live(lane: &TurnsLane, head: &str) -> Outcome {
     Ok(())
 }
 
-/// Parks `admission`, so a send behind it must wait for it.
-async fn park(lane: &TurnsLane, admission: &str) -> Outcome {
-    let admission = Uuid7::parse(admission)?;
+/// Parks `turn`, so a send behind it must wait for it.
+async fn park(lane: &TurnsLane, turn: &str) -> Outcome {
+    let turn = Uuid7::parse(turn)?;
     sqlx::query("UPDATE thread.turns SET parked_at = now() WHERE id = $1")
-        .bind(&admission)
+        .bind(&turn)
         .execute(&mut *lane.connection().await)
         .await?;
     Ok(())
@@ -129,7 +129,7 @@ async fn park(lane: &TurnsLane, admission: &str) -> Outcome {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_send_to_a_fleet_with_nothing_running_starts_a_run() -> Outcome {
     let lane = TurnsLane::open().await;
-    let started = send(&Steer::new(lane.admissions()), &lane, None).await?;
+    let started = send(&Steer::new(lane.turns()), &lane, None).await?;
     assert_eq!(started.placed, placed(SteerDisposition::Started, None));
     assert!(!started.replayed());
     lane.cleanup().await;
@@ -141,7 +141,7 @@ async fn a_send_to_a_fleet_with_nothing_running_starts_a_run() -> Outcome {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_send_behind_a_live_run_folds_into_it() -> Outcome {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let head = send(&steer, &lane, None).await?;
     go_live(&lane, &head.turn_id).await?;
 
@@ -161,7 +161,7 @@ async fn a_send_behind_a_live_run_folds_into_it() -> Outcome {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_send_behind_a_parked_message_waits_its_turn() -> Outcome {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let head = send(&steer, &lane, None).await?;
     go_live(&lane, &head.turn_id).await?;
     let gated = send(&steer, &lane, None).await?;
@@ -179,7 +179,7 @@ async fn a_send_behind_a_parked_message_waits_its_turn() -> Outcome {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_retry_of_the_send_that_started_the_run_is_still_started() -> Outcome {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let first = send(&steer, &lane, Some(OPERATION)).await?;
     assert_eq!(first.placed, placed(SteerDisposition::Started, None));
     go_live(&lane, &first.turn_id).await?;
@@ -197,7 +197,7 @@ async fn a_retry_of_the_send_that_started_the_run_is_still_started() -> Outcome 
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_retry_of_a_folded_send_stays_folded() -> Outcome {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let head = send(&steer, &lane, None).await?;
     go_live(&lane, &head.turn_id).await?;
     let first = send(&steer, &lane, Some(OPERATION)).await?;

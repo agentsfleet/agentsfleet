@@ -68,7 +68,7 @@ pub(crate) fn operation_conflict() -> Error {
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    let admission = crate::error::one_of_each_kind()
+    let turn = crate::error::one_of_each_kind()
         .into_iter()
         .find(|(label, _error)| *label == "datastore")
         .expect("the ledger declares an unavailable kind")
@@ -89,9 +89,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("cursor malformed", cursor_malformed()),
         ("operation conflict", operation_conflict()),
-        (
-            "admission",
-            ErrorKind::TurnWrite { source: admission }.into(),
-        ),
+        ("turn", ErrorKind::TurnWrite { source: turn }.into()),
     ]
 }

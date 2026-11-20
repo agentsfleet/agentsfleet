@@ -6,8 +6,8 @@ mod clients;
 use super::*;
 use clients::{connectors, interjector, logins, schedules};
 
-/// One durable ledger shared by this fixture's admission producers.
-pub(crate) fn admissions(database: &Db, bus: &afd_bus::Handle) -> afd_turns::Turns {
+/// One durable ledger shared by this fixture's turn producers.
+pub(crate) fn turns(database: &Db, bus: &afd_bus::Handle) -> afd_turns::Turns {
     afd_turns::Turns::for_tests(database.clone(), bus.clone())
 }
 
@@ -129,7 +129,7 @@ impl Inputs {
             MockVerifier::refusing(VerifyError::NotConfigured),
         );
         let bus = afd_bus::test_util::unreachable();
-        let ledger = admissions(&database, &bus);
+        let ledger = turns(&database, &bus);
         let providers = HarnessProviders::Live(Providers::new(
             database.clone(),
             Arc::new(Kek::from_bytes(FIXTURE_KEK)),

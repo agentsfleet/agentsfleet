@@ -28,7 +28,7 @@ use crate::steers::Crew;
 use crate::verbs::enqueue_from_thread;
 use crate::wire::{report, report_body, wait_for_assignment};
 
-/// How many identical steers race for one admission, released together.
+/// How many identical steers race for one turn, released together.
 const RACERS: usize = 100;
 
 /// How many different steers one run sends in a row.
@@ -82,7 +82,7 @@ async fn fleet_steer_admits_once_under_the_fleet_actor() {
         "the callers overlapped: peak in flight {}",
         peak.load(Ordering::SeqCst)
     );
-    let rows = crew.admissions(&target).await;
+    let rows = crew.turns(&target).await;
     assert_eq!(rows.len(), 1, "{answers:?}");
     let row = &rows[0];
     assert_eq!(row.producer, "steer");
@@ -134,12 +134,12 @@ async fn fleet_steer_copies_the_sender_reply_destination() {
         .await;
     assert_eq!(status, 202);
 
-    let sender = crew.admissions(&crew.run().fleet).await;
+    let sender = crew.turns(&crew.run().fleet).await;
     let asked = sender
         .iter()
         .find(|row| row.id == thread_event)
-        .expect("the thread's admission");
-    let rows = crew.admissions(&target).await;
+        .expect("the thread's turn");
+    let rows = crew.turns(&target).await;
     assert_eq!(rows.len(), 2);
     assert_eq!(
         (&rows[0].reply_provider, &rows[0].reply_address),
@@ -177,7 +177,7 @@ async fn fleet_steer_replays_before_status() {
         (202, &first["turn_id"]),
         "{archived}"
     );
-    assert_eq!(crew.admissions(&target).await.len(), 1);
+    assert_eq!(crew.turns(&target).await.len(), 1);
     crew.finish(supervisor).await;
 }
 
@@ -249,7 +249,7 @@ async fn fleet_steer_masks_secret_values() {
         .steer((&run, fence), &target, &format!("use {TOKEN}"))
         .await;
     assert_eq!(status, 202);
-    let rows = crew.admissions(&target).await;
+    let rows = crew.turns(&target).await;
     assert!(
         !rows[0].request_json.contains(TOKEN),
         "{}",
@@ -279,6 +279,6 @@ async fn fleet_steer_has_no_per_run_limit() {
             "{answer}"
         );
     }
-    assert_eq!(crew.admissions(&target).await.len(), STEPS);
+    assert_eq!(crew.turns(&target).await.len(), STEPS);
     crew.finish(supervisor).await;
 }

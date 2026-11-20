@@ -165,11 +165,11 @@ impl CronLane {
             .expect("the lane's Postgres must answer")
     }
 
-    /// The admission ledger every fire in this suite writes through.
+    /// The turn ledger every fire in this suite writes through.
     ///
     /// Built from the lane's own pool and its bus, so a test names what it is
     /// exercising rather than restating how a ledger is assembled.
-    pub(crate) fn admissions(&self) -> afd_turns::Turns {
+    pub(crate) fn turns(&self) -> afd_turns::Turns {
         afd_turns::Turns::for_tests(self.database.clone(), self.bus.clone())
     }
 

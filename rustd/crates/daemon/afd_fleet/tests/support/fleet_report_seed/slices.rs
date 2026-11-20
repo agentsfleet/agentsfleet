@@ -1,4 +1,4 @@
-//! What a held run does over time: the relay settling its lines, a claim
+//! What a held run does over time: the relay settling its lines, an assignment
 //! superseding its fence, and the meter's slices.
 
 use afd_billing::biller::{Biller as _, WorkKey};
@@ -28,7 +28,7 @@ impl Held {
         }
     }
 
-    /// Moves the fleet's live sequence one past the held run, as a won claim
+    /// Moves the fleet's live sequence one past the held run, as a won assignment
     /// does before it expires the prior run, and answers the new sequence.
     pub(crate) async fn supersede(&self) -> u64 {
         let mut connection = self

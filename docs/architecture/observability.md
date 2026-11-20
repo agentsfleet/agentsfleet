@@ -158,8 +158,8 @@ worked is a fair question with a real answer; it just is not a promise.
 A `replayed` turn counts as good for the same reason: the first
 turn's identifier stands, so the producer got the answer it asked for.
 
-`reclaimed` run grants are excluded from the fleet-start numerator on the
-mirror of that logic. A reclaim restarts work that was queued and counted once. Counting the restart would let a flapping runner push the ratio above 1.
+`reassigned` run grants are excluded from the fleet-start numerator on the
+mirror of that logic. A reassignment restarts work that was queued and counted once. Counting the restart would let a flapping runner push the ratio above 1.
 
 An availability figure that improves as the fleet gets less
 stable is not measuring availability.
@@ -536,7 +536,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 | Steer turn written (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_turns_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
 | Wake ring (`afd_bus::wake`) | `turn_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
 | Run issued (`afd_fleet` run delivery) | `runner_run_issued` with `queue_wait_ms`; `run_window_read_failed` | Gateway assign attempts and candidate counts; `delivery_stage{event_to_assign}` | `fleet.assign` with its stages; none for an empty pass |
-| Fold taken (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_run_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
+| Fold taken (`afd_api_runner` folds handler, `afd_fleet`) | `folds_assigned`, `folds_settled`; `runner_folds_failed` | `agentsfleet_run_folds_total{outcome}` (`assigned` at the assignment, `settled` at the report) | request span only |
 | Run (runner `run_loop`) | `run_completed` / `run_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.run` with its segment attributes, same condition |
 | Report settled (`afd_fleet` run report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{assign_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
 | First chunk (`afd_fleet` run activity) | none | `delivery_stage{run_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |

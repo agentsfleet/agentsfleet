@@ -87,8 +87,8 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
 }
 
 /// Binds two goals, so the second queues a task-bound continuation, then
-/// retires the source and lapses the claim: the continuation becomes the head.
-/// Answers the continuation's admission.
+/// retires the source and lapses the assignment: the continuation becomes the head.
+/// Answers the continuation's turn.
 async fn queued_continuation(case: &Case) -> Uuid7 {
     let binding = case
         .tasks
@@ -136,10 +136,10 @@ async fn execute(case: &Case, statement: &'static str, id: &Uuid7) {
         .expect("the fixture statement runs");
 }
 
-/// Marks one admission settled, as its report leaves it.
+/// Marks one turn settled, as its report leaves it.
 const SETTLE: &str = "UPDATE thread.turns SET settled_at = clock_timestamp() WHERE id = $1";
 
-/// Lapses the fleet's claim and its run, as an expired holder leaves them.
+/// Lapses the fleet's assignment and its run, as an expired holder leaves them.
 async fn lapse(case: &Case) {
     execute(
         case,
@@ -234,7 +234,7 @@ async fn platform_task_revision_never_runs_on_a_tenant_runner() {
 
 // Value: protects=a head a tenant runner may not take blocks the fleet for it;
 // fails_when=the model test filters rows before `ORDER BY sequence LIMIT 1`, so
-// a later admission jumps the head; why_new=the model filter; seam=none.
+// a later turn jumps the head; why_new=the model filter; seam=none.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn tenant_runner_never_jumps_a_platform_model_head() {

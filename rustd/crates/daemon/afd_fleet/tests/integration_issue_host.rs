@@ -115,10 +115,10 @@ async fn issue_refuses_full_host_in_insert() {
     let runs = fixtures.runs_with_dead_bus();
     let one = select_fleet(&runs, &runner, &first)
         .await
-        .expect("the first fleet is claimed");
+        .expect("the first fleet is assigned");
     let two = select_fleet(&runs, &runner, &second)
         .await
-        .expect("the second fleet is claimed while the host is empty");
+        .expect("the second fleet is assigned while the host is empty");
 
     assert!(issue(&fixtures, &runs, &runner, &one, &tenant).await);
     let version = scalar(&fixtures, VERSION, &runner).await;
@@ -148,17 +148,17 @@ async fn concurrent_issues_never_overfill_a_host() {
     let all = fleets(&fixtures, &first, &workspace, &tenant, ISSUERS).await;
     set_workers(&fixtures, &runner, WORKERS).await;
     let runs = fixtures.runs_with_dead_bus();
-    let mut claimed = Vec::with_capacity(ISSUERS);
+    let mut assigned = Vec::with_capacity(ISSUERS);
     for fleet in &all {
-        claimed.push(
+        assigned.push(
             select_fleet(&runs, &runner, fleet)
                 .await
-                .expect("every fleet is claimed before any issue"),
+                .expect("every fleet is assigned before any issue"),
         );
     }
 
     let issued = futures_util::future::join_all(
-        claimed
+        assigned
             .iter()
             .map(|held| issue(&fixtures, &runs, &runner, held, &tenant)),
     )

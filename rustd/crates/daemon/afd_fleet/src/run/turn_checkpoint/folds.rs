@@ -7,11 +7,11 @@ use super::{TurnCheckpointRefusal, guard::TurnRunGuard, root, row::Plan};
 use crate::{Result, error::query};
 
 #[derive(sqlx::FromRow)]
-struct ClaimRow {
+struct FoldRow {
     id: Uuid7,
     sequence: i64,
-    input_claim_run_id: Option<Uuid7>,
-    input_claim_fence: Option<i64>,
+    input_run_id: Option<Uuid7>,
+    input_fence: Option<i64>,
     foldable: bool,
 }
 
@@ -25,7 +25,7 @@ pub(super) async fn validate(
         return Ok(expected);
     };
     let pattern = format!("{}%", afd_turns::view::ACTOR_PREFIX);
-    let actual: Vec<ClaimRow> = sqlx::query_as(include_str!("sql/validate_folds.sql"))
+    let actual: Vec<FoldRow> = sqlx::query_as(include_str!("sql/validate_folds.sql"))
         .bind(&owner.current.turn_id)
         .bind(&owner.current.fleet_id)
         .bind(&owner.current.workspace_id)
@@ -48,11 +48,10 @@ pub(super) async fn validate(
                 || row.sequence != saved.sequence
                 || !row.foldable
                 || writer.is_some_and(|(run, fence)| {
-                    row.input_claim_run_id.as_ref() != Some(run)
-                        || row.input_claim_fence != Some(fence)
+                    row.input_run_id.as_ref() != Some(run) || row.input_fence != Some(fence)
                 })
                 || row
-                    .input_claim_fence
+                    .input_fence
                     .is_some_and(|fence| fence > owner.current.fence)
         })
     {

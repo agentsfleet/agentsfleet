@@ -31,7 +31,7 @@ impl Running {
     ///
     /// For a test that asserts WHICH queued authoring turn the host is given.
     /// Placement takes the oldest queued draft across every tenant, so on the
-    /// shared lane a sibling suite's leftover or backdated draft wins the slot.
+    /// shared lane a sibling suite's leftover or backdated draft wins the thread.
     /// A private database makes this test's draft the only candidate, and its
     /// platform defaults the only ones. `cleanup` drops it.
     pub(super) async fn create_isolated() -> Self {

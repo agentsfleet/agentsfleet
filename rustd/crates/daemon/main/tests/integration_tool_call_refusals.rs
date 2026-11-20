@@ -138,19 +138,19 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
     let (scene, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
     let (run_id, fence) = run(&scene).await;
-    let claimed = (run_id.as_str(), fence);
+    let assigned = (run_id.as_str(), fence);
 
     // `{}` arguments make each record exactly 64 KiB; sixteen fill the event.
     let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
     let full: Vec<Value> = (1..=16).map(|n| record(n, &output)).collect();
     for batch in full.chunks(3) {
-        assert_eq!(post_records(&http, &scene, claimed, batch).await.0, 200);
+        assert_eq!(post_records(&http, &scene, assigned, batch).await.0, 200);
     }
-    let (_, body) = post_records(&http, &scene, claimed, &[record(17, "x")]).await;
+    let (_, body) = post_records(&http, &scene, assigned, &[record(17, "x")]).await;
     assert_eq!(body["skipped_count"], 1, "the event is full: {body}");
 
     let replacement = [record(16, "replaced")];
-    let (status, body) = post_records(&http, &scene, claimed, &replacement).await;
+    let (status, body) = post_records(&http, &scene, assigned, &replacement).await;
     assert_eq!(status, 200);
     assert_eq!(
         body,

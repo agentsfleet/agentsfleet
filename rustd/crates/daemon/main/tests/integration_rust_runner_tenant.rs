@@ -107,7 +107,7 @@ async fn tenant_runner(scene: &Scenario, credential: &str) -> (Uuid7, String) {
 }
 
 // Value: protects=a tenant's own runner completes a chat on the tenant's model,
-// billed self-managed; fails_when=any of register, connect, claim, delivery or
+// billed self-managed; fails_when=any of register, connect, assignment, delivery or
 // report refuses a tenant runner; why_new=tenant runners; seam=the Rust runner
 // against the shipping daemon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

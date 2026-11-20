@@ -127,7 +127,7 @@ async fn without_text(f: &Fixture, a: &Attempt) {
     );
 }
 
-/// The admission predicate: an unsettled or unknown attempt blocks the draft.
+/// The assignment predicate: an unsettled or unknown attempt blocks the draft.
 async fn outstanding(f: &Fixture, a: &Attempt) -> bool {
     sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM setup.attempts WHERE draft_id=$1 \

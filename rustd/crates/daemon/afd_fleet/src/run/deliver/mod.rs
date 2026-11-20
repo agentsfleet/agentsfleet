@@ -1,4 +1,4 @@
-//! The delivery half: what an admitted claim becomes.
+//! The delivery half: what an assignment the gates admit becomes.
 //!
 //! Split from [`super::pull`] at the seam the verb itself has. Everything up
 //! to admission is a sequence of REFUSALS — money, gates, spellings — and

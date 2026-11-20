@@ -63,7 +63,7 @@ export class FakeEventSource {
     const named = this.listeners.get(frame.kind);
     if (!named) return;
     // Most fixtures describe a run from its first chunk. Explicit markers
-    // exercise late subscribers, gaps, and reclaim on the same event.
+    // exercise late subscribers, gaps, and reassignment on the same event.
     // Fixtures default to the daemon's first attempt; explicit missing fields stay missing.
     let wire: LiveFrame = "turn_id" in frame && !("fencing_token" in frame)
       ? {...frame, fencing_token: "1"} : frame;

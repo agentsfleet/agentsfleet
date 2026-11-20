@@ -8,7 +8,7 @@
 //! an event that then PARKS behind a gate never closes, so that frame is the
 //! only word the tail hears about it. If it carried the old count, the tile
 //! would show a fleet that never received the event a human is being asked
-//! about. Proven against the lane because the claim is about the trigger's
+//! about. Proven against the lane because the assignment is about the trigger's
 //! timing relative to the read, which no stub reproduces.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
@@ -81,7 +81,7 @@ async fn parked() -> Parked {
     assert_eq!(received.delivery, Delivery::First);
     let counters = received
         .counters
-        .expect("a first delivery carries the counters its claim moved");
+        .expect("a first delivery carries the counters its assignment moved");
     assert_eq!(
         afd_turns::view::fleet_counters(&fixtures.database, &fleet)
             .await
@@ -207,14 +207,14 @@ async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
     let mut run = parked().await;
     let _opening = next_frame(&mut run.tail).await;
 
-    // The holder stops renewing; its slot lapses and the admission is claimed
-    // again, over the row the first claim opened.
+    // The holder stops renewing; its thread lapses and the turn is assigned
+    // again, over the row the first assignment opened.
     run.fixtures
-        .age(Row::Slot(&run.fleet), "run_expires_at", LAPSE)
+        .age(Row::Thread(&run.fleet), "run_expires_at", LAPSE)
         .await;
     let again = crate::seed::select_fleet(&run.fixtures.runs(), &run.runner, &run.fleet)
         .await
-        .expect("the lapsed admission is claimed again")
+        .expect("the lapsed turn is assigned again")
         .opened
         .received;
     assert_eq!(again.delivery, Delivery::Repeat);

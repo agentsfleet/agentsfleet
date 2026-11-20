@@ -92,7 +92,7 @@ garde.workspace = true
 philiprehberger-cron-parser = "0.3.0"
 
 [dev-dependencies]
-# The lane builds the admission ledger every fire writes through; the crate's
+# The lane builds the turn ledger every fire writes through; the crate's
 # own code reaches the ledger only through `afd_turns`, so this is a
 # test-side dependency and not a second door.
 afd_turns = { workspace = true, features = ["test-util"] }

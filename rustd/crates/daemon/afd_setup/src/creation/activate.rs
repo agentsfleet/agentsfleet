@@ -163,7 +163,7 @@ impl Creations {
         )
         .await
         .map_err(query(CONTEXT))?;
-        afd_turns::view::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+        afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.streams()))
             .await
             .map_err(query(CONTEXT))?;
         // Only the commit whose guarded update moved `installing` to `active`

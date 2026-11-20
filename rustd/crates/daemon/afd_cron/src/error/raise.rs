@@ -132,12 +132,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
 )]
 fn wrapping_kinds() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    // By label, not by position — see `admission_sample`. Taking `.next()`
+    // By label, not by position — see `turn_sample`. Taking `.next()`
     // here would tie this sample set to the order a different crate lists its
     // kinds in, and the two needed sit on opposite sides of
     // `is_datastore_unavailable`.
-    let admission = admission_sample("query");
-    let admission_gone = admission_sample("datastore");
+    let turn = turn_sample("query");
+    let turn_gone = turn_sample("datastore");
     let identifier =
         af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     vec![
@@ -153,16 +153,10 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
             "identifier",
             ErrorKind::Identifier { source: identifier }.into(),
         ),
+        ("turn write", ErrorKind::TurnWrite { source: turn }.into()),
         (
-            "admission",
-            ErrorKind::TurnWrite { source: admission }.into(),
-        ),
-        (
-            "admission gone",
-            ErrorKind::TurnWrite {
-                source: admission_gone,
-            }
-            .into(),
+            "turn gone",
+            ErrorKind::TurnWrite { source: turn_gone }.into(),
         ),
         (
             "upstream unreachable",
@@ -259,7 +253,7 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
     clippy::expect_used,
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
-fn admission_sample(label: &str) -> afd_turns::Error {
+fn turn_sample(label: &str) -> afd_turns::Error {
     afd_turns::error::one_of_each_kind()
         .into_iter()
         .find(|(named, _)| *named == label)

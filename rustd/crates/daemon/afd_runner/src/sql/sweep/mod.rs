@@ -8,7 +8,7 @@
 //!
 //! A sweeper's pass can fail halfway and be re-run, so each statement either
 //! changes nothing on a second pass (the offline event's unique stamp, the
-//! drained transition's status predicate) or converges (the slot expiry's `>`
+//! drained transition's status predicate) or converges (the thread expiry's `>`
 //! guard). That is what lets [`crate::sweep::run`] report a failure and carry
 //! on rather than having to unwind one.
 //!
@@ -54,7 +54,7 @@ pub const MARK_DRAINED_IF_IDLE: &str = include_str!("mark_drained_if_idle.sql");
 
 /// One batch of settled runs past the retention window.
 ///
-/// `updated_at`, not `created_at`, is the retention clock: settle and reclaim
+/// `updated_at`, not `created_at`, is the retention clock: settle and expiry
 /// both stamp it, so the window counts from the settlement the API documents.
 /// `FOR UPDATE SKIP LOCKED` because every replica runs its own sweeper, and
 /// with it concurrent sweepers take disjoint batches.
@@ -80,7 +80,7 @@ pub const DELETE_AGED_RUNNER_EVENTS_BATCH: &str =
 /// One batch of abandoned `active` runs, flipped to `expired`.
 ///
 /// The rows nothing will ever settle: a fleet whose events stopped arriving is
-/// never re-held, so the reclaim path never reaches its stranded run. What
+/// never re-held, so the reassignment path never reaches its stranded run. What
 /// makes an age-keyed flip safe here is the renewal CEILING — a run anything
 /// still holds is at most `MAX_RUNTIME` stale, and the retention window is
 /// longer than that, so a row past it is provably abandoned.
@@ -100,5 +100,5 @@ pub const EXPIRE_ABANDONED_ACTIVE_RUNS_BATCH: &str =
 /// the result is bounded by the status vocabulary and never by the table.
 pub const COUNT_FLEETS_BY_STATUS: &str = include_str!("count_fleets_by_status.sql");
 
-/// Unsettled admissions and age of the oldest, from the queue index.
+/// Unsettled turns and age of the oldest, from the queue index.
 pub const COUNT_TURN_BACKLOG: &str = include_str!("count_turn_backlog.sql");

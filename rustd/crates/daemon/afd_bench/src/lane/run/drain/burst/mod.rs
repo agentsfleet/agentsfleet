@@ -115,7 +115,7 @@ async fn measure(
     let stop = CancellationToken::new();
     // Any early return below ends the sampler: the guard cancels on drop.
     let _ends_sampler = stop.clone().drop_guard();
-    let sampler = tokio::spawn(peak_backlog(admissions(stores), stop.clone()));
+    let sampler = tokio::spawn(peak_backlog(turns(stores), stop.clone()));
     let pacers = spawn_pacers(burst, parameters, stores, staged, &pickups, &appends);
     let measured = window(
         sessions,
@@ -173,7 +173,7 @@ fn spawn_pacers(
         .fleets
         .iter()
         .map(|fleet| {
-            let steer = Arc::new(Steer::new(admissions(stores)));
+            let steer = Arc::new(Steer::new(turns(stores)));
             let target = Arc::new((fleet.fleet.clone(), fleet.workspace.clone()));
             let (pickups, appends) = (Arc::clone(pickups), Arc::clone(appends));
             tokio::spawn(async move {
@@ -215,15 +215,15 @@ async fn append_one(
 }
 
 /// The intake over the lane's pool and Bus.
-fn admissions(stores: &Datastores) -> Turns {
+fn turns(stores: &Datastores) -> Turns {
     Turns::new(stores.database.clone(), stores.bus.clone(), Entropy::new())
 }
 
 /// Sample the unsettled backlog until told to stop, answering its peak.
-async fn peak_backlog(admissions: Turns, stop: CancellationToken) -> u64 {
+async fn peak_backlog(turns: Turns, stop: CancellationToken) -> u64 {
     let mut peak = 0;
     while !stop.is_cancelled() {
-        if let Ok(backlog) = admissions.backlog().await {
+        if let Ok(backlog) = turns.backlog().await {
             peak = peak.max(backlog.rows);
         }
         tokio::select! {

@@ -7,7 +7,7 @@
 
 use super::*;
 
-/// The event a Slack-requested run names its branch after, as the admission
+/// The event a Slack-requested run names its branch after, as the turn
 /// ledger mints one.
 const SLACK_EVENT: &str = "1700000000000-7";
 

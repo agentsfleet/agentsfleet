@@ -9,7 +9,7 @@
 //!
 //! The store suites freeze time at `ENROLLED_AT` because they call verbs
 //! directly and pass the instant in. Here the daemon reads its own clock, so a
-//! frozen seed would place the admission and the run deadline years
+//! frozen seed would place the turn and the run deadline years
 //! apart and the assignment pass would correctly find nothing. Everything below
 //! is stamped from [`af_core::clock::now`] for that reason, which is also why
 //! nothing here asserts on an absolute instant.
@@ -130,7 +130,7 @@ pub(crate) struct Scenario {
     pub(crate) workspace: Uuid7,
     /// Its billing tenant.
     pub(crate) tenant: Uuid7,
-    /// The admission identifier shared by the run, report, and narrative.
+    /// The turn identifier shared by the run, report, and narrative.
     pub(crate) turn_id: Uuid7,
     /// The enrolled runner's durable identifier.
     pub(crate) runner_id: Uuid7,
@@ -151,7 +151,7 @@ pub(crate) struct Scenario {
 
 /// Boots the daemon and seeds one funded fleet with one event and one runner.
 ///
-/// The fleet exists before its initial admission is committed.
+/// The fleet exists before its initial turn is committed.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     scenario_with_provider(supervisor, None).await
 }
@@ -285,7 +285,7 @@ impl Scenario {
     /// Retires this scenario's fleet, then closes its pools.
     ///
     /// Retired rather than only unmarked: a fleet left `active` with an open
-    /// run is re-marked by the next daemon's reclaim sweeper and held to
+    /// run is re-marked by the next daemon's expiry sweeper and held to
     /// the next scenario's runner — see `e2e_retire`. Takes `self` so the
     /// pools close with the scenario, and so no test can reach the fleet once
     /// it is retired.

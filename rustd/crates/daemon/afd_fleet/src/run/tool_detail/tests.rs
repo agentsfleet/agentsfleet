@@ -46,7 +46,7 @@ fn target(fence: i64, live_seq: i64) -> LiveRun {
 #[test]
 fn only_the_live_holder_of_its_own_fence_may_post() {
     assert!(target(7, 7).holds(7));
-    assert!(!target(6, 7).holds(6), "a reclaim moved the fleet on");
+    assert!(!target(6, 7).holds(6), "a reassignment moved the fleet on");
     assert!(!target(7, 7).holds(6), "a token that is not the run's own");
     assert!(
         !target(-1, -1).holds(0),

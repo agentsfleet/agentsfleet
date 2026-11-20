@@ -17,7 +17,7 @@ fn configured(fixture: &Decisions<'_>, settings: TaskSettings) -> Tasks {
     dependencies.policy = TaskPolicy::new(&checked);
     Tasks::new(
         fixture.case.held.runs.clone(),
-        fixture.case.admissions.clone(),
+        fixture.case.turns.clone(),
         dependencies,
     )
 }
@@ -185,7 +185,7 @@ async fn a_smaller_action_limit_refuses_the_complete_message() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_saved_fleet_slot_serializes_the_configured_unfinished_limit() {
+async fn the_saved_fleet_thread_serializes_the_configured_unfinished_limit() {
     exercise(async |case| {
         let settings = garde::Unvalidated::new(TaskSettings {
             max_unfinished_per_fleet: 1,
@@ -195,11 +195,7 @@ async fn the_saved_fleet_slot_serializes_the_configured_unfinished_limit() {
         .expect("one-task admission policy");
         let mut dependencies = afd_fleet::task::TaskDependencies::from(&case.held.fixtures.plane());
         dependencies.policy = TaskPolicy::new(&settings);
-        let tasks = Tasks::new(
-            case.held.runs.clone(),
-            case.admissions.clone(),
-            dependencies,
-        );
+        let tasks = Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies);
         let before = case.counts().await;
         let failure = tasks
             .bind(case.run(), &case.plan("two-objectives", 2))

@@ -142,9 +142,9 @@ pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uu
         .await
         .expect("enrolment must succeed");
     afd_fleet::run::Runs::new(booted.database.clone(), booted.bus.clone(), Entropy::new())
-        .claim(fleet, &enrolled.runner_id, std::time::Duration::ZERO)
+        .assign(fleet, &enrolled.runner_id, std::time::Duration::ZERO)
         .await
-        .expect("the affinity claim runs")
-        .expect("a freshly installed fleet is unclaimed");
+        .expect("the thread assignment runs")
+        .expect("a freshly installed fleet is unassigned");
     (enrolled.runner_id, enrolled.token.expose().to_owned())
 }

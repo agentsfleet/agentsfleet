@@ -60,7 +60,7 @@ const fn request(held: &crate::report_seed::Held, seq: u32) -> af_wire::usage::R
 }
 
 /// A runner re-sends its report, carrying the same request, while the first
-/// is still in flight: exactly one claims the run and logs its lines, the
+/// is still in flight: exactly one wins the run and logs its lines, the
 /// other is told the run is already settled, and the run holds the request
 /// once and one runtime line, not two of either.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -77,11 +77,11 @@ async fn two_reports_of_one_run_log_one_final_line() {
         };
         let (first, second) = tokio::join!(report(), report());
 
-        let claimed = [&first, &second]
+        let assigned = [&first, &second]
             .into_iter()
             .filter(|settled| matches!(settled, Committed::Settled { .. }))
             .count();
-        assert_eq!(claimed, 1, "one report wins: {first:?} / {second:?}");
+        assert_eq!(assigned, 1, "one report wins: {first:?} / {second:?}");
         assert!(
             [&first, &second]
                 .iter()

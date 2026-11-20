@@ -14,13 +14,13 @@ const DISTINCT_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0998";
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_steer_retry_reuses_its_admission() {
+async fn test_steer_retry_reuses_its_turn() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let first = append_with(&steer, &lane, Some(OPERATION)).await;
     let retried = append_with(&steer, &lane, Some(OPERATION)).await;
     assert_eq!(first, retried);
-    assert_eq!(admissions_for(&lane, OPERATION).await, 1);
+    assert_eq!(turns_for(&lane, OPERATION).await, 1);
     assert_eq!(queued_ids(&lane).await, [first]);
     lane.cleanup().await;
 }
@@ -29,7 +29,7 @@ async fn test_steer_retry_reuses_its_admission() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_two_operation_ids_with_equal_text_admit_twice() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let first = append_with(&steer, &lane, Some(OPERATION)).await;
     let second = append_with(&steer, &lane, Some(DISTINCT_OPERATION)).await;
     assert_ne!(first, second);
@@ -55,7 +55,7 @@ pub(crate) async fn append_with(
         .turn_id
 }
 
-pub(crate) async fn admissions_for(lane: &TurnsLane, operation: &str) -> i64 {
+pub(crate) async fn turns_for(lane: &TurnsLane, operation: &str) -> i64 {
     let key = [lane.fleet.as_str(), operation].join(KEY_SEPARATOR);
     let mut connection = lane.connection().await;
     sqlx::query_scalar(
@@ -65,7 +65,7 @@ pub(crate) async fn admissions_for(lane: &TurnsLane, operation: &str) -> i64 {
     .bind(key)
     .fetch_one(&mut *connection)
     .await
-    .expect("admission count")
+    .expect("turn count")
 }
 
 pub(crate) async fn queued_ids(lane: &TurnsLane) -> Vec<Uuid7> {

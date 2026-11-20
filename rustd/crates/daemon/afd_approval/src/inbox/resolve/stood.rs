@@ -45,7 +45,7 @@ impl Inbox {
     /// before it could.
     ///
     /// The ledger is read first so a settled gate costs one read and writes
-    /// nothing. An admission that landed while its event row did not is left
+    /// nothing. A turn that landed while its event row did not is left
     /// to the run, which writes that row on the same conflict arm.
     async fn owed_continuation(
         &self,
@@ -53,7 +53,7 @@ impl Inbox {
         turn_id: &Uuid7,
     ) -> Result<Option<Uuid7>> {
         let landed = self
-            .admissions
+            .turns
             .find_repeated(
                 afd_turns::Producer::GateContinuation,
                 resolved.action_id.as_str(),

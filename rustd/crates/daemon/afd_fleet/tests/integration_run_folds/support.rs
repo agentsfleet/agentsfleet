@@ -1,5 +1,5 @@
 //! What the fold suites share: sending a message to the held fleet, reading a
-//! claim, reading what a settle left behind, and reporting the held run.
+//! assignment, reading what a settle left behind, and reporting the held run.
 //!
 //! Every helper returns its failure instead of panicking, so a test names the
 //! step that broke by the `?` that carried it out.
@@ -27,7 +27,7 @@ pub(super) const WEBHOOK_JSON: &str = r#"{"action":"completed","workflow":"ci"}"
 /// One message admitted to the held fleet.
 #[derive(Debug)]
 pub(super) struct Sent {
-    /// The message's admission id, which is its event id.
+    /// The message's turn id, which is its event id.
     pub(super) id: Uuid7,
     /// Its place in the fleet's order.
     pub(super) sequence: i64,
@@ -36,9 +36,9 @@ pub(super) struct Sent {
 }
 
 impl Sent {
-    /// This message as a claim answers it, reading as `text`.
-    pub(super) fn claimed(&self, text: &str) -> Claimed {
-        Claimed {
+    /// This message as an assignment answers it, reading as `text`.
+    pub(super) fn assigned(&self, text: &str) -> Assigned {
+        Assigned {
             id: self.id.clone(),
             sequence: self.sequence,
             text: text.to_owned(),
@@ -46,9 +46,9 @@ impl Sent {
     }
 }
 
-/// One message a claim answered.
+/// One message an assignment answered.
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct Claimed {
+pub(super) struct Assigned {
     pub(super) id: Uuid7,
     pub(super) sequence: i64,
     pub(super) text: String,
@@ -62,7 +62,7 @@ pub(super) struct TurnRow {
     pub(super) resumes_turn_id: Option<Uuid7>,
 }
 
-/// Whether an admission is settled, and the event it opened once it has one.
+/// Whether a turn is settled, and the event it opened once it has one.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Settlement {
     pub(super) settled: bool,
@@ -128,11 +128,11 @@ pub(super) async fn send_as(
     request_json: &str,
     reply: Reply<'_>,
 ) -> Checked<Sent> {
-    let admissions = Turns::for_tests(
+    let turns = Turns::for_tests(
         held.fixtures.database.clone(),
         afd_bus::test_util::unreachable(),
     );
-    let admitted = admissions
+    let admitted = turns
         .admit(IncomingTurn {
             producer,
             key: Key::Unrepeatable,
@@ -151,7 +151,7 @@ pub(super) async fn send_as(
     };
     // The facts are a steer's: only a steer reads them.
     let run = if producer == Producer::Steer {
-        admissions
+        turns
             .run_facts(&held.fleet, &admitted.stored.id, person)
             .await?
     } else {
@@ -169,44 +169,44 @@ pub(super) async fn send_as(
     })
 }
 
-/// Stamps `admission` as claimed under `fence`, as a later run's claim
+/// Stamps `turn` as assigned under `fence`, as a later run's assignment
 /// would have.
-pub(super) async fn stamp_claim(held: &Held, admission: &Uuid7, fence: i64) -> Checked {
+pub(super) async fn stamp_assignment(held: &Held, turn: &Uuid7, fence: i64) -> Checked {
     let mut connection = held.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE thread.turns SET input_claim_fence = $2 WHERE id = $1")
-        .bind(admission)
+    sqlx::query("UPDATE thread.turns SET input_fence = $2 WHERE id = $1")
+        .bind(turn)
         .bind(fence)
         .execute(&mut *connection)
         .await?;
     Ok(())
 }
 
-/// Runs one statement that names one admission and changes it.
-async fn change(held: &Held, statement: &'static str, admission: &Uuid7) -> Checked {
+/// Runs one statement that names one turn and changes it.
+async fn change(held: &Held, statement: &'static str, turn: &Uuid7) -> Checked {
     let mut connection = held.fixtures.database.acquire().await?;
     sqlx::query(statement)
-        .bind(admission)
+        .bind(turn)
         .execute(&mut *connection)
         .await?;
     Ok(())
 }
 
-/// Parks `admission`, as an approval gate does.
-pub(super) async fn park(held: &Held, admission: &Uuid7) -> Checked {
+/// Parks `turn`, as an approval gate does.
+pub(super) async fn park(held: &Held, turn: &Uuid7) -> Checked {
     change(
         held,
         "UPDATE thread.turns SET parked_at = now() WHERE id = $1",
-        admission,
+        turn,
     )
     .await
 }
 
-/// Settles `admission` the way an earlier run's report would have.
-pub(super) async fn settle_directly(held: &Held, admission: &Uuid7) -> Checked {
+/// Settles `turn` the way an earlier run's report would have.
+pub(super) async fn settle_directly(held: &Held, turn: &Uuid7) -> Checked {
     change(
         held,
         "UPDATE thread.turns SET settled_at = now() WHERE id = $1",
-        admission,
+        turn,
     )
     .await
 }
@@ -222,42 +222,42 @@ pub(super) async fn set_run_task(held: &Held, task: Option<&Uuid7>) -> Checked {
     Ok(())
 }
 
-/// What `runner` claims for the held run under `fence`, after `after`.
-pub(super) async fn claim(
+/// What `runner` is assigned for the held run under `fence`, after `after`.
+pub(super) async fn assign(
     held: &Held,
     runner: &Uuid7,
     fence: u64,
     after: i64,
-) -> Checked<Vec<Claimed>> {
+) -> Checked<Vec<Assigned>> {
     let response = held
         .runs
-        .claim_folds(runner, &held.issued.run_id, fence, after)
+        .assign_folds(runner, &held.issued.run_id, fence, after)
         .await?;
-    let claimed = response
+    let assigned = response
         .inputs
         .into_iter()
         .map(|input| {
-            Ok(Claimed {
+            Ok(Assigned {
                 id: Uuid7::parse(&input.turn_id)?,
                 sequence: input.sequence,
                 text: input.text.into_owned(),
             })
         })
         .collect::<af_core::error::Result<_>>()?;
-    Ok(claimed)
+    Ok(assigned)
 }
 
-/// [`claim`], as the runner holding the run under its own fence.
-pub(super) async fn claim_as_holder(held: &Held, after: i64) -> Checked<Vec<Claimed>> {
-    claim(held, &held.runner, held.fence.as_u64(), after).await
+/// [`assign`], as the runner holding the run under its own fence.
+pub(super) async fn assign_as_holder(held: &Held, after: i64) -> Checked<Vec<Assigned>> {
+    assign(held, &held.runner, held.fence.as_u64(), after).await
 }
 
-/// Whether `admission` is settled, and the event it opened, if it has.
-pub(super) async fn settled(held: &Held, admission: &Uuid7) -> Checked<Settlement> {
+/// Whether `turn` is settled, and the event it opened, if it has.
+pub(super) async fn settled(held: &Held, turn: &Uuid7) -> Checked<Settlement> {
     let mut connection = held.fixtures.database.acquire().await?;
     let settled =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM thread.turns WHERE id = $1")
-            .bind(admission)
+            .bind(turn)
             .fetch_one(&mut *connection)
             .await?;
     let event = sqlx::query_as(
@@ -265,7 +265,7 @@ pub(super) async fn settled(held: &Held, admission: &Uuid7) -> Checked<Settlemen
          FROM thread.turns WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
     )
     .bind(&held.fleet)
-    .bind(admission)
+    .bind(turn)
     .fetch_optional(&mut *connection)
     .await?;
     Ok(Settlement { settled, event })

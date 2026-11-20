@@ -1,4 +1,4 @@
-//! Durable dependency ownership; every wake still uses ordinary admissions.
+//! Durable dependency ownership; every wake still uses ordinary turns.
 
 mod claim;
 mod cleanup;

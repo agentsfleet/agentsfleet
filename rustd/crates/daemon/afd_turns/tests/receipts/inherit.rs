@@ -1,4 +1,4 @@
-//! A reply destination is inherited only from an admission in the same
+//! A reply destination is inherited only from a turn in the same
 //! workspace.
 
 use af_core::id::Uuid7;
@@ -31,13 +31,13 @@ async fn destination(lane: &Lane, id: &Uuid7) -> Fallible<Destination> {
 }
 
 /// A message on `lane`'s fleet that inherits the destination of `source`.
-async fn inherit_from(admissions: &Turns, lane: &Lane, source: &Uuid7) -> Fallible<Admitted> {
+async fn inherit_from(turns: &Turns, lane: &Lane, source: &Uuid7) -> Fallible<Admitted> {
     let key = mint_id();
     let inherit = ReplyTo::Inherit { turn_id: source };
-    admit(admissions, steer(lane, key.as_str(), inherit)).await
+    admit(turns, steer(lane, key.as_str(), inherit)).await
 }
 
-/// An admission naming an event in the same workspace takes that event's
+/// A turn naming an event in the same workspace takes that event's
 /// destination; one naming an event of another workspace takes none, and the
 /// message is still admitted.
 #[tokio::test]

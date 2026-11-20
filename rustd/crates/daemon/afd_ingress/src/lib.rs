@@ -42,7 +42,7 @@
 //!   Scheme::verify_at       `af_webhook`, constant-time  (NOT this crate)
 //!      │
 //!      ▼
-//!   Ingress::deliver        admission ledger row, at most once
+//!   Ingress::deliver        turn ledger row, at most once
 //! ```
 //!
 //! The secret is read BEFORE the body is parsed and the body is parsed only
@@ -100,7 +100,7 @@ pub struct Ingress {
     /// checked against a projection.
     vault: Vault,
     /// Where the verified delivery is accepted, before anything is queued.
-    pub(crate) admissions: Turns,
+    pub(crate) turns: Turns,
     /// What a channel binding's identifier is minted from.
     entropy: Entropy,
 }
@@ -108,11 +108,11 @@ pub struct Ingress {
 impl Ingress {
     /// Binds the ingress to an already-connected pool, vault and ledger.
     #[must_use]
-    pub const fn new(database: Db, vault: Vault, admissions: Turns) -> Self {
+    pub const fn new(database: Db, vault: Vault, turns: Turns) -> Self {
         Self {
             database,
             vault,
-            admissions,
+            turns,
             entropy: Entropy::new(),
         }
     }

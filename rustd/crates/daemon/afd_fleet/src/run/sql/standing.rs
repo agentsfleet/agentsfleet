@@ -7,8 +7,8 @@
 ///
 /// Answers the run's fleet, workspace and event, its own fencing token, the
 /// fleet's live sequence, and the event's actor, so the caller can refuse a
-/// holder a reclaim has superseded and see whether a schedule woke the run. `LEFT JOIN`, as the memory fence reads it: a run whose fleet
-/// has no slot row is fenced by its own token.
+/// holder a reassignment has superseded and see whether a schedule woke the run. `LEFT JOIN`, as the memory fence reads it: a run whose fleet
+/// has no thread row is fenced by its own token.
 ///
 /// One file, three uses: the tool-call verb and the schedule writes run the
 /// same read under a row lock, so each locking variant puts its clause between
@@ -46,7 +46,7 @@ pub const SELECT_STANDING: &str = const_format::concatcp!(RUN_READ, RUN_JUDGED);
 /// [`SELECT_STANDING`], holding the run row shared until the caller's
 /// transaction ends.
 ///
-/// What a schedule write proves its run with: a reclaim, a renew and a
+/// What a schedule write proves its run with: a reassignment, a renew and a
 /// settle each update this row, so none of them can land between the check
 /// and the write it guards (`crate::run::write_fence`).
 pub const SELECT_STANDING_SHARED: &str =
@@ -54,12 +54,12 @@ pub const SELECT_STANDING_SHARED: &str =
 
 /// Counts one interim message against a run that still holds its fleet.
 ///
-/// Answers the new count while it is under the cap; a run a reclaim
+/// Answers the new count while it is under the cap; a run a reassignment
 /// superseded since its standing was read, or one at the cap, touches no row
 /// and returns none.
 ///
 /// The fence is in the statement rather than only in the standing read before
-/// it, so a holder superseded between the two cannot take a slot, and one
+/// it, so a holder superseded between the two cannot take a message slot, and one
 /// guarded statement means two concurrent posts cannot both take the last.
 ///
 /// `$1` run, `$2` the cap, `$3` the presented token, `$4` the active status.

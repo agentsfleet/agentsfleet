@@ -1,10 +1,10 @@
-//! §2 against a live datastore — the atomic claim, and what racing it proves.
+//! §2 against a live datastore — the atomic assignment, and what racing it proves.
 //!
 //! Invariant 1 is "at most one active run per fleet", and the whole of it
 //! rests on one conditional UPSERT. `dispatch/write_rust.md` asks for a
 //! deterministic contention test rather than a happy-path asynchronous one, so
 //! the race below is not "spawn two tasks and hope they overlap": every runner
-//! contends for the SAME slot at the same instant, and the assertion is on the
+//! contends for the SAME thread at the same instant, and the assertion is on the
 //! count of winners, which is exact whatever the interleaving turns out to be.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
@@ -51,11 +51,11 @@ impl Ids {
     }
 }
 
-/// How many runners pile onto one slot.
+/// How many runners pile onto one thread.
 ///
-/// Four rather than two: with two, a claim that was accidentally
+/// Four rather than two: with two, an assignment that was accidentally
 /// last-write-wins still produces one row and the test passes for the wrong
-/// reason. With four, a broken claim shows up as a fence that skipped values or
+/// reason. With four, a broken assignment shows up as a fence that skipped values or
 /// as more than one winner.
 const CONTENDERS: usize = 4;
 
@@ -107,28 +107,30 @@ async fn test_run_affinity_race() {
     let fleet = ids.fleet.clone();
     let runs = fixtures.runs();
 
-    // Every contender claims the same slot at the same instant. Awaited
+    // Every contender asks for the same thread at the same instant. Awaited
     // together rather than in sequence so the datastore, not this loop, decides
     // the order they arrive in.
     let attempts = runners
         .iter()
-        .map(|runner| runs.claim(&fleet, runner, RUN_TTL));
+        .map(|runner| runs.assign(&fleet, runner, RUN_TTL));
     let outcomes = futures_util::future::join_all(attempts).await;
 
     let won: Vec<_> = outcomes
         .into_iter()
-        .filter_map(|outcome| outcome.expect("a claim attempt must not fault"))
+        .filter_map(|outcome| outcome.expect("an assignment attempt must not fault"))
         .collect();
 
     assert_eq!(
         won.len(),
         1,
-        "exactly one runner may hold a fleet's slot; the losers read as taken, not as errors"
+        "exactly one runner may hold a fleet's thread; the losers read as taken, not as errors"
     );
     assert_eq!(
-        fixtures.text(Row::Slot(&ids.fleet), "fencing_token").await,
+        fixtures
+            .text(Row::Thread(&ids.fleet), "fencing_token")
+            .await,
         Some("1".to_owned()),
-        "a slot claimed for the first time opens at fence one"
+        "a thread assigned for the first time opens at fence one"
     );
     let winner = won.first().expect("the count above proved there is one");
     assert_eq!(
@@ -140,14 +142,14 @@ async fn test_run_affinity_race() {
     fixtures.cleanup().await;
 }
 
-/// A claim taken after the prior one lapsed carries a STRICTLY higher fence.
+/// An assignment taken after the prior one lapsed carries a STRICTLY higher fence.
 ///
-/// Invariant 2's first half. Without it a reclaimed run would be
+/// Invariant 2's first half. Without it a reassigned run would be
 /// indistinguishable from the dead holder it displaced, and §3's report could
 /// not tell a stale writer from the live one.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_reclaim_bumps_fence() {
+async fn test_reassignment_bumps_fence() {
     let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
@@ -159,49 +161,49 @@ async fn test_reclaim_bumps_fence() {
     let runs = fixtures.runs();
 
     let first = runs
-        .claim(&fleet, &first_runner, RUN_TTL)
+        .assign(&fleet, &first_runner, RUN_TTL)
         .await
-        .expect("the first claim must not fault")
-        .expect("an unclaimed slot is winnable");
+        .expect("the first assignment must not fault")
+        .expect("an unassigned thread is winnable");
 
-    // A live holder blocks the slot, whoever asks.
+    // A live holder blocks the thread, whoever asks.
     let blocked = runs
-        .claim(&fleet, &second_runner, RUN_TTL)
+        .assign(&fleet, &second_runner, RUN_TTL)
         .await
-        .expect("a blocked claim is not a fault");
+        .expect("a blocked assignment is not a fault");
     assert!(
         blocked.is_none(),
-        "a live claim must not be displaceable before it lapses"
+        "a live assignment must not be displaceable before it lapses"
     );
 
-    // Past the holder's expiry, the slot is winnable again — and the winner's
+    // Past the holder's expiry, the thread is winnable again — and the winner's
     // token outranks the holder it displaced.
     fixtures
-        .age(Row::Slot(&ids.fleet), "run_expires_at", LAPSE)
+        .age(Row::Thread(&ids.fleet), "run_expires_at", LAPSE)
         .await;
-    let reclaimed = runs
-        .claim(&fleet, &second_runner, RUN_TTL)
+    let reassigned = runs
+        .assign(&fleet, &second_runner, RUN_TTL)
         .await
-        .expect("the reclaim must not fault")
-        .expect("a lapsed slot is winnable");
+        .expect("the reassignment must not fault")
+        .expect("a lapsed thread is winnable");
 
     assert!(
-        reclaimed.fence > first.fence,
-        "a reclaim's token must strictly exceed the one it displaced: {:?} vs {:?}",
-        reclaimed.fence,
+        reassigned.fence > first.fence,
+        "a reassignment's token must strictly exceed the one it displaced: {:?} vs {:?}",
+        reassigned.fence,
         first.fence
     );
 
     fixtures.cleanup().await;
 }
 
-/// Release is fence-guarded, so a superseded holder cannot free the live slot.
+/// Release is fence-guarded, so a superseded holder cannot free the live thread.
 ///
 /// This is the failure the guard exists for: without it a dead runner's late
 /// release would hand a fleet that is actively being worked to a second runner.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_a_superseded_holder_cannot_release_the_live_slot() {
+async fn test_a_superseded_holder_cannot_release_the_live_thread() {
     let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
@@ -213,18 +215,18 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
     let runs = fixtures.runs();
 
     let stale = runs
-        .claim(&fleet, &first_runner, RUN_TTL)
+        .assign(&fleet, &first_runner, RUN_TTL)
         .await
-        .expect("the first claim must not fault")
-        .expect("an unclaimed slot is winnable");
+        .expect("the first assignment must not fault")
+        .expect("an unassigned thread is winnable");
     fixtures
-        .age(Row::Slot(&ids.fleet), "run_expires_at", LAPSE)
+        .age(Row::Thread(&ids.fleet), "run_expires_at", LAPSE)
         .await;
     let live = runs
-        .claim(&fleet, &second_runner, RUN_TTL)
+        .assign(&fleet, &second_runner, RUN_TTL)
         .await
-        .expect("the reclaim must not fault")
-        .expect("a lapsed slot is winnable");
+        .expect("the reassignment must not fault")
+        .expect("a lapsed thread is winnable");
 
     // The displaced holder tries to tidy up, carrying its own stale token.
     runs.release(&fleet, stale.fence)
@@ -233,10 +235,10 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
 
     assert_eq!(
         fixtures
-            .instant(Row::Slot(&ids.fleet), crate::run_reads::COLUMN_HELD_UNTIL)
+            .instant(Row::Thread(&ids.fleet), crate::run_reads::COLUMN_HELD_UNTIL)
             .await,
         Some(live.held_until),
-        "the live holder's claim must survive a superseded holder's release"
+        "the live holder's assignment must survive a superseded holder's release"
     );
 
     // The live holder's own release does land, because its token still matches.
@@ -244,8 +246,8 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
         .await
         .expect("the current holder's release must test_run");
     assert!(
-        fixtures.slot_is_free(&ids.fleet).await,
-        "the current holder frees the slot it actually holds"
+        fixtures.thread_is_free(&ids.fleet).await,
+        "the current holder frees the thread it actually holds"
     );
 
     fixtures.cleanup().await;

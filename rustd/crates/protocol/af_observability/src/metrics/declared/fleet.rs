@@ -33,10 +33,10 @@ pub const RUN_HISTORY_BYTES: Declared<HistogramKind> =
 pub const RUN_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_history_cuts_total");
 
-/// Won claims on a fleet whose slot named a sandbox held live at the claim,
-/// by who won.
-pub const RUN_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_run_held_claims_total");
+/// Won assignments on a fleet whose thread named a sandbox held live at the
+/// assignment, by who won.
+pub const RUN_HELD_ASSIGNMENTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_run_held_assignments_total");
 
 /// Accepted steers, by where they went.
 pub const STEER_DISPOSITIONS_TOTAL: Declared<CounterKind> =
@@ -49,14 +49,14 @@ pub const STEER_DISPOSITIONS_TOTAL: Declared<CounterKind> =
 pub const RUN_CACHE_LOOKUPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_cache_lookups_total");
 
-/// Messages live runs took from their fleets, claimed and settled.
+/// Messages live runs took from their fleets, assigned and settled.
 pub const RUN_FOLDS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_run_folds_total");
 
 /// Chat runs issued without their turns because the thread read failed.
 pub const RUN_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_history_read_failures_total");
 
-/// Runs granted; fresh ÷ accepted turns is pickup, a rising reclaimed
+/// Runs granted; fresh ÷ accepted turns is pickup, a rising reassigned
 /// share is runners dying mid-run.
 ///
 /// Labels: `kind`.
@@ -66,7 +66,7 @@ pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
 /// Time through the fleet delivery path, from server and runner clocks.
 ///
 /// Labels: `stage`. Each stage is recorded once for an active run attempt
-/// that reaches it; a reclaim is a separate attempt on the same event.
+/// that reaches it; a reassignment is a separate attempt on the same event.
 pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
     Declared::new("agentsfleet_fleet_delivery_stage_seconds");
 

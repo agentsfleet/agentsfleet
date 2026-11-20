@@ -8,7 +8,7 @@ impl Error {
     pub const fn task_current_state(&self) -> Option<&'static str> {
         match &self.inner.kind {
             ErrorKind::TaskControlConflict { state }
-            | ErrorKind::TaskControlAdmission { state, .. }
+            | ErrorKind::TaskControlTurn { state, .. }
             | ErrorKind::TaskMutation { state, .. } => Some(state.as_str()),
             ErrorKind::TaskStorageSigning { .. }
             | ErrorKind::TaskStorageSigningParameters { .. }
@@ -96,7 +96,7 @@ impl Error {
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskRefused { .. }

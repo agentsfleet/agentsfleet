@@ -19,7 +19,7 @@ pub(super) struct Common {
     pub(super) providers: Providers,
     pub(super) github_client: reqwest::Client,
     pub(super) task_master: Arc<Kek>,
-    pub(super) admissions: Turns,
+    pub(super) turns: Turns,
     pub(super) biller: Arc<dyn Biller>,
     pub(super) drafts: afd_setup::Drafts,
 }
@@ -33,7 +33,7 @@ impl Common {
         );
         let github_client = parts.storage_client.clone();
         let task_master = Arc::clone(&parts.kek);
-        let admissions = Turns::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
+        let turns = Turns::new(parts.database.clone(), parts.bus.clone(), Entropy::new());
         let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());
         let drafts =
             afd_setup::Drafts::new(parts.database.clone(), Entropy::new(), Arc::clone(&biller))
@@ -45,7 +45,7 @@ impl Common {
             providers,
             github_client,
             task_master,
-            admissions,
+            turns,
             biller,
             drafts,
         }
@@ -61,7 +61,7 @@ pub(super) struct NativeInputs<'a> {
     pub(super) broker: Arc<afd_credential::credential::Broker>,
     pub(super) biller: Arc<dyn Biller>,
     pub(super) wake: afd_bus::wake::Wake,
-    pub(super) admissions: Turns,
+    pub(super) turns: Turns,
     pub(super) admin_workspace: Option<Uuid7>,
     pub(super) storage_config: StorageConfig,
     pub(super) master: Arc<Kek>,
@@ -96,7 +96,7 @@ impl NativeInputs<'_> {
             .with_checkpoint_resume(self.runtime.resume_from_checkpoint);
         let tasks = task_plane(
             &mut runs,
-            self.admissions,
+            self.turns,
             self.admin_workspace,
             self.storage_config,
             self.master,
@@ -107,7 +107,7 @@ impl NativeInputs<'_> {
             Runners::new(self.database.clone(), Entropy::new()).with_clock(self.runtime.clock);
         let streams = afd_gateway::Gateway::new(afd_gateway::GatewayDependencies {
             recovery: afd_gateway::RecoverySettings {
-                max_concurrent_claims: self.runtime.claims,
+                max_concurrent_assignments: self.runtime.assignments,
                 assign_fallback: self.runtime.fallback,
             },
             database: self.database.clone(),

@@ -88,7 +88,7 @@ pub(crate) fn id(seed: u8) -> Uuid7 {
     Uuid7::encode(AT, [seed; ENTROPY_LEN]).expect("a fixed instant encodes")
 }
 
-/// A claimed fresh event on fleet `id(1)`, as a poll would have handed it.
+/// An assigned fresh event on fleet `id(1)`, as a poll would have handed it.
 /// Held by every unit test that looks a definition up through a cache, while
 /// `cache_lookups_counted_by_outcome` reads the process-wide lookup counters:
 /// an unrelated lookup in its window would move them.

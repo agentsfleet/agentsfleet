@@ -2,7 +2,7 @@
 //!
 //! # A Postgres row is the idempotency boundary
 //!
-//! The idempotency boundary for an inbound delivery is the admission ledger's
+//! The idempotency boundary for an inbound delivery is the turn ledger's
 //! `(producer, producer_key)` unique index. The row does not expire, so a
 //! sender retrying late still deduplicates, and it commits with the delivery
 //! it protects.
@@ -16,7 +16,7 @@
 //!
 //! Per fleet, because one App delivery fans out to every subscribed fleet and
 //! each of them must run: a key on the provider's id alone would let the
-//! first fleet's admission silence all the others. Per source, because the
+//! first fleet's turn silence all the others. Per source, because the
 //! per-source routes identify a delivery by its body's hash, and two sources
 //! on one fleet may send identical bytes: each is its own event. Per provider event id,
 //! because that is the value a sender REPEATS when it retries — a random id
@@ -85,7 +85,7 @@ pub struct Delivery<'d> {
 impl Ingress {
     /// Admits one verified delivery, at most once however often it arrives.
     ///
-    /// Answers what the admission did: the event's logical id, and whether an
+    /// Answers what the intake did: the event's logical id, and whether an
     /// earlier call already admitted it. A caller answers 2xx either way — a
     /// provider redelivering a delivery this daemon already holds has nothing
     /// to fix, and a non-2xx would only earn another retry.
@@ -105,7 +105,7 @@ impl Ingress {
         let workspace = binding.workspace();
         let key = format!("{fleet}:{}:{}", binding.source(), delivery.event_id);
         let admitted = self
-            .admissions
+            .turns
             .admit(IncomingTurn {
                 producer: surface.producer(),
                 key: Key::Repeated(&key),

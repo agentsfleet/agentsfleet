@@ -230,7 +230,7 @@ fn test_every_stage_key_belongs_to_its_verb() {
         (
             "agentsfleet.assign.",
             [
-                AssignStage::Claim,
+                AssignStage::Select,
                 AssignStage::Admit,
                 AssignStage::Issue,
                 AssignStage::Encode,

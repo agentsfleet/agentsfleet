@@ -1,7 +1,7 @@
 //! Decision statements stay with the existing task lifecycle owner.
 
 pub(super) const CANDIDATES: &str = include_str!("sql/candidates.sql");
-pub(super) const CLAIM_SOURCE: &str = include_str!("../sql/pending_inputs.sql");
+pub(super) const ASSIGN_SOURCE: &str = include_str!("../sql/pending_inputs.sql");
 pub(super) const LOCK_TASK: &str = include_str!("sql/lock_task.sql");
 pub(super) const PROFILE: &str = include_str!("sql/profile.sql");
 pub(super) const PEEK_CALL: &str = include_str!("sql/find_call.sql");
@@ -32,7 +32,7 @@ pub(super) const RECORD_PAYLOAD: &str = include_str!("sql/record_payload.sql");
 pub(super) const ACCOUNT_TASK: &str = include_str!("sql/account_task.sql");
 pub(super) const LOCK_PARENT: &str = include_str!("sql/lock_parent.sql");
 pub(super) const TRY_PARENT: &str = const_format::concatcp!(LOCK_PARENT, " NOWAIT");
-pub(super) const TRY_SLOT: &str =
+pub(super) const TRY_THREAD: &str =
     const_format::concatcp!(crate::task::sql::LOCK_SCOPE_THREAD, " NOWAIT");
 pub(super) const TRY_TASK: &str = const_format::concatcp!(LOCK_TASK, " NOWAIT");
 pub(super) const SEMANTIC_OWNER: &str = include_str!("sql/semantic_owner.sql");

@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn a_resolution_never_renders_its_key() {
         // The failure this prevents is not hypothetical: `Resolved` is carried
-        // on the admission pass, and one `tracing` field spelled `?resolved`
+        // on the assignment pass, and one `tracing` field spelled `?resolved`
         // would put a live provider key in the log stream of every run.
         let rendered = format!("{:?}", resolved());
         assert!(

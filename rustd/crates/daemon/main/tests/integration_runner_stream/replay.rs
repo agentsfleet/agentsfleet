@@ -22,7 +22,7 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
         first.ready().await;
         let assignment = first.expect(StreamKind::Work, "run").await;
         let run = assignment.pointer("/run").expect("native response field");
-        let (id, fence) = wire::claim(run);
+        let (id, fence) = wire::run_and_fence(run);
         assert_eq!(
             (*crate::wire::pointer(run, "/event/turn_id")),
             scene.turn_id.as_str()

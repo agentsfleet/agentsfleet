@@ -42,7 +42,7 @@ agentsfleet_model_limit_tokens	gauge	u64	{token}	-	gen_ai.request.model,gen_ai.p
 agentsfleet_model_route_capability	gauge	u64	1	-	gen_ai.request.model,gen_ai.provider.name,capability	-	shared:cost	yes	health	configured tools and image transport support; unknown stays absent
 agentsfleet_model_catalog_snapshot_age_seconds	gauge	u64	s	-	-	-	fixed:1	yes	health	age of the latest successful catalogue refresh
 agentsfleet_model_catalog_clipped	gauge	u64	1	-	-	-	fixed:1	yes	health	one when the catalogue exceeds its 256-model snapshot bound
-agentsfleet_schedule_fires_total	counter	u64	1	cumulative	outcome	-	fixed:6	no	traffic	durable schedule admissions by accepted or replayed outcome
+agentsfleet_schedule_fires_total	counter	u64	1	cumulative	outcome	-	fixed:6	no	traffic	durable schedule turns by accepted or replayed outcome
 agentsfleet_schedule_callbacks_total	counter	u64	1	cumulative	outcome	-	fixed:6	no	traffic	verified callback answers including skips failures and cancellation
 agentsfleet_schedule_callback_duration_seconds	histogram	f64	s	cumulative	outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:6	no	latency	verified callback handling by outcome
 agentsfleet_schedule_dispatch_lag_seconds	histogram	f64	s	cumulative	-	0.1,0.5,1,2,5,10,30,60,120,300,600	fixed:1	no	latency	newly admitted one-shot delay after its stored fire instant
@@ -77,12 +77,12 @@ agentsfleet_run_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the 
 agentsfleet_run_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_run_history_bytes	histogram	f64	By	cumulative	-	0,1024,4096,8192,16384,32768,49152,65536	fixed:1	no	traffic	bytes of earlier turns each chat run carries; a crowd at 65536 means conversations outgrow the window
 agentsfleet_run_history_cuts_total	counter	u64	{run}	cumulative	reason	-	fixed:3	no	traffic	chat runs whose turns a cap cut, by cap: turns means long conversations, text or bytes means large turns
-agentsfleet_run_held_claims_total	counter	u64	{run}	cumulative	outcome	-	fixed:2	no	traffic	won claims on a fleet whose runner held its sandbox frozen: holder means the follow-up continued where the last run stopped, other_after_lapse means the hold lapsed or its runner went silent first
+agentsfleet_run_held_assignments_total	counter	u64	{run}	cumulative	outcome	-	fixed:2	no	traffic	won assignments on a fleet whose runner held its sandbox frozen: holder means the follow-up continued where the last run stopped, other_after_lapse means the hold lapsed or its runner went silent first
 agentsfleet_run_cache_lookups_total	counter	u64	{lookup}	cumulative	cache,outcome	-	fixed:6	no	traffic	run-path cache lookups by cache and outcome: misses over lookups is how often a run still reads or parses what the cache holds; each cache is keyed by a version a statement in the same pass read
 agentsfleet_run_history_read_failures_total	counter	u64	{run}	cumulative	-	-	fixed:1	no	errors	chat runs issued without their turns because the thread read failed
 agentsfleet_steer_dispositions_total	counter	u64	{message}	cumulative	outcome	-	fixed:3	no	traffic	accepted steers by where they went: started means a run of its own, folded means a live run took it, queued means it waits its turn
-agentsfleet_run_folds_total	counter	u64	{message}	cumulative	outcome	-	fixed:2	no	traffic	messages live runs took from their fleets: claimed when a claim took one, settled when a report answered it; claimed above settled means runs ended before reading what they took
-agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	fresh and reclaimed run starts
+agentsfleet_run_folds_total	counter	u64	{message}	cumulative	outcome	-	fixed:2	no	traffic	messages live runs took from their fleets: assigned when an assignment took one, settled when a report answered it; assigned above settled means runs ended before reading what they took
+agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	fresh and reassigned run starts
 agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	cumulative	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:7	no	latency	event-to-assign, assign-to-first-chunk, event-to-first-chunk, run-to-first-chunk, assign-to-report, report-to-complete and event-to-complete latency; event_to_complete is the chat round trip
 agentsfleet_fleet_ready_wake_failures_total	counter	u64	1	cumulative	kind	-	fixed:2	no	errors	failed or timed-out publishes and lost notification channels; Postgres polling still discovers the work
 agentsfleet_runner_stream_connect_total	counter	u64	{connection}	cumulative	transport,outcome	-	fixed:20	no	health	every native connection attempt including HTTP/3 failure before HTTP/2 fallback

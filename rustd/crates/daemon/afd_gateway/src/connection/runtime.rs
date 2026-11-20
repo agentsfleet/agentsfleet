@@ -26,8 +26,8 @@ impl ConfirmedConnection {
     /// Registration and the admission permit live until every supervised task has joined.
     async fn run(mut self) -> Result<()> {
         let (commands_tx, commands_rx) = mpsc::channel(PENDING_MAX);
-        let (claims_tx, claims_rx) = mpsc::channel(1);
-        let handle = Arc::new(self.handle(commands_tx, claims_tx));
+        let (passes_tx, passes_rx) = mpsc::channel(1);
+        let handle = Arc::new(self.handle(commands_tx, passes_tx));
         let _registration = self
             .gateway
             .inner
@@ -66,7 +66,7 @@ impl ConfirmedConnection {
         let mut events = EventSource {
             frames: streams.frames,
             commands: commands_rx,
-            claims: claims_rx,
+            passes: passes_rx,
         };
         let result = supervisor
             .run(&mut events, &mut streams.workers, &streams.read_stop)
@@ -81,7 +81,7 @@ impl ConfirmedConnection {
     fn handle(
         &self,
         commands: mpsc::Sender<afd_bus::Command>,
-        claims: mpsc::Sender<super::ClaimRequest>,
+        passes: mpsc::Sender<super::PassRequest>,
     ) -> ConnectionHandle {
         ConnectionHandle {
             runner: self.runner.id().clone(),
@@ -93,7 +93,7 @@ impl ConfirmedConnection {
             ),
             superseded: CancellationToken::new(),
             assignments: Notify::new(),
-            claims,
+            passes,
             recovery_scan: parking_lot::Mutex::default(),
             rechecks: Notify::new(),
             commands,

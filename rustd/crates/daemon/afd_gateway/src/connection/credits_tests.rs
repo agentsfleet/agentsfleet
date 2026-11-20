@@ -142,7 +142,7 @@ async fn recovery_from_a_policy_recheck_wakes_one_capacity_pass() -> Result<()> 
 }
 
 #[test]
-fn a_newer_recovery_request_survives_an_older_empty_claim() {
+fn a_newer_recovery_request_survives_an_older_empty_assignment() {
     let wake = afd_bus::wake::Wake::default();
     wake.recheck();
     let first = wake.recovery();

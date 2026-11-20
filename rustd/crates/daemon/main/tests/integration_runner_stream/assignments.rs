@@ -1,4 +1,4 @@
-//! Admission wakes a connected worker through a pushed assignment without run
+//! A turn wakes a connected worker through a pushed assignment without run
 //! requests, and the replica's backstop re-read assigns a turn whose wake was lost.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
@@ -18,9 +18,9 @@ use crate::{
     wire,
 };
 
-/// Long enough for a returned credit's ordinary claim to have run and found
-/// nothing: on the local lane that claim lands about 30 ms after the report.
-const CREDIT_CLAIM_SETTLES: std::time::Duration = std::time::Duration::from_secs(1);
+/// Long enough for a returned credit's ordinary assignment to have run and found
+/// nothing: on the local lane that assignment lands about 30 ms after the report.
+const CREDIT_ASSIGNMENT_SETTLES: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -62,10 +62,10 @@ async fn a_turn_whose_wake_was_lost_is_assigned_by_the_backstop() {
         scene.booted.bus.clone(),
         Subject::ThreadWake(scene.fleet.clone()),
     );
-    // The report hands the runner its credit back, and that credit's own claim
+    // The report hands the runner its credit back, and that credit's own assignment
     // would take a turn admitted while it runs. Waiting it out leaves the
     // backstop as the only path that can assign the next turn.
-    tokio::time::sleep(CREDIT_CLAIM_SETTLES).await;
+    tokio::time::sleep(CREDIT_ASSIGNMENT_SETTLES).await;
     let admitted = Instant::now();
     let event = enqueue_over(
         &scene.booted,
@@ -75,11 +75,7 @@ async fn a_turn_whose_wake_was_lost_is_assigned_by_the_backstop() {
         EVENT_TYPE,
     )
     .await;
-    assert_eq!(
-        lost.load(Ordering::SeqCst),
-        1,
-        "the admission's wake was lost"
-    );
+    assert_eq!(lost.load(Ordering::SeqCst), 1, "the turn's wake was lost");
     let (run, fence) = wire::wait_for_assignment(&scene, &event).await;
     let waited = admitted.elapsed();
     assert!(

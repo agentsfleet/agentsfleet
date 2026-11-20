@@ -1,8 +1,8 @@
-//! The run claim and the platform read name a key by the same witnesses, so
-//! a key one run read is found again by the next claim.
+//! The run assignment and the platform read name a key by the same witnesses, so
+//! a key one run read is found again by the next assignment.
 //!
 //! The two are separate statements with the same digest expression spelled in
-//! each. This runs the real claim beside the real read over one secret and
+//! each. This runs the real assignment beside the real read over one secret and
 //! compares what they return, once with no endpoint pinned and once with one,
 //! so an expression that dropped a field from either side would show here.
 //! A private database: the second case writes the secret's row.
@@ -15,7 +15,7 @@ use af_crypto::secret::Kek;
 use afd_credential::provider::Providers;
 
 use super::seed::{seed_provider_resolution, workspace_of};
-use super::{claim, ready};
+use super::{assign, ready};
 use crate::report_seed::FIXTURE_KEK_HEX;
 use crate::seed::PROVIDER;
 use crate::support::Fixtures;
@@ -44,21 +44,21 @@ async fn pin_endpoint(fixtures: &Fixtures, fleet: &Uuid7, url: &str) {
     .expect("the credential is pinned");
 }
 
-/// Claims a fleet over the seeded default and reads the default as a run
+/// Assigns a fleet over the seeded default and reads the default as a run
 /// would, then asks that the two agree.
-async fn the_claim_and_the_read_name_one_key(endpoint: Option<&str>) {
+async fn the_assignment_and_the_read_name_one_key(endpoint: Option<&str>) {
     let fixtures = Fixtures::create_isolated().await;
     let ready = ready(&fixtures).await;
     let _default = seed_provider_resolution(&fixtures, &ready.fleet).await;
     if let Some(url) = endpoint {
         pin_endpoint(&fixtures, &ready.fleet, url).await;
     }
-    let claimed = claim(&fixtures, &ready).await;
-    let named = claimed
+    let assigned = assign(&fixtures, &ready).await;
+    let named = assigned
         .opened
         .platform_key
         .clone()
-        .expect("the claim read the platform default's secret");
+        .expect("the assignment read the platform default's secret");
 
     let providers = Providers::new(
         fixtures.database.clone(),
@@ -73,20 +73,20 @@ async fn the_claim_and_the_read_name_one_key(endpoint: Option<&str>) {
 
     assert_eq!(
         named, read.key,
-        "the claim's catalogue version, secret id and digest are the read's (endpoint {endpoint:?})"
+        "the assignment's catalogue version, secret id and digest are the read's (endpoint {endpoint:?})"
     );
-    drop(claimed);
+    drop(assigned);
     fixtures.cleanup().await;
 }
 
-// Value: protects=a key one run read is found by the next claim, so the cache
+// Value: protects=a key one run read is found by the next assignment, so the cache
 // hits; fails_when=either statement's digest expression drops a field the other
 // keeps; why_new=the cache trusts two statements to agree; seam=none;
-// no_claim=a key replaced between the claim and the read.
+// no_claim=a key replaced between the assignment and the read.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn the_claims_witnesses_are_the_platform_reads() {
-    the_claim_and_the_read_name_one_key(None).await;
+async fn the_assignment_witnesses_are_the_platform_reads() {
+    the_assignment_and_the_read_name_one_key(None).await;
 }
 
 // Value: protects=the same agreement with an endpoint beside the ciphertext;
@@ -95,6 +95,6 @@ async fn the_claims_witnesses_are_the_platform_reads() {
 // no_claim=an endpoint the route would refuse.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn the_claims_witnesses_are_the_platform_reads_with_a_pinned_endpoint() {
-    the_claim_and_the_read_name_one_key(Some(SAVED_BASE_URL)).await;
+async fn the_assignment_witnesses_are_the_platform_reads_with_a_pinned_endpoint() {
+    the_assignment_and_the_read_name_one_key(Some(SAVED_BASE_URL)).await;
 }

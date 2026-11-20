@@ -1,6 +1,6 @@
 //! One issued, active run with a funded tenant behind it.
 //!
-//! Builds on `fleet_run_seed` through the claim, narrative log and run row,
+//! Builds on `fleet_run_seed` through the assignment, narrative log and run row,
 //! so report tests share the same funded starting state.
 #![expect(
     clippy::expect_used,
@@ -71,7 +71,7 @@ pub(crate) struct Held {
     pub(crate) runner: Uuid7,
     pub(crate) spare: Uuid7,
     pub(crate) issued: Issued,
-    /// The token the issued run carries — what a later reclaim must outrank
+    /// The token the issued run carries — what a later reassignment must outrank
     /// for Dimension 3.2 to be testing anything.
     pub(crate) fence: Fence,
     pub(crate) fleet: Uuid7,
@@ -89,11 +89,11 @@ pub(crate) async fn held() -> Held {
 /// [`held`], over `fixtures`: a private database for a test that breaks a
 /// table every other test reads.
 pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
-    held_admission(fixtures, ACTOR, REQUEST_JSON).await
+    held_turn(fixtures, ACTOR, REQUEST_JSON).await
 }
 
 /// One funded native run over this scenario's admitted request and actor.
-pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json: &str) -> Held {
+pub(crate) async fn held_turn(fixtures: Fixtures, actor: &str, request_json: &str) -> Held {
     let Seeded {
         runners: [runner, spare],
         fleet,
@@ -157,7 +157,7 @@ async fn issue_received(
     )
     .await
     .expect("the run row must be written")
-    .expect("the claim is still held")
+    .expect("the assignment is still held")
 }
 
 /// Another fleet's run, held by the same runner as a [`Held`].
@@ -213,7 +213,7 @@ impl Held {
         }
     }
 
-    /// Another fleet's run, claimed and issued by this runner, in the same
+    /// Another fleet's run, assigned and issued by this runner, in the same
     /// database: one host's renewal frame names every run it holds.
     pub(crate) async fn hold_another(&self) -> Other {
         sqlx::query("UPDATE runner.runners SET worker_count = $2 WHERE id = $1")

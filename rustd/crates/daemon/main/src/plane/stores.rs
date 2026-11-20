@@ -3,7 +3,7 @@
 //!
 //! Every builder here borrows the pool, the queue and the key and moves
 //! nothing, so the plane may build these groups in any order relative to each
-//! other; they are built after the shared provider store and admissions ledger
+//! other; they are built after the shared provider store and turns ledger
 //! only because they take a share of them.
 
 use std::sync::Arc;
@@ -115,16 +115,16 @@ pub(super) struct Activity {
 /// share of [`Tenant::secrets`] because the two are different surfaces over
 /// one table — that one seals and never opens, this one opens exactly one name
 /// and never lists.
-pub(super) fn activity(database: &Db, kek: &Arc<Kek>, admissions: &Turns) -> Activity {
+pub(super) fn activity(database: &Db, kek: &Arc<Kek>, turns: &Turns) -> Activity {
     Activity {
-        approvals: Inbox::new(database.clone(), admissions.streams(), admissions.clone()),
+        approvals: Inbox::new(database.clone(), turns.streams(), turns.clone()),
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
         events: History::new(database.clone()),
-        steering: afd_turns::view::Steer::new(admissions.clone()),
+        steering: afd_turns::view::Steer::new(turns.clone()),
         ingress: Ingress::new(
             database.clone(),
             SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
-            admissions.clone(),
+            turns.clone(),
         ),
     }
 }

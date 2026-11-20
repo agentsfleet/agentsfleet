@@ -7,12 +7,12 @@
 /// with the row lock.
 ///
 /// Answers the run's own fencing token beside the fleet's live sequence, so
-/// the caller can refuse a holder a reclaim has superseded. `LEFT JOIN`, as the
-/// memory fence reads it: a run whose fleet has no slot row is fenced by its
+/// the caller can refuse a holder a reassignment has superseded. `LEFT JOIN`, as the
+/// memory fence reads it: a run whose fleet has no thread row is fenced by its
 /// own token.
 ///
 /// The lock is what makes the check hold until the write commits. A settle
-/// (the report statement locks the run) and a reclaim both change this
+/// (the report statement locks the run) and a reassignment both change this
 /// row, so neither can supersede the run between this check and the upsert —
 /// and a stale holder cannot write records after the settle that would have
 /// deleted them. It also serialises two posts of one run, so they cannot both
@@ -54,9 +54,9 @@ pub const UPSERT_RECORDS: &str = include_str!("upsert_tool_calls.sql");
 /// Deletes the records every other run of an event kept.
 ///
 /// A post runs it, holding a run that is the fleet's current one, so an
-/// event reclaimed many times before it settles keeps one run's records
-/// rather than a budget's worth per reclaim. The report statement deletes the
-/// same records inline when it settles, because a reclaimed run re-ran the
+/// event reassigned many times before it settles keeps one run's records
+/// rather than a budget's worth per reassignment. The report statement deletes the
+/// same records inline when it settles, because a reassigned run re-ran the
 /// event and numbered its calls from 1 again, so only the settling fence's
 /// records describe the run whose answer stands.
 ///

@@ -39,7 +39,7 @@ pub struct SavedFleet {
     pub definition: Definition,
     /// Actual current installation checks.
     pub setup: SetupProgress,
-    /// Initial admission outcome, independent of completed work.
+    /// Initial turn outcome, independent of completed work.
     pub start: StartOutcome,
     /// Creation time.
     #[serde(with = "af_wire::instant")]

@@ -1,6 +1,6 @@
 //! What an issued run tells its runner about the sandbox the runner holds.
 //!
-//! The claim decides whether the holder resumes its hold; this proves the
+//! The assignment decides whether the holder resumes its hold; this proves the
 //! decision reaches the bytes the runner reads, in both directions, so a
 //! render that dropped it or spelled it constant fails here.
 #![expect(
@@ -36,7 +36,7 @@ fn document() -> String {
     .to_string()
 }
 
-/// The fleet as the claim read it, built from no bundle.
+/// The fleet as the assignment read it, built from no bundle.
 fn installed() -> Installed {
     Installed {
         issue_revision: None,
@@ -79,7 +79,7 @@ fn policy() -> ExecutionPolicy<'static> {
     }
 }
 
-/// The answer a runner reads for a claim that did, or did not, find its hold
+/// The answer a runner reads for an assignment that did, or did not, find its hold
 /// live.
 fn rendered(resume_hold: bool) -> Value {
     let acquired = Acquired {
@@ -111,12 +111,12 @@ fn rendered(resume_hold: bool) -> Value {
 }
 
 #[test]
-fn test_a_rendered_run_says_whether_the_claim_resumes_the_hold() {
+fn test_a_rendered_run_says_whether_the_assignment_resumes_the_hold() {
     for resume_hold in [true, false] {
         assert_eq!(
             rendered(resume_hold).pointer(RESUME_HOLD),
             Some(&Value::Bool(resume_hold)),
-            "the claim's resume_hold is {resume_hold}"
+            "the assignment's resume_hold is {resume_hold}"
         );
     }
 }

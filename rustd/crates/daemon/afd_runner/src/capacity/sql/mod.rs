@@ -14,10 +14,10 @@ pub(super) const SHARE_HOST: &str = include_str!("share_host.sql");
 ///
 /// A separate statement from [`LOCK_HOST`], run after it in the same
 /// transaction, so its `clock_timestamp()` is read once the host lock is held:
-/// a run that expired while this claimant waited for the lock no longer
-/// counts. `$1` runner, `$2` active status, `$3` the slot the claim consumes
-/// (a fleet's slot is keyed by the fleet's id) or NULL, `$4` whether this is a
-/// new claim that counts holds.
+/// a run that expired while this assignment waited for the lock no longer
+/// counts. `$1` runner, `$2` active status, `$3` the thread the assignment consumes
+/// (a fleet's thread is keyed by the fleet's id) or NULL, `$4` whether this is a
+/// new assignment that counts holds.
 pub(super) const CENSUS: &str = include_str!("census.sql");
 
 /// The host's run-type counter and the type it chose last.

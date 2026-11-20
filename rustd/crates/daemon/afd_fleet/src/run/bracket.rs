@@ -107,7 +107,7 @@ impl Runs {
     }
 
     /// Announce that `acquired`'s narrative log opened, stamped `opened_at`:
-    /// the row's own `created_at`, which for a steer is its admission instant.
+    /// the row's own `created_at`, which for a steer is its intake instant.
     ///
     /// Published once, on the delivery that wrote the row: a redelivery finds
     /// the row already there and a second announcement would put a duplicate

@@ -1,4 +1,4 @@
-//! Best-effort announcements after a report and its admission settle in Postgres.
+//! Best-effort announcements after a report and its turn settle in Postgres.
 //!
 //! Tail frames and outbound wakes cannot undo acceptance of the report. The committed outbound delivery repairs a missed append.
 

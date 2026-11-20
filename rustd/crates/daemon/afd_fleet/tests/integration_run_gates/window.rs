@@ -1,6 +1,6 @@
 //! A run's memory window, as the plane hands it to a runner.
 //!
-//! The window is read after the issue, under the fleet's slot, so it holds
+//! The window is read after the issue, under the fleet's thread, so it holds
 //! what the fleet's last report wrote; a read that fails costs the run its
 //! window, never the run.
 
@@ -77,11 +77,11 @@ async fn test_run_carries_the_memory_window() {
     chat.fixtures.cleanup().await;
 }
 
-/// A second message waits while the first holds the fleet's slot, and the
+/// A second message waits while the first holds the fleet's thread, and the
 /// run it gets after the first's report carries what that report wrote.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_window_follows_the_slot() {
+async fn test_window_follows_the_thread() {
     let chat = Chat::open().await;
     chat.ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
@@ -89,7 +89,7 @@ async fn test_window_follows_the_slot() {
         .await;
 
     let first = chat.run(&chat.runner, chat.fixtures.enrolled_at()).await;
-    let waiting = chat.claim(&chat.spare).await;
+    let waiting = chat.assign(&chat.spare).await;
     chat.answer_remembering(
         &chat.runner,
         &first,

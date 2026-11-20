@@ -143,7 +143,7 @@ impl ControlPlane {
                     starting_after,
                 };
                 let path = fenced(&events, fencing_token, page);
-                self.send(Verb::FleetEvents, path, None).await
+                self.send(Verb::FleetTurns, path, None).await
             }
         }
     }

@@ -31,7 +31,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{ConnectionContext, Gateway};
 
-pub(crate) use assignments::{AssignMode, AssignOutcome, ClaimRequest};
+pub(crate) use assignments::{AssignMode, AssignOutcome, PassRequest};
 pub(crate) use io::{StreamAttachment, StreamAttachmentSender};
 use io::{StreamIo, StreamWriters};
 
@@ -114,7 +114,7 @@ pub(crate) struct ConnectionHandle {
     pub(crate) liveness: liveness::Liveness,
     pub(crate) superseded: CancellationToken,
     pub(crate) assignments: Notify,
-    pub(crate) claims: mpsc::Sender<ClaimRequest>,
+    pub(crate) passes: mpsc::Sender<PassRequest>,
     pub(crate) recovery_scan: Mutex<afd_fleet::run::RecoveryScan>,
     pub(crate) rechecks: Notify,
     pub(crate) commands: mpsc::Sender<afd_bus::Command>,
@@ -224,15 +224,15 @@ mod credits_tests;
 #[cfg(test)]
 impl ConnectionHandle {
     pub(crate) fn fixture(runner: Uuid7, connection_id: Uuid7) -> Arc<Self> {
-        Self::fixture_with_claims(runner, connection_id).0
+        Self::fixture_with_passes(runner, connection_id).0
     }
 
-    pub(crate) fn fixture_with_claims(
+    pub(crate) fn fixture_with_passes(
         runner: Uuid7,
         connection_id: Uuid7,
-    ) -> (Arc<Self>, mpsc::Receiver<ClaimRequest>) {
+    ) -> (Arc<Self>, mpsc::Receiver<PassRequest>) {
         let (commands, _) = mpsc::channel(1);
-        let (claims, requests) = mpsc::channel(1);
+        let (passes, requests) = mpsc::channel(1);
         let connection = Arc::new(Self {
             runner,
             connection_id,
@@ -252,7 +252,7 @@ impl ConnectionHandle {
             liveness: liveness::Liveness::default(),
             superseded: CancellationToken::new(),
             assignments: Notify::new(),
-            claims,
+            passes,
             recovery_scan: Mutex::default(),
             rechecks: Notify::new(),
             commands,

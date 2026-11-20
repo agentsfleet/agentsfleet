@@ -14,7 +14,7 @@ const SOURCES = {repositories: ["a/b"], access: "write" as const, publication: "
 const TARGET = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 function activity(id: string | null): TaskActivity {
-  return {kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: id, source_admission_id: null,
+  return {kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: id, source_turn_id: null,
     operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}};
 }
 function history(...ids: (string | null)[]) {

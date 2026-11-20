@@ -15,7 +15,7 @@ pub enum TaskDisposition {
     Waiting,
     /// A prerequisite needs attention; no autonomous restart is authorized.
     Blocked,
-    /// Save and fairly rejoin the existing admission order for another slice.
+    /// Save and fairly rejoin the existing turn order for another slice.
     Continue,
 }
 

@@ -1,6 +1,6 @@
 -- One row per input on a thread: what came in, where its answer goes, the run that took it and
 -- what it answered. A fleet's intake writes the row `queued`, keyed by its producer so a retry
--- cannot duplicate work; the claim that first runs it opens it (`opened_at`) as the fleet's
+-- cannot duplicate work; the assignment that first runs it opens it (`opened_at`) as the fleet's
 -- event, and its report settles it. A history-only receipt (an activity, a model change) is
 -- written opened and settled, with no producer. A setup draft's turn has no producer either and
 -- never opens a fleet event: its sequence is the draft's own, its retry window lives in
@@ -32,11 +32,11 @@ CREATE TABLE thread.turns (
     failure_reason    TEXT,
     failure_detail    TEXT,
     resumes_turn_id   UUID,
-    -- The fence of the claim that took this turn as its run's head, and of the run whose
+    -- The fence of the assignment that took this turn as its run's head, and of the run whose
     -- conversation folded it in.
     run_fence           BIGINT,
-    input_claim_run_id  UUID,
-    input_claim_fence   BIGINT,
+    input_run_id        UUID,
+    input_fence         BIGINT,
     -- When the fleet's event opened: the history and the activity counter read only opened turns.
     opened_at         TIMESTAMPTZ(3),
     parked_at         TIMESTAMPTZ(3),

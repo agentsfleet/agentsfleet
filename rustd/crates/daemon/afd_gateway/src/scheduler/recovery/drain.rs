@@ -1,4 +1,4 @@
-//! Give each credited connection one claim at a time and bound concurrent claims.
+//! Give each credited connection one assignment at a time and bound concurrent ones.
 
 use crate::{
     Gateway, Operation, Result,
@@ -26,8 +26,8 @@ impl Host {
         }
     }
 
-    async fn claim(self) -> (Self, Result<AssignOutcome>) {
-        let outcome = self.connection.claim(AssignMode::Recovery).await;
+    async fn assign(self) -> (Self, Result<AssignOutcome>) {
+        let outcome = self.connection.assign(AssignMode::Recovery).await;
         (self, outcome)
     }
 
@@ -52,16 +52,16 @@ impl Host {
 
 pub(super) async fn drain(
     connections: Vec<Arc<ConnectionHandle>>,
-    claims: usize,
+    assignments: usize,
     stop: &CancellationToken,
 ) {
     let mut queue: VecDeque<_> = connections.into_iter().map(Host::new).collect();
     let mut running = FuturesUnordered::new();
     loop {
-        while running.len() < claims {
+        while running.len() < assignments {
             let Some(host) = queue.pop_front() else { break };
             if host.ready() {
-                running.push(host.claim());
+                running.push(host.assign());
             }
         }
         let next = tokio::select! {

@@ -233,7 +233,7 @@ pub(crate) fn daemon(
         Verb::Recall,
         Verb::Items,
         Verb::Me,
-        Verb::Activity,
+        Verb::Progress,
         Verb::Report,
         Verb::Folds,
         Verb::TurnCheckpoint,

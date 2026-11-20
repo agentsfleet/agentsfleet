@@ -29,7 +29,7 @@ const KEY_DIGEST_HEX: usize = 32;
 
 /// The sender itself, a fleet of another workspace, an archived
 /// or installing fleet, and one whose setup needs review are each refused,
-/// with no admission written.
+/// with no turn written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
@@ -42,7 +42,7 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
     crew.stale_setup(&stale).await;
     let (run, fence) = crew.speaking.run_seeded().await;
     let own = crew.run().fleet.clone();
-    let own_rows = crew.admissions(&own).await.len();
+    let own_rows = crew.turns(&own).await.len();
 
     let cases = [
         (&own, 409, "UZ-AGT-018", Some("self")),
@@ -62,12 +62,9 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
             assert_eq!(refused["current_state"], state, "{refused}");
         }
     }
-    assert_eq!(crew.admissions(&own).await.len(), own_rows);
+    assert_eq!(crew.turns(&own).await.len(), own_rows);
     for target in [&foreign, &archived, &installing, &stale] {
-        assert!(
-            crew.admissions(target).await.is_empty(),
-            "{target} was written"
-        );
+        assert!(crew.turns(target).await.is_empty(), "{target} was written");
     }
     crew.finish(supervisor).await;
 }
@@ -119,9 +116,9 @@ async fn fleet_steer_refuses_a_key_a_person_took() {
     let operation = format!("{}:{}", crew.run().turn_id, &digest[..KEY_DIGEST_HEX]);
 
     let scene = crew.run();
-    let admissions = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
+    let turns = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
     let person = steer_actor(PERSON);
-    Steer::new(admissions)
+    Steer::new(turns)
         .append(
             &target,
             &scene.workspace,
@@ -138,7 +135,7 @@ async fn fleet_steer_refuses_a_key_a_person_took() {
         (409, &json!("UZ-AGT-016"), &json!("admitted")),
         "{refused}"
     );
-    let rows = crew.admissions(&target).await;
+    let rows = crew.turns(&target).await;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].actor, person);
     crew.finish(supervisor).await;
@@ -165,7 +162,7 @@ async fn fleet_steer_refuses_a_sender_that_is_no_longer_installed() {
         (404, &json!("UZ-RUN-006")),
         "{refused}"
     );
-    let rows = crew.admissions(&target).await;
+    let rows = crew.turns(&target).await;
     assert!(rows.is_empty(), "{rows:?}");
     crew.finish(supervisor).await;
 }
@@ -209,7 +206,7 @@ async fn fleet_steer_refuses_bad_bodies_with_the_route_sentences() {
         assert_eq!(status, 400, "{body}: {refused}");
         assert_eq!(refused["detail"], sentence, "{body}: {refused}");
     }
-    let rows = crew.admissions(&target).await;
+    let rows = crew.turns(&target).await;
     assert!(rows.is_empty(), "{rows:?}");
     crew.finish(supervisor).await;
 }

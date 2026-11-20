@@ -31,8 +31,8 @@
 ///
 /// The conflict arm on `id` is the idempotence boundary for redelivery: the
 /// same event arriving twice holds one row, so a retrying producer cannot
-/// double-run a fleet. A fresh row has no admission behind it, so it is
-/// written opened and settled: a receipt no claim takes. A conflict meets the
+/// double-run a fleet. A fresh row has no turn behind it, so it is
+/// written opened and settled: a receipt no assignment takes. A conflict meets the
 /// admitted turn intake wrote and opens its event, once, which is also what
 /// makes a retried approval resolve continue its run exactly once.
 ///

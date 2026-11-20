@@ -1,4 +1,4 @@
-//! Renewal holds the live slot only while the daemon answers, never past the
+//! Renewal holds the live run only while the daemon answers, never past the
 //! attempt's end, and stops when the daemon asks it to.
 //!
 //! On paused time: every wait below is the loop's own, measured exactly.
@@ -68,7 +68,7 @@ fn run_until(expires_at: &str, deadline: &str) -> Run<Value> {
 }
 
 #[tokio::test(start_paused = true)]
-async fn renewal_extends_the_slot_every_interval_until_the_daemon_asks_it_to_stop() {
+async fn renewal_extends_the_run_every_interval_until_the_daemon_asks_it_to_stop() {
     let (kept, sent) = keep(&payload(), |n| renewed(n > 0)).await;
     kept.unwrap();
     assert_eq!(sent, [INTERVAL, INTERVAL * 2]);
@@ -113,20 +113,17 @@ async fn unanswered_native_renewals_retry_only_until_the_confirmed_expiry() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_slot_that_expires_before_its_first_renewal_ends_without_asking() {
+async fn a_run_that_expires_before_its_first_renewal_ends_without_asking() {
     let start = Instant::now();
     let run = run_until("1970-01-01T00:00:05Z", super::ATTEMPT_ENDS);
     let (kept, sent) = keep(&run, |_| renewed(false)).await;
     kept.unwrap_err();
-    assert!(
-        sent.is_empty(),
-        "no renewal was due before the slot expired"
-    );
+    assert!(sent.is_empty(), "no renewal was due before the run expired");
     assert_eq!(start.elapsed(), Duration::from_secs(5));
 }
 
 #[tokio::test(start_paused = true)]
-async fn renewal_never_holds_the_slot_past_the_attempt_end() {
+async fn renewal_never_holds_the_run_past_the_attempt_end() {
     let start = Instant::now();
     let run = run_until(super::GRANTED_UNTIL, "1970-01-01T00:00:15Z");
     let (kept, sent) = keep(&run, |_| renewed(false)).await;
@@ -155,17 +152,17 @@ async fn a_halt_ends_a_running_turn_and_reports_its_usage_unknown() {
 }
 
 #[tokio::test]
-async fn a_lost_slot_ends_a_running_turn_and_reports_its_usage_unknown() {
+async fn a_lost_run_ends_a_running_turn_and_reports_its_usage_unknown() {
     let mut rig = rig(|call| match call.verb {
         Verb::AuthoringModel => Answer::Stall,
         Verb::AuthoringReport => ack(),
-        other => panic!("an expired slot asked for {other:?}"),
+        other => panic!("an expired run asked for {other:?}"),
     });
     let expired = run_until("1970-01-01T00:00:00Z", super::ATTEMPT_ENDS);
     let (calls, report) = run(&mut rig, expired).await;
     assert!(
         calls.iter().all(|call| call.verb != Verb::AuthoringRenew),
-        "an expired slot is never renewed"
+        "an expired run is never renewed"
     );
     assert_eq!(report["outcome"], "failed");
     assert_eq!(report["failure_reason"], "provider_usage_unknown");
@@ -189,7 +186,7 @@ async fn a_turn_that_reaches_its_attempt_end_reports_timed_out() {
 async fn reconnect_uses_the_live_authoring_deadline_and_recovers_freely_after_expiry() {
     let (plane, _calls) = plane(|_call| Answer::Stall);
     let id = Uuid7::parse(super::RUN).unwrap();
-    let slot = run_until("1970-01-01T00:00:03Z", "1970-01-01T00:05:00Z");
+    let live = run_until("1970-01-01T00:00:03Z", "1970-01-01T00:05:00Z");
     let observed = Observed::new();
     let wall = clock();
     let started = Instant::now();
@@ -203,7 +200,7 @@ async fn reconnect_uses_the_live_authoring_deadline_and_recovers_freely_after_ex
         );
     };
     let (ended, ()) = tokio::join!(
-        renew::keep(&plane, &id, &slot, wall.as_ref(), &observed),
+        renew::keep(&plane, &id, &live, wall.as_ref(), &observed),
         observe
     );
     assert!(ended.is_err());

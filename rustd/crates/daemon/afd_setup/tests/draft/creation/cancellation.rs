@@ -1,7 +1,7 @@
 //! Archive wins against later retries and returns an unfinished draft to its creator.
 
 use super::super::{fixture::now, mint};
-use super::fixture::{Case, NO_ADMISSIONS};
+use super::fixture::{Case, NO_TURNS};
 use af_core::id::Uuid7;
 use afd_setup::types::{DraftState, SaveFleet, Start};
 
@@ -65,7 +65,7 @@ async fn archive_restores_private_editing_and_replay_cannot_resurrect_the_fleet(
     assert!(restored.linked_fleet_id.is_none());
     c.fund().await;
     assert_eq!(c.save(&key, request.clone()).await.status, "archived");
-    assert_eq!(c.admissions(&saved.id).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&saved.id).await, NO_TURNS);
     let another = renamed(&c, &draft, request, "new-setup").await;
     let saved_again = c.save(&mint(), another).await;
     assert_ne!(saved_again.id, saved.id);

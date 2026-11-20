@@ -110,7 +110,7 @@ pub struct TurnScope {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct FoldRef {
-    /// Logical admission claimed and incorporated by the writer.
+    /// Logical turn assigned and incorporated by the writer.
     #[garde(dive)]
     pub turn_id: CheckpointOperationId,
     /// Monotonic conversation position.

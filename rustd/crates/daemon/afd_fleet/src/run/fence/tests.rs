@@ -21,7 +21,7 @@ fn a_run_the_fleet_has_not_moved_past_is_current() {
     assert!(fence(LIVE, LIVE).current());
 }
 
-/// A won claim bumped the sequence before it expired this run's row.
+/// A won assignment bumped the sequence before it expired this run's row.
 #[test]
 fn a_run_the_fleet_has_moved_past_is_not_current() {
     assert!(!fence(LIVE - 1, LIVE).current());

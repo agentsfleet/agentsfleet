@@ -1,10 +1,10 @@
 -- One coarse check per pass and replica, never one query per idle worker.
--- `pending` answers whether a claim pass may help: a false positive costs a
--- bounded pass, and a negative must not hide work. Claims still decide tags,
+-- `pending` answers whether an assignment pass may help: a false positive costs a
+-- bounded pass, and a negative must not hide work. Assignments still decide tags,
 -- policy, gates and capacity. EXISTS stops at the first match.
 -- `idle` names the tenant runners among $4 whose tenant has nothing waiting,
 -- read only when something waits. A tenant runner takes only its tenant's
--- work (`select_ledger_candidates.sql`), so a claim on one of these cannot
+-- work (`select_ledger_candidates.sql`), so an assignment on one of these cannot
 -- run. A platform runner is never idle. Each tenant's check is the
 -- `pending` check narrowed to that tenant, and stops at its first match.
 WITH probe AS (
@@ -28,7 +28,7 @@ WITH probe AS (
         ) OR EXISTS (
             -- A setup draft waiting for a turn: a queued message, or a running one a lapsed
             -- draft run left behind (its run's `turn_id` is the message), with neither a
-            -- live attempt nor a live draft slot holding the draft.
+            -- live attempt nor a live draft thread holding the draft.
             SELECT 1 FROM setup.drafts d
             JOIN thread.turns m ON m.thread_id = d.id
             WHERE d.status = $2 AND m.settled_at IS NULL

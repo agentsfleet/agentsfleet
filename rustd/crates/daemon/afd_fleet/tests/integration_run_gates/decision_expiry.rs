@@ -1,4 +1,4 @@
-//! A profile read that outlives the claim cannot create issuance side effects.
+//! A profile read that outlives the assignment cannot create issuance side effects.
 
 use afd_admin::test_util::DecisionModelFixture;
 use std::time::Duration;
@@ -8,7 +8,7 @@ use afd_db::config::DbRole;
 use afd_fleet::run::{Billed, Delivery};
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 
-use super::{claim, decision::select, ready};
+use super::{assign, decision::select, ready};
 use crate::{seed, support::Fixtures};
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -23,7 +23,7 @@ struct Issuance {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_profile_read_past_claim_expiry_creates_no_run_audit_or_tally() {
+async fn a_profile_read_past_assignment_expiry_creates_no_run_audit_or_tally() {
     let fixtures = Fixtures::create_isolated().await;
     let model = DecisionModelFixture::create(&fixtures.database)
         .await
@@ -31,7 +31,7 @@ async fn a_profile_read_past_claim_expiry_creates_no_run_audit_or_tally() {
     let case = ready(&fixtures).await;
     select(&fixtures, &case.runner, Some(&model.model.id)).await;
     let runs = fixtures.runs();
-    let acquired = claim(&fixtures, &case).await;
+    let acquired = assign(&fixtures, &case).await;
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     let billed = Billed {
         tenant_id: &case.tenant,
@@ -81,7 +81,7 @@ async fn block_profile(connection: &mut PgConnection) -> (Transaction<'_, Postgr
 }
 
 /// The issue path touches this table only after locking and reading capacity.
-/// Observe that wait before changing the slot; elapsed time alone proves none of it.
+/// Observe that wait before changing the thread; elapsed time alone proves none of it.
 async fn expire_while_blocked(
     fixtures: &Fixtures,
     held: Transaction<'_, Postgres>,
@@ -118,7 +118,7 @@ async fn expire_while_blocked(
     }
     held.rollback()
         .await
-        .expect("release the profile read after claim expiry");
+        .expect("release the profile read after assignment expiry");
 }
 
 async fn assert_no_issuance(fixtures: &Fixtures, runner: &Uuid7) {

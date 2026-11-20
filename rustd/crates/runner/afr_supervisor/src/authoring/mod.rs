@@ -90,7 +90,7 @@ impl Lessee {
         );
         // Polled in order: renewal stops at the same attempt end, so the
         // deadline is checked first and a turn that reaches it reports
-        // `timed_out`, never a lost slot.
+        // `timed_out`, never a lost run.
         let mut ending = tokio::select! {
             biased;
             () = tokio::time::sleep_until(deadline) => { observed.uncertain()?; Ending::timed_out() },

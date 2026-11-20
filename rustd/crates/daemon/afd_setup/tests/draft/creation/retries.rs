@@ -8,7 +8,7 @@
 //! to save, and many retries racing one stalled setup.
 
 use super::super::{fixture::now, mint, refusal::Refusal};
-use super::fixture::{Case, NO_ADMISSIONS, check};
+use super::fixture::{Case, NO_TURNS, check};
 use af_core::{error_code, id::Uuid7};
 use afd_setup::{
     SavedFleet,
@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tokio::sync::Barrier;
 
 /// The initial run each case asks for, so a repeated stage shows as a second
-/// admission.
+/// turn.
 const RUN: &str = "Run once setup finishes";
 /// How many identical retries race one stalled setup.
 const RETRIES: usize = 8;
@@ -120,7 +120,7 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
     assert_eq!(c.fleet_count().await, 1);
     assert_eq!(receipts(&c, &key).await, 1);
     assert_eq!(revisions(&c, &first.id).await, 1);
-    assert_eq!(c.admissions(&first.id).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&first.id).await, NO_TURNS);
     c.cleanup().await;
 }
 
@@ -153,18 +153,18 @@ async fn a_readiness_record_failure_keeps_activation_and_its_run_uncommitted() {
         .expect("retained fleet");
     assert_eq!(stalled.status, "installing");
     assert_eq!(check(&stalled, "stream"), "pending", "the record was lost");
-    assert_eq!(c.admissions(&fleet).await, NO_ADMISSIONS);
+    assert_eq!(c.turns(&fleet).await, NO_TURNS);
     drop(refusal);
     let finished = c.save(&key, request.clone()).await;
     assert_eq!(finished.id, fleet);
     assert_eq!(finished.status, "active");
     let event = named_event(&finished).expect("one initial run").to_owned();
-    assert_eq!(c.admissions(&fleet).await.len(), 1);
+    assert_eq!(c.turns(&fleet).await.len(), 1);
     assert_eq!(
         named_event(&c.save(&key, request).await),
         Some(event.as_str())
     );
-    assert_eq!(c.admissions(&fleet).await.len(), 1);
+    assert_eq!(c.turns(&fleet).await.len(), 1);
     c.cleanup().await;
 }
 
@@ -220,8 +220,8 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run() {
     assert!(events.iter().all(|seen| *seen == event), "{events:?}");
     let settled = c.save(&key, request).await;
     assert_eq!(named_event(&settled), Some(event.as_str()));
-    let rows = c.admissions(&fleet).await;
-    assert_eq!(rows.len(), 1, "one initial admission: {rows:?}");
+    let rows = c.turns(&fleet).await;
+    assert_eq!(rows.len(), 1, "one initial turn: {rows:?}");
     assert_eq!(c.fleet_count().await, 1);
     Arc::try_unwrap(c)
         .ok()

@@ -14,7 +14,7 @@ use afd_turns::{IncomingTurn, Key, Producer, Reply};
 use jiff::Timestamp;
 use sqlx::Row as _;
 
-use crate::recovery_seed::{admission, ledger, producer_key};
+use crate::recovery_seed::{incoming_turn, ledger, producer_key};
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_RESPONSE, RESUME_TURN_ID, report};
 use crate::report_seed::{DEEP_POOL, SLICE_MS};
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
@@ -178,7 +178,7 @@ impl Stage {
                 producer,
                 key: Key::Repeated(&key),
                 reply,
-                ..admission(&self.fleet, &self.workspace, &key)
+                ..incoming_turn(&self.fleet, &self.workspace, &key)
             })
             .await
             .expect("the ledger admits")
@@ -207,7 +207,7 @@ impl Stage {
             )
             .await
             .expect("the run row must be written")
-            .expect("the claim is still held");
+            .expect("the assignment is still held");
         let run = self
             .runs
             .load_for_report(&issued.run_id, &self.runner)
@@ -243,7 +243,7 @@ impl Stage {
             .await
     }
 
-    /// Reports and settles the next admission, answering what was owed.
+    /// Reports and settles the next turn, answering what was owed.
     pub(crate) async fn run_next(&self, run: i64) -> Committed {
         let now = af_core::clock::after(
             self.fixtures.enrolled_at(),

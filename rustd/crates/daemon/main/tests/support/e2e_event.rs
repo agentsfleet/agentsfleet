@@ -1,4 +1,4 @@
-//! Production admissions and an unsupported event fixture, both stored in the ledger.
+//! Production turns and an unsupported event fixture, both stored in the ledger.
 #![allow(
     dead_code,
     reason = "test support: shared by several test binaries, each using a subset"
@@ -36,7 +36,7 @@ pub(crate) async fn enqueue(
     enqueue_over(booted, booted.bus.clone(), fleet, workspace, event_type).await
 }
 
-/// [`enqueue`], with the admission's wake published on `bus`, such as one
+/// [`enqueue`], with the turn's wake published on `bus`, such as one
 /// that loses it.
 pub(crate) async fn enqueue_over(
     booted: &Booted,
@@ -73,14 +73,14 @@ pub(crate) async fn enqueue_unsupported(
     event_type: &str,
     now: Timestamp,
 ) -> Uuid7 {
-    let event = insert_admission(booted, fleet, workspace, event_type, now).await;
-    // Mirror admission's post-commit hint; the recovery cadence exceeds the refusal window.
+    let event = insert_turn(booted, fleet, workspace, event_type, now).await;
+    // Mirror intake's post-commit hint; the recovery cadence exceeds the refusal window.
     afd_bus::wake::publish(&booted.bus, fleet.clone()).await;
     event
 }
 
 /// The ledger row for [`enqueue_unsupported`]: its id, which is the event's.
-async fn insert_admission(
+async fn insert_turn(
     booted: &Booted,
     fleet: &Uuid7,
     workspace: &Uuid7,
@@ -118,6 +118,6 @@ async fn insert_admission(
             .expect("a pooled connection"),
     )
     .await
-    .expect("the admission row must insert");
+    .expect("the turn row must insert");
     row_id
 }

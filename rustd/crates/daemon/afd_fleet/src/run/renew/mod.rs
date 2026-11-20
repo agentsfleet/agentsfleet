@@ -1,6 +1,6 @@
 //! The renew verb: a live run pushing its own kill deadline forward.
 //!
-//! What makes this more than a `SET run_expires_at` is that reclaimability
+//! What makes this more than a `SET run_expires_at` is that reassignability
 //! and the kill deadline live on two different rows — see
 //! [`crate::run::sql::meter::METER_RUN`]. Both move together under one fence,
 //! or the runner is told the run is gone.
@@ -124,9 +124,9 @@ impl Runs {
 /// `mapOutcome`'s logic, and the ordering of its tests is load-bearing:
 ///
 /// A run row that advanced while the affinity row did NOT is `Lost`, not
-/// extended. A concurrent reclaim took the slot between the snapshot and the
-/// update's recheck, so the deadline this would report is one the slot will not
-/// honour — the child dies cleanly rather than running past a reclaim.
+/// extended. A concurrent reassignment took the thread between the snapshot and the
+/// update's recheck, so the deadline this would report is one the thread will not
+/// honour — the child dies cleanly rather than running past a reassignment.
 ///
 /// With no row advanced, an absent probe means the run is not ours or not
 /// active. A probe that IS there means the guard failed, on the cap or on the

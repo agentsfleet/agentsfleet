@@ -57,13 +57,13 @@ fn ceil(tokens: i64, rate: i64) -> Result<i64> {
         .map_err(|_overflow| ErrorKind::Balance.into())
 }
 
-/// The claim gate: whether `tenant`'s balance, less every line it logged and
+/// The assignment gate: whether `tenant`'s balance, less every line it logged and
 /// the relay has not yet charged, covers `required` before an attempt is
 /// issued.
 ///
-/// Read on the claim's own transaction from the ledger's tables, never through
+/// Read on the assignment's own transaction from the ledger's tables, never through
 /// a second pooled connection, which would starve the pool under concurrent
-/// claims. Nothing is set aside: each model call checks again, and refuses if
+/// assignments. Nothing is set aside: each model call checks again, and refuses if
 /// the balance can no longer fund the attempt. A tenant with no wallet is
 /// refused.
 pub(crate) async fn gate(

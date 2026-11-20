@@ -26,8 +26,8 @@ WITH resolved AS (
 ), unparked AS (
   UPDATE thread.turns a SET parked_at = NULL, updated_at = now()
   FROM resolved r
-  -- Parked rows and claimed ones: a park in flight holds a claimed row's lock and
-  -- this waits on it, so the park cannot strand its flag. The unclaimed backlog is
+  -- Parked rows and assigned ones: a park in flight holds an assigned row's lock and
+  -- this waits on it, so the park cannot strand its flag. The unassigned backlog is
   -- neither rewritten nor locked.
   WHERE a.thread_id = r.fleet_id AND a.settled_at IS NULL
     AND (a.parked_at IS NOT NULL OR a.run_fence IS NOT NULL)

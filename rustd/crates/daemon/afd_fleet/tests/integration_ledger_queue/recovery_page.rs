@@ -1,4 +1,4 @@
-//! A recovery page advances past locked slots and retries the skipped work on wrap.
+//! A recovery page advances past locked threads and retries the skipped work on wrap.
 
 use super::{enqueue, seeded_parts};
 use crate::support::Fixtures;
@@ -10,7 +10,7 @@ type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn recovery_passes_sixty_four_locked_slots_and_retries_them_after_wrap() -> Checked {
+async fn recovery_passes_sixty_four_locked_threads_and_retries_them_after_wrap() -> Checked {
     let fixtures = Fixtures::create_isolated().await;
     let (template, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let entries = cohort(&fixtures, &template, &workspace, &tenant, 65).await?;
@@ -62,7 +62,7 @@ async fn unlocked_older_heads_return_while_newer_work_stays_ready() -> Checked {
     let (template, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let entries = cohort(&fixtures, &template, &workspace, &tenant, 129).await?;
     let (prefix, later) = entries.split_at_checked(64).ok_or("locked page")?;
-    let oldest = prefix.first().ok_or("oldest admission")?;
+    let oldest = prefix.first().ok_or("oldest turn")?;
     let fleets: Vec<_> = prefix.iter().map(|(_, fleet)| fleet).collect();
     let mut connection = fixtures.database.acquire().await?;
     let mut lock = connection.begin().await?;
@@ -100,7 +100,7 @@ async fn unlocked_older_heads_return_while_newer_work_stays_ready() -> Checked {
             return Ok(());
         }
     }
-    Err("successive newer claims starved the unlocked oldest head".into())
+    Err("successive newer assignments starved the unlocked oldest head".into())
 }
 
 async fn cohort(

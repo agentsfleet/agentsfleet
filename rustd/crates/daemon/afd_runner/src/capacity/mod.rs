@@ -2,7 +2,7 @@
 //!
 //! Callers retain the transaction through the guarded run write. The census
 //! is a separate statement after the host lock: a statement snapshot acquired
-//! before waiting for that lock could miss the preceding claimant's commit.
+//! before waiting for that lock could miss the preceding assignment's commit.
 
 use af_core::id::Uuid7;
 use jiff::Timestamp;
@@ -18,12 +18,12 @@ mod sql;
 
 /// Which work consumes a worker; this never grants connection authority.
 #[derive(Debug, Clone, Copy)]
-pub enum Claimant<'a> {
+pub enum Work<'a> {
     /// Reusing this fleet's hold replaces it without taking another worker.
     Fleet(&'a Uuid7),
     /// Private authoring cannot reuse a fleet sandbox.
     Authoring,
-    /// Current work renews its live slot without charging idle holds.
+    /// Current work renews its live run without charging idle holds.
     Existing,
 }
 
@@ -42,7 +42,7 @@ pub struct Capacity {
     workers: i32,
     occupied: i64,
     held: i64,
-    claims_allowed: bool,
+    assignments_allowed: bool,
     renewals_allowed: bool,
     run_version: i64,
     decision_selected: bool,
@@ -52,7 +52,7 @@ pub struct Capacity {
 impl Capacity {
     /// Whether this host may take the tenant it was locked for: the platform's
     /// hosts take any tenant's work, a tenant's host only its own. Postgres
-    /// answers it under the lock, with the predicate the claim uses.
+    /// answers it under the lock, with the predicate the assignment uses.
     #[must_use]
     pub const fn serves(self) -> bool {
         self.ownership.serves
@@ -73,11 +73,11 @@ impl Capacity {
 
     /// Whether one additional run fits the currently assigned worker limit.
     #[must_use]
-    pub fn can_claim(self) -> bool {
-        self.claims_allowed && self.occupied + self.held < i64::from(self.workers)
+    pub fn can_assign(self) -> bool {
+        self.assignments_allowed && self.occupied + self.held < i64::from(self.workers)
     }
 
-    /// A renewal retains an already counted, unexpired slot.
+    /// A renewal retains an already counted, unexpired run.
     #[must_use]
     pub fn can_renew(self) -> bool {
         self.renewals_allowed && self.occupied <= i64::from(self.workers)
@@ -107,11 +107,11 @@ struct Census {
     held: i64,
 }
 
-/// The host row as [`lock_host`] holds it: what the claim checks before the
+/// The host row as [`lock_host`] holds it: what the assignment checks before the
 /// guarded run insert counts the host's census itself.
 #[derive(Debug, Clone, Copy)]
 pub struct Held {
-    claims_allowed: bool,
+    assignments_allowed: bool,
     continuations_allowed: bool,
     run_version: i64,
     decision_selected: bool,
@@ -121,7 +121,7 @@ pub struct Held {
 impl Held {
     /// Whether this host may take the tenant it was locked for: the platform's
     /// hosts take any tenant's work, a tenant's host only its own. Postgres
-    /// answers it under the lock, with the predicate the claim uses.
+    /// answers it under the lock, with the predicate the assignment uses.
     #[must_use]
     pub const fn serves(self) -> bool {
         self.ownership.serves
@@ -136,8 +136,8 @@ impl Held {
     /// Whether the host may take new work: active and not degraded. Whether a
     /// worker is free is the insert's to count.
     #[must_use]
-    pub const fn can_claim(self) -> bool {
-        self.claims_allowed
+    pub const fn can_assign(self) -> bool {
+        self.assignments_allowed
     }
 
     /// Current work may continue on a cordoned or draining host, while a
@@ -164,7 +164,7 @@ impl Held {
 ///
 /// For the fleet issue, whose insert counts occupied workers in its own guard:
 /// that statement's snapshot is taken after this lock, so it sees the
-/// preceding claimant's commit as the separate census statement did.
+/// preceding assignment's commit as the separate census statement did.
 ///
 /// # Errors
 /// Reports a datastore that would not answer.
@@ -197,7 +197,7 @@ async fn held<'a>(
     Ok(locked(transaction, guard, work_tenant, statement)
         .await?
         .map(|(_, host)| Held {
-            claims_allowed: !host.degraded
+            assignments_allowed: !host.degraded
                 && host.cordon_reason.is_none()
                 && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
             continuations_allowed: !host.degraded && renewable_state(&host.status),
@@ -235,7 +235,7 @@ async fn locked<'g>(
 /// Lock a host and count live work and applicable holds using a fresh snapshot.
 ///
 /// `None` means the authenticated host was removed. Cordoned/draining hosts
-/// may finish current work but cannot claim more; revoked/degraded hosts do
+/// may finish current work but cannot take more; revoked/degraded hosts do
 /// neither. Run-specific original-expiry/fence checks remain mandatory.
 ///
 /// # Errors
@@ -243,7 +243,7 @@ async fn locked<'g>(
 pub async fn lock<'a>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'a>>,
-    claimant: Claimant<'_>,
+    work: Work<'_>,
     work_tenant: Option<&Uuid7>,
 ) -> Result<Option<Capacity>> {
     let Some((runner_id, host)) = locked(transaction, guard, work_tenant, sql::LOCK_HOST).await?
@@ -253,11 +253,11 @@ pub async fn lock<'a>(
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
         .bind(&runner_id)
         .bind(crate::sql::RUN_STATUS_ACTIVE)
-        .bind(match claimant {
-            Claimant::Fleet(fleet) => Some(fleet),
-            Claimant::Authoring | Claimant::Existing => None,
+        .bind(match work {
+            Work::Fleet(fleet) => Some(fleet),
+            Work::Authoring | Work::Existing => None,
         })
-        .bind(!matches!(claimant, Claimant::Existing))
+        .bind(!matches!(work, Work::Existing))
         .fetch_one(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
@@ -266,7 +266,7 @@ pub async fn lock<'a>(
         workers: host.worker_count,
         occupied: census.occupied,
         held: census.held,
-        claims_allowed: !host.degraded
+        assignments_allowed: !host.degraded
             && host.cordon_reason.is_none()
             && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
         renewals_allowed: !host.degraded && renewable_state(&host.status),
@@ -299,7 +299,7 @@ pub fn renewable_states() -> Vec<String> {
         .collect()
 }
 
-/// Why issue refused a placement the claim should already have filtered.
+/// Why issue refused a placement the assignment should already have filtered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlacementRefusal {
     /// A tenant's runner was assigned another tenant's work.
@@ -319,7 +319,7 @@ impl PlacementRefusal {
     }
 }
 
-/// Logs a refused placement. Any occurrence means the claim's filter has a hole,
+/// Logs a refused placement. Any occurrence means the assignment's filter has a hole,
 /// so it is an error with its registry code, never a debug line.
 pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, run_type: &str) {
     let runner_id = runner.as_str();
@@ -331,6 +331,6 @@ pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, run_type: &s
         reason,
         run_type,
         event = "runner_placement_refused",
-        "issue refused a placement the claim should have filtered"
+        "issue refused a placement the assignment should have filtered"
     );
 }

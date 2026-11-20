@@ -67,7 +67,7 @@ async fn cancelled_capture_allocates_nothing_and_never_announces_saved() -> crat
     .unwrap_err();
     config_failure(&error, "checkpoint capture was cancelled");
     let requests = drain(&mut calls).await;
-    assert!(requests.iter().all(|call| call.verb == Verb::Activity));
+    assert!(requests.iter().all(|call| call.verb == Verb::Progress));
     assert_eq!(phases(&requests), ["preparing", "failed"]);
     Ok(())
 }
@@ -101,7 +101,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
     assert_eq!(
         requests
             .iter()
-            .filter(|call| call.verb != Verb::Activity)
+            .filter(|call| call.verb != Verb::Progress)
             .map(|call| call.verb)
             .collect::<Vec<_>>(),
         [Verb::TaskCheckpointPlan]

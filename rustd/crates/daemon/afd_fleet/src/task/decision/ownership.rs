@@ -152,7 +152,7 @@ pub(super) async fn authorize_source(
     }
     source::check_human(input)?;
     if source_id.as_str() != current.source_turn_id {
-        sqlx::query_scalar::<_, Uuid7>(sql::CLAIM_SOURCE)
+        sqlx::query_scalar::<_, Uuid7>(sql::ASSIGN_SOURCE)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .bind(&current.source_turn_id)
@@ -172,7 +172,7 @@ pub(super) async fn authorize_source(
             .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
             .fetch_optional(connection)
             .await
-            .map_err(query("claim the next native human decision source"))?
+            .map_err(query("assign the next native human decision source"))?
             .ok_or(TaskRefusal::StaleState)?;
     }
     Ok(())

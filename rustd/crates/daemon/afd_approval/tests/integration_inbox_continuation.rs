@@ -297,7 +297,7 @@ async fn refuse_continuation(lane: &Lane, action: &Uuid7, before: i64) {
     refusing
         .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
-        .expect_err("the continuation's admission is refused");
+        .expect_err("the continuation's turn is refused");
     assert_eq!(lane.status_of(action).await, "approved");
     assert_eq!(lane.event_count().await, before, "nothing continued yet");
 }

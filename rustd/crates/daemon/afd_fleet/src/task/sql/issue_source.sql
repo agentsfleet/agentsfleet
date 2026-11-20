@@ -1,4 +1,4 @@
-SELECT a.task_id, a.task_generation AS admission_generation, COALESCE(t.accepted_revision_id, f.head_revision_id) AS accepted_revision_id,
+SELECT a.task_id, a.task_generation AS turn_generation, COALESCE(t.accepted_revision_id, f.head_revision_id) AS accepted_revision_id,
        t.generation, f.head_revision_id,
        (r.durable_tasks_enabled AND COALESCE(r.capability_report @> jsonb_build_object($4::text, true), false)) AS capable,
        COALESCE(setup.definition #> $5::text[] IS NOT NULL AND setup.definition #> $5::text[] <> 'null'::jsonb, false) AS requires_tasks

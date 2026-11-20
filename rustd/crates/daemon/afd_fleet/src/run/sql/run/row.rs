@@ -1,5 +1,5 @@
 //! The run row's one write: the run, its audit event and the runner's
-//! tally, fenced on the claim that earned it.
+//! tally, fenced on the assignment that earned it.
 //!
 //! Split from [`super`] when fencing the insert pushed that file past the
 //! length cap; the statement and the struct that binds it stay together,
@@ -20,25 +20,25 @@ use crate::{Result, error::query};
 /// rides the same statement so the acquired counter can never drift from the
 /// rows it counts.
 ///
-/// # Fenced on the claim that earned it
+/// # Fenced on the assignment that earned it
 ///
-/// The `held` arm writes nothing unless the slot still carries this claim's
+/// The `held` arm writes nothing unless the thread still carries this assignment's
 /// token (`$10`) and has not lapsed (`$11`), and every other arm reads from it.
-/// A pass that outlived its claim lost the slot to a runner that took the same
+/// A pass that outlived its assignment lost the thread to a runner that took the same
 /// entry over, and an unfenced insert would have two runners executing one
 /// event. A lost fence writes no row at all, which the caller reads as no-work.
 ///
 /// `held` is an UPDATE rather than a guarded SELECT so the row lock and the
-/// predicate are one step: a claim racing it either commits first and fails
-/// the recheck, or waits for this insert and then reclaims the run it wrote.
+/// predicate are one step: an assignment racing it either commits first and fails
+/// the recheck, or waits for this insert and then reassigns the run it wrote.
 ///
 /// # Every run meters its own run
 ///
-/// The run's runtime cursor opens at the claim's instant, fresh or reclaim:
-/// a reclaimed run bills from when it started, and the dead holder's last slice
+/// The run's runtime cursor opens at the assignment's instant, fresh or reassignment:
+/// a reassigned run bills from when it started, and the dead holder's last slice
 /// was billed to the dead run when it expired.
 ///
-/// The run stores no copy of the event body: the reclaim path reads it by
+/// The run stores no copy of the event body: the reassignment path reads it by
 /// joining `thread.turns` on the run's `turn_id`, so the
 /// hottest write in the system stops duplicating the largest value in it.
 pub const INSERT_RUN_WITH_TURN: &str = include_str!("insert_run_with_turn.sql");
@@ -58,7 +58,7 @@ pub struct RunRow<'a> {
     pub run_id: &'a Uuid7,
     /// The runner taking the work.
     pub runner_id: &'a Uuid7,
-    /// The fleet whose slot was claimed.
+    /// The fleet whose thread was assigned.
     pub fleet_id: &'a Uuid7,
     /// The workspace the fleet belongs to.
     pub workspace_id: &'a Uuid7,
@@ -77,13 +77,13 @@ pub struct RunRow<'a> {
     pub provider: &'a str,
     /// The model resolved at billing.
     pub model: &'a str,
-    /// The claim's fencing token — the value every report is checked against.
+    /// The assignment's fencing token — the value every report is checked against.
     pub fencing_token: i64,
     /// The status the row opens in.
     pub status: &'a str,
     /// Identifier of the audit row this write also lands.
     pub event_row_id: &'a Uuid7,
-    /// Whether this run is a fresh pull or a reclaim, as its wire spelling.
+    /// Whether this run is a fresh pull or a reassignment, as its wire spelling.
     /// It reaches the audit row's metadata, where an operator reads it.
     pub kind: &'a str,
     /// The non-secret reviewed selection delivered by this exact run.
@@ -93,16 +93,16 @@ pub struct RunRow<'a> {
     pub run_version: i64,
     /// The kind the advanced choice records.
     pub run_kind: &'a str,
-    /// When the claim lapses, as the claim answered it: a pass that outlived
+    /// When the assignment lapses, as the assignment answered it: a pass that outlived
     /// it writes no run.
     pub held_until: Timestamp,
-    /// The head revision the claim assembled the setup from; a run whose
+    /// The head revision the assignment assembled the setup from; a run whose
     /// fleet's head moved since writes nothing. `None` checks no revision.
     pub setup_revision: Option<&'a Uuid7>,
 }
 
 impl RunRow<'_> {
-    /// Return the actual stored creation time, or None when the guarded insert lost its claim.
+    /// Return the actual stored creation time, or None when the guarded insert lost its assignment.
     ///
     /// # Errors
     /// Preserves the statement's failure; no additional timestamp read is issued.

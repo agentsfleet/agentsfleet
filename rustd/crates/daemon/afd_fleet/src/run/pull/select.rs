@@ -1,4 +1,4 @@
-//! A native claim selects fleet work while retaining the policy borrow.
+//! A native assignment selects fleet work while retaining the policy borrow.
 
 use af_observability::verb_span::{AssignStage, VerbClock};
 use af_wire::run::RunPayload;
@@ -17,7 +17,7 @@ impl RunService {
     ///
     /// # Errors
     /// Preserves selection, policy, billing and durable issue failures.
-    pub async fn claim_fleet_with<T, F>(
+    pub async fn assign_fleet_with<T, F>(
         &self,
         request: &mut AssignRequest<'_>,
         ticket: Option<Ticket>,
@@ -48,11 +48,11 @@ impl RunService {
             no_work(request.runner, "no leasable work");
             return Ok(None);
         };
-        clock.mark(AssignStage::Claim);
+        clock.mark(AssignStage::Select);
         let mut chosen = self.clone();
         chosen.runs = chosen.runs.with_ticket(ticket);
         chosen
-            .run_claimed_with(
+            .run_assigned_with(
                 acquired,
                 request.runner,
                 request.now,

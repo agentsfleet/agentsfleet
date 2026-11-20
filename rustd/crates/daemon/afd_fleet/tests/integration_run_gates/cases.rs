@@ -19,8 +19,8 @@ async fn test_a_fleet_past_its_ceiling_ends_the_event_rather_than_retrying_it() 
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_spend(&fixtures, &seeded, &seeded.tenant, OVERSPENT_NANOS).await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(
         answer.is_none(),
@@ -52,8 +52,8 @@ async fn test_a_denied_gate_ends_the_event_and_names_the_denial() {
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, "denied").await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(answer.is_none(), "a denied gate issued a run: {answer:?}");
     let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.turn_id)
@@ -83,8 +83,8 @@ async fn test_an_unanswered_gate_parks_the_event_without_ending_it() {
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, "pending").await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(
         answer.is_none(),

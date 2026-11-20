@@ -28,7 +28,7 @@ const DEBT_NANOS: i64 = 50;
 ///
 /// A settlement takes its whole charge, so a balance can sit below zero. The
 /// model is unpriced, so the floor is zero: what refuses here is the debt
-/// alone, and an admission gate that clamped the balance at zero would cover a
+/// alone, and a turn gate that clamped the balance at zero would cover a
 /// zero floor and admit a payer who owes money.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

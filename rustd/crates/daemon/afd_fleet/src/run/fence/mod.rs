@@ -27,8 +27,8 @@ const CONTEXT_FENCE: &str = "live fence lookup";
 /// The run's own token and the fleet's live fencing sequence, if this runner
 /// holds a live run on it.
 ///
-/// The slot row's token is the live sequence, so a reclaim that bumped it
-/// strands the old holder BELOW it. A fleet with no slot row (only a fleet's
+/// The thread row's token is the live sequence, so a reassignment that bumped it
+/// strands the old holder BELOW it. A fleet with no thread row (only a fleet's
 /// deletion removes one) has no live sequence, and so no live fence.
 ///
 /// Where one runner briefly holds two live runs on the fleet — a superseded
@@ -52,7 +52,7 @@ const SELECT_LIVE_FENCE_BY_RUN: &str = include_str!("select_live_fence_by_run.sq
 /// A live run's own token beside its fleet's live sequence.
 ///
 /// Both, because neither alone decides. A run row stays `active` after a
-/// reclaim has moved the fleet past it, until the reclaim's issue expires it,
+/// reassignment has moved the fleet past it, until the reassignment's issue expires it,
 /// so "the run is live" says nothing about whether it still holds the fleet;
 /// and a token compared only against the sequence admits any value above it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +74,7 @@ impl Fence {
         Ok(Self { own, live_seq })
     }
 
-    /// Whether no reclaim has moved the fleet past this run: the first half
+    /// Whether no reassignment has moved the fleet past this run: the first half
     /// of the rule [`Self::holds`] applies, from the same function.
     pub(crate) const fn current(self) -> bool {
         fence_current(self.own, self.live_seq)
@@ -100,7 +100,7 @@ impl Fence {
 impl Runs {
     /// The run's fence, if `runner_id` holds a live run on the fleet.
     ///
-    /// `None` means no live run — expired, reclaimed, or never held. A run
+    /// `None` means no live run — expired, reassigned, or never held. A run
     /// that is live but superseded answers a [`Fence`] that is not
     /// [`current`](Fence::current); a load refuses both, because a runner
     /// may read a fleet's memory only while it is actually running it.

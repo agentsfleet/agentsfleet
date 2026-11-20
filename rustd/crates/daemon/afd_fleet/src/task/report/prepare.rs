@@ -52,7 +52,7 @@ pub(super) async fn prepare(
                         owned
                             .current
                             .run_expires_at
-                            .min(owned.current.slot_expires_at),
+                            .min(owned.current.thread_expires_at),
                     )
                     .status(target)
                     .await

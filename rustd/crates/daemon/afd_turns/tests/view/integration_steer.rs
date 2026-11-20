@@ -23,7 +23,7 @@ struct Envelope {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
     let lane = TurnsLane::open().await;
-    let accepted = Steer::new(lane.admissions())
+    let accepted = Steer::new(lane.turns())
         .append(
             &lane.fleet,
             &lane.workspace,
@@ -61,7 +61,7 @@ async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_two_keyless_sends_of_equal_text_are_two_queued_messages() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let first = append_with(&steer, &lane, None).await;
     let second = append_with(&steer, &lane, None).await;
     assert_ne!(first, second);

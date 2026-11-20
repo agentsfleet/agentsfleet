@@ -25,7 +25,7 @@ pub(super) const FLEET: &[Problem] = &[
         // the resource is very much still there, owned by somebody else.
         status: 409,
         title: "Stale fencing token",
-        hint: "The run was reclaimed by a newer holder, or the token is not the run's own. This request is refused; the current holder's work wins.",
+        hint: "The run was reassigned to a newer holder, or the token is not the run's own. This request is refused; the current holder's work wins.",
         // Not dashboard-facing: this rides the runner-to-control-plane wire.
         user_message: None,
     },
@@ -33,7 +33,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::RUN_NOT_FOUND,
         status: 404,
         title: "Run not found",
-        hint: "No active run matches this run_id for the presenting runner; it may have expired, been reclaimed, or never existed.",
+        hint: "No active run matches this run_id for the presenting runner; it may have expired, been reassigned, or never existed.",
         user_message: None,
     },
     Problem {
@@ -181,7 +181,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::RUNNER_PLACEMENT_REFUSED,
         status: 500,
         title: "Runner placement refused",
-        hint: "Issue refused work the claim should have filtered for this runner. Report it: the placement filter has a hole.",
+        hint: "Issue refused work the assignment should have filtered for this runner. Report it: the placement filter has a hole.",
         user_message: None,
     },
     super::checkpoint::INCOMPATIBLE,

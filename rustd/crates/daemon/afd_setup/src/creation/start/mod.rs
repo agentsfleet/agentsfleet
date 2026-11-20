@@ -1,4 +1,4 @@
-//! Initial admission, recovery and receipt confirmation share one derived identity.
+//! Initial turn, recovery and receipt confirmation share one derived identity.
 
 mod admit;
 mod confirm;

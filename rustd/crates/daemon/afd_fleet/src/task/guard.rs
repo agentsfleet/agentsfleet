@@ -32,7 +32,7 @@ pub(super) struct RunRow {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub run_expires_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub slot_expires_at: jiff::Timestamp,
+    pub thread_expires_at: jiff::Timestamp,
 }
 
 pub(super) async fn run_scope(database: &Db, presented: TaskRun<'_>) -> Result<TaskScope> {
@@ -72,11 +72,11 @@ pub(super) async fn replay_run(
 async fn locked_run(
     connection: &mut PgConnection,
     presented: TaskRun<'_>,
-    slot_lock: &'static str,
+    thread_lock: &'static str,
     run_lock: &'static str,
 ) -> Result<RunRow> {
     // A short ownership read precedes the lock so fleet deletion cannot wait
-    // on our slot while we wait on its parent row's foreign-key lock.
+    // on our thread while we wait on its parent row's foreign-key lock.
     let scope: Option<(Uuid7, Uuid7)> = sqlx::query_as(sql::RUN_SCOPE)
         .bind(presented.run_id)
         .bind(presented.runner_id)
@@ -85,14 +85,14 @@ async fn locked_run(
         .map_err(query(CONTEXT))?;
     let (fleet, workspace) = scope.ok_or_else(run_not_found)?;
     lock_scope(connection, &fleet, &workspace).await?;
-    sqlx::query_scalar::<_, Uuid7>(slot_lock)
+    sqlx::query_scalar::<_, Uuid7>(thread_lock)
         .bind(presented.run_id)
         .bind(presented.runner_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
         .ok_or_else(run_not_found)?;
-    // Slot and parent locks are already held when the existing deadline/fence
+    // Thread and parent locks are already held when the existing deadline/fence
     // is checked. A row-lock wait cannot leave a pre-wait deadline accepted.
     let row: RunRow = sqlx::query_as(run_lock)
         .bind(presented.run_id)
@@ -115,7 +115,7 @@ async fn locked_run(
 
 pub(super) async fn scope(connection: &mut PgConnection, scope: &TaskScope) -> Result<()> {
     lock_scope(connection, &scope.fleet_id, &scope.workspace_id).await?;
-    let _slot = sqlx::query_scalar::<_, Uuid7>(sql::LOCK_SCOPE_THREAD)
+    let _thread = sqlx::query_scalar::<_, Uuid7>(sql::LOCK_SCOPE_THREAD)
         .bind(&scope.fleet_id)
         .fetch_optional(connection)
         .await

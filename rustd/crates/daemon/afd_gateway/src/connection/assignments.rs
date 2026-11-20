@@ -1,4 +1,4 @@
-//! A replica pass awaits one claim at a time through the connection's existing operation owner.
+//! A replica pass awaits one assignment at a time through the connection's operation owner.
 
 use super::ConnectionHandle;
 use crate::{
@@ -22,18 +22,18 @@ pub(crate) enum AssignOutcome {
 }
 
 #[derive(Debug)]
-pub(crate) struct ClaimRequest {
+pub(crate) struct PassRequest {
     pub(crate) mode: AssignMode,
     pub(crate) reply: oneshot::Sender<AssignOutcome>,
 }
 
 pub(super) enum AssignTrigger {
     Ready,
-    Pass(ClaimRequest),
+    Pass(PassRequest),
 }
 
 impl ConnectionHandle {
-    pub(crate) async fn claim(&self, mode: AssignMode) -> Result<AssignOutcome> {
+    pub(crate) async fn assign(&self, mode: AssignMode) -> Result<AssignOutcome> {
         if self.stop.is_cancelled() || self.drain.is_cancelled() || self.superseded.is_cancelled() {
             return Ok(AssignOutcome::Empty);
         }
@@ -43,8 +43,8 @@ impl ConnectionHandle {
             Instant::now() + STREAM_ANSWER_TIMEOUT,
             Operation::Assign,
             async {
-                self.claims
-                    .send(ClaimRequest { mode, reply })
+                self.passes
+                    .send(PassRequest { mode, reply })
                     .await
                     .map_err(closed_send)?;
                 Ok(answer.await?)

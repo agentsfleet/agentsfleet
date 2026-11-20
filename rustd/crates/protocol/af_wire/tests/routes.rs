@@ -72,7 +72,7 @@ fn runner_routes_snapshot_lists_the_three_fleet_routes() {
     let routes = [
         ("steers", paths::RUN_STEERS),
         ("fleets", paths::RUN_FLEETS),
-        ("fleet_events", paths::RUN_FLEET_TURNS),
+        ("fleet_turns", paths::RUN_FLEET_TURNS),
     ];
     let rendered = routes
         .iter()
@@ -82,6 +82,6 @@ fn runner_routes_snapshot_lists_the_three_fleet_routes() {
     insta::assert_snapshot!(rendered, @r"
     steers       /v1/runners/me/runs/{run_id}/steers
     fleets       /v1/runners/me/runs/{run_id}/fleets
-    fleet_events /v1/runners/me/runs/{run_id}/fleets/{fleet_id}/turns
+    fleet_turns  /v1/runners/me/runs/{run_id}/fleets/{fleet_id}/turns
     ");
 }

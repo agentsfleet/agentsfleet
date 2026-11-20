@@ -64,7 +64,7 @@ pub struct TaskActivity {
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     ))]
     pub task_id: Option<String>,
-    /// Exact original admission, when assessing human intent.
+    /// Exact original turn, when assessing human intent.
     #[garde(inner(
         length(bytes, min = 36, max = 36),
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")

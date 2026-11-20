@@ -50,7 +50,7 @@ pub(super) async fn bind(
     }
     let scope = guard::run_scope(tasks.runs.pool(), run).await?;
     let (identities, continuations) = prepare::identities(tasks, &scope, plan).await?;
-    let prepared = prepare_admissions(tasks, &continuations).await?;
+    let prepared = prepare_turns(tasks, &continuations).await?;
     let committed = commit::commit(
         tasks,
         run,
@@ -72,7 +72,7 @@ pub(super) async fn bind(
     Ok(committed.bindings)
 }
 
-async fn prepare_admissions<'a>(
+async fn prepare_turns<'a>(
     tasks: &Tasks,
     continuations: &'a [Option<prepare::Wake>],
 ) -> Result<Vec<Option<afd_turns::PreparedTurn<'a>>>> {
@@ -80,12 +80,7 @@ async fn prepare_admissions<'a>(
     let mut prepared = Vec::with_capacity(continuations.len());
     for wake in continuations {
         prepared.push(match wake {
-            Some(wake) => Some(
-                tasks
-                    .admissions
-                    .prepare(wake.continuation.admission())
-                    .await?,
-            ),
+            Some(wake) => Some(tasks.turns.prepare(wake.continuation.turn()).await?),
             None => None,
         });
     }

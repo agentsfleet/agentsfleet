@@ -61,7 +61,7 @@ pub(super) async fn progress(
     let mut next = first;
 
     loop {
-        // Ensure a hot hint and another eligible hot admission precede every capacity release.
+        // Ensure a hot hint and another eligible hot turn precede every capacity release.
         hot.admit().await;
         wire::report(scene, &zero_usage(&next))
             .await
@@ -81,7 +81,7 @@ pub(super) async fn progress(
     .bind(&scene.fleet)
     .fetch_one(&mut *owner.acquire().await.expect("the result connection"))
     .await
-    .expect("the original admission remains readable");
+    .expect("the original turn remains readable");
     assert!(
         settled,
         "older work reached its durable result while hot demand continued"

@@ -76,7 +76,7 @@ pub(in super::super) async fn expire(case: &Case) {
         .await
         .expect("elapsed fixture clock");
     sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
-        .bind(&case.held.fleet).execute(&mut *connection).await.expect("prior slot elapsed");
+        .bind(&case.held.fleet).execute(&mut *connection).await.expect("prior thread elapsed");
     sqlx::query("UPDATE thread.runs SET status='expired' WHERE id=$1")
         .bind(&case.held.run_key)
         .execute(&mut *connection)
@@ -84,10 +84,10 @@ pub(in super::super) async fn expire(case: &Case) {
         .expect("old execution expired");
 }
 
-pub(in super::super) async fn claim(case: &Case) -> Acquired {
+pub(in super::super) async fn assign(case: &Case) -> Acquired {
     let acquired = crate::seed::select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet)
         .await
-        .expect("native admission reclaim");
+        .expect("native turn reassignment");
     assert_eq!(acquired.turn_id, case.held.turn_id);
     acquired
 }
@@ -146,7 +146,7 @@ async fn chat_source(case: &Case) {
         .acquire()
         .await
         .expect("native event fixture");
-    // One turn row holds both the admission and its history, so one update
+    // One turn row holds both the queued input and its history, so one update
     // moves the kind for both.
     let turn = sqlx::query(
         "UPDATE thread.turns SET kind=$3 WHERE thread_id=$1 AND id=$2 AND kind='steer'",

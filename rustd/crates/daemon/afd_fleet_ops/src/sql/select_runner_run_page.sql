@@ -28,7 +28,7 @@ SELECT l.id,
            SELECT 1 FROM thread.runs p
            WHERE p.turn_id = l.turn_id
              AND p.fencing_token < l.fencing_token
-       ) AS is_reclaim
+       ) AS is_reassignment
 FROM thread.runs l
 LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
 LEFT JOIN thread.turns e ON e.id = l.turn_id AND e.thread_id = l.fleet_id AND e.opened_at IS NOT NULL

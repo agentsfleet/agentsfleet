@@ -1,4 +1,4 @@
-//! Unsettled admissions and their oldest age, sampled by the census and budget.
+//! Unsettled turns and their oldest age, sampled by the census and budget.
 
 use std::time::Duration;
 
@@ -8,12 +8,12 @@ use crate::error::{Result, query};
 use crate::{Turns, sql};
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_BACKLOG: &str = "read the admission backlog";
+const CONTEXT_BACKLOG: &str = "read the turn backlog";
 
 /// How far behind the queue is, as the ledger sees it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LedgerBacklog {
-    /// Unsettled admissions.
+    /// Unsettled turns.
     pub rows: u64,
     /// How long the oldest of them has waited; `None` when there are none.
     pub oldest_age: Option<Duration>,

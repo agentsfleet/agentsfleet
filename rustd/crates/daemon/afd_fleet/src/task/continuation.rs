@@ -1,4 +1,4 @@
-//! Native continuations are ordinary admissions with an immutable task payload.
+//! Native continuations are ordinary turns with an immutable task payload.
 
 use af_core::id::Uuid7;
 use af_wire::turn::TurnKind;
@@ -50,7 +50,7 @@ impl Continuation {
         Ok(self)
     }
 
-    pub(super) fn admission(&self) -> IncomingTurn<'_> {
+    pub(super) fn turn(&self) -> IncomingTurn<'_> {
         IncomingTurn {
             producer: Producer::TaskContinuation,
             key: Key::Repeated(&self.key),
@@ -71,10 +71,10 @@ impl Continuation {
     }
 
     pub(super) async fn confirm(&self, tasks: &Tasks) {
-        // A lost wake ring cannot undo a committed admission; normal ledger
+        // A lost wake ring cannot undo a committed turn; normal ledger
         // discovery still finds the row and this call's replay remains stable.
         if let Err(error) = tasks
-            .admissions
+            .turns
             .confirm(Producer::TaskContinuation, &self.key)
             .await
         {

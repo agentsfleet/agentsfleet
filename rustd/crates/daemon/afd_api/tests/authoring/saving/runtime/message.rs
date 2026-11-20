@@ -115,7 +115,7 @@ async fn test_replay_bypasses_ingress_refusal() {
     saved.case.cleanup().await;
 }
 
-/// Without an id there is no earlier admission to answer: new work, refused.
+/// Without an id there is no earlier turn to answer: new work, refused.
 async fn assert_keyless_message_refused(saved: &Saved) {
     let keyless = json!({"message": MESSAGE}).to_string();
     let unnamed = send(

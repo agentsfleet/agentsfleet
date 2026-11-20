@@ -8,7 +8,7 @@
 //! The identifier is TEXT, and that is not an encoding detail to route around.
 //! `thread.turns` names a delivery by `(thread_id, id)`; its `id UUID` is a
 //! row key Postgres mints for tool calls and runs to point at, never the
-//! event's identifier. Admission mints the key as `<millis>-<sequence>`, because
+//! event's identifier. Turn intake mints the key as `<millis>-<sequence>`, because
 //! every surface that renders, sorts or
 //! pages on event ids was written against it. So there is no `Uuid7` in the
 //! system that identifies a fleet event, and a version of this function that
@@ -74,7 +74,7 @@ mod tests {
     )]
     use super::{MIN_REFERENCE_LEN, PREFIX, branch_for};
 
-    /// An event identifier in the shape admission actually mints: the admission
+    /// An event identifier in the shape turn intake actually mints: the intake
     /// instant and the sequence, which is what the event id carries.
     const LEDGER_EVENT: &str = "1900000000000-1";
 

@@ -4,8 +4,8 @@
 //! in one statement and then owes the tail one frame per row. The statement
 //! hands back each row's fleet, event and the fleet's count after the sweep;
 //! the loop below reads the fleet's counters and wakes the fleet once per
-//! distinct fleet, then decodes and announces. Expiry clears the admission's
-//! park stamp in Postgres. A failed wake cannot hide the admission from polls.
+//! distinct fleet, then decodes and announces. Expiry clears the turn's
+//! park stamp in Postgres. A failed wake cannot hide the turn from polls.
 //!
 //! # The rows decode by construction
 //!

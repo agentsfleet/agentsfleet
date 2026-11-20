@@ -11,7 +11,7 @@ use serde_json::Value;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() {
+async fn reassigned_owner_refuses_prepared_effect_without_spending_publication() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
@@ -27,7 +27,7 @@ async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() 
         assert_eq!(prepared.effect_id, effect);
         assert!(prepared.commit.is_none());
         assert_eq!(state(case, &effect).await, before);
-        reclaim_and_abandon(&fixture, &effect).await;
+        reassign_and_abandon(&fixture, &effect).await;
         assert_unspent(case, &task_id).await;
         assert_eq!(fixture.counts().await, (0, 0, 0));
         fixture.model.finish().await.expect("model fixture cleanup");
@@ -39,7 +39,7 @@ async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() 
     clippy::future_not_send,
     reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
 )]
-async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &Uuid7) {
+async fn reassign_and_abandon(fixture: &Decisions<'_>, effect: &Uuid7) {
     let case = fixture.case;
     let original = intent(case, effect).await;
     let default = super::run_recovery::support::provider(fixture).await;
@@ -125,8 +125,8 @@ async fn assert_replay(
 )]
 async fn replacement(case: &Case) -> (af_core::id::Uuid7, u64) {
     super::run_recovery::support::expire(case).await;
-    let acquired = super::run_recovery::support::claim(case).await;
-    let run = super::run_recovery::reclaimed(case, acquired).await;
+    let acquired = super::run_recovery::support::assign(case).await;
+    let run = super::run_recovery::reassigned(case, acquired).await;
     let run_id = id(run
         .get("run_id")
         .and_then(Value::as_str)

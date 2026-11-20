@@ -27,7 +27,7 @@ pub(crate) use self::raise::query;
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 af_core::error_shell!(
-    /// An admission failure, with the backtrace of where it was raised.
+    /// An intake failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
 
@@ -51,7 +51,7 @@ pub(crate) enum ErrorKind {
     ///
     /// The retryable refusal: nothing was committed, and a producer that
     /// retries later admits the same key as new work.
-    #[error("the datastore holding the admission ledger would not answer")]
+    #[error("the datastore holding the turn ledger would not answer")]
     Datastore {
         #[source]
         source: afd_db::Error,
@@ -65,7 +65,7 @@ pub(crate) enum ErrorKind {
     },
 
     /// The deployment ceiling is spent, and the producer is told to come back later.
-    #[error("the deployment admission budget of {limit} is spent")]
+    #[error("the deployment turn budget of {limit} is spent")]
     OverBudget { limit: u64 },
 
     /// Postgres refused for want of a resource: disk, memory, connections.

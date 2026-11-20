@@ -57,10 +57,10 @@ impl<'lane> Tasks<'lane> {
         let bus = afd_bus::test_util::unreachable();
         let runs =
             afd_fleet::run::Runs::new(self.base.database.clone(), bus.clone(), Entropy::new());
-        let admissions = afd_turns::Turns::new(self.base.database.clone(), bus, Entropy::new());
+        let turns = afd_turns::Turns::new(self.base.database.clone(), bus, Entropy::new());
         afd_fleet::task::Tasks::new(
             runs,
-            admissions,
+            turns,
             harness::task_dependencies(self.base.database.clone()),
         )
     }
@@ -77,7 +77,7 @@ impl<'lane> Tasks<'lane> {
             },
         }])
         .expect("typed questions serialize");
-        let admission = mint_id();
+        let turn = mint_id();
         let mut connection = self.base.database.acquire().await.expect("API connection");
         let mut transaction = connection.begin().await.expect("task seed transaction");
         for (ordinal, (id, state)) in self
@@ -96,7 +96,7 @@ impl<'lane> Tasks<'lane> {
                 .bind(&item)
                 .bind(&self.base.fleet)
                 .bind(&self.base.workspace)
-                .bind(&admission)
+                .bind(&turn)
                 .bind(i32::try_from(ordinal).expect("four fixture items"))
                 .bind(id)
                 .execute(&mut *transaction)

@@ -1,5 +1,5 @@
 //! The rows these suites seed beyond what `afd_db::test_util` spells: a run
-//! with the event it executes, a fleet's slot, and an authoring attempt.
+//! with the event it executes, a fleet's thread, and an authoring attempt.
 //!
 //! One column list each, so a schema change edits this file and not every
 //! suite. Every row is stamped by the database's `now()` unless the suite
@@ -39,7 +39,7 @@ VALUES ($1, $2, $3, $4, $5, $6,
         $7::timestamptz, $8, 0, coalesce($9::timestamptz, now()),
         coalesce($9::timestamptz, now()))";
 
-const INSERT_SLOT: &str = "\
+const INSERT_THREAD: &str = "\
 INSERT INTO thread.threads
   (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
    created_at, updated_at)
@@ -65,7 +65,7 @@ pub(crate) struct RunRow<'a> {
     pub(crate) id: &'a Uuid7,
     /// The runner holding it.
     pub(crate) runner: &'a Uuid7,
-    /// The fleet it claims.
+    /// The fleet it is assigned.
     pub(crate) fleet: &'a Uuid7,
     /// The fleet's workspace.
     pub(crate) workspace: &'a Uuid7,
@@ -106,15 +106,15 @@ pub(crate) async fn payload(connection: &mut PgConnection, row: RunRow<'_>) -> U
     event
 }
 
-/// Seeds a fleet's slot, last held by `runner`.
-pub(crate) async fn slot(
+/// Seeds a fleet's thread, last held by `runner`.
+pub(crate) async fn thread(
     connection: &mut PgConnection,
     (fleet, runner): (&Uuid7, &Uuid7),
     run_expires_at: Timestamp,
     hold_expires_at: Option<Timestamp>,
     stamped_at: Option<Timestamp>,
 ) {
-    sqlx::query(INSERT_SLOT)
+    sqlx::query(INSERT_THREAD)
         .bind(fleet)
         .bind(runner)
         .bind(run_expires_at.to_sqlx())
@@ -122,7 +122,7 @@ pub(crate) async fn slot(
         .bind(stamped_at.map(Timestamp::to_sqlx))
         .execute(&mut *connection)
         .await
-        .expect("the slot seeds");
+        .expect("the thread seeds");
 }
 
 /// What an attempt reserved, and whether it still runs.

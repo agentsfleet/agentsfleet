@@ -265,7 +265,7 @@ export async function recoverRunningReplies(entry: Entry, fleetId: string, apply
 // pass closed — and leaves the watch, as does a row something else settled or
 // a turn the read found gone. Any other failed read, or a run still going,
 // changes nothing: the watch reads it again. A 404 for a turn whose row was
-// never known to exist is one still queued behind its admission — a replayed
+// never known to exist is one still queued — a replayed
 // send read before a runner took it — and is read again like any other miss.
 async function settleFromDetail(
   entry: Entry,

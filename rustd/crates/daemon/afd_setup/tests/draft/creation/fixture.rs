@@ -15,8 +15,8 @@ use afd_turns::Turns;
 use serde_json::json;
 use std::sync::Arc;
 
-/// What [`Case::admissions`] reads for a fleet that admitted nothing.
-pub(super) const NO_ADMISSIONS: [Uuid7; 0] = [];
+/// What [`Case::turns`] reads for a fleet that admitted nothing.
+pub(super) const NO_TURNS: [Uuid7; 0] = [];
 
 /// The state `saved` reports for its setup check of `kind`.
 pub(super) fn check<'a>(saved: &'a SavedFleet, kind: &str) -> &'a str {
@@ -54,8 +54,8 @@ impl Case {
         let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
             .expect("fixture encryption key");
         let setup = Setup::new(base.drafts.clone(), Arc::new(key));
-        let admissions = Turns::new(base.db.clone(), bus.clone(), Entropy::new());
-        let creations = Creations::new(setup.clone(), admissions);
+        let turns = Turns::new(base.db.clone(), bus.clone(), Entropy::new());
+        let creations = Creations::new(setup.clone(), turns);
         Self {
             base,
             setup,
@@ -119,12 +119,12 @@ impl Case {
             .expect("retained Save")
     }
 
-    pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<Uuid7> {
+    pub(super) async fn turns(&self, fleet: &Uuid7) -> Vec<Uuid7> {
         sqlx::query_scalar("SELECT id FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1 ORDER BY sequence")
             .bind(fleet)
             .fetch_all(&mut *self.base.connection().await)
             .await
-            .expect("durable admissions")
+            .expect("durable turns")
     }
 
     pub(super) async fn fleet_count(&self) -> i64 {

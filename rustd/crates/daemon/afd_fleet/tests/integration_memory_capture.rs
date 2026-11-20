@@ -47,7 +47,7 @@ const KEY: &str = "what-the-test_run-learned";
 const HELD_CONTENT: &str = "the finding the current holder wrote";
 
 /// What the superseded holder tries to store over it.
-const SUPERSEDED_CONTENT: &str = "the finding a reclaimed holder must not write";
+const SUPERSEDED_CONTENT: &str = "the finding a reassigned holder must not write";
 
 /// The retention category both entries carry.
 const CATEGORY: &str = "core";
@@ -85,7 +85,7 @@ async fn test_memory_capture_fencing() {
 
     // ── A token that is not the run's own is refused ──────────────────────
     // One below the run's own token, which is still the live sequence: the
-    // fence refuses it as not the holder's. A reclaim that moved the fleet past
+    // fence refuses it as not the holder's. A reassignment that moved the fleet past
     // the run is `test_memory_routes_refuse_a_superseded_active_run`.
     let superseded = test_run.fence.as_u64() - 1;
     let refusal = plane
@@ -139,7 +139,7 @@ async fn test_memory_capture_fencing() {
 ///
 /// A run is issued only while the fleet's sequence equals its token, and the
 /// sequence only grows, so the holder's token is never above the live one. A
-/// token that is ABOVE it is not a holder racing a reclaim; it is a caller
+/// token that is ABOVE it is not a holder racing a reassignment; it is a caller
 /// that does not hold the run's token, and `u64::MAX` is the value that once
 /// passed a check written as "not below".
 #[tokio::test]
@@ -177,10 +177,10 @@ async fn test_memory_capture_refuses_a_token_that_is_not_the_holders() {
 /// A run the fleet has moved past reaches none of its memory, while the row
 /// still reads `active`.
 ///
-/// A won claim bumps the fleet's sequence in one statement and expires the
-/// prior run in the next (`Plane::take_claimed`); a claimer that dies between
+/// A won assignment bumps the fleet's sequence in one statement and expires the
+/// prior run in the next (`expire_prior_run.sql`); a contender that dies between
 /// the two leaves the old row live and active until its own expiry. The bump
-/// is written directly here, because the claim path closes the window too fast
+/// is written directly here, because the assignment path closes the window too fast
 /// to observe, and every call is made inside the old run's window so each
 /// refusal comes from the fence and none from expiry.
 #[tokio::test]
@@ -191,7 +191,7 @@ async fn test_memory_routes_refuse_a_superseded_active_run() {
     let plane = test_run.fixtures.plane();
     let run = test_run.issued.run_id.as_str();
     // The control: while the fleet has not moved past it, the holder recalls
-    // and loads, so each refusal below is the reclaim's doing.
+    // and loads, so each refusal below is the reassignment's doing.
     plane
         .recall(
             &test_run.runner,

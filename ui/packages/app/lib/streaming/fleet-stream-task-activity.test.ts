@@ -3,7 +3,7 @@ import { applyLiveFrame } from "./fleet-stream-frames";
 import { applyFinalReply } from "./fleet-stream-reply-frames";
 import { evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 const ID = "019f0000-0000-7000-8000-000000000001";
-const progress = {activity_id: ID, task_id: ID, source_admission_id: null, operation: "goal", phase: "starting",
+const progress = {activity_id: ID, task_id: ID, source_turn_id: null, operation: "goal", phase: "starting",
   provider: null, model: null, completed: 0, total: null};
 
 it("ignores unknown owners and malformed frames, deduplicates decisions and restores final saved activity", () => {

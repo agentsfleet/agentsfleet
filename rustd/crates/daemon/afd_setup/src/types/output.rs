@@ -40,7 +40,7 @@ impl DraftState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageState {
-    /// Accepted and awaiting bounded admission.
+    /// Accepted and awaiting assignment to a runner.
     Queued,
     /// An unexpired authoring attempt owns the request.
     Running,

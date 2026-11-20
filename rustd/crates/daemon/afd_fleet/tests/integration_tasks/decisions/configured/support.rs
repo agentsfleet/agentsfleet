@@ -34,7 +34,7 @@ pub(super) async fn expire(case: &Case) {
         .await
         .expect("fixture clock");
     sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
-        .bind(&case.held.fleet).execute(&mut *connection).await.expect("slot elapsed");
+        .bind(&case.held.fleet).execute(&mut *connection).await.expect("thread elapsed");
     sqlx::query("UPDATE thread.runs SET status='expired' WHERE id=$1")
         .bind(&case.held.run_key)
         .execute(&mut *connection)
@@ -64,16 +64,19 @@ pub(super) async fn issue(case: &Case, acquired: &Acquired) -> Option<Issued> {
         .expect("final issue verdict")
 }
 
-pub(super) async fn claimable(case: &Case) -> bool {
+pub(super) async fn assignable(case: &Case) -> bool {
     let mut connection = case
         .held
         .fixtures
         .database
         .acquire()
         .await
-        .expect("direct claim");
-    let mut tx = connection.begin().await.expect("rollback-only claim probe");
-    let claim = sqlx::query(afd_fleet::run::sql::queue::CLAIM_HEAD)
+        .expect("direct assignment");
+    let mut tx = connection
+        .begin()
+        .await
+        .expect("rollback-only assignment probe");
+    let assigned = sqlx::query(afd_fleet::run::sql::queue::ASSIGN_HEAD)
         .bind(&case.held.fleet)
         .bind(&case.held.runner)
         .bind(std::time::Duration::from_secs(60))
@@ -91,9 +94,9 @@ pub(super) async fn claimable(case: &Case) -> bool {
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *tx)
         .await
-        .expect("real admission claim statement");
+        .expect("real turn assignment statement");
     tx.rollback()
         .await
-        .expect("probe leaves no slot or admission write");
-    claim.is_some()
+        .expect("probe leaves no thread or turn write");
+    assigned.is_some()
 }

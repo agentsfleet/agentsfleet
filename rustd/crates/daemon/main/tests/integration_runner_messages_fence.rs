@@ -43,7 +43,7 @@ async fn test_stale_fence_message_refused() {
     speaking.finish(supervisor).await;
 }
 
-/// Dimension 2.2, the spec's failure mode. A holder a reclaim has superseded
+/// Dimension 2.2, the spec's failure mode. A holder a reassignment has superseded
 /// presents its own token, and its line never reaches the thread.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

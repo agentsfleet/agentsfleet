@@ -67,7 +67,7 @@ impl Fleet {
 
     /// Runs approval decisions over `database`, notifying through `bus`.
     pub(crate) fn with_approval_queue(mut self, database: Db, bus: afd_bus::Handle) -> Self {
-        let ledger = fleet::admissions(&database, &bus);
+        let ledger = fleet::turns(&database, &bus);
         self.approvals = Inbox::new(database, bus, ledger);
         self
     }
@@ -113,7 +113,7 @@ impl Fleet {
         self.with_fleet_queue_budgets(database, bus, afd_turns::Budgets::default())
     }
 
-    /// Refuses real admissions under explicit small ceilings, without stubbing the ledger.
+    /// Refuses real turns under explicit small ceilings, without stubbing the ledger.
     pub(crate) fn with_fleet_queue_budgets(
         mut self,
         database: Db,
@@ -144,7 +144,7 @@ impl Fleet {
     /// Runs the signed-ingress routes over a live database and `bus`.
     ///
     /// Resolve bindings and secrets through production stores, then commit the
-    /// admission. The bus receives the notification after acceptance.
+    /// turn. The bus receives the notification after acceptance.
     pub(crate) fn with_live_ingress(mut self, database: Db, bus: afd_bus::Handle) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         let ledger = afd_turns::Turns::for_tests(database.clone(), bus);

@@ -171,7 +171,7 @@ impl<'a> ReportStatement<'a> {
 /// [`COMMIT_REPORT`]'s row, before the closing event is read from it.
 #[derive(Debug, sqlx::FromRow)]
 struct AnswerRow {
-    claimed: i64,
+    moved_runs: i64,
     accepted_hold: Option<jiff_sqlx::Timestamp>,
     run_status: Option<String>,
     held_posture: Option<String>,
@@ -232,8 +232,8 @@ pub(crate) struct HeldFacts {
 impl ReportAnswer {
     fn read(row: &PgRow, run_id: &Uuid7) -> Result<Self> {
         let answer = AnswerRow::from_row(row).map_err(query(CONTEXT))?;
-        if answer.claimed == 0 {
-            return Ok(Self::unclaimed(answer));
+        if answer.moved_runs == 0 {
+            return Ok(Self::unwritten(answer));
         }
         let closed = match answer.turn_id {
             Some(_) => Some(Closed::read(row)?),
@@ -253,7 +253,7 @@ impl ReportAnswer {
     }
 
     /// Why nothing was written: settled before, fenced, or priced wrongly.
-    fn unclaimed(answer: AnswerRow) -> Self {
+    fn unwritten(answer: AnswerRow) -> Self {
         if answer.run_status.as_deref().is_some_and(is_settled) {
             return Self::AlreadySettled;
         }

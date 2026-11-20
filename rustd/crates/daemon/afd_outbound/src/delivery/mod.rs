@@ -64,7 +64,7 @@ pub struct Delivery<'a> {
     /// Which connector carries it back. The connector type rather than its
     /// id, so a run's model provider cannot be passed here and compile.
     pub provider: Provider,
-    /// Where that connector posts it, as the producer recorded it at admission.
+    /// Where that connector posts it, as the producer recorded it at intake.
     pub destination: &'a str,
     /// The event the answer is threaded onto.
     pub turn_id: &'a Uuid7,

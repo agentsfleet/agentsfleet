@@ -1,4 +1,4 @@
-//! Task state joins the existing report transaction before its slot is released.
+//! Task state joins the existing report transaction before its thread is released.
 
 mod checkpoint;
 mod prepare;
@@ -61,24 +61,21 @@ impl TaskReportOwner for Tasks {
     }
 }
 
-/// One report's prepared admission borrows its native continuation until commit.
+/// One report's prepared turn borrows its native continuation until commit.
 #[derive(Debug)]
 pub struct TaskSettlement<'a> {
     plan: &'a PreparedReport,
-    admission: Option<afd_turns::PreparedTurn<'a>>,
+    turn: Option<afd_turns::PreparedTurn<'a>>,
 }
 
 impl PreparedReport {
-    /// Read admission capacity before the report takes host/slot/task locks.
+    /// Prepare the continuation turn before the report takes host/thread/task locks.
     pub(crate) async fn settlement(&self) -> crate::Result<TaskSettlement<'_>> {
-        let admission = match &self.wake {
-            Some(wake) => Some(self.tasks.admissions.prepare(wake.admission()).await?),
+        let turn = match &self.wake {
+            Some(wake) => Some(self.tasks.turns.prepare(wake.turn()).await?),
             None => None,
         };
-        Ok(TaskSettlement {
-            plan: self,
-            admission,
-        })
+        Ok(TaskSettlement { plan: self, turn })
     }
     pub(crate) async fn announce(&self) {
         let Ok(id) = super::guard::id(&self.snapshot.context.task_id, "task_id") else {

@@ -20,7 +20,8 @@ async fn native_renewal_keeps_usage_acknowledgements_and_independent_refusals() 
         native.heartbeat().await;
         native.ready().await;
         let assignment = native.expect(StreamKind::Work, "run").await;
-        let (run, fence) = wire::claim(assignment.pointer("/run").expect("native response field"));
+        let (run, fence) =
+            wire::run_and_fence(assignment.pointer("/run").expect("native response field"));
         let report = wire::report_body(&run, &scene.turn_id, fence);
         mixed_renewal(&mut native, &run, &report).await;
         empty_folds(&mut native, &run, fence).await;

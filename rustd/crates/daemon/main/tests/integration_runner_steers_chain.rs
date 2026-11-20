@@ -25,7 +25,7 @@ use crate::e2e::Scenario;
 use crate::e2e_seed::FLEET_NAME;
 use crate::steers::Crew;
 
-/// The inputs a fold answer claimed, wherever the answer nests them: each
+/// The inputs a fold answer assigned, wherever the answer nests them: each
 /// input's event id and its place in the fleet's order.
 fn folded(answer: &Value) -> Vec<(String, i64)> {
     let inputs = answer
@@ -51,8 +51,8 @@ fn folded(answer: &Value) -> Vec<(String, i64)> {
 /// A person's message to `target`, admitted into the conversation the busy
 /// run is in.
 async fn person_message(scene: &Scenario, target: &Uuid7) -> Steered {
-    let admissions = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
-    Steer::new(admissions)
+    let turns = Turns::for_tests(scene.booted.database.clone(), scene.booted.bus.clone());
+    Steer::new(turns)
         .append(
             target,
             &scene.workspace,
@@ -64,7 +64,7 @@ async fn person_message(scene: &Scenario, target: &Uuid7) -> Steered {
         .expect("the person's message is admitted")
 }
 
-/// What the live run's fold claims: each message's event and its sequence.
+/// What the live run's fold assigns: each message's event and its sequence.
 async fn folded_by(scene: &Scenario, live: &Assigned) -> (Value, Vec<(String, i64)>) {
     let run = Uuid7::parse(&live.run_id).expect("a run id");
     let answer = scene
@@ -73,8 +73,8 @@ async fn folded_by(scene: &Scenario, live: &Assigned) -> (Value, Vec<(String, i6
         .folds(&run, live.fence, 0)
         .await
         .expect("the fold read");
-    let claimed = folded(&answer);
-    (answer, claimed)
+    let assigned = folded(&answer);
+    (answer, assigned)
 }
 
 /// On a target whose run is live, a person's message in the
@@ -100,12 +100,12 @@ async fn fleet_steer_runs_as_its_own_run_on_a_busy_target() {
     assert_eq!(status, 202, "{answer}");
     let fleet_event = steered(&answer);
 
-    let (answer, claimed) = folded_by(scene, &live).await;
-    let (_, read_through) = claimed
+    let (answer, folded_in) = folded_by(scene, &live).await;
+    let (_, read_through) = folded_in
         .iter()
         .find(|(event, _)| event == &person.turn_id)
         .expect("the person's message is folded into the live scene");
-    let stolen = claimed
+    let stolen = folded_in
         .iter()
         .any(|(event, _)| event == fleet_event.as_str());
     assert!(!stolen, "{answer}");

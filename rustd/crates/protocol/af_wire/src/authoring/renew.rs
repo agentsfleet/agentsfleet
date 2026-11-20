@@ -1,4 +1,4 @@
-//! Renewal extends a live slot; it never revives an expired one.
+//! Renewal extends a live run; it never revives an expired one.
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};

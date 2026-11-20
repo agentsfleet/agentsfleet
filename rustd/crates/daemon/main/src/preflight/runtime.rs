@@ -17,7 +17,7 @@ pub struct RuntimeSettings {
     pub(crate) clock: RunClock,
     pub(crate) resume_from_checkpoint: bool,
     pub(crate) fallback: Duration,
-    pub(crate) claims: NonZeroUsize,
+    pub(crate) assignments: NonZeroUsize,
     pub(crate) requests: NonZeroUsize,
 }
 
@@ -38,14 +38,14 @@ impl RuntimeSettings {
             self.resume_from_checkpoint,
             self.fallback.as_secs(),
         );
-        let (max_concurrent_claims, max_in_flight_requests) =
-            (self.claims.get(), self.requests.get());
+        let (max_concurrent_assignments, max_in_flight_requests) =
+            (self.assignments.get(), self.requests.get());
         tracing::info!(
             event = "daemon_configuration_loaded",
             run_ttl_seconds,
             resume_from_checkpoint,
             assign_fallback_seconds,
-            max_concurrent_claims,
+            max_concurrent_assignments,
             max_in_flight_requests
         );
     }
@@ -56,7 +56,7 @@ struct Readings {
     #[garde(skip)]
     clock: RunClock,
     #[garde(custom(|value: &NonZeroUsize, &()| maximum::<64>(value.get())))]
-    claims: NonZeroUsize,
+    assignments: NonZeroUsize,
     #[garde(custom(|value: &NonZeroUsize, &()| maximum::<65_536>(value.get())))]
     requests: NonZeroUsize,
     #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
@@ -102,10 +102,10 @@ pub(crate) fn configured(
     let defaults = afd_gateway::RecoverySettings::default();
     let readings = garde::Unvalidated::new(Readings {
         clock: RunClock::new(&run),
-        claims: value(
+        assignments: value(
             env,
-            "AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS",
-            defaults.max_concurrent_claims,
+            "AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS",
+            defaults.max_concurrent_assignments,
         )?,
         requests: value(
             env,
@@ -126,7 +126,7 @@ pub(crate) fn configured(
         clock: readings.clock,
         resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", false)?,
         fallback: Duration::from_secs(readings.fallback_seconds),
-        claims: readings.claims,
+        assignments: readings.assignments,
         requests: readings.requests,
     })
 }

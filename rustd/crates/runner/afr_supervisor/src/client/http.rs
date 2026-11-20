@@ -73,7 +73,7 @@ impl RunnerApi for HttpRunnerApi {
             call.verb,
             super::Verb::Heartbeat
                 | super::Verb::Renew
-                | super::Verb::Activity
+                | super::Verb::Progress
                 | super::Verb::Report
                 | super::Verb::Folds
                 | super::Verb::AuthoringModel

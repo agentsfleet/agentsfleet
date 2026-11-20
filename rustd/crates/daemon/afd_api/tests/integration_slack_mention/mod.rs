@@ -1,10 +1,10 @@
-//! A signed Slack mention, through the real route, to one admission.
+//! A signed Slack mention, through the real route, to one turn.
 //!
 //! Every store the mention reads is live — the app bag behind the wall, the
 //! install row the team resolves through, the grant the bot's identity comes
 //! from, and fleet rows stored from real documents — so each case below is
 //! the path a production mention takes, stopped only at the queue, which the
-//! admission ledger defers past by design.
+//! turns ledger defers past by design.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -152,7 +152,7 @@ async fn signed_mention_admits_one_event() {
     );
 
     let admitted = fixture
-        .admission(&key(&fixture.team, "Ev01"))
+        .turn(&key(&fixture.team, "Ev01"))
         .await
         .expect("the mention was admitted");
     assert_eq!(admitted.fleet, responder.as_str());
@@ -233,11 +233,7 @@ async fn slack_retry_admits_nothing_new() {
         "{first} / {retried}"
     );
     assert_eq!(retried.get("replayed").and_then(Value::as_bool), Some(true));
-    assert_eq!(
-        fixture.admissions().await,
-        1,
-        "one Slack event, one admission"
-    );
+    assert_eq!(fixture.turns().await, 1, "one Slack event, one turn");
 
     fixture.cleanup().await;
 }

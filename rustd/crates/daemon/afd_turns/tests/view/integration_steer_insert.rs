@@ -1,4 +1,4 @@
-//! A repeated steer is decided from the admission's own insert.
+//! A repeated steer is decided from the turn's own insert.
 //!
 //! The ledger's insert answers a key it already holds with the digest and
 //! fleet that row holds, and `Steer::append` compares against those. These
@@ -47,7 +47,7 @@ const SET_FLEET: &str = "UPDATE thread.turns SET thread_id = $3 \
 /// The warns a reused key can leave, the field that names them, and the field
 /// naming which half of the stored row differed.
 const CONFLICT_EVENT: &str = "steer_operation_conflict";
-const DRIFT_EVENT: &str = "admission_payload_drifted";
+const DRIFT_EVENT: &str = "turn_payload_drifted";
 const FIELD_EVENT: &str = "event";
 const FIELD_CAUSE: &str = "cause";
 const CAUSE_FLEET: &str = "fleet";
@@ -57,7 +57,7 @@ const CAUSE_FLEET: &str = "fleet";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replayed_append_decides_from_its_insert() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
 
     let first = send(&steer, &lane, REQUEST_JSON)
         .await
@@ -65,10 +65,10 @@ async fn test_replayed_append_decides_from_its_insert() {
     let again = send(&steer, &lane, REQUEST_JSON)
         .await
         .expect("the repeat is answered");
-    assert!(!first.replayed(), "a fresh admission is not a replay");
+    assert!(!first.replayed(), "a fresh turn is not a replay");
     assert!(
         first.admitted_at.is_some(),
-        "a fresh admission answers with its instant, which its frame carries"
+        "a fresh turn answers with its instant, which its frame carries"
     );
     assert_eq!(
         (again.turn_id, again.admitted_at),
@@ -84,7 +84,7 @@ async fn test_replayed_append_decides_from_its_insert() {
 async fn test_replayed_append_never_answers_unchecked() {
     let lane = TurnsLane::open().await;
     let elsewhere = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     send(&steer, &lane, REQUEST_JSON)
         .await
         .expect("the first send is admitted");
@@ -114,7 +114,7 @@ async fn test_replayed_append_never_answers_unchecked() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_reuse_is_not_an_internal_failure() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     send(&steer, &lane, REQUEST_JSON)
         .await
         .expect("the first send is admitted");
@@ -131,14 +131,14 @@ async fn test_steer_reuse_is_not_an_internal_failure() {
     );
     drop(logs);
 
-    let admissions = lane.admissions();
+    let turns = lane.turns();
     let key = [lane.fleet.as_str(), DELIVERY_ID].join(KEY_SEPARATOR);
-    admissions
+    turns
         .admit(delivery(&lane, &key, DELIVERY_JSON))
         .await
         .expect("the delivery is admitted");
     let logs = Capture::install();
-    let redelivered = admissions
+    let redelivered = turns
         .admit(delivery(&lane, &key, REDELIVERED_JSON))
         .await
         .expect("a redelivery is answered, never refused");

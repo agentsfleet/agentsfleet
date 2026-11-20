@@ -52,14 +52,14 @@ mod view_heartbeat;
 
 #[path = "integration_activity_publish.rs"]
 mod integration_activity_publish;
+#[path = "integration_assignment_delivery.rs"]
+mod integration_assignment_delivery;
 #[path = "integration_billing_relay.rs"]
 mod integration_billing_relay;
 #[path = "integration_billing_sweep.rs"]
 mod integration_billing_sweep;
 #[path = "integration_billing_sweep_faults.rs"]
 mod integration_billing_sweep_faults;
-#[path = "integration_claim_delivery.rs"]
-mod integration_claim_delivery;
 mod integration_credential_mint;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
@@ -110,14 +110,14 @@ mod integration_report_statement;
 mod integration_run_affinity;
 #[path = "integration_run_assign.rs"]
 mod integration_run_assign;
+#[path = "integration_run_assignment_race.rs"]
+mod integration_run_assignment_race;
 #[path = "integration_run_billing_races.rs"]
 mod integration_run_billing_races;
 #[path = "integration_run_block.rs"]
 mod integration_run_block;
 #[path = "integration_run_caches.rs"]
 mod integration_run_caches;
-#[path = "integration_run_claim_race.rs"]
-mod integration_run_claim_race;
 #[path = "integration_run_edges.rs"]
 mod integration_run_edges;
 #[path = "integration_run_expiry_lock.rs"]

@@ -56,8 +56,8 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(
         answer.is_none(),
@@ -82,7 +82,7 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
 /// A delivery that ends without an assignment frame still marks `issue`: the stage
 /// runs to where the delivery returns, so a refusal's writes are not left
 /// unexplained, and `encode` and `send` stay unreached. The same unenforceable
-/// binding as above, entered through the assignment's own claim so the clock is the
+/// binding as above, entered through the assignment's own selection so the clock is the
 /// one the gateway passes.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -98,7 +98,7 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
     let mut assigned = 0;
     let answer = fixtures
         .plane()
-        .claim_fleet_with(
+        .assign_fleet_with(
             &mut AssignRequest {
                 runner: &seeded.runner,
                 held: std::slice::from_ref(&seeded.fleet),
@@ -122,7 +122,7 @@ async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
     assert_eq!(assigned, 0, "a refused delivery built an assignment");
     assert_eq!(
         clock.reached(),
-        [AssignStage::Claim, AssignStage::Admit, AssignStage::Issue],
+        [AssignStage::Select, AssignStage::Admit, AssignStage::Issue],
         "a refusal ends the issue stage where the delivery returns"
     );
 
@@ -152,8 +152,8 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
     seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
     let _gate = seed_write_gate(&fixtures, &seeded).await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     let branch = repair::branch_for(seeded.turn_id.as_str());
     assert!(
@@ -189,8 +189,8 @@ async fn test_a_read_binding_is_delivered_without_asking_for_an_approval() {
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
 
-    let claimed = claim(&fixtures, &seeded).await;
-    let answer = drive(&fixtures, &seeded, claimed).await;
+    let assigned = assign(&fixtures, &seeded).await;
+    let answer = drive(&fixtures, &seeded, assigned).await;
 
     assert!(
         answer.is_some(),

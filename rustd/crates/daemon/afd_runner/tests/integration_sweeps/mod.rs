@@ -43,14 +43,14 @@ async fn liveness_and_retention_converge_real_runner_rows() {
     );
     assert_eq!(fixture.runner_state(&fixture.draining).await, "drained");
     assert!(
-        !fixture.slot_is_expired(&fixture.stale_fleet).await,
-        "silence never backdates a live slot"
+        !fixture.thread_is_expired(&fixture.stale_fleet).await,
+        "silence never backdates a live thread"
     );
     assert!(
-        !fixture.slot_is_expired(&fixture.cordoned_fleet).await,
+        !fixture.thread_is_expired(&fixture.cordoned_fleet).await,
         "operator policy leaves the live deadline alone"
     );
-    assert!(!fixture.slot_is_expired(&fixture.unknown_fleet).await);
+    assert!(!fixture.thread_is_expired(&fixture.unknown_fleet).await);
     assert_eq!(fixture.offline_events().await, 1);
     // The episode's instant reaches the operator API the way every other
     // instant does: RFC 3339, in the form jiff writes.
@@ -130,7 +130,7 @@ impl Fixture {
             .await
     }
 
-    async fn slot_is_expired(&self, fleet: &Uuid7) -> bool {
+    async fn thread_is_expired(&self, fleet: &Uuid7) -> bool {
         self.scalar(
             "SELECT run_expires_at < statement_timestamp() FROM thread.threads WHERE fleet_id = $1",
             fleet,

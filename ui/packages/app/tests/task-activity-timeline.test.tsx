@@ -3,7 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { TaskActivityTimeline } from "@/components/domain/tasks/TaskActivityTimeline";
 import { TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);
-const progress = {activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null,
+const progress = {activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_turn_id: null,
   operation: "capture", phase: "uploading", provider: null, model: null, completed: 1, total: 2};
 
 it("shows only valid public activity and does not infer success from a stopped stream", () => {

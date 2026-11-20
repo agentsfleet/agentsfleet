@@ -6,8 +6,8 @@
 //! on the transaction's own connection, and hands the new row's identifier back
 //! so the post-commit path can ring the outbound workers' wake.
 //!
-//! Not `super::deliver`, which is the inbound half — what an admitted claim
-//! becomes when a runner takes it. This is the outbound one: the record that an
+//! Not `super::deliver`, which is the inbound half — what an assignment the gates
+//! admit becomes when a runner takes it. This is the outbound one: the record that an
 //! answer exists and has not reached anybody yet.
 //!
 //! # Why the statements are NOT here
@@ -77,13 +77,13 @@ impl Runs {
         fleet_id: &Uuid7,
         turn_id: &str,
     ) -> Result<Option<ReplyDestination>> {
-        let Ok(admission) = Uuid7::parse(turn_id) else {
+        let Ok(turn) = Uuid7::parse(turn_id) else {
             return Ok(None);
         };
         let stored: Option<(String, String)> =
             sqlx::query_as(afd_turns::sql::SELECT_REPLY_DESTINATION)
                 .bind(fleet_id)
-                .bind(&admission)
+                .bind(&turn)
                 .fetch_optional(&mut *connection)
                 .await
                 .map_err(query(CONTEXT_REPLY))?;

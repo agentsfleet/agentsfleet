@@ -141,7 +141,7 @@ impl FleetStatus {
 
 #[cfg(test)]
 mod tests {
-    /// `active` is the only runnable status, so the spelling admission binds
+    /// `active` is the only runnable status, so the spelling turn intake binds
     /// for a runnable send cannot go stale (`M242_001` Dimension 2.8).
     #[test]
     fn only_active_is_runnable() {

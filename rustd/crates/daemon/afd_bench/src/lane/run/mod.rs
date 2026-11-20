@@ -8,14 +8,14 @@
 //! question an operator asks: how long does this deployment take to issue the
 //! work it has.
 //!
-//! A held fleet is claimed and not leasable again, so the run ends when the
+//! A held fleet is assigned and not assignable again, so the run ends when the
 //! population is exhausted. Re-seeding mid-window would put ingress on the
 //! same connections the thing under measurement is using, and the lane would
 //! report the sum of two paths under the name of one.
 //!
 //! # Idle cost belongs to the drain
 //!
-//! This window claims without reporting, so its admissions remain unsettled.
+//! This window assigns without reporting, so its turns remain unsettled.
 //! [`drain`] reports each event before measuring polls over an empty queue.
 
 pub mod drain;
@@ -143,7 +143,7 @@ pub async fn run(
     Ok(report)
 }
 
-/// Measure complete drains, then contended claims, with separate fixture populations.
+/// Measure complete drains, then contended assignments, with separate fixture populations.
 ///
 /// # Errors
 /// Returns the first failed measurement or cleanup.

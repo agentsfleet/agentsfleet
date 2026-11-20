@@ -1,4 +1,4 @@
-//! The one admission statement, on whatever connection the caller holds.
+//! The one turn statement, on whatever connection the caller holds.
 
 use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
@@ -27,24 +27,24 @@ impl Turns {
         &self,
         connection: &mut PgConnection,
         row_id: &Uuid7,
-        admission: &IncomingTurn<'_>,
+        turn: &IncomingTurn<'_>,
         key: &str,
         digest: &str,
         gates: Gates,
     ) -> Result<Ledger> {
         let Gates { estimate, runnable } = gates;
         let limit = self.budgets.deployment_backlog;
-        let reply = ReplyBinds::from(admission.reply);
+        let reply = ReplyBinds::from(turn.reply);
         let answer = sqlx::query_as::<_, Answer>(sql::ADMIT_ONE)
             .bind(row_id)
-            .bind(admission.fleet)
-            .bind(admission.workspace)
-            .bind(admission.producer.as_str())
+            .bind(turn.fleet)
+            .bind(turn.workspace)
+            .bind(turn.producer.as_str())
             .bind(key)
             .bind(digest)
-            .bind(admission.actor)
-            .bind(admission.event_type.as_str())
-            .bind(admission.request_json)
+            .bind(turn.actor)
+            .bind(turn.event_type.as_str())
+            .bind(turn.request_json)
             .bind(i64::try_from(limit).unwrap_or(i64::MAX))
             .bind(i64::try_from(estimate).unwrap_or(i64::MAX))
             .bind(reply.connector)

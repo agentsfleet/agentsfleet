@@ -102,7 +102,7 @@ describe("a message waiting for a runner", () => {
   });
 });
 
-// The 202 named a live run, which ended before it claimed the message; the
+// The 202 named a live run, which ended before it was assigned the message; the
 // fleet's next run starts the message under its own turn.
 describe("a send labelled folded whose run never took it", () => {
   function labelled(): FleetTurn[] {

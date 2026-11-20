@@ -16,7 +16,7 @@ use super::{
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_inflight_issuer_keeps_capacity_when_recovery_skips_its_slot() {
+async fn an_inflight_issuer_keeps_capacity_when_recovery_skips_its_thread() {
     exercise(issuance_wins).await;
 }
 

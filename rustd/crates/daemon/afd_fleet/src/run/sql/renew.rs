@@ -4,15 +4,15 @@
 //!
 //! # Why BOTH rows move, in one statement
 //!
-//! Reclaimability and the kill deadline live on different rows.
-//! `thread.threads.run_expires_at` is what the claim checks, and
+//! Reassignability and the kill deadline live on different rows.
+//! `thread.threads.run_expires_at` is what the assignment checks, and
 //! `thread.runs.run_expires_at` is when the runner stops its child.
-//! Advancing one without the other gets a healthy run reclaimed at the TTL
+//! Advancing one without the other gets a healthy run reassigned at the TTL
 //! while its runner still believes it holds the run — so both move to the
 //! same clamped instant under the same fence, or neither does.
 //!
 //! The probe locks both rows (`FOR UPDATE OF l, a`) before either moves, so
-//! no reclaim can take the slot between them: the slot update matches
+//! no reassignment can take the thread between them: the thread update matches
 //! whenever the run update does.
 
 /// The run a renewal is about, scoped to the runner presenting it.

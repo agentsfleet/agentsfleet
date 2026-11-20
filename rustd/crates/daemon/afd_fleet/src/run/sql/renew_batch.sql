@@ -6,13 +6,13 @@
 -- names, extended and metered together, each under its own fence. A run that
 -- fails a check extends nothing and changes no other run's answer.
 --
--- Lock order is a renewal's and a report's: the host row shared, then the slot,
+-- Lock order is a renewal's and a report's: the host row shared, then the thread,
 -- then the run, taken in fleet order so two statements never wait on each
 -- other in a cycle. The host row is read FOR SHARE, never exclusively: renewals
 -- never wait on each other, but a credential rotation or supersession updating
 -- the row fences every renewal behind it, which re-reads the new credential and
 -- refuses the old connection, as `lock_host.sql` does under its exclusive lock.
--- A renewal adds no occupancy, so a census read beside a claim is harmless. A
+-- A renewal adds no occupancy, so a census read beside an assignment is harmless. A
 -- run runs a durable task only on the per-run path, so this refuses one.
 --
 -- Guarded per run on the posture, provider, model and catalogue version its
@@ -60,9 +60,9 @@ WITH asked AS (
       + (SELECT count(*) FROM setup.attempts a
           WHERE a.runner_id = $1 AND a.status = $25 AND a.run_expires_at > i.checked_at)
       <= h.worker_count
-), locked_slot AS MATERIALIZED (
-  -- Joined to `census`, so the host row is held FOR SHARE before any slot: a
-  -- CTE runs when first read, and an issue holds the host row and then a slot.
+), locked_thread AS MATERIALIZED (
+  -- Joined to `census`, so the host row is held FOR SHARE before any thread: a
+  -- CTE runs when first read, and an issue holds the host row and then a thread.
   -- A host that may not renew locks nothing, and every run answers lost.
   SELECT s.fleet_id, s.fencing_token, s.run_expires_at
   FROM thread.threads s
@@ -76,9 +76,9 @@ WITH asked AS (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at, l.posture, l.provider,
          l.model, l.task_id, l.max_runtime_seconds, l.cancel_requested_at IS NOT NULL AS cancelled,
-         s.fencing_token AS live_fence, s.run_expires_at AS slot_expires_at
+         s.fencing_token AS live_fence, s.run_expires_at AS thread_expires_at
   FROM thread.runs l
-  JOIN locked_slot s ON s.fleet_id = l.fleet_id
+  JOIN locked_thread s ON s.fleet_id = l.fleet_id
   JOIN asked a ON a.run_id = l.id
   WHERE l.runner_id = $1 AND l.status = $25
   ORDER BY l.fleet_id
@@ -111,7 +111,7 @@ WITH asked AS (
          LEAST(i.checked_at + $28::interval, p.created_at + LEAST($29::interval, make_interval(secs => p.max_runtime_seconds))) AS capped,
          GREATEST(p.last_metered_at, LEAST(i.checked_at, p.run_expires_at)) AS metered_until,
          p.fencing_token = p.live_fence AND p.run_expires_at > i.checked_at
-             AND p.slot_expires_at > i.checked_at AS fence_holds,
+             AND p.thread_expires_at > i.checked_at AS fence_holds,
          p.created_at + LEAST($29::interval, make_interval(secs => p.max_runtime_seconds)) > i.checked_at AS below_cap,
          p.posture = a.posture AND p.provider = a.provider AND p.model = a.model
              AND (a.catalogue_version IS NULL
@@ -160,7 +160,7 @@ WITH asked AS (
   FROM guard g
   WHERE l.id = g.id
   RETURNING l.id, l.run_expires_at
-), slot AS (
+), moved_thread AS (
   UPDATE thread.threads s
   SET run_expires_at = g.capped, updated_at = now()
   FROM guard g
@@ -204,7 +204,7 @@ SELECT a.run_id,
        j.over_budget, j.host_renews, j.admitted,
        j.task_id IS NOT NULL AS has_task,
        m.run_expires_at AS extended_until,
-       (SELECT s.fleet_id FROM slot s WHERE s.fleet_id = j.fleet_id) IS NOT NULL AS slot_moved
+       (SELECT s.fleet_id FROM moved_thread s WHERE s.fleet_id = j.fleet_id) IS NOT NULL AS thread_moved
 FROM asked a
 LEFT JOIN judged j ON j.id = a.run_id
 LEFT JOIN moved m ON m.id = a.run_id

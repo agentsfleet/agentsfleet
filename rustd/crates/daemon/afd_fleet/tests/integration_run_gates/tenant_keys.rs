@@ -127,7 +127,7 @@ fn api_key(payload: &serde_json::Value) -> Option<&str> {
         .and_then(serde_json::Value::as_str)
 }
 
-const SLOTS_OF_RUNNER: &str = "SELECT count(*) FROM thread.threads WHERE last_runner_id = $1";
+const THREADS_OF_RUNNER: &str = "SELECT count(*) FROM thread.threads WHERE last_runner_id = $1";
 
 async fn runner_runs(fixtures: &Fixtures, runner: &Uuid7) -> Vec<String> {
     sqlx::query_scalar("SELECT posture FROM thread.runs WHERE runner_id = $1")
@@ -138,7 +138,7 @@ async fn runner_runs(fixtures: &Fixtures, runner: &Uuid7) -> Vec<String> {
 }
 
 // Value: protects=the platform default key leaves the daemon only for a
-// platform runner; fails_when=the model filter lets a tenant runner claim, or
+// platform runner; fails_when=the model filter lets a tenant runner take it, or
 // the delivery builds no key; why_new=the model filter; seam=none.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -159,15 +159,15 @@ async fn platform_key_never_reaches_a_tenant_runner() {
         runner_runs(&fixtures, &tenant).await.is_empty(),
         "and no run"
     );
-    let slots: i64 = sqlx::query_scalar(SLOTS_OF_RUNNER)
+    let threads: i64 = sqlx::query_scalar(THREADS_OF_RUNNER)
         .bind(&tenant)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
         .await
-        .expect("the slots read");
-    assert_eq!(slots, 0, "and no slot write");
+        .expect("the threads read");
+    assert_eq!(threads, 0, "and no thread write");
 
-    let claimed = claim(&fixtures, &ready).await;
-    let payload = drive(&fixtures, &ready, claimed)
+    let assigned = assign(&fixtures, &ready).await;
+    let payload = drive(&fixtures, &ready, assigned)
         .await
         .expect("a platform runner runs the fleet");
     assert_eq!(
@@ -179,7 +179,7 @@ async fn platform_key_never_reaches_a_tenant_runner() {
 }
 
 // Value: protects=a tenant runner runs its tenant's model on its tenant's key,
-// billed self-managed; fails_when=the claim refuses tenant-model work or the
+// billed self-managed; fails_when=the assignment refuses tenant-model work or the
 // delivery resolves the platform key; why_new=tenant runners; seam=none.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -193,12 +193,12 @@ async fn tenant_runner_carries_the_tenant_key() {
         .await;
     let tenant = tenant_runner(&fixtures, &ready.tenant, &ready.fleet).await;
 
-    let claimed = crate::seed::select_fleet(&fixtures.runs(), &tenant, &ready.fleet)
+    let assigned = crate::seed::select_fleet(&fixtures.runs(), &tenant, &ready.fleet)
         .await
         .expect("the tenant runner takes its tenant's model work");
     let payload = fixtures
         .plane()
-        .claim_selected(claimed, &tenant, fixtures.enrolled_at())
+        .assign_selected(assigned, &tenant, fixtures.enrolled_at())
         .await
         .expect("every gate verdict is a decision, not a fault")
         .expect("the run is delivered");

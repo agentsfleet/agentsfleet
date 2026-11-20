@@ -17,7 +17,7 @@
 //! window up guarantees the two sets OVERLAP instead.
 //!
 //! An overlap is only safe if the client can tell one event seen twice from two
-//! events, and that is what the event id is: the admission row's identifier,
+//! events, and that is what the event id is: the turn row's identifier,
 //! carried identically on the live frame and on the row (dimension 5.3 pins
 //! that they are the same value). So the price of never missing an event is receiving a
 //! few twice, and the merge is what the client pays it with.
@@ -106,7 +106,7 @@ async fn test_sse_reconnect_backfill() {
     let lane = TurnsLane::open().await;
 
     // Five events across the drop. An admitted event is named by its
-    // admission row's UUIDv7, so the fixture mints ids of that shape rather
+    // turn row's UUIDv7, so the fixture mints ids of that shape rather
     // than inventing one this daemon never serves.
     let delivered = [mint_id(), mint_id(), mint_id()];
     let gap = [mint_id(), mint_id()];

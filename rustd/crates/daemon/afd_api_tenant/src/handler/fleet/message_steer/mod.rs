@@ -6,7 +6,7 @@
 //! # One ledger statement decides the answer
 //!
 //! The handler reads no fleet and no status of its own. `afd_turns::view::Steer`
-//! hands the message to the admission ledger, whose single statement decides
+//! hands the message to the turn ledger, whose single statement decides
 //! ownership, a repeat of the caller's operation id, the fleet's status and
 //! the deployment ceiling together. A fleet this workspace does not hold is a
 //! 404 before any operation id is read, and a fleet that takes no work is a
@@ -167,7 +167,7 @@ pub(crate) async fn steer<D: Services>(
 
 /// Tells every screen on the fleet the message was accepted, before the 202.
 ///
-/// Once per message: a repeat carries no admission instant, because its first
+/// Once per message: a repeat carries no intake instant, because its first
 /// send announced it. Best-effort, like every tail frame — a queue that will
 /// not take it is logged by the publisher and the steer is still accepted.
 async fn announce_admitted(

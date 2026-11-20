@@ -84,7 +84,7 @@ impl RunService {
         }
     }
 
-    /// The host lock, the slot-then-run locks and the shared extension, with
+    /// The host lock, the thread-then-run locks and the shared extension, with
     /// the slice and the request lines logged beside it. A refused extension
     /// still logs the request lines: usage the runner spent is owed.
     async fn extend_draft(

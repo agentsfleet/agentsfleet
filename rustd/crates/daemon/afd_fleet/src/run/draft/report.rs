@@ -24,7 +24,7 @@ const CONTEXT: &str = "settle a draft run report";
 /// [`sql::shared::SETTLE_RUN`]'s verdict columns, by column name.
 #[derive(sqlx::FromRow)]
 struct Settled {
-    claimed: i64,
+    moved_runs: i64,
     run_status: Option<String>,
     fence_holds: Option<bool>,
 }
@@ -70,7 +70,7 @@ impl RunService {
         let mut tx = sqlx::Transaction::begin(self.runs.pool().acquire().await?, None)
             .await
             .map_err(query(CONTEXT))?;
-        // The owner first, then the slot and the run inside the settlement.
+        // The owner first, then the thread and the run inside the settlement.
         let scope = creations
             .lock_setup_report(&mut tx, &run.draft_id, &run.turn_id)
             .await?;
@@ -104,7 +104,7 @@ impl RunService {
             .await
             .map_err(query(CONTEXT))?;
         let settled = Settled::from_row(&row).map_err(query(CONTEXT))?;
-        if settled.claimed == 0 {
+        if settled.moved_runs == 0 {
             drop(tx);
             return match settled.run_status.as_deref() {
                 // Settled already, by this report's earlier copy: nothing more to write.

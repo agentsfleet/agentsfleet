@@ -12,9 +12,9 @@
 ///
 /// One statement rather than a SELECT then a DELETE, so an operator revoking
 /// concurrently cannot slip between the check and the write. The row's
-/// runs and events cascade and its slots clear, all declared in schema; the
+/// runs and events cascade and its threads clear, all declared in schema; the
 /// daemon deletes nothing else by hand. A run still active would take with
-/// it the row the liveness sweep releases the fleet's slot through, so the
+/// it the row the liveness sweep releases the fleet's thread through, so the
 /// delete waits for the sweep or the run's expiry. The single result row says
 /// which of the three things happened, and its absence says there was no such
 /// runner. `$1` runner, `$2` the revoked status, `$3` the active run status.

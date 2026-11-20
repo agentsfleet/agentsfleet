@@ -19,7 +19,7 @@
 //! # Why the neighbour's setup is `{}` exactly
 //!
 //! Valid JSON that is not a fleet, selected as the fleet's setup revision under
-//! the current policy semantics. Admission reads only the semantics, so the
+//! the current policy semantics. Intake reads only the semantics, so the
 //! neighbour's event is admitted; the PULL path is the first reader that parses
 //! the document, which is the seam this test holds.
 //!

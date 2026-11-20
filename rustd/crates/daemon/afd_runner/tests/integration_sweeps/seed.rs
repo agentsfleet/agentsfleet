@@ -16,8 +16,8 @@ use jiff_sqlx::ToSqlx as _;
 use super::{Fixture, OLD};
 use crate::rows::{self, POLICY, RunRow};
 
-/// How far ahead an active run's slot is held.
-const SLOT_HELD_FOR: Duration = Duration::from_mins(1);
+/// How far ahead an active run's thread is held.
+const THREAD_HELD_FOR: Duration = Duration::from_mins(1);
 
 /// A status this daemon does not model, which the pass must skip, not guess.
 const UNMODELLED_STATUS: &str = "future_state";
@@ -111,7 +111,7 @@ impl Fixture {
                 RUN_STATUS_REPORTED,
             ),
         ];
-        let held_until = clock::after(clock::now(), SLOT_HELD_FOR);
+        let held_until = clock::after(clock::now(), THREAD_HELD_FOR);
         for (runner, fleet, run, status) in runs {
             rows::payload(
                 connection,
@@ -128,7 +128,7 @@ impl Fixture {
             )
             .await;
             if status == RUN_STATUS_ACTIVE {
-                rows::slot(connection, (fleet, runner), held_until, None, Some(OLD)).await;
+                rows::thread(connection, (fleet, runner), held_until, None, Some(OLD)).await;
             }
         }
         self.seed_aged_event(connection, OLD).await;

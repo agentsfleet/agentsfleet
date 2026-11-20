@@ -1,7 +1,7 @@
 //! The second daemon replica, and the expiry it re-admits work after.
 //!
 //! Its own pool over the lane both replicas share, and its own in-process bus.
-//! The bus is isolated deliberately: the claim is that the second replica
+//! The bus is isolated deliberately: the assignment is that the second replica
 //! re-admits a lapsed run from the rows alone, so nothing the first one
 //! publishes may reach it.
 
@@ -39,14 +39,14 @@ impl Replica {
         }
     }
 
-    /// B's poll: win the lapsed claim, take the dead holder's event, write a run.
+    /// B's poll: win the lapsed assignment, take the dead holder's event, write a run.
     pub(super) async fn readmit(&self, running: &Running) -> (Uuid7, Uuid7) {
         let acquired = crate::seed::select_fleet(&self.runs, &running.runner, &running.fleet)
             .await
             .expect("the lapsed fleet is assigned to the second replica");
         assert_eq!(
             acquired.kind,
-            Kind::Reclaim,
+            Kind::Reassigned,
             "the expired holder's event is taken back, never pulled fresh and billed twice"
         );
         let tenant: Uuid7 = sqlx::query_scalar("SELECT tenant_id FROM thread.runs WHERE id = $1")
@@ -69,7 +69,7 @@ impl Replica {
             )
             .await
             .expect("issue reaches Postgres")
-            .expect("the freed slot admits the re-held event");
+            .expect("the freed thread admits the re-held event");
         (acquired.turn_id, issued.run_id)
     }
 

@@ -26,13 +26,13 @@ pub struct RecoveryScan {
     pub(super) after: Option<RecoveryKey>,
     pub(super) deferred: bool,
     /// Progress beyond a skipped prefix before retrying its older heads.
-    pub(super) claims_after_skip: usize,
+    pub(super) assignments_after_skip: usize,
 }
 
 #[derive(Debug)]
 pub(super) struct RecoveryKey {
     pub(super) created: Timestamp,
-    pub(super) admission: Uuid7,
+    pub(super) turn: Uuid7,
 }
 
 impl RecoveryScan {

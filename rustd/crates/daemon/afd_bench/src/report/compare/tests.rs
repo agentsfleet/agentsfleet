@@ -103,12 +103,15 @@ fn test_a_measurement_only_one_side_carries_is_named_rather_than_dropped() {
     let mut current = report_of(500.0, 40.0);
     current.measurement("candidates_per_poll", 3.0);
     let mut baseline = report_of(500.0, 40.0);
-    baseline.measurement("wasted_claim_rate", 0.1);
+    baseline.measurement("wasted_assignment_rate", 0.1);
 
     let comparison = Comparison::of(&current, &baseline);
 
     assert_eq!(comparison.added, vec!["candidates_per_poll".to_owned()]);
-    assert_eq!(comparison.missing, vec!["wasted_claim_rate".to_owned()]);
+    assert_eq!(
+        comparison.missing,
+        vec!["wasted_assignment_rate".to_owned()]
+    );
     assert_eq!(comparison.deltas.len(), 2);
 }
 
@@ -135,7 +138,7 @@ fn test_a_small_move_is_not_flagged_and_a_large_one_is() {
 #[test]
 fn test_a_baseline_of_zero_reports_no_percentage_instead_of_infinity() {
     let from_nothing = Delta {
-        name: "wasted_claim_rate".to_owned(),
+        name: "wasted_assignment_rate".to_owned(),
         baseline: 0.0,
         current: 0.25,
     };
@@ -154,10 +157,10 @@ fn test_a_baseline_of_zero_reports_no_percentage_instead_of_infinity() {
 fn test_the_rendering_names_what_only_one_side_carries_and_a_zero_baseline() {
     let mut current = report_of(500.0, 40.0);
     current.measurement("candidates_per_poll", 3.0);
-    current.measurement("wasted_claim_rate", 0.25);
+    current.measurement("wasted_assignment_rate", 0.25);
     let mut baseline = report_of(500.0, 40.0);
     baseline.measurement("idle_polls", 12.0);
-    baseline.measurement("wasted_claim_rate", 0.0);
+    baseline.measurement("wasted_assignment_rate", 0.0);
 
     let rendered = Comparison::of(&current, &baseline).render();
 

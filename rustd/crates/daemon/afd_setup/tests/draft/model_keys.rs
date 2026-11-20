@@ -68,7 +68,7 @@ async fn key_opening_refuses_a_foreign_owner_and_changed_admitted_model() {
             .expect("foreign owner refusal")
             .is_none()
     );
-    pinned.model = "changed-after-admission".into();
+    pinned.model = "changed-after-assignment".into();
     assert!(
         providers
             .registered_key(&mut tx, &f.tenant, &pinned)

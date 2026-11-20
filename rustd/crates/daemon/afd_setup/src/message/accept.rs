@@ -35,13 +35,13 @@ const ADMIT: &str = include_str!("../sql/message/admit.sql");
 const TURN_KIND: &str = af_wire::turn::TurnKind::Chat.as_str();
 
 #[derive(sqlx::FromRow)]
-struct Admission {
+struct AdmitRow {
     prior: Option<sqlx::types::Json<replay::Receipt>>,
     prior_sequence: Option<i64>,
     sequence: Option<i64>,
 }
 
-impl Admission {
+impl AdmitRow {
     fn accepted(
         self,
         person: &Uuid7,
@@ -142,7 +142,7 @@ impl Drafts {
             .and_then(|message| self.mint(now).map(|receipt| (message, receipt)));
         let ids = identifiers.as_ref().ok();
         let digest = message_digest(text, request.save)?;
-        let admitted: Admission = sqlx::query_as(ADMIT)
+        let admitted: AdmitRow = sqlx::query_as(ADMIT)
             .bind(&draft.id)
             .bind(sequence)
             .bind(ids.map(|(message, _)| message))

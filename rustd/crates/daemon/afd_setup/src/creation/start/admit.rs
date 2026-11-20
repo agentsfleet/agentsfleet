@@ -18,11 +18,11 @@ impl Creations {
         payload: Option<&'a str>,
     ) -> Result<Prepared<'a>> {
         // System setup has no person to attribute a run to and always stores
-        // `Start::None`, so only a person's Save reaches the admission.
+        // `Start::None`, so only a person's Save writes the turn.
         let (Some(payload), Some(actor)) = (payload, &row.accepted.context.creator_id) else {
             return Ok(Prepared::None);
         };
-        let admission = IncomingTurn {
+        let turn = IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key),
             fleet: &row.id,
@@ -32,7 +32,7 @@ impl Creations {
             request_json: payload,
             reply: Reply::None,
         };
-        match self.admissions.prepare(admission).await {
+        match self.turns.prepare(turn).await {
             Ok(prepared) => Ok(Prepared::Ready(prepared)),
             Err(refused) if refused.is_over_capacity() => {
                 Ok(Prepared::Blocked(refused.code().to_string()))
@@ -50,7 +50,7 @@ impl Creations {
         initial.outcome = match prepared {
             Prepared::None => StartOutcome::None,
             Prepared::Blocked(code) => blocked(code),
-            Prepared::Ready(prepared) => match self.admissions.stage(connection, prepared).await {
+            Prepared::Ready(prepared) => match self.turns.stage(connection, prepared).await {
                 Ok(admitted) => StartOutcome::RunNow {
                     state: StartState::Pending,
                     turn_id: Some(admitted.stored.id.into()),

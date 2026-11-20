@@ -34,7 +34,7 @@ const EVENT_TOKENS_UNPRICED: &str = "run_tokens_unpriced";
 /// What one run's lines are priced against.
 ///
 /// Read BEFORE the run's transaction opens, so no catalogue read waits while
-/// the run and its slot are locked.
+/// the run and its thread are locked.
 #[derive(Debug)]
 pub struct Pricing {
     book: PriceBook,

@@ -31,11 +31,11 @@ af_crypto.workspace = true
 afd_db.workspace = true
 # The semantics marker accepted by the same validator that runtime runs use.
 af_fleet_runtime.workspace = true
-# The fleet status a runnable admission binds, and the one a refusal names.
+# The fleet status a runnable turn binds, and the one a refusal names.
 afd_fleet_lifecycle.workspace = true
 # The live run status the steer's run facts read.
 afd_state.workspace = true
-# Admission outcome counters.
+# Turn outcome counters.
 af_observability.workspace = true
 # Event types accepted by producers.
 af_wire.workspace = true

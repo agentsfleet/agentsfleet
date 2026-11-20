@@ -31,7 +31,7 @@ pub(crate) const DELETE: &str = include_str!("delete.sql");
 /// `$5` cursor instant, `$6` cursor id, `$7` limit.
 pub(crate) const PAGE: &str = include_str!("page.sql");
 
-/// The queue hint for one draft, for the fixture admission path.
+/// The queue hint for one draft, for the fixture assignment path.
 ///
 /// `$1` draft.
 #[cfg(feature = "test-util")]

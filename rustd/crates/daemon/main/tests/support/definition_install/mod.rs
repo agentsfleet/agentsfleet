@@ -80,7 +80,7 @@ pub(crate) struct Secret {
 
 /// Boots a daemon, installs the corpus fleet named `fleet_name` with `secrets`
 /// and the GitHub handle sealed beside them, enrols a runner, and puts one
-/// steer in its admissions ledger.
+/// steer in its turns ledger.
 ///
 /// A steer for every fleet, webhook-triggered ones included: the pull path
 /// runs any event type it can name, and the scripted model, not the event

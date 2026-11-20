@@ -126,7 +126,7 @@ impl ControlPlane {
         run_id: &Uuid7,
         request: &ActivityRequest<'_>,
     ) -> Result<()> {
-        let verb = Verb::Activity.as_str();
+        let verb = Verb::Progress.as_str();
         tracing::debug!(event = "runner_activity_queued", verb);
         self.stream
             .send(&Up::Progress {

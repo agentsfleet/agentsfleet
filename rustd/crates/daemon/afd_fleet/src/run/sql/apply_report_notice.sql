@@ -12,7 +12,7 @@ WITH event AS (
 ), owed AS (
   -- An answer still owed carries the notice instead, a failed run's
   -- unanswered notice included. A clean run that answered nothing owed none,
-  -- so the notice is owed in its place, to the admission's reply destination,
+  -- so the notice is owed in its place, to the turn's reply destination,
   -- as the report statement owes a run's own text.
   INSERT INTO thread.deliveries AS o
     (id, fleet_id, workspace_id, provider, destination, turn_id, answer,

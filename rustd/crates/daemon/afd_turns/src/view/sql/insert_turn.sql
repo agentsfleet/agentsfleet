@@ -1,4 +1,4 @@
--- A fresh row is a history-only receipt: opened and settled at birth, so no claim takes it.
+-- A fresh row is a history-only receipt: opened and settled at birth, so no assignment takes it.
 -- A conflict meets an admitted turn and opens its event, once.
 INSERT INTO thread.turns AS t
   (id, thread_id, workspace_id, actor, kind, status, request_json, resumes_turn_id,

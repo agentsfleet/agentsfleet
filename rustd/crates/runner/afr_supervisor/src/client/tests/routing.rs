@@ -36,7 +36,7 @@ async fn every_verb_goes_to_its_own_path() {
     let mut expected = vec![
         (Verb::Heartbeat, "/v1/runners/me/stream".to_owned(), true),
         (Verb::Renew, "/v1/runners/me/stream".to_owned(), true),
-        (Verb::Activity, "/v1/runners/me/stream".to_owned(), true),
+        (Verb::Progress, "/v1/runners/me/stream".to_owned(), true),
         (Verb::Report, "/v1/runners/me/stream".to_owned(), true),
         (Verb::Load, memory.clone(), false),
         (Verb::Capture, memory, true),

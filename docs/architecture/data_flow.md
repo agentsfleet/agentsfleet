@@ -230,7 +230,7 @@ The spellings live in `af_core::turn::status` and are never literals in schema (
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
-| `thread.turns` | **One row per input** | INSERT (status=`queued`); the assignment stamps `run_fence` and `opened_at` (status=`received`); the input claim stamps `input_claim_run_id` and `input_claim_fence`; then `parked_at` and the report's `settled_at` with status=`processed` \| `fleet_error` \| `gate_blocked` \| `cancelled` | "What did this Fleet do for turn X? Who triggered it, what did they ask, what did it answer, did the gates pass?" Accepted work, its current ownership and completion, and the user's narrative log. `UNIQUE (producer, producer_key)` deduplicates producer retries. The single source of truth for the turns list and `agentsfleet fleet turns`. |
+| `thread.turns` | **One row per input** | INSERT (status=`queued`); the assignment stamps `run_fence` and `opened_at` (status=`received`); the input claim stamps `input_run_id` and `input_fence`; then `parked_at` and the report's `settled_at` with status=`processed` \| `fleet_error` \| `gate_blocked` \| `cancelled` | "What did this Fleet do for turn X? Who triggered it, what did they ask, what did it answer, did the gates pass?" Accepted work, its current ownership and completion, and the user's narrative log. `UNIQUE (producer, producer_key)` deduplicates producer retries. The single source of truth for the turns list and `agentsfleet fleet turns`. |
 | `thread.deliveries` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" Committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, turn_id)` makes a replayed report owe one delivery, not two. |
 | `thread.threads` | **One row per fleet or draft** | INSERT with its owner; the assignment raises `fencing_token`; the report replaces `resume_context` | "Where did this Fleet leave off?" The fence, the warm hold and the resume bookmark. The run path reads `resume_context` with the fleet row and hands it to no run. "Which fleet is running right now" is `thread.runs`, which has the fencing token and the expiry that make the answer trustworthy. |
 | `billing.usage_lines` | **One row per measured slice** of a run: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, kind, seq)`, where the work is the run and `kind` says whether the line is a model call, a runtime slice or a decision call. No money is set aside: the billing relay takes it from `billing.wallets` within seconds of the commit (billing §3, §11). | INSERT in the run's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did turn X's run use, and what did it cost?" Billing audit and the source of fleet budgets. Joinable to `thread.turns` on `turn_id`, the turn's primary key. |
@@ -648,7 +648,7 @@ The native report commits its terminal outcome.
 
 **Folded messages.** A message written while the fleet's run is live answers `folded` with `folded_into_turn_id`.
 
-At its next model call the running run takes a person's later unsettled messages in its own conversation. The input claim stops at the first parked, task-bound or non-person turn. It stamps `input_claim_run_id` and `input_claim_fence` on each turn it takes.
+At its next model call the running run takes a person's later unsettled messages in its own conversation. The input claim stops at the first parked, task-bound or non-person turn. It stamps `input_run_id` and `input_fence` on each turn it takes.
 
 A durable-task run follows the same rule through its own input claim.
 
@@ -665,7 +665,7 @@ The turn keeps its original time and billing identities. The previous holder can
 Approval resolution or expiry unparks eligible heads and attempts a wake notification.
 The 5 s recovery probe reads Postgres too, so notification loss cannot leave that work stranded.
 
-See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, probe costs and recovery limits.
+See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets, probe costs and recovery limits.
 See [provider key boundaries](./billing_and_provider_keys.md#82-the-api_key-visibility-boundary) for plaintext ownership.
 The [runner sequence](./runner_execution.md#one-run-end-to-end) owns sandbox startup, agent runs and teardown.
 

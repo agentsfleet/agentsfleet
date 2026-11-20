@@ -105,7 +105,7 @@ test("test_send_scrolls_once", async ({ page }) => {
       composer.getByRole("button", { name: SEND_LABEL, exact: true }).click(),
     );
     await test.info().attach("send-scroll-tops", { contentType: "application/json", body: JSON.stringify(tops.map(Math.round)) });
-    // Sending moves forward once, without reversing when admission arrives.
+    // Sending moves forward once, without reversing when the turn is accepted.
     const furthest = tops.map((_, i) => Math.max(...tops.slice(0, i + 1)));
     expect(Math.max(...tops.map((top, i) => (furthest[i] ?? top) - top))).toBeLessThanOrEqual(SETTLED_PX);
     expect(Math.abs((tops.at(-1) ?? 0) - Math.max(...tops))).toBeLessThanOrEqual(SETTLED_PX);

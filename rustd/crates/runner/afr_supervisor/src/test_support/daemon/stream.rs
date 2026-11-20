@@ -287,7 +287,7 @@ async fn activity_reply(
     api: &dyn RunnerApi,
     request: &af_wire::activity::ActivityRequest<'_>,
 ) -> Result<Option<Value>> {
-    answer(api, Verb::Activity, request).await?;
+    answer(api, Verb::Progress, request).await?;
     Ok(None)
 }
 

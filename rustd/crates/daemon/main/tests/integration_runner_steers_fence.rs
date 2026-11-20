@@ -15,7 +15,7 @@ use crate::steers::Crew;
 use crate::wire::{report, report_body};
 
 /// A token below the fleet's live sequence, and a holder a
-/// reclaim superseded, are refused with no row written.
+/// reassignment superseded, are refused with no row written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn fleet_steer_refuses_a_stale_fencing_token() {
@@ -37,7 +37,7 @@ async fn fleet_steer_refuses_a_stale_fencing_token() {
         (409, &json!("UZ-RUN-005"), &json!("superseded")),
         "{refused}"
     );
-    let rows = crew.admissions(&target).await;
+    let rows = crew.turns(&target).await;
     assert!(rows.is_empty(), "{rows:?}");
     crew.finish(supervisor).await;
 }
@@ -60,7 +60,7 @@ async fn fleet_steer_refuses_a_settled_run() {
         (404, &json!("UZ-RUN-006")),
         "{refused}"
     );
-    let rows = crew.admissions(&target).await;
+    let rows = crew.turns(&target).await;
     assert!(rows.is_empty(), "{rows:?}");
     crew.finish(supervisor).await;
 }

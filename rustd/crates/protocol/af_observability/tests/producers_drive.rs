@@ -99,7 +99,7 @@ fn test_every_fleet_producer_runs_its_body() {
         producers::fleet::delivery_stage(*stage, Duration::from_millis(40));
     }
 
-    // Both admission counters, over every arm of their closed sets. The label
+    // Both turn counters, over every arm of their closed sets. The label
     // is the only thing separating a queue outage from a deployment spending
     // its budget, so a variant added without a spelling here is a counter that
     // silently stops distinguishing them.

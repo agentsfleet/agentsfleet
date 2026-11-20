@@ -1,6 +1,6 @@
 -- One unit of work handed to one runner: a fleet's turn or a setup draft's turn. Work can
 -- be held more than once, each fenced. A run names exactly one owner, the one whose
--- `thread.threads` row it holds, so the statements both kinds share reach the slot by
+-- `thread.threads` row it holds, so the statements both kinds share reach the thread by
 -- `COALESCE(fleet_id, draft_id)`; `fleet_id` alone is read by the fleet's own statements.
 -- No foreign key to fleets, drafts or turns: a settled run is history that outlives its
 -- owner. The insert proves scope, and an owner's deletion deletes its active runs itself.

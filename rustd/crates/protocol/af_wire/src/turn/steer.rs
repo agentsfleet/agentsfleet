@@ -40,7 +40,7 @@ pub struct SteerRequest<'a> {
     //
     // A timeout does not prove an operation failed, and a server cannot tell a
     // retried POST from a second press — the bytes are identical — so only the
-    // caller can say which it is. The ledger keys the admission
+    // caller can say which it is. The ledger keys the turn
     // `<fleet_id>:<operation_id>` (`afd_turns::view::steer`), so a retry conflicts on
     // `UNIQUE (producer, producer_key)` and is answered from the first row.
     // Optional on purpose: a human in a terminal has no operation to name, and
@@ -56,7 +56,7 @@ pub struct SteerRequest<'a> {
 /// The longest client operation identity a steer may carry.
 ///
 /// Generous enough for a UUID, a ULID, a vendor's delivery id or a short
-/// composite, and bounded because it is stored per admission and indexed: an
+/// composite, and bounded because it is stored per turn and indexed: an
 /// unbounded key would let a caller decide how much of the ledger's index one
 /// of its retries occupies.
 ///

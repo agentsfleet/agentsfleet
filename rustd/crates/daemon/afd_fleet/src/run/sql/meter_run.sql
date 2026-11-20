@@ -1,7 +1,7 @@
 -- The fleet's per-run renewal: `shared/extend_run.sql` with the durable task's limits
 -- and the turn's fence checked in the same statement. A change to the shared
 -- bookkeeping belongs in both.
-WITH locked_slot AS MATERIALIZED (
+WITH locked_thread AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.run_expires_at
     FROM thread.threads s JOIN thread.runs l ON l.fleet_id = s.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
@@ -9,11 +9,11 @@ WITH locked_slot AS MATERIALIZED (
 ), probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id,
            l.fencing_token, l.created_at, l.run_expires_at, l.last_metered_at, l.max_runtime_seconds,
-           a.fencing_token AS live_fence, a.run_expires_at AS slot_expires_at,
+           a.fencing_token AS live_fence, a.run_expires_at AS thread_expires_at,
            l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
            l.task_runtime_accounted_at
     FROM thread.runs l
-    JOIN locked_slot a ON a.fleet_id = l.fleet_id
+    JOIN locked_thread a ON a.fleet_id = l.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF l
 ), held_task AS MATERIALIZED (
@@ -43,7 +43,7 @@ WITH locked_slot AS MATERIALIZED (
     FROM metered
     WHERE fencing_token = live_fence
       AND LEAST(checked_at + $5::interval, created_at + LEAST($6::interval, make_interval(secs => max_runtime_seconds))) > checked_at
-      AND run_expires_at > checked_at AND slot_expires_at > checked_at
+      AND run_expires_at > checked_at AND thread_expires_at > checked_at
       AND (task_id IS NULL OR (
           task_status = $7 AND task_generation = live_task_generation
           AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
@@ -62,7 +62,7 @@ WITH locked_slot AS MATERIALIZED (
         updated_at = now()
     FROM guard g WHERE l.id = g.id
     RETURNING l.run_expires_at AS capped
-), slot AS (
+), moved_thread AS (
     UPDATE thread.threads a
     SET run_expires_at = g.capped,
         updated_at = now()
@@ -71,7 +71,7 @@ WITH locked_slot AS MATERIALIZED (
 )
 SELECT
     (SELECT count(*) FROM probe)::bigint          AS probe_found,
-    (SELECT count(*) FROM moved)::bigint          AS claimed,
+    (SELECT count(*) FROM moved)::bigint          AS moved_runs,
     (SELECT capped FROM moved)                    AS new_until,
     (SELECT LEAST(created_at + LEAST($6::interval, make_interval(secs => max_runtime_seconds)), task_execution_deadline_at) FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at, g.d_ms,

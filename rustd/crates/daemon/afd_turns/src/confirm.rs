@@ -2,7 +2,7 @@
 
 use crate::{Producer, Result, Turns};
 
-/// The committed admission's identity. No second datastore acknowledges it.
+/// The committed turn's identity. No second datastore acknowledges it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Confirmation {
     /// The event admitted under this producer key.

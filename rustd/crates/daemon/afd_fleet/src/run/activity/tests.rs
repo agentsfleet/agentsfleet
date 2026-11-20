@@ -141,18 +141,18 @@ fn tool_frames_republish_their_call_id_and_a_chunk_names_none() {
     }
 }
 
-/// A reclaimed run re-runs the same event and the runner's counter restarts,
+/// A reassigned run re-runs the same event and the runner's counter restarts,
 /// so its call 3 must not publish as the dead run's call 3.
 #[test]
 fn one_runner_call_id_under_two_fences_publishes_two_ids() {
-    let reclaimed = Target {
+    let reassigned = Target {
         fence: FENCE + 1,
         ..target()
     };
     let [started, ..] = every_frame(RUNNER_CALL);
     let first = published(&started);
     let second = serde_json::to_value(
-        Published::of(&reclaimed, &started).expect("every fixture frame renders"),
+        Published::of(&reassigned, &started).expect("every fixture frame renders"),
     )
     .expect("a published frame serializes");
     assert_ne!(first["call_id"], second["call_id"], "{first} / {second}");

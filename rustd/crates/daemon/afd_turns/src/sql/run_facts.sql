@@ -1,18 +1,18 @@
 -- The facts a steer's disposition is named from: whether a run of the fleet
 -- is live and of which kind, whether the steer is in that run's conversation,
--- and whether a message the run's claim stops at stands ahead of it. Read
--- after the steer's admission committed and outside the fleet lock, so a send
+-- and whether a message the run's assignment stops at stands ahead of it. Read
+-- after the steer's turn committed and outside the fleet lock, so a send
 -- that races a run's start or end can read it one step late; the label is
 -- advisory.
 --
 -- A steer names no reply, so its conversation is the unaddressed one. With no
 -- live run, any earlier unsettled message waits ahead of it. With one, the
--- message in the way is claim_inputs.sql's barrier: in that conversation,
+-- message in the way is assign_inputs.sql's barrier: in that conversation,
 -- after the run's own, parked, task-bound or sent by no person. Only the
 -- first $7 messages after the run's own are looked at, so the read costs the
 -- same however long the backlog is; a barrier past them reads as clear.
 --
--- $1 fleet · $2 the steer's admission · $3 active run status ·
+-- $1 fleet · $2 the steer's turn · $3 active run status ·
 -- $4 steer producer · $5 machine actor · $6 person actor pattern ·
 -- $7 messages to look at
 WITH message AS MATERIALIZED (

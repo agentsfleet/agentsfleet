@@ -9,7 +9,7 @@ WITH instant AS MATERIALIZED (
   LEFT JOIN thread.threads s ON s.fleet_id = z.id
   LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
   WHERE z.status = $1 AND host.cordon_reason IS NULL
-    -- A tenant's runner takes only its tenant's work; the claim enforces it.
+    -- A tenant's runner takes only its tenant's work; the assignment enforces it.
     AND (host.platform_owned OR host.tenant_id = z.tenant_id)
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)

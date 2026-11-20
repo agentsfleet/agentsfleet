@@ -123,7 +123,7 @@ impl ServingPlane {
     ///   process key, so a clone shares one connection set and one key —
     ///   building a second would mean two values that could be pointed at
     ///   different keys by a later edit.
-    /// - ONE admissions ledger, shared by every producer. A second value would
+    /// - ONE turns ledger, shared by every producer. A second value would
     ///   be a second place a deployment could point at a different pool, and
     ///   the whole point of the ledger is that acceptance has one home. The
     ///   outbound group takes it by value, so it is built after every group
@@ -140,22 +140,22 @@ impl ServingPlane {
             common.drafts,
             &kek,
             &common.providers,
-            &common.admissions,
+            &common.turns,
             parts.authoring_transport,
             parts.platform_admin_workspace.as_ref(),
         );
         let admin = stores::admin(&database);
         let activity_streams = parts.bus.clone();
         let tenant = stores::tenant(&database, &kek, &common.providers, &activity_streams);
-        let activity = stores::activity(&database, &kek, &common.admissions);
-        let task_admissions = common.admissions.clone();
+        let activity = stores::activity(&database, &kek, &common.turns);
+        let task_turns = common.turns.clone();
         let outbound = surfaces::outbound(
             &database,
             &kek,
             surfaces::OutboundParts {
                 schedule: parts.schedule,
                 admin: parts.platform_admin_workspace.clone(),
-                admissions: common.admissions,
+                turns: common.turns,
                 vendor_client: parts.vendor_client,
                 slack_api_base: parts.slack_api_base,
             },
@@ -170,7 +170,7 @@ impl ServingPlane {
             broker: parts.broker,
             biller: common.biller,
             wake: parts.runner_wake,
-            admissions: task_admissions,
+            turns: task_turns,
             admin_workspace: parts.platform_admin_workspace.clone(),
             storage_config: parts.checkpoint_storage,
             master: common.task_master,
@@ -285,7 +285,7 @@ mod tests;
 /// One native task owner attaches reporting to the existing run plane.
 fn task_plane(
     runs: &mut RunService,
-    admissions: Turns,
+    turns: Turns,
     admin_workspace: Option<Uuid7>,
     storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
     master: Arc<af_crypto::secret::Kek>,
@@ -306,7 +306,7 @@ fn task_plane(
     runs.turn_checkpoints = runs.turn_checkpoints.clone().with_storage(storage.clone());
     let tasks = afd_fleet::task::Tasks::new(
         runs.runs.clone(),
-        admissions,
+        turns,
         afd_fleet::task::TaskDependencies {
             policy,
             admin_workspace,

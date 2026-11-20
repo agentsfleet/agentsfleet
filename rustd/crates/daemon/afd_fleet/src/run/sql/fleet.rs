@@ -1,8 +1,8 @@
-//! The claim read: one fleet's installed shape, as one statement.
+//! The assignment read: one fleet's installed shape, as one statement.
 
 /// The fleet row and its session checkpoint, in ONE statement.
 ///
-/// The join is the whole point. The per-claim shape this replaces spent three
+/// The join is the whole point. The per-assignment shape this replaces spent three
 /// pool acquires on three single-row statements, on the path every run takes.
 ///
 /// `LEFT JOIN`, not `JOIN`: a fleet that has never checkpointed has no session

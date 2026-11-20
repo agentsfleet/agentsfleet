@@ -163,7 +163,7 @@ async fn test_rust_runner_run_roundtrip() {
     drop(tail);
     supervisor.shutdown().await;
     // Retired like every other scenario's fleet: left `active` with its run,
-    // the next daemon's reclaim sweeper re-marks it and the scenarios after
+    // the next daemon's expiry sweeper re-marks it and the scenarios after
     // this one spend their poll budget on it (`e2e_retire`).
     scene.cleanup().await;
 }

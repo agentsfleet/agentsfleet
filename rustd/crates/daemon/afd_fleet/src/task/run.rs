@@ -1,4 +1,4 @@
-//! Task ownership joins ordinary run issuance; it never claims another slot.
+//! Task ownership joins ordinary run issuance; it never takes another thread.
 
 use super::{TaskScope, read};
 use crate::{
@@ -11,7 +11,7 @@ use af_wire::task::{TaskContext, TaskState};
 use sqlx::PgConnection;
 
 // Setup changes and Kill hold FOR UPDATE. Recheck active state after that lock
-// wait, before taking the host and slot, so a selected admission cannot survive Kill.
+// wait, before taking the host and thread, so a selected turn cannot survive Kill.
 pub(crate) async fn parents(connection: &mut PgConnection, acquired: &Acquired) -> Result<bool> {
     let parent: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_ISSUE_SCOPE)
         .bind(&acquired.fleet_id)
@@ -19,14 +19,14 @@ pub(crate) async fn parents(connection: &mut PgConnection, acquired: &Acquired) 
         .bind(crate::run::sql::FLEET_STATUS_ACTIVE)
         .fetch_optional(connection)
         .await
-        .map_err(query("hold surviving issue parents before host and slot"))?;
+        .map_err(query("hold surviving issue parents before host and thread"))?;
     Ok(parent.is_some())
 }
 
 #[derive(sqlx::FromRow)]
 struct Selected {
     task_id: Option<Uuid7>,
-    admission_generation: Option<i64>,
+    turn_generation: Option<i64>,
     accepted_revision_id: Option<Uuid7>,
     generation: Option<i64>,
     head_revision_id: Option<Uuid7>,
@@ -34,7 +34,7 @@ struct Selected {
     requires_tasks: bool,
 }
 
-/// Slot and run are locked by the ordinary insert before the task lock.
+/// Thread and run are locked by the ordinary insert before the task lock.
 /// A failed proof rolls that entire issue transaction back, including its tally.
 pub(crate) async fn attach(
     connection: &mut PgConnection,
@@ -43,7 +43,7 @@ pub(crate) async fn attach(
     run: &Uuid7,
     revision: Option<&crate::run::installed::IssueRevision>,
 ) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
-    // A plain admission under the claim's setup proof: the run insert
+    // A plain turn under the assignment's setup proof: the run insert
     // rechecked the head revision and the host, so there is nothing to attach
     // and nothing left to read. Without a proof the read below is
     // the only setup check, so it stays.
@@ -74,14 +74,11 @@ pub(crate) async fn attach(
     }
     let Some(task_id) = selected.task_id else {
         return Ok(selected
-            .admission_generation
+            .turn_generation
             .is_none()
             .then_some((None, acquired.held_until)));
     };
-    if !selected.capable
-        || revision.is_none()
-        || selected.admission_generation != selected.generation
-    {
+    if !selected.capable || revision.is_none() || selected.turn_generation != selected.generation {
         return Ok(None);
     }
     attach_task(connection, acquired, run, &task_id, revision).await
@@ -143,11 +140,11 @@ impl crate::run::Runs {
         if !parents(&mut tx, acquired).await? {
             return Ok(());
         }
-        let _slot: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE_THREAD)
+        let _thread: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE_THREAD)
             .bind(&acquired.fleet_id)
             .fetch_optional(&mut *tx)
             .await
-            .map_err(query("hold claimed slot before authority refusal"))?;
+            .map_err(query("hold assigned thread before authority refusal"))?;
         match Self::installed_on(
             self.definitions(),
             &mut tx,
@@ -171,7 +168,7 @@ impl crate::run::Runs {
             .bind(TaskState::Running.as_str())
             .fetch_optional(&mut *tx)
             .await
-            .map_err(query("block only the claimed current task generation"))?;
+            .map_err(query("block only the assigned current task generation"))?;
         if let Some((task, _)) = &changed {
             super::waits::cancel(&mut tx, task).await?;
             super::continuation::retire(&mut tx, task).await?;

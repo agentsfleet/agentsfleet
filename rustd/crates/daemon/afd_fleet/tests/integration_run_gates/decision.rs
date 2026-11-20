@@ -11,7 +11,7 @@ use garde::Validate as _;
 use sqlx::{Connection as _, types::Json};
 
 use super::{
-    READ_BOUND_CONFIG, Ready, claim, drive, ready, seed::seed_provider_resolution, set_config,
+    READ_BOUND_CONFIG, Ready, assign, drive, ready, seed::seed_provider_resolution, set_config,
 };
 use crate::support::Fixtures;
 
@@ -84,7 +84,7 @@ async fn profile_snapshot_does_not_reverse_model_then_runner_lock_order() {
     let case = ready(&fixtures).await;
     select(&fixtures, &case.runner, Some(&model.model.id)).await;
     let _default = prepare(&fixtures, &case).await;
-    let acquired = claim(&fixtures, &case).await;
+    let acquired = assign(&fixtures, &case).await;
     let mut connection = fixtures.database.acquire().await.expect("model writer");
     let mut writer = connection
         .begin()
@@ -151,7 +151,7 @@ async fn prepare(fixtures: &Fixtures, case: &Ready) -> afd_db::test_util::Platfo
 
 async fn issue(fixtures: &Fixtures, case: &Ready) -> Issued {
     let _default = prepare(fixtures, case).await;
-    let acquired = claim(fixtures, case).await;
+    let acquired = assign(fixtures, case).await;
     let answer = drive(fixtures, case, acquired).await;
     decode(answer.as_ref())
 }
@@ -162,7 +162,7 @@ fn decode(answer: Option<&serde_json::Value>) -> Issued {
         TaggedRun::Fleet(run) => Some(run),
         TaggedRun::Authoring(_) => None,
     }
-    .expect("the selected admission grants fleet work");
+    .expect("the selected turn grants fleet work");
     Issued {
         id: Uuid7::parse(&run.run_id).expect("the run names a UUIDv7"),
         decision: run.decision,

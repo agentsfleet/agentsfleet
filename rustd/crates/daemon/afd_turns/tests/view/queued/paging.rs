@@ -1,4 +1,4 @@
-//! Waiting admissions participate in every cursor page.
+//! Waiting turns participate in every cursor page.
 
 use super::*;
 
@@ -10,7 +10,7 @@ use super::*;
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_waiting_overflow_reaches_later_pages() {
     let lane = TurnsLane::open().await;
-    let steer = Steer::new(lane.admissions());
+    let steer = Steer::new(lane.turns());
     let mut admitted = Vec::with_capacity(WAITING);
     for _ in 0..WAITING {
         let steered = steer

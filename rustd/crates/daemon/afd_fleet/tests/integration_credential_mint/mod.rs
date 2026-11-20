@@ -195,8 +195,8 @@ async fn seed_run(
     .expect("the run row must insert");
 }
 
-/// Moves `fleet`'s live sequence past the fixture run's token, as a reclaim's
-/// claim does, leaving the run row `active` and unexpired.
+/// Moves `fleet`'s live sequence past the fixture run's token, as a reassignment's
+/// assignment does, leaving the run row `active` and unexpired.
 async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
     let mut connection = fixtures
         .database
@@ -216,7 +216,7 @@ async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
     .bind(RUN_WINDOW)
     .execute(&mut *connection)
     .await
-    .expect("the slot row must upsert");
+    .expect("the thread row must upsert");
 }
 
 /// Stores one credential handle in the vault, sealed under the fixture key.

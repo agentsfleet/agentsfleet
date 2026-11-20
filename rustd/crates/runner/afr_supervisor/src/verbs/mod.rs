@@ -189,12 +189,12 @@ mod tests;
 
 #[async_trait::async_trait]
 impl afr_agent::Inbox for FencedVerbs<'_> {
-    async fn claim(&self, after_sequence: i64) -> Vec<afr_agent::Folded> {
+    async fn assign(&self, after_sequence: i64) -> Vec<afr_agent::Folded> {
         // The loop drops this future when the run stops, so a stopped run's
-        // last claim leaves this record alone.
-        let event = EVENT_FOLD_CLAIM_STARTED;
+        // last assignment leaves this record alone.
+        let event = EVENT_FOLD_ASSIGNMENT_STARTED;
         tracing::debug!(after_sequence, event);
-        let claimed: crate::Result<Vec<afr_agent::Folded>> = self
+        let assigned: crate::Result<Vec<afr_agent::Folded>> = self
             .plane
             .folds(self.run_id, self.fencing_token, after_sequence)
             .await
@@ -212,25 +212,29 @@ impl afr_agent::Inbox for FencedVerbs<'_> {
                             .collect()
                     })
             });
-        match claimed {
+        match assigned {
             Ok(folded) => {
-                let (count, event) = (folded.len(), EVENT_FOLD_CLAIM_COMPLETED);
-                tracing::debug!(after_sequence, claimed = count, event);
+                let (count, event) = (folded.len(), EVENT_FOLD_ASSIGNMENT_COMPLETED);
+                tracing::debug!(after_sequence, assigned = count, event);
                 folded
             }
             Err(failure) => {
-                // The next claim asks from the same place, so nothing is lost.
+                // The next assignment asks from the same place, so nothing is lost.
                 let error_code = failure.code().as_str();
-                tracing::warn!(event = EVENT_FOLD_CLAIM_FAILED, error_code, after_sequence);
+                tracing::warn!(
+                    event = EVENT_FOLD_ASSIGNMENT_FAILED,
+                    error_code,
+                    after_sequence
+                );
                 Vec::new()
             }
         }
     }
 }
 
-/// A claim of the messages the fleet received while the run works was sent.
-const EVENT_FOLD_CLAIM_STARTED: &str = "fold_claim_started";
-/// A claim was answered, with however many messages.
-const EVENT_FOLD_CLAIM_COMPLETED: &str = "fold_claim_completed";
-/// A claim went unanswered.
-const EVENT_FOLD_CLAIM_FAILED: &str = "fold_claim_failed";
+/// An assignment of the messages the fleet received while the run works was asked for.
+const EVENT_FOLD_ASSIGNMENT_STARTED: &str = "fold_assignment_started";
+/// An assignment was answered, with however many messages.
+const EVENT_FOLD_ASSIGNMENT_COMPLETED: &str = "fold_assignment_completed";
+/// An assignment went unanswered.
+const EVENT_FOLD_ASSIGNMENT_FAILED: &str = "fold_assignment_failed";

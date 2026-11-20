@@ -1,13 +1,13 @@
-//! What a reply destination does to an admission's digest and its binds.
+//! What a reply destination does to a turn's digest and its binds.
 //!
 //! Split from the ledger's other datastore-free cases at the file cap: these
-//! all turn on the destination an admission carries, which arrived after every
+//! all turn on the destination a turn carries, which arrived after every
 //! other digested field, so the property each proves is that the rows stored
 //! before it still hash as they did.
 
 use super::*;
 
-/// The digest [`sample`] had before admissions carried a destination.
+/// The digest [`sample`] had before turns carried a destination.
 ///
 /// Pinned as bytes rather than recomputed, because the property is about rows
 /// already in the ledger: each was stored with the digest the four-part
@@ -19,7 +19,7 @@ const DIGEST_BEFORE_DESTINATIONS: &str =
 /// A connector id as a producer owning a reply surface would state it.
 const CONNECTOR: &str = "slack";
 
-/// An event id as the ledger mints it: the admission row's `UUIDv7`.
+/// An event id as the ledger mints it: the turn row's `UUIDv7`.
 static RESUMED: std::sync::LazyLock<Uuid7> = std::sync::LazyLock::new(|| {
     afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0177")
 });

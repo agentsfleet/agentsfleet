@@ -1,8 +1,8 @@
-//! A setup draft's turn on the common run path: claim, assignment, renewal,
+//! A setup draft's turn on the common run path: assignment, renewal,
 //! report, each on the shared run statements ([`super::sql::shared`]).
 //!
 //! A draft's run is a fleet-like run the draft owns
-//! ([`super::RunOwner::Draft`]): the draft's slot (`thread.threads.id` is the
+//! ([`super::RunOwner::Draft`]): the draft's thread (`thread.threads.id` is the
 //! draft's id) fences it, its `turn_id` is the draft message it runs, and the
 //! runner reaches the daemon only through the same fenced verbs a fleet run
 //! uses. The draft's own rows (which message, its finish, the one candidate)
@@ -22,13 +22,13 @@
 //!   attempt path (`afd_setup::run`) until the runner's setup agent
 //!   replaces it.
 
-mod claim;
+mod assign;
 mod renew;
 mod report;
 
 use af_core::id::Uuid7;
 
-pub use claim::DraftAssignment;
+pub use assign::DraftAssignment;
 
 /// What a session keeps about a draft-owned run it assigned: the draft, so
 /// its renewals, report and live answer take the draft's path.

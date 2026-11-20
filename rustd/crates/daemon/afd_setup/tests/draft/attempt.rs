@@ -1,4 +1,4 @@
-//! An isolated admitted row exercises machine guards without enabling claim early.
+//! An isolated admitted row exercises machine guards without enabling assignment early.
 
 use super::{
     fixture::{Fixture, now},

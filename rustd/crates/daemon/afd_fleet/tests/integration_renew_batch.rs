@@ -112,14 +112,14 @@ pub(crate) async fn spend(
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn host_batch_extends_live_refuses_fenced() {
     let held = held_in(Fixtures::create_isolated().await).await;
-    let reclaimed = held.hold_another().await;
+    let reassigned = held.hold_another().await;
     let capped = held.hold_another().await;
     held.fixtures
-        .lapse_holder(&reclaimed.run, &reclaimed.fleet)
+        .lapse_holder(&reassigned.run, &reassigned.fleet)
         .await;
-    crate::seed::select_fleet(&held.runs, &held.spare, &reclaimed.fleet)
+    crate::seed::select_fleet(&held.runs, &held.spare, &reassigned.fleet)
         .await
-        .expect("the spare reclaims the lapsed fleet");
+        .expect("the spare is reassigned the lapsed fleet");
     held.fixtures
         .age(
             Row::Run(&capped.run),
@@ -128,7 +128,7 @@ async fn host_batch_extends_live_refuses_fenced() {
         )
         .await;
     held.run_a_slice().await;
-    let runs = [&held.issued.run_id, &reclaimed.run, &capped.run];
+    let runs = [&held.issued.run_id, &reassigned.run, &capped.run];
     // Warms the price and definition caches, so the counted frame is a
     // steady-state tick's.
     let plane = held.fixtures.plane();
@@ -163,7 +163,7 @@ async fn host_batch_extends_live_refuses_fenced() {
         refusals,
         [
             (
-                Some(reclaimed.run.as_str().to_owned()),
+                Some(reassigned.run.as_str().to_owned()),
                 Some("lost".to_owned())
             ),
             (
@@ -185,8 +185,8 @@ async fn host_batch_extends_live_refuses_fenced() {
         "two slices billed"
     );
     assert!(
-        runtime_lines(&held, &reclaimed.run).await.is_empty(),
-        "the reclaimed run bills nothing"
+        runtime_lines(&held, &reassigned.run).await.is_empty(),
+        "the reassigned run bills nothing"
     );
     assert!(
         runtime_lines(&held, &capped.run).await.is_empty(),

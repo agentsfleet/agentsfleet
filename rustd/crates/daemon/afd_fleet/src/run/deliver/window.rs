@@ -1,6 +1,6 @@
 //! The fleet's memory window, read for the run just issued.
 //!
-//! After the issue, so the run row holds the fleet's slot: no other run
+//! After the issue, so the run row holds the fleet's thread: no other run
 //! for the fleet can settle between this read and the runner's first model
 //! call, and the last report's memory, written before that report committed,
 //! is in the window. A read that fails leaves the run issuable without one;
@@ -20,7 +20,7 @@ pub(super) const EVENT_WINDOW_READ_FAILED: &str = "run_window_read_failed";
 impl RunService {
     /// The memory window the run carries, or none when the read failed.
     ///
-    /// Scoped by the workspace and grants the claim statement read, so a grant
+    /// Scoped by the workspace and grants the assignment statement read, so a grant
     /// change reaches the next run without a read here.
     pub(super) async fn window_for(
         &self,

@@ -1,5 +1,5 @@
 //! Fixed routing text uses a stable channel carrier and the ordinary outbound ledger.
-//! A carrier is never an admission target and never creates or rewrites a fleet.
+//! A carrier is never a turn target and never creates or rewrites a fleet.
 
 use af_core::id::Uuid7;
 use afd_api_wire::ingress::Accepted;

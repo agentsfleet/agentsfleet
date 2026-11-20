@@ -1,6 +1,6 @@
 //! The run path's per-replica state follows every change that matters to a
 //! run: what is cached is keyed by a version a statement in the same
-//! pass read, and what is not cached rides the claim.
+//! pass read, and what is not cached rides the assignment.
 #![expect(
     clippy::expect_used,
     reason = "integration preconditions should fail the test loudly"
@@ -20,7 +20,7 @@ use crate::support::Fixtures;
 const SHARED_KEY: &str = "deploy_target";
 
 /// The window a run carries, built as the run path builds it: from the
-/// workspace and grants its claim statement read.
+/// workspace and grants its assignment statement read.
 async fn window_of(
     memories: &afd_memory::Memories,
     acquired: &Acquired,
@@ -36,7 +36,7 @@ async fn window_of(
 }
 
 // Value: protects=a grant change reaches the next run; fails_when=the scope
-// is cached or read before the claim; why_new=the scope moved into the claim
+// is cached or read before the assignment; why_new=the scope moved into the assignment
 // statement; seam=none; no_claim=a change during a running run.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -107,14 +107,14 @@ async fn memory_scope_follows_grant_change() {
         .await
         .expect("the reader is granted workspace memory");
     fixtures
-        .age(Row::Slot(&reader), "run_expires_at", LAPSE)
+        .age(Row::Thread(&reader), "run_expires_at", LAPSE)
         .await;
     let second = select_fleet(&runs, &runner, &reader)
         .await
         .expect("the reader's next run");
     assert!(
         second.opened.memory_reads_workspace,
-        "the claim read the grant"
+        "the assignment read the grant"
     );
     let window = window_of(&memories, &second).await;
     assert_eq!(

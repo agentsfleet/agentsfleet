@@ -41,7 +41,7 @@ fn keys(event: &af_core::test_util::trace::CapturedEvent) -> BTreeSet<&str> {
 }
 
 #[test]
-fn fleet_steer_logs_its_refusal_and_its_admission() {
+fn fleet_steer_logs_its_refusal_and_its_turn() {
     let capture = Capture::install();
     let standing = standing();
     let target = id(TARGET);

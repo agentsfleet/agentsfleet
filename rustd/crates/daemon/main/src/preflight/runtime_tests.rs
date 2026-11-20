@@ -13,7 +13,7 @@ fn deployment_defaults_keep_the_current_recovery_budget() -> TestResult {
     assert_eq!(settings.clock.ttl(), Duration::from_secs(35));
     assert_eq!(settings.clock.offline_after(), Duration::from_secs(105));
     assert_eq!(settings.fallback, Duration::from_secs(5));
-    assert_eq!(settings.claims.get(), 8);
+    assert_eq!(settings.assignments.get(), 8);
     assert_eq!(settings.requests.get(), 256);
     assert!(!settings.resume_from_checkpoint);
     Ok(())
@@ -67,14 +67,14 @@ fn configured_clock_and_budget_reach_the_typed_settings() -> TestResult {
     let settings = read(&MapEnv::from_pairs([
         ("AGENTSFLEET_RUN_TTL_SECONDS", "40"),
         ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", "2"),
-        ("AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", "4"),
+        ("AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS", "4"),
         ("AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS", "128"),
         ("AGENTSFLEET_RESUME_FROM_CHECKPOINT", "true"),
     ]))?;
     assert_eq!(settings.clock.ttl(), Duration::from_secs(40));
     assert_eq!(settings.clock.offline_after(), Duration::from_secs(120));
     assert_eq!(settings.fallback, Duration::from_secs(2));
-    assert_eq!(settings.claims.get(), 4);
+    assert_eq!(settings.assignments.get(), 4);
     assert_eq!(settings.requests.get(), 128);
     assert!(settings.resume_from_checkpoint);
     Ok(())
@@ -87,8 +87,8 @@ fn unsafe_clock_and_zero_or_malformed_budgets_refuse_startup() {
         ("AGENTSFLEET_RUN_TTL_SECONDS", "43200"),
         ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", "35"),
         ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", "0"),
-        ("AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", "0"),
-        ("AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS", "65"),
+        ("AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS", "0"),
+        ("AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS", "65"),
         ("AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS", "0"),
         ("AGENTSFLEET_RESUME_FROM_CHECKPOINT", "yes"),
         ("AGENTSFLEET_RUN_TTL_SECONDS", "thirty-five"),

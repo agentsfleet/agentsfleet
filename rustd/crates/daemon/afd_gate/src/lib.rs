@@ -9,7 +9,7 @@
 //! reads the durable decision back.
 //!
 //! Neither asks anything of a run. The run plane calls DOWN into this one
-//! at exactly two moments — admitting a claim and spending an approval — and
+//! at exactly two moments — admitting an assignment and spending an approval — and
 //! nothing here calls back.
 //!
 //! # This is the runner's side of an approval

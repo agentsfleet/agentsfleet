@@ -21,7 +21,7 @@ fn query(case: &Case, cursor: Option<String>, after: Option<u64>) -> garde::Vali
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consuming() {
+async fn human_input_pages_keep_complete_fifo_messages_without_assigning_or_consuming() {
     exercise(async |case| {
         let actor = afd_turns::view::steer_actor("native_task_owner");
         let first = case.source_message(afd_turns::Producer::Steer, &actor, "First: café 🦉").await;
@@ -43,7 +43,7 @@ async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consu
         assert_eq!(later.message, "Second: preserve middleware");
         assert!(later.sequence > item.sequence);
         assert!(next.next_cursor.is_none());
-        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE id IN ($1,$2) AND settled_at IS NULL AND input_claim_run_id IS NULL")
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE id IN ($1,$2) AND settled_at IS NULL AND input_run_id IS NULL")
             .bind(first).bind(second).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("read-only ownership observer")).await.expect("unconsumed inputs");
         assert_eq!(count, 2);
     }).await;
@@ -51,17 +51,40 @@ async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consu
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn malformed_input_cursor_refuses_without_claiming_a_human_source() {
+async fn malformed_input_cursor_refuses_without_assigning_a_human_source() {
     exercise(async |case| {
-        let source = case.source(afd_turns::Producer::Steer, &afd_turns::view::steer_actor("native_task_owner")).await;
+        let source = case
+            .source(
+                afd_turns::Producer::Steer,
+                &afd_turns::view::steer_actor("native_task_owner"),
+            )
+            .await;
         for cursor in invalid_cursors(source.as_str()) {
-            let error = case.tasks.inputs(case.run(), &query(case, Some(cursor), None)).await.expect_err("invalid input boundary");
+            let error = case
+                .tasks
+                .inputs(case.run(), &query(case, Some(cursor), None))
+                .await
+                .expect_err("invalid input boundary");
             assert_eq!(error.code(), error_code::INVALID_REQUEST);
         }
-        let unclaimed: bool = sqlx::query_scalar("SELECT input_claim_run_id IS NULL AND settled_at IS NULL FROM thread.turns WHERE id=$1")
-            .bind(source).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("source observer")).await.expect("unchanged human input");
-        assert!(unclaimed);
-    }).await;
+        let unassigned: bool = sqlx::query_scalar(
+            "SELECT input_run_id IS NULL AND settled_at IS NULL FROM thread.turns WHERE id=$1",
+        )
+        .bind(source)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("source observer"),
+        )
+        .await
+        .expect("unchanged human input");
+        assert!(unassigned);
+    })
+    .await;
 }
 
 fn invalid_cursors(id: &str) -> Vec<String> {
@@ -96,7 +119,7 @@ async fn accepted_input_recovery_retains_exact_meaning_and_applied_cursor() {
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
-        let source = case.claimed_source().await;
+        let source = case.assigned_source().await;
         let plan = proposed(&fixture, &source, &task.task_id, TaskInputAction::Steer).await;
         let plan = garde::Unvalidated::new(plan)
             .validate()

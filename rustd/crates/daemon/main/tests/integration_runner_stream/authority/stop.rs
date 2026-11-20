@@ -84,7 +84,7 @@ async fn a_stop_whose_hint_was_lost_ends_at_the_next_renewal() -> TestResult {
 // Value: protects=Stop cancels every turn one run serves, and the run reports once;
 // fails_when=Stop finds the run only through its head, or leaves a folded turn to be answered;
 // why_new=no test stopped a turn a run folded in;
-// seam=real admission, the native fold claim, the HTTP PATCH and the report.
+// seam=real intake, the native fold assignment, the HTTP PATCH and the report.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn stopping_one_of_two_served_turns_cancels_both() -> TestResult {
@@ -165,7 +165,10 @@ pub(super) async fn assert_stopped(
         .await?;
         assert_eq!(status, af_core::turn::status::CANCELLED, "turn {turn}");
         assert_eq!(answer, None, "a stopped turn gets no answer");
-        assert!(settled, "a cancelled turn is settled, so no claim takes it");
+        assert!(
+            settled,
+            "a cancelled turn is settled, so no assignment takes it"
+        );
     }
     Ok(())
 }
@@ -190,7 +193,7 @@ async fn admit_person_message(fixture: &Fixture) -> TestResult<Uuid7> {
     Ok(admitted.stored.id)
 }
 
-/// The run's fold claim, through its native lane: it takes `second`.
+/// The run's fold assignment, through its native lane: it takes `second`.
 async fn fold(native: &mut Native, held: &signals::Held, second: &Uuid7) {
     native
         .send(

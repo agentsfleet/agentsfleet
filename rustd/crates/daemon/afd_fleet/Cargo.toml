@@ -167,7 +167,7 @@ afd_turns = { workspace = true, features = ["test-util"] }
 afd_credential = { workspace = true, features = ["test-util"] }
 afd_runner = { workspace = true, features = ["test-util"] }
 # The suites need REAL parallelism: every contention proof in this crate — the
-# affinity race, the reclaim fence, the mint single-flight — is worthless on a
+# affinity race, the reassignment fence, the mint single-flight — is worthless on a
 # single-threaded runtime, because the interleaving it exists to force cannot
 # happen (`dispatch/write_rust.md`: "Concurrency work needs a deterministic
 # contention test, not only a happy-path asynchronous test").

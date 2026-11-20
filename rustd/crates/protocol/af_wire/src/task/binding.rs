@@ -104,10 +104,10 @@ pub struct TaskBindingItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskBindingsInput {
-    /// Current slot fence.
+    /// Current thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
-    /// Complete native source admission; queued human claims use this same ID.
+    /// Complete native source turn; queued human turns use this same ID.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub source_turn_id: String,
     /// Reviewed setup used for the message's questions and new objectives.

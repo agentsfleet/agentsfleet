@@ -1,7 +1,7 @@
-//! The claim's delivery writes roll back together and coexist with producer
+//! The assignment's delivery writes roll back together and coexist with producer
 //! budget locks.
 //!
-//! One statement claims the slot and, in one update of the turn, stamps its
+//! One statement assigns the thread and, in one update of the turn, stamps its
 //! fence and opens its event, so a fault in any of them leaves none behind.
 
 use af_core::id::Uuid7;
@@ -11,7 +11,7 @@ use afd_fleet::run::Delivery;
 use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use sqlx::Connection as _;
 
-use super::{STAMPS, UNCLAIMED, WITHIN, enqueue, next};
+use super::{STAMPS, UNASSIGNED, WITHIN, enqueue, next};
 use crate::{seed::seeded_parts, support::Fixtures};
 
 const FAIL_DELIVERY: &str = "CREATE FUNCTION fleet.refuse_delivery() RETURNS trigger \
@@ -27,7 +27,7 @@ const RESTORE_DELIVERY: &str = "DROP TRIGGER refuse_delivery ON thread.turns; \
 // seam=none; no_claim=every failure ordinal.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
+async fn a_failed_delivery_stamp_rolls_back_the_whole_assignment_then_assigns_once() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
@@ -44,12 +44,12 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
         .expect("inject fault");
     tokio::time::timeout(WITHIN, runs.select(&runner, &[]))
         .await
-        .expect("the claim never waits")
-        .expect_err("a refused stamp refuses the claim");
+        .expect("the assignment never waits")
+        .expect_err("a refused stamp refuses the assignment");
     assert_eq!(delivery_state(&fixtures, &event).await, (0, false));
     assert_eq!(
         fence(&fixtures, &event).await,
-        (None, UNCLAIMED),
+        (None, UNASSIGNED),
         "no fence moved"
     );
     assert_eq!(
@@ -63,7 +63,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
         .await
         .expect("remove fault");
 
-    let acquired = next(&runs, &runner).await.expect("claim");
+    let acquired = next(&runs, &runner).await.expect("assignment");
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     assert_eq!(delivery_state(&fixtures, &event).await, (1, true));
     let after = afd_turns::view::fleet_counters(&fixtures.database, &fleet)
@@ -73,7 +73,7 @@ async fn a_failed_delivery_stamp_rolls_back_the_whole_claim_then_claims_once() {
     assert_eq!(
         acquired.opened.received.counters,
         Some(after),
-        "the claim answers the counters its own opening moved"
+        "the assignment answers the counters its own opening moved"
     );
     drop((connection, runs));
     owner.close().await;
@@ -90,8 +90,8 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let runs = fixtures.runs_with_dead_bus();
-    let admissions = Turns::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
-    let prepared = admissions
+    let turns = Turns::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
+    let prepared = turns
         .prepare(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated("held-producer"),
@@ -106,18 +106,18 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
         .expect("prepare producer");
     let mut connection = fixtures.database.acquire().await.expect("producer");
     let mut pending = connection.begin().await.expect("producer transaction");
-    admissions
+    turns
         .stage(&mut pending, prepared)
         .await
         .expect("producer holds budget lock");
-    // `next` bounds the claim by WITHIN: the producer stays uncommitted until
-    // delivery finishes, so a claim that waited on it would time out.
-    let acquired = next(&runs, &runner).await.expect("claim");
+    // `next` bounds the assignment by WITHIN: the producer stays uncommitted until
+    // delivery finishes, so an assignment that waited on it would time out.
+    let acquired = next(&runs, &runner).await.expect("assignment");
     assert_eq!(acquired.turn_id, event);
     assert_eq!(acquired.opened.received.delivery, Delivery::First);
     assert_eq!(delivery_state(&fixtures, &event).await, (1, true));
     pending.rollback().await.expect("discard pending producer");
-    drop((connection, runs, admissions));
+    drop((connection, runs, turns));
     fixtures.cleanup().await;
 }
 
@@ -132,7 +132,7 @@ async fn delivery_state(fixtures: &Fixtures, event: &Uuid7) -> (i64, bool) {
     .expect("delivery state")
 }
 
-/// The turn's stamped fence and its slot's token.
+/// The turn's stamped fence and its thread's token.
 async fn fence(fixtures: &Fixtures, event: &Uuid7) -> (Option<i64>, Option<i64>) {
     sqlx::query_as(STAMPS)
         .bind(event)

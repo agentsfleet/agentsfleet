@@ -1,4 +1,4 @@
-//! An admission follows the surrounding transaction and rings no notification before commit.
+//! A turn follows the surrounding transaction and rings no notification before commit.
 
 use super::{
     Fallible,
@@ -24,13 +24,13 @@ fn request(lane: &Lane) -> IncomingTurn<'_> {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn rollback_removes_staged_admission_without_a_notification() -> Fallible {
+async fn rollback_removes_staged_turn_without_a_notification() -> Fallible {
     let lane = Lane::seed().await?;
-    let (mut rings, admissions) = over_bus(&lane).await?;
-    let prepared = admissions.prepare(request(&lane)).await?;
+    let (mut rings, turns) = over_bus(&lane).await?;
+    let prepared = turns.prepare(request(&lane)).await?;
     let mut connection = lane.database.acquire().await?;
     let mut tx = connection.begin().await?;
-    admissions.stage(&mut tx, prepared).await?;
+    turns.stage(&mut tx, prepared).await?;
     tx.rollback().await?;
     drop(connection);
     let count: i64 = sqlx::query_scalar(
@@ -42,9 +42,7 @@ async fn rollback_removes_staged_admission_without_a_notification() -> Fallible 
     assert_eq!(count, 0);
     assert_eq!(rings.taken().await?, Vec::<String>::new());
     assert_eq!(
-        admissions
-            .confirm(Producer::Steer, lane.fleet.as_str())
-            .await?,
+        turns.confirm(Producer::Steer, lane.fleet.as_str()).await?,
         None
     );
     assert_eq!(rings.taken().await?, Vec::<String>::new());
@@ -56,11 +54,11 @@ async fn rollback_removes_staged_admission_without_a_notification() -> Fallible 
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_committed_stage_confirms_without_a_second_queue_record() -> Fallible {
     let lane = Lane::seed().await?;
-    let (mut rings, admissions) = over_bus(&lane).await?;
-    let prepared = admissions.prepare(request(&lane)).await?;
+    let (mut rings, turns) = over_bus(&lane).await?;
+    let prepared = turns.prepare(request(&lane)).await?;
     let mut connection = lane.database.acquire().await?;
     let mut tx = connection.begin().await?;
-    let first = admissions.stage(&mut tx, prepared).await?;
+    let first = turns.stage(&mut tx, prepared).await?;
     tx.commit().await?;
     drop(connection);
     assert_eq!(
@@ -68,9 +66,9 @@ async fn a_committed_stage_confirms_without_a_second_queue_record() -> Fallible 
         Vec::<String>::new(),
         "a stage rings nothing; its caller's commit does not either"
     );
-    let accepted = confirm(&admissions, &lane).await?;
+    let accepted = confirm(&turns, &lane).await?;
     assert_eq!(accepted.turn_id, first.stored.id);
-    assert_eq!(confirm(&admissions, &lane).await?, accepted);
+    assert_eq!(confirm(&turns, &lane).await?, accepted);
     assert_eq!(
         rings.taken().await?,
         [lane.fleet.as_str(), lane.fleet.as_str()],
@@ -80,16 +78,16 @@ async fn a_committed_stage_confirms_without_a_second_queue_record() -> Fallible 
     Ok(())
 }
 
-/// An unrepeatable admission keys its row by the row's own id: two stages of
+/// An unrepeatable turn keys its row by the row's own id: two stages of
 /// the same request are two rows, neither read as a retry of the other.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unrepeatable_stage_is_keyed_by_its_own_row() -> Fallible {
     let lane = Lane::seed().await?;
-    let admissions = over_lane(&lane).await?;
+    let turns = over_lane(&lane).await?;
     let mut staged = Vec::new();
     for _ in 0..2 {
-        let prepared = admissions
+        let prepared = turns
             .prepare(IncomingTurn {
                 key: Key::Unrepeatable,
                 ..request(&lane)
@@ -97,7 +95,7 @@ async fn an_unrepeatable_stage_is_keyed_by_its_own_row() -> Fallible {
             .await?;
         let mut connection = lane.database.acquire().await?;
         let mut tx = connection.begin().await?;
-        let admitted = admissions.stage(&mut tx, prepared).await?;
+        let admitted = turns.stage(&mut tx, prepared).await?;
         tx.commit().await?;
         assert!(!admitted.replayed, "an unrepeatable key is never a retry");
         staged.push(admitted.stored.id);

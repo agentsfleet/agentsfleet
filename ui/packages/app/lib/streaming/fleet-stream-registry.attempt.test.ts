@@ -31,7 +31,7 @@ function hint(fence: string): Extract<LiveFrame, {kind: typeof FRAME_KIND.RUN_RE
 
 function validActivityFrames(): ActivityLiveFrame[] {
   const id = "019f0000-0000-7000-8000-000000000001";
-  const progress = {activity_id: id, task_id: id, source_admission_id: null, operation: "goal",
+  const progress = {activity_id: id, task_id: id, source_turn_id: null, operation: "goal",
     phase: "starting", provider: null, model: null, completed: 0, total: null};
   return [
     chunk("1", "replacement output"),

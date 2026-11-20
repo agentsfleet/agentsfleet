@@ -87,8 +87,8 @@ impl Seeded {
     }
 
     /// Admits the one steer this suite resends, under `key`.
-    async fn admit(&self, admissions: &Turns, key: &str) -> Admitted {
-        admissions
+    async fn admit(&self, turns: &Turns, key: &str) -> Admitted {
+        turns
             .admit(IncomingTurn {
                 producer: Producer::Steer,
                 key: Key::Repeated(key),
@@ -154,7 +154,7 @@ async fn rung(server: &Server, reader: &mut Subscription) -> Vec<String> {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
+async fn a_retry_republishes_a_lost_notification_for_the_same_turn() {
     install_subscriber();
     let fleet = Seeded::seed().await;
     let key = mint_id();
@@ -173,8 +173,8 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
 
     let (bus, server) = afd_bus::test_util::detached().expect("an in-process bus needs no broker");
     let mut reader = wake_reader(&bus).await;
-    let admissions = Turns::for_tests(fleet.database.clone(), bus);
-    let resent = fleet.admit(&admissions, key.as_str()).await;
+    let turns = Turns::for_tests(fleet.database.clone(), bus);
+    let resent = fleet.admit(&turns, key.as_str()).await;
     assert!(resent.replayed, "the resend replays the key");
     assert_eq!(
         resent.stored.id, first.stored.id,
@@ -191,7 +191,7 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
     .bind(&fleet.fleet)
     .fetch_one(&mut *fleet.database.acquire().await.expect("a pooled connection"))
     .await
-    .expect("counting the fleet's admissions");
+    .expect("counting the fleet's turns");
     assert_eq!(rows, 1, "the retry adds no queue state");
     fleet.cleanup().await;
 }

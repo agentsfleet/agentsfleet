@@ -46,9 +46,9 @@ pub(crate) struct Crew {
     seeded: Mutex<Vec<Uuid7>>,
 }
 
-/// One admission row, as a suite asserts it.
+/// One turn row, as a suite asserts it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AdmissionRow {
+pub(crate) struct TurnRow {
     pub(crate) id: Uuid7,
     pub(crate) producer: String,
     pub(crate) actor: String,
@@ -58,7 +58,7 @@ pub(crate) struct AdmissionRow {
     pub(crate) reply_address: Option<String>,
 }
 
-/// An [`AdmissionRow`] as the read answers it, column for column.
+/// An [`TurnRow`] as the read answers it, column for column.
 type Columns = (
     Uuid7,
     String,
@@ -224,8 +224,8 @@ impl Crew {
         (status, body_of(response).await)
     }
 
-    /// Every admission on `fleet`, oldest first.
-    pub(crate) async fn admissions(&self, fleet: &Uuid7) -> Vec<AdmissionRow> {
+    /// Every admitted turn on `fleet`, oldest first.
+    pub(crate) async fn turns(&self, fleet: &Uuid7) -> Vec<TurnRow> {
         let mut connection = self
             .run()
             .booted
@@ -240,11 +240,11 @@ impl Crew {
         .bind(fleet)
         .fetch_all(&mut *connection)
         .await
-        .expect("the admissions read");
+        .expect("the turns read");
         rows.into_iter()
             .map(
                 |(id, producer, actor, event_type, request_json, reply_provider, reply_address)| {
-                    AdmissionRow {
+                    TurnRow {
                         id,
                         producer,
                         actor,

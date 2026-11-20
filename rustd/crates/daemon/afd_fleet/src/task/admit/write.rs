@@ -1,4 +1,4 @@
-//! Write one complete interpretation through the already locked source and fleet slot.
+//! Write one complete interpretation through the already locked source and fleet thread.
 
 use super::super::{PreparedItem, PreparedPlan, TaskBinding, TaskRun, Tasks, guard::RunRow};
 use super::{input, insert, prepare::Wake, source::Source};
@@ -57,13 +57,13 @@ impl Writer<'_> {
             if should_queue {
                 let admitted = self
                     .tasks
-                    .admissions
+                    .turns
                     .stage(
                         connection,
                         continuation.ok_or(super::super::TaskRefusal::StaleState)?,
                     )
                     .await?;
-                insert::admission(connection, &admitted.stored.id, binding).await?;
+                insert::bind_turn(connection, &admitted.stored.id, binding).await?;
                 queued.push(ordinal);
             }
         }
@@ -94,7 +94,7 @@ impl Writer<'_> {
         binding.task_generation = Some(1);
         if active {
             insert::run(connection, self.run, binding).await?;
-            insert::admission(connection, &self.plan.source_turn_id, binding).await?;
+            insert::bind_turn(connection, &self.plan.source_turn_id, binding).await?;
             bound.clone_from(&binding.task_id);
         }
         Ok(!active)

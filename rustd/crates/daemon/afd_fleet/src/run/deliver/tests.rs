@@ -124,7 +124,7 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
 
 /// An open card parks the delivery; every other answer stops it.
 ///
-/// Parking blocks the admission head, so only a card a person will
+/// Parking blocks the turn head, so only a card a person will
 /// answer may park: a retry that parked would wait on nobody.
 #[test]
 fn only_an_open_card_turns_the_answer_into_a_park() {
@@ -192,8 +192,8 @@ fn config(access: Option<&str>) -> FleetConfig {
     FleetConfig::stored(&document).expect("a stored document resolves")
 }
 
-/// An event identifier in the spelling the admission ledger mints: the
-/// admission instant and the sequence, which is what a producer's event key
+/// An event identifier in the spelling the turn ledger mints: the
+/// intake instant and the sequence, which is what a producer's event key
 /// carries as TEXT.
 ///
 /// It read `0197a4ba-8d3a-7f13-8abc-123456789abc` — a canonical v7, and a shape

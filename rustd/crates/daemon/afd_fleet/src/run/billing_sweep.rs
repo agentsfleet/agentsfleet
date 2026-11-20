@@ -193,7 +193,7 @@ pub async fn settle_lines(
 
 /// Logs and settles the last slice of every run that ended unreported.
 ///
-/// A run that expired, or was reclaimed, still owes the run time between
+/// A run that expired, or was reassigned, still owes the run time between
 /// its last renewal and the deadline it was granted. Each run is billed in
 /// its own transaction, which advances its cursor to that deadline and logs
 /// the runtime line together, so a second pass, or a late report racing it,

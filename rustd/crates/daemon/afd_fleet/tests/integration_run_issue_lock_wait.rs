@@ -1,9 +1,9 @@
-//! The run insert reads its clock after the slot lock it queues behind, so
+//! The run insert reads its clock after the thread lock it queues behind, so
 //! the wait is not billed as runtime.
 //!
 //! The first renewal bills the span from the run's metering cursor to its own
-//! clock. A cursor stamped before the slot lock would make every moment spent
-//! queueing for that lock count as run time. The holder here only locks the slot
+//! clock. A cursor stamped before the thread lock would make every moment spent
+//! queueing for that lock count as run time. The holder here only locks the thread
 //! row and writes nothing, so Postgres does not re-check the insert's predicate
 //! after the wait and hide the clock read this guards.
 //!
@@ -22,10 +22,10 @@ use sqlx::Connection as _;
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use crate::support::Fixtures;
 
-/// How long the slot lock is held after the insert queues behind it.
+/// How long the thread lock is held after the insert queues behind it.
 const HELD_FOR: Duration = Duration::from_millis(400);
 
-/// Takes the fleet's slot row lock and writes nothing.
+/// Takes the fleet's thread row lock and writes nothing.
 const LOCK_THREAD: &str =
     "SELECT pg_backend_pid() FROM thread.threads WHERE fleet_id = $1 FOR UPDATE";
 
@@ -40,7 +40,7 @@ FROM thread.runs WHERE id = $1";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_wait_for_the_slot_lock_is_not_billed_as_runtime() {
+async fn the_wait_for_the_thread_lock_is_not_billed_as_runtime() {
     let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, _second],
@@ -59,7 +59,7 @@ async fn the_wait_for_the_slot_lock_is_not_billed_as_runtime() {
         .bind(&fleet)
         .fetch_one(&mut *locked)
         .await
-        .expect("take the slot lock");
+        .expect("take the thread lock");
 
     let billed = Billed {
         tenant_id: &tenant,
@@ -95,7 +95,7 @@ async fn the_wait_for_the_slot_lock_is_not_billed_as_runtime() {
     );
     let issued = issued
         .expect("the run row is written")
-        .expect("the claim is still held");
+        .expect("the assignment is still held");
 
     let mut probe = fixtures.database.acquire().await.expect("a connection");
     let after_wait: bool = sqlx::query_scalar(CURSOR_STARTS_AFTER)
@@ -106,7 +106,7 @@ async fn the_wait_for_the_slot_lock_is_not_billed_as_runtime() {
         .expect("read the cursor");
     assert!(
         after_wait,
-        "the metering cursor starts when the slot lock was won, not before the wait"
+        "the metering cursor starts when the thread lock was won, not before the wait"
     );
     fixtures.cleanup().await;
 }

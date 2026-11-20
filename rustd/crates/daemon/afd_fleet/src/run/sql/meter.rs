@@ -7,12 +7,12 @@ use afd_db::statement::Bound;
 
 /// Measure the run time since the run's cursor, then extend the run.
 ///
-/// `probe` reads the run and the slot under `FOR UPDATE OF l, a`; that slot
-/// lock is what serialises a racing reclaim behind this statement. The run
+/// `probe` reads the run and the thread under `FOR UPDATE OF l, a`; that thread
+/// lock is what serialises a racing reassignment behind this statement. The run
 /// time is measured off the RUN's own cursor, `last_metered_at`, on the
 /// database's clock, and never past the deadline the run was granted: a
 /// renewal that lands after its run lapsed bills no time beyond it, and a
-/// reclaimed run bills only from its own start. Tokens are not measured here:
+/// reassigned run bills only from its own start. Tokens are not measured here:
 /// the runner reports one line per provider request, and the caller logs them.
 ///
 /// `guard` is the fence, and every write is `FROM guard`, so a superseded
@@ -21,13 +21,13 @@ use afd_db::statement::Bound;
 /// `capped = LEAST(now + RUN_TTL, created_at + MAX_RUNTIME)` still ahead; a
 /// run at its hard ceiling writes nothing and is not charged for asking.
 ///
-/// `moved` extends the run to `capped` and advances its cursor; `slot`
-/// extends the slot's deadline the same way. Both deadline rows move together
-/// because the claim checks the slot while the runner stops its child on the
-/// run: advancing one alone gets a healthy run reclaimed.
+/// `moved` extends the run to `capped` and advances its cursor; `moved_thread`
+/// extends the thread's deadline the same way. Both deadline rows move together
+/// because the assignment checks the thread while the runner stops its child on the
+/// run: advancing one alone gets a healthy run reassigned.
 ///
 /// The statement moves no money. Its trailing row answers its caller:
-/// `claimed`, `new_until` and `hard_cap` for the verdict, and the measured
+/// `moved_runs`, `new_until` and `hard_cap` for the verdict, and the measured
 /// slice (`d_ms`, the instant it ends, who pays and what the line names) for
 /// the runtime line the caller prices and logs in the same transaction.
 /// `runtime_seq` numbers the runtime line by its slice's start, read from the

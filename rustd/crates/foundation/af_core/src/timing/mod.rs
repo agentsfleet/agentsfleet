@@ -1,4 +1,4 @@
-//! The run clock: how long a claim lives, and how long silence is tolerated.
+//! The run clock: how long an assignment lives, and how long silence is tolerated.
 //!
 //! Defaults are declared here. The validated deployment clock sets `held_until` and treats the
 //! same instant as the kill deadline it sends the host, and derives liveness
@@ -22,8 +22,8 @@ pub use run::{MAX_RUN_SECONDS, MIN_RUN_SECONDS, RunClock, RunSettings};
 /// Control ping and renewal deadlines remain independent while the model is pending.
 pub const AUTHORING_MODEL_ANSWER_TIMEOUT: Duration = Duration::from_secs(310);
 
-/// How long an issued run or affinity claim stays valid before the slot
-/// becomes reclaimable, and the increment each renewal adds.
+/// How long an issued run or thread assignment stays valid before the thread
+/// becomes reassignable, and the increment each renewal adds.
 ///
 /// Deliberately short: it is the backstop
 /// against a runner that dies silently, and a live runner extends it through
@@ -80,7 +80,7 @@ pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
 /// How long an ephemeral NATS wake or runner command may wait for its broker.
 ///
-/// Admission is already durable; a lost wake leaves work for the replica's
+/// The turn is already durable; a lost wake leaves work for the replica's
 /// recovery probe, and heartbeat or renewal checks repair a lost runner command.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 

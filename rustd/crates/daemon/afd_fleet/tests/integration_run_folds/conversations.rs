@@ -1,5 +1,5 @@
 //! A run folds only its own conversation: a message from another thread is
-//! never claimed, never in the way, and never sent this run's answer.
+//! never assigned, never in the way, and never sent this run's answer.
 
 use af_core::id::Uuid7;
 use afd_connector::Provider;
@@ -7,7 +7,7 @@ use afd_fleet::run::Verdict;
 use afd_turns::{Producer, Reply};
 
 use super::support::{
-    Checked, STEER_JSON, STEER_TEXT, Settlement, address_head, claim_as_holder, link_slack_person,
+    Checked, STEER_JSON, STEER_TEXT, Settlement, address_head, assign_as_holder, link_slack_person,
     report_read_through, send, send_as, send_to, settled, workspace_of,
 };
 use crate::report_seed::held;
@@ -27,7 +27,7 @@ const MENTION_JSON: &str = r#"{"human_message":"reset my password"}"#;
 /// and answers only what the run read.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_another_conversation_is_neither_claimed_nor_in_the_way() -> Checked {
+async fn test_another_conversation_is_neither_assigned_nor_in_the_way() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
     let thread = Reply::To {
@@ -45,8 +45,8 @@ async fn test_another_conversation_is_neither_claimed_nor_in_the_way() -> Checke
     let steer = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert!(!steer.run.earlier_waiting, "{:?}", steer.run);
     assert_eq!(
-        claim_as_holder(&held, 0).await?,
-        [steer.claimed(STEER_TEXT)]
+        assign_as_holder(&held, 0).await?,
+        [steer.assigned(STEER_TEXT)]
     );
     let folds = report_read_through(&held, steer.sequence, Verdict::Succeeded).await?;
     assert_eq!(folds.closed.len(), 1, "{folds:?}");
@@ -67,7 +67,7 @@ const STRANGER: &str = "USTRANGERONE";
 /// A run that started in a Slack thread folds that thread's linked people and
 /// nobody else: a stranger's mention in the thread is a message no verified
 /// person sent, so the fold stops at it, and a mention in another thread is
-/// neither claimed nor in the way.
+/// neither assigned nor in the way.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Checked {
@@ -128,13 +128,13 @@ async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Check
         thread(THREAD_A),
     )
     .await?;
-    let claimed: Vec<Uuid7> = claim_as_holder(&held, 0)
+    let assigned: Vec<Uuid7> = assign_as_holder(&held, 0)
         .await?
         .into_iter()
         .map(|message| message.id)
         .collect();
     assert_eq!(
-        claimed,
+        assigned,
         [first.id.clone(), second.id.clone()],
         "the thread's linked person folds up to the stranger's mention \
          ({} elsewhere, {} unknown, {} behind it)",

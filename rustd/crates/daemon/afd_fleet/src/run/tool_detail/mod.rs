@@ -2,7 +2,7 @@
 //! kept under the run's fence for "show all".
 //!
 //! Shaped like the memory push (`run/memory.rs`): the runner names its run,
-//! the statement proves the runner holds it live, and a holder a reclaim has
+//! the statement proves the runner holds it live, and a holder a reassignment has
 //! superseded writes nothing. Best-effort for the run — a record that breaks a
 //! bound is skipped and counted, and the run's answer never depends on a post.
 //!
@@ -10,7 +10,7 @@
 //!
 //! Settlement keeps one fence's records (the report statement drops the rest,
 //! as `DELETE_OTHER_FENCES` does for a post), so the set an
-//! operator can open is one run's. A reclaimed run therefore starts with
+//! operator can open is one run's. A reassigned run therefore starts with
 //! the whole budget rather than inheriting a dead run's spend.
 
 use std::collections::BTreeMap;
