@@ -63,7 +63,7 @@ fn task_preconditions_are_distinct_from_lifecycle_and_allowance_refusals() {
         (error_code::TASK_STALE_STATE, 409),
         (error_code::TASK_LIMIT_EXHAUSTED, 429),
         (error_code::TASK_PRECONDITION_FAILED, 412),
-        (error_code::AUTHORING_PRECONDITION, 428),
+        (error_code::SETUP_PRECONDITION, 428),
     ] {
         assert_eq!(Problem::of(code).status(), status);
         assert!(REGISTRY.contains(&code));

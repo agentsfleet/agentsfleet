@@ -189,7 +189,7 @@ async fn queue(drafts: &Drafts, tenant: &SeededFleet, index: u64) -> Result<u64>
         let request = CreateDraft {
             save: false,
             source: Source::Blank,
-            authoring_model_ref: PLATFORM_MODEL_REF.to_owned(),
+            setup_model_ref: PLATFORM_MODEL_REF.to_owned(),
             message: Some(MESSAGE.to_owned()),
             operation_id: Entropy::new().uuid7(now)?,
         };

@@ -31,18 +31,14 @@ async fn tool_less_chat_routes_remain_runtime_choices_but_cannot_create_setup_ch
             .create(f.access(), f.request(mint(), Some("Build a setup")), now())
             .await
             .expect_err("proposal tool required before creating private state");
-        assert_eq!(error.code(), error_code::AUTHORING_MODEL);
+        assert_eq!(error.code(), error_code::SETUP_MODEL);
         assert_eq!(f.counts().await, (0, 0, 0));
         f.cleanup().await;
     }
 }
 
 async fn assert_purpose_filters(f: &Fixture) {
-    for purpose in [
-        None,
-        Some(ModelPurpose::Authoring),
-        Some(ModelPurpose::Runtime),
-    ] {
+    for purpose in [None, Some(ModelPurpose::Setup), Some(ModelPurpose::Runtime)] {
         let page = f
             .drafts
             .models(
@@ -59,7 +55,7 @@ async fn assert_purpose_filters(f: &Fixture) {
             .items
             .iter()
             .find(|row| row.reference == f.model.as_str());
-        if matches!(purpose, Some(ModelPurpose::Authoring)) {
+        if matches!(purpose, Some(ModelPurpose::Setup)) {
             assert!(
                 selected.is_none(),
                 "tool-less route cannot be offered for setup chat"
@@ -67,7 +63,7 @@ async fn assert_purpose_filters(f: &Fixture) {
             assert_eq!(page.items.len(), 1, "tool-capable owner model retained");
         } else {
             let selected = selected.expect("text inference remains configured");
-            assert!(!selected.eligibility.authoring);
+            assert!(!selected.eligibility.setup);
             assert!(selected.eligibility.runtime);
         }
     }

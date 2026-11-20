@@ -138,7 +138,7 @@ impl Creations {
                 Some(read::lock(&mut *connection, access, &person, draft).await?)
             }
             Ok(_) => None,
-            Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => None,
+            Err(error) if error.code() == error_code::SETUP_NOT_FOUND => None,
             Err(error) => return Err(error),
         };
         Ok(Some(SetupReportScope {

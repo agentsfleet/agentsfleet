@@ -57,7 +57,7 @@ export class DraftClient {
     try {
       const lists = await this.#lists.open(this.#owner.signal);
       this.#update({...lists, ...(this.#snapshot.draft ? this.#lists.updateDraft(this.#snapshot.draft) : {}),
-        listStatus: DRAFT_LIST_STATUS.ready, model: this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(lists.models, this.#snapshot.model)});
+        listStatus: DRAFT_LIST_STATUS.ready, model: this.#snapshot.draft?.setup_model_ref ?? defaultChatModel(lists.models, this.#snapshot.model)});
     } catch (cause) {
       if (!this.#owner.signal.aborted) { this.#update({listStatus: DRAFT_LIST_STATUS.unavailable}); this.#failed(cause, true); }
       throw cause;
@@ -66,7 +66,7 @@ export class DraftClient {
   /** The next page of models or chats. A failed page is the caller's to show inline; lost access clears every list. */
   async loadMore(list: DraftList): Promise<void> {
     if (this.#snapshot.inaccessible) return;
-    try { const lists = await this.#lists.more(list, this.#owner.signal); if (lists) this.#update({...lists, model: this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(lists.models, this.#snapshot.model)}); } catch (cause) {
+    try { const lists = await this.#lists.more(list, this.#owner.signal); if (lists) this.#update({...lists, model: this.#snapshot.draft?.setup_model_ref ?? defaultChatModel(lists.models, this.#snapshot.model)}); } catch (cause) {
       if (!this.#owner.signal.aborted && losesAccess(cause)) this.#failed(cause, true);
       throw cause;
     }
@@ -74,8 +74,8 @@ export class DraftClient {
   selectModel(model: string): Promise<void> {
     return this.#requests.run(async () => {
       this.#idle();
-      await this.#continueAuthoring();
-      if (this.#snapshot.draft) await this.#patch({authoring_model_ref: model});
+      await this.#continueSetup();
+      if (this.#snapshot.draft) await this.#patch({setup_model_ref: model});
       this.#update({model});
     });
   }
@@ -85,7 +85,7 @@ export class DraftClient {
     if (cached?.draft?.id === id) this.#update(cached);
     await this.#requests.run(async () => {
       const draft = await this.#request({path: `${this.#base}/drafts/${encodeURIComponent(id)}`}, DraftSchema);
-      this.#update({...this.#lists.updateDraft(draft), draft, model: draft.authoring_model_ref});
+      this.#update({...this.#lists.updateDraft(draft), draft, model: draft.setup_model_ref});
       if (draft.state !== DRAFT_STATE.editing && draft.linked_fleet_id) {
         this.#continueSave = await resumeSavedSetup(this.#base, draft.linked_fleet_id, AbortSignal.any([this.#owner.signal, this.#view.signal]),
           fleet => this.#savedSetup(draft.id, fleet), () => this.#read(draft.id));
@@ -100,8 +100,8 @@ export class DraftClient {
   send(message: string): Promise<void> {
     return this.#requests.run(async () => {
       if (!MessageInputSchema.safeParse(message).success) throw new SetupUnavailable("Messages must contain text.", 400);
-      if (!this.#snapshot.model) throw new SetupUnavailable("Choose an authoring model before sending.", 400);
-      await this.#continueAuthoring();
+      if (!this.#snapshot.model) throw new SetupUnavailable("Choose a setup model before sending.", 400);
+      await this.#continueSetup();
       const id = this.#snapshot.draft?.id;
       const source = this.#source;
       const model = this.#snapshot.model;
@@ -128,7 +128,7 @@ export class DraftClient {
   refreshSetup(source?: Source): Promise<DrawerEdit> {
     return this.#requests.run(async () => {
       this.#idle();
-      await this.#continueAuthoring();
+      await this.#continueSetup();
       if (source && !this.#snapshot.draft) this.#source = source;
       const refreshed = await editableSetup(this.#base, this.#source, this.#snapshot.draft,
         AbortSignal.any([this.#owner.signal, this.#view.signal]),
@@ -163,17 +163,17 @@ export class DraftClient {
   #edit(input?: DrawerEdit): Promise<void> {
     return this.#requests.run(async () => {
       this.#idle();
-      await this.#continueAuthoring();
+      await this.#continueSetup();
       const draft = this.#snapshot.draft;
       if (!draft) {
         if (!input && this.#source.kind === SOURCE_KIND.blank) throw new SetupUnavailable("Review a setup before saving.", 409);
-        if (!this.#snapshot.model) throw new SetupUnavailable("Choose an authoring model first.", 400);
+        if (!this.#snapshot.model) throw new SetupUnavailable("Choose a setup model first.", 400);
         const source = this.#source.kind === SOURCE_KIND.blank && input ? {kind: SOURCE_KIND.definition, definition: input.definition} : this.#source;
         const model = this.#snapshot.model;
         let selectionTag: string | undefined;
         await this.#operation.run({input, source, model}, async (operation_id) => {
           const created = await this.#request({path: `${this.#base}/drafts`, method: REQUEST_METHOD.post,
-            body: {source, authoring_model_ref: model, operation_id}}, DraftSchema);
+            body: {source, setup_model_ref: model, operation_id}}, DraftSchema);
           this.#update({draft: created});
           this.#update(await this.#lists.refreshDraft(created.id, AbortSignal.any([this.#owner.signal, this.#view.signal])));
           selectionTag ??= created.etag;
@@ -261,7 +261,7 @@ export class DraftClient {
   #request<T>(request: SetupRequest, parser: z.ZodType<T>): Promise<T> {
     return setupRequest(request, parser, AbortSignal.any([this.#owner.signal, this.#view.signal]));
   }
-  async #continueAuthoring(): Promise<void> {
+  async #continueSetup(): Promise<void> {
     const next = await continueSavedDraft(this.#base, this.getSnapshot, AbortSignal.any([this.#owner.signal, this.#view.signal]));
     if (!next) return;
     this.#history.clear(); this.#replies.clear(); this.#watching.stop(); this.#continueSave = undefined; this.#setupTarget = undefined;

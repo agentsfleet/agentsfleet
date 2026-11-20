@@ -67,11 +67,11 @@ pub struct SaveFleetRequest {
 #[serde(deny_unknown_fields)]
 pub struct PatchFleetRequest {
     /// Supported lifecycle target, omitted to keep current state.
-    #[serde(default, deserialize_with = "crate::authoring::present")]
+    #[serde(default, deserialize_with = "crate::setup::present")]
     #[garde(skip)]
     pub status: Option<PatchStatus>,
     /// Validated instance slug, omitted to retain it.
-    #[serde(default, deserialize_with = "crate::authoring::present")]
+    #[serde(default, deserialize_with = "crate::setup::present")]
     #[garde(inner(length(bytes, min = 1, max = 64)))]
     pub name: Option<String>,
 }

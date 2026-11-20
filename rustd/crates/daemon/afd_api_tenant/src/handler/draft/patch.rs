@@ -6,8 +6,8 @@ use crate::{
     services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{Draft, DraftPatchRequest};
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{Draft, DraftPatchRequest};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     Json,
     body::Bytes,
@@ -38,7 +38,7 @@ pub(crate) async fn patch<D: TenantPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let draft = services
-        .authoring()
+        .drafts()
         .patch(
             access(&owned, &person),
             &id(&path)?,
@@ -47,12 +47,12 @@ pub(crate) async fn patch<D: TenantPlane>(
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let reviewed = services
-        .authoring_setup()
+        .setup()
         .read_draft(access(&owned, &person), &draft.id)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let tag = reviewed.etag.clone();
     let mut response = Json(render::draft(reviewed)).into_response();
     attach(&mut response, &tag);

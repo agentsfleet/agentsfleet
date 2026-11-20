@@ -155,7 +155,7 @@ pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRoute
                 .delete(fleet::detail::purge::<D>),
             SETUP_BODY_BYTES_MAX,
         )),
-        FleetRoute::AuthoringContext => Some(handler::draft::private(get(
+        FleetRoute::SetupContext => Some(handler::draft::private(get(
             fleet::native::context::read::<D>,
         ))),
         FleetRoute::Revisions => Some(reading(

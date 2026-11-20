@@ -70,11 +70,11 @@ test("resume sends a body key, edits under the fresh tag, and stops each unfinis
   }, async (transport) => {
     const session = new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}, DRAFT_ID);
     await Effect.runPromise(session.send(PRIVATE_TEXT));
-    await Effect.runPromise(session.patch({authoring_model_ref: "owner/replacement"}));
+    await Effect.runPromise(session.patch({setup_model_ref: "owner/replacement"}));
     await Effect.runPromise(session.stop());
     expect(seen[0]?.path).toEndWith(`/${DRAFT_ID}/messages`);
     expect(seen[2]?.tag).toBe('"draft-fresh"');
-    expect(seen[2]?.body).toEqual({authoring_model_ref: "owner/replacement"});
+    expect(seen[2]?.body).toEqual({setup_model_ref: "owner/replacement"});
     const messages = seen[0]?.path ?? "";
     const turn = (id: string) => messages.replace(/\/messages$/, `/turns/${id}`);
     expect(seen.slice(3).map(({method, path, body}) => ({method, path, body}))).toEqual([

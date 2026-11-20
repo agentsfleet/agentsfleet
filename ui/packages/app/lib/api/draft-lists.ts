@@ -120,7 +120,7 @@ export class DraftLists {
   async #modelPage(cursor: string | null, signal: AbortSignal): Promise<Page<WorkspaceModel>> {
     let page = await this.#page(DRAFT_LIST.models, ModelsSchema, cursor, signal);
     let items = page.items;
-    for (let read = 1; !items.some(model => model.eligibility.authoring) && page.next_cursor !== null && read < MAX_MODEL_PAGES_PER_LOAD; read += 1) {
+    for (let read = 1; !items.some(model => model.eligibility.setup) && page.next_cursor !== null && read < MAX_MODEL_PAGES_PER_LOAD; read += 1) {
       page = await this.#page(DRAFT_LIST.models, ModelsSchema, page.next_cursor, signal);
       items = appendNew(items, page.items, model => model.ref);
     }

@@ -84,7 +84,7 @@ test("Apply uses the setup version matching the displayed improvement review", a
 test("a durable assistant failure is shown with its recovery action and remains unsuccessful", async () => {
   await withApi((request) => Response.json(new URL(request.url).pathname.endsWith("/messages")
     ? {items: [{...MESSAGE, state: MESSAGE_STATE.failed, failure: {
-      reason: "model_unavailable", error_code: "UZ-AUTHOR-004", recovery_action: "select_model_then_send",
+      reason: "model_unavailable", error_code: "UZ-SETUP-004", recovery_action: "select_model_then_send",
     }}], next_cursor: null} : {...DRAFT, accepted: ACCEPTED}), async (transport) => {
     const {output, rendered} = capture();
     const actions = new ChatActions(new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}),

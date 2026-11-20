@@ -121,7 +121,7 @@ fn a_vault_failure_keeps_the_vault_crates_code_and_sentence() {
 /// the outage class its own crate decided, for every kind that crate has: the
 /// run plane restates none of them.
 #[test]
-fn runner_and_authoring_failures_keep_their_crates_classification() {
+fn runner_and_setup_failures_keep_their_crates_classification() {
     let runners = afd_runner::error::one_of_each_kind()
         .into_iter()
         .map(|(kind, runner)| {

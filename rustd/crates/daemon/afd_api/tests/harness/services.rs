@@ -167,12 +167,12 @@ impl TenantPlane for Fleet {
         &self.tasks
     }
 
-    fn authoring(&self) -> &afd_setup::Drafts {
-        &self.authoring
+    fn drafts(&self) -> &afd_setup::Drafts {
+        &self.drafts
     }
 
-    fn authoring_setup(&self) -> &afd_setup::Setup {
-        &self.authoring_setup
+    fn setup(&self) -> &afd_setup::Setup {
+        &self.setup
     }
 
     fn creations(&self) -> &afd_setup::Creations {

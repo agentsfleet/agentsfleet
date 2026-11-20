@@ -27,7 +27,7 @@ export class ChatFixture {
     const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
     const call = {path, method: init?.method ?? "GET", body, headers: new Headers(init?.headers)};
     this.calls.push(call);
-    if (path.endsWith("/authoring-context")) return response({fleet: {...FLEET, definition: REVIEW.effective.definition,
+    if (path.endsWith("/setup-context")) return response({fleet: {...FLEET, definition: REVIEW.effective.definition,
       status: "active", setup: {state: "ready", checks: []}}, conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null});
     if (path.endsWith("/models")) return response({items: [MODEL], next_cursor: null});
     if (path.endsWith("/drafts") && call.method === "GET") return response({items: [], next_cursor: null});

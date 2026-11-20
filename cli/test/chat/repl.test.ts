@@ -75,7 +75,7 @@ test("should route each terminal action to its own draft request and pin the nex
     {method: "GET", path: DRAFT_PATH, tag: null, body: null},
     {method: "GET", path: `${DRAFT_PATH}/messages`, tag: null, body: null},
     {method: "GET", path: DRAFT_PATH, tag: null, body: null},
-    {method: "PATCH", path: DRAFT_PATH, tag: DRAFT.etag, body: {authoring_model_ref: "owner/other"}},
+    {method: "PATCH", path: DRAFT_PATH, tag: DRAFT.etag, body: {setup_model_ref: "owner/other"}},
     {method: "DELETE", path: DRAFT_PATH, tag: null, body: null},
   ]);
   expect(term.rendered).toContain(`info: Instance: ${REVIEW.effective.instance_name}`);

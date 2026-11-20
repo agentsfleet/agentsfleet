@@ -6,9 +6,9 @@ use crate::{
     services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::CreateDraftRequest;
-use afd_api_wire::authoring::Created;
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::CreateDraftRequest;
+use afd_api_wire::setup::Created;
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     Json,
     body::Bytes,
@@ -44,19 +44,19 @@ pub(crate) async fn create<D: TenantPlane>(
 ) -> Result<Response, Refusal> {
     input::body_key(&headers)?;
     let mut created = services
-        .authoring()
+        .drafts()
         .create(
             access(&owned, &person),
             input::create(&body)?,
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     created.draft = services
-        .authoring_setup()
+        .setup()
         .read_draft(access(&owned, &person), &created.draft.id)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let id = created.draft.id.clone();
     let tag = created.draft.etag.clone();
     let payload = Created {
@@ -86,9 +86,9 @@ pub(crate) async fn delete<D: TenantPlane>(
     Path(path): Path<DraftPath>,
 ) -> Result<Response, Refusal> {
     services
-        .authoring()
+        .drafts()
         .delete(access(&owned, &person), &id(&path)?)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

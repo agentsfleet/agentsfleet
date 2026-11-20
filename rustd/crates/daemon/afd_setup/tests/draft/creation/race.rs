@@ -270,7 +270,7 @@ async fn an_activation_committed_first_makes_the_concurrent_archive_stale() {
         .await
         .expect("Archive task")
         .expect_err("an archive against the pre-activation tag is stale");
-    assert_eq!(stale.code(), error_code::AUTHORING_STALE);
+    assert_eq!(stale.code(), error_code::SETUP_STALE);
     assert_eq!(stale.etag(), Some(activated.etag.as_str()));
     let current = c.creations.read(c.base.access(), &fleet).await;
     assert_eq!(current.expect("fleet").status, "active");

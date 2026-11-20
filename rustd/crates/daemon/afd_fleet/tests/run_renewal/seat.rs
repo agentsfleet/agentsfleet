@@ -20,7 +20,7 @@ const RESPONSES_INFERENCE: &str =
 
 /// Past any bound a turn reserves and any slice a renewal meters.
 pub(super) const FUNDED: i64 = 1_000 * NANOS_PER_USD;
-const SECRET_REF: &str = "authoring-model";
+const SECRET_REF: &str = "setup-model";
 const PROVIDER: &str = "openai";
 const KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const IDENTITY: &str = "SELECT tenant_id, workspace_id FROM fleet.fleets WHERE id = $1";
@@ -92,7 +92,7 @@ impl Seat {
             .seal(
                 &kek,
                 &Aad::new(self.workspace.as_str(), SECRET_REF),
-                br#"{"provider":"openai","api_key":"fixture-authoring-key"}"#,
+                br#"{"provider":"openai","api_key":"fixture-setup-key"}"#,
             )
             .expect("the fixture key seals");
         sqlx::query(SECRET)
@@ -133,7 +133,7 @@ impl Seat {
             source: Source::Definition {
                 definition: Box::new(definition()),
             },
-            authoring_model_ref: self.entry.to_string(),
+            setup_model_ref: self.entry.to_string(),
             message: Some("Investigate the checkout".to_owned()),
             operation_id: mint_id(),
         };

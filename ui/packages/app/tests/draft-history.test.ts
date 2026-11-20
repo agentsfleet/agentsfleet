@@ -122,7 +122,7 @@ it("should advance past a page whose failure is only unaccounted usage", async (
     const cursor = new URL(input, "https://app.example.test").searchParams.get("starting_after");
     cursors.push(cursor);
     const message = {...MESSAGE, state: MESSAGE_STATE.failed,
-      failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}};
+      failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"}};
     return response({items: [{...message, role: cursor ? MESSAGE_ROLE.assistant : MESSAGE_ROLE.user}],
       next_cursor: cursor ? null : "second"});
   }));

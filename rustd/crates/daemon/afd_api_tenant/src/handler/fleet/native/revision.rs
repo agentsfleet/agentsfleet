@@ -8,7 +8,7 @@ use crate::{
     services::TenantPlane,
 };
 use afd_api_wire::fleet as wire;
-use afd_http::handler::authoring_refusal;
+use afd_http::handler::setup_refusal;
 use afd_setup::types::{AppliedRevision, ApplyRevision};
 use axum::{
     Json,
@@ -55,12 +55,12 @@ pub(crate) async fn apply<D: TenantPlane>(
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let current = services
         .creations()
         .read(access(&owned, &person), &fleet)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let schedules = super::schedules::after_activation(
         services.as_ref(),
         &owned.workspace,

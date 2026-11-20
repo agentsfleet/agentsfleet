@@ -201,7 +201,7 @@ The mounted private identity owns the cache and clears it after lost access.
 
 The private transcript stays out of browser storage.
 
-The fleet editor reads current setup, creator-private conversations, and filtered receipts through `GET F/authoring-context`, as defined in the API reference.
+The fleet editor reads current setup, creator-private conversations, and filtered receipts through `GET F/setup-context`, as defined in the API reference.
 Conversation and receipt pages stay bounded. Older conversations load on request; truncated messages retain a link to their full private chat.
 
 The server measures complete serialized context bytes before trimming older turns or deferring conversations. Message and conversation boundaries advance together with those cuts.
@@ -351,7 +351,7 @@ Whole local acceptance, owner review and current Continuous Integration (CI) res
 | Guarded smoke checks | Built version and invalid-command refusal passed; a real browser rendered sign-in and redirected a synthetic private workspace URL back to sign-in without workspace controls. Authenticated exploratory flows remain blocked by the smoke browser's absent session |
 | `cargo mutants -p af_inference --all-features` | 98 mutations: 26 caught, 72 did not compile, no survivors or timeouts |
 | Rust coverage: canonical run plus the focused hub-closure regression, graded by `scripts/rustd_coverage.py` | Overall 99.6116%; changed lines 100%; all 51 measured changed source files reach 99% |
-| Authoring mutation closure | 18 mutations: ten caught, eight did not compile, no survivors or timeouts |
+| Setup mutation closure | 18 mutations: ten caught, eight did not compile, no survivors or timeouts |
 | Private-stream mutation closure | 26 mutations: eight caught, seventeen did not compile, one equivalent survivor, no timeouts |
 | Removing the local admission turn | Six focused cases passed; independent-chat admission failed at the unchanged five-second pool deadline |
 | `owned_secret_buffers_are_wiped_before_free` | One test passed on stable and under Miri, checking private preview, daemon and runner allocations before free |

@@ -39,15 +39,15 @@ it.each(["queued", "running"] as const)("chat_recovery_shows_stop_and_queued_sta
   const label = state === "queued" ? "Queued" : "Thinking";
   expect(screen.getByRole("status", {name: label})).toBeTruthy();
   expect(screen.queryByRole("status", {name: state === "queued" ? "Thinking" : "Queued"})).toBeNull();
-  expect(screen.getByRole("button", {name: "Stop authoring"})).toHaveProperty("disabled", false);
+  expect(screen.getByRole("button", {name: "Stop setup"})).toHaveProperty("disabled", false);
 });
 
 it("keeps the composer open after a failure whose usage is unaccounted, and offers no Stop", async () => {
   fixture.messages = [{...MESSAGE, role: "assistant", state: "failed", text: undefined,
-    failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}}];
+    failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"}}];
   await client.resume(DRAFT.id); render(<Live />);
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
-  expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Stop setup"})).toBeNull();
   expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
 });
 
@@ -67,10 +67,10 @@ it.each([false, true])("stops queued work from the composer's Stop button (cance
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<Live />);
-  fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
+  fireEvent.click(screen.getByRole("button", {name: "Stop setup"}));
   await waitFor(() => expect(stops).toEqual([{status: "cancelled"}]));
   if (fails) await waitFor(() => expect(client.getSnapshot().error).toBe("Stop couldn’t be confirmed. Check the conversation, then try again."));
-  else await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
+  else await waitFor(() => expect(screen.queryByRole("button", {name: "Stop setup"})).toBeNull());
 });
 
 it("persists cancellation requested through the assistant runtime", async () => {
@@ -95,7 +95,7 @@ it("persists cancellation requested through the assistant runtime", async () => 
 
 it.each(["MiniMax M3.1 Flash (Free)", "GLM 5.3 Flash"])("displays the selected model's supplied label: %s", (label) => {
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), models: [{...MODEL, label}], model: MODEL.ref}} />);
-  expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toBe(label);
+  expect(screen.getByRole("combobox", {name: "Setup model"}).textContent).toBe(label);
 });
 
 it("focuses New fleet ready for typing after its launcher was focused", async () => {
@@ -149,7 +149,7 @@ it("leaves model selection focused when conversation updates arrive", async () =
   await client.resume(DRAFT.id);
   const view = client.getSnapshot();
   const rendered = render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
-  const model = screen.getByRole("combobox", {name: "Authoring model"});
+  const model = screen.getByRole("combobox", {name: "Setup model"});
   model.focus();
   rendered.rerender(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...view, messages: [...view.messages]}} />);
   expect(document.activeElement).toBe(model);
@@ -173,7 +173,7 @@ it("leaves another control focused when a composer mounts or becomes ready", asy
 });
 
 it("retries an unaccounted turn by resending it, without a Stop", async () => {
-  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
+  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"};
   fixture.messages = [{...MESSAGE, state: "failed", failure}, {...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}];
   const base = fixture.fetch.getMockImplementation()!;
   const writes: string[] = [];
@@ -196,7 +196,7 @@ it("retries an unaccounted turn by resending it, without a Stop", async () => {
 });
 
 it("retries the failed turn's request instead of a newer message or composer text", async () => {
-  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  const failure = {reason: "provider_failed", error_code: "UZ-SETUP-014", recovery_action: "retry_message"};
   fixture.messages = [{...MESSAGE, state: "failed"}, {...MESSAGE, role: "assistant", state: "failed", text: undefined, failure},
     {...MESSAGE, sequence: "2", text: "A different request"}];
   const base = fixture.fetch.getMockImplementation()!;

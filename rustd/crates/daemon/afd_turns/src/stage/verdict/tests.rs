@@ -77,7 +77,7 @@ fn verdict_names_the_first_refusal_in_order() -> Outcome {
     policy.setup_current = false;
     assert_eq!(
         refusal(&policy, RUNNABLE_CLOSED)?.code(),
-        af_core::error_code::AUTHORING_POLICY
+        af_core::error_code::SETUP_POLICY
     );
 
     assert!(refusal(&open(), RUNNABLE_CLOSED)?.is_over_capacity());

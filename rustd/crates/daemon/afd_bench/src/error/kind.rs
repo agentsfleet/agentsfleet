@@ -275,7 +275,7 @@ pub(crate) enum ErrorKind {
     SamplerUnavailable { source: sqlx::Error },
 
     #[error("the setup chat path would not run")]
-    AuthoringPathFaulted { source: afd_setup::Error },
+    SetupPathFaulted { source: afd_setup::Error },
 
     #[error("the fleet live set would not be read")]
     LiveSetFaulted { source: afd_fleet_lifecycle::Error },

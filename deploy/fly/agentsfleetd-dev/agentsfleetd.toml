@@ -79,7 +79,7 @@ interval_seconds = 2
 [maintenance.fleet_census]
 interval_seconds = 30
 
-[maintenance.authoring_cleanup]
+[maintenance.setup_cleanup]
 interval_seconds = 10
 
 [maintenance.billing]
@@ -106,7 +106,7 @@ max_batches = 8
 interval_seconds = 30
 
 # Inline vendor sends per answer, the first included; once exhausted, a later
-# claim of the durable obligation retries the delivery.
+# claim of the durable delivery retries it.
 [outbound.retries]
 max_attempts = 3
 initial_backoff_ms = 200

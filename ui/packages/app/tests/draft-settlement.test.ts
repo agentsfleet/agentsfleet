@@ -14,7 +14,7 @@ afterEach(() => { fixture.dispose(); vi.useRealTimers(); });
 
 function unknownUsage(): Response {
   return response({items: [{...MESSAGE, state: MESSAGE_STATE.failed,
-    failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}}],
+    failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"}}],
   next_cursor: null});
 }
 

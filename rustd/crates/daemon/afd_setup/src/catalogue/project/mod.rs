@@ -30,9 +30,9 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
     }
     .eligibility();
     let runtime = row.has_key && eligible.runtime;
-    let authoring = row.has_key && eligible.tools;
+    let setup = row.has_key && eligible.tools;
     let allowed = match purpose {
-        Some(ModelPurpose::Authoring) => authoring,
+        Some(ModelPurpose::Setup) => setup,
         Some(ModelPurpose::Runtime) => runtime,
         None => true,
     };
@@ -46,7 +46,7 @@ pub(super) fn eligible(row: Row, purpose: Option<ModelPurpose>) -> Option<Worksp
             .inference
             .as_ref()
             .map(|settings| i64::from(settings.0.max_output_tokens)),
-        eligibility: ModelEligibility { authoring, runtime },
+        eligibility: ModelEligibility { setup, runtime },
         pricing: ModelPricing {
             input_nanos_per_million: row.input.to_string(),
             output_nanos_per_million: row.output.to_string(),

@@ -8,9 +8,9 @@ impl Error {
     pub(super) fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
             ErrorKind::Patch => (error_code::INVALID_REQUEST, detail::INVALID_PATCH),
-            ErrorKind::Precondition => (error_code::AUTHORING_PRECONDITION, detail::TAG_REQUIRED),
-            ErrorKind::Stale { .. } => (error_code::AUTHORING_STALE, detail::TAG_STALE),
-            ErrorKind::Deleting => (error_code::AUTHORING_STATE, detail::DELETING),
+            ErrorKind::Precondition => (error_code::SETUP_PRECONDITION, detail::TAG_REQUIRED),
+            ErrorKind::Stale { .. } => (error_code::SETUP_STALE, detail::TAG_STALE),
+            ErrorKind::Deleting => (error_code::SETUP_STATE, detail::DELETING),
             ErrorKind::Json { .. } => (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR),
             ErrorKind::Invalid { invalid } => (error_code::INVALID_REQUEST, invalid.detail()),
             ErrorKind::Refused { refusal } => (refusal.code(), refusal.detail()),

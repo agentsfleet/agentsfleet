@@ -52,7 +52,7 @@ test("a fleet setup revision is reviewed and applied under its observed setup ta
   }, async (_, origin) => {
     const result = await invoke(origin, [...FLEET_ARGS, "--review", "--apply", "--review-digest", REVIEW.review_digest]);
     expect(result.code).toBe(0);
-    expect(calls[0]?.body).toEqual({source: FLEET_SOURCE, authoring_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
+    expect(calls[0]?.body).toEqual({source: FLEET_SOURCE, setup_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
     const applied = calls.at(-1);
     expect(`${applied?.method} ${applied?.path}`).toBe(`POST ${FLEETS}/${FLEET_ID}/revisions`);
     expect(applied?.ifMatch).toBe(FLEET.setup_etag);
@@ -67,7 +67,7 @@ test("a fleet source's first message still travels with its source in one atomic
     return problem(503);
   }, async (_, origin) => {
     await invoke(origin, [...FLEET_ARGS, "--message", PRIVATE_TEXT]);
-    expect(calls[0]?.body).toEqual({source: FLEET_SOURCE, authoring_model_ref: MODEL, message: PRIVATE_TEXT,
+    expect(calls[0]?.body).toEqual({source: FLEET_SOURCE, setup_model_ref: MODEL, message: PRIVATE_TEXT,
       operation_id: operationOf(calls[0]?.body)});
     expect(calls).toHaveLength(1);
   });

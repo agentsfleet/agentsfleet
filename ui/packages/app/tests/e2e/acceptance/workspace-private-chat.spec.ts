@@ -4,10 +4,10 @@
  * person's account then finds their own chat again.
  *
  * The candidate comes from a definition-source draft created as the signed-in
- * person, because an authoring-model reply is not deterministic
+ * person, because a setup-model reply is not deterministic
  * (`fixtures/install-ui.ts` makes the same trade). Everything after that runs
  * through the shipped chat: the history entry, a reload, Save from the
- * keyboard, the saved fleet's full authoring page, Save changes, and a
+ * keyboard, the saved fleet's full setup page, Save changes, and a
  * phone-width reread. Signs up a fresh teammate, so DEV only, like every
  * signup spec.
  */
@@ -120,7 +120,7 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   return draftId;
 }
 
-// A saved chat's address retains authoring at phone width and can open its fleet.
+// A saved chat's address retains setup at phone width and can open its fleet.
 async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId: string, fleetId: string): Promise<void> {
   const context = await browser.newContext({
     viewport: PHONE, isMobile: true, hasTouch: true,

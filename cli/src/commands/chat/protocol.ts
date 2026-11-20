@@ -50,7 +50,7 @@ export const AcceptedSchema = Schema.Struct({
 });
 export const DraftSchema = Schema.Struct({
   id: Schema.String, state: Schema.Literals(Object.values(DRAFT_STATE)), title: Schema.String,
-  etag: Schema.String, authoring_model_ref: Schema.String,
+  etag: Schema.String, setup_model_ref: Schema.String,
   candidate: Schema.optionalKey(CandidateSchema), review: Schema.optionalKey(ReviewSchema),
   linked_fleet_id: Schema.optionalKey(Schema.String), accepted: Schema.optionalKey(AcceptedSchema),
 });

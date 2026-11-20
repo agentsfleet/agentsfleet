@@ -73,7 +73,7 @@ impl From<af_fleet_runtime::Error> for Refusal {
 /// or why it was refused.
 ///
 /// # Errors
-/// A [`Refusal`] under `UZ-AUTHOR-003` when the base candidate or revision is
+/// A [`Refusal`] under `UZ-SETUP-003` when the base candidate or revision is
 /// no longer the head, and under the parser's code when the Definition does
 /// not parse.
 pub(super) fn check(head: Head<'_>, proposal: &SetupProposal<'_>) -> Result<Definition, Refusal> {
@@ -82,7 +82,7 @@ pub(super) fn check(head: Head<'_>, proposal: &SetupProposal<'_>) -> Result<Defi
         || revision != proposal.base_revision
     {
         return Err(Refusal {
-            code: error_code::AUTHORING_STALE,
+            code: error_code::SETUP_STALE,
             detail: DETAIL_BASE_MOVED.to_owned(),
         });
     }

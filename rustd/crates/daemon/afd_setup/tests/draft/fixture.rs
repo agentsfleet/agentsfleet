@@ -27,7 +27,7 @@ use std::sync::LazyLock;
 /// Test binaries run one at a time, so no other process reports about it.
 static RECORDING: LazyLock<(Analytics, Recorded)> = LazyLock::new(Analytics::recording);
 
-/// The property every authoring step names its workspace under.
+/// The property every setup step names its workspace under.
 const WORKSPACE: &str = "workspace_id";
 
 pub(super) struct Fixture {
@@ -130,7 +130,7 @@ impl Fixture {
             source: Source::Definition {
                 definition: Box::new(super::definition()),
             },
-            authoring_model_ref: self.model.to_string(),
+            setup_model_ref: self.model.to_string(),
             message: message.map(str::to_owned),
             operation_id: operation,
         }

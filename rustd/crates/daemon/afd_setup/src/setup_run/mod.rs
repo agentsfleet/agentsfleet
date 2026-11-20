@@ -261,8 +261,8 @@ impl Drafts {
             Ok(model) => model,
             Err(error) => {
                 let reason = match error.code() {
-                    error_code::AUTHORING_MODEL => FailureReason::ModelUnavailable,
-                    error_code::AUTHORING_BALANCE => FailureReason::InsufficientBalance,
+                    error_code::SETUP_MODEL => FailureReason::ModelUnavailable,
+                    error_code::SETUP_BALANCE => FailureReason::InsufficientBalance,
                     _ => return Err(error),
                 };
                 let failed = Failing {
@@ -438,11 +438,8 @@ pub(crate) const fn reason_word(value: FailureReason) -> &'static str {
     match value {
         FailureReason::InsufficientBalance => "insufficient_balance",
         FailureReason::ModelUnavailable => "model_unavailable",
-        FailureReason::ContextTooLarge => "context_too_large",
         FailureReason::ProviderFailed => "provider_failed",
         FailureReason::ProviderUsageUnknown => "provider_usage_unknown",
-        FailureReason::AttemptTimedOut => "attempt_timed_out",
-        FailureReason::PolicyChanged => "policy_changed",
         FailureReason::FrameTooLarge => "frame_too_large",
     }
 }
@@ -484,11 +481,8 @@ mod tests {
         for value in [
             FailureReason::InsufficientBalance,
             FailureReason::ModelUnavailable,
-            FailureReason::ContextTooLarge,
             FailureReason::ProviderFailed,
             FailureReason::ProviderUsageUnknown,
-            FailureReason::AttemptTimedOut,
-            FailureReason::PolicyChanged,
             FailureReason::FrameTooLarge,
         ] {
             let wire = serde_json::to_value(value).ok();

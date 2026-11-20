@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use super::fixture::Tasks;
 use crate::harness::{json_body, send_with_headers};
 
-/// Read fixtures append history directly; this does not prove the authoring Apply flow.
+/// Read fixtures append history directly; this does not prove the setup Apply flow.
 pub(super) async fn advance(fixture: &Tasks<'_>) {
     let mut value: Value = serde_json::from_str(afd_db::test_util::FIXTURE_SETUP_DEFINITION)
         .expect("native fixture definition");

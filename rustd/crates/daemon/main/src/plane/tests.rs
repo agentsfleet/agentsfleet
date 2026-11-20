@@ -166,24 +166,15 @@ async fn production_plane_maps_every_activity_and_admin_service_to_its_owned_sto
     assert!(Shared::now(&plane) > jiff::Timestamp::UNIX_EPOCH);
 }
 
-/// The authoring, outbound and tenant surfaces each hand a route the store the
+/// The setup, outbound and tenant surfaces each hand a route the store the
 /// plane built for it, so no two routes share one by accident.
 #[tokio::test]
 async fn production_plane_maps_every_surface_to_its_owned_store() {
     let plane = plane();
 
-    assert!(same(
-        TenantPlane::authoring(&plane),
-        &plane.authoring.drafts
-    ));
-    assert!(same(
-        TenantPlane::authoring_setup(&plane),
-        &plane.authoring.setup
-    ));
-    assert!(same(
-        TenantPlane::creations(&plane),
-        &plane.authoring.creations
-    ));
+    assert!(same(TenantPlane::drafts(&plane), &plane.setup.drafts));
+    assert!(same(TenantPlane::setup(&plane), &plane.setup.setup));
+    assert!(same(TenantPlane::creations(&plane), &plane.setup.creations));
     assert!(same(TenantPlane::ingress(&plane), &plane.activity.ingress));
     assert!(same(IngressPlane::ingress(&plane), &plane.activity.ingress));
     assert!(same(

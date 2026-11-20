@@ -88,7 +88,7 @@ async fn stale_review_allocates_neither_fleet_nor_replay_receipt() {
         .save(c.base.access(), &mint(), request, now())
         .await
         .expect_err("fresh review required");
-    assert_eq!(error.code().as_str(), "UZ-AUTHOR-006");
+    assert_eq!(error.code().as_str(), "UZ-SETUP-006");
     assert!(error.review_digest().is_some());
     assert_eq!(c.fleet_count().await, 0);
     let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE workspace_id=$1 AND scope LIKE '%:fleet:create:%'")
@@ -113,13 +113,13 @@ async fn accepted_key_refuses_changed_body_and_foreign_creator() {
         .save(c.base.access(), &key, changed, now())
         .await
         .expect_err("body is bound");
-    assert_eq!(error.code().as_str(), "UZ-AUTHOR-005");
+    assert_eq!(error.code().as_str(), "UZ-SETUP-005");
     let error = c
         .creations
         .save(c.base.member_access(), &key, request, now())
         .await
         .expect_err("creator is bound");
-    assert_eq!(error.code().as_str(), "UZ-AUTHOR-001");
+    assert_eq!(error.code().as_str(), "UZ-SETUP-001");
     assert_eq!(c.fleet_count().await, 1);
     assert_eq!(
         c.creations
@@ -202,10 +202,10 @@ async fn assert_bound(
         .save(c.base.access(), key, changed, now())
         .await
         .expect_err("body is bound");
-    assert_eq!(error.code(), af_core::error_code::AUTHORING_REPLAY);
+    assert_eq!(error.code(), af_core::error_code::SETUP_REPLAY);
     let error = creations
         .save(c.base.member_access(), key, request.clone(), now())
         .await
         .expect_err("creator is bound");
-    assert_eq!(error.code(), af_core::error_code::AUTHORING_NOT_FOUND);
+    assert_eq!(error.code(), af_core::error_code::SETUP_NOT_FOUND);
 }

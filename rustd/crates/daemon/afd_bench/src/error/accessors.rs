@@ -61,7 +61,7 @@ impl Error {
             | ErrorKind::RunUnreadable { .. }
             | ErrorKind::UnknownShape { .. }
             | ErrorKind::ShapeNeedsRig { .. }
-            | ErrorKind::AuthoringPathFaulted { .. }
+            | ErrorKind::SetupPathFaulted { .. }
             | ErrorKind::LiveSetFaulted { .. }
             | ErrorKind::NothingIssued { .. }
             | ErrorKind::InvariantBroken { .. }

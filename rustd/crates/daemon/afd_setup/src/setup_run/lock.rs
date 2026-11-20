@@ -117,7 +117,7 @@ async fn selected(
     let person = match access::current(connection, access).await {
         Ok(person) if &person.id == hint.user_id && &person.owner == hint.tenant_id => person,
         Ok(_) => return Ok(None),
-        Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => {
+        Err(error) if error.code() == error_code::SETUP_NOT_FOUND => {
             cancel_revoked(connection, hint, &subject, owed).await?;
             return Ok(None);
         }
@@ -125,7 +125,7 @@ async fn selected(
     };
     match read::lock(connection, access, &person, hint.id).await {
         Ok(locked) => Ok(Some(locked)),
-        Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => Ok(None),
+        Err(error) if error.code() == error_code::SETUP_NOT_FOUND => Ok(None),
         Err(error) => Err(error),
     }
 }

@@ -85,7 +85,7 @@ impl Error {
             ErrorKind::TurnCheckpointRefused { reason }
             | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.code(),
             ErrorKind::TaskTargetCounter { .. } => error_code::TASK_INVALID_TARGET,
-            ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
+            ErrorKind::SetupUnavailable => error_code::SETUP_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::ConfigUnreadable { .. }

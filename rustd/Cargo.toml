@@ -316,7 +316,8 @@ agentsfleetd = { path = "crates/daemon/main" }
 # loop is offered. Outside the layer folders: it depends on no crate here.
 guffbolt = { path = "guffbolt" }
 
-# Exact model tokenization for the daemon authoring boundary.
+# Input token counts that bound each model call against its context window
+# (`af_inference`): exact for a model `tiktoken-rs` knows, estimated otherwise.
 tiktoken-rs = { version = "0.12.1", default-features = false }
 percent-encoding = "2.3.2"
 # Every known secret value replaced in one pass over a tool's output, a frame
@@ -596,7 +597,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["form", "r
 gix = { version = "0.90.0", default-features = false, features = ["sha1"] }
 # The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
-regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
+regex = { version = "1.13.1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
 # Overlapping private spellings need every accepting pattern, not one alternative.
 regex-automata = { version = "0.4.18", default-features = false, features = ["std", "syntax", "dfa-build", "dfa-search"] }
 # `web_fetch` reads a page's text, never its markup: scripts, styles and tags

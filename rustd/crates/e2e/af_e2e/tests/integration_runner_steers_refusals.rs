@@ -48,7 +48,7 @@ async fn fleet_steer_refuses_self_other_workspace_and_inactive_targets() {
         (&foreign, 404, "UZ-AGT-009", None),
         (&archived, 409, "UZ-AGT-012", Some("archived")),
         (&installing, 409, "UZ-AGT-012", Some("installing")),
-        (&stale, 409, "UZ-AUTHOR-009", None),
+        (&stale, 409, "UZ-SETUP-009", None),
     ];
     for (target, status, code, state) in cases {
         let (answered, refused) = crew.steer((&run, fence), target, "scene the check").await;

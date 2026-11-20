@@ -5,7 +5,7 @@ import { z } from "zod";
 export const SETUP_METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
 const RESOURCE = {models: "models", drafts: "drafts", fleets: "fleets"} as const;
 const SUFFIX = {tasks: "tasks", messages: "messages", turns: "turns", stream: "stream",
-  revisions: "revisions", schedules: "schedules", sync: "sync", authoringContext: "authoring-context"} as const;
+  revisions: "revisions", schedules: "schedules", sync: "sync", setupContext: "setup-context"} as const;
 const PAGE = ["limit", "starting_after"] as const;
 const uuid = z.uuidv7();
 /** `bodyless`: a POST action that takes no body, so the proxy forwards none and asks for no JSON media type. */
@@ -32,7 +32,7 @@ export function matchSetupRoute(workspace: string, parts: readonly string[], met
   if (parts.length === 4 && child === SUFFIX.tasks && uuid.safeParse(member).success && method === SETUP_METHOD.patch) return ORDINARY;
   // Stop: a turn's status PATCH (`FleetRoute::Turn`).
   if (parts.length === 4 && child === SUFFIX.turns && uuid.safeParse(member).success && method === SETUP_METHOD.patch) return ORDINARY;
-  if (parts.length === 3 && child === SUFFIX.authoringContext && method === SETUP_METHOD.get) return {stream: false, query: ["starting_after"]};
+  if (parts.length === 3 && child === SUFFIX.setupContext && method === SETUP_METHOD.get) return {stream: false, query: ["starting_after"]};
   if (parts.length === 3 && child === SUFFIX.revisions && method === SETUP_METHOD.post) return ORDINARY;
   if (parts.length === 4 && child === SUFFIX.schedules && uuid.safeParse(member).success
     && [SETUP_METHOD.get, SETUP_METHOD.patch, SETUP_METHOD.delete].some((allowed) => allowed === method)) return ORDINARY;

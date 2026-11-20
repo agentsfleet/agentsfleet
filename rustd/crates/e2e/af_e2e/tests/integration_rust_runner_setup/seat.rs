@@ -122,7 +122,7 @@ impl Seat {
         let request = CreateDraft {
             save: false,
             source: Source::Blank,
-            authoring_model_ref: self.entry.to_string(),
+            setup_model_ref: self.entry.to_string(),
             message: Some(message.to_owned()),
             operation_id: mint_id(),
         };

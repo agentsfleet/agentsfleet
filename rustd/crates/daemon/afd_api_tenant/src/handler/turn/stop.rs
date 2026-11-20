@@ -14,7 +14,7 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use afd_api_wire::turn::TurnPatch;
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_http::handler::{Refusal, setup_refusal};
 use afd_turns::view::stop::{Marked, Stop, Stopped};
 use axum::Json;
 use axum::body::Bytes;
@@ -124,7 +124,7 @@ pub(crate) async fn fleet<D: TenantPlane>(
     ),
     request_body = TurnPatch,
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::authoring::Stopped),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::setup::Stopped),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = "Private draft or turn unavailable"),
         (status = 409, description = "The turn already finished"),
@@ -147,13 +147,13 @@ pub(crate) async fn draft<D: TenantPlane>(
         subject: person.subject(),
     };
     let stopped = services
-        .authoring()
+        .drafts()
         .stop_turn(access, &draft, &turn)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     // The draft's service already sent the hints, after its own commit.
     let (sequence, _runs) = decide(stopped, KIND_DRAFT, &turn)?;
-    Ok(Json(afd_api_wire::authoring::Stopped {
+    Ok(Json(afd_api_wire::setup::Stopped {
         sequence: sequence.to_string(),
         state: af_core::turn::status::CANCELLED.to_owned(),
     })

@@ -5,7 +5,7 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT, MESSAGE } from "./helpers/draft-fixtures";
 
 const UNKNOWN = {...MESSAGE, state: "failed" as const,
-  failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}};
+  failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"}};
 const VIEW: DraftView = {...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [UNKNOWN]};
 
 it("an unknown-usage failure neither holds the chat nor offers Stop", () => {

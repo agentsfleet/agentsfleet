@@ -1,7 +1,7 @@
 //! Move validated domain projections into wire payloads without copying setup JSON.
 
 use af_fleet_runtime::Definition;
-use afd_api_wire::authoring as wire;
+use afd_api_wire::setup as wire;
 use afd_setup::types;
 
 pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Review> {
@@ -10,7 +10,7 @@ pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Revie
         state: value.state.as_str().into(),
         title: value.title,
         etag: value.etag,
-        authoring_model_ref: value.authoring_model_ref,
+        setup_model_ref: value.setup_model_ref,
         candidate: value.candidate.map(candidate),
         review: value.review,
         linked_fleet_id: value.linked_fleet_id.map(|id| id.to_string()),

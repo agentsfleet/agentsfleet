@@ -131,7 +131,7 @@ describe("HttpClient", () => {
       (async () =>
         new Response(
           JSON.stringify({
-            error_code: "UZ-AUTHOR-006",
+            error_code: "UZ-SETUP-006",
             detail:
               "Review this draft before saving",
             request_id: "req_review",
@@ -156,7 +156,7 @@ describe("HttpClient", () => {
       const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
       expect(fail).toMatchObject({
         _tag: "ServerError",
-        code: "UZ-AUTHOR-006",
+        code: "UZ-SETUP-006",
         requestId: "req_review",
         suggestion: "verify the request payload and retry",
       });

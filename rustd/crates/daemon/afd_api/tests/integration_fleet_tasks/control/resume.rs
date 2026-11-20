@@ -198,7 +198,7 @@ async fn task_resume_policy_refusal_rolls_back_with_the_original_state() {
     .await;
     assert_eq!(response.status(), StatusCode::CONFLICT);
     let body = json_body(response).await;
-    assert_eq!(body.get("error_code"), Some(&json!("UZ-AUTHOR-009")));
+    assert_eq!(body.get("error_code"), Some(&json!("UZ-SETUP-009")));
     assert_eq!(body.get("current_state"), Some(&json!("paused")));
     let (after, tag) = read_task(&router, &fixture, 2).await;
     assert_eq!(

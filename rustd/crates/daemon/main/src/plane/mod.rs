@@ -52,7 +52,7 @@ pub type Authenticator = Planes<Credentials, Capabilities, Sessions>;
 /// sit here, and each surface's stores sit in the group its builder returns.
 #[derive(Debug)]
 pub struct ServingPlane {
-    authoring: surfaces::Authoring,
+    setup: surfaces::SetupStores,
     tenant: stores::Tenant,
     admin: stores::Admin,
     activity: stores::Activity,
@@ -136,7 +136,7 @@ impl ServingPlane {
         let common = construction::Common::new(&parts);
         let database = parts.database;
         let kek = parts.kek;
-        let mut authoring = surfaces::authoring(common.drafts, &kek, &common.turns);
+        let mut setup = surfaces::setup(common.drafts, &kek, &common.turns);
         let admin = stores::admin(&database);
         let activity_streams = parts.bus.clone();
         let tenant = stores::tenant(&database, &kek, &common.providers, &activity_streams);
@@ -153,7 +153,7 @@ impl ServingPlane {
                 slack_api_base: parts.slack_api_base,
             },
         );
-        attach_schedules(&mut authoring, &outbound);
+        attach_schedules(&mut setup, &outbound);
         let native = construction::NativeInputs {
             runtime: parts.runtime,
             database: &database,
@@ -168,14 +168,14 @@ impl ServingPlane {
             storage_config: parts.checkpoint_storage,
             master: common.task_master,
             client: common.github_client,
-            authoring: &authoring,
+            setup: &setup,
             stream_limit: parts.live.stream_limit().clone(),
             frame_memory: parts.frame_memory,
             analytics: parts.analytics.clone(),
         }
         .build();
         Self {
-            authoring,
+            setup,
             tenant,
             admin,
             activity,
@@ -197,10 +197,10 @@ impl ServingPlane {
     }
 }
 
-// Attach before the gateway clones the authoring services so chat saves use
+// Attach before the gateway clones the setup services so chat saves use
 // the same trigger scheduler as the schedule routes.
-fn attach_schedules(authoring: &mut surfaces::Authoring, outbound: &surfaces::Outbound) {
-    authoring.creations = authoring
+fn attach_schedules(setup: &mut surfaces::SetupStores, outbound: &surfaces::Outbound) {
+    setup.creations = setup
         .creations
         .clone()
         .with_scheduler(Arc::clone(&outbound.scheduler));

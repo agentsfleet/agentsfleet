@@ -1,7 +1,7 @@
 //! Joined creators use owner resources; current revocation still wins before review.
 
 use super::*;
-use af_core::error_code::AUTHORING_NOT_FOUND;
+use af_core::error_code::SETUP_NOT_FOUND;
 use afd_setup::types::{CheckKind, CheckState};
 
 #[tokio::test]
@@ -24,7 +24,7 @@ async fn joined_creator_reviews_owner_model_and_loses_access_after_revocation() 
         .read_draft(f.access(), &draft.id)
         .await
         .expect_err("owner cannot read member's private draft");
-    assert_eq!(foreign.code(), AUTHORING_NOT_FOUND);
+    assert_eq!(foreign.code(), SETUP_NOT_FOUND);
     sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
         .bind(&f.tenant)
         .bind(&f.member)
@@ -35,7 +35,7 @@ async fn joined_creator_reviews_owner_model_and_loses_access_after_revocation() 
         .read_draft(f.member_access(), &draft.id)
         .await
         .expect_err("current membership required");
-    assert_eq!(revoked.code(), AUTHORING_NOT_FOUND);
+    assert_eq!(revoked.code(), SETUP_NOT_FOUND);
     f.cleanup().await;
 }
 
@@ -72,13 +72,13 @@ async fn requirements_stay_declared_while_missing_credential_readiness_is_visibl
                 && check.state == CheckState::Ready)
     );
     let json = serde_json::to_string(&reviewed).expect("review JSON");
-    assert!(!json.contains("fixture-authoring-key"));
+    assert!(!json.contains("fixture-setup-key"));
     assert!(!json.contains("api_key"));
     f.cleanup().await;
 }
 
 async fn store_credential(f: &Fixture) {
-    store_named(f, "deploy_key", r#"{"api_key":"fixture-authoring-key"}"#).await;
+    store_named(f, "deploy_key", r#"{"api_key":"fixture-setup-key"}"#).await;
 }
 
 /// The connector a stored token ships as it stands, which no broker exchanges.

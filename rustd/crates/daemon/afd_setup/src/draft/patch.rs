@@ -20,7 +20,7 @@ const CONTEXT: &str = "edit private draft";
 const EMPTY_PATCH: &str = "a draft change must contain at least one supported field";
 const NO_CANDIDATE: &str = "initialize a candidate before editing its setup";
 const REVISION_EXHAUSTED: &str = "candidate revision is exhausted";
-const AUTHORING: &str = "authoring";
+const SETUP: &str = "setup";
 const RUNTIME_MODEL_PATH: &str = "/config/x-agentsfleet/model";
 
 impl Drafts {
@@ -52,16 +52,16 @@ impl Drafts {
             return Err(ErrorKind::Stale { etag: current }.into());
         }
         idle(&mut tx, &locked).await?;
-        let authoring = patch
-            .authoring_model_ref
+        let setup_model = patch
+            .setup_model_ref
             .as_deref()
-            .unwrap_or(&locked.authoring_model_ref);
-        model::selected(&mut tx, &person.owner, authoring).await?;
+            .unwrap_or(&locked.setup_model_ref);
+        model::selected(&mut tx, &person.owner, setup_model).await?;
         let title = patch.title.as_deref().unwrap_or(&locked.title);
         sqlx::query(sql::draft::PATCH)
             .bind(id)
             .bind(title)
-            .bind(model::tenant_model(authoring)?)
+            .bind(model::tenant_model(setup_model)?)
             .bind(&patch.instance_name)
             .execute(&mut *tx)
             .await
@@ -135,7 +135,7 @@ pub(crate) async fn idle(connection: &mut PgConnection, locked: &read::Locked) -
         .await
         .map_err(query(CONTEXT))?;
     if active {
-        return Err(ErrorKind::State { current: AUTHORING }.into());
+        return Err(ErrorKind::State { current: SETUP }.into());
     }
     Ok(())
 }
@@ -143,7 +143,7 @@ pub(crate) async fn idle(connection: &mut PgConnection, locked: &read::Locked) -
 fn nonempty(patch: &DraftPatch) -> Result<()> {
     if patch.title.is_none()
         && patch.instance_name.is_none()
-        && patch.authoring_model_ref.is_none()
+        && patch.setup_model_ref.is_none()
         && patch.runtime_model_ref.is_none()
         && patch.config_ops.is_empty()
         && patch.instruction_edits.is_empty()

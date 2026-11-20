@@ -57,7 +57,7 @@ impl Routed {
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(self.fixture.workspace.clone())
-        .with_native_authoring(self.fixture.database.clone())
+        .with_native_setup(self.fixture.database.clone())
     }
 
     async fn cleanup(self) {
@@ -78,7 +78,7 @@ impl Routed {
 }
 
 /// Dimension 8.2: the runner protocol is v4 alone. A runner speaking v2, the
-/// revision that kept the daemon's authoring run, v3, which no runner shipped,
+/// revision that kept the daemon-side setup run, v3, which no runner shipped,
 /// or a version no daemon knows is refused at hello with `UZ-RUN-023`: it
 /// owns no connection, so it is assigned no run.
 #[tokio::test]

@@ -11,7 +11,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::{AUTHORING_MODEL, AUTHORING_STATE};
+use af_core::error_code::{SETUP_MODEL, SETUP_STATE};
 use af_core::id::Uuid7;
 use afd_setup::types::{Draft, DraftPatch, MessageQuery, MessageState, SendMessage};
 use afd_turns::view::stop::Stop;
@@ -29,14 +29,14 @@ const WITHDRAWALS: [(&str, &str); 2] = [
     ),
     (
         "credential removed",
-        "DELETE FROM vault.secrets WHERE key_name='authoring-model' \
+        "DELETE FROM vault.secrets WHERE key_name='setup-model' \
          AND workspace_id=(SELECT w.id FROM identity.workspaces w \
          JOIN model.tenant_models e ON e.tenant_id=w.tenant_id WHERE e.id=$1)",
     ),
 ];
 
 fn switch_to(model: &Uuid7) -> DraftPatch {
-    serde_json::from_value(json!({"authoring_model_ref": model})).expect("typed patch")
+    serde_json::from_value(json!({"setup_model_ref": model})).expect("typed patch")
 }
 
 fn send(text: &str) -> SendMessage {
@@ -95,10 +95,10 @@ async fn a_switch_to_a_withdrawn_model_is_refused_and_changes_nothing() {
             )
             .await
             .expect_err("a withdrawn model cannot be selected");
-        assert_eq!(refused.code(), AUTHORING_MODEL, "{how}");
+        assert_eq!(refused.code(), SETUP_MODEL, "{how}");
         let after = f.drafts.read(f.access(), &created.id).await.expect("read");
         assert_eq!(after.etag, created.etag, "{how}: nothing was written");
-        assert_eq!(after.authoring_model_ref, f.model.to_string(), "{how}");
+        assert_eq!(after.setup_model_ref, f.model.to_string(), "{how}");
         assert_eq!(
             serde_json::to_value(&after.candidate).expect("candidate JSON"),
             serde_json::to_value(&created.candidate).expect("candidate JSON"),
@@ -124,11 +124,11 @@ async fn a_switch_waits_until_no_request_is_queued() {
         )
         .await
         .expect_err("a queued request pins the current model");
-    assert_eq!(refused.code(), AUTHORING_STATE);
-    assert_eq!(refused.current_state(), Some("authoring"), "{refused}");
+    assert_eq!(refused.code(), SETUP_STATE);
+    assert_eq!(refused.current_state(), Some("setup"), "{refused}");
     let queued = f.drafts.read(f.access(), &created.id).await.expect("read");
     assert_eq!(queued.etag, created.etag, "the refusal wrote nothing");
-    assert_eq!(queued.authoring_model_ref, f.model.to_string());
+    assert_eq!(queued.setup_model_ref, f.model.to_string());
 
     f.stop(&created.id, 1)
         .await
@@ -145,7 +145,7 @@ async fn a_switch_waits_until_no_request_is_queued() {
         )
         .await
         .expect("an idle draft switches");
-    assert_eq!(switched.authoring_model_ref, f.other_model.to_string());
+    assert_eq!(switched.setup_model_ref, f.other_model.to_string());
     f.cleanup().await;
 }
 

@@ -37,8 +37,8 @@ it("places a dated receipt before the undated answer to an optimistic request", 
   expect(rows[2]).toMatchObject({role: "assistant", status: {type: "running"}});
 });
 
-it.each([UNKNOWN_USAGE_REASON, "attempt_timed_out", "frame_too_large"])("preserves the recorded %s failure without replacing a partial answer", (reason) => {
-  const failure = {reason, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
+it.each([UNKNOWN_USAGE_REASON, "provider_failed", "frame_too_large"])("preserves the recorded %s failure without replacing a partial answer", (reason) => {
+  const failure = {reason, error_code: "UZ-SETUP-015", recovery_action: "retry_message"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [MESSAGE, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
   expect(rows[1]).toMatchObject({content: [{type: "text", text: "Partial answer"}], status: {type: "complete"},
@@ -46,7 +46,7 @@ it.each([UNKNOWN_USAGE_REASON, "attempt_timed_out", "frame_too_large"])("preserv
 });
 
 it("preserves unsettled usage after stopping without inventing a cause or retry text", () => {
-  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
+  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}]});
   expect(rows).toMatchObject([{content: [{type: "text", text: ""}], metadata: {custom: {failure, retryText: undefined}}}]);
@@ -77,14 +77,14 @@ it("shows matching live text while running and preserves the durable answer afte
 });
 
 it("does not invent retry text for a user row without recorded request text", () => {
-  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  const failure = {reason: "provider_failed", error_code: "UZ-SETUP-014", recovery_action: "retry_message"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [{...MESSAGE, text: undefined}, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
   expect(rows[1]).toMatchObject({content: [{text: "Partial answer"}], metadata: {custom: {failure, retryText: undefined}}});
 });
 
 it("invalidates a cached failure when its original request becomes available", () => {
-  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  const failure = {reason: "provider_failed", error_code: "UZ-SETUP-014", recovery_action: "retry_message"};
   const answer = {...MESSAGE, role: "assistant" as const, state: "failed" as const, failure};
   const project = createDraftThreadProjection();
   const before = project({...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [answer]});

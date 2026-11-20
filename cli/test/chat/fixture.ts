@@ -13,7 +13,7 @@ export const FLEET_ID = "0199a801-1000-7000-8000-000000000004";
 export const REVISION_ID = "0199a801-1000-7000-8000-000000000006";
 export const SCHEDULE_ID = "0199a801-1000-7000-8000-000000000007";
 export const TURN_ID = "0199a801-1000-7000-8000-000000000008";
-export const MODEL = "owner/authoring";
+export const MODEL = "owner/setup";
 export const PRIVATE_TEXT = "a private deployment question";
 export const TOKEN = Redacted.make("local-chat-test");
 export const REVIEW: Review = {
@@ -22,7 +22,7 @@ export const REVIEW: Review = {
   requirements: {}, readiness: [], review_digest: "reviewed-setup", policy_semantics: "native-v1", observed_at: "1970-01-01T00:00:00.001Z",
 };
 export const DRAFT: Draft = {
-  id: DRAFT_ID, state: DRAFT_STATE.editing, title: "Argo", etag: '"draft-1"', authoring_model_ref: MODEL,
+  id: DRAFT_ID, state: DRAFT_STATE.editing, title: "Argo", etag: '"draft-1"', setup_model_ref: MODEL,
   candidate: {id: CANDIDATE_ID, revision: "1", definition: REVIEW.effective.definition,
     canonical_digest: "definition-1", policy_semantics: REVIEW.policy_semantics}, review: REVIEW,
 };

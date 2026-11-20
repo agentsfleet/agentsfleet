@@ -32,14 +32,14 @@ export async function saveFixtureFleet(handle: ClientHandle, workspace: string, 
 }
 
 async function createDraft(handle: ClientHandle, workspace: string, source: Source): Promise<Draft> {
-  const model = await authoringModelRef(handle, workspace);
+  const model = await setupModelRef(handle, workspace);
   return DraftSchema.parse(await clientFor(handle).post<unknown>(`/v1/workspaces/${workspace}/drafts`, {
-    source, authoring_model_ref: model, operation_id: uuidv7(),
+    source, setup_model_ref: model, operation_id: uuidv7(),
   }));
 }
 
 /** Prefer the live platform model over entries other tests create with dummy keys. */
-export async function authoringModelRef(handle: ClientHandle, workspace: string): Promise<string> {
+export async function setupModelRef(handle: ClientHandle, workspace: string): Promise<string> {
   const client = clientFor(handle);
   let cursor: string | null = null;
   let fallback: string | undefined;
@@ -47,7 +47,7 @@ export async function authoringModelRef(handle: ClientHandle, workspace: string)
     const query = new URLSearchParams({ limit: String(MODEL_PAGE_LIMIT) });
     if (cursor) query.set("starting_after", cursor);
     const models = ModelsSchema.parse(await client.get<unknown>(`/v1/workspaces/${workspace}/models?${query}`));
-    const eligible = models.items.filter((entry) => entry.eligibility.authoring);
+    const eligible = models.items.filter((entry) => entry.eligibility.setup);
     const model = eligible.find((entry) => entry.ref === PLATFORM_DEFAULT_REF);
     if (model) return model.ref;
     fallback ??= eligible[0]?.ref;
@@ -55,5 +55,5 @@ export async function authoringModelRef(handle: ClientHandle, workspace: string)
     cursor = models.next_cursor;
   }
   if (fallback) return fallback;
-  throw new Error("No eligible workspace authoring model for acceptance fixture");
+  throw new Error("No eligible workspace setup model for acceptance fixture");
 }

@@ -30,7 +30,7 @@ The example omits authorization headers. The model reference is illustrative and
 POST /v1/workspaces/0199a801-1000-7000-8000-000000000001/drafts
 Content-Type: application/json
 
-{"source":{"kind":"blank"},"authoring_model_ref":"owner-model-1","operation_id":"0199a801-1000-7000-8000-000000000002","message":"Watch failed checkout deployments."}
+{"source":{"kind":"blank"},"setup_model_ref":"owner-model-1","operation_id":"0199a801-1000-7000-8000-000000000002","message":"Watch failed checkout deployments."}
 ```
 
 ```json
@@ -38,7 +38,7 @@ Content-Type: application/json
   "id":"0199a801-1000-7000-8000-000000000003",
   "state":"editing",
   "etag":"\"draft:0199a801-1000-7000-8000-000000000003:1\"",
-  "authoring_model_ref":"owner-model-1",
+  "setup_model_ref":"owner-model-1",
   "accepted":{"status":"accepted","sequence":"1","replayed":false}
 }
 ```
@@ -114,7 +114,7 @@ Save and Apply accept optional `origin` display metadata, with values `cli`, `da
 
 Retries exclude `origin` when comparing request bodies and retain the original receipt. Changing only the origin with the same operation key creates no additional fleet, revision or receipt. Older clients may omit the field; older receipts retain their generic saved-version label.
 
-`Draft = {id,state,title,etag,authoring_model_ref,candidate?,review?,linked_fleet_id?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate.
+`Draft = {id,state,title,etag,setup_model_ref,candidate?,review?,linked_fleet_id?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate.
 
 Closing sets expiry 30 days later; a linked active setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. A queued or running setup turn blocks PATCH and Save.
 
@@ -136,13 +136,10 @@ Reports cannot supply diagnostic text, URLs, credentials, or actions.
 
 | Failure reason | Stable code | Recovery action |
 |---|---|---|
-| `insufficient_balance` | `UZ-AUTHOR-007` | `owner_billing` |
-| `model_unavailable` | `UZ-AUTHOR-008` | `choose_authoring_model` |
-| `context_too_large` | `UZ-AUTHOR-010` | `reduce_context` |
-| `provider_failed` | `UZ-AUTHOR-014` | `retry_message` |
-| `provider_usage_unknown` | `UZ-AUTHOR-015` | `retry_message` |
-| `attempt_timed_out` | `UZ-AUTHOR-016` | `retry_message` |
-| `policy_changed` | `UZ-AUTHOR-009` | `review_setup` |
+| `insufficient_balance` | `UZ-SETUP-007` | `owner_billing` |
+| `model_unavailable` | `UZ-SETUP-008` | `choose_setup_model` |
+| `provider_failed` | `UZ-SETUP-014` | `retry_message` |
+| `provider_usage_unknown` | `UZ-SETUP-015` | `retry_message` |
 | `frame_too_large` | `UZ-RUN-032` | `reduce_context` |
 
 A failed message no longer holds the draft; only a live setup run does. `provider_usage_unknown` marks a turn whose runs all lapsed, and it reports `retry_message`.
@@ -197,11 +194,11 @@ The next two tables list the workspace-chat person routes that remain after M253
 
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
-| N1 | GET W/models | No body; `purpose=authoring|runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{authoring,runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; owner's eligible enabled entries only | AUTH, INPUT, DEPENDENCY |
-| N2 | POST W/drafts | `{source:Source,authoring_model_ref,message?,save?,operation_id}`; `save:true` requires a message; body UUIDv7 key only. The chat's initial `title` is the first line of `message`, else of the source's description, else `New fleet`, cut to 100 characters; a later title edit is never overwritten | 201 Draft, optional `accepted:{status:"accepted",sequence,replayed}` when first message exists; `Location:D`, ETag | INPUT, HIDDEN, MODEL, REPLAY, GONE, DEPENDENCY |
+| N1 | GET W/models | No body; `purpose=setup|runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{setup,runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; owner's eligible enabled entries only | AUTH, INPUT, DEPENDENCY |
+| N2 | POST W/drafts | `{source:Source,setup_model_ref,message?,save?,operation_id}`; `save:true` requires a message; body UUIDv7 key only. The chat's initial `title` is the first line of `message`, else of the source's description, else `New fleet`, cut to 100 characters; a later title edit is never overwritten | 201 Draft, optional `accepted:{status:"accepted",sequence,replayed}` when first message exists; `Location:D`, ETag | INPUT, HIDDEN, MODEL, REPLAY, GONE, DEPENDENCY |
 | N3 | GET W/drafts | No body; `state`, `linked_fleet_id` and `q` optional, paging; creator only. `q` (1..200 characters, trimmed) matches the title or any turn's text as a case-insensitive substring, LIKE metacharacters literal, and is bound into the cursor | 200 Page of `{id,title,state,etag,linked_fleet_id?,updated_at,expires_at?,candidate_revision,setup_revision}`; each revision is null until the chat reaches it (no candidate, no saved fleet) | INPUT, CURSOR, AUTH, DEPENDENCY |
 | N4 | GET D | No body; creator + current membership | 200 Draft with latest candidate/review when available; ETag | HIDDEN, AUTH, DEPENDENCY |
-| N5 | PATCH D | If-Match; `{title?,instance_name?,authoring_model_ref?,runtime_model_ref?,config_ops?:ConfigOp[],instruction_edits?:InstructionEdit[]}`; at least one, editing and no running/queued messages | 200 Draft with new tag and current candidate/review; recheck owner eligibility; the setup model selection applies to future sends only | PRECONDITION, STALE, STATE, INPUT, MODEL, POLICY |
+| N5 | PATCH D | If-Match; `{title?,instance_name?,setup_model_ref?,runtime_model_ref?,config_ops?:ConfigOp[],instruction_edits?:InstructionEdit[]}`; at least one, editing and no running/queued messages | 200 Draft with new tag and current candidate/review; recheck owner eligibility; the setup model selection applies to future sends only | PRECONDITION, STALE, STATE, INPUT, MODEL, POLICY |
 | N6 | DELETE D | No body; creator only, no If-Match | 204 after fencing and private-text deletion boundary; ongoing setup link may remain shared | HIDDEN, AUTH, DEPENDENCY; residual-copy bounds are in runner page |
 | N7 | POST D/messages | `{message,save?,operation_id}`; text 1..1,048,576 characters; body UUIDv7 only; `editing`; omitted `save` is false | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
 | N8 | GET D/messages | No body; creator; limit default 20/max 25, starting_after | 200 Page of Message; ordered sequence then role; states/usage included | HIDDEN, CURSOR, INPUT, DEPENDENCY |
@@ -229,7 +226,7 @@ Title is a human display name, independent of validated definition slugs. Runtim
 
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
-| E1 | GET F/authoring-context | No body; fleet:write; optional starting_after for older creator conversations | 200 `{fleet,conversations[],activities:{items,total:null,next_cursor},next_cursor}`; private, no-store | HIDDEN, AUTH, INPUT, CURSOR, DEPENDENCY |
+| E1 | GET F/setup-context | No body; fleet:write; optional starting_after for older creator conversations | 200 `{fleet,conversations[],activities:{items,total:null,next_cursor},next_cursor}`; private, no-store | HIDDEN, AUTH, INPUT, CURSOR, DEPENDENCY |
 | E2 | GET F/messages | Existing paging; optional event_type, 1..64 bytes without NUL; fleet:read | 200 existing message page, filtered before limit; `event_type=activity` excludes runtime bodies and queued turns | INPUT, CURSOR, AUTH, DEPENDENCY |
 
 E1 returns at most three creator-private conversations, each with at most 25 recent message rows, plus 25 shared activity receipts. Runtime request bodies are excluded.
@@ -369,7 +366,7 @@ A proposal that passes becomes candidate revision N+1.
 
 A refused proposal writes no candidate, and the turn still completes with its answer.
 The turn keeps the refusal's sentence as its failure detail, and the daemon logs `setup_proposal_refused` with `error_code`, `draft_id` and `run_id`.
-A moved base refuses with `UZ-AUTHOR-003`; a Definition the parser refuses keeps the parser's code.
+A moved base refuses with `UZ-SETUP-003`; a Definition the parser refuses keeps the parser's code.
 
 A report below the run's current fence is refused with `UZ-RUN-005` and writes nothing.
 A replayed report finds its run settled and writes nothing a second time.
@@ -410,21 +407,20 @@ The following codes name the route tables' error categories. Read the operation'
 |---|---|---|---|
 | AUTH | Existing `UZ-AUTH-002` / `UZ-AUTH-022` | 401 /403 | Invalid authentication / insufficient scope; creator mismatch is HIDDEN. |
 | INPUT | Existing `UZ-REQ-001` / `UZ-UUIDV7-009` | 400 | Invalid body shape/key/bound/unknown field; existing path UUIDv7 validation uses UZ-UUIDV7-009. |
-| HIDDEN | `UZ-AUTHOR-001` | 404 | Missing, foreign, creator-private, or non-writable platform resource; do not distinguish. |
-| STATE | `UZ-AUTHOR-002` | 409 | Wrong lifecycle state; include current_state. |
-| STALE | `UZ-AUTHOR-003` | 412 | Version differs; include current etag. |
-| PRECONDITION | `UZ-AUTHOR-004` | 428 | Required If-Match absent; refetch before writing. |
-| REPLAY | `UZ-AUTHOR-005` | 409 | Key was accepted with a different normalized body/actor; fleet messages keep UZ-AGT-016. |
-| REVIEW | `UZ-AUTHOR-006` | 409 | Effective setup changed; include fresh review_digest and refetch review. |
-| BALANCE | `UZ-AUTHOR-007` | 402 | Owner wallet fails the bounded setup billing check; queued message records this outcome. |
-| MODEL | `UZ-AUTHOR-008` | 409 | Selected owner model missing, disabled, or ineligible; no fallback. |
-| POLICY | `UZ-AUTHOR-009` | 409 | Marker or supported setup differs; requires new review. |
-| TOKEN | `UZ-AUTHOR-010` | 422 | The context cannot fit the model's window; the message fails. |
-| CURSOR | `UZ-AUTHOR-011` | 400 | Cursor malformed or bound to another query/subject. |
-| GONE | `UZ-AUTHOR-013` | 410 | Accepted resource was purged; recreation is refused within the original 24-hour replay window. |
-| PROVIDER | `UZ-AUTHOR-014` | 502 | Provider failed with known usage; store bounded failure and permit explicit retry. |
-| UNKNOWN | `UZ-AUTHOR-015` | 409 | The message's usage stayed unknown after its runs lapsed; send it again. |
-| TIMEOUT | `UZ-AUTHOR-016` | 504 | The setup run passed its runtime; the message failed. |
+| HIDDEN | `UZ-SETUP-001` | 404 | Missing, foreign, creator-private, or non-writable platform resource; do not distinguish. |
+| STATE | `UZ-SETUP-002` | 409 | Wrong lifecycle state; include current_state. |
+| STALE | `UZ-SETUP-003` | 412 | Version differs; include current etag. |
+| PRECONDITION | `UZ-SETUP-004` | 428 | Required If-Match absent; refetch before writing. |
+| REPLAY | `UZ-SETUP-005` | 409 | Key was accepted with a different normalized body/actor; fleet messages keep UZ-AGT-016. |
+| REVIEW | `UZ-SETUP-006` | 409 | Effective setup changed; include fresh review_digest and refetch review. |
+| BALANCE | `UZ-SETUP-007` | 402 | Owner wallet fails the bounded setup billing check; queued message records this outcome. |
+| MODEL | `UZ-SETUP-008` | 409 | Selected owner model missing, disabled, or ineligible; no fallback. |
+| POLICY | `UZ-SETUP-009` | 409 | Marker or supported setup differs; requires new review. |
+| TOKEN | `UZ-SETUP-010` | 422 | The context cannot fit the model's window; the message fails. |
+| CURSOR | `UZ-SETUP-011` | 400 | Cursor malformed or bound to another query/subject. |
+| GONE | `UZ-SETUP-013` | 410 | Accepted resource was purged; recreation is refused within the original 24-hour replay window. |
+| PROVIDER | `UZ-SETUP-014` | 502 | Provider failed with known usage; store bounded failure and permit explicit retry. |
+| UNKNOWN | `UZ-SETUP-015` | 409 | The message's usage stayed unknown after its runs lapsed; send it again. |
 | DEPENDENCY | Existing `UZ-INTERNAL-001` | 503 | Required datastore unavailable; no guessed success. |
 
 Oversized HTTP envelopes use existing `UZ-REQ-002` with its registered413. Validation detail names the offending field without echoing private message content. Provider failures become message state and accounting knowledge, not a fabricated completion.

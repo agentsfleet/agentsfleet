@@ -179,7 +179,7 @@ test("chat history commands describe their own filters and actions in help", asy
 
 test("rename explains the daemon's busy refusal without retrying a write", async () => {
   const result = await run(["rename", DRAFT_ID, TITLE], request => request.method === "GET" ? Response.json(DRAFT)
-    : Response.json({title: "Chat is busy", detail: "active message", error_code: "UZ-AUTHOR-002"}, {status: 409}));
+    : Response.json({title: "Chat is busy", detail: "active message", error_code: "UZ-SETUP-002"}, {status: 409}));
   expect(result.code).not.toBe(0);
   expect(result.stdout + result.stderr).toContain("busy or closed");
   expect(result.stdout + result.stderr).toContain("wait for its reply");

@@ -9,7 +9,7 @@
 use posthog_rs::Event;
 use sha2::{Digest as _, Sha256};
 
-use super::{AuthoringStep, Telemetry};
+use super::{SetupStep, Telemetry};
 
 /// The workspace an event happened in.
 const KEY_WORKSPACE_ID: &str = "workspace_id";
@@ -203,7 +203,7 @@ impl Telemetry {
                     put(KEY_REPLY, reply.into());
                 }
             }
-            Self::Authoring {
+            Self::Setup {
                 workspace_id, step, ..
             } => {
                 put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
@@ -213,7 +213,7 @@ impl Telemetry {
     }
 }
 
-impl AuthoringStep {
+impl SetupStep {
     /// The step's own keys: identifiers as text, words as written. Nothing
     /// else is a field, so nothing else can be written.
     fn describe(&self, put: &mut impl FnMut(&'static str, serde_json::Value)) {

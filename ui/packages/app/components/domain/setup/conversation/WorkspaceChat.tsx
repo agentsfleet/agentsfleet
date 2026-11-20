@@ -93,7 +93,7 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
   const unavailable = view.inaccessible || (selected && !view.draft && !view.preview);
   const errorNotice = view.error ? <ChatError key={view.error} client={client} view={view} source={source} workspace={workspace} reload={reload} onStartOver={() => setInstructionsDirty(false)} /> : undefined;
-  return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
+  return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-setup>
     {unavailable ? errorNotice : null}
     {view.notice && view.notice !== appliedNotice([]) ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : unavailable ? null : <>

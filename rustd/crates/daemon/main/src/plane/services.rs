@@ -173,16 +173,16 @@ impl TenantPlane for ServingPlane {
         &self.tasks
     }
 
-    fn authoring(&self) -> &afd_setup::Drafts {
-        &self.authoring.drafts
+    fn drafts(&self) -> &afd_setup::Drafts {
+        &self.setup.drafts
     }
 
-    fn authoring_setup(&self) -> &afd_setup::Setup {
-        &self.authoring.setup
+    fn setup(&self) -> &afd_setup::Setup {
+        &self.setup.setup
     }
 
     fn creations(&self) -> &afd_setup::Creations {
-        &self.authoring.creations
+        &self.setup.creations
     }
 
     fn platform_admin_workspace(&self) -> Option<&af_core::id::Uuid7> {

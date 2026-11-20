@@ -22,7 +22,7 @@ use super::{config, platform};
 /// finished draft. Setup's model calls are the runner's, so none is built
 /// here.
 #[derive(Debug)]
-pub(super) struct Authoring {
+pub(super) struct SetupStores {
     pub(super) drafts: afd_setup::Drafts,
     pub(super) setup: afd_setup::Setup,
     pub(super) creations: afd_setup::Creations,
@@ -34,10 +34,10 @@ pub(super) struct Authoring {
 /// surface below reports its funnel steps the same way. The setup wraps the
 /// drafts, and the creations wrap the setup and the shared turns ledger — so
 /// the order below is the dependency order, not a preference.
-pub(super) fn authoring(drafts: afd_setup::Drafts, kek: &Arc<Kek>, turns: &Turns) -> Authoring {
+pub(super) fn setup(drafts: afd_setup::Drafts, kek: &Arc<Kek>, turns: &Turns) -> SetupStores {
     let setup = afd_setup::Setup::new(drafts.clone(), Arc::clone(kek));
     let creations = afd_setup::Creations::new(setup.clone(), turns.clone());
-    Authoring {
+    SetupStores {
         drafts,
         setup,
         creations,

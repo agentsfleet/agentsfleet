@@ -75,6 +75,6 @@ export function projectDraftView(previous: DraftView, patch: Partial<DraftView>)
 export function messagePatch(view: DraftView, draft: Draft, messages: readonly Message[], truncated: boolean): Partial<DraftView> {
   const answer = latestSaveAnswer(messages);
   const optimistic = messages.some(message => message.operation_id === view.optimistic?.operation) ? null : view.optimistic;
-  return {draft, model: draft.authoring_model_ref, messages, optimistic, truncated,
+  return {draft, model: draft.setup_model_ref, messages, optimistic, truncated,
     ...(draft.state === DRAFT_STATE.editing && answer?.save_error_code ? {error: presentErrorString({errorCode: answer.save_error_code, action: "save this setup"})} : {})};
 }

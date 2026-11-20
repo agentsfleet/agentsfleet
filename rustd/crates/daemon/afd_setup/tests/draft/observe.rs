@@ -119,7 +119,7 @@ async fn a_missing_draft_is_an_initial_error_and_a_deleted_observation() {
         .initial_view(f.access(), &missing)
         .await
         .expect_err("a missing initial resource stays hidden");
-    assert_eq!(error.code(), error_code::AUTHORING_NOT_FOUND);
+    assert_eq!(error.code(), error_code::SETUP_NOT_FOUND);
     let observed = f
         .drafts
         .observe(f.access(), &missing, 0)

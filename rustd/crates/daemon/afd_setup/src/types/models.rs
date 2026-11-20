@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum ModelPurpose {
     /// Bounded private setup generation.
-    Authoring,
+    Setup,
     /// Shared fleet execution.
     Runtime,
 }
@@ -38,7 +38,7 @@ const fn default_limit() -> u32 {
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct ModelEligibility {
     /// This deployment can run setup with the selection.
-    pub authoring: bool,
+    pub setup: bool,
     /// Existing runtime provider resolution accepts the selection.
     pub runtime: bool,
 }

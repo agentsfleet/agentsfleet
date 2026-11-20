@@ -66,7 +66,7 @@ export class DraftSession {
         Effect.tap((sent) => Effect.sync(() => { this.#sequence = sent.sequence; })),
       )
       : this.#transport.call({path: this.#transport.drafts, method: HTTP_METHOD.post, retry: null,
-        body: {source: this.#source, authoring_model_ref: this.#model, message, operation_id: key}}, CreatedSchema).pipe(
+        body: {source: this.#source, setup_model_ref: this.#model, message, operation_id: key}}, CreatedSchema).pipe(
         Effect.tap((draft) => this.#remember(draft)),
         Effect.map((draft) => ({draft_id: draft.id, sequence: draft.accepted.sequence})),
         Effect.tap((sent) => Effect.sync(() => { this.#sequence = sent.sequence; })),
@@ -83,7 +83,7 @@ export class DraftSession {
   create(): Effect.Effect<Sent, ReadError> {
     return this.#guard(this.#send.run({source: this.#source.kind}, (key) => this.#transport.call({
       path: this.#transport.drafts, method: HTTP_METHOD.post, retry: null,
-      body: {source: this.#source, authoring_model_ref: this.#model, operation_id: key}}, DraftSchema).pipe(
+      body: {source: this.#source, setup_model_ref: this.#model, operation_id: key}}, DraftSchema).pipe(
       Effect.tap((draft) => this.#remember(draft)),
       Effect.map((draft) => ({draft_id: draft.id, sequence: this.#sequence})),
     )));
@@ -91,7 +91,7 @@ export class DraftSession {
 
   retry(): Effect.Effect<Sent, ReadError> { return this.#guard(this.#send.retry()); }
 
-  patch(patch: {authoring_model_ref?: string; instance_name?: string}): Effect.Effect<Draft, ReadError> {
+  patch(patch: {setup_model_ref?: string; instance_name?: string}): Effect.Effect<Draft, ReadError> {
     return this.#guard(this.refresh().pipe(Effect.flatMap((draft) => this.#transport.call({
       path: this.path, method: HTTP_METHOD.patch, headers: {[IF_MATCH]: draft.etag}, body: patch, retry: null,
     }, DraftSchema)), Effect.tap((draft) => this.#remember(draft))));

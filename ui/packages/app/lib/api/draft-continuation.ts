@@ -58,7 +58,7 @@ export function savedDraft(view: DraftView): view is DraftView & {draft: Draft} 
 }
 
 /** Only the creator-scoped list may supply conversation history for a shared fleet. */
-export async function openFleetAuthoring(base: string, source: Extract<Source, {kind: typeof SOURCE_KIND.fleet}>, signal: AbortSignal, currentRevision: boolean): Promise<Partial<DraftView>> {
+export async function openFleetSetup(base: string, source: Extract<Source, {kind: typeof SOURCE_KIND.fleet}>, signal: AbortSignal, currentRevision: boolean): Promise<Partial<DraftView>> {
   const context = await readEditor(base, source.fleet_id, signal);
   const fleet = context.fleet;
   if (!currentRevision && fleet.setup_revision !== source.setup_revision) throw new SetupUnavailable(SETUP_CHANGED, 409);
@@ -85,12 +85,12 @@ export async function continueSavedDraft(base: string, read: () => DraftView, si
   }};
 }
 
-/** Read access receipts without replacing a proposal, or resume the full authoring history. */
+/** Read access receipts without replacing a proposal, or resume the full setup history. */
 export async function readFleetSetup(base: string, source: Source, view: DraftView, signal: AbortSignal, readinessOnly: boolean, currentRevision: boolean): Promise<Partial<DraftView>> {
   if (readinessOnly && view.fleet) {
     const fleet = await setupRequest({path: `${base}/fleets/${view.fleet.id}`}, FleetSchema, signal);
     return {fleet, activities: await readSetupActivity(base, fleet.id, signal)};
   }
   if (source.kind !== SOURCE_KIND.fleet) throw new SetupUnavailable("Choose a fleet before opening its setup.", 409);
-  return openFleetAuthoring(base, source, signal, currentRevision);
+  return openFleetSetup(base, source, signal, currentRevision);
 }

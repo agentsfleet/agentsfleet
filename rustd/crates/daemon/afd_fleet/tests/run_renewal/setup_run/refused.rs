@@ -101,7 +101,7 @@ async fn a_refused_report_proposal_logs_its_error_code() {
 
 // Value: protects=a proposal on a head that moved is refused as stale, not applied;
 // fails_when=the base check is dropped from the report; why_new=the stale refusal now
-// logs UZ-AUTHOR-003 and keeps its detail; seam=report_draft over live Postgres.
+// logs UZ-SETUP-003 and keeps its detail; seam=report_draft over live Postgres.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_report_on_a_moved_base_writes_no_candidate_and_logs_stale() {
@@ -122,7 +122,7 @@ async fn a_report_on_a_moved_base_writes_no_candidate_and_logs_stale() {
 
     assert_eq!(
         refused.field("error_code"),
-        Some(error_code::AUTHORING_STALE.as_str())
+        Some(error_code::SETUP_STALE.as_str())
     );
     let turn = case.turn(&taken.turn_id()).await;
     assert_eq!(turn.status, "completed", "{turn:?}");

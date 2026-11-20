@@ -5,12 +5,12 @@ use afd_fleet::run::{RunService, Runs};
 use afd_gateway::{Gateway, GatewayDependencies};
 
 impl Fleet {
-    pub(crate) fn with_native_authoring(mut self, database: Db) -> Self {
+    pub(crate) fn with_native_setup(mut self, database: Db) -> Self {
         self.native = Some(database);
         self
     }
 
-    fn authoring_gateway(&self, database: Db) -> Gateway {
+    fn setup_gateway(&self, database: Db) -> Gateway {
         let bus = self.runner_commands.clone();
         let biller = Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
             database.clone(),
@@ -45,7 +45,7 @@ impl Fleet {
             database,
             runners: self.runners.clone(),
             runs,
-            drafts: self.authoring.clone(),
+            drafts: self.drafts.clone(),
             creations: self.creations.clone(),
             bus,
             stream_limit: self.live.stream_limit().clone(),
@@ -66,7 +66,7 @@ impl afd_http::services::RunnerStreams for Fleet {
         use afd_http::services::RunnerStreams as _;
         match &self.native {
             Some(database) => {
-                self.authoring_gateway(database.clone())
+                self.setup_gateway(database.clone())
                     .open(runner, request)
                     .await
             }

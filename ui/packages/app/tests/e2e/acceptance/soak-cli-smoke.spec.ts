@@ -8,7 +8,7 @@ import { FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
 import { ensureSecondWorkspace } from "./fixtures/seed";
 import { cliEnv, deleteCliKey, makeCliStateDir, mintCliKey, spawnAgentsfleet, writeCliState } from "./fixtures/cli-runner";
 import { clientFor } from "./fixtures/api-client";
-import { authoringModelRef } from "./fixtures/native-setup";
+import { setupModelRef } from "./fixtures/native-setup";
 import { draftHistory, runtimeHistory } from "./fixtures/soak-history";
 import { SOAK_FLEET_PREFIX, initialSetupMessage, runtimeMessage, setupMessage } from "./fixtures/soak-scenario";
 import { purgeFixtureFleet } from "./fixtures/teardown";
@@ -54,7 +54,7 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
     const who = await spawnAgentsfleet(["--json", "whoami"], env);
     evidence.whoami = {exit: who.code, stdout: who.stdout.trim()};
     expect(who.code, who.stderr).toBe(0);
-    const model = await authoringModelRef({sessionJwt: key.key}, workspace);
+    const model = await setupModelRef({sessionJwt: key.key}, workspace);
 
     for (let index = 0; index < SETUP_TURNS; index++) {
       const input = index === 0 ? initialSetupMessage(name) : `For fleet ${name}: ${setupMessage(index, 1).text}`;

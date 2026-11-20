@@ -124,12 +124,12 @@ async fn should_leave_installing_setup_unchanged_after_empty_or_invalid_edits() 
         ),
         (
             Some("stopped"),
-            error_code::AUTHORING_STATE,
+            error_code::SETUP_STATE,
             "transition_refused",
         ),
         (
             Some("unsupported"),
-            error_code::AUTHORING_STATE,
+            error_code::SETUP_STATE,
             "transition_refused",
         ),
     ];

@@ -111,12 +111,12 @@ impl Problem {
 }
 
 mod auth;
-mod authoring;
 mod checkpoint;
 mod fleet;
 mod integration;
 mod invite;
 mod request;
+mod setup;
 mod task;
 
 /// The families, in `REGISTRY` order — which is the order [`ENTRIES`] takes.
@@ -132,7 +132,7 @@ const FAMILIES: [&[Problem]; 7] = [
     fleet::FLEET,
     integration::INTEGRATION,
     invite::INVITE,
-    authoring::AUTHORING,
+    setup::SETUP,
 ];
 
 /// How many entries the families hold between them.

@@ -469,7 +469,7 @@ Use new public error family `UZ-DT`: 001 not found, 002 stale state, 003 replay 
 Use 006 decision unavailable, 007 ambiguous input, 008 incompatible checkpoint, 009 storage unavailable and 010 publication uncertain.
 Use 011 busy control boundary and 012 protocol incompatible; register codes and problem types only with their implementation.
 
-Task controls use 013 for a stale resource tag (412) and the existing shared `UZ-AUTHOR-004` precondition code for a missing tag (428).
+Task controls use 013 for a stale resource tag (412) and the existing shared `UZ-SETUP-004` precondition code for a missing tag (428).
 
 Map missing children to 404, stale/replay/target/checkpoint/protocol conflicts to 409, limits to 429 and unavailable decision/storage to 503.
 Ambiguous input is a normal clarification response; code 007 is reserved for malformed explicit association requests with HTTP 409.

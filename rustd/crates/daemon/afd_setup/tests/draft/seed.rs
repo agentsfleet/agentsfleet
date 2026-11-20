@@ -28,8 +28,8 @@ VALUES ($1,$2,$3,'member',now())";
 pub(super) async fn people(f: &Fixture) {
     let mut connection = f.connection().await;
     for (tenant, name, person) in [
-        (&f.tenant, "authoring-owner", &f.owner),
-        (&f.member_tenant, "authoring-member", &f.member),
+        (&f.tenant, "setup-owner", &f.owner),
+        (&f.member_tenant, "setup-member", &f.member),
     ] {
         TenantSeed::new(tenant)
             .name(name)
@@ -58,14 +58,14 @@ pub(super) async fn credential(f: &Fixture) {
     let kek = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
         .expect("fixture encryption key");
     let raw = serde_json::value::RawValue::from_string(
-        r#"{"provider":"openai","api_key":"fixture-authoring-key"}"#.to_owned(),
+        r#"{"provider":"openai","api_key":"fixture-setup-key"}"#.to_owned(),
     )
     .expect("credential fixture JSON");
     let body = SecretBody::parse(&raw).expect("credential fixture shape");
     Vault::new(f.db.clone(), Arc::new(kek), Entropy::new())
         .create(
             &f.workspace,
-            &SecretName::parse("authoring-model").expect("secret name"),
+            &SecretName::parse("setup-model").expect("secret name"),
             &body,
             now(),
         )
@@ -88,7 +88,7 @@ pub(super) async fn model(f: &Fixture, catalogue: &Uuid7, entry: &Uuid7) {
         .expect("seed isolated priced model");
     sqlx::query(
         "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,created_at,updated_at) \
-        VALUES($1,$2,$3,'authoring-model',$4,now(),now())",
+        VALUES($1,$2,$3,'setup-model',$4,now(),now())",
     )
     .bind(entry)
     .bind(&f.tenant)

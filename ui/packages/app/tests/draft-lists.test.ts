@@ -48,7 +48,7 @@ const deferred = () => { let resolve: (value: Response) => void = () => undefine
 
 it("private chat lists > parses mixed configured and unconfigured API rows and selects the usable model", async () => {
   const unconfigured = {...MODEL, ref: "unconfigured", max_output_tokens: undefined,
-    eligibility: {authoring: false, runtime: false}};
+    eligibility: {setup: false, runtime: false}};
   models = () => page([unconfigured, MODEL], null);
   expect((await opened()).getSnapshot()).toMatchObject({
     models: [expect.objectContaining({ref: unconfigured.ref, eligibility: unconfigured.eligibility}), MODEL],
@@ -100,7 +100,7 @@ it("private chat lists > preserves model eligibility on every configured model p
 });
 
 it("private chat lists > selects the first eligible configured model beyond runtime-only pages", async () => {
-  const runtime = {...MODEL, ref: "runtime-only", eligibility: {authoring: false, runtime: true}};
+  const runtime = {...MODEL, ref: "runtime-only", eligibility: {setup: false, runtime: true}};
   const configured = {...MODEL, ref: "configured-fireworks", provider: "fireworks", model: "accounts/fireworks/models/glm-5p3-flash"};
   models = (url) => url.searchParams.has("starting_after") ? page([configured], null) : page([runtime], CURSOR);
   const client = await opened();

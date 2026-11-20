@@ -23,7 +23,7 @@ async fn saved_workspace_reference_resolves_only_its_owners_key_and_model_settin
         .await
         .expect("saved workspace model and owner credential resolve together");
     assert_eq!(resolved.posture, afd_billing::Posture::SelfManaged);
-    assert_eq!(resolved.api_key().expose(), "fixture-authoring-key");
+    assert_eq!(resolved.api_key().expose(), "fixture-setup-key");
     assert_eq!(resolved.provider.as_ref(), "openai");
     assert_eq!(
         resolved.model.as_ref(),
@@ -40,7 +40,7 @@ async fn saved_workspace_reference_resolves_only_its_owners_key_and_model_settin
         .expect_err("another owner cannot open the saved workspace credential");
     assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert!(refused.is_config_permanent());
-    assert!(!refused.to_string().contains("fixture-authoring-key"));
+    assert!(!refused.to_string().contains("fixture-setup-key"));
     f.cleanup().await;
 }
 
@@ -60,7 +60,7 @@ async fn key_opening_refuses_a_foreign_owner_and_changed_admitted_model() {
         .await
         .expect("matching generation")
         .expect("owner credential");
-    assert_eq!(opened.expose(), "fixture-authoring-key");
+    assert_eq!(opened.expose(), "fixture-setup-key");
     assert!(
         providers
             .registered_key(&mut tx, &f.member_tenant, &pinned)
@@ -91,12 +91,12 @@ async fn key_opening_refuses_an_empty_sealed_key_even_if_its_projection_claims_p
     Vault::new(f.db.clone(), Arc::new(key()), Entropy::new())
         .replace(
             &f.workspace,
-            &SecretName::parse("authoring-model").expect("fixture name"),
+            &SecretName::parse("setup-model").expect("fixture name"),
             &SecretBody::parse(&raw).expect("credential shape"),
         )
         .await
         .expect("seal empty key");
-    sqlx::query("UPDATE vault.secrets SET meta_has_key=true WHERE workspace_id=$1 AND key_name='authoring-model'")
+    sqlx::query("UPDATE vault.secrets SET meta_has_key=true WHERE workspace_id=$1 AND key_name='setup-model'")
         .bind(&f.workspace).execute(&mut *f.connection().await).await
         .expect("simulate inconsistent presence metadata");
     let providers = Providers::new(f.db.clone(), Arc::new(key()), Entropy::new());

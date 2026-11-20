@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 
 // Value: protects=an archive commits cancellation and reaches the owning replica's native stream;
 // fails_when=the operator mutation omits the marker/push or settlement loses the refusal class;
-// why_new=the authoring store's publisher test has no gateway or native consumer;
+// why_new=the setup store's publisher test has no gateway or native consumer;
 // seam=two production daemons, authenticated HTTP, real Bus and Postgres.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

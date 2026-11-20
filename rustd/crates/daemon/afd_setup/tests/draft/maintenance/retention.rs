@@ -1,7 +1,7 @@
 //! Logical expiry blocks reads before physical cleanup and replay stays tombstoned.
 
 use super::{Fixture, mint, now};
-use af_core::error_code::{AUTHORING_GONE, AUTHORING_NOT_FOUND};
+use af_core::error_code::{SETUP_GONE, SETUP_NOT_FOUND};
 use afd_setup::types::MessageQuery;
 
 #[tokio::test]
@@ -25,7 +25,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
             .await
             .expect_err("logical expiry")
             .code(),
-        AUTHORING_NOT_FOUND
+        SETUP_NOT_FOUND
     );
     assert_eq!(
         f.drafts
@@ -40,7 +40,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
             .await
             .expect_err("no expired transcript")
             .code(),
-        AUTHORING_NOT_FOUND
+        SETUP_NOT_FOUND
     );
     f.drafts.housekeep().await.expect("durable purge");
     assert_eq!(f.counts().await, (0, 0, 0));
@@ -50,7 +50,7 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
             .await
             .expect_err("no resurrection")
             .code(),
-        AUTHORING_GONE
+        SETUP_GONE
     );
     f.cleanup().await;
 }

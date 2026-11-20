@@ -22,11 +22,11 @@ use afd_runner::sweep::{self, census::Census, liveness::Liveness, retention::Ret
 
 use crate::supervisor::Supervisor;
 
-mod authoring;
 mod billing;
 mod checkpoints;
 mod expiry;
 mod schedule;
+mod setup;
 mod tasks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
@@ -43,8 +43,8 @@ pub const RETENTION: &str = "sweeper:retention";
 /// The supervised name of the fleet census sweeper.
 pub const FLEET_CENSUS: &str = "sweeper:fleet-census";
 
-/// The supervised name of the private authoring recovery worker.
-pub const AUTHORING: &str = "sweeper:authoring";
+/// The supervised name of the private setup recovery worker.
+pub const SETUP: &str = "sweeper:setup";
 
 /// The supervised name of the billing sweeper.
 pub const BILLING: &str = "sweeper:billing";
@@ -141,12 +141,12 @@ fn spawn_financial_maintenance(
     // One biller for every sweeper that moves money, so they share one
     // counted, failing-open path and report through the same analytics.
     let biller = crate::billing::biller(database.clone(), analytics.clone());
-    authoring::spawn(
+    setup::spawn(
         supervisor,
         database,
         analytics,
         startup,
-        settings.authoring_cleanup,
+        settings.setup_cleanup,
     );
 
     billing::spawn(

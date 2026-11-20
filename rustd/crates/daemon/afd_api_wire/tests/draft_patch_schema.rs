@@ -15,7 +15,7 @@
 use af_fleet_runtime::definition::{
     ConfigOp, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
 };
-use afd_api_wire::authoring::DraftPatchRequest;
+use afd_api_wire::setup::DraftPatchRequest;
 use garde::Validate as _;
 use serde_json::{Value, json};
 use utoipa::{PartialSchema, ToSchema};
@@ -90,13 +90,13 @@ fn the_schema_lists_exactly_the_requests_fields() {
     let DraftPatchRequest::<Value, Value> {
         instance_name,
         title,
-        authoring_model_ref,
+        setup_model_ref,
         runtime_model_ref,
         config_ops,
         instruction_edits,
     } = serde_json::from_value(json!({})).expect("an empty patch parses");
     assert!(
-        [instance_name, title, authoring_model_ref, runtime_model_ref]
+        [instance_name, title, setup_model_ref, runtime_model_ref]
             .iter()
             .all(Option::is_none)
             && config_ops.is_empty()
@@ -106,7 +106,7 @@ fn the_schema_lists_exactly_the_requests_fields() {
     let fields = [
         "instance_name",
         "title",
-        "authoring_model_ref",
+        "setup_model_ref",
         "runtime_model_ref",
         "config_ops",
         "instruction_edits",

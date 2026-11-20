@@ -124,7 +124,7 @@ pub struct Draft {
     /// Strong opaque resource version.
     pub etag: String,
     /// Explicit selection for future messages.
-    pub authoring_model_ref: String,
+    pub setup_model_ref: String,
     /// Selected candidate, absent before initialization.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate: Option<Candidate>,

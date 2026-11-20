@@ -27,7 +27,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { readAuthContext } from "./fixtures/native-api.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { deleteFixtureFleet } from "./fixtures/teardown.ts";
-import { authoringModel, commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
+import { setupModel, commandValues, fixtureDefinition, inspectDraft, saveNativeFleet } from "./fixtures/native-setup.ts";
 import { AppliedSchema } from "../../src/commands/chat/protocol.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
@@ -86,7 +86,7 @@ if (!isLive) {
       fleetId = fleet.id;
       savedRevision = fleet.setup_revision;
       // An improve chat names its setup model, as every new chat does.
-      model = await authoringModel(await readAuthContext(env));
+      model = await setupModel(await readAuthContext(env));
     }, SETUP_TIMEOUT_MS);
 
     afterAll(async () => {

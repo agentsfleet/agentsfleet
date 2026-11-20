@@ -28,7 +28,7 @@ it.each(["candidate", "review"] as const)("refuses Save if the latest %s disappe
   expect(fixture.mutations()).toHaveLength(0);
 });
 
-it("refuses to save while a newly observed authoring request is running", async () => {
+it("refuses to save while a newly observed setup request is running", async () => {
   fixture.override = ({path}) => path.endsWith("/messages") ? response({items: [{...MESSAGE, state: "running"}], next_cursor: null}) : undefined;
   await expect(client.save()).rejects.toMatchObject({status: 409});
   expect(fixture.mutations()).toHaveLength(0);

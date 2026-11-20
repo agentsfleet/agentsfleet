@@ -6,8 +6,8 @@ use crate::{
     services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{CursorPage, Draft, DraftCard};
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{CursorPage, Draft, DraftCard};
+use afd_http::handler::{Refusal, setup_refusal};
 use afd_setup::types::ListQuery;
 use axum::{
     Json,
@@ -39,10 +39,10 @@ pub(crate) async fn list<D: TenantPlane>(
 ) -> Result<Response, Refusal> {
     let Query(query) = query.map_err(|_invalid| Refusal::malformed("Invalid draft list query"))?;
     let page = services
-        .authoring()
+        .drafts()
         .list(access(&owned, &person), query)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     Ok(Json(render::page(page, render::card)).into_response())
 }
 
@@ -63,10 +63,10 @@ pub(crate) async fn one<D: TenantPlane>(
     Path(path): Path<DraftPath>,
 ) -> Result<Response, Refusal> {
     let draft = services
-        .authoring_setup()
+        .setup()
         .read_draft(access(&owned, &person), &id(&path)?)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let tag = draft.etag.clone();
     let mut response = Json(render::draft(draft)).into_response();
     attach(&mut response, &tag);

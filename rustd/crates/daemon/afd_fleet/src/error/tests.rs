@@ -219,7 +219,7 @@ fn assert_error(expected: &Expected) {
 fn a_fleet_without_a_reviewed_setup_is_told_to_review_it() {
     let missing = Error::from(super::ErrorKind::SetupUnavailable);
 
-    assert_eq!(missing.code(), error_code::AUTHORING_POLICY);
+    assert_eq!(missing.code(), error_code::SETUP_POLICY);
     // pin test: literal is the contract
     assert_eq!(
         missing.detail(),

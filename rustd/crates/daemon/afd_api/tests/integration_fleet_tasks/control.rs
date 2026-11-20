@@ -104,7 +104,7 @@ async fn refusals(router: &axum::Router, fixture: &Tasks<'_>, path: &str, pause:
     )
     .await;
     assert_eq!(missing.status(), StatusCode::PRECONDITION_REQUIRED);
-    assert_eq!(crate::harness::code_of(missing).await, "UZ-AUTHOR-004");
+    assert_eq!(crate::harness::code_of(missing).await, "UZ-SETUP-004");
     for invalid in ["*", "W/\"weak\"", "\"stale\"", "\"a\", \"b\""] {
         let response = send_with_headers(
             router,

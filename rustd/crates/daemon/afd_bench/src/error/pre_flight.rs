@@ -68,7 +68,7 @@ impl Error {
             | ErrorKind::IdentifierRefused { .. }
             | ErrorKind::CeilingRefused { .. }
             | ErrorKind::RunUnreadable { .. }
-            | ErrorKind::AuthoringPathFaulted { .. }
+            | ErrorKind::SetupPathFaulted { .. }
             | ErrorKind::SamplerUnavailable { .. }
             | ErrorKind::LiveSetFaulted { .. }
             | ErrorKind::NothingIssued { .. }

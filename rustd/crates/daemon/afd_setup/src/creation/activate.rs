@@ -9,7 +9,7 @@ use crate::{
     types::{CheckKind, CheckState, DraftState},
 };
 use af_core::id::Uuid7;
-use af_observability::AuthoringStep;
+use af_observability::SetupStep;
 use afd_approval::{Origin, Wanted};
 use jiff::Timestamp;
 use sqlx::Transaction;
@@ -168,7 +168,7 @@ impl Creations {
             .map_err(query(CONTEXT))?;
         // Only the commit whose guarded update moved `installing` to `active`
         // gets here; a retry finds the fleet active and returns above.
-        let step = AuthoringStep::SetupFinished {
+        let step = SetupStep::SetupFinished {
             fleet_id: fleet.clone(),
         };
         self.setup.drafts.reached(access, step);

@@ -14,16 +14,10 @@ pub enum FailureReason {
     InsufficientBalance,
     /// The pinned setup model is no longer eligible.
     ModelUnavailable,
-    /// The assembled context cannot fit its hard bounds.
-    ContextTooLarge,
     /// A known-usage provider failure permits a new message.
     ProviderFailed,
     /// Every run of the turn lapsed unreported, so its usage is unknown.
     ProviderUsageUnknown,
-    /// The attempt exhausted its wall-clock allowance.
-    AttemptTimedOut,
-    /// Effective setup policy changed and requires review.
-    PolicyChanged,
     /// The run would not fit the runner protocol's frame, so it was failed
     /// at assignment and never sent.
     FrameTooLarge,

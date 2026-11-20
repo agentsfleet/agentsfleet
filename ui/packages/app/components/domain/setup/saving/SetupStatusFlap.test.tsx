@@ -109,7 +109,7 @@ it("stays quiet when a model can author", () => {
 
 it.each([
   {name: "no model is configured", patch: {}, label: "No chat model yet"},
-  {name: "no configured model can author", patch: {models: [{...MODEL, eligibility: {authoring: false, runtime: true}}]}, label: "No chat model available"},
+  {name: "no configured model can author", patch: {models: [{...MODEL, eligibility: {setup: false, runtime: true}}]}, label: "No chat model available"},
 ])("sends the owner to model settings when $name", ({patch, label}) => {
   render(<SetupStatusFlap view={{...READY, ...patch}} workspace={WORKSPACE} modelsHref={`/w/${WORKSPACE}/settings/models`} />);
   expect(screen.getByRole("status", {name: "Setup status"}).textContent).toBe(`${label}Set up model`);

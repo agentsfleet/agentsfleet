@@ -146,7 +146,7 @@ it("clears unfinished rename and editor state when New fleet resets the conversa
   expect(fixture.writes()).toHaveLength(0);
 });
 
-it("removes the save button and setup ellipsis from the authoring heading", () => {
+it("removes the save button and setup ellipsis from the setup heading", () => {
   const review = {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}};
   render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: {...DRAFT, review}}} />);
   expect(screen.queryByRole("button", {name: "Save changes"})).toBeNull();

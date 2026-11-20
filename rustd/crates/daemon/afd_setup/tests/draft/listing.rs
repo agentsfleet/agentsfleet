@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::AUTHORING_CURSOR;
+use af_core::error_code::SETUP_CURSOR;
 use afd_setup::types::{DraftState, ListQuery};
 
 const fn query(cursor: Option<String>) -> ListQuery {
@@ -63,7 +63,7 @@ async fn assert_cursor_binding(f: &Fixture, cursor: String) {
         .list(f.member_access(), query(Some(cursor.clone())))
         .await
         .expect_err("creator binding");
-    assert_eq!(error.code(), AUTHORING_CURSOR);
+    assert_eq!(error.code(), SETUP_CURSOR);
     let mut changed = query(Some(cursor));
     changed.state = Some(DraftState::Editing);
     assert_eq!(
@@ -72,7 +72,7 @@ async fn assert_cursor_binding(f: &Fixture, cursor: String) {
             .await
             .expect_err("filter binding")
             .code(),
-        AUTHORING_CURSOR
+        SETUP_CURSOR
     );
 }
 
@@ -251,7 +251,7 @@ async fn assert_search_binds_the_cursor(f: &Fixture) {
             .await
             .expect_err("query binding")
             .code(),
-        AUTHORING_CURSOR,
+        SETUP_CURSOR,
         "a continuation belongs to the search that issued it"
     );
 }

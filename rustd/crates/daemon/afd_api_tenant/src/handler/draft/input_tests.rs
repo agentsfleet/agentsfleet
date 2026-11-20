@@ -30,7 +30,7 @@ fn message_body(message: &str) -> Vec<u8> {
 fn create_body(message: &str) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "source": {"kind": "blank"},
-        "authoring_model_ref": "anthropic/claude-sonnet",
+        "setup_model_ref": "anthropic/claude-sonnet",
         "message": message,
         "operation_id": OPERATION,
     }))

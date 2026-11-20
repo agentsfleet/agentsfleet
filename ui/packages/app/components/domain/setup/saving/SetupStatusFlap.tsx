@@ -57,7 +57,7 @@ function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undef
 
 /** Explains the disabled composer, and only once a successful list proves no model can author. */
 function modelStatus(view: DraftView, modelsHref?: string): Status | null {
-  if (view.listStatus !== DRAFT_LIST_STATUS.ready || view.models.some(model => model.eligibility.authoring)) return null;
+  if (view.listStatus !== DRAFT_LIST_STATUS.ready || view.models.some(model => model.eligibility.setup)) return null;
   if (view.moreModels) return {label: "Load more models to find one for chat", icon: WarningCircleIcon};
   const link = modelsHref ? {href: modelsHref, label: "Set up model"} : undefined;
   return {label: view.models.length > 0 ? "No chat model available" : "No chat model yet", icon: WarningCircleIcon, link};

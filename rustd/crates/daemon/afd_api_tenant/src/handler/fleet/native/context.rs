@@ -9,8 +9,8 @@ use crate::{
     },
     services::{FleetSchedules as _, TenantPlane, WorkspaceTurns as _},
 };
-use afd_api_wire::authoring::{AuthoringContext, Conversation, CursorPage, SetupActivity};
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{Conversation, CursorPage, SetupActivity, SetupContext};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     Json,
     extract::{Path, Query, State, rejection::QueryRejection},
@@ -19,8 +19,8 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-const INVALID_QUERY: &str = "Invalid authoring context query";
-const READ_FAILED: &str = "fleet_authoring_activity_read_failed";
+const INVALID_QUERY: &str = "Invalid setup context query";
+const READ_FAILED: &str = "fleet_setup_activity_read_failed";
 
 #[derive(Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
@@ -31,13 +31,13 @@ pub(crate) struct ContextQuery {
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/authoring-context",
-    operation_id = "get_fleet_authoring_context", tag = afd_http::openapi::tag::FLEETS,
+    get, path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/setup-context",
+    operation_id = "get_fleet_setup_context", tag = afd_http::openapi::tag::FLEETS,
     summary = "Read your fleet editor context",
     description = "Returns current fleet setup, at most three creator-private conversations with at most 25 recent role rows each, and 25 filtered activity receipts. The complete response is limited to four mebibytes. Older whole turns or conversations move behind their continuation when that limit is reached. The conversation cursor binds creator, workspace and fleet. Older messages remain available through each draft's messages resource. Private responses must not be cached.",
     params(afd_http::openapi::path::Fleet,
         ("starting_after" = Option<String>, Query, description = "Use next_cursor unchanged to read older conversations for this creator and fleet.")),
-    responses((status = 200, body = AuthoringContext, description = "Bounded private editor context"),
+    responses((status = 200, body = SetupContext, description = "Bounded private editor context"),
         (status = 400, description = "Invalid query or cursor"), (status = 404, description = "Fleet or private draft unavailable"),
         afd_http::openapi::GuardedFailures,
     )
@@ -60,7 +60,7 @@ pub(crate) async fn read<D: TenantPlane>(
             .creations()
             .conversations(identity, &fleet, asked.starting_after.clone())
             .await
-            .map_err(authoring_refusal)
+            .map_err(setup_refusal)
     };
     let receipts = activity_history(services.as_ref(), &owned.workspace, &fleet);
     let ((saved, schedules), conversations, receipts) = tokio::try_join!(
@@ -69,7 +69,7 @@ pub(crate) async fn read<D: TenantPlane>(
         receipts
     )?;
     let boundaries = super::context_budget::capture(&conversations.items);
-    let mut payload = AuthoringContext {
+    let mut payload = SetupContext {
         fleet: render::payload(services.as_ref(), saved, &schedules),
         conversations: conversations.items.into_iter().map(conversation).collect(),
         activities: activity_page(receipts),
@@ -106,7 +106,7 @@ async fn current<D: TenantPlane>(
         .creations()
         .read(identity, fleet)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let schedules = services
         .schedules()
         .list(identity.workspace, fleet)

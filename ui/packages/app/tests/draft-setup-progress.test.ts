@@ -18,7 +18,7 @@ it("reports Saving until the accepted fleet response can be read", async () => {
   expect(client.getSnapshot()).toMatchObject({busy: false, pending: false, setupAction: null, savedSetupRevision: "1", fleet: {id: FLEET.id}});
 });
 
-it("replaces the saved confirmation as soon as the next authoring request starts", async () => {
+it("replaces the saved confirmation as soon as the next setup request starts", async () => {
   const client = await fixture.ready(true);
   await client.save();
   const gate = Promise.withResolvers<Response>();

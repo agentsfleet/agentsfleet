@@ -94,10 +94,10 @@ describe("private setup proxy", () => {
   });
   it("whitelists list parameters and omits arbitrary upstream queries", async () => {
     upstream.mockResolvedValue(response({items: []}));
-    await proxy(["models"], {}, "?purpose=authoring&limit=10&starting_after=cursor&credential=secret");
+    await proxy(["models"], {}, "?purpose=setup&limit=10&starting_after=cursor&credential=secret");
     const target = new URL(upstream.mock.calls[0]?.[0]);
     expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/models`);
-    expect(target.search).toBe("?limit=10&starting_after=cursor&purpose=authoring");
+    expect(target.search).toBe("?limit=10&starting_after=cursor&purpose=setup");
     await proxy(["models"]);
     expect(new URL(upstream.mock.calls.at(-1)?.[0]).search).toBe("");
   });
@@ -127,22 +127,22 @@ describe("private setup proxy", () => {
     const editor = {fleet: {id: FLEET_ID}, conversations: {items: [], next_cursor: null}};
     upstream.mockResolvedValue(response(editor));
     const query = new URLSearchParams({starting_after: "opaque+cursor", limit: "100", credential: "discard"});
-    const result = await proxy(["fleets", FLEET_ID, "authoring-context"], {}, `?${query}`);
+    const result = await proxy(["fleets", FLEET_ID, "setup-context"], {}, `?${query}`);
     expect(result.status).toBe(200); expect(await result.json()).toEqual(editor);
     expect(result.headers.get("cache-control")).toBe("private, no-store");
     const [url, request] = upstream.mock.calls[0]!;
     const target = new URL(url);
-    expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}/authoring-context`);
+    expect(target.pathname).toBe(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET_ID}/setup-context`);
     expect([...target.searchParams]).toEqual([["starting_after", "opaque+cursor"]]);
     expect(request.headers.get("Authorization")).toBe("Bearer synthetic-session");
   });
   it("refuses a signed-out editor read without calling the backend", async () => {
     credential.mockResolvedValue(null);
-    const result = await proxy(["fleets", FLEET_ID, "authoring-context"]);
+    const result = await proxy(["fleets", FLEET_ID, "setup-context"]);
     expect(result.status).toBe(401); expect(upstream).not.toHaveBeenCalled();
   });
   it.each([METHOD.post, METHOD.patch, METHOD.delete])("refuses an editor mutation (%s) before credential access", async method => {
-    expect((await proxy(["fleets", FLEET_ID, "authoring-context"], {method})).status).toBe(404);
+    expect((await proxy(["fleets", FLEET_ID, "setup-context"], {method})).status).toBe(404);
     expect(credential).not.toHaveBeenCalled(); expect(upstream).not.toHaveBeenCalled();
   });
   it("streams progress without buffering and strips content types outside the allowed set", async () => {
@@ -205,7 +205,7 @@ describe("setup route whitelist", () => {
     [["drafts", DRAFT_ID, "messages"], METHOD.get], [["drafts", DRAFT_ID, "messages"], METHOD.post],
     [["drafts", DRAFT_ID, "turns", "stream"], METHOD.get], [["drafts", DRAFT_ID, "turns", REVISION_ID], METHOD.patch],
     [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
-    [["fleets", FLEET_ID, "authoring-context"], METHOD.get], [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.patch],
+    [["fleets", FLEET_ID, "setup-context"], METHOD.get], [["fleets", FLEET_ID, "turns", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
@@ -213,7 +213,7 @@ describe("setup route whitelist", () => {
   it.each(allowed)("matches %s %s", (path, method) => {expect(matchSetupRoute(WORKSPACE, path, method)).toBeDefined();});
   it.each([
     ["models", DRAFT_ID], ["drafts", ".."], ["drafts", DRAFT_ID, "messages", "extra"], ["fleets", FLEET_ID, "secrets"],
-    ["fleets", FLEET_ID, "authoring-context", "extra"], ["secrets"],
+    ["fleets", FLEET_ID, "setup-context", "extra"], ["secrets"],
   ])("rejects unsupported path %s", (...path) => {expect(matchSetupRoute(WORKSPACE, path, METHOD.get)).toBeUndefined();});
   it("rejects a malformed workspace", () => {expect(matchSetupRoute("..", ["models"], METHOD.get)).toBeUndefined();});
   it.each([

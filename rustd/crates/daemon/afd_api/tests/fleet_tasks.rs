@@ -129,7 +129,7 @@ async fn task_controls_require_write_scope_and_a_bounded_conditional_request() {
     );
     let missing = send(&writer, Method::PATCH, &path, Some(&token), body).await;
     assert_eq!(missing.status(), StatusCode::PRECONDITION_REQUIRED);
-    assert_eq!(code_of(missing).await, "UZ-AUTHOR-004");
+    assert_eq!(code_of(missing).await, "UZ-SETUP-004");
     malformed_controls(&writer, &token, &path, body).await;
 }
 

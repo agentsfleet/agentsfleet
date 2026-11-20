@@ -269,7 +269,8 @@ const LONG_MESSAGE_BYTES: usize = 200 * 1024;
 
 /// A 200 KiB message is stored whole, reaches the setup run's model whole, and
 /// is answered; the one other outcome the ceiling leaves is the model's own
-/// context refusal, and that is the only failure this accepts.
+/// context refusal, which settles as `provider_failed`, and that is the only
+/// failure this accepts.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_setup_message_over_32_kib_is_answered() {
@@ -301,7 +302,7 @@ async fn a_setup_message_over_32_kib_is_answered() {
     } else {
         assert_eq!(
             (turn.status.as_str(), turn.failure_reason.as_deref()),
-            (MessageState::Failed.as_str(), Some("context_too_large")),
+            (MessageState::Failed.as_str(), Some("provider_failed")),
             "{turn:?}"
         );
     }

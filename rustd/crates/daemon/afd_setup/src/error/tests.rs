@@ -20,7 +20,7 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
         ),
         (
             ErrorKind::Policy,
-            error_code::AUTHORING_POLICY,
+            error_code::SETUP_POLICY,
             Some("review_required"),
         ),
         (
@@ -30,7 +30,7 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
         ),
         (
             ErrorKind::Model,
-            error_code::AUTHORING_MODEL,
+            error_code::SETUP_MODEL,
             Some("unavailable"),
         ),
     ] {

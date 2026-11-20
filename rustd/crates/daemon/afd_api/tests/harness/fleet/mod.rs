@@ -1,7 +1,7 @@
 //! Shared production-store setup for outage and live HTTP fixtures.
 
-mod authoring;
 mod clients;
+mod setup;
 
 use super::*;
 use clients::{connectors, interjector, logins, schedules};
@@ -49,7 +49,7 @@ impl Fleet {
             capabilities,
             authenticator,
         } = Inputs::new(database);
-        let authoring = authoring::stores(&database, &ledger);
+        let built = setup::stores(&database, &ledger);
         Self {
             native: None,
             ready: ReadyInputs {
@@ -67,9 +67,9 @@ impl Fleet {
             platform_keys: PlatformKeys::new(database.clone()),
             runs: NoWork::default(),
             tasks: tasks(&database, &bus, &ledger),
-            authoring: authoring.drafts,
-            authoring_setup: authoring.setup,
-            creations: authoring.creations,
+            drafts: built.drafts,
+            setup: built.setup,
+            creations: built.creations,
             workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),

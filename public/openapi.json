@@ -4077,7 +4077,7 @@
           "Memory"
         ],
         "summary": "Search what a fleet remembers",
-        "description": "Searches memory keys and content without case sensitivity, with key matches first. Shared entries are included when permitted and identify their authoring fleet. Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
+        "description": "Searches memory keys and content without case sensitivity, with key matches first. Shared entries are included when permitted and identify the fleet that wrote them. Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
         "operationId": "runner_recall_memory",
         "parameters": [
           {
@@ -14609,132 +14609,6 @@
         ]
       }
     },
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/authoring-context": {
-      "get": {
-        "tags": [
-          "Fleets"
-        ],
-        "summary": "Read your fleet editor context",
-        "description": "Returns current fleet setup, at most three creator-private conversations with at most 25 recent role rows each, and 25 filtered activity receipts. The complete response is limited to four mebibytes. Older whole turns or conversations move behind their continuation when that limit is reached. The conversation cursor binds creator, workspace and fleet. Older messages remain available through each draft's messages resource. Private responses must not be cached.",
-        "operationId": "get_fleet_authoring_context",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "fleet_id",
-            "in": "path",
-            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "starting_after",
-            "in": "query",
-            "description": "Use next_cursor unchanged to read older conversations for this creator and fleet.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Bounded private editor context",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthoringContext"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid query or cursor",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Fleet or private draft unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants": {
       "get": {
         "tags": [
@@ -16689,6 +16563,132 @@
         ]
       }
     },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/setup-context": {
+      "get": {
+        "tags": [
+          "Fleets"
+        ],
+        "summary": "Read your fleet editor context",
+        "description": "Returns current fleet setup, at most three creator-private conversations with at most 25 recent role rows each, and 25 filtered activity receipts. The complete response is limited to four mebibytes. Older whole turns or conversations move behind their continuation when that limit is reached. The conversation cursor binds creator, workspace and fleet. Older messages remain available through each draft's messages resource. Private responses must not be cached.",
+        "operationId": "get_fleet_setup_context",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Use next_cursor unchanged to read older conversations for this creator and fleet.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded private editor context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupContext"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query or cursor",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fleet or private draft unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks": {
       "get": {
         "tags": [
@@ -17946,7 +17946,7 @@
           {
             "name": "purpose",
             "in": "query",
-            "description": "authoring or runtime; omit for either",
+            "description": "setup or runtime; omit for either",
             "required": false,
             "schema": {
               "type": "string"
@@ -19706,39 +19706,6 @@
           }
         }
       },
-      "AuthoringContext": {
-        "type": "object",
-        "description": "One read for current fleet setup, private conversations and filtered receipts.",
-        "required": [
-          "fleet",
-          "conversations",
-          "activities"
-        ],
-        "properties": {
-          "activities": {
-            "$ref": "#/components/schemas/CursorPage_SetupActivity",
-            "description": "Up to 25 recorded activity receipts; runtime bodies are excluded before paging."
-          },
-          "conversations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Conversation_Value_Value"
-            },
-            "description": "Up to three of this creator's conversations, most recently updated first."
-          },
-          "fleet": {
-            "$ref": "#/components/schemas/FleetResponse",
-            "description": "Shared current setup, prerequisites and schedules."
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "More conversations for this creator, workspace and fleet, or null."
-          }
-        }
-      },
       "BillingBreakdown": {
         "type": "object",
         "description": "One spending group across the entire selected period.",
@@ -21452,14 +21419,10 @@
         "description": "Atomically create a private draft and optional first message.",
         "required": [
           "source",
-          "authoring_model_ref",
+          "setup_model_ref",
           "operation_id"
         ],
         "properties": {
-          "authoring_model_ref": {
-            "type": "string",
-            "description": "Copy an eligible `ref` from `GET /v1/workspaces/{workspace_id}/models?purpose=authoring`."
-          },
           "message": {
             "type": "string",
             "description": "Optional initial user text; 1 to 1,048,576 characters when present."
@@ -21471,6 +21434,10 @@
           "save": {
             "type": "boolean",
             "description": "Defaults to false. When true, save the finalized setup after this message succeeds.\nRequires `message`. Closing the browser does not cancel the save."
+          },
+          "setup_model_ref": {
+            "type": "string",
+            "description": "Copy an eligible `ref` from `GET /v1/workspaces/{workspace_id}/models?purpose=setup`."
           },
           "source": {
             "$ref": "#/components/schemas/Source_Value",
@@ -24378,13 +24345,9 @@
           "state",
           "title",
           "etag",
-          "authoring_model_ref"
+          "setup_model_ref"
         ],
         "properties": {
-          "authoring_model_ref": {
-            "type": "string",
-            "description": "Explicit model for future messages."
-          },
           "candidate": {
             "oneOf": [
               {
@@ -24433,6 +24396,10 @@
               "null"
             ],
             "description": "Complete effective setup, immutable requirements and live readiness."
+          },
+          "setup_model_ref": {
+            "type": "string",
+            "description": "Explicit model for future messages."
           },
           "state": {
             "type": "string",
@@ -24559,10 +24526,6 @@
         "type": "object",
         "description": "One complete idle drawer mutation, protected by If-Match.",
         "properties": {
-          "authoring_model_ref": {
-            "type": "string",
-            "description": "Explicit selection for future messages."
-          },
           "config_ops": {
             "type": "array",
             "items": {
@@ -24587,6 +24550,10 @@
             "type": "string",
             "description": "Runtime model reference in the native Definition."
           },
+          "setup_model_ref": {
+            "type": "string",
+            "description": "Explicit selection for future messages."
+          },
           "title": {
             "type": "string",
             "description": "Human display title; 1..100 characters."
@@ -24602,13 +24569,9 @@
           "state",
           "title",
           "etag",
-          "authoring_model_ref"
+          "setup_model_ref"
         ],
         "properties": {
-          "authoring_model_ref": {
-            "type": "string",
-            "description": "Explicit model for future messages."
-          },
           "candidate": {
             "oneOf": [
               {
@@ -24658,6 +24621,10 @@
             ],
             "description": "Complete effective setup, immutable requirements and live readiness."
           },
+          "setup_model_ref": {
+            "type": "string",
+            "description": "Explicit model for future messages."
+          },
           "state": {
             "type": "string",
             "description": "editing, saving or closed."
@@ -24680,17 +24647,17 @@
         "type": "object",
         "description": "Eligibility for each supported purpose is independent.",
         "required": [
-          "authoring",
+          "setup",
           "runtime"
         ],
         "properties": {
-          "authoring": {
-            "type": "boolean",
-            "description": "Bounded setup authoring is supported."
-          },
           "runtime": {
             "type": "boolean",
             "description": "Runtime provider resolution is supported."
+          },
+          "setup": {
+            "type": "boolean",
+            "description": "Bounded setup generation is supported."
           }
         }
       },
@@ -24855,11 +24822,8 @@
         "enum": [
           "insufficient_balance",
           "model_unavailable",
-          "context_too_large",
           "provider_failed",
           "provider_usage_unknown",
-          "attempt_timed_out",
-          "policy_changed",
           "frame_too_large"
         ]
       },
@@ -29234,6 +29198,39 @@
             "format": "int64",
             "description": "The head candidate's revision: a report's base names it.",
             "minimum": 0
+          }
+        }
+      },
+      "SetupContext": {
+        "type": "object",
+        "description": "One read for current fleet setup, private conversations and filtered receipts.",
+        "required": [
+          "fleet",
+          "conversations",
+          "activities"
+        ],
+        "properties": {
+          "activities": {
+            "$ref": "#/components/schemas/CursorPage_SetupActivity",
+            "description": "Up to 25 recorded activity receipts; runtime bodies are excluded before paging."
+          },
+          "conversations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Conversation_Value_Value"
+            },
+            "description": "Up to three of this creator's conversations, most recently updated first."
+          },
+          "fleet": {
+            "$ref": "#/components/schemas/FleetResponse",
+            "description": "Shared current setup, prerequisites and schedules."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "More conversations for this creator, workspace and fleet, or null."
           }
         }
       },

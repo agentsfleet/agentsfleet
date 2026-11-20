@@ -12,7 +12,7 @@ use crate::{
     types::DraftState,
 };
 use af_core::id::Uuid7;
-use af_observability::AuthoringStep;
+use af_observability::SetupStep;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
@@ -109,7 +109,7 @@ impl Creations {
     /// Reports that an installing fleet's setup was cancelled, by an archive
     /// or a delete, once its transaction committed.
     pub(super) fn setup_cancelled(&self, access: Access<'_>, fleet: &Uuid7) {
-        let step = AuthoringStep::SetupCancelled {
+        let step = SetupStep::SetupCancelled {
             fleet_id: fleet.clone(),
         };
         self.setup.drafts.reached(access, step);

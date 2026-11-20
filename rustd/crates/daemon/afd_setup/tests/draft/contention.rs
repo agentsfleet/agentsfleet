@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::AUTHORING_GONE;
+use af_core::error_code::SETUP_GONE;
 use sqlx::Connection as _;
 use std::time::Duration;
 
@@ -63,7 +63,7 @@ async fn deletion_before_creation_replay_neither_deadlocks_nor_recreates_text() 
         replayed
             .expect_err("replay observes the purge tombstone")
             .code(),
-        AUTHORING_GONE
+        SETUP_GONE
     );
     assert_eq!(f.counts().await, (0, 0, 0));
     drop(connection);

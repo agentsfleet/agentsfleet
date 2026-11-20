@@ -649,8 +649,8 @@ never `captured` or `delivered`.
 Eleven events reach production code: `ServerStarted`, `WorkerStarted`,
 `StartupFailed`, `WorkspaceCreated`, `FleetCompleted`, `ApiError`,
 `AuthLoginCompleted`, `AuthRejected`, `EntitlementRejected`, `InviteEmail` and
-`Authoring`. `InviteEmail` is reported under one of three names by its
-outcome. `Authoring` is reported under one of five funnel names by its step
+`Setup`. `InviteEmail` is reported under one of three names by its
+outcome. `Setup` is reported under one of five funnel names by its step
 ([product_analytics.md](./product_analytics.md) §"Private chat to fleet funnel").
 
 Two more, `FleetTriggered` and `SignupBootstrapped`, are declared and mapped

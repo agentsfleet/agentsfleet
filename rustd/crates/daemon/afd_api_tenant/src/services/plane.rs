@@ -142,9 +142,9 @@ pub trait TenantPlane: Shared {
     fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle;
 
     /// Creator-private setup shared by browser and terminal conversation clients.
-    fn authoring(&self) -> &afd_setup::Drafts;
+    fn drafts(&self) -> &afd_setup::Drafts;
     /// Human-reviewed native setup over the same private state and process key.
-    fn authoring_setup(&self) -> &afd_setup::Setup;
+    fn setup(&self) -> &afd_setup::Setup;
     /// Retained native Save, checked activation and initial-run recovery.
     fn creations(&self) -> &afd_setup::Creations;
 

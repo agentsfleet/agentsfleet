@@ -11,7 +11,7 @@ import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { cliEnv, deleteCliKey, makeCliStateDir, mintCliKey, spawnAgentsfleet, writeCliState } from "./fixtures/cli-runner";
 import { workspaceHref } from "./fixtures/nav";
 import { clientFor } from "./fixtures/api-client";
-import { authoringModelRef } from "./fixtures/native-setup";
+import { setupModelRef } from "./fixtures/native-setup";
 
 const cacheSchema = z.record(z.string(), z.object({sessionJwt: z.string()}));
 const FLOW_TIMEOUT_MS = 330_000;
@@ -39,7 +39,7 @@ test("terminal chat creates a private draft and explicitly saves a fleet visible
     await writeCliState(stateDir, workspace, key.key, api, "acceptance-workspace");
     const client = clientFor({sessionJwt: key.key});
     const env = cliEnv({AGENTSFLEET_STATE_DIR: stateDir, AGENTSFLEET_API_URL: api, AGENTSFLEET_API_KEY: key.key});
-    const model = await authoringModelRef({sessionJwt: key.key}, workspace);
+    const model = await setupModelRef({sessionJwt: key.key}, workspace);
     const sent = await spawnAgentsfleet(["--json", "chat", "--no-input", "--model", model,
       "--operation-id", uuidv7(), "--message", `${name}: Create a fleet for chat and steer messages only, with no external triggers, tools or credentials, daily budget one dollar, no monthly ceiling. Reply briefly to messages.`], env, FLOW_TIMEOUT_MS);
     expect(sent.code, sent.stdout + sent.stderr).toBe(0);

@@ -13,7 +13,7 @@ const CONNECTOR_STATIC: &str = "static";
 
 // Value: protects=a setup run, which runs a person's chat, never reaches a fleet's
 // credentials; fails_when=the mint scope resolves a draft-owned run; why_new=the
-// authoring mint suites left with the attempt tables; seam=the production draft
+// setup mint suites left with the attempt tables; seam=the production draft
 // assignment and the mint verb over live Postgres.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

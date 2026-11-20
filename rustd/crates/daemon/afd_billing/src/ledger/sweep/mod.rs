@@ -132,7 +132,7 @@ pub async fn resettle(
 #[derive(Debug, sqlx::FromRow)]
 struct OwedRow {
     fleet_nanos: i64,
-    authoring_nanos: i64,
+    setup_nanos: i64,
     oldest_seconds: i64,
 }
 
@@ -140,7 +140,7 @@ impl From<OwedRow> for metrics::Owed {
     fn from(row: OwedRow) -> Self {
         let gauge = |value: i64| u64::try_from(value).unwrap_or(0);
         Self {
-            unsettled_nanos: [gauge(row.fleet_nanos), gauge(row.authoring_nanos)],
+            unsettled_nanos: [gauge(row.fleet_nanos), gauge(row.setup_nanos)],
             oldest_seconds: gauge(row.oldest_seconds),
         }
     }

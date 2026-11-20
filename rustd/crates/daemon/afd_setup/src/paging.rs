@@ -66,7 +66,7 @@ mod tests {
             instant,
             "not a cursor".to_owned(),
         ] {
-            assert_eq!(refused(&raw), Some(error_code::AUTHORING_CURSOR), "{raw}");
+            assert_eq!(refused(&raw), Some(error_code::SETUP_CURSOR), "{raw}");
         }
     }
 }

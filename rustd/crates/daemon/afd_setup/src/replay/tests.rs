@@ -8,7 +8,7 @@ use af_core::id::Uuid7;
 const ACTOR: &str = "019f0000-0000-7000-8000-000000000001";
 const OTHER: &str = "019f0000-0000-7000-8000-000000000002";
 const RESOURCE: &str = "019f0000-0000-7000-8000-000000000003";
-const DIGEST: &str = "authoring:v1:sha256:aa";
+const DIGEST: &str = "setup:v1:sha256:aa";
 
 fn receipt(user: &str, digest: &str, live: bool) -> Receipt {
     Receipt {
@@ -33,22 +33,22 @@ fn a_receipt_answers_by_actor_body_and_resource() {
         (
             "another actor is refused",
             Some(receipt(OTHER, DIGEST, true)),
-            Some(error_code::AUTHORING_REPLAY),
+            Some(error_code::SETUP_REPLAY),
         ),
         (
             "a changed body is refused",
-            Some(receipt(ACTOR, "authoring:v1:sha256:bb", true)),
-            Some(error_code::AUTHORING_REPLAY),
+            Some(receipt(ACTOR, "setup:v1:sha256:bb", true)),
+            Some(error_code::SETUP_REPLAY),
         ),
         (
             "a deleted resource is gone",
             Some(receipt(ACTOR, DIGEST, false)),
-            Some(error_code::AUTHORING_GONE),
+            Some(error_code::SETUP_GONE),
         ),
         (
             "a changed body is refused before a deletion is reported",
-            Some(receipt(ACTOR, "authoring:v1:sha256:bb", false)),
-            Some(error_code::AUTHORING_REPLAY),
+            Some(receipt(ACTOR, "setup:v1:sha256:bb", false)),
+            Some(error_code::SETUP_REPLAY),
         ),
     ];
     for (case, read, expected) in cases {

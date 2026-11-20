@@ -6,8 +6,8 @@ use crate::{
     services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{Accepted, CursorPage, Message, MessageRequest};
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{Accepted, CursorPage, Message, MessageRequest};
+use afd_http::handler::{Refusal, setup_refusal};
 use afd_setup::types::MessageQuery;
 use axum::{
     Json,
@@ -47,7 +47,7 @@ pub(crate) async fn send<D: TenantPlane>(
     input::body_key(&headers)?;
     let id = id(&path)?;
     let accepted = services
-        .authoring()
+        .drafts()
         .send(
             access(&owned, &person),
             &id,
@@ -55,7 +55,7 @@ pub(crate) async fn send<D: TenantPlane>(
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let mut response = (StatusCode::ACCEPTED, Json(render::accepted(accepted))).into_response();
     location(&mut response, &owned.workspace, &id, "/messages");
     Ok(response)
@@ -83,9 +83,9 @@ pub(crate) async fn list<D: TenantPlane>(
     let Query(query) =
         query.map_err(|_invalid| Refusal::malformed("Invalid private message query"))?;
     let messages = services
-        .authoring()
+        .drafts()
         .messages(access(&owned, &person), &id(&path)?, query)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     Ok(Json(render::page(messages, render::message)).into_response())
 }

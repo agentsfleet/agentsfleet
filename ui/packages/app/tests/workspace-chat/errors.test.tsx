@@ -83,7 +83,7 @@ it("identifies a failed chat-history read without claiming a missing model", asy
 });
 
 
-it("offers model settings when a successful list confirms there are no authoring models", async () => {
+it("offers model settings when a successful list confirms there are no setup models", async () => {
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
@@ -99,7 +99,7 @@ it("explains configured but ineligible models and prevents an empty model menu",
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
-    ? Promise.resolve(response({items: [{...MODEL, eligibility: {authoring: false, runtime: true}}], next_cursor: null})) : base(input, init));
+    ? Promise.resolve(response({items: [{...MODEL, eligibility: {setup: false, runtime: true}}], next_cursor: null})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("status", {name: "Setup status"})).textContent).toContain("No chat model available");
   expect(screen.queryByRole("alert")).toBeNull();
@@ -133,7 +133,7 @@ it("reopens the current fleet setup after an initial read fails without creating
   const unavailable = "Current setup is temporarily unavailable";
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}/authoring-context`)) {
+    if (path.endsWith(`/fleets/${FLEET_ID}/setup-context`)) {
       reads += 1;
       return Promise.resolve(reads === 1 ? response({user_message: unavailable}, 503) : response({fleet: FLEET_DETAIL,
         conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null}));
@@ -159,7 +159,7 @@ it("loads the new saved revision when the same fleet source changes in place", a
   let current = FLEET_DETAIL;
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    return path.endsWith(`/fleets/${FLEET_ID}/authoring-context`) ? Promise.resolve(response({fleet: current,
+    return path.endsWith(`/fleets/${FLEET_ID}/setup-context`) ? Promise.resolve(response({fleet: current,
       conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null})) : base(input, init);
   });
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);

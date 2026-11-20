@@ -5,7 +5,7 @@ use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     services::TenantPlane,
 };
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{body::Bytes, extract::State, response::Response};
 use http::{HeaderMap, StatusCode};
 use std::sync::Arc;
@@ -44,7 +44,7 @@ pub(crate) async fn save<D: TenantPlane>(
         .creations()
         .save(access(&owned, &person), &operation, request, services.now())
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     super::schedules::after_activation(
         services.as_ref(),
         &owned.workspace,

@@ -65,7 +65,7 @@ test("a Definition file opens its draft without a first message and reviews it a
     const result = await invoke(origin, ["--definition", valid, "--model", MODEL, "--no-input", "--review"]);
     expect(result.code).toBe(0);
     expect(calls.map(({method, path}) => `${method} ${path}`)).toEqual([`POST ${DRAFTS}`, `GET ${DRAFTS}/${DRAFT_ID}`]);
-    expect(calls[0]?.body).toEqual({source: SOURCE, authoring_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
+    expect(calls[0]?.body).toEqual({source: SOURCE, setup_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
     const printed = result.out.trim().split("\n").map((line): unknown => JSON.parse(line));
     // pin test: literal is the contract
     expect(printed).toEqual([{kind: "chat_created", draft_id: DRAFT_ID}, {...REVIEW, draft_candidate_id: CANDIDATE_ID}]);
@@ -82,7 +82,7 @@ test("a first message travels with the Definition in one atomic creation", async
     const result = await invoke(origin, ["--definition", valid, "--model", MODEL, "--no-input", "--message", PRIVATE_TEXT]);
     expect(result.code).toBe(0);
     expect(calls.filter(({method}) => method === HTTP_METHOD.post)).toHaveLength(1);
-    expect(calls[0]?.body).toEqual({source: SOURCE, authoring_model_ref: MODEL, message: PRIVATE_TEXT,
+    expect(calls[0]?.body).toEqual({source: SOURCE, setup_model_ref: MODEL, message: PRIVATE_TEXT,
       operation_id: operationOf(calls[0]?.body)});
   });
 });

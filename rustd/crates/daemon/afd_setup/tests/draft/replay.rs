@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::{AUTHORING_MODEL, AUTHORING_REPLAY};
+use af_core::error_code::{SETUP_MODEL, SETUP_REPLAY};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -40,7 +40,7 @@ async fn concurrent_creation_replays_normalized_text_without_duplication() {
         )
         .await
         .expect_err("accepted keys cannot authorize changed text");
-    assert_eq!(error.code(), AUTHORING_REPLAY);
+    assert_eq!(error.code(), SETUP_REPLAY);
     assert_eq!(f.counts().await, (1, 1, 1));
     f.cleanup().await;
 }
@@ -51,13 +51,13 @@ async fn refused_creation_leaves_no_receipt_candidate_or_message() {
     let f = Fixture::create().await;
     let operation = mint();
     let mut invalid = f.request(operation.clone(), Some("Investigate"));
-    invalid.authoring_model_ref = mint().to_string();
+    invalid.setup_model_ref = mint().to_string();
     let error = f
         .drafts
         .create(f.access(), invalid, now())
         .await
         .expect_err("unknown model");
-    assert_eq!(error.code(), AUTHORING_MODEL);
+    assert_eq!(error.code(), SETUP_MODEL);
     assert_eq!(f.counts().await, (0, 0, 0));
     let created = f
         .drafts

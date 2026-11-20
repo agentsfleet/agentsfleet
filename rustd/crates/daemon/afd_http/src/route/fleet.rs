@@ -25,7 +25,7 @@ pub enum FleetRoute {
     /// One fleet: read it, steer it, or delete it.
     Detail,
     /// Creator-private editor context with bounded conversations and receipts.
-    AuthoringContext,
+    SetupContext,
     /// Apply a reviewed private improvement to this fleet's setup.
     Revisions,
     /// The fleet's message thread.
@@ -64,7 +64,7 @@ impl FleetRoute {
     /// Every fleet route.
     pub const ALL: &'static [Self] = &[
         Self::Detail,
-        Self::AuthoringContext,
+        Self::SetupContext,
         Self::Revisions,
         Self::Messages,
         Self::Tasks,
@@ -91,7 +91,7 @@ impl FleetRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::AuthoringContext
+            Self::SetupContext
             | Self::Tasks
             | Self::Turns
             | Self::TurnsStream
@@ -119,7 +119,7 @@ impl FleetRoute {
         match self {
             Self::TurnsStream => RouteClass::Stream,
             Self::Detail
-            | Self::AuthoringContext
+            | Self::SetupContext
             | Self::Revisions
             | Self::Messages
             | Self::Tasks
@@ -142,7 +142,7 @@ impl FleetRoute {
     const fn template(self) -> &'static str {
         match self {
             Self::Detail => fleet_path!(""),
-            Self::AuthoringContext => fleet_path!("/authoring-context"),
+            Self::SetupContext => fleet_path!("/setup-context"),
             Self::Revisions => fleet_path!("/revisions"),
             Self::Messages => fleet_path!("/messages"),
             Self::Tasks => fleet_path!("/tasks"),
@@ -186,7 +186,7 @@ impl FleetRoute {
             Self::Detail => Scopes::rwa(FLEET_READ, FLEET_WRITE, FLEET_ADMIN),
             // Who may read and publish shared memory is an edit to the fleet,
             // not a lifecycle transition, so it takes the write scope.
-            Self::Revisions | Self::Memory | Self::MemoryAccess | Self::AuthoringContext => {
+            Self::Revisions | Self::Memory | Self::MemoryAccess | Self::SetupContext => {
                 Scopes::Always(FLEET_WRITE)
             }
             // Stopping a turn is steering the fleet, so it takes the write

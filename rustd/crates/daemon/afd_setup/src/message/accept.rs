@@ -13,7 +13,7 @@ use crate::{
     types::{Accepted, DraftState, QUEUED, SendMessage},
 };
 use af_core::id::Uuid7;
-use af_observability::AuthoringStep;
+use af_observability::SetupStep;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 use std::sync::Arc;
@@ -119,7 +119,7 @@ impl Drafts {
         if !accepted.replayed {
             self.wake_setup(id).await;
             let draft_id = id.clone();
-            let step = AuthoringStep::MessageAccepted { draft_id };
+            let step = SetupStep::MessageAccepted { draft_id };
             self.reached(access, step);
         }
         Ok(accepted)
@@ -148,7 +148,7 @@ impl Drafts {
             .bind(ids.map(|(message, _)| message))
             .bind(&request.operation_id)
             .bind(QUEUED)
-            .bind(model::tenant_model(&draft.authoring_model_ref)?)
+            .bind(model::tenant_model(&draft.setup_model_ref)?)
             .bind(text)
             .bind(ids.map(|(_, receipt)| receipt))
             .bind(&draft.workspace_id)

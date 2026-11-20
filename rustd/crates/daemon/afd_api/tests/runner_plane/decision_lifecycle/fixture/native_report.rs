@@ -23,7 +23,7 @@ async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
         "native_decision_http",
         ScopeSet::EMPTY,
     )
-    .with_native_authoring(fixture.database.clone())
+    .with_native_setup(fixture.database.clone())
     .with_recorded_analytics();
     let router = services.router();
     let mut session = Session::open(&router, Some(&fixture.runner.token))

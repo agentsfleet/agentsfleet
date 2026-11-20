@@ -15,12 +15,12 @@
 //! place would split a funnel in the analytics without failing anything here
 //! (RULE UFS).
 
-mod authoring;
+mod setup;
 
 use af_core::id::Uuid7;
 use posthog_rs::Event;
 
-pub use self::authoring::AuthoringStep;
+pub use self::setup::SetupStep;
 
 /// One product event, with everything it reports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,15 +172,15 @@ pub enum Telemetry {
         outcome: InviteEmailOutcome,
     },
     /// One step of the private-chat-to-fleet funnel. Reported under one of
-    /// five names, by [`AuthoringStep`].
-    Authoring {
+    /// five names, by [`SetupStep`].
+    Setup {
         /// The person whose chat or setup it is, as the OIDC subject the
         /// browser identifies them under, so both halves join one funnel.
         actor: String,
         /// The workspace it happened in.
         workspace_id: Uuid7,
         /// Which step, and the opaque identifiers it carries.
-        step: AuthoringStep,
+        step: SetupStep,
     },
 }
 
@@ -232,7 +232,7 @@ impl Telemetry {
                 InviteEmailOutcome::Failed { .. } => "invite_email_failed",
                 InviteEmailOutcome::Unconfigured => "invite_email_unconfigured",
             },
-            Self::Authoring { ref step, .. } => step.name(),
+            Self::Setup { ref step, .. } => step.name(),
         }
     }
 
@@ -252,7 +252,7 @@ impl Telemetry {
             | Self::FleetCompleted { actor, .. }
             | Self::SignupBootstrapped { actor, .. }
             | Self::InviteEmail { actor, .. }
-            | Self::Authoring { actor, .. } => Some(actor),
+            | Self::Setup { actor, .. } => Some(actor),
             Self::WalletExhausted { tenant_id } => Some(tenant_id),
             Self::ServerStarted { .. }
             | Self::WorkerStarted { .. }
@@ -280,4 +280,4 @@ mod tests;
 mod invite_tests;
 
 #[cfg(test)]
-mod authoring_tests;
+mod setup_tests;

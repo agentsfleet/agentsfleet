@@ -3,7 +3,7 @@
 
 use crate::{Access, Drafts, Result, access, draft::read, error::raise::query, types::CANCELLED};
 use af_core::id::Uuid7;
-use af_observability::AuthoringStep;
+use af_observability::SetupStep;
 use afd_turns::view::stop::{Stop, Stopped};
 use sqlx::Connection as _;
 
@@ -43,7 +43,7 @@ impl Drafts {
             let draft_id = id.clone();
             self.reached(
                 access,
-                AuthoringStep::MessageFinished {
+                SetupStep::MessageFinished {
                     draft_id,
                     state: CANCELLED,
                 },

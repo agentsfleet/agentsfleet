@@ -67,7 +67,7 @@ test("saved setup has the same composer placement, pencil, summary and return ro
   if (info.project.name !== "mobile-chromium") await expect(page.getByRole("navigation", {name: "Primary"})).toBeVisible();
   await expect(page.getByRole("button", {name: "Save fleet", exact: true})).toHaveCount(0);
   await expect(page.getByRole("button", {name: "Save", exact: true})).toBeVisible();
-  await expect(page.getByRole("combobox", {name: "Authoring model"})).toHaveText("MiniMax M3.1 Flash");
+  await expect(page.getByRole("combobox", {name: "Setup model"})).toHaveText("MiniMax M3.1 Flash");
   await expect(page.getByRole("link", {name: "Back to fleet conversation"})).toHaveAttribute("href", /\/fleets\/0199a801-/);
   await expect(page.getByRole("button", {name: "Edit instructions"}).locator("svg")).toBeVisible();
   const input = page.getByRole("textbox");
@@ -135,7 +135,7 @@ test("chat load failures flash without displacing the page and retain scoped rec
     unavailable = false;
     await recovery.getByRole("button", {name: "Retry", exact: true}).click();
     await expect(recovery).toHaveCount(0);
-    await expect(page.getByRole("combobox", {name: "Authoring model"})).toBeEnabled();
+    await expect(page.getByRole("combobox", {name: "Setup model"})).toBeEnabled();
     await page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"}).fill("Review the callback regression");
     await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeEnabled();
   }

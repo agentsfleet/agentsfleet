@@ -78,18 +78,18 @@ it("refuses to continue a saved view without a fleet identity before making any 
 
 it("opens Edit setup with the creator-scoped history read and no mutation", async () => {
   fixture.current = SAVED;
-  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response(context(SAVED)) : undefined;
+  fixture.override = ({path}) => path.endsWith("/setup-context") ? response(context(SAVED)) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await client.refreshFleetSetup();
   expect(client.getSnapshot().previousDrafts?.[0]?.messages).toEqual([MESSAGE]);
-  expect(fixture.calls.filter(call => call.path.endsWith("/authoring-context"))).toHaveLength(1);
+  expect(fixture.calls.filter(call => call.path.endsWith("/setup-context"))).toHaveLength(1);
   expect(fixture.mutations()).toEqual([]);
 });
 
 it("restores earlier saved conversations after reopening without executing historical Save messages", async () => {
   const latest = {...SAVED, id: NEXT_DRAFT};
-  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response({...context(latest, SAVED),
+  fixture.override = ({path}) => path.endsWith("/setup-context") ? response({...context(latest, SAVED),
     conversations: context(latest, SAVED).conversations.map(item => ({...item, messages: [{...MESSAGE, text: "Save"}]}))}) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
@@ -111,7 +111,7 @@ it.each([
   if (failure === "missing instructions") fixture.fleet = {...FLEET_DETAIL, definition: undefined};
   if (failure === "wrong conversation") {
     fixture.current = {...SAVED, linked_fleet_id: NEXT_DRAFT};
-    fixture.override = ({path}) => path.endsWith("/authoring-context") ? response(context(fixture.current)) : undefined;
+    fixture.override = ({path}) => path.endsWith("/setup-context") ? response(context(fixture.current)) : undefined;
   }
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await expect(client.refreshFleetSetup()).rejects.toMatchObject({name: "SetupUnavailable", status, message});
@@ -121,7 +121,7 @@ it.each([
   expect(fixture.mutations()).toEqual([]);
 });
 
-// Value: protects=unreadable saved instructions never start a replacement edit; fails_when=an incomplete fleet is accepted as an authoring source;
+// Value: protects=unreadable saved instructions never start a replacement edit; fails_when=an incomplete fleet is accepted as a setup source;
 // why_new=existing refusal cases only denied access; seam=none; no_claim=server fleet completeness (mocked HTTP).
 it.each([403, 404, 502])("does not replace saved instructions or start another draft after a %i read refusal", async status => {
   fixture.current = SAVED;
@@ -141,7 +141,7 @@ it.each([403, 404, 502])("does not replace saved instructions or start another d
 
 it("does not silently archive an earlier setup request that is still running", async () => {
   fixture.current = SAVED;
-  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response({...context(SAVED),
+  fixture.override = ({path}) => path.endsWith("/setup-context") ? response({...context(SAVED),
     conversations: context(SAVED).conversations.map(item => ({...item, messages: [{...MESSAGE, state: "running"}]}))}) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
@@ -193,10 +193,10 @@ it("resumes a creator's editable conversation at the fleet's current setup revis
   fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID,
     review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
   const client = await fixture.ready();
-  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response(context(fixture.current)) : undefined;
+  fixture.override = ({path}) => path.endsWith("/setup-context") ? response(context(fixture.current)) : undefined;
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await client.refreshFleetSetup();
-  expect(client.getSnapshot()).toMatchObject({draft: fixture.current, messages: [MESSAGE], model: DRAFT.authoring_model_ref,
+  expect(client.getSnapshot()).toMatchObject({draft: fixture.current, messages: [MESSAGE], model: DRAFT.setup_model_ref,
     preview: {definition: FLEET_DETAIL.definition, setupRevision: "1"}, savedSetupRevision: null});
   expect(client.getSnapshot().previousDrafts).toEqual([]);
   expect(fixture.mutations()).toEqual([]);

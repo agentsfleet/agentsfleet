@@ -8,7 +8,7 @@ use af_fleet_runtime::{
     definition::{ConfigOp, InstructionEdit},
 };
 use af_validate::{Sentences, TEXT_TOO_LONG};
-use afd_api_wire::authoring as wire;
+use afd_api_wire::setup as wire;
 use afd_setup::types::{CreateDraft, DraftPatch, SendMessage, Source};
 use garde::Validate as _;
 use http::HeaderMap;
@@ -50,7 +50,7 @@ pub(super) fn create(bytes: &[u8]) -> Result<CreateDraft, Refusal> {
         source,
         message: request.message,
         save: request.save,
-        authoring_model_ref: request.authoring_model_ref,
+        setup_model_ref: request.setup_model_ref,
         operation_id: uuid(&request.operation_id)?,
     };
     create
@@ -64,7 +64,7 @@ pub(super) fn patch(bytes: &[u8]) -> Result<DraftPatch, Refusal> {
     Ok(DraftPatch {
         title: request.title,
         instance_name: request.instance_name,
-        authoring_model_ref: request.authoring_model_ref,
+        setup_model_ref: request.setup_model_ref,
         runtime_model_ref: request.runtime_model_ref,
         config_ops: request.config_ops,
         instruction_edits: request.instruction_edits,

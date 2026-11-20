@@ -58,7 +58,7 @@ async fn a_stale_delete_changes_nothing() -> TestResult {
         .delete(c.base.access(), &saved.id, "\"stale\"")
         .await
         .expect_err("a stale tag deletes nothing");
-    assert_eq!(refused.code(), error_code::AUTHORING_STALE);
+    assert_eq!(refused.code(), error_code::SETUP_STALE);
 
     let after = (
         cards(&c, &saved.id).await,

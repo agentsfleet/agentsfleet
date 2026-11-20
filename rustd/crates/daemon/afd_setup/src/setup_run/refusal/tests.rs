@@ -70,7 +70,7 @@ fn a_proposal_on_the_head_is_accepted() -> Result<(), Box<dyn std::error::Error>
 
 /// A base candidate that is no longer the head, a revision that moved, and a
 /// first-setup proposal on a draft that has a head now each answer
-/// `UZ-AUTHOR-003` with the detail that sends the person to ask again.
+/// `UZ-SETUP-003` with the detail that sends the person to ask again.
 #[test]
 fn a_proposal_off_the_head_is_refused_as_stale() -> Result<(), Box<dyn std::error::Error>> {
     let head = uuid(HEAD)?;
@@ -86,7 +86,7 @@ fn a_proposal_off_the_head_is_refused_as_stale() -> Result<(), Box<dyn std::erro
     ] {
         let outcome = check(on_head, &stale);
         assert!(
-            refused_with(&outcome, error_code::AUTHORING_STALE),
+            refused_with(&outcome, error_code::SETUP_STALE),
             "{outcome:?}"
         );
         assert!(
@@ -102,7 +102,7 @@ fn a_proposal_off_the_head_is_refused_as_stale() -> Result<(), Box<dyn std::erro
         &proposal(Some(HEAD), 2, &text),
     );
     assert!(
-        refused_with(&first, error_code::AUTHORING_STALE),
+        refused_with(&first, error_code::SETUP_STALE),
         "an edit on a draft with no head yet: {first:?}"
     );
     Ok(())

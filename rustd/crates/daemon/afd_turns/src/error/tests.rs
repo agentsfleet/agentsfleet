@@ -182,7 +182,7 @@ fn every_sentence_is_one_the_workspace_declares() {
         DETAIL_DATABASE_UNAVAILABLE,
         DETAIL_DATABASE_ERROR,
         DETAIL_OPERATION_FAILED,
-        af_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
+        af_core::problem::Problem::of(error_code::SETUP_POLICY).title(),
         af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
         af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_ACTIVE).title(),
     ];

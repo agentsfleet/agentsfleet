@@ -102,8 +102,8 @@ impl Error {
     fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
             ErrorKind::Policy => (
-                error_code::AUTHORING_POLICY,
-                af_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
+                error_code::SETUP_POLICY,
+                af_core::problem::Problem::of(error_code::SETUP_POLICY).title(),
             ),
             ErrorKind::FleetAbsent => (
                 error_code::AGENTSFLEET_NOT_FOUND,

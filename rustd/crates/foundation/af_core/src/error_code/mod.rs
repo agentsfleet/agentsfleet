@@ -131,19 +131,19 @@ const fn is_registry_spelling(code: &str) -> bool {
 // tables are walked against each other by a test, and a family that lives in
 // comparable files is a family somebody can actually compare.
 mod auth;
-mod authoring;
 mod fleet;
 mod integration;
 mod invite;
 mod request;
+mod setup;
 mod task;
 
 pub use self::auth::*;
-pub use self::authoring::*;
 pub use self::fleet::*;
 pub use self::integration::*;
 pub use self::invite::*;
 pub use self::request::*;
+pub use self::setup::*;
 pub use self::task::*;
 
 /// Every code this crate declares, in declaration order.
@@ -309,19 +309,18 @@ pub const REGISTRY: &[ErrorCode] = &[
     INVITE_CONFLICT,
     MEMBER_LAST_OWNER,
     INVITE_EMAIL_UNAVAILABLE,
-    AUTHORING_NOT_FOUND,
-    AUTHORING_STATE,
-    AUTHORING_STALE,
-    AUTHORING_PRECONDITION,
-    AUTHORING_REPLAY,
-    AUTHORING_REVIEW,
-    AUTHORING_BALANCE,
-    AUTHORING_MODEL,
-    AUTHORING_POLICY,
-    AUTHORING_TOKEN,
-    AUTHORING_CURSOR,
-    AUTHORING_GONE,
-    AUTHORING_PROVIDER,
-    AUTHORING_UNKNOWN,
-    AUTHORING_TIMEOUT,
+    SETUP_NOT_FOUND,
+    SETUP_STATE,
+    SETUP_STALE,
+    SETUP_PRECONDITION,
+    SETUP_REPLAY,
+    SETUP_REVIEW,
+    SETUP_BALANCE,
+    SETUP_MODEL,
+    SETUP_POLICY,
+    SETUP_TOKEN,
+    SETUP_CURSOR,
+    SETUP_GONE,
+    SETUP_PROVIDER,
+    SETUP_UNKNOWN,
 ];

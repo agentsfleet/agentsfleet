@@ -10,9 +10,9 @@ use crate::{
     message, replay, sql,
     types::{Accepted, CreateDraft, Created, EDITING, MAX_TITLE_CHARS, SourcePin},
 };
-use af_core::{error_code::AUTHORING_NOT_FOUND, id::Uuid7};
+use af_core::{error_code::SETUP_NOT_FOUND, id::Uuid7};
 use af_fleet_runtime::Definition;
-use af_observability::AuthoringStep;
+use af_observability::SetupStep;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
@@ -75,7 +75,7 @@ impl Drafts {
         // gone was accepted and then deleted: Gone, never a new draft.
         let locked = match read::lock(&mut tx, access, &person, &id).await {
             Ok(locked) => locked,
-            Err(error) if replayed && error.code() == AUTHORING_NOT_FOUND => {
+            Err(error) if replayed && error.code() == SETUP_NOT_FOUND => {
                 return Err(ErrorKind::Gone.into());
             }
             Err(error) => return Err(error),
@@ -84,7 +84,7 @@ impl Drafts {
         tx.commit().await.map_err(query(CONTEXT))?;
         if request.message.is_some() && !replayed {
             self.wake_setup(&id).await;
-            let step = AuthoringStep::MessageAccepted { draft_id: id };
+            let step = SetupStep::MessageAccepted { draft_id: id };
             self.reached(access, step);
         }
         let accepted = request.message.as_ref().map(|_| Accepted {
@@ -97,12 +97,7 @@ impl Drafts {
 
     async fn allocate(&self, connection: &mut PgConnection, new: New<'_>) -> Result<(Uuid7, bool)> {
         let captured = candidate::resolve(connection, new.access, new.request).await?;
-        model::selected(
-            connection,
-            &new.person.owner,
-            &new.request.authoring_model_ref,
-        )
-        .await?;
+        model::selected(connection, &new.person.owner, &new.request.setup_model_ref).await?;
         let id = self.mint(new.now)?;
         let receipt = self.mint(new.now)?;
         let inserted = replay::reserve(
@@ -171,7 +166,7 @@ impl Drafts {
                     operation: &new.request.operation_id,
                     text,
                     save: new.request.save,
-                    model: &new.request.authoring_model_ref,
+                    model: &new.request.setup_model_ref,
                 },
             )
             .await?;
@@ -226,7 +221,7 @@ async fn write_draft(
             captured.definition.as_ref(),
         ))
         .bind(EDITING)
-        .bind(model::tenant_model(&new.request.authoring_model_ref)?)
+        .bind(model::tenant_model(&new.request.setup_model_ref)?)
         .bind(pin.source_type())
         .bind(captured.fleet_revision.as_ref())
         .bind(captured.instance_name.as_deref())

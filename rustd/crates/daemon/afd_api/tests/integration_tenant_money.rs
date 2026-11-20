@@ -19,8 +19,8 @@ use serde_json::Value;
 
 use self::harness::{Fleet, exchange, items, json_body, send, send_with_headers};
 
-#[path = "tenant_money/authoring.rs"]
-mod authoring;
+#[path = "tenant_money/setup.rs"]
+mod setup;
 
 const SUBJECT: &str = "user_live_money_catalogue";
 const BALANCE: i64 = 42_000;

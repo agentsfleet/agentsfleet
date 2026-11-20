@@ -21,7 +21,7 @@
 //! step rather than refusing the write.
 
 use af_core::id::Uuid7;
-use af_observability::{Analytics, AuthoringStep, Telemetry};
+use af_observability::{Analytics, SetupStep, Telemetry};
 use sqlx::PgConnection;
 
 use crate::{Access, Drafts, Result, error::raise::query};
@@ -31,8 +31,8 @@ const CONTEXT: &str = "attribute a private-chat funnel step";
 impl Drafts {
     /// Reports `step`, attributed to the person acting in `access`. Call only
     /// after the transaction that made it true committed.
-    pub(crate) fn reached(&self, access: Access<'_>, step: AuthoringStep) {
-        self.analytics.report(&Telemetry::Authoring {
+    pub(crate) fn reached(&self, access: Access<'_>, step: SetupStep) {
+        self.analytics.report(&Telemetry::Setup {
             actor: access.subject.to_owned(),
             workspace_id: access.workspace.clone(),
             step,
@@ -77,10 +77,10 @@ impl Owed {
 
     /// Owes `message`'s finish, for a caller that already holds the subject.
     pub(crate) fn finished_by(&mut self, actor: String, message: Message<'_>, state: &'static str) {
-        self.0.push(Telemetry::Authoring {
+        self.0.push(Telemetry::Setup {
             actor,
             workspace_id: message.workspace.clone(),
-            step: AuthoringStep::MessageFinished {
+            step: SetupStep::MessageFinished {
                 draft_id: message.draft.clone(),
                 state,
             },

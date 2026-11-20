@@ -1,12 +1,12 @@
 //! Observational data is excluded; effective selections and sealed versions are included.
 
 use super::*;
-use af_core::error_code::AUTHORING_REVIEW;
+use af_core::error_code::SETUP_REVIEW;
 use afd_setup::types::{CheckKind, CheckState};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn timestamp_wallet_and_authoring_selection_do_not_change_reviewed_meaning() {
+async fn timestamp_wallet_and_setup_model_selection_do_not_change_reviewed_meaning() {
     let f = Fixture::create().await;
     let draft = draft(&f, false).await;
     let first = review(&f, &draft, false).await;
@@ -24,10 +24,9 @@ async fn timestamp_wallet_and_authoring_selection_do_not_change_reviewed_meaning
     );
     sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
         .bind(&f.tenant).bind(crate::draft::FUNDED_NANOS).execute(&mut *f.connection().await).await.expect("fund owner wallet");
-    let patch: DraftPatch = serde_json::from_value(
-        json!({"authoring_model_ref":f.other_model,"title":"Display title"}),
-    )
-    .expect("metadata edit");
+    let patch: DraftPatch =
+        serde_json::from_value(json!({"setup_model_ref":f.other_model,"title":"Display title"}))
+            .expect("metadata edit");
     f.drafts
         .patch(f.access(), &draft.id, Some(&draft.etag), patch, now())
         .await
@@ -66,7 +65,7 @@ async fn independent_instance_selection_invalidates_review_without_a_candidate_r
     let error = second
         .require_digest(&first.review_digest)
         .expect_err("stale human review");
-    assert_eq!(error.code(), AUTHORING_REVIEW);
+    assert_eq!(error.code(), SETUP_REVIEW);
     assert_eq!(error.current_state(), Some("review_required"));
     assert_eq!(error.review_digest(), Some(second.review_digest.as_str()));
     f.cleanup().await;

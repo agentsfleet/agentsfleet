@@ -144,7 +144,7 @@ export class ChatActions {
   }
 
   model(ref: string) {
-    return this.#idleSetup().pipe(Effect.andThen(() => this.#session.patch({authoring_model_ref: ref})),
+    return this.#idleSetup().pipe(Effect.andThen(() => this.#session.patch({setup_model_ref: ref})),
       Effect.tap(() => Effect.sync(() => { this.#seen = undefined; })), Effect.asVoid);
   }
 

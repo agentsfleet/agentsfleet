@@ -158,7 +158,7 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
             agentsfleetd::sweepers::FLEET_CENSUS,
             agentsfleetd::sweepers::TASKS,
             agentsfleetd::sweepers::TASK_STORAGE,
-            agentsfleetd::sweepers::AUTHORING,
+            agentsfleetd::sweepers::SETUP,
             agentsfleetd::sweepers::BILLING,
             agentsfleetd::sweepers::EXPIRY,
             agentsfleetd::inventory::BUS_SHUTDOWN,

@@ -59,7 +59,7 @@ const INVENTORY: &[&str] = &[
     // §3 — workspace fleets and install.
     "/v1/workspaces/{workspace_id}/fleets",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/authoring-context",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/setup-context",
     // §4 — the vault.
     "/v1/workspaces/{workspace_id}/secrets",
     "/v1/workspaces/{workspace_id}/secrets/{name}",
@@ -87,7 +87,7 @@ const INVENTORY: &[&str] = &[
     // Onboarding and preferences.
     "/v1/workspaces/{workspace_id}/onboarding",
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
-    // M227 N1–N17 (`docs/architecture/api_resources.md`) — eligible models,
+    // M227 N1–N11 (`docs/architecture/api_resources.md`) — eligible models,
     // creator-private drafts and reviewed setup revisions. Removed R1/R2
     // `library-entries` and M253's Plugin routes have no row here.
     "/v1/workspaces/{workspace_id}/models",

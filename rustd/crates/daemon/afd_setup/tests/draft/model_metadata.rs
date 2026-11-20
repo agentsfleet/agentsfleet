@@ -52,11 +52,7 @@ async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_ou
         .execute(&mut *f.connection().await)
         .await
         .expect("unconfigure one model");
-    for purpose in [
-        None,
-        Some(ModelPurpose::Authoring),
-        Some(ModelPurpose::Runtime),
-    ] {
+    for purpose in [None, Some(ModelPurpose::Setup), Some(ModelPurpose::Runtime)] {
         let page = f
             .drafts
             .models(
@@ -78,7 +74,7 @@ async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_ou
         let usable = items
             .iter()
             .find(|row| {
-                row.pointer("/eligibility/authoring")
+                row.pointer("/eligibility/setup")
                     .and_then(serde_json::Value::as_bool)
                     == Some(true)
             })
@@ -98,7 +94,7 @@ fn assert_unconfigured(items: &[serde_json::Value]) {
     let unconfigured = items
         .iter()
         .find(|row| {
-            row.pointer("/eligibility/authoring")
+            row.pointer("/eligibility/setup")
                 .and_then(serde_json::Value::as_bool)
                 == Some(false)
         })
@@ -123,7 +119,7 @@ async fn rotating_with_the_same_timestamp_changes_resolution_generation() {
         "a creator's own account never supplies the owner's reference"
     );
     let timestamp: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "SELECT updated_at FROM vault.secrets WHERE workspace_id=$1 AND key_name='authoring-model'",
+        "SELECT updated_at FROM vault.secrets WHERE workspace_id=$1 AND key_name='setup-model'",
     )
     .bind(&f.workspace)
     .fetch_one(&mut *connection)
@@ -155,7 +151,7 @@ async fn rotate(f: &Fixture) {
     Vault::new(f.db.clone(), Arc::new(kek), Entropy::new())
         .replace(
             &f.workspace,
-            &SecretName::parse("authoring-model").expect("fixture name"),
+            &SecretName::parse("setup-model").expect("fixture name"),
             &body,
         )
         .await

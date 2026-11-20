@@ -7,7 +7,7 @@ use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     services::TenantPlane,
 };
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     extract::{Path, State},
     response::{IntoResponse as _, Response, Sse},
@@ -39,10 +39,10 @@ pub(crate) async fn open<D: TenantPlane>(
 ) -> Result<Response, Refusal> {
     let draft = id(&path)?;
     let view = services
-        .authoring()
+        .drafts()
         .initial_view(access(&owned, &person), &draft)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let live = services.live();
     let slot = live.admit().ok_or_else(|| {
         af_observability::producers::http::stream_shed();
@@ -52,7 +52,7 @@ pub(crate) async fn open<D: TenantPlane>(
         .link(afd_bus::Subject::ThreadItems(draft.clone()))
         .await;
     let stream = body::frames(
-        services.authoring().clone(),
+        services.drafts().clone(),
         owned.workspace,
         person.subject().to_owned(),
         draft,

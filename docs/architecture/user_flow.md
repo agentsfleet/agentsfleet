@@ -80,7 +80,7 @@ agentsfleet login                            # Clerk OAuth
 agentsfleet chat --model <MODEL_REF>          # describe the job, review it, then Save
 ```
 
-Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/models?purpose=authoring`. New drafts require this setup model; resumed drafts keep their existing model. A draft starts from three sources:
+Choose `<MODEL_REF>` from the `ref` values returned by `GET /v1/workspaces/{ws}/models?purpose=setup`. New drafts require this setup model; resumed drafts keep their existing model. A draft starts from three sources:
 
 - **Nothing.** `agentsfleet chat --model <MODEL_REF>` creates a private draft when the first message is sent.
 - **A saved fleet.** `agentsfleet chat --fleet <FLEET_ID> --setup-revision <N> --model <MODEL_REF>` drafts an improvement to that exact setup revision.

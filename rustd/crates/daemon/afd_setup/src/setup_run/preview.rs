@@ -158,7 +158,7 @@ impl Drafts {
             Ok(person) if person.id == publishing.user_id => Ok(Some(publishing)),
             Ok(_) => Ok(None),
             // A creator who lost the workspace is hidden, as every private read hides them.
-            Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => Ok(None),
+            Err(error) if error.code() == error_code::SETUP_NOT_FOUND => Ok(None),
             Err(error) => Err(error),
         }
     }

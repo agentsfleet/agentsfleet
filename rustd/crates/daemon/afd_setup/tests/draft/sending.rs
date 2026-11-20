@@ -7,7 +7,7 @@ use super::{
     window::{message_id, send},
 };
 use af_core::{
-    error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY, AUTHORING_STATE},
+    error_code::{SETUP_CURSOR, SETUP_REPLAY, SETUP_STATE},
     id::Uuid7,
     paging::Cursor,
 };
@@ -60,7 +60,7 @@ async fn a_send_to_a_draft_being_saved_replays_its_accepted_key_and_refuses_a_ne
     let replayed = send(&f, &draft, &key, "Watch checkout").await;
     assert!(replayed.expect("an accepted key still replays").replayed);
     let refused = send(&f, &draft, &mint(), "Watch billing").await;
-    assert_eq!(refused.expect_err("saving").code(), AUTHORING_STATE);
+    assert_eq!(refused.expect_err("saving").code(), SETUP_STATE);
     assert_eq!(messages(&f, &draft).await, 1, "the refusal wrote nothing");
     f.cleanup().await;
 }
@@ -116,7 +116,7 @@ async fn a_key_a_racing_writer_files_first_refuses_the_send_and_writes_nothing()
     );
     assert_eq!(
         sent.expect_err("the key was filed first").code(),
-        AUTHORING_REPLAY
+        SETUP_REPLAY
     );
     assert_eq!(
         messages(&f, &draft).await,
@@ -170,7 +170,7 @@ async fn a_message_cursor_of_another_kind_or_out_of_range_is_refused() {
             .await;
         assert_eq!(
             answer.expect_err("refused cursor").code(),
-            AUTHORING_CURSOR,
+            SETUP_CURSOR,
             "{cursor}"
         );
     }

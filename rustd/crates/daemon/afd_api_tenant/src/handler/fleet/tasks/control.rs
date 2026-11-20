@@ -81,7 +81,7 @@ pub(crate) async fn change<D: TenantPlane>(
         .validate()
         .map_err(|report| Refusal::malformed(SENTENCES.pick(&report)))?;
     let tag = expected(&headers)?
-        .ok_or_else(|| Refusal::coded(af_core::error_code::AUTHORING_PRECONDITION, REQUIRED))?;
+        .ok_or_else(|| Refusal::coded(af_core::error_code::SETUP_PRECONDITION, REQUIRED))?;
     let saved = match request.into_inner() {
         PatchTaskRequest::Control {
             state,

@@ -79,7 +79,7 @@ async fn a_turn_waiting_on_a_revision_install_never_lands_under_the_old_policy()
     let refused = waiter.await?.err().ok_or("the turn meets the new head")?;
     assert_eq!(
         refused.code(),
-        af_core::error_code::AUTHORING_POLICY,
+        af_core::error_code::SETUP_POLICY,
         "{refused}"
     );
     let rows: i64 = sqlx::query_scalar(

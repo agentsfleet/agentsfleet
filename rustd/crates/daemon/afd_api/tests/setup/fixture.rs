@@ -1,0 +1,116 @@
+//! Each case owns its authenticated account and configured model.
+
+use super::{mint, seed};
+use crate::harness::Fleet;
+use af_core::id::Uuid7;
+use afd_auth::{
+    credential::Presented,
+    directory::Digest,
+    scope::{Scope, ScopeSet},
+};
+use afd_db::{
+    Db,
+    config::DbRole,
+    test_util::{OwnedRows, TestDatabase},
+};
+use axum::Router;
+use serde_json::{Value, json};
+
+pub(super) struct Fixture {
+    pub(super) db: Db,
+    pub(super) owner: Uuid7,
+    pub(super) tenant: Uuid7,
+    pub(super) workspace: Uuid7,
+    pub(super) model: Uuid7,
+    pub(super) catalogue: Uuid7,
+    pub(super) token: String,
+    cleanup: OwnedRows,
+    lane: TestDatabase,
+}
+
+impl Fixture {
+    pub(super) async fn create() -> Self {
+        let lane = TestDatabase::shared();
+        let mut f = Self {
+            db: lane.open(DbRole::Api, &[]).await,
+            cleanup: OwnedRows::new(&lane),
+            lane,
+            owner: mint(),
+            tenant: mint(),
+            workspace: mint(),
+            model: mint(),
+            catalogue: mint(),
+            token: format!("agt_t{}{}", mint(), mint()).replace('-', ""),
+        };
+        f.cleanup.record(
+            "DELETE FROM setup.replay_receipts WHERE workspace_id=$1",
+            &f.workspace,
+        );
+        f.cleanup.record(
+            "DELETE FROM fleet.fleets WHERE workspace_id=$1",
+            &f.workspace,
+        );
+        f.cleanup
+            .record("DELETE FROM identity.tenants WHERE id=$1", &f.tenant);
+        f.cleanup.record(
+            "DELETE FROM model.platform_models WHERE id=$1",
+            &f.catalogue,
+        );
+        let digest = Digest::of(&Presented::new(&f.token).expect("fixture token"));
+        seed::account(&f, digest.as_str()).await;
+        seed::model(&f).await;
+        f
+    }
+
+    pub(super) fn services(&self, scopes: &[Scope]) -> Fleet {
+        Fleet::live(
+            self.db.clone(),
+            self.owner.as_str(),
+            ScopeSet::from_scopes(scopes),
+        )
+        .at(af_core::clock::now())
+        .with_owned_workspace(self.workspace.clone())
+        .with_native_setup(self.db.clone())
+    }
+
+    pub(super) fn router(&self) -> Router {
+        self.services(&Scope::ALL).router()
+    }
+
+    pub(super) fn owner_url(&self) -> String {
+        self.lane.url()
+    }
+
+    pub(super) fn own_runner(&mut self, id: &Uuid7) {
+        self.cleanup
+            .record("DELETE FROM runner.runners WHERE id=$1", id);
+    }
+
+    /// Removes a second account a case seeds, with its people and keys.
+    pub(super) fn own_tenant(&mut self, id: &Uuid7) {
+        self.cleanup
+            .record("DELETE FROM identity.tenants WHERE id=$1", id);
+    }
+
+    pub(super) fn collection(&self) -> String {
+        format!("/v1/workspaces/{}/drafts", self.workspace)
+    }
+
+    pub(super) fn request(&self, operation: &Uuid7) -> Value {
+        json!({"source":{"kind":"definition","definition":{
+            "schema_version":1, "description":"Explain failures.",
+            "instructions_md":"Investigate.\r\n", "config":{"name":"checkout-watch","x-agentsfleet":{
+                "triggers":[],"tools":[],"budget":{"daily_nanos":af_core::money::NANOS_PER_USD.to_string()}
+            }}
+        }}, "setup_model_ref":self.model, "operation_id":operation, "message":"Investigate checkout"})
+    }
+
+    pub(super) async fn cleanup(mut self) {
+        self.cleanup
+            .finish()
+            .await
+            .expect("remove only fixture-owned rows");
+        self.db.close().await;
+        self.lane.cleanup().await;
+    }
+}

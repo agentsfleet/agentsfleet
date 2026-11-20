@@ -17,7 +17,7 @@ const DETAIL = "Integration grant is not owned by this fleet";
 const USER_MESSAGE =
   "That integration grant belongs to another fleet, so this fleet cannot revoke it.";
 const TITLE = "Integration grant not owned";
-const REFUSAL_CODE = "UZ-AUTHOR-001";
+const REFUSAL_CODE = "UZ-SETUP-001";
 
 describe("readProblemDetails — the two refusal strings", () => {
   test("carries both when the daemon sends both", () => {

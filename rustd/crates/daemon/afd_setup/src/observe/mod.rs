@@ -71,7 +71,7 @@ impl Drafts {
         let person = access::current(&mut tx, access).await?;
         let locked = match read::lock(&mut tx, access, &person, id).await {
             Ok(locked) => locked,
-            Err(error) if error.code() == error_code::AUTHORING_NOT_FOUND => {
+            Err(error) if error.code() == error_code::SETUP_NOT_FOUND => {
                 return Ok(None);
             }
             Err(error) => return Err(error),

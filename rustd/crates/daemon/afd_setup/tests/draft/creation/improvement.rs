@@ -180,7 +180,7 @@ async fn a_candidate_under_retired_policy_semantics_cannot_be_applied() {
         )
         .await
         .expect_err("stale policy needs a fresh review");
-    assert_eq!(refused.code(), error_code::AUTHORING_POLICY);
+    assert_eq!(refused.code(), error_code::SETUP_POLICY);
     let read = c.creations.read(c.base.access(), &saved.id).await;
     assert_eq!(read.expect("unchanged fleet").setup_revision, "1");
     c.cleanup().await;
@@ -257,7 +257,7 @@ async fn an_apply_that_loses_its_key_to_a_lapsed_claim_writes_no_revision() {
         }
     );
     let refused = refused.expect_err("the key went to a claim whose receipt has lapsed");
-    assert_eq!(refused.code(), error_code::AUTHORING_GONE);
+    assert_eq!(refused.code(), error_code::SETUP_GONE);
     let read = c.creations.read(c.base.access(), &saved.id).await;
     assert_eq!(read.expect("unchanged fleet").setup_revision, "1");
     c.cleanup().await;

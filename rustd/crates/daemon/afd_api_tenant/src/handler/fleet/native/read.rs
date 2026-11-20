@@ -6,7 +6,7 @@ use crate::{
     handler::fleet::detail::{FleetPath, parse_fleet_id},
     services::TenantPlane,
 };
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     extract::{Path, State},
     response::Response,
@@ -34,6 +34,6 @@ pub(crate) async fn one<D: TenantPlane>(
         .creations()
         .read(access(&owned, &person), &fleet)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     render::response(services.as_ref(), &owned.workspace, saved, StatusCode::OK).await
 }

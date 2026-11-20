@@ -18,7 +18,7 @@ pub(crate) struct Maintenance {
     #[garde(dive)]
     pub fleet_census: FleetCensus,
     #[garde(dive)]
-    pub authoring_cleanup: AuthoringCleanup,
+    pub setup_cleanup: SetupCleanup,
     #[garde(dive)]
     pub billing: Billing,
     #[garde(dive)]
@@ -37,7 +37,7 @@ impl Default for Maintenance {
             runner_history: RetentionSettings::default(),
             expired_work: ExpiredWork::default(),
             fleet_census: FleetCensus::default(),
-            authoring_cleanup: AuthoringCleanup::default(),
+            setup_cleanup: SetupCleanup::default(),
             billing: Billing::default(),
             durable_tasks: DurableTasks::default(),
             checkpoint_storage: CheckpointStorage::default(),
@@ -87,7 +87,7 @@ macro_rules! cycle {
 
 cadence!(ExpiredWork, 2);
 cadence!(FleetCensus, 30);
-cadence!(AuthoringCleanup, 10);
+cadence!(SetupCleanup, 10);
 cadence!(OutboundDelivery, 30);
 cycle!(DurableTasks, 10, 30);
 cycle!(CheckpointStorage, 300, 240);

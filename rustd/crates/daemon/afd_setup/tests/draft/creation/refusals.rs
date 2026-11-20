@@ -28,7 +28,7 @@ async fn a_candidate_under_retired_policy_semantics_saves_no_fleet() {
         .save(c.base.access(), &mint(), request, now())
         .await
         .expect_err("stale policy needs a fresh review");
-    assert_eq!(refused.code(), error_code::AUTHORING_POLICY);
+    assert_eq!(refused.code(), error_code::SETUP_POLICY);
     assert_eq!(refused.current_state(), Some("review_required"));
     assert_eq!(c.fleet_count().await, 0);
     c.cleanup().await;
@@ -99,7 +99,7 @@ async fn a_save_that_loses_its_key_to_a_lapsed_claim_saves_no_fleet() {
         }
     );
     let refused = refused.expect_err("the key went to a claim whose receipt has lapsed");
-    assert_eq!(refused.code(), error_code::AUTHORING_GONE);
+    assert_eq!(refused.code(), error_code::SETUP_GONE);
     assert_eq!(c.fleet_count().await, 0, "the reservation rolled back");
     c.cleanup().await;
 }

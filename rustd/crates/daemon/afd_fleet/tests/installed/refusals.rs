@@ -21,7 +21,7 @@ async fn missing_native_revision_is_permanent_even_if_old_projection_exists() {
         .await
         .expect_err("no native authority");
     assert!(failure.is_config_permanent());
-    assert_eq!(failure.code(), af_core::error_code::AUTHORING_POLICY);
+    assert_eq!(failure.code(), af_core::error_code::SETUP_POLICY);
 }
 
 #[tokio::test]

@@ -308,8 +308,7 @@ async fn continue_ready(
     {
         Ok(admitted) => admitted,
         Err(fault)
-            if fault.is_over_capacity()
-                || fault.code() == af_core::error_code::AUTHORING_POLICY =>
+            if fault.is_over_capacity() || fault.code() == af_core::error_code::SETUP_POLICY =>
         {
             savepoint.rollback().await.map_err(query(
                 "roll back refused continuation without discarding measured usage",

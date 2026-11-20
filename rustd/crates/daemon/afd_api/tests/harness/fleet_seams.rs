@@ -123,7 +123,7 @@ impl Fleet {
         self.secrets = self.secrets.with_activity_streams(bus.clone());
         self.memories = self.memories.with_activity_streams(bus.clone());
         self.creations = afd_setup::Creations::new(
-            self.authoring_setup.clone(),
+            self.setup.clone(),
             afd_turns::Turns::for_tests(database.clone(), bus).with_budgets(budgets),
         );
         self.fleets = Fleets::new(database);

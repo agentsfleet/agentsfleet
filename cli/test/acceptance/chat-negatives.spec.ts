@@ -12,7 +12,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { resolveAcceptanceEnv, resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import { readAuthContext, type AuthContext } from "./fixtures/native-api.ts";
-import { fixtureDefinition, createNativeDraft, inspectDraft, saveNativeFleet, authoringModel } from "./fixtures/native-setup.ts";
+import { fixtureDefinition, createNativeDraft, inspectDraft, saveNativeFleet, setupModel } from "./fixtures/native-setup.ts";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 
@@ -39,7 +39,7 @@ else describe("chat refuses unsafe creation", () => {
     assertNoSecretLeak(result, context.token); return result;
   }
   it("requires a message for a new noninteractive conversation", async () => {
-    const result = await run(["--no-input", "--model", await authoringModel(context)]);
+    const result = await run(["--no-input", "--model", await setupModel(context)]);
     assert.equal(result.code, 4);
     assert.match(result.stderr, /message is required/i);
   });

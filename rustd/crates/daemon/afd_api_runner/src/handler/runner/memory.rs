@@ -93,7 +93,7 @@ pub(crate) async fn load<D: RunnerPlane>(
     summary = "Search what a fleet remembers",
     description = concat!(
         "Searches memory keys and content without case sensitivity, with key matches first. ",
-        "Shared entries are included when permitted and identify their authoring fleet. ",
+        "Shared entries are included when permitted and identify the fleet that wrote them. ",
         "Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
     ),
     request_body = MemoryRecallRequest<'_>,

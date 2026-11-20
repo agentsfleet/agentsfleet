@@ -45,7 +45,7 @@ export const ReviewSchema = z.object({
 export const AcceptedSchema = z.object({status: z.literal("accepted"), sequence: decimal, replayed: z.boolean()});
 export const DraftSchema = z.object({
   id: z.uuidv7(), state: z.enum(DRAFT_STATE), title: z.string(), etag: z.string(),
-  authoring_model_ref: z.string(),
+  setup_model_ref: z.string(),
   candidate: CandidateSchema.optional(), review: ReviewSchema.optional(), linked_fleet_id: z.uuidv7().optional(),
 });
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
@@ -77,7 +77,7 @@ export const AppliedSchema = z.object({fleet_id: z.uuidv7(), setup_revision: dec
 export const ModelsSchema = z.object({items: z.array(z.object({
   ref: z.string(), label: z.string(), provider: z.string(), model: z.string(),
   context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive().optional(),
-  eligibility: z.object({authoring: z.boolean(), runtime: z.boolean()}),
+  eligibility: z.object({setup: z.boolean(), runtime: z.boolean()}),
   pricing: z.object({input_nanos_per_million: nanosSchema, output_nanos_per_million: nanosSchema, runtime_nanos_per_second: nanosSchema}),
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 export const DraftCardsSchema = z.object({items: z.array(z.object({

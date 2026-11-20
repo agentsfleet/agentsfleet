@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY};
+use af_core::error_code::{SETUP_CURSOR, SETUP_REPLAY};
 use afd_setup::types::{MessageQuery, MessageState, SendMessage};
 use afd_turns::view::stop::Stop;
 
@@ -78,7 +78,7 @@ async fn assert_pages(f: &Fixture, id: &af_core::id::Uuid7) {
             .await
             .expect_err("page-size binding")
             .code(),
-        AUTHORING_CURSOR
+        SETUP_CURSOR
     );
     let next = f
         .drafts
@@ -131,7 +131,7 @@ async fn assert_replay(f: &Fixture, id: &af_core::id::Uuid7, operation: af_core:
         )
         .await
         .expect_err("Stop never releases accepted operation identity");
-    assert_eq!(error.code(), AUTHORING_REPLAY);
+    assert_eq!(error.code(), SETUP_REPLAY);
 }
 
 async fn assert_stop_repeats(f: &Fixture, id: &af_core::id::Uuid7) {

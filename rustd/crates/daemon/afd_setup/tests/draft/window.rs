@@ -6,7 +6,7 @@ use super::{
     mint,
 };
 use af_core::{
-    error_code::{AUTHORING_GONE, AUTHORING_REPLAY},
+    error_code::{SETUP_GONE, SETUP_REPLAY},
     id::Uuid7,
     timing::DAY,
 };
@@ -103,12 +103,12 @@ async fn test_replay_receipt_window() {
     assert!(replayed.replayed);
     assert_eq!(replayed.sequence, "1");
     let changed = send(&f, &draft, &key, "Watch billing").await;
-    assert_eq!(changed.expect_err("changed body").code(), AUTHORING_REPLAY);
+    assert_eq!(changed.expect_err("changed body").code(), SETUP_REPLAY);
     refile(&f, &key, &message, &f.member, INSIDE).await;
     let foreign = send(&f, &draft, &key, "Watch checkout").await;
     assert_eq!(
         foreign.expect_err("another user's key").code(),
-        AUTHORING_REPLAY
+        SETUP_REPLAY
     );
     refile(&f, &key, &message, &f.owner, DAY).await;
     let fresh = send(&f, &draft, &key, "Watch checkout").await;
@@ -146,7 +146,7 @@ async fn a_deleted_draft_answers_gone_inside_the_window_and_is_new_at_its_bounda
     let gone = f.drafts.create(f.access(), request.clone(), now()).await;
     assert_eq!(
         gone.expect_err("deleted inside the window").code(),
-        AUTHORING_GONE
+        SETUP_GONE
     );
     refile(&f, &key, &old, &f.owner, DAY).await;
     let created = f.drafts.create(f.access(), request, now()).await;

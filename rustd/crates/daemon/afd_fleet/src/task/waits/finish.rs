@@ -201,8 +201,7 @@ async fn consume(
     let admitted = match tasks.turns.stage(&mut savepoint, prepared).await {
         Ok(admitted) => admitted,
         Err(fault)
-            if fault.is_over_capacity()
-                || fault.code() == af_core::error_code::AUTHORING_POLICY =>
+            if fault.is_over_capacity() || fault.code() == af_core::error_code::SETUP_POLICY =>
         {
             savepoint
                 .rollback()

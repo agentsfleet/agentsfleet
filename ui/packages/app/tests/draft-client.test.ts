@@ -15,11 +15,11 @@ afterEach(() => fixture.dispose());
 describe("private setup editing and recovery boundaries", () => {
   const edit = () => ({definition: structuredClone(REVIEW.effective.definition), instanceName: REVIEW.effective.instance_name});
 
-  it("changes the authoring model locally before creation and conditionally after creation", async () => {
+  it("changes the setup model locally before creation and conditionally after creation", async () => {
     const instance = await ready(); await instance.selectModel("model:second");
     expect(instance.getSnapshot().model).toBe("model:second"); expect(mutations()).toEqual([]);
     await instance.resume(DRAFT_ID); await instance.selectModel("model:third");
-    expect(mutations()[0]?.body).toEqual({authoring_model_ref: "model:third"});
+    expect(mutations()[0]?.body).toEqual({setup_model_ref: "model:third"});
     expect(mutations()[0]?.headers.get("If-Match")).toBe(DRAFT.etag);
     expect(instance.getSnapshot().model).toBe("model:third");
   });
@@ -44,7 +44,7 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toHaveLength(1);
   });
 
-  it("refuses preparation without a source or authoring model before creating a draft", async () => {
+  it("refuses preparation without a source or setup model before creating a draft", async () => {
     fixture.override = ({path}) => path.endsWith("/models") ? response({items: [], next_cursor: null}) : undefined;
     const instance = await ready();
     await expect(instance.prepareSave()).rejects.toMatchObject({status: 409});
@@ -105,7 +105,7 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()[0]?.body).toMatchObject({message});
   });
 
-  it("requires an authoring model and an existing conversation for applicable actions", async () => {
+  it("requires a setup model and an existing conversation for applicable actions", async () => {
     fixture.override = ({path}) => path.endsWith("/models") ? response({items: [], next_cursor: null}) : undefined;
     const instance = await ready();
     await expect(instance.edit(edit())).rejects.toMatchObject({status: 400});
@@ -205,7 +205,7 @@ describe("private browser chat", () => {
   it("ordinary first chat has one atomic identity and never saves", async () => {
     const instance = await ready(); await instance.send("Investigate failures");
     const sent = mutations(); expect(sent).toHaveLength(1);
-    expect(sent[0]?.body).toMatchObject({source: {kind: "blank"}, authoring_model_ref: MODEL_REF, message: "Investigate failures"});
+    expect(sent[0]?.body).toMatchObject({source: {kind: "blank"}, setup_model_ref: MODEL_REF, message: "Investigate failures"});
     expect(sent[0]?.headers.get("Idempotency-Key")).toBeNull(); expect(instance.getSnapshot().draft?.id).toBe(DRAFT_ID);
     expect(instance.getSnapshot().messages[0]?.text).toBe(MESSAGE.text);
   });

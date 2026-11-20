@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::error_code::{AUTHORING_PRECONDITION, AUTHORING_STALE, INVALID_REQUEST};
+use af_core::error_code::{INVALID_REQUEST, SETUP_PRECONDITION, SETUP_STALE};
 use afd_setup::types::DraftPatch;
 use serde_json::json;
 
@@ -14,7 +14,7 @@ fn patch(value: serde_json::Value) -> DraftPatch {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn authoring_model_replacement_preserves_candidate_and_obeys_strong_tag() {
+async fn setup_model_replacement_preserves_candidate_and_obeys_strong_tag() {
     let f = Fixture::create().await;
     let created = f
         .drafts
@@ -23,13 +23,13 @@ async fn authoring_model_replacement_preserves_candidate_and_obeys_strong_tag() 
         .expect("native candidate")
         .draft;
     let candidate = created.candidate.as_ref().expect("initial candidate");
-    let replacement = || patch(json!({"authoring_model_ref": f.other_model}));
+    let replacement = || patch(json!({"setup_model_ref": f.other_model}));
     let error = f
         .drafts
         .patch(f.access(), &created.id, None, replacement(), now())
         .await
         .expect_err("missing tag");
-    assert_eq!(error.code(), AUTHORING_PRECONDITION);
+    assert_eq!(error.code(), SETUP_PRECONDITION);
     let changed = f
         .drafts
         .patch(
@@ -41,7 +41,7 @@ async fn authoring_model_replacement_preserves_candidate_and_obeys_strong_tag() 
         )
         .await
         .expect("explicit replacement");
-    assert_eq!(changed.authoring_model_ref, f.other_model.to_string());
+    assert_eq!(changed.setup_model_ref, f.other_model.to_string());
     assert_ne!(changed.etag, created.etag);
     assert_eq!(
         changed.candidate.as_ref().expect("candidate retained").id,
@@ -108,6 +108,6 @@ async fn assert_stale(
         )
         .await
         .expect_err("old tag cannot overwrite replacement");
-    assert_eq!(error.code(), AUTHORING_STALE);
+    assert_eq!(error.code(), SETUP_STALE);
     assert_eq!(error.etag(), Some(changed.etag.as_str()));
 }

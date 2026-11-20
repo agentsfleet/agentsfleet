@@ -18,7 +18,7 @@ export type ChatListOptions = WorkspaceOptions & {
 const DEFAULT_LIMIT = 50;
 const DRAFT_ID_FIELD = "draft_id";
 const LIST_USAGE = "agentsfleet chat list --help";
-const BUSY_CODE = "UZ-AUTHOR-002";
+const BUSY_CODE = "UZ-SETUP-002";
 const object = Schema.Record(Schema.String, Schema.Unknown);
 
 const historyTransport = Effect.fn("chat.history.transport")(function* (options: WorkspaceOptions) {

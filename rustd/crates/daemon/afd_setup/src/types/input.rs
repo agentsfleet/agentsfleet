@@ -42,7 +42,7 @@ pub struct CreateDraft {
     pub source: Source,
     /// Owner model selected explicitly by the human.
     #[garde(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free))]
-    pub authoring_model_ref: String,
+    pub setup_model_ref: String,
     /// First message shares the draft creation transaction.
     #[serde(
         default,
@@ -91,7 +91,7 @@ pub struct DraftPatch {
     /// Applies only to future messages.
     #[serde(default, deserialize_with = "super::present")]
     #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free)))]
-    pub authoring_model_ref: Option<String>,
+    pub setup_model_ref: Option<String>,
     /// Changes the Definition's runtime model through the same validator.
     #[serde(default, deserialize_with = "super::present")]
     #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free)))]

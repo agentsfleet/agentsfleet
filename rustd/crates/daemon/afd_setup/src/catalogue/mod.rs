@@ -120,7 +120,7 @@ mod boundary_tests {
             let refused = boundary(Some(&raw), BINDING).err();
             assert_eq!(
                 refused.map(|error| error.code()),
-                Some(error_code::AUTHORING_CURSOR),
+                Some(error_code::SETUP_CURSOR),
                 "{raw}"
             );
         }
