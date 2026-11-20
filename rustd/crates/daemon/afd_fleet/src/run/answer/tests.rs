@@ -104,8 +104,8 @@ fn rendered(resume_hold: bool) -> Value {
             expires_at: acquired.held_until,
         },
     );
-    serde_json::to_value(af_wire::protocol::Down::<serde_json::Value>::Run {
-        run: af_wire::run::TaggedRun::<serde_json::Value>::Fleet(Box::new(run)),
+    serde_json::to_value(af_wire::protocol::Down::<Value>::Run {
+        run: af_wire::run::TaggedRun::<Value>::Fleet(Box::new(run)),
     })
     .expect("an assignment renders")
 }

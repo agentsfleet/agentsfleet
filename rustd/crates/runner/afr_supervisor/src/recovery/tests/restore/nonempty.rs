@@ -136,7 +136,7 @@ fn session<'a>(
 
 async fn server_object(kind: &str, valid: bool) -> TestResult<(Server, CheckpointObject)> {
     let (mut object, bytes) = encrypted(kind)?;
-    let server = Server::start(axum::http::StatusCode::OK, bytes, false).await?;
+    let server = Server::start(http::StatusCode::OK, bytes, false).await?;
     object.transfer = Some(CheckpointTransfer {
         url: server.url.clone(),
         headers: BTreeMap::new(),
@@ -173,7 +173,7 @@ async fn repeated_manifest_ids_share_one_authorization_and_one_authenticated_dow
     );
     assert_eq!(session.progress.bytes.missing, 0);
     let seen = server.seen.recv().await.ok_or("download missing")?;
-    assert_eq!(seen.method, axum::http::Method::GET);
+    assert_eq!(seen.method, http::Method::GET);
     assert!(seen.headers.get("authorization").is_none());
     assert!(seen.headers.get("cookie").is_none());
     server.finish().await?;

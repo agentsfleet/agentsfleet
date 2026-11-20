@@ -53,7 +53,7 @@ pub(super) struct Session<'a> {
     plan: CheckpointPlan,
     activity_id: String,
     progress: &'a mut progress::Progress,
-    transfers: transfer::Transfers,
+    transfers: Transfers,
     stop: &'a tokio_util::sync::CancellationToken,
 }
 

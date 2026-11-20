@@ -26,7 +26,7 @@ pub(in crate::task) async fn arm(
     tasks: &Tasks,
     connection: &mut PgConnection,
     task: &Uuid7,
-    run: &af_core::id::Uuid7,
+    run: &Uuid7,
     target: &BoundPr,
     dependency: &Snapshot,
 ) -> Result<()> {

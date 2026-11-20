@@ -33,7 +33,7 @@ pub(in crate::task) async fn lock(
 pub(in crate::task) async fn load(
     connection: &mut PgConnection,
     current: &RunRow,
-    turn: &af_core::id::Uuid7,
+    turn: &Uuid7,
 ) -> Result<Source> {
     let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
         .bind(turn)
@@ -53,7 +53,7 @@ pub(in crate::task) fn check_assignment(
     source: &Source,
     run: TaskRun<'_>,
     current: &RunRow,
-    turn: &af_core::id::Uuid7,
+    turn: &Uuid7,
 ) -> Result<()> {
     let owns_assignment = source.input_run_id.as_ref() == Some(run.run_id)
         && source.input_fence == Some(current.fence);

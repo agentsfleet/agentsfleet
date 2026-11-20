@@ -24,7 +24,7 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
         let run = assignment.pointer("/run").expect("native response field");
         let (id, fence) = wire::run_and_fence(run);
         assert_eq!(
-            (*crate::wire::pointer(run, "/event/turn_id")),
+            (*wire::pointer(run, "/event/turn_id")),
             scene.turn_id.as_str()
         );
         let body = wire::report_body(&id, &scene.turn_id, fence);
@@ -46,12 +46,12 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
             .await;
         let replay = second.expect(StreamKind::Reports, "report_ack").await;
         assert_eq!(
-            (*crate::wire::pointer(&replay, "/answer")),
+            (*wire::pointer(&replay, "/answer")),
             json!({"status":"ok", "response":{"ok":true}})
         );
         assert_eq!(
-            crate::wire::pointer(&replay, "/answer"),
-            crate::wire::pointer(&original, "/answer"),
+            wire::pointer(&replay, "/answer"),
+            wire::pointer(&original, "/answer"),
             "{transport:?}: the resent report answers with the saved result"
         );
         crate::reads::relay_settled(&scene).await;

@@ -324,7 +324,7 @@ async fn a_file_backed_capture_uploads_each_missing_chunk_and_commits_its_pages(
     for _ in 0..4 {
         let seen = server.seen.try_recv()?;
         let path = seen.path.split('?').next().ok_or("missing request path")?;
-        assert_eq!(seen.method, axum::http::Method::PUT);
+        assert_eq!(seen.method, http::Method::PUT);
         assert_eq!(
             seen.bytes.as_ref(),
             payloads.get(path).ok_or("unknown PUT")?

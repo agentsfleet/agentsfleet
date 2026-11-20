@@ -53,7 +53,7 @@ pub(crate) async fn one<D: Services>(
         .authoring_setup()
         .plugin(
             access(&owned, &person),
-            &crate::handler::input::uuid(&path.plugin_id)?,
+            &input::uuid(&path.plugin_id)?,
             selected.as_ref(),
         )
         .await
@@ -78,7 +78,7 @@ pub(crate) async fn revision<D: Services>(
         .authoring_setup()
         .plugin(
             access(&owned, &person),
-            &crate::handler::input::uuid(&path.plugin_id)?,
+            &input::uuid(&path.plugin_id)?,
             Some(&input::uuid(&path.revision_id)?),
         )
         .await

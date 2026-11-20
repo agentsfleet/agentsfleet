@@ -149,7 +149,7 @@ async fn allocate(
     owned: &execution::Owned,
     digest: &str,
     repository_target: (String, Option<String>),
-) -> Result<af_core::id::Uuid7> {
+) -> Result<Uuid7> {
     let (repository, commit) = repository_target;
     let task = owned
         .current

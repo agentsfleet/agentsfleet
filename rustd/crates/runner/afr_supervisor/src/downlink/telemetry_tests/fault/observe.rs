@@ -131,10 +131,10 @@ impl Observer {
 async fn accept(
     State(received): State<Arc<Mutex<Vec<Value>>>>,
     body: axum::body::Bytes,
-) -> axum::http::StatusCode {
+) -> http::StatusCode {
     let Ok(value) = serde_json::from_slice(&body) else {
-        return axum::http::StatusCode::BAD_REQUEST;
+        return http::StatusCode::BAD_REQUEST;
     };
     received.lock().push(value);
-    axum::http::StatusCode::OK
+    http::StatusCode::OK
 }

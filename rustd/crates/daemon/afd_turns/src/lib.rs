@@ -119,7 +119,7 @@ impl Turns {
     /// [`Turns::new`] with one, rather than getting it by accident.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn for_tests(database: Db, bus: afd_bus::Handle) -> Self {
+    pub fn for_tests(database: Db, bus: Handle) -> Self {
         Self::new(database, bus, Entropy::new())
     }
 

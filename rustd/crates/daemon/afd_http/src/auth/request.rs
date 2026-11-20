@@ -11,7 +11,7 @@ use super::{Authenticator as _, guard::reject, plane_of};
 use crate::{route::RouteMeta, services::Services};
 
 /// None means the route is unguarded; Err is a complete, typed HTTP refusal.
-pub type AuthenticationResult = core::result::Result<Option<Principal>, crate::handler::Refusal>;
+pub type AuthenticationResult = Result<Option<Principal>, crate::handler::Refusal>;
 
 /// A route chooses its strategy once at mount time; no request path selects policy.
 pub trait RequestAuthentication: Clone + Send + Sync + std::fmt::Debug + 'static {

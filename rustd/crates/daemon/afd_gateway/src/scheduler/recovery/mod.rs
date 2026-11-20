@@ -63,7 +63,7 @@ async fn probe_ticks<F: Future<Output = Result<bool>>>(
             _instant = tick.tick() => {
                 match probe().await {
                     Ok(true) => wake.recheck(),
-                    Err(error) if !stop.is_cancelled() => crate::Gateway::observe(&error, Operation::Recheck),
+                    Err(error) if !stop.is_cancelled() => Gateway::observe(&error, Operation::Recheck),
                     Ok(false) | Err(_) => {}
                 }
             }

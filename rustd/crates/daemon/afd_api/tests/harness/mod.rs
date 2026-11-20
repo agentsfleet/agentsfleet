@@ -267,7 +267,7 @@ pub(crate) struct Fleet {
     signup_writeback: RecordingWriteback,
     schedules: SchedulePlane,
     connectors: afd_connector::Connectors,
-    scheduler: std::sync::Arc<dyn afd_cron::Scheduler>,
+    scheduler: Arc<dyn afd_cron::Scheduler>,
     platform_admin: Option<Uuid7>,
     /// Opening a personal account, over whatever pool this fixture holds.
     signups: afd_tenant::signup::Signups,

@@ -36,7 +36,7 @@ pub(super) struct Sink<'a> {
 
 #[async_trait::async_trait]
 impl RecoveryBoundarySink for Sink<'_> {
-    fn workspace(&self) -> std::result::Result<af_wire::run::TurnWorkspace, RecoverySkip> {
+    fn workspace(&self) -> Result<af_wire::run::TurnWorkspace, RecoverySkip> {
         match self.workspace {
             Workspace::ApiOnly => Ok(af_wire::run::TurnWorkspace::ApiOnly),
             Workspace::Building { cell, .. } => {
@@ -52,7 +52,7 @@ impl RecoveryBoundarySink for Sink<'_> {
     fn try_reserve(
         &self,
         task: bool,
-    ) -> std::result::Result<Option<afr_agent::FileRecoveryPermit>, RecoverySkip> {
+    ) -> Result<Option<afr_agent::FileRecoveryPermit>, RecoverySkip> {
         match self.workspace {
             Workspace::ApiOnly if !task => return Ok(None),
             Workspace::Building { cell, .. } if cell.get().is_none() => {

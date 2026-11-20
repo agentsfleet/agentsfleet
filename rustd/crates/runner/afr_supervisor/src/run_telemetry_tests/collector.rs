@@ -44,8 +44,8 @@ pub(super) async fn collector() -> (String, Arc<Mutex<Vec<Posted>>>) {
 }
 
 /// The header a credential would ride in.
-fn http_authorization() -> axum::http::HeaderName {
-    axum::http::header::AUTHORIZATION
+fn http_authorization() -> http::HeaderName {
+    http::header::AUTHORIZATION
 }
 
 /// One span an OTLP/JSON trace export carried.

@@ -197,7 +197,7 @@ impl Window {
             .into_iter()
             .chain(unmatched)
         {
-            let per = crate::report::ratio(cost.calls, held);
+            let per = ratio(cost.calls, held);
             let text: String = cost.query.split_whitespace().collect::<Vec<_>>().join(" ");
             // the bench has no subscriber; its stdout is the result summary, so the breakdown goes to stderr.
             eprintln!(

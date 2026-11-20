@@ -86,7 +86,7 @@ pub(super) async fn list(
         return Err(TaskRefusal::NotFound.into());
     }
     let mut effects: Vec<Effect> = sqlx::query_as(include_str!("sql/list.sql"))
-        .bind(crate::task::guard::wire(&input.task_id)?)
+        .bind(guard::wire(&input.task_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(after.max(watermark))

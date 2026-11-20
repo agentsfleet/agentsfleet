@@ -50,7 +50,7 @@ pub(super) async fn listen(services: Arc<ConnectionServices>) -> Result<()> {
             retry = std::time::Duration::from_millis(100);
             match receive(&services.handle, &mut subscription).await {
                 Ok(()) => return Ok(()),
-                Err(error) => crate::Gateway::observe(&error, Operation::Recheck),
+                Err(error) => Gateway::observe(&error, Operation::Recheck),
             }
         }
         if !lost {

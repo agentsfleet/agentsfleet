@@ -38,7 +38,7 @@ pub(super) async fn build(
         afd_vault::Vault::new(
             database.clone(),
             std::sync::Arc::clone(&storage_key),
-            af_crypto::entropy::Entropy::new(),
+            Entropy::new(),
         ),
         storage_key,
         afd_identity::direct::direct(std::time::Duration::from_secs(1))

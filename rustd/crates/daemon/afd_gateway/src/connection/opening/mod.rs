@@ -24,7 +24,7 @@ pub(super) async fn open(gateway: &Gateway, runner: Runner, request: Request) ->
             gateway.inner.tasks.spawn(async move {
                 let _preparation = preparation;
                 if let Err(error) = opening.run().await {
-                    crate::Gateway::observe(&error, Operation::Opening);
+                    Gateway::observe(&error, Operation::Opening);
                 }
             });
             response(body, revision)

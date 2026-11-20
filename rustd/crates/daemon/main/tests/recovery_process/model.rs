@@ -26,7 +26,7 @@ impl Asked {
     pub(super) fn answer(self, text: &str) -> Checked {
         self.answer
             .send(text.to_owned())
-            .map_err(|_answer| std::io::Error::other("model request dropped"))?;
+            .map_err(|_answer| io::Error::other("model request dropped"))?;
         Ok(())
     }
 }
@@ -86,7 +86,7 @@ impl Model {
         self.requests
             .recv()
             .await
-            .ok_or_else(|| std::io::Error::other("model listener stopped").into())
+            .ok_or_else(|| io::Error::other("model listener stopped").into())
     }
 
     pub(super) async fn finish(self) -> Checked {

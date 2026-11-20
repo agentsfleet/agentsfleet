@@ -113,7 +113,7 @@ async fn mention_routes_by_the_saved_fleet_name() {
             .is_none(),
         "the definition's name is not an address"
     );
-    let owed = super::notice::owed(&fixture).await;
+    let owed = notice::owed(&fixture).await;
     assert_eq!(owed.len(), 1, "{owed:?}");
     assert!(
         owed[0].answer.contains("ci-dev-repairer"),

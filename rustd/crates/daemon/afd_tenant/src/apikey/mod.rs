@@ -257,7 +257,7 @@ pub struct Revoked {
 }
 
 /// A cursor's boundary row, which must be an identifier this daemon minted.
-fn boundary_id(id: &str) -> crate::Result<Uuid7> {
+fn boundary_id(id: &str) -> Result<Uuid7> {
     Uuid7::parse(id).map_err(|_forged| error::cursor_invalid())
 }
 

@@ -127,7 +127,7 @@ async fn a_chat_save_registers_its_cron_trigger_with_the_scheduler() {
     assert_eq!(schedule["run_state"], "scheduled", "{schedule}");
     assert!(schedule["next_run_at"].is_string(), "{schedule}");
     let answer = held(&url, &token, schedule).await;
-    assert_eq!(answer.status(), reqwest::StatusCode::OK);
+    assert_eq!(answer.status(), StatusCode::OK);
     let registered: Value =
         serde_json::from_str(&answer.text().await.expect("emulator body")).expect("emulator JSON");
     assert_eq!(registered["cron"], DAILY, "{registered}");
@@ -183,10 +183,7 @@ async fn a_replayed_report_finishes_the_registration_a_stopped_save_left_owed() 
     let fleet = read(&case, &fleet_path).await;
     let schedule = only_schedule(&fleet);
     assert_eq!(schedule["sync"], "synced", "{schedule}");
-    assert_eq!(
-        held(&url, &token, schedule).await.status(),
-        reqwest::StatusCode::OK
-    );
+    assert_eq!(held(&url, &token, schedule).await.status(), StatusCode::OK);
     case.cleanup().await;
 }
 
@@ -205,7 +202,7 @@ async fn a_chat_save_still_installing_registers_nothing() {
     assert_eq!(row_version(&case, schedule).await, 1, "never claimed");
     assert_eq!(
         held(&url, &token, schedule).await.status(),
-        reqwest::StatusCode::NOT_FOUND
+        StatusCode::NOT_FOUND
     );
     case.cleanup().await;
 }

@@ -47,11 +47,8 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
             .await
             .expect("release accepted renewal during drain");
         let renewed = native.expect(StreamKind::Control, "renewed").await;
-        assert_eq!((*crate::wire::pointer(&renewed, "/request_id")), 4);
-        assert_eq!(
-            (*crate::wire::pointer(&renewed, "/runs/0/answer/status")),
-            "ok"
-        );
+        assert_eq!((*wire::pointer(&renewed, "/request_id")), 4);
+        assert_eq!((*wire::pointer(&renewed, "/runs/0/answer/status")), "ok");
         assert!(
             renewed
                 .pointer("/runs/0/answer/response/recorded_through")
@@ -59,7 +56,7 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
         );
         let away = native.expect(StreamKind::Control, "go_away").await;
         assert_eq!(
-            (*crate::wire::pointer(&away, "/error_code")),
+            (*wire::pointer(&away, "/error_code")),
             serde_json::Value::Null
         );
         native.ended(STREAM_ANSWER_TIMEOUT).await;

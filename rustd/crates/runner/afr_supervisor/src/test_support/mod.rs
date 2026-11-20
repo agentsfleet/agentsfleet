@@ -63,8 +63,8 @@ pub(crate) const RUNNER_CRASH: &str = "runner_crash";
 
 /// The wall clock every run test reads: fixed at zero, so a run's deadline
 /// is measured in the paused tokio time the tests advance.
-pub(crate) fn clock() -> std::sync::Arc<dyn af_core::clock::Clock> {
-    std::sync::Arc::new(af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
+pub(crate) fn clock() -> Arc<dyn af_core::clock::Clock> {
+    Arc::new(af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
 }
 
 /// What the fake daemon does with one call.

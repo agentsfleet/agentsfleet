@@ -154,13 +154,9 @@ async fn objects(
     if matches!(outcome, Outcome::Corrupt) {
         *bytes.first_mut().ok_or("missing fixture ciphertext")? ^= 1;
     }
-    let server = TestHttpsServer::with_headers(
-        axum::http::StatusCode::OK,
-        bytes,
-        false,
-        axum::http::HeaderMap::new(),
-    )
-    .await?;
+    let server =
+        TestHttpsServer::with_headers(http::StatusCode::OK, bytes, false, http::HeaderMap::new())
+            .await?;
     object.transfer = Some(CheckpointTransfer {
         url: server.endpoint().to_owned(),
         headers: BTreeMap::new(),

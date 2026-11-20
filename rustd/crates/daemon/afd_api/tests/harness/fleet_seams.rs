@@ -162,7 +162,7 @@ impl Fleet {
         self.schedules = SchedulePlane::new(
             ScheduleService::new(
                 CronSchedules::new(database, Entropy::new()),
-                std::sync::Arc::new(QStash::fixed(
+                Arc::new(QStash::fixed(
                     reqwest::Client::new(),
                     af_crypto::secret::SecretString::new(String::new()),
                     SCHEDULE_DESTINATION.to_owned(),

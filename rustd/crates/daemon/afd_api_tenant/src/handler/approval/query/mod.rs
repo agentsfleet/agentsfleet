@@ -117,7 +117,7 @@ pub(super) struct Listing {
     /// The status the page is narrowed to; every state when absent.
     pub(super) status: Option<GateStatus>,
     /// The fleet the page is narrowed to.
-    pub(super) fleet_id: Option<af_core::id::Uuid7>,
+    pub(super) fleet_id: Option<Uuid7>,
     /// The gate family the page is narrowed to.
     pub(super) gate_type: Option<String>,
     /// Where the page resumes, absent on the first one.
@@ -217,7 +217,7 @@ fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refus
 }
 
 /// The fleet the page is narrowed to, checked before it reaches the statement.
-fn parse_fleet_id(raw: Option<&str>) -> Result<Option<af_core::id::Uuid7>, Refusal> {
+fn parse_fleet_id(raw: Option<&str>) -> Result<Option<Uuid7>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };

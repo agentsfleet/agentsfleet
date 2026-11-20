@@ -90,11 +90,7 @@ impl Recorded {
     /// which only a purge does: the gate is pending, the fail-safe direction.
     /// A status this build cannot spell is no answer, as the store reads it.
     #[must_use]
-    pub fn observed(
-        action_id: Option<&af_core::id::Uuid7>,
-        status: Option<&str>,
-        lapsed: Option<bool>,
-    ) -> Self {
+    pub fn observed(action_id: Option<&Uuid7>, status: Option<&str>, lapsed: Option<bool>) -> Self {
         if action_id.is_none() {
             return Self::Absent;
         }

@@ -216,7 +216,7 @@ pub(crate) async fn detail<D: Services>(
             &owned.workspace,
             &fleet,
             // An id that is not a UUIDv7 names no event: the same 404.
-            &af_core::id::Uuid7::parse(&path.turn_id).map_err(|_text| {
+            &Uuid7::parse(&path.turn_id).map_err(|_text| {
                 Refusal::coded(error_code::TURN_NOT_FOUND, DETAIL_TURN_NOT_FOUND)
             })?,
         )

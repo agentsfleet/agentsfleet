@@ -31,7 +31,7 @@ fn turn(fixture: &Fixture) -> Result<RecoverySnapshot> {
             workspace: TurnWorkspace::ApiOnly,
         },
         previous: None,
-        history: zeroize::Zeroizing::new(b"saved conversation".to_vec()),
+        history: Zeroizing::new(b"saved conversation".to_vec()),
         folds: Vec::new(),
     });
     Ok(request)

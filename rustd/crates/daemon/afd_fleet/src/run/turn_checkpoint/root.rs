@@ -173,7 +173,7 @@ where
 {
     move |source| {
         crate::Error::from(ErrorKind::TurnCheckpointFailure {
-            reason: super::TurnCheckpointRefusal::Incompatible,
+            reason: TurnCheckpointRefusal::Incompatible,
             context,
             source: Box::new(source),
         })

@@ -45,7 +45,7 @@ fn assert_request(seen: &server::Seen, method: &Method, body: &[u8]) {
     assert_eq!(
         seen.headers
             .get("x-amz-meta-scope")
-            .map(axum::http::HeaderValue::as_bytes),
+            .map(http::HeaderValue::as_bytes),
         Some(b"native-object".as_slice())
     );
     assert!(seen.headers.get("authorization").is_none());
@@ -64,7 +64,7 @@ async fn verified_https_upload_and_download_preserve_native_ciphertext_authority
     assert_eq!(
         seen.headers
             .get("if-none-match")
-            .map(axum::http::HeaderValue::as_bytes),
+            .map(http::HeaderValue::as_bytes),
         Some(b"*".as_slice())
     );
     upload.finish().await?;

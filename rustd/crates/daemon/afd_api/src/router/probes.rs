@@ -151,7 +151,7 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
         if !inputs.queue {
             // `warn` once per probe: an operator should see the bus is down,
             // and the instance keeps serving because Postgres backs every signal.
-            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             {
                 let (event, message) = (
                     &EVENT_BUS_UNAVAILABLE,

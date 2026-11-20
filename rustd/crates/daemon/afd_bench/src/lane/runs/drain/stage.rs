@@ -48,7 +48,7 @@ pub(super) struct Staged {
     /// The fleets, one event each.
     pub(super) fleets: Vec<SeededFleet>,
     /// The runners that drain them.
-    pub(super) runners: Vec<super::super::seed::RunnerIdentity>,
+    pub(super) runners: Vec<seed::RunnerIdentity>,
     /// The key the platform credential is sealed under.
     kek: Arc<Kek>,
 }

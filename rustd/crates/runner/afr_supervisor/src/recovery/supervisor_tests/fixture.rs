@@ -31,7 +31,7 @@ const OBJECT: &str = "019f0000-0000-7000-8000-000000000013";
 pub(super) const FILE: &str = "progress.txt";
 pub(super) const CONTENT: &[u8] = b"saved workspace contents\n";
 pub(super) const PREFIX: &str = "conversation saved before the interruption";
-pub(super) type Checked<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub(super) type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub(super) fn checkpoint(
     run: &RunPayload<'_>,

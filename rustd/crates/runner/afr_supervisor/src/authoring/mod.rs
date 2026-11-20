@@ -85,7 +85,7 @@ impl Lessee {
             observed: &observed,
         };
         let deadline = renew::deadline(run.deadline, self.clock.as_ref()).min(
-            tokio::time::Instant::now()
+            Instant::now()
                 + std::time::Duration::from_secs(u64::from(af_wire::authoring::WALL_SECONDS_MAX)),
         );
         // Polled in order: renewal stops at the same attempt end, so the

@@ -59,7 +59,7 @@ impl RunService {
         renewing: &Renewing,
         row: &Found,
         now: Timestamp,
-    ) -> Result<afd_billing::rates::Estimate, Arc<crate::Error>> {
+    ) -> Result<Estimate, Arc<crate::Error>> {
         let posture = Pricing::posture_of(&renewing.posture).map_err(Arc::new)?;
         let pricing = self
             .runs

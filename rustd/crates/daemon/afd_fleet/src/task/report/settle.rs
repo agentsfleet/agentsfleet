@@ -30,8 +30,8 @@ struct Current {
 /// A notice replaces an unverified completion claim in both history and delivery.
 pub(crate) async fn apply(
     connection: &mut PgConnection,
-    run: &af_core::id::Uuid7,
-    runner: &af_core::id::Uuid7,
+    run: &Uuid7,
+    runner: &Uuid7,
     settlement: Option<TaskSettlement<'_>>,
 ) -> Result<Option<&'static str>> {
     let current: Option<Current> = sqlx::query_as(include_str!("row.sql"))

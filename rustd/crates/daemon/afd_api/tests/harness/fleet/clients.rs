@@ -48,7 +48,7 @@ pub(super) fn schedules(database: &Db, ledger: &afd_turns::Turns) -> SchedulePla
     SchedulePlane::new(
         ScheduleService::new(
             CronSchedules::new(database.clone(), Entropy::new()),
-            std::sync::Arc::new(QStash::fixed(
+            Arc::new(QStash::fixed(
                 reqwest::Client::new(),
                 af_crypto::secret::SecretString::new(String::new()),
                 SCHEDULE_DESTINATION.to_owned(),

@@ -215,7 +215,7 @@ async fn block_profile_switch(
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(format!("{subject}/%"))
-        .bind(crate::task::guard::wire(&assignment.0.revision_id)?)
+        .bind(guard::wire(&assignment.0.revision_id)?)
         .fetch_one(connection)
         .await
         .map_err(query(

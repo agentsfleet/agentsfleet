@@ -34,7 +34,7 @@ async fn a_changed_dispatch_identity_cannot_publish_the_returned_private_text() 
             };
             let mut reply: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             reply["dispatch_id"] = super::ATTEMPT.into();
-            super::json(&reply)
+            json(&reply)
         }
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),

@@ -105,7 +105,7 @@ fn cursor(value: Option<&str>) -> Result<i64> {
     else {
         return Err(rejected("Invalid task input cursor"));
     };
-    af_core::id::Uuid7::parse(&id).map_err(|_invalid| rejected("Invalid task input cursor"))?;
+    Uuid7::parse(&id).map_err(|_invalid| rejected("Invalid task input cursor"))?;
     value
         .parse::<i64>()
         .ok()
@@ -217,7 +217,7 @@ async fn pending_humans(
         .bind(run.run_id)
         .bind(current.fence)
         .bind(crate::run::sql::RUN_STATUS_ACTIVE)
-        .bind(None::<&str>.map(crate::task::guard::wire).transpose()?)
+        .bind(None::<&str>.map(guard::wire).transpose()?)
         .bind(true)
         .bind(afd_turns::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())

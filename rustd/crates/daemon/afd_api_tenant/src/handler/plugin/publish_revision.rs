@@ -43,7 +43,7 @@ pub(crate) async fn revision<D: Services>(
         .authoring_setup()
         .publish_revision(
             access(&owned, &person),
-            &crate::handler::input::uuid(&path.plugin_id)?,
+            &input::uuid(&path.plugin_id)?,
             input::expected(&headers)?,
             &key,
             types::PublishRevision {

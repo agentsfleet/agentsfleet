@@ -144,7 +144,7 @@ pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: Db,
     tenant: Uuid7,
-    pub(crate) workspace: af_core::id::Uuid7,
+    pub(crate) workspace: Uuid7,
     pub(crate) fleet: Uuid7,
     key: Uuid7,
     pub(crate) token: String,

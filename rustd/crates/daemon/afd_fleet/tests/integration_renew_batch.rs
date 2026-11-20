@@ -222,7 +222,7 @@ async fn single_and_batch_renewals_obey_the_saved_runtime_cap()
         crate::integration_renew_clamp::deadline(&renewed),
         Some(expected)
     );
-    let batch = crate::integration_renew_batch::frame(&held, &[run], false)
+    let batch = frame(&held, &[run], false)
         .await
         .into_iter()
         .next()

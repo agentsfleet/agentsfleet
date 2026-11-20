@@ -68,7 +68,7 @@ impl Downlink {
         authorization.set_sensitive(true);
         let running = Arc::new(Running::default());
         let (current, session) = watch::channel(None);
-        let (assignments, assigned) = mpsc::channel(af_wire::protocol::RUNS_MAX);
+        let (assignments, assigned) = mpsc::channel(RUNS_MAX);
         let (policies, watching) = watch::channel(None);
         let handle = StreamHandle::new(session, Arc::clone(&running), watching);
         Ok((

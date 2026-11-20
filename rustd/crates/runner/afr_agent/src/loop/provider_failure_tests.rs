@@ -161,7 +161,7 @@ impl af_providers::Connect for Silent {
 }
 
 impl guffbolt::Model for Silent {
-    type Error = af_providers::Error;
+    type Error = Error;
 
     fn measure(&self, request: guffbolt::Request<'_>) -> af_providers::Result<u64> {
         af_providers::testing::measure(request)

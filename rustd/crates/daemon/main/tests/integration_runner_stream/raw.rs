@@ -121,7 +121,7 @@ impl Native {
     }
 
     pub(crate) async fn expect(&mut self, kind: StreamKind, expected: &str) -> Value {
-        for _ in 0..af_wire::protocol::PENDING_MAX {
+        for _ in 0..protocol::PENDING_MAX {
             let value = self
                 .next(kind)
                 .await

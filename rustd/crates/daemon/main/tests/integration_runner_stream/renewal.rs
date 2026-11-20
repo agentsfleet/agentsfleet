@@ -41,40 +41,37 @@ async fn mixed_renewal(native: &mut Native, run: &str, report: &serde_json::Valu
             &json!({
                 "type":"renew_batch", "request_id":4,
                 "runs":[
-                    {"run_id":run,"request":{"requests":(*crate::wire::pointer(report, "/requests"))}},
+                    {"run_id":run,"request":{"requests":(*wire::pointer(report, "/requests"))}},
                     {"run_id":missing,"request":{"requests":[]}}
                 ]
             }),
         )
         .await;
     let renewed = native.expect(StreamKind::Control, "renewed").await;
-    let answers = (*crate::wire::pointer(&renewed, "/runs"))
+    let answers = (*wire::pointer(&renewed, "/runs"))
         .as_array()
         .expect("one answer per renewal");
     assert_eq!(answers.len(), 2);
     let accepted = answers
         .iter()
-        .find(|answer| (*crate::wire::pointer(answer, "/run_id")) == run)
+        .find(|answer| (*wire::pointer(answer, "/run_id")) == run)
         .expect("live run answer");
-    assert_eq!((*crate::wire::pointer(accepted, "/answer/status")), "ok");
+    assert_eq!((*wire::pointer(accepted, "/answer/status")), "ok");
     assert_eq!(
-        (*crate::wire::pointer(accepted, "/answer/response/recorded_through")),
+        (*wire::pointer(accepted, "/answer/response/recorded_through")),
         1
     );
-    assert!((*crate::wire::pointer(accepted, "/answer/response/run_expires_at")).is_string());
+    assert!((*wire::pointer(accepted, "/answer/response/run_expires_at")).is_string());
     let refused = answers
         .iter()
-        .find(|answer| (*crate::wire::pointer(answer, "/run_id")) == missing.as_str())
+        .find(|answer| (*wire::pointer(answer, "/run_id")) == missing.as_str())
         .expect("missing run answer");
+    assert_eq!((*wire::pointer(refused, "/answer/status")), "refused");
     assert_eq!(
-        (*crate::wire::pointer(refused, "/answer/status")),
-        "refused"
-    );
-    assert_eq!(
-        (*crate::wire::pointer(refused, "/answer/error_code")),
+        (*wire::pointer(refused, "/answer/error_code")),
         af_core::error_code::RUN_NOT_FOUND.as_str()
     );
-    assert_eq!((*crate::wire::pointer(refused, "/answer/retryable")), false);
+    assert_eq!((*wire::pointer(refused, "/answer/retryable")), false);
 }
 
 async fn empty_folds(native: &mut Native, run: &str, fence: u64) {
@@ -89,7 +86,7 @@ async fn empty_folds(native: &mut Native, run: &str, fence: u64) {
         .await;
     let folded = native.expect(StreamKind::Work, "folded").await;
     assert_eq!(
-        (*crate::wire::pointer(&folded, "/answer")),
+        (*wire::pointer(&folded, "/answer")),
         json!({"status":"ok", "response":{"inputs":[]}})
     );
 }
@@ -118,11 +115,11 @@ async fn cancellation(scene: &crate::e2e::Scenario, native: &mut Native, run: &s
         .await;
     let cancelled = native.expect(StreamKind::Control, "renewed").await;
     assert_eq!(
-        (*crate::wire::pointer(&cancelled, "/runs/0/answer/error_code")),
+        (*wire::pointer(&cancelled, "/runs/0/answer/error_code")),
         af_core::error_code::RUN_CANCELLED.as_str()
     );
     assert_eq!(
-        (*crate::wire::pointer(&cancelled, "/runs/0/answer/retryable")),
+        (*wire::pointer(&cancelled, "/runs/0/answer/retryable")),
         false
     );
 }
@@ -139,7 +136,7 @@ async fn final_report(
         )
         .await;
     let settled = native.expect(StreamKind::Reports, "report_ack").await;
-    assert_eq!((*crate::wire::pointer(&settled, "/answer/status")), "ok");
+    assert_eq!((*wire::pointer(&settled, "/answer/status")), "ok");
     let lines: i64 =
         sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE turn_id=$1 AND seq=1")
             .bind(&scene.turn_id)

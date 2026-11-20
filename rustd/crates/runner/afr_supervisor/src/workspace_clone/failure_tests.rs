@@ -289,7 +289,7 @@ async fn an_origin_that_is_not_a_url_fails_the_fetch_and_makes_no_mirror() {
     };
 
     let refused = mirrors
-        .check_out(request, &tokio_util::sync::CancellationToken::new())
+        .check_out(request, &CancellationToken::new())
         .await
         .unwrap_err();
 

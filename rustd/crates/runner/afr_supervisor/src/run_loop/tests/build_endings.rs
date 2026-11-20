@@ -157,7 +157,7 @@ async fn test_a_build_that_outlasts_its_answer_is_stopped() {
         FakeAgent::new(Behaviour::Talks),
     );
     served(&rig);
-    let started = tokio::time::Instant::now();
+    let started = Instant::now();
 
     let counted = builds_counted(&rig, &bound()).await;
 
@@ -177,7 +177,7 @@ async fn test_a_build_that_outlasts_its_answer_is_stopped() {
 }
 
 /// How far into an answered turn's build wait the runner stops running.
-const STOPS_LEASING_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+const STOPS_LEASING_AFTER: Duration = Duration::from_secs(1);
 
 /// Leasing that stops while an answered turn waits for its build ends the
 /// wait then: no run could take the hold any more, so the build is stopped
@@ -196,7 +196,7 @@ async fn test_leasing_that_stops_mid_wait_ends_the_wait() {
         tokio::time::sleep(STOPS_LEASING_AFTER).await;
         lessee.halt.taking_runs().cancel();
     });
-    let started = tokio::time::Instant::now();
+    let started = Instant::now();
 
     let counted = builds_counted(&rig, &bound()).await;
 
@@ -224,7 +224,7 @@ async fn test_a_runner_that_stopped_leasing_waits_for_no_build() {
     );
     served(&rig);
     rig.lessee.halt.taking_runs().cancel();
-    let started = tokio::time::Instant::now();
+    let started = Instant::now();
 
     let counted = builds_counted(&rig, &bound()).await;
 

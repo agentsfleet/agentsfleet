@@ -129,11 +129,7 @@ async fn open_broker(
     client: reqwest::Client,
 ) -> Arc<afd_credential::credential::Broker> {
     let broker = crate::credentials::resolve(
-        &afd_vault::Vault::new(
-            database.clone(),
-            Arc::clone(kek),
-            af_crypto::entropy::Entropy::new(),
-        ),
+        &afd_vault::Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
         config.platform_admin_workspace(),
         client,
     )

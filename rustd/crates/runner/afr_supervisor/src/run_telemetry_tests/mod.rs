@@ -106,12 +106,7 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
     held.policy.context.context_cap_tokens = 32_768;
     crate::test_support::bounded("telemetry native run", async {
         lessee
-            .run(
-                &turns,
-                &held,
-                &Egress::closed(),
-                tokio_util::sync::CancellationToken::new(),
-            )
+            .run(&turns, &held, &Egress::closed(), CancellationToken::new())
             .await
             .unwrap();
     })

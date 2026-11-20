@@ -46,7 +46,7 @@ pub(crate) enum GateFacts {
 
 impl GateFacts {
     /// The spend, or the fault the budget gate absorbs.
-    pub(crate) fn spend(&self) -> core::result::Result<Spend, &crate::Error> {
+    pub(crate) fn spend(&self) -> Result<Spend, &crate::Error> {
         match self {
             Self::Read { spend, .. } => Ok(*spend),
             Self::Unreadable(fault) => Err(fault),
@@ -57,9 +57,7 @@ impl GateFacts {
     pub(crate) fn recorded(&self) -> Recorded {
         match self {
             Self::Read { recorded, .. } => recorded.clone(),
-            Self::Unreadable(fault) => {
-                Recorded::Unreadable(af_core::error_code::Coded::logged(fault))
-            }
+            Self::Unreadable(fault) => Recorded::Unreadable(error_code::Coded::logged(fault)),
         }
     }
 
@@ -141,8 +139,8 @@ const EVENT_BUDGET_BREACH: &str = "run_budget_breach";
 ///
 /// A tenant with no wallet row is ADMITTED — see [`afd_billing::wallet`] for
 /// why an unprovisioned tenant is an operator gap rather than a refusal.
-pub(super) async fn balance<F: af_core::error_code::Coded + Sync>(
-    estimate: core::result::Result<Estimate, &F>,
+pub(super) async fn balance<F: error_code::Coded + Sync>(
+    estimate: Result<Estimate, &F>,
     biller: &dyn Biller,
     request: &Request<'_>,
     tenant_id: &Uuid7,
@@ -191,9 +189,9 @@ pub(super) async fn balance<F: af_core::error_code::Coded + Sync>(
 /// and the two ceilings are independent — passing one says nothing about the
 /// other. Judges a spend the caller read, or the fault its read met, which the
 /// gate absorbs under its declared posture.
-pub(super) fn fleet_budget<E: af_core::error_code::Coded>(
+pub(super) fn fleet_budget<E: error_code::Coded>(
     request: &Request<'_>,
-    spend: core::result::Result<Spend, &E>,
+    spend: Result<Spend, &E>,
 ) -> Option<Declined> {
     let spend = match spend {
         Ok(spend) => spend,

@@ -181,11 +181,7 @@ fn content(
 
 fn unique_calls(
     request: &garde::Valid<ModelCallInput>,
-    calls: &[ProposalCall<
-        af_fleet_runtime::Definition,
-        af_fleet_runtime::definition::ConfigOp,
-        af_fleet_runtime::definition::InstructionEdit,
-    >],
+    calls: &[ProposalCall<Definition, ConfigOp, InstructionEdit>],
 ) -> Result<()> {
     let mut used = std::collections::HashSet::new();
     for message in &request.request.messages {
@@ -219,13 +215,7 @@ fn proposal(
     item: &ToolCall,
     candidate: Option<&crate::types::Candidate>,
     said: Option<&str>,
-) -> Result<
-    ProposalCall<
-        af_fleet_runtime::Definition,
-        af_fleet_runtime::definition::ConfigOp,
-        af_fleet_runtime::definition::InstructionEdit,
-    >,
-> {
+) -> Result<ProposalCall<Definition, ConfigOp, InstructionEdit>> {
     if item.function.name.as_str() != TOOL {
         return Err(ErrorKind::Provider.into());
     }

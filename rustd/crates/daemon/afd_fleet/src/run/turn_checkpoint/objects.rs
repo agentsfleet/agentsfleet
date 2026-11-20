@@ -233,7 +233,7 @@ pub(super) async fn scoped(
 }
 
 pub(super) async fn scoped_held(
-    owner: &mut super::guard::TurnRunGuard<'_>,
+    owner: &mut guard::TurnRunGuard<'_>,
     plan: &super::row::Plan,
     namespace: &str,
     ids: &[Uuid7],

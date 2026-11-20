@@ -55,7 +55,7 @@ async fn rejected_model_edits_receive_feedback_before_a_corrected_proposal_is_ap
                 let request: Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
                 assert_eq!(request["activity_sequence"], "1");
                 assert_eq!(request["event"]["proposal"]["kind"], "initialize");
-                super::json(&json!({"accepted":true,"replayed":false}))
+                json(&json!({"accepted":true,"replayed":false}))
             }
             Verb::AuthoringReport => ack(),
             other => panic!("unexpected authority {other:?}"),
@@ -108,7 +108,7 @@ async fn a_refusal_naming_a_field_tells_the_model_that_field() {
                 false,
             )
         }
-        Verb::AuthoringActivity => super::json(&json!({"accepted":true,"replayed":false})),
+        Verb::AuthoringActivity => json(&json!({"accepted":true,"replayed":false})),
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
@@ -158,7 +158,7 @@ async fn an_oversized_first_setup_is_refused_by_the_runner_without_asking_the_da
                 request["event"]["proposal"]["definition"]["instructions_md"], "Reply briefly.",
                 "the oversized setup reached the daemon"
             );
-            super::json(&json!({"accepted":true,"replayed":false}))
+            json(&json!({"accepted":true,"replayed":false}))
         }
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),

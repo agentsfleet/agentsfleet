@@ -64,7 +64,7 @@ pub(crate) fn plane() -> RunService {
         biller: Arc::new(biller()),
         memories: Memories::new(database(), Entropy::new()),
         providers: Providers::new(database(), Arc::clone(&kek), Entropy::new()),
-        vault: Vault::new(database(), kek, af_crypto::entropy::Entropy::new()),
+        vault: Vault::new(database(), kek, Entropy::new()),
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),
             Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),

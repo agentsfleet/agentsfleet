@@ -51,7 +51,7 @@ pub struct RunService {
     /// Assignments, rows, and the narrative log.
     pub runs: Runs,
     /// Native task report evidence, sharing the request-path task owner.
-    pub task_reports: Option<std::sync::Arc<dyn crate::task::TaskReportOwner>>,
+    pub task_reports: Option<Arc<dyn crate::task::TaskReportOwner>>,
     /// Ordinary recovery uses the deployment key even when no file store is configured.
     pub turn_checkpoints: crate::run::turn_checkpoint::TurnCheckpoints,
     /// Approval gates and standing integration grants.
@@ -64,7 +64,7 @@ pub struct RunService {
     /// A trait object so the built-in ledger, a queue or a third-party
     /// metering system all sit behind one call site; the daemon chooses which,
     /// and its outage policy, where it builds the plane.
-    pub biller: std::sync::Arc<dyn afd_billing::biller::Biller>,
+    pub biller: Arc<dyn afd_billing::biller::Biller>,
     /// What a fleet remembers between runs.
     ///
     /// A store of its own rather than a verb on [`Runs`]: the tables are a
@@ -81,7 +81,7 @@ pub struct RunService {
     /// whole point of the cache is that every request shares it, and a `RunService`
     /// clone that deep-copied it would give each cloned handle its own — which
     /// is a cache that never hits and a single-flight that never single-flights.
-    pub broker: std::sync::Arc<afd_credential::credential::Broker>,
+    pub broker: Arc<afd_credential::credential::Broker>,
     /// The standing grants a fleet holds, and the only writer of them.
     ///
     /// The run path READS grants through [`RunService::gates`] on every delivery
@@ -92,7 +92,7 @@ pub struct RunService {
     /// to trust.
     pub grants: afd_approval::IntegrationGrants,
     /// The fleet's thread, which a chat run carries its earlier turns from.
-    pub thread: std::sync::Arc<dyn crate::run::Thread>,
+    pub thread: Arc<dyn crate::run::Thread>,
 }
 
 /// What the assignment and the gates settled, before the policy is built.

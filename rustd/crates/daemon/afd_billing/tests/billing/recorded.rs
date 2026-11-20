@@ -31,7 +31,7 @@ fn settlement(payer: &Account, work: &WorkKey) -> afd_billing::biller::Settlemen
         attribution: afd_billing::biller::Attribution::Fleet {
             fleet: mint_id(),
             fleet_name: "recorded".to_owned(),
-            turn_id: afd_db::test_util::mint_id(),
+            turn_id: mint_id(),
         },
         provider: "recorded".to_owned(),
         model: "recorded".to_owned(),

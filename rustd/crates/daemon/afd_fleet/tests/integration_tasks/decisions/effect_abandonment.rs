@@ -123,7 +123,7 @@ async fn assert_replay(
     clippy::future_not_send,
     reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
 )]
-async fn replacement(case: &Case) -> (af_core::id::Uuid7, u64) {
+async fn replacement(case: &Case) -> (Uuid7, u64) {
     super::run_recovery::support::expire(case).await;
     let acquired = super::run_recovery::support::assign(case).await;
     let run = super::run_recovery::reassigned(case, acquired).await;

@@ -43,9 +43,9 @@ pub(super) async fn reserve(
     })
     .map_err(af_core::json::Unreadable::from)?;
     let digest = af_core::etag::sha256_hex(request.as_bytes());
-    let task = crate::task::guard::wire(&input.task.task_id)?;
-    let operation = crate::task::guard::wire(&input.operation_id)?;
-    let source_item = crate::task::guard::wire(&input.source_item_id)?;
+    let task = guard::wire(&input.task.task_id)?;
+    let operation = guard::wire(&input.operation_id)?;
+    let source_item = guard::wire(&input.source_item_id)?;
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // Replays remain readable after a stop, but never regain mutation authority.
@@ -156,8 +156,8 @@ async fn publication_context(
     ) {
         return Err(TaskRefusal::InvalidTarget.into());
     }
-    let task = crate::task::guard::wire(&input.task.task_id)?;
-    let source_item = crate::task::guard::wire(&input.source_item_id)?;
+    let task = guard::wire(&input.task.task_id)?;
+    let source_item = guard::wire(&input.source_item_id)?;
     let target: PublicationContext = sqlx::query_as(include_str!("sql/target.sql"))
         .bind(&task)
         .bind(&source_item)
@@ -178,9 +178,7 @@ async fn publication_context(
     let accepted = crate::run::Runs::stored_config_on(
         connection,
         &owned.current.fleet_id,
-        Some(&crate::task::guard::wire(
-            &owned.snapshot.context.accepted_revision_id,
-        )?),
+        Some(&guard::wire(&owned.snapshot.context.accepted_revision_id)?),
     )
     .await?
     .ok_or(TaskRefusal::InvalidTarget)?;

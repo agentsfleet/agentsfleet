@@ -116,7 +116,7 @@ fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> Test
             .file(Some(file.path()))
             .build();
         let failure = result.err().ok_or("invalid settings must refuse startup")?;
-        assert!(failure.to_string().contains(super::FILE_KNOB));
+        assert!(failure.to_string().contains(FILE_KNOB));
         assert!(!failure.to_string().contains("private-invalid-value"));
     }
     Ok(())

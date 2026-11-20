@@ -42,7 +42,7 @@ pub(crate) struct Renewal<'a> {
     run_id: &'a Uuid7,
     expires_at: Timestamp,
     clock: &'a dyn Clock,
-    meter: &'a std::sync::Arc<Meter>,
+    meter: &'a Arc<Meter>,
 }
 
 impl<'a> Renewal<'a> {
@@ -54,7 +54,7 @@ impl<'a> Renewal<'a> {
         run_id: &'a Uuid7,
         expires_at: Timestamp,
         clock: &'a dyn Clock,
-        meter: &'a std::sync::Arc<Meter>,
+        meter: &'a Arc<Meter>,
     ) -> Self {
         Self {
             plane,

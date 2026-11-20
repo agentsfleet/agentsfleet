@@ -72,7 +72,7 @@ pub enum ConnectionCredentials {
 }
 
 /// A refused stream already carries its HTTP problem response.
-pub type ConnectionAuthenticationResult = core::result::Result<ConnectionCredentials, Refusal>;
+pub type ConnectionAuthenticationResult = Result<ConnectionCredentials, Refusal>;
 
 /// Implemented by the native connection owner, independent of HTTP route dispatch.
 pub trait RunnerConnectionAuthentication: Send + Sync + std::fmt::Debug + 'static {

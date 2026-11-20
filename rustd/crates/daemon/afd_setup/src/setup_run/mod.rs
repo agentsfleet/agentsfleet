@@ -189,7 +189,7 @@ impl SetupOwed {
 /// parameters, for a draft with a candidate to edit (`editing`) or without.
 #[must_use]
 pub fn setup_tool(editing: bool) -> serde_json::Value {
-    crate::model::setup_tool(editing)
+    model::setup_tool(editing)
 }
 
 impl Drafts {

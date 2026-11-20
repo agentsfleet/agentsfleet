@@ -99,7 +99,7 @@ async fn a_refused_proposal_is_repaired_without_skipping_its_activity_sequence()
                     Some(af_core::error_code::INVALID_REQUEST),
                 ))
             } else {
-                super::json(&json!({"accepted":true,"replayed":false}))
+                json(&json!({"accepted":true,"replayed":false}))
             }
         }
         Verb::AuthoringReport => ack(),

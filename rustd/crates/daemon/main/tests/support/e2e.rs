@@ -296,7 +296,7 @@ impl Scenario {
     }
 }
 
-async fn enrolled_runner(booted: &Booted, fleet: &Uuid7, now: jiff::Timestamp) -> (Uuid7, String) {
+async fn enrolled_runner(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uuid7, String) {
     // Through the production verb, not an INSERT: enrolment mints the token
     // and stores only its digest, and a seeded row would let the suite present
     // a credential the daemon's own minting never produced.

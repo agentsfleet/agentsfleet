@@ -101,7 +101,7 @@ impl<'a> ReportStatement<'a> {
             .bind(af_core::turn::status::RECEIVED)
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(self.checkpoint)
-            .bind(self.held_until.map(jiff::Timestamp::to_sqlx))
+            .bind(self.held_until.map(Timestamp::to_sqlx))
             .bind(self.sandbox_idle_hold)
             .bind(self.delivery_id)
             .bind(self.delivery_receipt)

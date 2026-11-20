@@ -25,8 +25,7 @@ fn answer(number: impl std::fmt::LowerHex) -> Uuid7 {
 fn job(number: u32) -> Job {
     Box::new(Claimed {
         id: afd_db::test_util::mint_id(),
-        token: af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")
-            .expect("a fixture token"),
+        token: Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff").expect("a fixture token"),
         outgoing: Outgoing {
             provider: "slack".to_owned(),
             destination: "thread".to_owned(),

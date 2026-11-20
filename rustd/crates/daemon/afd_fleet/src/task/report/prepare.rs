@@ -123,13 +123,13 @@ async fn snapshot(
     } else {
         let target: sqlx::types::Json<crate::task::github::BoundPr> =
             sqlx::query_scalar(include_str!("../sql/native_target.sql"))
-                .bind(crate::task::guard::wire(&input.task.task_id)?)
+                .bind(guard::wire(&input.task.task_id)?)
                 .bind(&owned.scope.fleet_id)
                 .bind(&owned.scope.workspace_id)
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(query("read native report target"))?;
-        let accepted = crate::task::guard::wire(&owned.snapshot.context.accepted_revision_id)?;
+        let accepted = guard::wire(&owned.snapshot.context.accepted_revision_id)?;
         for revision in [Some(&accepted), None] {
             let config =
                 crate::run::Runs::stored_config_on(&mut tx, &owned.scope.fleet_id, revision)

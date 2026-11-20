@@ -89,7 +89,7 @@ async fn a_vault_that_will_not_answer_is_retryable_and_names_no_field() {
         None,
         "no bag was read, so no field is at fault"
     );
-    assert_eq!(read.code(), af_core::error_code::INTERNAL_DB_UNAVAILABLE);
+    assert_eq!(read.code(), INTERNAL_DB_UNAVAILABLE);
     if let Some(source) = std::error::Error::source(&read) {
         assert_ne!(source.to_string(), read.to_string());
     }

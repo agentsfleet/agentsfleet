@@ -20,9 +20,8 @@ const DIGEST_BEFORE_DESTINATIONS: &str =
 const CONNECTOR: &str = "slack";
 
 /// An event id as the ledger mints it: the turn row's `UUIDv7`.
-static RESUMED: std::sync::LazyLock<Uuid7> = std::sync::LazyLock::new(|| {
-    afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0177")
-});
+static RESUMED: LazyLock<Uuid7> =
+    LazyLock::new(|| afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0177"));
 
 /// [`RESUMED`] as the identifier a reply inherits from.
 fn resumed() -> Uuid7 {

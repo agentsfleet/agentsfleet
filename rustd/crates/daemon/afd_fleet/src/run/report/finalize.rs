@@ -93,8 +93,7 @@ impl RunService {
         row.map(|(fence, until)| {
             Ok(af_wire::report::AcceptedHold {
                 run_id: run.to_string(),
-                fencing_token: u64::try_from(fence)
-                    .map_err(|_negative| crate::error::stale_fence())?,
+                fencing_token: u64::try_from(fence).map_err(|_negative| stale_fence())?,
                 expires_at: until.into(),
             })
         })

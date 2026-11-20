@@ -13,7 +13,7 @@ async fn renewal_keeps_the_run_through_a_slow_settle_and_stops_once_answered() {
     let mut rig = Rig::new(
         daemon(slow_report),
         FakeEngine::default(),
-        crate::test_support::FakeAgent::new(Behaviour::Answer),
+        FakeAgent::new(Behaviour::Answer),
     );
 
     rig.run(&payload(RUN_ID, FLEET_ID)).await.unwrap();

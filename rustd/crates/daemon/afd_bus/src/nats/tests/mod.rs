@@ -101,7 +101,7 @@ fn connect_options_never_print_the_password() {
 fn a_publish_during_an_outage_is_a_backend_failure() {
     let error = Error::from(ErrorKind::NatsDisconnected);
     assert_eq!(error.reason(), "backend");
-    assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(error.code(), INTERNAL_OPERATION_FAILED);
     assert!(error.to_string().contains("gap"), "{error}");
 }
 

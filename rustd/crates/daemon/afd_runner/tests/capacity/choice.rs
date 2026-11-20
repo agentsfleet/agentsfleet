@@ -37,15 +37,10 @@ async fn test_kind_preference_survives_a_new_store_handle() {
     );
     let mut connection = fixture.db.acquire().await.expect("next connection");
     let mut tx = connection.begin().await.expect("next transaction");
-    let census = capacity::lock(
-        &mut tx,
-        &fixture.runner,
-        afd_runner::capacity::Work::Authoring,
-        None,
-    )
-    .await
-    .expect("fresh guard")
-    .expect("host exists");
+    let census = capacity::lock(&mut tx, &fixture.runner, capacity::Work::Authoring, None)
+        .await
+        .expect("fresh guard")
+        .expect("host exists");
     assert!(
         !ticket.permits(census, RunKind::Fleet),
         "a stale poll cannot take the other kind"
@@ -61,15 +56,10 @@ async fn test_kind_preference_survives_a_new_store_handle() {
 async fn place_authoring(fixture: &Fixture, ticket: Ticket) {
     let mut connection = fixture.db.acquire().await.expect("placement connection");
     let mut tx = connection.begin().await.expect("placement transaction");
-    let census = capacity::lock(
-        &mut tx,
-        &fixture.runner,
-        afd_runner::capacity::Work::Authoring,
-        None,
-    )
-    .await
-    .expect("host guard")
-    .expect("host exists");
+    let census = capacity::lock(&mut tx, &fixture.runner, capacity::Work::Authoring, None)
+        .await
+        .expect("host guard")
+        .expect("host exists");
     assert!(ticket.permits(census, RunKind::Authoring));
     fixture
         .authoring(&mut tx, af_core::clock::after(census.now(), LIVE_FOR))
@@ -97,15 +87,10 @@ async fn test_failed_placement_does_not_advance_preference() {
         .expect("host");
     let mut connection = fixture.db.acquire().await.expect("connection");
     let mut tx = connection.begin().await.expect("transaction");
-    let census = capacity::lock(
-        &mut tx,
-        &fixture.runner,
-        afd_runner::capacity::Work::Authoring,
-        None,
-    )
-    .await
-    .expect("guard")
-    .expect("host");
+    let census = capacity::lock(&mut tx, &fixture.runner, capacity::Work::Authoring, None)
+        .await
+        .expect("guard")
+        .expect("host");
     assert!(
         capacity::choice::record(&mut tx, &fixture.runner, census, RunKind::Authoring)
             .await
@@ -113,15 +98,10 @@ async fn test_failed_placement_does_not_advance_preference() {
     );
     tx.rollback().await.expect("placement failed");
     let mut tx = connection.begin().await.expect("retry transaction");
-    let census = capacity::lock(
-        &mut tx,
-        &fixture.runner,
-        afd_runner::capacity::Work::Authoring,
-        None,
-    )
-    .await
-    .expect("retry guard")
-    .expect("host");
+    let census = capacity::lock(&mut tx, &fixture.runner, capacity::Work::Authoring, None)
+        .await
+        .expect("retry guard")
+        .expect("host");
     assert!(
         ticket.permits(census, RunKind::Authoring),
         "rollback leaves the old assignment usable"

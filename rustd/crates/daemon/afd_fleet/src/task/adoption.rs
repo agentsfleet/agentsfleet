@@ -172,13 +172,10 @@ async fn questions(
     let config = Runs::stored_config_on(connection, &scope.fleet_id, Some(revision))
         .await?
         .ok_or(TaskRefusal::InvalidTarget)?;
-    let original = Runs::stored_config_on(
-        connection,
-        &scope.fleet_id,
-        Some(&crate::task::guard::wire(previous)?),
-    )
-    .await?
-    .ok_or(TaskRefusal::InvalidTarget)?;
+    let original =
+        Runs::stored_config_on(connection, &scope.fleet_id, Some(&guard::wire(previous)?))
+            .await?
+            .ok_or(TaskRefusal::InvalidTarget)?;
     if !original.same_task_authority(&config) {
         return Err(TaskRefusal::InvalidTarget.into());
     }

@@ -41,10 +41,7 @@ pub(in super::super) async fn provider(fixture: &Decisions<'_>) -> PlatformDefau
     .await
 }
 
-pub(in super::super) async fn model(
-    fixture: &Decisions<'_>,
-    selected: Option<&af_core::id::Uuid7>,
-) {
+pub(in super::super) async fn model(fixture: &Decisions<'_>, selected: Option<&Uuid7>) {
     let runners = fixture.case.held.fixtures.runners();
     let row = runners
         .self_record(&fixture.case.held.runner)

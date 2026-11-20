@@ -81,8 +81,7 @@ fn event(w: usize, n: u32) -> Uuid7 {
 fn job(w: usize, n: u32) -> Box<Claimed> {
     Box::new(Claimed {
         id: event(w, n),
-        token: af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")
-            .expect("a fixture token"),
+        token: Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff").expect("a fixture token"),
         outgoing: Outgoing {
             provider: PROVIDER.to_owned(),
             destination: DESTINATION.to_owned(),

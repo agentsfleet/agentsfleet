@@ -256,7 +256,7 @@ impl Steer {
     /// not take it is logged by the publisher and changes no answer.
     pub async fn announce(&self, fleet: &str, frame: &TailFrame<'_>) {
         let Ok(fleet) = Uuid7::parse(fleet) else {
-            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
                 event = "tail_frame_dropped",
                 error_code,

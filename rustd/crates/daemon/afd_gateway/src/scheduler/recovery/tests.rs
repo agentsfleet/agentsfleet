@@ -101,15 +101,10 @@ fn start_clock(
     calls: watch::Sender<usize>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        probe_ticks(
-            &wake,
-            &stop,
-            af_core::timing::ASSIGN_FALLBACK_TICK,
-            async || {
-                calls.send_modify(|count| *count += 1);
-                Ok(pending.load(Ordering::SeqCst))
-            },
-        )
+        probe_ticks(&wake, &stop, ASSIGN_FALLBACK_TICK, async || {
+            calls.send_modify(|count| *count += 1);
+            Ok(pending.load(Ordering::SeqCst))
+        })
         .await;
     })
 }

@@ -218,7 +218,7 @@ impl Turns {
                 turn,
                 key,
                 digest,
-                crate::stage::insert::Gates { estimate, runnable },
+                Gates { estimate, runnable },
             )
             .await?;
         if ledger.inserted {

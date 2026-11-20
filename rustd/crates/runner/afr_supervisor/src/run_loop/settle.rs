@@ -87,7 +87,7 @@ impl Run<'_> {
             return;
         }
         let plane = &self.lessee.plane;
-        let posted: crate::Result<()> = async {
+        let posted: Result<()> = async {
             for body in records::bodies(self.payload.fencing_token, records)? {
                 plane
                     .retrying(|| plane.tool_calls(&self.ids.run, body.clone()))

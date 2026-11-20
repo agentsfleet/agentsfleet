@@ -61,7 +61,7 @@ async fn publish(
     Ok((pending, saved))
 }
 
-fn refused(result: Checked<Response>, code: af_core::error_code::ErrorCode) -> Checked {
+fn refused(result: Checked<Response>, code: error_code::ErrorCode) -> Checked {
     let Err(failure) = result else {
         return Err("custody or authority must refuse".into());
     };

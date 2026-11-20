@@ -22,7 +22,7 @@ pub(in crate::run) enum Step<T> {
 impl<T> Step<T> {
     /// The value to carry on with, or this step's ending retyped for the
     /// caller one level up — a park stays a park on its way out.
-    pub(in crate::run) fn proceed<U>(self) -> core::result::Result<T, Step<U>> {
+    pub(in crate::run) fn proceed<U>(self) -> Result<T, Step<U>> {
         match self {
             Self::Go(value) => Ok(value),
             Self::Stop => Err(Step::Stop),

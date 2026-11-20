@@ -113,9 +113,9 @@ async fn held_fleet_on_the_platform_model_waits_for_its_hold() {
         &fixtures.database,
         &fleet,
         &t.workspace,
-        crate::seed::ACTOR,
+        ACTOR,
         "chat",
-        crate::seed::REQUEST_JSON,
+        REQUEST_JSON,
         fixtures.enrolled_at(),
     )
     .await;

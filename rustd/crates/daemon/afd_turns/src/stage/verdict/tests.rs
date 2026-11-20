@@ -5,13 +5,10 @@ use afd_fleet_lifecycle::FleetStatus;
 use super::{Answer, Bound, decide};
 use crate::Error;
 
-type Outcome = std::result::Result<(), Box<dyn std::error::Error>>;
+type Outcome = Result<(), Box<dyn std::error::Error>>;
 
 /// The refusal `decide` raises for `answer`, or a failed test when it admits.
-fn refusal(
-    answer: &Answer,
-    bound: Bound,
-) -> std::result::Result<Error, Box<dyn std::error::Error>> {
+fn refusal(answer: &Answer, bound: Bound) -> Result<Error, Box<dyn std::error::Error>> {
     decide(answer, bound)
         .err()
         .ok_or_else(|| "the answer was admitted, not refused".into())

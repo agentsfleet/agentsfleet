@@ -50,7 +50,7 @@ async fn a_native_session_records_its_attempt_owner_and_codec_parent()
 async fn exercise(
     handle: &crate::uplink::StreamHandle,
     shutdown: &CancellationToken,
-) -> crate::Result<()> {
+) -> Result<()> {
     handle
         .wait_connected(tokio::time::Instant::now() + std::time::Duration::from_secs(5))
         .await?;

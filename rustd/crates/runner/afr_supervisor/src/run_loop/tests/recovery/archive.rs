@@ -31,7 +31,7 @@ impl Archive {
             calls: vec![],
         }
     }
-    pub(super) fn task(&mut self, path: &str, body: Value) -> (axum::http::StatusCode, Value) {
+    pub(super) fn task(&mut self, path: &str, body: Value) -> (http::StatusCode, Value) {
         use axum::http::StatusCode;
         self.calls.push((path.to_owned(), body.clone()));
         if path.ends_with("/inputs") {

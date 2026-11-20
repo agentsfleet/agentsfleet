@@ -83,12 +83,10 @@ impl NativeContext {
         candidates: &[Candidate],
     ) -> Result<AssessedContext> {
         Ok(AssessedContext {
-            source_turn_id: crate::task::guard::wire(&input.source_turn_id)?,
+            source_turn_id: guard::wire(&input.source_turn_id)?,
             assessment: input.assessment.clone(),
-            accepted_revision_id: crate::task::guard::wire(
-                self.revision(input.assessment.purpose())?,
-            )?,
-            profile_revision_id: crate::task::guard::wire(profile_revision)?,
+            accepted_revision_id: guard::wire(self.revision(input.assessment.purpose())?)?,
+            profile_revision_id: guard::wire(profile_revision)?,
             questions_digest,
             execution: self
                 .task

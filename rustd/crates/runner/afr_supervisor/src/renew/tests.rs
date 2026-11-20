@@ -65,7 +65,7 @@ async fn test_renew_keeps_on_5xx_ends_on_4xx() {
         &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -91,7 +91,7 @@ async fn blips_past_the_granted_deadline_end_the_run() {
         &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -116,7 +116,7 @@ async fn a_hanging_renewal_does_not_outlive_the_deadline() {
         &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -144,7 +144,7 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_run_ends_at_once() {
         &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -155,7 +155,7 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_run_ends_at_once() {
         &run,
         lapsed_grant,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -189,7 +189,7 @@ async fn an_exhausted_budget_ends_the_run_as_a_budget_breach() {
         &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -210,7 +210,7 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     });
     let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
-    let meter = std::sync::Arc::new(Meter::default());
+    let meter = Arc::new(Meter::default());
     meter.add(Usage {
         input: 300,
         cached_input: 100,
@@ -253,7 +253,7 @@ async fn a_line_a_renewal_recorded_is_not_sent_again() {
     });
     let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
-    let meter = std::sync::Arc::new(Meter::default());
+    let meter = Arc::new(Meter::default());
     meter.add(Usage {
         input: 300,
         output: 40,
@@ -330,7 +330,7 @@ async fn a_renewal_refused_for_the_cancel_mark_is_a_stop() {
         &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -356,7 +356,7 @@ async fn a_renewal_refused_for_another_reason_is_no_stop() {
         &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;

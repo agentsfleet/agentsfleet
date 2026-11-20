@@ -37,7 +37,7 @@ async fn ordinary_uploads_share_one_authorization_and_one_readback_request() -> 
     for _ in 0..4 {
         let seen = server.seen.try_recv()?;
         let seen_path = seen.path.split('?').next().ok_or("missing request path")?;
-        assert_eq!(seen.method, axum::http::Method::PUT);
+        assert_eq!(seen.method, http::Method::PUT);
         assert_eq!(
             seen.bytes.as_ref(),
             payloads.get(seen_path).ok_or("unknown PUT")?
@@ -149,7 +149,7 @@ fn unverifying_plane(
     objects: Vec<CheckpointObject>,
     fault: Option<Owner>,
 ) -> (crate::client::ControlPlane, test_support::Calls) {
-    super::session_tests::scripted(move |action| match action {
+    session_tests::scripted(move |action| match action {
         Action::Uploads { .. } => match fault {
             Some(Owner::NoCreateOnly) => Ok(Response::Uploads(
                 objects
@@ -205,11 +205,11 @@ async fn stored_chunks_the_owner_does_not_verify_fail_the_upload() -> Checked {
         Some("turn upload was not authenticated by its durable owner")
     );
     assert!(matches!(
-        super::session_tests::sent(&mut calls)?.as_slice(),
+        session_tests::sent(&mut calls)?.as_slice(),
         [Action::Uploads { .. }, Action::Authorize { .. }]
     ));
     for _ in 0..4 {
-        assert_eq!(server.seen.try_recv()?.method, axum::http::Method::PUT);
+        assert_eq!(server.seen.try_recv()?.method, http::Method::PUT);
     }
     server.finish().await
 }
@@ -236,7 +236,7 @@ async fn a_put_refused_before_sending_is_the_failure_an_unverified_batch_reports
         Some("checkpoint upload lacks create-only authority")
     );
     assert!(matches!(
-        super::session_tests::sent(&mut calls)?.as_slice(),
+        session_tests::sent(&mut calls)?.as_slice(),
         [Action::Uploads { .. }, Action::Authorize { .. }]
     ));
     Ok(())

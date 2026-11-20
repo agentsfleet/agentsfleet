@@ -38,7 +38,7 @@ async fn an_oversized_ordinary_workspace_skips_after_thaw_without_stopping() -> 
             },
         },
         previous: None,
-        history: zeroize::Zeroizing::new(Vec::new()),
+        history: Zeroizing::new(Vec::new()),
         folds: Vec::new(),
     });
     assert!(matches!(
@@ -66,7 +66,7 @@ fn snapshot(fixture: &Fixture) -> Result<RecoverySnapshot> {
                 .current_task
                 .clone()
                 .ok_or_else(|| error::config("fixture task missing"))?,
-            history: zeroize::Zeroizing::new(Vec::new()),
+            history: Zeroizing::new(Vec::new()),
         }),
     })
 }

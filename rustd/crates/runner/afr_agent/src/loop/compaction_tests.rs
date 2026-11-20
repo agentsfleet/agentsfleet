@@ -230,7 +230,7 @@ async fn unusable_summary_retains_known_charge_without_running_more_tools() {
     }
 }
 
-fn compaction_run() -> af_wire::run::RunPayload<'static> {
+fn compaction_run() -> RunPayload<'static> {
     let mut run = payload(&[UPDATE_PLAN.name()], unbounded());
     run.run_id = "01900000-0000-7000-8000-000000000001".into();
     run.policy.model_context_tokens = 10_000;

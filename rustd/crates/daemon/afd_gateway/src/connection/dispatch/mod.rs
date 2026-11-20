@@ -28,7 +28,7 @@ impl ConnectionServices {
         incoming: IncomingFrame,
         requests: &Arc<super::requests::RequestTracker>,
     ) -> Result<()> {
-        let message: super::Request<'_> = incoming.frame.decode()?;
+        let message: Request<'_> = incoming.frame.decode()?;
         if matches!(message, Up::TurnCheckpoint { .. }) {
             af_wire::run::TurnMessageSize {
                 bytes: incoming.frame.as_bytes().len(),

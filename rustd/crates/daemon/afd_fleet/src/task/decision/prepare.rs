@@ -72,7 +72,7 @@ impl super::ownership::NativeContext {
         let config = Runs::stored_config_on(
             connection,
             &self.current.fleet_id,
-            Some(&crate::task::guard::wire(revision)?),
+            Some(&guard::wire(revision)?),
         )
         .await?
         .ok_or(TaskRefusal::DecisionUnavailable)?;
@@ -140,8 +140,8 @@ pub(super) async fn enabled(
     assignment: &DecisionAssignment,
 ) -> Result<String> {
     sqlx::query_scalar(sql::PROFILE)
-        .bind(crate::task::guard::wire(&assignment.profile.model_id)?)
-        .bind(crate::task::guard::wire(&assignment.revision_id)?)
+        .bind(guard::wire(&assignment.profile.model_id)?)
+        .bind(guard::wire(&assignment.revision_id)?)
         .fetch_optional(connection)
         .await
         .map_err(query("check frozen decision revision activation"))?
