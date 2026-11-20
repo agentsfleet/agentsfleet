@@ -225,7 +225,7 @@ impl Runs {
             audit_metadata: serde_json::json!({
                 afd_runner::sql::meta::RUN_ID: report.run_id.as_str(),
                 afd_runner::sql::meta::FLEET_ID: run.fleet_id.as_str(),
-                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID: run.turn_id.as_str(),
+                afd_runner::sql::meta::TURN_ID: run.turn_id.as_str(),
             }),
             unanswered_notice: notice.as_deref(),
         }

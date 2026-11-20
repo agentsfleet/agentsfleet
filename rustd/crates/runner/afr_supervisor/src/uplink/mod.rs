@@ -139,8 +139,8 @@ impl SessionSender {
             .validate()?;
         }
         let message = Outbound { frame, deadline };
-        if kind == StreamKind::Activity {
-            return self.queues.activity(message);
+        if kind == StreamKind::Progress {
+            return self.queues.progress(message);
         }
         self.queues.send(kind, priority, message, &self.stop).await
     }

@@ -106,7 +106,7 @@ pub(super) async fn secondary(
     deadline: Instant,
 ) -> BTreeMap<StreamKind, Pipe> {
     let mut pipes = BTreeMap::new();
-    for kind in [StreamKind::Work, StreamKind::Reports, StreamKind::Activity] {
+    for kind in [StreamKind::Work, StreamKind::Reports, StreamKind::Progress] {
         let (writer, body) = Outgoing::pipe();
         let request = Request::post(endpoint.uri().clone())
             .header(protocol::VERSION_HEADER, protocol::VERSION)

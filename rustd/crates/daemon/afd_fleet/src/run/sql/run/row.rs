@@ -110,10 +110,7 @@ impl RunRow<'_> {
         let metadata = std::collections::BTreeMap::from([
             (afd_runner::sql::meta::RUN_ID, self.run_id.as_str()),
             (afd_runner::sql::meta::FLEET_ID, self.fleet_id.as_str()),
-            (
-                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID,
-                self.turn_id.as_str(),
-            ),
+            (afd_runner::sql::meta::TURN_ID, self.turn_id.as_str()),
             (afd_runner::sql::meta::KIND, self.kind),
         ]);
         let created_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(INSERT_RUN_WITH_TURN)

@@ -35,7 +35,7 @@ impl ConnectionServices {
         };
         // A slow cosmetic publisher never holds control, renewal or report workers.
         if let Err(error) = self
-            .operation(Operation::Activity, async {
+            .operation(Operation::Progress, async {
                 Ok(self
                     .runs
                     .activity_for_target(&self.handle.runner, &id, &target, &request.frames)
@@ -43,7 +43,7 @@ impl ConnectionServices {
             })
             .await
         {
-            crate::Gateway::observe(&error, Operation::Activity);
+            crate::Gateway::observe(&error, Operation::Progress);
         }
         Ok(())
     }
@@ -67,7 +67,7 @@ impl ConnectionServices {
             })
             .collect();
         if let Err(error) = self
-            .operation(Operation::Activity, async {
+            .operation(Operation::Progress, async {
                 Ok(self
                     .drafts
                     .publish_setup_preview(&self.handle.runner, run, &chunks)
@@ -75,7 +75,7 @@ impl ConnectionServices {
             })
             .await
         {
-            crate::Gateway::observe(&error, Operation::Activity);
+            crate::Gateway::observe(&error, Operation::Progress);
         }
         Ok(())
     }

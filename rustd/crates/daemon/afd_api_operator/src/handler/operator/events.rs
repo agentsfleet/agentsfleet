@@ -54,7 +54,7 @@ pub(crate) async fn list<D: Services>(
     };
     match services
         .runners()
-        .runner_events(&runner, &query.filter, query.cursor.as_ref(), query.limit)
+        .runner_history(&runner, &query.filter, query.cursor.as_ref(), query.limit)
         .await
     {
         Ok(rows) => {

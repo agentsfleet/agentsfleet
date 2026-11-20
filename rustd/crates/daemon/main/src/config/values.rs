@@ -83,7 +83,7 @@ fn runner(values: &mut Values, settings: &ConfigToml) {
     insert(
         values,
         "AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS",
-        runner.scheduling.max_concurrent_recovery_claims,
+        runner.scheduling.max_concurrent_recovery_assignments,
     );
 }
 

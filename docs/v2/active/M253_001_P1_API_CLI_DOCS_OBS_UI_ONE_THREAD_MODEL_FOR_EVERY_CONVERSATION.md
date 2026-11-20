@@ -178,15 +178,15 @@ Every retired word gets one replacement, in code, schema, wire, routes, CLI, scr
 
 Words that share a spelling but not the meaning keep it: login and device sessions, token claims, the vendor webhook `/v1/connectors/{provider}/events`, and "offered" tools. After each Workstream, a glossary review reads every file the Workstream touched, per Indy.
 
-- **Dimension 1.1** — no retired identifier remains → Test `retired_identifiers_are_gone` (integration): `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events|RUN_LEASE_CANCELLED" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'`. Expected: no output.
-- **Dimension 1.2** — guffbolt counts steps → Test `a_run_reports_each_model_call_as_a_step` (unit): a scripted model making three calls. Expected: `step_started` 1, 2 and 3.
+- **Dimension 1.1** — DONE — no retired identifier remains → Test `retired_identifiers_are_gone` (lint): `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events|RUN_LEASE_CANCELLED" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md' ':!playbooks/operations/acceptance/baselines'`. Expected: no output. A test never reads the repository (`tests-*-repo-read`), so the check is the `vocab-retired-identifiers-*` rules under `.ast-grep/rules/vocabulary/`, one per grammar, which `make lint-all` runs.
+- **Dimension 1.2** — DONE — guffbolt counts steps → Test `a_run_reports_each_model_call_as_a_step` (unit): a scripted model making three calls. Expected: `step_started` 1, 2 and 3.
 
 ### §2 — A thread holds a conversation's fence and resume bookmark
 
 `thread.threads` has one row per fleet and one per draft, keyed by that id, as `thread_model.md` defines. It holds the fence, the current runner, the warm-sandbox hold and the resume context. Assigning a run locks the thread row and raises its fence.
 
-- **Dimension 2.1** — a fleet and a draft each get one thread → Test `creating_a_fleet_or_draft_creates_its_thread` (integration): create a draft, then publish it. Expected: two threads, kinds `draft` and `fleet`, each at fence 0.
-- **Dimension 2.2** — one assignment per fence → Test `two_assignments_on_one_thread_raise_its_fence_once_each` (integration): two runners ask for one queued turn at once. Expected: one run at fence 1, and the other runner gets nothing.
+- **Dimension 2.1** — DONE — a fleet and a draft each get one thread → Test `creating_a_fleet_or_draft_creates_its_thread` (integration): create a draft, then publish it. Expected: two threads, kinds `draft` and `fleet`, each at fence 0.
+- **Dimension 2.2** — DONE — one assignment per fence → Test `two_assignments_on_one_thread_raise_its_fence_once_each` (integration): two runners ask for one queued turn at once. Expected: one run at fence 1, and the other runner gets nothing.
 
 ### §3 — A turn is one input and its answer
 
@@ -194,15 +194,15 @@ Words that share a spelling but not the meaning keep it: login and device sessio
 
 Status is `queued`, `running`, `waiting`, `answered`, `failed`, `cancelled` or `recorded`, held as named constants. A turn names the run serving it in `run_id`, which several turns share when one run serves them.
 
-- **Dimension 3.1** — a send writes a queued turn → Test `a_fleet_message_writes_a_queued_turn` (integration): `POST /fleets/{fleet_id}/messages`. Expected: one turn, `queued`, and one wake published after commit.
-- **Dimension 3.2** — one run can answer two turns → Test `a_run_serving_two_turns_answers_both` (integration): a second message arrives mid-run. Expected: the run's report answers both turns.
+- **Dimension 3.1** — DONE — a send writes a queued turn → Test `a_fleet_message_writes_a_queued_turn` (integration): `POST /fleets/{fleet_id}/messages`. Expected: one turn, `queued`, and one wake published after commit.
+- **Dimension 3.2** — DONE — one run can answer two turns → Test `a_run_serving_two_turns_answers_both` (integration): a second message arrives mid-run. Expected: the run's report answers both turns.
 
 ### §4 — A run is one try at a turn, and the runner keeps a history
 
 `thread.runs` has one row per try at a turn, with its thread, turn, fence, runner, expiry and status (`active`, `reported`, `expired`, `stopped`). The owner is the thread's kind. `runner.history` records each runner's registration, connection and run events.
 
-- **Dimension 4.1** — an expired run is followed by the next fence → Test `an_expired_run_is_followed_by_a_run_at_the_next_fence` (integration): a runner stops renewing. Expected: a second run on the turn at fence +1, and the first marked expired.
-- **Dimension 4.2** — operators read runs and history → Test `the_operator_reads_a_runners_runs_and_history` (integration): `GET /admin/runners/{runner_id}/runs` and `/history`. Expected: both 200, with the run and its history rows.
+- **Dimension 4.1** — DONE — an expired run is followed by the next fence → Test `an_expired_run_is_followed_by_a_run_at_the_next_fence` (integration): a runner stops renewing. Expected: a second run on the turn at fence +1, and the first marked expired.
+- **Dimension 4.2** — DONE — operators read runs and history → Test `the_operator_reads_a_runners_runs_and_history` (integration): `GET /admin/runners/{runner_id}/runs` and `/history`. Expected: both 200, with the run and its history rows.
 
 ### §5 — Items record what a run did
 
@@ -218,8 +218,8 @@ Text deltas fan out and are never items. A reconnect replays the turn's state an
 
 - **Dimension 5.1** — an edit records its counts → Test `an_edit_item_records_path_and_line_counts` (integration): a run editing `src/a.rs` by +24 −8. Expected: one `edit` item with those counts.
 - **Dimension 5.2** — items name the newest turn → Test `items_after_a_second_message_name_the_second_turn` (unit): input arrives before step 3. Expected: steps 1 and 2 name turn 1, and step 3 names turn 2.
-- **Dimension 5.3** — a dead run's items go → Test `a_settling_resumed_run_drops_the_dead_runs_items` (integration): run 1 records 2 items and dies, then run 2 records 1 and settles. Expected: one item remains.
-- **Dimension 5.4** — deltas are never stored → Test `text_deltas_fan_out_and_are_not_stored` (integration): a streamed answer. Expected: the stream delivers the deltas, and no text row exists in `thread.items`.
+- **Dimension 5.3** — DONE — a dead run's items go → Test `a_settling_resumed_run_drops_the_dead_runs_items` (integration): run 1 records 2 items and dies, then run 2 records 1 and settles. Expected: one item remains.
+- **Dimension 5.4** — DONE — deltas are never stored → Test `text_deltas_fan_out_and_are_not_stored` (integration): a streamed answer. Expected: the stream delivers the deltas, and no text row exists in `thread.items`.
 
 ### §6 — Deliveries and the bus speak the same words
 
@@ -229,8 +229,8 @@ The subjects are `af.thread.{thread_id}.wake`, `af.thread.{thread_id}.items`, `a
 
 `af.bus.gap` becomes a `Subject` variant. A lost message is recovered by the backstop re-read.
 
-- **Dimension 6.1** — every subject has its spelling → Test `each_subject_spells_its_thread_noun` (unit): every `Subject` variant. Expected: exactly the five spellings above, and the wildcard `af.thread.*.wake`.
-- **Dimension 6.2** — a lost wake still assigns → Test `a_turn_whose_wake_was_lost_is_assigned_by_the_backstop` (integration): drop the wake publish. Expected: the turn is assigned within one backstop interval.
+- **Dimension 6.1** — DONE — every subject has its spelling → Test `each_subject_spells_its_thread_noun` (unit): every `Subject` variant. Expected: exactly the five spellings above, and the wildcard `af.thread.*.wake`.
+- **Dimension 6.2** — DONE — a lost wake still assigns → Test `a_turn_whose_wake_was_lost_is_assigned_by_the_backstop` (integration): drop the wake publish. Expected: the turn is assigned within one backstop interval.
 
 ### §7 — The public surface speaks the same words
 
@@ -241,8 +241,8 @@ Every field is `turn_id`, `run_id`, `item_id` or `delivery_id`. The charge API's
 The CLI's `fleet events` becomes `fleet turns` with the same flags, `fleet logs` tails the turn stream, and `chat`'s Stop uses the turn `PATCH`. The UI, CLI, OpenAPI document and TypeScript types change in this PR. Nothing answers an old route or accepts an old field.
 
 - **Dimension 7.1** — DONE — the inventory holds only new routes → Test `the_route_inventory_names_turns_items_and_runs` (unit): `INVENTORY`. Expected: no path contains `/tool-calls`, `/leases` or `/cancellations`, and `/events` appears only in `/v1/connectors/{provider}/events`.
-- **Dimension 7.2** — an unknown field is refused → Test `a_body_naming_an_unknown_field_is_refused` (integration): a request carrying `event_id`. Expected: 400 with `UZ-REQ-001`, as today's handler refuses an unknown field.
-- **Dimension 7.3** — the CLI reads turns → Test `fleet_turns_lists_turns` (integration): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
+- **Dimension 7.2** — DONE — an unknown field is refused → Test `a_body_naming_an_unknown_field_is_refused` (integration): a request carrying `event_id`. Expected: 400 with `UZ-REQ-001`, as today's handler refuses an unknown field.
+- **Dimension 7.3** — DEFERRED to the end-of-M253 acceptance run — the CLI reads turns → Test `fleet_turns_lists_turns` (acceptance, `cli/test/acceptance/logs-turns-live.spec.ts`): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
 
 ### §8 — One Stop ends any thread's running turn
 
@@ -315,7 +315,7 @@ An item on the public wire looks like this:
 1. A thread has one live run per fence. Assignment updates the thread `WHERE fence = $n` once, and a unique index on `thread.runs (thread_id, fence)` refuses a second.
 2. A cancelled turn is never answered. The report settles a turn only while its status equals the bound running constant.
 3. Only the settling run's items remain. The report deletes a turn's items whose `run_id` differs from the settling run.
-4. No retired identifier exists outside the exempt paths. Dimension 1.1's search runs in `make test-integration-rustd`.
+4. No retired identifier exists outside the exempt paths. Dimension 1.1's search runs in `make lint-all`.
 
 ## Metrics & Observability
 
@@ -331,7 +331,7 @@ An item on the public wire looks like this:
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Stop ends a running fleet turn (§8) | `make test-integration-rustd` | `stopping_a_running_fleet_turn_ends_its_run` passes | P0 | |
 | R2 | The conversation shows Stop while a turn runs (§8) | `make dry-app` | `composer_shows_stop_while_a_turn_runs` passes | P0 | |
-| R3 | No retired identifier remains (§1) | `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output | P0 | |
+| R3 | No retired identifier remains (§1) | `git grep -n -w -E "LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md' ':!playbooks/operations/acceptance/baselines'` | no output | P0 | |
 | R4 | No retired table remains (§2–§6) | `git grep -n -w -E "fleet\.events|fleet\.admissions|runner\.leases|runner\.slots|fleet\.tool_calls|fleet\.obligations|fleet\.sessions|runner\.events" -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!CHANGELOG.md' ':!docs/architecture/thread_model.md'` | no output | P0 | |
 | R5 | Items keep the right owner (§5) | `make test-integration-rustd` | both §5 integration cases pass | P0 | |
 | R6 | Measurements recorded (§9) | `ls bench/baselines/thread-recovery.rig.json bench/baselines/thread-sql.rig.json` | exit 0 | P1 | |
@@ -399,4 +399,6 @@ An item on the public wire looks like this:
 - **Consults, agent defaults** — Stop is a `PATCH` of turn status, per HTTP-VERB. Sends keep `/messages`, per HTTP-MSGKEY. New tables live in a `thread` Postgres schema, as the glossary shows.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 8 Blockers, 47 Majors, 29 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
 - **Open blockers** — none.
-- **Deferrals and transfers** — none.
+- **Deferrals and transfers** —
+  - Dimension 7.3 runs only in acceptance, which needs an https target and costs money. It is proven by the acceptance run at the end of M253, started beside the §9 benchmarks.
+    > Owner (Indy, Nov 20, 2026): "7.3 - prove it in the post-merge acceptance run. Yes so it could be done when M252_003 is run where the performance bench and the acceptance (either in burst e2e or gh are kicked off parallel)"

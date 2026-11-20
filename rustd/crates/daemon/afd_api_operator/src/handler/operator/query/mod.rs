@@ -12,7 +12,7 @@ use af_core::paging::{CEILING, Cursor};
 use af_core::spelling::from_spelling;
 use af_validate::Limit;
 use afd_api_wire::admin::RunnerEventType;
-use afd_runner::{KeysetCursor, RunnerEventFilter};
+use afd_runner::{KeysetCursor, RunnerHistoryFilter};
 use garde::Validate as _;
 use jiff::Timestamp;
 
@@ -46,7 +46,7 @@ pub(super) struct RunQuery {
 pub(super) struct EventQuery {
     pub(super) cursor: Option<KeysetCursor>,
     pub(super) limit: u32,
-    pub(super) filter: RunnerEventFilter,
+    pub(super) filter: RunnerHistoryFilter,
 }
 
 /// The `?fleet` filter on the run list: an id or a name, bounded.
@@ -117,7 +117,7 @@ pub(super) fn events(params: &HashMap<String, String>) -> Result<EventQuery, &'s
         .unwrap_or_default();
     let since = optional_instant(params.get(QUERY_SINCE))?;
     let until = optional_instant(params.get(QUERY_UNTIL))?;
-    let filter = RunnerEventFilter::new(event_types, since, until).ok_or(DETAIL_BAD_EVENTS)?;
+    let filter = RunnerHistoryFilter::new(event_types, since, until).ok_or(DETAIL_BAD_EVENTS)?;
     Ok(EventQuery {
         cursor,
         limit,

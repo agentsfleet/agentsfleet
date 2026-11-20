@@ -97,6 +97,8 @@ mod integration_reply_destination;
 mod integration_report_commit;
 #[path = "integration_report_fence.rs"]
 mod integration_report_fence;
+#[path = "integration_report_items.rs"]
+mod integration_report_items;
 #[path = "integration_report_memory.rs"]
 mod integration_report_memory;
 mod integration_report_owes_destination;

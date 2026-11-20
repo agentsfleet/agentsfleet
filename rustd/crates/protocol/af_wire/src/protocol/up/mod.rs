@@ -215,7 +215,7 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
             Self::Report { .. } | Self::AuthoringReport { .. } | Self::TurnCheckpoint { .. } => {
                 StreamKind::Reports
             }
-            Self::Progress { .. } => StreamKind::Activity,
+            Self::Progress { .. } => StreamKind::Progress,
             Self::Folds { .. } | Self::AuthoringModel { .. } | Self::AuthoringActivity { .. } => {
                 StreamKind::Work
             }

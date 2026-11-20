@@ -103,7 +103,7 @@ fn malformed_unknown_and_unsafe_settings_refuse_without_echoing_values() -> Test
         "[server]\nport = 'private-invalid-value'",
         "[server]\nunknown = 'private-invalid-value'",
         "[runner.run]\nttl_seconds = 32",
-        "[runner.scheduling]\nmax_concurrent_recovery_claims = 0",
+        "[runner.scheduling]\nmax_concurrent_recovery_assignments = 0",
         "[runner.stream.data]\nmax_buffered_bytes = 1",
         "[runner.listener]\nmax_udp_payload_bytes = 1199",
         "[telemetry]\nlog_level = 'private-invalid-value'",
@@ -214,7 +214,7 @@ resume_from_checkpoint = false
 
 [runner.scheduling]
 missed_wake_probe_seconds = 2
-max_concurrent_recovery_claims = 4
+max_concurrent_recovery_assignments = 4
 [nats]
 dev_namespace = "dev-fixture"
 wake_queue_capacity_fleets = 128

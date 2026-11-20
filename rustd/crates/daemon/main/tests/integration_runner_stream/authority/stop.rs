@@ -115,6 +115,63 @@ async fn stopping_one_of_two_served_turns_cancels_both() -> TestResult {
     fixture.finish().await
 }
 
+// Value: protects=no route accepts a retired field; fails_when=the turn body
+// stops refusing unknown fields, or a refused Stop still marks the run;
+// why_new=§7 renamed every field and keeps no alias; seam=the production
+// router through a booted daemon, real Postgres, raw native runner.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_body_naming_an_unknown_field_is_refused() -> TestResult {
+    let fixture = Fixture::start().await?;
+    let mut native = fixture.native(Transport::H2).await;
+    native.heartbeat().await;
+    native.ready().await;
+    let held = signals::assign(&mut native).await?;
+    let body = json!({"status":"cancelled","event_id":held.event});
+    let (status, refused) = fixture
+        .operator
+        .patch_turn(&fixture.scene, &held.event, &body)
+        .await?;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    assert_eq!(
+        wire::pointer(&refused, "/error_code"),
+        af_core::error_code::INVALID_REQUEST.as_str()
+    );
+    let mut connection = fixture.scene.booted.database.acquire().await?;
+    let (turn, run, marked): (String, String, bool) = sqlx::query_as(
+        "SELECT t.status, r.status, r.cancel_requested_at IS NOT NULL \
+         FROM thread.turns t JOIN thread.runs r ON r.turn_id = t.id WHERE r.id = $1",
+    )
+    .bind(&Uuid7::parse(&held.run)?)
+    .fetch_one(&mut *connection)
+    .await?;
+    drop(connection);
+    assert_eq!(
+        (turn.as_str(), run.as_str(), marked),
+        (
+            af_core::turn::status::RECEIVED,
+            afd_state::sql::RUN_STATUS_ACTIVE,
+            false
+        ),
+        "a refused body changes nothing: the turn still runs"
+    );
+    let mut report = wire::report_body(&held.run, &held.event, held.fence);
+    report
+        .as_object_mut()
+        .ok_or("report object missing")?
+        .insert("response_text".into(), "done".into());
+    native
+        .send(
+            StreamKind::Reports,
+            &json!({"type":"report","request_id":21,"request":report}),
+        )
+        .await;
+    let ack = native.expect(StreamKind::Reports, "report_ack").await;
+    assert_eq!(wire::pointer(&ack, "/answer/status"), "ok");
+    native.close().await;
+    fixture.finish().await
+}
+
 /// Reports `held` as a runner does once the daemon stopped it: `stopped`, no
 /// answer, its usage still billed.
 pub(super) async fn report_stopped(native: &mut Native, held: &signals::Held) -> TestResult {

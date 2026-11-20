@@ -6,12 +6,12 @@ use dashmap::DashSet;
 use std::{num::NonZeroU64, sync::Arc};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-/// Separate operation slots preserve control capacity when reports or activity are slow.
+/// Separate operation slots preserve control capacity when reports or progress are slow.
 pub(super) struct RequestSlots {
     control: Arc<Semaphore>,
     reports: Arc<Semaphore>,
     work: Arc<Semaphore>,
-    activity: Arc<Semaphore>,
+    progress: Arc<Semaphore>,
 }
 
 impl Default for RequestSlots {
@@ -22,7 +22,7 @@ impl Default for RequestSlots {
             )),
             reports: Arc::new(Semaphore::new(8)),
             work: Arc::new(Semaphore::new(af_wire::protocol::RUNS_MAX)),
-            activity: Arc::new(Semaphore::new(16)),
+            progress: Arc::new(Semaphore::new(16)),
         }
     }
 }
@@ -33,7 +33,7 @@ impl RequestSlots {
             StreamKind::Control => &self.control,
             StreamKind::Reports => &self.reports,
             StreamKind::Work => &self.work,
-            StreamKind::Activity => &self.activity,
+            StreamKind::Progress => &self.progress,
         }
     }
 
@@ -101,15 +101,15 @@ mod tests {
 
     /// Cosmetic work cannot spend the capacity reserved for heartbeat and renewal handling.
     #[test]
-    fn activity_pressure_leaves_control_request_capacity_available() {
+    fn progress_pressure_leaves_control_request_capacity_available() {
         let slots = RequestSlots::default();
         let mut held = Vec::new();
-        while let Some(permit) = slots.admit(StreamKind::Activity) {
+        while let Some(permit) = slots.admit(StreamKind::Progress) {
             held.push(permit);
         }
-        assert!(!slots.available(StreamKind::Activity));
+        assert!(!slots.available(StreamKind::Progress));
         assert!(slots.admit(StreamKind::Control).is_some());
         drop(held);
-        assert!(slots.available(StreamKind::Activity));
+        assert!(slots.available(StreamKind::Progress));
     }
 }

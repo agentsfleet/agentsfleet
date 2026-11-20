@@ -90,9 +90,9 @@ async fn connections(
             control,
             work,
             reports,
-            activity,
+            progress,
         } = receivers;
-        for queue in [priority, control, work, reports, activity] {
+        for queue in [priority, control, work, reports, progress] {
             workers.spawn(serve(
                 queue,
                 Arc::clone(&api),

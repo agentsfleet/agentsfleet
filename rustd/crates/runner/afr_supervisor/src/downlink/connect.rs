@@ -39,7 +39,7 @@ pub(crate) struct Connected {
     pub(crate) control: Pipe,
     pub(crate) work: Pipe,
     pub(crate) reports: Pipe,
-    pub(crate) activity: Pipe,
+    pub(crate) progress: Pipe,
 }
 
 #[derive(Clone, Copy)]
@@ -64,12 +64,12 @@ impl Opening<'_> {
             .await?;
         let result = self.attach(&mut connection, resume).await;
         match result {
-            Ok((control, work, reports, activity)) => Ok(Connected {
+            Ok((control, work, reports, progress)) => Ok(Connected {
                 connection,
                 control,
                 work,
                 reports,
-                activity,
+                progress,
             }),
             Err(error) => {
                 let closed = connection.close(self.deadline).await;
@@ -108,10 +108,10 @@ impl Opening<'_> {
         let reports = self
             .secondary(connection, StreamKind::Reports, &owner)
             .await?;
-        let activity = self
-            .secondary(connection, StreamKind::Activity, &owner)
+        let progress = self
+            .secondary(connection, StreamKind::Progress, &owner)
             .await?;
-        Ok((control, work, reports, activity))
+        Ok((control, work, reports, progress))
     }
 
     fn request(

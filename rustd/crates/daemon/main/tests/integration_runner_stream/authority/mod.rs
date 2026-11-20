@@ -9,6 +9,7 @@ mod halt;
 mod locks;
 mod operator;
 mod policy;
+mod runner_reads;
 mod signals;
 mod stop;
 mod stop_scope;

@@ -68,7 +68,7 @@ pub struct Acquired {
     pub resume_hold: bool,
     /// Whether this turn was delivered on an earlier attempt.
     pub redelivered: bool,
-    /// How many runs this event was issued before this assignment. A report
+    /// How many runs this turn was issued before this assignment. A report
     /// settles its event, so each one is a run that lapsed without reporting.
     pub earlier_runs: i64,
     /// What the assignment statement read and wrote beside the thread.

@@ -9,7 +9,7 @@ use af_core::error_code;
 use af_core::id::Uuid7;
 use af_core::paging::DEFAULT_LIMIT;
 use af_wire::runner::{NetworkPolicy, SandboxTier};
-use afd_runner::RunnerEventFilter;
+use afd_runner::RunnerHistoryFilter;
 
 use crate::requests::enrolment;
 use crate::support::Fixtures;
@@ -41,9 +41,9 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
     insert_unknown_event(&fixtures, &enrolled.runner_id).await;
     let malformed_event = fixtures
         .runners()
-        .runner_events(
+        .runner_history(
             &enrolled.runner_id,
-            &RunnerEventFilter::default(),
+            &RunnerHistoryFilter::default(),
             None,
             DEFAULT_LIMIT,
         )
@@ -100,7 +100,12 @@ async fn assert_missing_runner_is_not_found(fixtures: &Fixtures) {
         .expect_err("a missing runner has no detail");
     let event_error = fixtures
         .runners()
-        .runner_events(&missing, &RunnerEventFilter::default(), None, DEFAULT_LIMIT)
+        .runner_history(
+            &missing,
+            &RunnerHistoryFilter::default(),
+            None,
+            DEFAULT_LIMIT,
+        )
         .await
         .expect_err("a missing runner has no history");
     for error in [detail_error, event_error] {

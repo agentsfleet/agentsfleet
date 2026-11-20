@@ -5,7 +5,7 @@
 //! `af_validate::Limit` before it calls one.
 
 mod decode;
-mod events;
+mod history;
 mod store;
 
 use af_core::id::Uuid7;
@@ -13,7 +13,7 @@ use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, Selftest
 use afd_api_wire::admin::RunnerEventItem;
 use jiff::Timestamp;
 
-pub use self::events::RunnerEventFilter;
+pub use self::history::RunnerHistoryFilter;
 
 /// The final composite key from a page, used to seek the next one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -286,7 +286,7 @@ impl RunnerDetail {
 
 /// A keyset page of append-only runner history.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunnerEventPage {
+pub struct RunnerHistoryPage {
     /// History rows in newest-first keyset order.
     items: Vec<RunnerEventItem<'static>>,
     /// Total history rows for this runner.
@@ -295,7 +295,7 @@ pub struct RunnerEventPage {
     next_cursor: Option<KeysetCursor>,
 }
 
-impl RunnerEventPage {
+impl RunnerHistoryPage {
     /// History rows in newest-first keyset order.
     #[must_use]
     pub fn items(&self) -> &[RunnerEventItem<'static>] {

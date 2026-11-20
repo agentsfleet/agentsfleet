@@ -74,7 +74,7 @@ async fn turn(fixture: &Fixture, native: &mut Native, tail: &mut Tail) -> Result
     let held = assign(&fixture.scene, native).await?;
     renew(native, &held, 4).await;
     for sequence in 0..ACTIVITY_FRAMES {
-        native.send(StreamKind::Activity, &json!({
+        native.send(StreamKind::Progress, &json!({
             "type":"progress", "run_id":held.id, "request":{"frames":[{
                 "fleet_response_chunk":{"text":text(sequence), "text_kind":"answer",
                     "stream_start":sequence == 0, "stream_contiguous":true, "stream_seq":sequence}

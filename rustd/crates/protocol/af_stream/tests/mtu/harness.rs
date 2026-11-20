@@ -203,8 +203,8 @@ pub(super) async fn open_all_lanes(
     let control = open_lane(connection, endpoint, StreamKind::Control, deadline).await?;
     let work = open_lane(connection, endpoint, StreamKind::Work, deadline).await?;
     let reports = open_lane(connection, endpoint, StreamKind::Reports, deadline).await?;
-    let activity = open_lane(connection, endpoint, StreamKind::Activity, deadline).await?;
-    Ok([control, work, reports, activity])
+    let progress = open_lane(connection, endpoint, StreamKind::Progress, deadline).await?;
+    Ok([control, work, reports, progress])
 }
 
 #[derive(Debug)]

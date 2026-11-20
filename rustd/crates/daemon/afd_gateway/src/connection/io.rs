@@ -77,7 +77,7 @@ pub(crate) struct IncomingFrame {
     pub(crate) frame: OwnedFrame,
 }
 
-/// Four validated queues also keep activity's empty response open for the whole connection.
+/// Four validated queues also keep progress's empty response open for the whole connection.
 #[derive(Clone)]
 pub(crate) struct StreamWriters(BTreeMap<StreamKind, WriteQueue>);
 
@@ -121,7 +121,7 @@ pub(crate) struct PendingWrite {
     flushed: oneshot::Sender<()>,
 }
 
-/// Independent stream readers prevent activity pressure from filling control's queue.
+/// Independent stream readers prevent progress pressure from filling control's queue.
 pub(super) async fn read_stream(
     mut reader: FrameReader,
     kind: StreamKind,

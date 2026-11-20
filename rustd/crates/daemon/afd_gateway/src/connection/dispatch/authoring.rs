@@ -41,7 +41,7 @@ impl ConnectionServices {
         request: afd_setup::ActivityInput,
     ) -> Result<()> {
         let result = self
-            .operation(Operation::Activity, async {
+            .operation(Operation::Progress, async {
                 let run = Uuid7::parse(run)?;
                 Ok(self
                     .drafts

@@ -63,12 +63,8 @@ pub mod meta {
     pub const RUN_ID: &str = "run_id";
     /// The fleet that run was assigned.
     pub const FLEET_ID: &str = "fleet_id";
-    /// The event the run is executing.
-    ///
-    /// Spelled `event_id` in the metadata even though the enclosing row is
-    /// itself a runner EVENT — the key names the agentsfleet event, not this
-    /// audit row.
-    pub const AGENTSFLEET_EVENT_ID: &str = "event_id";
+    /// The turn the run is serving.
+    pub const TURN_ID: &str = "turn_id";
     /// Whether the run was a fresh pull or a reassignment.
     pub const KIND: &str = "kind";
 }

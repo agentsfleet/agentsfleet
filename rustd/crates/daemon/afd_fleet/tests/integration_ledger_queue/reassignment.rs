@@ -8,9 +8,11 @@ use crate::rows::Row;
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;
 
+/// A runner stops renewing: its run is marked expired, and the turn's next
+/// run is assigned and written at the fence one above it.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_reassigned_row_is_assigned_as_redelivered() {
+async fn an_expired_run_is_followed_by_a_run_at_the_next_fence() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
@@ -28,12 +30,27 @@ async fn test_reassigned_row_is_assigned_as_redelivered() {
         .expect("expired thread requalifies");
     assert_eq!(reassigned.turn_id, event, "no sweeper or stream repair ran");
     assert!(reassigned.redelivered);
-    assert!(reassigned.fence > first.fence);
+    assert_eq!(reassigned.fence.as_i64(), first.fence.as_i64() + 1);
     assert_eq!(reassigned.kind, Kind::Reassigned);
     assert_eq!(reassigned.earlier_runs, 1, "the lapsed holder's run");
     assert_eq!(
         fixtures.text(Row::Run(&issued), "status").await.as_deref(),
         Some(afd_fleet::run::sql::RUN_STATUS_EXPIRED)
+    );
+    let second = issue(&fixtures, &runs, &reassigned, &poller, &tenant).await;
+    let fence = first.fence.as_i64() + 1;
+    assert_eq!(
+        (
+            fixtures.text(Row::Run(&second), "turn_id").await,
+            fixtures.text(Row::Run(&second), "fencing_token").await,
+            fixtures.text(Row::Run(&second), "status").await,
+        ),
+        (
+            Some(event.to_string()),
+            Some(fence.to_string()),
+            Some(afd_fleet::run::sql::RUN_STATUS_ACTIVE.to_owned()),
+        ),
+        "the second run serves the same turn at the next fence"
     );
     assert!(
         next(&runs, &holder).await.is_none(),

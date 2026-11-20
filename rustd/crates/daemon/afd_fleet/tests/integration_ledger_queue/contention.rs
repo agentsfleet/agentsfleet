@@ -1,6 +1,7 @@
-//! 100 clients race one turn. The first to lock the fleet's thread is paused
-//! inside its assignment; every other assignment skips the locked thread and finishes
-//! with nothing while it waits, and the paused one is the only winner.
+//! Two runners race one queued turn, 100 callers between them. The first to
+//! lock the fleet's thread is paused inside its assignment; every other
+//! assignment skips the locked thread and finishes with nothing while it
+//! waits, and the paused one is the only winner, at fence 1.
 
 use std::sync::Arc;
 
@@ -10,8 +11,8 @@ use afd_fleet::run::{Acquired, Runs};
 use sqlx::Connection as _;
 use tokio::{sync::Barrier, task::JoinHandle};
 
-use super::{WITHIN, enqueue, stamps};
-use crate::{seed::seeded_parts, support::Fixtures};
+use super::{WITHIN, enqueue, reassignment::issue, stamps};
+use crate::{rows::Row, seed::seeded_parts, support::Fixtures};
 
 const RUNNERS: usize = 100;
 const PAUSE_ASSIGNMENTS: &str = "CREATE FUNCTION fleet.pause_assignment() RETURNS trigger
@@ -32,9 +33,9 @@ type Contender = JoinHandle<afd_fleet::Result<Option<Acquired>>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_concurrent_assignments_run_one_row() {
+async fn two_assignments_on_one_thread_raise_its_fence_once_each() {
     let fixtures = Fixtures::create_isolated().await;
-    let (fleet, workspace, _, runners) = seeded_parts::<2>(&fixtures).await;
+    let (fleet, workspace, tenant, runners) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let replica = Runs::new(
         fixtures.open(DbRole::Api).await,
@@ -66,9 +67,23 @@ async fn test_concurrent_assignments_run_one_row() {
         .await
         .expect("release assignment barrier");
     let winners = winners(tasks).await;
-    assert_eq!(winners.len(), 1);
-    assert_eq!(winners.first().expect("one winner").turn_id, event);
+    assert_eq!(winners.len(), 1, "the other runner gets nothing");
+    let winner = winners.first().expect("one winner");
+    assert_eq!(winner.turn_id, event);
+    assert_eq!(winner.fence.as_i64(), 1);
     assert_eq!(stamps(&fixtures, &event).await, (Some(1), Some(1)));
+    let holder = fixtures
+        .text(Row::Thread(&fleet), "last_runner_id")
+        .await
+        .and_then(|id| Uuid7::parse(&id).ok())
+        .expect("the assignment names its runner on the thread");
+    assert!(runners.contains(&holder), "one of the two runners won");
+    let run = issue(&fixtures, &replicas[0], winner, &holder, &tenant).await;
+    assert_eq!(
+        runs_at(&fixtures, &fleet).await,
+        vec![(run, event.clone(), 1)],
+        "one run, at fence 1"
+    );
     drop((connection, observer, replicas));
     owner.close().await;
     fixtures.cleanup().await;
@@ -137,4 +152,19 @@ async fn winners(tasks: Vec<Contender>) -> Vec<Acquired> {
         }
     }
     winners
+}
+
+/// Every run on `fleet`'s thread: its id, turn and fence.
+async fn runs_at(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<(Uuid7, Uuid7, i64)> {
+    sqlx::query_as("SELECT id, turn_id, fencing_token FROM thread.runs WHERE fleet_id = $1")
+        .bind(fleet)
+        .fetch_all(
+            &mut *fixtures
+                .database
+                .acquire()
+                .await
+                .expect("runtime connection"),
+        )
+        .await
+        .expect("the thread's runs")
 }

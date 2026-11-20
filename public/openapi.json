@@ -8390,7 +8390,7 @@
           {
             "name": "agentsfleet-runner-kind",
             "in": "header",
-            "description": "control, work, reports or activity",
+            "description": "control, work, reports or progress",
             "required": true,
             "schema": {
               "type": "string"

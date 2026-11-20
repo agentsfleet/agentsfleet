@@ -68,9 +68,9 @@ impl ConnectionSupervisor {
 
     fn request(&mut self, frame: IncomingFrame) -> Result<()> {
         let Some(permit) = self.slots.admit(frame.kind) else {
-            if frame.kind == StreamKind::Activity {
+            if frame.kind == StreamKind::Progress {
                 tracing::debug!(
-                    event = "runner_stream_activity_dropped",
+                    event = "runner_stream_progress_dropped",
                     reason = "worker_capacity"
                 );
                 return Ok(());

@@ -1,0 +1,22 @@
+id: vocab-retired-identifiers-rust
+valid:
+  - |
+      use afd_turns::Turns;
+      let subject = Subject::ThreadItems(fleet);
+  - |
+      // afd_events_v2 is a different word
+      let afd_eventsx = 1;
+invalid:
+  - |
+      use afd_events::Tail;
+  - |
+      struct Held { lease: LeasePayload }
+  - |
+      let code = "RUN_LEASE_CANCELLED";
+  - |
+      /// Moved out of afd_authoring.
+      fn f() {}
+  - |
+      fn f() { afd_admission::admit(); }
+  - |
+      fn g(handle: SessionHandle) {}

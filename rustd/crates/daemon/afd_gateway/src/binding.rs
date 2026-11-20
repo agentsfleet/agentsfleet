@@ -93,7 +93,7 @@ impl ConnectionContext {
             StreamKind::Control => 1,
             StreamKind::Work => 2,
             StreamKind::Reports => 4,
-            StreamKind::Activity => 8,
+            StreamKind::Progress => 8,
         };
         if self.streams.fetch_or(bit, Ordering::AcqRel) & bit != 0 {
             return Err(ErrorKind::DuplicateStream { kind }.into());

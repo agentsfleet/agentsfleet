@@ -180,7 +180,7 @@ async fn saturate(session: &Session, run: &Uuid7, blocked: &Blocked, logs: &Capt
     for _ in 0..1000 {
         session.activity(run, &activity).await?;
         if logs.events().iter().skip(after).any(|event| {
-            event.field("event") == Some("runner_stream_activity_dropped")
+            event.field("event") == Some("runner_stream_progress_dropped")
                 && event.field("reason") == Some("queue_capacity")
         }) {
             return Ok(());

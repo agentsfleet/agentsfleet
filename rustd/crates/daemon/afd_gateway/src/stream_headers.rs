@@ -14,7 +14,7 @@ pub(crate) enum StreamHeaders {
     Control { previous: Option<Uuid7> },
     Work { connection: Uuid7 },
     Reports { connection: Uuid7 },
-    Activity { connection: Uuid7 },
+    Progress { connection: Uuid7 },
 }
 
 impl TryFrom<&HeaderMap> for StreamHeaders {
@@ -45,8 +45,8 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
             StreamKind::Reports => {
                 secondary(bearer, connection).map(|connection| Self::Reports { connection })
             }
-            StreamKind::Activity => {
-                secondary(bearer, connection).map(|connection| Self::Activity { connection })
+            StreamKind::Progress => {
+                secondary(bearer, connection).map(|connection| Self::Progress { connection })
             }
         }
     }
@@ -76,7 +76,7 @@ impl StreamHeaders {
             Self::Control { .. } => StreamKind::Control,
             Self::Work { .. } => StreamKind::Work,
             Self::Reports { .. } => StreamKind::Reports,
-            Self::Activity { .. } => StreamKind::Activity,
+            Self::Progress { .. } => StreamKind::Progress,
         }
     }
 
@@ -85,7 +85,7 @@ impl StreamHeaders {
             Self::Control { previous } => previous.as_ref(),
             Self::Work { connection }
             | Self::Reports { connection }
-            | Self::Activity { connection } => Some(connection),
+            | Self::Progress { connection } => Some(connection),
         }
     }
 }
@@ -149,7 +149,7 @@ mod tests {
         for (kind, name) in [
             (StreamKind::Work, b"work".as_slice()),
             (StreamKind::Reports, b"reports"),
-            (StreamKind::Activity, b"activity"),
+            (StreamKind::Progress, b"progress"),
         ] {
             let mut map = headers(&[(protocol::CONNECTION_HEADER, SESSION.as_bytes())]);
             map.append(
@@ -195,7 +195,7 @@ mod tests {
             ),
             (
                 &[
-                    (protocol::STREAM_KIND_HEADER, b"activity"),
+                    (protocol::STREAM_KIND_HEADER, b"progress"),
                     (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
                     (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
                 ],

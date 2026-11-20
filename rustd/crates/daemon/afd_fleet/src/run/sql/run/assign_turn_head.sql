@@ -166,7 +166,7 @@ SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
        won_thread.fencing_token, won_thread.run_expires_at,
        COALESCE(won_thread.held, false) AS held, won_thread.holder,
        b.id AS predecessor_run_id, b.id IS NOT NULL AS reassigned,
-       -- The runs this event was issued before this assignment. A report settles
+       -- The runs this turn was issued before this assignment. A report settles
        -- its turn, so each one is a run that lapsed without reporting.
        (SELECT count(*) FROM thread.runs x
          WHERE x.turn_id = a.id AND x.fleet_id = $1) AS earlier_runs,

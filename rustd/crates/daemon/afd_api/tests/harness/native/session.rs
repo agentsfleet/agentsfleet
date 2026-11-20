@@ -139,7 +139,7 @@ impl Session {
     }
 
     async fn attach(&mut self, router: &Router, owner: &str) {
-        for kind in [StreamKind::Work, StreamKind::Reports, StreamKind::Activity] {
+        for kind in [StreamKind::Work, StreamKind::Reports, StreamKind::Progress] {
             let (upload, body) = af_stream::Outgoing::pipe();
             let response = Self::open_stream(
                 &self.context,

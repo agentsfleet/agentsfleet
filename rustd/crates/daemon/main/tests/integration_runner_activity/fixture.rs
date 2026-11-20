@@ -14,7 +14,7 @@ use crate::tail::{FRAME_DEADLINE, SILENCE_WINDOW, run, settle};
 
 pub(crate) struct Tailed {
     pub(crate) scene: Scenario,
-    run: String,
+    pub(crate) run: String,
     pub(crate) fence: u64,
     native: Native,
     bus: Handle,
@@ -54,13 +54,13 @@ impl Tailed {
     /// Activity has no reply; publication and refusal are observed independently.
     pub(crate) async fn forward(&mut self, request: &Value) {
         let value = json!({"type":"progress", "run_id":self.run, "request":request});
-        self.native.send(StreamKind::Activity, &value).await;
+        self.native.send(StreamKind::Progress, &value).await;
     }
 
     pub(crate) async fn forward_for(&mut self, run: &str, request: &Value) {
         self.native
             .send(
-                StreamKind::Activity,
+                StreamKind::Progress,
                 &json!({"type":"progress", "run_id":run, "request":request}),
             )
             .await;

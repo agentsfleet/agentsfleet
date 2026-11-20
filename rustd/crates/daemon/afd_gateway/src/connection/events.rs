@@ -75,7 +75,7 @@ impl EventSource {
             () = handle.assignments.notified(), if !connection.assign_running => Ok(ConnectionEvent::AssignRequested(AssignTrigger::Ready)),
             frame = self.frames.reports.recv(), if connection.slots.available(StreamKind::Reports) => frame_event(frame),
             frame = self.frames.work.recv(), if connection.slots.available(StreamKind::Work) => frame_event(frame),
-            frame = self.frames.activity.recv() => frame_event(frame),
+            frame = self.frames.progress.recv() => frame_event(frame),
         }
     }
 }

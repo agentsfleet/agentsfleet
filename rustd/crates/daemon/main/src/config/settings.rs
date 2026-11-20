@@ -167,7 +167,7 @@ pub(super) struct Scheduling {
     #[garde(range(min = 1, max = 43_198))]
     pub missed_wake_probe_seconds: Option<u32>,
     #[garde(range(min = 1, max = 64))]
-    pub max_concurrent_recovery_claims: Option<usize>,
+    pub max_concurrent_recovery_assignments: Option<usize>,
 }
 
 #[derive(Default, Deserialize, Validate)]

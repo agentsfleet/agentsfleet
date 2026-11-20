@@ -153,6 +153,43 @@ impl Operator {
         stop_turn(&self.http, self.token.expose(), scene, workspace, turn).await
     }
 
+    /// `PATCH` of `turn` on the scenario's fleet carrying `body` as it is,
+    /// answering the status and body as they came back.
+    pub(super) async fn patch_turn(
+        &self,
+        scene: &Scenario,
+        turn: &af_core::id::Uuid7,
+        body: &Value,
+    ) -> TestResult<(reqwest::StatusCode, Value)> {
+        patch_turn(
+            &self.http,
+            self.token.expose(),
+            scene,
+            &scene.workspace,
+            turn,
+            body,
+        )
+        .await
+    }
+
+    /// A `GET` of `path` on the scenario's daemon, answering the status and
+    /// body as they came back.
+    pub(super) async fn get(
+        &self,
+        scene: &Scenario,
+        path: &str,
+    ) -> TestResult<(reqwest::StatusCode, Value)> {
+        let response = self
+            .http
+            .get(format!("{}{path}", scene.base))
+            .bearer_auth(self.token.expose())
+            .send()
+            .await?;
+        let status = response.status();
+        let body: Value = serde_json::from_slice(&response.bytes().await?)?;
+        Ok((status, body))
+    }
+
     async fn answer(response: reqwest::Response) -> TestResult<Value> {
         let status = response.status();
         let body: Value = serde_json::from_slice(&response.bytes().await?)?;
@@ -185,6 +222,19 @@ pub(super) async fn stop_turn(
     workspace: &af_core::id::Uuid7,
     turn: &af_core::id::Uuid7,
 ) -> TestResult<(reqwest::StatusCode, Value)> {
+    let body = json!({"status":"cancelled"});
+    patch_turn(http, token, scene, workspace, turn, &body).await
+}
+
+/// `PATCH …/fleets/{fleet_id}/turns/{turn_id}` carrying `body`, under `token`.
+async fn patch_turn(
+    http: &reqwest::Client,
+    token: &str,
+    scene: &Scenario,
+    workspace: &af_core::id::Uuid7,
+    turn: &af_core::id::Uuid7,
+    body: &Value,
+) -> TestResult<(reqwest::StatusCode, Value)> {
     let response = http
         .patch(format!(
             "{}/v1/workspaces/{workspace}/fleets/{}/turns/{turn}",
@@ -192,7 +242,7 @@ pub(super) async fn stop_turn(
         ))
         .bearer_auth(token)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(serde_json::to_vec(&json!({"status":"cancelled"}))?)
+        .body(serde_json::to_vec(body)?)
         .send()
         .await?;
     let status = response.status();

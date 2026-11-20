@@ -117,3 +117,62 @@ async fn an_unowned_native_activity_frame_reaches_no_tail() {
     );
     tailed.finish(supervisor).await;
 }
+
+/// The pieces a streamed answer arrives in.
+const DELTAS: [&str; 3] = ["Deployed ", "to ", "staging."];
+
+/// A streamed answer's deltas reach the turn's stream in order, and none is
+/// kept: the turn's only item is the tool call the run recorded.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn text_deltas_fan_out_and_are_not_stored() {
+    let mut supervisor = Supervisor::new();
+    let mut tailed = Tailed::open(&mut supervisor).await;
+    let http = afd_identity::direct(std::time::Duration::from_secs(5))
+        .build()
+        .expect("a direct client builds");
+    let (status, body) = crate::integration_tool_call_details::post_records(
+        &http,
+        &tailed.scene,
+        (&tailed.run, tailed.fence),
+        &[crate::integration_tool_call_details::record(1, "ok")],
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let frames: Vec<_> = DELTAS
+        .iter()
+        .map(|text| json!({"fleet_response_chunk": {"text": text, "text_kind": "answer"}}))
+        .collect();
+    tailed.forward(&json!({ "frames": frames })).await;
+    for delta in DELTAS {
+        let frame = tailed
+            .next_frame()
+            .await
+            .expect("each delta reaches the stream");
+        assert_eq!(field(&frame, "kind"), &json!("chunk"));
+        assert_eq!(field(&frame, "text"), &json!(delta));
+        assert_eq!(field(&frame, "turn_id"), &json!(tailed.scene.turn_id));
+    }
+    assert_eq!(tailed.silence().await, None, "only the deltas were sent");
+    let mut connection = tailed
+        .scene
+        .booted
+        .database
+        .acquire()
+        .await
+        .expect("a connection");
+    let kept: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT sequence, output FROM thread.items WHERE turn_id = $1 ORDER BY sequence",
+    )
+    .bind(&tailed.scene.turn_id)
+    .fetch_all(&mut *connection)
+    .await
+    .expect("the turn's items");
+    drop(connection);
+    assert_eq!(
+        kept,
+        vec![(1, "ok".to_owned())],
+        "no delta is stored as an item"
+    );
+    tailed.finish(supervisor).await;
+}

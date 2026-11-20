@@ -2,10 +2,12 @@
 //! a fleet created through Save.
 
 use af_core::error_code;
+use af_core::id::Uuid7;
+use afd_bus::{Received, Subject};
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use super::super::super::{json_body, send};
+use super::super::super::{json_body, mint, send};
 use super::Saved;
 
 /// The operation id a client repeats across its retries.
@@ -19,6 +21,77 @@ const MESSAGE: &str = "roll back staging";
 
 fn code(body: &Value) -> Option<&str> {
     body.get("error_code").and_then(Value::as_str)
+}
+
+/// How long a committed send's wake may take to reach a reader.
+const WAKE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The marker a test publishes after the send, so a second wake would arrive
+/// before it.
+const NO_MORE_WAKES: &str = "no-more-wakes";
+
+/// The next message on `wakes`, within [`WAKE_BUDGET`].
+async fn next_wake(wakes: &mut afd_bus::Subscription) -> String {
+    let received = tokio::time::timeout(WAKE_BUDGET, wakes.recv())
+        .await
+        .expect("a wake within its budget")
+        .expect("the wake subscription stays open");
+    let Received::Message(message) = received else {
+        panic!("a published wake, not a gap: {received:?}");
+    };
+    message.payload.as_ref().clone()
+}
+
+/// A person's send writes one queued turn on the fleet's thread, and its
+/// thread's wake is published once, after the turn is committed.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_fleet_message_writes_a_queued_turn() {
+    let saved = Saved::create().await;
+    let subject = Subject::ThreadWake(saved.fleet.clone());
+    let mut wakes = saved
+        .case
+        .bus
+        .subscribe(&subject)
+        .await
+        .expect("the lane's NATS subscribes");
+
+    let (status, admitted) = saved.steer(&saved.thread, mint().as_str(), MESSAGE).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{admitted}");
+    let turn = Uuid7::parse(admitted["turn_id"].as_str().expect("a 202 names its turn"))
+        .expect("a canonical turn id");
+
+    assert_eq!(next_wake(&mut wakes).await, saved.fleet.as_str());
+    // Read once the wake has arrived: the turn it rang for is already there.
+    let queued: Vec<(Uuid7, String, String)> = sqlx::query_as(
+        "SELECT id, status, request_json->>'message' FROM thread.turns \
+         WHERE thread_id = $1 AND producer IS NOT NULL",
+    )
+    .bind(&saved.fleet)
+    .fetch_all(&mut *saved.case.base.db.acquire().await.expect("a connection"))
+    .await
+    .expect("the thread's turns");
+    assert_eq!(
+        queued,
+        vec![(
+            turn,
+            af_core::turn::status::QUEUED.to_owned(),
+            MESSAGE.to_owned()
+        )]
+    );
+    saved
+        .case
+        .bus
+        .publish(&subject, NO_MORE_WAKES)
+        .await
+        .expect("the marker publishes");
+    assert_eq!(
+        next_wake(&mut wakes).await,
+        NO_MORE_WAKES,
+        "one wake for one send"
+    );
+    drop(wakes);
+    saved.case.cleanup().await;
 }
 
 /// A fleet saved with no trigger is one only ever talked to: Save stores its

@@ -5,7 +5,8 @@ use sqlx::Acquire as _;
 
 use super::decode::{DetailRow, ItemRow, TurnRow};
 use super::{
-    KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage, events,
+    KeysetCursor, RunnerDetail, RunnerHistoryFilter, RunnerHistoryPage, RunnerItem, RunnerPage,
+    history,
 };
 use crate::error::{Result, query, runner_not_found};
 use crate::scope::RunnerScope;
@@ -25,13 +26,13 @@ impl Runners {
     ///
     /// # Errors
     /// Reports a missing runner, datastore failures, or malformed history rows.
-    pub async fn runner_events(
+    pub async fn runner_history(
         &self,
         runner: &Uuid7,
-        filter: &RunnerEventFilter,
+        filter: &RunnerHistoryFilter,
         cursor: Option<&KeysetCursor>,
         limit: u32,
-    ) -> Result<RunnerEventPage> {
+    ) -> Result<RunnerHistoryPage> {
         let mut connection = self.pool().acquire().await?;
         let mut snapshot = connection.begin().await.map_err(query(CONTEXT_SNAPSHOT))?;
         sqlx::query(sql::runner_view::READ_SNAPSHOT)
@@ -55,7 +56,7 @@ impl Runners {
             .fetch_one(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_EVENT_COUNT))?;
-        let mut rows = events::statement(runner, filter, event_types, cursor, limit)
+        let mut rows = history::statement(runner, filter, event_types, cursor, limit)
             .fetch_all(&mut *snapshot)
             .await
             .map_err(query(CONTEXT_EVENT_LIST))?;
@@ -65,8 +66,8 @@ impl Runners {
             .into_iter()
             .map(TurnRow::parse)
             .collect::<Result<Vec<_>>>()?;
-        Ok(RunnerEventPage {
-            next_cursor: events::cursor(&items, more)?,
+        Ok(RunnerHistoryPage {
+            next_cursor: history::cursor(&items, more)?,
             items,
             total,
         })

@@ -13,18 +13,19 @@ use super::KeysetCursor;
 use super::decode::TurnRow;
 
 /// The statement an event page runs: its rows decode by name.
-type EventPage<'a> = sqlx::query::QueryAs<'a, sqlx::Postgres, TurnRow, sqlx::postgres::PgArguments>;
+type HistoryPage<'a> =
+    sqlx::query::QueryAs<'a, sqlx::Postgres, TurnRow, sqlx::postgres::PgArguments>;
 
 /// Validated filters over one runner's append-only history.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RunnerEventFilter {
+pub struct RunnerHistoryFilter {
     /// The stored spellings of the types asked for, as the column holds them.
     event_types: Vec<String>,
     since: Option<Timestamp>,
     until: Option<Timestamp>,
 }
 
-impl RunnerEventFilter {
+impl RunnerHistoryFilter {
     /// Builds a filter when the inclusive time window is ordered and every
     /// type asked for has a stored spelling.
     ///
@@ -66,11 +67,11 @@ impl RunnerEventFilter {
 
 pub(super) fn statement<'a>(
     runner: &'a Uuid7,
-    filter: &RunnerEventFilter,
+    filter: &RunnerHistoryFilter,
     event_types: Option<Vec<String>>,
     cursor: Option<&'a KeysetCursor>,
     limit: u32,
-) -> EventPage<'a> {
+) -> HistoryPage<'a> {
     let since = filter.since().map(Timestamp::to_sqlx);
     let until = filter.until().map(Timestamp::to_sqlx);
     match cursor {
@@ -116,16 +117,16 @@ mod tests {
     fn event_filter_accepts_open_bounds_and_refuses_a_reversed_window() {
         let start = Timestamp::constant(10, 0);
         let later = Timestamp::constant(11, 0);
-        assert!(RunnerEventFilter::new(Vec::new(), None, None).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), Some(start), None).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), None, Some(start)).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), Some(start), Some(start)).is_some());
-        assert!(RunnerEventFilter::new(Vec::new(), Some(later), Some(start)).is_none());
+        assert!(RunnerHistoryFilter::new(Vec::new(), None, None).is_some());
+        assert!(RunnerHistoryFilter::new(Vec::new(), Some(start), None).is_some());
+        assert!(RunnerHistoryFilter::new(Vec::new(), None, Some(start)).is_some());
+        assert!(RunnerHistoryFilter::new(Vec::new(), Some(start), Some(start)).is_some());
+        assert!(RunnerHistoryFilter::new(Vec::new(), Some(later), Some(start)).is_none());
     }
 
     #[test]
     fn event_filter_binds_each_type_by_the_spelling_the_column_stores() {
-        let filter = RunnerEventFilter::new(
+        let filter = RunnerHistoryFilter::new(
             vec![
                 RunnerEventType::RunnerTokenRotated,
                 RunnerEventType::RunAcquired,
@@ -141,7 +142,7 @@ mod tests {
                 "run_acquired".to_owned()
             ])
         );
-        let unfiltered = RunnerEventFilter::new(Vec::new(), None, None);
+        let unfiltered = RunnerHistoryFilter::new(Vec::new(), None, None);
         assert_eq!(
             unfiltered.and_then(|filter| filter.event_type_names()),
             None

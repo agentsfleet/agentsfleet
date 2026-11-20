@@ -42,24 +42,20 @@ pub const RUNNER_MEMORY: &str = concatcp!(RUNNER_SELF, "/memory");
 
 /// Trailing segment of `POST /v1/runners/me/memory/{fleet_id}/recall` — a
 /// search past the load window. Bare for the reason
-/// [`RUN_ACTIVITY_SUFFIX`] gives.
+/// [`RUN_ITEMS_SUFFIX`] gives.
 pub const RUNNER_MEMORY_RECALL_SUFFIX: &str = "recall";
 
 /// `POST /v1/runners/me/credentials/mint` — on-demand credential mint.
 pub const RUNNER_CREDENTIALS_MINT: &str = concatcp!(RUNNER_SELF, "/credentials/mint");
 
-/// Trailing segment of the per-run activity sub-resource.
+/// Trailing segment of the per-run items sub-resource.
 ///
 /// A bare segment rather than a joined constant: `run_id` is a path parameter,
-/// so the full path is `{RUNNER_RUNS}/{run_id}/{RUN_ACTIVITY_SUFFIX}`.
-pub const RUN_ACTIVITY_SUFFIX: &str = "activity";
-
-/// Trailing segment of the per-run tool-call records sub-resource. See
-/// [`RUN_ACTIVITY_SUFFIX`] for why it is a bare segment.
+/// so the full path is `{RUNNER_RUNS}/{run_id}/{RUN_ITEMS_SUFFIX}`.
 pub const RUN_ITEMS_SUFFIX: &str = "items";
 
 /// Trailing segment of the per-run schedules sub-resource: the schedules of
-/// the fleet the run runs. See [`RUN_ACTIVITY_SUFFIX`] for why it is a
+/// the fleet the run runs. See [`RUN_ITEMS_SUFFIX`] for why it is a
 /// bare segment.
 pub const RUN_SCHEDULES_SUFFIX: &str = "schedules";
 
@@ -68,15 +64,15 @@ pub const RUN_SCHEDULES_SUFFIX: &str = "schedules";
 pub const SCHEDULE_RUNS_SUFFIX: &str = "runs";
 
 /// Trailing segment of the per-run messages sub-resource: a line said to
-/// the event's thread before the answer. See [`RUN_ACTIVITY_SUFFIX`].
+/// the event's thread before the answer. See [`RUN_ITEMS_SUFFIX`].
 pub const RUN_MESSAGES_SUFFIX: &str = "messages";
 
 /// Trailing segment of the per-run steers sub-resource: work the held
-/// fleet puts on another fleet in its workspace. See [`RUN_ACTIVITY_SUFFIX`].
+/// fleet puts on another fleet in its workspace. See [`RUN_ITEMS_SUFFIX`].
 pub const RUN_STEERS_SUFFIX: &str = "steers";
 
 /// Trailing segment of the per-run fleets sub-resource: the fleets of the
-/// held fleet's workspace. See [`RUN_ACTIVITY_SUFFIX`].
+/// held fleet's workspace. See [`RUN_ITEMS_SUFFIX`].
 pub const RUN_FLEETS_SUFFIX: &str = "fleets";
 
 /// Trailing segment of one fleet's recent events, beneath

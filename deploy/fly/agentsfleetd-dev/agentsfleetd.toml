@@ -64,7 +64,7 @@ resume_from_checkpoint = false
 
 [runner.scheduling]
 missed_wake_probe_seconds = 5
-max_concurrent_recovery_claims = 8
+max_concurrent_recovery_assignments = 8
 
 [maintenance]
 startup_spread_ms = 5_000

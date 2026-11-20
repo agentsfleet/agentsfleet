@@ -14,7 +14,7 @@ use af_core::id::Uuid7;
 use af_core::paging::DEFAULT_LIMIT;
 use af_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 use afd_api_wire::admin::{RunnerAdminAction, RunnerEventType};
-use afd_runner::{KeysetCursor, RunnerEventFilter};
+use afd_runner::{KeysetCursor, RunnerHistoryFilter};
 use jiff::Timestamp;
 
 use self::requests::enrolment;
@@ -235,15 +235,15 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
 
 async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7, window: (Timestamp, Timestamp)) {
     let limit = 2;
-    let unfiltered = RunnerEventFilter::default();
+    let unfiltered = RunnerHistoryFilter::default();
     let first = fixtures
         .runners()
-        .runner_events(runner, &unfiltered, None, limit)
+        .runner_history(runner, &unfiltered, None, limit)
         .await
         .expect("the first event page loads");
     let second = fixtures
         .runners()
-        .runner_events(runner, &unfiltered, first.next_cursor(), limit)
+        .runner_history(runner, &unfiltered, first.next_cursor(), limit)
         .await
         .expect("the second event page loads");
     assert_eq!((first.total(), second.total()), (4, 4));
@@ -271,7 +271,7 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7, window: (Timest
         ]
     );
 
-    let filtered = RunnerEventFilter::new(
+    let filtered = RunnerHistoryFilter::new(
         vec![
             RunnerEventType::RunnerOnline,
             RunnerEventType::RunnerCordoned,
@@ -282,7 +282,7 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7, window: (Timest
     .expect("the inclusive window is ordered");
     let page = fixtures
         .runners()
-        .runner_events(runner, &filtered, None, DEFAULT_LIMIT)
+        .runner_history(runner, &filtered, None, DEFAULT_LIMIT)
         .await
         .expect("the filtered page loads");
     assert_eq!(page.total(), 2);

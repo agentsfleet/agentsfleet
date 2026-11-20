@@ -262,7 +262,7 @@ impl RunService {
         let metadata = std::collections::BTreeMap::from([
             (afd_runner::sql::meta::RUN_ID, run_id.as_str()),
             (
-                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID,
+                afd_runner::sql::meta::TURN_ID,
                 issue.turn.message_id.as_str(),
             ),
             (afd_runner::sql::meta::KIND, kind),

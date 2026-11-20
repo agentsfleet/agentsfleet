@@ -33,8 +33,8 @@ use crate::run::unanswered;
 /// ended with no report: at a gate, or after its runs kept lapsing.
 const CONTEXT_ENDED: &str = "fleet event ended without a report";
 
-/// The stored `failure_detail` of an event the daemon stopped re-running.
-pub const DETAIL_RUNS_LAPSED: &str = "every run this event was issued lapsed without a report";
+/// The stored `failure_detail` of a turn the daemon stopped re-running.
+pub const DETAIL_RUNS_LAPSED: &str = "every run this turn was issued lapsed without a report";
 
 /// How an event ends when no report will end it.
 #[derive(Debug, Clone, Copy)]

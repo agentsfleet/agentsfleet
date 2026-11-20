@@ -29,8 +29,6 @@ pub(crate) enum Row<'a> {
     Run(&'a Uuid7),
     /// A fleet's `thread.threads` row, by fleet id.
     Thread(&'a Uuid7),
-    /// A fleet's `thread.threads` row, by fleet id.
-    Session(&'a Uuid7),
     /// A `thread.turns` row, by its id, which is the logical event id.
     Turn(&'a Uuid7),
     /// An `setup.attempts` row, by attempt id.
@@ -75,7 +73,6 @@ impl<'a> Row<'a> {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
             Self::Run(id) => ("thread.runs", "id = $1", id, None),
             Self::Thread(fleet) => ("thread.threads", "fleet_id = $1", fleet, None),
-            Self::Session(fleet) => ("thread.threads", "id = $1", fleet, None),
             Self::Turn(id) => ("thread.turns", "id = $1", id, None),
             Self::Attempt(id) => ("setup.attempts", "id = $1", id, None),
             Self::Event(fleet, event) => (

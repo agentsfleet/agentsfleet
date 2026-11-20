@@ -1,9 +1,10 @@
 //! HTTP Save reports readiness honestly and retries one retained resource.
 
 use super::{
-    super::{json_body, mint, send, send_with_headers},
+    super::{id_field, json_body, mint, send, send_with_headers},
     fixture::{Case, runtime_history},
 };
+use af_core::id::Uuid7;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
@@ -38,6 +39,46 @@ async fn save_retries_the_same_fleet_after_funding_without_copying_private_chat(
     assert_private_draft_closed(&case, &draft).await;
     assert_rename_preserves_setup(&case, &item, &tag, &saved).await;
     case.cleanup().await;
+}
+
+/// A draft's thread is written with the draft, and publishing the draft as a
+/// fleet writes the fleet's own: two threads, one per owner, each at fence 0.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn creating_a_fleet_or_draft_creates_its_thread() {
+    let case = Case::create().await;
+    case.fund().await;
+    let (draft, request) = case.request().await;
+    let draft = Uuid7::parse(draft.rsplit('/').next().expect("a draft path"))
+        .expect("the draft path ends in its id");
+    assert_eq!(
+        threads(&case, &[&draft]).await,
+        vec![(draft.clone(), None, Some(draft.clone()), 0)],
+        "the draft's thread is written with the draft"
+    );
+    let saved = case.save(mint().as_str(), &request).await;
+    assert_eq!(saved.status(), StatusCode::CREATED);
+    let fleet = id_field(&json_body(saved).await["id"]);
+    let mut expected = vec![
+        (draft.clone(), None, Some(draft.clone()), 0),
+        (fleet.clone(), Some(fleet.clone()), None, 0),
+    ];
+    expected.sort();
+    assert_eq!(threads(&case, &[&draft, &fleet]).await, expected);
+    case.cleanup().await;
+}
+
+/// The threads with these ids: id, fleet, draft and fence, by id.
+async fn threads(case: &Case, ids: &[&Uuid7]) -> Vec<(Uuid7, Option<Uuid7>, Option<Uuid7>, i64)> {
+    let ids: Vec<Uuid7> = ids.iter().map(|id| (*id).clone()).collect();
+    sqlx::query_as(
+        "SELECT id, fleet_id, draft_id, fencing_token FROM thread.threads \
+         WHERE id = ANY($1) ORDER BY id",
+    )
+    .bind(ids)
+    .fetch_all(&mut *case.base.db.acquire().await.expect("a connection"))
+    .await
+    .expect("the threads read")
 }
 
 async fn assert_only_setup_receipts(case: &Case, item: &str, saved: &Value) {

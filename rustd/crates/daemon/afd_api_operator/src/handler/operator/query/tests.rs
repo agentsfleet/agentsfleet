@@ -170,7 +170,7 @@ fn an_event_type_token_reads_by_its_stored_spelling_and_an_unknown_one_refuses()
         )]))
     };
     let read = set("runner_online,run_released").expect("two stored spellings");
-    let expected = RunnerEventFilter::new(
+    let expected = RunnerHistoryFilter::new(
         vec![RunnerEventType::RunnerOnline, RunnerEventType::RunReleased],
         None,
         None,

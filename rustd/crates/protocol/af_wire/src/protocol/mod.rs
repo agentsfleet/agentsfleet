@@ -74,12 +74,12 @@ pub enum StreamKind {
     /// Durable terminal reports and their acknowledgements.
     Reports,
     /// Bounded, expendable live progress.
-    Activity,
+    Progress,
 }
 
 impl StreamKind {
     /// Every kind required before the session can accept work.
-    pub const ALL: [Self; 4] = [Self::Control, Self::Work, Self::Reports, Self::Activity];
+    pub const ALL: [Self; 4] = [Self::Control, Self::Work, Self::Reports, Self::Progress];
 
     /// Header spelling, shared by both carriers and the server.
     #[must_use]
@@ -88,7 +88,7 @@ impl StreamKind {
             Self::Control => "control",
             Self::Work => "work",
             Self::Reports => "reports",
-            Self::Activity => "activity",
+            Self::Progress => "progress",
         }
     }
 
@@ -99,7 +99,7 @@ impl StreamKind {
             "control" => Some(Self::Control),
             "work" => Some(Self::Work),
             "reports" => Some(Self::Reports),
-            "activity" => Some(Self::Activity),
+            "progress" => Some(Self::Progress),
             _ => None,
         }
     }

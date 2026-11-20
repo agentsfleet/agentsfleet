@@ -71,7 +71,7 @@ impl Budget {
     fn pool(&self, kind: StreamKind) -> &Arc<Semaphore> {
         match kind {
             StreamKind::Control => &self.control,
-            StreamKind::Work | StreamKind::Reports | StreamKind::Activity => &self.data,
+            StreamKind::Work | StreamKind::Reports | StreamKind::Progress => &self.data,
         }
     }
 

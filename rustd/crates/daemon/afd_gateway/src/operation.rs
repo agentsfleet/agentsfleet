@@ -16,7 +16,7 @@ pub enum Operation {
     /// Await one already-accounted physical authoring provider invocation.
     Model,
     /// Publish bounded progress.
-    Activity,
+    Progress,
     /// Settle a durable terminal report.
     Report,
     /// Read fenced pending inputs.
@@ -39,7 +39,7 @@ impl Operation {
             Self::Heartbeat => "heartbeat",
             Self::Recheck => "recheck",
             Self::Renewal => "renewal",
-            Self::Activity => "activity",
+            Self::Progress => "progress",
             Self::Report => "report",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
@@ -58,7 +58,7 @@ impl std::fmt::Display for Operation {
             Self::Heartbeat => "recording a heartbeat",
             Self::Recheck => "checking the current owner",
             Self::Renewal => "renewing work",
-            Self::Activity => "publishing progress",
+            Self::Progress => "publishing progress",
             Self::Report => "settling a report",
             Self::Folds => "reading pending inputs",
             Self::TurnCheckpoint => "saving or restoring a turn checkpoint",

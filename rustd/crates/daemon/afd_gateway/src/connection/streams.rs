@@ -16,13 +16,13 @@ pub(super) struct StreamReceivers {
     pub(super) control: mpsc::Receiver<IncomingFrame>,
     pub(super) work: mpsc::Receiver<IncomingFrame>,
     pub(super) reports: mpsc::Receiver<IncomingFrame>,
-    pub(super) activity: mpsc::Receiver<IncomingFrame>,
+    pub(super) progress: mpsc::Receiver<IncomingFrame>,
 }
 
 impl StreamReceivers {
     /// Readers release their senders after handing off their last fully read frame.
     pub(super) fn drained(&self) -> bool {
-        [&self.control, &self.work, &self.reports, &self.activity]
+        [&self.control, &self.work, &self.reports, &self.progress]
             .iter()
             .all(|queue| queue.is_closed() && queue.is_empty())
     }
@@ -37,7 +37,7 @@ impl StreamReceivers {
             frame = self.control.recv(), if pending(&self.control) && slots.available(StreamKind::Control) => frame,
             frame = self.reports.recv(), if pending(&self.reports) && slots.available(StreamKind::Reports) => frame,
             frame = self.work.recv(), if pending(&self.work) && slots.available(StreamKind::Work) => frame,
-            frame = self.activity.recv(), if pending(&self.activity) && slots.available(StreamKind::Activity) => frame,
+            frame = self.progress.recv(), if pending(&self.progress) && slots.available(StreamKind::Progress) => frame,
             else => std::future::pending().await,
         }
     }
@@ -51,7 +51,7 @@ struct StreamSenders {
     control: mpsc::Sender<IncomingFrame>,
     work: mpsc::Sender<IncomingFrame>,
     reports: mpsc::Sender<IncomingFrame>,
-    activity: mpsc::Sender<IncomingFrame>,
+    progress: mpsc::Sender<IncomingFrame>,
 }
 
 impl StreamSenders {
@@ -60,7 +60,7 @@ impl StreamSenders {
             StreamKind::Control => &self.control,
             StreamKind::Work => &self.work,
             StreamKind::Reports => &self.reports,
-            StreamKind::Activity => &self.activity,
+            StreamKind::Progress => &self.progress,
         }
     }
 }
@@ -127,7 +127,7 @@ impl StreamAssembly {
         let (control, control_rx) = mpsc::channel(8);
         let (work, work_rx) = mpsc::channel(8);
         let (reports, reports_rx) = mpsc::channel(8);
-        let (activity, activity_rx) = mpsc::channel(8);
+        let (progress, progress_rx) = mpsc::channel(8);
         Self {
             read_stop: setup.stop.child_token(),
             setup,
@@ -137,13 +137,13 @@ impl StreamAssembly {
                 control,
                 work,
                 reports,
-                activity,
+                progress,
             },
             receivers: StreamReceivers {
                 control: control_rx,
                 work: work_rx,
                 reports: reports_rx,
-                activity: activity_rx,
+                progress: progress_rx,
             },
         }
     }
@@ -200,7 +200,7 @@ mod tests {
         }
         assert_eq!(
             seen,
-            [StreamKind::Reports, StreamKind::Work, StreamKind::Activity]
+            [StreamKind::Reports, StreamKind::Work, StreamKind::Progress]
         );
         assert!(!queues.drained(), "control still owns one accepted frame");
         drop(control_jobs);
@@ -221,14 +221,14 @@ mod tests {
         let (control, control_rx) = mpsc::channel(2);
         let (reports, reports_rx) = mpsc::channel(2);
         let (work, work_rx) = mpsc::channel(2);
-        let (activity, activity_rx) = mpsc::channel(2);
+        let (progress, progress_rx) = mpsc::channel(2);
         let budget = Budget::default();
         let stop = CancellationToken::new();
         for (kind, sender) in [
             (StreamKind::Control, &control),
             (StreamKind::Reports, &reports),
             (StreamKind::Work, &work),
-            (StreamKind::Activity, &activity),
+            (StreamKind::Progress, &progress),
         ] {
             let frame = af_stream::encode(
                 &json!({"kind":kind.as_str()}),
@@ -240,12 +240,12 @@ mod tests {
             .await?;
             sender.send(IncomingFrame { kind, frame }).await?;
         }
-        drop((control, reports, work, activity));
+        drop((control, reports, work, progress));
         Ok(StreamReceivers {
             control: control_rx,
             reports: reports_rx,
             work: work_rx,
-            activity: activity_rx,
+            progress: progress_rx,
         })
     }
 }

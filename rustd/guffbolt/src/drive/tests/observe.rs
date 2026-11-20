@@ -43,6 +43,30 @@ async fn every_step_and_call_is_heard_from_its_start_to_its_end_in_order() {
 }
 
 #[tokio::test]
+async fn a_run_reports_each_model_call_as_a_step() {
+    let mut run = Scripted::new([calling(1), calling(1), answer("Done.")]);
+    let ending = drive(&mut run, &mut Plain, &mut DriveState::default()).await;
+    assert!(matches!(ending, Ending::Answered(_)), "{ending:?}");
+    assert_eq!(run.sent().len(), 3, "the model was called three times");
+    assert_eq!(
+        run.heard(),
+        [
+            "step 1 started",
+            "step 1 read",
+            "call call-1-0 started",
+            "call call-1-0 Succeeded",
+            "step 2 started",
+            "step 2 read",
+            "call call-2-0 started",
+            "call call-2-0 Succeeded",
+            "step 3 started",
+            "step 3 read",
+            "loop answered after 3",
+        ]
+    );
+}
+
+#[tokio::test]
 async fn a_call_the_stop_cuts_short_ends_interrupted_and_the_next_never_starts() {
     let mut run = Scripted::new([calling(3), answer("unreachable")]);
     run.stop_after_calls = Some(1);

@@ -63,5 +63,5 @@ pub use self::register::Registered;
 pub use self::scope::RunnerScope;
 pub use self::store::{Enrolled, Runners};
 pub use self::view::{
-    KeysetCursor, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem, RunnerPage,
+    KeysetCursor, RunnerDetail, RunnerHistoryFilter, RunnerHistoryPage, RunnerItem, RunnerPage,
 };

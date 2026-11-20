@@ -281,7 +281,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     );
     let cursor = held
         .fixtures
-        .text(Row::Session(&held.fleet), "resume_context::text")
+        .text(Row::Thread(&held.fleet), "resume_context::text")
         .await
         .expect("the checkpoint rides the same commit");
     assert!(

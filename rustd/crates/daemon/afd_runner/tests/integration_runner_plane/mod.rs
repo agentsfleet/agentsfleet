@@ -31,7 +31,7 @@ use afd_api_wire::admin::RunnerEventItem;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_runner::{RunnerEventFilter, Runners};
+use afd_runner::{RunnerHistoryFilter, Runners};
 
 /// The page size every history read here asks for: more than any test writes.
 const HISTORY_PAGE: u32 = 20;
@@ -106,9 +106,9 @@ impl Fixture {
 
     /// The runner's whole history, newest first.
     async fn history(&self, runner: &Uuid7) -> Vec<RunnerEventItem<'static>> {
-        let unfiltered = RunnerEventFilter::new(Vec::new(), None, None).expect("an open filter");
+        let unfiltered = RunnerHistoryFilter::new(Vec::new(), None, None).expect("an open filter");
         self.runners
-            .runner_events(runner, &unfiltered, None, HISTORY_PAGE)
+            .runner_history(runner, &unfiltered, None, HISTORY_PAGE)
             .await
             .expect("the history reads")
             .into_items()

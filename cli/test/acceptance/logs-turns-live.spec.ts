@@ -91,6 +91,8 @@ const LOGS_READ_TIMEOUT_MS = 30_000;
 const OUT_OF_BOUNDS_LIMIT = "0" as const;
 
 const CREATED_AT_KEY = "created_at" as const;
+const TURN_ID_KEY = "turn_id" as const;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // Per-page `--limit` used by the supplied-cursor round-trip (>=2x → UFS).
 const CURSOR_PROBE_LIMIT = "2" as const;
@@ -187,6 +189,22 @@ if (!isLive) {
         const items = Array.isArray(parsed.items) ? parsed.items : [];
         assert.ok(items.length <= limit, `logs returned ${items.length} items, exceeds --limit ${limit}`);
       });
+    });
+
+    describe("turn rows", () => {
+      it("fleet_turns_lists_turns: `fleet turns <id> --json` lists rows that each name their turn_id", async () => {
+        const result = await runWithEnv([...TURNS_COMMAND, fleetId, JSON_FLAG], CURSOR_ROUNDTRIP_TIMEOUT_MS);
+        assert.equal(result.code, 0, `fleet turns exited ${result.code}: ${result.stderr}`);
+        const parsed = JSON.parse(result.stdout.trim() || "{}") as { items?: unknown };
+        assert.ok(Array.isArray(parsed.items), `fleet turns ${ITEMS_KEY} not an array: ${result.stdout}`);
+        const rows = parsed.items as ReadonlyArray<TurnItem>;
+        assert.ok(rows.length > 0, `a saved fleet lists its setup turns: ${result.stdout}`);
+        for (const row of rows) {
+          const id = row[TURN_ID_KEY];
+          assert.ok(typeof id === "string" && UUID_PATTERN.test(id),
+            `row without a ${TURN_ID_KEY}: ${JSON.stringify(row)}`);
+        }
+      }, CURSOR_ROUNDTRIP_TIMEOUT_MS);
     });
 
     describe("events cursor walk", () => {

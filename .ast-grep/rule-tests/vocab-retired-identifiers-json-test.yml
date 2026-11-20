@@ -1,0 +1,11 @@
+id: vocab-retired-identifiers-json
+valid:
+  - |
+      {"crate": "afd_turns"}
+  - |
+      {"crate": "afd_events_v2"}
+invalid:
+  - |
+      {"crate": "afd_events"}
+  - |
+      {"FleetTail": 1}
