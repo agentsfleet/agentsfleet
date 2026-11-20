@@ -44,7 +44,8 @@ it("sends a long quote and its reply whole, leaving the length to the daemon", a
   const long = "x".repeat(65_536);
   postSteerMock.mockResolvedValueOnce(ACCEPTED("long"));
   quote(long);
-  expect(screen.getByRole("button", {name: SEND_LABEL}).hasAttribute("disabled")).toBe(false);
+  fireEvent.change(composerInput(), { target: { value: "Check this" } });
+  expect(screen.getByRole("button", {name: SEND_LABEL}).hasAttribute("disabled"), "no client-side limit holds Send back").toBe(false);
   await send("Check this");
   await waitFor(() => expect(postSteerMock).toHaveBeenCalledTimes(1));
   expect(postSteerMock.mock.calls[0]?.[2]).toBe(`> ${long}\n\nCheck this`);

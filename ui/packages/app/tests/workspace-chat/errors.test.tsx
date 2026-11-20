@@ -49,8 +49,8 @@ it("reloads unavailable unfinished setups from their own recovery action without
 
 it("sends a long message whole and shows the daemon's refusal inside the chat", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-  const refused = {error_code: "UZ-REQ-001", detail: "Input exceeds the maximum length of 1,048,576 characters.",
-    user_message: "That request wasn't valid. Double-check the values you entered and try again."};
+  const ceiling = "Input exceeds the maximum length of 1,048,576 characters.";
+  const refused = {error_code: "UZ-REQ-004", detail: ceiling, user_message: ceiling};
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST"
@@ -62,9 +62,12 @@ it("sends a long message whole and shows the daemon's refusal inside the chat", 
   fireEvent.change(input, {target: {value: long}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
   expect((await screen.findByRole("alert")).textContent).toContain(refused.user_message);
-  const writes = fixture.writes();
-  expect(writes).toHaveLength(1);
-  expect(writes[0]?.body).toMatchObject({message: long});
+  const posts = fixture.fetch.mock.calls.filter(([input, init]) =>
+    typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST");
+  expect(posts, "the app sends the long message once, whole").toHaveLength(1);
+  const body = posts[0]?.[1]?.body;
+  if (typeof body !== "string") throw new Error("the draft POST carries a JSON string body");
+  expect(JSON.parse(body)).toMatchObject({message: long});
 });
 
 it("identifies a failed chat-history read without claiming a missing model", async () => {

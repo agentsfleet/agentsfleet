@@ -2,7 +2,7 @@ import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, mockStream, renderThrea
 import { ACCEPTED, OPERATION_ID, REFUSED, UUID_V7, composerInput, heldRefusal, operationIdOf, send } from "./steer-helpers";
 import { SEND_LABEL } from "./steer-copy";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
 import { ACTOR } from "@/lib/turns/turn-summary";
@@ -186,7 +186,8 @@ describe("FleetThread — steer submission", () => {
     postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_long"));
     renderThread();
     const long = "a".repeat(65_536);
-    expect((screen.getByRole("button", { name: SEND_LABEL }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(composerInput(), { target: { value: long } });
+    expect((screen.getByRole("button", { name: SEND_LABEL }) as HTMLButtonElement).disabled, "no client-side limit holds Send back").toBe(false);
     await send(long);
     await waitFor(() => expect(postSteerMock).toHaveBeenCalledTimes(1));
     expect(postSteerMock.mock.calls[0]?.[2]).toBe(long);

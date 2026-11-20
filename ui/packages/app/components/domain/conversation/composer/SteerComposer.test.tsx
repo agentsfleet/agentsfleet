@@ -21,6 +21,8 @@ const { composer, aui } = vi.hoisted(() => {
 
 const FLEET_PATH = "/w/ws_1/fleets/fleet_1";
 vi.mock("next/navigation", () => ({ usePathname: () => FLEET_PATH }));
+const setup = vi.hoisted(() => ({ modelChanging: false }));
+vi.mock("../../setup/FleetSetupContext", () => ({ useFleetSetup: () => ({ modelChanging: setup.modelChanging }) }));
 
 vi.mock("@assistant-ui/react", () => ({
   ComposerPrimitive: {
@@ -81,6 +83,7 @@ function draft(text: string) {
 
 afterEach(() => {
   cleanup();
+  setup.modelChanging = false;
   draft("");
   composer.setText.mockClear();
   composer.setQuote(undefined);
@@ -175,6 +178,13 @@ describe("SteerComposer", () => {
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(`/sign-in?redirect_url=${encodeURIComponent(FLEET_PATH)}`);
     expect(screen.getByRole("button", { name: RESEND })).toBeTruthy();
     expect(composer.setText).toHaveBeenCalledExactlyOnceWith("deploy the canary");
+  });
+
+  it("holds Send while the fleet's model is changing", () => {
+    setup.modelChanging = true;
+    draft("roll back");
+    render(view([]));
+    expect((screen.getByRole("button", { name: SEND }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("leaves a long draft's length to the daemon: no counter, no hint, and Send stays enabled", () => {
