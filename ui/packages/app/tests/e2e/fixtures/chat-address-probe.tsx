@@ -68,7 +68,7 @@ export function FleetSteerRowFixture() {
   const [turns] = useState(() => [rowToTurn({...SCHEDULE_TURN, workspace_id: WORKSPACE, fleet_id: FLEET_ID,
     turn_id: "0199a801-1000-7000-8000-0000000000e1", actor: `fleet:${CHIEF_ID}`, event_type: "chat", status: "queued",
     request_json: JSON.stringify({message: `[from fleet chief-of-staff, fleet_id ${CHIEF_ID}; answer with fleet_steer to that id]\n${STEER_TEXT}`,
-      text: STEER_TEXT, sender_fleet_id: CHIEF_ID, sender_fleet_name: "chief-of-staff", sender_event_id: "0199a801-1000-7000-8000-0000000000e0"}),
+      sender_fleet_id: CHIEF_ID, sender_fleet_name: "chief-of-staff", sender_event_id: "0199a801-1000-7000-8000-0000000000e0"}),
     created_at: new Date().toISOString(), updated_at: new Date().toISOString()})]);
   const grouped = useFleetThreadEntries(turns, convertTurn);
   const messages = useMemo(() => grouped.entries.map(grouped.convertEntry), [grouped]);

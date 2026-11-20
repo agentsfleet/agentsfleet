@@ -9,16 +9,17 @@
 // browser could not cancel it. A Server Action also carried Next's origin
 // check; a Route Handler carries none, so this one refuses what a cross-site
 // page could send — a POST whose `Origin` is absent or foreign, a body that is
-// not JSON, and a body larger than any steer can be.
+// not JSON, and a body larger than the daemon reads.
 //
 // Every answer after the mint says what the route spent, as `Server-Timing`:
 // `auth` for the mint, `upstream` for the daemon's answer. Durations only, set
 // once the answer is final, so timing never changes a status or a body.
 
 import { z } from "zod";
+import { TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { ApiError } from "@/lib/api/errors";
 import { steerFleet } from "@/lib/api/fleets";
-import { STEER_MESSAGE_MAX_BYTES, type SteerRequest } from "@/lib/api/fleets-types";
+import type { SteerRequest } from "@/lib/api/fleets-types";
 import { credential } from "@/lib/auth/credential";
 import { ERROR_CODE } from "@/lib/errors";
 import { proxyJsonGet } from "@/lib/api/live-json-proxy";
@@ -43,15 +44,6 @@ const TIMING_DECIMALS = 1;
 const DOT_ONLY_SEGMENT = /^\.+$/;
 // A sandboxed or `file:` page sends this literal Origin.
 const OPAQUE_ORIGIN = "null";
-
-// The largest body a steer can be: JSON's widest escape spends six bytes on
-// one (`\u0000`), over the daemon's longest message and operation id, plus
-// the two keys and their punctuation.
-const JSON_ESCAPE_MAX_BYTES = 6;
-const OPERATION_ID_MAX_BYTES = 200;
-const ENVELOPE_BYTES = 64;
-const STEER_BODY_MAX_BYTES =
-  (STEER_MESSAGE_MAX_BYTES + OPERATION_ID_MAX_BYTES) * JSON_ESCAPE_MAX_BYTES + ENVELOPE_BYTES;
 
 const HTTP_STATUS = {
   ACCEPTED: 202,
@@ -145,10 +137,10 @@ async function readSteer(req: Request): Promise<SteerRequest | Response> {
   return steer.success ? steer.data : problem(HTTP_STATUS.BAD_REQUEST, REFUSAL.MALFORMED);
 }
 
-// The body as text, read no further than a steer can reach: null past that,
+// The body as text, read no further than the daemon would: null past that,
 // whether the length was declared or only found while reading.
 async function boundedText(req: Request): Promise<string | null> {
-  if (Number(req.headers.get("content-length") ?? 0) > STEER_BODY_MAX_BYTES) return null;
+  if (Number(req.headers.get("content-length") ?? 0) > TEXT_BODY_LIMIT_BYTES) return null;
   const reader = req.body?.getReader();
   if (reader === undefined) return "";
   const decoder = new TextDecoder();
@@ -156,7 +148,7 @@ async function boundedText(req: Request): Promise<string | null> {
   let text = "";
   for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
     size += chunk.value.byteLength;
-    if (size > STEER_BODY_MAX_BYTES) {
+    if (size > TEXT_BODY_LIMIT_BYTES) {
       await reader.cancel();
       return null;
     }

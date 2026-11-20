@@ -47,19 +47,24 @@ it("reloads unavailable unfinished setups from their own recovery action without
 });
 
 
-it("shows an oversized message refusal inside the chat without creating a draft", async () => {
+it("sends a long message whole and shows the daemon's refusal inside the chat", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const refused = {error_code: "UZ-REQ-001", detail: "Input exceeds the maximum length of 1,048,576 characters.",
+    user_message: "That request wasn't valid. Double-check the values you entered and try again."};
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST"
+    ? Promise.resolve(response(refused, 400)) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
   const input = await screen.findByRole("textbox", {name: "Describe the work you want this fleet to do…"});
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
-  fireEvent.change(input, {target: {value: "🌱".repeat(8_193)}});
+  const long = "🌱".repeat(8_193);
+  fireEvent.change(input, {target: {value: long}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
-  expect((await screen.findByRole("alert")).textContent).toContain("Messages must contain 1 to 32,768 bytes of text.");
-  fireEvent.change(input, {target: {value: "Review the callback regression"}});
-  fireEvent.click(screen.getByRole("button", {name: "Dismiss error notice"}));
-  expect(screen.getByRole("alert").textContent).toContain("Messages must contain 1 to 32,768 bytes of text.");
-  expect(input).toHaveProperty("value", "Review the callback regression");
-  expect(fixture.writes()).toEqual([]);
+  expect((await screen.findByRole("alert")).textContent).toContain(refused.user_message);
+  const writes = fixture.writes();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.body).toMatchObject({message: long});
 });
 
 it("identifies a failed chat-history read without claiming a missing model", async () => {

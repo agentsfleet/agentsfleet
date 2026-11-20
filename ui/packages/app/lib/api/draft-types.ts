@@ -13,15 +13,14 @@ export const MESSAGE_STATE = {
   failed: "failed", timedOut: "timed_out",
 } as const;
 export const SETUP_HEADERS = {match: "If-Match", key: "Idempotency-Key"} as const;
-export const MESSAGE_MAX_BYTES = 32 * 1024;
 export const PAGE_LIMIT = 25;
 // The largest page a workspace model or private-chat list answers with.
 export const LIST_PAGE_MAX = 100;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
 const decimal = z.string().regex(DECIMAL);
 const summaryRevision = z.number().int().positive().safe().nullable();
-const encoder = new TextEncoder();
-export const MessageInputSchema = z.string().min(1).refine(text => text.trim().length > 0).refine((text) => encoder.encode(text).byteLength <= MESSAGE_MAX_BYTES);
+// Length is the daemon's to refuse; its refusal names the ceiling.
+export const MessageInputSchema = z.string().min(1).refine(text => text.trim().length > 0);
 const record = z.record(z.string(), z.unknown());
 
 export const DefinitionSchema = z.object({

@@ -7,7 +7,6 @@ import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, List, ListItem } from "@agentsfleet/design-system";
 import { ArrowUpIcon, SquareIcon } from "@phosphor-icons/react/ssr";
 import { PENDING_SEND_STATE, type PendingSend } from "../delivery/useFleetPendingSends";
-import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
 import { chatComposerText } from "@/lib/chat-message-text";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
@@ -28,11 +27,6 @@ const SIGN_IN_LABEL = "Sign in";
 const RESEND_LABEL = "Resend";
 const SEND_AS_NEW_LABEL = "Send as new";
 const NOTICES_LABEL = "Unsent messages";
-const BYTE_COUNT = new Intl.NumberFormat("en-US");
-const TOO_LONG = `Messages can be at most ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes.`;
-const bytesOfLimit = (bytes: number) => `${BYTE_COUNT.format(bytes)} / ${BYTE_COUNT.format(STEER_MESSAGE_MAX_BYTES)} bytes`;
-/** The draft's size near the limit, counted once per distinct draft. */
-type DraftBytes = (text: string) => number | null;
 // In flight, or dismissed: neither is the operator's to act on here.
 const NOT_NOTICED: ReadonlySet<PendingSend["state"]> = new Set([PENDING_SEND_STATE.SENDING, PENDING_SEND_STATE.DISMISSED]);
 
@@ -64,16 +58,12 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   // A notice unmounts under its own Resend or Dismiss, so focus goes back to
   // the draft rather than falling to the page.
   const draftRef = useRef<HTMLTextAreaElement>(null);
-  // Every leaf that reads the draft's size runs its selector on each store
-  // notification — every reply flush — so the count is kept for its draft.
-  const draftBytes = useMemo(() => lastDraftBytes(), []);
   return (
     <>
     <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef} disabled={modelChanging}
       toolbar={<><AddUploadPreview /><FleetModelSelect label={modelLabel} /></>}
-      actions={<>{turnStop?.visible ? <StopButton stop={turnStop} /> : null}<SendButton draftBytes={draftBytes} draftRef={draftRef} /></>}>
+      actions={<>{turnStop?.visible ? <StopButton stop={turnStop} /> : null}<SendButton draftRef={draftRef} /></>}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
-        <DraftSize draftBytes={draftBytes} />
         <DraftReporter onDraft={onDraft} />
         <ComposerUploadAttachments />
 
@@ -118,12 +108,12 @@ function useRestoreRefusedTextOnMount(
  * of the composer. The name is unchanged for anyone not looking at it: the
  * button still answers to "Send".
  *
- * Over the limit it is disabled, so the refusal is visible before a press. The
- * prop is passed only then: the primitive's slot lets a child's `disabled`
- * override its own, and `false` would enable Send on an empty draft.
+ * While the model changes it is disabled. The prop is passed only then: the
+ * primitive's slot lets a child's `disabled` override its own, and `false`
+ * would enable Send on an empty draft. Length is the daemon's to refuse, and
+ * a refused send comes back through the pending-send notice.
  */
-function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef: RefObject<HTMLTextAreaElement | null> }) {
-  const tooLong = overSteerLimit(draftBytes(useComposerPayload()));
+function SendButton({ draftRef }: { draftRef: RefObject<HTMLTextAreaElement | null> }) {
   const modelChanging = useFleetSetup()?.modelChanging ?? false;
   return (
     <ComposerPrimitive.Send asChild>
@@ -134,7 +124,7 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
         aria-label={SEND_LABEL}
         className="shrink-0 self-end rounded-full disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 [&_svg]:size-4.5"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
-        {...(tooLong || modelChanging ? { disabled: true } : {})}
+        {...(modelChanging ? { disabled: true } : {})}
       >
         <ArrowUpIcon size={18} aria-hidden="true" />
       </Button>
@@ -160,8 +150,7 @@ function StopButton({ stop }: { stop: TurnStop }) {
   );
 }
 
-// Its own leaf, like the size below: it reads the draft, so typing re-renders
-// only this.
+// Its own leaf: it reads the draft, so typing re-renders only this.
 function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
   const draft = useComposerPayload();
   useEffect(() => {
@@ -170,34 +159,10 @@ function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
   return null;
 }
 
-// How much of the limit the draft uses, shown from nine tenths of it, and why
-// Send is disabled past it. The count is not a live region — read out on every
-// keystroke it would drown the draft; the hint is `info`, announced politely.
-function DraftSize({ draftBytes }: { draftBytes: DraftBytes }) {
-  const bytes = draftBytes(useComposerPayload());
-  if (bytes === null) return null;
-  return (
-    <>
-      {overSteerLimit(bytes) ? <Alert variant="info">{TOO_LONG}</Alert> : null}
-      <span className="self-end text-label tabular-nums text-muted-foreground">{bytesOfLimit(bytes)}</span>
-    </>
-  );
-}
-
 function useComposerPayload(): string {
   const text = useAuiState(state => state.composer.text);
   const quote = useAuiState(state => state.composer.quote);
   return useMemo(() => chatComposerText({text, quote}), [text, quote]);
-}
-
-// One draft's count, kept until the draft changes: a store notification that
-// leaves the draft alone costs a string comparison, not an encode.
-function lastDraftBytes(): DraftBytes {
-  let last: { text: string; bytes: number | null } | null = null;
-  return (text) => {
-    if (last === null || last.text !== text) last = { text, bytes: steerBytesNearLimit(text) };
-    return last.bytes;
-  };
 }
 
 type NoticeProps = Pick<SteerComposerProps, "onResend" | "onDismiss"> & {

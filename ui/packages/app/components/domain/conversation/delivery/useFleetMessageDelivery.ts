@@ -10,7 +10,7 @@ import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } 
 import { outcomeOf, releaseRoute, routeOf } from "./useFleetMessageRoute";
 import type { useFleetTurnStream } from "../stream/useFleetTurnStream";
 import { postSteer } from "@/lib/api/fleet-steer";
-import { STEER_DISPOSITION, overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
+import { STEER_DISPOSITION, type SteerAccepted } from "@/lib/api/fleets-types";
 import { ACTOR } from "@/lib/turns/turn-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 import { SEND_MARK, sendMarks } from "@/lib/streaming/send-marks";
@@ -99,9 +99,6 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       const send = ++sends.current;
       const text = extractMessageText(msg);
       if (text.length === 0) return;
-      // Refused before it is named or recorded: the daemon would refuse it, and
-      // the composer keeps the draft while its hint says why.
-      if (overSteerLimit(steerBytesNearLimit(text))) throw new MessageNotSentError();
       const back = take();
       const operationId = back?.text === text && back.ledger === writers ? back.operationId : mintOrNull();
       if (operationId === null) throw new MessageNotSentError();

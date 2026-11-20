@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { matchSetupRoute } from "@/lib/api/setup-proxy/path";
-import { SETUP_BODY_LIMIT_BYTES } from "@/lib/api/setup-proxy/body";
+import { SETUP_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { SETUP_PROXY_DETAIL, SETUP_REQUEST_ID_HEADER } from "@/lib/api/setup-proxy/response";
 import { APP_ORIGIN, DRAFT_ID, FLEET_ID, PLUGIN_ID, REVISION_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
 

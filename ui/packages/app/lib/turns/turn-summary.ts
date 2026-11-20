@@ -168,6 +168,7 @@ const FAILURE_PRESENTATION: Record<string, TurnFailurePresentation> = {
   landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
   run_expired: { label: "The run's run expired", guidance: null },
   renewal_terminate: { label: "Stopped by run renewal policy", guidance: null },
+  frame_too_large: { label: "Too large for a run to carry", guidance: null },
 };
 
 export function failurePresentationFor(tag: string): TurnFailurePresentation {

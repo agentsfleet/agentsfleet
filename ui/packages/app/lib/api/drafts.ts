@@ -102,7 +102,7 @@ export class DraftClient {
   }
   send(message: string): Promise<void> {
     return this.#requests.run(async () => {
-      if (!MessageInputSchema.safeParse(message).success) throw new SetupUnavailable("Messages must contain 1 to 32,768 bytes of text.", 400);
+      if (!MessageInputSchema.safeParse(message).success) throw new SetupUnavailable("Messages must contain text.", 400);
       if (!this.#snapshot.model) throw new SetupUnavailable("Choose an authoring model before sending.", 400);
       await this.#continueAuthoring();
       const id = this.#snapshot.draft?.id;

@@ -141,6 +141,10 @@ describe("failureSentenceFor", () => {
     });
   });
 
+  it("names a run the daemon failed for its frame in plain words", () => {
+    expect(failurePresentationFor("frame_too_large")).toEqual({label: "Too large for a run to carry", guidance: null});
+  });
+
   it("only attaches startup guidance to the startup safety failure", () => {
     expect(failurePresentationFor("startup_posture").guidance).toBe("startup");
     expect(failurePresentationFor("budget_breach").guidance).toBeNull();
