@@ -14,7 +14,7 @@ executable: false
 | Who parses provider events? | Rig, through its native HTTP adapter and provider codecs |
 | Where is browser connection recovery implemented? | `ChatConnection`, used by both chat adapters |
 | Where are reply ordering and rendering shared? | `ReplyStream`, `ReplyStreamDecoder`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame` |
-| What still differs by purpose? | Authorization, tools, durable records, admission and explicit setup saves |
+| What still differs by purpose? | Authorization, tools, durable records, turn intake and explicit setup saves |
 | What is preview-only? | Live answer text; durable receipts and message reads decide completion |
 
 Read this page to review the shared code and its evidence.
@@ -26,7 +26,7 @@ The [web architecture](web_app.md) owns routing and user flows.
 ```mermaid
 flowchart TD
     A[Private setup: ModelCalls] --> B[Authorized dispatch intent]
-    B --> C[Authoring provider adapter]
+    B --> C[Setup provider adapter]
     D[Fleet execution: afr_agent] --> E[af_providers::Turns]
     C --> F[af_inference::StreamTurn]
     E --> F
@@ -59,7 +59,7 @@ The inactivity bound is 300 seconds after the last received event.
 
 The physical sender remains a purpose boundary.
 Runtime retains its egress guard and existing retry policy.
-Authoring's adapter sends once after committing durable dispatch intent.
+Setup's adapter sends once after committing durable dispatch intent.
 
 The shared reader itself never retries.
 
@@ -70,7 +70,7 @@ The guard uses Rig's `Usage::is_reported`, including reasoning counts and cost m
 On failure, `af_providers` emits known usage before its error and omits `Chunk::End`.
 `afr_agent` records that usage without running an incomplete result.
 
-Authoring records a dispatch deadline of at most 300 seconds before the external call.
+Setup records a dispatch deadline of at most 300 seconds before the external call.
 The runner's 310-second HTTP wait allows receipt settlement after that bound.
 Replayed dispatches read their durable result and never send the provider request again.
 
@@ -85,7 +85,7 @@ Independent services also take that row lock.
 The receipt statement runs after the lock with a fresh database snapshot.
 
 Cancelling a waiter removes it from the mutex queue.
-Cancelling a holder before admission drops its guard and uncommitted transaction.
+Cancelling a holder before the message commits drops its guard and uncommitted transaction.
 A response lost after commit recovers through the existing idempotent receipt.
 
 Different chats have separate gates and can use spare database connections.
@@ -145,9 +145,9 @@ The received document is decoded locally through Rig without a physical send.
 
 ### Durable saves and live receipts
 
-An accepted authoring message records an explicit `save` choice. The daemon completes a successful save-requested turn and writes its immutable setup in the report transaction.
+An accepted setup message records an explicit `save` choice. The daemon completes a successful save-requested turn and writes its immutable setup in the report transaction.
 
-The browser can close after admission without losing that choice. A checked save refusal retains the answer and editable proposal; an internal failure rolls back the report.
+The browser can close after the message is accepted without losing that choice. A checked save refusal retains the answer and editable proposal; an internal failure rolls back the report.
 
 Activation follows the commit and retries on report replay. Current access is checked again before activation.
 
@@ -175,7 +175,7 @@ flowchart TD
 | `ChatConnection.start/retry/close` | Setup and fleet adapters supply events, readers and callbacks; the connection owns EventSource, deadlines, reconnects and cleanup |
 | `ReplyStream.write/markGap/finish/dispose` | Both adapters enforce stream order and recover authoritative final text after gaps |
 | `DraftReplies.accept/reconcile/clear` | Validate private frame identity and bounds; reject late frames and clear previews after durable completion |
-| `DraftClient` | Own admission, optimistic messages, private reads, setup changes and explicit saves |
+| `DraftClient` | Own message sends, optimistic messages, private reads, setup changes and explicit saves |
 | `FleetStreams` | Own runtime streams within the mounted account, workspace and signed-in subject |
 | `ChatThread` | Own the shared scroll viewport and reachable composer footer |
 | `ChatMessageRow` | Share assistant logo alignment, operator bubble and text spacing |
@@ -229,7 +229,7 @@ Partial answers and unknown usage remain visible after failure.
 New fleet supports multiple setup messages before an explicit chat **Save**.
 A confirmed save opens its fleet conversation. **Save and publish** instead publishes the reusable setup from the flap.
 
-**Edit setup** returns to the authoring page with the latest saved revision.
+**Edit setup** returns to the setup page with the latest saved revision.
 
 Manual instructions are optional. The header pencil opens **Instructions**; its **Save changes** action applies edits to an existing fleet.
 
@@ -242,13 +242,13 @@ Model edits follow the separate [exact-text correction path](fleet_definitions.m
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.
 
-A successful setup save keeps authoring open. Saving manual instructions closes only the instruction editor.
+A successful setup save keeps the setup chat open. Saving manual instructions closes only the instruction editor.
 
 Saving also replaces the URL's setup revision. Start over reads the fleet's current revision before creating another draft.
 
 Optional receipt-read failures keep the confirmed save and previous receipts available. Lost access still clears private state.
 
-The authoring composer remains available after saving.
+The setup composer remains available after saving.
 New runs use the saved revision; existing runs keep their pinned version.
 
 Fleet activity shares the conversation; **Saved memories** opens a viewer from **Fleet actions**. Activity and Memory tabs are removed.

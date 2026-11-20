@@ -77,7 +77,7 @@ The prompt builder does not insert the entire store into each model request.
 The model reads entries through its allowed `memory_recall` and `memory_list` tools; returned content enters the conversation as tool output.
 
 The implemented scopes are fleet-private and workspace-shared. There is no account-wide memory scope in `memory.entries` or the runner's loading path.
-Private setup chat uses its own conversation history and checkpoint; its authoring tool set does not expose the runtime memory tools.
+Private setup chat uses its own conversation history and checkpoint; its setup tool set does not expose the runtime memory tools.
 
 ## 7. Two checkpoint mechanisms
 

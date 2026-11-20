@@ -1,17 +1,17 @@
 # How a run works, from "start a fleet" to a sandbox being nuked
 
-Read this when you want one run's whole path on one page. The path starts with a fleet installed and a pull request (PR) opened. It continues through the event held and its turn run, and ends with the report settled and the sandbox held or destroyed.
+Read this when you want one run's whole path on one page. The path starts with a fleet installed and a pull request (PR) opened. It continues through the turn queued and its run, and ends with the report settled and the sandbox held or destroyed.
 
 The page walks the path and links each step to the page that owns it.
 
-[`data_flow.md`](./data_flow.md) owns ingress, admission and settlement. [`runner_protocol.md`](./runner_protocol.md) owns the connection, renewal and recovery rules. [`runner_execution.md`](./runner_execution.md) owns the runner's side.
+[`data_flow.md`](./data_flow.md) owns ingress, turn intake and settlement. [`runner_protocol.md`](./runner_protocol.md) owns the connection, renewal and recovery rules. [`runner_execution.md`](./runner_execution.md) owns the runner's side.
 
 Where a step's facts live on one of those pages, this page links rather than restates them.
 Crate names refer to crates under `rustd/crates/`.
 Expanded acronyms: Hash-based Message Authentication Code (HMAC), Server-Sent Events (SSE), Time To Live (TTL).
 
 This fleet-runtime example uses `github-pr-reviewer`, saved as "agent-bob-01" on `agentsfleet/linkwarden`.
-Private setup turns use [authoring runs](runner_fleet.md#authoring-runs), without runtime tools or a sandbox.
+Private setup turns use [setup runs](runner_fleet.md#authoring-runs), without runtime tools or a sandbox.
 
 Section 1 covers the daemon, section 2 the runner, and section 3 the complete example.
 Sections 6 and 7 cover the sandbox and host.
@@ -28,7 +28,7 @@ Sections 6 and 7 cover the sandbox and host.
                            then approved by a person                          Postgres
                          the approval retries setup
                          locked recheck, all checks ready ⇒ active            Postgres
-                         start none: no admission, no event, no run row
+                         start none: no turn, no run row
 
  PR OPENED               POST /v1/ingress/github
    GitHub ──signed──►    1 verify HMAC vs vault "github-app".webhook_secret
@@ -38,25 +38,25 @@ Sections 6 and 7 cover the sandbox and host.
                                                    ∩ setup repositories ∋ repo
                                                    ∩ setup events ∋ pull_request
                          5 per matched fleet:
-                             INSERT fleet.admissions (producer=webhook_app,
+                             INSERT thread.turns status=queued (producer=webhook_app,
                                  key = "{fleet}:{sha256(body)}")           Postgres  ← the acceptance
                              publish af.thread.<id>.wake (best effort)     NATS
                          6 202 {matched, enqueued}
 
- GATEWAY CLAIM PASS      native session has advertised worker capacity
+ GATEWAY ASSIGN PASS     native connection has advertised worker capacity
                          a Postgres: oldest unsettled head per eligible fleet
                          b prefer held fleets, wake notifications and previous placement; ≤64
-                         c lock slot and exact head with SKIP LOCKED
-                         d advance slot + admission fences; decode before commit
-                         e INSERT fleet.events status=received (+ stamp admission delivered)
+                         c lock thread row and exact head turn with SKIP LOCKED
+                         d raise thread fence, stamp turn run_fence; decode before commit
+                         e same UPDATE opens the turn: status=received, opened_at
                          f publish turn_received bracket on af.thread.<id>.items
                          g gates: payer → balance → budget → approval (nothing charged)
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
                          i INSERT thread.runs        status=active, fencing_token, expires  ← THE RUN ROW
-                         j push offer{run:{run_id,fencing_token,run_expires_at,
-                                              event{digest},policy,
-                                              instructions=instructions_md}}
+                         j push Down::Run{run:{run_id,fencing_token,run_expires_at,
+                                                  event{digest},policy,
+                                                  instructions=instructions_md}}
 ```
 
 ### Save writes the fleet and its setup, then activates once ready
@@ -69,9 +69,9 @@ Approving it retries setup (`afd_api_tenant`'s approval resolve).
 
 [Setup recovery](data_flow.md#fleet-creation-and-setup-recovery) covers bounded retries.
 Once setup checks pass, a locked recheck activates the fleet.
-A requested initial admission commits in that same transaction.
+A requested initial turn commits in that same transaction.
 
-With start `none` (`afd_setup`'s creation types), Save writes no admission, event, run or affinity row.
+With start `none` (`afd_setup`'s creation types), Save writes no turn, run or thread assignment.
 
 The fleet's display name ("agent-bob-01") is `fleet.fleets.name`. The run reads it into `Installed.name` (`afd_fleet`'s run install); nothing in routing reads it.
 
@@ -88,7 +88,7 @@ The route reads the body once with `github::Delivery::read`. It takes `installat
 `serves_repository` is fail-closed: a trigger with no `repositories` list subscribes to nothing, and the match is case-insensitive. `admits` is the opposite: no `events` list means every event. More than `MAX_FANOUT = 100` matches refuses the delivery.
 
 The fleet slug `agent-bob-01` receives the request through linkwarden's installation, which maps to Indy's workspace.
-Each active fleet there with an approved `github` grant receives one admission when its reviewed setup includes the following webhook trigger.
+Each active fleet there with an approved `github` grant receives one turn when its reviewed setup includes the following webhook trigger.
 
 The trigger uses `source: github`, `events: [pull_request]`, and `repositories: [agentsfleet/linkwarden]`.
 The test fixture's native setup says exactly that (`tests/fixtures/fleets/github-pr-reviewer/definition.json`).
@@ -100,25 +100,31 @@ Under `Policy::AppIngress` every `pull_request` action wakes the fleet except on
 
 ### Admission commits the queue row
 
-Each producer calls `Turns::admit`. The row carries producer identity, payload, original event time and any reply destination.
+The heading keeps its old words because other pages cite it by text.
+
+
+Each producer calls `Turns::admit`, which writes a `thread.turns` row as `queued`. The row carries producer identity, payload, intake time and any reply destination.
 An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
 
-Repeated producer identities return the existing admission.
-After commit, a bounded wake publish on `af.thread.<thread_id>.wake` starts a gateway claim pass for hosts with available capacity.
+Repeated producer identities return the existing turn.
+After commit, a bounded wake publish on `af.thread.<thread_id>.wake` starts a gateway assign pass for hosts with available capacity.
 
 ### The gateway claims an admission and its fleet slot
 
-1. Read the oldest unsettled admission for each eligible fleet through `idx_admissions_unsettled`.
+The heading keeps its old words so links to it stay stable. The gateway assigns a queued turn and its fleet's thread.
+
+
+1. Read the oldest unsettled turn for each eligible fleet through `idx_turns_thread_id_sequence_unsettled`.
 2. Prefer held fleets and recent wake notifications, then try a bounded candidate set.
-3. Lock a candidate's slot and exact oldest admission with `SKIP LOCKED`. A locked or parked head blocks later rows.
-4. Advance the slot and admission fences together. Decode the envelope before committing, so malformed stored data rolls back both fences.
-5. Open runtime history and stamp `delivered_at` under the same current fences.
-6. Read installed configuration, resolve billing and check approval gates. Parked work frees the slot and retains its place in the queue.
-7. Assemble credentials and policy, then issue `thread.runs` under the claimed fence.
+3. Lock a candidate's `thread.threads` row and exact oldest turn with `SKIP LOCKED`. A locked or parked head blocks later rows.
+4. Raise the thread's fence and stamp it on the turn as `run_fence`. Decode the envelope before committing, so malformed stored data rolls back both fences.
+5. The same update opens the turn: it sets `opened_at` and moves `queued` to `received`.
+6. Read installed configuration, resolve billing and check approval gates. Parked work frees the thread and keeps its place in the queue.
+7. Assemble credentials and policy, then insert the `thread.runs` row under the raised fence.
 
-An expired slot exposes the same unsettled row. Redelivery preserves its event identity, original time and prior billing identity.
+An expired run exposes the same unsettled turn. Redelivery keeps its turn id, intake time and prior billing identity.
 
-A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound delivery.
+A report settles the turn in the transaction that records usage, terminal state, checkpoint, thread release and any owed delivery.
 See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, notifications and recovery limits.
 
 ---
@@ -129,17 +135,17 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 The home holds sandboxes, repository mirrors and the toolbox.
 Host checks and the engine's cleanup sweep run before the runner takes work (`afr_supervisor::boot`, `afr_sandbox`'s engine).
 
-The native session, heartbeat policy and worker pool run together (`afr_supervisor/src/lib.rs`).
-Idle workers wait for pushed offers and advertise their free capacity.
+The native connection, heartbeat policy and worker pool run together (`afr_supervisor/src/lib.rs`).
+Idle workers wait for pushed runs and advertise their free capacity.
 The [runner guide](runner_protocol.md) owns connection setup, heartbeat timing, cancellation, renewal and reconnect behavior.
 
 Each fleet run follows these steps:
 
-1. Admit its tools, provider and policy; claim the fleet's local turn.
+1. Admit its tools, provider and policy; take the fleet's local turn.
 2. Load the run's memory window, or read memory through the retained HTTP route when the window is absent.
 3. Prepare or thaw a sandbox when tools need one. A resumed ordinary run retires its warm hold and restores into an empty workspace.
 4. Restore and validate a supplied checkpoint, then adopt covered folds before model or tools.
-5. Request folded inputs before model calls, skipping the first ask when the run says none waits, and send bounded activity over the native session.
+5. Request folded inputs before model calls, skipping the first ask when the run says none waits, and send bounded activity over the native connection.
 6. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
 7. Flush outstanding usage through renewals, then send the report with memory, timing segments and folded-input progress.
 8. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
@@ -148,7 +154,7 @@ The daemon captures reported memory under the run fence before the settlement tr
 
 A plain chat's report then commits in one statement, `commit_report.sql`, under the run row lock with no host lock. Its runtime line is a `runtime`-kind usage line numbered by its slice's start, read from the locked run row. Each host's renewals run as one fenced statement per tick.
 
-Settlement records usage, event outcome, session checkpoint, admission completion, slot release and any outbound delivery.
+Settlement records usage, the turn's outcome, the resume context, thread release and any owed delivery.
 Only a successful report settles folded messages through `folded_through_sequence`.
 
 Connection loss preserves pending reports in memory while the runner reconnects.
@@ -171,10 +177,10 @@ Process loss can discard results or usage the daemon has not accepted.
    │                      fleets in W: active ∩ github grant approved
    │                        ∩ setup repositories ∋ agentsfleet/linkwarden
    │                        ∩ events ∋ pull_request          ⇒ agent-bob-01 (and any twin)
-   │                      commit admission + best-effort wake
+   │                      commit queued turn + best-effort wake
    │◄──── 202 ────────────┤
-   │                      gateway sees available capacity on the native session
-   │                      claim slot, fleet.events received, gates, vault, policy:
+   │                      gateway sees available capacity on the native connection
+   │                      assign: thread fence+1, turn received, gates, vault, policy:
    │                        tools: [http_request, memory_store, memory_recall]
    │                        network.allow: [api.github.com]
    │                        mintable: github; binding: linkwarden, write, base main
@@ -182,7 +188,7 @@ Process loss can discard results or usage the daemon has not accepted.
    │                           POST /git/blobs|trees|commits, POST /git/refs{ref locked},
    │                           POST /pulls{head,base locked, draft:true}
    │                           PATCH own event ref{force:false, sha only}
-   │                      ├──── offer{run:{instructions,event=digest}} ─────────────────►
+   │                      ├──── Down::Run{run:{instructions,event=digest}} ─────────────►
    │                      │                                  admit: all three tools Supervisor
    │                      │                                  ⇒ needs_sandbox = false ⇒ NO SANDBOX
    │                      │◄──── GET memory/{fleet} ─────────────────────────────────────┤
@@ -200,8 +206,8 @@ Process loss can discard results or usage the daemon has not accepted.
    │                      │◄──── activity: tool_call_completed(failed) ──────────────────┤
    │                      │                                  model turn 3 → final answer text
    │                      │◄──── HTTP tool records; native report with memory ───────────┤
-   │                      settle: fleet.events processed, response_text = the answer
-   │                      admission settled, turn_complete frame → dashboard thread
+   │                      settle: thread.turns processed, answer_text = the answer
+   │                      turn settled, turn_complete frame → dashboard thread
 ```
 
 **What the run carries for this fleet.** The setup's configuration names three tools, one credential and one network host.
@@ -245,7 +251,7 @@ The PATCH supports bounded corrections within the same event's branch and existi
 GitHub rejects non-fast-forward updates when `force:false`; this is not an expected-old-head comparison.
 
 Fleet instructions require fresh ref/draft reads and the observed branch head as the correction commit's sole parent.
-A later admission cannot select an earlier event's draft through these rules.
+A later turn cannot select an earlier event's draft through these rules.
 
 Compatible runners must precede runs carrying the new `patch` method; older readers reject it.
 
@@ -261,7 +267,7 @@ The daemon's `integration_rust_runner_reviews` test verifies zero review POSTs r
 
 **What the operator sees.** The live tail carries `turn_received`, `tool_call_started`, `tool_call_completed`, streamed text chunks and `turn_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). The completed frame has `status: failed`, and its output head carries the code.
 
-Durably, the `fleet.events` row is `processed`. Its `response_text` is the model's final answer and its `tool_calls` the trace (`afd_fleet`'s run finalize). `thread.items` serves "show all" (`afd_api_runner`).
+Durably, the `thread.turns` row is `processed`. Its `answer_text` is the model's final answer and its `tool_calls` the trace summary (`afd_fleet`'s run finalize). `thread.items` serves "show all" (`afd_api_runner`).
 
 On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
 
@@ -275,15 +281,15 @@ Hard tool and secret policy stays in `policy`. The daemon compiles the egress ru
 
 So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the admission.
 
-**A chat message uses the same admission path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` admission (`afd_turns`'s steer module).
+**A chat message uses the same intake path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` turn (`afd_turns`'s steer module).
 
-The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet`'s run queue). It then starts a run of its own.
+The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the fleet's one thread (`queue::CLAIM_HEAD`, `afd_fleet`'s run queue). It then starts a run of its own.
 
 With a run live, the message folds into it, and the 202 also carries `folded_into_turn_id`.
-The run claims it through the native `folds` request before its next model call; the run's answer becomes its reply.
+The run takes it through the native `folds` request before its next model call; the run's answer becomes its reply.
 A parked or task-bound message ahead of it is a barrier, so the new message queues instead.
 
-The web app shows a folded message as "Added to the current run" and waits on the message's own event. The CLI `steer` command waits on the message's own event id the same way.
+The web app shows a folded message as "Added to the current run" and waits on the message's own turn. The CLI `steer` command waits on the message's own turn id the same way.
 
 The message runs with the same policy. The instructions tell the fleet to treat a message with no PR as chat. They also require saving operator facts with `memory_store` (`definition.json`).
 
@@ -299,9 +305,9 @@ The write rules admit a fix on the repair branch and one draft PR, and no commen
 **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
 ```
 
-**The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the admission recorded a reply destination. That is `afd_fleet`'s run commit and `schema/20261108125100_fleet_admissions.sql`.
+**The other reply path, also not for GitHub.** The report owes a `thread.deliveries` delivery only when the turn recorded a reply destination. That is `afd_fleet`'s run commit and `schema/20261108125100_thread_turns.sql`.
 
-A failed run that wrote no answer owes that destination one fixed notice. So does an event refused at a gate, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
+A failed run that wrote no answer owes that destination one fixed notice. So does a turn refused at a gate, and one ended after its runs kept lapsing (`afd_fleet`'s run `unanswered` module). A clean run that wrote nothing still owes nothing.
 
 The App webhook admits with `Reply::None` (`afd_ingress`'s deliver). Only Slack posters exist (`afd_outbound`'s posters), so there is no daemon-side "answer back to the PR" either.
 
@@ -314,26 +320,26 @@ Unblocking the review is a one-rule change in `afd_gate`'s egress write rules: a
 ## 5. The PR is fixed and pushed again
 
 ```text
- push ──► pull_request "synchronize" ──► new signed body ──► new sha256 ──► new admission row
-                                                                           new unsettled queue row
- fleet.admissions    [opened: running]  [synchronize: waiting]  [labeled]  [edited] ...
-                       one active run per fleet (affinity slot) ⇒ strictly one at a time
- next gateway claim after the report frees the slot:
-   claim fence+1 (sticky: last_runner_id sorts first, random tie-break)
+ push ──► pull_request "synchronize" ──► new signed body ──► new sha256 ──► new turn row
+                                                                           new queued turn
+ thread.turns        [opened: running]  [synchronize: waiting]  [labeled]  [edited] ...
+                       one active run per fleet (one thread) ⇒ strictly one at a time
+ next gateway assignment after the report frees the thread:
+   assign fence+1 (sticky: last_runner_id sorts first, random tie-break)
    new run row, new run_id, new fencing_token
    load: fleet memory window (≤256 KiB, core pinned) ⇒ what memory_store saved last run
    NOT carried: the previous answer, and for this fleet no sandbox and no clone
 ```
 
-**Same fleet, new event, new run.** The body digest is the dedupe key (`afd_ingress`'s App routing). A `synchronize` body differs and creates a new admission.
+**Same fleet, new turn, new run.** The body digest is the dedupe key (`afd_ingress`'s App routing). A `synchronize` body differs and creates a new turn.
 
 Every pull-request action wakes the fleet under `Policy::AppIngress`. An action that arrives while no run is live, such as `labeled` or `edited`, queues a run of its own.
 
 An action that arrives while a run that is not a durable task is live folds into it. That run reads it at its next model call, and its answer settles the action (§2).
 
-The affinity slot allows one active run per fleet. On the runner, `FleetTurns` allows one run per fleet ([Runner loop](./runner_execution.md) §"One run, end to end"). An event the live run did not fold waits until that run reports and the settle transaction frees the slot.
+The fleet's thread allows one active run. On the runner, `FleetTurns` allows one run per fleet ([Runner loop](./runner_execution.md) §"One run, end to end"). A turn the live run did not fold waits until that run reports and the settle transaction frees the thread.
 
-**Same runner?** The candidate scan prefers the last runner, and the claim records the hint (`afd_fleet`'s `select_ledger_candidates.sql`). Any eligible runner can win.
+**Same runner?** The candidate scan prefers the last runner, and the assignment records the hint (`afd_fleet`'s `select_ledger_candidates.sql`). Any eligible runner can win.
 
 A runner with a held sandbox checks that fleet first. Other runners skip the fleet while the hold lasts ([Runner fleet holds](./runner_fleet.md#cold-and-warm-execution)).
 
@@ -347,10 +353,10 @@ A chat run also carries the thread's last eight finished turns. A webhook run li
 
 A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches. This fleet has no sandbox, so it never holds one.
 
-**What does not carry over.** The session checkpoint is written to `fleet.sessions` and loaded with the fleet.
+**What does not carry over.** The resume context is written to `thread.threads.resume_context` and loaded with the fleet.
 
 That semantic record grants no recovery authority.
-A replacement of the same event uses its committed task or ordinary checkpoint, as described in [workspace recovery](runner_execution.md#workspace-between-runs).
+A replacement run of the same turn uses its committed task or ordinary checkpoint, as described in [workspace recovery](runner_execution.md#workspace-between-runs).
 
 ---
 
@@ -376,7 +382,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
   A run lasts at most 12 hours, and a runner counts as offline after 105 seconds.
   Heartbeats run every 10 seconds; a sandbox hold lasts 10 minutes.
 
-- Claim and admission: at most 64 candidate fleets per claim; no per-fleet admission cap.
+- Assignment and intake: at most 64 candidate fleets per assign pass; no per-fleet turn cap.
   [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) describe the sampled deployment budget.
 
 ---
@@ -388,7 +394,7 @@ Each gap names what would close it.
 1. **The review post is refused.** No write rule admits `/pulls/{n}/reviews`, and Indy parked it until he runs the test. A one-rule change in `afd_gate`'s egress write rules, an exact path with `event` locked to `COMMENT`, closes it.
 2. **No daemon path answers a PR**. The App webhook admits with `Reply::None` (`afd_ingress`'s deliver), and only Slack posters exist (`afd_outbound`'s posters). A GitHub poster in the outbound worker closes it.
 3. **Recovery stops at the saved boundary.** The paired file/root checkpoint resumes committed work; later external actions can repeat. [Workspace recovery](runner_execution.md#workspace-between-runs) owns the limits.
-4. **Semantic session checkpoints are separate.** `fleet.sessions` supplies no recovery cursor. Task and ordinary recovery descriptors name the state a replacement can restore.
+4. **Semantic resume context is separate.** `thread.threads.resume_context` supplies no recovery cursor. Task and ordinary recovery descriptors name the state a replacement can restore.
 5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [`runner_execution.md`](./runner_execution.md) §"Repository writes" closes it.
 6. **A gate trip never reaches a running run**: it writes only the status. Renewal ignores the fleet's status but still enforces its stored budget ceiling. Archive and delete send Cancel ([Runner Fleet](./runner_fleet.md) §"Steer, archive, delete"); a Cancel from the gate's archive closes it.
 7. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
@@ -397,7 +403,7 @@ Each gap names what would close it.
 10. **Nothing checks memory or disk against the host.** 2 GiB × workers and 4 GiB × live and held runs go unchecked. A reserve the worker checks before it runs closes it.
 11. **An operator's extra binds are never bound**. The assigned policy carries them and no runner reads them ([Runner Fleet](./runner_fleet.md) §"The sandbox filesystem rules"). Binding them in the sandbox's layout, or dropping the field, closes it.
 12. **A rotating-CDN host can fail mid-run under `allow_list_egress`.** The set is pinned at run bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model" closes it.
-13. **GitHub never auto-redelivers and gives ten seconds;** a leg that fails before its admission row commits is lost outright ([`connectors.md`](./connectors.md)). Answering 202 before admission, with a durable inbox, closes it.
+13. **GitHub never auto-redelivers and gives ten seconds;** a leg that fails before its turn row commits is lost outright ([`connectors.md`](./connectors.md)). Answering 202 before intake, with a durable inbox, closes it.
 14. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress`'s App route). A writer for the repair sweeper's evidence closes it.
 
 
@@ -406,7 +412,7 @@ Each gap names what would close it.
 The [durable repair scenario](scenarios/durable-repair.md) owns the combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and configured goal decisions.
 Native task bindings and publication receipts retain the authorized PR and expected head across requests. Combined live acceptance remains pending.
 
-Task continuations use the existing admission/run path.
+Task continuations use the existing turn and run path.
 A task wake requests fresh exact-head evidence; it does not grant authority or certify CI success.
 See the scenario for target binding, publication races, cumulative limits and combined acceptance; see [sandbox evaluation](sandbox_evaluation.md#coding-sessions-and-worktrees-across-runs) for workspace recovery mechanics.
 
@@ -417,12 +423,12 @@ A dedicated reviewed implementation spec and development autonomy proof remain o
 
 A fleet receives many runs over time and retains at most one active run.
 Several [Durable Tasks](durable_tasks.md) can remain unfinished while only one runs.
-Waiting releases the runtime slot without abandoning the accepted objective.
+Waiting releases the fleet's thread without abandoning the accepted objective.
 
 ```text
 DT A: run A1 -> waiting for checks ----------> run A2
 DT B:                 run B1 -> done
-slot: [A1]            [B1]       [idle]         [A2]
+thread: [A1]          [B1]       [idle]         [A2]
 ```
 
 The worker is a slot in `agentsfleet-runner`'s pool, not the conversational model or a subagent.

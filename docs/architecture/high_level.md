@@ -35,7 +35,7 @@ Every row is extracted from the numbered sections below; the owner column names 
              v
  +-----------------------+   signals, at most once   +---------------------------+
  | agentsfleetd replicas |<------------------------->| core NATS                 |
- | API, offers, reports  |                           | 3 nodes in prod, 1 region |
+ | API, runs, reports    |                           | 3 nodes in prod, 1 region |
  |                       |                           +---------------------------+
  |                       |
  |                       |   facts, in transactions  +---------------------------+
@@ -50,15 +50,15 @@ Every row is extracted from the numbered sections below; the owner column names 
  +-----------------------+
 ```
 
-Postgres holds every durable fact. Turns, events, runs, outbound deliveries, sessions and usage are all rows.
+Postgres holds every durable fact. Threads, turns, runs, items, outbound deliveries and usage are all rows.
 
-Core NATS carries disposable signals on five subjects: the fleet tail, draft events, the wake ring, runner commands and the outbound wake. It stores nothing, because JetStream is off.
+Core NATS carries disposable signals on five subjects: thread wake, thread items, runner commands, delivery wake and bus gap. It stores nothing, because JetStream is off.
 
-A lost signal costs latency, never work. A 5 s recovery probe finds pending work, and a viewer that misses frames gets `catching_up` and reloads from `fleet.events`.
+A lost signal costs latency, never work. A 5 s recovery probe finds pending work, and a viewer that misses frames gets `catching_up` and reloads from `thread.turns`.
 
 Runners never reach either store. Each runner host holds one stream to a replica, and work is pushed down it.
 
-[`datastore_scaling.md`](./datastore_scaling.md) owns the stores, and [`data_flow.md`](./data_flow.md) follows one event through them.
+[`datastore_scaling.md`](./datastore_scaling.md) owns the stores, and [`data_flow.md`](./data_flow.md) follows one turn through them.
 
 ---
 
@@ -308,7 +308,7 @@ Structural changes from MVP to bastion:
 2. **Status-page rendering surface.** A hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
 3. **Broadcast channels.** The fleet's `tools:` grows `email_send`, `sms_send` (text message; approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
 4. **Approval gating per audience**. The setup's `gates` can require human approval for customer-facing audiences while internal Slack flows without a gate. The M47 approval inbox handles the mechanic.
-5. **Per-actor retention**. Customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `fleet.events` retention becomes per-actor configurable.
+5. **Per-actor retention**. Customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `thread.turns` retention becomes per-actor configurable.
 
 What does not change: the runtime architecture, the sandbox boundary and the trigger model. The secret vault, network policy, budget caps and context lifecycle stay as they are. Bastion audience routing applies to work-events only; worker-emitted `system:*` rows stay on the internal operator timeline.
 
@@ -360,16 +360,18 @@ Captured here because it surfaced as product direction (marketing showcase + cus
 
 ## Fleet authoring and runtime
 
-The same fleet lifecycle begins with privately authored setup. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet; explicit Plugin publication creates a reusable immutable revision.
+The heading keeps its old words because other pages cite it by text.
 
-Authoring has bounded inference and proposal authority. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
+The same fleet lifecycle begins with a private setup chat. A creator describes the operational outcome, edits the shared validated Definition and reviews policy/access before Save. Save creates one resumable fleet; explicit Plugin publication creates a reusable immutable revision.
+
+Setup has bounded inference and proposal authority. The saved fleet gains runtime capabilities only through existing model, billing, connection and approval checks.
 
 The common architecture pages own this sequence:
 
 | Topic | Owner |
 |---|---|
 | Setup and revisions | [Fleet definitions](fleet_definitions.md#validated-definition) |
-| Activation, admission and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
+| Activation, intake and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
 | Running and scoped dispatch | [Runner protocol](runner_fleet.md#authoring-runs) |
 | Private copies | [Runner runtime](runner_execution.md#private-content-and-report-retention) |
 | Money | [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) |

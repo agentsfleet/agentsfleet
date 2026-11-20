@@ -74,7 +74,7 @@ That headroom is temporary. The `model_input_calibration` trace records each cal
 
 Measurement covers the serialized provider request, including tools and replay data, plus 32 tokens per history message.
 
-This is an admission estimate; provider-reported usage determines accounting.
+This estimate only decides whether the request fits; provider-reported usage determines accounting.
 Each physical request is checked, including ordinary turns, tool continuations and summary calls.
 After publishing a summary, preparation measures the shorter continuation again before sending it.
 
@@ -89,7 +89,7 @@ Confirmation starts at 80 percent of input plus reserved output and has a ten-se
 Other routes retain their local estimate; a routed request is never forwarded elsewhere for counting.
 
 Each count binds to the request bytes, model, route settings, physical window and counting revision.
-Authoring releases its transaction before counting, then rechecks source, checkpoint and credential authority before creating paid intent.
+Setup releases its transaction before counting, then rechecks source, checkpoint and credential authority before creating paid intent.
 Count failure stops that attempt; it cannot become a zero count or an automatic paid retry.
 
 After publication, preparation inserts the summary as explicitly untrusted conversation data before the retained suffix and current request.
@@ -142,9 +142,9 @@ The setup host checks live authority in the checkpoint write's transaction after
 A stale attempt, changed source or changed generation cannot replace current state.
 An incurred charge survives a rejected publication.
 
-The daemon assembles authoring history; the bounded runner envelope carries current-turn work.
+The daemon assembles setup history; the bounded runner envelope carries current-turn work.
 Paging bounds each read without limiting conversation lifetime.
-Authoring records each compaction dispatch before provider access, then commits the result and checkpoint through its guarded receipt path.
+Setup records each compaction dispatch before provider access, then commits the result and checkpoint through its guarded receipt path.
 
 A setup request carries no compaction opt-in. When the prepared context needs a summary, the daemon funds and dispatches it, and the reply says `compacted`.
 Ordinary replies omit `compacted` when false.
@@ -170,11 +170,11 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
 The checkpoint table is `schema/20261108124800_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
 
-Authoring admission and accounting live in `afd_setup` (run claim, model budget, dispatch, progress and receipt).
-The runner protocol lives in `af_wire` (authoring model, meter and run payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
+Setup intake and accounting live in `afd_setup` (run assignment, model budget, dispatch, progress and receipt).
+The runner protocol lives in `af_wire` (setup model, meter and run payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
 
 Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
-Trusted transport lives in `afr_supervisor`'s authoring turn adapter.
+Trusted transport lives in `afr_supervisor`'s setup turn adapter, its `authoring` module.
 
 Status and traces reach the browser through tenant private-stream forwarding and shared activity payloads.
 The app's draft and fleet stream reducers, projections and accessible status components render them.
@@ -221,7 +221,7 @@ Save known usage and conditionally publish notes. Continue through the same exec
 Each runtime conversation owns an encoded-history index with prefix digests.
 The index re-encodes the mutable final group and newly appended history.
 
-Authoring funding owns the prepared body and source snapshot.
+Setup funding owns the prepared body and source snapshot.
 Freshness verification returns that body after checking authority and source history; it does not prepare the request again.
 The estimator-work regression measures linear encoding work, while freshness verification still reads and hashes original history.
 
@@ -234,7 +234,7 @@ Database writes retain generation checks and live-run fencing. Cancellation and 
 
 **Quality ceiling:** Measure work with deterministic counters before claiming throughput improvements. The full browser scenario and real storage races remain required. A native guest engine informed by SPACE needs its own implementation and real-backend evidence.
 
-**Files**: the `af_context` planner, ports and tests; authoring preparation and funding adapters. The files also include the runtime context index and estimator, affected workspace manifests and this page. Existing in-sandbox server and sandbox interfaces provide part of the backend boundary.
+**Files**: the `af_context` planner, ports and tests; setup preparation and funding adapters. The files also include the runtime context index and estimator, affected workspace manifests and this page. Existing in-sandbox server and sandbox interfaces provide part of the backend boundary.
 
 Repository preparation still requires a host-visible path.
 
@@ -251,7 +251,7 @@ A new chat run currently carries up to eight finished question/answer turns. The
 That window does not replay every previous tool record or inherit another run's summary.
 
 ```text
-Current request: instructions + bounded prior chat + newest event
+Current request: instructions + bounded prior chat + newest turn
 Within run:   prepared history + assistant calls + matching tool results
 After compact:  instructions + validated summary + retained groups + new input
 DT resume:      compatible handoff + accepted input beyond checkpoint cursor
@@ -267,10 +267,10 @@ These observations come from source inspection, not a captured request from Indy
 
 A message sent while its fleet's run is live now folds into that run.
 The send answers disposition `folded` with `folded_into_turn_id`, and the running run claims the fold at its next model call (a native `folds` request).
-The folded message's own event receives the run's reply when the run reports succeeded.
+The folded message's own turn receives the run's reply when the run reports succeeded.
 
 Dispositions are `started`, `folded` and `queued`.
-M236 proposes that the runner-assigned decision model classifies folded input and that native receipts prevent replay through later queued admission.
+M236 proposes that the runner-assigned decision model classifies folded input and that native receipts prevent replay through a later queued turn.
 The next request would carry accepted questions, DT state, compatible history, current tools and accepted input beyond the checkpoint cursor.
 
 Removing a steer from the queue does not mark its meaning or effects checkpointed.

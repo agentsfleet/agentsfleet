@@ -8,11 +8,11 @@ The architecture optimises for one generic operational runtime, not bespoke type
 
 Principles. Each links to where it's enforced; when a spec contradicts one of these, the spec is wrong:
 
-- **One Fleet is a durable runtime, not a one-shot prompt.** The run model enforces it. `agentsfleetd` hands a runner one event at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each run ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
+- **One Fleet is a durable runtime, not a one-shot prompt.** The run model enforces it. `agentsfleetd` hands a runner one turn at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each run ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
 
   See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The coding fleet and the Fleet runtime".
 
-- **All trigger sources enter the same event-processing path.** Webhook, cron, steer, and continuation all commit to `fleet.admissions`; the run/run path treats every actor alike. See the [admission and run flows](./data_flow.md).
+- **All trigger sources enter the same turn-processing path.** Webhook, cron, steer, and continuation all commit to `thread.turns`; the assign/run path treats every actor alike. See the [intake and run flows](./data_flow.md).
 
 - **Behaviour is defined mainly in natural language, through chat, into one reviewed Definition**. It holds a one-line `description`, `instructions_md` and a `config` policy document.
 
@@ -24,7 +24,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
   See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`, [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
 
-- **History is durable with actor provenance.** Every event lands in the Fleet event store (`fleet.events`) with its actor. Actors read `steer:<user>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
+- **History is durable with actor provenance.** Every turn lands in the turn store (`thread.turns`) with its actor. Actors read `steer:<user>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
 
 - **Conversation checkpoints preserve current working notes.** Private setup and runtime share [conversation compaction](./context_lifecycle.md). Semantic memory supplies facts for later runs; see [semantic memory](./capabilities.md#semantic-memory-remains-separate).
 
@@ -42,7 +42,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
   See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
 
-- **Slack uses the existing runtime.** Configured fleet subscriptions select the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns admission and fixed notices.
+- **Slack uses the existing runtime.** Configured fleet subscriptions select the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns intake and fixed notices.
 
 The runtime keeps only a thin typed envelope:
 

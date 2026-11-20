@@ -57,8 +57,8 @@ Every span one chat left, daemon and runner, by its event:
 { span."agentsfleet.turn.id" = "$turn_id" }
 ```
 
-That returns `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.delivery` and `runner.run`.
-A fallback `fleet.hydrate` or `fleet.capture` carries no event; find it by fleet within the window between the offer and the report:
+That returns `fleet.steer`, `fleet.assign`, `fleet.report`, `fleet.delivery` and `runner.run`.
+A fallback `fleet.hydrate` or `fleet.capture` carries no event; find it by fleet within the window between the assignment and the report:
 
 ```traceql
 { name =~ "fleet.hydrate|fleet.capture" && span."gen_ai.agent.id" = "$fleet_id" }

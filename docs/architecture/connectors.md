@@ -77,7 +77,7 @@ Complete a fresh Connect to restore the binding, or Disconnect again when remova
 - **Inbound routing follows the provider.** GitHub's app webhook uses `POST /v1/ingress/github` and its own routing statements in `afd_ingress`.
 
   Slack keeps `POST /v1/connectors/slack/events` for its signature, challenge, retry, channel and thread rules.
-  Only a configured addressed fleet or sole eligible subscriber receives a `slack_mention` admission.
+  Only a configured addressed fleet or sole eligible subscriber receives a `slack_mention` turn.
   An unconfigured channel returns `channel_not_configured` without creating a fleet or calling a model.
 
   [Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns selection and fixed notices.
@@ -279,7 +279,7 @@ This gives each layer one job:
 | Workspace connection | Installation-to-workspace identity and the outbound credential handle |
 | Fleet trigger | Explicit repository and event subscription |
 | Integration grant | Whether that fleet may use GitHub |
-| Admission row (`fleet.admissions`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
+| Turn row (`thread.turns`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
 
 ### Where a grant comes from
 
@@ -289,21 +289,21 @@ The fleet stays `installing` until every readiness check, the grant included, is
 
 Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook, a timeout sweeper and an append-only audit.
 
-**A gate is a per-event decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
+**A gate is a per-turn decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
 
 Resolving the gate as approved flips the grant and the gate in one statement, so the two cannot disagree. Any non-approval outcome drives the grant to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no event, takes no run and reports nothing.
+Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no turn, takes no run and reports nothing.
 
 It goes silently inert rather than failing visibly.
 
 An origination path reachable only with a credential the fleet does not hold produces exactly that silence.
 
 A run is the last checkpoint. A credential with a mintable handle but no
-approved grant **parks the event**.
+approved grant **parks the turn**.
 
-Parked admissions stay out of runner claims until gate resolution clears the
-park stamp. A revoked grant ends the event with `grant_denied`.
+Parked turns stay out of run assignment until gate resolution clears the
+park stamp. A revoked grant ends the turn with `grant_denied`.
 
 An incoming delivery follows this order:
 
@@ -326,16 +326,16 @@ active fleets in that workspace
   ∩ approved GitHub integration grant
         │
         ▼
-commit fleet.admissions row (body digest + fleet)
+commit queued thread.turns row (body digest + fleet)
         │
         ├── best-effort wake notification
         ▼
-offer pass → Postgres ledger → fenced claim → runner stream
+assignment pass → thread row fence → run → Down::Run on the runner connection
 ```
 
 Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only.
 
-If one fan-out leg fails before its admission commits, redelivery retries that leg. Fleets already admitted answer `replayed`; redelivery admits only the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`afd_ingress`'s App routing).
+If one fan-out leg fails before its turn commits, redelivery retries that leg. Fleets already holding the turn answer `replayed`; redelivery writes turns only for the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`afd_ingress`'s App routing).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries".
 
@@ -345,12 +345,12 @@ This page previously credited the recovery to "GitHub's retry", which does not e
 
 | Where the fan-out fails | What survives |
 |---|---|
-| After a leg's admission row commits | Durable. The committed ledger row remains available for the next eligible runner claim; wake notifications are best effort. |
+| After a leg's turn row commits | Durable. The committed queued turn stays available to the next run assignment; wake notifications are best effort. |
 | Before it commits (the failing leg, and every leg after it in the loop) | **Nothing.** No row, no entry, and no sender that will ask again. |
 
 So the durable-acceptance guarantee covers work this deployment ACCEPTED. The window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow.
 
-The ten-second budget is a hard deadline rather than a target. It is shared across signature verification, fleet resolution, and one admission per subscribed fleet, so fan-out width spends it.
+The ten-second budget is a hard deadline rather than a target. It is shared across signature verification, fleet resolution, and one turn write per subscribed fleet, so fan-out width spends it.
 
 Deduplication is still worth every line. The redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed. That is exactly when a duplicate review would otherwise appear on a pull request.
 

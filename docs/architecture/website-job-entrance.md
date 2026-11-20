@@ -1,7 +1,7 @@
 # Website job entrance
 
 Read this when changing the public composer, sample conversation, signup boundary, or shared brand assets.
-The website illustrates the [chat authoring experience](high_level.md#fleet-authoring-and-runtime); the illustration does not author, install, or run a fleet.
+The website illustrates the [chat setup experience](high_level.md#fleet-authoring-and-runtime); the illustration does not author, install, or run a fleet.
 
 ## Experience and component boundaries
 

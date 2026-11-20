@@ -12,7 +12,7 @@
 > the runner holds no analytics or observability credential.
 
 Siblings: [`runner_fleet.md`](./runner_fleet.md) (plane structure),
-[`data_flow.md`](./data_flow.md) (an event traced through the runtime). This
+[`data_flow.md`](./data_flow.md) (a turn traced through the runtime). This
 file answers: when something happens, where does the signal go, and who owns it.
 
 ## Facts
@@ -113,12 +113,12 @@ a pickup objective is measured.
 
 | Indicator | Good events over valid events | Target | Where the target came from |
 |---|---|---|---|
-| Admission availability | `agentsfleet_turns_total{outcome=~"accepted\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Historical development measurement on 2026-09-17: 13 `appended`, 1 `replayed`, no refusals or deferrals. The current ledger producer labels committed work `accepted`. |
+| Turn intake availability | `agentsfleet_turns_total{outcome=~"accepted\|replayed"}` over the same family excluding `over_budget` | 99% | unproven. Historical development measurement on 2026-09-17: 13 `appended`, 1 `replayed`, no refusals or deferrals. The current ledger producer labels committed work `accepted`. |
 | Runner success | `agentsfleet_runner_executions_total{outcome="processed"}` over the same family excluding `fault="workload"` | 95% | unproven. Measured the same day: 7 `processed`, 3 `fleet_error`, the failures split 2 `startup_posture` and 1 `runner_crash`, both platform classes, so the blame split leaves the measured 70% unchanged. |
-| Admitted fleets that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_turns_total{outcome="accepted"}` | 99% | unproven. Measure both families from a ledger-queue daemon before assigning this target. |
+| Queued turns that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_turns_total{outcome="accepted"}` | 99% | unproven. Measure both families from a ledger-queue daemon before assigning this target. |
 
 `agentsfleet_turn_backlog_oldest_age_seconds` reports the oldest unsettled
-admission. Parked work remains unsettled, so backlog age includes time waiting
+turn. Parked work remains unsettled, so backlog age includes time waiting
 for an answer. The ledger has no replay interval that defines a pickup deadline.
 
 `over_budget` is excluded from valid events on purpose. The deployment refuses
@@ -155,11 +155,11 @@ with it one line at a time.
 The all-cause rate stays on the dashboard beside the objective as a plain reading. Whether my run
 worked is a fair question with a real answer; it just is not a promise.
 
-A `replayed` admission counts as good for the same reason: the first
-admission's identifier stands, so the producer got the answer it asked for.
+A `replayed` turn counts as good for the same reason: the first
+turn's identifier stands, so the producer got the answer it asked for.
 
 `reclaimed` run grants are excluded from the fleet-start numerator on the
-mirror of that logic. A reclaim restarts work that was admitted and counted once. Counting the restart would let a flapping runner push the ratio above 1.
+mirror of that logic. A reclaim restarts work that was queued and counted once. Counting the restart would let a flapping runner push the ratio above 1.
 
 An availability figure that improves as the fleet gets less
 stable is not measuring availability.
@@ -247,7 +247,7 @@ Closing that gap is collector configuration rather than a census change.
 
 Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
-Fleet-runtime runs run inside `runner.run` spans. Private authoring takes a separate path without that span (the `afr_supervisor` worker pool).
+Fleet-runtime runs run inside `runner.run` spans. Private setup takes a separate path without that span (the `afr_supervisor` worker pool).
 
 A followed tool GET emits `http_redirect_started` and exactly one `http_redirect_completed` or `http_redirect_failed` in the parent tool-call context (`af_egress`). The terminal record carries hop count, upstream status, whether headers were stripped, a fixed safe reason and elapsed milliseconds.
 
@@ -436,7 +436,7 @@ rate, sampling and retry limits and its proof.
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `af_observability`'s counting wrapper; `serve/exporting.rs` spawns `otlp_export`, which samples the resident set and runs the shutdown flush |
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`af_observability`'s `producers` module); a family with no producer fails `every_census_family_has_a_producer` |
 | PostHog events | installed, called when configured | `af_observability`'s `product` module; boot opens the client, the supervised `analytics_flush` task drains it before exit |
-| runner export | installed, called when configured | `run` in `agentsfleet-runner`'s `main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime runs run inside a `runner.run` span; authoring currently has no equivalent run span |
+| runner export | installed, called when configured | `run` in `agentsfleet-runner`'s `main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime runs run inside a `runner.run` span; setup currently has no equivalent run span |
 | runner collector | installed in dev; real run spans and provider histogram verified in Grafana Nov 04, 2026 | `deploy/baremetal/otelcol-runner.{yml,nft,service}` and `install-collector.sh`; localhost receiver behind root-only admission; traces and metrics only; actual-sandbox probe pending |
 
 ## Metrics stay semantic
@@ -470,11 +470,11 @@ Each run is its own root trace
 carrying `agentsfleet.run.id` and `agentsfleet.turn.id`. It joins
 `fleet.delivery` by attribute, and no W3C context crosses the runner protocol.
 
-**`fleet.delivery` is the chat round trip.** It starts at the event's creation and ends when `turn_complete` publishes, both on this daemon's clock. The start is the run row's `turn_created_at`; the end is the publish instant `Plane::announce` reads.
+**`fleet.delivery` is the chat round trip.** It starts at the turn's creation and ends when `turn_complete` publishes, both on this daemon's clock. The start is the run row's `turn_created_at`; the end is the publish instant `Plane::announce` reads.
 
-Beside its identity the span carries one attribute per segment. `agentsfleet.delivery.queue_wait_ms` (event creation to run issue) and `complete_ms` (report receipt to publish) are measured here. `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms` and `settle_ms` come from the runner's `telemetry.segments`.
+Beside its identity the span carries one attribute per segment. `agentsfleet.delivery.queue_wait_ms` (turn creation to run issue) and `complete_ms` (report receipt to publish) are measured here. `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms` and `settle_ms` come from the runner's `telemetry.segments`.
 
-Every runner-reported figure is capped at `MAX_RUN`. For a reclaimed event, `queue_wait_ms` and `event_to_complete` include the earlier attempt, the round trip its owner waited. `runner_run_issued`'s `queue_wait_ms` counts only fresh entries.
+Every runner-reported figure is capped at `MAX_RUN`. For a reclaimed turn, `queue_wait_ms` and `event_to_complete` include the earlier run, the round trip its owner waited. `runner_run_issued`'s `queue_wait_ms` counts only fresh entries.
 
 The segments do not partition the round trip; the sandbox wait runs beside the model's time. A start the span cannot place falls back to the end less the reported `wall_ms`. Per-fleet p95 and p99 come from Tempo on `gen_ai.agent.id` (`playbooks/operations/observability/002_round_trip_percentiles.md`).
 
@@ -482,11 +482,15 @@ Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complet
 
 **Daemon verb spans name the stages a chat crosses.** A verb builds a stage clock from `af_observability`'s `verb_span` module at its entry. It marks each boundary it reaches and records one root span when it ends, on every exit. The span goes through the global tracer, asked for at record time, as `fleet.delivery` does.
 
-`fleet.steer` marks `admit` and `announce`; `fleet.offer` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.hydrate` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
+`fleet.steer` marks `admit` and `announce`; `fleet.assign` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.hydrate` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
 
-A verb that reaches no stage records nothing. The common case is an offer pass that finds no work: the recovery probe runs every 5 s per replica, and a span for each would flood `SPAN_QUEUE`. A claim the gates refused reached `claim`, so it keeps its span.
+A verb that reaches no stage records nothing. The common case is an assign pass that finds no work.
 
-Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent. `issue` ends where the offer frame is built, or where the delivery returns without building one, so a refused claim shows `claim`, `admit` and `issue` and no `encode` or `send`.
+The recovery probe runs every 5 s per replica, and a span for each would flood `SPAN_QUEUE`. An assignment the gates refused reached `claim`, so it keeps its span.
+
+Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent.
+
+`issue` ends where the `Down::Run` frame is built, or where the delivery returns without building one. A refused assignment shows `claim`, `admit` and `issue` and no `encode` or `send`.
 
 The spans carry `agentsfleet.turn.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.run` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
 
@@ -529,26 +533,26 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 
 | Step | Logs | Metrics | Trace |
 |---|---|---|---|
-| Steer admitted (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_turns_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
+| Steer turn written (`afd_api_tenant` steer handler, `afd_turns`) | `fleet_steer_failed` on refusal | `agentsfleet_turns_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
 | Wake ring (`afd_bus::wake`) | `turn_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
-| Run issued (`afd_fleet` run delivery) | `runner_run_issued` with `queue_wait_ms`; `run_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_assign}` | `fleet.offer` with its stages; none for an empty pass |
-| Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_run_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
+| Run issued (`afd_fleet` run delivery) | `runner_run_issued` with `queue_wait_ms`; `run_window_read_failed` | Gateway assign attempts and candidate counts; `delivery_stage{event_to_assign}` | `fleet.assign` with its stages; none for an empty pass |
+| Fold taken (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_run_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
 | Run (runner `run_loop`) | `run_completed` / `run_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.run` with its segment attributes, same condition |
 | Report settled (`afd_fleet` run report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{assign_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
 | First chunk (`afd_fleet` run activity) | none | `delivery_stage{run_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |
 | Automatic quarantine or lift (`afd_runner`) | `runner_cordoned`, `runner_cordon_lifted` after commit | `agentsfleet_runner_cordon_changes_total{change}` with `cordoned` or `lifted` | none |
-| Paired recovery (`afr_supervisor`) | `respawn_checkpoint_committed`, `respawn_checkpoint_restored` with event, run, fence and checkpoint identity | no checkpoint latency series yet | existing run span |
+| Paired recovery (`afr_supervisor`) | `respawn_checkpoint_committed`, `respawn_checkpoint_restored` with turn, run, fence and checkpoint identity | no checkpoint latency series yet | existing run span |
 
 Built in M233_002, closing the gaps M238 left:
 
-- Every daemon verb records its span with its stages: `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.hydrate` and `fleet.capture` (§1).
+- Every daemon verb records its span with its stages: `fleet.steer`, `fleet.assign`, `fleet.report`, `fleet.hydrate` and `fleet.capture` (§1).
 - The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.run` carries its segments (§2).
 - The edge reports its own cost (§3). The steer route answers `Server-Timing: auth;dur=…, upstream;dur=…` after its answer is final, so a status or body never changes. The browser leaves `af:send`, `af:accepted`, `af:first-frame` and `af:complete` marks, each naming the send's operation id in `detail`.
 
 ## M243 runner stream instrumentation
 
 The M243 transport records connection attempts, eligible HTTP/2 fallbacks and bounded operation outcomes through `af_observability`.
-Its application startup wiring remains under development; the transport library and exported-family tests do not establish a serving runner session.
+Its application startup wiring remains under development; the transport library and exported-family tests do not establish a serving runner connection.
 The existing signal paths above remain authoritative until that integration lands.
 
 | Measurement | Diagnostic purpose |

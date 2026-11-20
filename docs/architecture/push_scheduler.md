@@ -9,10 +9,10 @@ The specs quote his words.
 
 | Decision | What it means |
 |---|---|
-| Postgres accepts every message and fences every run | `fleet.admissions` is the only acceptance store. `runner.fleet_slots.fencing_token` is the only execution authority. |
+| Postgres accepts every message and fences every run | `thread.turns` is the only acceptance store. `thread.threads.fencing_token` is the only execution authority. |
 | Messages fold into a running run | A person's message in the run's conversation joins that run before its next model call. A call in flight is never interrupted. A message no person sent, such as a webhook, waits for a run of its own and is never passed. Revised Nov 08, 2026: a plain run takes a durable task's rule (M242_002 Discovery). |
 | Runners hold one stream | Work is pushed over one outbound connection. Each daemon replica retains one database recovery probe every five seconds. |
-| Direct HTTP/3 with HTTP/2 fallback | The runner initiates a session to a reachable daemon endpoint. Fly-hosted services can use private networking; external operators supply connectivity and trusted certificates. Cloudflare and WebSocket are not required. See [the implementation design](runner_protocol.md), revised Nov 08, 2026. |
+| Direct HTTP/3 with HTTP/2 fallback | The runner opens a connection to a reachable daemon endpoint. Fly-hosted services can use private networking; external operators supply connectivity and trusted certificates. Cloudflare and WebSocket are not required. See [the implementation design](runner_protocol.md), revised Nov 08, 2026. |
 | Core NATS is the bus | NATS carries signals only: no JetStream, no key-value (KV) store. Every durable fact lives in Postgres. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
 | Tenants run their own runners | Self-hosted runners point at the cloud daemon through its API. They never connect to NATS. |
@@ -31,16 +31,16 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | A cluster-only broker is the only datastore | `.orly/LOCAL.md`, `datastore_scaling.md` | M244, done: both pages now name core NATS and Postgres |
 | A runner polls; there is no cancel channel | `runner_fleet.md` | M243 |
 | The run path is not a general scheduler | `runner_fleet.md` | M243 |
-| Config is never cached | `runner_fleet.md` | M245, done: config is cached by the head revision id the claim reads |
+| Config is never cached | `runner_fleet.md` | M245, done: config is cached by the head revision id the assignment reads |
 | Timers have no central deadline scheduler | `concurrency.md` | M245, done: one daemon expiry clock and one runner host timer |
 
 ## Where each fact lives
 
 | Fact | Store | Copies, and how they are repaired |
 |---|---|---|
-| Message accepted, in order | `fleet.admissions` | The runner's pending input, re-read at each model call |
-| Run assigned, and its fence | `runner.fleet_slots`, `thread.runs` | The runner's stream session, rebuilt from Postgres on reconnect |
-| Message folded into a run | `fleet.admissions.input_claim_run_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
+| Message accepted, in order | `thread.turns` | The runner's pending input, re-read at each model call |
+| Run assigned, and its fence | `thread.threads`, `thread.runs` | The runner's connection, rebuilt from Postgres on reconnect |
+| Message folded into a run | `thread.turns.input_claim_run_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
 | Run deadline | `thread.runs.run_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines` and the billing relay | None |
 | Outbound reply owed | `thread.deliveries` | A NATS ping wakes a worker; a 30 s scan is the backstop |
@@ -53,19 +53,19 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 
 | Milestone | Tables |
 |---|---|
-| M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims on `fleet.admissions`. |
+| M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims, now on `thread.turns`. |
 | M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `thread.runs`. |
 | M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `thread.deliveries`. |
 | M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
 | M246 | An owner tenant on `runner.runners`, and a receipt table that answers a registration retry. |
 | M251 | The token overlap pair on `runner.runners` and the per-tenant placement setting, as M251_001 designs them. |
-| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `thread.runs`, and six event-owned `runner.turn_*` recovery tables. The prior run ID is diagnostic data from the claim, not a new predecessor column. |
+| M247 | Automatic cordon fields on `runner.runners`, frozen setup revision on `thread.runs`, and six turn-owned `runner.turn_*` recovery tables. The prior run ID is diagnostic data from the assignment, not a new predecessor column. |
 
 ## Recovery and scheduling fairness
 
-The Bus keeps bounded fleet reminders and publishes independent ordinary and recovery generations. Ordinary admission and steering ring immediately. The replica-wide five-second database probe repairs a lost wake.
+The Bus keeps bounded fleet reminders and publishes independent ordinary and recovery generations. Ordinary intake and steering ring immediately. The replica-wide five-second database probe repairs a lost wake.
 
-A recovery generation starts one bounded round-robin drain across credited native sessions. The database orders eligible admissions by durable time and ID. An unclaimable full page advances the session cursor, which wraps after a short empty page or 64 later claims.
+A recovery generation starts one bounded round-robin drain across credited runner connections. The database orders eligible turns by durable time and ID. An unassignable full page advances the connection's cursor, which wraps after a short empty page or 64 later assignments.
 
 The drain acknowledges its starting generation after bounded work and preserves any newer request. Ordinary rings keep their successful-issue budget and locality throughout recovery. [Recovery scheduler and burst proof](runner_checkpoint_recovery.md#how-a-recovery-burst-drains)
 
@@ -78,18 +78,18 @@ client          agentsfleetd                       Postgres                     
   │ POST message    │                                 │                              │
   │────────────────►│ one statement: fleet lock,      │                              │
   │                 │ repeat, status, policy, ceiling,│                              │
-  │                 │ insert ────────────────────────►│ admission row (accepted)     │
+  │                 │ insert ────────────────────────►│ turn row (queued)            │
   │                 │◄────────────────────────────────│ live-run facts               │
   │◄────────────────│ started | folded | queued       │                              │
   │                 │ ping af.thread.<id>.wake (lossy)│                              │
-  │                 │──── offer on the runner stream ─────────────────────────────►│ idle fleet: start
+  │                 │──── Down::Run on the runner stream ─────────────────────────►│ idle fleet: start
   │                 │                                 │◄─ claim pending input ───────│ durable-task run:
   │                 │                                 │   under the fence (#803)     │ next safe boundary
 ```
 
-A live run claims a person's later messages in its conversation before its next model call, oldest first. A durable task does the same through #803. Each stops at a parked, task-bound or non-person message.
+A live run takes a person's later messages in its conversation before its next model call, oldest first. A durable task does the same through #803. Each stops at a parked, task-bound or non-person message.
 
-The report settles each message that a completed model call read (M242_002), in three statements however many there are. Each settled message gets the run's answer on its own event. It is in the run's conversation, so the run's own reply reaches it.
+The report settles each message that a completed model call read (M242_002), in three statements however many there are. Each settled message gets the run's answer on its own turn. It is in the run's conversation, so the run's own reply reaches it.
 
 ### A runner connects, and reconnects
 
@@ -99,7 +99,7 @@ runner                         agentsfleetd replica                 Postgres
   │                                │ read this runner's active and      │
   │                                │ cancel-marked runs ─────────────►│
   │◄─ Hello: policy, holds, runs │◄───────────────────────────────────│
-  │ Ready{credits} ───────────────►│ offers follow credits              │
+  │ Ready{credits} ───────────────►│ runs follow credits                │
   │        … connection drops …    │                                    │
   │ reconnect (jitter) ──────────►│ any replica: the same rebuild      │
 ```
@@ -124,11 +124,12 @@ A lost run in the batch never blocks the others. Each answer is fenced, and each
 runner ─ Activity frames on its stream ─► replica A ─ publish af.thread.<id>.items ─► NATS
                                                                                        │
 browser ◄─ SSE ◄─ replica B ◄────────────────────── subscribe ─────────────────────────┘
-          backfill once from fleet.events after subscribing
+          backfill once from thread.turns after subscribing
           reconnect or slow consumer ─► gap ─► catching_up ─► backfill again
 ```
 
-The run target is cached per stream session, so a frame costs no Postgres read. A failing subscription sends `catching_up` at once.
+The run target is cached per runner connection, so a frame costs no Postgres read. A failing subscription sends `catching_up` at once.
+
 A bus disconnect sends `catching_up` on reconnect, not at the drop (`afd_bus/src/nats/signals.rs`). While every NATS node is down, a tail shows heartbeats only, and the backfill on reconnect restores what it missed.
 
 ### An outbound reply
@@ -143,18 +144,18 @@ Only the head of each `(provider, workspace)` lane is claimable, so claims never
 ### A host dies mid-turn
 
 ```
-host stops ──┬─► saved run deadline ─► eligible runner claims E under fence F+1
-             │                           └─► committed checkpoint ─► resume E
+host stops ──┬─► saved run deadline ─► eligible runner is assigned T under fence F+1
+             │                           └─► committed checkpoint ─► resume T
              └─► heartbeat silence ─► atomic offline record + automatic cordon
 ```
 
-Run expiry permits reclaim; automatic quarantine leaves the saved deadline unchanged.
-The issued replacement attempts one `run_restarted` publication before its offer.
-Every output carries the daemon's attempt fence, so clients reject delayed output from older attempts.
+Run expiry permits reassignment; automatic quarantine leaves the saved deadline unchanged.
+The issued replacement tries one `run_restarted` publication before its `Down::Run`.
+Every output carries the daemon's run fence, so clients reject delayed output from older runs.
 
 The replacement restores the last complete checkpoint and adopts its covered inputs before the next model call.
 Unsaved work can repeat; external effects have no exactly-once guarantee.
-[Runner recovery](runner_fleet.md#failure-recovery-model) owns eligibility, attempt limits and the no-checkpoint path.
+[Runner recovery](runner_fleet.md#failure-recovery-model) owns eligibility, retry limits and the no-checkpoint path.
 
 ## When a signal is lost
 
@@ -163,7 +164,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | Subject | A lost message costs | Backstop |
 |---|---|---|
 | `af.thread.<id>.items` | Frames missing on screen | Gap signal, then a backfill from Postgres |
-| `af.thread.<id>.wake` | Work offered up to 5 s late | Each replica's 5 s recovery probe (`OFFER_FALLBACK_TICK`) |
+| `af.thread.<id>.wake` | Work assigned up to 5 s late | Each replica's 5 s recovery probe (`ASSIGN_FALLBACK_TICK`) |
 | `af.runner.<id>.cmd` | A cancel or folded input delayed | The cancel mark, and pending input read at each model call |
 | Outbound ping | A reply sent late | The 30 s deliveries scan |
 
@@ -175,7 +176,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | M242 | One-statement intake; folding with a disposition | One write statement per accepted message; a live run takes a person's mid-run message in its conversation |
 | M243 | One runner stream; the Bus seam | Activity path near 0 statements; no poll; reconnect and revocation tests |
 | M244 | Core NATS behind the Bus; durable jobs in Postgres | Tail p99 and a kill drill on both buses |
-| M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping, run facts kept by the stream session | About 21 statements per chat, none on pricing after warm-up (Indy set 21, Nov 11, 2026; the history read's fold into the claim follows) |
+| M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping, run facts kept by the runner's connection | About 21 statements per chat, none on pricing after warm-up (Indy set 21, Nov 11, 2026; the history read's fold into the assignment follows) |
 | M246 | Tenant-owned runners, a hard ownership filter | Cross-tenant placement refused; no platform key reaches a tenant runner |
 | M247 | Hold-aware capacity, auto-cordon, checkpoint respawn | A killed host's run restarts elsewhere, settled once |
 

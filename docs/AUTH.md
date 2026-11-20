@@ -409,7 +409,7 @@ An identity read failure reaches the page's existing authentication or error han
 |---|---|---|
 | `owner` of the account | workspace routes, plus the account's invites and members | private drafts still require their creator; see §Fleet setup and credential boundary |
 | `member` of the account | every workspace in the account: fleets, steering, streams, schedules, approvals, secret names, and every stored secret through the fleets they write | routes needing `secret:write` or `connector:write`, with `403 UZ-AUTH-026` |
-| platform operator holding `workspace:any` | any account's workspace through the outer ownership check | authoring additionally checks membership and creator identity; each crossing is logged (§Platform crossing) |
+| platform operator holding `workspace:any` | any account's workspace through the outer ownership check | setup additionally checks membership and creator identity; each crossing is logged (§Platform crossing) |
 | anyone else | nothing | `403 UZ-AUTH-001`, `Workspace access denied` |
 
 ```
@@ -558,7 +558,7 @@ carry the address or the email body.
 ### Platform crossing
 
 A platform operator holding `workspace:any` passes the outer ownership check for any account's workspace.
-Authoring still checks current membership and private-draft ownership (§Fleet setup and credential boundary).
+Setup still checks current membership and private-draft ownership (§Fleet setup and credential boundary).
 The ownership layer logs each crossing once, before the handler runs (`rustd/crates/daemon/afd_tenant/src/workspace/crossing.rs`).
 
 The connector callback authorizes outside that layer and calls the same audit.
@@ -878,8 +878,8 @@ Five rules hold this table in place.
 
 | Rule | Where it holds |
 |---|---|
-| A tenant runner takes only its own tenant's work | the run claim and the candidate scan read `runner.runners.tenant_id`; issue reads it again under the host lock and logs `runner_placement_refused` (`UZ-RUN-027`) on a miss |
-| It never receives the platform model key | a fleet whose revision runs on the platform default model is not offered to it, and issue refuses it too |
+| A tenant runner takes only its own tenant's work | run assignment and the candidate scan read `runner.runners.tenant_id`; issue reads it again under the host lock and logs `runner_placement_refused` (`UZ-RUN-027`) on a miss |
+| It never receives the platform model key | a fleet whose revision runs on the platform default model is never assigned to it, and issue refuses it too |
 | It has no platform decision model | a check on `runner.runners` refuses `decision_platform_model_id` on a tenant row |
 | Its owner is explicit and never changes | `platform_owned` is stated at registration, a check ties it to `tenant_id`, and a trigger refuses any update of either |
 | Only its tenant rotates its token | a platform caller's rotate answers `409 UZ-RUN-026` |
@@ -898,7 +898,7 @@ The common guard still checks the route's required scopes.
 Later streams reuse the server-created connection proof and must match its current owner.
 Headers alone cannot create that proof or attach another physical connection.
 
-Ownership uses `prepared`, `confirm` and `welcome` before offers begin.
+Ownership uses `prepared`, `confirm` and `welcome` before any run is assigned.
 The runner records both possible owners before confirmation, allowing recovery when a welcome is lost.
 A database comparison prevents a replaced process from acquiring ownership again.
 
@@ -930,7 +930,7 @@ The lookup is read-only. Liveness (`last_seen_at`) is written by the heartbeat h
 
 **Every call reads `runner.runners`. There is no memoized verdict** (`rustd/crates/daemon/afd_state/src/credentials/`). An `agt_r` is opaque, so unlike the JWT plane it cannot be verified without going to look.
 
-That lookup is where a cordon, drain, revoke or delete takes effect, because **admin-state transitions have no other delivery channel**. The heartbeat reply is unconditionally `.ok` (`rustd/crates/daemon/afd_api_runner/src/handler/runner/heartbeat.rs`), so auth rejection is the only way a runner learns it is out of service.
+That lookup is where a cordon, drain, revoke or delete takes effect, because **admin-state transitions have no other delivery channel**. A heartbeat whose read refuses the runner answers with that error code (`rustd/crates/daemon/afd_gateway/src/connection/dispatch/heartbeat.rs`). A refusal that cannot be retried also sends `GoAway` and closes the connection, so a runner learns it is out of service.
 
 A per-process memo used to front this read, with entries living at most `HEARTBEAT_INTERVAL_MS`. It was removed in M143_001 because it made revocation deterministic only on the machine that served the operator's write: every *other* control-plane machine kept authenticating the runner until its own entry expired. Reading the row every time means a runner taken out of service authenticates **nowhere, immediately**, with no window to reason about and no per-machine state to reconcile.
 
@@ -1019,12 +1019,12 @@ A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/
 
 ## Fleet setup and credential boundary
 
-A fleet's setup is a typed Definition authored in chat and stored as an
+A fleet's setup is a typed Definition written in chat and stored as an
 immutable revision ([fleet definitions](architecture/fleet_definitions.md)).
 Its configuration names the credentials the fleet needs, by name only: a setup
 cannot carry a secret value. The setup model never receives those runtime secrets.
 
-Authoring uses ordinary `Guard::Bearer` routes and `PersonIdentity`, admitting browser sessions, command-line credentials and tenant API keys acting as their creator.
+Setup uses ordinary `Guard::Bearer` routes and `PersonIdentity`, admitting browser sessions, command-line credentials and tenant API keys acting as their creator.
 There is no upload or import route.
 Fresh-session restrictions remain on the login surfaces, including command-line credential minting.
 
@@ -1048,13 +1048,13 @@ Named runtime secret values resolve at run time inside `agentsfleetd` and
 ride the runner run envelope described above. Capability comes from the
 server-built `ExecutionPolicy` and workspace credential grants.
 
-The authoring model's inference credential has a separate path.
+The setup model's inference credential has a separate path.
 Before each scoped dispatch, `agentsfleetd` checks the selected model against
 the admitted snapshot and opens only that model's vault credential.
 
 The daemon commits dispatch intent before sending the provider request
 (`afd_setup/src/model/dispatch/mod.rs`, `afd_credential/src/provider/registered/key.rs`).
-The inference key stays in the daemon. The authoring runner receives a scoped
+The inference key stays in the daemon. The setup runner receives a scoped
 capability, and neither the browser nor sandbox receives the key.
 
 ## Backend validation (the common path)
@@ -1492,7 +1492,7 @@ A miss answers `UZ-GH-001`, the same reconnect a handle naming no installation g
 
 The exchange does. `steer::endpoint` (`rustd/crates/daemon/afd_credential/src/credential/oauth/steer.rs`) dials only the descriptor's own endpoint or one of `af_core::credential::ZOHO_ACCOUNTS_SERVERS`, the list the connect flow writes from. It refuses anything else before a request is built.
 
-The mint admission reads the same predicate first, so a forged handle answers `UZ-CONN-006` and nothing is posted.
+The mint check reads the same predicate first, so a forged handle answers `UZ-CONN-006` and nothing is posted.
 
 ### Broker refresh-mint (M108: Zoho, Jira, Linear)
 
@@ -1517,7 +1517,7 @@ Order is load-bearing:
    Only `pull_request` and `workflow_run` bodies are read past that envelope, so a malformed one answers `UZ-WH-002`. Any other kind is classified as unsupported. The delivery header is diagnostic only.
 4. Resolve `(provider=github, external_account_id=installation.id) → workspace_id` through `connector.installs`. An unknown installation is acknowledged and dropped without revealing whether another workspace owns it.
 5. Select only active fleets in that workspace with an approved GitHub integration grant and a matching GitHub trigger. The trigger's explicit `repositories` must contain `repository.full_name`, and its `events` must admit the incoming event. Missing `repositories` means no App delivery; it remains valid for the manual fleet-addressed route.
-6. Hash the authenticated request body and admit one row per fleet in `fleet.admissions`, keyed by fleet and body digest. The ledger's unique `(producer, producer_key)` index turns a redelivery into a no-op (`rustd/crates/daemon/afd_ingress/src/deliver.rs`). The committed admission remains claimable; wake notifications are best effort ([admission flow](architecture/data_flow.md)).
+6. Hash the authenticated request body and write one queued turn per fleet in `thread.turns`, keyed by fleet and body digest. The ledger's unique `(producer, producer_key)` index turns a redelivery into a no-op (`rustd/crates/daemon/afd_ingress/src/deliver.rs`). The committed turn stays queued until a run takes it; wake notifications are best effort ([turn flow](architecture/data_flow.md)).
 
    Changing the unsigned delivery header cannot bypass replay protection. More matches than `afd_ingress::MAX_FANOUT` are refused with `UZ-WH-022` rather than truncated.
 

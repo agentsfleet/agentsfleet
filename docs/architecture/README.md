@@ -11,7 +11,7 @@ Product thesis: [`high_level.md`](./high_level.md).
 
 `agentsfleetd` replicas serve the API and push work to runners. Each runner host holds one stream to one replica.
 
-Postgres holds every durable fact: admissions, events, runs, outbound deliveries, sessions and usage. Core NATS carries disposable signals only, such as the live tail and the wake ring.
+Postgres holds every durable fact: threads, turns, runs, items, outbound deliveries and usage. Core NATS carries disposable signals only, such as live items and thread wakes.
 
 A lost signal costs latency, never work, because every reader can rebuild its view from Postgres. [`high_level.md`](./high_level.md#how-the-runtime-fits-together) draws the picture, and [`datastore_scaling.md`](./datastore_scaling.md) owns the details.
 
@@ -28,7 +28,7 @@ question.
 
 ## Shared topic ownership
 
-Browser and terminal authoring, saved revisions and runtime setup use the same topic owners below. [`fleet_definitions.md`](./fleet_definitions.md) owns the Definition and its revisions, and [`data_flow.md`](./data_flow.md) owns activation and recovery. [`api_resources.md`](./api_resources.md) owns exact wire shapes.
+Browser and terminal setup, saved revisions and runtime setup use the same topic owners below. [`fleet_definitions.md`](./fleet_definitions.md) owns the Definition and its revisions, and [`data_flow.md`](./data_flow.md) owns activation and recovery. [`api_resources.md`](./api_resources.md) owns exact wire shapes.
 
 The runner protocol, `runner_execution`, billing, concurrency and web app pages keep their existing responsibilities. Review files live under `docs/reviews/` and define no other architecture.
 
@@ -43,7 +43,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | How do several unfinished jobs share one fleet? | [Durable Tasks](durable_tasks.md) |
 | Who routes intent and judges goal progress? | [Configurable decision models](goal_evaluation.md) |
 | How long can a fleet run before its run expires? | [`runner_fleet.md`](./runner_fleet.md) §"Per-run renewal: how a long fleet keeps its run" |
-| What happens when a runner dies mid-event? | [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model" |
+| What happens when a runner dies mid-turn? | [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model" |
 | Where are checkpoints saved, and how do many failed fleets resume? | [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) |
 | How is a stale runner's late report rejected? | [`runner_fleet.md`](./runner_fleet.md) §"System guarantees (read this first)" |
 | How does work get assigned, run, and reported? | [`data_flow.md`](./data_flow.md) §"C. EXECUTE  (run → runner → report)" |
@@ -51,7 +51,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §"Registering a runner" |
 | What are the runner protocol verbs? | [API reference](https://docs.agentsfleet.net/api-reference/introduction) › Runner plane |
 | What replaces runner polling, and how do HTTP/3 and HTTP/2 coexist? | [Runner connection and recovery](runner_protocol.md) |
-| What sandbox does a held event run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
+| What sandbox does a held turn run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
 | How does the Rust runner run a run, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §"Process model", §"Workspace between runs" |
 | How should we evaluate SPACE and test a recoverable coding session? | [Coding sandbox evaluation](sandbox_evaluation.md) |
 | How do three assigned repairs survive later CI and worker replacement, then verify a Grafana/Slack outcome? | [Durable repair scenario](scenarios/durable-repair.md) |
@@ -59,7 +59,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §"Sandbox tiers" |
 | How do steer, archive, and delete propagate? | [`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete" |
 | Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)" |
-| What does one event write, in what order? | [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" |
+| What does one turn write, in what order? | [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" |
 | Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §"The five durable stores: who owns what" |
 | How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §"D. WATCH  (user-side: how the live tail surfaces)" |
 | What happens if the datastore blips during install? | [`data_flow.md`](./data_flow.md) §"The install failure scenario, visually" |
@@ -72,7 +72,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | What shared compaction work is approved for setup chat and execution? | [Shared conversation compaction](context_lifecycle.md) |
 | What can a fleet do, and what is merely advisory? | [`capabilities.md`](./capabilities.md) §"1. Reasoning + tool inventory (declared in the fleet's own files)" |
 | When and how is a tenant charged? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"3. One debit point: usage, settled through the biller" |
-| What does one event cost, by shape? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"4.2 What an event costs: by shape, not by number" |
+| What does one turn cost, by shape? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"4.2 What an event costs: by shape, not by number" |
 | What happens when credits run out? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"6. The credit-exhausted user experience" |
 | What free usage does a new tenant get? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"2.3 Free usage is a balance, never a window" |
 | Where may the provider `api_key` exist? | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary" |
@@ -189,19 +189,19 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | **Workspace** (`identity.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
 | **Fleet** (`fleet.fleets`, `fleet_id`) | A durable AI agent defined by a reviewed Definition, saved into one workspace. [(more)](./high_level.md#1-product-thesis) |
 | **Definition** | A validated description, instructions and fleet configuration stored in immutable revisions. [(more)](./fleet_definitions.md#validated-definition) |
-| **Producer** (`afd_turns::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` or `slack_mention`), stored on the admission with its dedup key. [(more)](./run_flow.md#admission-commits-the-queue-row) |
-| **Admission** (`fleet.admissions`) | The ledger row that accepts one piece of work for a fleet, unique per `(producer, producer_key)` so a retried delivery is not run twice. [(more)](./run_flow.md#admission-commits-the-queue-row) |
-| **Turns queue** (`fleet.admissions`) | Unsettled admissions ordered by admission `sequence` within each fleet. Gateway claim passes take the oldest head under slot and admission fences. [(more)](./datastore_scaling.md#the-admissions-ledger-is-the-queue) |
-| **Wake notification** (`af.thread.<thread_id>.wake`) | A thread hint on its own NATS subject, which each replica reads through one `af.thread.*.wake` wildcard. It starts a gateway claim pass; each replica's 5 s recovery probe covers a lost notification. Idle runners send no run requests. [(more)](runner_protocol.md#recovery-and-availability) |
-| **Affinity slot** (`runner.fleet_slots`) | One row per fleet that one runner at a time can claim; a won claim raises `fencing_token` and holds until `run_expires_at`. [(more)](./run_flow.md#the-gateway-claims-an-admission-and-its-fleet-slot) |
-| **Fencing token** | The slot's `fencing_token` a won claim returns, copied onto the run's `fencing_token`; a report carrying an older one is refused. [(more)](./runner_fleet.md#system-guarantees-read-this-first) |
-| **Run** (`thread.runs`, `afd_fleet::run::Runs`) | One runner's time-limited right to run one event, renewed while the run lasts. [(more)](./data_flow.md#one-active-run-per-fleet-the-ownership-model) |
-| **Event** (`fleet.events`) | The history row for one piece of work, written `received` when a run picks it up and closed by the report. [(more)](./data_flow.md#the-five-durable-stores-who-owns-what) |
+| **Producer** (`afd_turns::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` or `slack_mention`), stored on the turn with its dedup key. [(more)](./run_flow.md#admission-commits-the-queue-row) |
+| **Thread** (`thread.threads`) | One conversation, one per fleet and one per draft, keyed by its owner's id. It holds the fence, the sticky runner, the warm hold and the resume bookmark; one runner at a time can be assigned it, and an assignment raises `fencing_token` and holds until `run_expires_at`. [(more)](./thread_model.md#threadthreads) |
+| **Turn** (`thread.turns`) | One input on a thread and its answer. A fleet turn is unique per `(producer, producer_key)` so a retried delivery is not run twice, written `queued`, opened `received` when a run takes it, and settled by the report. [(more)](./run_flow.md#admission-commits-the-queue-row) |
+| **Turns queue** (`thread.turns`) | Unsettled turns ordered by `sequence` within each thread. Gateway assignment passes take the oldest head under the thread and turn fences. [(more)](./datastore_scaling.md#the-admissions-ledger-is-the-queue) |
+| **Wake notification** (`af.thread.<thread_id>.wake`) | A thread hint on its own NATS subject, which each replica reads through one `af.thread.*.wake` wildcard. It starts a gateway assignment pass; each replica's 5 s recovery probe covers a lost notification. Idle runners send no run requests. [(more)](runner_protocol.md#recovery-and-availability) |
+| **Fencing token** | The thread's `fencing_token` a won assignment returns, copied onto the run's `fencing_token`; a report carrying an older one is refused. [(more)](./runner_fleet.md#system-guarantees-read-this-first) |
+| **Run** (`thread.runs`, `afd_fleet::run::Runs`) | One runner's time-limited right to run one turn, renewed while the run lasts. [(more)](./data_flow.md#one-active-run-per-fleet-the-ownership-model) |
+| **Item** (`thread.items`) | One tool call a run made, with its full arguments and output; a page reads it only through "show all". [(more)](./thread_model.md#threaditems) |
 | **Report** (`af_wire::protocol::Up::Report`) | The runner's terminal result for one run (`af_wire::report::ReportRequest`), carrying its run and fencing token. [(more)](./data_flow.md#c-execute--run--runner--report) |
 | **Delivery** (`thread.deliveries`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./run_flow.md#4-how-agent-bob-01-can-reply) |
-| **Activity channel** (`af.thread.<thread_id>.items`) | The thread's NATS subject for live-tail frames: at most once, with no history. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
+| **Items subject** (`af.thread.<thread_id>.items`) | The thread's NATS subject for live-tail frames: at most once, with no history. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
 | **Subscription hub** (`afd_bus::nats`) | The one NATS connection in each `agentsfleetd` process; it subscribes each subject once and copies frames to every local reader, wake listeners included. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
-| **guffbolt** (`rustd/guffbolt`) | The agent harness: the order one loop's turns run in, the window and the model call each turn makes, and the transcript it keeps, over the embedder's conversation and the extension a run of one kind adds, the tools a loop offers, and the children a run starts. The runner embeds it. [(more)](./runner_execution.md#crates) |
+| **guffbolt** (`rustd/guffbolt`) | The agent harness: the order one loop's steps run in, the window and the model call each step makes, and the transcript it keeps, over the embedder's conversation and the extension a run of one kind adds, the tools a loop offers, and the children a run starts. The runner embeds it. [(more)](./runner_execution.md#crates) |
 | **Supervisor** (`afr_supervisor`) | The trusted half of `agentsfleet-runner`, outside every sandbox: it speaks to `agentsfleetd`, holds the model keys and runs the agent loop. [(more)](./runner_execution.md#process-model) |
 | **Agent loop** (`afr_agent`) | The supervisor's model loop, outside the sandbox: `guffbolt` embedded over the run, with its durable task, recovery, window, frames and tools. [(more)](./runner_execution.md#crates) |
 | **Sandbox** (`afr_sandbox`) | The confined Linux environment, built per run by `BubblewrapEngine`, where that run's tool calls run with no credentials. [(more)](./runner_execution.md#sandbox-engines) |

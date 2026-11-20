@@ -1,6 +1,6 @@
 # Thread model
 
-A conversation is a **thread**. Each input on it is a **turn**, each try at answering a turn is a **run**, and each thing a run does is an **item**.
+A conversation is a **thread**, and each input on it is a **turn**. Each try at answering a turn is a **run**, and each thing a run does is an **item**.
 
 Each answer owed to someone is a **delivery**. This page defines the tables behind those nouns, every foreign key and why it exists, and what each table replaces.
 
@@ -33,7 +33,7 @@ The `thread` schema holds `threads`, `turns`, `runs`, `items` and `deliveries`. 
 
 ## thread.threads
 
-One row per fleet and one per draft, written in the same statement that creates its owner with fencing token 0 and a lapsed run deadline. It replaces `runner.slots` and `fleet.sessions`.
+One row per fleet and one per draft, written in the statement that creates its owner. It starts at fencing token 0 with a lapsed run deadline. It replaces `runner.slots` and `fleet.sessions`.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
@@ -46,7 +46,9 @@ One row per fleet and one per draft, written in the same statement that creates 
 | `hold_expires_at` | `TIMESTAMPTZ(3)` | yes | `runner.slots.hold_expires_at` | how long the runner keeps the warm sandbox |
 | `resume_context` | `JSONB` | yes | `fleet.sessions.context_json` | the conversation state a fleet's next run resumes from |
 
-Checks: exactly one of `fleet_id` and `draft_id` is set, and `id` equals the one that is set, so which one is set is the thread's kind. Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set for the hold sweep. The report sets `resume_context` in the same update that releases the run.
+Checks: exactly one of `fleet_id` and `draft_id` is set, and `id` equals it. Which one is set is the thread's kind.
+
+Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set for the hold sweep. The report sets `resume_context` in the same update that releases the run.
 
 Publishing a draft creates a new fleet, so the fleet gets its own thread. The draft's thread stays with the draft until the draft is deleted.
 
@@ -54,7 +56,9 @@ Publishing a draft creates a new fleet, so the fleet gets its own thread. The dr
 
 One row per input on a thread. It replaces `fleet.admissions` and `fleet.events`, which split one fleet input across two rows, and `setup.messages`, a setup draft's chat inputs (`schema/20261108125100_thread_turns.sql`).
 
-A fleet's intake writes the turn `queued`. The claim that first runs it stamps its fence and opens its event in one update, and the report settles it and closes the event in one update, since one statement may change a row once. A history-only receipt, such as an activity or a model change, is written opened and settled, with no producer, so no claim takes it.
+A fleet's intake writes the turn `queued`. The assignment that first runs it stamps its fence and opens it in one update. The report settles and closes it in one update, since one statement may change a row once.
+
+A history-only receipt, such as an activity or a model change, is written opened and settled with no producer, so no assignment takes it.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|
@@ -62,7 +66,7 @@ A fleet's intake writes the turn `queued`. The claim that first runs it stamps i
 | `sequence` | `BIGINT` identity by default | no | `admissions.sequence`; `messages.sequence` | unique with `thread_id`. A fleet's turns draw it in intake order, a history-only receipt included; a setup draft numbers its own from 1, because its watermarks and attempts name turns by it |
 | `thread_id` | `UUID` | no | `fleet_id`; `messages.draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
 | `workspace_id` | `UUID` | no | `workspace_id`; the draft's | FK `identity.workspaces(id)` ON DELETE CASCADE |
-| `kind` | `TEXT` | no | `event_type`; `chat` for a setup turn | `chat`, `webhook`, `schedule`, `continuation`, `activity`, and the rest of the event type vocabulary |
+| `kind` | `TEXT` | no | `event_type`; `chat` for a setup turn | `chat`, `webhook`, `cron`, `continuation`, `activity`, and the rest of the event type vocabulary |
 | `actor` | `TEXT` | no | `actor`; the sender's OIDC subject for a setup turn | who sent it |
 | `status` | `TEXT` | no | `events.status`, and `queued` before the event opens; `messages.status` | see the status map below |
 | `producer`, `producer_key`, `payload_digest` | `TEXT` | yes, all or none | `admissions` | retry dedup, unique `(producer, producer_key)`; a resend with another body is refused. NULL on a history-only receipt and on a setup turn, so `producer IS NOT NULL` is an admitted fleet input |
@@ -83,15 +87,25 @@ A fleet's intake writes the turn `queued`. The claim that first runs it stamps i
 | `candidate_id` | `UUID` | yes | `messages` | FK `setup.candidates(id)` ON DELETE SET NULL: the candidate a setup turn wrote |
 | `save_requested`, `save_error_code` | `BOOLEAN`, `TEXT` | no, yes | `messages` | a setup turn that saves the head, and why a checked save was refused |
 
-Indexes: `(thread_id, sequence)` unique; `(producer, producer_key)` unique; `(thread_id, created_at, id)`, `(thread_id, actor, created_at, id)` and `(thread_id, kind, created_at, id)` for history pages; `(workspace_id, created_at, id)` for the workspace stream; `(thread_id, sequence) WHERE settled_at IS NULL` for assignment; `(thread_id, reply_provider, reply_address, sequence) WHERE settled_at IS NULL` for one conversation's next turns; `(task_id, task_generation, settled_at, sequence)` for tasks; `(status, thread_id) WHERE producer IS NULL AND settled_at IS NULL` for the setup drafts with a turn waiting or running; `task_item_id`, `resumes_turn_id`, `tenant_model_id` and `candidate_id` for their foreign keys.
+Indexes:
+- **Unique:** `(thread_id, sequence)` and `(producer, producer_key)`.
+- **History pages:** `(thread_id, created_at, id)`, `(thread_id, actor, created_at, id)` and `(thread_id, kind, created_at, id)`.
+- **Workspace stream:** `(workspace_id, created_at, id)`.
+- **Assignment:** `(thread_id, sequence) WHERE settled_at IS NULL`.
+- **One conversation's next turns:** `(thread_id, reply_provider, reply_address, sequence) WHERE settled_at IS NULL`.
+- **Tasks:** `(task_id, task_generation, settled_at, sequence)`.
+- **Setup drafts with a turn waiting or running:** `(status, thread_id) WHERE producer IS NULL AND settled_at IS NULL`.
+- **Foreign keys:** `task_item_id`, `resumes_turn_id`, `tenant_model_id` and `candidate_id`.
 
 Two triggers, `trg_turns_count_inserted_opened` and `trg_turns_count_opened`, bump `fleet.activity_counters.event_count` once per turn, when its event opens.
 
-A fleet's thread is written with the fleet, and a draft's with the draft, so a turn always has one. A setup turn never opens a fleet event, so the history reads and the activity counter skip it, and the fleet queue reads that scan across threads require `producer IS NOT NULL`. A turn's `created_at` is its intake instant, so a webhook's event now sorts at intake rather than at its first claim.
+A fleet's thread is written with the fleet, and a draft's with the draft, so a turn always has one. A setup turn is never opened, so the history reads and the activity counter skip it.
+
+The fleet queue reads that scan across threads require `producer IS NOT NULL`. A turn's `created_at` is its intake instant, so a webhook's turn sorts at intake rather than at its first assignment.
 
 `admissions.delivered_at` is dropped: a redelivery is a turn whose `run_fence` is already set, and `thread.deliveries` is the one record of delivery. `admissions.event_created_at` is dropped, because it always equalled `created_at`.
 
-Still to come, from the design: one `run_id` replacing `run_fence` and the input claim pair, and the status renames below, which wait for the public-surface rename because the stored words reach the wire.
+Still to come, from the design: one `run_id` replacing `run_fence` and the `input_claim_*` pair, and the status renames below. The renames wait for the public-surface rename, because the stored words reach the wire.
 
 ### Status map
 

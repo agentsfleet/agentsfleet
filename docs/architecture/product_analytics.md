@@ -60,7 +60,7 @@ within the authorized workspace.
 
 The daemon reports each step from `afd_setup` after the commit that made it
 true, attributed to the person's identity-provider subject. Every property is a
-UUID or a fixed word, and `af_observability`'s authoring telemetry tests pin
+UUID or a fixed word, and `af_observability`'s setup telemetry tests (its `authoring` module) pin
 each event's exact key set.
 
 These events allow only kind, state, outcome, and opaque authorized identifiers.

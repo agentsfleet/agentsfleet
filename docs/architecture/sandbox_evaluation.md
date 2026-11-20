@@ -52,10 +52,10 @@ See upstream [request flow](https://github.com/perplexityai/SPACE/blob/20d321385
 
 The owner wants a small sandbox that can run the agreed scenarios and provide measured startup improvements.
 Use SPACE as the starting reference for low-level Firecracker control and reuse source where its behavior fits.
-Keep the existing runner's agent loop, executor, permissions and fleet admission.
+Keep the existing runner's agent loop, executor, permissions and fleet turn intake.
 
 ```text
-Fleet admission and agent loop
+Fleet turn intake and agent loop
              |
 Existing engine interface
              |
@@ -141,7 +141,7 @@ Test whichever packaging we select against actual tools and privileges.
 ```text
  User: repository + request + follow-ups
                     |
-         agentsfleetd: admission and current authority
+         agentsfleetd: turn intake and current authority
                     |
        trusted runner supervisor, outside tenant code
           |                         |
@@ -291,11 +291,11 @@ These are required acceptance proofs for the proposed integration, not capabilit
 
 These proposed sandbox walkthroughs extend existing scenarios; their current behavior remains owned by those pages.
 The pull request reviewer and production deployment repair fleets provide the starting points.
-[Repeated review](run_flow.md#5-the-pr-is-fixed-and-pushed-again) already describes a laptop push waking the same fleet through a new event.
+[Repeated review](run_flow.md#5-the-pr-is-fixed-and-pushed-again) already describes a laptop push waking the same fleet through a new turn.
 
 Fleet identity, conversation continuity and repository revision have separate lifetimes.
 A continuing conversation must identify the exact code revision it describes.
-A cached sandbox cannot establish that its files match a new event.
+A cached sandbox cannot establish that its files match a new turn.
 
 ### Review a pull request after another laptop push
 
@@ -307,9 +307,9 @@ Author edits locally and pushes commit 2
 Signed synchronize event -> next fleet run -> review commit 2
 ```
 
-Keep the existing same-fleet queue ordering; the next event waits for the running run to finish.
+Keep the existing same-fleet queue ordering; the next turn waits for the running run to finish.
 Before review, resolve the currently open pull request and its authorized repository, base and exact head commit.
-Record the event's advertised head separately from the commit actually selected for review.
+Record the turn's advertised head separately from the commit actually selected for review.
 
 For review requiring local tools, the trusted supervisor fetches and materializes that exact commit in a private checkout.
 Verify the checked-out commit before any tool runs; never merge a remote branch into an older review workspace.
@@ -323,7 +323,7 @@ Before posting a result, reread the current head and label which commit the find
 A result for an older commit cannot approve a newer commit.
 Read remote review state after an ambiguous post before repeating it.
 
-**Current gaps:** [Review posting is refused](run_flow.md#4-how-agent-bob-01-can-reply), and prior review continuity across events is not automatic.
+**Current gaps:** [Review posting is refused](run_flow.md#4-how-agent-bob-01-can-reply), and prior review continuity across turns is not automatic.
 The ingress digest (`afd_api_ingress`) carries the head commit but omits the base commit.
 The proposed revision selection and publication checks need implementation and narrowly scoped posting authority.
 
@@ -373,13 +373,13 @@ A successful workflow alone cannot certify that the original production symptom 
 
 ### Continue an existing repair draft
 
-Current write runs can correct their own event-derived branch with an exact, non-force PATCH.
-That same-event operation does not implement the later-admission behavior below.
+Current write runs can correct their own turn-derived branch with an exact, non-force PATCH.
+That same-turn operation does not implement the later-turn behavior below.
 See [the current write boundary](run_flow.md#3-github-pr-reviewer-end-to-end).
 
 **Owner-selected behavior:** Later approved fixes for the same incident continue its existing draft pull request, with fresh permission and code checks.
 Keep the incident, coding session, repair attempt, repository, branch and draft relationship in trusted application state.
-Each new admission receives current authority for that recorded attempt; conversation text cannot select a publication target.
+Each new turn receives current authority for that recorded attempt; conversation text cannot select a publication target.
 
 ```text
 Incident A -> approved repair -> saved workspace A -> branch A -> draft A
@@ -402,14 +402,14 @@ If the evidence, repository or intended change falls outside the approved propos
 For a closed or merged pull request, stop continuation and request an explicit next action.
 
 After an uncertain publication, inspect the recorded branch and draft before retrying.
-Repeated channel responses resolve to the same approved action and admission.
+Repeated channel responses resolve to the same approved action and turn.
 Each later approved action remains distinct while continuing the same repair attempt.
 
-**Current implementation gap:** Repair branches (`afd_gate`) derive from an admission's event.
-The write rules (`afd_gate`) allow creation and non-force updates only on the current event-owned repair branch.
+**Current implementation gap:** Repair branches (`afd_gate`) derive from the turn.
+The write rules (`afd_gate`) allow creation and non-force updates only on the current turn-owned repair branch.
 The selected design therefore needs a trusted continuation mapping and bounded update authority; restoring files alone cannot supply either.
 
-Required proof includes a new admission resuming the same draft after worker replacement and a laptop push racing publication.
+Required proof includes a new turn resuming the same draft after worker replacement and a laptop push racing publication.
 Also test duplicate approvals, lost update acknowledgements, revoked access, changed proposal scope and a merged or closed draft.
 Incident B must retain its own workspace and publication targets throughout those cases.
 
@@ -450,7 +450,7 @@ The checkpoint format must not encode host-only absolute worktree paths.
 ```text
 verified writer quiescence -> logical capture -> encrypt/upload R2
     -> verify objects -> publish compatible manifest under current fences
-    -> settle report/wait -> release slot -> destroy or retain compatible compute
+    -> settle report/wait -> release thread -> destroy or retain compatible compute
 ```
 
 A mounted raw-image copy would require separate filesystem freeze/unmount consistency handling.
@@ -705,7 +705,7 @@ The [existing reply path](scenarios/slack-incident-responder.md#6-how-the-answer
 
 Both channels must resolve the same recorded proposal and admit at most one repair run for that approval.
 Repeated clicks, retried Slack events and a second answer through the other channel must return the existing decision.
-Record approval and repair admission together, so an acknowledgement cannot leave approved work without a queued run.
+Record approval and the repair turn together, so an acknowledgement cannot leave approved work without a queued run.
 
 Resolve a typed approval or `fix this` against the exact proposal, fleet and conversation or Slack thread.
 If several proposals could match, request the intended proposal instead of guessing.
@@ -724,7 +724,7 @@ Keep existing repository grants as the access ceiling; this proposed work approv
 
 On approval, recheck the diagnosis and selected revision before preparing a fresh repair run under current authority.
 If changed evidence or code invalidates the approved plan, refresh the proposal and request a new approval before patch work.
-Denial, expiry, deletion or revoked authority must prevent a new repair admission.
+Denial, expiry, deletion or revoked authority must prevent a new repair turn.
 
 The approved work is the stated patch, tests and any explicitly included draft creation or continuation.
 Merging and deployment retain their separate authorities.
@@ -741,7 +741,7 @@ If diagnosis A occupies its active run, diagnosis B waits until that run finishe
 Separate incident conversations preserve context but do not add concurrent capacity to that fleet.
 
 The fleet can receive more work while its diagnosis run is active.
-Existing [admission](run_flow.md#admission-commits-the-queue-row) records each accepted job before acknowledging it; pickup waits for the fleet's active slot.
+Existing [intake](run_flow.md#admission-commits-the-queue-row) records each accepted job as a turn before acknowledging it; pickup waits until the fleet's thread has no live run.
 The [backlog budgets](datastore_scaling.md#the-admissions-ledger-is-the-queue) bound acceptance, with a retryable refusal when capacity is exhausted.
 
 ```text
@@ -760,8 +760,8 @@ Logs continue growing in the observability provider.
 Each bounded monitoring sweep reads scoped evidence windows and saves progress after recording the relevant evidence.
 Keep evidence references and bounded excerpts in each incident conversation instead of appending the whole log stream.
 
-After recording a diagnosis and proposal, finish the responder admission and release its run.
-Waiting for approval must not park the responder's queue head, which can block later admissions (`afd_fleet`).
+After recording a diagnosis and proposal, finish the responder turn and release its run.
+Waiting for approval must not park the responder's queue head, which can block later turns (`afd_fleet`).
 The saved proposal waits independently; approval admits the configured repairer's work.
 
 ```text
@@ -778,7 +778,7 @@ For this proposal, another approved repair queues while the same repairer is bus
 Separate, explicitly configured repairer fleets can work concurrently; an outage does not create a fleet by itself.
 Every repair needs its own checked source revision and private writable workspace.
 
-Evidence grouping is separate from repeated webhook delivery detection and does not replace existing admission ordering.
+Evidence grouping is separate from repeated webhook delivery detection and does not replace existing turn ordering.
 Incident records, grouping rules and incident-scoped recovery remain proposed work, alongside the shared repair approval record.
 Monitoring delay, evidence limits and repair queue capacity still need explicit budgets before implementation.
 
@@ -832,7 +832,7 @@ For proposal approval, test simultaneous chat and Slack replies, unauthorized re
 Verify that account owners and invited members with workspace access can approve the same proposal through either supported channel.
 
 Reject a person from another workspace, an unlinked Slack identity and a queued repair whose approver has lost access.
-Restart after approval but before pickup and verify that the same repair admission remains available without creating another patch run.
+Restart after approval but before pickup and verify that the same repair turn remains available without creating another patch run.
 
 For overlapping incidents, prove another outage remains discoverable while the first waits for approval or occupies the repairer.
 Send several alerts while diagnosis A is active; verify accepted jobs remain queued and run within the chosen start-delay budget.
@@ -853,7 +853,7 @@ The proposed daemon recovery owner above supplies a boundary, while its detailed
 |---|---|---|
 | Select and resume a task | Chat and Slack must identify incident A after B without guessing from conversation prose. Bind its conversation coverage, file generation and command results together. | Current run-scoped context (`afr_agent`), fleet-scoped holds (`afr_supervisor`). |
 | Bound retained work | Set saved file coverage, acceptable crash loss, save/restore deadlines, retention during approval waits and storage limits. Protect each retained session's referenced generation. | [Existing retention target](runner_execution.md#workspace-between-runs) and [proposed session lifecycle](#coding-sessions-and-worktrees-across-runs). |
-| Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), event-derived branch (`afd_gate`) and event-scoped write rules (`afd_gate`). |
+| Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), turn-derived branch (`afd_gate`) and turn-scoped write rules (`afd_gate`). |
 | Identify the approver | Owner selected existing workspace access, including invited members, without a separate approver list. Verified Slack identity and adoption across direct requests, queued work and running runs still need design. | [Workspace roles](../AUTH.md#memberships-and-roles), [existing direct Slack request](scenarios/slack-incident-responder.md#7-four-stages-four-authorities), [proposed approval flow](#workspace-approval-in-chat-or-slack). |
 | Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](scenarios/slack-incident-responder.md#6-how-the-answer-comes-back) and outbound abandonment (`afd_outbound`). |
 | Bound monitoring delay | Set critical-alert diagnosis delay and repair queue capacity. Track successful sweep freshness separately from accepted-alert queue time, including failed provider reads and evidence gaps. | [Ordered queue without a waiting-time guarantee](datastore_scaling.md#the-admissions-ledger-is-the-queue), [serial diagnosis](#several-incidents-under-the-same-fleets). |
@@ -875,7 +875,7 @@ File checkpoints and full guest snapshots carry different compatibility costs; r
 |---|---|---|
 | Shared preparation | `af_context` (planner and ports, with the preparation-work and planner tests) | Reduce cumulative estimates, retain a final complete provider estimate and exact output safety, and reject stale source. A blocked summary must not block another conversation. |
 | Runtime history | `afr_agent` (loop, conversation and context modules); proposed history-index module | One owned encoded-history index and borrowed views; invalidate the affected tail when pending input changes. Preserve complete tool groups and native continuation rules. |
-| Authoring preparation | `afd_setup` (model context, dispatch and funding, with the existing funding/source-change integration tests) | Reuse prepared input only with an exact source/authority witness after funding. Funding and model access stay outside datastore locks. |
+| Setup preparation | `afd_setup` (model context, dispatch and funding, with the existing funding/source-change integration tests) | Reuse prepared input only with an exact source/authority witness after funding. Funding and model access stay outside datastore locks. |
 | Repository preparation proposal | `afr_supervisor` (run-loop checkout and workspace clone, with the related checkout and concurrency tests) | Separate trusted repository acquisition from local or remote materialization. Preserve credential isolation; publish an immutable source before shortening mirror lock duration. |
 | Native backend experiment | Existing `afr_sandbox` engine/boot and `afr_executor` boundaries; proposed guest engine informed by SPACE | Map readiness, process identity, bounded streams, cancellation, network policy, quota and cleanup. Unsupported semantics must refuse explicitly. |
 | Recovery proposal | Existing `afr_supervisor` held-sandbox and run paths, plus a manifest/storage owner to be selected with the storage mechanism | Bind durable workspace generation to current fleet authority. Test host loss, source changes, deletion and revoked credentials. No new scheduler. |

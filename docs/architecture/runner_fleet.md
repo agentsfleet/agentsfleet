@@ -1,11 +1,11 @@
 # Runner Fleet: `agentsfleetd` control plane + host-resident `agentsfleet-runner` runner plane
 
-> Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (how one event flows through this split). · User-facing: [docs.agentsfleet.net/runners](https://docs.agentsfleet.net/runners).
+> Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (how one turn flows through this split). · User-facing: [docs.agentsfleet.net/runners](https://docs.agentsfleet.net/runners).
 
 > [!IMPORTANT]
 > **Implemented (M80_002 cutover)**. This is the runtime the codebase runs now: `agentsfleetd` is the control plane and the host-resident `agentsfleet-runner` daemon is the runner plane. The old single-process `agentsfleetd worker` and the standalone sandbox sidecar are deleted.
 
-[`data_flow.md`](./data_flow.md) traces an event through it; this file is the structural picture.
+[`data_flow.md`](./data_flow.md) traces a turn through it; this file is the structural picture.
 
 Read this when a spec touches the `agentsfleet-runner` binary, the `/v1/runners` control protocol, runner registration, the node fleet, or assignment, fencing and reclaim.
 
@@ -17,28 +17,28 @@ Every row is taken from the sections below; the owner column names the section t
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Run expiry backstop | `RUN_TTL` = 35 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible ledger claim re-runs an expired slot with a higher fencing token | §Failure recovery model |
+| Run expiry backstop | `RUN_TTL` = 35 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible assignment re-runs an expired thread with a higher fencing token | §Failure recovery model |
 | Max run duration | `MAX_RUNTIME` hard cap | `/renew` extends to `min(now+RUN_TTL, created_at+MAX_RUNTIME)` | §Per-run renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the run | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the run reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
-| Lost wake recovery | the next recovery probe, at most 5 s later | each replica asks PostgreSQL for pending work every `OFFER_FALLBACK_TICK` (5 s), with or without a wake ring | §Failure recovery model |
+| Lost wake recovery | the next recovery probe, at most 5 s later | each replica asks PostgreSQL for pending work every `ASSIGN_FALLBACK_TICK` (5 s), with or without a wake ring | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `async-nats`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | two registration routes, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, registration with the runner management routes (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Registration gate | `runner:register` for a platform runner, `runner:tenant` for a tenant's own | a caller without the scope, session JWT or `agt_t` key alike → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
 | Runner "status" | three separate categories | `status` enum + derived liveness + append-only `runner.history` | §Runner state |
-| Memory isolation | one live holder per fleet | `runner.fleet_slots` keyed by `fleet_id` + time gate + capture-time fencing | §Memory continuity |
+| Memory isolation | one live holder per fleet | `thread.threads` keyed by the fleet's id + time gate + capture-time fencing | §Memory continuity |
 | Memory window | category-pinned byte window | every `core` entry first (newest-first), then the newest non-core entries; deterministic | §Memory continuity |
 | Per-runner metric families | 4, in a fixed 4096-series table | overflow routes to `runner_id="_other"`; bounded footprint; zero Postgres on the OTLP export path | §Observability |
 | Multi-replica gauges | counters exact via `sum by`; `active_runs` approximate | the `+1` grant and `−1` release can land on different replicas | §Multi-replica |
 | Sandbox tiers | 3 (`landlock_full` · `container_nested` · `dev_none`) | the daemon reconciles each against the host's report; tier is orthogonal to egress policy | §Sandbox tiers |
 | Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
 | Cancel latency | the runner's next Cancel message | archive and delete send Cancel to each live run's runner; a gate trip stops new runs only; the heartbeat names no run | §Steer, archive, delete |
-| Config freshness | named by the claim | the claim returns the head revision id and a replica holds the parsed definition under that id, so the next run sees the change; no reload signal | §Config |
+| Config freshness | named by the assignment | the assignment returns the head revision id and a replica holds the parsed definition under that id, so the next run sees the change; no reload signal | §Config |
 | Debit point | the run's usage, per renewal | the issued run's hold is reserved; each `/renew` and the report log the slice as a usage line that the biller settles after commit | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
-| Turns queue | `fleet.admissions` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
+| Turns queue | `thread.turns` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
 
 ## Traps
 
@@ -54,23 +54,23 @@ Each trap is enforced in its owner section; this list is the index.
 
 - A lost wake needs no repair sweep; the next 5 s recovery probe reads PostgreSQL (§Failure recovery model).
 
-- The three-run cap counts every run an event was issued, whatever ended it. Three runs lost in a runner outage end the event too, and a webhook event has no replay (§Failure recovery model).
+- The three-run cap counts every run a turn was issued, whatever ended it. Three runs lost in a runner outage end the turn too, and a webhook turn has no replay (§Failure recovery model).
 
 - Sandbox tiers are not egress policy. No tier substitutes for the egress model (§Sandbox tiers).
 
 - The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
 
-- The wake ring only prioritizes candidates; the admissions ledger owns work (§Datastore topology).
+- The wake ring only prioritizes candidates; the `thread.turns` ledger owns work (§Datastore topology).
 
 - Not a general scheduler. No autoscale, no fairness engine, no arbitrary workload types (§Scope).
 
-- Admission backlog is a shared-database census gauge; use the latest successful reading across replicas.
+- Turn backlog is a shared-database census gauge; use the latest successful reading across replicas.
 
 - Memory isolation does not rest on `fleet_id` scoping alone. A feature breaking single-live-holder must scope by `run_id` first (§Memory continuity).
 
 - No secret enters a sandbox. Model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
 
-- Config is cached only by its head revision id, which every claim reads, so the next run obeys an edit. Warm mode reuses only the sandbox shell (§Config).
+- Config is cached only by its head revision id, which every assignment reads, so the next run obeys an edit. Warm mode reuses only the sandbox shell (§Config).
 
 - No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle. The deferred name layer is eBPF/FQDN (§Egress model).
 
@@ -100,7 +100,7 @@ Deeper diagrams stay with their owner sections below; signal routes are in [obse
 | Operator pre-mints `agt_r`; no host self-registration | no enrollment-grade credential ever touches a host (Option B, the GitLab-16 model) | §Registering a runner; M84_001 |
 | Typed columns + event log, not a `status` JSONB | one operator-intent dimension; JSONB conditions are for many writers | §Runner state; cross-validated Jun 2026 |
 | Run expiry + fencing reclaims stalled work | a broker-side idle timer cannot see an off-platform processor | §Datastore topology; M80_001 |
-| Slot and admission fences advance together | a stale runner must not settle a newer claim | §Datastore topology |
+| The thread fence and the turn's `run_fence` advance together | a stale runner must not settle a newer run | §Datastore topology |
 | Cold-start reconciliation deferred | discovery scaffolding the future scheduler replaces (Indy-acked, M141_001 Discovery) | §Failure recovery model |
 | The agent loop runs in the supervisor; only tool calls cross into a per-run sandbox | no model key or runner token enters a sandbox, and the supervisor keeps the network a sandbox may be denied | §The split; [`runner_execution.md`](./runner_execution.md) §Process model |
 | Renewal meters the run per slice (M80_010), superseding the coverage-only check | a run is charged as it runs, so an empty wallet stops it at the next renewal | §Money gates |
@@ -121,7 +121,7 @@ Everything below follows from that one decision. Read the guarantees before the 
 
 | Guarantee | What the platform promises | How it holds |
 |---|---|---|
-| **No event loss on runner death** | A runner that crashes, partitions, or is killed mid-event never drops the event. | The run has a `run_expires_at`; a later ledger claim re-runs the unsettled admission with a higher fence. Durability is at-least-once through `fleet.admissions` and the fenced claim. |
+| **No turn loss on runner death** | A runner that crashes, partitions, or is killed mid-turn never drops the turn. | The run has a `run_expires_at`; a later assignment re-runs the unsettled turn with a higher fence. Durability is at-least-once through `thread.turns` and the fenced assignment. |
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every run carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the run to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
 | **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the run inline over Transport Layer Security (TLS), is substituted at send time by the supervisor's egress guard outside every sandbox, and is never saved runner-side ([Runner runtime](./runner_execution.md) §Credentials). |
 | **Tool calls are always sandboxed** | No tenant program ever runs un-isolated. | A run offered a tool that runs in a sandbox gets one under bubblewrap, Landlock, seccomp and its own cgroup; a sandbox that cannot be built fails **closed**: the turn never runs and the run reports `fleet_error` as `startup_posture`. A run whose tools all run in the supervisor starts none. |
@@ -135,24 +135,24 @@ There is no runner the fleet cannot lose. Sticky routing (below) is a *performan
 
 ## Failure recovery model
 
-A runner's work becomes eligible when its slot expires. The next offer pass pushes it to another eligible runner; recovery time depends on available capacity and fleet selection.
+A runner's work becomes eligible when its thread's run expires. The next assign pass pushes it to another eligible runner; recovery time depends on available capacity and fleet selection.
 
 | Failure | Recovery | Durable guard |
 |---|---|---|
-| Runner dies mid-run | A later offer pass claims the same unsettled admission after its 35-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
-| Every run of one event lapses | After three lapsed runs, the next claim ends the event as `fleet_error` with `run_expired`. A durable task's event is exempt; its own run allowance bounds it. | The same transaction settles the admission, so the fleet's next event can run. |
-| Wake notification lost | The next 5 s recovery probe reads PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
-| Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
-| Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |
-| Report fails before commit | Retry the report; run, usage and settlement all roll back. | No charge or terminal admission without the report transaction. |
-| Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery delivery. |
+| Runner dies mid-run | A later assign pass takes the same unsettled turn after its 35-second run expires. | The thread and turn receive a higher fence; the old holder cannot write. |
+| Every run of one turn lapses | After three lapsed runs, the next assignment ends the turn as `fleet_error` with `run_expired`. A durable task's turn is exempt; its own run allowance bounds it. | The same transaction settles the turn, so the fleet's next turn can run. |
+| Wake notification lost | The next 5 s recovery probe reads PostgreSQL without a hint. | Acceptance is already committed in `thread.turns`. |
+| Assignment decoding fails | The transaction rolls back its thread and turn changes. | Both fences remain unchanged. |
+| Failure after assignment commit | Release the run where possible; otherwise wait for its deadline. | Every write verifies the current thread and turn fences. |
+| Report fails before commit | Retry the report; run, usage and settlement all roll back. | No charge or terminal turn without the report transaction. |
+| Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery. |
 | Sandbox setup fails | The runner reports `fleet_error` as `startup_posture`. | Work never runs without the assigned sandbox. |
 
 A live runner renews through the fenced `/renew` route. Renewal remains credit-gated and bounded by `MAX_RUNTIME`.
-A runner that stops renewing loses its slot at the database deadline.
+A runner that stops renewing loses its thread at the database deadline.
 
-The replacement keeps the logical event and reads its committed recovery descriptor.
-Native tasks retain their task checkpoint owner; ordinary turns use an event-owned head in `runner.turn_recovery`.
+The replacement keeps the turn and reads its committed recovery descriptor.
+Native tasks retain their task checkpoint owner; ordinary turns use a turn-owned head in `runner.turn_recovery`.
 [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) owns capture, restore and file safety.
 
 An absent checkpoint starts from the original accepted input and unsettled folds.
@@ -165,7 +165,7 @@ A native renewal batch extends active runs every five seconds. Each run carries 
 
 The runner asks engines to stop nine seconds before its last confirmed deadline.
 This leaves time to stop and reap their processes before another runner can reclaim work.
-Renewal atomically extends **both** the run row and the affinity slot under a fence and the hard cap:
+Renewal atomically extends **both** the run row and the thread row under a fence and the hard cap:
 
 ```text
  run issued                                every RENEWAL_TICK (5 s) tick
@@ -178,7 +178,7 @@ Renewal atomically extends **both** the run row and the affinity slot under a fe
      . still the fencing holder?  no -> 409 run_lost  -> runner cuts the run
      . credits cover the run?     no -> 402 no_credits  -> stop
      . past created_at+MAX_RUNTIME? yes -> 409 max_runtime -> stop + report
-     . else -> extend run_expires_at AND slot.run_expires_at to
+     . else -> extend run_expires_at AND thread.run_expires_at to
                min(now+RUN_TTL, created_at+MAX_RUNTIME); bump last_seen_at
 
    The tick renews whatever the run is doing, so a long model call with
@@ -222,7 +222,7 @@ The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that h
 
 ## The split: two binaries, no sidecar
 
-- **`agentsfleetd`**: the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `thread.deliveries` rows.
+- **`agentsfleetd`**: the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints assign inbound work from `thread.turns`; the delivery worker claims `thread.deliveries` rows.
 
 - **`agentsfleet-runner`**: the host-resident runner plane, one Rust binary. A trusted supervisor runs the run loop and the agent loop, and each run that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
@@ -265,8 +265,8 @@ A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api
 The runner sends a native heartbeat every ten seconds to report liveness, capabilities and held sandboxes.
 The daemon pushes work when capacity is available; idle workers send no run requests.
 
-Two missed heartbeat intervals close the session.
-A per-replica recovery probe finds admissions after lost notifications.
+Two missed heartbeat intervals close the connection.
+A per-replica recovery probe finds queued turns after lost notifications.
 The [runner guide](runner_protocol.md) describes connection setup, cancellation and recovery.
 
 ## Registering a runner
@@ -279,7 +279,7 @@ The operator installs that token on the host as `AGENTSFLEET_RUNNER_TOKEN`.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
 
-It then opens its native session and starts the worker pool. There is no register call, so no host ever holds a registration-grade credential.
+It then opens its native connection and starts the worker pool. There is no register call, so no host ever holds a registration-grade credential.
 
 There is no registration token. The minter must hold `runner:register`, or `runner:tenant` for a tenant's own host. The open-fleet, self-registering case is mode C, later.
 
@@ -327,8 +327,8 @@ fleet on the platform model   held             refused    refused
 fleet on T's own model        held             held     refused
 ```
 
-The candidate scan and the claim statement both apply this table.
-Issue applies it again under the host lock, and logs `runner_placement_refused` (`UZ-RUN-027`) when the claim let a placement through.
+The candidate scan and the assign statement both apply this table.
+Issue applies it again under the host lock, and logs `runner_placement_refused` (`UZ-RUN-027`) when the assignment let a placement through.
 Labels place work and carry no security meaning, so a tenant that labels its runner cannot make it take another tenant's work.
 
 A platform admin can cordon, drain, revoke and relabel a tenant runner.
@@ -346,7 +346,7 @@ An Off value prevents new durable runs, including initial work from durable-task
 
 Supported software still advertises `durable_tasks_v1` while its assignment is Off.
 Existing durable runs retain their frozen mode, input, recovery, accounting and report duties.
-The candidate, claim and final issue checks all require configured support before a new durable run commits.
+The candidate, assignment and final issue checks all require configured support before a new durable run commits.
 
 The **heartbeat cadence travels the same way** (M205). `af_core::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` served beneath it. A compile-time assertion beside them keeps the served cadence strictly below the offline threshold.
 
@@ -401,7 +401,7 @@ Kubernetes needs `status.conditions[]` because dozens of controllers write ortho
 | Category | Where it lives | Examples | Stored? |
 |---|---|---|---|
 | **Operator intent** | `runner.runners.status` (typed enum) | `active` · `cordoned` · `draining` · `drained` · `revoked` | **yes**. `status != 'active'` is the cordon/revoke auth gate (M84_002) |
-| **Automatic quarantine** | `runner.runners.cordon_reason`, `cordoned_at`, `cordon_healthy_since_at` | `missed_heartbeats`; independent of operator intent | **yes**. Guarded claims read it; valid heartbeats own the return proof |
+| **Automatic quarantine** | `runner.runners.cordon_reason`, `cordoned_at`, `cordon_healthy_since_at` | `missed_heartbeats`; independent of operator intent | **yes**. Guarded assignments read it; valid heartbeats own the return proof |
 | **Runtime liveness** | **derived** at read from `last_seen_at` + runs | `registered` · `online` · `busy` · `offline` | **no**. A pure function; storing it would drift |
 | **History** | `runner.history` (append-only) | `runner_registered` · `run_acquired` · `runner_offline` · `runner_revoked` | **yes**. Answers "last busy?", "runs this period", "offline how long?" |
 
@@ -414,8 +414,8 @@ A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if**
 ### Automatic quarantine and return
 
 After 105 seconds without a valid heartbeat, the liveness sweep records one offline episode and an automatic cordon in one transaction.
-The sweep leaves run and slot deadlines unchanged.
-New fleet and authoring claims refuse the cordoned host under its row lock.
+The sweep leaves run and thread deadlines unchanged.
+New fleet and setup assignments refuse the cordoned host under its row lock.
 
 Healthy heartbeats from the current connection must continue for 30 seconds before the automatic cordon lifts.
 A gap of at least 20 seconds, failed health proof or fallback touch resets that interval.
@@ -437,7 +437,7 @@ agentsfleet platform runners runs <RUNNER_ID>
 
 Operators read runners through `GET /v1/admin/runners` and change them through `PATCH /v1/admin/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
 
-A runner can hold multiple active runs. Busy status derives from live runs; the server counts fleet and authoring occupancy under the runner-row lock before granting capacity. [Authoring runs](#authoring-runs) describes the shared limit.
+A runner can hold multiple active runs. Busy status derives from live runs; the server counts fleet and setup occupancy under the runner-row lock before granting capacity. [Setup runs](#authoring-runs) describes the shared limit.
 
 > [!WARNING]
 > Cordon and drain currently block every authenticated runner request, including renewal and reports. The capacity layer permits cordoned or draining renewals, but authentication accepts only `active` tokens (`afd_state`'s credential rows and `afd_auth`'s authenticate step). Do not rely on these actions for graceful completion; existing work can stop and reports can remain spooled.
@@ -448,13 +448,13 @@ The runner detail read (API reference › Fleet) takes lifetime counters one-to-
 
 The run write paths maintain the counter row themselves. Each transition's owning SQL statement carries its own tally arm.
 
-`acquired` rides the run insert, `succeeded` and `failed` the report claim, and `expired` the reclaim flip. So the tallies are transactional with the rows they count. They are exactly-once under retry, by the same guards that make the transitions exactly-once.
+`acquired` rides the run insert, `succeeded` and `failed` the report's settle, and `expired` the reclaim flip. So the tallies are transactional with the rows they count. They are exactly-once under retry, by the same guards that make the transitions exactly-once.
 
 The tallies are constant-time to read however long the history grows. It is the `fleet.activity_counters` shape extended to runners. Only the live-now summary still reads `thread.runs`, scoped to currently-active rows.
 
 Run history: API reference › Fleet (List a runner's runs). Neither item struct carries `token_hash` or `request_json`, so emitting either is a compile error rather than a review catch.
 
-A settled run outlives its fleet's purge and its event's retention. `thread.runs` holds no foreign key to either, and the purge deletes only the fleet's live runs. The history so keeps the run with null fleet and event fields.
+A settled run outlives its fleet's purge and its turn's retention. `thread.runs` holds no foreign key to either, and the purge deletes only the fleet's live runs. The history so keeps the run with null fleet and turn fields.
 
 Each item carries `destination`: `available` when the fleet exists in the caller's own account, `fleet_deleted`, or `not_permitted`. The dashboard's Open fleet link follows that field, never a fleet name.
 
@@ -464,13 +464,13 @@ The dashboard splits them. The **Runs** tab renders work, one row per run with i
 
 The client asks for the seven-tag lifecycle set (`RUNNER_LIFECYCLE_EVENT_TYPES`, one exported constant) through the comma-separated multi-value `event_type` filter. The activity headline map is keyed on that subset, so a run tag cannot be given a headline at compile time.
 
-`thread.runs` gains a row per claim and another per reclaim.
-A worker turning one short event every `RUN_TTL` adds about 2.5k rows daily.
+`thread.runs` gains a row per assignment and another per reclaim.
+A worker turning one short turn every `RUN_TTL` adds about 2.5k rows daily.
 At `MAX_WORKER_COUNT`, that becomes about 158k rows.
 
-Two indexes serve the read. `idx_runs_runner_id_created_at_id` answers the page, and `idx_runs_fleet_event_id_fencing_token` answers the per-row reclaim derivation.
+Two indexes serve the read. `idx_runs_runner_id_created_at_id` answers the page, and `idx_runs_turn_id_fencing_token` answers the per-row reclaim derivation.
 
-On `runner.history`, `idx_events_runner_id_event_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count. That read therefore stops walking the per-run bulk.
+On `runner.history`, `idx_history_runner_id_event_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count. That read therefore stops walking the per-run bulk.
 
 A partial index was rejected there. The tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and the index-usage integration lane pins both the shapes and the plans.
 
@@ -484,13 +484,15 @@ Live rows can never age into the sweep. The predicate excludes them, and a compi
 
 **The sweeper is also the run status column's only clock-driven writer.**
 
-The runner's report, the fleet's next claim through `queue::CLAIM_HEAD`, and fleet deletion can also move a run out of `active`. Those three changes are not time-based.
+The runner's report, the fleet's next assignment through `queue::CLAIM_HEAD`, and fleet deletion can also move a run out of `active`. Those three changes are not time-based.
 
-That leaves a gap. A run whose runner died, whose event was settled terminally elsewhere, on a fleet nobody messages again, would stay `active` forever. The age-keyed event sweep would prune its per-work records anyway, leaving an eternal "running" run with no history behind it.
+That leaves a gap. A run whose runner died, whose turn was settled terminally elsewhere, on a fleet nobody messages again, would stay `active` forever. The age-keyed event sweep would prune its per-work records anyway, leaving an eternal "running" run with no history behind it.
 
 The sweep flips such rows to `expired` past the same cutoff, with the `expired` tally riding the flip exactly as reclaim does. It then lets them age out through their own window.
 
-A cycle that fills every batch re-arms within the minute rather than idling the hour, so a backlog cannot outrun the sweeper. A failed cycle increments `agentsfleet_runner_retention_sweep_failures_total`, because the swept series alone cannot tell a sweeper that is not running from one that fails every pass. `idx_runs_status_updated_at` and `idx_events_event_type_created_at` serve the sweep's own `DELETE`s, which take `FOR UPDATE SKIP LOCKED` so each replica's sweeper claims a disjoint batch.
+A cycle that fills every batch re-arms within the minute rather than idling the hour, so a backlog cannot outrun the sweeper. A failed cycle increments `agentsfleet_runner_retention_sweep_failures_total`, because the swept series alone cannot tell a sweeper that is not running from one that fails every pass.
+
+`idx_runs_status_updated_at` and `idx_history_event_type_created_at` serve the sweep's own `DELETE`s. They take `FOR UPDATE SKIP LOCKED`, so each replica's sweeper claims a disjoint batch.
 
 The lifetime counters survive pruning because they count transitions, not surviving rows. That is also why the counter backfill's conflict arm takes `GREATEST`. Re-run after pruning, a recount is smaller than the truth, and it must never lower a tally.
 
@@ -510,7 +512,7 @@ The surface shipped; what it should *do* in these four cases did not.
 
 ## Datastore role model: why there is no `runner_runtime`
 
-Access to the runner-domain tables (`runner.runners`, `thread.runs`, `runner.fleet_slots`) is governed at **two independent layers**. Conflating them is the recurring design error. The temptation to mint a `runner_runtime` database role "so the runner tables have an owner" collapses an authorization rule onto an authentication identity.
+Access to the runner-domain tables (`runner.runners`, `thread.runs`, `thread.threads`) is governed at **two independent layers**. Conflating them is the recurring design error. The temptation to mint a `runner_runtime` database role "so the runner tables have an owner" collapses an authorization rule onto an authentication identity.
 
 | Layer | Mechanism | Answers | Enforced where |
 |-------|-----------|---------|----------------|
@@ -527,7 +529,7 @@ Access to the runner-domain tables (`runner.runners`, `thread.runs`, `runner.fle
    |   Layer 2 - writes runner.* connecting to PG as api_runtime             |
    +-------------------------------------------------------------------------+
                                         v
-            runner.runners . thread.runs . runner.fleet_slots
+            runner.runners . thread.runs . thread.threads
             GRANT SELECT, INSERT, UPDATE ... TO api_runtime   (the runner schema slots)
             - no worker_runtime grant, no runner_runtime role -
 ```
@@ -552,12 +554,14 @@ It also stays out of scope while `agentsfleetd` runs a single write pool. A seco
 
 ## Running one event
 
-A `run` reply is the runner's entire input for an event. The runner runs the event's turn and sends the result back with `report`. [Runner runtime](./runner_execution.md) §"One run, end to end" walks the runner's side.
+The heading keeps its old words so links to it stay stable; one event is one turn.
+
+A `run` reply is the runner's entire input for a turn. The runner runs the turn and sends the result back with `report`. [Runner runtime](./runner_execution.md) §"One run, end to end" walks the runner's side.
 
 ```text
 run -> { event, ExecutionPolicy, instructions }  (full shape: API reference > Runner plane)
    (`instructions` = the `instructions_md` of the fleet's selected setup revision,
-    read by the claim from the installed revision; the agent loop builds the
+    read by the assignment from the installed revision; the agent loop builds the
     system prompt from it so the reviewed behaviour runs on every trigger. Soft
     reasoning input, never a secret: the provider key and secrets_map stay in
     ExecutionPolicy and the supervisor.)
@@ -570,11 +574,11 @@ agentsfleet-runner supervisor: admit the policy, take the fleet's turn, load mem
       runs where its runtime says, in the supervisor or through the sandbox's executor
    |
 report -> agentsfleetd: one transaction (settle + terminal state + checkpoint
-          + freed slot + the OWED DELIVERY), then, after it commits, the
+          + freed thread + the OWED DELIVERY), then, after it commits, the
           activity frame and the af.delivery.wake ping
 ```
 
-The admission settlement, usage, terminal event, checkpoint, slot release and outbound delivery commit together.
+The turn's settlement, usage, terminal state, checkpoint, thread release and owed delivery commit together.
 A failed transaction leaves the run active and unsettled. A lost response is retried against the stored outcome without another charge.
 
 Activity publication and outbound dispatch follow the commit. See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
@@ -589,18 +593,20 @@ bubblewrap, Landlock, seccomp, the run's cgroup and the process boundary under t
 
 ### Multi-run events
 
+The heading keeps its old words so links to it stay stable.
+
 One run is one run. [Conversation compaction](context_lifecycle.md) saves working notes and continues within that run, retaining tool access.
 A report's outcome is `processed` or `fleet_error`; context pressure does not request another run (`af_wire`'s report type).
 
-A continuation event still exists, chained by `resumes_turn_id`. An approval's answer writes one, and the next run runs it (`afd_approval`'s inbox resolve). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event.
+A continuation turn still exists, chained by `resumes_turn_id`. An approval's answer writes one, and the next run runs it (`afd_approval`'s inbox resolve). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next turn.
 
-Sticky routing (below) prefers the runner that ran the previous event, but correctness never depends on it.
+Sticky routing (below) prefers the runner that ran the previous turn, but correctness never depends on it.
 
 ## Memory continuity: durable fleet memory rides the trusted plane
 
 Memory is the second kind of cross-run state, under the same law as the checkpoint. Durable fleet memory lives only behind `agentsfleetd`, never in the runner and never in the fleet. The runner reaches it through `agentsfleetd`'s runner API alone and holds no credential for any store.
 
-Postgres is the only store built: `afd_memory::PgStore`, behind `afd_memory::Memories` (§"Memory backends and scope"). The checkpoint records the last event and answer; it is saved, and no run carries it yet ([`runner_execution.md`](./runner_execution.md) §"Workspace between runs").
+Postgres is the only store built: `afd_memory::PgStore`, behind `afd_memory::Memories` (§"Memory backends and scope"). The resume context records the last turn and answer; it is saved, and no run carries it yet ([`runner_execution.md`](./runner_execution.md) §"Workspace between runs").
 
 Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. It is loaded into a run and captured out of it, and is never runner-local-durable.
 
@@ -608,15 +614,15 @@ The memory tools run in the supervisor. A sandbox therefore holds **no** `agt_r`
 
 The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file.
 
-Durability is the supervisor's job, over the same `agt_r` `/v1/runners` plane that already carries runs and reports. Two fencing-verified routes carry it, `hydrate` and `capture` under `/v1/runners/me/memory/{fleet_id}`, plus a capped recall (API reference › Runner plane).
+Durability is the supervisor's job, over the same `agt_r` `/v1/runners` plane that already carries runs and reports. Two fencing-verified routes carry it, a load (`Verb::Load`) and a capture under `/v1/runners/me/memory/{fleet_id}`. A capped recall rides beside them (API reference › Runner plane).
 
 Capture writes under `SET ROLE memory_runtime` ([memory.md](./memory.md) §2, Isolation).
 
-The run and the report carry the same memory without those two round trips. A run's reply carries the fleet's window (`run.memory`), read after the issue while the run holds the fleet's slot.
+The run and the report carry the same memory without those two round trips. A run's reply carries the fleet's window (`run.memory`), read after the issue while the run holds the fleet's thread.
 
 A report on such a run carries the run's deltas (`memory`). The daemon captures them, fenced on the run's own token, in the memory role's transaction. It does so before it commits the settle.
 
-The settle frees the slot, so no run for the fleet can issue between the capture and the commit. A capture that fails is logged as `memory_capture_failed`, and the report still settles. The two routes stay for a run from an older daemon, which carries no window.
+The settle frees the thread, so no run for the fleet can issue between the capture and the commit. A capture that fails is logged as `memory_capture_failed`, and the report still settles. The two routes stay for a run from an older daemon, which carries no window.
 
 ```text
         +---------------------------------------------------------------+
@@ -667,7 +673,7 @@ RUN 2  (next run, same fleet A)                          <-- THE CARRY-OVER
 
 The `fleet_id` a push is scoped to is derived server-side from the run `agentsfleetd` issued, so a client-supplied scope is ignored. The upsert is idempotent, which is why a retried push is safe.
 
-**Multi-run isolation invariant**. Concurrent-run safety (M88_002's worker pool) rests on the per-fleet **affinity slot admitting a single live holder**. That is `runner.fleet_slots` keyed by its `fleet_id` primary key plus the `run_expires_at < now` time gate, plus **capture-time `fencing_token`** rejecting a stale holder.
+**Multi-run isolation invariant**. Concurrent-run safety (M88_002's worker pool) rests on the per-fleet **thread row admitting a single live holder**. That is `thread.threads` keyed by the fleet's id plus the `run_expires_at < now` time gate, plus **capture-time `fencing_token`** rejecting a stale holder.
 
 It is *not* a unique constraint on `thread.runs`. Multiple run rows per fleet are normal, and a slow old holder can transiently coexist with a reclaimer. That is why fencing exists: only one writer durably lands in a fleet's namespace.
 
@@ -677,7 +683,7 @@ A future retry, speculative, failover or takeover-run feature would have to scop
 
 Keep this invariant load-bearing. A held sandbox ([`runner_execution.md`](./runner_execution.md) §"Workspace between runs") keeps it.
 
-The hold gives its runner a head start at the slot, never the slot. The holder claims through the same fencing-guarded statement.
+The hold gives its runner a head start at the thread, never the thread. The holder is assigned through the same fencing-guarded statement.
 
 The decided workspace scope (§"Memory backends and scope") gives one workspace key many live writers by design. Its fencing token proves a live run, not a sole writer; the memory work defines how concurrent writes to one key resolve.
 
@@ -765,7 +771,7 @@ Only a batch that filled while it waited is dropped, counted and logged as `acti
 agent loop -sink-> activity pump -POST .../activity (no ack)-> agentsfleetd -publish-> NATS -> SSE
 ```
 
-The runner's frames reach the channel through `afd_fleet::run::activity`, each stamped with the `turn_id` its run runs: `tool_call_started`, `tool_call_progress`, `tool_call_completed` and `chunk`. Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
+The runner's frames reach the channel through `afd_fleet::run::activity`, each stamped with the `turn_id` its run runs: `tool_call_started`, `tool_call_progress`, `tool_call_completed` and `chunk`. Frame kinds and fields: API reference › Fleets (Stream live fleet activity).
 
 The runner fills these from each call it runs. Arguments are serialized with every string leaf scrubbed of the redaction set and of known secret patterns first.
 
@@ -781,7 +787,7 @@ Every call ends exactly once. When a run ends for any reason, the runner emits `
 
 The run's trace rides the report, up to 200 calls and 64 KiB. Past the byte cap a call keeps its row without output edges, and past 200 calls it is counted as omitted.
 
-`agentsfleetd` parses the trace after the report's own fields and checks its bounds. `agentsfleetd` rewrites each call id to the fenced `{fence}:{n}` the live frames use. It writes the trace to `fleet.events.tool_calls` in the statement that writes the reply, so a fenced-out report writes neither.
+`agentsfleetd` parses the trace after the report's own fields and checks its bounds. `agentsfleetd` rewrites each call id to the fenced `{fence}:{n}` the live frames use. It writes the trace to `thread.turns.tool_calls` in the statement that writes the reply, so a fenced-out report writes neither.
 
 A trace that is malformed or over a bound is dropped and logged, and the report still settles. The run's outcome must not be lost over its tool list.
 
@@ -789,13 +795,13 @@ Each call's full arguments and output ride neither the live tail nor the report.
 
 The runner posts them in batches of at most 256 KiB to `POST /v1/runners/me/runs/{run_id}/items` under the run's fencing token, before the report. That keeps the report far below the runner routes' 2 MB request limit. That limit is axum's default, and the router mounts runner routes with no other.
 
-The daemon stores them in `thread.items`, a child table of `fleet.events`, keyed by fence and call number. Settlement deletes the event's rows from every other fence, because a reclaimed run restarts its call numbers at 1. A failed post costs only the full view; the run settles as before.
+The daemon stores them in `thread.items`, a child table of `thread.turns`, keyed by turn, fence and call number. Settlement deletes the turn's items from every other fence, because a reclaimed run restarts its call numbers at 1. A failed post costs only the full view; the run settles as before.
 
 `call_id` is the runner's own counter for the run. It is minted when a call starts and repeated on each of its frames (`afr_agent`'s ledger).
 
 The daemon accepts `call_id` as optional and bounded by `CALL_ID_MAX_BYTES`. It publishes it as `{fence}:{call_id}` under the run's fencing token.
 
-A reclaimed run re-runs the same event from a fresh runner whose counter restarts at 1. The fence keeps its calls apart from the dead run's.
+A reclaimed run re-runs the same turn from a fresh runner whose counter restarts at 1. The fence keeps its calls apart from the dead run's.
 
 The activity structs refuse unknown fields, so a runner sending `call_id` needs a daemon that reads it. Both ship in one release, and the release workflow deploys the Fly daemons before the metal runners (`deploy-metal-canary-prod` needs `deploy-fly-prod`).
 
@@ -811,7 +817,7 @@ Two planes, kept apart on purpose. **Activity** is ephemeral and best-effort (a 
 
 The runner reports the durable outcome before its bounded activity drain. Activity uses the established native connection, and a late frame may arrive after completion.
 
-Runner chunks carry a pass start marker, contiguous-delivery flag, and sequence number. The browser rejects a gap, ignores activity after completion, and reads the durable event detail to settle the final answer.
+Runner chunks carry a pass start marker, contiguous-delivery flag, and sequence number. The browser rejects a gap, ignores activity after completion, and reads the durable turn detail to settle the final answer.
 
 The browser's reply decoder uses Hermes protocol parsing and incremental HTML tokenization. That keeps reasoning and tool protocol out of the visible answer. After the first visible delta, it batches display updates at a 50 ms interval.
 
@@ -821,7 +827,7 @@ The bracket frames are `turn_received`, `turn_complete`, and `gate_opened` / `ga
 
 Each carries what a watcher needs to fold it in without a read. `turn_complete` is the terminal row from the closing statement's `RETURNING`. The gate frames carry `pending_approvals` from the statement that moved the gate.
 
-Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
+Frame kinds and fields: API reference › Fleets (Stream live fleet activity).
 
 Every daemon frame also carries the fleet's activity counters as an absolute snapshot, so the wall's tiles assign rather than add. The closing statement reads them beside the row it ends. Every other publisher reads them once, by primary key off `fleet.activity_counters`, right before its publish (`afd_turns::fleet_counters_best_effort`).
 
@@ -837,7 +843,7 @@ A `catching_up` is followed by a fresh `hello`. The dropped frames are exactly t
 
 No daemon frame names its fleet or workspace. The tail is one fleet's channel. The workspace multiplex splices `fleet_id` in as the one leading key of every frame it forwards (`afd_sse::Frame::tagged`).
 
-Every bracket and gate publish goes through `afd_bus::Handle::publish_frame` and is best-effort like the runner's frames. The row is written first, the frame announces it, and reconnect backfill recovers durable event rows from the events list. A failed publish owes its subject an `Af-Gap` marker, paid at the next reconnect, and that marker's `catching_up` triggers the backfill.
+Every bracket and gate publish goes through `afd_bus::Handle::publish_frame` and is best-effort like the runner's frames. The row is written first, the frame announces it, and reconnect backfill recovers durable turn rows from the turns list. A failed publish owes its subject an `Af-Gap` marker, paid at the next reconnect, and that marker's `catching_up` triggers the backfill.
 
 The dashboard opens streams through authenticated, same-origin Next.js `/live/*` proxies.
 The daemon serves asynchronous response bodies through the shared hub, with a separate stream admission ceiling.
@@ -851,17 +857,17 @@ Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s run c
 
 - **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own.
 
-  While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_turn_id`. The running run claims it at its next model call through a native `folds` request.
+  While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_turn_id`. The running run takes it at its next model call through a native `folds` request.
 
-  A run claims a person's messages in its own conversation after its own, oldest first. It stops at the first parked (approval-gated), task-bound or non-person one.
+  A run takes a person's messages in its own conversation after its own, oldest first. It stops at the first parked (approval-gated), task-bound or non-person one.
 
 That message is a barrier, and nothing after it folds. The model call in flight is never cut short.
 
-  When the run reports succeeded, each folded message's own event gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
+  When the run reports succeeded, each folded message's own turn gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
 
 - **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing runs. It cancels setup grants, marks live runs `cancel_requested_at` and sends each runner a Cancel (`afd_setup`'s creation patch). History stays readable, and archive is terminal.
 
-- **Gate trip** — a tripped anomaly rule archives the fleet (`afd_gate`'s gate archive), and the event that tripped it ends as `fleet_archived`. A matching gate rule never archives; it always asks a person. It writes only the status: a run in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
+- **Gate trip** — a tripped anomaly rule archives the fleet (`afd_gate`'s gate archive), and the turn that tripped it ends as `fleet_archived`. A matching gate rule never archives; it always asks a person. It writes only the status: a run in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
 
 - **Delete** — `DELETE` on the fleet (`agentsfleet fleet delete`) removes it in any status. It first does what archive does to live work (`afd_setup`'s creation release), then purges the rows. A runner that reads the Cancel after its run row is gone stops at its next renewal, which answers `RUN_NOT_FOUND`.
 
@@ -875,7 +881,7 @@ The runner's per-run sandbox, its measured cold start and where its bytes live a
 
 A run that ends **processed** leaves its sandbox **held** for the same fleet. The frozen sandbox keeps its workspace files for ten idle minutes ([Workspace between runs](./runner_execution.md#workspace-between-runs)). The fleet's next run can continue in it.
 
-Every run carries the config of the head revision its claim read, and fresh secrets. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
+Every run carries the config of the head revision its assignment read, and fresh secrets. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
 
 The report's guarded release may accept a hold within that window.
 Its reply names the exact run, fence and deadline; a refused hold releases that local reservation.
@@ -887,19 +893,19 @@ An expired late report can settle usage while refusing a hold that would exceed 
 
 A `closing` heartbeat also clears those recently reported holds because the runner's list is final. The heartbeat response names holds whose fleet became inactive or was held elsewhere. An unreadable, out-of-bounds or empty list holds nothing.
 
-The run poll carries the same list. The holder checks those fleets before its ledger candidate scan. Both the candidate scan and claim skip a fleet held by another eligible runner with an unexpired hold.
+The run poll carries the same list. The holder checks those fleets before its ledger candidate scan. Both the candidate scan and the assignment skip a fleet held by another eligible runner with an unexpired hold.
 
-Eligibility requires that holder to be active, not degraded, and seen within `RUNNER_OFFLINE_AFTER`. Another runner's claim clears `hold_expires_at`; the holder's own claim keeps it.
+Eligibility requires that holder to be active, not degraded, and seen within `RUNNER_OFFLINE_AFTER`. Another runner's assignment clears `hold_expires_at`; the holder's own assignment keeps it.
 
-`resume_hold` requires the slot's last run to have run on that runner, an unexpired hold, and an event that is not a reclaim. Other holds may predate another runner's run or this event's first attempt. Otherwise any eligible runner takes the event in a fresh sandbox, without waiting for a particular runner.
+`resume_hold` requires the thread's last run to have run on that runner, an unexpired hold, and a turn that is not a reclaim. Other holds may predate another runner's run or this turn's first run. Otherwise any eligible runner takes the turn in a fresh sandbox, without waiting for a particular runner.
 
 ## Config
 
 A Fleet's config is the `config` member of its selected setup revision in `fleet.revisions`, validated by `af_fleet_runtime::Definition`. It holds the model, tool allowlist, network policy, context budget, gate rules, trigger settings and secret references.
 
-The claim reads it from that revision (`afd_fleet`'s installed-revision read). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it. `PATCH` on the fleet changes only its status and name.
+The assignment reads it from that revision (`afd_fleet`'s installed-revision read). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it. `PATCH` on the fleet changes only its status and name.
 
-Every claim reads the fleet's `head_revision_id` in its own statement. Each replica caches the parsed definition keyed by that id, and revisions are append-only, so an id never names two documents. A config change therefore takes effect on the **next command** (the next run) on every replica, with no signal between them.
+Every assignment reads the fleet's `head_revision_id` in its own statement. Each replica caches the parsed definition keyed by that id, and revisions are append-only, so an id never names two documents. A config change therefore takes effect on the **next command** (the next run) on every replica, with no signal between them.
 
 A cache key is built only from a statement's row, so no lookup by bare fleet id compiles. There is no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone.
 
@@ -911,17 +917,17 @@ The gates run before the run is issued and charge nothing. The issued run's hold
 
 ## Datastore topology
 
-PostgreSQL owns the inbound admissions queue, outbound deliveries and device-login sessions. Core NATS carries activity, wake notifications, runner commands and the outbound ping.
+PostgreSQL owns the inbound turn queue, owed deliveries and device-login sessions. Core NATS carries items, wake notifications, runner commands and the delivery ping.
 The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
 
-A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in one transaction.
+An assignment takes the fleet's thread row before its exact oldest unsettled turn. Both fences advance in one transaction.
 
-Locked or parked heads cannot expose later admissions. A gate answer clears the park stamp and publishes a best-effort wake.
+Locked or parked heads cannot expose later turns. A gate answer clears the park stamp and publishes a best-effort wake.
 
 The candidate query prefers held fleets and a recent wake hint, then the runner's previous fleet, with random ordering for the rest.
-It checks runner labels and live sandbox holds before attempting a claim.
+It checks runner labels and live sandbox holds before attempting an assignment.
 
-The gateway claims on notifications and capacity changes.
+The gateway assigns on notifications and capacity changes.
 Each replica's 5 s recovery probe reads PostgreSQL, so missing notifications cannot hide accepted work.
 
 ## Sandbox tiers
@@ -1124,11 +1130,11 @@ Logs, spans and runner families: [observability.md](./observability.md) §"Signa
 
 The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_runs`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`docs/metrics.census.tsv`](../metrics.census.tsv).
 
-The discovery counters describe gateway claim attempts without entity labels.
+The discovery counters describe gateway assign attempts without entity labels.
 The historical `run_polls_total` name counts these attempts; it does not imply runner run polling.
 Statement cost comes from `pg_stat_statements` in `make bench-run`.
 
-The fleet census publishes unsettled admission count and oldest age.
+The fleet census publishes the unsettled turn count and oldest age (`agentsfleet_turn_backlog`, `agentsfleet_turn_backlog_oldest_age_seconds`).
 Use the maximum across replicas, since each census reads the deployment-wide ledger.
 A failed census withdraws both gauges rather than exporting an old value.
 
@@ -1142,7 +1148,7 @@ Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_ot
 
 Prod is sized for **3 `agentsfleetd` machines**. The release workflow sets that count with `flyctl scale` and verifies that all three machines are running before public readiness. The sections below are written for N>1 as the operating shape, not the contingency.
 
-A runner's verbs load-balance across replicas. So each replica holds only the slice of that runner's event stream it served. Each replica exports its own series.
+A runner's verbs load-balance across replicas. So each replica holds only the slice of that runner's verb stream it served. Each replica exports its own series.
 
 The series are identified by the OpenTelemetry resource attribute carrying the machine identity, not by a scrape target's `instance` label. Fleet-wide truth is so reconstructed by the query, not by shared state:
 
@@ -1166,36 +1172,40 @@ It is **not "metrics in Postgres"**. It *reads* already-durable operational stat
 
 ## Authoring runs
 
+The heading keeps its old words because other pages cite it by text. Setup runs are a draft's private work.
+
 Private setup work shares runner capacity with fleet runs. The sections below describe the implemented protocol; verification evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
 
-The native session declares `accepted_kinds` and receives offers tagged `kind:"fleet"` or `kind:"authoring"`. Claims lock the runner row, count live runs across both kinds plus valid sandbox holds, and insert within that transaction.
+The native connection declares `accepted_kinds` and receives runs tagged `kind:"fleet"` or `kind:"authoring"`, the wire tag for setup work. An assignment locks the runner row, counts live runs across both kinds plus valid sandbox holds, and inserts within that transaction.
 
-Reusing the claimant fleet's hold transfers its worker once; authoring charges every hold.
+Reusing the assigned fleet's hold transfers its worker once; setup charges every hold.
 
 Renewal counts live work without charging idle holds again.
 
-The local keeper counts fleet and authoring work together and retires oldest holds to preserve one free worker.
+The local keeper counts fleet and setup work together and retires oldest holds to preserve one free worker.
 `afd_runner/src/capacity` and `afr_supervisor/src/holds` own the server and host checks.
 
-The server owns `worker_count`; the session cannot override it. Reducing it below current occupancy stops new claims and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing runs can therefore be interrupted.
+The server owns `worker_count`; the connection cannot override it. Reducing it below current occupancy stops new assignments and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing runs can therefore be interrupted.
 
-The shared poll reads an optimistic kind choice. Under the host lock, each successful placement rechecks and advances the claim revision and last successful kind. Mixed placements alternate preference across daemon replicas; an empty kind tries the other, and a competing placement invalidates the old offer.
+The shared poll reads an optimistic kind choice. Under the host lock, each successful placement rechecks and advances the assignment revision and last successful kind. Mixed placements alternate preference across daemon replicas; an empty kind tries the other, and a competing placement invalidates the old choice.
 
-Both renewal kinds hold the runner guard before extending a live deadline. Fleet renewal locks runner → run/affinity; authoring renewal locks draft → attempt → runner. [Concurrency](concurrency.md#runner-capacity-and-authoring-lock-order) owns the ordering and nonblocking claim exception.
+Both renewal kinds hold the runner guard before extending a live deadline. Fleet renewal locks runner → run/thread; setup renewal locks draft → attempt → runner. [Concurrency](concurrency.md#runner-capacity-and-authoring-lock-order) owns the ordering and nonblocking assignment exception.
 
-Renewals sample database time after acquiring the host guard. Expired work requires a new capacity-checked claim; renewal cannot revive it. Runtime renewal extends the run and affinity deadlines atomically under their original fences.
+Renewals sample database time after acquiring the host guard. Expired work requires a new capacity-checked assignment; renewal cannot revive it. Runtime renewal extends the run and thread deadlines atomically under their original fences.
 
-Authoring is creator-private work. Resolve its workspace owner and recheck creator membership. Choose the oldest eligible queued message within that draft, and refuse another live attempt for the same draft.
+Setup is creator-private work. Resolve its workspace owner and recheck creator membership. Choose the oldest eligible queued turn within that draft, and refuse another live attempt for the same draft.
 
-Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; NATS carries wake and progress hints, not another authoritative message copy.
+Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Setup turns remain a Postgres queue in `thread.turns`; NATS carries wake and progress hints, not another authoritative copy.
 
-The authoring schema slots define creator-private `setup.drafts`, `setup.messages`, candidates and replay receipts, plus content-free `setup.attempts` and dispatch and activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Plugin revisions join their existing domains.
+The `setup` schema defines creator-private `setup.drafts`, candidates and replay receipts, plus content-free `setup.attempts` and dispatch and activity receipts. A draft's chat inputs are its `thread.turns` rows.
 
-The private progress channel is `draft:{draft_id}:events`.
+A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Plugin revisions join their existing domains.
+
+The private progress channel is the draft's thread, `af.thread.{draft_id}.items`.
 The publisher and HTTP reader recheck current access before sending answer previews.
-No private event joins workspace broadcast; durable message reads remain authoritative.
+No private frame joins workspace broadcast; durable turn reads remain authoritative.
 
-Each authoring run has an attempt identity, fence, expiry, pinned model, inference settings, context and prices, and a budget. Renewal, report and activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this run.
+Each setup run has an attempt identity, fence, expiry, pinned model, inference settings, context and prices, and a budget. Renewal, report and activity guard all of them. No runtime credential mint, tenant tools, memory, repository checkout, schedule access, or fleet message capability is issued to this run.
 
 Instructions and native setup are untrusted context, never system authority.
 
@@ -1203,7 +1213,7 @@ Instructions and native setup are untrusted context, never system authority.
 
 The daemon issues an opaque run capability and serves the fourth machine route, `/model-calls`. [The resource reference](api_resources.md) owns its issuance, bindings, wire, expiry, revocation, dispatch receipts, and replay behavior. The daemon holds provider keys and dispatches each authorized call; the runner receives bounded text, proposals and usage.
 
-Existing raw-key runtime transport is not reused for authoring. Keep automatic transport retries disabled on this path, count every physical send, and stop on an unresolved dispatch.
+Existing raw-key runtime transport is not reused for setup. Keep automatic transport retries disabled on this path, count every physical send, and stop on an unresolved dispatch.
 
 Real-router integration tests must deny foreign runner and model bindings, expired or revoked tokens, duplicate physical sends, and runtime credential minting. A local capability type alone supplies no boundary proof.
 
@@ -1223,7 +1233,7 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 | Wall time per attempt | 300 seconds | Monotonic runner timer plus daemon expiry/fence; timeouts become timed_out. |
 | Provider request | Up to 300 seconds | Recorded dispatch deadline, clipped to attempt expiry; replay never starts another send. Upstream cancellation remains unconfirmed. |
 | Runner model-call HTTP wait | 310 seconds | Allows the bounded provider call and receipt settlement. |
-| Run TTL / renewal | 35 seconds / 5 seconds | No overlapping admitted run while the prior live attempt remains counted. |
+| Run TTL / renewal | 35 seconds / 5 seconds | No overlapping assigned run while the prior live attempt remains counted. |
 | First instructions / edited | 12,288 /32,768 characters | Shared validated text bounds, independently of tokenizer counts. |
 | Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
 
@@ -1237,7 +1247,7 @@ The `o200k_base` estimate for an unrecognized model carries a quarter of headroo
 
 Every physical dispatch spends the call allowance; automatic transport retries are disabled. Uncertain usage ends the attempt before another dispatch can spend an unknown output remainder. [Proposal correction](runner_execution.md#proposal-correction-and-failure) describes bounded retries after rejected edits.
 
-The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. Claim includes the current candidate; every proposal acknowledgement returns its accepted version. Exact replay returns that original version, even after later edits.
+The model has one proposal tool: initialize once when no candidate exists, then small edits against the candidate ID and revision. Assignment includes the current candidate; every proposal acknowledgement returns its accepted version. Exact replay returns that original version, even after later edits.
 
 It may ask clarifying questions. It cannot grant access, publish, Save, call arbitrary functions, or choose different credentials. Tool operations pass the same validator as drawer edits.
 
@@ -1247,9 +1257,9 @@ Assistant answer and candidate changes are separate records; terminal report doe
 
 | Copy | Owner | Lifetime and removal |
 |---|---|---|
-| Draft messages and candidates | Creator-private authoring domain | Draft deletion removes private rows and fences every attempt. |
-| Dispatch result, native provider reply and answer receipts | Authoring domain | Bounded private replay copies expire after 24 hours. Native replies bind the attempt and unchanged conversation prefix, stay out of runner responses and logs, and are cleared with draft deletion. Accounting receipts retain no answer. |
-| Pending authoring report | Supervisor worker | Retained only in memory. Private answer text is zeroed after 24 hours; retries retain content-free accounting. Process loss discards pending memory. |
+| Draft turns and candidates | Creator-private setup domain | Draft deletion removes private rows and fences every attempt. |
+| Dispatch result, native provider reply and answer receipts | Setup domain | Bounded private replay copies expire after 24 hours. Native replies bind the attempt and unchanged conversation prefix, stay out of runner responses and logs, and are cleared with draft deletion. Accounting receipts retain no answer. |
+| Pending setup report | Supervisor worker | Retained only in memory. Private answer text is zeroed after 24 hours; retries retain content-free accounting. Process loss discards pending memory. |
 | Attempt and settlement records | Runner and billing domains | Retain content-free identities and validated accounting independently of the draft. |
 | Provider logs and infrastructure snapshots | Their service owners | Follow their published retention; draft deletion cannot promise physical removal from these systems. |
 

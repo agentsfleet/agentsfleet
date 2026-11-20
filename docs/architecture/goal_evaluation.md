@@ -19,7 +19,7 @@ Reuse guarded HTTP construction, final request-header validation, native vault r
 Decision responses use a 64-KiB bound; coding inference retains its existing SDK wire limit.
 
 ```text
-Existing fleet admission -> existing run -> existing agent loop
+Existing fleet turn -> existing run -> existing agent loop
                                              |
                               DecisionEvaluator::evaluate
                                              |
@@ -108,14 +108,14 @@ operator PATCH existing runner -> native assignment -> heartbeat
 ```
 
 Apply assignment edits to later runs; an active call retains its recorded profile and physical call identity.
-After the slot lock, a fresh database clock rejects claims that expired during profile lookup or lock waits.
+After the thread row lock, a fresh database clock rejects claims that expired during profile lookup or lock waits.
 
 Revocation still prevents new dispatch and native acceptance while preserving measured usage.
 Replacement runners may use another reviewed profile without changing the DT objective, authority, history or cumulative limits.
 
 Decision reuse requires matching profile revision, questions, assessed state, goal revision and evidence binding.
 A profile change invalidates cached assessments; it does not repeat already accepted human input or confirmed effects.
-An unset or unsupported profile leaves DT admission unavailable with a named prerequisite; ordinary chat retains its current path.
+An unset or unsupported profile leaves DT creation unavailable with a named prerequisite; ordinary chat retains its current path.
 
 ## Provider APIs and Rust client choices
 
@@ -188,7 +188,7 @@ Pin the fleet question revision and evaluated model profile together for every a
 ## Who writes and stores the questions
 
 The fleet owner controls routing and completion questions, including their wording and criteria.
-Setup chat or CLI authoring drafts `config["x-agentsfleet"].decision_policy`; business guidance stays in `instructions_md`.
+Setup chat or the CLI's setup flow drafts `config["x-agentsfleet"].decision_policy`; business guidance stays in `instructions_md`.
 The owner reviews and applies that candidate through the existing setup flow.
 
 The setup-chat LLM proposes questions in the first draft once the job and success conditions are clear.
@@ -200,7 +200,7 @@ It shows the proposed question, yes/no criteria or choice criteria, and the scop
 The owner can revise poor criteria through chat without editing source code or asking a platform administrator.
 
 An owner can supply exact wording: “Add a completion question: does the repair preserve SSO login? Yes when the login regression passes; No when it fails or is missing.”
-The authoring assistant preserves supplied wording and proposes missing criteria for review.
+The setup assistant preserves supplied wording and proposes missing criteria for review.
 
 Each Apply creates another immutable fleet revision; it never edits an older revision.
 New DTs adopt the current accepted policy and their specific objectives automatically.
@@ -226,7 +226,7 @@ UI setup chat / CLI -> assistant drafts instructions_md + decision_policy
    accepted questions + current evidence -> typed request -> selected model
 ```
 
-Task admission saves its accepted questions in `fleet.tasks.questions`, bound to `accepted_revision_id` and `goal_digest`.
+Task creation saves its accepted questions in `fleet.tasks.questions`, bound to `accepted_revision_id` and `goal_digest`.
 Adoption preserves prior revisions, assessments, confirmed effects and cumulative spend.
 The model catalogue supplies supported types and evaluated model thresholds; fleet owners control the question text and criteria.
 
@@ -316,7 +316,7 @@ The proposed thresholds below require frozen real-message evaluation before enab
 ## Goal evaluation
 
 The accepted `decision_policy` holds user-reviewed completion questions and criteria; `instructions_md` supplies their business context.
-Task admission freezes that fleet revision and the specific objective; typed templates preserve their meaning.
+Task creation freezes that fleet revision and the specific objective; typed templates preserve their meaning.
 Question changes require a new immutable revision and explicit adoption before they can affect an existing DT.
 
 At a completed action group or resumed-task boundary, send bounded current task state and attributable evidence.
@@ -353,7 +353,7 @@ Ambiguous answers invalidate the assessment while retaining independently readab
 Normalized score receipts use `serde_with` for numeric JSON keys and reject collisions after integer conversion.
 A rejected wire receipt leaves the existing reservation and stored call unchanged.
 
-Use bounded timeouts and retry accounting shared with the task or pre-task admission.
+Use bounded timeouts and retry accounting shared with the task or pre-task turn.
 Input tokens determine TypeSafe's documented charge; output usage remains recorded even when its rate is zero.
 Resolve exact rates through reviewed configuration rather than reusing an unrelated chat model's prices.
 
@@ -410,7 +410,7 @@ Tests cover exactly 0.30/0.70 and values immediately on either side, including h
 | Call deadline | Three-second connect timeout; 12 seconds per physical request; 30 seconds total per logical decision. |
 | Retry | One retry after 429/529, at most two seconds of jittered backoff or Retry-After within the remaining deadline. |
 | Unknown network outcome | No automatic retry; retain the reservation and expose decision uncertainty. |
-| Reservation | USD 0.02 for each physical call, separately held before sending; cumulative task/admission bounds still apply. |
+| Reservation | USD 0.02 for each physical call, separately held before sending; cumulative task/turn bounds still apply. |
 | Initial reviewed rate | 42 nanodollars per input token, zero per output token, matching the inspected TypeSafe price of USD 0.042 per million input tokens. |
 
 Do not truncate the newest message or silently omit an eligible candidate to fit the state budget.
@@ -426,7 +426,7 @@ Retain a conservative reservation for missing usage until authoritative provider
 If reported cost exceeds its reservation, record actual cost, block further paid actions and surface the overage without inventing a hard vendor-spend guarantee.
 
 No observed provider tokenization proves the reservation is an absolute charge ceiling.
-The bounded request, reviewed rate and per-call reservation limit local admission; actual provider usage remains the accounting authority.
+The bounded request, reviewed rate and per-call reservation limit local acceptance; actual provider usage remains the accounting authority.
 Price/version policy changes block new calls until reviewed rates and evaluation evidence are updated.
 
 Use `reqwest` 0.13.5 through existing transport conventions, with redirects disabled and secrets redacted.
@@ -451,7 +451,7 @@ Unknown calls retain their reservation; replacement or task binding cannot charg
 ### Native billing integration
 
 Use the original run's `WorkKey::FleetRun`; binding an intent call to a later task does not create another billing identity.
-The call record retains its runner, original admission/run, optional task, authorized generation, native usage sequence, immutable profile/price snapshot and reservation.
+The call record retains its runner, original turn/run, optional task, authorized generation, native usage sequence, immutable profile/price snapshot and reservation.
 Coding usage keeps `[0, 2^31)`, runtime uses `[2^31, 3 * 2^30)`, and native decision calls use `[3 * 2^30, 2^32)`; both native allocators refuse exhaustion.
 
 Runtime-line counts in `meter_run.sql` and `bill_expired_slice.sql` must exclude decision sequences.
@@ -471,7 +471,7 @@ Each cycle freezes a database-time cutoff, so new arrivals cannot postpone retri
 Cancellation preserves that cursor; restarting the daemon safely begins another scan.
 
 Each pass reads at most 100 expired unissued candidates, with a ten-second deadline and the existing bounded statements.
-Maintenance takes the ordinary parent, fleet-slot, task and call locks with `NOWAIT`; contention skips the whole candidate.
+Maintenance takes the ordinary parent, thread, task and call locks with `NOWAIT`; contention skips the whole candidate.
 The owner rechecks issuance and accounting before releasing any reservation.
 
 Proved-unsent expiry uses the same receipt journal and task-budget update as other receipts, without adding a zero-cost usage line.
@@ -488,10 +488,10 @@ The shared operation metrics add `decision_sweep`; recovery attempts and overdue
 ### Running task authority and source attribution
 
 A routing call can assess human input B while task A holds the fleet's active run.
-The wire task stamp still proves A's current generation, but intent charges remain attributable to B's source admission.
+The wire task stamp still proves A's current generation, but intent charges remain attributable to B's source turn.
 Only a goal call carries A as its task-budget owner; both retain the issuing run's original billing work identity.
 
-A source can be that run's own admission or another eligible human input claimed under the same run/fence.
+A source can be that run's own turn or another eligible human input claimed under the same run/fence.
 Claiming preserves the original message and does not accept an interpretation.
 Later task binding cannot transfer or duplicate the routing charge.
 

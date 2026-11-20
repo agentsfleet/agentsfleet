@@ -444,7 +444,7 @@ Reusable visual treatments belong in `ui/packages/design-system`. App widgets co
 
 Use Activity for the workspace feed. Fleet activity appears in its conversation. Individual records remain events; existing event URLs retain their meaning.
 
-The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** opens the authoring page at the fleet's saved version.
+The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** opens the setup page at the fleet's saved version.
 
 Fleet messages, setup receipts, and integration activity share one chronological conversation.
 
@@ -695,7 +695,7 @@ Fleet chat displays the saved runtime model. Setup chat selects the model that h
 
 These controls have different jobs and share typography. Changing the setup conversation's model does not change the fleet's runtime model.
 
-On the authoring page for a saved fleet, the header offers Save changes.
+On the setup page for a saved fleet, the header offers Save changes.
 Reuse the reviewed draft's save action, including validation, pending state, and conflict handling. Do not add a second save action above the composer.
 
 Explain when changes affect the fleet in plain language. Show confirmed saved versions in the compact status above the composer.
@@ -711,7 +711,7 @@ The saved setup editor returns to its fleet conversation. Use the rail's fleet p
 
 Keep one visual shell through setup, confirmed save, and the fleet conversation. Preserve the title, reading width, composer position, and inline Summary.
 
-Label the authoring state Fleet setup. Its flap action is Save and publish.
+Label the setup state Fleet setup. Its flap action is Save and publish.
 
 Show model, spending limit, repositories, internet access and secrets in Summary. Show Next wake-up only in the composer flap.
 
@@ -720,7 +720,7 @@ Show confirmed readiness separately from saving.
 
 If setup needs attention after creation, retain the created fleet and expose recovery without repeating creation.
 
-Use Message fleet after the transition. Edit setup explicitly returns to authoring within the same shell; normal runtime messages never silently rewrite setup.
+Use Message fleet after the transition. Edit setup explicitly returns to the setup page within the same shell; normal runtime messages never silently rewrite setup.
 Save changes returns to the conversation after confirmed revision acceptance.
 
 Preserve version checks and conflict recovery.
@@ -755,7 +755,7 @@ Provide search across every retained line and copy the complete output, includin
 
 The compact setup status shows actual reading, sending, saving and publishing progress.
 Show a success tick only for a confirmed saved version or publication.
-A new authoring request replaces the previous confirmation and its fleet action.
+A new setup request replaces the previous confirmation and its fleet action.
 
 Confirmed saving opens the fleet conversation. The disabled Plugin tree retains its publication confirmation and pinned-revision start for possible reuse.
 
@@ -885,15 +885,15 @@ Distinguish loading, unavailable history, and a successful empty list. Failed lo
 
 Keep every accepted message and saved assistant reply in the creator-private draft, subject to deletion and the documented retention rules. Do not select a subset of messages to retain based on model judgment.
 
-During conversation, the selected authoring model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
+During conversation, the selected setup model turns the person's requirements into proposed instructions and configuration through `propose_setup`. The daemon validates each proposal and stores a new immutable candidate revision. Validation proves supported structure and policy; it does not prove that every conversational requirement was captured.
 
-Keep **Instructions** and explicit publication in the authoring chat menu throughout the conversation.
+Keep **Instructions** and explicit publication in the setup chat menu throughout the conversation.
 **Instructions** opens a tall side dialog on desktop and a full-screen editor on mobile.
 
 Questions and requested changes continue the conversation. A standalone Save command finalizes the current decisions with the model, then saves the checked setup.
 Publication remains a separate menu action and stores the selected candidate unchanged; the transcript stays private.
 
-Saved fleets return to the same authoring page through **Edit setup**. Instructions and publication use the same menu controls.
+Saved fleets return to the same setup page through **Edit setup**. Instructions and publication use the same menu controls.
 
 Opening the editor creates no fleet and requests no run. Keep the composer mounted and retain unsent text while the dialog is open.
 
@@ -943,8 +943,9 @@ Evidence inspection stays paused until Play; closing restores the reading positi
 Reduced motion shows the complete conversation immediately. Mobile keeps the same bounded conversation.
 Animation never grants permission, connects tools, authenticates, or starts real work.
 
-Keep Example run visible and disclose that authoring illustrates the planned experience.
+Keep Example run visible and disclose that setup illustrates the planned experience.
 Every identifier, excerpt, and output is sample data; arbitrary visitor input never changes the sample diagnosis.
+
 Separate investigation, recommendation, access limits, and report. Repair remains a separately configured job.
 Do not show child-role progress until the runtime supplies real child lifecycle and origin facts.
 
@@ -981,9 +982,14 @@ Show setup requirements after the product example. Do not promise instant setup 
 Expressed intent proceeds without redundant confirmation.
 Credentials and prerequisites appear at the point of need when supported.
 Loading, success, and failure states remain visible where the action began.
+
 Reuse the signed-in session and server credential helper; preserve current access checks on every private read, write, and stream reconnect.
-Use one private Server-Sent Events (SSE) connection for active authoring. Coalesce progress hints into durable-state refreshes and reconcile on reconnect. A healthy quiet stream must not become a polling loop. Abort streams and reads when the account, workspace, creator, or draft changes.
+
+Use one private Server-Sent Events (SSE) connection for active setup. Coalesce progress hints into durable-state refreshes and reconcile on reconnect. A healthy quiet stream must not become a polling loop.
+
+Abort streams and reads when the account, workspace, creator, or draft changes.
 Keep private conversation responses uncached. Cache public assets and immutable reusable content only within the appropriate authorization scope; live readiness, permissions, and mutable Library heads require current reads.
+
 If navigation leaves an empty route slot, the shell shows a spinner until route content returns.
 Destructive actions retain their existing confirmation behavior.
 

@@ -24,7 +24,7 @@
 
 ## Run execution kinds
 
-A tagged native offer carries fleet runtime or private setup work. Fleet runs use their admitted tools and optional sandbox. Setup turns use only daemon-scoped model calls and the fixed proposal tool.
+A tagged native run (`Down::Run`) carries fleet runtime or private setup work. Fleet runs use their admitted tools and optional sandbox. Setup turns use only daemon-scoped model calls and the fixed proposal tool.
 
 Setup runs carry no runtime credentials, repository checkout or tenant tools. The [runner guide](runner_protocol.md) owns connection authority, capacity and recovery. [API resources](api_resources.md#scoped-model-invocation) owns dispatch authorization.
 
@@ -37,7 +37,7 @@ The turn stops at eight calls or the admitted output allowance (`afr_supervisor/
 When every proposal in the response is accepted, the turn returns the review-ready answer. Save remains a separate human action.
 
 Unknown provider usage ends the turn without another dispatch.
-Private authoring renewal defaults to ten seconds, with a 250-millisecond pause after retryable failure (`afr_supervisor/src/authoring/renew.rs`).
+Private setup renewal defaults to ten seconds, with a 250-millisecond pause after retryable failure (`afr_supervisor/src/authoring/renew.rs`).
 The runner profile can shorten both intervals; the accepted attempt deadline still wins.
 
 The daemon snapshots the selected call, wall-time, correction and provider-timeout limits with each issued attempt.
@@ -55,7 +55,7 @@ Remove the private transcript from server-rendered and browser caches, and close
 | Draft/message/candidate rows and private replay bodies | Daemon DELETE/expiry, content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
 | Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
 | Runner memory / in-flight request | Delete generation at renewal, report, activity; runner cancels the turn and drops its local buffers | Online runner notices at next five-second renewal; disconnected runner run expires within 35 seconds. Upstream completion may outlive local abort. |
-| Pending authoring report | Worker memory retains the current report; no report files are written (`afr_supervisor/src/authoring/mod.rs`) | After 24 hours, delivery zeroes private answer text and retries content-free accounting. Process loss discards pending memory. |
+| Pending setup report | Worker memory retains the current report; no report files are written (`afr_supervisor/src/authoring/mod.rs`) | After 24 hours, delivery zeroes private answer text and retries content-free accounting. Process loss discards pending memory. |
 | Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
 | Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
 | Published revision / applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not unpublish or delete shared setup; disclose this before Save/publication. |
@@ -91,7 +91,7 @@ Its outputs are the answer, a proposed change, files the user can download and m
 ## Process model
 
 ```
-agentsfleetd ◄── native runner session (af_wire) and retained HTTP operations
+agentsfleetd ◄── native runner connection (af_wire) and retained HTTP operations
    ▲
 agentsfleet-runner (one binary; a VM or a bare-metal host)
  ┌ supervisor — trusted, outside every sandbox ─────────────────────────┐
@@ -126,13 +126,13 @@ A session's process outlives the call that started it. So the run's end also kil
 ## One run, end to end
 
 `agentsfleet-runner run` probes the host, admits the staged toolbox and builds one bubblewrap engine (`rustd/crates/runner/main/src/main.rs`).
-The native session, heartbeat policy and worker pool run together until shutdown (`afr_supervisor/src/lib.rs`).
+The native connection, heartbeat policy and worker pool run together until shutdown (`afr_supervisor/src/lib.rs`).
 
-Idle workers wait for pushed offers while the current assignment permits work.
+Idle workers wait for pushed runs while the current heartbeat policy permits work.
 Each worker keeps its run and pending report until acknowledgement or a terminal refusal (`afr_supervisor/src/worker_pool/mod.rs`).
 
 ```
- native offer
+ Down::Run
    │
    ├─ admit       the policy's tools and provider; an unhosted one refuses the run here
    ├─ turn        one run per fleet on this runner; a second run for it waits
@@ -151,7 +151,7 @@ Each worker keeps its run and pending report until acknowledgement or a terminal
 
 **One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy (`afr_supervisor/src/turns/mod.rs`).
 
-A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's affinity slot already admits one live run per fleet. It does so across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity: durable fleet memory rides the trusted plane").
+A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's `thread.threads` row already admits one live run per fleet. It does so across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity: durable fleet memory rides the trusted plane").
 
 **A refusal ends the run with a report.** It ends as `startup_posture` before the turn runs (`afr_supervisor/src/run_loop/refusal.rs`). Refusals cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and a binding no checkout serves.
 
@@ -160,7 +160,7 @@ A sandbox that cannot be built leaves the turn going, and its sandbox-side calls
 **The report carries memory and timing.** The runner sends the current report with its memory deltas and timing segments (`afr_supervisor/src/run_loop/settle.rs`).
 The daemon captures memory under the run fence before committing settlement.
 
-**Run frames and memory deltas zero on drop.** Native offer frames retain zeroing allocation owners through dispatch.
+**Run frames and memory deltas zero on drop.** Native run frames retain zeroing allocation owners through dispatch.
 `CapturedMemory` overwrites the strings it owns when dropped (`afr_supervisor/src/memory/mod.rs`).
 
 **The report is the record.** The worker retries the same report from memory after connection loss (`afr_supervisor/src/report/delivery/mod.rs`).
@@ -227,7 +227,7 @@ A separate reopening budget applies before visible output or known spend.
 The defaults allow three generation sends per opening and three eligible openings.
 
 Native token-count requests remain separate and send once per opening.
-Paid authoring dispatches and native decisions retain their single-send rule.
+Paid setup dispatches and native decisions retain their single-send rule.
 
 The reasoning a provider signs goes back with the turn that made it. A call from a turn cut at the output limit is answered `output_limit_reached` and never runs.
 
@@ -264,9 +264,9 @@ The shared file-operation default remains two across the whole runner.
 Required restores queue while renewal continues; optional captures skip a busy boundary before freezing.
 The existing four-transfer window and checkpoint wire ceilings remain compiled bounds.
 
-The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the event's message and the model's own earlier turns.
+The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the turn's message and the model's own earlier turns.
 
-A chat run also carries the fleet's thread before its event: up to eight finished turns within 64 KiB. The rows are the ones the dashboard thread shows.
+A chat run also carries the fleet's thread before its turn: up to eight finished turns within 64 KiB. The rows are the ones the dashboard thread shows.
 
 The loop sends each turn as a user and an assistant turn ahead of the new message, through the same scrub. Webhook, cron and continuation runs carry none.
 
@@ -308,8 +308,8 @@ The harness also carries tools this runner does not offer yet: an MCP client (`m
 | `web_search` | the provider, as a hosted tool spec | a provider that offers one; a tool error with a code otherwise |
 | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor, `guffbolt::tools::memory` over the fleet's backend as the memory store | the loaded store and the fenced push |
 | `update_plan` | supervisor, `guffbolt::tools::plan` | nothing |
-| `message` | supervisor, through a runner verb, to the event's thread | the messages verb |
-| `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's events with 1 KiB excerpts |
+| `message` | supervisor, through a runner verb, to the turn's thread | the messages verb |
+| `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's turns with 1 KiB excerpts |
 | `fleet_steer` | supervisor, through a runner verb, as a chat message on another fleet in the workspace | the steers verb: the target answers in the sender's thread and reads a first line naming the sender; never the sending fleet |
 | `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
 | `delegate`, `spawn`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent` | the loop itself, beside the turn: a child is a nested loop sharing the run's sandbox, memory, key, budget and call counter, polled inside the run so it ends with it | Codex's `spawn_agent`, `wait_agent` and `send_input` shape; depth 2, four running and sixteen started per run |
@@ -548,8 +548,8 @@ In the kernel lane, a debug build went from run accept to executor ready in 23.6
 
 On a disk under `/var/tmp`, with 100 runs 4 at once, executor ready took 100.8 ms cold at p50 before M237. The in-process disk took that under 50 ms. The specs' Discovery holds every figure ([run waits](../v2/done/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md), [start](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md)).
 
-Work arrives through a pushed offer when the gateway can claim it for an available worker.
-Memory preparation and the first model call follow the offer.
+Work arrives through a pushed run when the gateway can assign it to an available worker.
+Memory preparation and the first model call follow the run.
 The host fetches the toolbox before taking work.
 
 **Reading the run path's speed.** A regression should show as a moved percentile on a signal the runner exports. A fleet watching Grafana can then find it ([durable repair](scenarios/durable-repair.md)). Each question below has one:
@@ -563,7 +563,7 @@ The host fetches the toolbox before taking work.
 | Where did one run's setup time go? | `egress_ms`, `prepare_ms` and `checkout_ms` on `run_completed` |
 | How fast is the model? | `agentsfleet_runner_provider_turn_duration_seconds` |
 
-Three questions have no signal yet. Nothing times an event's wait for its run, or a run's wait for its first model request. Nothing times each step inside a prepare either; the follow-up to M237 adds all three.
+Three questions have no signal yet. Nothing times a turn's wait for its run, or a run's wait for its first model request. Nothing times each step inside a prepare either; the follow-up to M237 adds all three.
 
 **Where the bytes live.**
 
@@ -643,7 +643,7 @@ systemd ─► /usr/local/bin/agentsfleet-runner run
                ├─ host::agent        afr_agent::Loop over the tool catalog and providers
                └─ tokio runtime ─► serve                                   main.rs
                     └─ afr_supervisor::run ─► compose ─► Lessee { engine, agent, plane }
-                         native session, heartbeat policy and worker pool run together
+                         native connection, heartbeat policy and worker pool run together
 ```
 
 The probe checks that `/usr/bin/bwrap` exists and is executable. It does not start a trial sandbox; the first run's `prepare` is the first real start.
@@ -683,7 +683,7 @@ A run's own files live only on its workspace disk, which no other run can see. F
 ### Part B: a run arrives, and the sandbox decision
 
 ```
-native offer ─► worker_pool ─► RunPayload
+Down::Run ─► worker_pool ─► RunPayload
 Lessee::run ─► run ─► Run::run        run_loop/mod.rs
   renewal and the activity pump start alongside
 work
@@ -859,7 +859,7 @@ The recovery page owns capture boundaries, file safety, fencing, and runner-wide
 
   - a failed thaw, or the deadline;
 
-  - the keeper retiring oldest holds to preserve a free worker across fleet and authoring work;
+  - the keeper retiring oldest holds to preserve a free worker across fleet and setup work;
 
   - the runner stopping running for any cause, or shutting down;
 
@@ -879,9 +879,9 @@ run ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per worker
    fleet halted or deleted
 ```
 
-The compact session checkpoint in `fleet.sessions` remains a separate semantic record.
+The compact resume context in `thread.threads.resume_context` remains a separate semantic record.
 It grants no file-restore or run authority.
-New chat events still load recent finished thread turns; a replacement of the same event reads its committed recovery state.
+New chat turns still load recent finished thread turns; a replacement run of the same turn reads its committed recovery state.
 
 ## Credentials
 

@@ -19,7 +19,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Capability layers | 2 | the Definition's `instructions_md` is advisory; its reviewed `config` plus approved grants are binding, enforced by the runner | §1 |
-| `trigger.type` vs `event_type` | orthogonal fields | different homes and meanings (the setup's `config` vs `fleet.events`); some values overlap | §1.1 |
+| `trigger.type` vs `event_type` | orthogonal fields | different homes and meanings (the setup's `config` vs `thread.turns`); some values overlap | §1.1 |
 | Tool primitives | the runner's published catalog, e.g. `http_request` · the `file_*` tools · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | [`runner_execution.md`](./runner_execution.md) §"Tool catalog" |
 | Mintable integrations | short-lived tokens, minted per run | GitHub App: daemon-signed RS256 JSON Web Token (JWT) exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §3 |
 | Vault secret shapes | 2 | static (stores the value, resolved at run) vs mintable (stores a handle, never a token) | §3 |
@@ -66,7 +66,7 @@ These are two different fields on two different tables. Mixing them up is the mo
 | Field | Where it lives | Values | What it tags |
 |---|---|---|---|
 | `trigger.type` | the setup's `config` (static, reviewed) | `webhook` / `cron` / `mention` | **How a Fleet gets triggered**: the wiring fixed at Save or a later reviewed revision. |
-| `event_type` | `fleet.events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual admitted event is**: the runtime label per delivery. |
+| `event_type` | `thread.turns.kind` column (per turn), named `event_type` on the wire | `chat` / `webhook` / `cron` / `continuation` | **What an individual turn is**: the runtime label per input. |
 
 A fleet needs no declared trigger to receive `event_type: chat` from the steer API.
 A `trigger.type: webhook` fleet receives `event_type: webhook`.
@@ -88,9 +88,9 @@ The runner hosts every published tool; `tools:` selects which the model is offer
 
 | Capability | What it does | Primary owner |
 |---|---|---|
-| Work assignment + archive | `agentsfleetd` assigns the next event on `run` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per run). Archive and delete stop new runs and send Cancel to a running one ([`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete"). | agentsfleetd control plane |
-| Per-run policy | Each `run` reply carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model"). | Run ExecutionPolicy |
-| Turns ledger + history | Every steer / webhook / cron event commits to `fleet.admissions` with actor provenance. `fleet.events` rows are opened at receive and closed at completion. | Event ingest + history path |
+| Work assignment + archive | `agentsfleetd` assigns the next turn as a run (atomic thread-row lock + monotonic fencing token; status/config resolved fresh from Postgres per run). Archive and delete stop new runs and send Cancel to a running one ([`runner_fleet.md`](./runner_fleet.md) §"Steer, archive, delete"). | agentsfleetd control plane |
+| Per-run policy | Each `Down::Run` frame's `RunPayload` carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model"). | Run ExecutionPolicy |
+| Turns ledger + history | Every steer / webhook / cron input commits a queued `thread.turns` row with actor provenance. The turn is opened when a run first takes it and settled at completion. | Turn ingest + history path |
 | Webhook ingest (GitHub App + manual) | Both receivers verify the signature, bind the delivery to subscribed fleets and refuse replays before queueing. The App records actor `github-app`; the manual receiver records `webhook:<source>` ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs"). | App ingress + webhook receiver |
 | Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`af_crypto`). Two shapes: a **static** secret stores the value itself (resolved at run, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`), never a token, which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
 | Integration credential broker | `agentsfleetd` mints a short-lived, workspace-scoped token per mintable integration on demand; the App private key never leaves the daemon ([`connectors.md`](./connectors.md) §"Credential use remains separate from event receipt"). | Credential broker (daemon-side) |
@@ -201,7 +201,7 @@ The selection is deterministic and documented, so "why does my fleet remember X 
 
 - Never logs raw secret bytes
 - Never echoes secrets in the fleet's context
-- Never saves secrets in `fleet.events`
+- Never saves secrets in `thread.turns`
 - Never lets the GitHub App private key leave the daemon. The key is platform-side, and the run envelope, the `secrets_map`, and the runner never carry it
 - Never lets the fleet reach a host outside its `network.allow` list
 - Never lets the fleet exceed its `budget` caps without trip-blocking

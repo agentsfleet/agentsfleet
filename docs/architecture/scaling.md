@@ -3,7 +3,7 @@
 > Parent: [`README.md`](./README.md) · Companions: [`data_flow.md`](./data_flow.md) §"Connection topology", [`runner_fleet.md`](./runner_fleet.md) §"Scaling".
 
 > [!IMPORTANT]
-> **Scope:** size the ledger queue, pushed runner sessions, database work and the shared NATS connection. Historical stream measurements are marked as comparisons.
+> **Scope:** size the turn queue, pushed runner connections, database work and the shared NATS connection. Historical stream measurements are marked as comparisons.
 
 Read this when you need to size a deployment or pick env-var values. It also tells you whether the next bottleneck is `agentsfleetd` API replicas, Postgres, the datastore machine, or runner fan-out.
 
@@ -17,10 +17,10 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Bus connections | R at boot | one NATS connection per replica, shared by publishers, the hub and the outbound worker | §Connection budget after the cutover |
 | Idle discovery volume | One query per replica every five seconds | Daemon recovery probe; runners send no run requests | §Idle request volume |
-| Recovery interval | `OFFER_FALLBACK_TICK` = 5 seconds | Recovers missed disposable wake notifications | §Idle request volume |
-| Candidate result ceiling | `MAX_CANDIDATES_PER_POLL` = 64 | bounds returned fleet identifiers and claim attempts; discovery still examines eligible active fleets | §Candidate and claim bounds |
+| Recovery interval | `ASSIGN_FALLBACK_TICK` = 5 seconds | Recovers missed disposable wake notifications | §Idle request volume |
+| Candidate result ceiling | `MAX_CANDIDATES_PER_POLL` = 64 | bounds returned fleet identifiers and assignment attempts; discovery still examines eligible active fleets | §Candidate and claim bounds |
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Idle request volume |
-| Fleet count in discovery work | eligible active fleets when unsettled admissions exist | an empty ledger skips fleet scans; otherwise one oldest-unsettled lookup per eligible fleet | §Candidate and claim bounds |
+| Fleet count in discovery work | eligible active fleets when unsettled turns exist | an empty queue skips fleet scans; otherwise one oldest-unsettled lookup per eligible fleet | §Candidate and claim bounds |
 | Server-Sent Events (SSE) ceiling | `SSE_MAX_STREAMS` = 256 per replica, bound by file descriptors | async response bodies own semaphore permits; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
 | Bus publish deadline | `publish_deadline_ms` = 250 (`afd_bus::nats::Tuning`) | a publish or flush that misses it fails and is owed a gap marker; an outage costs a caller this, not a hang | §Tuneup knobs |
 | Bus connect timeout | `connect_timeout_ms` = 5000 (`afd_bus::nats::Tuning`) | a seed that does not answer inside it refuses boot as `UZ-STARTUP-004` | §Tuneup knobs |
@@ -29,7 +29,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Admission ceiling | `DEFAULT_MAX_IN_FLIGHT` = 256, api-class only | compiled default; operational and stream routes use separate handling | §Tuneup knobs |
 | The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
 | Recurring-read indexes | one slot per table, plan-asserted | idle Postgres cost tracks work, not accumulated rows; runner sorts stay unindexed on purpose, because runners number about a hundred | §Which recurring Postgres reads are index-served |
-| Missed-wake recovery | Next five-second probe, then normal claim work | Healthy notifications trigger offers immediately; no end-to-end delay guarantee | §Event-delivery latency |
+| Missed-wake recovery | Next five-second probe, then normal assignment work | Healthy notifications trigger assignment immediately; no end-to-end delay guarantee | §Event-delivery latency |
 | Outbound-answer worker | claims on a ping, a finished lane, or every 30 s | one lane-head claim statement per wake; no connection of its own | §Tuneup knobs |
 | Bus node loss | one client reconnect per replica | the client reconnects to another seed; every local subscription receives one `Gap` | §Datastore failover |
 
@@ -38,7 +38,7 @@ Every row is extracted from the sections below; the owner column names the secti
 The ten sizing anti-patterns are the trap list. Read §Anti-patterns (do NOT do these) before any sizing conversation. Three more live elsewhere:
 
 - Statement count alone hides server work: measure discovery latency at the intended active fleet count (§Idle request volume).
-- Metric ratios need their denominator: without `agentsfleet_run_polls_total`, a claim increase and a fan-out regression look identical (§Candidate and claim bounds).
+- Metric ratios need their denominator: without `agentsfleet_run_polls_total`, an assignment increase and a fan-out regression look identical (§Candidate and claim bounds).
 - Fleet-memory load still sorts, and correctly so. An index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
 
 ## Topology
@@ -50,7 +50,7 @@ No standalone diagram; the sizing procedure block in §"Sizing procedure" is the
 | Decision | Reason | Where |
 |---|---|---|
 | Auth memo removed; the daemon reads the runner row every request | revocation must be deterministic fleet-wide, not per-machine | §Idle request volume; M143_001, [`../AUTH.md`](../AUTH.md) §"Runner token" |
-| Commit the admission before notification | lost notifications cannot lose accepted work | §Idle request volume |
+| Commit the turn before notification | lost notifications cannot lose accepted work | §Idle request volume |
 | Randomize candidates after notification and affinity priority | spread competing polls across eligible fleets; no strict fairness bound | §Candidate and claim bounds |
 | Async SSE bodies share one native subscription per subject | waiting for frames does not reserve an operating-system thread per viewer | §2; `afd_sse` |
 | One NATS connection per process | publishers and subscribers share it; the hub fans out locally | §Connection budget after the cutover; M244 |
@@ -63,7 +63,7 @@ Everything below is the full reference. Headings are stable because specs cite t
 
 ## What binds this deployment
 
-The per-fleet dedicated datastore connection is gone. An offer pass reads Postgres and never waits on the bus.
+The per-fleet dedicated datastore connection is gone. An assignment pass reads Postgres and never waits on the bus.
 
 The binding constraint is now `agentsfleetd` API replicas plus Postgres write throughput on the run/report hot path, both horizontally scalable.
 Idle database cost follows the **replica count**, one recovery probe per replica every 5 s, rather than fleet population.
@@ -105,16 +105,16 @@ Postgres is **PlanetScale**, and two of its properties bind the same way:
 
 ## Event-delivery latency
 
-A committed steer wakes the gateway, which pushes an offer to an eligible connected runner:
+A committed steer wakes the gateway, which assigns a run to an eligible connected runner:
 
 | Step | Work on the serving path |
 |---|---|
 | API receives a steer or webhook | Validate identity, access and backlog budget |
-| API accepts the event | Commit `fleet.admissions`, then publish a best-effort `af.thread.<thread_id>.wake` notification |
-| Gateway handles a wake or available capacity | Claim an eligible ledger head and its fleet slot, then push the run over the native session |
+| API accepts the turn | Commit a queued `thread.turns` row, then publish a best-effort `af.thread.<thread_id>.wake` notification |
+| Gateway handles a wake or available capacity | Assign an eligible head turn under its thread row, then push `Down::Run` over the runner connection |
 | Runner runs the run | Prepare its sandbox and run the fleet instructions |
 
-Healthy notifications start an offer pass immediately.
+Healthy notifications start an assignment pass immediately.
 Available capacity, gates and datastore work determine when the runner can start.
 A missed wake is recovered by the next per-replica five-second database probe.
 
@@ -141,62 +141,64 @@ Fleet and viewer counts add no connections: the hub keeps one native subscriptio
 
 ### Idle request volume
 
-Runners keep one native session per host and send no idle run requests. Each host announces free capacity as credits ([push scheduler](push_scheduler.md)).
+Runners keep one native connection per host and send no idle run requests. Each host announces free capacity as credits ([push scheduler](push_scheduler.md)).
 The gateway reacts to wake notifications and increased capacity.
 
-A separate daemon recovery timer queries Postgres once every five seconds per replica (`OFFER_FALLBACK_TICK`), even when no work is waiting.
+A separate daemon recovery timer queries Postgres once every five seconds per replica (`ASSIGN_FALLBACK_TICK`), even when no work is waiting.
 The probe is one statement, `select_waiting_work.sql` (`afd_fleet/src/run/waiting.rs`), run from `afd_gateway/src/scheduler/recovery/mod.rs`.
 For `R` replicas, that is `R / 5` discovery statements per second.
 
 This backstop repairs missed disposable notifications; it remains database polling.
-A probe that finds pending work starts an offer pass. Wake traffic never resets the probe's timer.
+A probe that finds pending work starts an assignment pass. Wake traffic never resets the probe's timer.
 
-A wake notification starts an offer pass at once. Admission and gate-answer commits publish on `af.thread.<thread_id>.wake` (`afd_turns/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
+A wake notification starts an assignment pass at once. Turn and gate-answer commits publish on `af.thread.<thread_id>.wake` (`afd_turns/src/wake.rs`, `afd_approval/src/inbox/resolve/mod.rs`).
 
 Before the pass, the same statement names each connected tenant runner whose tenant has nothing waiting.
-The pass skips those runners, since a tenant runner takes only its tenant's work and a claim on one could not run.
+The pass skips those runners, since a tenant runner takes only its tenant's work and a run assigned to one could not start.
 A recovery pass skips no one.
 
-The pass walks the ready streams that hold credits, those holding a woken fleet first. It claims from Postgres for each stream until a claim comes back empty or the pass spends its budget (`afd_gateway/src/scheduler/mod.rs`).
+The pass walks the ready streams that hold credits, those holding a woken fleet first. It assigns from Postgres for each stream until an assignment comes back empty or the pass spends its budget (`afd_gateway/src/scheduler/mod.rs`).
 
-The session authenticates at opening and rechecks current authority at heartbeat and grant boundaries.
+The connection authenticates at opening and rechecks current authority at heartbeat and grant boundaries.
 See the [runner guide](runner_protocol.md) for connection ownership, cancellation and timing.
 
 Prod runs three replicas, so an idle prod makes 36 probe statements a minute however many runner hosts connect.
 
-Claim cost still depends on eligible fleet population and indexed admission heads.
-An empty ledger skips fleet scans.
+Assignment cost still depends on eligible fleet population and indexed head turns.
+An empty queue skips fleet scans.
 
-When unsettled admissions exist, server work grows with eligible active fleet population, including when all heads are parked.
+When unsettled turns exist, server work grows with eligible active fleet population, including when all heads are parked.
 Measure that cost separately from the number of statements.
 
 ### Candidate and claim bounds
 
-Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers, declared in `afd_fleet`'s run assignment module.
-The query first checks for any unsettled admission. It then checks placement labels and the oldest unsettled admission of each eligible fleet before applying that limit.
+The heading keeps its old words because other pages cite it by text; claim here means assignment.
 
-The partial `(fleet_id, sequence)` admission index serves each head lookup; the limit bounds returned candidates and subsequent claim attempts.
+Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers, declared in `afd_fleet`'s run assignment module.
+The query first checks for any unsettled turn. It then checks placement labels and the oldest unsettled turn of each eligible fleet before applying that limit.
+
+The partial `(thread_id, sequence)` turn index serves each head lookup; the limit bounds returned candidates and later assignment attempts.
 It does not bound the number of active fleets examined inside Postgres.
 
-An isolated plan probe with 20,001 active fleets and no admissions performed zero fleet scans after the empty-ledger check.
+An isolated plan probe with 20,001 active fleets and no queued turns performed zero fleet scans after the empty-ledger check.
 The single local samples took 19.702 ms before and 0.079 ms after. These are query-plan observations, not throughput or chat-latency measurements.
 
 The real-database test in `afd_fleet`'s run-plan suite asserts that every fleet scan has zero actual loops.
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
 An absent or stale notification cannot strand work, because the 5 s recovery probe still queries Postgres.
-A parked oldest admission blocks later admissions while standing access awaits an answer or an event approval stays within its deadline.
+A parked oldest turn blocks later turns while standing access awaits an answer or a turn approval stays within its deadline.
 
 The partial `(fleet_id, turn_id, expires_at)` gate index serves both probes over unresolved rows.
 The approval-history plan test grows resolved, expired and unrelated gates from 2,000 to 16,000 rows. It runs both statements through `EXPLAIN (ANALYZE, BUFFERS)` with custom and generic prepared plans.
 
-It checks fleet and event index bounds, deadline bounds for event approvals, and early stopping when many gates match. Total discovery still grows with the eligible fleet population.
+It checks fleet and turn index bounds, deadline bounds for turn approvals, and early stopping when many gates match. Total discovery still grows with the eligible fleet population.
 
-The claim locks the slot and exact head, stamps their fence, and commits before returning it.
-An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.
+Assignment locks the thread row and exact head turn, stamps their fence, and commits before returning the run.
+An uncontended successful assignment takes discovery, begin, the assignment statement and commit; contended attempts add work.
 
-The historical `agentsfleet_run_polls_total` counter now counts gateway claim attempts.
-Divide the candidate counter by those attempts to measure claim fan-out.
+The historical `agentsfleet_run_polls_total` counter now counts gateway assignment attempts.
+Divide the candidate counter by those attempts to measure assignment fan-out.
 
 Statement cost comes from `pg_stat_statements` in `make bench-run`, which counts what every crate sends.
 Use query latency and query plans alongside these ratios: one slow discovery statement still counts as one statement.
@@ -210,14 +212,14 @@ Each table's own index slot closes that. Every recurring control-plane read belo
 | Recurring read | Was | Now |
 |---|---|---|
 | Liveness sweep, due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `afd_runner`'s `SELECT_DUE_RUNNERS` orders by `updated_at, id` under its batch `LIMIT`, and slot 1800 leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
-| Liveness sweep, affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | The runner's active runs, then each slot by its key; `idx_fleet_slots_last_runner_id` covers the `ON DELETE SET NULL` foreign key |
+| Liveness sweep, affinity expiry | Full scan of the fleet slot table, once **per due runner per cycle** | The runner's active runs, then each `thread.threads` row by its key; `idx_threads_last_runner_id` covers the `ON DELETE SET NULL` foreign key |
 | Reclaim, prior active run | Scan of `thread.runs` on an unindexed `ON DELETE CASCADE` foreign key | `idx_runs_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
-| Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
-| Fleet event page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_events_fleet_id_created_at_event_id` walked in order, because `stx_events_workspace_id_fleet_id` (slot 1700) tells the planner the fleet implies the workspace. An actor-filtered page still sorts its matches |
+| Workspace turn keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_turns_workspace_id_created_at_id` with the workspace, cursor and `since` in its index condition, walked in order |
+| Fleet turn page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_turns_thread_id_created_at_id` walked in order, because `stx_turns_workspace_id_thread_id` tells the planner the thread implies the workspace. An actor-filtered page still sorts its matches |
 | Fleet list page | Unserved: the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
 | Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (slot 1800), and `identity.api_keys` keeps only `idx_api_keys_tenant_id_live` (slot 1150) |
 
-**Queue discovery:** the unsettled partial index avoids completed admission history. Each probe still examines eligible active fleets; size Postgres against both fleet count and poll rate.
+**Queue discovery:** the unsettled partial index avoids settled turn history. Each probe still examines eligible active fleets; size Postgres against both fleet count and poll rate.
 
 **What it does not cover.** Fleet-memory load (`afd_memory`'s `SELECT_ALL_FOR_FLEET`) still sorts, and correctly so. It fetches a fleet's entire memory set with no `LIMIT`.
 
@@ -235,14 +237,14 @@ Resolving liveness over the surviving page instead costs 79. When per-row work s
 |---|---|---|---|
 | `publish_deadline_ms` (`afd_bus::nats::Tuning`) | 250 | What a bus outage costs each publisher: a publish or flush that misses it fails and is owed a gap marker. | A compiled default today: no environment variable or file sets it yet (`Config::with_tuning` exists for one). Raising it buys no delivery, because the marker recovers the frame. |
 | `connect_timeout_ms` (`afd_bus::nats::Tuning`) | 5000 | Time for a seed to answer at boot; a seed that misses it refuses boot as `UZ-STARTUP-004`. | A compiled default, as above. Raise only where a seed is measurably slower to answer than 4 s. |
-| `OFFER_FALLBACK_TICK` | 5 seconds | One recovery query per daemon replica | Compiled recovery interval; measure missed-wake latency and database cost before changing it. |
-| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one claim. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s run assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per claim. |
+| `ASSIGN_FALLBACK_TICK` | 5 seconds | One recovery query per daemon replica | Compiled recovery interval; measure missed-wake latency and database cost before changing it. |
+| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one assignment pass. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s run assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per assignment. |
 | `RUN_TTL` | 35000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`afr_supervisor`'s renew module and `af_core`'s timing module). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
 | `SSE_MAX_STREAMS` | 256 | Concurrent asynchronous SSE bodies per replica; shared by fleet, workspace and draft-progress tails. Zero is rejected at boot. Each stream holds a socket. The daemon neither raises `RLIMIT_NOFILE` nor checks the knob against it. About 300 descriptors go to admitted requests, Postgres and NATS first, so a stock 1,024 soft limit leaves room for 256. | Raise only on a host whose descriptor limit is raised to match, after measuring stream refusals, memory, CPU, and proxy capacity. The tail itself held 4,096 streams inside every bound (below). Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
 | `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | The daemon's `serve` boot passes this constant (declared in `afd_http`'s admission module) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
 | `agentsfleetd` API replica count | deployment-driven | HTTP requests per second (user surface + `/v1/runners`) + run/report throughput + SSE fan-in | Run/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
-| Runner count | operator-driven | Compute throughput and native session count | Add hosts for available compute; size daemon memory and stream permits for their sessions. |
-| assigned `worker_count` (per-runner, dashboard) | 1 | Concurrent held fleets **per host**: the runner worker-pool size (M88_002), assigned on the runner row (M148) and delivered with the heartbeat. N workers each run the run→run→report unit; the per-fleet `affinity.claim` keeps two workers off the same fleet. | A host has spare cores/memory while one long fleet run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more fleets per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain**: one host loss drops N in-flight runs, not 1 (all re-held by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. At the ceiling (`MAX_WORKERS` = 64 in `af_core`'s limits module) and the 2-core sandbox default, any host under 128 cores is oversubscribed. |
+| Runner count | operator-driven | Compute throughput and native connection count | Add hosts for available compute; size daemon memory and stream permits for their connections. |
+| assigned `worker_count` (per-runner, dashboard) | 1 | Concurrent held fleets **per host**: the runner worker-pool size (M88_002), assigned on the runner row (M148) and delivered with the heartbeat. N workers each run the run→run→report unit; the per-fleet thread row's fence keeps two workers off the same fleet. | A host has spare cores/memory while one long fleet run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more fleets per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain**: one host loss drops N in-flight runs, not 1 (all re-held by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. At the ceiling (`MAX_WORKERS` = 64 in `af_core`'s limits module) and the 2-core sandbox default, any host under 128 cores is oversubscribed. |
 
 The run path never waits on the bus.
 The outbound worker, owned by `afd_outbound`, sleeps until a ping, a finished lane or its 30 s `CLAIM_PASS`.
@@ -256,7 +258,7 @@ Once bus traffic and Postgres request volume fit their machines, the next bottle
 
 ### 1. `agentsfleetd` API replicas + Postgres write throughput (the usual answer now)
 
-The run/report hot path does the durable writes the worker used to do. Those are `INSERT fleet.events`, the usage logged on each `/renew`, the terminal `UPDATE`, `INSERT telemetry` and the checkpoint `UPSERT`. The `thread.runs`/`runner.fleet_slots` bookkeeping rides the same path, and the biller settles the usage afterwards.
+The run/report hot path does the durable writes the worker used to do. Those are the turn's opening `UPDATE`, the usage logged on each `/renew`, the terminal `UPDATE`, `INSERT telemetry` and the checkpoint `UPSERT`. The `thread.runs`/`thread.threads` bookkeeping rides the same path, and the biller settles the usage afterwards.
 
 At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per fleet.
 
@@ -378,11 +380,13 @@ The likely cause is unmeasured. The worker claims only lane heads from `thread.d
 Counting `agentsfleet_outbound_claims_total{via="scan"}` against deliveries in one run would settle it.
 
 The cardinality row measures a different workload.
-The new seed admits one event per fleet, so the candidate query scans every unsettled admission.
+The new seed writes one turn per fleet, so the candidate query scans every unsettled turn.
 
 Steer now costs two Postgres statements where it cost one, and the second statement is not yet identified.
 
 ### Admissions ledger measurements
+
+The heading keeps its old words because other pages cite it by text. These measurements predate the thread tables and keep the words used then.
 
 The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-run PROFILE=rig KEEP_TEST_STATE=1`.
 The canonical coverage run reset the owned rig before measurement; benchmarks reused those migrated services and swept their own fixtures.
@@ -436,7 +440,7 @@ Structured for a large language model (LLM) fleet or a `agentsfleet`-driven scal
 | `R` | `agentsfleetd` API replica count | Deployment plan |
 | `S` | Peak concurrent SSE tails | Product / dashboard usage |
 | `P_conn` | NATS concurrent-connection ceiling | The NATS server's connection limit and the machine's file-descriptor limit; no longer a plan tier |
-| `probe_s` | Per-replica work-recovery interval: 5 seconds | `OFFER_FALLBACK_TICK` |
+| `probe_s` | Per-replica work-recovery interval: 5 seconds | `ASSIGN_FALLBACK_TICK` |
 
 ### Procedure
 
@@ -452,15 +456,15 @@ Step 1: Bus connection budget (no per-fleet, no per-viewer term)
 Step 2: Idle recovery work
   recovery_statements_per_second = R / probe_s
   Runners send no run requests while idle.
-  Size Postgres using recovery and claim query latency at the target fleet count Z.
+  Size Postgres using recovery and assignment query latency at the target fleet count Z.
 
 Step 3: Hot-path throughput (the real wall)
-  run_report_qps = peak events/sec across the fleet
+  run_report_qps = peak turns/sec across the fleet
   size R + Postgres so run/report p99 stays within budget under run_report_qps
   (PG connection pooler assumed; sizing in the deployment runbook)
 
 Step 4: Emit configuration
-  OFFER_FALLBACK_TICK   = 5 s     (compiled daemon recovery interval)
+  ASSIGN_FALLBACK_TICK  = 5 s     (compiled daemon recovery interval)
   RUN_TTL             = 35000   (compile-time; renewal carries long runs)
   agentsfleetd_replicas         = <step 3 result>
   runner_hosts             = N
@@ -475,9 +479,9 @@ Step 4: Emit configuration
 5. **Raise `publish_deadline_ms` to ride out an outage.** The deadline is what an outage costs each publisher. A longer wait buys no delivery, because the gap marker recovers the frame.
 6. **Open a native subscription per viewer.** The hub keeps one per subject and fans out locally. A viewer costs a broadcast receiver, not a subscription.
 7. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
-8. **Ignore active fleet count in the Postgres budget.** One claim can still perform many indexed head lookups. Measure at the intended fleet population.
+8. **Ignore active fleet count in the Postgres budget.** One assignment can still perform many indexed head lookups. Measure at the intended fleet population.
 9. **Replace randomized candidate ordering with a fixed prefix.** A bounded result with a fixed order can repeatedly exclude eligible fleets. Notification and affinity priority do not provide a strict fairness guarantee.
-10. **Sum admission backlog gauges across replicas.** Each census reads the same deployment-wide ledger. Use the maximum; summing duplicates the same work.
+10. **Sum turn backlog gauges across replicas.** Each census reads the same deployment-wide queue. Use the maximum; summing duplicates the same work.
 
 ---
 
@@ -487,9 +491,9 @@ Step 4: Emit configuration
 
 A runner that dies holds no datastore or bus connection to leak and no subscription to reclaim. Its in-flight run expires at `run_expires_at`.
 
-The next runner's `run` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected run expires before another runner can claim it; the recovery probe finds work after missed notifications.
+The next assignment re-issues the turn as a new run with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected run expires before another runner can be assigned the turn; the recovery probe finds work after missed notifications.
 
-Surviving hosts keep their existing sessions; the gateway pushes newly available work.
+Surviving hosts keep their existing connections; the gateway pushes newly available work.
 [Automatic quarantine](runner_fleet.md#automatic-quarantine-and-return) blocks new work on silent hosts without shortening their run deadlines.
 
 [Workspace recovery](runner_execution.md#workspace-between-runs) resumes the last complete checkpoint when one exists.
@@ -501,8 +505,8 @@ This is the cost of running more fleets per host; `worker_count=1` keeps the fai
 
 ### Runner host add
 
-A newly enrolled runner opens its native session and advertises capacity.
-Existing runs retain their owners; the gateway can offer waiting work to the new host.
+A newly enrolled runner opens its native connection and advertises capacity.
+Existing runs retain their owners; the gateway can assign waiting work to the new host.
 
 ### Datastore failover (primary swap)
 

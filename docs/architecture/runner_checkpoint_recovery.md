@@ -8,7 +8,7 @@ executable: false
 
 # Platform runner checkpoint recovery
 
-A platform runner resumes an interrupted event from its last complete checkpoint after the previous run expires. PostgreSQL holds encrypted ordinary-turn conversation history. The private object store holds encrypted workspace chunks and native task history.
+A platform runner resumes an interrupted turn from its last complete checkpoint after the previous run expires. PostgreSQL holds encrypted ordinary-turn conversation history. The private object store holds encrypted workspace chunks and native task history.
 
 The completed specification records the agreed scope. The review ledger retains measured timings and remaining acceptance checks. [M247 specification](../v2/done/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md) · [Verification ledger](../v2/reviews/m247-review-ledger.md)
 
@@ -85,14 +85,14 @@ Fleet execution:
   runner agent loop -> selected external provider
 
 Private setup:
-  runner authoring loop -> daemon scoped model broker -> selected external provider
+  runner setup loop -> daemon scoped model broker -> selected external provider
 ```
 
-The authoring broker assembles protected context, resolves the provider key, records dispatch identity and usage, and returns normalized results.
-An authoring runner receives a scoped capability; it receives no provider key through that run.
+The setup broker assembles protected context, resolves the provider key, records dispatch identity and usage, and returns normalized results.
+A setup runner receives a scoped capability; it receives no provider key through that run.
 The daemon's `[inference]` settings govern these brokered requests; the runner's matching fields govern its direct provider requests.
 
-Fleet runs use `guffbolt::drive`; private authoring currently has a separate loop in `afr_supervisor/src/authoring/turn.rs`.
+Fleet runs use `guffbolt::drive`; private setup currently has a separate loop in `afr_supervisor/src/authoring/turn.rs`.
 Using the shared loop and changing provider-request placement are independent changes.
 The `Conversation::sample` implementation determines where a provider request runs.
 
@@ -110,7 +110,7 @@ runner profile
   |-- provider_retries -> HTTP attempt budget + separate opening budget
   `-- supervisor
         |-- daemon retry timing and bounded operation attempts
-        |-- native host and authoring renewal cadence
+        |-- native host and setup renewal cadence
         `-- shared file-operation admission across all workers
 ```
 
@@ -148,12 +148,12 @@ A configuration change takes effect when each daemon replica restarts.
 Environment-only startup also defaults to resume disabled.
 Enable the flag after testing and confirm its effective value on every replica.
 
-With resume disabled, an ordinary admission with a committed checkpoint
+With resume disabled, an ordinary turn with a committed checkpoint
 waits at its fleet's head after its run expires. Candidate selection and the
-locked claim both check the setting.
+locked assignment both check the setting.
 
 Enabling resume permits a new fenced
-claim. Active runs retain their stored deadlines and can reconnect.
+assignment. Active runs retain their stored deadlines and can reconnect.
 Checkpoint capture continues while resume is disabled.
 
 The deployment clock controls grants, renewals, heartbeat cadence, host quarantine and sandbox holds.
@@ -192,8 +192,8 @@ Model policy and credentials come from the new run.
 
 | Workload | Private state | Durable owner |
 |---|---|---|
-| Ordinary API-only turn | Encrypted history root in PostgreSQL | Event head in `runner.turn_recovery` |
-| Ordinary turn with workspace files | Same history root plus an ordered manifest and encrypted private object-store chunks | Same event head |
+| Ordinary API-only turn | Encrypted history root in PostgreSQL | Turn head in `runner.turn_recovery` |
+| Ordinary turn with workspace files | Same history root plus an ordered manifest and encrypted private object-store chunks | Same turn head |
 | Native durable task | Task history and file manifest with its bound base and overlay | Existing task checkpoint and task generation |
 
 The agent requests capture after a completed turn and input reconciliation. Busy children, open executor sessions, unfinished file work, and live tenant processes can defer it.
@@ -226,8 +226,8 @@ B (16 workers)  compatible, idle and connected
                  |
 A stops          +-> no more renewals
                  |
-saved deadline   +-> event is eligible after its old run and slot expire
-                 |   -> B claims the event under fence N+1
+saved deadline   +-> turn is eligible after its old run and thread expire
+                 |   -> B is assigned the turn under fence N+1
                  |   -> B starts renewal for the new run
                  |   -> exact checkpoint is restored and checked
                  |   -> covered folds are adopted under fence N+1
@@ -247,14 +247,14 @@ Host quarantine tolerates three run lifetimes of heartbeat silence and is evalua
 ```text
 brief link break + reconnect before expiry -> same run and fence
 expiry + other eligible capacity           -> higher fence on replacement
-expiry + capacity still busy               -> admission waits for a later offer
+expiry + capacity still busy               -> turn waits for a later assignment
 replacement + ready head                   -> restore root and matching files
 replacement + absent head                  -> original input and unsettled folds
 replacement + invalid head or file         -> stop before model or tools
 return + 30 s of continuous healthy beats  -> automatic quarantine lifts
 ```
 
-After dispatch, a required file restore waits for runner admission while run renewal continues. The supervisor validates the exact event, setup, generation, root, and toolbox.
+After dispatch, a required file restore waits for runner admission while run renewal continues. The supervisor validates the exact turn, setup, generation, root, and toolbox.
 
 It writes files through checked directory descriptors and applies modes before thawing. [Ordinary restore](../../rustd/crates/runner/afr_supervisor/src/recovery/turn/restore.rs) · [Workspace preparation](../../rustd/crates/runner/afr_supervisor/src/run_loop/turn_recovery.rs)
 
@@ -264,7 +264,7 @@ The final result and usage settle through the report transaction. [Result and ru
 
 ## How a recovery burst drains
 
-A disposable wake can be lost between durable admission and its notification. The replica's independent five-second probe supplies a recovery generation.
+A disposable wake can be lost between the durable turn write and its notification. The replica's independent five-second probe supplies a recovery generation.
 
 Ordinary rings retain their successful-issue budget and fleet locality.
 
@@ -274,35 +274,35 @@ Ordinary ring -> scheduler/mod.rs::pass -> local fleet preference + ring budget
 Recovery wake -> scheduler/recovery/mod.rs::notifications
               -> scheduler/recovery/drain.rs::drain
                  queue [B:s1, C:s2, D:s3, ...]
-                   |  up to eight concurrent claims across sessions
-                   |  one offer in flight per session
+                   |  up to eight concurrent assignments across connections
+                   |  one assignment in flight per connection
                    v
-                 session/supervisor.rs::offer -> run/assign/ledger.rs::ledger_counted
-                   |  oldest compatible admission first
+                 connection/supervisor.rs::assign -> run/assign/ledger.rs::ledger_counted
+                   |  oldest compatible turn first
                    |  full unclaimable page -> keyset seek, bounded retries
                    v
-                 issued + remaining credit -> rotate that session to the tail
-                 empty or uncertain reply   -> defer that session for this pass
+                 issued + remaining credit -> rotate that connection to the tail
+                 empty or uncertain reply   -> defer that connection for this pass
 ```
 
-Credits at the start of the drain bound how much work a session can acquire. PostgreSQL is the final authority on capacity and ownership.
+Credits at the start of the drain bound how much work a connection can acquire. PostgreSQL is the final authority on capacity and ownership.
 
 A busy host retains its recovery request after the replica acknowledges that drain.
-When a worker becomes free, `Ready` wakes the existing bounded drain before another ordinary offer can use locality preference.
+When a worker becomes free, `Ready` wakes the existing bounded drain before another ordinary assignment can use locality preference.
 Only an actual empty recovery scan clears the host's matching request.
 
 ```text
 Probe -> busy host: remember recovery request
-Worker finishes -> Ready -> wake bounded drain -> oldest compatible admission
+Worker finishes -> Ready -> wake bounded drain -> oldest compatible turn
 Empty recovery scan -> clear the matching request
 Newer request arrives -> an older empty result preserves the newer request
 ```
 
 A completed drain acknowledges only its original recovery generation. [Recovery drain](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs) · [Candidate SQL](../../rustd/crates/daemon/afd_fleet/src/run/sql/run/select_ledger_candidates.sql)
 
-After skipping a full locked page, the session revisits its prefix after a short empty page or 64 later claims. This bounds the delay for older rows that become eligible while newer work stays ready. [Locked-page regression](../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
+After skipping a full locked page, the connection revisits its prefix after a short empty page or 64 later assignments. This bounds the delay for older rows that become eligible while newer work stays ready. [Locked-page regression](../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
 
-The previous recovery pass spent one successful-offer credit per fallback probe. The new drain lets B use its available worker credits after the first probe, and a stalled session can leave other sessions moving.
+The previous recovery pass spent one successful-assignment credit per fallback probe. The new drain lets B use its available worker credits after the first probe. A stalled connection leaves other connections moving.
 
 The benchmark ledger records the observed throughput separately. [Measured comparison](../v2/reviews/m247-review-ledger.md#performance-and-coverage-acceptance)
 
@@ -369,9 +369,9 @@ make bench-run PROFILE=rig BENCH_SHAPE=recovery BENCH_FLEETS=1 BENCH_WORKSPACES=
 {"shape":"recovery","workload":"api_only","fleets":1,...}
 ```
 
-The reported latency starts at the later of the old run and slot expiries and ends at the first restored model request. It also records issue and settlement timestamps.
+The reported latency starts at the later of the old run and thread expiries and ends at the first restored model request. It also records issue and settlement timestamps.
 
-[Raw baseline](../../bench/baselines/run-recovery-api.rig.json) · [Test and commands](../../rustd/crates/daemon/main/benches/run/measure.rs)
+[Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/daemon/main/benches/run/measure.rs)
 
 ## Implementation paths and symbols
 
@@ -388,22 +388,22 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_bus/src/wake/mod.rs`](../../rustd/crates/daemon/afd_bus/src/wake/mod.rs) | Wake::generations, recheck, recovered | Publish the recovery generation separately from ordinary ring counts. |
 | [`rustd/crates/daemon/afd_bus/src/wake/queue.rs`](../../rustd/crates/daemon/afd_bus/src/wake/queue.rs) | WakeQueue | Keep fleet reminders in the locality queue and store generation counters in the watch. |
 | [`rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs) | notifications, pass | Preserve ordinary locality and ring budgets. Route recovery hints to bounded round-robin and acknowledge only the observed generation. |
-| **New** `rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs` | drain, Host | Rotate credited sessions using a queue and up to eight concurrent claims. An uncertain reply defers that host. |
+| **New** `rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs` | drain, Host | Rotate credited connections using a queue and up to eight concurrent assignments. An uncertain reply defers that host. |
 | [`rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs) | notifications, probe_ticks | Record recovery intent on busy hosts and run the existing bounded drain. |
 | [`rustd/crates/daemon/afd_gateway/src/registry/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/registry/mod.rs) | Registry::request_recovery | Give every connected host the observed request, including busy hosts. |
-| [`rustd/crates/daemon/afd_gateway/src/session/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) | SchedulingState::recovery_pending, recovered | Retain recovery across capacity updates and protect newer requests from older empty results. |
-| [`rustd/crates/daemon/afd_gateway/src/session/offers.rs`](../../rustd/crates/daemon/afd_gateway/src/session/offers.rs) | OfferMode, OfferOutcome, SessionHandle::claim | Carry the selection mode to the session's existing offer owner and return its claim outcome. |
-| [`rustd/crates/daemon/afd_gateway/src/session/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) | SessionHandle | Type the claim channel for the selection mode and its reply. |
-| [`rustd/crates/daemon/afd_gateway/src/session/runtime.rs`](../../rustd/crates/daemon/afd_gateway/src/session/runtime.rs) | session handle construction | Use the typed claim channel for registered physical sessions. |
-| [`rustd/crates/daemon/afd_gateway/src/session/events.rs`](../../rustd/crates/daemon/afd_gateway/src/session/events.rs) | EventSource::next | Deliver queued claims to the supervisor with their original mode. |
-| [`rustd/crates/daemon/afd_gateway/src/session/supervisor.rs`](../../rustd/crates/daemon/afd_gateway/src/session/supervisor.rs) | SessionSupervisor::offer | Wake the bounded drain when ordinary capacity returns during unfinished recovery. Preserve one in-flight offer. |
-| [`rustd/crates/daemon/afd_gateway/src/session/offer.rs`](../../rustd/crates/daemon/afd_gateway/src/session/offer.rs) | SessionServices::offer, select_offer, issue_offer | Preserve advisory credits and recovery ordering. Clear only the matching request after an actual empty scan. |
-| [`rustd/crates/daemon/afd_fleet/src/run/offer.rs`](../../rustd/crates/daemon/afd_fleet/src/run/offer.rs) | OfferRequest | Carry ordinary or recovery selection context between gateway and fleet placement. |
-| [`rustd/crates/daemon/afd_fleet/src/run/mod.rs`](../../rustd/crates/daemon/afd_fleet/src/run/mod.rs) | offer module exports | Expose the selection context alongside OfferRequest. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/mod.rs) | SchedulingState::recovery_pending, recovered | Retain recovery across capacity updates and protect newer requests from older empty results. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/assignments.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/assignments.rs) | AssignMode, AssignOutcome, ConnectionHandle::claim | Carry the selection mode to the connection's existing assignment owner and return its outcome. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/mod.rs) | ConnectionHandle | Type the assignment channel for the selection mode and its reply. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/runtime.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/runtime.rs) | connection handle construction | Use the typed assignment channel for registered physical connections. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/events.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/events.rs) | EventSource::next | Deliver queued assignment requests to the supervisor with their original mode. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/supervisor.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/supervisor.rs) | ConnectionSupervisor::assign | Wake the bounded drain when ordinary capacity returns during unfinished recovery. Preserve one in-flight assignment. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/assign.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/assign.rs) | ConnectionServices::assign, select_assignment, issue_assignment | Preserve advisory credits and recovery ordering. Clear only the matching request after an actual empty scan. |
+| [`rustd/crates/daemon/afd_fleet/src/run/assignment.rs`](../../rustd/crates/daemon/afd_fleet/src/run/assignment.rs) | AssignRequest | Carry ordinary or recovery selection context between gateway and fleet placement. |
+| [`rustd/crates/daemon/afd_fleet/src/run/mod.rs`](../../rustd/crates/daemon/afd_fleet/src/run/mod.rs) | assignment module exports | Expose the selection context alongside AssignRequest. |
 | [`rustd/crates/daemon/afd_fleet/src/run/pull/select.rs`](../../rustd/crates/daemon/afd_fleet/src/run/pull/select.rs) | RunService::claim_fleet_with | Pass the selection context to the ledger. |
-| [`rustd/crates/daemon/afd_fleet/src/run/claim.rs`](../../rustd/crates/daemon/afd_fleet/src/run/claim.rs) | RunService::claim_with | Pass the session-owned scan through native issue. |
+| [`rustd/crates/daemon/afd_fleet/src/run/claim.rs`](../../rustd/crates/daemon/afd_fleet/src/run/claim.rs) | RunService::claim_with | Pass the connection-owned scan through native issue. |
 | [`rustd/crates/daemon/afd_fleet/src/run/assign/mod.rs`](../../rustd/crates/daemon/afd_fleet/src/run/assign/mod.rs) | Runs::select and internal selection | Keep the ordinary entry point and implement bounded recovery selection. |
-| [`rustd/crates/daemon/afd_fleet/src/run/assign/ledger.rs`](../../rustd/crates/daemon/afd_fleet/src/run/assign/ledger.rs) | Runs::ledger_counted, ledger_claim, record_claim | Advance past an unclaimable page and revisit older heads after bounded later claims. |
+| [`rustd/crates/daemon/afd_fleet/src/run/assign/ledger.rs`](../../rustd/crates/daemon/afd_fleet/src/run/assign/ledger.rs) | Runs::ledger_counted, ledger_claim, record_claim | Advance past an unassignable page and revisit older heads after bounded later assignments. |
 | [`rustd/crates/daemon/afd_fleet/src/run/assign/measured.rs`](../../rustd/crates/daemon/afd_fleet/src/run/assign/measured.rs) | Runs::select_recovery_measured | Expose the real scan count under `test-util` for the locked-prefix regression. |
 | [`rustd/crates/daemon/afd_fleet/src/run/sql/run/select_ledger_candidates.sql`](../../rustd/crates/daemon/afd_fleet/src/run/sql/run/select_ledger_candidates.sql) | candidate query | Return a stable time/ID key. Seek beyond a blocked page while respecting each fleet's unsettled head and placement rules. |
 | [`rustd/crates/daemon/afd_fleet/src/run/store.rs`](../../rustd/crates/daemon/afd_fleet/src/run/store.rs) | Runs::for_connection and host guard helpers | Scope disposable scan progress to the connection and expose shared host authority for checkpoint calls. |
@@ -443,18 +443,18 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 
 | Repository path | Symbol or statement | Change |
 |---|---|---|
-| [`rustd/crates/daemon/afd_runner/src/capacity/mod.rs`](../../rustd/crates/daemon/afd_runner/src/capacity/mod.rs) | shared host authority helper | Prove token and connection under a shared host lock. Fleet and authoring issue retain their exclusive locks. |
+| [`rustd/crates/daemon/afd_runner/src/capacity/mod.rs`](../../rustd/crates/daemon/afd_runner/src/capacity/mod.rs) | shared host authority helper | Prove token and connection under a shared host lock. Fleet and setup issue retain their exclusive locks. |
 | [`rustd/crates/daemon/afd_runner/src/capacity/sql/mod.rs`](../../rustd/crates/daemon/afd_runner/src/capacity/sql/mod.rs) | capacity SQL bindings | Register the shared-lock statement. |
 | **New** `rustd/crates/daemon/afd_runner/src/capacity/sql/share_host.sql` | new host authority query | Read the host with FOR SHARE so rotation and issue conflict with checkpoint authority. |
-| [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/guard.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/guard.rs) | TurnRunGuard::lock | Use shared host authority, preserve parent/slot/run order, and recheck time after waits. |
+| [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/guard.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/guard.rs) | TurnRunGuard::lock | Use shared host authority, preserve parent/thread/run order, and recheck time after waits. |
 | [`rustd/crates/daemon/afd_fleet/src/run/commit/mod.rs`](../../rustd/crates/daemon/afd_fleet/src/run/commit/mod.rs) | Runs::run_report_statement | Bind the current connection proof for a report that can create a hold. |
 | [`rustd/crates/daemon/afd_fleet/src/run/sql/report_statement.rs`](../../rustd/crates/daemon/afd_fleet/src/run/sql/report_statement.rs) | ReportStatement and its SQL binds | Supply the host proof to the report statement and preserve the existing result columns. |
-| [`rustd/crates/daemon/afd_fleet/src/run/sql/commit_report.sql`](../../rustd/crates/daemon/afd_fleet/src/run/sql/commit_report.sql) | scope, locked_slot, released | Lock host after parents and before slot for a hold-producing report. Retain it through settlement. |
+| [`rustd/crates/daemon/afd_fleet/src/run/sql/commit_report.sql`](../../rustd/crates/daemon/afd_fleet/src/run/sql/commit_report.sql) | scope, locked_slot, released | Lock host after parents and before the thread row for a hold-producing report. Retain it through settlement. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/transfer.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/transfer.rs) | execute, confirm | Skip quota locking and writes for empty verification receipts. Recheck custody after remote I/O. |
 | [`rustd/crates/protocol/af_wire/src/run/turn_checkpoint/command.rs`](../../rustd/crates/protocol/af_wire/src/run/turn_checkpoint/command.rs) | TurnCheckpointAction | Classify upload verification for a consistent client and server deadline. |
 | [`rustd/crates/runner/afr_supervisor/src/client/turn_checkpoint.rs`](../../rustd/crates/runner/afr_supervisor/src/client/turn_checkpoint.rs) | impl Command for Turn | Select a bounded bulk answer timeout for upload verification. |
 | [`rustd/crates/daemon/afd_gateway/src/lib.rs`](../../rustd/crates/daemon/afd_gateway/src/lib.rs) | Gateway::new, Inner | Own a replica-wide limit for concurrent bulk verifications. |
-| [`rustd/crates/daemon/afd_gateway/src/session/dispatch/turn_checkpoint.rs`](../../rustd/crates/daemon/afd_gateway/src/session/dispatch/turn_checkpoint.rs) | SessionServices::turn_checkpoint | Admit or refuse bulk work promptly and apply operation_until with reply margin. |
+| [`rustd/crates/daemon/afd_gateway/src/connection/dispatch/turn_checkpoint.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/dispatch/turn_checkpoint.rs) | ConnectionServices::turn_checkpoint | Admit or refuse bulk work promptly and apply operation_until with reply margin. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/allocation.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/allocation.rs) | head, initialize_head | Read an optional committed descriptor. Initialize metadata on the Begin path. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/plan.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/plan.rs) | Runs::begin_turn_checkpoint | Initialize the recovery head after validating the run and allocation request. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/signing.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/signing.rs) | issue_object | Bound physical authenticated readback by the current pin deadline. |
@@ -465,7 +465,7 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_lock_head.sql`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_lock_head.sql) | owner head lock | Defer a contended owner promptly so the current pass can collect other owners. |
 | [`schema/20261117154626_runner_turn_recovery.sql`](../../schema/20261117154626_runner_turn_recovery.sql) | runner.turn_recovery indexes | Index the referenced head checkpoint and the maintenance cursor key. |
 | [`schema/20261117154627_runner_turn_checkpoints.sql`](../../schema/20261117154627_runner_turn_checkpoints.sql) | runner.turn_checkpoints index | Index the fleet FK used by deletion and retention. |
-| [`rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs`](../../rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs) | list query documentation | Include runner_uncordoned in the operator event filter contract. |
+| [`rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs`](../../rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs) | list query documentation | Include runner_uncordoned in the operator event filter. |
 
 ### Native connection settings
 

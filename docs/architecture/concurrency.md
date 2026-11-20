@@ -3,7 +3,7 @@
 Canonical concurrency model for `agentsfleetd` (control plane) and
 `agentsfleet-runner` (runner plane). Consult this page before naming a
 thread, channel, or lock, or asserting a shutdown ordering. It is a sibling of
-[`data_flow.md`](./data_flow.md) (the same runtime traced per event) and
+[`data_flow.md`](./data_flow.md) (the same runtime traced per turn) and
 [`runner_fleet.md`](./runner_fleet.md) (the control/runner split).
 
 Channel and stream **names** are canonical in `data_flow.md`; this page
@@ -29,7 +29,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
 | Test handshake | handshakes, never sleeps | channels, `Notify` and `CancellationToken` on both planes; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
-| Setup chat claim | never waits on a row lock | the creator and draft rows are taken `NOWAIT` in a savepoint; a held one skips that draft for the next | §Runner capacity and authoring lock order |
+| Setup chat assignment | never waits on a row lock | the creator and draft rows are taken `NOWAIT` in a savepoint; a held one skips that draft for the next | §Runner capacity and authoring lock order |
 | Discipline scope | no roster | C1–C5 hold at review; RULE NLR owns cleanup of the files a change touches | §Expanding the discipline base |
 
 ## Traps
@@ -50,7 +50,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
 
-- Never let a setup chat claim wait on a row while it holds the host row. Every other tenant on that poll would wait behind it. Take the row `NOWAIT` and skip (§Runner capacity and authoring lock order).
+- Never let a setup chat assignment wait on a row while it holds the host row. Every other tenant on that poll would wait behind it. Take the row `NOWAIT` and skip (§Runner capacity and authoring lock order).
 
 ## The five invariants (rules C1–C5)
 
@@ -112,7 +112,7 @@ a name, or a sweeper that quietly went back to a bare spawn, is a failing test.
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
 | fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
-| authoring, billing, task and task-storage sweepers (`sweeper:authoring`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`) | the daemon's sweepers module | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
+| setup, billing, task and task-storage sweepers (`sweeper:authoring`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`) | the daemon's sweepers module | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
 | telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises twelve tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
@@ -129,9 +129,9 @@ Workers retain pending reports in memory; no report files or spool drains remain
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| Native connection | `afr_supervisor::run` | Four streams, request correlation, offers and reconnect | Bounded channels, permits and cancellation owners | Remains available while accepted workers settle; cancellation joins its tasks |
+| Native connection | `afr_supervisor::run` | Four streams, request correlation, assigned runs and reconnect | Bounded channels, permits and cancellation owners | Remains available while accepted workers settle; cancellation joins its tasks |
 | Heartbeat policy | `afr_supervisor::run`, beside the worker pool | Current assignment | A `watch` channel | Halt → return → joined |
-| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its run and that run's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | New offers stop; accepted work has thirty seconds, then five seconds for cleanup before abort and join |
+| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its run and that run's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | New runs stop; accepted work has thirty seconds, then five seconds for cleanup before abort and join |
 | hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next run | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
 | executor link (one per sandbox) | `afr_executor`'s client | one sandbox's executor connection | owned by the link task | ends with its sandbox |
 
@@ -149,11 +149,11 @@ below are the concurrency view.
 | client events | the `async-nats` event callback | the NATS client → the gap watcher | the callback sets a flag per cause (reconnect, slow consumer) and wakes the watcher. A burst coalesces into one gap per cause, and the callback never waits on I/O. |
 | channel fan-out | `broadcast`, 256 messages per channel (`Tuning::channel_capacity`) | the subject's pump (producer) → every local reader of that subject | every reader receives the same `Arc<Message>`, so a frame is one allocation however many watch it. A reconnect, a slow consumer or a gap marker is a `Gap` item. A reader that falls 256 behind is told the count it missed (C1). |
 | cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
-| `fleet.admissions` | PostgreSQL queue | producers commit admissions; offer passes claim the oldest unsettled row per eligible fleet | slot and admission fences; reports settle in the usage transaction |
+| `thread.turns` | PostgreSQL queue | producers commit turns; assignment passes take the oldest unsettled turn per eligible fleet | thread and turn fences; reports settle in the usage transaction |
 | `thread.deliveries` | PostgreSQL rows claimed per lane | the report path writes the row in its transaction → any replica's outbound worker claims the lane head | durable; the claim's token names the holder, and a lapsed holder's late write matches no row |
 | `af.delivery.wake` | core NATS subject (at most once) | the report path after its commit → every replica's outbound worker | the payload names the delivery, but the worker reads only the ping and claims from Postgres. A lost ping waits for the next 30 s claim pass. |
 | `af.thread.<thread_id>.items` | core NATS subject (at most once) | `agentsfleetd` publishers (+ runner-forwarded frames) → each process's one native subscription per subject, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
-| `af.thread.<thread_id>.wake` | core NATS subject, read through the `af.thread.*.wake` wildcard | admission and gate-answer commits publish thread IDs to every replica | ephemeral; each replica's 5 s recovery probe still reads PostgreSQL |
+| `af.thread.<thread_id>.wake` | core NATS subject, read through the `af.thread.*.wake` wildcard | intake and gate-answer commits publish thread IDs to every replica | ephemeral; each replica's 5 s recovery probe still reads PostgreSQL |
 
 Each process holds exactly **one** NATS connection for all viewers and
 publishers, with one native subscription per subject that has local readers
@@ -196,7 +196,7 @@ constraint. Each is documented at its declaration (C4).
 | exec sessions | `afr_tools`'s `Sessions` | one run's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
 | mirror locks | `afr_supervisor`'s `Mirrors` | the map of one lock per repository mirror | held only to fetch that mirror's tokio lock, which is held across the mirror's fetch and checkout |
 | run clock and run timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one run's segment timings | each a leaf, held alone |
-| private report state | `afr_supervisor`'s authoring spool | clock high-water mark, uncertainty flag and monotonic report deadlines | shared by writes and cleanup; filesystem work runs on the blocking pool |
+| private report state | `afr_supervisor`'s setup spool (its `authoring` module) | clock high-water mark, uncertainty flag and monotonic report deadlines | shared by writes and cleanup; filesystem work runs on the blocking pool |
 | egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf, held alone |
 
 The load-bearing ordering rule is C3: no wire send happens under the channel
@@ -309,7 +309,7 @@ Per-call timeouts stay where they are. Recurring deadline passes are another
 matter: each plane runs them on one clock. The daemon's `sweeper:expiry` runs
 every `maintenance.expired_work.interval_seconds` (2 s by default); startup refuses an interval as long as one run lifetime.
 
-It bills expired runs and expires authoring
+It bills expired runs and expires setup
 attempts in one tick. The runner arms one host timer for its runs' deadlines.
 A failed pass logs and waits for the next tick.
 
@@ -330,7 +330,7 @@ Integration (CI) job runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims hold the runner row while counting live capacity and writing a run. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each run's slot and row in fleet order, and samples database time once after them.
+Every assignment holds the runner row while counting live capacity and writing a run. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each run's thread and row in fleet order, and samples database time once after them.
 
 Renewals never wait on each other. A credential rotation fences every renewal behind it. A run issue, which holds the row exclusively, waits for an in-flight renewal statement and the reverse.
 
@@ -338,19 +338,19 @@ The funds check reads the wallet without a lock, once per payer every third tick
 
 A setup chat renewal takes draft → attempt → runner instead (`afd_setup`'s run renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 
-The claim is the one path that holds a host and then asks for a draft. It never waits for the draft (below).
+The setup assignment is the one path that holds a host and then asks for a draft. It never waits for the draft (below).
 
 Retiring a revoked runner (`afd_runner`'s `delete_revoked`) is the one opposite order left. Its delete holds the runner row while `setup.attempts.runner_id`'s `ON DELETE SET NULL` locks that runner's attempts.
 
 So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
 
-Runtime reports take the run row and never the runner, authoring or wallet rows. Only the billing relay writes a wallet row, in its own transactions. It stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
+Runtime reports take the run row and never the runner, setup or wallet rows. Only the billing relay writes a wallet row, in its own transactions. It stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
 
 Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage counts against nothing until the replay that learns it logs its lines.
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
-No setup chat path locks the wallet row. The claim gate reads the balance less every unsettled line, without a lock (`afd_setup`'s model budget, `afd_billing`'s `select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_setup`'s creation `wallet.sql`).
+No setup chat path locks the wallet row. The assignment gate reads the balance less every unsettled line, without a lock (`afd_setup`'s model budget, `afd_billing`'s `select_balance.sql`). The only setup wallet lock left is fleet creation's at Save (`afd_setup`'s creation `wallet.sql`).
 
 Stop and delete take draft → attempt and never later take the runner guard.
 
@@ -366,32 +366,32 @@ The decision sweep defers a candidate whose fleet row is locked to its next pass
 
 ### The setup chat claim never waits on a row
 
-A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_setup`'s run claim). Each locks the host row, then the creator's user row, then the draft.
+An assignment walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_setup`'s `run::claim`). Each locks the host row, then the creator's user row, then the draft.
 
-Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. A claim that waited on a busy draft held its host row throughout, and every tenant behind that draft waited with it:
+Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. An assignment that waited on a busy draft held its host row throughout, and every tenant behind that draft waited with it:
 
 ```
-BEFORE — the claim waits                      AFTER — the claim skips
+BEFORE — the assignment waits                 AFTER — the assignment skips
                                               
- offer pass (R)                                offer pass (R)
+ assignment pass (R)                           assignment pass (R)
    │ lock host row R                             │ lock host row R
    ├─ draft A1 (tenant A) ── held by a writer    ├─ draft A1 ── held? NOWAIT refuses
    │     ⏳ waits until the writer commits        │     ↩ savepoint rolls back, A1 skipped
    │     (host row R held, ~1 s per write)       ├─ draft B1 (tenant B) ── free
-   ├─ draft B1 (tenant B) ── never reached       │     ✔ admitted, run issued
-   │     until A's write ends                    └─ commit; A1 is admitted on a later
+   ├─ draft B1 (tenant B) ── never reached       │     ✔ assigned, run issued
+   │     until A's write ends                    └─ commit; A1 is assigned on a later
    └─ every pass repeats the wait                    pass, once its writer lets go
 ```
 
 
-`authorize` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_setup`'s claim selection). That is the order the reads after it lock them. The statements are `hold_user.sql` and `hold_draft.sql`.
+`authorize` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_setup`'s `run::claim` selection). That is the order the reads after it lock them. The statements are `hold_user.sql` and `hold_draft.sql`.
 
-A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the claim's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads after it never wait.
+A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the assignment's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the assignment commits, so the reads after it never wait.
 
-The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every claim pass of the walk. A skipped draft is passed over, not dropped. Its order by age resumes on the first claim pass after the writer commits.
+The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every assignment pass of the walk. A skipped draft is passed over and kept. Its order by age resumes on the first assignment pass after the writer commits.
 
 `make bench-run BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat run p95 3 006 → 707 ms, 41.7 → 62.7 runs/s.
 
 No run was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-The proofs are `afd_setup`'s `skipping` admission tests. A claim can still be a deadlock victim on a lock it does wait for. That lock is the catalogue its model read shares (the `revalidation` admission tests).
+The proofs are `afd_setup`'s `draft/admission/skipping.rs` tests. An assignment can still be a deadlock victim on a lock it does wait for. That lock is the catalogue its model read shares (`draft/admission/revalidation.rs`).

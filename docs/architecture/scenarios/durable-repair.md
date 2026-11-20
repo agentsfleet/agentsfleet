@@ -31,13 +31,13 @@ The accepted completion questions require the unchanged regression and required 
 The example uses Jev; [decision models](../goal_evaluation.md) owns provider selection and assessment rules.
 
 Indy uses authenticated browser chat or the command-line interface (CLI) through a coding agent.
-Both clients send ordinary fleet messages through the existing admission path.
+Both clients send ordinary fleet messages through the existing turn intake path.
 A machine credential cannot impersonate a human approval.
 
 ## Admit and steer work through ordinary conversation
 
 ```text
-Indy                    Fleet message admission          Current fleet run
+Indy                    Fleet turn intake                Current fleet run
  |                                |                               |
  | Repair import PR X             |                               |
  |------------------------------->| save source message A1        |
@@ -80,7 +80,7 @@ Neither a sidebar selection nor a new chat mode supplies task authority.
 
 The fleet runs one active run at a time.
 The [run flow](../run_flow.md) and [task scheduling](../durable_tasks.md#proposed-input-claims-and-scheduling) own serialization and fair switching.
-Waiting work releases the slot so another assigned task can run.
+Waiting work releases the fleet's thread so another assigned task can run.
 
 ```text
 Import run             Native publication          Saved state / GitHub
@@ -115,7 +115,7 @@ A completed remote write retains its reconciliation record even if its acknowled
 
 [Existing-PR publication](../durable_tasks.md#existing-pull-request-publication) owns expected-head checks, reviewed workflows and effect receipts.
 The initial write scope excludes fork heads, protected/base targets, workflow edits, force pushes, merge and deployment.
-A push with privileged or deployment effects needs separate review before admission.
+A push with privileged or deployment effects needs separate review before the daemon accepts it.
 
 [Workspace recovery](../sandbox_evaluation.md#coding-sessions-and-worktrees-across-runs) owns compatible files, Git state, history and confirmed outcomes.
 [Incremental checkpoints](../sandbox_evaluation.md#large-repositories-and-incremental-checkpoints) owns retained bases, encrypted chunks, transfer bounds and collection pins.
@@ -211,7 +211,7 @@ The acceptance ledger records verification status separately from screenshots an
 | Outputs | Native PR targets, including bounded history from saved task activity; local edits do not prove publication. |
 | Changes | Recorded file writes with expandable details; no new diff service. |
 | Sources | Saved fleet repository policy, without claiming fresh remote grants. |
-| CLI | Native task identity and decision/transfer observations through the existing attached event path. |
+| CLI | Native task identity and decision/transfer observations through the existing attached turn stream. |
 | Recovery | Restoration, uncertain publication readback and confirmed resumed work remain distinguishable. |
 
 A waiting summary can name the actual CI run and head when native evidence supplies them.
