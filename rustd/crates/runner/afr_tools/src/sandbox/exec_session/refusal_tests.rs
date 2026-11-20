@@ -17,7 +17,7 @@ async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
 
     for session_id in [json!("1"), json!(-1), json!(1.5)] {
         let arguments = json!({SESSION_ID: session_id, CHARS: "x"});
-        let output = call_in(&*write(), &executor, &run, arguments).await;
+        let output = call_in(write(), &executor, &run, arguments).await;
 
         assert_eq!(
             output.error_code,
@@ -32,13 +32,7 @@ async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
 async fn should_refuse_a_session_that_is_not_open() {
     let executor = ScriptedExecutor::new([]);
 
-    let output = call_in(
-        &*write(),
-        &executor,
-        &Run::default(),
-        writing(99, "x", None),
-    )
-    .await;
+    let output = call_in(write(), &executor, &Run::default(), writing(99, "x", None)).await;
 
     assert_eq!(
         output.text,
@@ -52,15 +46,9 @@ async fn should_refuse_a_session_that_is_not_open() {
 async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
     let run = Run::default();
 
-    let opened = call(&*exec(), &run, opening(CAT, None)).await;
-    let written = call(&*write(), &run, writing(1, "", None)).await;
-    let refused = call_in(
-        &*exec(),
-        &ScriptedExecutor::new([]),
-        &run,
-        opening(CAT, None),
-    )
-    .await;
+    let opened = call(exec(), &run, opening(CAT, None)).await;
+    let written = call(write(), &run, writing(1, "", None)).await;
+    let refused = call_in(exec(), &ScriptedExecutor::new([]), &run, opening(CAT, None)).await;
 
     assert_eq!(
         opened.error_code,
@@ -68,7 +56,8 @@ async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
     );
     assert_eq!(
         written.error_code,
-        Some(ToolErrorCode::SandboxUnavailable.into())
+        Some(ToolErrorCode::SessionNotFound.into()),
+        "a run with no sandbox opened no session to write to"
     );
     assert!(
         refused.text.ends_with(": no scripted process left"),

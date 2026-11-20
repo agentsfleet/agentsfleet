@@ -9,15 +9,15 @@ use serde_json::json;
 use crate::backed::Backends;
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::testing::call;
+use crate::testing::{call, no_sandbox};
 
 /// The name of the tool these cases read: one whose arguments are a type.
 const RECALL: &str = "memory_recall";
 
 #[test]
 fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
-    let run = Run::default();
-    let backends = Backends::new(&run, None);
+    let (run, slot) = (Run::default(), no_sandbox());
+    let backends = Backends::new(&run, &slot, None);
     let tools = backends.tools(&[RECALL]).unwrap();
     let parameters = tools.tool(RECALL).unwrap().spec().parameters;
 
@@ -32,8 +32,8 @@ fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
 
 #[tokio::test]
 async fn arguments_that_do_not_parse_are_refused_before_the_handler_runs() {
-    let run = Run::default();
-    let backends = Backends::new(&run, None);
+    let (run, slot) = (Run::default(), no_sandbox());
+    let backends = Backends::new(&run, &slot, None);
     let tools = backends.tools(&[RECALL]).unwrap();
     let tool = tools.tool(RECALL).unwrap();
 

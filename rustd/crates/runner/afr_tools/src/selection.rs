@@ -1,15 +1,12 @@
-//! The tools one run, or one child loop, was offered.
+//! The tools one run was offered.
 //!
 //! A selection is what a policy named, in the order it named it: the
-//! catalog's handlers, the tools the run builds over its own backends, the
-//! nested tools the loop runs itself, and the entries the provider hosts,
-//! borrowed for the run. A child's selection narrows its
-//! parent's, so a child never holds a tool its parent lacks.
-
-use guffbolt::agents::Narrow;
+//! catalog's handlers, the tools the run builds over its own backends,
+//! `guffbolt`'s subagent tools, and the entries the provider hosts, borrowed
+//! for the run. A child loop holds its parent's tools or fewer; `guffbolt`
+//! narrows them, so a selection is the run's alone.
 
 use crate::catalog::Entry;
-use crate::nested::{NESTED, Nested};
 use crate::runtime::{CatalogTool, Runtime};
 
 /// One tool a selection offers the model as a function.
@@ -20,17 +17,27 @@ pub enum Offered<'c> {
     /// A tool the run builds over its own backends when it starts
     /// ([`crate::RunTools`]).
     Backed(&'static Entry),
-    /// A nested tool, which the loop runs beside the turn.
-    Nested(Nested),
+    /// One of `guffbolt`'s subagent tools, by `guffbolt`'s own name: the run
+    /// builds it over its children, and it runs beside the loop.
+    Built(&'static str),
 }
 
 impl Offered<'_> {
-    /// The published entry it serves.
+    /// The name the model calls it by.
     #[must_use]
-    pub const fn entry(self) -> &'static Entry {
+    pub const fn name(self) -> &'static str {
         match self {
-            Self::Handler(entry, _) | Self::Backed(entry) => entry,
-            Self::Nested(nested) => nested.entry(),
+            Self::Handler(entry, _) | Self::Backed(entry) => entry.name(),
+            Self::Built(name) => name,
+        }
+    }
+
+    /// Where it runs.
+    #[must_use]
+    pub const fn runtime(self) -> Runtime {
+        match self {
+            Self::Handler(entry, _) | Self::Backed(entry) => entry.runtime(),
+            Self::Built(_) => Runtime::Supervisor,
         }
     }
 }
@@ -50,7 +57,7 @@ impl<'c> Selection<'c> {
     pub fn needs_sandbox(&self) -> bool {
         self.tools
             .iter()
-            .any(|offered| offered.entry().runtime() == Runtime::Sandbox)
+            .any(|offered| offered.runtime() == Runtime::Sandbox)
     }
 
     /// The catalog's handler for `name`, when the run was offered one.
@@ -58,14 +65,21 @@ impl<'c> Selection<'c> {
     pub fn tool(&self, name: &str) -> Option<&'c CatalogTool> {
         match self.find(name)? {
             Offered::Handler(_entry, handler) => Some(handler),
-            Offered::Backed(_) | Offered::Nested(_) => None,
+            Offered::Backed(_) | Offered::Built(_) => None,
         }
     }
 
     /// Whether `name` is one of the provider-hosted tools offered.
     #[must_use]
     pub fn hosts(&self, name: &str) -> bool {
-        self.hosted_entry(name).is_some()
+        self.hosted.iter().any(|entry| entry.name() == name)
+    }
+
+    /// Whether the run was offered `name`, as a function or as a tool the
+    /// provider hosts.
+    #[must_use]
+    pub fn offers(&self, name: &str) -> bool {
+        self.find(name).is_some() || self.hosts(name)
     }
 
     /// The functions the run was offered, in the order its policy named
@@ -80,58 +94,8 @@ impl<'c> Selection<'c> {
         &self.hosted
     }
 
-    /// The same selection without every tool `dropped` names.
-    #[must_use]
-    pub fn without(&self, dropped: &[&Entry]) -> Self {
-        let kept = |entry: &Entry| !dropped.iter().any(|gone| **gone == *entry);
-        Self {
-            tools: (self.tools.iter().copied())
-                .filter(|offered| kept(offered.entry()))
-                .collect(),
-            hosted: (self.hosted.iter().copied())
-                .filter(|entry| kept(entry))
-                .collect(),
-        }
-    }
-
     /// The function named `name`, when it is one offered.
     fn find(&self, name: &str) -> Option<Offered<'c>> {
-        self.offered()
-            .find(|offered| offered.entry().name() == name)
-    }
-
-    /// The hosted entry named `name`, when it is one offered.
-    fn hosted_entry(&self, name: &str) -> Option<&'static Entry> {
-        self.hosted
-            .iter()
-            .copied()
-            .find(|entry| entry.name() == name)
-    }
-
-    pub(crate) fn offers(&self, name: &str) -> bool {
-        self.find(name).is_some() || self.hosts(name)
-    }
-}
-
-/// A child's selection narrows its parent's, hosted entries included, and
-/// one at the depth cap holds none of the six nested tools.
-impl Narrow for Selection<'_> {
-    fn narrowed<'n, N: AsRef<str>>(&self, names: &'n [N]) -> Result<Self, &'n str> {
-        let mut narrowed = Self::default();
-        for name in names.iter().map(AsRef::as_ref) {
-            if narrowed.offers(name) {
-                continue;
-            }
-            match (self.find(name), self.hosted_entry(name)) {
-                (Some(offered), _) => narrowed.tools.push(offered),
-                (None, Some(entry)) => narrowed.hosted.push(entry),
-                (None, None) => return Err(name),
-            }
-        }
-        Ok(narrowed)
-    }
-
-    fn without_agents(&self) -> Self {
-        self.without(&NESTED)
+        self.offered().find(|offered| offered.name() == name)
     }
 }

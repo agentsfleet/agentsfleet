@@ -3,8 +3,7 @@
 //! proved here.
 
 use guffbolt::tools::process::exec_session::{
-    EMPTY_WRITE_YIELD_MIN, ExecCommand, INPUT_REFUSED, WRITE_UNDELIVERED, WriteStdin,
-    YIELD_DEFAULT, YIELD_MAX, YIELD_MIN,
+    EMPTY_WRITE_YIELD_MIN, INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN,
 };
 
 /// The session the scripted executor's process `id` is, as the sessions

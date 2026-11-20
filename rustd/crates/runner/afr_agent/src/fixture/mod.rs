@@ -8,7 +8,6 @@
 )]
 
 use std::sync::mpsc;
-use std::time::Duration;
 
 use af_wire::activity::ActivityFrame;
 use af_wire::run::RunPayload;
@@ -123,49 +122,6 @@ impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Canned {
     }
 }
 
-/// A tool answering every call with `output` after `delay`, for a suite
-/// under paused time that needs a call to be open until it says.
-#[derive(Debug)]
-pub(crate) struct Slow {
-    entry: &'static Entry,
-    schema: Schema,
-    output: String,
-    delay: Duration,
-}
-
-impl Slow {
-    pub(crate) fn boxed(entry: &'static Entry, output: &str, delay: Duration) -> Box<CatalogTool> {
-        Box::new(Self {
-            entry,
-            schema: Schema::of::<NoArguments>(entry.name()),
-            output: output.to_owned(),
-            delay,
-        })
-    }
-}
-
-impl Describe for Slow {
-    fn spec(&self) -> ToolSpec<'_> {
-        self.schema.spec(self.entry.name())
-    }
-}
-
-impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Slow {
-    fn call<'a>(
-        &'a self,
-        _arguments: &'a serde_json::Value,
-        _cx: ToolContext<'call, 'run>,
-    ) -> ToolFuture<'a>
-    where
-        ToolContext<'call, 'run>: 'a,
-    {
-        Box::pin(async move {
-            tokio::time::sleep(self.delay).await;
-            ToolOutput::succeeded(self.output.clone())
-        })
-    }
-}
-
 /// A tool whose every call ran a process that exited with `code`.
 #[derive(Debug)]
 pub(crate) struct Exits {
@@ -199,13 +155,9 @@ impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Exits {
     where
         ToolContext<'call, 'run>: 'a,
     {
-        Box::pin(std::future::ready(ToolOutput {
-            text: format!("exited {}", self.code),
-            exit_code: Some(self.code),
-            error_code: None,
-            image: None,
-            asks: None,
-        }))
+        let mut exited = ToolOutput::succeeded(format!("exited {}", self.code));
+        exited.exit_code = Some(self.code);
+        Box::pin(std::future::ready(exited))
     }
 }
 

@@ -2,6 +2,6 @@
 //! sandbox, egress guard and memory, so what agentsfleet's runs read is
 //! proved here.
 
-use guffbolt::tools::process::git::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, Git, subcommand};
+use guffbolt::tools::process::git::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, subcommand};
 
 mod tests;

@@ -86,13 +86,15 @@ impl guffbolt::Conversation for Harness<'_, '_> {
         &mut self.transcript
     }
 
-    /// What a parent sent a child, unmarked, or the messages a person sent
-    /// the root, each marked with its turn; each scrubbed like anything the
-    /// model wrote.
+    /// The messages a person sent the root, each marked with its turn and
+    /// scrubbed like anything the model wrote. A child's input is its task
+    /// and what its parent sent it, which `guffbolt` hands it itself, so a
+    /// child takes none of the root's.
     async fn take_input(&mut self) -> Vec<Input> {
-        let sent = match self.child.as_mut() {
-            Some(tether) => tether.sent().into_iter().map(Input::from).collect(),
-            None => self.assign_folded().await,
+        let sent = if self.depth == 0 {
+            self.assign_folded().await
+        } else {
+            Vec::new()
         };
         let scrub = self.shared.scrub;
         sent.into_iter()

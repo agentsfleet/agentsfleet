@@ -14,12 +14,10 @@ use bytes::Bytes;
 use serde_json::{Value, json};
 use tokio::time::Instant;
 
-use super::{
-    EMPTY_WRITE_YIELD_MIN, ExecCommand, WriteStdin, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN, session,
-};
-use crate::generic::Generic;
+use super::{EMPTY_WRITE_YIELD_MIN, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN, session};
+use crate::catalog::{EXEC_COMMAND, Entry, WRITE_STDIN};
 use crate::run::Run;
-use crate::runtime::{CatalogTool, ToolErrorCode};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
 use guffbolt::tools::process::oneshot::EVENT_OUT_OF_MEMORY;
@@ -64,12 +62,12 @@ pub(super) fn named_run() -> Run<'static> {
     }
 }
 
-pub(super) fn exec() -> Box<CatalogTool> {
-    Generic::boxed(ExecCommand)
+pub(super) fn exec() -> &'static Entry {
+    &EXEC_COMMAND
 }
 
-pub(super) fn write() -> Box<CatalogTool> {
-    Generic::boxed(WriteStdin)
+pub(super) fn write() -> &'static Entry {
+    &WRITE_STDIN
 }
 
 /// `exec_command`'s arguments for `cmd`, waiting `yield_ms` when given.
@@ -94,7 +92,7 @@ fn only_spawn(executor: &ScriptedExecutor) -> Spawn {
 /// Opens one session on `executor` that yields as briefly as it may.
 pub(super) async fn open(executor: &ScriptedExecutor, run: &Run<'_>, cmd: &str) {
     call_in(
-        &*exec(),
+        exec(),
         executor,
         run,
         opening(cmd, Some(saturating_millis(YIELD_MIN))),
@@ -108,7 +106,7 @@ async fn test_exec_command_keeps_a_running_process_as_a_session() {
     let run = Run::default();
     let started = Instant::now();
 
-    let output = call_in(&*exec(), &executor, &run, opening(DEV_SERVER, None)).await;
+    let output = call_in(exec(), &executor, &run, opening(DEV_SERVER, None)).await;
 
     assert_eq!(output.text, format!("ready\n{FIRST_RUNNING}"));
     assert_eq!((output.exit_code, output.error_code), (None, None));
@@ -131,7 +129,7 @@ async fn should_start_on_a_terminal_in_a_workdir_when_asked() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("", 0)]);
     let arguments = json!({CMD: REPL, "tty": true, "workdir": WORKDIR});
 
-    call_in(&*exec(), &executor, &Run::default(), arguments).await;
+    call_in(exec(), &executor, &Run::default(), arguments).await;
 
     let spawn = only_spawn(&executor);
     assert!(spawn.on_terminal());
@@ -144,7 +142,7 @@ async fn should_answer_at_once_with_the_exit_of_a_process_that_ends_in_its_yield
     let run = Run::default();
     let started = Instant::now();
 
-    let output = call_in(&*exec(), &executor, &run, opening("make", None)).await;
+    let output = call_in(exec(), &executor, &run, opening("make", None)).await;
 
     assert_eq!(output.text, "built\nProcess exited with code 2");
     assert_eq!(output.exit_code, Some(2));
@@ -162,7 +160,7 @@ async fn a_session_killed_for_memory_is_logged_as_a_one_shot_command_is() {
         ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
     let run = named_run();
 
-    let output = call_in(&*exec(), &executor, &run, opening(REPL, None)).await;
+    let output = call_in(exec(), &executor, &run, opening(REPL, None)).await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory.into()));
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
@@ -180,10 +178,10 @@ async fn should_hold_a_yield_between_the_shortest_and_the_longest() {
     let run = Run::default();
 
     let started = Instant::now();
-    call_in(&*exec(), &executor, &run, opening("a", Some(1))).await;
+    call_in(exec(), &executor, &run, opening("a", Some(1))).await;
     let shortest = started.elapsed();
     let started = Instant::now();
-    call_in(&*exec(), &executor, &run, opening("b", Some(3_600_000))).await;
+    call_in(exec(), &executor, &run, opening("b", Some(3_600_000))).await;
     let longest = started.elapsed();
 
     assert_eq!(shortest, YIELD_MIN);
@@ -201,7 +199,7 @@ async fn test_exec_command_makes_room_past_the_session_cap() {
         open(&executor, &run, "sleep 600").await;
     }
 
-    let opened = call_in(&*exec(), &executor, &run, opening("one more", None)).await;
+    let opened = call_in(exec(), &executor, &run, opening("one more", None)).await;
 
     assert_eq!(opened.error_code, None, "{opened:?}");
     assert_eq!(executor.spawned().len(), SESSIONS_PER_RUN_MAX + 1);
@@ -214,8 +212,8 @@ async fn test_write_stdin_feeds_a_session_and_reads_what_it_printed() {
     let run = Run::default();
     open(&executor, &run, CAT).await;
 
-    let first = call_in(&*write(), &executor, &run, writing(1, ONE, None)).await;
-    let second = call_in(&*write(), &executor, &run, writing(1, TWO, None)).await;
+    let first = call_in(write(), &executor, &run, writing(1, ONE, None)).await;
+    let second = call_in(write(), &executor, &run, writing(1, TWO, None)).await;
 
     assert_eq!(first.text, format!("{ONE}{FIRST_RUNNING}"));
     assert_eq!(second.text, format!("{TWO}{FIRST_RUNNING}"));
@@ -236,7 +234,7 @@ async fn should_poll_with_an_empty_write_for_at_least_five_seconds() {
     let started = Instant::now();
 
     let polled = call_in(
-        &*write(),
+        write(),
         &executor,
         &run,
         writing(1, "", Some(saturating_millis(YIELD_MIN))),
@@ -259,8 +257,8 @@ async fn should_answer_the_ending_of_a_process_that_exited_between_calls() {
     assert!(executor.end(FIRST, Ending::Exited(4)));
     let answer = writing(1, "y\n", None);
 
-    let output = call_in(&*write(), &executor, &run, answer.clone()).await;
-    let again = call_in(&*write(), &executor, &run, answer).await;
+    let output = call_in(write(), &executor, &run, answer.clone()).await;
+    let again = call_in(write(), &executor, &run, answer).await;
 
     assert_eq!(output.text, "Process exited with code 4");
     assert_eq!(output.exit_code, Some(4));
@@ -287,7 +285,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     });
     let started = Instant::now();
 
-    let output = call_in(&*write(), &*executor, &run, writing(1, EXIT, None)).await;
+    let output = call_in(write(), &*executor, &run, writing(1, EXIT, None)).await;
 
     assert!(exit.await.unwrap(), "the process was open to end");
     assert_eq!(output.text, format!("{EXIT}Process exited with code 0"));
@@ -311,7 +309,7 @@ async fn should_say_the_output_was_still_open_before_the_status_line() {
         ScriptedExecutor::new([ScriptedProcess::ends_abandoned("out\n", Ending::Exited(0))]);
 
     let output = call_in(
-        &*exec(),
+        exec(),
         &executor,
         &Run::default(),
         opening(DEV_SERVER, None),

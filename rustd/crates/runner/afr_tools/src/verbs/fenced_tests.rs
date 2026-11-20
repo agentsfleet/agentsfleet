@@ -12,14 +12,14 @@ use af_core::clock;
 use af_core::timing::DAY;
 use serde_json::{Value, json};
 
-use crate::generic::Generic;
+use crate::catalog::HTTP_REQUEST;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{
     Asked, MINTED, OwnedCall, RecordingVerbs, RunFixture, call, call_built, replying, run_with,
+    sending,
 };
 use crate::verbs::Unanswered;
 use guffbolt::ToolOutput;
-use guffbolt::tools::web::HttpRequest;
 
 /// A schedule id, as `cron_list` names one.
 const SCHEDULE: &str = "0199a0b0-0000-7000-8000-0000000000aa";
@@ -126,8 +126,8 @@ async fn a_minted_token_is_masked_out_of_a_schedule_message() {
         "url": "https://api.github.com/repos/acme/widgets/",
         "headers": {"Authorization": "Bearer ${secrets.github.token}"},
     });
-    let request = Generic::sending(HttpRequest, minting);
-    assert_eq!(call(request.as_ref(), &run, read).await.error_code, None);
+    let request = sending(&HTTP_REQUEST, minting);
+    assert_eq!(call(&request, &run, read).await.error_code, None);
 
     let leaky = format!("retry with {MINTED}");
     for (name, arguments) in [

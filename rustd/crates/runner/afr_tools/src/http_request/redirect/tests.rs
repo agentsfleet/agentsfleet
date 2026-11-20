@@ -7,10 +7,9 @@ use af_egress::testing::{RecordingTransport, inbound, redirected};
 use af_egress::{Outbound, Transport};
 use serde_json::json;
 
-use super::HttpRequest;
-use crate::generic::Generic;
+use crate::catalog::HTTP_REQUEST;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{RunFixture, call};
+use crate::testing::{RunFixture, call, sending};
 
 const INITIAL: &str = "https://api.github.com/repos/acme/widgets/actions/jobs/7/logs";
 const AUTH: &str = "Bearer ${secrets.github.token}";
@@ -34,8 +33,8 @@ async fn should_expose_incomplete_source_reads_before_the_body() {
                 Ok(response)
             }
         });
-        let tool = Generic::sending(HttpRequest, Arc::new(transport));
-        let output = call(tool.as_ref(), &run.run(), json!({"url": INITIAL})).await;
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
         let (notices, body) = output
             .text
             .split_once("Response Body:")
@@ -61,9 +60,9 @@ async fn should_read_text_through_admitted_redirects() {
                 Ok(inbound(200, LOG))
             }
         });
-        let tool = Generic::sending(HttpRequest, Arc::new(transport));
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
         let output = call(
-            tool.as_ref(),
+            &tool,
             &run.run(),
             json!({"url": INITIAL, "headers": {"Authorization": AUTH}}),
         )
@@ -93,9 +92,9 @@ async fn should_strip_headers_across_redirect_origins() {
             |target| redirected(302, request.url(), &target),
         ))
     });
-    let tool = Generic::sending(HttpRequest, Arc::new(transport));
+    let tool = sending(&HTTP_REQUEST, Arc::new(transport));
     let output = call(
-        tool.as_ref(),
+        &tool,
         &run.run(),
         json!({"url": INITIAL,
         "headers": {"Authorization": AUTH, "X-Caller": "drop me", "Accept": "application/json"}}),
@@ -138,8 +137,8 @@ async fn should_refuse_redirect_before_transmission() {
         let (transport, sent) = RecordingTransport::answering(move |request| {
             Ok(redirected(302, request.url(), target))
         });
-        let tool = Generic::sending(HttpRequest, Arc::new(transport));
-        let output = call(tool.as_ref(), &run.run(), json!({"url": INITIAL})).await;
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
         assert_eq!(output.error_code, Some(expected.into()));
         assert!(
             output.text.contains("Status: 302")
@@ -162,7 +161,7 @@ async fn should_keep_unaffected_clients_single_hop() {
         let run = RunFixture::new(false);
         let (transport, sent) =
             RecordingTransport::answering(|request| Ok(redirected(302, request.url(), "/another")));
-        let tool = Generic::sending(HttpRequest, Arc::new(transport));
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
         let mut arguments = json!({"url": format!("https://{GRAFANA}/logs"), "method": method});
         if let Some(body) = body {
             arguments
@@ -170,7 +169,7 @@ async fn should_keep_unaffected_clients_single_hop() {
                 .expect("request arguments are an object")
                 .insert("body".to_owned(), json!(body));
         }
-        let output = call(tool.as_ref(), &run.run(), arguments).await;
+        let output = call(&tool, &run.run(), arguments).await;
         assert_eq!(
             output.error_code,
             Some(ToolErrorCode::UpstreamStatus.into())
@@ -193,9 +192,9 @@ impl Transport for Never {
 async fn should_bound_the_whole_http_read_deadline() {
     let capture = af_core::test_util::trace::Capture::install();
     let run = RunFixture::new(true);
-    let tool = Generic::sending(HttpRequest, Arc::new(Never));
+    let tool = sending(&HTTP_REQUEST, Arc::new(Never));
     let run = run.run();
-    let output = call(tool.as_ref(), &run, json!({"url": INITIAL})).await;
+    let output = call(&tool, &run, json!({"url": INITIAL})).await;
     assert_eq!(
         output.error_code,
         Some(ToolErrorCode::UpstreamUnreachable.into())
@@ -233,13 +232,8 @@ async fn should_follow_mixed_case_get_and_mask_success_and_error_echoes() {
                 Ok(response)
             }
         });
-        let tool = Generic::sending(HttpRequest, Arc::new(transport));
-        let output = call(
-            tool.as_ref(),
-            &run.run(),
-            json!({"url":INITIAL,"method":method}),
-        )
-        .await;
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url":INITIAL,"method":method})).await;
         assert_eq!(
             output.error_code,
             (status != 200).then_some(ToolErrorCode::UpstreamStatus.into())
@@ -282,8 +276,8 @@ async fn should_retain_safe_context_when_redirects_stop() {
             };
             Ok(redirected(302, request.url(), &target))
         });
-        let tool = Generic::sending(HttpRequest, Arc::new(transport));
-        let output = call(tool.as_ref(), &run.run(), json!({"url": INITIAL})).await;
+        let tool = sending(&HTTP_REQUEST, Arc::new(transport));
+        let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
         let code = if case == 0 {
             ToolErrorCode::InvalidArguments
         } else {
@@ -315,9 +309,9 @@ impl Transport for SlowHops {
 #[tokio::test(start_paused = true)]
 async fn should_share_one_deadline_across_redirect_hops() {
     let run = RunFixture::new(true);
-    let tool = Generic::sending(HttpRequest, Arc::new(SlowHops));
+    let tool = sending(&HTTP_REQUEST, Arc::new(SlowHops));
     let began = tokio::time::Instant::now();
-    let output = call(tool.as_ref(), &run.run(), json!({"url": INITIAL})).await;
+    let output = call(&tool, &run.run(), json!({"url": INITIAL})).await;
     assert_eq!(
         output.error_code,
         Some(ToolErrorCode::UpstreamUnreachable.into())

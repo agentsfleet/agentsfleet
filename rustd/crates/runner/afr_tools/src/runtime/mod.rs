@@ -24,8 +24,9 @@ pub enum Runtime {
 ///
 /// The router builds it per call and hands the executor only to a sandbox-side
 /// handler, so a supervisor-side one cannot reach the sandbox by construction.
-/// A generic tool reaches that executor as its `guffbolt` environment, and
-/// nothing else: no handler here runs a command on the runner's host.
+/// A generic tool reaches the sandbox only through the environment the run
+/// built it over ([`crate::LazySandboxEnv`]): no handler here runs a command
+/// on the runner's host.
 /// The run's state is shared: a run's child loops call tools at the same
 /// time as their parent, so each part a call changes sits behind its own lock
 /// ([`Run`]).

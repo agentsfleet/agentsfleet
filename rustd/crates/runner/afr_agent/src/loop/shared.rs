@@ -1,10 +1,12 @@
-//! What every loop of one run shares.
+//! What every loop of one run shares, and the conversation each child's
+//! turn runs over.
 //!
-//! The root loop and every child a nested tool starts read the same run,
-//! ledger, meter, provider and system prompt, so a child holds nothing of its
-//! own but its conversation and its selection, and the report, the fence and
-//! the sandbox stay single (`docs/architecture/runner_execution.md` §"Tool
-//! catalog").
+//! The root loop and every child `guffbolt` drives read the same run,
+//! ledger, meter, provider and system prompt, so a child holds nothing of
+//! its own but its conversation, and the report, the fence and the sandbox
+//! stay single. `guffbolt` keeps each child's transcript, inbox, narrowed
+//! tools and stop; this run lends it the loop a child's turn runs as
+//! ([`Raise`]).
 
 use std::time::Instant;
 
@@ -18,11 +20,21 @@ use afr_executor::ExecutorSource;
 use afr_memory::Loaded;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Run, RunTools, Selection};
-use guffbolt::agents::Agents;
+use guffbolt::agents::{Agents, Caps, Raise, Seat};
 use tokio_util::sync::CancellationToken;
 
+use super::Harness;
 use crate::engine::{AgentRun, Checkpoint, EventSink, Meter};
 use crate::ledger::Ledger;
+
+/// How far one run's children may go: two loops deep, four open at once,
+/// sixteen started (`docs/architecture/runner_execution.md` §"Tool
+/// catalog"). A restore checks a checkpoint's children against them too.
+pub(crate) const CAPS: Caps = Caps {
+    depth: 2,
+    open: 4,
+    started: 16,
+};
 
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {
@@ -65,8 +77,9 @@ pub(crate) struct Shared<'run> {
     /// Every call of the run, the children's included.
     pub(crate) ledger: Ledger<'run>,
     pub(crate) meter: &'run Meter,
-    /// Every child of the run: its state, its inbox and its stop.
-    pub(crate) registry: Agents<Selection<'run>>,
+    /// Every child of the run: its state, its inbox, its stop and its
+    /// transcript between turns.
+    pub(crate) registry: Agents,
     /// The system prompt every loop of the run opens with.
     pub(crate) instructions: String,
     pub(crate) started: Instant,
@@ -99,7 +112,7 @@ impl<'run> Shared<'run> {
         (selection, backed): (&'run Selection<'run>, RunTools<'run>),
         provider: &'run Provider,
         scrub: &'run Scrub,
-        registry: Agents<Selection<'run>>,
+        registry: Agents,
         instructions: String,
         state: &'run Run<'run>,
     ) -> Self {
@@ -140,5 +153,23 @@ impl<'run> Shared<'run> {
             instructions,
             started,
         }
+    }
+}
+
+/// Every loop of the run shares this, so a child's turn is the run's own
+/// loop: the root's provider, sandbox, memory, ledger and meter, over the
+/// transcript `guffbolt` keeps for it.
+impl<'run> Raise for Shared<'run> {
+    type Child<'s>
+        = Harness<'s, 'run>
+    where
+        Self: 's;
+
+    fn agents(&self) -> &Agents {
+        &self.registry
+    }
+
+    fn child(&self, seat: Seat) -> Harness<'_, 'run> {
+        Harness::child(self, seat)
     }
 }

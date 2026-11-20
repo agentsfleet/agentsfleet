@@ -14,7 +14,7 @@ const FLEET: &str = "0190d5c2-7e1a-7000-8000-00000000f0f3";
 async fn read(arguments: serde_json::Value) -> (ToolOutput, Vec<Asked>) {
     let verbs = RecordingVerbs::answering(Ok(r#"{"items":[]}"#.to_owned()), Ok(true));
     let run = run_with(&verbs);
-    let output = call(Typed::boxed(FleetActivity).as_ref(), &run, arguments).await;
+    let output = call(&*Typed::boxed(FleetActivity), &run, arguments).await;
     (output, verbs.asked())
 }
 

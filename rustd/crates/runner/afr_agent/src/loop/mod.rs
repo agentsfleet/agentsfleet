@@ -1,23 +1,24 @@
 //! The agent loop: turns until the model answers without a tool call, the
 //! context cap is reached, the run is stopped, or the provider fails.
 //!
-//! One [`Harness`] drives one loop: the run's root, or a child a nested tool
-//! started, which is the same loop over a task of the model's with a narrower
-//! selection. `guffbolt` makes each model call, runs and ends each tool call
-//! and keeps the transcript; the harness is its conversation, fits each call's
-//! window (`context`), and hears its work as its observer. What every loop of
-//! the run shares is [`Shared`]; the ledger keeps what each call did.
-//! `guffbolt::agents` polls the children beside the root loop, never spawned,
-//! so a run that ends takes every child with it.
-//! Every tool a loop holds, the nested ones and `propose_change` included,
-//! sits in its router; the loop dispatches none by name.
+//! One [`Harness`] is one loop: the run's root, or one turn of a child
+//! `guffbolt` drives for a subagent call, which is the same loop over the
+//! child's transcript. `guffbolt` makes each model call, runs and ends each
+//! tool call, keeps the transcript, and owns the children: their tools,
+//! narrowed from their parent's, their inboxes and their turns. The harness
+//! is its conversation, fits each call's window (`context`), and hears its
+//! work as its observer. What every loop of the run shares is [`Shared`]; the
+//! ledger keeps what each call did. `guffbolt::agents` polls the children
+//! beside the root loop, never spawned, so a run that ends takes every child
+//! with it. Every tool a loop holds, the subagent ones and `propose_change`
+//! included, sits in its router; the loop dispatches none by name.
 //! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
 use af_providers::Connect;
 use af_secrets::Scrub;
 use af_wire::policy::ExecutionPolicy;
 use afr_tools::{Backends, Catalog, Selection};
-use guffbolt::agents::{Agents, Children, Tether};
+use guffbolt::agents::{Agents, Children};
 use guffbolt::{Hosted, Transcript};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -27,7 +28,6 @@ use crate::context::Checkpoints;
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
-use crate::nested;
 use crate::prompt::Prompt;
 use crate::router::Router;
 use crate::spans;
@@ -38,6 +38,10 @@ const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
 /// Why a turn the run stopped did not complete.
 const REASON_STOPPED: &str = "run_stopped";
+/// One of a child's turns starts.
+const EVENT_CHILD_STARTED: &str = "child_started";
+/// One of a child's turns ended.
+const EVENT_CHILD_ENDED: &str = "child_ended";
 
 /// How a loop's turns ended, a failure being the provider's.
 pub(crate) type Ending = guffbolt::Ending<af_providers::Error>;
@@ -123,24 +127,26 @@ impl AgentEngine for Loop {
         let recovery_boundary::RootSetup {
             opening,
             memory,
-            mut state,
+            state,
         } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message)?;
         // The run's state outlives its tools: the tools a run builds over its
-        // memory, verbs and guard borrow it, and every loop borrows them. The
-        // children's registry is made after them, so it is dropped first.
+        // memory, verbs, guard, sandbox and children borrow it, and every loop
+        // borrows them. A recovered root brings its children back from its
+        // saved state.
         let tools_run = shared::run_state(&run, memory, provider.as_ref());
-        let backends = Backends::new(&tools_run, self.catalog.transport());
+        let (registry, requests) = state.as_ref().map_or_else(
+            || Agents::new(shared::CAPS),
+            |recovered| Agents::restored(shared::CAPS, &recovered.driver),
+        );
+        let backends = Backends::new(&tools_run, run.executor, self.catalog.transport())
+            .with_agents(&registry);
         let backed = backends.tools(tools)?;
-        let (registry, requests) = match &mut state {
-            Some(recovered) => std::mem::take(&mut recovered.children).restored(&scrub)?,
-            None => Agents::new(nested::CAPS),
-        };
         let shared = Shared::new(
             &run,
             (&selection, backed),
             provider.as_ref(),
             &scrub,
-            registry,
+            registry.clone(),
             instructions,
             &tools_run,
         );
@@ -173,12 +179,14 @@ pub(crate) struct Harness<'s, 'run> {
     confirmed_effect_watermark: u64,
     task_report: Option<af_wire::task::TaskReport>,
     pub(crate) shared: &'s Shared<'run>,
+    /// The child this loop is a turn of: zero for the root.
+    pub(crate) id: u64,
     /// How many loops this one is inside: zero for the root.
     pub(crate) depth: u8,
     /// Cancelled when this loop is to end: the run's token for the root, a
     /// descendant of its parent's for a child.
     pub(crate) stop: CancellationToken,
-    /// The tools this loop is offered; a child's selection narrows it.
+    /// The tools the run was offered; `guffbolt` narrows a child's.
     pub(crate) selection: &'s Selection<'run>,
     /// Every tool this loop holds, and how a call reaches one.
     router: Router<'s, 'run>,
@@ -189,9 +197,6 @@ pub(crate) struct Harness<'s, 'run> {
     /// The conversation `guffbolt` keeps for this loop.
     transcript: Transcript,
     driver: guffbolt::DriveState,
-    /// The child this loop is, when it is one: what its parent sent, read
-    /// into its next turn, and the count of its calls its parent reads.
-    pub(crate) child: Option<Tether<'s>>,
     /// The last folded message this loop took, by sequence; 0 before the
     /// first. A child takes none.
     folded_through: i64,
@@ -204,8 +209,8 @@ pub(crate) struct Harness<'s, 'run> {
 }
 
 impl Harness<'_, '_> {
-    /// Runs the loop's turns to their end: the root of a durable task with
-    /// its task's additions, every other loop as it is.
+    /// Runs the root's turns to their end, with a durable task's additions
+    /// when it is one; `guffbolt` drives every child's.
     pub(crate) async fn drive(&mut self) -> Ending {
         let mut state = std::mem::take(&mut self.driver);
         let ending = if self.task.is_some() {

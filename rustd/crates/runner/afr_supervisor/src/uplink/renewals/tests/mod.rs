@@ -106,7 +106,7 @@ async fn full_host_usage_renews_in_bounded_independently_correlated_frames() -> 
         serde_json::to_vec(&oversized)
             .map_err(crate::error::encode)?
             .len()
-            > af_wire::protocol::MESSAGE_BYTES_MAX,
+            > af_wire::protocol::CONTROL_MESSAGE_BYTES_MAX,
         "this legal host population must exercise the frame partition"
     );
     drop(oversized);
@@ -201,7 +201,7 @@ impl RenewalPeer {
 
     /// Read all partitions before answering in reverse order, retaining only small replies.
     async fn answer_snapshot(&mut self) -> crate::Result<usize> {
-        use af_wire::protocol::{MESSAGE_BYTES_MAX, RUNS_MAX, Up};
+        use af_wire::protocol::{CONTROL_MESSAGE_BYTES_MAX, RUNS_MAX, Up};
         let mut seen = std::collections::HashSet::new();
         let mut request_ids = std::collections::HashSet::new();
         let mut responses = Vec::new();
@@ -213,7 +213,7 @@ impl RenewalPeer {
                 .recv()
                 .await
                 .ok_or(crate::error::ErrorKind::Disconnected)?;
-            assert!(message.frame.as_bytes().len() <= MESSAGE_BYTES_MAX);
+            assert!(message.frame.as_bytes().len() <= CONTROL_MESSAGE_BYTES_MAX);
             assert_eq!(
                 message.deadline, deadline,
                 "partitions share one answer window"

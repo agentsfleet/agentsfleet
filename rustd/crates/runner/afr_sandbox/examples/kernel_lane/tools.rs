@@ -1,13 +1,11 @@
-//! The sandbox-side tools in a real sandbox: each trial calls the handler a
-//! run's model calls, through the catalog the runner hosts, over the
+//! The sandbox-side tools in a real sandbox: each trial calls the tool a
+//! run's model calls, built as the runner builds a run's tools, over the
 //! executor bubblewrap serves.
 
-use std::sync::Arc;
-
-use af_egress::testing::RecordingTransport;
+use afr_executor::{Executor, ExecutorSlot};
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use afr_tools::catalog::SHELL;
-use afr_tools::{Catalog, Run, ToolContext, ToolErrorCode};
+use afr_tools::{Backends, Run, ToolContext, ToolErrorCode};
 use guffbolt::{CallRef, ToolOutput};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
@@ -45,37 +43,49 @@ pub(crate) fn shell(command: &str, timeout_ms: Option<u64>) -> Value {
     json!({"command": command, "timeout_ms": timeout_ms})
 }
 
+/// Calls `name` with `arguments` at step `step`, the tool built as a run
+/// builds it over the sandbox `executor` serves, and lent the call the way
+/// the router lends a sandbox-side one.
+pub(crate) async fn called(
+    executor: &dyn Executor,
+    run: &Run<'_>,
+    step: u64,
+    name: &str,
+    arguments: &Value,
+) -> Result<ToolOutput, Failed> {
+    let slot = ExecutorSlot::ready(executor);
+    let backends = Backends::new(run, &slot, None);
+    let tools = backends.tools(&[name])?;
+    let tool = tools.tool(name).ok_or("the run builds it")?;
+    let call_ref = CallRef {
+        step,
+        index: 0,
+        call_id: format!("call-{step}"),
+    };
+    let context = ToolContext {
+        executor: Some(executor),
+        run,
+        call_ref: &call_ref,
+    };
+    Ok(tool.call(arguments, context).await)
+}
+
 /// Makes `calls` to `shell`, one after another, in one fresh sandbox, through
-/// the handler the runner's catalog hosts; what each answered, in order.
+/// the tool a run builds; what each answered, in order.
 pub(crate) fn shell_calls(
     lane: &Lane,
     run_id: &str,
     calls: &[Value],
 ) -> Result<Vec<ToolOutput>, Failed> {
     runtime().block_on(async {
-        let (transport, _sent) = RecordingTransport::replying(200, "");
-        let catalog = Catalog::hosted(Arc::new(transport));
-        let selection = catalog.select(&[SHELL.name()])?;
-        let tool = selection
-            .tool(SHELL.name())
-            .ok_or("the runner hosts shell")?;
         let engine = lane.engine();
         let request = SandboxRequest::new(run_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let run = Run::default();
         let mut outputs = Vec::with_capacity(calls.len());
         for (step, arguments) in (1_u64..).zip(calls) {
-            let call_ref = CallRef {
-                step,
-                index: 0,
-                call_id: format!("call-{step}"),
-            };
-            let context = ToolContext {
-                executor: Some(sandbox.executor()),
-                run: &run,
-                call_ref: &call_ref,
-            };
-            outputs.push(tool.call(arguments, context).await);
+            let executor = sandbox.executor();
+            outputs.push(called(executor, &run, step, SHELL.name(), arguments).await?);
         }
         sandbox.destroy().await?;
         Ok(outputs)

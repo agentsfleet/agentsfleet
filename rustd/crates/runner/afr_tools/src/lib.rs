@@ -5,11 +5,11 @@
 //! `ExecutionPolicy.tools` selects which tools the model is offered, the model
 //! picks by function calling, and the router in `afr_agent` runs each handler
 //! where its [`Runtime`] says (`docs/architecture/runner_execution.md` §"Tool
-//! catalog"). The generic tools are `guffbolt`'s: those that run commands or
-//! send requests are lent the run's sandbox and egress guard through the
-//! harness's seams ([`SandboxEnv`] and the adapters beside it), and those
-//! over a backend are built per run over the run's memory, its verbs
-//! ([`Fenced`]) and Pushover ([`Backends`]).
+//! catalog"). The generic tools are `guffbolt`'s, each built per run over
+//! its backend ([`Backends`]): the run's sandbox ([`LazySandboxEnv`]), its
+//! egress guard, its memory, its verbs ([`Fenced`]), Pushover and its
+//! children, whose subagent tools this catalog publishes under `guffbolt`'s
+//! own names.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
@@ -17,7 +17,6 @@
 mod backed;
 pub mod catalog;
 pub mod error;
-pub mod nested;
 pub mod sandbox;
 mod selection;
 pub mod setup;
@@ -45,7 +44,7 @@ mod web_fetch;
 pub use self::backed::{Backends, RunTools};
 pub use self::catalog::{Catalog, Entry};
 pub use self::error::{Error, Result};
-pub use self::generic::{RunMemory, SandboxEnv};
+pub use self::generic::{LazySandboxEnv, RunMemory, SandboxEnv};
 pub use self::run::Run;
 pub use self::runtime::{CatalogTool, RunTool, Runtime, ToolContext, ToolErrorCode};
 pub use self::selection::{Offered, Selection};

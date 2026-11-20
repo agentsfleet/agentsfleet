@@ -13,7 +13,7 @@ use af_wire::policy::ExecutionPolicy;
 use af_wire::run::RunPayload;
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::Unavailable;
-use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
+use afr_tools::catalog::{FILE_READ, FLEET_STEER, HTTP_REQUEST, UPDATE_PLAN};
 
 use super::{
     DETAIL_CONFIGURATION, DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED,
@@ -63,7 +63,7 @@ async fn test_unhosted_tool_refuses_run() {
     let capture = Capture::install();
     let mut rig = rig();
 
-    rig.run(&offering(&[HTTP_REQUEST.name(), BROWSER.name()]))
+    rig.run(&offering(&[HTTP_REQUEST.name(), FLEET_STEER.name()]))
         .await
         .unwrap();
 
@@ -84,7 +84,7 @@ async fn test_unhosted_tool_refuses_run() {
     );
     let refused = capture.only(EVENT_UNHOSTED);
     assert_eq!(refused.level, tracing::Level::ERROR);
-    assert_eq!(refused.field(FIELD_NAME), Some(BROWSER.name()));
+    assert_eq!(refused.field(FIELD_NAME), Some(FLEET_STEER.name()));
     assert_eq!(refused.field("run_id"), Some(RUN_ID));
     assert_eq!(
         refused.field(FIELD_ERROR_CODE),

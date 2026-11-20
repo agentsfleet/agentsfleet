@@ -102,10 +102,8 @@ async fn every_call_is_counted_by_tool_and_how_it_ended() {
             name: "made_up_tool".to_owned(),
             arguments: serde_json::json!({}),
         };
-        let exited = ToolOutput {
-            exit_code: Some(2),
-            ..ToolOutput::succeeded("ran".to_owned())
-        };
+        let mut exited = ToolOutput::succeeded("ran".to_owned());
+        exited.exit_code = Some(2);
         ran(&ledger, &made_up, Some(exited));
         // The run ended before the call did.
         ran(&ledger, &made_up, None);
@@ -263,16 +261,12 @@ async fn a_call_killed_for_memory_is_counted_and_typed_on_its_span() {
 
     scoped(tally, async {
         let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
-        let killed = ToolOutput {
-            exit_code: Some(137),
-            error_code: Some(ToolErrorCode::OutOfMemory.into()),
-            ..ToolOutput::succeeded(String::new())
-        };
+        let mut killed = ToolOutput::succeeded(String::new());
+        killed.exit_code = Some(137);
+        killed.error_code = Some(ToolErrorCode::OutOfMemory.into());
         ran(&ledger, &planned(), Some(killed));
-        let exited = ToolOutput {
-            exit_code: Some(2),
-            ..ToolOutput::succeeded(String::new())
-        };
+        let mut exited = ToolOutput::succeeded(String::new());
+        exited.exit_code = Some(2);
         ran(&ledger, &planned(), Some(exited));
     })
     .await;

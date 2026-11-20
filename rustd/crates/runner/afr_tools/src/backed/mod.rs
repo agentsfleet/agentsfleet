@@ -2,28 +2,35 @@
 //! holds, through `guffbolt`'s one builder.
 //!
 //! ```text
-//!  Run ─┬─ memory ─────────────────► with_memory    ─► memory_*
-//!       ├─ verbs, guard ─► Fenced ─► with_scheduler ─► cron_*, schedule
-//!       │                         └► with_channel   ─► message
-//!       └─ guard, transport ─► Pushover ─► with_notifier ─► notify
+//!  Run ─┬─ executor source ─► LazySandboxEnv ─► with_env ─┬► shell, files, git, browser
+//!       ├─ sessions ─────────────────────────► with_sessions ┴► exec_command, write_stdin
+//!       ├─ guard, transport ─► Egressed ──────► with_outbound ─► http_request, web_fetch
+//!       ├─ memory ────────────────────────────► with_memory ───► memory_*
+//!       ├─ verbs, guard ─► Fenced ────────────► with_scheduler ─► cron_*, schedule
+//!       │                                    └► with_channel ───► message
+//!       ├─ guard, transport ─► Pushover ──────► with_notifier ──► notify
+//!       └─ children ──────────────────────────► with_agents ────► guffbolt's subagent tools
 //!                                    │
 //!                     build(names the run offers) ─► RunTools
 //! ```
 //!
-//! Each run has its own memory, guard and fence, so these tools are built per
-//! run and borrow the run for as long as it lasts (`'b`); the catalog's
-//! hosted handlers serve every run and are lent the run per call instead.
+//! Each run has its own sandbox, guard, memory, fence and children, so these
+//! tools are built per run and borrow the run for as long as it lasts (`'b`);
+//! the catalog's hosted handlers serve every run and are lent the run per
+//! call instead.
 
 use std::fmt;
 
 use af_egress::Transport;
+use afr_executor::ExecutorSource;
+use guffbolt::agents::Agents;
 use guffbolt::tools::ToolsConfig;
 use guffbolt::{Describe as _, Tools};
 
-use crate::catalog::BACKED;
+use crate::catalog::builds;
 use crate::egress::Egressed;
 use crate::error::{self, Result};
-use crate::generic::Generic;
+use crate::generic::{Generic, LazySandboxEnv};
 use crate::pushover::Pushover;
 use crate::run::Run;
 use crate::runtime::RunTool;
@@ -33,20 +40,44 @@ use crate::verbs::Fenced;
 #[derive(Debug)]
 pub struct Backends<'b, 'run> {
     run: &'b Run<'run>,
+    /// The run's sandbox, each call waiting for it when the run's build has
+    /// not finished.
+    env: LazySandboxEnv<'b>,
+    outbound: Egressed<'b, 'run>,
     fenced: Fenced<'b, 'run>,
     pushover: Pushover<'b, 'run>,
+    /// The run's children; `None` builds no subagent tool.
+    agents: Option<&'b Agents>,
 }
 
 impl<'b, 'run> Backends<'b, 'run> {
-    /// The backends of `run`: its memory, its verbs as its scheduler and
-    /// channel, and Pushover sending through its guard and `transport`.
+    /// The backends of `run`: the sandbox `executor` hands over, its memory
+    /// and sessions, its verbs as its scheduler and channel, and its guard
+    /// sending web requests and Pushover notifications through `transport`.
+    /// No subagent tool is built until [`Backends::with_agents`] gives the
+    /// run's children.
     #[must_use]
-    pub fn new(run: &'b Run<'run>, transport: Option<&'b dyn Transport>) -> Self {
+    pub const fn new(
+        run: &'b Run<'run>,
+        executor: &'b dyn ExecutorSource,
+        transport: Option<&'b dyn Transport>,
+    ) -> Self {
         Self {
             run,
+            env: LazySandboxEnv::new(executor),
+            outbound: Egressed::new(transport, run),
             fenced: Fenced::new(run),
             pushover: Pushover::new(Egressed::new(transport, run)),
+            agents: None,
         }
+    }
+
+    /// The same backends, `guffbolt`'s subagent tools starting and steering
+    /// the run's children `agents` keeps.
+    #[must_use]
+    pub const fn with_agents(mut self, agents: &'b Agents) -> Self {
+        self.agents = Some(agents);
+        self
     }
 
     /// The tools among `names` this run builds over its backends, in the
@@ -54,26 +85,39 @@ impl<'b, 'run> Backends<'b, 'run> {
     /// over, for the catalog to host.
     ///
     /// # Errors
-    /// None in practice: every backend a built tool needs is given, and a
-    /// published name is never a pattern. Either would refuse the run as
+    /// A subagent tool named with no children given: the run is refused as
     /// naming a tool this runner cannot host.
     pub fn tools<S: AsRef<str>>(&self, names: &[S]) -> Result<RunTools<'_>> {
-        let backed: Vec<&str> = names
+        let built: Vec<&str> = names
             .iter()
             .map(AsRef::as_ref)
-            .filter(|name| BACKED.iter().any(|entry| entry.name() == *name))
+            .filter(|name| builds(name))
             .collect();
         let config =
-            ToolsConfig::new(&backed).map_err(|refused| error::unhosted(refused.entry()))?;
-        let built = Tools::builder()
-            .with_memory(&self.run.memory)
+            ToolsConfig::new(&built).map_err(|refused| error::unhosted(refused.entry()))?;
+        let run = self.run;
+        let mut builder = Tools::builder()
+            .with_env(&self.env)
+            .with_sessions(&run.sessions)
+            .with_image_input(run.image_input)
+            .with_outbound(&self.outbound)
+            .with_memory(&run.memory)
             .with_scheduler(&self.fenced)
             .with_channel(&self.fenced)
-            .with_notifier(&self.pushover)
+            .with_notifier(&self.pushover);
+        // In the one repository the run holds; with several, the model names
+        // one itself.
+        if let [only] = run.checkouts.as_slice() {
+            builder = builder.with_repository(only.name);
+        }
+        if let Some(agents) = self.agents {
+            builder = builder.with_agents(agents);
+        }
+        let tools = builder
             .build(&config)
             .map_err(|missing| error::unhosted(missing.tool()))?;
         Ok(RunTools {
-            tools: built
+            tools: tools
                 .into_offered()
                 .into_iter()
                 .map(Generic::built)

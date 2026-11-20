@@ -22,7 +22,7 @@ async fn steered(
 ) -> (ToolOutput, Vec<Asked>) {
     let verbs = RecordingVerbs::answering(Ok(String::new()), Ok(true)).steering(steered);
     let run = run_with(&verbs);
-    let output = call(Typed::boxed(FleetSteer).as_ref(), &run, arguments).await;
+    let output = call(&*Typed::boxed(FleetSteer), &run, arguments).await;
     (output, verbs.asked())
 }
 

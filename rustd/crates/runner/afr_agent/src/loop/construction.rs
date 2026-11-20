@@ -1,8 +1,7 @@
 //! Root and child state start under the current run's authority.
 
-use super::{Harness, Shared, context, publication};
+use super::{EVENT_CHILD_STARTED, Harness, Shared, context, publication};
 use crate::{context::Checkpoints, events::Live, offer, router::Router};
-use afr_tools::Selection;
 use guffbolt::agents::Seat;
 use guffbolt::{Message, Replay, Transcript};
 
@@ -24,6 +23,7 @@ impl<'s, 'run> Harness<'s, 'run> {
                 .map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
             task_report: None,
             shared,
+            id: 0,
             depth: 0,
             stop: shared.stop.clone(),
             selection,
@@ -46,7 +46,6 @@ impl<'s, 'run> Harness<'s, 'run> {
                 Transcript::new(opening)
             },
             driver: guffbolt::DriveState::default(),
-            child: None,
             folded_through: 0,
             folded_inputs: Vec::new(),
             turn_checkpoint: shared.payload.turn_resume.clone(),
@@ -63,21 +62,24 @@ impl<'s, 'run> Harness<'s, 'run> {
         root
     }
 
-    /// A child loop over `selection`, opening with its seat's task. Its text
-    /// goes to no frame: its parent reads it through the call that started
-    /// it. It writes no checkpoint: the push before the report carries what
-    /// it stored. It never publishes, so it holds `propose_change` unoffered.
-    pub(crate) fn child(
-        shared: &'s Shared<'run>,
-        selection: &'s Selection<'run>,
-        seat: Seat<'s>,
-    ) -> Self {
+    /// One of a child's turns, over the transcript `guffbolt` keeps for it,
+    /// whose input is its task. It holds every tool the run was offered, and
+    /// `guffbolt` offers it only those its parent gave it. Its text goes to no
+    /// frame: its parent reads it through the call that waits on it. It writes no
+    /// checkpoint: the push before the report carries what it stored. It
+    /// never publishes, so it holds `propose_change` unoffered.
+    pub(crate) fn child(shared: &'s Shared<'run>, seat: Seat) -> Self {
         let Seat {
+            id,
             depth,
-            task,
             stop,
-            tether,
+            transcript,
         } = seat;
+        let run_id = shared.run_id;
+        let child_id = id;
+        let event = EVENT_CHILD_STARTED;
+        tracing::info!(run_id, child_id, depth, event);
+        let selection = shared.selection;
         let mut child = Self {
             task: None,
             incorporated_input_sequence: 0,
@@ -85,6 +87,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             confirmed_effect_watermark: 0,
             task_report: None,
             shared,
+            id,
             depth,
             stop,
             selection,
@@ -94,8 +97,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             checkpoints: Checkpoints::never(),
             context: context::State::new(0),
             driver: guffbolt::DriveState::default(),
-            transcript: Transcript::new(vec![Message::User(shared.scrub.clean(task).into_inner())]),
-            child: Some(tether),
+            transcript,
             folded_through: 0,
             folded_inputs: Vec::new(),
             turn_checkpoint: None,

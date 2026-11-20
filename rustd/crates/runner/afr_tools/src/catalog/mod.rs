@@ -4,28 +4,19 @@
 //! The published list is `docs/architecture/runner_execution.md` §"Tool
 //! catalog", one entry per tool. A run's `ExecutionPolicy.tools` selects from
 //! it; a name with no handler here refuses the run, never a quieter tool set.
-//! The nested tools need none: the loop runs them itself. Nor do the tools a
-//! run builds over its own backends ([`BACKED`]): the run builds them when it
-//! starts ([`crate::Backends`]).
+//! The tools a run builds over its own backends ([`BACKED`]) need none: the
+//! run builds them, `guffbolt`'s, when it starts ([`crate::Backends`]). Nor
+//! do `guffbolt`'s subagent tools, which this catalog publishes under
+//! `guffbolt`'s own names rather than its own list ([`builds`]).
 
 use std::sync::Arc;
 
 use af_egress::Transport;
-
-use guffbolt::tools::browser::{Browse, BrowserOpen, Screenshot};
-use guffbolt::tools::files::{
-    ApplyPatch, FileAppend, FileDelete, FileEdit, FileEditHashed, FileRead, FileReadHashed,
-    FileWrite, ImageTool,
-};
-use guffbolt::tools::plan::UpdatePlan;
-use guffbolt::tools::process::{ExecCommand, Git, Shell, WriteStdin};
-use guffbolt::tools::web::{HttpRequest, WebFetch};
+use guffbolt::tools::{Backend, built_in};
 
 use crate::egress::SharedTransport;
 use crate::error::{self, Result};
-use crate::generic::Generic;
 use crate::handler::Typed;
-use crate::nested::Nested;
 use crate::runtime::{CatalogTool, Runtime};
 use crate::selection::Offered;
 use crate::selection::Selection;
@@ -97,18 +88,6 @@ pub const CRON_UPDATE: Entry = Entry::new("cron_update", Runtime::Supervisor);
 pub const CRON_RUN: Entry = Entry::new("cron_run", Runtime::Supervisor);
 /// Lists a cron schedule's runs.
 pub const CRON_RUNS: Entry = Entry::new("cron_runs", Runtime::Supervisor);
-/// A nested loop the model waits on.
-pub const DELEGATE: Entry = Entry::new("delegate", Runtime::Supervisor);
-/// A nested loop that runs alongside.
-pub const SPAWN: Entry = Entry::new("spawn", Runtime::Supervisor);
-/// A spawned loop's answer, or that it still runs.
-pub const WAIT_AGENT: Entry = Entry::new("wait_agent", Runtime::Supervisor);
-/// A message for a spawned loop's next turn.
-pub const SEND_INPUT: Entry = Entry::new("send_input", Runtime::Supervisor);
-/// Every child of the run and its state.
-pub const LIST_AGENTS: Entry = Entry::new("list_agents", Runtime::Supervisor);
-/// Ends one spawned loop.
-pub const INTERRUPT_AGENT: Entry = Entry::new("interrupt_agent", Runtime::Supervisor);
 /// One shell command, run to its end.
 pub const SHELL: Entry = Entry::new("shell", Runtime::Sandbox);
 /// A process the model drives across calls.
@@ -143,7 +122,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 41] = [
+pub const PUBLISHED: [&Entry; 35] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &NOTIFY,
@@ -163,12 +142,6 @@ pub const PUBLISHED: [&Entry; 41] = [
     &CRON_UPDATE,
     &CRON_RUN,
     &CRON_RUNS,
-    &DELEGATE,
-    &SPAWN,
-    &WAIT_AGENT,
-    &SEND_INPUT,
-    &LIST_AGENTS,
-    &INTERRUPT_AGENT,
     &SHELL,
     &EXEC_COMMAND,
     &WRITE_STDIN,
@@ -188,12 +161,17 @@ pub const PUBLISHED: [&Entry; 41] = [
 ];
 
 /// Every published tool a run builds over its own backends when it starts:
-/// memory, schedules, a line to the thread, and a notification.
-pub const BACKED: [&Entry; 13] = [
+/// every tool of `guffbolt`'s this catalog publishes. The provider's
+/// `web_search` and this runner's own fleet tools are the rest.
+pub const BACKED: [&Entry; 32] = [
+    &HTTP_REQUEST,
+    &WEB_FETCH,
+    &NOTIFY,
     &MEMORY_STORE,
     &MEMORY_RECALL,
     &MEMORY_LIST,
     &MEMORY_FORGET,
+    &UPDATE_PLAN,
     &MESSAGE,
     &SCHEDULE,
     &CRON_ADD,
@@ -202,8 +180,45 @@ pub const BACKED: [&Entry; 13] = [
     &CRON_UPDATE,
     &CRON_RUN,
     &CRON_RUNS,
-    &NOTIFY,
+    &SHELL,
+    &EXEC_COMMAND,
+    &WRITE_STDIN,
+    &GIT,
+    &FILE_READ,
+    &FILE_READ_HASHED,
+    &FILE_WRITE,
+    &FILE_APPEND,
+    &FILE_DELETE,
+    &FILE_EDIT,
+    &FILE_EDIT_HASHED,
+    &APPLY_PATCH,
+    &IMAGE,
+    &BROWSER,
+    &BROWSER_OPEN,
+    &SCREENSHOT,
 ];
+
+/// How many subagent tools `guffbolt` builds, which a run names as it names
+/// a published tool.
+pub const CHILDREN: usize = guffbolt::agents::TOOLS.len();
+
+/// `guffbolt`'s subagent tool named `name`, when it is one.
+///
+/// It runs over the run's children, beside the loop, and this catalog
+/// publishes it under `guffbolt`'s own name, never spelled here.
+#[must_use]
+pub fn children_tool(name: &str) -> Option<&'static str> {
+    built_in(name)
+        .filter(|tool| tool.needs == [Backend::Agents])
+        .map(|tool| tool.name)
+}
+
+/// Whether a run builds the tool named `name` over its own backends: a
+/// [`BACKED`] entry, or one of `guffbolt`'s subagent tools.
+#[must_use]
+pub fn builds(name: &str) -> bool {
+    BACKED.iter().any(|entry| entry.name == name) || children_tool(name).is_some()
+}
 
 /// The published entry named `name`, if any.
 #[must_use]
@@ -229,72 +244,51 @@ impl Catalog {
         }
     }
 
-    /// A catalog hosting every handler this runner carries, its egress tools
-    /// and each run's notifier sending through `transport`. The generic ones
-    /// are `guffbolt`'s, each lent the run's sandbox and guard per call.
+    /// A catalog hosting every handler this runner carries: the fleet tools
+    /// over its verbs. Each run's web tools and notifier send through
+    /// `transport`; every other tool is `guffbolt`'s, which the run builds.
     #[must_use]
     pub fn hosted(transport: Arc<dyn Transport>) -> Self {
-        let mut hosted = Self::new(vec![
-            Generic::sending(HttpRequest, Arc::clone(&transport)),
-            Generic::sending(WebFetch, Arc::clone(&transport)),
-            Generic::boxed(UpdatePlan),
-            Generic::boxed(Shell),
-            Generic::boxed(ExecCommand),
-            Generic::boxed(WriteStdin),
-            Generic::boxed(Git),
-            Generic::boxed(FileRead),
-            Generic::boxed(FileReadHashed),
-            Generic::boxed(FileWrite),
-            Generic::boxed(FileAppend),
-            Generic::boxed(FileDelete),
-            Generic::boxed(FileEdit),
-            Generic::boxed(FileEditHashed),
-            Generic::boxed(ApplyPatch),
-            Generic::boxed(ImageTool),
-            Generic::boxed(BrowserOpen),
-            Generic::boxed(Browse),
-            Generic::boxed(Screenshot),
-            Typed::boxed(FleetSteer),
-            Typed::boxed(FleetActivity),
-        ]);
+        let mut hosted = Self::new(vec![Typed::boxed(FleetSteer), Typed::boxed(FleetActivity)]);
         hosted.transport = Some(transport);
         hosted
     }
 
-    /// Where each run's notifier sends; `None` for a catalog that sends
-    /// none, whose notifications are refused.
+    /// Where each run's web tools and notifier send; `None` for a catalog
+    /// that sends none, whose requests are refused.
     #[must_use]
     pub fn transport(&self) -> Option<&dyn Transport> {
         self.transport.as_deref()
     }
 
     /// The tools a run naming `names` is offered: a handler this catalog
-    /// hosts, else a tool the run builds over its own backends.
+    /// hosts, else a tool the run builds over its own backends, else one of
+    /// `guffbolt`'s subagent tools.
     ///
     /// # Errors
-    /// The first name with neither, or no published tool at all: the run is
-    /// refused rather than run without it.
+    /// The first name with none of these, or no published tool at all: the
+    /// run is refused rather than run without it.
     pub fn select<S: AsRef<str>>(&self, names: &[S]) -> Result<Selection<'_>> {
         let mut selection = Selection::default();
         for name in names.iter().map(AsRef::as_ref) {
             if selection.offers(name) {
                 continue;
             }
-            let entry = published(name).ok_or_else(|| error::unhosted(name))?;
-            match (entry.runtime, Nested::of(name)) {
-                (Runtime::Provider, _) => selection.hosted.push(entry),
-                (Runtime::Supervisor | Runtime::Sandbox, Some(nested)) => {
-                    selection.tools.push(Offered::Nested(nested));
-                }
-                (Runtime::Supervisor | Runtime::Sandbox, None) => {
-                    let offered = match self.handler(name) {
-                        Some(handler) => Offered::Handler(entry, handler),
-                        None if BACKED.contains(&entry) => Offered::Backed(entry),
-                        None => return Err(error::unhosted(name)),
-                    };
-                    selection.tools.push(offered);
-                }
+            let Some(entry) = published(name) else {
+                let built = children_tool(name).ok_or_else(|| error::unhosted(name))?;
+                selection.tools.push(Offered::Built(built));
+                continue;
+            };
+            if entry.runtime == Runtime::Provider {
+                selection.hosted.push(entry);
+                continue;
             }
+            let offered = match self.handler(name) {
+                Some(handler) => Offered::Handler(entry, handler),
+                None if BACKED.contains(&entry) => Offered::Backed(entry),
+                None => return Err(error::unhosted(name)),
+            };
+            selection.tools.push(offered);
         }
         Ok(selection)
     }

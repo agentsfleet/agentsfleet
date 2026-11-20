@@ -2,6 +2,4 @@
 //! sandbox, egress guard and memory, so what agentsfleet's runs read is
 //! proved here.
 
-use guffbolt::tools::process::Shell;
-
 mod tests;

@@ -1,4 +1,5 @@
-//! Restore and capture keep the private root, memory and child book together.
+//! Restore and capture keep the private root, memory and the run's children
+//! together: the children ride the root's drive state.
 
 use af_secrets::Scrub;
 use af_wire::task::TaskContext;
@@ -10,7 +11,6 @@ use super::Ending;
 use super::Harness;
 use crate::engine::{AgentRun, RecoveryWitness, RootRecovery};
 use crate::error::recovery_invalid;
-use crate::nested::ChildRecovery;
 use crate::{
     CommittedRecovery, RecoverySave, RecoverySkip, RecoverySnapshot, RecoveryState, Result,
     TaskRecovery, TurnSnapshot,
@@ -85,15 +85,26 @@ impl Harness<'_, '_> {
         )
     }
 
+    /// The root as a checkpoint saves it: its transcript, and its loop's
+    /// progress with the run's children written in under `pause`.
     async fn root_snapshot(&self, driver: &DriveState, pause: &Pause) -> Result<RootRecovery> {
-        Ok(RootRecovery {
+        let mut driver = driver.clone();
+        if !self.shared.registry.save(pause, &mut driver) {
+            return Err(recovery_invalid(
+                "the child capture permit belongs to another run",
+            ));
+        }
+        let root = RootRecovery {
             messages: self.transcript.messages().to_vec(),
-            driver: driver.clone(),
-            children: ChildRecovery::capture(&self.shared.registry, pause)?,
+            driver,
             memory: self.shared.run.memory.snapshot().await?,
             pinned: self.context.pinned,
             folds: self.folded_inputs.clone(),
-        })
+        };
+        // Checked as a restore will check it, so a checkpoint whose children
+        // could not come back is skipped rather than saved.
+        root.check()?;
+        Ok(root)
     }
 
     pub(super) async fn save_boundary(&mut self, driver: &DriveState) -> Option<Ending> {

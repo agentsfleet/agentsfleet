@@ -98,23 +98,6 @@ impl Script {
         self.with_child_turns(task, turns.collect())
     }
 
-    /// The same model, whose child on `task` streams `chunks` once, then
-    /// fails with `failure()`.
-    pub(crate) fn with_failing_child(
-        self,
-        task: &str,
-        chunks: Vec<Chunk>,
-        failure: fn() -> af_providers::Error,
-    ) -> Self {
-        self.with_child_turns(
-            task,
-            vec![Turn {
-                chunks,
-                failure: Some(failure),
-            }],
-        )
-    }
-
     fn with_child_turns(mut self, task: &str, turns: Vec<Turn>) -> Self {
         let children = Arc::get_mut(&mut self.replay.children)
             .expect("children are scripted before the model is handed out");

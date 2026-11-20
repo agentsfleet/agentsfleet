@@ -9,14 +9,13 @@ use afr_tools::{Entry, Offered, RunTools, Selection};
 use guffbolt::Hosted;
 use guffbolt::Tools;
 
-use crate::nested::NestedTool;
 use crate::router::{LoopTool, Routed};
 
 /// The tools `selection` offers one loop, in the order its policy named
-/// them: each handler as the router runs it, each tool the run built over its
-/// backends (`backed`) the same way, and each nested tool as the loop runs
-/// it. A backed entry the run built no tool for is never offered: the run
-/// builds one for every backed name its policy offers.
+/// them: each handler as the router runs it, and each tool the run built
+/// over its backends (`backed`), `guffbolt`'s subagent tools among them, the
+/// same way. A backed name the run built no tool for is never offered: the
+/// run builds one for every backed name its policy offers.
 pub(crate) fn tools<'s, 'run>(
     selection: &'s Selection<'run>,
     backed: &'s RunTools<'run>,
@@ -25,14 +24,12 @@ pub(crate) fn tools<'s, 'run>(
         selection
             .offered()
             .filter_map(|offered| -> Option<Box<LoopTool<'s, 'run>>> {
+                let runtime = offered.runtime();
                 Some(match offered {
-                    Offered::Handler(entry, handler) => {
-                        Box::new(Routed::new(handler, entry.runtime()))
+                    Offered::Handler(_entry, handler) => Box::new(Routed::new(handler, runtime)),
+                    Offered::Backed(_) | Offered::Built(_) => {
+                        Box::new(Routed::new(backed.tool(offered.name())?, runtime))
                     }
-                    Offered::Backed(entry) => {
-                        Box::new(Routed::new(backed.tool(entry.name())?, entry.runtime()))
-                    }
-                    Offered::Nested(nested) => Box::new(NestedTool::new(nested)),
                 })
             })
             .collect(),

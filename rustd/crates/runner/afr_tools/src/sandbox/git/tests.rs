@@ -8,18 +8,18 @@ use af_egress::fixture::REPOSITORY;
 use afr_executor::Spawn;
 use serde_json::{Value, json};
 
-use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, Git, subcommand};
-use crate::generic::Generic;
+use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, subcommand};
+use crate::catalog::{Entry, GIT};
 use crate::run::Run;
-use crate::runtime::{CatalogTool, ToolErrorCode};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::{Checkout, ScriptedExecutor, ScriptedProcess};
 use crate::testing::{Live, call, call_in};
 
 /// The directory the fixture repository is checked out in.
 const WIDGETS: &str = "widgets";
 
-fn git() -> Box<CatalogTool> {
-    Generic::boxed(Git)
+fn git() -> &'static Entry {
+    &GIT
 }
 
 /// `git`'s arguments for `args`.
@@ -55,7 +55,7 @@ async fn test_git_tool_runs_in_the_one_checked_out_repository() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("On branch dev\n", 0)]);
     let run = holding(vec![widgets()]);
 
-    let output = call_in(&*git(), &executor, &run, running(&["status"])).await;
+    let output = call_in(git(), &executor, &run, running(&["status"])).await;
 
     assert_eq!(output.text, "On branch dev\n");
     assert_eq!((output.exit_code, output.error_code), (Some(0), None));
@@ -80,9 +80,9 @@ async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
         ..widgets()
     };
 
-    call_in(&*git(), &executor, &holding(Vec::new()), running(&["log"])).await;
+    call_in(git(), &executor, &holding(Vec::new()), running(&["log"])).await;
     call_in(
-        &*git(),
+        git(),
         &executor,
         &holding(vec![widgets(), other]),
         running(&["-C", WIDGETS, "log"]),
@@ -104,7 +104,7 @@ async fn test_git_tool_refuses_network_subcommands() {
     let run = holding(vec![widgets()]);
 
     for refused in GIT_REFUSED_SUBCOMMANDS {
-        let output = call_in(&*git(), &executor, &run, running(&[refused, "origin"])).await;
+        let output = call_in(git(), &executor, &run, running(&[refused, "origin"])).await;
 
         assert_eq!(
             output.error_code,
@@ -135,7 +135,7 @@ async fn should_find_the_subcommand_after_global_options() {
     let run = holding(vec![widgets()]);
 
     let output = call_in(
-        &*git(),
+        git(),
         &executor,
         &run,
         running(&["-c", "user.name=x", "--no-pager", "-C", WIDGETS, "push"]),
@@ -183,9 +183,9 @@ fn should_skip_each_valued_global_option_with_its_value() {
 async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
     let run = holding(vec![widgets()]);
 
-    let unsandboxed = call(&*git(), &run, running(&["status"])).await;
+    let unsandboxed = call(git(), &run, running(&["status"])).await;
     let refused = call_in(
-        &*git(),
+        git(),
         &ScriptedExecutor::new([]),
         &run,
         running(&["status"]),
@@ -207,13 +207,7 @@ async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
 async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
     let executor = ScriptedExecutor::new([]);
 
-    let output = call_in(
-        &*git(),
-        &executor,
-        &Run::default(),
-        json!({"args": "status"}),
-    )
-    .await;
+    let output = call_in(git(), &executor, &Run::default(), json!({"args": "status"})).await;
 
     assert_eq!(
         output.error_code,
@@ -230,7 +224,7 @@ async fn should_read_file_not_found_when_the_checkout_is_gone() {
     let live = Live::start().await;
     let run = holding(vec![widgets()]);
 
-    let missing = call_in(&*git(), &live.client, &run, running(&["status"])).await;
+    let missing = call_in(git(), &live.client, &run, running(&["status"])).await;
 
     assert_eq!(
         missing.error_code,

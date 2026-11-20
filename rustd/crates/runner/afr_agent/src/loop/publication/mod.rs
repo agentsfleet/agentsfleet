@@ -102,8 +102,7 @@ fn invalid(arguments: &serde_json::Value) -> Result<Invocation, ToolOutput> {
 impl Harness<'_, '_> {
     pub(super) fn publication_allowed(&self) -> bool {
         self.depth == 0
-            && (self.selection.tool("shell").is_some()
-                || self.selection.tool("exec_command").is_some())
+            && (self.selection.offers("shell") || self.selection.offers("exec_command"))
             && self.task.as_ref().is_some_and(|prepared| {
                 prepared.allow_actions
                     && prepared
@@ -133,7 +132,7 @@ impl Harness<'_, '_> {
             .registry
             .list()
             .iter()
-            .any(|child| child.status.as_str() == "running")
+            .any(|child| child.status == guffbolt::agents::Kind::Running)
         {
             return Err(refused(
                 "Wait for child agents to finish before validating and publishing.",

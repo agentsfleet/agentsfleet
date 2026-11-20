@@ -1,6 +1,6 @@
 //! What the handler suites share: one call, made the way the router makes it,
-//! a run that sends through a fake, and an executor served in-process for
-//! the file tools to cross.
+//! to a tool built the way a run builds it; a run that sends through a fake;
+//! and an executor served in-process for the file tools to cross.
 
 #![expect(
     clippy::expect_used,
@@ -17,7 +17,7 @@ use af_egress::Egress;
 use af_egress::fixture::{RUN_ID, policy};
 use af_egress::testing::{CountingMint, RecordingTransport, Sent};
 use af_wire::policy::ExecutionPolicy;
-use afr_executor::{Client, Executor};
+use afr_executor::{Client, Executor, ExecutorSlot, Unavailable};
 use afr_memory::Loaded;
 use guffbolt::{CallRef, ToolOutput};
 use jiff::Timestamp;
@@ -27,7 +27,7 @@ use crate::backed::Backends;
 use crate::catalog::{Catalog, Entry};
 use crate::egress::SharedTransport;
 use crate::run::Run;
-use crate::runtime::{CatalogTool, RunTool, ToolContext};
+use crate::runtime::{RunTool, ToolContext};
 use crate::selection::Selection;
 
 /// When every egress suite's clock starts.
@@ -46,11 +46,15 @@ pub(crate) fn hosted() -> (Catalog, Receiver<Sent>) {
     (Catalog::hosted(Arc::new(transport)), sent)
 }
 
-/// The handler `selection` offers for `entry`.
-pub(crate) fn offered<'c>(selection: &Selection<'c>, entry: &Entry) -> &'c CatalogTool {
-    selection
-        .tool(entry.name())
-        .expect("the runner hosts every sandbox-side tool")
+/// The tool `selection` offers for `entry`, which a call builds the way a
+/// run does.
+pub(crate) fn offered(selection: &Selection<'_>, entry: &'static Entry) -> &'static Entry {
+    assert!(
+        selection.offers(entry.name()),
+        "the selection offers {}",
+        entry.name()
+    );
+    entry
 }
 
 /// The real executor, served in-process on a scratch socket over a scratch
@@ -112,57 +116,129 @@ fn first_call() -> CallRef {
     }
 }
 
+/// A tool a suite calls: one already built, or one a run builds by name.
+pub(crate) trait Callable: Sync {
+    /// Calls it with `arguments` as the router does, with `run`'s state and
+    /// `executor`, the run's sandbox when it has one.
+    fn called(
+        &self,
+        run: &Run<'_>,
+        executor: Option<&dyn Executor>,
+        arguments: serde_json::Value,
+    ) -> impl Future<Output = ToolOutput> + Send;
+}
+
+/// A tool already built: a hosted handler, or one a run built.
+impl Callable for RunTool<'_> {
+    async fn called(
+        &self,
+        run: &Run<'_>,
+        executor: Option<&dyn Executor>,
+        arguments: serde_json::Value,
+    ) -> ToolOutput {
+        let call_ref = first_call();
+        let context = ToolContext {
+            executor,
+            run,
+            call_ref: &call_ref,
+        };
+        self.call(&arguments, context).await
+    }
+}
+
+/// The published tool `entry` names, built the way a run builds it, over
+/// `executor` when there is one and over no sandbox otherwise; it sends no
+/// request.
+impl Callable for Entry {
+    async fn called(
+        &self,
+        run: &Run<'_>,
+        executor: Option<&dyn Executor>,
+        arguments: serde_json::Value,
+    ) -> ToolOutput {
+        built(self.name(), None, run, executor, arguments).await
+    }
+}
+
+/// A published tool that sends requests, built the way a run builds it, its
+/// requests sent through its transport.
+pub(crate) struct Sending {
+    entry: &'static Entry,
+    transport: SharedTransport,
+}
+
+/// `entry`'s tool, sending through `transport`.
+pub(crate) fn sending(entry: &'static Entry, transport: SharedTransport) -> Sending {
+    Sending { entry, transport }
+}
+
+impl Callable for Sending {
+    async fn called(
+        &self,
+        run: &Run<'_>,
+        executor: Option<&dyn Executor>,
+        arguments: serde_json::Value,
+    ) -> ToolOutput {
+        let transport = Some(self.transport.as_ref());
+        built(self.entry.name(), transport, run, executor, arguments).await
+    }
+}
+
+/// Builds `name` as `run` builds it, sending through `transport`, in
+/// `executor`'s sandbox or none, and calls it with `arguments`.
+async fn built(
+    name: &str,
+    transport: Option<&dyn af_egress::Transport>,
+    run: &Run<'_>,
+    executor: Option<&dyn Executor>,
+    arguments: serde_json::Value,
+) -> ToolOutput {
+    let slot = executor.map_or_else(
+        || ExecutorSlot::unavailable(Unavailable::NoSandbox),
+        ExecutorSlot::ready,
+    );
+    let backends = Backends::new(run, &slot, transport);
+    let tools = backends
+        .tools(&[name])
+        .expect("a run builds every guffbolt tool it names");
+    let tool = tools.tool(name).expect("the name is a built tool's");
+    tool.called(run, executor, arguments).await
+}
+
+/// The executor source of a run with no sandbox.
+pub(crate) fn no_sandbox() -> ExecutorSlot<'static> {
+    ExecutorSlot::unavailable(Unavailable::NoSandbox)
+}
+
 /// Calls `tool` with `arguments` from the supervisor, with `run`'s state.
-pub(crate) async fn call(
-    tool: &RunTool<'_>,
+pub(crate) async fn call<T: Callable + ?Sized>(
+    tool: &T,
     run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
-    let call_ref = first_call();
-    tool.call(
-        &arguments,
-        ToolContext {
-            executor: None,
-            run,
-            call_ref: &call_ref,
-        },
-    )
-    .await
+    tool.called(run, None, arguments).await
 }
 
 /// Calls `tool` with `arguments` as the router calls a sandbox-side tool:
 /// with `executor`, and `run`'s state.
-pub(crate) async fn call_in(
-    tool: &RunTool<'_>,
+pub(crate) async fn call_in<T: Callable + ?Sized>(
+    tool: &T,
     executor: &dyn Executor,
     run: &Run<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
-    let call_ref = first_call();
-    tool.call(
-        &arguments,
-        ToolContext {
-            executor: Some(executor),
-            run,
-            call_ref: &call_ref,
-        },
-    )
-    .await
+    tool.called(run, Some(executor), arguments).await
 }
 
 /// Calls the tool named `name` that `run` builds over its own backends, with
-/// `arguments`, the way the router calls it; its notifier sends nowhere.
+/// `arguments`, the way the router calls it; its notifier sends nowhere, and
+/// the run has no sandbox.
 pub(crate) async fn call_built(
     run: &Run<'_>,
     name: &str,
     arguments: serde_json::Value,
 ) -> ToolOutput {
-    let backends = Backends::new(run, None);
-    let tools = backends
-        .tools(&[name])
-        .expect("a run builds every backed tool it names");
-    let tool = tools.tool(name).expect("the name is a backed tool's");
-    call(tool, run, arguments).await
+    built(name, None, run, None, arguments).await
 }
 
 /// What an egress suite holds for one run: the policy the guard admits

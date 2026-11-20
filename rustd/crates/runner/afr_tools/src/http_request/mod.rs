@@ -2,8 +2,6 @@
 //! sandbox, egress guard and memory, so what agentsfleet's runs read is
 //! proved here.
 
-use guffbolt::tools::web::HttpRequest;
-
 #[path = "redirect/tests.rs"]
 mod redirect_tests;
 mod tests;

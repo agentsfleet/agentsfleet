@@ -9,10 +9,9 @@ use af_core::test_util::trace::Capture;
 use afr_executor::{Ending, Spawn};
 use serde_json::json;
 
-use super::Shell;
-use crate::generic::Generic;
+use crate::catalog::{Entry, SHELL};
 use crate::run::Run;
-use crate::runtime::{CatalogTool, ToolErrorCode};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
 use guffbolt::tools::process::oneshot::{
@@ -22,8 +21,8 @@ use guffbolt::tools::process::oneshot::{
 /// Two sleeps in one process group, the shell waiting on the second.
 const SLEEP_TWICE: &str = "sleep 60 & sleep 60";
 
-fn shell() -> Box<CatalogTool> {
-    Generic::boxed(Shell)
+fn shell() -> &'static Entry {
+    &SHELL
 }
 
 /// The one spawn `executor` was asked for.
@@ -39,7 +38,7 @@ async fn test_shell_runs_through_the_executor_and_reports_its_exit_code() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("hi\n", 3)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
         &Run::default(),
         json!({"command": "echo hi; exit 3"}),
@@ -80,7 +79,7 @@ async fn should_answer_with_the_output_alone_when_the_command_succeeds() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("ok\n", 0)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
         &Run::default(),
         json!({"command": "true"}),
@@ -100,7 +99,7 @@ async fn should_hold_the_timeout_the_model_names_under_the_ceiling() {
 
     for timeout_ms in [1_500, 86_400_000] {
         let arguments = json!({"command": "true", "timeout_ms": timeout_ms});
-        call_in(&*shell(), &executor, &run, arguments).await;
+        call_in(shell(), &executor, &run, arguments).await;
     }
 
     let limits: Vec<_> = executor.spawned().iter().map(Spawn::time_limit).collect();
@@ -116,7 +115,7 @@ async fn test_shell_timeout_reports_timed_out_and_logs_it() {
     let executor = ScriptedExecutor::new([ScriptedProcess::ends("started\n", Ending::TimedOut)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
         &Run::default(),
         json!({"command": SLEEP_TWICE, "timeout_ms": 500}),
@@ -140,7 +139,7 @@ async fn test_oom_ending_reads_out_of_memory() {
         ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
         &Run::default(),
         json!({"command": "python3 -c 'bytearray(8 << 30)'"}),
@@ -171,8 +170,8 @@ async fn should_report_a_signal_and_a_lost_ending() {
     ]);
     let run = Run::default();
 
-    let killed = call_in(&*shell(), &executor, &run, json!({"command": "kill -9 $$"})).await;
-    let lost = call_in(&*shell(), &executor, &run, json!({"command": "sleep 1"})).await;
+    let killed = call_in(shell(), &executor, &run, json!({"command": "kill -9 $$"})).await;
+    let lost = call_in(shell(), &executor, &run, json!({"command": "sleep 1"})).await;
 
     assert_eq!(killed.text, "Process killed by signal 9");
     assert_eq!(killed.exit_code, Some(137));
@@ -191,7 +190,7 @@ async fn should_cut_a_long_output_to_the_model_budget() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits(&long, 0)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
         &Run::default(),
         json!({"command": "yes x | head -c 50000"}),
@@ -208,9 +207,9 @@ async fn should_cut_a_long_output_to_the_model_budget() {
 async fn should_refuse_without_a_sandbox_or_when_the_executor_refuses() {
     let run = Run::default();
 
-    let unsandboxed = call(&*shell(), &run, json!({"command": "true"})).await;
+    let unsandboxed = call(shell(), &run, json!({"command": "true"})).await;
     let refused = call_in(
-        &*shell(),
+        shell(),
         &ScriptedExecutor::new([]),
         &run,
         json!({"command": "true"}),
@@ -219,7 +218,7 @@ async fn should_refuse_without_a_sandbox_or_when_the_executor_refuses() {
 
     assert_eq!(
         unsandboxed.text,
-        "[sandbox_unavailable] this call has no environment to run in"
+        "[sandbox_unavailable] runs in the sandbox, and this run has none"
     );
     assert_eq!(
         refused.error_code,
@@ -238,7 +237,7 @@ async fn should_refuse_an_argument_it_does_not_take_and_run_nothing() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("", 0)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
         &Run::default(),
         json!({"command": "true", "cwd": "/"}),
@@ -261,7 +260,7 @@ async fn should_say_the_output_was_still_open_after_the_output() {
         ScriptedExecutor::new([ScriptedProcess::ends_abandoned("ok\n", Ending::Exited(0))]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
         &Run::default(),
         json!({"command": "true"}),

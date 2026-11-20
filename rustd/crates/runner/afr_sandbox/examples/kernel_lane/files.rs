@@ -2,21 +2,19 @@
 //! executor bubblewrap serves, what it writes is the sandbox user's, and a
 //! link out of the workspace is refused by the executor's handle inside it.
 
-use std::sync::Arc;
-
-use af_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use afr_tools::catalog::{
     APPLY_PATCH, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_EDIT_HASHED, FILE_READ,
     FILE_READ_HASHED, FILE_WRITE, IMAGE, SHELL,
 };
-use afr_tools::{Catalog, Run, ToolContext, ToolErrorCode};
-use guffbolt::{CallRef, ToolOutput};
+use afr_tools::{Run, ToolErrorCode};
+use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 
 use crate::lane::Lane;
 use crate::run::{expect, runtime};
+use crate::tools::called;
 
 /// The argument names the calls spell.
 const PATH: &str = "path";
@@ -54,25 +52,24 @@ const PATCH: &str = concat!(
 /// One call, built from the answers before it.
 type Step = fn(&[ToolOutput]) -> (&'static str, Value);
 
-/// Makes each step's call in order, in one fresh sandbox, through the
-/// handlers the runner's catalog hosts; what each answered.
+/// The tools the trials call: each one a run builds over the sandbox.
+const NAMES: [&str; 10] = [
+    SHELL.name(),
+    FILE_READ.name(),
+    FILE_READ_HASHED.name(),
+    FILE_WRITE.name(),
+    FILE_APPEND.name(),
+    FILE_DELETE.name(),
+    FILE_EDIT.name(),
+    FILE_EDIT_HASHED.name(),
+    APPLY_PATCH.name(),
+    IMAGE.name(),
+];
+
+/// Makes each step's call in order, in one fresh sandbox, through the tools
+/// a run builds; what each answered.
 fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<ToolOutput>, Failed> {
     runtime().block_on(async {
-        let (transport, _sent) = RecordingTransport::replying(200, "");
-        let catalog = Catalog::hosted(Arc::new(transport));
-        let names = [
-            SHELL.name(),
-            FILE_READ.name(),
-            FILE_READ_HASHED.name(),
-            FILE_WRITE.name(),
-            FILE_APPEND.name(),
-            FILE_DELETE.name(),
-            FILE_EDIT.name(),
-            FILE_EDIT_HASHED.name(),
-            APPLY_PATCH.name(),
-            IMAGE.name(),
-        ];
-        let selection = catalog.select(&names)?;
         let engine = lane.engine();
         let request = SandboxRequest::new(run_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
@@ -80,18 +77,11 @@ fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<Too
         let mut outputs = Vec::with_capacity(steps.len());
         for (number, step) in (1_u64..).zip(steps) {
             let (name, arguments) = step(&outputs);
-            let tool = selection.tool(name).ok_or("the runner hosts it")?;
-            let call_ref = CallRef {
-                step: number,
-                index: 0,
-                call_id: format!("call-{number}"),
-            };
-            let context = ToolContext {
-                executor: Some(sandbox.executor()),
-                run: &run,
-                call_ref: &call_ref,
-            };
-            outputs.push(tool.call(&arguments, context).await);
+            if !NAMES.contains(&name) {
+                return Err(format!("{name} is not one of the trial's tools").into());
+            }
+            let executor = sandbox.executor();
+            outputs.push(called(executor, &run, number, name, &arguments).await?);
         }
         sandbox.destroy().await?;
         Ok(outputs)

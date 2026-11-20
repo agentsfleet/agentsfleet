@@ -3,11 +3,12 @@
 use std::num::NonZeroU64;
 
 use af_core::id::Uuid7;
-use af_wire::protocol::{MESSAGE_BYTES_MAX, Renewal, Up};
+use af_wire::protocol::{CONTROL_MESSAGE_BYTES_MAX, Renewal, Up};
 
 use crate::{Result, client::stream::RenewalBatch, error::ErrorKind};
 
 /// Stable order and a maximal request identifier make every partition safe for any session id.
+/// Renewals ride the control stream, so each partition stays within the control frame bound.
 pub(super) fn split(
     mut entries: Vec<(Uuid7, Renewal<'static>)>,
 ) -> Result<Vec<RenewalBatch<'static>>> {
@@ -25,11 +26,11 @@ pub(super) fn split(
     let mut batches = Vec::new();
     for (id, renewal) in entries {
         let entry_bytes = af_validate::serialized_len(&renewal).map_err(crate::error::encode)?;
-        if overhead + entry_bytes > MESSAGE_BYTES_MAX {
+        if overhead + entry_bytes > CONTROL_MESSAGE_BYTES_MAX {
             return Err(ErrorKind::StreamProtocol.into());
         }
         let separator = usize::from(!current.runs.is_empty());
-        if bytes + separator + entry_bytes > MESSAGE_BYTES_MAX {
+        if bytes + separator + entry_bytes > CONTROL_MESSAGE_BYTES_MAX {
             batches.push(current);
             current = RenewalBatch {
                 ids: Vec::new(),

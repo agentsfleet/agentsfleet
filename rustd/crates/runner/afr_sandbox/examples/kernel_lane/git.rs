@@ -5,21 +5,20 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Arc;
 
-use af_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 use afr_supervisor::workspace_clone::{Mirrors, Request};
+use afr_tools::Run;
 use afr_tools::catalog::{GIT, SHELL};
 use afr_tools::sandbox::Checkout;
-use afr_tools::{Catalog, Run, Selection, ToolContext};
-use guffbolt::{CallRef, ToolOutput};
+use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::lane::Lane;
 use crate::run::{expect, runtime};
+use crate::tools::called;
 
 /// The repository checked out, its parts, and the branch it starts on.
 const REPOSITORY: &str = "acme/widget";
@@ -96,13 +95,10 @@ fn checked_out(
     let root = tempfile::tempdir()?;
     serve(root.path())?;
     runtime().block_on(async {
-        let (transport, _sent) = RecordingTransport::replying(200, "");
-        let catalog = Catalog::hosted(Arc::new(transport));
-        let selection = catalog.select(&[GIT.name(), SHELL.name()])?;
         let engine = lane.engine();
         let request = SandboxRequest::new(run_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
-        let outputs = work(root.path(), &selection, sandbox.as_ref(), calls).await;
+        let outputs = work(root.path(), sandbox.as_ref(), calls).await;
         sandbox.destroy().await?;
         outputs
     })
@@ -111,7 +107,6 @@ fn checked_out(
 /// The checkout and the calls, in a sandbox already built.
 async fn work(
     root: &Path,
-    selection: &Selection<'_>,
     sandbox: &dyn Sandbox,
     calls: &[(&str, Value)],
 ) -> Result<Vec<ToolOutput>, Failed> {
@@ -140,18 +135,10 @@ async fn work(
     let run = Run::default().with_checkouts(vec![checkout]);
     let mut outputs = Vec::with_capacity(calls.len());
     for (step, (name, arguments)) in (1_u64..).zip(calls) {
-        let tool = selection.tool(name).ok_or("the runner hosts it")?;
-        let call_ref = CallRef {
-            step,
-            index: 0,
-            call_id: format!("call-{step}"),
-        };
-        let context = ToolContext {
-            executor: Some(sandbox.executor()),
-            run: &run,
-            call_ref: &call_ref,
-        };
-        outputs.push(tool.call(arguments, context).await);
+        if ![GIT.name(), SHELL.name()].contains(name) {
+            return Err(format!("{name} is not one of the trial's tools").into());
+        }
+        outputs.push(called(sandbox.executor(), &run, step, name, arguments).await?);
     }
     Ok(outputs)
 }

@@ -9,11 +9,10 @@ use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
-use super::HttpRequest;
+use crate::catalog::HTTP_REQUEST;
 use crate::egress::SharedTransport;
-use crate::generic::Generic;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{HOUR, MINTED, RunFixture, call, replying};
+use crate::testing::{HOUR, MINTED, RunFixture, call, replying, sending};
 
 const REFS: &str = "https://api.github.com/repos/acme/widgets/git/refs";
 /// The body every upstream in this suite answers with.
@@ -35,9 +34,9 @@ async fn request_through(
     arguments: Value,
 ) -> ToolOutput {
     let run = RunFixture::new(read_only);
-    let tool = Generic::sending(HttpRequest, transport);
+    let tool = sending(&HTTP_REQUEST, transport);
     let this_run = run.run();
-    call(tool.as_ref(), &this_run, arguments).await
+    call(&tool, &this_run, arguments).await
 }
 
 #[tokio::test]
@@ -146,18 +145,18 @@ async fn test_mintable_credential_minted_once() {
     let capture = Capture::install();
     let run = RunFixture::new(false);
     let (transport, sent) = replying(200, "[]");
-    let tool = Generic::sending(HttpRequest, transport);
+    let tool = sending(&HTTP_REQUEST, transport);
     let this_run = run.run();
     let read = json!({"url": "https://api.github.com/repos/acme/widgets/pulls", "headers": {"Authorization": GITHUB_AUTH}});
 
     for _call in 0..3 {
-        let output = call(tool.as_ref(), &this_run, read.clone()).await;
+        let output = call(&tool, &this_run, read.clone()).await;
         assert_eq!(output.error_code, None);
     }
     assert_eq!(run.mint.asked(), 1);
 
     run.clock.advance(HOUR);
-    let output = call(tool.as_ref(), &this_run, read).await;
+    let output = call(&tool, &this_run, read).await;
     assert_eq!(output.error_code, None);
     assert_eq!(run.mint.asked(), 2);
     assert_eq!(sent.try_iter().count(), 4);
@@ -213,11 +212,11 @@ async fn should_mask_a_minted_token_the_upstream_echoes() {
     let run = RunFixture::new(false);
     let (transport, _sent) =
         RecordingTransport::answering(|_outbound| Ok(inbound(200, &format!("token={MINTED}"))));
-    let tool = Generic::sending(HttpRequest, Arc::new(transport));
+    let tool = sending(&HTTP_REQUEST, Arc::new(transport));
     let this_run = run.run();
 
     let output = call(
-        tool.as_ref(),
+        &tool,
         &this_run,
         json!({"url": "https://api.github.com/repos/acme/widgets/", "headers": {"Authorization": GITHUB_AUTH}}),
     )
@@ -298,7 +297,7 @@ async fn should_leave_the_guard_free_while_a_request_is_in_flight() {
     let run = RunFixture::new(false);
     let gated = Arc::new(Gated::default());
     let transport: SharedTransport = Arc::clone(&gated) as SharedTransport;
-    let tool = Generic::sending(HttpRequest, transport);
+    let tool = sending(&HTTP_REQUEST, transport);
     let this_run = run.run();
     let probe = async {
         gated.sending.notified().await;
@@ -309,7 +308,7 @@ async fn should_leave_the_guard_free_while_a_request_is_in_flight() {
 
     let (output, free) = tokio::join!(
         call(
-            tool.as_ref(),
+            &tool,
             &this_run,
             json!({"url": "https://api.github.com/repos/acme/widgets/"})
         ),

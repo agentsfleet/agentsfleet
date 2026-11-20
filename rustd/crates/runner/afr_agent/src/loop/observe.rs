@@ -8,7 +8,8 @@ use guffbolt::{Call, CallEnd, Listen, Observe, StepEnd, StepOutcome, TextKind, U
 use tracing::Span;
 
 use super::{
-    EVENT_PROVIDER_FAILED, EVENT_TURN_COMPLETED, EVENT_TURN_STARTED, Harness, REASON_STOPPED,
+    EVENT_CHILD_ENDED, EVENT_PROVIDER_FAILED, EVENT_TURN_COMPLETED, EVENT_TURN_STARTED, Ending,
+    Harness, REASON_STOPPED,
 };
 use crate::ledger::Opened;
 use crate::spans;
@@ -86,14 +87,22 @@ impl Observe<af_providers::Error> for Harness<'_, '_> {
         self.shared.ledger.open(call)
     }
 
-    /// A child's call that answered counts toward what its parent reads of
-    /// it; one interrupted does not.
     fn call_ended(&self, kept: Opened, end: CallEnd<'_>) {
-        let answered = end.output.is_some();
         self.shared.ledger.close(kept, end);
-        if answered && let Some(child) = &self.child {
-            child.called();
+    }
+
+    /// A child's turn ends here, paired with its start
+    /// ([`Harness::child`]); the root's end is the run's report.
+    fn loop_ended(&self, steps: u64, ending: &Ending) {
+        if self.depth == 0 {
+            return;
         }
+        let run_id = self.shared.run_id;
+        let child_id = self.id;
+        let depth = self.depth;
+        let status = ending.kind();
+        let event = EVENT_CHILD_ENDED;
+        tracing::info!(run_id, child_id, depth, status, steps, event);
     }
 }
 

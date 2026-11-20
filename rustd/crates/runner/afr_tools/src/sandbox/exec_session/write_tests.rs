@@ -31,7 +31,7 @@ async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
     let run = Run::default();
     open(&executor, &run, REPL).await;
 
-    let output = call_in(&*write(), &executor, &run, writing(1, EXIT, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, EXIT, None)).await;
 
     assert_eq!(
         output.text,
@@ -60,7 +60,7 @@ async fn should_log_a_session_killed_for_memory_during_a_write_under_its_run() {
     let run = named_run();
     open(&executor, &run, REPL).await;
 
-    let output = call_in(&*write(), &executor, &run, writing(1, ONE, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, ONE, None)).await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory.into()));
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
@@ -83,14 +83,14 @@ async fn should_read_a_process_gone_by_a_write_as_running_until_its_ending() {
     let started = Instant::now();
 
     let first = call_in(
-        &*write(),
+        write(),
         &executor,
         &run,
         writing(1, EXIT, Some(saturating_millis(YIELD_MIN))),
     )
     .await;
     assert!(executor.end(FIRST, Ending::Exited(0)));
-    let next = call_in(&*write(), &executor, &run, writing(1, "", None)).await;
+    let next = call_in(write(), &executor, &run, writing(1, "", None)).await;
 
     assert_eq!(started.elapsed(), YIELD_MIN);
     assert_eq!(first.text, format!("{WRITE_UNDELIVERED}\n{FIRST_RUNNING}"));
@@ -110,7 +110,7 @@ async fn should_say_why_a_write_was_refused_and_run_on() {
     let run = Run::default();
     open(&executor, &run, CAT).await;
 
-    let output = call_in(&*write(), &executor, &run, writing(1, ONE, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, ONE, None)).await;
 
     assert_eq!(output.text, format!("{INPUT_REFUSED}\n{FIRST_RUNNING}"));
     assert_eq!(output.error_code, None);
@@ -126,7 +126,7 @@ async fn should_answer_any_other_refusal_at_once_and_keep_the_session() {
     open(&executor, &run, CAT).await;
     let started = Instant::now();
 
-    let output = call_in(&*write(), &executor, &run, writing(1, ONE, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, ONE, None)).await;
 
     assert_eq!(started.elapsed(), Duration::ZERO, "nothing to wait for");
     assert_eq!(
@@ -143,7 +143,7 @@ async fn should_read_a_write_to_a_process_the_executor_lost_as_running() {
     open(&executor, &run, CAT).await;
     assert!(executor.forget(FIRST));
 
-    let output = call_in(&*write(), &executor, &run, writing(1, "x", None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, "x", None)).await;
 
     assert_eq!(output.error_code, None);
     assert!(

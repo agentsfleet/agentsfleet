@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use super::MESSAGES_URL;
 use crate::backed::Backends;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{RunFixture, call, replying};
+use crate::testing::{RunFixture, call, no_sandbox, replying};
 
 /// The tool a fleet calls to notify its person.
 const NOTIFY: &str = "notify";
@@ -23,8 +23,8 @@ const NOTIFY: &str = "notify";
 /// Calls `notify` with `arguments` on `run`, Pushover answering `status`.
 async fn notify(run: &RunFixture, status: u16, arguments: Value) -> (ToolOutput, Vec<Sent>) {
     let (transport, sent) = replying(status, r#"{"status":1}"#);
-    let run = run.run();
-    let backends = Backends::new(&run, Some(transport.as_ref()));
+    let (run, slot) = (run.run(), no_sandbox());
+    let backends = Backends::new(&run, &slot, Some(transport.as_ref()));
     let tools = backends.tools(&[NOTIFY]).expect("a run builds notify");
     let tool = tools.tool(NOTIFY).expect("notify is built");
     let output = call(tool, &run, arguments).await;
@@ -151,8 +151,8 @@ async fn a_pushover_refusal_reads_as_upstream_status() {
 #[tokio::test]
 async fn a_notifier_without_a_transport_refuses() {
     let fixture = RunFixture::new(false);
-    let run = fixture.run();
-    let backends = Backends::new(&run, None);
+    let (run, slot) = (fixture.run(), no_sandbox());
+    let backends = Backends::new(&run, &slot, None);
     let tools = backends.tools(&[NOTIFY]).expect("a run builds notify");
     let tool = tools.tool(NOTIFY).expect("notify is built");
 

@@ -112,10 +112,8 @@ fn a_failed_edit_is_an_edit_item_with_no_changes() {
     let sink = frames.sink();
     let scrub = scrub();
     let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
-    let exited = ToolOutput {
-        exit_code: Some(1),
-        ..ToolOutput::succeeded(patched())
-    };
+    let mut exited = ToolOutput::succeeded(patched());
+    exited.exit_code = Some(1);
 
     ran(&ledger, &patch(), Some(exited));
     let (trace, records) = ledger.finish();

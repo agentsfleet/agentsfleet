@@ -25,20 +25,23 @@ const TRANSPORT: &str = "transport";
 /// reads both.
 pub const OTHER: &str = af_observability::runner::OVERFLOW_RUNNER;
 
-/// A tool, as a label: its published catalog name, or [`OTHER`] for a name
-/// the model made up.
+/// A tool, as a label: its published catalog name, `guffbolt`'s name for a
+/// subagent tool, or [`OTHER`] for a name the model made up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tool(&'static str);
 
 impl Tool {
-    /// How many values this label can take: every published tool, and
-    /// [`OTHER`].
-    pub const COUNT: usize = catalog::PUBLISHED.len() + 1;
+    /// How many values this label can take: every published tool, every
+    /// subagent tool, and [`OTHER`].
+    pub const COUNT: usize = catalog::PUBLISHED.len() + catalog::CHILDREN + 1;
 
     /// The label for a call the model made to `called`.
     #[must_use]
     pub fn of(called: &str) -> Self {
-        Self(catalog::published(called).map_or(OTHER, |entry| entry.name()))
+        let named = catalog::published(called)
+            .map(afr_tools::Entry::name)
+            .or_else(|| catalog::children_tool(called));
+        Self(named.unwrap_or(OTHER))
     }
 
     /// The label value, byte-exact.
