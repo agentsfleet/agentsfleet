@@ -143,7 +143,7 @@ The report writes a `question` gate in `fleet.approval_gates` with its `turn_id`
 
 `resolve_gate.sql` accepts a gate whose status is `pending` or `timed_out`. It refuses one already answered with `APPROVAL_ALREADY_RESOLVED` (`UZ-APPROVAL-006`), and one whose fleet is archived with `AGENTSFLEET_ARCHIVED` (`UZ-AGT-020`).
 
-The sweep still marks an expired gate `timed_out`, so the card can say "Deadline passed". It no longer sets `resolved_at` or releases the turn, which stays `waiting`.
+No sweep touches a gate. The read reports `timed_out` when the gate is unanswered and its `expires_at` has passed, so the card can say "Deadline passed", and the turn stays `waiting`. `expire_gates.sql` and `Inbox::expire` are deleted (§7).
 
 A policy-gate approval releases the parked turn, and a denial fails it, as today. A question's answer writes one continuation turn with `resumes_turn_id`.
 
@@ -201,6 +201,32 @@ Carried from M253_001, by the owner's instruction. They run once on E2E Networks
 - **Dimension 6.1** (was M253_001 7.3) — the CLI reads turns → Test `fleet_turns_lists_turns` (acceptance, `cli/test/acceptance/logs-turns-live.spec.ts`): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
 - **Dimension 6.2** (was M253_001 9.1) — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
 - **Dimension 6.3** (was M253_001 9.2) — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
+
+### §7 — The daemon runs no sweeper
+
+Every background sweeper goes. A fact that changed only because time passed is checked when something reads or claims it, and work a sweeper finished is done on the event that owes it. `sweeper:retention` went in M253_002 §14.
+
+| Sweeper today | What replaces it |
+|---|---|
+| `sweeper:liveness` | nothing: the runner's heartbeat writes `last_seen_at` (`afd_runner/src/heartbeat/cordon.rs:72`), assignment skips a silent runner (`assign_turn_head.sql:44`), and the view derives offline (`afd_runner/src/view/decode.rs:254`); `drained` is derived at read |
+| `sweeper:fleet-census` | the gauges are read in the existing metrics export |
+| `sweeper:setup` | nothing: closed drafts and replay receipts are kept until a retention policy is chosen; a receipt past its window already reads as new (`afd_setup/src/replay/mod.rs:163`) |
+| `sweeper:billing` | the report's transaction settles its own usage lines through the Postgres ledger; an expired unissued decision call is recorded when its task is next claimed |
+| `sweeper:expiry` | the assignment that takes over a lapsed run bills that run's last slice in the same transaction; a Stop bills it too |
+| `sweeper:tasks` | wall and run limits are checked at assignment; a GitHub completion fans out in its webhook handler; a wait reads CI status when its task is claimed or read; an uncertain effect is reconciled when its task is claimed |
+| `sweeper:task-storage` | capturing a generation deletes the ones past the newest three; a task's checkpoints are deleted when it ends; a turn's checkpoints when it settles |
+| `connector:outbound` 30 s pass | one pass at daemon boot, then the bus ping; a retry waits in the worker |
+| `runner_stream_scheduler` recovery probe | an idle runner's heartbeat asks for waiting work |
+
+- **Dimension 7.1** — no sweeper is started → Test `the_daemon_starts_no_sweeper` (unit): the supervised task names at boot. Expected: none starts with `sweeper:`, and no `[maintenance.*]` key is accepted.
+- **Dimension 7.2** — a silent runner gets no work → Test `a_silent_runner_is_skipped_and_reads_offline` (integration): `last_seen_at` past the offline window. Expected: no assignment, and the runner reads `offline`.
+- **Dimension 7.3** — a report pays for itself → Test `a_report_settles_its_usage_in_its_transaction` (integration): one report. Expected: the lines are settled and the wallet is debited when the report commits. Negative test `a_report_whose_settlement_fails_writes_nothing`.
+- **Dimension 7.4** — a dead run's last slice is billed → Test `a_takeover_bills_the_lapsed_runs_last_slice` (integration): a run lapses and another runner takes the turn. Expected: one usage line for the lapsed slice, settled.
+- **Dimension 7.5** — a lost wake does not strand work → Test `an_idle_runners_heartbeat_is_assigned_waiting_work` (integration): queued work with no bus wake. Expected: the next heartbeat assigns it.
+- **Dimension 7.6** — an undelivered answer is sent at boot → Test `an_undelivered_answer_is_sent_at_boot` (integration): a delivery owed before a restart. Expected: one post after boot.
+- **Dimension 7.7** — task limits hold without a sweep → Test `a_task_past_its_wall_limit_is_exhausted_at_claim` (integration): a task past its wall limit. Expected: not assigned, and `exhausted` with `TASK_LIMIT_EXHAUSTED`.
+- **Dimension 7.8** — a CI completion wakes its wait → Test `a_ci_completion_webhook_wakes_its_wait` (integration): one GitHub completion. Expected: the matching wait is signalled in the webhook's request. Negative test `a_missed_webhook_is_read_when_the_task_is_claimed`.
+- **Dimension 7.9** — checkpoint storage is freed on its event → Test `a_fourth_generation_deletes_the_oldest` (integration): four captures. Expected: three remain, and the quota drops by the deleted bytes. Test `an_ended_tasks_checkpoints_are_deleted` (integration).
 
 ## Interfaces
 
@@ -303,11 +329,14 @@ Carried from M253_001, by the owner's instruction. They run once on E2E Networks
     - **D9:** an idempotency key per call on message, schedule and cron.
   - > Owner (Indy, Nov 19, 2026): "donot do the lint, test-unit, test-integration check but rather do it at the end of every workstream. but for every dimension do cargo check, cargo fmt (clippy) so we know code compiles." — context: per-Dimension compile checks; S rows at the end of each Workstream.
   - > Owner (Indy, Nov 19, 2026): "Ensure the rust code for individual files is 99% and overall is 99% if possible or else stick to the numbers we have currently." — context: coverage targets.
+  - > Owner (Indy, Nov 21, 2026): "I dont want setup, task-storage, tasks, expiry, liveness" and "i dont want any of the sweeper ultrathink and convice me why they are needed" — context: every daemon sweeper; four jobs (billing, the lost wake, the lost delivery ping, the missed CI webhook) move to their events.
+  - > Owner (Indy, Nov 21, 2026): "New §7 in M253_003 (Recommended)" — context: where the sweeper removal lands.
+  - > Owner (Indy, Nov 21, 2026): "I want to signoff debate and then have you fix the item 7 of sweepers. so consult when you start 7. on sweepers" — context: §7 is built only after Indy debates and signs off its design.
 - **Consults, agent defaults from the EGM review** — these narrow Indy's decisions and are listed in the PR for him:
   - **The gate table stays.** Install grant cards and policy gates have no run, so approvals do not fold into items.
   - **Effect keys protect retries only.** A resumed run's model makes new calls, so `(run_id, sequence)` dedupes a retried request, and the recovery note covers a resume.
   - **Budget without reservation.** Concurrent decision calls on one task can overshoot `max_model_nanos` by one call's cost.
   - **Recipients.** `owner` means every tenant owner.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 16 Blockers, 32 Majors, 26 Nits. Every Blocker is resolved above, wording findings are applied, and none is declined.
-- **Open blockers** — none.
+- **Open blockers** — §7 waits for Indy's sign-off on its design before any code.
 - **Deferrals and transfers** — none.
