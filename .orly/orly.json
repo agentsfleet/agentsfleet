@@ -45,6 +45,68 @@
       ]
     ]
   },
+  "reuse": {
+    "verify.lint": {
+      "hermetic": true,
+      "max_age_ms": 86400000,
+      "toolchain": [
+        [
+          "bash",
+          "-c",
+          "cd rustd && cargo --version && rustc --version && cargo clippy --version"
+        ],
+        [
+          "cargo-shear",
+          "--version"
+        ],
+        [
+          "shellcheck",
+          "--version"
+        ],
+        [
+          "actionlint",
+          "--version"
+        ],
+        [
+          "bun",
+          "--version"
+        ],
+        [
+          "python3",
+          "--version"
+        ]
+      ]
+    },
+    "verify.unit": {
+      "hermetic": true,
+      "max_age_ms": 86400000,
+      "toolchain": [
+        [
+          "bash",
+          "-c",
+          "cd rustd && cargo --version && rustc --version"
+        ],
+        [
+          "bun",
+          "--version"
+        ],
+        [
+          "node",
+          "--version"
+        ]
+      ]
+    },
+    "verify.version": {
+      "hermetic": true,
+      "max_age_ms": 86400000,
+      "toolchain": [
+        [
+          "bash",
+          "--version"
+        ]
+      ]
+    }
+  },
   "surfaces": {
     "user": [
       "cli/",
