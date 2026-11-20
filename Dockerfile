@@ -8,7 +8,7 @@
 # WHY DISTROLESS.
 #
 # The image carries the daemon and what the daemon needs, which is a CA bundle
-# and a clock. `static-debian12` is 6MB and provides both. The base it replaces
+# and a clock. `static-debian13` is 7MB and provides both. The base it replaces
 # was 275MB, measured, because it also carried bubblewrap, git, openssl and
 # wget — none of which this program calls. bubblewrap is the RUNNER's sandbox
 # and runs on baremetal worker hosts from
@@ -24,7 +24,7 @@
 # `[checks.readiness]` as an HTTP GET of /readyz every 15s, so a HEALTHCHECK
 # here would be a second implementation of that check — and would need a shell
 # and an HTTP client in the image purely to run it.
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 ARG TARGETARCH=amd64
 
 # OCI metadata — drives the GitHub Container Registry package page. Points at

@@ -25,7 +25,7 @@
 # passwords below never listen on another interface.
 services:
   postgres:
-    image: mirror.gcr.io/library/postgres:19rc2-alpine
+    image: mirror.gcr.io/library/postgres:19.0-alpine
     # pg_stat_statements is preloaded so the bench lanes can count the
     # statements a path executes from the SERVER's side (afd_bench's statement
     # counter). It only loads at server start, which is why it lives here and
@@ -70,7 +70,7 @@ services:
     # lane. It accepts any credentials and keeps every message for reading at
     # its web page or its API, so a test asserts on the real SMTP exchange and
     # a person can open the rendered email in a browser.
-    image: axllent/mailpit:v1.33.1
+    image: axllent/mailpit:v1.34.0
     ports:
       - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
       - "127.0.0.1:${AGENTSFLEET_MAILPIT_UI_PORT:-8025}:8025"
@@ -90,7 +90,7 @@ services:
     # QStash tests (AGENTSFLEET_QSTASH_LIVE_URL/TOKEN); self-skip when it is down.
     # Debian (glibc), not Alpine: the CLI fetches a glibc-linked Go binary that
     # cannot exec under musl.
-    image: mirror.gcr.io/oven/bun:1.4.4
+    image: mirror.gcr.io/oven/bun:1.4.5
     command:
       - sh
       - -c
