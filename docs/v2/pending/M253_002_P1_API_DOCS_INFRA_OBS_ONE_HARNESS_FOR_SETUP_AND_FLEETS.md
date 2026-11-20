@@ -260,6 +260,15 @@ Text the model reads names no host product: no "fleet", "workspace", "daemon" or
 - **Dimension 9.7** — a retried call keeps its reference → Test `a_retried_call_keeps_its_call_ref` (unit): a backend that fails once, then the retry. Expected: both attempts see the same `CallRef`.
 - **Dimension 9.8** — the model reads no host product → Test `guffbolt_tool_specs_name_no_host_product` (unit): every built-in tool's spec. Expected: no "fleet", "workspace", "daemon" or "agentsfleet".
 
+### §10 — Items record edits and the newest turn (from M253_001 §5)
+
+`thread.items` gains the columns `thread_model.md` defines: `kind`, `tool`, `status`, `changes` and `run_id`. An `edit` item records its path and its added and removed line counts, computed by the runner's file tools, and the app and CLI read them instead of working them out from arguments.
+
+Each input reaching a run carries its turn id. guffbolt notes the newest turn when a step begins and records it with the `CallRef`, and the daemon refuses an item naming a turn the run does not serve.
+
+- **Dimension 10.1** (was M253_001 5.1) — an edit records its counts → Test `an_edit_item_records_path_and_line_counts` (integration): a run editing `src/a.rs` by +24 −8. Expected: one `edit` item with those counts.
+- **Dimension 10.2** (was M253_001 5.2) — items name the newest turn → Test `items_after_a_second_message_name_the_second_turn` (unit): input arrives before step 3. Expected: steps 1 and 2 name turn 1, and step 3 names turn 2.
+
 ## Interfaces
 
 - **Runner protocol:** `agentsfleet.runner.v4` alone. `Down::Run { run: RunPayload }`, where the payload names one owner, a fleet or a draft. A setup run's payload carries `setup { head_candidate_id, head_revision, message, history }`.
@@ -378,6 +387,7 @@ Text the model reads names no host product: no "fleet", "workspace", "daemon" or
     - **D8:** `fleet_id` plus `draft_id` on the run.
     - **D10:** web and memory tools move into guffbolt.
     - **D12:** the codecov paths and the `.orly/LOCAL.md` layer rule.
+  - > Owner (Indy, Nov 20, 2026): "Defer 5.1 to M253_002" and "Move 5.2 into M253_002 (Recommended)" — context: §10, transferred from M253_001.
   - > Owner (Indy, Nov 20, 2026): "Move to afr_tools (Recommended)" — context: §9, Pushover leaves guffbolt.
   - > Owner (Indy, Nov 20, 2026): "I think i need ability like memory_store, they are in guffbolt i presume, and the calls do api to save them? similar way the pushover and scheduler can be. When i start i can configure the needed (like pi or codex or zig's nullclaw or any ~/Projects/oss/rs/* equivalent)" — context: §9.
   - > Owner (Indy, Nov 20, 2026): "I need a common better way to do this." — context: §9, one extension pattern.

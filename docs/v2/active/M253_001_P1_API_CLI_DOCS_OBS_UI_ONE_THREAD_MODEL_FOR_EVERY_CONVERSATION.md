@@ -216,8 +216,8 @@ Text deltas fan out and are never items. A reconnect replays the turn's state an
 - **One run, two turns.** An item names the turn that was newest when its step began. guffbolt adds arrived input at the top of each step (`rustd/guffbolt/src/drive/mod.rs:104`).
 - **Expiry.** When a resumed run settles a turn, only that run's items stay, per Indy's "Drop them, as today".
 
-- **Dimension 5.1** — an edit records its counts → Test `an_edit_item_records_path_and_line_counts` (integration): a run editing `src/a.rs` by +24 −8. Expected: one `edit` item with those counts.
-- **Dimension 5.2** — items name the newest turn → Test `items_after_a_second_message_name_the_second_turn` (unit): input arrives before step 3. Expected: steps 1 and 2 name turn 1, and step 3 names turn 2.
+- **Dimension 5.1** — TRANSFERRED to M253_002 §10 — an edit records its counts → Test `an_edit_item_records_path_and_line_counts` (integration): a run editing `src/a.rs` by +24 −8. Expected: one `edit` item with those counts.
+- **Dimension 5.2** — TRANSFERRED to M253_002 §10 — items name the newest turn → Test `items_after_a_second_message_name_the_second_turn` (unit): input arrives before step 3. Expected: steps 1 and 2 name turn 1, and step 3 names turn 2.
 - **Dimension 5.3** — DONE — a dead run's items go → Test `a_settling_resumed_run_drops_the_dead_runs_items` (integration): run 1 records 2 items and dies, then run 2 records 1 and settles. Expected: one item remains.
 - **Dimension 5.4** — DONE — deltas are never stored → Test `text_deltas_fan_out_and_are_not_stored` (integration): a streamed answer. Expected: the stream delivers the deltas, and no text row exists in `thread.items`.
 
@@ -400,5 +400,8 @@ An item on the public wire looks like this:
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 8 Blockers, 47 Majors, 29 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
 - **Open blockers** — none.
 - **Deferrals and transfers** —
+  - Dimensions 5.1 and 5.2 are missing behaviour, not just missing tests. `thread.items` has no `kind`, `tool`, `status`, `changes` or `run_id` columns, and runner input carries no turn id. They transfer to M253_002 §10, where guffbolt's API changes once with `CallRef`.
+    > Owner (Indy, Nov 20, 2026): "Defer 5.1 to M253_002"
+    > Owner (Indy, Nov 20, 2026): "Move 5.2 into M253_002 (Recommended)" and "5.2 can be moved to M253_002"
   - Dimension 7.3 runs only in acceptance, which needs an https target and costs money. It is proven by the acceptance run at the end of M253, started beside the §9 benchmarks.
     > Owner (Indy, Nov 20, 2026): "7.3 - prove it in the post-merge acceptance run. Yes so it could be done when M252_003 is run where the performance bench and the acceptance (either in burst e2e or gh are kicked off parallel)"
