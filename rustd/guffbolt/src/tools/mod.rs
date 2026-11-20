@@ -203,3 +203,7 @@ pub fn standard() -> Vec<Box<ContextTool>> {
         Box::new(Typed::new(clock::Sleep)),
     ]
 }
+
+#[cfg(test)]
+#[path = "model_text_tests.rs"]
+mod model_text_tests;

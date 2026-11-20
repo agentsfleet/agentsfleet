@@ -39,7 +39,7 @@ use super::{
 /// The most entries one listing carries.
 const LIST_MAX: usize = 1000;
 /// What a path that leaves the root reads back.
-const LEAVES_ROOT: &str = "the path leaves the workspace";
+const LEAVES_ROOT: &str = "the path leaves the working directory";
 /// What a call naming a process the environment no longer holds reads back.
 const UNKNOWN_PROCESS: &str = "no such process";
 /// What a write to a process that closed its input reads back.

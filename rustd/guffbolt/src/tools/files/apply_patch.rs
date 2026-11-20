@@ -8,7 +8,7 @@
 //! write, each from what the hunks before it leave, as Codex applies them one
 //! after another: a patch with a hunk that does not apply changes nothing.
 //! That check knows a file by the path a hunk spells, and a link inside the
-//! workspace gives one file a second spelling, so an update lands by reading
+//! working directory gives one file a second spelling, so an update lands by reading
 //! its file again and applying its chunks to what is there, as Codex lands
 //! each hunk. A write the environment refuses partway, or an update that no
 //! longer applies to the file it lands on, is reported, and the hunks before
@@ -55,7 +55,7 @@ pub struct Patch {
     /// is `*** Add File: <path>` with `+` lines, `*** Delete File: <path>`,
     /// or `*** Update File: <path>` with `@@ <context>` markers and ` `, `-`
     /// and `+` lines; `*** Move to: <path>` after an update renames the file.
-    /// Paths are relative to the workspace.
+    /// Paths are relative to the working directory.
     patch: String,
 }
 
@@ -149,10 +149,10 @@ pub struct ApplyPatch;
 
 impl Handler for ApplyPatch {
     const NAME: &'static str = "apply_patch";
-    const DESCRIPTION: &'static str = "Edit files in the workspace with one patch in \
+    const DESCRIPTION: &'static str = "Edit files in the working directory with one patch in \
         apply_patch's grammar: add, update and delete hunks, each path relative to the \
-        workspace. Every hunk is checked before any file changes; the answer lists each file \
-        and ends with the lines added and removed.";
+        working directory. Every hunk is checked before any file changes; the answer lists each \
+        file and ends with the lines added and removed.";
     type Arguments = Patch;
 
     async fn run(&self, arguments: Patch, context: Context<'_>) -> ToolOutput {

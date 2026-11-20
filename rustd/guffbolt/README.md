@@ -705,7 +705,7 @@ async fn main() -> std::io::Result<()> {
         key: "deploy:target".to_owned(),
         content: "staging first".to_owned(),
         category: "core".to_owned(),
-        reach: Reach::Fleet,
+        reach: Reach::Private,
     }]);
     let recall = Typed::new(MemoryRecall);
 

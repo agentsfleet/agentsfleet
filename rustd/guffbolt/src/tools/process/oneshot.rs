@@ -110,9 +110,9 @@ fn missing_ending(
     Ending::Interrupted
 }
 
-/// Logs a command the kernel killed because the sandbox's tenant processes
-/// ran out of memory: the model reads the code, the operator the run. No
-/// command text, which is the tenant's.
+/// Logs a command the kernel killed because the environment's processes ran
+/// out of memory: the model reads the code, the operator the run. No command
+/// text, which is the user's.
 pub(super) fn out_of_memory(run_id: &str) {
     let error_code = code::OUT_OF_MEMORY.as_str();
     let event = EVENT_OUT_OF_MEMORY;

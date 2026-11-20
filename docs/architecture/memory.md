@@ -10,7 +10,7 @@ The deep load/capture transport lives in `runner_fleet.md`; the categories, sele
 
 ## 1. Scope: written by one fleet, shared with the workspace only by grant
 
-Every memory row belongs to **one fleet**, its writer, and to that fleet's **workspace**. The identity is `(workspace_id, fleet_id, key)`, held by the unique `(key, fleet_id)` because a fleet has one workspace. A row is fleet-visible unless its writer held the publish grant and stored it with `visibility: workspace`.
+Every memory row belongs to **one fleet**, its writer, and to that fleet's **workspace**. The identity is `(workspace_id, fleet_id, key)`, held by the unique `(key, fleet_id)` because a fleet has one workspace. A row is fleet-visible unless its writer held the publish grant and its `memory_store` call named `visibility: shared`.
 
 A fleet holding the read grant then loads and recalls such a row, naming the writer. No fleet overwrites or forgets another's row. Both grants are a workspace setting on the fleet, false by default ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 

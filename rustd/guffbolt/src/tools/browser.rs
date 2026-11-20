@@ -3,9 +3,8 @@
 //! `browser_open`, `browser` and `screenshot` drive the page the environment
 //! keeps ([`crate::tools::env::Browser`]). An environment with no browser, or
 //! a call with no environment, answers a code naming why, spawns nothing,
-//! and the run goes on. A sandboxing embedder whose sandbox cannot start a
-//! browser says so in its own words, such as the engine its browser waits
-//! for.
+//! and the run goes on. An environment that cannot start a browser says so
+//! in its own words.
 
 use serde_json::Value;
 
@@ -18,10 +17,9 @@ const NO_ENV: &str = "has no environment to run a browser in";
 /// The event a refused browser call logs under.
 pub const EVENT_REFUSED: &str = "browser_tool_refused";
 /// What the three tools tell the model, after what each would do.
-macro_rules! until_firecracker {
+macro_rules! when_unavailable {
     () => {
-        " Refused on this sandbox engine until the Firecracker engine arrives; the call answers \
-         a code and the run continues."
+        " An environment with no browser refuses the call with a code, and the run continues."
     };
 }
 
@@ -55,8 +53,8 @@ pub struct BrowserOpen;
 impl Handler for BrowserOpen {
     const NAME: &'static str = "browser_open";
     const DESCRIPTION: &'static str = concat!(
-        "Open a page in a browser inside the sandbox.",
-        until_firecracker!()
+        "Open a page in the environment's browser.",
+        when_unavailable!()
     );
     type Arguments = Value;
 
@@ -78,8 +76,8 @@ pub struct Browse;
 impl Handler for Browse {
     const NAME: &'static str = "browser";
     const DESCRIPTION: &'static str = concat!(
-        "Act on the open page in the sandbox's browser: click, type, scroll, read.",
-        until_firecracker!()
+        "Act on the open page in the environment's browser: click, type, scroll, read.",
+        when_unavailable!()
     );
     type Arguments = Value;
 
@@ -101,8 +99,8 @@ pub struct Screenshot;
 impl Handler for Screenshot {
     const NAME: &'static str = "screenshot";
     const DESCRIPTION: &'static str = concat!(
-        "Take a screenshot of the open page in the sandbox's browser.",
-        until_firecracker!()
+        "Take a screenshot of the open page in the environment's browser.",
+        when_unavailable!()
     );
     type Arguments = Value;
 

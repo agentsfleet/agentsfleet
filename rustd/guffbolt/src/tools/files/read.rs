@@ -35,7 +35,7 @@ const READ_REST: &str = "read the rest with shell";
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Window {
-    /// The file, relative to the workspace.
+    /// The file, relative to the working directory.
     path: String,
     /// The line to start at, counting from 1: the first when absent.
     #[serde(default)]
@@ -51,8 +51,8 @@ pub struct FileRead;
 
 impl Handler for FileRead {
     const NAME: &'static str = "file_read";
-    const DESCRIPTION: &'static str = "Read a file in the workspace and read back its text: \
-        at most `limit` lines (2000 when absent) from line `offset` (1 when absent), cut to \
+    const DESCRIPTION: &'static str = "Read a file in the working directory and read back its \
+        text: at most `limit` lines (2000 when absent) from line `offset` (1 when absent), cut to \
         the same output budget as a command's. A read that stops before the file ends says on \
         its last line which offset to read on from.";
     type Arguments = Window;

@@ -34,8 +34,8 @@ const FORGOT_NOTHING: &str = "nothing remembered under";
 /// What names the writer of a shared entry.
 const SHARED_BY: &str = "shared by";
 /// What a forget reads back after the key.
-const FORGOT: &str = "is forgotten for the rest of this run; the fleet's stored copy \
-                      stays until a store under the same key replaces it";
+const FORGOT: &str = "is forgotten for the rest of this run; the stored copy stays \
+                      until a store under the same key replaces it";
 
 /// One store call's work.
 pub type MemoryFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, MemoryRefused>> + Send + 'a>>;
@@ -44,11 +44,12 @@ pub type MemoryFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, MemoryRefus
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Reach {
-    /// Only this fleet.
+    /// Only this agent.
     #[default]
-    Fleet,
-    /// Every fleet in the workspace granted to read shared memory.
-    Workspace,
+    Private,
+    /// Every agent granted to read shared memory, which names this agent as
+    /// the writer.
+    Shared,
 }
 
 /// A memory to store.
@@ -127,8 +128,8 @@ pub struct Store {
     /// `core` (the default) is read first by every later run; `daily` expires
     /// after a retention sweep; any other label is kept by recency.
     category: Option<String>,
-    /// `fleet` (the default) keeps it to this fleet; `workspace` lets every
-    /// fleet granted to read shared memory recall it, naming this fleet.
+    /// `private` (the default) keeps it to this agent; `shared` lets other
+    /// agents granted shared memory recall it, naming the writer.
     visibility: Option<Reach>,
 }
 
@@ -165,8 +166,7 @@ pub struct MemoryStoreTool;
 
 impl Handler for MemoryStoreTool {
     const NAME: &'static str = "memory_store";
-    const DESCRIPTION: &'static str =
-        "Remember a fact for later runs of this fleet under a stable key.";
+    const DESCRIPTION: &'static str = "Remember a fact for later runs under a stable key.";
     type Arguments = Store;
 
     async fn run(&self, arguments: Store, context: Context<'_>) -> ToolOutput {

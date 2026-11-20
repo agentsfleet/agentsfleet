@@ -219,7 +219,7 @@ async fn should_refuse_without_a_sandbox_or_when_the_executor_refuses() {
 
     assert_eq!(
         unsandboxed.text,
-        "[sandbox_unavailable] this call has no sandbox to run in"
+        "[sandbox_unavailable] this call has no environment to run in"
     );
     assert_eq!(
         refused.error_code,

@@ -251,7 +251,7 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
             "{refused:?}"
         );
         assert!(
-            refused.text.contains("leaves the workspace"),
+            refused.text.contains("leaves the working directory"),
             "{}",
             refused.text
         );

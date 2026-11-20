@@ -1,4 +1,4 @@
-//! `ls`, `find` and `grep`: looking around the workspace without changing
+//! `ls`, `find` and `grep`: looking around the working directory without changing
 //! it, in the shape of pi's tools (`coding-agent/src/core/tools/`).
 //!
 //! All three read through the environment's file calls, never a spawned
@@ -42,8 +42,8 @@ const WALK_CUT: &str = "... the walk stopped early; narrow the path";
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Directory {
-    /// The directory to list, relative to the workspace: the workspace when
-    /// absent.
+    /// The directory to list, relative to the working directory: the working
+    /// directory when absent.
     #[serde(default)]
     path: Option<String>,
     /// The most entries to list: 500 when absent.
@@ -58,8 +58,8 @@ pub struct Search {
     /// A glob the path must match, relative to `path`: `*` within one
     /// directory, `**` across them, `?` one character; such as `**/*.rs`.
     pattern: String,
-    /// The directory to search, relative to the workspace: the workspace when
-    /// absent.
+    /// The directory to search, relative to the working directory: the
+    /// working directory when absent.
     #[serde(default)]
     path: Option<String>,
     /// The most paths to answer with: 1000 when absent.
@@ -73,8 +73,8 @@ pub struct Search {
 pub struct Lines {
     /// What to look for: a regular expression, or text when `literal`.
     pattern: String,
-    /// The directory or file to search, relative to the workspace: the
-    /// workspace when absent.
+    /// The directory or file to search, relative to the working directory:
+    /// the working directory when absent.
     #[serde(default)]
     path: Option<String>,
     /// Only files whose path matches this glob, such as `*.ts`.
@@ -97,9 +97,9 @@ pub struct Ls;
 
 impl Handler for Ls {
     const NAME: &'static str = "ls";
-    const DESCRIPTION: &'static str = "List a directory in the workspace, sorted by name, a \
-        directory marked with a trailing slash. Dotfiles are listed. At most `limit` entries \
-        (500 when absent).";
+    const DESCRIPTION: &'static str = "List a directory in the working directory, sorted by \
+        name, a directory marked with a trailing slash. Dotfiles are listed. At most `limit` \
+        entries (500 when absent).";
     type Arguments = Directory;
 
     async fn run(&self, arguments: Directory, context: Context<'_>) -> ToolOutput {
@@ -138,8 +138,8 @@ pub struct Find;
 
 impl Handler for Find {
     const NAME: &'static str = "find";
-    const DESCRIPTION: &'static str = "Find files in the workspace whose path matches a glob, \
-        such as `**/*.rs`, and read back their paths relative to the directory searched. \
+    const DESCRIPTION: &'static str = "Find files in the working directory whose path matches \
+        a glob, such as `**/*.rs`, and read back their paths relative to the directory searched. \
         `.git` is skipped. At most `limit` paths (1000 when absent).";
     type Arguments = Search;
 
@@ -175,7 +175,7 @@ pub struct Grep;
 
 impl Handler for Grep {
     const NAME: &'static str = "grep";
-    const DESCRIPTION: &'static str = "Search the files in the workspace for a pattern, a \
+    const DESCRIPTION: &'static str = "Search the files in the working directory for a pattern, a \
         regular expression or, with `literal`, text, and read back each matching line as \
         `path:line: text`. `glob` keeps only files whose path matches it. `.git` is skipped, \
         and a line is cut at 500 characters. At most `limit` lines (100 when absent).";

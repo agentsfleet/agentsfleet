@@ -70,7 +70,7 @@ pub struct Pushover;
 impl Handler for Pushover {
     const NAME: &'static str = "pushover";
     const DESCRIPTION: &'static str = "Send a push notification through Pushover to \
-        the recipient this fleet's pushover secret names.";
+        the recipient the pushover secret names.";
     type Arguments = Notify;
 
     async fn run(&self, arguments: Notify, context: Context<'_>) -> ToolOutput {

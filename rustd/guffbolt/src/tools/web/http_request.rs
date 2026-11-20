@@ -1,5 +1,5 @@
 //! `http_request`: one HTTPS request under the network policy and the
-//! daemon's origin rules.
+//! outbound hook's origin rules.
 //!
 //! The arguments are `url`, `method`, `headers` and `body`, and the answer is
 //! `Status: N` then the body. Every policy rule is the run's outbound hook's,
@@ -25,7 +25,7 @@ const INCOMPLETE_BODY: &str = "[Incomplete response body omitted; the source was
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
-    /// An https URL on a host the fleet's network policy lists. Its whole
+    /// An https URL on a host the network policy lists. Its whole
     /// host may be written `${secrets.NAME.host}`.
     url: String,
     /// `GET` (the default), `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE` or
@@ -45,8 +45,8 @@ pub struct HttpRequest;
 
 impl Handler for HttpRequest {
     const NAME: &'static str = "http_request";
-    const DESCRIPTION: &'static str = "Send one HTTPS request to a host this fleet's \
-        network policy allows, and read back its status and up to 1 MiB of a complete body. \
+    const DESCRIPTION: &'static str = "Send one HTTPS request to a host the network \
+        policy allows, and read back its status and up to 1 MiB of a complete body. \
         Truncated bodies are omitted with an explicit incomplete-source notice. \
         Write a credential as ${secrets.NAME.FIELD} in the Authorization header; it is \
         put in place when the request is sent. A GET without a body follows up to \

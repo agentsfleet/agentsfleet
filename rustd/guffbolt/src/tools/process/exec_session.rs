@@ -52,8 +52,8 @@ const EVENT_WRITE_REFUSED: &str = "exec_session_write_refused";
 pub struct Open {
     /// The command, as `sh -c` runs it.
     cmd: String,
-    /// The directory to run it in, inside the workspace; the workspace itself
-    /// when absent.
+    /// The directory to run it in, relative to the working directory; the
+    /// working directory itself when absent.
     #[serde(default)]
     workdir: Option<String>,
     /// Whether to run it on a pseudo-terminal, for a program that needs one;
@@ -95,7 +95,7 @@ pub struct ExecCommand;
 
 impl Handler for ExecCommand {
     const NAME: &'static str = "exec_command";
-    const DESCRIPTION: &'static str = "Start a shell command inside the sandbox and keep it \
+    const DESCRIPTION: &'static str = "Start a shell command in the working directory and keep it \
         running across calls. Answers with the output that arrived within yield_time_ms and, \
         while the process runs, its session ID; use write_stdin to send it input or read more. \
         The session ends when the process exits or the run ends.";

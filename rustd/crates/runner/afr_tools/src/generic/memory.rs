@@ -37,12 +37,12 @@ impl<'l, 'run> RunMemory<'l, 'run> {
 
 /// A call the backend refused, with the code the model reads: a store past
 /// the push is `memory_full`, a share the fleet may not make is
-/// `workspace_memory_not_granted`; anything else the model can correct.
+/// `shared_memory_not_granted`; anything else the model can correct.
 fn refused(failure: &afr_memory::Error) -> MemoryRefused {
     let code = if failure.is_full() {
         code::MEMORY_FULL
     } else if failure.is_not_granted() {
-        code::WORKSPACE_MEMORY_NOT_GRANTED
+        code::SHARED_MEMORY_NOT_GRANTED
     } else {
         code::INVALID_ARGUMENTS
     };
@@ -75,8 +75,8 @@ impl MemoryStore for RunMemory<'_, '_> {
                 content: Cow::Owned(memory.content),
                 category,
                 visibility: match memory.reach {
-                    Reach::Fleet => Visibility::Fleet,
-                    Reach::Workspace => Visibility::Workspace,
+                    Reach::Private => Visibility::Fleet,
+                    Reach::Shared => Visibility::Workspace,
                 },
             };
             let stored = self.backend.lock().await.store(delta).await;

@@ -35,9 +35,9 @@ pub use self::image::ImageTool;
 pub use self::listing::{Find, Grep, Ls};
 pub use self::read::FileRead;
 
-/// What a path with `..` in it, or an absolute one outside the workspace,
-/// reads back after the path.
-const LEAVES_WORKSPACE: &str = "leaves the workspace";
+/// What a path with `..` in it, or an absolute one outside the working
+/// directory, reads back after the path.
+const LEAVES_WORKING_DIRECTORY: &str = "leaves the working directory";
 /// What a file longer than one read carries reads back, between its path
 /// and the byte count.
 const LONGER_THAN: &str = "is longer than";
@@ -68,7 +68,7 @@ pub fn inside<'p>(env: &dyn Env, path: &'p str) -> Result<&'p str, ToolOutput> {
     {
         return Err(ToolOutput::failed(
             code::INVALID_ARGUMENTS,
-            "path must name a file in the workspace",
+            "path must name a file in the working directory",
         ));
     }
     let escapes = relative.is_absolute()
@@ -78,7 +78,7 @@ pub fn inside<'p>(env: &dyn Env, path: &'p str) -> Result<&'p str, ToolOutput> {
     if escapes {
         return Err(ToolOutput::failed(
             code::PATH_NOT_ALLOWED,
-            &format!("{path} {LEAVES_WORKSPACE}"),
+            &format!("{path} {LEAVES_WORKING_DIRECTORY}"),
         ));
     }
     Ok(relative.to_str().unwrap_or(path))
@@ -128,7 +128,7 @@ pub(crate) async fn whole(env: &dyn Env, path: &str) -> Result<String, ToolOutpu
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Named {
-    /// The file, relative to the workspace.
+    /// The file, relative to the working directory.
     path: String,
 }
 
@@ -136,7 +136,8 @@ pub struct Named {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Content {
-    /// The file, relative to the workspace; missing directories are made.
+    /// The file, relative to the working directory; missing directories are
+    /// made.
     path: String,
     /// The text to write.
     content: String,
@@ -146,7 +147,7 @@ pub struct Content {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Replacement {
-    /// The file, relative to the workspace.
+    /// The file, relative to the working directory.
     path: String,
     /// The text to find; its first occurrence is replaced.
     old_text: String,
@@ -160,8 +161,8 @@ pub struct FileWrite;
 
 impl Handler for FileWrite {
     const NAME: &'static str = "file_write";
-    const DESCRIPTION: &'static str = "Write a file in the workspace, replacing what was \
-        there, and make any missing directories on the way.";
+    const DESCRIPTION: &'static str = "Write a file in the working directory, replacing what \
+        was there, and make any missing directories on the way.";
     type Arguments = Content;
 
     async fn run(&self, arguments: Content, context: Context<'_>) -> ToolOutput {
@@ -187,7 +188,7 @@ pub struct FileAppend;
 
 impl Handler for FileAppend {
     const NAME: &'static str = "file_append";
-    const DESCRIPTION: &'static str = "Add text to the end of a file in the workspace, \
+    const DESCRIPTION: &'static str = "Add text to the end of a file in the working directory, \
         making the file when it does not exist.";
     type Arguments = Content;
 
@@ -214,7 +215,7 @@ pub struct FileDelete;
 
 impl Handler for FileDelete {
     const NAME: &'static str = "file_delete";
-    const DESCRIPTION: &'static str = "Delete a file in the workspace. Directories and \
+    const DESCRIPTION: &'static str = "Delete a file in the working directory. Directories and \
         links are not deleted.";
     type Arguments = Named;
 
@@ -238,8 +239,8 @@ pub struct FileEdit;
 
 impl Handler for FileEdit {
     const NAME: &'static str = "file_edit";
-    const DESCRIPTION: &'static str = "Find text in a file in the workspace and replace its \
-        first occurrence. The file must be text and fit one read.";
+    const DESCRIPTION: &'static str = "Find text in a file in the working directory and \
+        replace its first occurrence. The file must be text and fit one read.";
     type Arguments = Replacement;
 
     async fn run(&self, arguments: Replacement, context: Context<'_>) -> ToolOutput {

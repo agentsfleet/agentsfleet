@@ -1,6 +1,6 @@
-//! `shell`: one command, run to its end inside the sandbox.
+//! `shell`: one command, run to its end in the environment.
 //!
-//! `sh -c command` on pipes, in the workspace, under the environment's own
+//! `sh -c command` on pipes, in the working directory, under the environment's own
 //! timeout (`oneshot`).
 
 use crate::tool::ToolOutput;
@@ -15,7 +15,7 @@ use crate::tools::{Context, Handler};
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Command {
-    /// The command, as `sh -c` runs it in the workspace.
+    /// The command, as `sh -c` runs it in the working directory.
     command: String,
     /// How long it may run, in milliseconds: 10000 when absent, at most
     /// 600000.
@@ -29,8 +29,8 @@ pub struct Shell;
 
 impl Handler for Shell {
     const NAME: &'static str = "shell";
-    const DESCRIPTION: &'static str = "Run one shell command inside the sandbox, in the \
-        workspace, and read back its output and exit code. The command is killed once \
+    const DESCRIPTION: &'static str = "Run one shell command in the working directory and \
+        read back its output and exit code. The command is killed once \
         timeout_ms passes. To keep a process running across calls, use exec_command.";
     type Arguments = Command;
 

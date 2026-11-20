@@ -2,7 +2,7 @@
 //!
 //! The same hook as `http_request` with less reach: one method, no header, no
 //! body, and no placeholder anywhere, so a page fetched for reading never
-//! carries a fleet's credential. An HTML page comes back as its text, through
+//! carries a run's credential. An HTML page comes back as its text, through
 //! a real HTML parser (`html2text`).
 
 use schemars::JsonSchema;
@@ -26,7 +26,7 @@ const HTML: &str = "html";
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Fetch {
-    /// An https URL on a host the fleet's network policy lists.
+    /// An https URL on a host the network policy lists.
     url: String,
     /// The most characters to read back: 50000 when absent.
     max_chars: Option<usize>,
@@ -38,8 +38,8 @@ pub struct WebFetch;
 
 impl Handler for WebFetch {
     const NAME: &'static str = "web_fetch";
-    const DESCRIPTION: &'static str = "Fetch one https page from a host this fleet's \
-        network policy allows and read back its text. No credential is sent.";
+    const DESCRIPTION: &'static str = "Fetch one https page from a host the network \
+        policy allows and read back its text. No credential is sent.";
     type Arguments = Fetch;
 
     async fn run(&self, arguments: Fetch, context: Context<'_>) -> ToolOutput {

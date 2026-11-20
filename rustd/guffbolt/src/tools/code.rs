@@ -13,8 +13,8 @@ pub const INVALID_ARGUMENTS: ErrorCode = ErrorCode::new("invalid_arguments");
 pub const SANDBOX_UNAVAILABLE: ErrorCode = ErrorCode::new("sandbox_unavailable");
 /// The memory this run stored would no longer fit what its store keeps.
 pub const MEMORY_FULL: ErrorCode = ErrorCode::new("memory_full");
-/// A store asked the workspace to read it, and this run may not publish.
-pub const WORKSPACE_MEMORY_NOT_GRANTED: ErrorCode = ErrorCode::new("workspace_memory_not_granted");
+/// A memory was stored as shared, and this run may not share one.
+pub const SHARED_MEMORY_NOT_GRANTED: ErrorCode = ErrorCode::new("shared_memory_not_granted");
 /// The URL is not HTTPS.
 pub const HTTPS_REQUIRED: ErrorCode = ErrorCode::new("https_required");
 /// The method is outside what this tool or this policy sends.
@@ -39,9 +39,9 @@ pub const OUT_OF_MEMORY: ErrorCode = ErrorCode::new("out_of_memory");
 pub const SESSION_NOT_FOUND: ErrorCode = ErrorCode::new("session_not_found");
 /// The subcommand reaches a remote, which the environment does not.
 pub const SUBCOMMAND_NOT_ALLOWED: ErrorCode = ErrorCode::new("subcommand_not_allowed");
-/// The path leaves the workspace, by name or through a link.
+/// The path leaves the working directory, by name or through a link.
 pub const PATH_NOT_ALLOWED: ErrorCode = ErrorCode::new("path_not_allowed");
-/// The path names no file or directory in the workspace.
+/// The path names no file or directory in the working directory.
 pub const FILE_NOT_FOUND: ErrorCode = ErrorCode::new("file_not_found");
 /// The file is longer than the call carries.
 pub const FILE_TOO_LARGE: ErrorCode = ErrorCode::new("file_too_large");

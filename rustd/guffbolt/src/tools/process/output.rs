@@ -31,7 +31,7 @@ pub const RUNNING: &str = "Process running with session ID";
 const SIGNALED: &str = "Process killed by signal";
 /// How a process the executor killed at its timeout reads.
 pub const TIMED_OUT: &str = "Process timed out";
-/// How a process the kernel killed for its sandbox's memory reads.
+/// How a process the kernel killed for its environment's memory reads.
 const OUT_OF_MEMORY: &str = "Process killed: out of memory";
 /// How a process whose ending never reached the caller reads.
 const INTERRUPTED: &str = "Process interrupted before its ending arrived";

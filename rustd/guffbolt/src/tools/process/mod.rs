@@ -49,7 +49,7 @@ pub const COMMAND_ENV: [(&str, &str); 9] = [
     ("GH_PAGER", NO_PAGER),
 ];
 /// What a call that needs the environment reads back when it was given none.
-const NO_ENV: &str = "this call has no sandbox to run in";
+const NO_ENV: &str = "this call has no environment to run in";
 
 /// `script` as the shell runs it: `sh -c script`, at the root, with
 /// [`COMMAND_ENV`].

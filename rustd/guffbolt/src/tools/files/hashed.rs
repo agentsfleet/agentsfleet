@@ -51,7 +51,7 @@ const END_TARGET: &str = "end_target";
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Named {
-    /// The file, relative to the workspace.
+    /// The file, relative to the working directory.
     path: String,
 }
 
@@ -59,7 +59,7 @@ pub struct Named {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Range {
-    /// The file, relative to the workspace.
+    /// The file, relative to the working directory.
     path: String,
     /// The tag of the line to replace, as `file_read_hashed` printed it:
     /// `L10:abc`.
@@ -78,7 +78,7 @@ pub struct FileReadHashed;
 
 impl Handler for FileReadHashed {
     const NAME: &'static str = "file_read_hashed";
-    const DESCRIPTION: &'static str = "Read a file in the workspace with every line tagged \
+    const DESCRIPTION: &'static str = "Read a file in the working directory with every line tagged \
         L<line>:<hash>|<text>, for file_edit_hashed to name lines by. The file must be text \
         and fit one read.";
     type Arguments = Named;
@@ -102,7 +102,7 @@ pub struct FileEditHashed;
 impl Handler for FileEditHashed {
     const NAME: &'static str = "file_edit_hashed";
     const DESCRIPTION: &'static str = "Replace one line, or the range from target to \
-        end_target, in a file in the workspace, naming the lines by the tags \
+        end_target, in a file in the working directory, naming the lines by the tags \
         file_read_hashed printed. A tag the file no longer matches is refused: read the \
         file again.";
     type Arguments = Range;

@@ -1,17 +1,16 @@
 //! `git`: the environment's git, run on the repository the embedder checked out.
 //!
-//! The repository's remote is the runner's: it checked the repository out on
-//! the host, and the token that fetched it never enters the sandbox
-//! (`afr_supervisor`'s workspace clone). So a subcommand that reaches a remote
-//! cannot work here, and is refused with a code before anything runs, naming
-//! where a change leaves instead. The refusal is an answer, not the boundary:
-//! the boundary is the missing credential, and what the sandbox's network
+//! The repository's remote is the embedder's: it checked the repository out,
+//! and the credential that fetched it never enters the environment. So a
+//! subcommand that reaches a remote cannot work here, and is refused with a
+//! code before anything runs. The refusal is an answer, not the boundary:
+//! the boundary is the missing credential, and what the environment's network
 //! reaches is its egress policy's to say.
 //!
 //! git runs programs of its own accord: hooks, aliases that start with `!`,
 //! and commands named in configuration such as `core.fsmonitor`, set with
 //! `-c` or `git config`. So a run offered `git` can run what a run
-//! offered `shell` can, inside the same sandbox and under the same limits,
+//! offered `shell` can, inside the same environment and under the same limits,
 //! and nothing here tries to refuse those routes one by one.
 
 use schemars::JsonSchema;
@@ -41,8 +40,7 @@ const VALUED_OPTIONS: [&str; 7] = [
 /// The event a refused subcommand logs under.
 pub const EVENT_REFUSED: &str = "git_subcommand_refused";
 /// What a refused subcommand reads back after its name.
-const REACHES_REMOTE: &str =
-    "reaches a remote, which only the runner reaches; a change leaves through propose_change";
+const REACHES_REMOTE: &str = "reaches a remote, which this environment does not reach";
 
 /// `git`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -57,16 +55,16 @@ pub struct Invocation {
     timeout_ms: Option<u64>,
 }
 
-/// Runs git in the workspace.
+/// Runs git in the working directory.
 #[derive(Debug, Clone, Copy)]
 pub struct Git;
 
 impl Handler for Git {
     const NAME: &'static str = "git";
     const DESCRIPTION: &'static str = "Run git on the repository checked out in the \
-        workspace and read back its output and exit code. Local commands only: push, fetch, \
-        pull, remote and clone are refused, because only the runner reaches the repository's \
-        remote; a change leaves through propose_change.";
+        working directory and read back its output and exit code. Local commands only: push, \
+        fetch, pull, remote and clone are refused, because this environment does not reach \
+        the repository's remote.";
     type Arguments = Invocation;
 
     async fn run(&self, arguments: Invocation, context: Context<'_>) -> ToolOutput {

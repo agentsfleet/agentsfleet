@@ -24,7 +24,7 @@ const TODO: &str = "notes/todo.txt";
 const ONE: &str = "one\n";
 const TWO: &str = "two\n";
 /// What the five tools answer when their call lands.
-const PATH_LEAVES: &str = "leaves the workspace";
+const PATH_LEAVES: &str = "leaves the working directory";
 
 /// The five plain file tools' names.
 pub(super) const FILE_TOOLS: [&Entry; 5] = [

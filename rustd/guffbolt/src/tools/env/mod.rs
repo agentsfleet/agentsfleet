@@ -368,7 +368,7 @@ pub trait Browser: Send + Sync + fmt::Debug {
 /// ([`EnvErrorKind::PathRefused`]). Every method answers a boxed future so
 /// a tool holds any environment as `&dyn Env`.
 pub trait Env: Send + Sync + fmt::Debug {
-    /// The absolute path the model knows the root by, such as `/workspace`:
+    /// The absolute path the model knows the root by, such as `/work`:
     /// a path the model writes under it is read relative to the root.
     fn root(&self) -> &str;
 

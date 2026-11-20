@@ -28,7 +28,7 @@ fn published() -> Vec<SharedMemory<'static>> {
 }
 
 #[tokio::test]
-async fn test_workspace_store_needs_publish() {
+async fn a_shared_store_needs_the_publish_grant() {
     let run = Run::new(
         Box::new(Loaded::new(Seed {
             publish: false,
@@ -41,16 +41,16 @@ async fn test_workspace_store_needs_publish() {
     let refused = call(
         Generic::boxed(MemoryStoreTool).as_ref(),
         &run,
-        json!({"key": "deploy_target", "content": "iad", "visibility": "workspace"}),
+        json!({"key": "deploy_target", "content": "iad", "visibility": "shared"}),
     )
     .await;
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::WorkspaceMemoryNotGranted.into())
+        Some(ToolErrorCode::SharedMemoryNotGranted.into())
     );
     assert!(
-        refused.text.starts_with("[workspace_memory_not_granted]"),
+        refused.text.starts_with("[shared_memory_not_granted]"),
         "{}",
         refused.text
     );
@@ -74,12 +74,13 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
     let stored = call(
         Generic::boxed(MemoryStoreTool).as_ref(),
         &run,
-        json!({"key": "deploy_target", "content": "iad", "visibility": "workspace"}),
+        json!({"key": "deploy_target", "content": "iad", "visibility": "shared"}),
     )
     .await;
 
     assert_eq!(stored.error_code, None, "{}", stored.text);
     let pushed = run.memory.into_inner().into_pending();
+    assert_eq!(pushed.len(), 1, "one store is one pending push");
     assert!(pushed.iter().all(|delta| delta.visibility.is_workspace()));
 }
 
@@ -142,7 +143,7 @@ async fn test_forget_leaves_another_fleets_entry() {
 }
 
 #[tokio::test]
-async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
+async fn a_publisher_naming_private_reach_keeps_the_entry_to_itself() {
     let run = Run::new(
         Box::new(Loaded::new(Seed {
             publish: true,
@@ -155,7 +156,7 @@ async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
     let stored = call(
         Generic::boxed(MemoryStoreTool).as_ref(),
         &run,
-        json!({"key": "deploy_target", "content": "iad", "visibility": "fleet"}),
+        json!({"key": "deploy_target", "content": "iad", "visibility": "private"}),
     )
     .await;
 

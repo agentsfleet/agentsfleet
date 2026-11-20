@@ -57,7 +57,8 @@ pub fn sniffed(bytes: &[u8]) -> Option<ImageKind> {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Named {
-    /// The image file, relative to the workspace: PNG, JPEG, GIF or WebP.
+    /// The image file, relative to the working directory: PNG, JPEG, GIF or
+    /// WebP.
     path: String,
 }
 
@@ -67,9 +68,9 @@ pub struct ImageTool;
 
 impl Handler for ImageTool {
     const NAME: &'static str = "image";
-    const DESCRIPTION: &'static str = "Look at an image file in the workspace: PNG, JPEG, GIF \
-        or WebP, at most 5 MiB. The image is shown to you with this call's result on your next \
-        step.";
+    const DESCRIPTION: &'static str = "Look at an image file in the working directory: PNG, \
+        JPEG, GIF or WebP, at most 5 MiB. The image is shown to you with this call's result on \
+        your next step.";
     type Arguments = Named;
 
     async fn run(&self, arguments: Named, context: Context<'_>) -> ToolOutput {

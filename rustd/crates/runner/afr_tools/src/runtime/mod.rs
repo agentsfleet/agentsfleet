@@ -85,8 +85,8 @@ pub enum ToolErrorCode {
     UpstreamUnreachable,
     /// The upstream answered with a status outside 2xx.
     UpstreamStatus,
-    /// A store asked the workspace to read it, and this fleet may not publish.
-    WorkspaceMemoryNotGranted,
+    /// A memory was stored as shared, and this fleet may not publish.
+    SharedMemoryNotGranted,
     /// The command ran past its timeout, and its process group was killed.
     TimedOut,
     /// The kernel killed the command's process because its sandbox's tenant
@@ -157,7 +157,7 @@ impl ToolErrorCode {
             Self::CredentialMintRefused => "credential_mint_refused",
             Self::UpstreamUnreachable => code::UPSTREAM_UNREACHABLE.as_str(),
             Self::UpstreamStatus => code::UPSTREAM_STATUS.as_str(),
-            Self::WorkspaceMemoryNotGranted => code::WORKSPACE_MEMORY_NOT_GRANTED.as_str(),
+            Self::SharedMemoryNotGranted => code::SHARED_MEMORY_NOT_GRANTED.as_str(),
             Self::TimedOut => code::TIMED_OUT.as_str(),
             Self::OutOfMemory => code::OUT_OF_MEMORY.as_str(),
             Self::Interrupted => guffbolt::ErrorCode::INTERRUPTED.as_str(),

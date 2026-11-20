@@ -111,12 +111,12 @@ async fn test_git_tool_refuses_network_subcommands() {
             Some(ToolErrorCode::SubcommandNotAllowed.into()),
             "{refused}"
         );
-        assert!(
-            output.text.starts_with(&format!(
-                "[subcommand_not_allowed] git {refused} reaches a remote"
-            )) && output.text.ends_with("propose_change"),
-            "{}",
-            output.text
+        assert_eq!(
+            output.text,
+            format!(
+                "[subcommand_not_allowed] git {refused} reaches a remote, which this environment \
+                 does not reach"
+            )
         );
     }
     assert!(executor.spawned().is_empty(), "nothing ran");
