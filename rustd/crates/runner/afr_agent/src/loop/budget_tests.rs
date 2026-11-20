@@ -6,7 +6,7 @@
 
 use af_egress::testing::CountingMint;
 use af_wire::activity::ActivityFrame;
-use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
+use afr_tools::catalog::{FILE_READ, FLEET_STEER, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use guffbolt::Message;
 use tokio_util::sync::CancellationToken;
@@ -181,7 +181,10 @@ fn the_loop_admits_through_its_catalog() {
             .sandbox
     );
     let refused = engine
-        .admit(&payload(&["browser"], unbounded()).policy)
+        .admit(&payload(&[FLEET_STEER.name()], unbounded()).policy)
         .unwrap_err();
-    assert_eq!(refused.unhosted(), Some(crate::Unhosted::Tool("browser")));
+    assert_eq!(
+        refused.unhosted(),
+        Some(crate::Unhosted::Tool(FLEET_STEER.name()))
+    );
 }

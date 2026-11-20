@@ -42,7 +42,6 @@ pub(super) fn checkpoint(
     let private = json!({
         "format":1,"scope":scope,"model":run.policy.context.model,"provider":run.policy.provider,
         "root":{"messages":[{"User":PREFIX}],"driver":{"answers":[],"completed_steps":0},
-        "children":{"next":0,"started":0,"children":[]},
         "memory":{"pending":[],"superseded":[],"misses":0},"pinned":0,"folds":[]}
     })
     .to_string();

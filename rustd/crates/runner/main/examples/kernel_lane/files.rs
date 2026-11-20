@@ -177,7 +177,9 @@ pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
         ),
     )?;
     expect(
-        patched.text.ends_with("+2 \u{2212}1"),
+        patched
+            .text
+            .ends_with("Lines changed:\n\"notes/extra.txt\" +1 -0\n\"notes/todo.txt\" +1 -1"),
         format!("the patch counts its lines, got {:?}", patched.text),
     )?;
     expect(

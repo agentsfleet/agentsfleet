@@ -7,16 +7,14 @@
     reason = "test module: a harness that cannot start should fail the test loudly"
 )]
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use af_egress::testing::RecordingTransport;
 use afr_executor::Client;
 use guffbolt::ToolOutput;
 use serde_json::json;
 
 use crate::SandboxEnv;
-use crate::catalog::{Catalog, EXEC_COMMAND, WRITE_STDIN};
+use crate::catalog::{EXEC_COMMAND, WRITE_STDIN};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
@@ -47,13 +45,14 @@ async fn test_exec_session_survives_across_calls() {
         async move { afr_executor::serve(&socket, &root).await }
     });
     let client = Client::connect_within(&socket, PATIENCE).await.unwrap();
-    let (transport, _sent) = RecordingTransport::replying(200, "");
-    let catalog = Catalog::hosted(Arc::new(transport));
+    let (catalog, _sent) = hosted();
     let names = [EXEC_COMMAND.name(), WRITE_STDIN.name()];
     let selection = catalog.select(&names).unwrap();
+    // Each call builds its tool the way a run does; the sessions live on the
+    // run, so `write_stdin` reaches the `cat` an earlier build started.
     let (exec, write) = (
-        selection.tool(EXEC_COMMAND.name()).unwrap(),
-        selection.tool(WRITE_STDIN.name()).unwrap(),
+        offered(&selection, &EXEC_COMMAND),
+        offered(&selection, &WRITE_STDIN),
     );
     let run = Run::default();
 

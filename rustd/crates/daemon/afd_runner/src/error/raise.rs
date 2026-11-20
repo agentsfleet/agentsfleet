@@ -165,6 +165,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "decision model identifier",
             decision_model_id(af_core::id::Uuid7::parse("malformed").expect_err("invalid fixture")),
         ),
+        // The one sample answering "The runner operation could not be
+        // completed": an internal failure, never the caller's input.
+        (
+            "identifier",
+            Error::from(af_core::id::Uuid7::parse("malformed").expect_err("invalid fixture")),
+        ),
         (
             "datastore",
             afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),

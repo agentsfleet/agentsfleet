@@ -22,7 +22,7 @@ use af_core::test_util::error_surface::{Expect, grade, grade_sentences};
 use afd_runner::error::one_of_each_kind;
 
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 6;
+const WITH_SOURCE: usize = 5;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 10;
 

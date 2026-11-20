@@ -116,7 +116,9 @@ pub(crate) fn supervisor_results(observed: &Observed) -> Result<(), Failed> {
         "memory recall reaches the daemon",
     )?;
     expect(
-        observed.output("message")?.contains("posted to the thread"),
+        observed
+            .output("message")?
+            .contains("posted to the conversation"),
         "the daemon acknowledges the thread message",
     )?;
     schedules_sent(observed)?;
