@@ -5,8 +5,6 @@ mod openapi;
 mod patch;
 
 #[cfg(feature = "openapi")]
-pub use self::openapi::narrow_edit_batch;
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -15,10 +13,6 @@ use af_validate::TEXT_MAX_CHARS;
 use super::{Definition, MAX_DEFINITION_BYTES, MAX_INSTRUCTION_OFFSET, document, invalid};
 use crate::Result;
 
-/// Maximum configuration operations in one batch.
-pub const MAX_CONFIG_OPS: usize = 64;
-/// Maximum instruction ranges in one batch.
-pub const MAX_INSTRUCTION_EDITS: usize = 32;
 const MAX_POINTER_CHARS: usize = 512;
 
 /// One JSON Patch operation on the setup: `add`, `replace` or `remove`.
@@ -79,11 +73,11 @@ pub struct InstructionEdit {
 pub struct EditBatch {
     /// Configuration and description operations, applied in their declared order.
     #[serde(default)]
-    #[garde(length(max = MAX_CONFIG_OPS), dive)]
+    #[garde(dive)]
     pub config_ops: Vec<ConfigOp>,
     /// Non-overlapping ranges, always interpreted against the base instructions.
     #[serde(default)]
-    #[garde(length(max = MAX_INSTRUCTION_EDITS), dive)]
+    #[garde(dive)]
     pub instruction_edits: Vec<InstructionEdit>,
 }
 

@@ -26,20 +26,14 @@
 //! # The bound comes first, and the type says so
 //!
 //! The parser's work is keyed on caller text, so [`check_schedule`] takes a
-//! `&Valid<CronSchedule>`: a value only a passed [`MAX_CRON_LEN`] bound
-//! constructs.
+//! `&Valid<CronSchedule>`: a value only a passed bound constructs, the text
+//! ceiling every caller-written string holds.
 
 use garde::{Unvalidated, Valid};
 use philiprehberger_cron_parser::CronExpr;
 
 use super::{Cron, DEFAULT_CRON_MESSAGE, DEFAULT_CRON_TIMEZONE, REASON_NO_SCHEDULE};
 use crate::error::{Error, ErrorKind, Result};
-
-/// The longest expression this product will read.
-///
-/// A bound on the work one check can ask of the parser, and a value no
-/// legitimate five-field expression comes near.
-pub const MAX_CRON_LEN: usize = 128;
 
 /// Why a cron trigger's schedule was refused. It names the key, so an author
 /// or a model reading the refusal knows which value to change.
@@ -73,7 +67,7 @@ const STEP_SEPARATOR: char = '/';
 #[derive(Debug, Clone, Copy, garde::Validate)]
 pub struct CronSchedule<'a> {
     /// The expression a schedule fires on.
-    #[garde(length(bytes, min = 1, max = MAX_CRON_LEN))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub expression: &'a str,
 }
 
@@ -114,7 +108,7 @@ impl Cron {
     ///
     /// # Errors
     /// [`Error::InvalidTriggerSet`] for an absent or empty schedule, one past
-    /// [`MAX_CRON_LEN`], or one [`check_schedule`] refuses.
+    /// the text ceiling, or one [`check_schedule`] refuses.
     pub(super) fn parse(
         schedule: Option<String>,
         timezone: Option<String>,

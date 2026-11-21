@@ -7,9 +7,7 @@ use serde::Deserialize;
 use super::{Refused, Rejection, verbatim};
 use af_validate::TEXT_MAX_CHARS;
 
-use crate::definition::{
-    ConfigOp, Definition, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
-};
+use crate::definition::{ConfigOp, Definition, EditBatch, InstructionEdit};
 
 /// The bytes of a candidate identifier, a hyphenated UUID.
 pub(super) const CANDIDATE_ID_BYTES: usize = 36;
@@ -35,10 +33,10 @@ pub enum Proposal<I> {
         #[garde(length(bytes, min = 1, max = REVISION_DIGITS_MAX), custom(af_validate::rules::ascii_digits))]
         base_candidate_revision: String,
         /// Configuration operations, validated by the native editor.
-        #[garde(length(max = MAX_CONFIG_OPS))]
+        #[garde(skip)]
         config_ops: Vec<ConfigOp>,
         /// Instruction edits, validated by the native editor.
-        #[garde(length(max = MAX_INSTRUCTION_EDITS))]
+        #[garde(skip)]
         instruction_edits: Vec<I>,
     },
 }

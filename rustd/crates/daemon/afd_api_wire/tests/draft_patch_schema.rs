@@ -12,9 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_fleet_runtime::definition::{
-    ConfigOp, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
-};
+use af_fleet_runtime::definition::{ConfigOp, EditBatch, InstructionEdit};
 use afd_api_wire::setup::DraftPatchRequest;
 use garde::Validate as _;
 use serde_json::{Value, json};
@@ -59,27 +57,21 @@ fn verdicts(key: &str, entry: &Value, count: usize) -> Verdicts {
 }
 
 #[test]
-fn one_edit_over_either_cap_is_refused_by_the_validator_and_the_schema() {
+fn no_count_caps_either_edit_list() {
     let cases = [
         (
             "config_ops",
             json!({"op": "remove", "path": "/config/x-agentsfleet/model"}),
-            MAX_CONFIG_OPS,
         ),
         (
             "instruction_edits",
             json!({"start_byte": 0, "end_byte": 0, "text": ""}),
-            MAX_INSTRUCTION_EDITS,
         ),
     ];
-    for (key, entry, cap) in cases {
-        let at_cap = verdicts(key, &entry, cap);
-        assert!(at_cap.validator, "the validator refuses {cap} `{key}`");
-        assert!(at_cap.schema, "the schema refuses {cap} `{key}`");
-
-        let over = verdicts(key, &entry, cap + 1);
-        assert!(!over.validator, "the validator accepts {} `{key}`", cap + 1);
-        assert!(!over.schema, "the schema admits {} `{key}`", cap + 1);
+    for (key, entry) in cases {
+        let many = verdicts(key, &entry, 200);
+        assert!(many.validator, "the validator takes 200 `{key}`");
+        assert!(many.schema, "the schema takes 200 `{key}`");
     }
 }
 

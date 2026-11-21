@@ -3,7 +3,7 @@
 use super::{MAX_MODEL_REF_BYTES, MAX_TITLE_CHARS};
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{
-    ConfigOp, Definition, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
+    ConfigOp, Definition, InstructionEdit,
 };
 use serde::{Deserialize, Serialize};
 
@@ -98,11 +98,11 @@ pub struct DraftPatch {
     pub runtime_model_ref: Option<String>,
     /// Supported metadata and policy patches.
     #[serde(default)]
-    #[garde(length(max = MAX_CONFIG_OPS), dive)]
+    #[garde(dive)]
     pub config_ops: Vec<ConfigOp>,
     /// Non-overlapping edits against the current candidate instructions.
     #[serde(default)]
-    #[garde(length(max = MAX_INSTRUCTION_EDITS), dive)]
+    #[garde(dive)]
     pub instruction_edits: Vec<InstructionEdit>,
 }
 

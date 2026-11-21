@@ -4,7 +4,7 @@
 use garde::Unvalidated;
 use serde_json::json;
 
-use super::{CronSchedule, MAX_CRON_LEN, REASON_INVALID_SCHEDULE, check_schedule};
+use super::{CronSchedule, REASON_INVALID_SCHEDULE, check_schedule};
 use crate::Definition;
 use crate::error::{Error, ErrorKind};
 
@@ -140,13 +140,18 @@ fn malformed_text_is_refused_by_the_parser() {
     }
 }
 
-/// The bound holds before the parser reads anything: past it, no `Valid`
-/// value exists, and the definition parse refuses it as a schedule.
+/// A long expression is judged by the parser, not refused for its length:
+/// only the text ceiling bounds it, and an empty one holds no bound.
 #[test]
-fn a_schedule_past_the_bound_is_refused_before_the_parser() {
-    let over = format!("{} * * * *", "0".repeat(MAX_CRON_LEN));
-    assert!(over.len() > MAX_CRON_LEN);
-    assert!(breaks_the_bound(&over));
-    assert!(is_schedule_refusal(&Definition::parse(&definition(&over))));
+fn a_long_cron_expression_is_judged_by_the_parser() {
+    let valid = format!("{}7 * * * *", "7,".repeat(100));
+    assert!(!breaks_the_bound(&valid), "300 characters hold the bound");
+    assert!(
+        Definition::parse(&definition(&valid)).is_ok(),
+        "a long valid list parses"
+    );
+    let junk = format!("{} * * * *", "x".repeat(200));
+    assert!(!breaks_the_bound(&junk));
+    assert!(is_schedule_refusal(&Definition::parse(&definition(&junk))));
     assert!(breaks_the_bound(""), "an empty expression holds no bound");
 }

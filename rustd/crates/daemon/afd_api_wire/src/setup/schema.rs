@@ -8,7 +8,7 @@
 
 use std::borrow::Cow;
 
-use af_fleet_runtime::definition::{ConfigOp, InstructionEdit, narrow_edit_batch};
+use af_fleet_runtime::definition::{ConfigOp, InstructionEdit};
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 use utoipa::{PartialSchema, ToSchema};
@@ -46,9 +46,7 @@ struct PatchShape {
 
 impl<C, I> PartialSchema for DraftPatchRequest<C, I> {
     fn schema() -> RefOr<Schema> {
-        let mut schema = PatchShape::schema();
-        narrow_edit_batch::<PatchShape>(&mut schema);
-        schema
+        PatchShape::schema()
     }
 }
 

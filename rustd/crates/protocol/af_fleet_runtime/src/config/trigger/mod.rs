@@ -22,7 +22,7 @@ mod schedule;
 mod set;
 mod verifier;
 
-pub use self::schedule::{CronSchedule, MAX_CRON_LEN, check_schedule};
+pub use self::schedule::{CronSchedule, check_schedule};
 pub(crate) use self::set::parse_set;
 pub use self::verifier::WebhookVerifier;
 

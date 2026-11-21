@@ -13,9 +13,7 @@ use super::proposal::{CANDIDATE_ID_BYTES, REVISION_DIGITS_MAX};
 use crate::config::HttpEgress;
 use af_validate::TEXT_MAX_CHARS;
 
-use crate::definition::{
-    DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_EDITS,
-};
+use crate::definition::{DEFINITION_SCHEMA_VERSION, MAX_DESCRIPTION_CHARS};
 
 /// The JSON Schema keyword naming a value's type.
 const KEY_TYPE: &str = "type";
@@ -104,8 +102,8 @@ fn edit() -> Value {
             KEY_BASE_CANDIDATE_ID:{KEY_TYPE:TYPE_STRING,KEY_MIN_LENGTH:CANDIDATE_ID_BYTES,KEY_MAX_LENGTH:CANDIDATE_ID_BYTES},
             KEY_BASE_CANDIDATE_REVISION:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN,KEY_MIN_LENGTH:1,KEY_MAX_LENGTH:REVISION_DIGITS_MAX,
                 KEY_DESCRIPTION:"Copy the current candidate revision exactly as a string, such as '1'. Never a number."},
-            KEY_CONFIG_OPS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_CONFIG_OPS,KEY_ITEMS:config_operation()}), LEAVE_OUT),
-            KEY_INSTRUCTION_EDITS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:MAX_INSTRUCTION_EDITS,KEY_ITEMS:instruction_edit()}), LEAVE_OUT)
+            KEY_CONFIG_OPS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_ITEMS:config_operation()}), LEAVE_OUT),
+            KEY_INSTRUCTION_EDITS:described(json!({KEY_TYPE:TYPE_ARRAY,KEY_ITEMS:instruction_edit()}), LEAVE_OUT)
         }),
         &[KEY_KIND, KEY_BASE_CANDIDATE_ID, KEY_BASE_CANDIDATE_REVISION],
     )

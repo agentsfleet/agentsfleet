@@ -19,7 +19,7 @@
 
 // The fleet runtime's bound, so a schedule route and a definition's cron
 // trigger stop at the same length.
-use af_fleet_runtime::config::{CronSchedule, MAX_CRON_LEN, check_schedule};
+use af_fleet_runtime::config::{CronSchedule, check_schedule};
 use af_validate::PathTable;
 use const_format::concatcp;
 use garde::{Unvalidated, Valid};
@@ -87,7 +87,7 @@ impl Invalid {
 #[derive(Debug, Clone, Copy, Default, garde::Validate)]
 pub struct Fields<'a> {
     /// The expression it fires on.
-    #[garde(length(bytes, min = 1, max = MAX_CRON_LEN))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub expression: Option<&'a str>,
     /// The zone that expression is read in.
     #[garde(length(bytes, min = 1, max = MAX_TIMEZONE_LEN))]

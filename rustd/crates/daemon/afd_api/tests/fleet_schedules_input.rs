@@ -14,7 +14,6 @@
 use crate::harness;
 
 use af_core::error_code;
-use af_fleet_runtime::config::MAX_CRON_LEN;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_cron::validate::{
     DETAIL_INVALID_CRON, DETAIL_INVALID_TIMEZONE, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN,
@@ -87,7 +86,8 @@ async fn test_schedule_message_over_cap_names_the_cap() {
 /// distinguishable without the test re-typing either sentence.
 #[tokio::test]
 async fn an_oversized_expression_and_zone_are_each_refused_by_their_own_rule() {
-    let expression = "0".repeat(MAX_CRON_LEN + 1);
+    // Past the old 128-byte cap: refused by the parser, under the same detail.
+    let expression = "0".repeat(200);
     let (status, document) = create(&json!({ "cron": expression, "message": "run" })).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(

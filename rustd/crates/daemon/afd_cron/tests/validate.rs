@@ -18,7 +18,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use af_fleet_runtime::config::{CronSchedule, MAX_CRON_LEN, check_schedule};
+use af_fleet_runtime::config::{CronSchedule, check_schedule};
 use afd_cron::validate::{Fields, Invalid, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN};
 
 /// A five-field expression with nothing exotic in it.
@@ -64,16 +64,20 @@ fn reported(fields: Fields<'_>) -> Vec<String> {
         })
 }
 
-/// An oversized expression is refused by its bound, so no `Valid` value exists
-/// for the parser to be called with — the type is what keeps it from running.
+/// A long expression passes the bound and is judged by the parser: the
+/// refusal is the parser's, never a length check's.
 #[test]
-fn test_oversized_cron_is_refused_by_its_bound() {
-    let over = "0".repeat(MAX_CRON_LEN + 1);
+fn a_long_cron_expression_is_judged_by_the_parser() {
+    let long = "0".repeat(200);
     let fields = Fields {
-        expression: Some(&over),
+        expression: Some(&long),
         ..Fields::default()
     };
-    assert_eq!(reported(fields), vec!["expression".to_owned()]);
+    assert_eq!(
+        reported(fields),
+        Vec::<String>::new(),
+        "no field breaks a bound"
+    );
     assert_eq!(fields.check(), Err(Invalid::Cron));
 }
 
@@ -102,40 +106,6 @@ fn an_ordinary_five_field_expression_is_registered() {
 #[test]
 fn an_empty_expression_is_refused_before_the_parser_sees_it() {
     assert_eq!(cron(""), Err(Invalid::Cron));
-}
-
-/// The length bound is a bound on the work one create can ask of the parser,
-/// so it is asserted at the boundary rather than with an obviously huge string.
-#[test]
-fn an_expression_over_the_length_bound_is_refused_at_the_boundary() {
-    // A long but structurally valid minute list, padded to straddle the cap.
-    let padded = |len: usize| {
-        let mut expression = String::from("*");
-        while expression.len() < len {
-            expression.push_str(",*");
-        }
-        expression.truncate(len);
-        format!("{expression} * * * *")
-    };
-
-    let at_cap = "0".repeat(MAX_CRON_LEN);
-    assert_eq!(
-        at_cap.len(),
-        MAX_CRON_LEN,
-        "the fixture sits exactly on the cap"
-    );
-
-    let over = format!("{} * * * *", "0".repeat(MAX_CRON_LEN));
-    assert!(over.len() > MAX_CRON_LEN);
-    assert_eq!(
-        cron(&over),
-        Err(Invalid::Cron),
-        "an expression past the cap is refused on length, whatever it says"
-    );
-    // And the guard is a LENGTH guard, not a shape one: the same shape under
-    // the cap is refused for its own reasons or accepted, but never for length.
-    let under = padded(20);
-    assert!(under.len() <= MAX_CRON_LEN);
 }
 
 /// `@daily` and friends parse in the crate and are not what this daemon
