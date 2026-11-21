@@ -413,9 +413,11 @@ Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
 
-Package components own appearances used across product features. `ResourceRow` aligns the identity, icon and actions for Models, API keys and sessions. `OutputPanel` gives a file diff and a command result the same header and code surface. `IconAction` supports revealing actions when the row is hovered or contains keyboard focus. Touch users see the action directly.
+`ResourceRow` aligns the identity, icon and actions for Models, API keys and sessions. `OutputPanel` gives file diffs and command results the same header and code surface.
 
-Feature stylesheets own layouts tied to one workflow. The Team grid places the member, role, date and actions at its three widths. The conversation stylesheet places the transcript, composer and Summary. Both consume shared typography, spacing and color tokens.
+`IconAction` can reveal an action when its row is hovered or contains keyboard focus. Touch users see the action directly.
+
+The Team stylesheet places the member, role, date and actions at three widths. The conversation stylesheet places the transcript, composer and Summary. Both use shared typography, spacing and color tokens.
 
 Resource pages use the shared ResourceHeader for the 64px top bar and PageHeader inside a centered 1040px content column. The top bar includes the New fleet action, uses a subtle bottom border, and aligns its icon 24px from the surface edge. Models restore the separate Platform default card, Your models list, Make active action and provider prompt.
 
