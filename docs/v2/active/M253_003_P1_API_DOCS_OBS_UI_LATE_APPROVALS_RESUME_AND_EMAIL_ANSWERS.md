@@ -182,13 +182,11 @@ The `used_decision_calls` increment moves into `account_task.sql`. The budget ch
 
 Parked Nov 21, 2026: see [Section 5, deferred](../done/M253_003_SECTION_5_EMAIL_ANSWERS.md). §1–§4 close M253_003.
 
-### §6 — M253_001's acceptance and benchmarks run at the end of M253
+### §6 — Moved to M253_004
 
-Carried from M253_001, by the owner's instruction. They run once on E2E Networks after M253_003's CI is green, in parallel, and the virtual machines are deleted after.
+Moved Nov 21, 2026: the end-to-end acceptance and benchmark run belongs in [M253_004](../pending/M253_004_P1_API_DOCS_INFRA_GUFFBOLT_AI_PROVIDERS_FOR_GUFFBOLT.md), so it exercises guffbolt-ai too.
 
-- **Dimension 6.1** (was M253_001 7.3) — the CLI reads turns → Test `fleet_turns_lists_turns` (acceptance, `cli/test/acceptance/logs-turns-live.spec.ts`): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
-- **Dimension 6.2** (was M253_001 9.1) — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
-- **Dimension 6.3** (was M253_001 9.2) — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
+> Owner (Indy, Nov 21, 2026): "i think we move shift the test of e2e to M253_004 since we need guffbolt_ai to be available as well for an end to and so i advise you to mvoe it there"
 
 ### §7 — Parked
 

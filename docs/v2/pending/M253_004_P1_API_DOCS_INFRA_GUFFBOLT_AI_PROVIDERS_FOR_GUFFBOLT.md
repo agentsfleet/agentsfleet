@@ -292,6 +292,16 @@ The id is `MiniMax-M3.1-Flash`, rig's catalogue name; a plain `MiniMax-M3.1` is 
 - **Dimension 6.1** — the READMEs compile → Test the guffbolt and guffbolt-ai README doctests (unit, `make test-unit-all`). Expected: pass.
 - **Dimension 6.2** — no page names the deleted crate → Test the R3 search. Expected: no output.
 
+### §7 (from M253_003 §6) — M253_001's acceptance and benchmarks run at the end of M253
+
+Carried from M253_001, by the owner's instruction. They run once on E2E Networks after M253_003's CI is green, in parallel, and the virtual machines are deleted after.
+
+- **Dimension 6.1** (was M253_001 7.3) — the CLI reads turns → Test `fleet_turns_lists_turns` (acceptance, `cli/test/acceptance/logs-turns-live.spec.ts`): `agentsfleet fleet turns <fleet_id>` against a live daemon. Expected: JSON rows with `turn_id`.
+- **Dimension 6.2** (was M253_001 9.1) — recovery is measured → Test `bench_thread_recovery_api_and_files` (manual): Indy reviews `bench/baselines/thread-recovery.rig.json`. Expected: p50 and last-fleet times for each size, with source hashes.
+- **Dimension 6.3** (was M253_001 9.2) — each changed statement has a plan → Test `explain_plans_for_thread_statements` (manual): Indy reviews `bench/baselines/thread-sql.rig.json`. Expected: one plan per statement, none a sequential scan on `thread.turns` or `thread.runs`.
+
+Moved here from M253_003 (Indy, Nov 21, 2026) so the end-to-end run covers guffbolt-ai.
+
 ## Interfaces
 
 - **guffbolt (unchanged paths):** every name in `guffbolt/src/lib.rs:95-105` still resolves. New: `guffbolt::Chat<M>` with `new(model, instructions)`, `with_tools(tools)`, `prompt(text) -> Ending<M::Error>` and `stop()`.
