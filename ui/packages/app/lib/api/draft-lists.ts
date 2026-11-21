@@ -1,14 +1,12 @@
-// Model choices and private chats hold one bounded page; the next loads only when asked.
+// Model choices and private chats hold one page; the next loads only when asked.
 
 import type { z } from "zod";
 import type { Draft, DraftCard, WorkspaceModel } from "./draft-types";
 import { DraftCardsSchema, ModelsSchema } from "./draft-types";
-import { losesAccess, setupRequest } from "./draft-request";
+import { losesAccess, setupRequest, SetupUnavailable } from "./draft-request";
 import { DRAFT_LIST, DRAFT_LIST_STATUS, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
 type Page<T> = {readonly items: readonly T[]; readonly next_cursor: string | null};
 
-// Stop a bounded search once chat has a choice; retain other configured models for setup review.
-const MAX_MODEL_PAGES_PER_LOAD = 4;
 const RESOURCE = {models: "models", drafts: "drafts"} as const;
 
 export class DraftLists {
@@ -120,7 +118,12 @@ export class DraftLists {
   async #modelPage(cursor: string | null, signal: AbortSignal): Promise<Page<WorkspaceModel>> {
     let page = await this.#page(DRAFT_LIST.models, ModelsSchema, cursor, signal);
     let items = page.items;
-    for (let read = 1; !items.some(model => model.eligibility.setup) && page.next_cursor !== null && read < MAX_MODEL_PAGES_PER_LOAD; read += 1) {
+    // Read on until chat has a choice or the server reports no next page; the
+    // other configured models stay for setup review.
+    const followed = new Set<string>();
+    while (!items.some(model => model.eligibility.setup) && page.next_cursor !== null) {
+      if (followed.has(page.next_cursor)) throw new SetupUnavailable("The model list repeated a page. Refresh to load it again.", 502, {list: DRAFT_LIST.models});
+      followed.add(page.next_cursor);
       page = await this.#page(DRAFT_LIST.models, ModelsSchema, page.next_cursor, signal);
       items = appendNew(items, page.items, model => model.ref);
     }

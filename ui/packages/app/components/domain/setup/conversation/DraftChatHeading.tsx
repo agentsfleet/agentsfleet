@@ -10,7 +10,7 @@ import { ArrowLeftIcon, BookOpenIcon, NotePencilIcon } from "@phosphor-icons/rea
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
-import { CHAT_TITLE_LIMIT, chatTitle, firstChatRequest } from "@/lib/api/draft-summary";
+import { chatTitle, firstChatRequest } from "@/lib/api/draft-summary";
 import nextDynamic from "next/dynamic";
 import { EditSetupButton } from "../EditSetupControls";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
@@ -84,7 +84,7 @@ function HeadingTitle({client, view, state, label, locked, primary}: {client: Dr
   if (state.renaming && view.draft) return <>
     <Title className="sr-only">{label}</Title>
     <Label htmlFor={state.titleId} className="sr-only">Chat name</Label>
-    <Input id={state.titleId} value={state.title} onChange={event => state.setTitle(event.target.value)} maxLength={CHAT_TITLE_LIMIT} className="min-w-0 flex-1" />
+    <Input id={state.titleId} value={state.title} onChange={event => state.setTitle(event.target.value)} className="min-w-0 flex-1" />
     <Button size="sm" disabled={locked || !state.title.trim()} onClick={() => {void client.rename(state.title.trim()).then(() => state.setRenaming(false)).catch(ignore);}}>Save name</Button>
     <Button variant="ghost" size="sm" disabled={locked} onClick={() => state.setRenaming(false)}>Cancel</Button>
   </>;

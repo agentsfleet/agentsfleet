@@ -23,9 +23,9 @@ describe("the per-load label read", () => {
     await expect(modelLabelsCached("token-two")).rejects.toThrow("catalogue down");
   });
 
-  it("refuses a catalogue that never ends instead of labelling from part of it", async () => {
+  it("refuses a catalogue whose cursor repeats instead of labelling from part of it", async () => {
     getModelLibrary.mockResolvedValue(page([{ id: "known", display_name: "Known" }], "again"));
-    await expect(modelLabelsCached("token-three")).rejects.toThrow("page bound");
-    expect(getModelLibrary).toHaveBeenCalledTimes(40);
+    await expect(modelLabelsCached("token-three")).rejects.toThrow("repeated page cursor again");
+    expect(getModelLibrary).toHaveBeenCalledTimes(2);
   });
 });

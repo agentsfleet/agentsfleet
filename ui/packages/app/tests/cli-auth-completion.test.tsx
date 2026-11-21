@@ -89,13 +89,19 @@ it.each([
   { name: "server failure", response: () => Response.json({ error_code: "UZ-AUTH-012" }, { status: 503 }) },
   { name: "malformed body", response: () => new Response("{", { status: 410 }) },
   { name: "empty body", response: () => new Response(null, { status: 410 }) },
-  { name: "oversized body", response: () => Response.json({ error_code: "UZ-AUTH-012", detail: "x".repeat(4_097) }, { status: 410 }) },
 ])("does not trust a consumed code on the wrong response: $name", async ({ response }) => {
   await approve();
   poll.mockImplementation(async () => response());
   await readStatus();
   expect(screen.queryByRole("heading", { name: HEADING })).toBeNull();
   expect(screen.getByLabelText("Verification code")).toBeTruthy();
+});
+
+it("reads a consumed answer past the old 4 KiB cut whole and completes", async () => {
+  await approve();
+  poll.mockResolvedValueOnce(Response.json({ error_code: "UZ-AUTH-012", detail: "x".repeat(4_097) }, { status: 410 }));
+  await readStatus();
+  expect(screen.getByRole("heading", { name: HEADING })).toBeTruthy();
 });
 
 it("keeps the code after a network failure and observes a later completion", async () => {

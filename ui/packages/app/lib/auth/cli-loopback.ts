@@ -2,6 +2,8 @@ export const CALLBACK_PATH = "/cli-auth/callback";
 export const LOOPBACK_VERSION = "1";
 export const LOOPBACK_FLOW = "loopback";
 export const LOOPBACK_FLOW_PARAM = "flow";
+// A stored handoff comes from an untrusted URL fragment the browser received:
+// one past this size is refused, and one older than this is not restored.
 export const LOOPBACK_MAX_AGE_MS = 5 * 60 * 1_000;
 export const LOOPBACK_RECORD_BYTES = 2_048;
 export const LOOPBACK_KIND = { manual: "manual", invalid: "invalid", automatic: "automatic" } as const;

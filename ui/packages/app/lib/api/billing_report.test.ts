@@ -77,10 +77,10 @@ describe("validated settled billing reads", () => {
     await expect(getBillingReport("fixture-token", {})).rejects.toThrow(/models/);
   });
 
-  it("refuses more daily bars than any supported reporting period can contain", async () => {
+  it("shows every daily bar the server sends, past the 31 a month holds", async () => {
     respond({...billingReport(), daily: Array.from({length: 32}, (_, index) => ({
       day: new Date(Date.UTC(2026, 9, index + 1)).toISOString().slice(0, 10), totals: billingReport().totals,
     }))});
-    await expect(getBillingReport("fixture-token", {})).rejects.toThrow(/daily/);
+    expect((await getBillingReport("fixture-token", {})).daily).toHaveLength(32);
   });
 });

@@ -43,11 +43,22 @@ it("bounds retained private text and orders sequences past the safe integer rang
   history.clear(); expect(history.truncated).toBe(false);
 });
 
-it("bounds a repeating server cursor and never reports an incomplete walk as complete", async () => {
+it("refuses a repeating server cursor and never reports an incomplete walk as complete", async () => {
   const fetcher = vi.fn(async () => response({items: [MESSAGE], next_cursor: "same"}));
   vi.stubGlobal("fetch", fetcher);
-  await expect(new DraftHistory().read("/draft", OWNER.signal)).rejects.toMatchObject({status: 503});
-  expect(fetcher).toHaveBeenCalledTimes(200);
+  await expect(new DraftHistory().read("/draft", OWNER.signal)).rejects.toMatchObject({status: 502});
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("walks past 200 pages until the server reports no next page", async () => {
+  const pages = 205;
+  const fetcher = vi.fn(async (url: string) => {
+    const index = Number(new URL(url, "http://app").searchParams.get("starting_after") ?? 0);
+    return response({items: [{...MESSAGE, sequence: String(index + 1)}], next_cursor: index + 1 < pages ? String(index + 1) : null});
+  });
+  vi.stubGlobal("fetch", fetcher);
+  await new DraftHistory().read("/draft", OWNER.signal);
+  expect(fetcher).toHaveBeenCalledTimes(pages);
 });
 
 it.each([401, 403, 404, 410])("preserves history access refusal %i", async (status) => {

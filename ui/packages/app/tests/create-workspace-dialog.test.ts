@@ -71,18 +71,13 @@ describe("CreateWorkspaceDialog component", () => {
     expect(document.getElementById(input.getAttribute("aria-describedby")!)?.textContent).toBe("Leave blank to generate a workspace name automatically.");
   });
 
-  it("rejects a name longer than 128 Unicode code points", async () => {
+  it("sends a name past 128 Unicode code points to the server, which judges it", async () => {
     const { props } = await renderDialog();
     const input = screen.getByLabelText("Name (optional)") as HTMLInputElement;
-    const reportValidity = vi
-      .spyOn(input, "reportValidity")
-      .mockReturnValue(false);
-    fireEvent.change(input, { target: { value: "a".repeat(129) } });
+    const name = "a".repeat(129);
+    fireEvent.change(input, { target: { value: name } });
     fireEvent.submit(screen.getByTestId("workspace-create-form"));
-    expect(props.onSubmit).not.toHaveBeenCalled();
-    expect(input.validationMessage).toBe("Use 128 characters or fewer.");
-    expect(reportValidity).toHaveBeenCalledOnce();
-    fireEvent.input(input, { target: { value: "a" } });
+    expect(props.onSubmit).toHaveBeenCalledWith(name);
     expect(input.validationMessage).toBe("");
   });
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import { PreviewAttachmentAdapter } from "@/lib/api/preview-attachment-adapter";
-import { PREVIEW_FILE_LIMIT, PREVIEW_RECEIPT_LIMIT } from "@/lib/api/upload-preview";
+import { PREVIEW_FILE_LIMIT } from "@/lib/api/upload-preview";
 
 const fetchMock = vi.fn();
 beforeEach(() => {fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock);});
@@ -44,11 +44,13 @@ it("rejects an acknowledgement that claims the preview was stored", async () => 
   adapter.dispose();
 });
 
-it("bounds the response body instead of buffering an arbitrary receipt", async () => {
+it("shows a receipt reply past the old 1,000-character cut whole", async () => {
   const adapter = new PreviewAttachmentAdapter("workspace", "fleet", "owner");
   const pending = await adapter.add({file: new File(["demo"], "notes.txt")});
-  fetchMock.mockResolvedValue(new Response("x".repeat(PREVIEW_RECEIPT_LIMIT + 1)));
-  await expect(adapter.send(pending)).rejects.toThrow("exceeds its limit");
+  const reply = "r".repeat(9 * 1024);
+  fetchMock.mockResolvedValue(Response.json({preview: true, stored: false, reply}));
+  const complete = await adapter.send(pending);
+  expect(complete.content).toEqual([{type: "text", text: reply}]);
   adapter.dispose();
 });
 

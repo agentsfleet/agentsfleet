@@ -61,12 +61,14 @@ it("stops when the renewed server deadline expires during a poll wait", async ()
   expect(run.update).toHaveBeenCalledWith({ kind: "failed", message: expect.stringContaining("expired") });
 });
 
-it("never extends its five-minute bound for a later server deadline", async () => {
+it("follows a later server deadline past five minutes, then reports expiry", async () => {
   fetchStatus.mockImplementation(async () => Response.json({ status: "verification_pending", expires_at: new Date(NOW + 600_000).toISOString() }));
   const run = observe();
   await tick(300_000);
+  expect(run.update).not.toHaveBeenCalled();
+  await tick(300_000);
   await run.done;
-  expect(fetchStatus).toHaveBeenCalledTimes(149);
+  expect(fetchStatus.mock.calls.length).toBeGreaterThan(150);
   expect(run.update).toHaveBeenCalledOnce();
   expect(run.update).toHaveBeenCalledWith({ kind: "failed", message: expect.stringContaining("expired") });
 });
@@ -108,14 +110,16 @@ it("handles cancellation while a poll wait is being scheduled", async () => {
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it("caps reads even when a clock adjustment prevents the wall-clock deadline", async () => {
+it("keeps reading past 150 polls without a server deadline until its owner stops it", async () => {
   vi.spyOn(Date, "now").mockReturnValue(NOW);
   const run = observe();
-  await tick(300_000);
+  await tick(400_000);
+  expect(fetchStatus.mock.calls.length).toBeGreaterThan(150);
+  expect(run.update).not.toHaveBeenCalled();
+  run.owner.abort();
+  await tick();
   await run.done;
-  expect(fetchStatus).toHaveBeenCalledTimes(150);
-  expect(run.update).toHaveBeenCalledOnce();
-  expect(run.update).toHaveBeenCalledWith({ kind: "failed", message: expect.stringContaining("could not be confirmed") });
+  expect(run.update).not.toHaveBeenCalled();
 });
 
 it.each([null, "redirect response"])("rejects a redirected status response with body %j", async body => {

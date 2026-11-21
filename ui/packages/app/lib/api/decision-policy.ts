@@ -2,11 +2,9 @@
 
 import { z } from "zod";
 
-const encoder = new TextEncoder();
-const TextSchema = z.string().min(1).max(512).refine((text) =>
-  encoder.encode(text).byteLength <= 512 && text.trim().length > 0 && !text.includes("\0"));
+const TextSchema = z.string().min(1).refine((text) => text.trim().length > 0 && !text.includes("\0"));
 const NoulQuestionSchema = z.object({question: TextSchema, criteria: z.object({true: TextSchema, false: TextSchema}).strict()}).strict();
-const StatementSchema = NoulQuestionSchema.extend({id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_.-]+$/)});
+const StatementSchema = NoulQuestionSchema.extend({id: z.string().min(1).regex(/^[A-Za-z0-9_.-]+$/)});
 const DecisionPolicySchema = z.object({
   routing: z.object({
     intent: z.object({question: TextSchema, criteria: z.object({
@@ -19,7 +17,7 @@ const DecisionPolicySchema = z.object({
     multiple_requests: NoulQuestionSchema,
   }).strict(),
   completion: z.object({
-    statements: z.array(StatementSchema).min(1).max(6)
+    statements: z.array(StatementSchema).min(1)
       .refine((statements) => new Set(statements.map((statement) => statement.id)).size === statements.length),
     next_action: z.object({question: TextSchema, criteria: z.object({
       CONTINUE: TextSchema, WAIT: TextSchema, DONE: TextSchema, BLOCKED: TextSchema,

@@ -27,7 +27,6 @@ import {
   isRequestContextRecord,
   parseRequestContext,
   presentRequestLabel,
-  previewRequestEntries,
 } from "./turn-request-context";
 import {
   failurePresentationFor,
@@ -56,7 +55,6 @@ type TurnTone = {
 };
 
 const TURN_DETAILS_TITLE = "Turn details";
-const TURN_RESULT_MAX_CHARS = 20_000;
 const FIX_TITLE = "Fix";
 // Shown only when the row predates the recorded failure cause — with a cause
 // present the guidance above is already specific enough to act on.
@@ -66,7 +64,6 @@ const NO_RESULT = "No result recorded";
 const RESULT_UNCONFIRMED = "Latest result not yet available";
 const NO_REQUEST_CONTEXT = "No request context recorded";
 const REQUEST_CONTEXT_TITLE = "Request context";
-const REQUEST_CONTEXT_OMITTED = "Additional fields not shown";
 const RUNNER_DIAGNOSTIC_TITLE = "Runner diagnostic";
 const SOURCE_LABEL = "Source:";
 const TYPE_LABEL = "Type:";
@@ -118,12 +115,11 @@ export function TurnDetailsDialog({ row, refresh, onOpenChange }: TurnDetailsDia
 }
 
 function TurnDetails({ row, detail }: { row: TurnRow; detail: TurnDetail | null }) {
-  const response = boundedResponse(detail?.response_text ?? null);
+  const response = detail?.response_text?.trim() ?? "";
   const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
   // The chat and result keep a plain sentence; inspect gives operators the
   // recorded runner cause without presenting it as retry guidance.
-  const recordedResult = response || (failure ? outcomeFor(row) : "") || (detail ? NO_RESULT : RESULT_UNCONFIRMED);
-  const result = truncateResult(recordedResult);
+  const result = response || (failure ? outcomeFor(row) : "") || (detail ? NO_RESULT : RESULT_UNCONFIRMED);
   const runnerDiagnostic = row.failure_label === "runner_crash" ? row.failure_detail?.trim() : null;
   const tone = TURN_TONES[row.status] ?? WARNING_TONE;
   const guidance = response ? null : guidanceFor(row.failure_label);
@@ -224,7 +220,7 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
   if (!isRequestContextRecord(context)) {
     return <RequestContextFallback>{formatRequestValue(context)}</RequestContextFallback>;
   }
-  const { entries, hasMore } = previewRequestEntries(context);
+  const entries = Object.entries(context);
   if (entries.length === 0) {
     return <RequestContextFallback>{NO_REQUEST_CONTEXT}</RequestContextFallback>;
   }
@@ -243,12 +239,6 @@ function RequestContextBody({ context, githubSource }: { context: unknown; githu
           </dd>
         </div>
       ))}
-      {hasMore ? (
-        <div className="px-lg py-md text-xs text-muted-foreground">
-          <dt className="sr-only">Preview limit</dt>
-          <dd>{REQUEST_CONTEXT_OMITTED}</dd>
-        </div>
-      ) : null}
     </dl>
   );
 }
@@ -283,17 +273,4 @@ function StartupFix({ guidance, hasCause }: { guidance: string; hasCause: boolea
 
 function hasCause(row: TurnRow): boolean {
   return (row.failure_detail ?? "").trim().length > 0;
-}
-
-function truncateResult(value: string): string {
-  if (value.length <= TURN_RESULT_MAX_CHARS) return value;
-  return `${value.slice(0, TURN_RESULT_MAX_CHARS - 1)}…`;
-}
-
-function boundedResponse(value: string | null): string {
-  if (!value) return "";
-  const prefix = value.slice(0, TURN_RESULT_MAX_CHARS + 1).trim();
-  if (value.length <= TURN_RESULT_MAX_CHARS || !prefix) return prefix;
-  if (prefix.length >= TURN_RESULT_MAX_CHARS) return truncateResult(prefix);
-  return `${prefix}…`;
 }

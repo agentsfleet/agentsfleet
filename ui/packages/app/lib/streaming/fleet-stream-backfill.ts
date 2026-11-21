@@ -17,9 +17,6 @@ const BACKFILL_PAGE_LIMIT = 200;
 // A hung proxy response must not pin the promise across a flapping network;
 // the next reconnect retries anyway.
 const BACKFILL_TIMEOUT_MS = 10_000;
-// Bounds the cursor-follow walk. 10 × 200 rows covers any realistic outage;
-// exhausting it is a real truncation and is surfaced, not swallowed.
-const BACKFILL_MAX_PAGES = 10;
 
 // A backfill failure is deliberately swallowed (live frames have already
 // resumed; the next reconnect retries), so this console line is its only
@@ -120,8 +117,12 @@ async function walkPages(req: BackfillWalkRequest, fetched: TurnRow[]): Promise<
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
   let watermark = req.watermarkMs === undefined ? anchorMs : req.watermarkMs;
   let cursor: string | undefined;
+  // The walk ends when the server reports no next page or the anchor is
+  // reached; a cursor it already followed would replay forever, so that fails
+  // the window and the next reconnect retries it.
+  const followed = new Set<string>();
 
-  for (let page = 0; page < BACKFILL_MAX_PAGES; page += 1) {
+  for (;;) {
     const query =
       cursor === undefined
         ? {
@@ -141,13 +142,13 @@ async function walkPages(req: BackfillWalkRequest, fetched: TurnRow[]): Promise<
     if (!body.next_cursor || floorMs === null || oldest === null || oldest <= floorMs) {
       return { ok: true, watermark };
     }
+    if (followed.has(body.next_cursor)) {
+      warnBackfillFailure(`recovery repeated page cursor ${body.next_cursor}`);
+      return { ok: false };
+    }
+    followed.add(body.next_cursor);
     cursor = body.next_cursor;
   }
-
-  // Budget exhausted with the anchor still below us: the oldest missed frames
-  // are genuinely unrecovered. Say so — never present it as a full recovery.
-  warnBackfillFailure(`recovery truncated at ${BACKFILL_MAX_PAGES} pages`);
-  return { ok: true, watermark };
 }
 
 type EntryWalk = Pick<BackfillRequest, "stillCurrent" | "onPage"> & {

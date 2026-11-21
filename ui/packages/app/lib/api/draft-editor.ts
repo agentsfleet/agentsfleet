@@ -4,10 +4,10 @@ import { DRAFT_STATE, DraftSchema, FleetSchema, isRunning, MessageSchema } from 
 import { ActivityRowSchema, readSetupActivityPage } from "./draft-activity";
 import { setupRequest, SetupUnavailable } from "./draft-request";
 
-const ConversationSchema = z.object({draft: DraftSchema, messages: z.array(MessageSchema).max(25),
+const ConversationSchema = z.object({draft: DraftSchema, messages: z.array(MessageSchema),
   messages_starting_after: z.string().nullable(), truncated: z.boolean()});
-const EditorSchema = z.object({fleet: FleetSchema, conversations: z.array(ConversationSchema).max(3),
-  activities: z.object({items: z.array(ActivityRowSchema).max(25), next_cursor: z.string().nullable()}), next_cursor: z.string().nullable()});
+const EditorSchema = z.object({fleet: FleetSchema, conversations: z.array(ConversationSchema),
+  activities: z.object({items: z.array(ActivityRowSchema), next_cursor: z.string().nullable()}), next_cursor: z.string().nullable()});
 type Editor = z.infer<typeof EditorSchema>;
 
 export function readEditor(base: string, fleet: string, signal: AbortSignal, after?: string): Promise<Editor> {

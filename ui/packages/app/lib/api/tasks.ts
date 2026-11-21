@@ -28,9 +28,9 @@ const Summary = z.object({
   id: Identity, title: z.string().min(1), status: Status, resource_version: Count,
   generation: Count, accepted_revision_id: Identity, created_at: Instant, expires_at: Instant,
 });
-// Native admission permits sixteen unfinished tasks. Asking for 100 returns
-// the whole panel; a continuation would mean an incomplete response, not no work.
-const Page = z.object({items: z.array(Summary).max(100), next_cursor: z.null()});
+// The panel reads one page; a continuation would mean an incomplete
+// response, not no work, so a page that names one is refused.
+const Page = z.object({items: z.array(Summary), next_cursor: z.null()});
 const Detail = z.object({
   publication: z.object({effect_id: Identity, ordinal: Count,
     state: z.enum(["prepared", "issued", "confirmed", "unknown", "refused"]),
@@ -43,7 +43,7 @@ const Detail = z.object({
     target: Target.optional(),
     task_id: Identity, generation: Count, stop_generation: Count,
     accepted_revision_id: Identity, objective: z.string(), goal_digest: z.string(),
-    questions: z.array(Statement).min(1).max(6), state: Status,
+    questions: z.array(Statement).min(1), state: Status,
     covered_input_sequence: Count, effect_cursor: Count, confirmed_effect_watermark: Count,
     checkpoint_id: Identity.nullable(), expires_at: Instant,
     limits: z.object({model_nanos: nanosSchema, wall_seconds: Count, running_seconds: Count,

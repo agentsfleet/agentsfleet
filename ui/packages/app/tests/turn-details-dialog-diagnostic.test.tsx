@@ -73,24 +73,17 @@ describe("TurnDetailsDialog diagnostics", () => {
     expect(screen.queryByText("Pull request")).toBeNull();
   });
 
-  it("bounds a large result in the dialog", async () => {
-    const response = `${"x".repeat(20_000)}hidden-result-tail`;
+  it("shows a result past the old 20,000-character cut whole", async () => {
+    const response = `${"x".repeat(20_000)}result-tail`;
     await renderDialogWithBody(turn({ response_text: response }));
-
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toHaveLength(20_000);
-    expect(alert.textContent?.endsWith("…")).toBe(true);
-    expect(screen.queryByText(/hidden-result-tail/)).toBeNull();
-
-
+    expect(alert.textContent).toBe(response);
   });
 
-  it("marks a whitespace-prefixed large result as truncated", async () => {
-    const response = `   ${"x".repeat(20_000)}hidden-result-tail`;
-    await renderDialogWithBody(turn({ response_text: response }));
-    const result = screen.getByRole("alert").textContent ?? "";
-    expect(result.endsWith("…")).toBe(true);
-    expect(result).not.toContain("hidden-result-tail");
+  it("trims only the whitespace around a large result", async () => {
+    const response = `${"x".repeat(20_000)}result-tail`;
+    await renderDialogWithBody(turn({ response_text: `   ${response}  ` }));
+    expect(screen.getByRole("alert").textContent).toBe(response);
   });
 
 
@@ -106,26 +99,21 @@ describe("TurnDetailsDialog diagnostics", () => {
     expect(screen.getByText("No request context recorded")).toBeTruthy();
   });
 
-  it("limits rendered request context without exposing its hidden tail", async () => {
-    const visible = "x".repeat(10_000);
-    await renderDialogWithBody(turn({ request_json: `${visible}hidden-tail` }));
-    const context = screen.getByText(visible);
-    expect(context.textContent).toHaveLength(10_000);
-    expect(screen.queryByText(/hidden-tail/)).toBeNull();
-
-
+  it("shows request context past the old 10,000-character cut whole", async () => {
+    const request = `${"x".repeat(10_000)}context-tail`;
+    await renderDialogWithBody(turn({ request_json: request }));
+    expect(screen.getByText(request).textContent).toHaveLength(request.length);
   });
 
-  it("bounds rendered request-context fields", async () => {
+  it("shows every request-context field, past the hundred it once showed", async () => {
     const request = Object.fromEntries(
       Array.from({ length: 150 }, (_, index) => [`field_${index}`, `value_${index}`]),
     );
     await renderDialogWithBody(turn({ request_json: JSON.stringify(request) }));
 
     expect(screen.getByText("field 99")).toBeTruthy();
-    expect(screen.queryByText("field 100")).toBeNull();
-    expect(screen.getByText("Additional fields not shown")).toBeTruthy();
-
-
+    expect(screen.getByText("field 149")).toBeTruthy();
+    expect(screen.queryByText("Additional fields not shown")).toBeNull();
   });
+
 });

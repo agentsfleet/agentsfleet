@@ -108,18 +108,13 @@ it("explains configured but ineligible models and prevents an empty model menu",
   expect(fixture.writes()).toEqual([]);
 });
 
-it("keeps an incomplete model search distinct from a workspace with no configured models", async () => {
+it("keeps a model search whose cursor repeats distinct from a workspace with no configured models", async () => {
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
     ? Promise.resolve(response({items: [], next_cursor: "next-model-page"})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  expect((await screen.findByRole("status", {name: "Setup status"})).textContent).toBe("Load more models to find one for chat");
-  expect(screen.queryByText("No chat model yet")).toBeNull();
-  expect(screen.getByRole("button", {name: /Load more models/})).toBeTruthy();
-  const reads = fixture.fetch.mock.calls.length;
-  fireEvent.click(screen.getByRole("button", {name: /Load more models/}));
-  await waitFor(() => expect(fixture.fetch.mock.calls.length).toBeGreaterThan(reads));
+  await waitFor(() => expect(fixture.fetch.mock.calls.filter(([input]) => typeof input === "string" && input.includes("/models?"))).toHaveLength(2));
   expect(screen.queryByText("No chat model yet")).toBeNull();
   expect(fixture.writes()).toEqual([]);
 });

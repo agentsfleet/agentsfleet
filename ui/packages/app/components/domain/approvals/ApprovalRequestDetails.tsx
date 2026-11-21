@@ -29,7 +29,7 @@ export function ApprovalRequestDetails({gate, pending, decided, reason, onReason
         {gate.evidence ? <FleetPayloadDisclosure json={JSON.stringify(gate.evidence, null, 2)} inline /> : null}
         {gate.expires_at ? <p>Expires <Time value={gate.expires_at} /></p> : null}
         {!decided ? <div className="space-y-md"><Label htmlFor={reasonId}>Reason (optional)</Label>
-          <Textarea id={reasonId} value={reason} onChange={event => onReasonChange(event.currentTarget.value)} maxLength={4096} rows={2} disabled={pending} /></div> : null}
+          <Textarea id={reasonId} value={reason} onChange={event => onReasonChange(event.currentTarget.value)} rows={2} disabled={pending} /></div> : null}
       </div>
       <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Done</Button></DialogFooter>
     </DialogContent>

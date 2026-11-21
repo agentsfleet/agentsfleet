@@ -9,7 +9,6 @@
 
 import { HTTP_STATUS_UNAUTHORIZED } from "./errors";
 import { FleetListSchema } from "./fleet-detail";
-import { boundedBody } from "./setup-proxy/body";
 import { ERROR_CODE } from "@/lib/errors";
 
 /** The fleet saved under the name (null when none is), or why the lookup has no answer. */
@@ -21,9 +20,6 @@ const QUERY_NAME = "name";
 const NO_ANSWER = "The fleet lookup got no answer";
 const NO_LIST = "The fleet lookup was answered without a fleet list";
 const SIGNED_OUT = "Not authenticated";
-// The answer holds one fleet's summary at most. A daemon that predates the
-// filter ignores it and answers a page of fleets, which this still holds.
-const ANSWER_LIMIT_BYTES = 256 * 1024;
 
 export async function findFleetByName(workspaceId: string, name: string, signal: AbortSignal): Promise<FleetLookup> {
   let res: Response;
@@ -44,7 +40,7 @@ export async function findFleetByName(workspaceId: string, name: string, signal:
     return { ok: false, error: SIGNED_OUT, status: HTTP_STATUS_UNAUTHORIZED, errorCode: ERROR_CODE.AUTH_401 };
   }
   if (!res.ok) return { ok: false, error: res.statusText, status: res.status };
-  const list = FleetListSchema.safeParse(await jsonOf(res, signal));
+  const list = FleetListSchema.safeParse(await jsonOf(res));
   if (!list.success) return { ok: false, error: NO_LIST };
   // Only a fleet saved under exactly this name answers to it: a daemon that
   // ignored the filter answered other fleets, and none of them may take words
@@ -57,11 +53,11 @@ function fleetByNameUrl(workspaceId: string, name: string): string {
   return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets?${query}`;
 }
 
-// The body as JSON, or null when it was cut off, ran past its limit or is not JSON.
-async function jsonOf(res: Response, signal: AbortSignal): Promise<unknown> {
+// The body as JSON, or null when it was cut off or is not JSON. The fetch's
+// signal also cancels this read.
+async function jsonOf(res: Response): Promise<unknown> {
   try {
-    const body = await boundedBody(res, signal, ANSWER_LIMIT_BYTES);
-    return body === null ? null : JSON.parse(new TextDecoder().decode(body));
+    return await res.json() as unknown;
   } catch {
     return null;
   }

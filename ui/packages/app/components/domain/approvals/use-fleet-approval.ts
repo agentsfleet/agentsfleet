@@ -21,7 +21,7 @@ export function useFleetApproval(workspaceId: string, fleetId: string, revision:
     void listApprovalsAction(workspaceId, {fleetId, status: "pending", limit: 1}).then(result => {
       if (!current) return;
       if (!result.ok) {setRead({kind: result.status === 401 || result.status === 403 ? "inaccessible" : "failed"}); return;}
-      const parsed = z.array(Gate).max(1).safeParse(result.data.items);
+      const parsed = z.array(Gate).safeParse(result.data.items);
       const gate = parsed.success ? parsed.data[0] ?? null : undefined;
       if (gate === undefined || gate && (gate.workspace_id !== workspaceId || gate.fleet_id !== fleetId)) {
         setRead({kind: "failed"}); return;

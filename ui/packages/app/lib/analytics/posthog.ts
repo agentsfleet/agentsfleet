@@ -80,7 +80,8 @@ let pendingReset = false;
 let groupedWorkspaceId: string | null = null;
 // Group/person context that raced the PostHog client load.
 let pendingContext: AnalyticsContext | null = null;
-// Distinct events queue in arrival order and stay bounded if loading stalls.
+// Distinct events queue in arrival order while the analytics client loads;
+// the bound is this tab's memory, not a server rule, if loading stalls.
 const MAX_PENDING_EVENTS = 20;
 let pendingTurns: Array<{ event: string; payload: Record<string, AnalyticsValue> }> = [];
 

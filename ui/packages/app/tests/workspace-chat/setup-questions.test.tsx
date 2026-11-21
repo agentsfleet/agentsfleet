@@ -113,16 +113,17 @@ it("keeps the setup headings in order: the questions take level 2 when the save 
   } finally { client.dispose(); }
 });
 
-it("preserves valid Unicode wording and rejects text above the wire byte ceiling", () => {
+it("preserves valid Unicode wording and shows text past the old 512-byte cut whole", () => {
   const policy = parsedFixture();
   const wording = "🙂".repeat(120);
   const withQuestion = (question: string) => ({...policy, completion: {...policy.completion,
     statements: policy.completion.statements.map((statement, index) => index === 0 ? {...statement, question} : statement)}});
   const view = render(<SetupQuestions definition={definition(withQuestion(wording))} />);
   expect(screen.getByText(`1. ${wording}`)).toBeTruthy();
-  view.rerender(<SetupQuestions definition={definition(withQuestion("界".repeat(200)))} />);
-  expect(screen.getByText("Success criteria unavailable")).toBeTruthy();
-  expect(screen.queryByText(`1. ${wording}`)).toBeNull();
+  const long = "界".repeat(200);
+  view.rerender(<SetupQuestions definition={definition(withQuestion(long))} />);
+  expect(screen.getByText(`1. ${long}`)).toBeTruthy();
+  expect(screen.queryByText("Success criteria unavailable")).toBeNull();
 });
 
 function definition(policy: unknown): Definition {

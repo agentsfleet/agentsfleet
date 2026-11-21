@@ -25,6 +25,7 @@ const CARRIAGE_RETURN = "\r";
 // A line ending in a return leaves its text on screen; only text after one overwrites.
 const TRAILING_RETURNS = /\r+$/;
 const UTF8 = new TextEncoder();
+// A one-line preview for the row; opening the call shows its whole arguments.
 const COMPACT_ARGS_MAX_CHARS = 120;
 
 /** Whether a string argument may have been cut by the runner. */

@@ -159,7 +159,7 @@ it.each([503, 200])("stops reserving a result after the first list read fails or
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("does not leave an older result loading outside the reader's bounded history window", async () => {
+it("reads the oldest of seventeen recent results, past the sixteen it once dropped", async () => {
   const ids = Array.from({length: 17}, (_, index) => `019a42b0-0000-7000-8000-${String(index).padStart(12, "0")}`);
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async input => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -169,12 +169,11 @@ it("does not leave an older result loading outside the reader's bounded history 
   render(<FleetTaskProvider {...SCOPE} turns={[evt({taskActivity: activity(ids)})]}>
     <NativeTaskPrBadge activity={activity([ids[0]!])} />
   </FleetTaskProvider>);
-  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(17));
-  expect(fetcher.mock.calls.some(([input]) => {
+  await waitFor(() => expect(fetcher.mock.calls.some(([input]) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.endsWith(ids[0]!);
-  })).toBe(false);
-  expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
+  })).toBe(true));
+  await waitFor(() => expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull());
   expect(screen.queryByRole("link")).toBeNull();
 });
 

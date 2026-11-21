@@ -20,7 +20,6 @@ import {
 import { XIcon, CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { createSecretAction, replaceSecretAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
-import { SECRET_NAME_MAX } from "../lib/secret-data";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 
@@ -74,7 +73,6 @@ const schema = z.object({
     .string()
     .trim()
     .min(1, "Secret name is required")
-    .max(SECRET_NAME_MAX, `Secret name must be ${SECRET_NAME_MAX} characters or fewer`)
     .regex(NAME_PATTERN, "Letters, numbers, dashes, and underscores only"),
   fields: z
     .array(fieldSchema)

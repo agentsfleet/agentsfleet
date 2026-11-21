@@ -48,9 +48,9 @@ describe("listApiKeys", () => {
     expect(requestMock).toHaveBeenCalledTimes(3);
   });
 
-  it("refuses a runaway cursor instead of walking forever", async () => {
+  it("refuses a cursor the server repeats instead of walking forever", async () => {
     requestMock.mockResolvedValue({ items: [keyRow("x")], total: null, next_cursor: "same" });
-    await expect(listApiKeys("tok")).rejects.toThrow(/did not end/);
+    await expect(listApiKeys("tok")).rejects.toThrow(/repeated page cursor same/);
   });
 });
 

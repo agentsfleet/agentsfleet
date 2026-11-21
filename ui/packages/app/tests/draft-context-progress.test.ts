@@ -75,13 +75,11 @@ it("accepts a new message generation independently and withholds stale previous-
   expect(changed.mock.lastCall).toEqual([{contextProgress: {sequence: "2", progress: start}}]);
 });
 
-it("bounds dispatch tracking per message without discarding the confirmed visible ending", () => {
+it("tracks every dispatch stream of a message, past the 32 it once dropped", () => {
   const changed = vi.fn(); const live = new DraftLive(changed);
-  for (let index = 0; index < 32; index++) {
+  for (let index = 0; index < 33; index++) {
     const stream_id = `0199a801-1000-7000-8000-${String(index).padStart(12, "0")}`;
     expect(live.context(frame(start, {stream_id}), DRAFT_ID, running)).toBe(true);
   }
-  const stream_id = "0199a801-1000-7000-8000-000000000099";
-  expect(live.context(frame(start, {stream_id}), DRAFT_ID, running)).toBe(false);
-  expect(changed).toHaveBeenCalledTimes(32);
+  expect(changed).toHaveBeenCalledTimes(33);
 });

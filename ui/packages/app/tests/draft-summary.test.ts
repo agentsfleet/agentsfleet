@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { CHAT_TITLE_LIMIT, chatTitle, firstChatRequest, sidebarDrafts } from "@/lib/api/draft-summary";
+import { chatTitle, firstChatRequest, sidebarDrafts } from "@/lib/api/draft-summary";
 import { DRAFT, FLEET_ID, MESSAGE } from "./helpers/draft-fixtures";
 
 const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null};
@@ -9,7 +9,7 @@ it("keeps an explicit name and gives unnamed chats a distinct readable label", (
   expect(chatTitle(" New Fleet ", DRAFT.id)).toBe("Setup chat 000002");
   expect(chatTitle("", "other-abc123")).toBe("Setup chat ABC123");
   expect(chatTitle("New fleet", DRAFT.id, "\n Fix  the build \n")).toBe("Fix the build");
-  expect(chatTitle("New fleet", DRAFT.id, "🌱".repeat(CHAT_TITLE_LIMIT + 1))).toBe("🌱".repeat(CHAT_TITLE_LIMIT));
+  expect(chatTitle("New fleet", DRAFT.id, "🌱".repeat(101))).toBe("🌱".repeat(101));
 });
 
 it("retains list order when the second chat is selected and updates its status in place", () => {

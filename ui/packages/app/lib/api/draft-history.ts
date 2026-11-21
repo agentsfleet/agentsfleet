@@ -6,7 +6,6 @@ import { setupRequest, SetupUnavailable } from "./draft-request";
 
 type DraftRead = {draft: Draft; messages: readonly Message[]};
 
-const MAX_WALK_PAGES = 200;
 const RETAINED_MESSAGES = 500;
 const ROLE_ORDER = {[MESSAGE_ROLE.user]: 0, [MESSAGE_ROLE.assistant]: 1};
 
@@ -47,17 +46,21 @@ export class DraftHistory {
   async read(path: string, signal: AbortSignal): Promise<readonly Message[]> {
     let cursor = this.#cursor;
     let canAdvance = true;
-    for (let page = 0; page < MAX_WALK_PAGES; page += 1) {
+    // The walk ends when the server reports no next page; a cursor it already
+    // followed would replay the same pages forever.
+    const followed = new Set<string>();
+    for (;;) {
       const query = new URLSearchParams({limit: String(PAGE_LIMIT)});
       if (cursor) query.set("starting_after", cursor);
       const result = await setupRequest({path: `${path}/messages?${query}`}, MessagesSchema, signal);
       for (const message of result.items) this.#remember(message);
       if (result.items.some(isRunning)) canAdvance = false;
       if (!result.next_cursor) return [...this.#rows.values()].sort(ordered);
+      if (followed.has(result.next_cursor)) throw new SetupUnavailable("Conversation history repeated a page. Refresh to continue from the last confirmed page.", 502);
+      followed.add(result.next_cursor);
       if (canAdvance) this.#cursor = result.next_cursor;
       cursor = result.next_cursor;
     }
-    throw new SetupUnavailable("Conversation history is still loading. Refresh to continue from the last confirmed page.", 503);
   }
 
   #remember(message: Message): void {

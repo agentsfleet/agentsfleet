@@ -1,7 +1,6 @@
 import type { Attachment, AttachmentAdapter, CompleteAttachment, PendingAttachment } from "@assistant-ui/react";
 import { v7 } from "uuid";
-import { PREVIEW_FILE_COUNT, PREVIEW_FILE_LIMIT, PREVIEW_RECEIPT_LIMIT, PREVIEW_UPLOAD_TIMEOUT_MS, uploadPreviewUrl, uploadReceiptSchema } from "./upload-preview";
-import { boundedBody } from "./setup-proxy/body";
+import { PREVIEW_FILE_COUNT, PREVIEW_FILE_LIMIT, PREVIEW_UPLOAD_TIMEOUT_MS, uploadPreviewUrl, uploadReceiptSchema } from "./upload-preview";
 
 /** Files are sent only when the user presses Send; cancellation owns each request. */
 export class PreviewAttachmentAdapter implements AttachmentAdapter {
@@ -36,9 +35,7 @@ export class PreviewAttachmentAdapter implements AttachmentAdapter {
       form.set("file", attachment.file);
       const response = await fetch(uploadPreviewUrl(this.workspace, this.fleet), {method: "POST", body: form, signal, cache: "no-store", redirect: "error"});
       if (!response.ok) throw new Error(response.status === 401 ? "Sign in before uploading a preview." : "The file preview was not accepted. Remove it and try again.");
-      const body = await boundedBody(response, signal, PREVIEW_RECEIPT_LIMIT);
-      if (body === null) throw new Error("The upload receipt exceeds its limit.");
-      const receipt = uploadReceiptSchema.parse(JSON.parse(new TextDecoder().decode(body)));
+      const receipt = uploadReceiptSchema.parse(await response.json());
       signal.throwIfAborted();
       return {id: attachment.id, type: "file", name: attachment.name, contentType: attachment.contentType,
         status: {type: "complete"}, content: [{type: "text", text: receipt.reply}]};

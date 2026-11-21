@@ -6,8 +6,6 @@ import { CONTEXT_STATE, ContextProgressSchema, advancesContext } from "../contex
 import { DraftReplies } from "./draft-replies";
 import { isRunning, MESSAGE_ROLE } from "./draft-types";
 
-const MAX_STATUS_CHARACTERS = 2_048;
-const MAX_STREAMS_PER_MESSAGE = 32;
 const NoticeSchema = z.object({
   draft_id: z.uuidv7(), sequence: z.string().regex(/^[1-9][0-9]{0,18}$/), stream_id: z.uuidv7(),
   progress: ContextProgressSchema,
@@ -50,7 +48,6 @@ export class DraftLive {
   }
 
   context(data: string, draft: string, messages: readonly Message[]): boolean {
-    if (data.length > MAX_STATUS_CHARACTERS) return false;
     let value: unknown;
     try { value = JSON.parse(data); } catch { return false; }
     const parsed = NoticeSchema.safeParse(value);
@@ -60,8 +57,7 @@ export class DraftLive {
       || !messages.some(message => message.sequence === frame.sequence && message.role === MESSAGE_ROLE.user && isRunning(message))) return false;
     if (frame.sequence !== this.#sequence) { this.#seen.clear(); this.#sequence = frame.sequence; this.#generation = 0; this.#completedGeneration = 0; }
     const previous = this.#seen.get(frame.stream_id);
-    if (frame.progress.generation <= this.#completedGeneration || frame.progress.generation < this.#generation || !advancesContext(previous, frame.progress)
-      || (!previous && this.#seen.size >= MAX_STREAMS_PER_MESSAGE)) return false;
+    if (frame.progress.generation <= this.#completedGeneration || frame.progress.generation < this.#generation || !advancesContext(previous, frame.progress)) return false;
     this.#generation = frame.progress.generation;
     if (frame.progress.state === CONTEXT_STATE.resuming) this.#completedGeneration = frame.progress.generation;
     this.#seen.set(frame.stream_id, frame.progress);

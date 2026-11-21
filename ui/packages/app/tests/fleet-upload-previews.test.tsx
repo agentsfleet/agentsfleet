@@ -115,15 +115,14 @@ it("keeps preview ownership usable through React StrictMode setup and cleanup", 
   expect(screen.getByText("notes.txt")).toBeTruthy();
 });
 
-it("retains only the latest four temporary uploads without losing durable conversation", async () => {
+it("keeps every temporary upload, past the four it once dropped, without losing durable conversation", async () => {
   mockStream([ev({id: "durable", role: "user", actor: `steer:${SUBJECT}`, text: "Keep this message", reply: "Durable answer"})]);
   renderThread(); const onNew = capturedOnNew.current;
   if (!onNew) throw new Error("The runtime must receive its send handler");
   for (const index of [1, 2, 3, 4, 5]) {
     await act(() => onNew({...appendMessage(`Preview ${index}`), attachments: [{...attachment, id: `file-${index}`, name: `notes-${index}.txt`}]}));
   }
-  expect(screen.queryByText("notes-1.txt")).toBeNull();
-  for (const index of [2, 3, 4, 5]) expect(screen.getByText(`notes-${index}.txt`)).toBeTruthy();
+  for (const index of [1, 2, 3, 4, 5]) expect(screen.getByText(`notes-${index}.txt`)).toBeTruthy();
   expect(screen.getByText("Keep this message")).toBeTruthy();
   expect(screen.getByText("Durable answer")).toBeTruthy();
   expect(postSteerMock).not.toHaveBeenCalled();

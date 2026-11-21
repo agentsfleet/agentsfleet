@@ -15,27 +15,15 @@ export const DIFF_ROW = {
 
 export type DiffRow = { kind: (typeof DIFF_ROW)[keyof typeof DIFF_ROW]; text: string };
 
-// Past this many edits jsdiff stops searching and returns nothing; the edit
-// then reads as every old line removed and every new one added, still true.
-const MAX_EDIT_LENGTH = 1_000;
-
 /** The rows of `before` → `after`. */
 export function lineRows(before: string, after: string): DiffRow[] {
   // An edit's text rarely ends in a line break; its last line is the same line
   // whether or not the other side's does.
-  const changes = diffLines(before, after, { maxEditLength: MAX_EDIT_LENGTH, ignoreNewlineAtEof: true })
-    ?? wholeReplacement(before, after);
+  const changes = diffLines(before, after, { ignoreNewlineAtEof: true });
   return changes.flatMap((change) => linesOf(change.value).map((text) => ({ kind: rowKind(change), text })));
 }
 
 function rowKind(change: Change): DiffRow["kind"] {
   if (change.added) return DIFF_ROW.ADDED;
   return change.removed ? DIFF_ROW.REMOVED : DIFF_ROW.CONTEXT;
-}
-
-function wholeReplacement(before: string, after: string): Change[] {
-  return [
-    { value: before, added: false, removed: true, count: linesOf(before).length },
-    { value: after, added: true, removed: false, count: linesOf(after).length },
-  ];
 }

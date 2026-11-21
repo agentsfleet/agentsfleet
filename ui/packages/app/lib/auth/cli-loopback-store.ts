@@ -5,6 +5,8 @@ import {
 } from "./cli-loopback";
 
 const STORAGE_KEY = "agentsfleet.cli.loopback.v1";
+// Session storage keeps the two newest login handoffs. An untrusted URL
+// fragment fills it, so the record is refused rather than grown.
 const MAX_RECORDS = 2;
 const RETURN_PARAM = "redirect_url";
 const AUTH_PATH = /^\/sign-(?:in|up)(?:\/|$)/;

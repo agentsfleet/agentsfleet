@@ -18,8 +18,6 @@ type Props = {workspaceId: string; fleetId: string; subject: string | null; turn
   /** The runtime whose composer sends the files, read as an upload starts. */
   runtime?: RefObject<AssistantRuntime | null>};
 type AnchorIndex = {ids: Map<string, number>; local: Map<number, number>};
-const MAX_PREVIEW_TURNS = 4;
-const MAX_ANCHORS = 16;
 const EMPTY_PREVIEWS: readonly PreviewEntry[] = [];
 const EMPTY_BREAKS: ReadonlySet<string> = new Set();
 
@@ -40,7 +38,7 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, turns, on
     const id = files.map(file => file.id).join(":");
     const text = chatMessageText(message);
     const reply = files.flatMap(file => file.content.flatMap(part => part.type === "text" ? [part.text] : [])).join("\n");
-    const anchors = currentTurns.current.slice(-MAX_ANCHORS).reverse().map(turn => ({id: turn.id, submittedAtMs: turn.submittedAtMs}));
+    const anchors = [...currentTurns.current].reverse().map(turn => ({id: turn.id, submittedAtMs: turn.submittedAtMs}));
     const entries: PreviewEntry[] = [
       {kind: "upload-preview", key: `upload:${id}`, anchors, message: {id: `upload:${id}`, role: "user", createdAt: new Date(),
         content: text || "Attached files for preview", attachments: files, metadata: {custom: {actor: `steer:${subject}`, [RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, previewUpload: true}}}},
@@ -48,7 +46,7 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, turns, on
         content: `${UPLOAD_PREVIEW_LABEL}\n\n${reply}`, status: {type: "complete", reason: "stop"},
         metadata: {custom: {actor: "fleet", status: "processed", previewUpload: true}}}},
     ];
-    setPreview(previous => ({owner, entries: [...(previous.owner === owner ? previous.entries.filter(entry => !entries.some(next => next.key === entry.key)) : []), ...entries].slice(-MAX_PREVIEW_TURNS * 2)}));
+    setPreview(previous => ({owner, entries: [...(previous.owner === owner ? previous.entries.filter(entry => !entries.some(next => next.key === entry.key)) : []), ...entries]}));
     adapter.consume(files);
   }, [adapter, owner, subject, onNew]);
   const entries = preview.owner === owner ? preview.entries : EMPTY_PREVIEWS;

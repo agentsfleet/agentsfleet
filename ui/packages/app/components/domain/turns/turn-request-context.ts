@@ -2,11 +2,6 @@
 // Split out of `TurnDetailsDialog` at its length cap — no JSX, no React, so
 // the display components stay in the dialog and read these.
 
-// A stored `request_json` is truncated before parse/render so a runaway
-// webhook body cannot ride megabytes into the DOM.
-export const REQUEST_CONTEXT_MAX_CHARS = 10_000;
-export const REQUEST_CONTEXT_MAX_ENTRIES = 100;
-
 const REQUEST_CONTEXT_LABELS: Record<string, string> = {
   action: "Action",
   author: "Author",
@@ -22,11 +17,11 @@ const REQUEST_CONTEXT_LABELS: Record<string, string> = {
   title: "Title",
 };
 
-/** Parse the bounded request payload; a non-object or malformed body is kept
+/** Parse the recorded request payload; a non-object or malformed body is kept
  * as its raw string rather than dropped, so the operator still sees what
  * arrived. */
 export function parseRequestContext(raw: string): unknown {
-  const request = raw.slice(0, REQUEST_CONTEXT_MAX_CHARS).trim();
+  const request = raw.trim();
   if (!request) return null;
   try {
     return JSON.parse(request) as unknown;
@@ -47,18 +42,7 @@ export function presentRequestLabel(key: string, githubSource: boolean): string 
 export function formatRequestValue(value: unknown): string {
   if (value === null) return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string") return value.slice(0, REQUEST_CONTEXT_MAX_CHARS);
+  if (typeof value === "string") return value;
   if (typeof value === "number") return String(value);
-  return String(JSON.stringify(value)).slice(0, REQUEST_CONTEXT_MAX_CHARS);
-}
-
-export function previewRequestEntries(context: Record<string, unknown>): {
-  entries: Array<[string, unknown]>;
-  hasMore: boolean;
-} {
-  const entries = Object.entries(context);
-  return {
-    entries: entries.slice(0, REQUEST_CONTEXT_MAX_ENTRIES),
-    hasMore: entries.length > REQUEST_CONTEXT_MAX_ENTRIES,
-  };
+  return String(JSON.stringify(value));
 }

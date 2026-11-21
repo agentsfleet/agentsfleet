@@ -80,15 +80,15 @@ it("hides all metadata until list authorization, including loading after access 
   view.unmount();
 });
 
-it("bounds recent native history, ignores unowned or prose IDs and excludes current duplicates", () => {
+it("lists every recent native task past the sixteen it once kept, ignores unowned or prose IDs and excludes current duplicates", () => {
   const ids = Array.from({length: 20}, (_, i) => `019a42b0-0000-7000-8000-${String(i).padStart(12, "0")}`);
   const turns = [evt({reply: TASK_IDS[1]}), ...history(...ids, null, TASK_IDS[0], ids[0]!)];
   const recent = recentTaskIds(turns, [summary()]);
-  expect(recent).toHaveLength(16);
+  expect(recent).toHaveLength(20);
   expect(recent[0]).toBe(ids[0]);
+  expect(recent.at(-1)).toBe(ids[1]);
   expect(recent).not.toContain(TASK_IDS[0]);
   expect(recent).not.toContain(TASK_IDS[1]);
-  expect(recent).not.toContain(ids[1]);
 });
 
 it("validates historical task identity without inventing a minimum resource version", async () => {

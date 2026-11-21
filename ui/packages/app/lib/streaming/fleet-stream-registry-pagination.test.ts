@@ -63,23 +63,24 @@ describe("fleet-stream-registry — pagination", () => {
     a();
   });
 
-  it("test_registry_backfill_truncation_surfaced — exhausting the page budget warns rather than claiming a complete recovery", async () => {
+  it("test_registry_backfill_walks_past_old_page_budget — fifteen pages above the anchor are all read, then a repeated cursor fails the window", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const MAX_PAGES = 10;
-    // Every page full, every page newer than the anchor → the walk never
-    // reaches it and the budget runs out.
-    for (let i = 0; i < MAX_PAGES; i += 1) {
+    const PAGES = 15;
+    // Every page newer than the anchor: the walk reads every one the server
+    // offers, past the ten it used to stop at, until a cursor repeats.
+    for (let i = 0; i < PAGES; i += 1) {
       fetchSpy.mockResolvedValueOnce(
         pageWith(descRows([`evt_${i}`], OUTAGE_UNREACHABLE_MS), `cursor_${i}`),
       );
     }
+    fetchSpy.mockResolvedValueOnce(pageWith(descRows(["evt_again"], OUTAGE_UNREACHABLE_MS), "cursor_0"));
     const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
-    expect(fetchSpy).toHaveBeenCalledTimes(MAX_PAGES);
+    expect(fetchSpy).toHaveBeenCalledTimes(PAGES + 1);
     expect(warnSpy).toHaveBeenCalledWith(
       "fleet-stream backfill failed",
-      `recovery truncated at ${MAX_PAGES} pages`,
+      "recovery repeated page cursor cursor_0",
     );
     warnSpy.mockRestore();
     a();

@@ -16,5 +16,5 @@ export function recentTaskIds(turns: readonly FleetTurn[], current: readonly Tas
     ids.delete(id);
     ids.add(id);
   }
-  return [...ids].slice(-16).reverse();
+  return [...ids].reverse();
 }

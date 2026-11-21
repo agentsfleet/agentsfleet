@@ -1,5 +1,6 @@
 const AUTH_ROUTE = /(?:^|\/)(?:cli-auth|sign-in|sign-up)(?:\/|[?#]|$)/;
-const MAX_EVENT_VALUES = 1_000;
+// A URL nested in a redirect parameter arrives encoded once per hop; two
+// passes reach the sign-in and CLI login links, which nest one level deep.
 const MAX_DECODE_PASSES = 2;
 
 export function isSensitiveAuthUrl(value: string): boolean {
@@ -21,9 +22,7 @@ export function filterAuthenticationEvent<T>(event: T): T | null {
   if (onAuthenticationRoute()) return null;
   const pending: unknown[] = [event];
   const visited = new Set<object>();
-  let inspected = 0;
   while (pending.length > 0) {
-    if (++inspected > MAX_EVENT_VALUES) return null;
     const value = pending.pop();
     if (typeof value === "string" && isSensitiveAuthUrl(value)) return null;
     if (typeof value !== "object" || value === null || visited.has(value)) continue;

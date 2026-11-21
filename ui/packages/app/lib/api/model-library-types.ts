@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CATALOGUE_LIMITS, metadataSchema, nanosSchema, priceSchema } from "./catalogue-types";
+import { metadataSchema, nanosSchema, priceSchema } from "./catalogue-types";
 
 // The model library's row shape and the catalogue helpers the model pickers share. Dependency-free on purpose: client components read these
 // without pulling the transport, whose retry policy is server-only.
@@ -10,7 +10,7 @@ export const OPENAI_PROVIDER = "openai";
 export const libraryModelSchema = metadataSchema.extend({
   id: z.string(), provider: z.string(), input_nanos_per_mtok: nanosSchema,
   cached_input_nanos_per_mtok: nanosSchema, output_nanos_per_mtok: nanosSchema,
-  prices: z.array(priceSchema).max(CATALOGUE_LIMITS.prices),
+  prices: z.array(priceSchema),
 });
 export const modelLibrarySchema = z.object({
   version: z.string(), models: z.array(libraryModelSchema), total: z.number().int().nonnegative().nullable(), next_cursor: z.string().nullable(),

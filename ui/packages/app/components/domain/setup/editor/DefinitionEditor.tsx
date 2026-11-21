@@ -47,7 +47,7 @@ export function DefinitionEditor({client, view, onUpdated, onDirtyChange, onCanc
     {form.conflict ? <Alert variant="warning">Setup chat changed these instructions. Your edits are still here.
       <Button variant="outline" size="sm" onClick={() => {form.reset(); setError(null);}}>Discard manual changes and load latest</Button>
     </Alert> : null}
-    <div className="space-y-xs"><Label htmlFor={`${inputId}-name`}>Fleet name</Label><Input id={`${inputId}-name`} disabled={view.busy || view.pending} value={name} onChange={event => form.change("name", event.target.value)} maxLength={64} /></div>
+    <div className="space-y-xs"><Label htmlFor={`${inputId}-name`}>Fleet name</Label><Input id={`${inputId}-name`} disabled={view.busy || view.pending} value={name} onChange={event => form.change("name", event.target.value)} /></div>
     <div className="flex min-h-0 flex-1 flex-col gap-xs"><Label htmlFor={`${inputId}-instructions`}>Instructions</Label>
       <Textarea id={`${inputId}-instructions`} disabled={view.busy || view.pending} rows={18} className="min-h-64 flex-1 resize-y leading-prose" value={instructions} onChange={event => form.change("instructions", event.target.value)} /></div>
     {error ? <Alert variant="destructive">{error}</Alert> : null}

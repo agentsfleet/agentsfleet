@@ -55,7 +55,7 @@ export const MessageSchema = z.object({
   text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
   failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string()}).optional(),
 });
-export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_LIMIT), next_cursor: z.string().nullable()});
+export const MessagesSchema = z.object({items: z.array(MessageSchema), next_cursor: z.string().nullable()});
 // The daemon's schedule `View`; sync stays an open string so an unknown state counts as not registered.
 export const ScheduleSchema = z.object({
   schedule_id: z.string(), fleet_id: z.string(), sync: z.string(), last_error: z.string().nullable().optional(),
@@ -79,12 +79,12 @@ export const ModelsSchema = z.object({items: z.array(z.object({
   context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive().optional(),
   eligibility: z.object({setup: z.boolean(), runtime: z.boolean()}),
   pricing: z.object({input_nanos_per_million: nanosSchema, output_nanos_per_million: nanosSchema, runtime_nanos_per_second: nanosSchema}),
-})).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
+})), next_cursor: z.string().nullable()});
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),
   linked_fleet_id: z.uuidv7().nullable().default(null), updated_at: Instant, expires_at: Instant.nullable().default(null),
   candidate_revision: summaryRevision, setup_revision: summaryRevision,
-})).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
+})), next_cursor: z.string().nullable()});
 
 export type Definition = z.infer<typeof DefinitionSchema>;
 export type Draft = z.infer<typeof DraftSchema>;

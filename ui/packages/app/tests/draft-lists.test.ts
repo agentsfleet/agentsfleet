@@ -108,15 +108,6 @@ it("private chat lists > selects the first eligible configured model beyond runt
   expect(requests(MODELS)).toHaveLength(2);
 });
 
-it("private chat lists > selects a newly loaded eligible model after the initial bounded search finds none", async () => {
-  models = () => page([], CURSOR);
-  const client = await opened();
-  expect(client.getSnapshot().model).toBe("");
-  models = () => page([MODEL], null);
-  await client.loadMore(DRAFT_LIST.models);
-  expect(client.getSnapshot()).toMatchObject({model: MODEL_REF, moreModels: false});
-});
-
 it("private chat lists > keeps the person's eligible selection when refresh changes catalogue order", async () => {
   const other = {...MODEL, ref: "other-configured-model"};
   models = () => page([MODEL, other], null);
@@ -129,15 +120,23 @@ it("private chat lists > keeps the person's eligible selection when refresh chan
   expect(client.getSnapshot().model).toBe(MODEL_REF);
 });
 
-it("private chat lists > skips filtered-out model pages to the first choice, within a fixed bound", async () => {
+it("private chat lists > skips filtered-out model pages to the first choice, past the four it once stopped at", async () => {
   let served = 0;
-  models = () => { served += 1; return served < 3 ? page([], `${CURSOR}-${served}`) : page([MODEL], null); };
+  models = () => { served += 1; return served < 6 ? page([], `${CURSOR}-${served}`) : page([MODEL], null); };
   expect((await opened()).getSnapshot()).toMatchObject({model: MODEL_REF, moreModels: false});
-  expect(requests(MODELS)).toHaveLength(3);
-  urls.length = 0; models = () => page([], CURSOR);
+  expect(requests(MODELS)).toHaveLength(6);
+  urls.length = 0; models = () => page([], null);
   const empty = await opened();
-  expect(requests(MODELS)).toHaveLength(4);
-  expect(empty.getSnapshot()).toMatchObject({models: [], model: "", moreModels: true});
+  expect(requests(MODELS)).toHaveLength(1);
+  expect(empty.getSnapshot()).toMatchObject({models: [], model: "", moreModels: false});
+});
+
+it("private chat lists > stops a model search whose cursor repeats", async () => {
+  const client = await opened();
+  urls.length = 0; models = () => page([], CURSOR);
+  await expect(client.initialize()).rejects.toMatchObject({status: 502});
+  expect(requests(MODELS)).toHaveLength(2);
+  expect(client.getSnapshot()).toMatchObject({listStatus: "unavailable"});
 });
 
 it("private chat lists > shares one request between concurrent loads of the same list", async () => {

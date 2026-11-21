@@ -2,7 +2,6 @@ import type { Draft, DraftCard, Message } from "./draft-types";
 import { DRAFT_STATE, MESSAGE_ROLE } from "./draft-vocabulary";
 
 const DEFAULT_TITLE = "new fleet";
-export const CHAT_TITLE_LIMIT = 100;
 const CHAT_STATE_LABEL = {editing: "In progress", ready: "Setup ready", saving: "Saving fleet", saved: "Fleet saved", closed: "Chat closed"} as const;
 export const CHAT_ACTIVITY = {draft: "draft", saved: "saved", pending: "pending", failed: "failed"} as const;
 export type ChatActivity = typeof CHAT_ACTIVITY[keyof typeof CHAT_ACTIVITY];
@@ -11,7 +10,7 @@ export type SidebarDraft = Pick<DraftCard, "id" | "title"> & {readonly detail: s
 export function chatTitle(title: string, id: string, description = ""): string {
   if (title.trim() && title.trim().toLowerCase() !== DEFAULT_TITLE) return title;
   const purpose = description.replace(/\s+/g, " ").trim();
-  return purpose ? Array.from(purpose).slice(0, CHAT_TITLE_LIMIT).join("") : `Setup chat ${id.slice(-6).toUpperCase()}`;
+  return purpose || `Setup chat ${id.slice(-6).toUpperCase()}`;
 }
 
 export function sidebarDrafts(cards: readonly DraftCard[], draft: Draft | null, firstRequest = "", setupRevision: string | null = null, activity?: ChatActivity): readonly SidebarDraft[] {

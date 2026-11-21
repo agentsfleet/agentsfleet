@@ -10,7 +10,6 @@ export const DRAFT_EVENT = {
   cancelled: "message.cancelled", failed: "message.failed", timedOut: "message.timed_out",
   candidate: "candidate.changed", closed: "draft.closed", deleted: "draft.deleted",
 } as const;
-const MAX_HINT_CHARACTERS = 64 * 1024;
 const ACCOUNTING_POLL_MS = 5_000;
 const ACCOUNTING_POLL_JITTER_MS = 1_000;
 const HintSchema = z.object({draft_id: z.uuidv7()});
@@ -104,7 +103,7 @@ class DraftProgress {
   }
 
   #hint(name: string, data: string): boolean {
-    if (this.#closed || data.length > MAX_HINT_CHARACTERS || !Object.values<string>(DRAFT_EVENT).includes(name)) return false;
+    if (this.#closed || !Object.values<string>(DRAFT_EVENT).includes(name)) return false;
     let value: unknown;
     try { value = JSON.parse(data); } catch { return false; }
     const hint = HintSchema.safeParse(value);
