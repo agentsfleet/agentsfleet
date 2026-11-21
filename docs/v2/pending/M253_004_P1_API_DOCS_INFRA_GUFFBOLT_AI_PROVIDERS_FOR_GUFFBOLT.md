@@ -431,3 +431,12 @@ N/A: no product or operator signal changes. The provider metric families and the
 - `make test-integration-rustd` over everything M253_003 built: its integration tests are written and compiled but not yet run (§1–§4 Dimensions, the effect items, the thread page of 100, `recovery_process` reordered for the deleted fallback tick).
 - Regenerate `public/openapi.json` with `--no-banner` (page limits, the `x-request-id` header, effect item fields, removed caps).
 - `orly gate pr` on the final tree, then CI and review.
+
+### §9 — Search runs where the files are (from M253_003, Nov 22, 2026)
+
+guffbolt's grep, glob and tree listing walk the sandbox through `Env` today: one `fs/list` per directory and one `fs/read` per file over the executor socket, with no `.gitignore`. Add one `Env::search(pattern, root, globs)` and one executor method `fs/search` that runs the `ignore` walker and `grep-searcher` on the sandbox's own disk and answers once; `LocalEnv` runs the same two crates on the host path. The guffbolt tools call it instead of walking.
+
+- Dimension 9.1 — one round trip → Test `a_search_over_a_tree_is_one_executor_call` (unit): a 1,000-file tree. Expected: one `fs/search` request, matches equal to today's walk.
+- Dimension 9.2 — ignored files are skipped → Test `a_search_skips_gitignored_paths` (unit): `target/` listed in `.gitignore`. Expected: no match under it.
+
+Also review the runner↔executor JSON-RPC transport: it uses `jsonrpsee-types` only and frames messages itself; use `jsonrpsee`'s own client and server if they fit the Unix socket, else record why not.
