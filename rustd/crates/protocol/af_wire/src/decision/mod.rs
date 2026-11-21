@@ -20,8 +20,6 @@ pub(crate) use question::state_bound;
 pub use question::{ChoiceOption, DecisionQuestion, DecisionRequest, NamedQuestion, NoulCriteria};
 pub use result::{DecisionAnswer, DecisionInvalid, DecisionOutcome, DecisionResult, DecisionUsage};
 
-/// Maximum serialized evidence supplied to one decision.
-pub const STATE_MAX_BYTES: usize = 16 * 1024;
 /// Maximum typed questions in one physical request.
 pub const QUESTIONS_MAX: usize = 8;
 /// Maximum compiled question, including all native candidate options.

@@ -10,7 +10,7 @@ use af_core::error_code;
 use af_wire::decision::{
     ChoiceOption, DecisionApi, DecisionAssignment, DecisionCapabilities, DecisionProfile,
     DecisionPurpose, DecisionQuestion, DecisionRequest, DecisionThreshold, GoalDecisionPolicy,
-    IntentDecisionPolicy, NamedQuestion, STATE_MAX_BYTES,
+    IntentDecisionPolicy, NamedQuestion,
 };
 
 use super::supported;
@@ -101,11 +101,9 @@ fn a_request_past_the_models_input_limit_is_refused_as_too_large() {
 }
 
 #[test]
-fn a_state_past_the_wire_bound_is_too_large_even_for_the_largest_profile() {
-    assert_eq!(
-        refusal(&assignment(24576, true), &request(STATE_MAX_BYTES)),
-        Some(TaskRefusal::DecisionInputTooLarge)
-    );
+fn a_state_past_16_kib_within_the_models_limit_is_supported() {
+    supported(&assignment(24576, true), &request(20 * 1024))
+        .expect("20 KiB of evidence fits the largest reviewed profile");
 }
 
 #[test]

@@ -5,9 +5,7 @@ use std::collections::BTreeSet;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    DecisionPurpose, QUESTION_MAX_BYTES, QUESTIONS_MAX, STATE_MAX_BYTES, serialized_within,
-};
+use super::{DecisionPurpose, QUESTION_MAX_BYTES, QUESTIONS_MAX, serialized_within};
 
 /// Accepted meanings of a true and false assessment.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -109,13 +107,8 @@ pub(crate) fn state_bound<C: ?Sized>(state: &serde_json::Value, _context: &C) ->
             "state must be text, an object or an array",
         ));
     }
-    if serialized_within(state, STATE_MAX_BYTES) {
-        Ok(())
-    } else {
-        Err(garde::Error::new(
-            "serialized decision state exceeds its byte bound",
-        ))
-    }
+    // Its size is the decision model's to judge (its profile's input_max_bytes).
+    Ok(())
 }
 
 fn question_bounds<C: ?Sized>(questions: &[NamedQuestion], _context: &C) -> garde::Result {

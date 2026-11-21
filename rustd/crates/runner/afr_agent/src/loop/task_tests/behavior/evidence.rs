@@ -118,7 +118,7 @@ async fn evidence_past_the_models_limit_is_summarised_and_retried() -> crate::Re
 }
 
 #[tokio::test]
-async fn a_group_past_the_wire_bound_is_summarised_without_being_sent_whole() -> crate::Result<()> {
+async fn a_group_past_16_kib_within_the_models_limit_is_sent_whole() -> crate::Result<()> {
     let tool = &afr_tools::catalog::UPDATE_PLAN;
     let script = Script::new([
         vec![
@@ -146,13 +146,13 @@ async fn a_group_past_the_wire_bound_is_summarised_without_being_sent_whole() ->
             .disposition,
         TaskDisposition::Waiting
     );
-    assert!(canonical(2000).len() > STATE_MAX_BYTES);
+    assert!(canonical(2000).len() > 16 * 1024, "past the old wire bound");
     let requests = native.requests.lock().expect("fixture mutex is unpoisoned");
-    // Only the summary is sent.
+    // The whole group is sent once, and no summary is asked for.
     assert_eq!(requests.len(), 1);
-    let summary = requests.first().ok_or_else(crate::decision::unavailable)?;
-    assert_complete_summary(&summary.evidence, 2000);
-    assert_eq!(script.sent().len(), 2);
+    let whole = requests.first().ok_or_else(crate::decision::unavailable)?;
+    assert_eq!(whole.evidence.to_string(), canonical(2000));
+    assert_eq!(script.sent().len(), 1, "no summarising model call");
     Ok(())
 }
 
