@@ -103,6 +103,39 @@ test("incoming progress never moves the draft or the reading position, and Jump 
 test("opens at the latest turn, lifts a sent turn to the top and holds it while the reply streams and the window resizes", async ({page, chatProbe}) => {
   const roomy = page.viewportSize();
   if (roomy === null) throw new Error("the project sets no viewport to resize from");
+  await page.addInitScript(() => {
+    const nativeObserver = ResizeObserver;
+    const mark = (name: string) => performance.mark(`chat-opening:${name}`);
+    window.ResizeObserver = class extends nativeObserver {
+      private observesLog = false;
+      constructor(callback: ResizeObserverCallback) {
+        super((entries, observer) => {
+          for (const entry of entries) {
+            if (entry.target.classList.contains("fleet-thread-log")) mark(`resize ${entry.contentRect.height}`);
+          }
+          callback(entries, observer);
+        });
+      }
+      observe(target: Element, options?: ResizeObserverOptions): void {
+        if (target.classList.contains("fleet-thread-log")) this.observesLog = true;
+        super.observe(target, options);
+      }
+      disconnect(): void {
+        if (this.observesLog) mark(`disconnect ${new Error().stack?.split("\n").slice(2, 4).join(" ")}`);
+        super.disconnect();
+      }
+    };
+    const scrollTo = Reflect.get(Element.prototype, "scrollTo") as Element["scrollTo"];
+    Element.prototype.scrollTo = new Proxy(scrollTo, {
+      apply(scrollTo, element, args) {
+        if (element instanceof Element && element.classList.contains("fleet-thread-viewport")) mark(`scrollTo ${args[0]?.top ?? args[1]}`);
+        return Reflect.apply(scrollTo, element, args);
+      },
+    });
+    window.addEventListener("scroll", event => {
+      if (event.target instanceof Element && event.target.classList.contains("fleet-thread-viewport")) mark("scroll");
+    }, {capture: true, passive: true});
+  });
   // A settled reply taller than its layout placeholder sits just above the newest turn.
   await page.goto(`${chatProbe}?scroll=1&tall=18`);
   const viewport = page.locator('[data-testid="fleet-thread-root"] [role="presentation"]');
@@ -111,7 +144,14 @@ test("opens at the latest turn, lifts a sent turn to the top and holds it while 
   const fromBottom = () => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop);
   const scrollTop = () => viewport.evaluate(element => element.scrollTop);
   const painted = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await expect.poll(fromBottom).toBeLessThanOrEqual(1);
+  try {
+    await expect.poll(fromBottom).toBeLessThanOrEqual(1);
+  } catch (cause) {
+    const timeline = await page.evaluate(() => performance.getEntriesByType("mark")
+      .filter(mark => mark.name.startsWith("chat-opening:"))
+      .map(mark => `${Math.round(mark.startTime)}ms ${mark.name}`));
+    throw new Error(`Opening scroll timeline\n${timeline.join("\n")}`, {cause});
+  }
   await input.fill("Check the canary rollout.");
   await page.getByRole("button", {name: "Send", exact: true}).click();
   const sent = page.locator("[data-aui-top-anchor-user]");

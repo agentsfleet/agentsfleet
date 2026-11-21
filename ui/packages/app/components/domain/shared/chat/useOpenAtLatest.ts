@@ -1,15 +1,12 @@
 import { useLayoutEffect, type RefObject } from "react";
 import { useAui } from "@assistant-ui/react";
 
-/** Within one pixel of the end counts as being at the latest turn. */
-const AT_BOTTOM_PX = 1;
-
 /**
  * Lands the thread on its latest turn as it opens, whether the turns came with
  * the mount or loaded just after; a first turn whose reply is running is live
  * and left alone. Settled rows lay out only near the viewport and move the
  * bottom when they do, so each resize of the log lands again until the thread
- * changes, the reader scrolls up or types. An explicit jump starts this again
+ * changes or the reader interacts with it. An explicit jump starts this again
  * so laid-out rows and text still being revealed cannot leave the end out of view.
  */
 export function useOpenAtLatest(viewport: RefObject<HTMLDivElement | null>, log: RefObject<HTMLDivElement | null>, jumps = 0): void {
@@ -21,8 +18,7 @@ export function useOpenAtLatest(viewport: RefObject<HTMLDivElement | null>, log:
     const mounted = aui.thread().getState().messages;
     const latestAtJump = mounted.at(-1)?.id;
     let opened = mounted.length > 0 ? mounted : undefined;
-    let landedTop = frame.scrollTop;
-    let landedHeight = frame.scrollHeight;
+    const interaction = new AbortController();
     const land = new ResizeObserver(() => {
       const {messages} = aui.thread().getState();
       const latest = messages.at(-1);
@@ -30,24 +26,19 @@ export function useOpenAtLatest(viewport: RefObject<HTMLDivElement | null>, log:
       if (opened === undefined && latest.status?.type === "running") return stop();
       opened ??= messages;
       if (messages !== opened && (!jumps || latest.id !== latestAtJump)) return stop();
-      landedHeight = frame.scrollHeight;
-      frame.scrollTo({top: landedHeight, behavior: "instant"});
-      landedTop = frame.scrollTop;
+      frame.scrollTo({top: frame.scrollHeight, behavior: "instant"});
     });
-    const leave = () => {
-      // Laying out history can clamp the scroll position before resize is delivered.
-      const {scrollHeight, scrollTop, clientHeight} = frame;
-      const scrolledUp = scrollHeight === landedHeight && scrollTop < landedTop - AT_BOTTOM_PX;
-      if (scrolledUp && scrollHeight - clientHeight - scrollTop > AT_BOTTOM_PX) stop();
-    };
     const stop = () => {
       land.disconnect();
-      frame.removeEventListener("scroll", leave);
-      frame.removeEventListener("input", stop);
+      interaction.abort();
     };
     land.observe(rows);
-    frame.addEventListener("scroll", leave);
-    frame.addEventListener("input", stop);
+    // The browser also emits scroll events when deferred history adjusts the anchor.
+    const listenerOptions = {passive: true, signal: interaction.signal};
+    for (const event of ["pointerdown", "wheel", "keydown", "input"]) {
+      frame.addEventListener(event, stop, listenerOptions);
+    }
+    rows.addEventListener("focusin", stop, listenerOptions);
     return stop;
   }, [aui, viewport, log, jumps]);
 }
