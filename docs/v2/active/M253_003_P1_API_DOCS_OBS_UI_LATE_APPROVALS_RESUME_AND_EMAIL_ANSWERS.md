@@ -160,7 +160,7 @@ Its run resumes from the checkpoint, and `DriveState::resume` gives the answer a
 
 Each message, schedule and cron call is an item, written when the call starts and unique on `(run_id, sequence)`. The runner sends the item's `item_id` with the effect request. The daemon records the effect's result on the item before it responds.
 
-A retried request for the same item returns the stored result, and no second effect happens. A request from a run below the thread's fence is refused first, with `RUN_STALE_FENCING_TOKEN`. A deduplicated message does not count again against `MESSAGES_PER_RUN_MAX`.
+A retried request for the same item returns the stored result, and no second effect happens. A request from a run below the thread's fence is refused first, with `RUN_STALE_FENCING_TOKEN`. No count caps a run's messages.
 
 A resumed run is a new run, and its model makes new calls. Its recovery note already says "Reconcile … before taking another action" (`recovery_boundary.rs:58`). It will also list the dead run's finished effects from that run's items, which stay until the turn settles.
 
@@ -180,7 +180,7 @@ The `used_decision_calls` increment moves into `account_task.sql`. The budget ch
 
 ### §5 — A settled turn's answer can be emailed
 
-A fleet definition may list `x-agentsfleet.deliveries` entries of `{"type":"email","to":[…]}`. Each recipient is `owner` or `member:<user_id>`, at most 10 per entry, with no repeats. The save path checks each one against tenant membership and refuses a stranger with `DELIVERY_RECIPIENT_REFUSED`.
+A fleet definition may list `x-agentsfleet.deliveries` entries of `{"type":"email","to":[…]}`. Each recipient is `owner` or `member:<user_id>`, with no repeats and no count cap. The save path checks each one against tenant membership and refuses a stranger with `DELIVERY_RECIPIENT_REFUSED`.
 
 When a turn settles answered or failed, the report owes one delivery per recipient, with provider `email` and the user id as destination. `afd_outbound` routes it through a `Channel` enum, Slack or Email, and `Posters` gains an email poster.
 
@@ -391,5 +391,6 @@ Unchanged: the 1M message, the body sizes, shell output and listing budgets, the
   - > Owner (Indy, Nov 21, 2026): "Delete the client copies (Recommended)" — context: the app and CLI re-checked live-stream frames against their own copies of the daemon's sizes; they now check shape only and trust the daemon's bound.
   - > Owner (Indy, Nov 21, 2026): "Reject some", then rejected "3 Status read of 64 msgs" and left 1, 2 and 4 unpicked (accepted): the shell's 24.8-day ceiling; the operator settings' maxima (ttl ≤ 1 h, offline-after ≤ 3 h, sandbox idle hold ≤ 1 day); an item record cut only past the 32 MiB link message. The steer status read now looks at the whole backlog. Then: "And i have approve 1-2, 4,5,6,7" — deviations 5 (image 8 MiB read, 5 MiB result), 6 (UZ-RUN-011 for a late task run) and 7 (docs after merge) are accepted too.
   - > Owner (Indy, Nov 21, 2026): "Delete it (Recommended)" — context: §8, the decision request's 16 KiB state field (`STATE_MAX_BYTES`); the decision model's `input_max_bytes` is the only bound. Codex and Pi have no judge model to match.
+  - > Owner (Indy, Nov 21, 2026): "yes no recipient count and without the per-run message cap. Why are you reasoning crap on caps or limits, thsi is absurd and stupid" — context: §3 and §5 carry no count caps; `.orly/LOCAL.md` now says no limit exists without a provider, transport or operating-system reason or the owner's number.
 - **Open blockers** — none. Unverified at sign-off: QStash's per-message price and its plan's longest delay against the 7-day turn-checkpoint deletion.
 - **Deferrals and transfers** — none.

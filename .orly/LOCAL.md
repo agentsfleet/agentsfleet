@@ -66,6 +66,11 @@ facts.
   `Error`, its backtrace, its `[CODE]` `Display` and its self-skipping
   `source()`, and `error_lifts!` generates the `From` impls. Only the `Result`
   alias is written by hand, so a reader can see it without expanding a macro.
+- **No invented limits.** A cap on content, count, size or time exists only when a model
+  provider, a transport, the operating system or Postgres forces it, or Indy named its number;
+  otherwise match Codex and Pi, and where neither caps something, cap nothing (Indy, Nov 21,
+  2026). Name the forcing limit beside the constant. A bound on untrusted input is the text
+  ceiling or the frame, never a smaller invented number.
 - **Bounds on untrusted input are declared with `garde`** on the type they
   guard, per HTTP-GARDE and HTTP-VALID in [the HTTP standard](standards/domains/http.md); never a
   hand-written length, range or charset check. Rules garde lacks, the route
