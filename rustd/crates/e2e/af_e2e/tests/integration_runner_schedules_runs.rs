@@ -32,7 +32,7 @@ use crate::wire::wait_for_assignment;
 async fn test_schedule_run_now_admits_one_event() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let (_status, created) = assigned.create(false).await;
     let schedule = created["schedule_id"].as_str().expect("an id").to_owned();
 
@@ -70,7 +70,7 @@ async fn test_schedule_run_now_admits_one_event() {
 async fn test_scheduled_run_is_assigned_with_its_message() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let (_status, created) = assigned.create(false).await;
     let schedule = created["schedule_id"].as_str().expect("an id").to_owned();
     let (status, fired) = assigned.run_now(&schedule).await;
@@ -102,7 +102,7 @@ async fn test_scheduled_run_is_assigned_with_its_message() {
 async fn test_run_now_of_a_person_s_active_schedule_runs() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let schedule = assigned.seed(Source::Api, "person-active").await;
 
     let (status, scene) = assigned.run_now(&schedule).await;
@@ -118,7 +118,7 @@ async fn test_run_now_of_a_person_s_active_schedule_runs() {
 async fn test_run_now_refuses_a_schedule_that_would_not_fire() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     for (source, state) in [(Source::Api, "paused"), (Source::Fleet, "deleting")] {
         let row = Seeded {
             desired_status: state,
@@ -143,7 +143,7 @@ async fn test_run_now_refuses_a_schedule_that_would_not_fire() {
 async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let schedule = assigned.seed(Source::Fleet, "own-active").await;
     assigned
         .on_fleet("UPDATE fleet.fleets SET status = 'archived' WHERE id = $1")
@@ -166,7 +166,7 @@ async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
 async fn test_run_now_from_a_scheduled_run_is_refused() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let schedule = assigned.seed(Source::Fleet, "own-active").await;
     assigned.run_woken_by_schedule().await;
 
@@ -186,7 +186,7 @@ async fn test_run_now_from_a_scheduled_run_is_refused() {
 async fn test_schedule_runs_lists_events() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let schedule = assigned.seed(Source::Fleet, "runs-fixture").await;
     let actor = format!("{ACTOR_PREFIX}{schedule}");
     // Minted in ascending order, so an id breaks a same-millisecond tie the
@@ -233,7 +233,7 @@ async fn test_schedule_runs_lists_events() {
 async fn test_once_schedule_retires_after_fire() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let (_status, created) = assigned.create(true).await;
     assert_eq!(created["once"], true);
     let schedule = created["schedule_id"].as_str().expect("an id");
@@ -273,7 +273,7 @@ async fn test_once_schedule_retires_after_fire() {
 async fn test_once_retirement_held_is_repeated_not_dropped() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let row = Seeded {
         once: true,
         ..Seeded::active(Source::Fleet, "once-held")

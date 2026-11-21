@@ -29,7 +29,7 @@ type Case = (Method, String, Option<Value>, u16, &'static str);
 async fn refuses(cases: impl FnOnce(&Assigned) -> Vec<Case>) {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let held = Assigned::boot(&mut supervisor, &qstash).await;
+    let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     for (method, path, body, status, code) in cases(&held) {
         let (answered, refusal) = held.call(method.clone(), &path, body.as_ref()).await;
         assert_eq!(

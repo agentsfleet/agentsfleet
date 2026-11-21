@@ -32,7 +32,7 @@ use crate::verbs::{FakeQStash, QSTASH_TOKEN, Told};
 async fn test_fleet_creates_its_own_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
 
     let (status, created) = assigned.create(false).await;
     assert_eq!(status, 201, "{created}");
@@ -67,7 +67,7 @@ async fn test_fleet_creates_its_own_schedule() {
 async fn test_one_run_creates_two_schedules_at_once() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
 
     let ((first_status, first), (second_status, second)) =
         tokio::join!(assigned.create(false), assigned.create(true));
@@ -88,7 +88,7 @@ async fn test_one_run_creates_two_schedules_at_once() {
 async fn test_stale_fence_schedule_refused() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     assigned.supersede().await;
 
     let (status, refused) = assigned.create(false).await;
@@ -108,7 +108,7 @@ async fn test_stale_fence_schedule_refused() {
 async fn test_schedule_cap_refuses_with_code() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     for slot in 0..FLEET_SCHEDULES_MAX {
         assigned
             .seed(Source::Fleet, &format!("seeded-{slot}"))
@@ -132,7 +132,7 @@ async fn test_schedule_cap_refuses_with_code() {
 async fn test_fleet_cap_counts_only_its_own_schedules() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     for slot in 0..FLEET_SCHEDULES_MAX {
         assigned.seed(Source::Api, &format!("person-{slot}")).await;
     }
@@ -157,7 +157,7 @@ async fn test_fleet_cap_counts_only_its_own_schedules() {
 async fn test_schedule_saved_when_qstash_is_down() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::refusing(503).await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
 
     let (status, created) = assigned.create(false).await;
     assert_eq!(status, 201, "{created}");

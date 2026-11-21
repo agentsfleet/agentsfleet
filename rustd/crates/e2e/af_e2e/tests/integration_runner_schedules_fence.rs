@@ -22,7 +22,7 @@ use crate::verbs::FakeQStash;
 async fn test_a_write_fence_holds_only_for_the_live_holder() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let assigned = Assigned::boot(&mut supervisor, &qstash).await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let run = assigned.run_id.clone();
     let runner = assigned.scene.runner_id.clone();
     let held = WriteFence::new(runner.clone(), run.clone(), assigned.fence);

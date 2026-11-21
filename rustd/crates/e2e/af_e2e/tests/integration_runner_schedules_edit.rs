@@ -28,7 +28,7 @@ use crate::verbs::{FakeQStash, Told};
 async fn test_fleet_cannot_touch_human_schedules() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let held = Assigned::boot(&mut supervisor, &qstash).await;
+    let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     for source in [Source::Api, Source::Trigger] {
         let schedule = held
             .seed(source, &format!("person-{}", source.as_str()))
@@ -74,7 +74,7 @@ async fn test_fleet_cannot_touch_human_schedules() {
 async fn test_fleet_cannot_reach_another_fleets_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let held = Assigned::boot(&mut supervisor, &qstash).await;
+    let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let other = held.other_fleet().await;
     let foreign = held
         .seed_row(&other, Seeded::active(Source::Fleet, "foreign"))
@@ -111,7 +111,7 @@ async fn test_fleet_cannot_reach_another_fleets_schedule() {
 async fn test_fleet_deletes_its_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let held = Assigned::boot(&mut supervisor, &qstash).await;
+    let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let (_status, created) = held.create(false).await;
     let schedule_id = created["schedule_id"].as_str().expect("an id");
     let member = format!("/{schedule_id}");
@@ -136,7 +136,7 @@ async fn test_fleet_deletes_its_schedule() {
 async fn test_fleet_schedule_patch_is_idempotent() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
-    let held = Assigned::boot(&mut supervisor, &qstash).await;
+    let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let (_status, created) = held.create(false).await;
     let member = format!("/{}", created["schedule_id"].as_str().expect("an id"));
     let patch =
