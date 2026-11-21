@@ -44,7 +44,9 @@ it("shows each fleet next to its private setup conversation and includes unfinis
   const fleet = await screen.findByRole("link", {name: active.name});
   expect(fleet.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
   expect(fleet.getAttribute("title")).toContain("active");
-  expect(fleet.querySelector("svg")).toBeNull();
+  const icon = fleet.querySelector("svg");
+  expect(icon?.getAttribute("width")).toBe("16");
+  expect(icon?.getAttribute("aria-hidden")).toBe("true");
   expect(within(fleet).getByText(active.name).classList.contains("text-pulse")).toBe(false);
   const neutral = screen.getByRole("link", {name: `${archived.name} Archived`});
   expect(within(neutral).getByText(archived.name).classList.contains("text-pulse")).toBe(false);
