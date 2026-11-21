@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 19, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, every setup message and every fleet turn passes through this harness
 
@@ -372,7 +372,7 @@ Three things the schema sign-off found, and the runner retention sweeper, are re
 - **Dimension 14.1** — DONE — Plugins are gone → Test `no_plugin_table_route_or_page_remains` (unit): no `setup.plugin_*` schema file or statement, no Plugin route in the route inventory, no `/plugins` app page. Expected: none.
 - **Dimension 14.2** — DONE — run outcomes are metrics → Test `a_settled_run_counts_its_outcome_on_its_runner` (unit): a run that succeeds, one that fails and one that expires. Expected: `agentsfleet_runner_runs_total` rises once per outcome with the runner's id, and no statement names `runner.lifetime_counters`.
 - **Dimension 14.3** — DONE — a host registers once → Test `a_retried_registration_of_one_host_answers_409_naming_the_runner` (integration): the same `(tenant, host_id)` twice. Expected: one runner; the second answers `409` with its id; a rotation then gives a token that connects.
-- **Dimension 14.4** — no retention sweeper runs → Test `a_runner_history_section_is_refused_as_an_unknown_key` (unit): a daemon config file holding `[maintenance.runner_history]` with `keep_days = 30`. Expected: the build is refused, naming the config file knob and `runner_history`.
+- **Dimension 14.4** — DONE — no retention sweeper runs → Test `a_runner_history_section_is_refused_as_an_unknown_key` (unit): a daemon config file holding `[maintenance.runner_history]` with `keep_days = 30`. Expected: the build is refused, naming the config file knob and `runner_history`.
 
 ## Interfaces
 
@@ -531,7 +531,11 @@ Three things the schema sign-off found, and the runner retention sweeper, are re
   - > Owner (Indy, Nov 19, 2026): "I think i did the elephant goldfish brainstrome before." and "youalready have the context" — context: orly-spec step 2.
   - > Owner (Indy, Nov 21, 2026): "Live with the turn (Recommended)" — context: gstack review finding 5, `thread.items` cascading from `thread.runs`; `run_id` becomes `ON DELETE SET NULL` and items cascade from their turn, so run retention and runner deletion keep a turn's tool and edit detail.
   - > Owner (Indy, Nov 21, 2026): "i dont need that crap sweeper remove that, i can figure a way later" — context: §14, Dimension 14.4. The runner retention sweeper goes; finished runs and runner events are kept until a retention policy is chosen.
+  - > Owner (Indy, Nov 21, 2026): "Release, reassign now (Recommended)" — context: gstack review, a committed run whose frame never leaves the daemon. `Runs::release_unsent` releases it and requeues its turn.
+  - > Owner (Indy, Nov 21, 2026): "Skip it; CI is the proof" — context: CHORE(close). `orly gate pr` is not run by hand; the PR records an `Orly-Override` and CI on the pushed head is the verification.
+  - > Owner (Indy, Nov 21, 2026): "After you send the fixes, you dont have to wait for CI jobs to be green, I think you  should continue to M252_002 if its chore closed" — context: CHORE(close) proceeds with CI on `79e365e5d` pending.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 9 Blockers, 39 Majors, 30 Nits. Every Blocker is resolved in the Sections as an implementation default, recorded in `.egm/implementation_readiness_report.md`; wording findings are applied, and none is declined.
+- **Verification evidence (close)** — Nov 21, 2026: commit `14fc9ecd3` (CI run `44817781110`, coverage daemon) passed 14.4's `a_runner_history_section_is_refused_as_an_unknown_key`. The same run failed three tests this branch broke, fixed in `79e365e5d`: `the_next_setup_turn_loads_the_saved_context` (a compaction guard added in review switched compaction off once the watermark fell behind the daemon's newest-turns window; removed), `a_resent_save_report_activates_the_fleet_its_first_copy_could_not` (the fixture tenant selected no model, so the fleet could not activate; it now selects its own) and guffbolt's `a_listing_fails_on_an_entry_it_cannot_look_at` (the entry's path could stay under Linux's `PATH_MAX`). Each passed in a focused local run at `79e365e5d`; CI on that head is pending at close.
 - **Verification evidence** — Nov 21, 2026, commit `2135b648e` (CI run `44807275124` integration): 5.3, 5.4, 5.5, 5.6, 6.2, 7.1, 7.2, 10.1, 11.2, 12.6 passed. Commit `2cde5c0d4` (CI runs `44799161892` unit, `44799161727` integration): 8.1, 8.3, 9.1, 9.2, 9.3, 9.4, 9.5, 9.7, 10.2, 11.4, 11.6, 11.8, 11.9, 12.1, 12.2, 12.3, 12.4, 12.5, 12.7, 12.8, 12.9, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 14.1, 14.2, 14.3 passed. Earlier: Nov 20, 2026, commit `6f97d0ef1`: each DONE Dimension from §4 on names a test that passed in CI run `44756156167` (unit) or `44756156230` (integration), or on E2E Networks VM 30591 (`make test-integration-rustd`). 9.5 and 11.6 failed there; the rest did not run because a lane stops at its first failing suite.
 - **Open blockers** — none.
 - **Deferrals and transfers** — none.
