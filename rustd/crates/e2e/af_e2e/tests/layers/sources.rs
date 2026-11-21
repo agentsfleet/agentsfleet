@@ -67,8 +67,14 @@ pub(crate) fn libraries(workspace: &Workspace) -> BTreeSet<String> {
         .collect()
 }
 
+/// The one re-export edge the rule allows, as (re-exporting crate, crate
+/// re-exported): guffbolt re-exports the moved types, so every existing
+/// `guffbolt::` path still compiles (`M253_004` §1).
+const REEXPORTS: [(&str, &str); 1] = [("guffbolt", "guffbolt_ai")];
+
 /// Each `pub use` in `text` (crate `own`'s file `file`) whose path starts at
 /// another workspace crate: a second public path to an item that crate owns.
+/// An edge in [`REEXPORTS`] is not one.
 pub(crate) fn foreign_reexports(
     own: &str,
     file: &str,
@@ -86,7 +92,10 @@ pub(crate) fn foreign_reexports(
             |group| group.split(',').map(head).collect(),
         );
         for crate_name in heads {
-            if crate_name != own && libraries.contains(crate_name) {
+            if crate_name != own
+                && libraries.contains(crate_name)
+                && !REEXPORTS.contains(&(own, crate_name))
+            {
                 found.push(format!("{file}:{}: pub use {crate_name}::…", number + 1));
             }
         }

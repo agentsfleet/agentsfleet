@@ -58,9 +58,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
-# M-TEST-UTIL: an observer a suite reads back, and the fake provider's TLS
-# listener, for this crate's suites and the runner's.
-test-util = ["guffbolt-ai/test-util"]
+# M-TEST-UTIL: an observer a suite reads back and a scripted model, for this
+# crate's suites and the runner's. The fake provider's TLS listener is
+# guffbolt-ai's own `test-util`.
+test-util = []
 
 [dev-dependencies]
 # The request and the body bytes a fake transport answers with.
@@ -72,8 +73,9 @@ rig-core = { workspace = true, features = ["test-utils"] }
 af_core = { workspace = true, features = ["test-util"] }
 # The fake provider: a real listener, so a status, a header and a streamed
 # body are proven on the socket rather than assumed by a mock; its TLS comes
-# from `testing::tls`.
+# from guffbolt-ai's `testing::tls`.
 axum.workspace = true
+guffbolt-ai = { workspace = true, features = ["test-util"] }
 tokio-rustls.workspace = true
 # The connect-refused send the retry suite classifies, and the fake provider
 # servers the wire suites stream from.
@@ -84,5 +86,5 @@ tokio-util.workspace = true
 [[test]]
 name = "decisions"
 path = "tests/decisions/main.rs"
-# The suite reads its measurements and serves its TLS through `testing`.
+# The suite reads its measurements through `testing`.
 required-features = ["test-util"]

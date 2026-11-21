@@ -18,7 +18,7 @@ impl Engine for ApiOnly {
 
 pub(super) async fn run(address: SocketAddr, root: &Path) -> Checked {
     let (config, home) = afr_supervisor::boot(&ProcessEnv)?;
-    let client = af_providers::testing::tls::client_from_file(root, address)?;
+    let client = guffbolt_ai::testing::tls::client_from_file(root, address)?;
     let agent = afr_agent::Loop::new(
         afr_tools::Catalog::new(Vec::new()),
         af_providers::Connector::with_client(client),

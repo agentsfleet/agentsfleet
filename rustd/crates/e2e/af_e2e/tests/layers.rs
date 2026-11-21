@@ -218,6 +218,22 @@ fn a_pub_use_of_another_workspace_crate_is_named() {
 }
 
 #[test]
+fn only_guffbolt_re_exports_guffbolt_ai() {
+    let libraries: BTreeSet<String> = ["guffbolt", "guffbolt_ai", "af_providers"]
+        .map(str::to_owned)
+        .into();
+    let text = "pub use guffbolt_ai::{Model, Request};\n";
+    assert_eq!(
+        sources::foreign_reexports("guffbolt", "src/lib.rs", text, &libraries),
+        [] as [&str; 0]
+    );
+    assert_eq!(
+        sources::foreign_reexports("af_providers", "src/lib.rs", text, &libraries),
+        ["src/lib.rs:1: pub use guffbolt_ai::…"]
+    );
+}
+
+#[test]
 fn no_handler_crate_names_the_shared_services_hub() {
     let found = sources::services_hub(&sources::hub_sources(&Workspace::load()));
     assert!(found.is_empty(), "{found:#?}");

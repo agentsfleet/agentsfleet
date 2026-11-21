@@ -111,7 +111,7 @@ impl Server {
             }
         });
         let (root, tls) =
-            af_providers::testing::tls::server().expect("fixture certificate authority");
+            guffbolt_ai::testing::tls::server().expect("fixture certificate authority");
         let socket = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("isolated fixture port");
@@ -132,10 +132,10 @@ impl Server {
         Self {
             base: format!(
                 "https://{}:{}",
-                af_providers::testing::tls::HOST,
+                guffbolt_ai::testing::tls::HOST,
                 address.port()
             ),
-            client: af_providers::testing::tls::client(root, address)
+            client: guffbolt_ai::testing::tls::client(root, address)
                 .expect("fixture client pins its generated hostname"),
             seen,
             connections,

@@ -39,6 +39,8 @@ guffbolt.workspace = true
 # provider seam.
 af_egress = { workspace = true, features = ["test-util"] }
 af_providers = { workspace = true, features = ["test-util"] }
+# The TLS listener the recovery suite's and bench's fake provider serves on.
+guffbolt-ai = { workspace = true, features = ["test-util"] }
 # The value and wire layers the suites seed and read through.
 af_context.workspace = true
 af_core = { workspace = true, features = ["test-util"] }

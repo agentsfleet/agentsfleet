@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use toml::{Table, Value};
 
-/// A layer folder under `crates/`, or the standalone harness beside them.
+/// A layer folder under `crates/`, or the standalone harness and its
+/// providers beside them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Layer {
     Foundation,
@@ -21,7 +22,7 @@ pub(crate) enum Layer {
 impl Layer {
     /// The layer a member folder (relative to `rustd/`) sits in, if any.
     pub(crate) fn of(dir: &str) -> Option<Self> {
-        if dir == STANDALONE {
+        if STANDALONE.contains(&dir) {
             return Some(Self::Standalone);
         }
         let mut parts = dir.split('/');
@@ -40,8 +41,9 @@ impl Layer {
     }
 }
 
-/// The one crate that sits beside `crates/` rather than in a layer.
-pub(crate) const STANDALONE: &str = "guffbolt";
+/// The crates that sit beside `crates/` rather than in a layer: the harness
+/// and its provider side, a sibling crate as pi-ai is to pi (`M253_004` §1).
+pub(crate) const STANDALONE: [&str; 2] = ["guffbolt", "guffbolt-ai"];
 
 /// Which table of a manifest an edge was declared in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

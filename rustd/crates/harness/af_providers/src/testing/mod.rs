@@ -2,13 +2,12 @@
 //! crates that embed it (M-TEST-UTIL).
 //!
 //! An observer it reads back, a scripted model and the measure every
-//! scripted model answers with, and a TLS listener a fake provider serves on.
+//! scripted model answers with. The TLS listener a fake provider serves on is
+//! guffbolt-ai's `testing::tls`.
 
 pub mod observed;
 #[cfg(feature = "test-util")]
 pub mod scripted;
-#[cfg(feature = "test-util")]
-pub use guffbolt_ai::testing::tls;
 
 pub use self::observed::{Observed, Scoped, Tally, scoped};
 

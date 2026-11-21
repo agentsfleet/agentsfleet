@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::workspace::{Dep, Kind, Layer, STANDALONE, Workspace};
+use crate::workspace::{Dep, Kind, Layer, Workspace};
 
 /// The runner binary's package, whose graph must name no datastore client.
 pub(crate) const RUNNER_BINARY: &str = "agentsfleet_runner";
@@ -41,7 +41,9 @@ pub(crate) fn layer_edges(workspace: &Workspace) -> Vec<String> {
 /// Why an edge from layer `from` to layer `to` is refused, if it is.
 fn refusal(from: Layer, to: Layer) -> Option<&'static str> {
     match (from, to) {
-        (Layer::Standalone, _) => Some("the standalone harness depends on no workspace crate"),
+        // guffbolt depends on guffbolt-ai; the reverse is a cycle cargo refuses.
+        (Layer::Standalone, Layer::Standalone) => None,
+        (Layer::Standalone, _) => Some("the standalone harness depends on no layered crate"),
         (_, Layer::Standalone) | (Layer::E2e, _) => None,
         (_, Layer::E2e) => Some("nothing depends on e2e/"),
         (Layer::Runner, Layer::Daemon) | (Layer::Daemon, Layer::Runner) => {
@@ -133,7 +135,9 @@ fn misplaced(name: &str, dir: &str) -> Option<&'static str> {
         return Some("sits in no layer folder under crates/");
     };
     if layer == Layer::Standalone {
-        return (name != STANDALONE).then_some("only guffbolt sits beside crates/");
+        // `Layer::of` already holds `dir` to a standalone folder; the crate is
+        // the one that folder names.
+        return (name != dir).then_some("only guffbolt and guffbolt-ai sit beside crates/");
     }
     let folder = dir.rsplit('/').next().unwrap_or_default();
     if dir.split('/').count() != 3 {

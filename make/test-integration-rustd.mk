@@ -108,7 +108,8 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 #   daemon      the rest of the daemon/ layer, then the suites that need the
 #               cluster alone (afd_bus holds them)
 #   e2e         the daemon-and-runner suites (af_e2e)
-#   guffbolt    the published harness, graded at RUSTD_GUFFBOLT_FLOOR too
+#   guffbolt    the published harness and its providers, guffbolt-ai, each
+#               graded at RUSTD_GUFFBOLT_FLOOR too
 # afd_bench is measured by no shard: its sampled counters are measurements,
 # not assertions, and RUSTD_COVERAGE_IGNORE keeps its lines out of the floor.
 # af_e2e's tests/layers.rs proves every member lands in exactly one shard or in
@@ -121,7 +122,7 @@ RUSTD_COVER_RUNNER_DIRS := crates/runner/*
 RUSTD_COVER_DAEMON_API_DIRS := crates/daemon/afd_api* crates/daemon/afd_fleet*
 RUSTD_COVER_DAEMON_DIRS := crates/daemon/afd_ad* crates/daemon/afd_app* crates/daemon/afd_au* crates/daemon/afd_b* crates/daemon/afd_c* crates/daemon/afd_d* crates/daemon/afd_g* crates/daemon/afd_h* crates/daemon/afd_i* crates/daemon/afd_m* crates/daemon/afd_o* crates/daemon/afd_r* crates/daemon/afd_s* crates/daemon/afd_t* crates/daemon/afd_v* crates/daemon/main
 RUSTD_COVER_E2E_DIRS := crates/e2e/*
-RUSTD_COVER_GUFFBOLT_DIRS := guffbolt
+RUSTD_COVER_GUFFBOLT_DIRS := guffbolt guffbolt-ai
 RUSTD_COVER_SKIP := afd_bench
 RUSTD_SHARDS := foundation harness runner daemon-api daemon e2e guffbolt
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
@@ -186,8 +187,8 @@ ifneq ($(filter e2e,$(RUSTD_SHARD)),)
 	$(call _rustd_shard_lane,E2E,e2e,daemon and runner)
 endif
 ifneq ($(filter guffbolt,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard guffbolt: the published harness..."; \
-	$(call _rustd_shard_lane,GUFFBOLT,guffbolt,guffbolt)
+	@echo "→ [rustd] Shard guffbolt: the published harness and its providers..."; \
+	$(call _rustd_shard_lane,GUFFBOLT,guffbolt,guffbolt and guffbolt-ai)
 endif
 ifeq ($(_RUSTD_SHARD_ALL),yes)
 	@echo "→ [rustd] Rendering the run's profile, then grading the floor..."; \

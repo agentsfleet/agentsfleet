@@ -87,8 +87,9 @@ tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net"
 # driven by this loop, so a turn is proven end to end: frames, trace, records
 # and report included.
 af_providers = { workspace = true, features = ["test-util"] }
-# The input count a provider suite expects a request to measure.
-guffbolt-ai = { workspace = true, features = ["wire"] }
+# The input count a provider suite expects a request to measure, and the TLS
+# listener its fake provider serves on.
+guffbolt-ai = { workspace = true, features = ["wire", "test-util"] }
 reqwest.workspace = true
 axum.workspace = true
 tempfile.workspace = true

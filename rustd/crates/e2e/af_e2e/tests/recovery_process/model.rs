@@ -15,7 +15,7 @@ use tokio::{
 use tokio_rustls::{TlsAcceptor, server::TlsStream};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
-const HOST: &str = af_providers::testing::tls::HOST;
+const HOST: &str = guffbolt_ai::testing::tls::HOST;
 
 pub(super) struct Asked {
     pub body: Value,

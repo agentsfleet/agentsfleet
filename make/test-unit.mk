@@ -6,7 +6,7 @@
 # changes its shard rather than dropping it. af_e2e's tests/layers.rs proves
 # every member lands in exactly one. `_rust_lane` fails a shard that selects
 # nothing.
-RUSTD_UNIT_RUNNER_DIRS := crates/harness/* crates/runner/* guffbolt
+RUSTD_UNIT_RUNNER_DIRS := crates/harness/* crates/runner/* guffbolt guffbolt-ai
 RUSTD_UNIT_DAEMON_DIRS := crates/daemon/main crates/e2e/*
 RUSTD_UNIT_DAEMON_LIBS_DIRS := crates/foundation/* crates/protocol/* crates/daemon/afd_*
 _rustd_manifest_name = $(shell awk -F'"' '/^name = /{print $$2; exit}' $(1))
@@ -22,7 +22,7 @@ _RUSTD_NEED_CARGO = command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not fo
 
 test-unit-rustd: test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs  ## Run the Rust workspace unit tests (cargo), shard by shard
 
-test-unit-rustd-runner:  ## Rust unit shard: the harness/ and runner/ layers, and guffbolt
+test-unit-rustd-runner:  ## Rust unit shard: the harness/ and runner/ layers, guffbolt and guffbolt-ai
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-runner.log,[rustd] unit: runner,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_RUNNER)))
 
