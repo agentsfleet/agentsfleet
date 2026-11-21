@@ -1,11 +1,12 @@
 "use client";
 
 import {useRef, useState, type RefObject} from "react";
-import {flushSync} from "react-dom";
 import {useAui} from "@assistant-ui/react";
-import {AtIcon, PaperclipIcon} from "@phosphor-icons/react/ssr";
+import {PaperclipIcon} from "@phosphor-icons/react/ssr";
 import {Button} from "@agentsfleet/design-system";
 import {MESSAGE_MAX_BYTES, MessageInputSchema} from "@/lib/api/draft-types";
+
+import {FleetMentionButton} from "../../conversation/composer/FleetMentionButton";
 
 const CONTROL = "size-9 shrink-0 text-muted-foreground pointer-coarse:size-11";
 const TOO_LARGE = "The setup message can hold 32 KiB. Choose a shorter note or shorten your draft.";
@@ -31,20 +32,6 @@ export function SetupContextControls({input, disabled}: {input: RefObject<HTMLTe
       frame.focus();
     } catch { setNotice("Couldn’t read this document. Choose it again."); }
   }
-  function mention() {
-    const field = input.current;
-    if (!field) return;
-    const {selectionStart, selectionEnd, value} = field;
-    const prefix = value.slice(0, selectionStart);
-    if (selectionStart !== selectionEnd || !/(?:^|\s)@[a-z\d-]{0,64}$/i.test(prefix)) {
-      const mentionText = prefix && !/\s$/.test(prefix) ? " @" : "@";
-      field.setRangeText(mentionText, selectionStart, selectionEnd, "end");
-      const caret = selectionStart + mentionText.length;
-      flushSync(() => aui.composer().setText(field.value));
-      field.setSelectionRange(caret, caret);
-    }
-    field.focus();
-  }
   return <>
     <input ref={filePicker} type="file" className="hidden" accept="text/*,.md,.txt,.csv,.json,.yaml,.yml,.log"
       aria-label="Choose a text document" onChange={event => {
@@ -54,10 +41,9 @@ export function SetupContextControls({input, disabled}: {input: RefObject<HTMLTe
       }} />
     <Button type="button" variant="ghost" size="icon" disabled={disabled} className={CONTROL}
       aria-label="Insert a text document into setup" title="Insert an editable text document" onClick={() => filePicker.current?.click()}>
-      <PaperclipIcon aria-hidden="true" size={16} />
+      <PaperclipIcon aria-hidden="true" className="size-4.5" size={18} />
     </Button>
-    <Button type="button" variant="ghost" size="icon" disabled={disabled} className={CONTROL}
-      aria-label="Mention a fleet in setup" title="Mention a fleet in setup" onClick={mention}><AtIcon aria-hidden="true" size={16} /></Button>
+    <FleetMentionButton input={input} disabled={disabled} inSetup />
     {notice && <output className="text-eyebrow text-warning">{notice}</output>}
   </>;
 }

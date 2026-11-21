@@ -30,7 +30,7 @@ const COMPONENTS = {
   ul: ({ children }) => <ul className="list-disc space-y-xs pl-lg">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal space-y-xs pl-lg">{children}</ol>,
   li: ({ children }) => <li className="leading-conversation">{children}</li>,
-  strong: ({ children }) => <strong className="font-medium text-foreground">{children}</strong>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   h1: ({ children }) => <Heading>{children}</Heading>,
   h2: ({ children }) => <Heading>{children}</Heading>,

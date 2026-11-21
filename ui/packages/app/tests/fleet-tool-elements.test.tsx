@@ -30,6 +30,12 @@ it("announces the number of lines actually added and removed by a completed edit
   expect(screen.getByLabelText("3 additions, 2 deletions")).toBeTruthy();
 });
 
+it("uses the runner’s deletion count in a confirmed patch header", () => {
+  renderTools([{name: "apply_patch", args: {patch: "*** Begin Patch\n*** Delete File: retired.txt\n*** End Patch"},
+    outputHead: "Success. Updated the following files:\nD retired.txt\n+0 −17"}]);
+  expect(screen.getByLabelText("0 additions, 17 deletions")).toBeTruthy();
+});
+
 it.each(["constructor", "toString", "hasOwnProperty", "__proto__"])("uses the generic tool view for %s", name => {
   const {container} = renderTools([{name, args: {message: "recorded input"}, status: TOOL_CALL_STATUS.INTERRUPTED, outputHead: "run interrupted"}]);
   const cell = container.querySelector('[data-tool]');

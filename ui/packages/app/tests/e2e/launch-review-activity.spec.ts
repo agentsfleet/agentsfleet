@@ -47,6 +47,8 @@ test("Launch review interleaves eight keyboard disclosures with the answer and r
   await dismiss.click();
   for (const theme of ["dark", "light"]) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    const agentIcon = controls.filter({hasText: "UI reviewer started"}).locator("svg").first();
+    await expect(agentIcon).toHaveCSS("color", theme === "dark" ? "rgb(196, 180, 231)" : "rgb(106, 78, 139)");
     for (const [index, anchor] of (isMobile ? [reply.getByText(LAUNCH_REPLIES[0]), reply.getByText(LAUNCH_REPLIES[1])] : [reply.getByText(LAUNCH_REPLIES[0])]).entries()) {
       await anchor.evaluate(element => element.scrollIntoView({block: "start", behavior: "instant"}));
       await expect(anchor).toBeInViewport();

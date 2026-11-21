@@ -1,17 +1,15 @@
 "use client";
 
 import type { ReactElement } from "react";
-import type { ChangeTotals, RecordedChange } from "./recorded-changes";
+import type { ChangeGroup, ChangeTotals } from "./recorded-changes";
 import { FileTextIcon } from "@phosphor-icons/react/ssr";
 import { DashboardPanel, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, List, ListItem } from "@agentsfleet/design-system";
-import { groupRecordedChanges } from "./recorded-changes";
 
-type Props = {changes: readonly RecordedChange[]; children: ReactElement};
+type Props = {groups: readonly ChangeGroup[]; children: ReactElement};
 
 /** Both entry points inspect the same recorded file facts. */
-export function RecordedChangesDialog({changes, children}: Props) {
-  const running = changes.some(change => change.running);
-  const groups = groupRecordedChanges(changes);
+export function RecordedChangesDialog({groups, children}: Props) {
+  const running = groups.some(group => group.changes.some(change => change.running));
   return <Dialog><DialogTrigger asChild>{children}</DialogTrigger>
     <DialogContent className="ph-no-capture ph-no-record max-h-[85dvh] overflow-y-auto">
       <DialogHeader><DialogTitle>Recorded changes</DialogTitle><DialogDescription>{running ? "Recorded writes, including work still in progress." : "Files with confirmed local writes."} Counts describe recorded edits; repository diffs and publication may differ.</DialogDescription></DialogHeader>

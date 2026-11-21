@@ -3,6 +3,7 @@ import { ARGS_LEAF_MAX_BYTES, linesOf, mayBeClipped, stringArg, workspacePath } 
 
 type Lines = {added: number; removed: number};
 export type PatchChange = {path: string; lines: Lines | undefined};
+type PatchRecord = Pick<FleetToolCall, "args" | "outputHead" | "outputTail" | "outputLineCount">;
 type Receipt = {paths: string[]; complete: boolean; lines: Lines | undefined};
 type Hunk = {path: string; kind: string; lines: Lines; certain: boolean};
 const SUCCESS = "Success. Updated the following files:";
@@ -16,7 +17,7 @@ const UTF8 = new TextEncoder();
 export const recordedWorkspacePath = (path: string) => workspacePath(path).split("/").filter(part => part !== "." && part !== "").join("/");
 
 /** Native receipts retain paths and aggregate counts even when the argument leaf was cut. */
-export function recordedPatchChanges(tool: FleetToolCall, running: boolean): PatchChange[] {
+export function recordedPatchChanges(tool: PatchRecord, running: boolean): PatchChange[] {
   const receipt = nativeReceipt(tool);
   const only = receipt.paths.length === 1 ? receipt.paths[0] : undefined;
   if (!running && receipt.complete && only !== undefined) return [{path: only, lines: receipt.lines}];
@@ -28,8 +29,23 @@ export function recordedPatchChanges(tool: FleetToolCall, running: boolean): Pat
   return reconcile(changes, complete ? receipt.lines : undefined);
 }
 
+/** A command header can show the full patch receipt even when per-file counts are unavailable. */
+export function recordedPatchTotals(tool: PatchRecord): Lines | undefined {
+  const actual = nativeReceipt(tool).lines;
+  if (actual) return actual;
+  const files = patchHunks(stringArg(tool.args, "patch"));
+  if (!files.size) return undefined;
+  const total = {added: 0, removed: 0};
+  for (const lines of files.values()) {
+    if (!lines) return undefined;
+    total.added += lines.added;
+    total.removed += lines.removed;
+  }
+  return total;
+}
+
 /** Head and tail overlap by line number; neither byte-cut boundary is a complete path. */
-function nativeReceipt(tool: FleetToolCall): Receipt {
+function nativeReceipt(tool: PatchRecord): Receipt {
   const headText = tool.outputHead ?? "", tailText = tool.outputTail ?? "";
   const head = linesOf(headText), tail = linesOf(tailText);
   if (head[0] !== SUCCESS) return {paths: [], complete: false, lines: undefined};

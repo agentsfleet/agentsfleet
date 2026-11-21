@@ -18,7 +18,7 @@ type Props = {
 export function ModelsRegistryView(props: Props) {
   return <Section className="gap-3xl">
     <DashboardPanel className="flex flex-wrap items-center gap-xl p-xl summary:p-2xl" aria-label="Platform default">
-      <div className="flex min-w-0 basis-full flex-col gap-xl summary:flex-1 summary:basis-auto summary:flex-row summary:items-center"><span className="flex h-5 shrink-0 items-center text-muted-foreground" aria-hidden="true"><CpuIcon size={16} /></span>
+      <div className="flex min-w-0 basis-full flex-col gap-xl summary:flex-1 summary:basis-auto summary:flex-row summary:items-center"><span className="shrink-0 text-muted-foreground" aria-hidden="true"><CpuIcon size={16} className="inline-block align-middle" /></span>
         <div className="min-w-0 flex-1"><h2 className="text-label font-semibold">Platform default</h2>
         <p className="mt-sm text-description text-muted-foreground">{props.platformDefault ? props.platformDefault.display_name ?? props.platformDefault.model : "No platform default is configured."}</p></div></div>
       {props.isDefaultLive ? <Active /> : <Button variant="outline" aria-label="Make active: platform default" disabled={props.pending || !props.platformDefaultAvailable} onClick={props.onSwitchDefault}>Make active</Button>}
@@ -49,7 +49,7 @@ function ModelRow({entry, ...props}: Props & {entry: TenantModelEntry}) {
       <p className="mt-sm text-label text-muted-foreground">{entry.provider ? providerLabel(entry.provider) : "Unknown provider"}</p>
       <p className="mt-md flex items-center gap-md text-eyebrow text-text-dim"><KeyIcon size={14} aria-hidden="true" /><span className="break-words">{entry.has_key ? entry.secret_ref : "Key required"} · {props.workspaceNames.get(entry.workspace_id ?? "") ?? "Credential workspace"}</span></p></div>
     {entry.active ? <Active /> : <Button variant="outline" aria-label={`Make active: ${entry.model_id}`} title={!workspaceId ? "The credential workspace is unavailable" : !entry.has_key ? "A provider key is required" : undefined} disabled={props.pending || !workspaceId || !entry.has_key} onClick={workspaceId ? () => props.onSwitchEntry(entry, workspaceId) : undefined}>Make active</Button>}
-    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={props.pending} aria-label={`Manage ${entry.model_id}`} onFocus={props.onIntent} onPointerEnter={props.onIntent}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={props.pending} aria-label={`Manage ${entry.model_id}`} onFocus={props.onIntent} onPointerEnter={props.onIntent}><DotsThreeIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={() => props.onView(entry)}>Model details</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => props.onEdit(entry)}>Edit model</DropdownMenuItem>

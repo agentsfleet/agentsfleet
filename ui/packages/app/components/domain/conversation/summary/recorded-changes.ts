@@ -12,7 +12,7 @@ export type RecordedChangeRepository = {
 };
 export type RecordedChange = {path: string; running: boolean; lines: ChangeTotals; repository?: ChangeRepository};
 type Options = {includeRunning?: boolean; repositories?: readonly RecordedChangeRepository[]};
-type ChangeGroup = {repository: ChangeRepository | undefined; label: string; changes: RecordedChange[]; lines: ChangeTotals};
+export type ChangeGroup = {repository: ChangeRepository | undefined; label: string; changes: RecordedChange[]; lines: ChangeTotals};
 
 const UNKNOWN: ChangeTotals = {kind: "unknown"};
 const EMPTY_REPOSITORIES: readonly RecordedChangeRepository[] = [];

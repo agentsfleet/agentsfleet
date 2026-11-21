@@ -53,22 +53,26 @@ export function WorkChanges({events, repositories}: {events: readonly FleetEvent
 /** Explicit repository metadata is required for repository labels. */
 export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) {
   if (!changes.length) return null;
-  return <WorkSection title="Changes">{groupRecordedChanges(changes).map(group => <RecordedChangesDialog key={group.repository?.id ?? "unbound"} changes={group.changes}>
-    <Button variant="ghost" size="compact" className="h-auto min-h-11 w-full justify-start gap-md whitespace-normal px-0 py-sm text-left text-foreground summary:min-h-9">
+  return <WorkSection title="Changes">{groupRecordedChanges(changes).map(group => <RecordedChangesDialog key={group.repository?.id ?? "unbound"} groups={[group]}>
+    <Button variant="ghost" size="compact" className="fleet-changes-trigger">
       <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 flex-1" title={group.repository?.fullName}><span className="truncate font-medium summary:block">{group.label}</span>
-        <span className="ml-sm text-eyebrow font-normal leading-eyebrow text-muted-foreground summary:ml-0 summary:mt-0.5 summary:block">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}</span></span>
+      <span className="flex min-w-0 flex-1 items-baseline summary:block" title={group.repository?.fullName}><RepositoryName name={group.label} />
+        <span className="fleet-changes-file-count">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}</span></span>
       {group.lines.kind !== "unknown" ? <RecordedChangeCounts lines={group.lines} /> : null}
     </Button>
   </RecordedChangesDialog>)}</WorkSection>;
+}
+
+function RepositoryName({name}: {name: string | undefined}) {
+  return <span className="repo-name min-w-0 font-medium"><span>{name}</span></span>;
 }
 
 export function WorkSources({sources, files}: {sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
   return <WorkSection title="Sources">
       {files?.length ? <AttachedSources files={files} /> : null}
       {sources?.repositories.length ? <details className="group">
-        <summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">
-          <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 break-words" title={sources.repositories.join(", ")}><span className="block font-medium">{sources.repositories.length === 1 ? sources.repositories[0] : `${sources.repositories.length} repositories`}</span><span className="mt-xs block text-eyebrow leading-eyebrow text-muted-foreground">Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></span>
+        <summary className="fleet-sources-trigger">
+          <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 break-words" title={sources.repositories.join(", ")}><RepositoryName name={sources.repositories.length === 1 ? sources.repositories[0] : `${sources.repositories.length} repositories`} /><span className="mt-xs block text-eyebrow leading-eyebrow text-muted-foreground">Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></span>
           <CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
         </summary>
         <ul className="mt-sm space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-label leading-label"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{repository}</a></li>)}</ul>

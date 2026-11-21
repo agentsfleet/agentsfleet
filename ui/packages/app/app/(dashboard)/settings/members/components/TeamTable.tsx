@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, CopyButton, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Time } from "@agentsfleet/design-system";
-import { DotsThreeIcon, EnvelopeSimpleIcon } from "@phosphor-icons/react/ssr";
+import { DotsThreeIcon, EnvelopeSimpleIcon, PaperPlaneTiltIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
 import { EMAIL_STATUS } from "@/lib/api/invites-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
@@ -22,7 +22,8 @@ const ROW = [
   "min-[681px]:grid-cols-[36px_minmax(0,1fr)_72px_36px] min-[681px]:gap-x-lg min-[681px]:gap-y-1.5 min-[681px]:px-5 min-[681px]:py-4.5",
   "min-[901px]:grid-cols-[36px_minmax(0,1fr)_76px_148px_36px] min-[901px]:gap-x-xl min-[901px]:gap-y-sm",
 ].join(" ");
-const AVATAR = "hidden size-9 shrink-0 items-center justify-center rounded-full text-eyebrow font-bold min-[681px]:flex";
+const MENU_BUTTON = "text-foreground max-summary:size-11";
+const AVATAR = "hidden size-9 shrink-0 items-center justify-center rounded-full text-eyebrow font-bold summary:flex";
 const ROLE = "col-start-1 min-[681px]:col-start-3 min-[681px]:row-start-1 min-[901px]:col-auto min-[901px]:row-auto";
 const DATE = "col-start-1 min-[681px]:col-start-2 min-[681px]:row-start-2 min-[901px]:col-auto min-[901px]:row-auto";
 const ACTION = "col-start-2 row-start-1 min-[681px]:col-start-4 min-[901px]:col-auto min-[901px]:row-auto";
@@ -60,7 +61,7 @@ function MemberRow({member, pending, onRemove, viewerUserId}: Pick<Props, "pendi
     <span className={`${ROLE} text-label capitalize text-muted-foreground`}>{member.role}</span>
     <span className={`${DATE} text-eyebrow leading-eyebrow text-text-dim`}>Joined <Time value={member.joined_at} format="date" tooltip /></span>
     {!owner ? <div className={ACTION}><DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[681px]:size-9 min-[681px]:min-h-9" disabled={pending} aria-label={`Manage ${name}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-row" className={MENU_BUTTON} disabled={pending} aria-label={`Manage ${name}`}><DotsThreeIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onRemove(member)}>Remove {name}</DropdownMenuItem></DropdownMenuContent>
     </DropdownMenu></div> : null}
   </li>;
@@ -76,11 +77,11 @@ function InvitationRow({invite, pending, onResend, onRevoke}: Pick<Props, "pendi
     <span className={`${ROLE} text-label text-muted-foreground`}>Member</span>
     <span className={`${DATE} text-eyebrow leading-eyebrow text-text-dim`}>Expires <Time value={invite.expires_at} format="date" tooltip /></span>
     <div className={ACTION}><DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="min-[681px]:size-9 min-[681px]:min-h-9" disabled={pending} aria-label={`Manage invite for ${invite.email}`}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-row" className={MENU_BUTTON} disabled={pending} aria-label={`Manage invite for ${invite.email}`}><DotsThreeIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {invite.email_status !== EMAIL_STATUS.unconfigured ? <DropdownMenuItem onSelect={() => onResend(invite)}>Send invite again</DropdownMenuItem> : null}
+        {invite.email_status !== EMAIL_STATUS.unconfigured ? <DropdownMenuItem onSelect={() => onResend(invite)}><PaperPlaneTiltIcon aria-hidden="true" />Send invite again</DropdownMenuItem> : null}
         <DropdownMenuItem asChild onSelect={event => event.preventDefault()}><CopyButton value={invite.link} label={`Copy invite link for ${invite.email}`} showLabel className="w-full justify-start border-0 bg-transparent" /></DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onRevoke(invite)}>Revoke invite</DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onRevoke(invite)}><TrashIcon aria-hidden="true" />Revoke invite</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu></div>
   </li>;

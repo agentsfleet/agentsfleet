@@ -122,5 +122,10 @@ describe("recorded tool activity", () => {
 
 function part(toolName: string, state?: Exclude<(typeof CELL_STATE)[keyof typeof CELL_STATE], "running" | "settled">): Extract<MessageState["content"][number], {type: "tool-call"}> {
   return {type: "tool-call", toolCallId: toolName, toolName, args: {path: "a.ts"}, argsText: '{"path":"a.ts"}',
-    ...(state === undefined ? {} : {result: {status: state}})};
+    ...(state === undefined ? {} : {result: {status: state, exitCode: toolName === "exec_command" && state === CELL_STATE.SUCCEEDED ? 0 : undefined}})};
 }
+
+it("retains an unknown command outcome in the collapsed work group", () => {
+  const call = {...part("exec_command"), result: {status: "succeeded", outputHead: "Process running with session ID 231"}};
+  expect(toolGroupActivity([call], [0], false).state).toBe(CELL_STATE.SETTLED);
+});

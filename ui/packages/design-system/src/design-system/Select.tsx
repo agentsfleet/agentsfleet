@@ -10,7 +10,19 @@ import { CaretDownIcon, CheckIcon } from "@phosphor-icons/react/ssr";
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
 
-export type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & { appearance?: "default" | "composer" };
+const TRIGGER_APPEARANCE = {
+  default: "min-h-11 w-full border border-border bg-background px-lg py-sm text-label",
+  composer: "h-9 w-auto min-w-0 max-w-full border-0 bg-transparent px-md py-0 text-eyebrow leading-label text-muted-foreground",
+  filter: [
+    "h-10 min-h-10 w-auto min-w-36 border border-border bg-background py-sm pl-lg pr-xl",
+    "text-label font-normal text-muted-foreground pointer-coarse:min-w-36",
+    "[&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left",
+  ].join(" "),
+} as const;
+
+export type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & {
+  appearance?: keyof typeof TRIGGER_APPEARANCE;
+};
 
 export function SelectTrigger({
   className,
@@ -27,13 +39,11 @@ export function SelectTrigger({
         // No resting shadow: borders define panels, and shadows belong to
         // dialogs and menus. This was the only box-shadow inside <main> on
         // every route that renders it.
-        appearance === "composer"
-          ? "h-9 w-auto min-w-0 max-w-full border-0 bg-transparent px-md py-0 text-eyebrow leading-label text-muted-foreground"
-          : "min-h-11 w-full border border-border bg-background px-lg py-sm text-label",
         // The coarse-pointer floor every Button-derived control already carries
         // (Button.tsx:11). Without it the "Rows per page" combobox was the one
         // interactive element in <main> under the 44px touch minimum.
         "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
+        TRIGGER_APPEARANCE[appearance],
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-[var(--control-focus-surface)]",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "data-[placeholder]:text-text-dim",
@@ -43,8 +53,8 @@ export function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <span className={CHEVRON_CLASS_NAME}>
-          <CaretDownIcon size={16} aria-hidden="true" />
+        <span className={CHEVRON_CLASS_NAME} data-slot="select-caret">
+          <CaretDownIcon size={appearance === "composer" ? 14 : 16} aria-hidden="true" />
         </span>
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>

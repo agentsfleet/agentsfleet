@@ -7,7 +7,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { shellSidebarState } from "./shell-sidebar-state";
 
 export function ShellControls({workspaceId, collapsed}: {workspaceId: string | null; collapsed: boolean}) {
-  return <div data-testid="shell-leading-cluster" className="mb-sm flex h-11 md:h-12 shrink-0 items-center justify-center px-sm md:px-lg">
+  return <div data-testid="shell-leading-cluster" className="mb-sm flex h-11 md:h-12 shrink-0 items-center justify-center px-sm md:px-md">
     <Button asChild variant="ghost" className={cn("h-11 w-11 min-w-0 justify-center px-0 hover:bg-muted hover:text-foreground [&_svg]:size-11 md:[&_svg]:size-12 md:size-12", !collapsed && "md:w-full md:justify-start md:gap-lg md:px-0")} aria-label="agentsfleet home">
       <Link href={workspaceId ? workspacePath(workspaceId, "fleets/new") : "/"} prefetch={false}>
         <BrandMark viewBox="-4 -4 32 32" className="size-11 shrink-0 rounded-control md:size-12 bg-brand-tile text-brand-ray" />

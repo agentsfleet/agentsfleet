@@ -1,7 +1,7 @@
 import type { MessageState } from "@assistant-ui/react";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { CellState } from "../copy/tool-call-copy";
-import { readToolResult } from "../../replies/fleetReplyMessage";
+import { readToolResult, type ToolResult } from "../../replies/fleetReplyMessage";
 import { formatElapsed } from "@/lib/events/run-figures-format";
 import { CELL_STATE, cellState, toolCopy } from "../copy/tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "./tool-call-shape";
@@ -33,6 +33,14 @@ export function toolActivityLabel(activity: ToolActivity, expanded = false): str
   return label;
 }
 
+/** A synchronous shell returns its outcome; exec_command can return while a process is still running. */
+export function recordedToolState(name: string, outcome: ToolResult | undefined, running: boolean): CellState {
+  const state = cellState(outcome !== undefined, outcome?.status, running);
+  if (state !== CELL_STATE.SUCCEEDED || (name !== TOOL_NAME.EXEC_COMMAND && name !== TOOL_NAME.SHELL)) return state;
+  if (outcome?.exitCode !== undefined) return outcome.exitCode === 0 ? CELL_STATE.SUCCEEDED : CELL_STATE.FAILED;
+  return name === TOOL_NAME.SHELL ? state : CELL_STATE.SETTLED;
+}
+
 /** Only this group's indices contribute; an adjacent text part cannot change its outcome. */
 export function toolGroupActivity(content: MessageState["content"], indices: readonly number[], running: boolean, wallMs?: number | null): ToolActivity {
   const calls = indices.flatMap(index => {const part = content[index]; return part?.type === "tool-call" ? [part] : [];});
@@ -41,7 +49,7 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
   let activeCount = 0;
   for (const call of calls) {
     const result = readToolResult(call.result);
-    const current = cellState(result !== undefined, result?.status, running && call.result === undefined);
+    const current = recordedToolState(call.toolName, result, running && call.result === undefined);
     if (current === CELL_STATE.RUNNING) {active ??= toolActivity(call.toolName, call.args, current); activeCount++; continue;}
     if (PRIORITY[current] > PRIORITY[state]) state = current;
   }

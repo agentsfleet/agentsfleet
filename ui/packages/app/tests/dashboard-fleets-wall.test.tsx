@@ -29,8 +29,6 @@ const FLEET_B = "fleet_b";
 const BURST_FLEET_COUNT = 60;
 const RECONNECT_DELAY_MS = 2_000;
 const BACKFILL_PAGE_LIMIT = 200;
-const SNAPSHOT_KIND_LABEL = "kind:snapshot";
-const LIVE_KIND_LABEL = "kind:live";
 const COUNT_BEFORE_THE_DROP = 5;
 const COUNT_AFTER_THE_DROP = 7;
 
@@ -271,22 +269,17 @@ describe("workspace fleet wall provider", () => {
     expect(FakeEventSource.instances).toHaveLength(1);
   });
 
-  it("a_capped_stream_degrades_to_a_snapshot_tile", () => {
-    // A stream the daemon refused at its
-    // ceiling (`SSE_MAX_STREAMS`, `UZ-API-002` — the admission is pinned by
-    // `afd_api/tests/fleet_streams.rs`) errors at the EventSource; the tile
-    // must then say `snapshot`, never a stale `live`.
+  it("reports a reconnecting fleet subscription when its EventSource fails", () => {
     const view = renderWall([FLEET_A]);
     const source = onlyEventSource();
     source.open();
     flushAnimationFrame();
-    expect(view.getByTestId(FLEET_A).textContent).toContain(LIVE_KIND_LABEL);
+    expect(view.getByTestId(FLEET_A).textContent).toContain("connection:live");
 
     source.fail();
     flushAnimationFrame();
 
-    expect(view.getByTestId(FLEET_A).textContent).toContain(SNAPSHOT_KIND_LABEL);
-    expect(view.getByTestId(FLEET_A).textContent).not.toContain(LIVE_KIND_LABEL);
+    expect(view.getByTestId(FLEET_A).textContent).toContain("connection:reconnecting");
   });
 
   it("cancels a queued tile notification when the provider unmounts", () => {

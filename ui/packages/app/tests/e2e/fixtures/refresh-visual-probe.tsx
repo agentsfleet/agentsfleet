@@ -38,7 +38,9 @@ const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() 
 
 /** Current production conversation, activity, composer, and Summary; sample data. */
 export function RefreshVisualFixture() {
-  const archived = new URLSearchParams(location.search).has("archived");
+  const params = new URLSearchParams(location.search);
+  const archived = params.has("archived");
+  const repositoryLabel = params.get("repositoryLabel");
   const [started] = useState(Date.now);
   const [phase, setPhase] = useState<VisualScenario>(() => VISUAL_SCENARIOS.find(value => value === new URLSearchParams(location.search).get("state")) ?? "running");
   const showScenario = useCallback((value: VisualScenario) => {const url = new URL(location.href); url.searchParams.set("state", value); history.replaceState(null, "", url); setPhase(value);}, []);
@@ -72,7 +74,7 @@ export function RefreshVisualFixture() {
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
       <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+        <FleetTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID, repositoryLabel) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
         <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">

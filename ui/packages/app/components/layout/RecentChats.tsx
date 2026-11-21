@@ -8,7 +8,7 @@ import type {DraftSidebarState} from "./draft-sidebar-state";
 import {sidebarDrafts, CHAT_ACTIVITY, type SidebarDraft} from "@/lib/api/draft-summary";
 import Link from "next/link";
 import { NavItem, IconAction, Button } from "@agentsfleet/design-system";
-import { NotePencilIcon, TrashIcon } from "@phosphor-icons/react/ssr";
+import { NotePencilIcon, StackIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { RecentCollection } from "@/lib/api/recent-collection";
@@ -42,9 +42,9 @@ function FleetItems({collection, drafts, history, workspace, onNavigate}: {histo
   function setupLink(title: string, card?: SidebarDraft, fleetId?: string) {
     const href = card ? `/w/${workspace}/fleets/new?draft=${card.id}` : `/w/${workspace}/fleets/${fleetId}/setup`;
     return <NavItem asChild key={href} active={pathname.endsWith("/fleets/new") && (card ? currentDraft === card.id : query.get("fleet") === fleetId)}
-      onClick={onNavigate} className="mb-xs min-w-0 gap-sm pl-xl text-label text-muted-foreground hover:bg-muted">
+      onClick={onNavigate} className="mb-xs min-w-0 gap-sm pl-xl text-label font-medium text-muted-foreground hover:bg-muted">
       <Link href={href} prefetch={false} title={card?.title ?? title}>
-        <NotePencilIcon size={14} aria-hidden="true" /><span className="truncate">{title}</span>
+        <NotePencilIcon size={16} aria-hidden="true" /><span className="truncate">{title}</span>
       </Link>
     </NavItem>;
   }
@@ -74,8 +74,8 @@ function FleetRow({fleet, workspace, pathname, onNavigate, deleting, onDelete}: 
   return <div className="group relative mb-xs">
     <NavItem asChild active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="gap-sm px-3 py-xs pr-12 hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground" onClick={onNavigate}>
       <Link href={`/w/${workspace}/fleets/${fleet.id}`} prefetch={false} title={`${fleet.name} · ${fleet.status}`}>
-        <span className={`size-1.5 shrink-0 rounded-full ${fleet.status === "active" ? "bg-pulse" : "bg-muted-foreground"}`} aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate text-label text-foreground">{fleet.name}</span>
+        <StackIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate text-label font-medium text-foreground">{fleet.name}</span>
         {fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? <span className="text-eyebrow text-muted-foreground">Archived</span> : null}
       </Link>
     </NavItem>

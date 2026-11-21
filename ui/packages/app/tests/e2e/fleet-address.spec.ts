@@ -7,6 +7,11 @@ import { UUID_V7 } from "@/tests/fleet-thread/steer-copy";
 const BOB = "0199a801-1000-7000-8000-0000000000b0";
 const AT = "2026-11-19T00:00:00Z";
 
+const fleets = ["bob", "bob-archive", "chief-of-staff"].map((name, index) => ({
+    id: BOB.slice(0, -1) + index, name, status: name.endsWith("archive") ? "archived" : "active",
+    description: null, created_at: AT, updated_at: AT, events_processed: "0", budget_used_nanos: "0",
+  }));
+
 test("chat_sends_an_addressed_message_and_opens_the_named_fleet", async ({page, chatProbe}) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -34,10 +39,6 @@ test("chat_sends_an_addressed_message_and_opens_the_named_fleet", async ({page, 
 });
 
 test("the workspace picker inserts only active fleets and keeps the unsent words", async ({page, chatProbe}, info) => {
-  const fleets = ["bob", "bob-archive", "chief-of-staff"].map((name, index) => ({
-    id: BOB.slice(0, -1) + index, name, status: name.endsWith("archive") ? "archived" : "active",
-    description: null, created_at: AT, updated_at: AT, events_processed: "0", budget_used_nanos: "0",
-  }));
   let reads = 0;
   await page.route(`**/live/v1/workspaces/${WORKSPACE}/fleets?limit=*`, route => {
     reads++;
@@ -67,4 +68,23 @@ test("the workspace picker inserts only active fleets and keeps the unsent words
   await input.press("ArrowDown");
   await input.press("Enter");
   await expect(input).toHaveValue("@chief-of-staff ");
+});
+
+test("the @ toolbar opens the workspace picker and can replace the current recipient", async ({page, chatProbe}) => {
+  await page.route(`**/live/v1/workspaces/${WORKSPACE}/fleets?limit=*`, route =>
+    route.fulfill({json: {items: fleets, next_cursor: null, total: null}}));
+  await page.goto(chatProbe + "?address=1");
+  const input = page.getByRole("textbox", {name: "Message your fleet…"});
+  const button = page.getByRole("button", {name: "Address a workspace fleet"});
+  await button.click();
+  await expect(input).toHaveValue("@");
+  await page.getByRole("option", {name: "@bob", exact: true}).click();
+  await input.fill("@bob Please check the deployment");
+  await button.click();
+  await expect(page.getByRole("option", {name: "@bob", exact: true})).toBeVisible();
+  await input.press("Backspace");
+  await input.press("Backspace");
+  await input.press("Backspace");
+  await page.getByRole("option", {name: "@chief-of-staff", exact: true}).click();
+  await expect(input).toHaveValue("@chief-of-staff Please check the deployment");
 });

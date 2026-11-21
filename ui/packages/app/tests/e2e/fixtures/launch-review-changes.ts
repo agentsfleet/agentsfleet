@@ -15,10 +15,11 @@ export const LAUNCH_CHANGE_FILES = [
   {path: "launch-checklist.md", repository: DOCS, old_text: "# Launch checklist", new_text: `# Launch checklist\n${added(9)}`},
 ] as const;
 
-export function launchChangeRepositories(eventId: string): RecordedChangeRepository[] {
+export function launchChangeRepositories(eventId: string, webLabel?: string | null): RecordedChangeRepository[] {
   return LAUNCH_CHANGE_FILES.map(file => {
     const {added, removed} = lineDiff(file.old_text, file.new_text);
-    return {eventId, path: file.path, repository: file.repository, lines: {added, removed}};
+    const repository = webLabel && file.repository === WEB ? {...WEB, label: webLabel, fullName: webLabel} : file.repository;
+    return {eventId, path: file.path, repository, lines: {added, removed}};
   });
 }
 

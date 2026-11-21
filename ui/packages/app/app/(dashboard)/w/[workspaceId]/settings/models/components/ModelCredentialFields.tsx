@@ -14,7 +14,7 @@ export function ModelCredentialFields({id, values, secrets, onChange}: Props) {
   const available = compatibleCredentials(secrets, values.provider);
   return (
     <div className="space-y-lg">
-      <p id={`${id}-credential-label`} className="text-label font-semibold">Provider API key</p>
+      <p id={`${id}-credential-label`} className="text-description font-bold leading-label">Provider API key</p>
       <RadioGroup aria-labelledby={`${id}-credential-label`} value={values.mode}
         onValueChange={mode => onChange({mode: mode === KEY_MODE.saved ? KEY_MODE.saved : KEY_MODE.new, apiKey: "", savedRef: ""})}
         className="grid min-h-13.5 grid-cols-2 gap-md rounded-xl max-summary:gap-sm border border-border bg-background p-sm">

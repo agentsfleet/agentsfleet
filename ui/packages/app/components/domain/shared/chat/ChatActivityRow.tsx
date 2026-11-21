@@ -15,7 +15,7 @@ export type ChatActivityRowProps = {
 export function ChatActivityRow({sender, title, wokeOnSchedule, headline, createdAt, messageRole, outcome, failed, annotation, detailsLabel = "View event", children}: ChatActivityRowProps) {
   const Icon = wokeOnSchedule ? ClockClockwiseIcon : title ? ClockIcon : BellIcon;
   return <div data-role={messageRole} data-compact="true" data-failed={failed || undefined}
-    className={cn("flex w-full min-w-0 items-start gap-md text-muted-foreground", title ? "my-2.5 text-label font-medium leading-label max-[680px]:[&_time]:hidden [&_time]:relative [&_time]:top-xs [&_time]:font-medium [&_time]:leading-label" : "py-lg text-conversation leading-conversation")}>
+    className={cn("flex w-full min-w-0 items-start gap-md text-muted-foreground", title ? "fleet-schedule-receipt" : "py-lg text-conversation leading-conversation")}>
     <Icon size={16} className="mt-xs shrink-0" aria-hidden="true" />
     <div className="min-w-0 flex-1">
       <div className="flex items-start justify-between gap-lg"><p className="min-w-0 break-words">

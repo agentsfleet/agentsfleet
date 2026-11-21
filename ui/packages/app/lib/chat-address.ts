@@ -18,6 +18,12 @@ const ADDRESS = /^\s*@([A-Za-z0-9-]+)(?:$|[\s:,]\s*)/;
 // bytes are its characters.
 const NAME_MAX_BYTES = 64;
 
+/** The editable mention immediately before the caret, including an empty @ query. */
+export function activeFleetMention(prefix: string): string | undefined {
+  const query = /(?:^|\s)@([a-z\d-]*)$/i.exec(prefix)?.[1];
+  return query !== undefined && query.length <= NAME_MAX_BYTES ? query : undefined;
+}
+
 /** The address a message opens with, or null when it is ordinary words. */
 export function parseChatAddress(text: string): ChatAddress | null {
   const match = ADDRESS.exec(text);

@@ -89,3 +89,37 @@ function rowPositions(panel: Locator, selectors: string) {
     });
   }, selectors);
 }
+
+test("long repository names reveal their ending without moving icons or counts", async ({page, chatProbe, isMobile}, info) => {
+  const repository = "agentsfleet/platform-images-with-a-long-workspace-repository-name";
+  await page.emulateMedia({reducedMotion: "no-preference"});
+  await page.goto(chatProbe + "?visual=1&state=activity&repositoryLabel=" + encodeURIComponent(repository));
+  const row = page.getByRole("button", {name: new RegExp(repository)});
+  const viewport = row.locator(".repo-name");
+  const label = viewport.locator("span");
+  const bounds = () => row.evaluate(node => ({
+    icon: node.querySelector("svg")!.getBoundingClientRect().x,
+    count: node.querySelector('[aria-label*="addition"]')?.getBoundingClientRect().x ?? node.lastElementChild!.getBoundingClientRect().x,
+  }));
+  const pinned = await bounds();
+  if (!isMobile) {
+    const visualOffset = () => label.evaluate(el => Math.round(el.getBoundingClientRect().left - el.parentElement!.getBoundingClientRect().left));
+    const overflow = await label.evaluate(el => Math.round(el.getBoundingClientRect().width - el.parentElement!.getBoundingClientRect().width));
+    expect(overflow).toBeGreaterThan(40);
+    await row.hover();
+    await expect.poll(visualOffset).toBe(-overflow);
+    await page.screenshot({path:info.outputPath("repository-name-revealed.png"),animations:"allow"});
+    await page.mouse.move(0,0);
+    await expect.poll(visualOffset).toBe(0);
+    await page.keyboard.press("Tab");
+    await row.focus();
+    await expect.poll(visualOffset).toBe(-overflow);
+    expect(await bounds()).toEqual(pinned);
+  }
+  await page.emulateMedia({reducedMotion:"reduce"});
+  await expect(label).toHaveCSS("white-space","normal");
+  await expect(label).toHaveCSS("left","0px");
+  expect(await label.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await row.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+});

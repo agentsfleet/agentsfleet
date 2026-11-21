@@ -3,12 +3,14 @@ import { lazy, memo, Suspense, useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
 import { useFleetScope } from "../../conversation/stream/FleetScope";
 import { readToolResult } from "../replies/fleetReplyMessage";
-import { cellState, CELL_STATE, toolCopy, type CellState } from "./copy/tool-call-copy";
+import { CELL_STATE, toolCopy } from "./copy/tool-call-copy";
 import { ToolCallHeader } from "./FleetToolCallHeader";
 import { ToolCallDetails } from "./FleetToolCallDetails";
 import { TRIGGER_CLASS } from "./presentation/tool-call-presentation";
 import { TOOL_BODY, TOOL_NAME } from "./presentation/tool-call-shape";
 import { DiffRows } from "./FleetToolCallBody";
+import { recordedToolState } from "./presentation/tool-call-activity";
+import { recordedPatchTotals } from "../../conversation/summary/recorded-patch-changes";
 import { FleetCommandResult } from "./FleetCommandResult";
 
 const COMMAND = "command";
@@ -32,8 +34,7 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
   const named = Object.keys(args).length > 0 ? args : undefined;
   const outcome = readToolResult(result);
   const command = name === TOOL_NAME.EXEC_COMMAND || name === TOOL_NAME.SHELL;
-  const toolState = cellState(outcome !== undefined, outcome?.status, running);
-  const state = command ? commandState(name, toolState, outcome?.exitCode) : toolState;
+  const state = recordedToolState(name, outcome, running);
   // These bounded cards mount with the work group. Other tools keep their body behind the action disclosure.
   const card = useMemo(() => CARD_TOOLS.has(name) ? toolCopy(name, named) : undefined, [name, named]);
   const [shown, setShown] = useState(false);
@@ -45,16 +46,16 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
   const diff = card?.body.kind === TOOL_BODY.DIFF ? card.body.diff : undefined;
   const commandBody = card?.body.kind === TOOL_BODY.COMMAND ? card.body : undefined;
   const confirmed = state === CELL_STATE.SUCCEEDED;
-  const showCounts = diff !== undefined && confirmed;
+  const counts = confirmed && name === TOOL_NAME.APPLY_PATCH ? recordedPatchTotals({args, ...outcome}) : confirmed ? diff : undefined;
   const showSuccess = command && confirmed;
   return <ListItem data-tool={name} data-done={outcome !== undefined || undefined} data-state={state}
     className="flex min-w-0 flex-col gap-xs text-body-sm text-muted-foreground">
     <Accordion type="single" collapsible>
       <AccordionItem value={COMMAND} className="border-0">
-        <AccordionTrigger className={cn(TRIGGER_CLASS, (showCounts || showSuccess) && "[&>svg:last-child]:ml-0")}>
+        <AccordionTrigger className={cn(TRIGGER_CLASS, (counts || showSuccess) && "[&>svg:last-child]:ml-0")}>
           <ToolCallHeader name={name} args={named} state={state} />
-          {showCounts ? <span className="ml-auto shrink-0 font-mono text-label tabular-nums" title="Lines in the displayed edit" aria-label={`${diff.added} ${diff.added === 1 ? "addition" : "additions"}, ${diff.removed} ${diff.removed === 1 ? "deletion" : "deletions"}`}>
-            <span className="text-success">+{diff.added}</span>{" "}<span className="text-destructive">−{diff.removed}</span>
+          {counts ? <span className="ml-auto shrink-0 font-mono text-label tabular-nums" title={name === TOOL_NAME.APPLY_PATCH ? "Recorded patch totals" : "Lines in the displayed edit"} aria-label={`${counts.added} ${counts.added === 1 ? "addition" : "additions"}, ${counts.removed} ${counts.removed === 1 ? "deletion" : "deletions"}`}>
+            <span className="text-success">+{counts.added}</span>{" "}<span className="text-destructive">−{counts.removed}</span>
           </span> : null}
           {showSuccess ? <span className="ml-auto text-label text-success" aria-hidden="true">Succeeded</span> : null}
         </AccordionTrigger>
@@ -75,10 +76,3 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
       verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /></Suspense> : null}
   </ListItem>;
 });
-
-function commandState(name: string, state: CellState, exitCode: number | undefined): CellState {
-  if (state !== CELL_STATE.SUCCEEDED) return state;
-  if (exitCode !== undefined) return exitCode === 0 ? CELL_STATE.SUCCEEDED : CELL_STATE.FAILED;
-  // shell runs to completion. exec_command can successfully return a live session.
-  return name === TOOL_NAME.SHELL ? state : CELL_STATE.SETTLED;
-}

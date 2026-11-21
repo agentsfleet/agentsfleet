@@ -78,7 +78,7 @@ function SetupConversationLayout({client, view, workspace, subject, children}: {
     void client.refreshFleetSetup(true).catch(() => undefined);
   }, [client, refresh, subject, view.busy, view.fleet?.id, view.inaccessible]);
   const resolved = (fleet: string) => setRefresh({client, fleet, subject});
-  return <FleetConversationLayout className="[--summary-width:var(--setup-summary-width)]" work={view.draft || view.preview || view.fleet ? <div className="space-y-lg">
+  return <FleetConversationLayout summary="setup" className="[--summary-width:var(--setup-summary-width)]" work={view.draft || view.preview || view.fleet ? <div className="space-y-lg">
     <SetupApprovalSummary view={view} workspace={workspace} subject={subject} onResolved={resolved} />
     <SetupReview client={client} view={view} workspace={workspace} />
   </div> : undefined}>

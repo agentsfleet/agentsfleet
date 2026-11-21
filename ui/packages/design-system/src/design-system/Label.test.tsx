@@ -3,8 +3,8 @@ import { render, screen } from "@testing-library/react";
 import { Label } from "./Label";
 
 describe("Label", () => {
-  it("renders a <label> with the provided text", () => {
-    render(<Label htmlFor="email">Email address</Label>);
+  it.each(["default", "filter"] as const)("links the %s label to its control", appearance => {
+    render(<Label appearance={appearance} htmlFor="email">Email address</Label>);
     const el = screen.getByText("Email address");
     expect(el.tagName).toBe("LABEL");
     expect(el).toHaveAttribute("for", "email");

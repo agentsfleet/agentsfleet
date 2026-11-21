@@ -1,0 +1,54 @@
+@layer components {
+  .billing-filters { @apply flex flex-wrap items-center gap-md; }
+  .billing-filter { @apply flex w-full min-w-0 items-center justify-between gap-md; }
+  .billing-filter [role="combobox"] { max-width: 65%; }
+  .billing-filter-note { @apply text-eyebrow leading-label text-text-dim; }
+
+  .billing-totals { @apply grid divide-y divide-border; }
+  .billing-metric {
+    @apply grid min-w-0 items-start gap-x-xl p-xl leading-label;
+    grid-template-columns: 1fr auto;
+  }
+  .billing-metric > dt { @apply text-eyebrow leading-label font-semibold text-muted-foreground; }
+  .billing-metric-value {
+    @apply col-start-2 row-span-2 row-start-1 text-foreground;
+    overflow-wrap: anywhere;
+  }
+  .billing-metric-value[data-primary] { @apply text-success; }
+  .billing-metric-value strong {
+    @apply block text-usage-total leading-label tracking-usage-total;
+    font-weight: 750;
+  }
+  .billing-metric-note { @apply col-start-1 text-eyebrow leading-label text-text-dim; }
+
+  .security-resource { @apply flex min-w-0 flex-wrap items-center gap-xl p-xl; }
+  .security-resource[data-kind="session"] { @apply min-h-21; }
+  .security-resource-identity { @apply flex min-w-0 basis-full items-center gap-xl; }
+  .security-resource-icon {
+    @apply hidden size-10 shrink-0 items-center justify-center rounded-control border border-border;
+  }
+  .security-resource-title { @apply flex flex-wrap items-center gap-sm text-label font-medium; }
+  .security-resource-title > span { overflow-wrap: anywhere; }
+  .security-resource-detail { @apply mt-sm text-label text-muted-foreground; }
+  .security-resource[data-kind="session"] .security-resource-detail { @apply mt-1.5; }
+
+  @variant summary {
+    .billing-filters { @apply gap-lg; }
+    .billing-filter { @apply w-auto; }
+    .billing-filter [role="combobox"] { @apply max-w-64; }
+    .billing-filter-note { @apply ml-auto; }
+    .billing-totals { @apply divide-x divide-y-0; grid-template-columns: 2fr 1fr 1fr; }
+    .billing-metric { display: block; }
+    .billing-metric > dt { @apply mb-md; }
+    .billing-metric-value strong { display: inline; }
+    .billing-metric-note { @apply mt-md; }
+    .security-resource { @apply p-5; }
+    .security-resource[data-kind="session"] { @apply py-xl; }
+    .security-resource-identity { @apply flex-1 basis-auto; }
+    .security-resource-icon { @apply flex; }
+  }
+
+  @variant summary-medium {
+    .billing-metric { @apply p-2xl; }
+  }
+}

@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ChangesStrip } from "./ChangesStrip";
 import type { FleetTaskProps } from "../../tasks/FleetTaskProvider";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
-import { WorkChanges } from "./WorkContextSections";
+import { ChangesSummary, WorkChanges } from "./WorkContextSections";
 import { RecordedChangeCounts } from "./RecordedChangesDialog";
 import { launchReviewEvent, LAUNCH_REVIEW_ID } from "@/tests/e2e/fixtures/launch-review-activity";
 import { launchChangeRepositories } from "@/tests/e2e/fixtures/launch-review-changes";
@@ -46,6 +46,18 @@ it("renders the approved web/docs example through the production flap, Summary a
   for (const path of repositories.map(binding => binding.path)) expect(dialog.getByText(path)).toBeTruthy();
   expect(dialog.getByText("+124").className).toContain("text-success");
   expect(dialog.queryByText("Line totals unavailable")).toBeNull();
+});
+
+it("keeps the repository owner visible when opening a group with a shared short name", () => {
+  const changes = ["acme", "beta"].map(id => ({
+    path: "notes.md", running: false, lines: {kind: "unknown" as const},
+    repository: {id, label: "web", fullName: `${id}/web`},
+  }));
+  render(<ChangesSummary changes={changes} />);
+  fireEvent.click(screen.getByRole("button", {name: /acme\/web/}));
+  const dialog = within(screen.getByRole("dialog", {name: "Recorded changes"}));
+  expect(dialog.getByText("acme/web · 1 file")).toBeTruthy();
+  expect(dialog.queryByText(/beta/)).toBeNull();
 });
 
 it("keeps a one-file receipt compact when line totals are unavailable", () => {

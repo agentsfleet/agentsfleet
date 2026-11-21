@@ -1,0 +1,94 @@
+.fleet-trace-action {
+  @apply flex min-h-11 w-fit max-w-full cursor-pointer list-none items-center gap-2 rounded-md px-2 text-label leading-5 text-muted-foreground;
+  @apply hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring md:min-h-9 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden;
+}
+
+.fleet-trace-caret {
+  @apply size-3 shrink-0 opacity-0;
+  details[open] > summary &, details:focus-within > summary &, details:hover > summary & { opacity: 1; }
+  details[open] > summary & { rotate: 90deg; }
+}
+
+.fleet-trace-detail {
+  @apply mb-2 ml-4 whitespace-pre-wrap break-words border-l border-border pl-3 text-label leading-5 text-muted-foreground;
+}
+
+.fleet-resource-row {
+  @apply flex min-h-8 min-w-0 items-center gap-md rounded-sm py-sm text-label leading-label;
+  @apply hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11;
+}
+
+.fleet-resource-detail {
+  @apply max-h-40 overflow-auto whitespace-pre-wrap break-words border-l border-border pl-md text-eyebrow text-muted-foreground;
+}
+
+.fleet-schedule-receipt {
+  @apply my-2.5 text-label font-medium leading-label;
+  time { @apply relative top-xs font-medium leading-label; }
+  @media (max-width: 680px) { time { display: none; } }
+}
+
+.fleet-failure-card {
+  @apply my-xl block rounded-md border-error-border bg-error-surface p-xl text-body-sm leading-body-sm text-muted-foreground;
+  @apply min-[681px]:p-5;
+}
+
+.fleet-failure-details {
+  @apply relative w-fit flex-none justify-start gap-sm py-0 text-eyebrow leading-conversation font-normal text-muted-foreground;
+  &::after { content: ""; position: absolute; inset: -8px 0; }
+  @media (pointer: coarse) { &::after { inset-block: -9px; } }
+  & > svg { @apply order-first ml-0 size-3 -rotate-90; }
+  &[data-state="open"] > svg { rotate: 0deg; }
+}
+
+.fleet-wakeup-strip {
+  @apply relative z-1 -mb-px mx-md min-h-11 rounded-t-md border border-border bg-muted px-lg py-md text-eyebrow leading-eyebrow;
+  @apply min-[681px]:mx-5;
+}
+
+.fleet-composer-hint {
+  @apply mt-md flex items-center justify-between gap-lg px-sm font-sans text-eyebrow leading-eyebrow text-text-dim;
+}
+
+.fleet-composer-surface {
+  @apply min-h-0 shrink-0 rounded-lg bg-card px-xl pt-xl transition-colors duration-150;
+  padding-bottom: calc(var(--sp-lg) + 1px);
+  &:focus-within { border-color: var(--muted-foreground); }
+  @media (prefers-reduced-motion: reduce) { transition: none; }
+}
+
+.fleet-composer-input {
+  @apply field-sizing-content min-h-chat-input flex-1 resize-none overflow-y-auto px-sm py-0;
+  max-height: min(12rem, 30dvh);
+}
+
+.fleet-address-options {
+  @apply absolute inset-x-0 bottom-full z-20 mb-sm overflow-y-auto rounded-lg border border-border bg-popover p-sm text-foreground shadow-floating;
+  max-height: min(16rem, 40dvh);
+}
+
+.fleet-changes-trigger {
+  @apply h-auto min-h-11 w-full justify-start gap-md whitespace-normal px-0 py-sm text-left text-foreground;
+  @apply summary:min-h-9;
+}
+
+.fleet-changes-file-count {
+  @apply ml-sm shrink-0 text-eyebrow font-normal leading-eyebrow text-muted-foreground;
+  @apply summary:ml-0 summary:mt-0.5 summary:block;
+}
+
+.fleet-sources-trigger {
+  @apply flex min-h-11 cursor-pointer items-center gap-sm rounded-sm py-sm text-label leading-label;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9;
+}
+
+/* The label traverses only its own overflow. The icon, count and action stay still. */
+.repo-name { display: block; max-width: 100%; overflow: hidden; }
+.repo-name > span { display: block; position: relative; left: 0; width: max-content; min-width: 100%; white-space: nowrap; transform: translateX(0); }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .repo-name > span { transition: left 1.2s linear .25s, transform 1.2s linear .25s; }
+  :is(button, summary):is(:hover, :focus-visible) .repo-name > span { left: 100%; transform: translateX(-100%); }
+}
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .repo-name > span { width: auto; white-space: normal; overflow-wrap: anywhere; }
+}

@@ -14,6 +14,7 @@ import { fleetComposerText } from "@/lib/chat-message-text";
 import { parseChatAddress } from "@/lib/chat-address";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
 import { useFleetSetup } from "../../setup/FleetSetupContext";
+import { FleetMentionButton } from "./FleetMentionButton";
 import { FleetModelSelect } from "../../models/FleetModelSelect";
 import { AddUploadPreview, ComposerUploadAttachments } from "./UploadAttachments";
 
@@ -69,7 +70,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
     <>
     <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}
       input={<FleetAddressInput inputRef={draftRef} disabled={modelChanging} placeholder={PLACEHOLDER} />}
-      toolbar={<><AddUploadPreview /><FleetModelSelect label={modelLabel} /></>}
+      toolbar={<><AddUploadPreview /><FleetMentionButton input={draftRef} disabled={modelChanging} /><FleetModelSelect label={modelLabel} /></>}
       actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftSize draftBytes={draftBytes} />

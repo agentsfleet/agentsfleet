@@ -135,7 +135,7 @@ export function MembersView(props: Props) {
           reader announces it by its label; no outline marks it for a mouse. */}
       <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="gap-2xl focus:outline-none">
         <div className="flex flex-wrap items-start gap-lg border-b border-border pb-2xl summary:items-center summary:gap-xl summary:pt-5">
-          <UsersIcon size={24} className="shrink-0 text-muted-foreground summary:mt-xs" aria-hidden="true" />
+          <UsersIcon size={24} className="shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0 flex-1 space-y-sm"><p className="text-label font-semibold">{ownerName ? `${ownerName}’s account` : "Your account"}</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div><div className="basis-full pl-9 summary:basis-auto summary:pl-0"><Badge>You’re the owner</Badge></div>
         </div>
         <CollectionToolbar label="Search name or email" value={search} onChange={setSearch} summary="Account-wide access" />

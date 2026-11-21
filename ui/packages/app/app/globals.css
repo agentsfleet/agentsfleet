@@ -3,6 +3,8 @@
 @import "@agentsfleet/design-system/tokens.css";
 @import "@agentsfleet/design-system/theme.css";
 @import "@agentsfleet/design-system/app-tokens.css";
+@import "./(dashboard)/settings/settings.css";
+@import "../components/domain/conversation/conversation.css";
 
 /* Tailwind scans the sibling design-system package for utility classes used
  * in shared primitives. Without this, Button/Card/etc. ship unstyled. */
@@ -181,24 +183,4 @@ code, pre, kbd { font-family: var(--ff-mono); }
 }
 @media (max-width: 42.5rem) {
   .fleet-chat-heading > svg, .fleet-chat-heading > div > svg { display: none; }
-}
-
-/* Work sections carry their own separators. Consecutive rows share one spacing rhythm. */
-.fleet-summary:has([data-current-work]) > h2 {
-  margin-bottom: var(--sp-xl);
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-.fleet-summary [data-current-work] > [data-work-section] {
-  margin-block: 0;
-  padding-block: var(--sp-lg);
-  border-top: 1px solid var(--border);
-}
-.fleet-summary [data-current-work] > [data-work-section]:last-child { padding-bottom: 0; }
-.fleet-summary [data-work-section] > :not(h2) { margin-block: 0; }
-.fleet-summary [data-work-section] > h2 { margin-bottom: var(--sp-md); }
-@media (max-width: 42.5rem) {
-  .fleet-summary:has([data-current-work]) > h2 { margin-bottom: var(--sp-md); }
-  .fleet-summary [data-current-work] > [data-work-section] { padding-block: var(--sp-md); }
-  .fleet-summary [data-current-work] > [data-work-section]:last-child { padding-bottom: 0; }
 }

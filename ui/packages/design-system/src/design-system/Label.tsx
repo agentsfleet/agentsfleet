@@ -10,14 +10,15 @@ import { cn } from "../utils";
  * input. React 19 ref-as-prop.
  */
 
-export type LabelProps = ComponentProps<typeof LabelPrimitive.Root>;
+export type LabelProps = ComponentProps<typeof LabelPrimitive.Root> & { appearance?: "default" | "filter" };
 
-export function Label({ className, ref, ...props }: LabelProps) {
+export function Label({ appearance = "default", className, ref, ...props }: LabelProps) {
   return (
     <LabelPrimitive.Root
       ref={ref}
       className={cn(
-        "block font-sans text-label font-medium leading-label text-foreground",
+        "block font-sans leading-label",
+        appearance === "filter" ? "text-eyebrow font-normal text-muted-foreground" : "text-label font-medium text-foreground",
         "peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
         className,
       )}

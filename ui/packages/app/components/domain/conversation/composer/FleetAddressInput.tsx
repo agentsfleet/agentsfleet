@@ -11,6 +11,7 @@ import { FleetListSchema } from "@/lib/api/fleet-detail";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { fleetsPath } from "@/lib/api/fleet-paths";
 import { useRecentPage } from "@/lib/api/use-recent-page";
+import { activeFleetMention } from "@/lib/chat-address";
 import { workspaceIdFromPath } from "@/lib/workspace-routes";
 
 type Props = {inputRef: RefObject<HTMLTextAreaElement | null>; placeholder: string; disabled: boolean};
@@ -44,7 +45,7 @@ export function WorkspaceFleetAddressInput({workspace, inSetup, ...props}: Props
     <ChatComposerInput {...props}
       aria-autocomplete="list" aria-controls={picker.open ? listId : undefined} aria-activedescendant={activeId}
       onSelect={event => picker.caret(event.currentTarget)} onChange={picker.change} />
-    {picker.open ? <DashboardPanel padding="none" className="absolute inset-x-0 bottom-full z-20 mb-sm max-h-[min(16rem,40dvh)] overflow-y-auto rounded-lg border border-border bg-popover p-sm text-foreground shadow-floating" ref={listRef}>
+    {picker.open ? <DashboardPanel padding="none" className="fleet-address-options" ref={listRef}>
       <SectionLabel variant="navigation" className="block px-md py-sm">Workspace fleets</SectionLabel>
       <SuggestionList id={listId} label="Workspace fleets" active={picker.selected} onChoose={picker.choose}
         options={picker.choices.map(fleet => ({key: fleet.id, value: fleet.name, label: `@${fleet.name}`}))} />
@@ -62,10 +63,10 @@ function useFleetAddress({inputRef, disabled}: Props, inSetup: boolean, workspac
   const [index, setIndex] = useState(0);
   // The wire format has one recipient. Never replace a recipient already chosen.
   const prefix = text.slice(0, caret);
-  const mention = /(?:^|\s)@([a-z\d-]{0,64})$/i.exec(prefix);
-  const open = Boolean(workspace && focused && !disabled && mention && dismissed !== text
+  const mention = activeFleetMention(prefix);
+  const open = Boolean(workspace && focused && !disabled && mention !== undefined && dismissed !== text
     && (inSetup || !/^\s*@[a-z\d-]+[\s,:]/i.test(prefix)));
-  const query = mention?.[1] ?? "";
+  const query = mention ?? "";
   const collection = useRecentPage(open && workspace ? `/live${fleetsPath(workspace)}` : null, FleetListSchema);
   const page = useSyncExternalStore(collection?.subscribe ?? emptySubscribe,
     collection?.getSnapshot ?? emptySnapshot, emptySnapshot);

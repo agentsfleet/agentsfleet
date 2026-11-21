@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { AssistantRuntimeProvider, ComposerPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { FleetMentionButton } from "./FleetMentionButton";
 import { FleetAddressInput, WorkspaceFleetAddressInput } from "./FleetAddressInput";
 import { FLEET_DETAIL, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import userEvent from "@testing-library/user-event";
@@ -22,6 +23,7 @@ function Harness({disabled = false, inSetup = false, onNew = async () => {}}: {d
   const runtime = useExternalStoreRuntime({messages: [], convertMessage: (message: ThreadMessageLike) => message, onNew});
   const ref = useRef<HTMLTextAreaElement>(null);
   return <AssistantRuntimeProvider runtime={runtime}><ComposerPrimitive.Root>
+    <FleetMentionButton input={ref} disabled={disabled} />
     {inSetup ? <WorkspaceFleetAddressInput workspace={WORKSPACE} inSetup inputRef={ref} placeholder="Message" disabled={disabled} /> : <FleetAddressInput inputRef={ref} placeholder="Message" disabled={disabled} />}
   </ComposerPrimitive.Root></AssistantRuntimeProvider>;
 }
@@ -153,4 +155,19 @@ it("keeps a setup mention inside the owner's instructions", async () => {
   const input = enter("Ask @bo");
   await userEvent.click(await screen.findByRole("option", {name: "@bob"}));
   expect(input.value).toBe("Ask @bob ");
+});
+
+it("opens the picker from its action and preserves an existing addressed message", async () => {
+  render(<Harness />);
+  const input = screen.getByRole<HTMLTextAreaElement>("textbox");
+  const user = userEvent.setup();
+  const button = screen.getByRole("button", {name: "Address a workspace fleet"});
+  await user.click(button);
+  expect(input.value).toBe("@");
+  await user.click(await screen.findByRole("option", {name: "@bob"}));
+  enter("@bob Review the update");
+  await user.click(button);
+  await screen.findByRole("option", {name: "@bob"});
+  expect(input.value).toBe("@bob Review the update");
+  expect(input.selectionEnd).toBe(4);
 });

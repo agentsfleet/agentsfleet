@@ -17,7 +17,7 @@ function Harness({
 }: {
   defaultValue?: string;
   onValueChange?: (v: string) => void;
-  appearance?: "default" | "composer";
+  appearance?: "default" | "composer" | "filter";
   position?: "popper" | "item-aligned";
 }) {
   return (
@@ -48,7 +48,7 @@ describe("Select", () => {
     expect(screen.getByText("Claude")).toBeInTheDocument();
   });
 
-  it.each(["default", "composer"] as const)("opens %s, lists choices and emits the selected value", (appearance) => {
+  it.each(["default", "composer", "filter"] as const)("opens %s, lists choices and emits the selected value", (appearance) => {
     const onValueChange = vi.fn();
     render(<Harness onValueChange={onValueChange} appearance={appearance} />);
     const trigger = screen.getByRole("combobox", { name: /provider/i });

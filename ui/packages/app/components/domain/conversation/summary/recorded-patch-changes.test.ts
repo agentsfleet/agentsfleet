@@ -1,3 +1,4 @@
+import {recordedPatchTotals} from "./recorded-patch-changes";
 import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { expect, it } from "vitest";
 import { readSavedTrace } from "@/lib/streaming/fleet-stream-tool-trace";
@@ -137,4 +138,11 @@ it("recovers a missing middle receipt path from a whole native patch while prese
     outputHead: rows.slice(0, 5).join("\n") + "\n", outputTail: rows.slice(-5).join("\n"), outputLineCount: rows.length})]})]);
   expect(changes.map(change => change.path).toSorted()).toEqual(paths);
   expect(changes.every(change => change.lines.kind === "unknown")).toBe(true);
+});
+
+it("keeps header totals unknown for incomplete patches and counts complete hunks", () => {
+  const totals = (patch: string) => recordedPatchTotals({args:{patch}});
+  expect(totals("clipped")).toBeUndefined();
+  expect(totals("*** Begin Patch\n*** Delete File: gone\n*** End Patch")).toBeUndefined();
+  expect(totals("*** Begin Patch\n*** Add File: new\n+one\n+two\n*** End Patch")).toEqual({added: 2, removed: 0});
 });

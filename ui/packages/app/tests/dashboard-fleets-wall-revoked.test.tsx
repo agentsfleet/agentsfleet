@@ -4,7 +4,9 @@ import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { ERROR_CODE } from "@/lib/errors";
 import {
+  activityFrame,
   FakeEventSource,
+  FEED_SHOWN_LABEL,
   FleetProbe,
   flushAnimationFrame,
   onlyEventSource,
@@ -18,14 +20,13 @@ import {
 
 const FLEET_A = "fleet_a";
 const CONNECTION = "workspace-connection";
-const SNAPSHOT_KIND_LABEL = "kind:snapshot";
 // Past the wall's capped backoff: a reconnect would have opened by now.
 const PAST_EVERY_RETRY_MS = 60_000;
 
 setupWallTests();
 
 describe("the wall after access is revoked", () => {
-  it("should say access is gone where it shows the connection, keep each tile's last activity, and never reconnect", async () => {
+  it("reports revoked access, retains the last fleet activity and closes the stream", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const view = render(
       <WorkspaceStreamProvider workspaceId={WORKSPACE_ID} fleetIds={[FLEET_A]}>
@@ -36,6 +37,7 @@ describe("the wall after access is revoked", () => {
     const source = onlyEventSource();
     source.open();
     source.emit({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
+    source.emit(activityFrame(FLEET_A));
     flushAnimationFrame();
 
     source.emit({ kind: FRAME_KIND.ACCESS_REVOKED, error_code: ERROR_CODE.AUTH_FORBIDDEN });
@@ -44,7 +46,9 @@ describe("the wall after access is revoked", () => {
     flushAnimationFrame();
 
     expect(view.getByTestId(CONNECTION).textContent).toContain("revoked");
-    expect(view.getByTestId(FLEET_A).textContent).toContain(SNAPSHOT_KIND_LABEL);
+    expect(view.getByTestId(FLEET_A).textContent).toContain("connection:revoked");
+    expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
+    expect(source.closed).toBe(true);
     expect(FakeEventSource.instances).toHaveLength(1);
   });
 

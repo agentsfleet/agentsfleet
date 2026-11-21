@@ -91,7 +91,7 @@ export default function InviteDialog({ onSettled, ownerName }: { onSettled: () =
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm">
-          <PlusIcon size={14} />
+          <PlusIcon aria-hidden="true" />
           Invite member
         </Button>
       </DialogTrigger>
