@@ -4,6 +4,14 @@ import { FLEET_DETAIL, MODEL } from "@/tests/helpers/draft-fixtures";
 
 test("fleet Summary is inline and the composer keeps the approved horizontal alignment", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
+  const thread = page.getByRole("region", {name: "Fleet chat", exact: true});
+  const viewport = thread.getByRole("presentation").filter({has: page.getByRole("log")});
+  await expect(viewport).toHaveCSS("overflow-y", "auto");
+  await expect(viewport).toHaveCSS("min-height", "0px");
+  await expect(thread.getByRole("button", {name: "Jump to latest", includeHidden: true})).toHaveCSS("position", "absolute");
+  await expect(thread).toHaveCSS("flex-direction", "column");
+  await expect(thread).toHaveCSS("min-height", "0px");
+
   await expect(page.getByRole("link", {name: "Back to your fleets", exact: true})).toHaveCount(0);
   if (info.project.name !== "mobile-chromium") {
     await expect(page.getByRole("navigation", {name: "Primary"})).toBeVisible();
