@@ -12,7 +12,7 @@
 
 use af_wire::turn::TurnKind;
 use afd_db::test_util::mint_id;
-use afd_turns::view::{Filter, History, next_cursor};
+use afd_turns::view::{Filter, History, THREAD_MAX_LIMIT, next_cursor};
 use afd_turns::{IncomingTurn, Key, Producer};
 use jiff::Timestamp;
 
@@ -93,6 +93,35 @@ async fn two_turns_in_one_millisecond_list_once_newest_first() {
         .await
         .expect("the detail reads");
     assert!(unadmitted.is_none(), "an id no turn minted names nothing");
+
+    lane.cleanup().await;
+}
+
+/// A thread page serves the largest size the route accepts: the store reads
+/// that many rows and the one past them that says a next page exists.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_thread_page_of_100_is_served() {
+    let lane = TurnsLane::open().await;
+    let ledger = lane.turns();
+    let stored = THREAD_MAX_LIMIT + 2;
+    for number in 0..stored {
+        let key = format!("{}-page-{number}", lane.fleet);
+        let admitted = ledger
+            .admit(turn(&lane, &key))
+            .await
+            .expect("the turn is taken");
+        lane.seed_event(&admitted.stored.id, SHARED_INSTANT).await;
+    }
+
+    let history = History::new(lane.database.clone());
+    let page = history
+        .thread_page(&lane.workspace, &lane.fleet, None, THREAD_MAX_LIMIT + 1)
+        .await
+        .expect("a page reads");
+
+    let read = i64::try_from(page.len()).expect("a page length fits an i64");
+    assert_eq!(read, THREAD_MAX_LIMIT + 1, "a full page and the row past it");
 
     lane.cleanup().await;
 }
