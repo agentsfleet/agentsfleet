@@ -74,6 +74,10 @@ class FileGrades(unittest.TestCase):
         self.assertEqual(judge.missed_by_crate(report), [("afd_db", 2), ("(workspace root)", 1)])
         self.assertEqual(judge.crate_of("/w/rustd/guffbolt/src/tool/mod.rs"), "guffbolt")
 
+    def test_the_harness_providers_roll_up_under_their_own_name(self):
+        self.assertEqual(judge.crate_of("/w/rustd/guffbolt-ai/src/wire/route/mod.rs"), "guffbolt-ai")
+        self.assertEqual(judge.crate_of("/w/rustd/guffbolt/src/chat/mod.rs"), "guffbolt")
+
     def test_each_layers_binary_rolls_up_under_its_own_name(self):
         report = merged({
             "/w/rustd/crates/daemon/main/src/cli.rs": {1: 0, 2: 0},

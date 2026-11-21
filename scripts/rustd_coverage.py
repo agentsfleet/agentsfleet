@@ -54,9 +54,9 @@ CRATES_SEGMENT = "/crates/"
 LAYERS = frozenset({"foundation", "protocol", "harness", "runner", "daemon", "e2e"})
 # The folder a layer's binary sits in.
 BINARY = "main"
-# The agent harness sits beside `crates/`, in no layer (`rustd/Cargo.toml`).
-HARNESS = "guffbolt"
-HARNESS_SEGMENT = f"/rustd/{HARNESS}/"
+# The agent harness and its providers sit beside `crates/`, in no layer
+# (`rustd/Cargo.toml`); each is named by its folder.
+HARNESSES = ("guffbolt", "guffbolt-ai")
 WORKSPACE_ROOT = "(workspace root)"
 REVISION_SUFFIX = ".rev"
 NOT_TAKEN = "-"
@@ -175,10 +175,10 @@ def crate_of(path):
     """The crate a source path belongs to, past its layer folder.
 
     A layer's binary sits in `main/`, so it is named with its layer; the
-    harness sits beside `crates/` and is named alone.
+    harness and its providers sit beside `crates/` and are named alone.
     """
     if CRATES_SEGMENT not in path:
-        return HARNESS if HARNESS_SEGMENT in path else WORKSPACE_ROOT
+        return next((name for name in HARNESSES if f"/rustd/{name}/" in path), WORKSPACE_ROOT)
     parts = path.split(CRATES_SEGMENT, 1)[1].split("/")
     if parts[0] not in LAYERS or len(parts) < 2:
         return parts[0]
