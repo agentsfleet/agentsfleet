@@ -133,9 +133,9 @@ mod tests {
     /// it.
     ///
     /// There is no `Budget` constructor, deliberately — a ceiling that did not
-    /// come through validation could be negative, infinite, or above the cap,
-    /// and every rule in this file assumes it is none of those. So even a unit
-    /// test goes the long way round, which is the type doing its job.
+    /// come through validation could be zero or negative, and every rule in
+    /// this file assumes it is neither. So even a unit test goes the long way
+    /// round, which is the type doing its job.
     fn ceiling(daily: i64, monthly: Option<i64>) -> Budget {
         let monthly = monthly.map_or(String::new(), |m| format!(r#","monthly_nanos":"{m}""#));
         let document = format!(

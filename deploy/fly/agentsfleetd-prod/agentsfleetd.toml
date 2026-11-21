@@ -9,6 +9,9 @@ max_in_flight_requests = 256
 # Raise it when dashboards get 503 UZ-API-002 opening live streams;
 # lower it when open streams use too much of this machine's memory.
 max_sse_streams = 256
+# Raise it when slow clients on poor links are dropped while still sending a request;
+# lower it when idle or stalled connections hold sockets too long. Never cuts a live stream.
+read_timeout_seconds = 300
 
 # Performance knobs: list page sizes. Values are today's compiled defaults.
 [api]

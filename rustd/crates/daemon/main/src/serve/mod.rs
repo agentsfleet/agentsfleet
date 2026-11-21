@@ -235,7 +235,8 @@ async fn serve_plane(
     );
     let stream_port = runner_stream_address.port();
     tracing::info!(event = "runner_stream_listener_started", port = stream_port);
-    let address = listen(port, router, supervisor, drain.clone()).await?;
+    let read_timeout = config.runtime.operations.tuning.server.read_timeout;
+    let address = listen(port, router, read_timeout, supervisor, drain.clone()).await?;
     announce_started(supervisor, analytics, address);
     Ok(Booted {
         address,

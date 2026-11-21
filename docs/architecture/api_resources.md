@@ -77,7 +77,7 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 
 `Definition` is exactly `{schema_version:1,description:string,instructions_md:string,config:ConfigDocument}` from [the definition page](fleet_definitions.md#validated-definition). `ConfigDocument` preserves the existing typed `name`/`x-agentsfleet` shape, changing budget fields to decimal-string `daily_nanos`/`monthly_nanos`. Runtime model is `config["x-agentsfleet"].model`.
 
-Required daily ceiling is `1..1000000000000` nanos; optional monthly ceiling is `1..10000000000000`; omit monthly for no monthly ceiling. Zero, fractions, signs, exponent notation, and overflow are rejected. These preserve the positive ceiling and cap semantics in `af_fleet_runtime`'s config policy.
+The required daily ceiling and the optional monthly ceiling are each any positive whole number of nanos up to the signed 64-bit maximum; omit monthly for no monthly ceiling. No maximum sits above a fleet's own budget. Zero, fractions, signs, exponent notation, and overflow are rejected by `af_fleet_runtime`'s config policy.
 
 `Source` is a tagged union:
 

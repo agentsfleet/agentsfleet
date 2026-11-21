@@ -42,4 +42,6 @@ pub mod server;
 mod telemetry;
 
 pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
-pub use self::server::{MAX_REQUEST_HEADER_BYTES, connection_builder};
+pub use self::server::{
+    DEFAULT_READ_TIMEOUT, MAX_REQUEST_HEADER_BYTES, connection_builder, read_bounded,
+};

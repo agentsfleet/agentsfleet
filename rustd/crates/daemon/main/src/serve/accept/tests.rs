@@ -5,8 +5,6 @@
     reason = "a joined test task's panic should surface here, not be swallowed"
 )]
 
-use std::time::Duration;
-
 use super::*;
 
 /// An acceptor whose accept never returns: the one place the loop blocks.
@@ -27,6 +25,7 @@ async fn blocked(drain: &Drain, abort: &CancellationToken) -> tokio::task::JoinH
     let serving = tokio::spawn(accept_loop(
         Parked,
         axum::Router::new(),
+        afd_api::DEFAULT_READ_TIMEOUT,
         drain.clone(),
         abort.clone(),
     ));

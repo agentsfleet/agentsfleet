@@ -37,8 +37,8 @@
 //! `afd_fleet::error::detail` already draws: WHAT WENT WRONG is this
 //! type, rich and structured, for the daemon's own reasoning and its logs; WHAT
 //! THE CALLER IS TOLD is a code and a sentence chosen by the handler. Keeping
-//! them apart is what lets this crate say `budget.daily_nanos is above the
-//! cap` internally while the caller still reads one stable code.
+//! them apart is what lets this crate say `budget.daily_nanos must be greater
+//! than zero` internally while the caller still reads one stable code.
 //!
 //! One code for the whole crate is deliberate. An author fixes a configuration
 //! document the same way whichever rule they broke, so a caller has no branch

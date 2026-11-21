@@ -559,6 +559,8 @@ pub(crate) struct ServerTimes {
     pub max_live_activity_notices: usize,
     /// Largest request body a route reads, in bytes.
     pub max_request_body: usize,
+    /// How long a client gets to send a request's head, and then its body.
+    pub read_timeout: Duration,
 }
 
 impl Default for ServerTimes {
@@ -576,6 +578,7 @@ impl From<&super::settings::Server> for ServerTimes {
             max_request_body: server
                 .max_request_body_mib
                 .saturating_mul(afd_http::body::MIB),
+            read_timeout: super::settings::secs(server.read_timeout_seconds),
         }
     }
 }

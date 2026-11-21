@@ -68,8 +68,10 @@ af_core = { workspace = true, features = ["sqlx"] }
 axum = { workspace = true, features = ["json", "matched-path", "query"] }
 # The in-flight ceiling: a shared-semaphore concurrency limit under load shedding.
 tower = { workspace = true, features = ["limit", "load-shed", "util"] }
-# `x-request-id` stamped on every request and echoed on its response.
-tower-http.workspace = true
+# `x-request-id` stamped on every request and echoed on its response, and
+# `timeout`'s `RequestBodyDeadline`: the request body's share of
+# `[server] read_timeout_seconds`, which never times a response.
+tower-http = { workspace = true, features = ["timeout"] }
 http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.

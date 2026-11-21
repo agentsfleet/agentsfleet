@@ -98,6 +98,7 @@ async fn drains_in_flight_requests() {
     let serving = tokio::spawn(serve_accepts(
         listener,
         router,
+        afd_api::DEFAULT_READ_TIMEOUT,
         drain.clone(),
         abort.clone(),
     ));
@@ -190,6 +191,7 @@ async fn test_shutdown_stops_within_its_bound_when_a_request_will_not_finish() {
     let serving = tokio::spawn(serve_accepts(
         listener,
         router,
+        afd_api::DEFAULT_READ_TIMEOUT,
         drain.clone(),
         abort.clone(),
     ));

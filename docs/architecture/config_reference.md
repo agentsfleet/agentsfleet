@@ -55,6 +55,7 @@ Sizes use mebibytes (MiB) and kibibytes (KiB). A count, size or timeout refuses 
 | `background_task_join_timeout_seconds` | 10 | Shutdown logs background tasks that did not stop in time |
 | `max_live_activity_notices` | 16 | Live activity on dashboards lags behind runs |
 | `max_request_body_mib` | 1 | Senders get `413` for bodies they need to send, such as webhook deliveries; lower it when large bodies use too much memory. A route that carries chat text or a runner frame reads the larger size that text or frame needs |
+| `read_timeout_seconds` | 300 | Clients on slow links are dropped while still sending a request; lower it when stalled connections hold sockets too long. It is the time a client gets to send a request's headers, and then its body; past it the connection is dropped. It never cuts a response, so live streams are unaffected. An idle HTTP/1 keep-alive connection closes after the same time |
 
 ### `[api]`
 

@@ -88,6 +88,10 @@ pub(super) struct Server {
     /// Largest request body a route reads; a larger one is refused 413.
     #[garde(range(min = 1))]
     pub max_request_body_mib: usize,
+    /// How long a client gets to send a request's head, and then its body;
+    /// past it the connection is dropped. A response is never timed.
+    #[garde(range(min = 1))]
+    pub read_timeout_seconds: u32,
 }
 
 /// A runner answer in flight when the drain starts must finish inside it.
@@ -117,6 +121,7 @@ impl Default for Server {
             max_live_activity_notices: afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
             max_request_body_mib: afd_http::body::DEFAULT_MAX_REQUEST_BODY_BYTES
                 / afd_http::body::MIB,
+            read_timeout_seconds: seconds(afd_api::DEFAULT_READ_TIMEOUT),
         }
     }
 }

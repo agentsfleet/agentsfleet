@@ -191,7 +191,14 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
     let loop_drain = drain.clone();
     let loop_token = token.clone();
     let serving = tokio::spawn(async move {
-        serve_accepts(acceptor, axum::Router::new(), loop_drain, loop_token).await;
+        serve_accepts(
+            acceptor,
+            axum::Router::new(),
+            afd_api::DEFAULT_READ_TIMEOUT,
+            loop_drain,
+            loop_token,
+        )
+        .await;
     });
 
     // The loop must survive all three failures and still be waiting.

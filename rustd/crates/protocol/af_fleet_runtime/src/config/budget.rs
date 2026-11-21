@@ -1,4 +1,8 @@
 //! Exact positive spend ceilings. Authored and stored budgets share this parser.
+//!
+//! A fleet's own budget is the only ceiling on its spend, so no maximum sits
+//! above it: a ceiling is any positive `i64` of nanos, the width the ledger
+//! stores (Indy, Nov 22, 2026).
 
 use serde::{Serialize, Serializer};
 
@@ -9,21 +13,16 @@ use crate::error::{Error, ErrorKind, Result, missing};
 pub const DAILY_NANOS: &str = "daily_nanos";
 /// Optional monthly budget key.
 pub const MONTHLY_NANOS: &str = "monthly_nanos";
-/// Largest daily ceiling, preserving the existing thousand-dollar limit.
-pub const MAX_DAILY_NANOS: i64 = 1_000_000_000_000;
-/// Largest monthly ceiling, preserving the ten-thousand-dollar limit.
-pub const MAX_MONTHLY_NANOS: i64 = 10_000_000_000_000;
 pub(crate) const MAX_NANOS_DIGITS: usize = 19;
 const INVALID_INTEGER: &str = "expected an unsigned decimal string of integer nanos";
 const NON_POSITIVE: &str = "a ceiling must be greater than zero";
-const ABOVE_CAP: &str = "it is above the cap";
 
 /// A validated integer ceiling; serialization always emits a decimal string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BudgetCeiling(i64);
 
 impl BudgetCeiling {
-    fn parse(field: &'static str, text: &str, cap: i64) -> Result<Self> {
+    fn parse(field: &'static str, text: &str) -> Result<Self> {
         let invalid = |reason| Error::from(ErrorKind::InvalidBudget { field, reason });
         garde::Unvalidated::new(Decimal { text })
             .validate()
@@ -32,8 +31,8 @@ impl BudgetCeiling {
             .parse::<i64>()
             .map_err(|_overflow| invalid(INVALID_INTEGER))?;
         garde::Unvalidated::new(Amount { nanos })
-            .validate_with(&cap)
-            .map_err(|_report| invalid(if nanos <= 0 { NON_POSITIVE } else { ABOVE_CAP }))?;
+            .validate()
+            .map_err(|_report| invalid(NON_POSITIVE))?;
         Ok(Self(nanos))
     }
 
@@ -57,9 +56,8 @@ struct Decimal<'a> {
 }
 
 #[derive(garde::Validate)]
-#[garde(context(i64 as cap))]
 struct Amount {
-    #[garde(range(min = 1, max = *cap))]
+    #[garde(range(min = 1))]
     nanos: i64,
 }
 
@@ -97,12 +95,11 @@ impl TryFrom<raw::Budget> for Budget {
                     .daily_nanos
                     .as_deref()
                     .ok_or_else(|| missing(DAILY_NANOS))?,
-                MAX_DAILY_NANOS,
             )?,
             monthly: value
                 .monthly_nanos
                 .as_deref()
-                .map(|text| BudgetCeiling::parse(MONTHLY_NANOS, text, MAX_MONTHLY_NANOS))
+                .map(|text| BudgetCeiling::parse(MONTHLY_NANOS, text))
                 .transpose()?,
         })
     }

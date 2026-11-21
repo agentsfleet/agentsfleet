@@ -192,6 +192,8 @@ tokio = { workspace = true, features = [
 # The accept-fault suite names `CancellationToken` and builds a bare Router.
 tokio-util.workspace = true
 axum.workspace = true
+# The read-timeout suite's live stream: an event body built with `unfold`.
+futures-util.workspace = true
 serde_json.workspace = true
 # The TLS posture proof: a rustls client and server over an rcgen certificate.
 rcgen.workspace = true
