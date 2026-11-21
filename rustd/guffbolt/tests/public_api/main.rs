@@ -11,6 +11,7 @@
     reason = "test binary: a failed precondition should fail the test loudly"
 )]
 
+mod example;
 mod plain;
 mod script;
 mod seam;

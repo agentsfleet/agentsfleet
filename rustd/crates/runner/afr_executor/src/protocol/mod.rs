@@ -35,6 +35,8 @@ pub(crate) const METHOD_LIST_DIR: &str = "fs/list";
 pub(crate) const METHOD_APPEND_FILE: &str = "fs/append";
 /// `fs/delete`: remove a file.
 pub(crate) const METHOD_DELETE_FILE: &str = "fs/delete";
+/// `fs/search`: walk below a path and answer its files or matching lines.
+pub(crate) const METHOD_SEARCH: &str = "fs/search";
 /// An ordered proof that no earlier file operation is still executing.
 pub(crate) const METHOD_RECOVERY_IDLE: &str = "fs/recovery_idle";
 /// The notification carrying a chunk of a process's output.

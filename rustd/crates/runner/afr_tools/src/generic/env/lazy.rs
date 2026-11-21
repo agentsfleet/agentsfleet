@@ -5,8 +5,8 @@ use std::time::Duration;
 use afr_executor::{ExecutorSource, Sizes, WORKSPACE_ROOT};
 use bytes::Bytes;
 use guffbolt::tools::env::{
-    Browser, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Listing, Process, ProcessId,
-    Spawn,
+    Browser, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Found, Listing, Process,
+    ProcessId, Search, Spawn,
 };
 
 use super::{ENDING_GRACE, SandboxEnv, WAITS_FOR_FIRECRACKER};
@@ -77,6 +77,10 @@ impl Env for LazySandboxEnv<'_> {
 
     fn list_dir<'a>(&'a self, path: &'a str) -> EnvFuture<'a, Listing> {
         Box::pin(async move { self.sandbox().await?.list_dir(path).await })
+    }
+
+    fn search<'a>(&'a self, search: &'a Search) -> EnvFuture<'a, Found> {
+        Box::pin(async move { self.sandbox().await?.search(search).await })
     }
 
     fn ending_grace(&self) -> Duration {

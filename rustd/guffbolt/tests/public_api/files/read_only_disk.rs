@@ -54,6 +54,10 @@ impl Env for ReadOnly {
     fn list_dir<'a>(&'a self, path: &'a str) -> EnvFuture<'a, Listing> {
         self.0.list_dir(path)
     }
+
+    fn search<'a>(&'a self, search: &'a Search) -> EnvFuture<'a, Found> {
+        self.0.search(search)
+    }
 }
 
 /// An edit, a tagged edit and a patch's removal the disk refuses each read

@@ -119,3 +119,79 @@ async fn ls_names_a_socket_and_find_and_grep_pass_over_it() {
     assert_eq!(found.text, "plain.txt");
     assert_eq!(grepped.text, "plain.txt:1: sock");
 }
+
+/// A path `.gitignore` names is neither found nor searched, inside a
+/// repository or not, while a dotfile it does not name still is.
+#[tokio::test]
+async fn a_search_skips_gitignored_paths() {
+    let desk = Desk::new();
+    desk.put(".gitignore", "target/\n*.log\n");
+    desk.put("src/main.rs", "fn main() {}\n");
+    desk.put("target/debug/main.rs", "fn main() {}\n");
+    desk.put("src/run.log", "fn main() {}\n");
+    desk.put(".hidden.rs", "fn main() {}\n");
+    let tools = desk.tools(false);
+
+    let found = call(&tools, "find", json!({"pattern": "*"})).await;
+    let grepped = call(&tools, "grep", json!({"pattern": "fn main"})).await;
+    let below = call(&tools, "find", json!({"pattern": "*", "path": "src"})).await;
+
+    assert_eq!(found.text, ".gitignore\n.hidden.rs\nsrc/main.rs");
+    assert_eq!(
+        grepped.text,
+        ".hidden.rs:1: fn main() {}\nsrc/main.rs:1: fn main() {}"
+    );
+    assert_eq!(
+        below.text, "main.rs",
+        "the root's .gitignore holds below it"
+    );
+}
+
+/// `find` and `grep` on a path that names one file answer that file by the
+/// name it was asked by; a socket named alone holds nothing.
+#[tokio::test]
+async fn find_and_grep_on_one_file_answer_it_by_its_name() {
+    let desk = Desk::new();
+    tree(&desk);
+    let tools = desk.tools(false);
+
+    let found = call(&tools, "find", json!({"pattern": "**", "path": "src/a.rs"})).await;
+    let missed = call(
+        &tools,
+        "find",
+        json!({"pattern": "*.txt", "path": "src/a.rs"}),
+    )
+    .await;
+
+    assert_eq!(found.text, "src/a.rs");
+    assert_eq!(missed.text, "");
+}
+
+/// An environment asked directly for a glob or a pattern it cannot compile
+/// refuses the search, in the compiler's words.
+#[tokio::test]
+async fn a_search_refuses_a_glob_or_pattern_it_cannot_compile() {
+    let desk = Desk::new();
+    tree(&desk);
+    let search = |glob: Option<&str>, pattern: Option<&str>| Search {
+        path: ".".to_owned(),
+        glob: glob.map(str::to_owned),
+        pattern: pattern.map(|text| guffbolt::tools::env::Pattern {
+            text: text.to_owned(),
+            literal: false,
+            ignore_case: false,
+        }),
+        limit: 10,
+    };
+
+    let glob = desk.env.search(&search(Some("a[b"), None)).await.err();
+    let pattern = desk.env.search(&search(None, Some("fn ("))).await.err();
+    let line_end = desk.env.search(&search(None, Some("a\nb"))).await.err();
+
+    for refused in [glob, pattern, line_end] {
+        assert_eq!(
+            refused.map(|failure| failure.kind()),
+            Some(EnvErrorKind::Unavailable)
+        );
+    }
+}

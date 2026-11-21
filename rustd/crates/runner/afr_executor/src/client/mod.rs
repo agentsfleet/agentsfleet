@@ -29,13 +29,13 @@ use tokio::net::UnixStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use crate::api::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
+use crate::api::{Executor, FileContent, Found, Listing, Process, ProcessId, Search, Spawn};
 use crate::error::{self, Result};
 use crate::protocol::{
     KillParams, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE,
-    PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof, SpawnParams,
-    WriteFileParams, WriteParams, decoded, request,
+    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE,
+    METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof,
+    SpawnParams, WriteFileParams, WriteParams, decoded, request,
 };
 use crate::sizes::Sizes;
 use crate::timing::CALL_DEADLINE;
@@ -274,6 +274,10 @@ impl Executor for Client {
             path: Cow::Borrowed(path),
         };
         self.fetch(METHOD_LIST_DIR, &params).await
+    }
+
+    async fn search(&self, search: &Search) -> Result<Found> {
+        self.fetch(METHOD_SEARCH, search).await
     }
 }
 

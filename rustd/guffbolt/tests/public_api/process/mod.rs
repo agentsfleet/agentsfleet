@@ -16,7 +16,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use guffbolt::tools::env::{
     EDGE_BYTES, ENDING_GRACE_DEFAULT, Ending, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture,
-    Events as _, Feed, FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream, pipe,
+    Events as _, Feed, FileContent, Found, Listing, Process, ProcessEvent, ProcessId, Search,
+    Spawn, Stream, pipe,
 };
 use guffbolt::tools::process::sessions::{SESSIONS_PER_RUN_MAX, Sessions};
 use guffbolt::tools::{Context, ContextTool, LocalEnv, ToolsConfig, code};
@@ -165,6 +166,10 @@ impl Env for Fake {
     }
 
     fn list_dir<'a>(&'a self, _path: &'a str) -> EnvFuture<'a, Listing> {
+        Box::pin(std::future::ready(Err(no_files())))
+    }
+
+    fn search<'a>(&'a self, _search: &'a Search) -> EnvFuture<'a, Found> {
         Box::pin(std::future::ready(Err(no_files())))
     }
 

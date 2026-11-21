@@ -1,24 +1,22 @@
 //! `ls`, `find` and `grep`: looking around the working directory without changing
 //! it.
 //!
-//! All three read through the environment's file calls, never a spawned
-//! `find` or `rg`, so they work wherever the file tools do and start no
-//! process. A walk skips `.git`, follows no link and says when a directory
-//! listing stopped early; every answer is cut to a command's output budget.
+//! `ls` lists one directory through the environment's file calls. `find` and
+//! `grep` ask the environment for one search, which walks where the files
+//! are, skips `.git` and what `.gitignore` names, and follows no link; no
+//! `find` or `rg` process is started. Every answer is cut to a command's
+//! output budget, and says when the environment cut it first.
 
 mod grep;
 
 use std::borrow::Cow;
-use std::collections::VecDeque;
 
-use globset::GlobBuilder;
-use regex::bytes::Regex;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{Answer, failed, inside, settled};
 use crate::tool::ToolOutput;
-use crate::tools::env::{EntryKind, Env};
+use crate::tools::env::{EntryKind, Env, Found, Hit, Search as Query, glob_matcher};
 use crate::tools::process::output;
 use crate::tools::{Context, Handler, code};
 
@@ -28,13 +26,11 @@ pub use self::grep::{Grep, Lines};
 const LS_DEFAULT: usize = 500;
 /// The paths `find` answers with when the model names no limit.
 const FIND_DEFAULT: usize = 1000;
-/// The directory a walk never enters.
-const SKIPPED: &str = ".git";
-/// The root, as a walk names it.
+/// The root, as a call names it.
 const HERE: &str = ".";
 /// What an answer that stopped at its limit says last.
 const LIMIT_REACHED: &str = "... limit reached; narrow the path or the pattern";
-/// What a walk whose directory listing stopped early says last.
+/// What a search the environment cut short says last.
 const WALK_CUT: &str = "... the walk stopped early; narrow the path";
 
 /// `ls`'s arguments.
@@ -117,7 +113,7 @@ impl Handler for Find<'_> {
     const NAME: &'static str = "find";
     const DESCRIPTION: &'static str = "Find files in the working directory whose path matches \
         a glob, such as `**/*.rs`, and read back their paths relative to the directory searched. \
-        `.git` is skipped. At most `limit` paths (1000 when absent).";
+        `.git` and what `.gitignore` names are skipped. At most `limit` paths (1000 when absent).";
     type Arguments = Search;
 
     async fn run(&self, arguments: Search, _context: Context<'_>) -> ToolOutput {
@@ -126,23 +122,22 @@ impl Handler for Find<'_> {
 }
 
 async fn find(env: &dyn Env, arguments: &Search) -> Answer {
-    let root = start(env, arguments.path.as_deref())?;
-    let glob = glob(&arguments.pattern)?;
-    let limit = arguments.limit.unwrap_or(FIND_DEFAULT);
-    let walked = walk(env, root).await?;
-    let mut found: Vec<String> = walked
-        .files
-        .into_iter()
-        .filter(|relative| glob.is_match(relative.as_bytes()))
-        .collect();
-    found.sort_unstable();
-    let note = if found.len() > limit {
+    let search = Query {
+        path: start(env, arguments.path.as_deref())?.to_owned(),
+        glob: Some(glob(&arguments.pattern)?),
+        pattern: None,
+        limit: arguments.limit.unwrap_or(FIND_DEFAULT),
+    };
+    let found = env
+        .search(&search)
+        .await
+        .map_err(|failure| failed(&failure))?;
+    let note = if found.limited {
         Some(LIMIT_REACHED)
     } else {
-        walked.cut.then_some(WALK_CUT)
+        found.cut.then_some(WALK_CUT)
     };
-    found.truncate(limit);
-    Ok(ToolOutput::succeeded(answer(env, found, note)))
+    Ok(ToolOutput::succeeded(answer(env, shown(found), note)))
 }
 
 /// The path a call starts from: the model's, checked, or the root.
@@ -153,77 +148,31 @@ fn start<'p>(env: &dyn Env, path: Option<&'p str>) -> Result<&'p str, ToolOutput
     }
 }
 
-/// `glob` as a matcher of whole relative paths: `*` and `?` stay within one
-/// directory, `**` crosses them. A glob with no directory in it matches a
-/// file's name at any depth.
-///
-/// `globset` translates the glob; the `regex` crate compiles it, under its
-/// default size limit, so a glob too large to compile is refused rather than
-/// built.
-fn glob(glob: &str) -> Result<Regex, ToolOutput> {
+/// `glob` as a search matches it, against whole relative paths: a glob with
+/// no directory in it matches a file's name at any depth. One `globset`
+/// cannot compile is refused rather than sent.
+fn glob(glob: &str) -> Result<String, ToolOutput> {
     let glob = if glob.contains('/') || glob.starts_with("**") {
         Cow::Borrowed(glob)
     } else {
         Cow::Owned(format!("**/{glob}"))
     };
-    let refused = |reason: String| ToolOutput::failed(code::INVALID_ARGUMENTS, &reason);
-    let built = GlobBuilder::new(&glob)
-        .literal_separator(true)
-        .build()
-        .map_err(|error| refused(error.to_string()))?;
-    Regex::new(built.regex()).map_err(|error| refused(error.to_string()))
+    glob_matcher(&glob)
+        .map_err(|refused| ToolOutput::failed(code::INVALID_ARGUMENTS, &refused.to_string()))?;
+    Ok(glob.into_owned())
 }
 
-/// What a walk found: every file below its root, by its path relative to
-/// that root, and whether it stopped early.
-struct Walked {
-    files: Vec<String>,
-    cut: bool,
-}
-
-/// Every file below `root`, breadth first, skipping [`SKIPPED`] and every
-/// link.
-async fn walk(env: &dyn Env, root: &str) -> Result<Walked, ToolOutput> {
-    let mut walked = Walked {
-        files: Vec::new(),
-        cut: false,
-    };
-    let mut pending = VecDeque::from([String::new()]);
-    while let Some(relative) = pending.pop_front() {
-        let directory = if relative.is_empty() {
-            root.to_owned()
-        } else {
-            joined(root, &relative)
-        };
-        let listing = env
-            .list_dir(&directory)
-            .await
-            .map_err(|failure| failed(&failure))?;
-        walked.cut |= listing.truncated;
-        for entry in listing.entries {
-            let skipped = entry.name == SKIPPED;
-            let path = if relative.is_empty() {
-                entry.name
-            } else {
-                format!("{relative}/{}", entry.name)
-            };
-            match entry.kind {
-                EntryKind::Directory if !skipped => pending.push_back(path),
-                EntryKind::File => walked.files.push(path),
-                EntryKind::Directory | EntryKind::Symlink | EntryKind::Other => {}
-            }
-        }
-    }
-    Ok(walked)
-}
-
-/// `relative` under `root`, as a file call names it.
-fn joined(root: &str, relative: &str) -> String {
-    if root == HERE {
-        relative.to_owned()
-    } else {
-        format!("{root}/{relative}")
-    }
+/// What a search found, one line each: a file by its path, a line as
+/// `path:line: text`.
+fn shown(found: Found) -> Vec<String> {
+    found
+        .hits
+        .into_iter()
+        .map(|hit| match hit {
+            Hit::File(path) => path,
+            Hit::Line { path, number, text } => format!("{path}:{number}: {text}"),
+        })
+        .collect()
 }
 
 /// `lines`, one to a line, cut to a command's output budget in `env`, with

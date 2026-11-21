@@ -47,7 +47,6 @@ members = [
     "crates/protocol/af_wire",
     # harness: the model, secret and egress seams the agent harness drives
     "crates/harness/af_egress",
-    "crates/harness/af_inference",
     "crates/harness/af_providers",
     "crates/harness/af_secrets",
     # runner: `agentsfleet-runner` and the crates only it links
@@ -167,10 +166,8 @@ af_wire = { path = "crates/protocol/af_wire" }
 # The runner's outbound guard: a request admitted against the run's network
 # policy, its credentials placed at send time, no private address reached.
 af_egress = { path = "crates/harness/af_egress" }
-# Model API codecs, transport and stream over rig, and the persisted inference
-# settings they validate.
-af_inference = { path = "crates/harness/af_inference" }
-# guffbolt's `Model` over every provider wire.
+# guffbolt's `Model` over every provider wire, and what a saved model setting
+# means to daemon and runner.
 af_providers = { path = "crates/harness/af_providers" }
 # The runner's secrets and the one masker every outbound text passes.
 af_secrets = { path = "crates/harness/af_secrets" }
@@ -323,7 +320,7 @@ guffbolt = { path = "guffbolt" }
 # workspace's.
 
 # Input token counts that bound each model call against its context window
-# (`af_inference`): exact for a model `tiktoken-rs` knows, estimated otherwise.
+# (`guffbolt-ai`'s wire): exact for a model `tiktoken-rs` knows, estimated otherwise.
 tiktoken-rs = { version = "0.12.1", default-features = false }
 percent-encoding = "2.3.2"
 # Every known secret value replaced in one pass over a tool's output, a frame
@@ -607,6 +604,12 @@ regex = { version = "1.13.2", default-features = false, features = ["std", "perf
 # The glob `find` and `grep` match a path against: ripgrep's matcher, not a
 # hand-written glob-to-regex translation.
 globset = { version = "0.4.20", default-features = false }
+# `find` and `grep` walk where the files are, the executor's disk or the
+# host's: ripgrep's walker, which skips what `.gitignore` names, and its line
+# searcher over its regex matcher, rather than a hand-written walk and scan.
+ignore = { version = "0.4.34", default-features = false }
+grep-searcher = { version = "0.1.17", default-features = false }
+grep-regex = { version = "0.1.14", default-features = false }
 # Overlapping private spellings need every accepting pattern, not one alternative.
 regex-automata = { version = "0.4.19", default-features = false, features = ["std", "syntax", "dfa-build", "dfa-search"] }
 # `web_fetch` reads a page's text, never its markup: scripts, styles and tags
@@ -625,10 +628,10 @@ rmcp = { version = "3.11.0", default-features = false, features = ["client", "tr
 
 # The model providers' wire: Anthropic Messages, OpenAI Responses and every
 # OpenAI-compatible chat dialect, streamed, with tool calls assembled, usage
-# split and reasoning carried across turns. IronClaw builds its provider layer
-# on the same library; the runner owns what rig does not: which providers a
-# run may reach, the transport (one client, no redirect, `backon` retry), the
-# key's one header and the secret scrub. Pinned exactly: rig's minors break
+# split and reasoning carried across turns. guffbolt-ai and the runner own
+# what rig does not: which providers a run may reach, the transport (one
+# client, no redirect, `backon` retry), the key's one header and the secret
+# scrub. Pinned exactly: rig's minors break
 # their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
 # change. No default features: the transport is ours, so no HTTP stack, async
 # runtime or TLS comes with it.

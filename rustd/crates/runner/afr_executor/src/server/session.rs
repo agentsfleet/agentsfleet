@@ -25,9 +25,9 @@ use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
     DELIMITER, KillParams, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE,
-    PathParams, ReadParams, RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
-    decoded, line,
+    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE,
+    METHOD_WRITE_FILE, PathParams, ReadParams, RecoveryParams, SpawnParams, SpawnResult,
+    WriteFileParams, WriteParams, decoded, line,
 };
 use crate::sizes::Sizes;
 
@@ -209,6 +209,7 @@ impl Session {
                 params(request),
                 |workspace, list: PathParams<'static>| workspace.list(&list.path),
             ),
+            METHOD_SEARCH => self.search(id, params(request)),
             _unknown => self.refuse(id, METHOD_NOT_FOUND_CODE, DETAIL_NO_METHOD),
         }
     }
@@ -304,6 +305,8 @@ impl Session {
 #[cfg(test)]
 #[path = "recovery_tests.rs"]
 mod recovery_tests;
+#[path = "session_search.rs"]
+mod search;
 
 /// A request's parameters, decoded through the object-only gate: whatever is
 /// on the other end of the socket is not trusted.

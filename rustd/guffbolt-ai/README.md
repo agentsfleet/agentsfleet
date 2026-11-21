@@ -42,6 +42,30 @@ Each provider is a feature. Feature `all` turns on every one.
 `connect_with_key` takes the key instead.
 A missing key fails with the variable's name and never its value.
 
+## A chat
+
+With guffbolt, a connected model answers a prompt in a few lines. guffbolt carries this program as `examples/minimax_chat.rs`.
+
+```rust,no_run
+use guffbolt::{Chat, Ending};
+use guffbolt_ai::{Models, providers};
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), guffbolt_ai::Error> {
+    // MINIMAX_API_KEY is read from the environment.
+    let models = Models::new().with(providers::minimax());
+    let model = models.connect("minimax", "MiniMax-M3.1-Flash")?;
+
+    let mut chat = Chat::new(model, "Answer in one sentence.");
+    match chat.prompt("Which crate parses TOML in Rust?").await {
+        Ending::Answered(text) => println!("{text}"),
+        Ending::Failed(why) => eprintln!("the model failed: {why}"),
+        Ending::Stopped | Ending::Waiting(_) => {}
+    }
+    Ok(())
+}
+```
+
 ## Catalogue
 
 Each provider's models are rows in `catalog/<provider>.json`, compiled in.

@@ -12,9 +12,11 @@ use crate::events::Events;
 use crate::sizes::Sizes;
 
 mod ending;
+mod search;
 
 pub use self::ending::Ending;
 pub(crate) use self::ending::{SHELL_KILLED_EXIT, SIGKILL};
+pub use self::search::{Found, Hit, Pattern, Search};
 
 /// A process the executor started, unique for the life of one executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -304,6 +306,14 @@ pub trait Executor: Send + Sync + fmt::Debug {
 
     /// Lists a directory, up to the most one answer carries.
     async fn list_dir(&self, _path: &str) -> Result<Listing> {
+        Err(file_calls_unsupported())
+    }
+
+    /// Walks below `search.path` once, on the sandbox's own disk, skipping
+    /// `.git` and what `.gitignore` names and following no link, and answers
+    /// its files, or the lines in them that hold its pattern, in path order,
+    /// cut to one frame.
+    async fn search(&self, _search: &Search) -> Result<Found> {
         Err(file_calls_unsupported())
     }
 }

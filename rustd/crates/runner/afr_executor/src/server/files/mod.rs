@@ -146,7 +146,16 @@ impl Workspace {
     /// missing makes the directories and tries once more. The open is always
     /// tried first, so an escape is refused as one before anything is made.
     fn regular(&self, path: &str, options: &mut OpenOptions, parents: Parents) -> Result<File> {
-        let inside = self.inside(path)?;
+        self.regular_at(self.inside(path)?, options, parents)
+    }
+
+    /// [`Workspace::regular`] for a path already held inside the workspace.
+    fn regular_at(
+        &self,
+        inside: &Path,
+        options: &mut OpenOptions,
+        parents: Parents,
+    ) -> Result<File> {
         options.custom_flags(NONBLOCK);
         let file = match (self.dir.open_with(inside, options), parents) {
             (Err(missing), Parents::Make) if missing.kind() == io::ErrorKind::NotFound => {
@@ -229,6 +238,8 @@ fn confined(failure: io::Error) -> Error {
         _other => failure.into(),
     }
 }
+
+mod search;
 
 #[cfg(test)]
 mod append_delete_tests;

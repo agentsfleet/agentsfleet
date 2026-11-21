@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bytes::Bytes;
 use guffbolt::tools::env::{
-    Browser, Ending, Env, EnvError, EnvErrorKind, EnvFuture, Feed, FileContent, Listing, Process,
-    ProcessId, Spawn, Stream, pipe,
+    Browser, Ending, Env, EnvError, EnvErrorKind, EnvFuture, Feed, FileContent, Found, Listing,
+    Process, ProcessId, Search, Spawn, Stream, pipe,
 };
 use guffbolt::tools::mcp::{
     ListMcpResourceTemplates, ListMcpResources, ReadMcpResource, Server, tool_name,

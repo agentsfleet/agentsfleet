@@ -39,6 +39,30 @@ Before each model call, your `window` says what that call sends of the transcrip
 
 `remember` puts the step and its results into the `Transcript`. Your `scrub` runs first and hides what must not reach a model again.
 
+## A MiniMax chat
+
+`Chat` runs the loop over a model `guffbolt-ai` connects. This program sends one prompt to MiniMax and prints the answer. `examples/minimax_chat.rs` is the same program.
+
+```rust,no_run
+use guffbolt::{Chat, Ending};
+use guffbolt_ai::{Models, providers};
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), guffbolt_ai::Error> {
+    // MINIMAX_API_KEY is read from the environment.
+    let models = Models::new().with(providers::minimax());
+    let model = models.connect("minimax", "MiniMax-M3.1-Flash")?;
+
+    let mut chat = Chat::new(model, "Answer in one sentence.");
+    match chat.prompt("Which crate parses TOML in Rust?").await {
+        Ending::Answered(text) => println!("{text}"),
+        Ending::Failed(why) => eprintln!("the model failed: {why}"),
+        Ending::Stopped | Ending::Waiting(_) => {}
+    }
+    Ok(())
+}
+```
+
 ## A plain chat with one tool
 
 Implement `Model` for your provider, a tool for what the model may do, and `Conversation` for your chat. Then call `drive` with `Plain`, which adds nothing to the loop.

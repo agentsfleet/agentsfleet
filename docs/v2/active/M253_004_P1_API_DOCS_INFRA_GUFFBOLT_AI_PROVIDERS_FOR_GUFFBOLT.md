@@ -95,6 +95,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/guffbolt/src/model.rs` | DELETE | its types live in guffbolt-ai |
 | `rustd/guffbolt/src/transcript/mod.rs`, `src/tool/mod.rs`, `src/tool/output.rs` | EDIT | `Call`, `Message`, `Replay`, `ToolSpec`, `Image`, `ImageKind` leave; `CallRef`, `Transcript`, tools and outputs stay |
 | `rustd/guffbolt/src/chat/**` | CREATE | `Chat`, the ready `Conversation` |
+| `rustd/guffbolt/examples/minimax_chat.rs`, `rustd/guffbolt/tests/public_api/{main,example}.rs` | CREATE, EDIT | the README program, and 4.4's suite running it |
 | `rustd/guffbolt/README.md` | EDIT | the MiniMax chat first; the hand-written `Model` becomes "Your own provider" |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | the member and its dependency entry; `af_inference` removed; the layer note at `:18-21` names both standalone crates; the rig note at `:624-631` names no other harness |
 | `rustd/crates/harness/af_inference/**` | DELETE | generic modules moved; agentsfleet remainder folded into `af_providers` (Q3) |
@@ -106,12 +107,15 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/crates/runner/main/{Cargo.toml,src/main.rs,src/host.rs,src/config/mod.rs,src/config/tests.rs}` | EDIT | timeouts and the log filter from `af_providers::settings` |
 | `rustd/crates/runner/afr_agent/{Cargo.toml,tests/providers/**}` | EDIT | imports; `ends.rs` names `af_wire::protocol::MESSAGE_BYTES_MAX` |
 | `rustd/crates/protocol/af_wire/src/inference.rs`, `tests/inference_images.rs` | EDIT, DELETE | `carries_images` leaves for guffbolt-ai's `Api` |
-| `rustd/crates/e2e/af_e2e/tests/layers.rs` | EDIT | no daemon crate names `Connect` or `Connector` |
+| `.ast-grep/rules/rust/{rust-daemon-no-connector,rust-provider-no-harness-name}.yml`, `.ast-grep/rule-tests/*-test.yml` | CREATE | no daemon crate names `Connect` or `Connector`; provider code names no harness (lints, as tests may not read the repository) |
 | `make/quality.mk` | EDIT | the standalone publish dry run covers both crates |
 | `make/test-integration-rustd.mk`, `scripts/rustd_coverage.py`, `scripts/rustd_coverage_test.py` | EDIT | guffbolt-ai joins the guffbolt shard and its floor |
 | `codecov.yml` | EDIT | the new path; a CI config edit, so Indy approves it in the PR |
 | `docs/RUST_ERROR_STANDARD.md` | EDIT | a `guffbolt-ai` row; the `af_inference` and response-bound rows go |
 | `docs/architecture/{runner_execution,billing_and_provider_keys,context_lifecycle,runner_checkpoint_recovery,shared_chat_verification,README}.md` | EDIT | crate names; `billing_and_provider_keys.md:628` still says rig 0.46.0 |
+| `rustd/guffbolt/src/tools/env/{mod.rs,search.rs,local/mod.rs,local/search.rs}`, `src/tools/files/listing/{mod.rs,grep.rs}`, `tests/public_api/{files,process,network}/**` | EDIT, CREATE | §9: `Env::search`; `LocalEnv`'s search; `find` and `grep` over it |
+| `rustd/crates/runner/afr_executor/{Cargo.toml,src/lib.rs,src/api/**,src/protocol/mod.rs,src/client/mod.rs,src/server/session.rs,src/server/session/search.rs,src/server/files/**,tests/search.rs,tests/executor_suite.rs}` | EDIT, CREATE | §9: `fs/search` |
+| `rustd/crates/runner/afr_tools/src/generic/env/{mod.rs,lazy.rs,search.rs,search_tests.rs}` | EDIT, CREATE | §9: the sandbox's `Env::search` sends `fs/search` |
 | `docs/v2/pending/M253_004_P1_API_DOCS_INFRA_GUFFBOLT_AI_PROVIDERS_FOR_GUFFBOLT.md` | CREATE | this spec, moved to `active/` then `done/` |
 | `~/Projects/docs` changelog | EDIT, other repository | the entry for the new crate, on its own branch after merge |
 
@@ -276,8 +280,8 @@ The id is `MiniMax-M3.1-Flash`, MiniMax's own name (platform.minimax.io text-gen
 - **Dimension 4.1** — a chat answers → Test `a_chat_answers_one_prompt` (unit, guffbolt): a scripted `Model` answering "toml". Expected: `Ending::Answered("toml")`, and the transcript holds both messages. — DONE
 - **Dimension 4.2** — a chat runs its tools → Test `a_chat_runs_a_tool_and_answers_with_its_output` (unit): a model that calls `note`, then answers. Expected: the tool ran once, and the answer follows its result. — DONE
 - **Dimension 4.3** — a model failure ends the chat → Test `a_chat_whose_model_fails_ends_failed` (unit): a model whose stream errs. Expected: `Ending::Failed` carrying that error. — DONE
-- **Dimension 4.4** — the README program runs on the real path → Test `the_minimax_example_answers_against_a_fake_provider` (e2e, subprocess): `cargo run --example minimax_chat` with a fake TLS provider and its base URL passed as an argument. Expected: exit 0 and the fake's answer on stdout.
-- **Dimension 4.5** — live MiniMax answers → Test `live_minimax_chat` (manual): Indy runs `examples/minimax_chat` with his `MINIMAX_API_KEY`. Expected: one sentence printed; the command and its output land in the PR Session Notes.
+- **Dimension 4.4** — the README program runs on the real path → Test `the_minimax_example_answers_against_a_fake_provider` (e2e, subprocess, `guffbolt/tests/public_api/example.rs`): the `minimax_chat` binary `cargo test` built, run with a fake provider's base URL as its argument and `MINIMAX_API_KEY` a fixture key. Expected: exit 0 and the fake's answer on stdout. — DONE
+- **Dimension 4.5** — live MiniMax answers → Test `live_minimax_chat` (manual): Indy runs `examples/minimax_chat` with his `MINIMAX_API_KEY`, from `rustd/`: `MINIMAX_API_KEY="$(op read <the MiniMax key's reference>)" cargo run --locked -p guffbolt --example minimax_chat` (no argument, so it reaches `https://api.minimax.io/anthropic`). Expected: one sentence printed; the command and its output land in the PR Session Notes, the key in neither.
 - 4.4 and 4.5 follow §3: the example connects through `Models` and `providers::minimax()`, which §3 builds.
 
 ### §5 — agentsfleet runs on guffbolt-ai with no behaviour change
@@ -290,12 +294,12 @@ The id is `MiniMax-M3.1-Flash`, MiniMax's own name (platform.minimax.io text-gen
 
 `af_wire::InferenceApi::carries_images` goes. guffbolt-ai's `Api` is the one source, and `af_wire/tests/inference_images.rs` moves there.
 
-- **Dimension 5.1** — runs are unchanged → Test the `afr_agent` `tests/providers` suite and the `af_e2e` suites (integration, `make test-integration-rustd`), assertions unchanged. Expected: every one passes.
-- **Dimension 5.2** — the runner frame bounds a reply → Test `a_reply_past_the_cap_ends_the_run_as_the_fleets_error_and_is_sent_once` (integration, `afr_agent/tests/providers/ends.rs:111`, its import renamed only): a reply one event past 32 MiB. Expected: the failure detail names 33554432, and the request went once.
-- **Dimension 5.3** — a guarded host stays refused → Test `should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted` (unit, `af_providers/src/error/tests.rs:215`), plus `a_send_the_guard_refused_is_not_retried` through the adapter. Expected: the fleet's configuration error naming the provider, after one send.
-- **Dimension 5.4** — the daemon makes no model call → Test `no_daemon_crate_names_the_connector` (unit, `af_e2e/tests/layers.rs`): every `daemon/` source file. Expected: no `af_providers::Connect`, `Connector` or `Turns`.
-- **Dimension 5.5** — saved settings still validate → Test the `afd_admin` `model_validation` and `afd_credential` eligibility suites (unit), assertions unchanged. Expected: an `http://` base, an unknown dialect and an output past the window are refused as before.
-- **Dimension 5.6** — moved code names no harness → Test `no_provider_source_names_another_harness` (unit, guffbolt-ai): its sources and `af_providers`'. Expected: no `IronClaw`, `ironclaw_llm`, `codex-rs`, `pi-ai` or `pi-agent-core`.
+- **Dimension 5.1** — runs are unchanged → Test the `afr_agent` `tests/providers` suite and the `af_e2e` suites (integration, `make test-integration-rustd`), assertions unchanged. Expected: every one passes. — DONE (the unit-lane `tests/providers` suite passes; the integration half is compiled and runs in §8's `make test-integration-rustd`)
+- **Dimension 5.2** — the runner frame bounds a reply → Test `a_reply_past_the_cap_ends_the_run_as_the_fleets_error_and_is_sent_once` (integration, `afr_agent/tests/providers/ends.rs:111`, its import renamed only): a reply one event past 32 MiB. Expected: the failure detail names 33554432, and the request went once. — DONE
+- **Dimension 5.3** — a guarded host stays refused → Test `should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted` (unit, `af_providers/src/error/tests.rs:215`), plus `a_send_the_guard_refused_is_not_retried` through the adapter. Expected: the fleet's configuration error naming the provider, after one send. — DONE
+- **Dimension 5.4** — the daemon makes no model call → the ast-grep rule `rust-daemon-no-connector` (lint, `make lint-source`; a test may not read a repository file), with its rule test seeding each spelling: every `rustd/crates/daemon/**` source file. Expected: no `af_providers::Connect`, `Connector` or `Turns`. — DONE
+- **Dimension 5.5** — saved settings still validate → Test the `afd_admin` `model_validation` and `afd_credential` eligibility suites (unit), assertions unchanged. Expected: an `http://` base, an unknown dialect and an output past the window are refused as before. — DONE
+- **Dimension 5.6** — moved code names no harness → the ast-grep rule `rust-provider-no-harness-name` (lint, `make lint-source`; a test may not read a repository file), with its rule test: guffbolt-ai's Rust sources and `af_providers`'. Expected: no `IronClaw`, `ironclaw_llm`, `codex-rs`, `pi-ai` or `pi-agent-core`, in any case. — DONE
 
 ### §6 — The pages describe two standalone crates
 
@@ -337,14 +341,14 @@ Moved here from M253_003 (Indy, Nov 21, 2026) so the end-to-end run covers guffb
 | Model failure in a chat | dependency unavailable | the stream errs | `Ending::Failed` with the error | `a_chat_whose_model_fails_ends_failed` |
 | Old checkpoint | replay | a `DriveState` saved before the move | reads and resumes | `a_drive_state_saved_before_the_move_resumes` |
 | Bad catalogue row | malformed input | output past window, or a repeated id | the unit lane fails | `every_catalogue_row_parses_and_fits` |
-| Daemon gains a model call | security | a daemon crate names the connector | the layer test fails | `no_daemon_crate_names_the_connector` |
+| Daemon gains a model call | security | a daemon crate names the connector | `make lint-source` fails | `rust-daemon-no-connector` |
 
 ## Invariants
 
 1. guffbolt-ai depends on no workspace crate — `cargo publish --dry-run` in `make lint-rustd` builds it from crates.io alone, and fails on any path dependency.
 2. guffbolt's default build links no wire — guffbolt depends on guffbolt-ai with `default-features = false`, the wire crates are optional, and Dimension 1.3's lint step checks what the default build links.
 3. The key reaches only the route's host — the default transport's client is built with `redirect::Policy::none()`, and Dimension 2.4 proves it.
-4. No daemon crate drives a model — `af_e2e/tests/layers.rs` fails on a daemon source naming `Connect`, `Connector` or `Turns`.
+4. No daemon crate drives a model — the `rust-daemon-no-connector` ast-grep rule fails on a daemon source naming `Connect`, `Connector` or `Turns`.
 
 ## Metrics & Observability
 
@@ -439,11 +443,23 @@ N/A: no product or operator signal changes. The provider metric families and the
   - `af_inference` is a shim until §5: `Configured` (garde, `provider_endpoint`, `accepts_endpoint`) over `guffbolt_ai::wire::Route`, `Timeouts` (agentsfleet's 10 s connect beside the wire's `Timeouts`), `TimeoutSettings`, and `transport::REPLY_MAX_BYTES` = `af_wire::protocol::MESSAGE_BYTES_MAX`, so `runner/main` builds unchanged.
   - `af_providers::RetryPolicy` wraps `guffbolt_ai::wire::Retry`; `Connector::connect` builds a `Connected` over its guarded client (`Reqwest::refusing(af_egress::blocked_address)`) with the frame as its reply bound, and `Turns` maps its failures to the same kinds, codes and classes.
   - `estimate`, `context_document` and `retry_after` are public in `guffbolt_ai::wire`: the scripted model, the context index and the decision client use them.
+- **Settled while building §5 (Nov 22, 2026):**
+  - `af_providers::settings` holds `Configured` (the one `InferenceApi` to `Api` match, `Route::new`, `accepts_endpoint`, `api()`), `provider_endpoint`, `validate_decision`, `Timeouts`, `TimeoutSettings`, `CONNECT_TIMEOUT`, `RetryPolicy`, `RetrySettings` and `log_filter`. `RetryPolicy` and `RetrySettings` left the crate root, so each has one public path.
+  - `log_filter` is a function over `guffbolt_ai::log_filter`, not a `pub use`, as `layers.rs` refuses a re-export of another workspace crate's item.
+  - The settings refusals join `af_providers::Error` as kinds under `UZ-REQ-001`, as `af_inference`'s were, since a crate has one error type. The runner keeps one as the cause of `Configuration`, still `AGENTSFLEET_INVALID_CONFIG`, so connect's codes and lines are unchanged.
+  - The reply bound is `af_wire::protocol::MESSAGE_BYTES_MAX`, named once in `af_providers::transport`. `afr_agent`'s limit suites count input with `guffbolt_ai::wire::input_tokens`, a dev-dependency, because a count is not a setting.
+  - 5.4 and 5.6 are ast-grep rules, not tests: `docs/architecture/testing.md` routes a rule about how source reads to a lint, and the `tests-rust-repo-read` rule refuses a test that reads the repository.
 - **Settled while building §4 (Nov 22, 2026):**
   - `Chat` fails with `ChatFailure<M::Error>`, not `M::Error`. The loop asks the conversation for a blank first step's failure (`Conversation::silent`), and no `M::Error` can be built for any `M`. `ChatFailure::Model(E)` displays as `E` and answers `E`'s source; `Silent { cut }` holds no cause.
   - The loop calls the chat's model as `dyn Model<Error = ChatFailure<M::Error>>`, over a private wrapper that lifts the model's error, so no wrapper type joins the public API.
   - `Chat` keeps its `DriveState`: each prompt's ending answers that prompt alone, calls number after earlier prompts, and a prompt sent while a question waits is its answer.
   - `Chat::request` sends `Request::model` empty, because `Model` names no id. `Connected` counts input with `request.model` (`guffbolt-ai/src/wire/connected/mod.rs:138,143,168`), so §3 has `Connected` count with its own id before 4.4 runs.
+- **Settled while building §4.4 (Nov 22, 2026):**
+  - `examples/minimax_chat.rs` belongs to guffbolt, which dev-depends on guffbolt-ai with `minimax` and `test-util`. It is the README program; an optional first argument is passed to `Provider::with_base_url`.
+  - The fake serves plain HTTP on loopback, not TLS. The example's default `reqwest` client trusts the system's roots through `rustls-platform-verifier`; on macOS that is the Security framework, which no environment variable extends, and the fake's `fake.provider.test` resolves only inside a client built with `testing::tls::client`. The fake admits only the fixture key, so the key read from the environment is proven on the wire.
+  - Cargo sets `CARGO_BIN_EXE_*` for binaries alone, so the suite finds `examples/minimax_chat` under an ancestor of its own path: `deps/` in the old layout, `build/<crate>/<hash>/out/` in Cargo 1.100's. The child runs with an empty environment but for the key and `LLVM_PROFILE_FILE`, as `runner/main/tests/support.rs` runs the runner.
+  - The Messages answer a fake streams is `guffbolt_ai::testing::messages::answer`, shared by guffbolt-ai's `minimax` suite and this one.
+  - guffbolt-ai's README doctest is compiled by guffbolt (`ProviderReadmeDoctests`, `cfg(doctest)`), because the program runs on guffbolt and guffbolt-ai never depends on guffbolt (`rustd/Cargo.toml:19-22`).
 - **Settled while building §3 (Nov 22, 2026):**
   - Each provider feature turns on `wire` and `reqwest`: `connect` answers a `Connected` on the default transport, so a provider without `reqwest` could not connect. `Models`, `Provider`, `Spec` and `providers` compile under `reqwest`.
   - The catalogue rows are rig-core 0.47's tool-calling models with a context window and an output limit, deprecated ones left out: 470 rows over 11 files. rig has no Fireworks rows, so `catalog/fireworks.json` is empty and `Provider::with_spec(Spec)` adds a model; a row added in place of a catalogue row replaces it.
@@ -451,6 +467,16 @@ N/A: no product or operator signal changes. The provider metric families and the
   - `connect` finds the provider, then the row, then reads the key, so an unknown provider or model is refused whatever the environment holds. An empty variable is no key.
   - `Connected` counts, measures and sends as the id it was connected to, whatever `Request::model` names: test `a_request_naming_no_model_is_counted_and_sent_as_the_connected_one`.
   - `Connected::accepts_images` is the row's `images` and the `Api`'s `carries_images`; `Connected::new` keeps the `Api` alone, as before.
+- **Settled while building §9 (Nov 22, 2026):**
+  - `Env::search(&Search) -> Found` is one required method: `Search` is a path, an optional glob, an optional `Pattern` (text, literal, ignore case) and the model's `limit`; `Found` is the hits in path order (`Hit::File` or `Hit::Line`), `limited` and `cut`. No default walk is kept: guffbolt is unpublished, so no third-party `Env` needs one.
+  - `find` and `grep` call it; `ls` keeps `list_dir`, already one call. Names, arguments and output lines are unchanged; both descriptions now say `.gitignore` paths are skipped. A `grep` path that is not there still answers empty.
+  - `fs/search` runs `ignore`'s walker (`.gitignore` and `.git/info/exclude`, `require_git(false)`, dotfiles kept, `.git` and links skipped, no global ignore file) and `grep-searcher` over `grep-regex`, on the session's blocking pool like every file call. `LocalEnv` runs the same crates on `spawn_blocking`. No new cap: the frame (`Sizes::max_frame_bytes`) is the only bound, and a cut answer sets `cut`. The executor opens each file through its `cap_std` handle.
+  - Two changes from the old walk. A file past the read size (8 MiB) is now searched whole. A file is skipped only when a matched line is not UTF-8, not when any byte is. A pattern holding a literal line break is refused as `invalid_arguments`.
+  - `globset`'s `Glob::compile_matcher` panics on a glob too large to compile, so both ends build a one-glob `GlobSet`, whose build is fallible.
+- **Runner↔executor transport review (§9, Nov 22, 2026): recommendation, not built.**
+  - Client: fits. `jsonrpsee-core`'s `async-client` takes any `TransportSenderT`/`TransportReceiverT` through `ClientBuilder::build_with_tokio(sender, receiver)` (`jsonrpsee-core-0.26.2/src/client/async_client/mod.rs:306`), so the two halves of the Unix socket can be line-framed under it. `process/output` and `process/exited` would arrive through `subscribe_to_method` (`client/mod.rs:148`), keyed by method rather than process. Demuxing by process and the head and tail bound per process stay ours.
+  - Server: does not fit as a server. `jsonrpsee-server` speaks HTTP and WebSocket only: its listener is TCP (`jsonrpsee-server-0.26.2/src/server.rs:57,71`) and `serve(io, service)` runs hyper over a stream (`src/utils.rs:137`). `RpcModule::raw_json_request` (`jsonrpsee-core-0.26.2/src/server/rpc_module.rs:351`) answers one raw request with no transport, so it could replace the session's hand-written `route` while the line codec stays.
+  - Recommend a follow-up: the client over `build_with_tokio`, and `RpcModule` on the executor behind the existing line codec. Unverified: whether `raw_json_request` keeps the rule that a spawn's answer is queued before its first output, and whether it bounds a response by the frame.
 - **Unverified (`[?]`):**
   - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
@@ -474,8 +500,8 @@ N/A: no product or operator signal changes. The provider metric families and the
 
 guffbolt's grep, glob and tree listing walk the sandbox through `Env` today: one `fs/list` per directory and one `fs/read` per file over the executor socket, with no `.gitignore`. Add one `Env::search(pattern, root, globs)` and one executor method `fs/search` that runs the `ignore` walker and `grep-searcher` on the sandbox's own disk and answers once; `LocalEnv` runs the same two crates on the host path. The guffbolt tools call it instead of walking.
 
-- Dimension 9.1 — one round trip → Test `a_search_over_a_tree_is_one_executor_call` (unit): a 1,000-file tree. Expected: one `fs/search` request, matches equal to today's walk.
-- Dimension 9.2 — ignored files are skipped → Test `a_search_skips_gitignored_paths` (unit): `target/` listed in `.gitignore`. Expected: no match under it.
+- Dimension 9.1 — DONE → Test `a_search_over_a_tree_is_one_executor_call` (unit): a 1,000-file tree. Expected: one `fs/search` request, matches equal to today's walk.
+- Dimension 9.2 — DONE → Test `a_search_skips_gitignored_paths` (unit): `target/` listed in `.gitignore`. Expected: no match under it.
 
 Also review the runner↔executor JSON-RPC transport: it uses `jsonrpsee-types` only and frames messages itself; use `jsonrpsee`'s own client and server if they fit the Unix socket, else record why not.
 

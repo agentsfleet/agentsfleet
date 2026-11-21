@@ -245,6 +245,13 @@ impl Env for FakeEnv {
         ))))
     }
 
+    fn search<'a>(&'a self, _search: &'a Search) -> EnvFuture<'a, Found> {
+        Box::pin(std::future::ready(Err(EnvError::new(
+            EnvErrorKind::Unavailable,
+            "no files",
+        ))))
+    }
+
     fn browser(&self) -> Result<&dyn Browser, &str> {
         self.browser
             .as_ref()

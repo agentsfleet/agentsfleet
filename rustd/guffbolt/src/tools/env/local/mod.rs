@@ -16,6 +16,7 @@
 //! is refused.
 
 mod process;
+mod search;
 #[cfg(unix)]
 mod terminal;
 
@@ -33,8 +34,8 @@ use tokio::time::Instant;
 use self::process::Watch;
 use super::error::Result;
 use super::{
-    DirEntry, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Listing, Process,
-    ProcessId, Spawn, pipe,
+    DirEntry, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Found, Listing,
+    Process, ProcessId, Search, Spawn, pipe,
 };
 
 /// What a path that leaves the root reads back.
@@ -311,6 +312,10 @@ impl Env for LocalEnv {
             }
             Ok(listing)
         })
+    }
+
+    fn search<'a>(&'a self, search: &'a Search) -> EnvFuture<'a, Found> {
+        Box::pin(self.search_files(search))
     }
 }
 

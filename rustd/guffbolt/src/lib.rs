@@ -119,3 +119,10 @@ pub use guffbolt_ai::{
 #[cfg(all(doctest, feature = "tools"))]
 #[doc = include_str!("../README.md")]
 pub struct ReadmeDoctests;
+
+/// guffbolt-ai's README, compiled here because its chat runs on guffbolt,
+/// and guffbolt-ai never depends on guffbolt. `cfg(doctest)` keeps the path
+/// out of every other build, so a published copy never reads it.
+#[cfg(doctest)]
+#[doc = include_str!("../../guffbolt-ai/README.md")]
+pub struct ProviderReadmeDoctests;

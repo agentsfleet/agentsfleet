@@ -40,8 +40,8 @@ mod sizes;
 mod slot;
 
 pub use self::api::{
-    DirEntry, Ending, EntryKind, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId,
-    Spawn, Stream,
+    DirEntry, Ending, EntryKind, Executor, FileContent, Found, Hit, Listing, Pattern, Process,
+    ProcessEvent, ProcessId, Search, Spawn, Stream,
 };
 pub use self::client::Client;
 pub use self::edges::EDGE_BYTES;

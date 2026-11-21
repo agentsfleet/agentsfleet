@@ -25,11 +25,13 @@ workspace = true
 tools = [
     "dep:bytes",
     "dep:globset",
+    "dep:grep-regex",
+    "dep:grep-searcher",
     "dep:html2text",
+    "dep:ignore",
     "dep:image",
     "dep:jiff",
     "dep:philiprehberger-cron-parser",
-    "dep:regex",
     "dep:reqwest",
     "dep:rmcp",
     "dep:rustix",
@@ -76,11 +78,14 @@ image = { workspace = true, optional = true }
 jiff = { workspace = true, optional = true }
 # The glob `find` and `grep` match a path against.
 globset = { workspace = true, optional = true }
+# `LocalEnv`'s search: the walker that skips what `.gitignore` names, and the
+# line searcher over `grep`'s pattern.
+ignore = { workspace = true, optional = true }
+grep-searcher = { workspace = true, optional = true }
+grep-regex = { workspace = true, optional = true }
 # `LocalScheduler` finds an expression's next moment. Zero dependencies; the
 # same grammar and version the workspace checks a schedule with.
 philiprehberger-cron-parser = { version = "0.3.0", optional = true }
-# `grep`'s pattern.
-regex = { workspace = true, optional = true }
 # The local outbound default sends the web tools' requests, and an MCP server
 # over streamable HTTP is reached through the same client.
 reqwest = { workspace = true, optional = true }
@@ -99,6 +104,10 @@ url = { workspace = true, optional = true }
 rustix = { workspace = true, optional = true, features = ["pty", "termios"] }
 
 [dev-dependencies]
+# `examples/minimax_chat` connects through the `minimax` factory; the suite
+# that runs it serves the fake provider's Messages answer over axum.
+guffbolt-ai = { workspace = true, features = ["minimax", "test-util"] }
+axum.workspace = true
 # A fake HTTPS server stands in for a public host: rcgen issues its
 # certificate and tokio-rustls serves it over rustls, on the aws-lc-rs
 # provider reqwest already links.

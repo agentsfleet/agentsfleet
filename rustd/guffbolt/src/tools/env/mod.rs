@@ -4,20 +4,22 @@
 //! ```text
 //!  shell ─┐                         ┌─► LocalEnv: this host's processes and files
 //!  exec_command, write_stdin ─┼─► Env ─┤
-//!  file_*, apply_patch, ls ──┘         └─► an embedder's sandbox, such as a
-//!                                          microVM's executor over a socket
+//!  file_*, apply_patch, ls ──┤         └─► an embedder's sandbox, such as a
+//!  find, grep: one search ──┘              microVM's executor over a socket
 //! ```
 //!
 //! A tool never starts a process or opens a file itself: it asks its
 //! [`Env`], so one tool serves a laptop and a sandbox alike. The shape is the
 //! executor's a sandboxing embedder already has: start a process and read its
-//! events, write to it, kill it, and read, write, append, delete and list
-//! files under one root. Every path is relative to that root, and one that
-//! leaves it, by name or through a link, is the environment's to refuse.
+//! events, write to it, kill it, read, write, append, delete and list
+//! files under one root, and search them where they are. Every path is
+//! relative to that root, and one that leaves it, by name or through a link,
+//! is the environment's to refuse.
 
 mod error;
 mod local;
 mod pipe;
+mod search;
 mod spawn;
 
 use std::fmt;
@@ -32,6 +34,8 @@ use guffbolt_ai::Image;
 pub use self::error::{EnvError, EnvErrorKind};
 pub use self::local::LocalEnv;
 pub use self::pipe::{Feed, Piped, pipe};
+pub use self::search::{Found, Hit, Pattern, Search};
+pub(crate) use self::search::{glob_matcher, line_matcher};
 pub use self::spawn::Spawn;
 
 /// The most of one file a read carries when its environment names none
@@ -300,6 +304,11 @@ pub trait Env: Send + Sync + fmt::Debug {
 
     /// Lists a directory, up to the most one answer carries.
     fn list_dir<'a>(&'a self, path: &'a str) -> EnvFuture<'a, Listing>;
+
+    /// Walks below `search.path` once, where the files are, skipping `.git`
+    /// and what `.gitignore` names and following no link, and answers its
+    /// files, or the lines in them that hold its pattern, in path order.
+    fn search<'a>(&'a self, search: &'a Search) -> EnvFuture<'a, Found>;
 
     /// How long past a command's timeout this environment takes to report
     /// how it ended; a command's wait gives up after its timeout and this.

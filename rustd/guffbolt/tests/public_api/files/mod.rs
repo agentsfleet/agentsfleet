@@ -6,7 +6,8 @@
 use std::sync::Arc;
 
 use guffbolt::tools::env::{
-    Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Listing, Process, ProcessId, Spawn,
+    Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Found, Listing, Process, ProcessId,
+    Search, Spawn,
 };
 use guffbolt::tools::search::{Deferred, ToolSearch};
 use guffbolt::tools::{Context, ContextTool, LocalEnv, ToolsConfig, Typed};

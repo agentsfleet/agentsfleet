@@ -31,6 +31,13 @@ backon.workspace = true
 bytes.workspace = true
 cap-std.workspace = true
 futures-util = { workspace = true, features = ["sink"] }
+# `fs/search` walks the sandbox's own disk once: ripgrep's walker, which
+# skips what `.gitignore` names, its glob matcher, and its line searcher over
+# its regex matcher.
+globset.workspace = true
+grep-regex.workspace = true
+grep-searcher.workspace = true
+ignore.workspace = true
 jsonrpsee-types.workspace = true
 # The terminal launcher opens its pair here (`pty`, `termios`), so a terminal
 # process takes the same pre-exec placement hook a process on pipes does.

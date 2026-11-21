@@ -14,6 +14,7 @@
 //! run with no sandbox reads why as the environment's own refusal.
 
 mod lazy;
+mod search;
 
 use std::pin::Pin;
 use std::time::Duration;
@@ -24,7 +25,7 @@ use afr_executor::{Executor, WORKSPACE_ROOT};
 use bytes::Bytes;
 use guffbolt::tools::env::{
     Browser, DirEntry, Ending, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, Events,
-    FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
+    FileContent, Found, Listing, Process, ProcessEvent, ProcessId, Search, Spawn, Stream,
 };
 
 use crate::sandbox::{GIT_IDENTITY_EMAIL, GIT_IDENTITY_NAME};
@@ -283,6 +284,16 @@ impl Env for SandboxEnv<'_> {
                     .collect(),
                 truncated: listing.truncated,
             })
+        })
+    }
+
+    fn search<'a>(&'a self, search: &'a Search) -> EnvFuture<'a, Found> {
+        Box::pin(async move {
+            self.executor
+                .search(&search::search_of(search))
+                .await
+                .map(search::found_of)
+                .map_err(|failure| failed(&failure))
         })
     }
 

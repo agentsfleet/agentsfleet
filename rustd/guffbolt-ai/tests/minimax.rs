@@ -12,10 +12,10 @@ use std::sync::{Arc, Mutex};
 
 use axum::serve::Listener;
 use futures_util::{StreamExt as _, stream};
-use guffbolt_ai::testing::tls;
+use guffbolt_ai::testing::{messages, tls};
 use guffbolt_ai::wire::transport::Reqwest;
 use guffbolt_ai::{Chunk, Message, Model as _, Models, Request, TextKind, providers};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 
@@ -54,34 +54,6 @@ impl Listener for Tls {
     fn local_addr(&self) -> io::Result<Self::Addr> {
         Listener::local_addr(&self.listener)
     }
-}
-
-/// One server-sent event of a Messages stream.
-fn event(data: &Value) -> String {
-    format!(
-        "event: {}\ndata: {data}\n\n",
-        data["type"].as_str().unwrap()
-    )
-}
-
-/// A Messages turn answering `text`.
-fn answer(text: &str) -> Vec<String> {
-    [
-        json!({"type": "message_start", "message": {"id": "msg_1", "type": "message",
-            "role": "assistant", "model": MODEL, "content": [], "stop_reason": null,
-            "stop_sequence": null, "usage": {"input_tokens": 9, "output_tokens": 0}}}),
-        json!({"type": "content_block_start", "index": 0,
-            "content_block": {"type": "text", "text": ""}}),
-        json!({"type": "content_block_delta", "index": 0,
-            "delta": {"type": "text_delta", "text": text}}),
-        json!({"type": "content_block_stop", "index": 0}),
-        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn",
-            "stop_sequence": null}, "usage": {"output_tokens": 3}}),
-        json!({"type": "message_stop"}),
-    ]
-    .iter()
-    .map(event)
-    .collect()
 }
 
 /// A fake `MiniMax` answering every request with `events`, recording what each
@@ -128,7 +100,7 @@ async fn fake(events: Vec<String>) -> (String, reqwest::Client, Arc<Mutex<Vec<Se
 // provider's own wire, authorized as the provider expects, and answers.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_chat_on_minimax_answers_through_the_messages_wire() {
-    let (base, client, seen) = fake(answer("toml")).await;
+    let (base, client, seen) = fake(messages::answer(MODEL, "toml")).await;
     let models = Models::new().with(providers::minimax().with_base_url(base));
     let model = models
         .connect_with_key("minimax", MODEL, KEY)
