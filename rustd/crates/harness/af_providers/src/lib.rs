@@ -8,6 +8,10 @@
 //! redirect), the reply bound, and how a failure is reported and logged. The
 //! model key lives only here, in the supervisor: no provider runs inside a
 //! sandbox.
+//!
+//! [`settings`] is what a saved model setting means: the route it names and
+//! the startup settings every provider is built with. The daemon validates
+//! through it and names nothing else here.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
@@ -15,6 +19,7 @@
 pub mod decision;
 pub mod error;
 pub mod observe;
+pub mod settings;
 #[cfg(any(test, feature = "test-util"))]
 pub mod testing;
 
@@ -27,4 +32,3 @@ mod turn;
 pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
 pub use self::provider::{Provider, context_document};
-pub use self::retry::settings::{RetryPolicy, RetrySettings};

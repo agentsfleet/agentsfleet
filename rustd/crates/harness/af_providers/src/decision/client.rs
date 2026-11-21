@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
+use crate::transport::REPLY_MAX_BYTES;
 use af_crypto::secret::SecretString;
-use af_inference::transport::REPLY_MAX_BYTES;
 use af_wire::decision::{DecisionProfile, DecisionRequest, DecisionResult};
 use futures_util::{TryStreamExt as _, future::BoxFuture};
 use garde::Valid;

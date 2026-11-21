@@ -24,7 +24,9 @@ afd_billing.workspace = true
 # them (`afd_admin::catalogue::MetadataColumns`).
 afd_admin.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
-af_inference.workspace = true
+# The route a model's saved settings name, and whether a key's endpoint
+# may authorize it.
+af_providers.workspace = true
 # The secret types a handle is edited through, and the key and entropy source
 # the provider store builds its vault from.
 af_crypto.workspace = true

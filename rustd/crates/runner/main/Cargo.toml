@@ -37,7 +37,6 @@ test-util = [
 
 [dependencies]
 af_config.workspace = true
-af_inference.workspace = true
 garde.workspace = true
 serde.workspace = true
 # The log-level knob both binaries read, declared once, and the stop `run`
@@ -59,8 +58,9 @@ afr_sandbox.workspace = true
 # The sizes the runner's `[tools]` and `[executor]` sections choose for every
 # executor link, spelled as the executor takes them.
 afr_executor.workspace = true
-# The log filter that holds the model library's own lines to its warnings, and
-# the providers the loop reaches models through.
+# The log filter that holds the model library's own lines to its warnings,
+# the provider timeout and retry settings, and the providers the loop reaches
+# models through.
 af_providers.workspace = true
 # `run`'s export: the credential-free endpoint, the span budget, the runner's
 # own families and the layer its subscriber carries.

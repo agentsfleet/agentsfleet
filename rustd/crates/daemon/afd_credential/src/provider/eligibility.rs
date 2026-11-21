@@ -2,7 +2,7 @@
 //!
 //! The setup catalogue and the setup run's model check both read this, so a
 //! model the catalogue offers for setup is one the assignment admits. The
-//! provider rules behind it are `af_inference`'s; this is the one place the
+//! provider rules behind it are in `af_providers::settings`; this is the one place the
 //! daemon's setup path reaches them, so `afd_setup` names no provider crate.
 
 use af_wire::inference::ModelInference;
@@ -45,7 +45,7 @@ impl ModelFacts<'_> {
         let route = self
             .inference
             .filter(|_| self.input_nanos_per_million >= 0 && self.output_nanos_per_million >= 0)
-            .and_then(|settings| af_inference::Configured::new(settings, context).ok())
+            .and_then(|settings| af_providers::settings::Configured::new(settings, context).ok())
             .filter(|route| route.accepts_endpoint(self.endpoint));
         Eligibility {
             runtime: route.is_some(),

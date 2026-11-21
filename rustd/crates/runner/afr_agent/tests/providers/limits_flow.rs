@@ -27,7 +27,7 @@ const MODEL: &str = "model-1";
 
 /// What the runtime estimates a sent body at.
 fn estimated(raw: &[u8]) -> u64 {
-    af_inference::input_tokens(MODEL, std::str::from_utf8(raw).unwrap()) as u64
+    guffbolt_ai::wire::input_tokens(MODEL, std::str::from_utf8(raw).unwrap()) as u64
 }
 const PHYSICAL: u32 = 32_768;
 const FILE: &str = "context.txt";

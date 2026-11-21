@@ -21,7 +21,8 @@ af_core = { workspace = true, features = ["sqlx"] }
 af_crypto.workspace = true
 afd_db.workspace = true
 af_wire.workspace = true
-af_inference.workspace = true
+# What a saved model and decision setting must prove before it is stored.
+af_providers.workspace = true
 # Instants are `jiff::Timestamp`; `TIMESTAMPTZ(3)` columns decode through jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true

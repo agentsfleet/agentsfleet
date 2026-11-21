@@ -51,10 +51,11 @@ pub(crate) fn validate(
     }
     if let Some(inference) = inference {
         let context = u32::try_from(metadata.context_cap_tokens).unwrap_or_default();
-        af_inference::Configured::new(inference, context)?;
+        af_providers::settings::Configured::new(inference, context)?;
     }
     if let Some(configuration) = decision {
-        af_inference::validate_decision(configuration).map_err(crate::error::decision_settings)?;
+        af_providers::settings::validate_decision(configuration)
+            .map_err(crate::error::decision_settings)?;
     }
     Ok(())
 }

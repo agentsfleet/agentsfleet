@@ -1,6 +1,6 @@
 [package]
 name = "af_providers"
-description = "The runner's model providers: guffbolt-ai's wires under the run's policy, guarded client, reply bound and reporting."
+description = "The runner's model providers over guffbolt-ai's wires, and what a saved model setting means to daemon and runner."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,7 +17,6 @@ workspace = true
 [dependencies]
 # `error_shell!` and the registry code a provider failure is logged under.
 af_core.workspace = true
-af_inference.workspace = true
 # The label vocabulary and closed-set macro a provider measurement is declared in.
 af_observability.workspace = true
 af_crypto.workspace = true
@@ -35,8 +34,10 @@ futures-util.workspace = true
 guffbolt.workspace = true
 # The wires: the connected model, its transport seam and retry, and the
 # observer a run's lines are written through; `reqwest` is the default
-# transport the guarded client rides.
-guffbolt-ai = { workspace = true, features = ["wire", "reqwest"] }
+# transport the guarded client rides, and `log-filter` the filter that keeps
+# rig's own lines quiet in daemon and runner.
+guffbolt-ai = { workspace = true, features = ["wire", "reqwest", "log-filter"] }
+# The bounds saved settings and startup settings are proved against.
 garde.workspace = true
 # The one HTTP client every wire posts through, behind guffbolt-ai's
 # transport seam.
@@ -48,10 +49,13 @@ serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
-# Parse the exact reviewed decision endpoint and retain its typed parse error.
+# Parse the exact reviewed decision endpoint and a saved provider endpoint,
+# and retain the typed parse error.
 url.workspace = true
 # The retry log line, and the level rig's own lines are held to.
 tracing.workspace = true
+# The filter type `settings::log_filter` answers.
+tracing-subscriber.workspace = true
 
 [features]
 # M-TEST-UTIL: an observer a suite reads back, and the fake provider's TLS
@@ -62,8 +66,6 @@ test-util = ["guffbolt-ai/test-util"]
 # The request and the body bytes a fake transport answers with.
 bytes.workspace = true
 http.workspace = true
-# Scoped channel-based logging proof avoids process-wide capture locks.
-tracing-subscriber.workspace = true
 # Rig's scripted stream exercises unmodeled items and retained terminal failures.
 rig-core = { workspace = true, features = ["test-utils"] }
 # The log capture the retry and key suites read their lines through.

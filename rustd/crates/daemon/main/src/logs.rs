@@ -122,7 +122,7 @@ pub fn install(env: &(impl EnvSource + ?Sized)) -> bool {
     // adding it last would name the whole stack instead.
     let subscriber = Registry::default()
         .with(slot)
-        .with(af_inference::log_filter(level))
+        .with(af_providers::settings::log_filter(level))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)

@@ -59,7 +59,9 @@ afd_gateway.workspace = true
 af_stream.workspace = true
 garde.workspace = true
 serde_json.workspace = true
-af_inference.workspace = true
+# The log filter that keeps rig's own lines quiet, and the saved route a
+# catalogue gauge reads its tool and image support from.
+af_providers.workspace = true
 afd_admin.workspace = true
 # The one turns ledger every producer in this process shares.
 afd_turns.workspace = true

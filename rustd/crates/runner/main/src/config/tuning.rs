@@ -252,7 +252,7 @@ pub(super) struct ProviderTuning {
 impl Default for ProviderTuning {
     fn default() -> Self {
         let decision = af_providers::decision::DecisionTimeouts::DEFAULT;
-        let inference = af_inference::Timeouts::DEFAULT;
+        let inference = af_providers::settings::Timeouts::DEFAULT;
         Self {
             decision_connect_timeout_seconds: decision.connect.as_secs(),
             decision_call_timeout_seconds: decision.physical.as_secs(),
@@ -274,8 +274,8 @@ impl ProviderTuning {
     /// `timeouts`, a native token count bounded as this section says.
     pub(super) const fn counting(
         &self,
-        timeouts: af_inference::Timeouts,
-    ) -> af_inference::Timeouts {
+        timeouts: af_providers::settings::Timeouts,
+    ) -> af_providers::settings::Timeouts {
         timeouts.with_count(
             Duration::from_secs(self.token_count_timeout_seconds),
             self.max_token_count_reply_kib.saturating_mul(KIB),

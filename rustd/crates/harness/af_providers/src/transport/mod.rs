@@ -7,6 +7,10 @@ use af_wire::policy::CUSTOM_PROVIDER_PREFIX;
 use guffbolt_ai::wire::transport::Reqwest;
 use reqwest::Url;
 
+/// The bytes one model reply may carry: the runner frame, since a reply
+/// larger than one frame cannot reach the daemon.
+pub(crate) const REPLY_MAX_BYTES: usize = af_wire::protocol::MESSAGE_BYTES_MAX;
+
 /// `client`, a destination its egress guard refused answered as refused.
 pub(crate) fn guarded(client: reqwest::Client) -> Reqwest {
     Reqwest::with_client(client).refusing(af_egress::blocked_address)

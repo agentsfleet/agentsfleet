@@ -39,7 +39,7 @@ fn a_run_observer_prints_whose_turns_it_watches() {
 
 #[test]
 fn completed_stream_has_one_timing_pair_and_content_free_first_text() {
-    let captured = Capture::install_filtered(af_inference::log_filter(LevelFilter::TRACE));
+    let captured = Capture::install_filtered(crate::settings::log_filter(LevelFilter::TRACE));
     let observer = observer();
     observer.turn_started();
     observer.first_text(Duration::from_millis(25));

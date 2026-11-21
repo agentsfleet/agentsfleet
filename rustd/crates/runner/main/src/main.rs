@@ -309,7 +309,7 @@ where
 /// The level the environment names, with the model library's own lines held
 /// to its warnings, so no level puts a model's raw reply in the journal.
 fn log_filter(env: &impl EnvSource) -> Targets {
-    af_inference::log_filter(af_core::env::log_level(env, DEFAULT_LEVEL))
+    af_providers::settings::log_filter(af_core::env::log_level(env, DEFAULT_LEVEL))
 }
 
 #[cfg(test)]

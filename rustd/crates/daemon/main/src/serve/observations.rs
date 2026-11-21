@@ -34,16 +34,13 @@ fn model_info(model: afd_admin::Model) -> Option<models::ModelInfo> {
         .ok()
         .filter(|value| *value > 0)?;
     let route = model.details.inference.as_ref().and_then(|settings| {
-        af_inference::Configured::new(settings, u32::try_from(context_tokens).ok()?).ok()
+        af_providers::settings::Configured::new(settings, u32::try_from(context_tokens).ok()?).ok()
     });
     Some(models::ModelInfo {
         tools: route
             .as_ref()
             .map(|route| route.supports_tools(&model.model_name)),
-        image_transport: route
-            .as_ref()
-            .and(model.details.inference.as_ref())
-            .map(|settings| settings.api.carries_images()),
+        image_transport: route.as_ref().map(|route| route.api().carries_images()),
         output_tokens: model
             .details
             .inference

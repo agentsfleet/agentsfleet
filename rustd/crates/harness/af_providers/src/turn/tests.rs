@@ -104,7 +104,7 @@ fn request(messages: &[guffbolt::Message]) -> Request<'_> {
 #[tokio::test]
 async fn runtime_confirms_each_current_request_and_calibrates_authoritative_usage()
 -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let captured = Capture::install_filtered(af_inference::log_filter(
+    let captured = Capture::install_filtered(crate::settings::log_filter(
         tracing::level_filters::LevelFilter::TRACE,
     ));
     let physical = physical(false);
@@ -227,4 +227,55 @@ async fn an_input_that_leaves_no_output_is_the_fleets_configuration() {
         physical.paths.lock().unwrap().is_empty(),
         "nothing was sent"
     );
+}
+
+/// A transport whose guard refuses every destination, counting its sends.
+#[derive(Default)]
+struct Refusing {
+    sends: std::sync::atomic::AtomicUsize,
+}
+
+impl Send for Refusing {
+    fn send(&self, _: http::Request<Bytes>) -> Sent {
+        self.sends.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async {
+            Err(guffbolt_ai::wire::transport::SendError::Refused(Box::new(
+                af_egress::BlockedAddress,
+            )))
+        })
+    }
+}
+
+// Value: an endpoint the egress guard refused is the policy's error, named by
+// its provider, and the adapter sends it once: neither the retry nor a
+// reopening repeats a refusal no second send changes.
+#[tokio::test]
+async fn a_send_the_guard_refused_is_not_retried_and_names_the_policys_endpoint() {
+    let provider = "custom:https://models.internal.example/v1";
+    let route = Route::new(
+        Api::Chat,
+        "https://models.internal.example/v1",
+        None,
+        37,
+        1024,
+    )
+    .unwrap();
+    let guard = Arc::new(Refusing::default());
+    let connected = Connected::new(route, MODEL, KEY, Arc::clone(&guard));
+    let turns = Turns::new(connected, "run-refused", provider);
+    let messages = [guffbolt::Message::User("hello".into())];
+    let mut asked = request(&messages);
+    asked.single_attempt = false;
+
+    let chunks: Vec<_> = turns.stream(asked).collect().await;
+
+    let refused = chunks.into_iter().find_map(Result::err).unwrap();
+    assert_eq!(
+        refused.code(),
+        af_core::error_code::AGENTSFLEET_INVALID_CONFIG
+    );
+    assert_eq!(refused.failure_class(), None);
+    assert_eq!(refused.unhosted_provider(), None);
+    assert!(refused.detail().contains(provider), "{}", refused.detail());
+    assert_eq!(guard.sends.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

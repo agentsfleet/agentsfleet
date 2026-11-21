@@ -15,8 +15,6 @@
 mod assignment_selection;
 mod decision_receipts;
 
-#[path = "inference_images.rs"]
-mod inference_images;
 #[path = "instants.rs"]
 mod instants;
 #[path = "memory_shapes.rs"]

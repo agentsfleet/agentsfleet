@@ -13,7 +13,7 @@ const MODEL: &str = "workspace/configured-model";
 /// What the runtime estimates a sent body at: window bounds hold in the
 /// estimator's tokens, which are not the body's bytes.
 fn estimated(raw: &[u8]) -> u64 {
-    af_inference::input_tokens(MODEL, std::str::from_utf8(raw).unwrap()) as u64
+    guffbolt_ai::wire::input_tokens(MODEL, std::str::from_utf8(raw).unwrap()) as u64
 }
 
 fn provider(fake: &Fake, wire: Wire, budget: u32) -> Box<Provider> {

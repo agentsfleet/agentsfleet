@@ -35,12 +35,12 @@ enum ErrorKind {
     #[error("model decision settings are invalid")]
     DecisionSettings {
         #[source]
-        source: af_inference::Error,
+        source: af_providers::Error,
     },
     #[error("model inference settings are invalid")]
     Inference {
         #[source]
-        source: af_inference::Error,
+        source: af_providers::Error,
     },
     #[error("the datastore backing platform administration would not answer")]
     Datastore {
@@ -118,7 +118,7 @@ impl Error {
 }
 
 af_core::error_lifts!(Error, ErrorKind:
-    af_inference::Error => Inference,
+    af_providers::Error => Inference,
     afd_db::Error => Datastore,
     af_crypto::error::Error => Entropy,
 );
@@ -131,7 +131,7 @@ pub(super) fn coding_prices() -> Error {
     ErrorKind::CodingPrices.into()
 }
 
-pub(super) fn decision_settings(source: af_inference::Error) -> Error {
+pub(super) fn decision_settings(source: af_providers::Error) -> Error {
     ErrorKind::DecisionSettings { source }.into()
 }
 

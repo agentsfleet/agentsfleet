@@ -3,13 +3,13 @@
 use std::error::Error as _;
 use std::time::Duration;
 
-use af_inference::transport::REPLY_MAX_BYTES;
 use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
 use af_providers::{
     observe::labels::{DecisionOutcome as MeasuredOutcome, DecisionPurpose},
     testing::{Observed, Tally, scoped},
 };
 use af_wire::decision::{DecisionApi, DecisionInvalid, DecisionOutcome};
+use af_wire::protocol::MESSAGE_BYTES_MAX as REPLY_MAX_BYTES;
 use serde_json::json;
 
 use super::fixture::{self, Reply, Server};

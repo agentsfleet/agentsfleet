@@ -14,8 +14,13 @@ const UNNAMED_END: &str = "provider_error";
 // The one lift: a body that will not encode, or an event that will not parse,
 // is an unreadable turn wherever `?` meets it (`docs/RUST_ERROR_STANDARD.md`
 // rule 2).
+// Saved settings that fail their declared bounds or name no URL are refused
+// as such wherever `?` meets them; the decision preflight names its own
+// endpoint's parse failure by hand.
 af_core::error_lifts!(Error, ErrorKind:
     serde_json::Error => Unreadable,
+    garde::Report => Bounds,
+    url::ParseError => Url,
 );
 
 /// The provider ended the turn with its own error, named `reason`.
@@ -47,7 +52,7 @@ pub(crate) fn client(source: reqwest::Error) -> Error {
 }
 
 /// Persisted model settings could not be admitted; preserve the typed cause.
-pub(crate) fn configuration(source: af_inference::Error) -> Error {
+pub(crate) fn configuration(source: Error) -> Error {
     Error::from(ErrorKind::Configuration { source })
 }
 
@@ -82,7 +87,7 @@ pub(crate) fn provider(failure: ProviderError) -> Error {
     match failure {
         _ if oversize(&failure) => Error::from(ErrorKind::Oversize {
             source: failure,
-            limit: af_inference::transport::REPLY_MAX_BYTES,
+            limit: crate::transport::REPLY_MAX_BYTES,
         }),
         ProviderError::Http(_) | ProviderError::Truncated => Error::lost(failure),
         ProviderError::Provider(_) => ended(UNNAMED_END, failure),

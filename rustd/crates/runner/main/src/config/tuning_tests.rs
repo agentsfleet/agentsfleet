@@ -53,7 +53,10 @@ fn an_empty_profile_selects_todays_values() -> Checked {
     assert_eq!(selected.run_limits, afr_agent::RunLimits::DEFAULT);
     assert_eq!(selected.egress, af_egress::Limits::DEFAULT);
     assert_eq!(selected.max_run_spans, afr_telemetry::MAX_RUN_SPANS);
-    assert_eq!(selected.inference, af_inference::Timeouts::DEFAULT);
+    assert_eq!(
+        selected.inference,
+        af_providers::settings::Timeouts::DEFAULT
+    );
     assert_eq!(selected.engine.sizes, afr_executor::Sizes::DEFAULT);
     Ok(())
 }
@@ -180,7 +183,7 @@ fn provider_values_reach_decisions_and_counting() -> Checked {
     // `[inference]` keeps its own keys beside `[provider]`'s.
     assert_eq!(
         selected.inference.connect(),
-        af_inference::Timeouts::DEFAULT.connect()
+        af_providers::settings::Timeouts::DEFAULT.connect()
     );
     Ok(())
 }

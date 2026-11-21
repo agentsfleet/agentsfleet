@@ -141,7 +141,12 @@ fn outcome(result: &Result<DecisionResult>) -> DecisionOutcome {
             | ErrorKind::DecisionBuild { .. }
             | ErrorKind::DecisionPreflight { .. }
             | ErrorKind::Configuration { .. }
-            | ErrorKind::Route { .. } => DecisionOutcome::NotSent,
+            | ErrorKind::Route { .. }
+            | ErrorKind::Bounds { .. }
+            | ErrorKind::Url { .. }
+            | ErrorKind::Endpoint
+            | ErrorKind::DecisionCapabilities
+            | ErrorKind::Unroutable { .. } => DecisionOutcome::NotSent,
             ErrorKind::DecisionStatus {
                 status: 429 | 529, ..
             } => DecisionOutcome::RateLimited,

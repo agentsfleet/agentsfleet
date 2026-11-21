@@ -56,6 +56,9 @@ fn ollama(message: &Value) -> Reply {
 async fn streamed(connector: &Native, provider: &str, messages: &[Message]) -> Vec<Chunk> {
     let mut held = payload(provider, &[], QUESTION);
     held.policy.inference = Some(connector.settings.clone());
+    // The run's model: the id the adapter connects as, and the one the loop
+    // names in every request it asks.
+    held.policy.context.model = MODEL.into();
     let model = connector.inner.connect(&held).unwrap();
     let parameters = json!({"type":"object","properties":{}});
     let tools = [ToolSpec {

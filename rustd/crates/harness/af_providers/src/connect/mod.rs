@@ -9,10 +9,10 @@ use guffbolt_ai::wire::Connected;
 
 use crate::error::{Result, raise};
 use crate::provider::Provider;
-use crate::transport::guarded;
+use crate::settings::{Configured, RetryPolicy, Timeouts};
+use crate::transport::{REPLY_MAX_BYTES, guarded};
 use crate::turn::Turns;
 use crate::turn::observer::RunObserver;
-use af_inference::Configured;
 
 /// What reaches the model a run names.
 ///
@@ -44,12 +44,12 @@ pub trait Connect: Send + Sync + fmt::Debug {
 /// A cheap handle: cloning it shares the client's connection pool. The client
 /// follows no redirect, so a turn reaches the host its route names and no
 /// other, with the key on it. A reply is bounded by the runner frame
-/// ([`REPLY_MAX_BYTES`](af_inference::transport::REPLY_MAX_BYTES)).
+/// (`af_wire::protocol::MESSAGE_BYTES_MAX`).
 #[derive(Debug, Clone)]
 pub struct Connector {
     client: reqwest::Client,
-    timeouts: af_inference::Timeouts,
-    retries: crate::RetryPolicy,
+    timeouts: Timeouts,
+    retries: RetryPolicy,
 }
 
 impl Connector {
@@ -58,17 +58,14 @@ impl Connector {
     /// # Errors
     /// The HTTP client could not be built.
     pub fn new() -> Result<Self> {
-        Self::configured(af_inference::Timeouts::DEFAULT, crate::RetryPolicy::DEFAULT)
+        Self::configured(Timeouts::DEFAULT, RetryPolicy::DEFAULT)
     }
 
     /// Builds one guarded pool with checked timeout and retry settings.
     ///
     /// # Errors
     /// The HTTP client could not be built.
-    pub fn configured(
-        timeouts: af_inference::Timeouts,
-        retries: crate::RetryPolicy,
-    ) -> Result<Self> {
+    pub fn configured(timeouts: Timeouts, retries: RetryPolicy) -> Result<Self> {
         #[expect(
             clippy::disallowed_methods,
             reason = "af_egress::guarded wraps this builder to pin DNS to the sandbox allowlist; afd_identity::direct is a daemon crate the runner does not depend on, and swapping to it would drop the egress guard"
@@ -90,8 +87,8 @@ impl Connector {
     pub const fn with_client(client: reqwest::Client) -> Self {
         Self {
             client,
-            timeouts: af_inference::Timeouts::DEFAULT,
-            retries: crate::RetryPolicy::DEFAULT,
+            timeouts: Timeouts::DEFAULT,
+            retries: RetryPolicy::DEFAULT,
         }
     }
 }
@@ -122,7 +119,7 @@ impl Connect for Connector {
         )
         .with_retry(self.retries.wire())
         .with_timeouts(self.timeouts.wire())
-        .with_reply_bound(af_inference::transport::REPLY_MAX_BYTES)
+        .with_reply_bound(REPLY_MAX_BYTES)
         .with_observer(Arc::new(observer));
         Ok(Box::new(Turns::new(connected, run_id, &policy.provider)))
     }

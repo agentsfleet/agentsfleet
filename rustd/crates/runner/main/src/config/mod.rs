@@ -19,9 +19,9 @@ pub(super) const ENV_CONFIG_FILE: &str = "AGENTSFLEET_RUNNER_CONFIG_FILE";
 #[serde(default, deny_unknown_fields)]
 struct Profile {
     #[garde(dive)]
-    inference: af_inference::TimeoutSettings,
+    inference: af_providers::settings::TimeoutSettings,
     #[garde(dive)]
-    provider_retries: af_providers::RetrySettings,
+    provider_retries: af_providers::settings::RetrySettings,
     #[garde(dive)]
     supervisor: afr_supervisor::config::RuntimeSettings,
     #[garde(dive)]
@@ -41,8 +41,8 @@ struct Profile {
 }
 
 pub(super) struct Settings {
-    pub(super) inference: af_inference::Timeouts,
-    pub(super) provider_retries: af_providers::RetryPolicy,
+    pub(super) inference: af_providers::settings::Timeouts,
+    pub(super) provider_retries: af_providers::settings::RetryPolicy,
     pub(super) supervisor: afr_supervisor::config::RuntimePolicy,
     /// The supervisor's daemon link, decision calls and sandbox limits.
     pub(super) tuning: afr_supervisor::config::Tuning,
@@ -58,11 +58,13 @@ pub(super) struct Settings {
 
 pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
     let profile = load(env).map_err(|error| super::refused(&error))?;
-    let inference = af_inference::Timeouts::new(&checked(profile.inference)?);
+    let inference = af_providers::settings::Timeouts::new(&checked(profile.inference)?);
     let sizes = tuning::sizes(&profile.tools, profile.executor);
     Ok(Settings {
         inference: profile.provider.counting(inference),
-        provider_retries: af_providers::RetryPolicy::new(&checked(profile.provider_retries)?),
+        provider_retries: af_providers::settings::RetryPolicy::new(&checked(
+            profile.provider_retries,
+        )?),
         supervisor: afr_supervisor::config::RuntimePolicy::new(&checked(profile.supervisor)?),
         tuning: tuning::supervisor(&profile.sandbox, &profile.provider, &profile.daemon),
         engine: profile.sandbox.engine(sizes),

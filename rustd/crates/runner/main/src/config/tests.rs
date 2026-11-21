@@ -39,10 +39,13 @@ fn profile(text: &str) -> Result<Settings, Box<dyn std::error::Error>> {
 #[test]
 fn a_profile_of_the_defaults_selects_the_defaults() -> Checked {
     let selected = profile(DEFAULT_PROFILE)?;
-    assert_eq!(selected.inference, af_inference::Timeouts::DEFAULT);
+    assert_eq!(
+        selected.inference,
+        af_providers::settings::Timeouts::DEFAULT
+    );
     assert_eq!(
         selected.provider_retries,
-        af_providers::RetryPolicy::DEFAULT
+        af_providers::settings::RetryPolicy::DEFAULT
     );
     assert_eq!(
         selected.supervisor,
@@ -65,7 +68,10 @@ fn a_profile_with_a_value_of_the_wrong_type_is_refused() {
 fn a_blank_profile_variable_selects_the_defaults() -> Checked {
     let selected = read(&MapEnv::from_pairs([(ENV_CONFIG_FILE, "  ")]))
         .map_err(|status| format!("blank profile variable refused: {status:?}"))?;
-    assert_eq!(selected.inference, af_inference::Timeouts::DEFAULT);
+    assert_eq!(
+        selected.inference,
+        af_providers::settings::Timeouts::DEFAULT
+    );
     assert_eq!(
         selected.supervisor,
         afr_supervisor::config::RuntimePolicy::DEFAULT
@@ -88,7 +94,7 @@ fn custom_profile_reaches_component_policies() -> Checked {
     assert_eq!(selected.inference.stream_idle().as_secs(), 7);
     assert_ne!(
         selected.provider_retries,
-        af_providers::RetryPolicy::DEFAULT
+        af_providers::settings::RetryPolicy::DEFAULT
     );
     assert_eq!(selected.supervisor.settings().daemon_max_attempts, 2);
     assert_eq!(selected.supervisor.settings().renewal_interval_ms, 1000);
