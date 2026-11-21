@@ -2,13 +2,24 @@
 
 use super::{EVENT_CHILD_STARTED, Harness, Shared, context, publication};
 use crate::{context::Checkpoints, events::Live, offer, router::Router};
+use af_wire::run::{EarlierCall, Turn};
+use af_wire::tool_trace::CALL_ID_SEPARATOR;
 use guffbolt::agents::Seat;
-use guffbolt::{Message, Replay, Transcript};
+use guffbolt::{Call, Message, Replay, Transcript};
+
+/// What opens an earlier call's id, so it never meets an id a provider mints
+/// in this run.
+const EARLIER_CALL_PREFIX: &str = "earlier_";
 
 impl<'s, 'run> Harness<'s, 'run> {
     /// The run's root loop, over every tool the run was offered, opening
-    /// with the fleet's earlier turns and then the event's message.
-    pub(super) fn root(shared: &'s Shared<'run>, opening: Vec<Message>) -> Self {
+    /// with the fleet's earlier turns and then the event's message; `saved`
+    /// is the thread's summary a fleet chat read, which its compactions save.
+    pub(super) fn root(
+        shared: &'s Shared<'run>,
+        opening: Vec<Message>,
+        saved: Option<context::Saved>,
+    ) -> Self {
         let selection = shared.selection;
         let mut root = Self {
             task: shared.prepared_task.cloned(),
@@ -51,6 +62,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             turn_checkpoint: shared.payload.turn_resume.clone(),
             assignment_answered: !shared.payload.inputs_waiting,
         };
+        root.context.saved = saved;
         if root.task.is_some() {
             root.live.hide_reasoning();
         }
@@ -108,18 +120,75 @@ impl<'s, 'run> Harness<'s, 'run> {
     }
 }
 
-pub(super) fn opening(scrub: &af_secrets::Scrub, history: Vec<(String, String)>) -> Vec<Message> {
-    history
-        .into_iter()
-        .flat_map(|(asked, answered)| {
-            [
-                Message::User(scrub.clean(asked).into_inner()),
-                Message::Assistant {
-                    text: scrub.clean(answered).into_inner(),
-                    calls: Vec::new(),
-                    replay: Replay::default(),
-                },
-            ]
-        })
-        .collect()
+/// The root's opening ahead of the event's message: the thread's saved
+/// summary when `saved` holds one, then each earlier turn it does not cover.
+/// A turn is what was asked, each call its run made and what came back when
+/// `calls` says the run is offered tools, and what was answered. Every text
+/// passes `scrub`: a secret said in an earlier turn is still a secret.
+/// `saved` learns where each turn sits.
+///
+/// # Errors
+/// The saved summary cannot be quoted.
+pub(super) fn opening(
+    scrub: &af_secrets::Scrub,
+    mut saved: Option<&mut context::Saved>,
+    history: &[Turn<'_>],
+    calls: bool,
+) -> af_context::Result<Vec<Message>> {
+    let mut messages = Vec::new();
+    if let Some(summary) = saved.as_deref().and_then(context::Saved::summary) {
+        messages.push(Message::User(summary.context()?));
+    }
+    for turn in history {
+        if saved.as_deref().is_some_and(|kept| kept.covers(turn)) {
+            continue;
+        }
+        let start = messages.len();
+        messages.push(Message::User(
+            scrub.clean(turn.message.to_string()).into_inner(),
+        ));
+        if calls {
+            for call in &turn.calls {
+                messages.extend(earlier_call(scrub, call));
+            }
+        }
+        messages.push(Message::Assistant {
+            text: scrub.clean(turn.answer.to_string()).into_inner(),
+            calls: Vec::new(),
+            replay: Replay::default(),
+        });
+        if let Some(kept) = saved.as_deref_mut() {
+            kept.placed(turn.sequence, start..messages.len());
+        }
+    }
+    Ok(messages)
+}
+
+/// One earlier call as `guffbolt` keeps a call: the step that made it, then
+/// its result, under an id the provider accepts, made from the thread's
+/// `{fence}:{n}`, which is unique in the fleet's thread.
+fn earlier_call(scrub: &af_secrets::Scrub, call: &EarlierCall<'_>) -> [Message; 2] {
+    let id = format!(
+        "{EARLIER_CALL_PREFIX}{}",
+        call.call_id.replace(CALL_ID_SEPARATOR, "_")
+    );
+    let arguments = scrub
+        .clean_json(serde_json::Value::Object(call.arguments.clone()))
+        .into_inner();
+    [
+        Message::Assistant {
+            text: String::new(),
+            calls: vec![Call {
+                id: id.clone(),
+                name: call.tool.to_string(),
+                arguments,
+            }],
+            replay: Replay::default(),
+        },
+        Message::ToolResult {
+            call_id: id,
+            output: scrub.clean(call.output.to_string()).into_inner(),
+            image: None,
+        },
+    ]
 }

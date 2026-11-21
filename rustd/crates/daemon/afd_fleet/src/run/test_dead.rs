@@ -70,7 +70,7 @@ pub(crate) fn plane() -> RunService {
             Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
         )),
         grants: afd_approval::IntegrationGrants::new(database(), Entropy::new()),
-        thread: Arc::new(afd_turns::view::History::new(database())),
+        thread: Arc::new(crate::run::history::Conversations::new(database())),
     }
 }
 

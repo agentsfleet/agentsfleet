@@ -75,8 +75,8 @@ agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffi
 agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:6	no	errors	rejected signups per cause
 agentsfleet_run_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the three below
 agentsfleet_run_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
-agentsfleet_run_history_bytes	histogram	f64	By	cumulative	-	0,1024,4096,8192,16384,32768,49152,65536	fixed:1	no	traffic	bytes of earlier turns each chat run carries; a crowd at 65536 means conversations outgrow the window
-agentsfleet_run_history_cuts_total	counter	u64	{run}	cumulative	reason	-	fixed:3	no	traffic	chat runs whose turns a cap cut, by cap: turns means long conversations, text or bytes means large turns
+agentsfleet_run_history_bytes	histogram	f64	By	cumulative	-	0,1024,16384,65536,262144,1048576,4194304,16777216,33554432	fixed:1	no	traffic	bytes of earlier turns each chat run reads; a crowd at 33554432 means conversations outgrow the run frame
+agentsfleet_run_history_cuts_total	counter	u64	{run}	cumulative	reason	-	fixed:1	no	traffic	chat runs whose oldest turns were dropped so the assignment fits one run frame
 agentsfleet_run_held_assignments_total	counter	u64	{run}	cumulative	outcome	-	fixed:2	no	traffic	won assignments on a fleet whose runner held its sandbox frozen: holder means the follow-up continued where the last run stopped, other_after_lapse means the hold lapsed or its runner went silent first
 agentsfleet_run_cache_lookups_total	counter	u64	{lookup}	cumulative	cache,outcome	-	fixed:6	no	traffic	run-path cache lookups by cache and outcome: misses over lookups is how often a run still reads or parses what the cache holds; each cache is keyed by a version a statement in the same pass read
 agentsfleet_run_history_read_failures_total	counter	u64	{run}	cumulative	-	-	fixed:1	no	errors	chat runs issued without their turns because the thread read failed

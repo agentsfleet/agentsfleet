@@ -1,5 +1,6 @@
-//! A setup run's fenced context verb: the draft's compacted context read at
-//! the run's start and saved after its window hook compacts.
+//! A run's fenced context verb: its thread's compacted context, a setup
+//! draft's or a fleet chat's, read at the run's start and saved after its
+//! window compacts.
 //!
 //! A read is retried like any idempotent verb. A save is retried too: it is a
 //! compare-and-swap on the version it names, so a save that landed and lost
@@ -22,7 +23,7 @@ use super::{
 use crate::{Result, downlink::pending::Expected, error::ErrorKind};
 
 impl ControlPlane {
-    /// The compacted context of the draft `run` runs, read at `fencing_token`.
+    /// The compacted context of the thread `run` runs, read at `fencing_token`.
     ///
     /// # Errors
     /// The daemon refused the read, a superseded run's among them, or never
@@ -46,7 +47,7 @@ impl ControlPlane {
             .await
     }
 
-    /// Saves `request`'s checkpoint for the draft `run` runs.
+    /// Saves `request`'s checkpoint for the thread `run` runs.
     ///
     /// # Errors
     /// The daemon refused the save: a superseded run's, or one another save

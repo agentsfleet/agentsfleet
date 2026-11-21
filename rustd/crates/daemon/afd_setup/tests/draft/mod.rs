@@ -11,6 +11,7 @@ mod context;
 mod creation;
 mod edits;
 mod fixture;
+mod fleet_context;
 mod funnel;
 mod listing;
 mod locks;

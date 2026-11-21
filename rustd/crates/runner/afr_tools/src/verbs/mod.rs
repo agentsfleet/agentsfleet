@@ -285,6 +285,23 @@ pub trait RunVerbs: Send + Sync + fmt::Debug {
     ) -> Result<af_wire::task::TaskEffectsPage, Unanswered> {
         Err(Unanswered::Refused(None))
     }
+
+    /// Reads the compacted context of the conversation the run continues,
+    /// under the run's fence: its scope, the stored version and the saved
+    /// checkpoint. A refusal leaves the run on its earlier turns alone.
+    async fn context_load(&self) -> Result<af_wire::context::ContextLoadResponse, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
+    /// Saves a compaction's checkpoint over the version `request` expects,
+    /// under the run's fence, whatever fence `request` names; a superseded
+    /// run's save is refused.
+    async fn context_save(
+        &self,
+        _request: af_wire::context::ContextSaveRequest,
+    ) -> Result<af_wire::context::ContextSaveResponse, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
 }
 
 /// Verbs with nothing behind them: every call is unanswered.

@@ -25,11 +25,11 @@ pub const RUN_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_ru
 pub const RUN_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_poll_candidates_scanned_total");
 
-/// Bytes of earlier turns each chat run carries.
+/// Bytes of earlier turns each chat run reads.
 pub const RUN_HISTORY_BYTES: Declared<HistogramKind> =
     Declared::new("agentsfleet_run_history_bytes");
 
-/// Chat runs whose earlier turns a cap cut, by the cap.
+/// Chat runs whose oldest turns were dropped to fit one run frame.
 pub const RUN_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_run_history_cuts_total");
 

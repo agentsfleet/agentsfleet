@@ -18,8 +18,8 @@ pub(super) const CANDIDATES: &str = include_str!("candidates.sql");
 /// running.
 pub(super) const HEAD: &str = include_str!("head.sql");
 
-/// Earlier answered turns, newest first. `$1` draft, `$2` sequence, `$3`
-/// completed, `$4` limit.
+/// Every earlier answered turn, newest first. `$1` draft, `$2` sequence,
+/// `$3` completed.
 pub(super) const HISTORY: &str = include_str!("history.sql");
 
 /// The message a draft run takes, running. `$1` draft, `$2` sequence, `$3`
@@ -42,9 +42,9 @@ pub(super) const PREVIEW: &str = include_str!("preview.sql");
 /// Deletes a deleted draft's active runs. `$1` draft, `$2` active.
 pub(crate) const DELETE_RUNS: &str = include_str!("delete_runs.sql");
 
-/// The draft a setup run's context save names, if the run is a draft run of
-/// this runner's. `$1` run, `$2` runner.
-pub(super) const DRAFT_OF_RUN: &str = include_str!("draft_of_run.sql");
+/// The owner of the thread a run's context save names, its fleet or its
+/// draft, if the run is this runner's. `$1` run, `$2` runner.
+pub(super) const THREAD_OF_RUN: &str = include_str!("thread_of_run.sql");
 
 /// The creator's row, shared, refusing rather than waiting when another
 /// transaction holds it. `$1` user.

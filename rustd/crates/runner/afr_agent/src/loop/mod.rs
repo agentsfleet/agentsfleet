@@ -121,9 +121,21 @@ impl AgentEngine for Loop {
             instructions.push_str("\n\nNative task scope: execute only the current task's accepted objective and items marked applies_here. Other accepted items retain their original reply deliveries but grant no permission to execute another task. A conversational answer does not complete the task. The coordinator assesses progress after complete action groups.\n");
             instructions.push_str(&scrub.clean(native.to_string()).into_inner());
         }
-        // Every earlier turn passes the scrub the current message does: a
-        // secret said in an earlier message is still a secret.
-        let opening = construction::opening(&scrub, prompt.history);
+        // A fresh fleet chat opens on its thread's saved summary, and saves
+        // the next one as its compactions cover earlier turns.
+        let mut saved = if keeps_summary(&run) {
+            let (model, pinned) = context::digests(
+                &policy.context.model,
+                policy.inference.as_ref(),
+                policy.model_context_tokens,
+                &instructions,
+            )?;
+            context::Saved::load(run.verbs, &run.run.run_id, model, pinned).await
+        } else {
+            None
+        };
+        let opening =
+            construction::opening(&scrub, saved.as_mut(), &run.run.history, !tools.is_empty())?;
         let recovery_boundary::RootSetup {
             opening,
             memory,
@@ -152,7 +164,7 @@ impl AgentEngine for Loop {
         );
         let driven = async {
             let mut children = Children::new(requests);
-            let mut root = Harness::root(&shared, opening);
+            let mut root = Harness::root(&shared, opening, saved);
             if let Some(recovered) = state {
                 root.driver = recovered.driver;
                 root.context = context::State::new(recovered.pinned);
@@ -169,6 +181,18 @@ impl AgentEngine for Loop {
         };
         Ok(driven.instrument(span).await)
     }
+}
+
+/// Whether `run` keeps its thread's saved summary: a fresh fleet chat's
+/// root. A recovered root resumes its own saved history, and a durable
+/// task's run its task's.
+fn keeps_summary(run: &AgentRun<'_>) -> bool {
+    run.run.event.event_type == af_wire::turn::TurnKind::Chat
+        && run.recovered_task.is_none()
+        && run.recovered_turn.is_none()
+        && run.run.task.is_none()
+        && !run.run.durable_tasks
+        && run.run.owner.setup().is_none()
 }
 
 /// One loop in progress: the root, or a child.
@@ -280,3 +304,6 @@ mod fold_tests;
 
 #[cfg(test)]
 mod quiet_tests;
+
+#[cfg(test)]
+mod saved_tests;

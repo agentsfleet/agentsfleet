@@ -312,8 +312,6 @@ async fn history(
         .bind(draft)
         .bind(sequence)
         .bind(MessageState::Completed.as_str())
-        // The most earlier turns an assignment carries, as a fleet chat's does.
-        .bind(i64::try_from(af_wire::run::HISTORY_TURNS_MAX).unwrap_or(i64::MAX))
         .fetch_all(connection)
         .await
         .map_err(query(sql::CONTEXT))?;

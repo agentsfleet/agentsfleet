@@ -157,6 +157,8 @@ pub(in crate::lane::runs) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> RunSe
             Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
         )),
         grants: IntegrationGrants::new(database, Entropy::new()),
-        thread: Arc::new(afd_turns::view::History::new(stores.database.clone())),
+        thread: Arc::new(afd_fleet::run::history::Conversations::new(
+            stores.database.clone(),
+        )),
     }
 }

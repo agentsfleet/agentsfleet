@@ -96,6 +96,8 @@ mod integration_runner_stream;
 mod integration_rust_runner;
 #[path = "integration_rust_runner_definitions.rs"]
 mod integration_rust_runner_definitions;
+#[path = "integration_rust_runner_fleet_context.rs"]
+mod integration_rust_runner_fleet_context;
 #[path = "integration_rust_runner_nested.rs"]
 mod integration_rust_runner_nested;
 #[path = "integration_rust_runner_repairs.rs"]

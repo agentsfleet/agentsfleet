@@ -2,7 +2,7 @@
 //!
 //! Only the root assesses completed action groups; children cannot settle goals.
 
-use super::{Ending, Harness};
+use super::{Ending, Harness, task_evidence::Unassessed};
 use af_wire::task::{TaskDisposition, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
 use guffbolt::{Budget, Step};
 
@@ -107,42 +107,32 @@ impl Harness<'_, '_> {
         };
         // Tool results are data. Native report preparation independently reads
         // exact-head validation and refuses stale completion evidence.
-        let evidence = match self.task_evidence(answer).await {
-            Ok(evidence) => evidence,
-            Err(failure) => {
+        let report = match self.assess_group(assignment, answer).await {
+            Ok(report) => report,
+            Err(Unassessed::Stopped) => return Some(Ending::Stopped),
+            Err(Unassessed::Evidence(failure)) => {
                 self.task_report = None;
                 tracing::warn!(event = "task_evidence_unavailable", error_code = %failure.code());
                 return Some(Ending::Stopped);
             }
-        };
-        let prepared = self.task.as_ref()?;
-        let assessed = tokio::select! {
-            biased;
-            () = self.stop.cancelled() => return Some(Ending::Stopped),
-            assessed = crate::decision::goal::assess(prepared, assignment, self.shared.run.verbs,
-                self.shared.fencing_token, evidence) => assessed,
-        };
-        match assessed {
-            Ok(report) => {
-                let disposition = report.disposition;
-                self.task_report = Some(report);
-                match disposition {
-                    TaskDisposition::Continue if self.task_yield_due() =>
-                        Some(Ending::Answered("The task remains in progress. Its state will be saved before the next execution slice.".to_owned())),
-                    TaskDisposition::Continue => None,
-                    TaskDisposition::Complete | TaskDisposition::Waiting | TaskDisposition::Blocked =>
-                        Some(Ending::Answered(if answer.trim().is_empty() { match disposition {
-                            TaskDisposition::Complete => "The action group finished and the goal assessment requested completion. Native publication and validation checks will confirm the final task status.",
-                            TaskDisposition::Waiting => "The action group finished. The task is waiting for its recorded dependency to complete.",
-                            TaskDisposition::Blocked | TaskDisposition::Continue => "The task is blocked; its current progress will be saved.",
-                        }.to_owned() } else { answer.to_owned() })),
-                }
-            }
-            Err(failure) => {
+            Err(Unassessed::Goal(failure)) => {
                 self.task_report = None;
                 tracing::warn!(event = "task_goal_unavailable", error_code = %failure.code());
-                Some(Ending::Stopped)
+                return Some(Ending::Stopped);
             }
+        };
+        let disposition = report.disposition;
+        self.task_report = Some(report);
+        match disposition {
+            TaskDisposition::Continue if self.task_yield_due() =>
+                Some(Ending::Answered("The task remains in progress. Its state will be saved before the next execution slice.".to_owned())),
+            TaskDisposition::Continue => None,
+            TaskDisposition::Complete | TaskDisposition::Waiting | TaskDisposition::Blocked =>
+                Some(Ending::Answered(if answer.trim().is_empty() { match disposition {
+                    TaskDisposition::Complete => "The action group finished and the goal assessment requested completion. Native publication and validation checks will confirm the final task status.",
+                    TaskDisposition::Waiting => "The action group finished. The task is waiting for its recorded dependency to complete.",
+                    TaskDisposition::Blocked | TaskDisposition::Continue => "The task is blocked; its current progress will be saved.",
+                }.to_owned() } else { answer.to_owned() })),
         }
     }
 

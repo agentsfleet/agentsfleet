@@ -25,6 +25,7 @@ use afd_api::router::{Dependencies, ReadyInputs};
 use afd_approval::IntegrationGrants;
 use afd_billing::Accounts;
 use afd_credential::provider::Providers;
+use afd_fleet::run::history::Conversations;
 use afd_fleet::run::{RunService, Runs};
 use afd_gate::gate::Gates;
 use afd_http::auth::Planes;
@@ -33,7 +34,6 @@ use afd_runner::Runners;
 use afd_sse::Live;
 use afd_state::Credentials;
 use afd_turns::Turns;
-use afd_turns::view::History;
 use afd_vault::Vault;
 
 use crate::identity::{Capabilities, Sessions, SignupWriteback};
@@ -251,9 +251,9 @@ fn run_plane(
         memories: Memories::new(database.clone(), Entropy::new())
             .with_activity_streams(activity_streams),
         providers,
-        // The thread a chat run reads its earlier turns from: the rows the
-        // dashboard thread shows, through the same reader.
-        thread: Arc::new(History::new(database.clone())),
+        // The thread a chat run reads its earlier turns and their tool
+        // calls from.
+        thread: Arc::new(Conversations::new(database.clone())),
         vault: Vault::new(database, kek, Entropy::new()),
         broker,
     }

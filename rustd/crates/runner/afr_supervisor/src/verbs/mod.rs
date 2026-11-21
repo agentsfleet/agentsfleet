@@ -3,7 +3,9 @@
 //! The supervisor holds the run's id and fencing token; a tool holds
 //! neither. Every call is one attempt: a schedule create is not idempotent and
 //! a line that landed and lost its answer would post twice, so the model, not
-//! a retry loop, decides whether to try again.
+//! a retry loop, decides whether to try again. The context verbs are the
+//! exception: a read changes nothing and a save is a compare-and-swap on the
+//! version it names, so `client::context` retries both.
 
 use std::borrow::Cow;
 
@@ -170,6 +172,28 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
         query.fencing_token = self.fencing_token;
         self.plane
             .task_effects(self.run_id, &query)
+            .await
+            .map_err(|failure| unanswered(&failure))
+    }
+
+    async fn context_load(&self) -> Result<af_wire::context::ContextLoadResponse, Unanswered> {
+        self.plane
+            .context_load(self.run_id, self.fencing_token)
+            .await
+            .map_err(|failure| unanswered(&failure))
+    }
+
+    /// The run's own fence rides every save, whatever the loop named.
+    async fn context_save(
+        &self,
+        request: af_wire::context::ContextSaveRequest,
+    ) -> Result<af_wire::context::ContextSaveResponse, Unanswered> {
+        let request = af_wire::context::ContextSaveRequest {
+            fencing_token: self.fencing_token,
+            ..request
+        };
+        self.plane
+            .context_save(self.run_id, &request)
             .await
             .map_err(|failure| unanswered(&failure))
     }

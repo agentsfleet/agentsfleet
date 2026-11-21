@@ -1,15 +1,9 @@
-//! Installed fleet work and the bounded history it carries.
+//! Installed fleet work and the history it carries.
 
-use crate::{policy::ExecutionPolicy, turn::TurnEnvelope};
+use crate::{policy::ExecutionPolicy, tool_detail::ItemStatus, turn::TurnEnvelope};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-/// The most earlier turns a chat run carries.
-pub const HISTORY_TURNS_MAX: usize = 8;
-/// The most bytes a chat run's turns carry, messages and answers together.
-pub const HISTORY_BYTES_MAX: usize = 65_536;
-/// The most bytes one turn's message, or its answer, carries.
-pub const TURN_TEXT_BYTES_MAX: usize = 16_384;
 /// A finished run that left no reply.
 pub const ANSWER_NONE: &str = "[no reply]";
 /// What opens a failed run's answer; the run's failure label follows it.
@@ -17,17 +11,46 @@ pub const ANSWER_FAILED: &str = "[the run failed: ";
 /// What closes a failed run's answer.
 pub const ANSWER_FAILED_END: &str = "]";
 
-/// One earlier exchange in the fleet's thread: what was asked, and what the
-/// fleet answered.
+/// One earlier exchange in the conversation: what was asked, the tool calls
+/// its run made, and what the fleet answered.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Turn<'a> {
+    /// The turn's place in its thread (`thread.turns.sequence`). A saved
+    /// summary's watermark counts in it, and a run skips the turns a loaded
+    /// summary covers.
+    pub sequence: u64,
     /// The turn's message, as `turn::message_of` reads it.
     #[serde(borrow)]
     pub message: Cow<'a, str>,
+    /// Every tool call the turn's run made, in the order it made them, as
+    /// `thread.items` keeps them; empty for a turn that called none.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<EarlierCall<'a>>,
     /// The fleet's answer, or the fixed text a reply-less or failed run reads as.
     #[serde(borrow)]
     pub answer: Cow<'a, str>,
+}
+
+/// One tool call an earlier turn's run made: what it called, with what, and
+/// what came back, as the model read it then.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EarlierCall<'a> {
+    /// The call's `{fence}:{n}` identifier, as the thread names it.
+    #[serde(borrow)]
+    pub call_id: Cow<'a, str>,
+    /// The tool it called.
+    #[serde(borrow)]
+    pub tool: Cow<'a, str>,
+    /// Every argument the call was made with, secret values masked.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub arguments: serde_json::Map<String, serde_json::Value>,
+    /// What the call returned, secret values masked.
+    #[serde(borrow)]
+    pub output: Cow<'a, str>,
+    /// How it ended.
+    pub status: ItemStatus,
 }
 
 /// Work assigned to a runner. Return its `fencing_token` with updates; the server rejects
@@ -60,8 +83,10 @@ pub struct RunPayload<'a> {
     /// hard tool and secret policy stays in `policy`.
     #[serde(borrow)]
     pub instructions: Cow<'a, str>,
-    /// The fleet's earlier turns, oldest first, ahead of this turn; empty
-    /// unless the turn is a chat message.
+    /// Every finished earlier turn of the conversation, oldest first, ahead
+    /// of this turn; empty unless the turn is a chat message. Only the run
+    /// frame bounds it: an assignment that would not fit one drops its
+    /// oldest turns.
     #[serde(borrow)]
     pub history: Vec<Turn<'a>>,
     /// True when the runner can reuse its latest held sandbox for a new turn. Reassigned

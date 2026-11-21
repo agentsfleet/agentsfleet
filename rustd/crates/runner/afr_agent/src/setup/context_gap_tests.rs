@@ -1,15 +1,14 @@
-//! A setup compaction over a history the daemon's bounds cut: the daemon
-//! sends the newest answered turns whatever the watermark, so a turn older
-//! than the run's oldest reaches no later run, and compaction goes on.
+//! A setup compaction over a history that does not reach back to the
+//! watermark: the daemon sends every answered turn whatever the watermark,
+//! and only the frame drops the oldest, so a turn older than the run's oldest
+//! reaches no later run, and compaction goes on.
 
 use std::error::Error;
-
-use af_secrets::Scrub;
-use af_wire::run::HISTORY_TURNS_MAX;
 
 use super::context::Saved;
 use super::context_tests::checkpoint;
 use super::fixture::{Context, setup_payload};
+use af_secrets::Scrub;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -59,13 +58,14 @@ async fn a_history_that_reaches_the_watermark_compacts_past_it() -> TestResult {
     Ok(())
 }
 
-/// With no summary saved, a history the daemon's turn bound cut compacts its
-/// oldest turns, as the first save of a long draft must.
+/// With no summary saved, a history the frame cut compacts its oldest turns,
+/// as the first save of a long draft must.
 #[tokio::test]
-async fn a_history_the_bounds_cut_compacts_with_no_summary() -> TestResult {
-    let counted = turns("asked", 3, HISTORY_TURNS_MAX);
+async fn a_history_the_frame_cut_compacts_with_no_summary() -> TestResult {
+    const SENT: usize = 8;
+    let counted = turns("asked", 3, SENT);
     // Turns 3 on, all but the newest two.
-    let through = 3 + u64::try_from(HISTORY_TURNS_MAX)? - 2 - 1;
+    let through = 3 + u64::try_from(SENT)? - 2 - 1;
     assert_eq!(claimed(&counted, None).await?, Some(through));
     Ok(())
 }

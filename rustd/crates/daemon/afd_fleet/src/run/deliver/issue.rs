@@ -110,7 +110,7 @@ impl RunService {
         )
         .await;
         let metadata = metadata(&issued, admitted);
-        let body = payload(
+        let body = history::fit_frame(payload(
             &issued.run_id,
             &admitted.acquired,
             admitted.event_type,
@@ -124,7 +124,7 @@ impl RunService {
                 turn_resume,
                 expires_at: issued.expires_at,
             },
-        );
+        ));
         Ok(Step::Go(Assigned(emit(body, metadata))))
     }
 }

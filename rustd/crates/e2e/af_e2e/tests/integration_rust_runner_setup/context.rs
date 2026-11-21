@@ -121,7 +121,7 @@ fn answer(asked: &Asked) -> Vec<guffbolt::Chunk> {
 /// The draft's stored context: what its watermark covers through.
 async fn covered_through(case: &Case, draft: &af_core::id::Uuid7) -> Option<u64> {
     let document: Option<Value> =
-        sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE draft_id = $1")
+        sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE thread_id = $1")
             .bind(draft)
             .fetch_optional(&mut *case.connection().await)
             .await

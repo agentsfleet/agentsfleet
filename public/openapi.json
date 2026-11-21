@@ -4522,7 +4522,7 @@
           "Runners"
         ],
         "summary": "Save full tool call output",
-        "description": "Saves completed tool calls before the final run report. Reposting a call replaces its record safely. Replaced work assignments are refused without saving anything.\n\nThe body limit is 262144 bytes. Each call's arguments and output may each use 65536 bytes; an event holds 1 MiB total. Records exceeding these limits count toward `skipped_count`; other records are saved.",
+        "description": "Saves completed tool calls before the final run report. Reposting a call replaces its record safely. Replaced work assignments are refused without saving anything.\n\nThe body limit is 33554432 bytes, the runner frame. No call's arguments or output, and no turn's total, is capped. Malformed records count toward `skipped_count`; other records are saved.",
         "operationId": "runner_record_tool_calls",
         "parameters": [
           {
@@ -17698,7 +17698,7 @@
           "Fleets"
         ],
         "summary": "Read one tool call in full",
-        "description": "Returns full tool arguments and output with secrets masked. URL-encode the `item_id`, the trace's `call_id`. Each may contain at most 65536 bytes; `truncated_arguments` and `truncated` indicate shortened content. Missing, unrecorded, or inaccessible calls return 404.",
+        "description": "Returns full tool arguments and output with secrets masked. URL-encode the `item_id`, the trace's `call_id`. Neither is capped; `truncated_arguments` and `truncated` mark content the runner shortened to fit one 33554432-byte post. Missing, unrecorded, or inaccessible calls return 404.",
         "operationId": "get_fleet_turn_item",
         "parameters": [
           {
@@ -24531,8 +24531,7 @@
             "items": {
               "$ref": "#/components/schemas/DefinitionConfigOp"
             },
-            "description": "Supported add/replace/remove configuration operations.",
-            "maxItems": 64
+            "description": "Supported add/replace/remove configuration operations."
           },
           "instance_name": {
             "type": "string",
@@ -24543,8 +24542,7 @@
             "items": {
               "$ref": "#/components/schemas/DefinitionInstructionEdit"
             },
-            "description": "Non-overlapping instruction edits.",
-            "maxItems": 32
+            "description": "Non-overlapping instruction edits."
           },
           "runtime_model_ref": {
             "type": "string",
@@ -24632,6 +24630,39 @@
           "title": {
             "type": "string",
             "description": "Human display title."
+          }
+        }
+      },
+      "EarlierCall": {
+        "type": "object",
+        "description": "One tool call an earlier turn's run made: what it called, with what, and\nwhat came back, as the model read it then.",
+        "required": [
+          "call_id",
+          "tool",
+          "arguments",
+          "output",
+          "status"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "description": "Every argument the call was made with, secret values masked."
+          },
+          "call_id": {
+            "type": "string",
+            "description": "The call's `{fence}:{n}` identifier, as the thread names it."
+          },
+          "output": {
+            "type": "string",
+            "description": "What the call returned, secret values masked."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ItemStatus",
+            "description": "How it ended."
+          },
+          "tool": {
+            "type": "string",
+            "description": "The tool it called."
           }
         }
       },
@@ -24864,7 +24895,7 @@
           },
           "path": {
             "type": "string",
-            "description": "The file, as the call named it relative to its working directory: 1\nto 1024 bytes, secret values masked."
+            "description": "The file, as the call named it relative to its working directory,\nsecret values masked; never empty."
           },
           "removed": {
             "type": "integer",
@@ -25353,7 +25384,7 @@
       },
       "FoldResponse": {
         "type": "object",
-        "description": "`POST /v1/runners/me/runs/{run_id}/folds` reply: the messages assigned\nto the run, oldest first, at most [`FOLDS_PER_ASSIGNMENT_MAX`].",
+        "description": "`POST /v1/runners/me/runs/{run_id}/folds` reply: the messages assigned to\nthe run that it has not read, oldest first. The reply is cut to one frame\n([`FoldResponse::keep_within`]). The next fold returns the rest.",
         "required": [
           "inputs"
         ],
@@ -28007,7 +28038,7 @@
             "items": {
               "$ref": "#/components/schemas/Turn"
             },
-            "description": "The fleet's earlier turns, oldest first, ahead of this turn; empty\nunless the turn is a chat message."
+            "description": "Every finished earlier turn of the conversation, oldest first, ahead\nof this turn; empty unless the turn is a chat message. Only the run\nframe bounds it: an assignment that would not fit one drops its\noldest turns."
           },
           "inputs_waiting": {
             "type": "boolean",
@@ -29241,15 +29272,6 @@
                 "type": "null"
               }
             ]
-          },
-          "history_sequences": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            },
-            "description": "Each [`super::RunPayload::history`] turn's position in the draft's\nconversation, oldest first and in step with it: the sequence a saved\ncontext's watermark counts in. A run skips the turns a loaded context\ncovers, and compacts only turns it can name. Empty from a daemon that\nsends none: the run then neither skips nor compacts a turn."
           },
           "save_requested": {
             "type": "boolean",
@@ -31441,12 +31463,12 @@
           },
           "truncated": {
             "type": "boolean",
-            "description": "Whether the output was cut to fit 65536 bytes. Beta: this field may change shape before it is stable.",
+            "description": "Whether the output was cut to fit one post. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "truncated_arguments": {
             "type": "boolean",
-            "description": "Whether the arguments were cut to fit 65536 bytes. Beta: this field may change shape before it is stable.",
+            "description": "Whether the arguments were dropped because they alone would not fit\none post. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           }
         },
@@ -31470,7 +31492,7 @@
         "properties": {
           "arguments": {
             "type": "object",
-            "description": "Every argument the call was made with, secret values masked. At most\n65536 bytes encoded, with no NUL character."
+            "description": "Every argument the call was made with, secret values masked, with no\nNUL character."
           },
           "call_number": {
             "type": "integer",
@@ -31484,7 +31506,7 @@
             "items": {
               "$ref": "#/components/schemas/FileChange"
             },
-            "description": "For an edit: each file it changed and the lines it added and removed,\nat most 64. Absent for any other call."
+            "description": "For an edit: each file it changed and the lines it added and removed.\nAbsent for any other call."
           },
           "kind": {
             "$ref": "#/components/schemas/ItemKind",
@@ -31492,7 +31514,7 @@
           },
           "output": {
             "type": "string",
-            "description": "Everything the call returned, at most 65536 bytes, with no NUL\ncharacter."
+            "description": "Everything the call returned, with no NUL character. Cut only when\nthe record would not otherwise fit one post."
           },
           "output_line_count": {
             "type": "integer",
@@ -31506,15 +31528,15 @@
           },
           "tool": {
             "type": "string",
-            "description": "The tool it called, 1 to 256 bytes."
+            "description": "The tool it called; never empty."
           },
           "truncated": {
             "type": "boolean",
-            "description": "Whether the runner cut the output to fit."
+            "description": "Whether the runner cut the output to fit one post."
           },
           "truncated_arguments": {
             "type": "boolean",
-            "description": "Whether the runner cut the arguments to fit."
+            "description": "Whether the runner dropped the arguments, which alone would not fit\none post."
           },
           "turn_id": {
             "type": "string",
@@ -31557,7 +31579,7 @@
         "properties": {
           "skipped_count": {
             "type": "integer",
-            "description": "Records refused for their shape, a bound, or the event's budget. Beta: this field may change shape before it is stable.",
+            "description": "Records refused for their shape or for naming a turn the run does not\nserve. Beta: this field may change shape before it is stable.",
             "minimum": 0,
             "x-stability": "beta"
           },
@@ -31580,10 +31602,9 @@
       },
       "ToolTrace": {
         "type": "object",
-        "description": "Every call one run made, oldest first.",
+        "description": "Every call one run made, oldest first.\n\nNo count or size caps the list: the report's frame\n(`crate::protocol::MESSAGE_BYTES_MAX`) bounds it, and each row keeps only\nits short preview.",
         "required": [
-          "calls",
-          "omitted_call_count"
+          "calls"
         ],
         "properties": {
           "calls": {
@@ -31591,13 +31612,7 @@
             "items": {
               "$ref": "#/components/schemas/ToolTraceCall"
             },
-            "description": "The calls, at most 200."
-          },
-          "omitted_call_count": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Calls the run made past the 200 listed.",
-            "minimum": 0
+            "description": "Every call the run made."
           }
         },
         "additionalProperties": false
@@ -31626,7 +31641,7 @@
             "items": {
               "$ref": "#/components/schemas/FileChange"
             },
-            "description": "For an edit: each file it changed and the lines it added and removed,\nat most 64. Absent for any other call, and for an edit that failed."
+            "description": "For an edit: each file it changed and the lines it added and removed.\nAbsent for any other call, and for an edit that failed."
           },
           "duration_ms": {
             "type": "integer",
@@ -31651,7 +31666,7 @@
               "string",
               "null"
             ],
-            "description": "The output's first lines, at most 5 lines and 1024 bytes. Absent when\nthe call returned nothing or the trace ran out of room for it."
+            "description": "The output's first lines, at most 5 lines and 1024 bytes. Absent when\nthe call returned nothing."
           },
           "output_line_count": {
             "type": [
@@ -31678,8 +31693,9 @@
       },
       "Turn": {
         "type": "object",
-        "description": "One earlier exchange in the fleet's thread: what was asked, and what the\nfleet answered.",
+        "description": "One earlier exchange in the conversation: what was asked, the tool calls\nits run made, and what the fleet answered.",
         "required": [
+          "sequence",
           "message",
           "answer"
         ],
@@ -31688,9 +31704,22 @@
             "type": "string",
             "description": "The fleet's answer, or the fixed text a reply-less or failed run reads as."
           },
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EarlierCall"
+            },
+            "description": "Every tool call the turn's run made, in the order it made them, as\n`thread.items` keeps them; empty for a turn that called none."
+          },
           "message": {
             "type": "string",
             "description": "The turn's message, as `turn::message_of` reads it."
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The turn's place in its thread (`thread.turns.sequence`). A saved\nsummary's watermark counts in it, and a run skips the turns a loaded\nsummary covers.",
+            "minimum": 0
           }
         }
       },

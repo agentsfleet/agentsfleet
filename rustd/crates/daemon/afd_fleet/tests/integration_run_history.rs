@@ -1,8 +1,8 @@
 //! A chat run's earlier turns, read from a live thread.
 //!
-//! The unit suite beside `run/history.rs` proves the filter and the caps on
-//! rows it builds; this proves the read itself: the statement's cursor, its
-//! fleet scope, and its status predicate. The run a runner is handed is
+//! The unit suite beside `run/history.rs` proves the filter, the paging and
+//! the frame cut on rows it builds; this proves the read itself: the
+//! statement's cursor, its fleet scope, and its status predicate. The run a runner is handed is
 //! proven through the plane in `integration_run_gates/history.rs`, which
 //! owns the provider seed an issued run needs.
 //!
@@ -21,8 +21,8 @@ use af_wire::run::{ANSWER_FAILED, ANSWER_FAILED_END};
 use af_wire::turn::TurnKind;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, TurnFacts, TurnSeed, WorkspaceSeed, mint_id};
-use afd_fleet::run::history::turns_before;
-use afd_turns::view::{Cursor, History};
+use afd_fleet::run::history::{Conversations, turns_before};
+use afd_turns::view::Cursor;
 use jiff::Timestamp;
 use std::time::Duration;
 
@@ -139,7 +139,7 @@ impl Threads {
             turn_id: turn_id.clone(),
         };
         turns_before(
-            &History::new(database.clone()),
+            &Conversations::new(database.clone()),
             &self.workspace,
             fleet,
             &cursor,
@@ -234,8 +234,8 @@ async fn test_history_stays_in_its_fleet() {
 }
 
 /// Rows still running or refused among the newest never take a turn's place:
-/// nine finished rows under three unfinished ones still carry the eight newest
-/// finished turns.
+/// nine finished rows under three unfinished ones carry all nine finished
+/// turns, oldest first.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_unfinished_rows_never_shrink_the_window() {
@@ -265,7 +265,10 @@ async fn test_unfinished_rows_never_shrink_the_window() {
         .await;
 
     let messages: Vec<&str> = turns.iter().map(|(message, _)| message.as_str()).collect();
-    assert_eq!(messages, ["m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9"]);
+    assert_eq!(
+        messages,
+        ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9"]
+    );
     fixtures.cleanup().await;
 }
 

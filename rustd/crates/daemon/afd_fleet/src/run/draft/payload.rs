@@ -7,9 +7,7 @@ use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
 use af_wire::{
     policy::{ExecutionPolicy, NetworkPolicy},
-    run::{
-        HISTORY_BYTES_MAX, Owner, RunPayload, SetupCandidate, SetupWork, TURN_TEXT_BYTES_MAX, Turn,
-    },
+    run::{Owner, RunPayload, SetupCandidate, SetupWork, Turn},
     turn::{TurnEnvelope, TurnKind},
 };
 use afd_credential::provider::RegisteredRoute;
@@ -74,7 +72,8 @@ impl DraftAssignment {
     }
 
     /// The assignment: a [`RunPayload`] the draft owns, borrowing the key this
-    /// value holds.
+    /// value holds, its oldest turns dropped only if it would not fit one
+    /// run frame.
     #[must_use]
     pub fn payload(&self) -> RunPayload<'_> {
         let turn = &self.turn;
@@ -91,8 +90,7 @@ impl DraftAssignment {
             .unwrap_or_default();
         let context_tokens = u32::try_from(model.context_window_tokens).unwrap_or_default();
         let request = serde_json::json!({ (af_wire::turn::MESSAGE): turn.user_text });
-        let (history, history_sequences) = history(turn);
-        RunPayload {
+        crate::run::history::fit_frame(RunPayload {
             run_id: Cow::Owned(self.run_id.to_string()),
             fencing_token: u64::try_from(self.fence).unwrap_or_default(),
             setup_revision_id: None,
@@ -110,7 +108,7 @@ impl DraftAssignment {
             },
             policy: self.policy(context_tokens),
             instructions: Cow::Borrowed(instructions),
-            history,
+            history: history(turn),
             resume_hold: false,
             decision: None,
             task: None,
@@ -124,10 +122,9 @@ impl DraftAssignment {
                     candidate,
                     save_requested: turn.save_requested,
                     tool: self.tool.clone(),
-                    history_sequences,
                 }),
             },
-        }
+        })
     }
 
     /// The draft run's policy: no network, the one setup tool, and the
@@ -158,38 +155,16 @@ impl DraftAssignment {
     }
 }
 
-/// The draft's earlier turns, oldest first, and each one's sequence, within a
-/// fleet chat's caps: each text cut at [`TURN_TEXT_BYTES_MAX`] on a character
-/// boundary, and the oldest dropped until the rest fit [`HISTORY_BYTES_MAX`].
-fn history(turn: &SetupTurn) -> (Vec<Turn<'_>>, Vec<u64>) {
-    let cut = |text: &str| -> String {
-        text.split_at(text.floor_char_boundary(TURN_TEXT_BYTES_MAX))
-            .0
-            .to_owned()
-    };
-    let turns: Vec<(Turn<'_>, u64)> = turn
-        .history
+/// The draft's earlier turns, oldest first, each named by its sequence: every
+/// answered turn, whole.
+fn history(turn: &SetupTurn) -> Vec<Turn<'_>> {
+    turn.history
         .iter()
-        .map(|earlier| {
-            let text = Turn {
-                message: Cow::Owned(cut(&earlier.message)),
-                answer: Cow::Owned(cut(&earlier.answer)),
-            };
-            (text, u64::try_from(earlier.sequence).unwrap_or_default())
+        .map(|earlier| Turn {
+            sequence: u64::try_from(earlier.sequence).unwrap_or_default(),
+            message: Cow::Borrowed(&earlier.message),
+            calls: Vec::new(),
+            answer: Cow::Borrowed(&earlier.answer),
         })
-        .collect();
-    let mut total: usize = turns
-        .iter()
-        .map(|(t, _)| t.message.len() + t.answer.len())
-        .sum();
-    turns
-        .into_iter()
-        .skip_while(|(t, _)| {
-            let over = total > HISTORY_BYTES_MAX;
-            if over {
-                total -= t.message.len() + t.answer.len();
-            }
-            over
-        })
-        .unzip()
+        .collect()
 }

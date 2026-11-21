@@ -42,10 +42,16 @@ fn a_run_must_name_its_history_resume_hold_waiting_inputs_and_owner() {
     }
 }
 
-/// Earlier turns round-trip in order.
+/// Earlier turns round-trip in order, each with its sequence and, when its
+/// run made any, its calls.
 #[test]
 fn test_run_history_round_trips() {
-    let turns = serde_json::json!([{"message": "m1", "answer": "a1"}]);
+    let turns = serde_json::json!([
+        {"sequence": 1, "message": "m1", "answer": "a1"},
+        {"sequence": 2, "message": "m2", "calls": [{"call_id": "4:1", "tool": "shell",
+            "arguments": {"command": "ls"}, "output": "a.txt", "status": "succeeded"}],
+            "answer": "a2"},
+    ]);
     let carried = RUN.replace(r#""history":[]"#, &format!(r#""history":{turns}"#));
     let payload: RunPayload<'_> = serde_json::from_str(&carried).unwrap();
     assert_eq!(serde_json::to_value(&payload).unwrap()["history"], turns);
@@ -62,4 +68,16 @@ fn test_run_resume_hold_round_trips() {
     assert!(!fresh.resume_hold);
     assert!(present.resume_hold);
     assert_eq!(serde_json::to_value(&present).unwrap()["resume_hold"], true);
+}
+
+/// A turn that does not name its sequence is refused: a saved summary's
+/// watermark could not place it.
+#[test]
+fn a_turn_without_its_sequence_is_refused() {
+    let turns = serde_json::json!([{"message": "m1", "answer": "a1"}]);
+    let carried = RUN.replace(r#""history":[]"#, &format!(r#""history":{turns}"#));
+    assert!(
+        serde_json::from_str::<RunPayload<'_>>(&carried).is_err(),
+        "a turn without its sequence must be refused"
+    );
 }

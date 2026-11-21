@@ -1,5 +1,6 @@
-//! A setup run's compacted context, read and saved on the run's own
-//! connection: the read is `afd_fleet`'s, the fenced save `afd_setup`'s.
+//! A run's compacted context, a setup draft's or a fleet chat's, read and
+//! saved on the run's own connection: the read is `afd_fleet`'s, the fenced
+//! save `afd_setup`'s.
 //!
 //! The checkpoint crosses the wire as the opaque document `af_wire` carries,
 //! so it is decoded here, into the `af_context` type both halves check.
@@ -31,7 +32,7 @@ impl ConnectionServices {
                 let now = self.gateway.inner.dependencies.wall_clock.now();
                 let loaded = self
                     .runs
-                    .load_draft_context(&self.handle.runner, &id, request, now)
+                    .load_context(&self.handle.runner, &id, request, now)
                     .await?;
                 Ok(ContextLoadResponse {
                     scope: loaded.scope,

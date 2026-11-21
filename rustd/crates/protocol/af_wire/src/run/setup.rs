@@ -84,13 +84,6 @@ pub struct SetupWork<'a> {
     /// The `propose_setup` tool's definition: its description and parameters.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub tool: serde_json::Value,
-    /// Each [`super::RunPayload::history`] turn's position in the draft's
-    /// conversation, oldest first and in step with it: the sequence a saved
-    /// context's watermark counts in. A run skips the turns a loaded context
-    /// covers, and compacts only turns it can name. Empty from a daemon that
-    /// sends none: the run then neither skips nor compacts a turn.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub history_sequences: Vec<u64>,
 }
 
 /// The setup a turn proposed, as one final Definition on one base.

@@ -97,7 +97,6 @@ fn draft_run() -> RunPayload<'static> {
             candidate: None,
             save_requested: false,
             tool: json!({}),
-            history_sequences: vec![1],
         }),
     };
     run

@@ -38,7 +38,9 @@ impl Fleet {
                 )),
             )),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
-            thread: Arc::new(self.events.clone()),
+            thread: Arc::new(afd_fleet::run::history::Conversations::new(
+                database.clone(),
+            )),
         };
         Gateway::new(GatewayDependencies {
             recovery: afd_gateway::RecoverySettings::default(),

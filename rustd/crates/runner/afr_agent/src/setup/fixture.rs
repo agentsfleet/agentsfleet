@@ -43,9 +43,10 @@ pub(super) fn setup_payload(
 ) -> RunPayload<'static> {
     let turns: Vec<Value> = history
         .iter()
-        .map(|(message, answer, _)| json!({"message": message, "answer": answer}))
+        .map(|(message, answer, sequence)| {
+            json!({"sequence": sequence, "message": message, "answer": answer})
+        })
         .collect();
-    let sequences: Vec<u64> = history.iter().map(|(_, _, sequence)| *sequence).collect();
     let document = json!({
         "run_id": "019f0000-0000-7000-8000-0000000000a1", "fencing_token": FENCE,
         "run_expires_at": AT,
@@ -65,7 +66,7 @@ pub(super) fn setup_payload(
         "resume_hold": false, "inputs_waiting": false,
         "owner": {"kind": "draft", "draft_id": DRAFT,
             "setup": {"sequence": history.len() + 1, "candidate": candidate,
-                "save_requested": false, "tool": {}, "history_sequences": sequences}}
+                "save_requested": false, "tool": {}}}
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());

@@ -20,10 +20,10 @@
 //!   run is reassigned and reruns its message from the start, at most
 //!   [`af_core::limits::EVENT_RUNS_MAX`] runs, then the message fails.
 //! - The draft's compacted context, read through the fenced context verb
-//!   (`context`) and saved through `afd_setup`'s fenced save.
+//!   (`super::context`) and saved through `afd_setup`'s fenced save, as a
+//!   fleet chat's is.
 
 mod assign;
-mod context;
 mod issue;
 mod payload;
 mod renew;
@@ -33,7 +33,6 @@ mod take;
 
 use af_core::id::Uuid7;
 
-pub use context::DraftContext;
 pub use payload::DraftAssignment;
 
 /// What a session keeps about a draft-owned run it assigned: the draft, so

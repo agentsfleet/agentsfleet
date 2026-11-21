@@ -267,7 +267,9 @@ async fn test_history_prefix_is_byte_identical_on_the_wire() {
     for (wire, fixed, grows) in CACHING {
         let earlier = first_request(wire, ASKED, Vec::new()).await;
         let turn = Turn {
+            sequence: 1,
             message: ASKED.into(),
+            calls: Vec::new(),
             answer: ANSWER.into(),
         };
         let follow_up = first_request(wire, FOLLOW_UP, vec![turn]).await;

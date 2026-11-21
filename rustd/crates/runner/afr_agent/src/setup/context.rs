@@ -10,15 +10,14 @@
 //!       ─► af_context::execute ─► Store::commit ─► ContextSave at the stored version
 //! ```
 //!
-//! A turn without a sequence cannot be named by a watermark, so a run whose
-//! daemon sent none neither skips a turn for a saved summary nor compacts.
-//! A run whose load failed compacts in memory and saves nothing: it knows no
-//! version to save over.
+//! Every turn carries its sequence, which a watermark names. A run whose load
+//! failed compacts in memory and saves nothing: it knows no version to save
+//! over.
 //!
-//! The daemon sends the newest answered turns under its bounds, whatever the
-//! watermark, so a turn older than a run's oldest reaches no later run
-//! either: a compaction whose watermark passes it loses nothing the window
-//! still held.
+//! The daemon sends every answered turn, whatever the watermark, and drops
+//! the oldest only when the assignment would not fit one run frame, so a
+//! turn older than a run's oldest reaches no later run either: a compaction
+//! whose watermark passes it loses nothing the window still held.
 
 use af_context::{Checkpoint, Compaction, Group, Identity};
 use af_secrets::Scrub;
@@ -45,10 +44,10 @@ const ESTIMATOR: &str = "setup-estimator-v1";
 const EVENT_LOAD_FAILED: &str = "setup_context_load_failed";
 
 /// One earlier turn of the draft: what the person asked and what setup
-/// answered, named by its place in the draft when the daemon named it.
+/// answered, named by its place in the draft.
 #[derive(Clone)]
 pub(super) struct Earlier {
-    sequence: Option<u64>,
+    sequence: u64,
     messages: [Message; 2],
 }
 
@@ -64,8 +63,6 @@ pub(super) struct Saved<'a> {
     identity: Identity,
     checkpoint: Option<Checkpoint>,
     earlier: Vec<Earlier>,
-    /// Whether every earlier turn carries its sequence.
-    named: bool,
 }
 
 impl<'a> Saved<'a> {
@@ -76,10 +73,6 @@ impl<'a> Saved<'a> {
         run: &RunPayload<'_>,
         scrub: &Scrub,
     ) -> Self {
-        let named = run
-            .owner
-            .setup()
-            .is_some_and(|work| work.history_sequences.len() == run.history.len());
         let (saving, version, scope, stored) = match context.load().await {
             Ok(loaded) => (
                 true,
@@ -94,8 +87,7 @@ impl<'a> Saved<'a> {
             }
         };
         let identity = identity(scope, run);
-        let checkpoint =
-            stored.and_then(|document| usable(document, &identity, named, &run.run_id));
+        let checkpoint = stored.and_then(|document| usable(document, &identity, &run.run_id));
         let covered = checkpoint.as_ref().map(|kept| kept.covered_through);
         Self {
             context,
@@ -104,8 +96,7 @@ impl<'a> Saved<'a> {
             version,
             identity,
             checkpoint,
-            earlier: earlier(run, scrub, named, covered),
-            named,
+            earlier: earlier(run, scrub, covered),
         }
     }
 
@@ -138,7 +129,7 @@ impl<'a> Saved<'a> {
         mut fits: impl FnMut(&Compaction) -> af_context::Result<bool>,
     ) -> af_context::Result<Option<Compaction>> {
         let take = self.earlier.len().saturating_sub(KEEP_RECENT_TURNS);
-        if !self.named || take == 0 {
+        if take == 0 {
             return Ok(None);
         }
         let groups = self
@@ -199,8 +190,7 @@ impl<'a> Saved<'a> {
         )
         .await?;
         let covered = checkpoint.covered_through;
-        self.earlier
-            .retain(|turn| turn.sequence.is_some_and(|sequence| sequence > covered));
+        self.earlier.retain(|turn| turn.sequence > covered);
         self.checkpoint = Some(checkpoint);
         Ok(())
     }
@@ -221,7 +211,7 @@ impl Earlier {
     /// The turn as the source group a compaction quotes.
     fn group(&self) -> af_context::Result<Group> {
         Ok(Group {
-            sequence: self.sequence.ok_or_else(af_context::Error::stale)?,
+            sequence: self.sequence,
             text: af_providers::context_document(&self.messages)
                 .map_err(af_context::Error::boundary)?,
         })
@@ -271,34 +261,21 @@ pub(super) fn identity(scope: String, run: &RunPayload<'_>) -> Identity {
 
 /// `run`'s earlier turns, oldest first and scrubbed, without those a saved
 /// summary `covered` through.
-fn earlier(run: &RunPayload<'_>, scrub: &Scrub, named: bool, covered: Option<u64>) -> Vec<Earlier> {
-    let sequences = run
-        .owner
-        .setup()
-        .map(|work| work.history_sequences.as_slice())
-        .filter(|_| named)
-        .unwrap_or_default();
+fn earlier(run: &RunPayload<'_>, scrub: &Scrub, covered: Option<u64>) -> Vec<Earlier> {
     run.history
         .iter()
-        .enumerate()
-        .filter_map(|(index, turn)| {
-            let sequence = sequences.get(index).copied();
-            if sequence
-                .zip(covered)
-                .is_some_and(|(at, through)| at <= through)
-            {
-                return None;
-            }
+        .filter(|turn| covered.is_none_or(|through| turn.sequence > through))
+        .map(|turn| {
             let answer = Message::Assistant {
                 text: scrub.clean(turn.answer.to_string()).into_inner(),
                 calls: Vec::new(),
                 replay: Replay::default(),
             };
             let asked = Message::User(scrub.clean(turn.message.to_string()).into_inner());
-            Some(Earlier {
-                sequence,
+            Earlier {
+                sequence: turn.sequence,
                 messages: [asked, answer],
-            })
+            }
         })
         .collect()
 }

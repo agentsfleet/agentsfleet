@@ -12,8 +12,8 @@
 //!   turn failed with [`FailureClass::FrameTooLarge`] and
 //!   [`error_code::RUN_FRAME_TOO_LARGE`], nothing sent and nothing billed.
 //!   What fills a frame is the message (`event.request_json`) and the
-//!   instructions, each up to the text ceiling; history is already cut to
-//!   `af_wire::run::HISTORY_BYTES_MAX`.
+//!   instructions, each up to the text ceiling; history already dropped its
+//!   oldest turns to fit (`afd_fleet::run::history::fit_frame`).
 //! - [`Cause::Undelivered`]: the frame never reached the connection's writer,
 //!   because its memory was not free before the deadline or the connection
 //!   closed first. Another pass can send it, so the run is released

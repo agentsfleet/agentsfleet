@@ -1,24 +1,23 @@
-//! A setup run's stored checkpoint: read back when the run can place it, and
-//! published where a compaction saves it.
+//! A run's stored checkpoint: read back when the run can place it, a setup
+//! run's and a fleet chat's alike, and a setup run's published where its
+//! compaction saves it.
 
 use af_context::{Checkpoint, CheckpointStore, Identity, PortFuture};
 use af_wire::context::ContextSaveRequest;
 
 use super::SetupContext;
 
-const EVENT_IGNORED: &str = "setup_context_ignored";
-const EVENT_UNREADABLE: &str = "setup_context_unreadable";
+const EVENT_IGNORED: &str = "context_checkpoint_ignored";
+const EVENT_UNREADABLE: &str = "context_checkpoint_unreadable";
 const EVENT_SAVED: &str = "setup_context_saved";
 
-/// The stored `document`, when it is a valid checkpoint of `identity` the
-/// run can place: one whose watermark names turns, which `named` says. A
+/// The stored `document`, when it is a valid checkpoint of `identity`. A
 /// document that does not parse or validate is a corrupt store and logs a
 /// warning; a valid one written for another identity is expected after a
 /// model or prompt change and logs at `info`.
-pub(super) fn usable(
+pub(crate) fn usable(
     document: serde_json::Value,
     identity: &Identity,
-    named: bool,
     run_id: &str,
 ) -> Option<Checkpoint> {
     let read = serde_json::from_value::<Checkpoint>(document)
@@ -36,9 +35,7 @@ pub(super) fn usable(
             return None;
         }
     };
-    let placeable = Some(checkpoint)
-        .filter(|checkpoint| checkpoint.belongs_to(identity))
-        .filter(|_| named);
+    let placeable = Some(checkpoint).filter(|checkpoint| checkpoint.belongs_to(identity));
     if placeable.is_none() {
         tracing::info!(event = EVENT_IGNORED, run_id);
     }

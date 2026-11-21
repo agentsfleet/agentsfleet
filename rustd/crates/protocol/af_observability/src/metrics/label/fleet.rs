@@ -181,14 +181,11 @@ closed_set! {
 }
 
 closed_set! {
-    /// Which cap cut a chat run's earlier turns.
+    /// What cut a chat run's earlier turns.
     HistoryCut {
-        /// More finished turns than a run carries; the oldest were left.
-        Turns => "turns",
-        /// A message or answer past its text cap was cut.
-        Text => "text",
-        /// The turns passed the byte budget; the oldest were dropped.
-        Bytes => "bytes",
+        /// The assignment would not fit one run frame; the oldest turns were
+        /// dropped until it did.
+        Frame => "frame",
     }
 }
 

@@ -11,7 +11,7 @@ use std::time::Duration;
 use af_wire::turn::TurnKind;
 use afd_db::test_util::unreachable_db;
 use afd_fleet::run::RunService;
-use afd_turns::view::History;
+use afd_fleet::run::history::Conversations;
 
 use super::chat::{ASKED_LATER, Chat, FIRST_ANSWER, FIRST_MESSAGE, FOLLOW_UP, first_turn};
 use crate::report_seed::SLICE;
@@ -104,7 +104,7 @@ async fn test_follow_up_run_is_issued_when_its_thread_will_not_answer() {
         .await;
     let silent = RunService {
         task_reports: None,
-        thread: Arc::new(History::new(unreachable_db())),
+        thread: Arc::new(Conversations::new(unreachable_db())),
         ..chat.fixtures.plane()
     };
 

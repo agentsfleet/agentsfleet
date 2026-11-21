@@ -8,7 +8,7 @@ use super::{
 };
 use af_context::{Checkpoint, CheckpointStore as _};
 use af_core::{error_code, id::Uuid7};
-use afd_setup::context::{Holder, Repository, identity, stored_fence};
+use afd_setup::context::{Holder, Owner, Repository, identity, stored_fence};
 use afd_state::sql::{RUN_STATUS_ACTIVE, RUNNER_STATUS_ACTIVE};
 use serde_json::{Value, json};
 
@@ -25,7 +25,7 @@ const FENCE: &str = "UPDATE thread.threads SET fencing_token=$2 WHERE id=$1";
 
 /// The draft's context row: its version and document.
 const ROW: &str =
-    "SELECT resource_version, document FROM memory.context_checkpoints WHERE draft_id=$1";
+    "SELECT resource_version, document FROM memory.context_checkpoints WHERE thread_id=$1";
 
 /// A compacted context for `draft` at `generation`, whose goal says who saved it.
 fn checkpoint(draft: &Uuid7, generation: u64, goal: &str) -> Checkpoint {
@@ -100,7 +100,7 @@ async fn save(
         active: RUN_STATUS_ACTIVE,
     };
     let mut connection = f.connection().await;
-    Repository::fenced(&mut connection, draft.clone(), mint(), holder)
+    Repository::fenced(&mut connection, Owner::Draft(draft.clone()), mint(), holder)
         .commit(expected, checkpoint)
         .await
 }

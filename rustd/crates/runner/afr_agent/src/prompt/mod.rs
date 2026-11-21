@@ -1,7 +1,8 @@
 //! The prompt: the installed instructions as the system prompt, the trusted
 //! repair context beneath them on a write-bound run, where the workspace's
-//! repositories are checked out, the fleet's earlier turns, and the event's
-//! message as the latest user turn.
+//! repositories are checked out, and the event's message as the latest user
+//! turn. The fleet's earlier turns open the conversation ahead of it
+//! (`crate::harness::construction`).
 //!
 //! The message is `af_wire::turn::message_of`'s reading of the request, the
 //! same reading the daemon gave each earlier turn's message.
@@ -31,9 +32,6 @@ const BLOCK_BREAK: &str = "\n\n";
 pub(crate) struct Prompt {
     /// The system prompt.
     pub(crate) instructions: String,
-    /// The fleet's earlier turns, oldest first: what was asked, and what the
-    /// fleet answered.
-    pub(crate) history: Vec<(String, String)>,
     /// The latest user turn.
     pub(crate) message: String,
 }
@@ -42,11 +40,6 @@ impl Prompt {
     /// The prompt for `run`.
     pub(crate) fn new(run: &RunPayload<'_>) -> Self {
         let message = message_of(&run.event.request_json).into_owned();
-        let history = run
-            .history
-            .iter()
-            .map(|turn| (turn.message.to_string(), turn.answer.to_string()))
-            .collect();
         let installed = (!run.instructions.is_empty())
             .then(|| format!("{INSTALLED_INSTRUCTIONS}{}", run.instructions));
         let repair = RepairContext::of(&run.policy).map(|context| context.to_string());
@@ -59,7 +52,6 @@ impl Prompt {
             .join(BLOCK_BREAK);
         Self {
             instructions,
-            history,
             message,
         }
     }

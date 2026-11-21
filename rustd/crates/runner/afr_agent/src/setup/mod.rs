@@ -43,6 +43,8 @@ use guffbolt::tools::propose::Propose;
 use guffbolt::{DriveState, Ending, Plain};
 use tokio_util::sync::CancellationToken;
 
+pub(crate) use self::store::usable;
+
 use self::context::Saved;
 use self::conversation::{SetupLoop, Shared};
 use crate::engine::{EventSink, Meter};
