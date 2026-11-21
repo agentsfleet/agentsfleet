@@ -475,7 +475,8 @@ Re-read how agentsfleet's runner (`afr_tools`, `afr_supervisor`, `af_providers`)
 `#[ignore]`d live tests prove guffbolt-ai alone and guffbolt over guffbolt-ai on a real Fireworks model: one chat, one streamed reply, one tool call round trip, one token-usage read. The key is `FIREWORKS_API_KEY` from the machine environment file; it is never printed. They run by hand only, on the cheapest Fireworks chat model, with a running spend tally from the provider's reported usage that stops the run at $2.
 
 - > Owner (Indy, Nov 22, 2026): "yes donot add any live tests of fireworks into the CI" — the live tests are `#[ignore]`d with a reason naming the manual run, no CI job or `--include-ignored` lane runs them, and no CI secret holds the Fireworks key.
-- Dimension 13.2 — never in CI → Test `no_ci_lane_runs_the_fireworks_live_tests` (unit): no workflow or make target passes `--include-ignored` over the live-test module, and the tests read the key only at run time. Expected: none found.
+- The coverage lane runs `--all-features --include-ignored`, so `#[ignore]` alone would put the live tests in CI. They live as a cargo example, `cargo run --example fireworks_live -p guffbolt-ai`, which no test lane runs.
+- Dimension 13.2 — never in CI → Test `no_ci_lane_runs_the_fireworks_live_tests` (unit): no test target, workflow or make recipe runs the `fireworks_live` example, and the tests read the key only at run time. Expected: none found.
 - Dimension 13.1 — live proof → Test `a_fireworks_chat_round_trips_through_guffbolt_ai` and `guffbolt_runs_a_tool_call_on_fireworks` (live, manual). Expected: both pass; the recorded spend in Discovery is under $2.
 
 ### §14 — Rust coverage 99% overall, per file and per patch (Indy, Nov 22, 2026)
