@@ -273,3 +273,41 @@ fn a_context_save_never_prints_its_checkpoint() {
     assert!(!printed.contains("a private goal"), "{printed}");
     assert!(printed.contains("resource_version"), "{printed}");
 }
+
+#[test]
+fn a_welcome_carries_the_daemons_frame_ceilings_or_implies_todays() -> serde_json::Result<()> {
+    let sized = r#"{"type":"welcome","request_id":1,"connection_id":"c","heartbeat_interval_ms":10000,"max_message_bytes":1048576,"max_control_message_bytes":65536}"#;
+    let Down::Welcome {
+        max_message_bytes,
+        max_control_message_bytes,
+        ..
+    } = serde_json::from_str::<Down<'_>>(sized)?
+    else {
+        return Err(serde_json::Error::custom("expected a welcome"));
+    };
+    assert_eq!(
+        (max_message_bytes, max_control_message_bytes),
+        (1_048_576, 65_536)
+    );
+    let older =
+        r#"{"type":"welcome","request_id":1,"connection_id":"c","heartbeat_interval_ms":10000}"#;
+    let Down::Welcome {
+        max_message_bytes,
+        max_control_message_bytes,
+        ..
+    } = serde_json::from_str::<Down<'_>>(older)?
+    else {
+        return Err(serde_json::Error::custom("expected a welcome"));
+    };
+    assert_eq!(
+        (
+            max_message_bytes as usize,
+            max_control_message_bytes as usize
+        ),
+        (
+            af_wire::protocol::MESSAGE_BYTES_MAX,
+            af_wire::protocol::CONTROL_MESSAGE_BYTES_MAX
+        )
+    );
+    Ok(())
+}

@@ -38,3 +38,19 @@ async fn test_runtime_boundaries_emit_exactly_one_terminal_event() {
     );
     assert_eq!(started.get("task_id"), terminal.get("task_id"));
 }
+
+/// `[server] task_join_timeout_seconds` is the deadline a task that ignores
+/// its token is abandoned at.
+#[tokio::test(start_paused = true)]
+async fn the_configured_join_timeout_abandons_a_task_that_will_not_stop() {
+    let timeout = Duration::from_secs(3);
+    let mut supervisor = Supervisor::new().with_join_timeout(timeout);
+    assert_eq!(supervisor.join_timeout(), timeout);
+    supervisor.spawn("ignores_its_token", async |_token| {
+        tokio::time::sleep(Duration::from_secs(3_600)).await;
+    });
+    let started = tokio::time::Instant::now();
+    let report = supervisor.shutdown().await;
+    assert_eq!(report.abandoned, ["ignores_its_token"]);
+    assert_eq!(started.elapsed(), timeout);
+}

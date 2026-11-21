@@ -11,5 +11,5 @@ pub mod oauth;
 pub mod outcome;
 pub mod platform;
 
-pub use self::broker::{Ask, Broker, Exchanger, Vendors};
+pub use self::broker::{Ask, Broker, Exchanger, Lifetimes, Vendors};
 pub use self::outcome::{Minted, NEVER_EXPIRES, Outcome, Retry};

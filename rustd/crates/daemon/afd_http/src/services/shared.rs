@@ -42,4 +42,7 @@ pub trait Shared: Send + Sync + std::fmt::Debug + 'static {
     /// would leave, say, a heartbeat's liveness stamp a millisecond or two
     /// after its own transition event.
     fn now(&self) -> Timestamp;
+
+    /// The page sizes every list route is bounded by.
+    fn pages(&self) -> crate::paging::Pages;
 }

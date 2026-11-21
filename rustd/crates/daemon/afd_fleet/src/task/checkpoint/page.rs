@@ -54,7 +54,7 @@ pub(in crate::task) async fn write(
         return Err(TaskRefusal::ReplayConflict.into());
     }
     let objects = validate(&mut tx, &plan, &input.contents).await?;
-    super::transfer::protect(&mut tx, &objects, &pin).await?;
+    super::transfer::protect(&mut tx, &objects, &pin, tasks.times().orphan_seconds()).await?;
     let existing = selected(&mut tx, &plan, page).await?;
     if let Some(saved) = &existing.body {
         if saved != &body || existing.digest.as_deref() != Some(input.digest.as_str()) {

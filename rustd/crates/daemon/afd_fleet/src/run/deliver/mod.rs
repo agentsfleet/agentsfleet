@@ -71,6 +71,7 @@ impl RunService {
                 provider: &admitted.resolved,
                 declared: &declared,
                 repair_branch: branch.as_deref(),
+                windows: self.runs.limits().tool_windows,
             },
             &granted,
         ) {

@@ -277,7 +277,7 @@ impl Refusable for afd_ingress::Error {
 /// the runner client's backoff working, since it classifies on the transport
 /// class rather than on the verb (RULE ECL).
 pub fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> Response {
-    let request_id = RequestId::mint();
+    let request_id = RequestId::current();
     log_refusal(error, event, &request_id);
     if let Some(state) = conflict_state(error.code()) {
         return ProblemResponse::conflict(error.code(), error.detail(), request_id, state)

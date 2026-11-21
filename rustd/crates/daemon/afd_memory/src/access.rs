@@ -123,7 +123,7 @@ impl Directory {
         workspace: &Uuid7,
         fleet: &Uuid7,
         change: MemoryAccessRequest,
-        streams: Option<&afd_bus::Handle>,
+        streams: Option<&afd_turns::view::activity::Notices>,
     ) -> Result<Option<MemoryAccess>> {
         let mut tx = sqlx::Transaction::begin(self.database.acquire().await?, None)
             .await

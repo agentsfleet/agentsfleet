@@ -56,6 +56,10 @@ impl Shared for ServingPlane {
     fn now(&self) -> jiff::Timestamp {
         af_core::clock::now()
     }
+
+    fn pages(&self) -> afd_http::paging::Pages {
+        self.pages
+    }
 }
 
 impl TenantPlane for ServingPlane {

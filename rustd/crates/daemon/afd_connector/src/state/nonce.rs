@@ -69,12 +69,28 @@ pub async fn remember(
     nonce: &str,
     now: Timestamp,
 ) -> Result<()> {
+    let ttl = Duration::from_secs(u64::from(STATE_TTL_SECONDS));
+    remember_for(database, entropy, provider, nonce, now, ttl).await
+}
+
+/// [`remember`], for `ttl` rather than [`STATE_TTL_SECONDS`].
+///
+/// # Errors
+/// As [`remember`].
+pub async fn remember_for(
+    database: &Db,
+    entropy: &Entropy,
+    provider: Provider,
+    nonce: &str,
+    now: Timestamp,
+    ttl: Duration,
+) -> Result<()> {
     let mut connection = database.acquire().await?;
     sqlx::query(sql::INSERT_OAUTH_NONCE)
         .bind(entropy.uuid7(now)?)
         .bind(provider.id())
         .bind(digest(nonce))
-        .bind(Duration::from_secs(u64::from(STATE_TTL_SECONDS)))
+        .bind(ttl)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT_REMEMBER))?;

@@ -35,7 +35,7 @@ mod api;
 mod exchange;
 mod request;
 
-pub use self::exchange::{Exchange, mint};
+pub use self::exchange::{Exchange, INSTALLATION_TOKEN_TTL, mint};
 pub use self::request::{Installed, ScopedRequest};
 
 /// The one permission GitHub attaches to every installation token unasked,

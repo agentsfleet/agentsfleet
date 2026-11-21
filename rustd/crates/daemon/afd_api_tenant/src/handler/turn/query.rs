@@ -27,19 +27,13 @@ use std::borrow::Cow;
 use af_core::id::Uuid7;
 use af_validate::Ceiling;
 use af_validate::{Limit, Sentences};
-use afd_turns::view::{
-    Cursor, DEFAULT_LIMIT, Filter, MAX_LIMIT, glob_to_like, parse_since, prefix_to_like,
-};
+use afd_turns::view::{Cursor, Filter, glob_to_like, parse_since, prefix_to_like};
 use const_format::concatcp;
 use garde::Validate as _;
 
 use super::DETAIL_FLEET_ID;
-use crate::handler::paging::store_ceiling;
 use crate::handler::{Refusal, decoded_parameter, parameter};
 use afd_http::handler::parse_id;
-
-/// The listings' bound on `?limit`: the event store's own page constants.
-const CEILING: Ceiling = store_ceiling(MAX_LIMIT, DEFAULT_LIMIT);
 
 /// The longest actor glob or prefix a filter may carry, decoded.
 ///
@@ -72,9 +66,6 @@ const QUERY_ACTOR: &str = "actor";
 const QUERY_ACTOR_PREFIX: &str = "actor_prefix";
 const QUERY_SINCE: &str = "since";
 const QUERY_FLEET_ID: &str = "fleet_id";
-
-/// The refusal a page size outside the served band earns.
-const DETAIL_LIMIT: &str = "limit must be between 1 and 200";
 
 /// The refusal naming a moment AND a row earns.
 ///
@@ -114,8 +105,8 @@ impl Listing {
     ///
     /// # Errors
     /// A [`Refusal`] naming the parameter that refused, in the order above.
-    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
-        Params::read(query)?.resolve()
+    pub(super) fn parse(query: &str, ceiling: Ceiling) -> Result<Self, Refusal> {
+        Params::read(query, ceiling)?.resolve()
     }
 }
 
@@ -135,8 +126,8 @@ impl WorkspaceListing {
     ///
     /// # Errors
     /// A [`Refusal`] naming the parameter that refused.
-    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
-        let params = Params::read(query)?;
+    pub(super) fn parse(query: &str, ceiling: Ceiling) -> Result<Self, Refusal> {
+        let params = Params::read(query, ceiling)?;
         let fleet = params
             .fleet_id
             .map(|raw| parse_id(raw, DETAIL_FLEET_ID))
@@ -184,9 +175,9 @@ impl<'q> Params<'q> {
     /// four bytes too long for the shape check and answers 400. `cursor`,
     /// `limit` and `fleet_id` are drawn from alphabets RFC 3986 leaves alone,
     /// so an encoder cannot change them and reading them raw is honest.
-    fn read(query: &'q str) -> Result<Self, Refusal> {
+    fn read(query: &'q str, ceiling: Ceiling) -> Result<Self, Refusal> {
         let params = Self {
-            limit: requested_limit(parameter(query, QUERY_LIMIT))?,
+            limit: requested_limit(parameter(query, QUERY_LIMIT), ceiling)?,
             cursor: parameter(query, QUERY_CURSOR),
             actor: decoded(query, QUERY_ACTOR)?,
             actor_prefix: decoded(query, QUERY_ACTOR_PREFIX)?,
@@ -265,8 +256,8 @@ fn present(query: &str, name: &str) -> bool {
 ///
 /// Zero is refused rather than clamped: a caller asking for no rows has made a
 /// mistake, and answering with an empty page would look like an empty history.
-fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
-    Limit::parse(raw, CEILING)
-        .map(i64::from)
-        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
+fn requested_limit(raw: Option<&str>, ceiling: Ceiling) -> Result<i64, Refusal> {
+    Limit::parse(raw, ceiling).map(i64::from).map_err(|_break| {
+        Refusal::malformed_sentence(afd_http::paging::limit_sentence("limit must be", ceiling))
+    })
 }

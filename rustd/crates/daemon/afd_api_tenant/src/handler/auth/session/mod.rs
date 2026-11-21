@@ -76,7 +76,7 @@ pub(crate) async fn open<D: TenantPlane>(State(services): State<Arc<D>>, body: B
 
     match services.sessions().open(&opening, services.now()).await {
         Ok(opened) => {
-            let request_id = RequestId::mint();
+            let request_id = RequestId::current();
             (
                 StatusCode::CREATED,
                 Json(OpenSessionResponse {

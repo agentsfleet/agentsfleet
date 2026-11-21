@@ -246,7 +246,7 @@ fn refuse<D>(
     owner: &Owner<D>,
     event: &'static str,
 ) -> Response {
-    let request_id = RequestId::mint();
+    let request_id = RequestId::current();
     // Hoisted out of the macro: `tracing`'s `log` bridge compiles a second copy
     // of every field expression, and llvm-cov scores the copy that never runs.
     let code_field = code.as_str();

@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 
-use super::{MAX_CANDIDATES_PER_POLL, PollCost, started};
+use super::{PollCost, started};
 use crate::error::{Result, query};
 use crate::run::affinity::{self, Fence};
 use crate::run::assignment::{RecoveryKey, RecoveryScan};
@@ -104,7 +104,7 @@ impl Runs {
         let candidates: Vec<Candidate> = sqlx::query_as(queue::SELECT_CANDIDATES)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(runner)
-            .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
+            .bind(i64::try_from(self.limits().assign_batch_size).unwrap_or(i64::MAX))
             .bind(self.clock().offline_after())
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(&held)
@@ -128,7 +128,7 @@ impl Runs {
                 .await?
             {
                 if let Some(scan) = recovery {
-                    record_assignment(scan);
+                    record_assignment(scan, self.limits().assign_batch_size);
                 }
                 producers::fleet::run_started(started(acquired.kind));
                 affinity::count_resumed(&acquired);
@@ -136,7 +136,7 @@ impl Runs {
             }
         }
         if let Some(scan) = recovery {
-            record_page_end(scan, candidates);
+            record_page_end(scan, candidates, self.limits().assign_batch_size);
         }
         Ok(None)
     }
@@ -186,17 +186,17 @@ impl Runs {
     }
 }
 
-fn record_assignment(scan: &mut RecoveryScan) {
+fn record_assignment(scan: &mut RecoveryScan, batch: usize) {
     if scan.after.is_some() {
         scan.assignments_after_skip += 1;
-        if scan.assignments_after_skip >= MAX_CANDIDATES_PER_POLL {
+        if scan.assignments_after_skip >= batch {
             *scan = RecoveryScan::default();
         }
     }
 }
 
-fn record_page_end(scan: &mut RecoveryScan, mut candidates: Vec<Candidate>) {
-    if candidates.len() == MAX_CANDIDATES_PER_POLL
+fn record_page_end(scan: &mut RecoveryScan, mut candidates: Vec<Candidate>, batch: usize) {
+    if candidates.len() == batch
         && let Some(last) = candidates.pop()
     {
         scan.after = Some(RecoveryKey {

@@ -48,6 +48,13 @@ impl Providers {
         }
     }
 
+    /// This store holding a platform resolution no longer than `ceiling`.
+    #[must_use]
+    pub fn with_platform_key_ttl(mut self, ceiling: std::time::Duration) -> Self {
+        self.platform_keys = self.platform_keys.with_ceiling(ceiling);
+        self
+    }
+
     /// This store with its platform key cache telling time by `clock`, so a
     /// test can move the price window and the time limit without waiting.
     #[cfg(any(test, feature = "test-util"))]

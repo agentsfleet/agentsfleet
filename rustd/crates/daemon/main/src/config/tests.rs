@@ -353,3 +353,31 @@ fn a_file_pool_floor_must_fit_the_selected_ceiling() -> TestResult {
     assert!(failure.to_string().contains("min_connections"));
     Ok(())
 }
+
+/// A drain shorter than a runner answer in flight, or a join shorter than the
+/// telemetry flush, is refused rather than left to cut work at shutdown.
+#[test]
+fn shutdown_timeouts_below_their_floors_refuse_startup() -> TestResult {
+    for contents in [
+        "[server]\ndrain_timeout_seconds = 5",
+        "[server]\ntask_join_timeout_seconds = 8",
+    ] {
+        let mut file = tempfile::NamedTempFile::new()?;
+        file.write_all(contents.as_bytes())?;
+        let environment = MapEnv::default();
+        let refused = ConfigBuilder::new(&environment)
+            .file(Some(file.path()))
+            .build();
+        assert!(refused.is_err(), "{contents} was accepted");
+    }
+    let mut file = tempfile::NamedTempFile::new()?;
+    file.write_all(b"[server]\ndrain_timeout_seconds = 6\ntask_join_timeout_seconds = 9")?;
+    let environment = MapEnv::default();
+    let config = ConfigBuilder::new(&environment)
+        .file(Some(file.path()))
+        .build()?;
+    let server = config.runtime.operations.tuning.server;
+    assert_eq!(server.drain_timeout.as_secs(), 6);
+    assert_eq!(server.task_join_timeout.as_secs(), 9);
+    Ok(())
+}

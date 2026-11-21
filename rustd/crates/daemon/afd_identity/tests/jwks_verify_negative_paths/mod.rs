@@ -266,9 +266,8 @@ fn test_a_failed_refresh_serves_the_previously_held_key_set() {
             calls: std::sync::atomic::AtomicUsize::new(0),
         },
         VerifierConfig {
-            issuer: ISSUER.into(),
-            audience: AUDIENCE.into(),
             ttl: std::time::Duration::ZERO,
+            ..VerifierConfig::new(ISSUER, AUDIENCE)
         },
         now_after_expiry(),
     );

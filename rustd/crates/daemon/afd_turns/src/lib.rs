@@ -81,6 +81,8 @@ pub struct Turns {
     entropy: Entropy,
     budgets: Budgets,
     ceiling: Arc<Ceiling>,
+    /// Fleets told about one commit's receipts at once.
+    notice_fanout: usize,
 }
 
 impl Turns {
@@ -94,7 +96,22 @@ impl Turns {
             entropy,
             budgets: Budgets::default(),
             ceiling: Arc::new(Ceiling::default()),
+            notice_fanout: view::activity::DEFAULT_ACTIVITY_NOTICES,
         }
+    }
+
+    /// The same ledger, telling at most `fanout` fleets about one commit's
+    /// receipts at once.
+    #[must_use]
+    pub const fn with_notice_fanout(mut self, fanout: usize) -> Self {
+        self.notice_fanout = fanout;
+        self
+    }
+
+    /// Where a producer announces receipts, under this ledger's fan-out.
+    #[must_use]
+    pub fn notices(&self) -> view::activity::Notices {
+        view::activity::Notices::new(self.bus.clone(), self.notice_fanout)
     }
 
     /// The same ledger under other budgets.

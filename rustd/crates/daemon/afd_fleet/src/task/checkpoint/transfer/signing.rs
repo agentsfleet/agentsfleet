@@ -29,6 +29,7 @@ pub(super) async fn issue(
         session: &session,
         plan: &batch.plan,
         deadline: batch.pin.expires_at.min(batch.pin.operation_deadline),
+        url_lifetime: tasks.times().download_url_ttl,
         purpose,
         verifying,
     };
@@ -60,6 +61,7 @@ struct Signing<'a, 'store> {
     session: &'a StorageSession<'store>,
     plan: &'a Plan,
     deadline: jiff::Timestamp,
+    url_lifetime: Duration,
     purpose: CheckpointTransferPurpose,
     verifying: bool,
 }
@@ -112,8 +114,7 @@ impl Signing<'_, '_> {
         id: &af_core::id::Uuid7,
         wire: &CheckpointObject,
     ) -> Result<Option<CheckpointTransfer>> {
-        let lifetime = clock::elapsed(clock::now(), self.deadline)
-            .min(Duration::from_secs(super::super::URL_SECONDS));
+        let lifetime = clock::elapsed(clock::now(), self.deadline).min(self.url_lifetime);
         if lifetime.is_zero() {
             return Err(TaskRefusal::StaleState.into());
         }

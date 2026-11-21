@@ -16,7 +16,6 @@
 use afd_turns::view::{Cursor, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, TurnDetailRow};
 
 use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, requested_limit};
-use crate::handler::paging::store_ceiling;
 
 /// When the fixture thread's oldest row was stamped.
 const FIRST_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
@@ -44,20 +43,38 @@ fn cheap_thread(count: i64) -> Vec<TurnDetailRow> {
     (0..count).map(|ordinal| row(ordinal, 2)).collect()
 }
 
+/// The thread's band when the deployment names none.
+fn band() -> af_validate::Ceiling {
+    afd_http::paging::Pages::default().thread
+}
+
 /// A caller who names no page size gets the served default.
 #[test]
 fn should_page_at_the_default_when_no_size_is_named() {
-    assert_eq!(requested_limit(None).unwrap(), THREAD_DEFAULT_LIMIT);
+    assert_eq!(requested_limit(None, band()).unwrap(), THREAD_DEFAULT_LIMIT);
     // A form field left blank is the same request as no field at all.
-    assert_eq!(requested_limit(Some("")).unwrap(), THREAD_DEFAULT_LIMIT);
+    assert_eq!(
+        requested_limit(Some(""), band()).unwrap(),
+        THREAD_DEFAULT_LIMIT
+    );
+}
+
+/// `[api]`'s thread page decides both the default and the ceiling, and the
+/// refusal names the configured ceiling.
+#[test]
+fn should_serve_the_configured_thread_band() {
+    let configured = af_validate::Ceiling::new(7, 3);
+    assert_eq!(requested_limit(None, configured).unwrap(), 3);
+    assert_eq!(requested_limit(Some("7"), configured).unwrap(), 7);
+    let _refused = requested_limit(Some("8"), configured).unwrap_err();
 }
 
 /// Both ends of the served band are accepted.
 #[test]
 fn should_accept_both_ends_of_the_served_band() {
-    assert_eq!(requested_limit(Some("1")).unwrap(), 1);
+    assert_eq!(requested_limit(Some("1"), band()).unwrap(), 1);
     assert_eq!(
-        requested_limit(Some(&THREAD_MAX_LIMIT.to_string())).unwrap(),
+        requested_limit(Some(&THREAD_MAX_LIMIT.to_string()), band()).unwrap(),
         THREAD_MAX_LIMIT,
     );
 }
@@ -74,28 +91,17 @@ fn should_refuse_a_size_outside_the_band_rather_than_clamp_it() {
     // pin test: literal is the contract
     for asked in ["0", "101", "-1", "1000", " 5", "5.0", "five", "0x10"] {
         assert!(
-            requested_limit(Some(asked)).is_err(),
+            requested_limit(Some(asked), band()).is_err(),
             "{asked} is not a page size this surface serves"
         );
     }
 }
 
-/// The band is the event store's own thread constants, narrowed exactly: the
-/// store binds them as `i64`, the route serves them as `u32`.
+/// The default band is the event store's own thread constants, exactly.
 #[test]
-fn should_narrow_the_stores_thread_constants_into_the_band_exactly() {
-    let band = store_ceiling(THREAD_MAX_LIMIT, THREAD_DEFAULT_LIMIT);
-
-    assert_eq!(i64::from(band.max()), THREAD_MAX_LIMIT);
-    assert_eq!(i64::from(band.default_rows()), THREAD_DEFAULT_LIMIT);
-}
-
-/// A store constant wider than a `u32` is refused rather than truncated into
-/// a band no store declared.
-#[test]
-#[should_panic(expected = "a store's page constants must be positive and fit a u32")]
-fn should_refuse_a_store_constant_wider_than_the_band_can_carry() {
-    let _band = store_ceiling(i64::from(u32::MAX) + 1, THREAD_DEFAULT_LIMIT);
+fn should_default_to_the_stores_thread_constants() {
+    assert_eq!(i64::from(band().max()), THREAD_MAX_LIMIT);
+    assert_eq!(i64::from(band().default_rows()), THREAD_DEFAULT_LIMIT);
 }
 
 /// A cursor is optional, and one this walk minted comes back whole.

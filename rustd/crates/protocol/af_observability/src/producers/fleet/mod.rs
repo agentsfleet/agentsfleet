@@ -71,8 +71,8 @@ impl Handles {
     /// # Errors
     ///
     /// Whatever [`Instruments`] refuses — see [`super::install`].
-    pub(super) fn claim(instruments: &Instruments) -> Result<Self> {
-        let runners = Arc::new(RunnerMetrics::new());
+    pub(super) fn claim(instruments: &Instruments, max_runner_series: usize) -> Result<Self> {
+        let runners = Arc::new(RunnerMetrics::with_capacity(max_runner_series));
         let handles = Self {
             stream: runner::stream::Handles::claim(instruments)?,
             runners: Arc::clone(&runners),

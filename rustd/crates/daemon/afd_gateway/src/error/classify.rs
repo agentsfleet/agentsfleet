@@ -17,7 +17,7 @@ impl Error {
         afd_http::envelope::ProblemResponse::new(
             self.code(),
             self.detail().into_owned(),
-            afd_http::request_id::RequestId::mint(),
+            afd_http::request_id::RequestId::current(),
         )
         .into_response()
     }

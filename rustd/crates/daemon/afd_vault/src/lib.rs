@@ -137,7 +137,7 @@ impl Directory {
 #[derive(Debug, Clone)]
 pub struct Vault {
     directory: Directory,
-    activity_streams: Option<afd_bus::Handle>,
+    activity_streams: Option<afd_turns::view::activity::Notices>,
     kek: Arc<Kek>,
     /// Draws the per-row Data Encryption Key and both nonces.
     sealer: Sealer,
@@ -166,8 +166,8 @@ impl Vault {
 
     /// Enables best-effort history notifications for this vault's writes.
     #[must_use]
-    pub fn with_activity_streams(mut self, streams: afd_bus::Handle) -> Self {
-        self.activity_streams = Some(streams);
+    pub fn with_activity_notices(mut self, notices: afd_turns::view::activity::Notices) -> Self {
+        self.activity_streams = Some(notices);
         self
     }
 

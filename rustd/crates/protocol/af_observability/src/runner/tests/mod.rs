@@ -32,6 +32,17 @@ fn a_runner_gets_its_own_series_until_the_table_is_full() {
     assert_eq!(metrics.overflowed(), 0, "the table was not yet full");
 }
 
+/// A configured capacity, not the default, is where the overflow starts.
+#[test]
+fn a_configured_capacity_bounds_the_table() {
+    let metrics = RunnerMetrics::with_capacity(2);
+    for index in 0..3 {
+        let _admitted = metrics.admit(&runner(index));
+    }
+    assert_eq!(metrics.series_count(), 2);
+    assert_eq!(metrics.overflowed(), 1);
+}
+
 #[test]
 fn past_the_capacity_everything_lands_in_one_series() {
     // The hostile case: a fleet re-enrolling in a loop produces an unbounded

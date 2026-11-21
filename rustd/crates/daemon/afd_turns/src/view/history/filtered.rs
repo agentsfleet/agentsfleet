@@ -1,6 +1,6 @@
 //! Equality-filtered thread pages walk an event-type index before reading bodies.
 
-use super::{Cursor, History, THREAD_MAX_LIMIT, TurnDetailRow};
+use super::{Cursor, History, TurnDetailRow};
 use crate::view::{Result, error};
 use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
@@ -39,7 +39,7 @@ impl History {
         );
         let mut connection = self.database.acquire().await?;
         scoped
-            .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
+            .bind(limit.max(1))
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query("read filtered fleet messages"))?

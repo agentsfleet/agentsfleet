@@ -178,7 +178,22 @@ pub fn sign(
     nonce: &str,
     now: Timestamp,
 ) -> String {
-    let expiry = af_core::clock::after(now, Duration::from_secs(u64::from(STATE_TTL_SECONDS)));
+    let ttl = Duration::from_secs(u64::from(STATE_TTL_SECONDS));
+    sign_for(binding, secret, workspace, subject, nonce, now, ttl)
+}
+
+/// [`sign`], valid for `ttl` rather than [`STATE_TTL_SECONDS`].
+#[must_use]
+pub fn sign_for(
+    binding: StateBinding,
+    secret: &SecretBytes,
+    workspace: &str,
+    subject: &str,
+    nonce: &str,
+    now: Timestamp,
+    ttl: Duration,
+) -> String {
+    let expiry = af_core::clock::after(now, ttl);
     let tag = subject_tag(binding, secret, subject).to_hex();
     let payload = format!(
         "{workspace}{FIELD_SEP}{tag}{FIELD_SEP}{nonce}{FIELD_SEP}{}",

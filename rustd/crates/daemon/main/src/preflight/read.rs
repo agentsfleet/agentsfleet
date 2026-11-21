@@ -246,13 +246,14 @@ pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<F
 pub(super) fn runner_wake<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
+    bounds: afd_bus::wake::QueueBounds,
 ) -> Option<afd_bus::wake::Wake> {
     classify(
         faults,
         true,
         afd_bus::wake::ENV_WAKE_QUEUE_CAPACITY,
-        "a scheduling queue capacity between 1 and 65536",
-        afd_bus::wake::Wake::from_env(env),
+        "a scheduling queue capacity between 1 and [nats] max_wake_queue_size",
+        afd_bus::wake::Wake::from_env_within(env, bounds),
     )
 }
 

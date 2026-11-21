@@ -14,12 +14,14 @@ pub enum ModelPurpose {
 
 /// Page size and purpose bind every opaque continuation.
 #[derive(Debug, Deserialize, garde::Validate)]
+#[garde(context(af_validate::Ceiling as ceiling))]
 #[serde(deny_unknown_fields)]
 pub struct ModelsQuery {
-    /// Rows scanned per page, 1..100.
-    #[serde(default = "default_limit")]
-    #[garde(range(min = 1, max = super::MAX_PAGE_SIZE))]
-    pub limit: u32,
+    /// Rows scanned per page, up to the deployment's list page (`[api]`);
+    /// its default when absent.
+    #[serde(default)]
+    #[garde(inner(range(min = 1, max = ceiling.max())))]
+    pub limit: Option<u32>,
     /// Restrict to supported use when supplied.
     #[serde(default, deserialize_with = "super::present")]
     #[garde(skip)]
@@ -28,10 +30,6 @@ pub struct ModelsQuery {
     #[serde(default, deserialize_with = "super::present")]
     #[garde(inner(length(bytes, min = 1, max = super::MAX_CURSOR_BYTES)))]
     pub starting_after: Option<String>,
-}
-
-const fn default_limit() -> u32 {
-    super::DEFAULT_PAGE_SIZE
 }
 
 /// Independent support facts, not permission receipts.

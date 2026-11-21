@@ -25,6 +25,10 @@ pub(crate) struct OperationalSettings {
     pub(crate) outbound_retries: afd_outbound::retry::RetryPolicy,
     pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
     pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
+    /// Every checked numeric section of the deployment file.
+    pub(crate) tuning: crate::config::tuning::Tuning,
+    /// `[connectors.qstash]`, proved to end inside its call budget.
+    pub(crate) scheduler_retries: afd_cron::qstash::RetryPolicy,
 }
 
 impl RuntimeSettings {
@@ -68,6 +72,8 @@ pub(crate) fn operations() -> Result<OperationalSettings, Refusal> {
         telemetry: garde::Unvalidated::new(af_otlp::PipelineSettings::default())
             .validate()
             .map_err(|report| refused("telemetry.otlp", report.to_string()))?,
+        tuning: crate::config::tuning::Tuning::default(),
+        scheduler_retries: afd_cron::qstash::RetryPolicy::default(),
     })
 }
 
@@ -91,7 +97,7 @@ pub(crate) fn configured(
         requests: value(
             env,
             "AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS",
-            afd_http::admission::DEFAULT_MAX_IN_FLIGHT,
+            afd_http::in_flight::DEFAULT_MAX_IN_FLIGHT,
         )?,
     })
     .validate()

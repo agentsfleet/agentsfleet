@@ -90,7 +90,14 @@ pub(crate) async fn list<D: OperatorPlane>(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     match tenant(&*services, &identity).await {
-        Ok(tenant) => super::runners::page(services.runners().tenant(&tenant), &params).await,
+        Ok(tenant) => {
+            super::runners::page(
+                services.runners().tenant(&tenant),
+                &params,
+                services.pages().list,
+            )
+            .await
+        }
         Err(refused) => refused.into_response(),
     }
 }

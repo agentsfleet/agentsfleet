@@ -41,7 +41,7 @@ impl RunService {
     /// Wins the draft's thread, bumping its fence, and expires the lapsed run
     /// that ran the turn before: the thread and whether this assignment reassigns the
     /// turn, and whose run it expired. No thread when a live runner still holds it,
-    /// or when the turn's runs lapsed [`af_core::limits::EVENT_RUNS_MAX`] times,
+    /// or when the turn's runs lapsed the deployment's runs per turn,
     /// which fails it and frees the thread rather than reassigning it forever.
     pub(super) async fn take_thread(
         &self,
@@ -78,7 +78,7 @@ impl RunService {
             .await
             .map_err(query(CONTEXT))?;
         let expired = prior.expired_runner_id;
-        if prior.earlier_runs < i64::from(af_core::limits::EVENT_RUNS_MAX) {
+        if prior.earlier_runs < self.runs.limits().runs_per_turn() {
             let reassignment = prior.predecessor_run_id.is_some();
             return Ok(Taken {
                 won: Some((won, reassignment)),

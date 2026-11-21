@@ -42,7 +42,7 @@ pub const DECISION_BUDGET_STATEMENT: &str = sql::BUDGET;
 #[cfg(feature = "test-util")]
 pub const LOCKED_DECISION_CALL_STATEMENT: &str = sql::FIND_CALL;
 
-const OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub(crate) const OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Encoded trusted response; Debug cannot expose its one-use credential.
 pub struct ReservedDecision {

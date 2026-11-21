@@ -32,6 +32,9 @@ pub struct Runs {
     prices: crate::run::cache::PriceBooks,
     /// The newest versions this replica has read, shared the same way.
     latest: crate::run::cache::Latest,
+    /// The deployment's run-plane settings; one pointer wide, as the
+    /// caches are, because this store rides inside futures.
+    limits: std::sync::Arc<crate::run::RunLimits>,
 }
 
 impl Runs {
@@ -74,7 +77,27 @@ impl Runs {
             definitions: crate::run::cache::Definitions::default(),
             prices: crate::run::cache::PriceBooks::default(),
             latest: crate::run::cache::Latest::default(),
+            limits: std::sync::Arc::default(),
         }
+    }
+
+    /// Uses the deployment's run-plane settings, sizing this store's caches
+    /// from them. Call before the store is cloned: the caches are shared by
+    /// every clone made after.
+    #[must_use]
+    pub fn with_limits(mut self, limits: crate::run::RunLimits) -> Self {
+        self.definitions =
+            crate::run::cache::Definitions::with_capacity(limits.definition_cache_bytes);
+        self.prices = crate::run::cache::PriceBooks::with_capacity(limits.price_book_cache_count);
+        self.latest = crate::run::cache::Latest::with_capacity(limits.head_cache_count);
+        self.limits = std::sync::Arc::new(limits);
+        self
+    }
+
+    /// The deployment's run-plane settings.
+    #[must_use]
+    pub fn limits(&self) -> &crate::run::RunLimits {
+        &self.limits
     }
 
     /// The newest catalogue version and head revisions this replica has read.

@@ -22,7 +22,6 @@ use crate::{
     },
 };
 
-const ORPHAN_SECONDS: i32 = 60 * 60;
 const FILE: &str = "file";
 
 pub(super) async fn register(
@@ -198,7 +197,7 @@ async fn reserve(custody: &mut FileOwner<'_>, new: &[NewObject], bucket: &str) -
             .bind(&custody.owner.current.id)
             .bind(custody.owner.current.fence)
             .bind(bucket)
-            .bind(ORPHAN_SECONDS)
+            .bind(custody.owner.limits.orphan_seconds())
             .execute(&mut *custody.owner.tx)
             .await
             .map_err(query("allocate encrypted turn chunks"))?;
@@ -255,7 +254,7 @@ pub(super) async fn protect(custody: &mut FileOwner<'_>, ids: &[Uuid7]) -> Resul
         "../../task/checkpoint/sql/objects_protect.sql"
     ))
     .bind(ids)
-    .bind(ORPHAN_SECONDS + 60)
+    .bind(custody.owner.limits.orphan_seconds().saturating_add(60))
     .bind(custody.pin.expires_at.to_sqlx())
     .execute(&mut *custody.owner.tx)
     .await

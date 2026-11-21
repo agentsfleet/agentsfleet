@@ -1,7 +1,5 @@
 //! External setup work is bounded; only a fresh locked recheck can activate.
 
-use std::time::Duration;
-
 use super::{ACTIVE, CONTEXT, Creations, INSTALLING, progress, read, sql};
 use crate::{
     Access, Result, access,
@@ -13,8 +11,6 @@ use af_observability::SetupStep;
 use afd_approval::{Origin, Wanted};
 use jiff::Timestamp;
 use sqlx::Transaction;
-
-const SETUP_BUDGET: Duration = Duration::from_secs(15);
 
 impl Creations {
     /// Re-advances setup after a person approved one of its grant requests,
@@ -47,13 +43,16 @@ impl Creations {
         // A wait that outlives the budget, or that the API login's bounds end
         // first (`afd_db::login`), leaves the fleet installing: the next Save
         // or the installation key finishes it.
-        let reason =
-            match tokio::time::timeout(SETUP_BUDGET, self.advance_within(access, fleet, now)).await
-            {
-                Ok(Err(refused)) if refused.is_bound_reached() => "bound_reached",
-                Ok(result) => return result,
-                Err(_elapsed) => "budget_elapsed",
-            };
+        let reason = match tokio::time::timeout(
+            self.setup.drafts.tuning.budget,
+            self.advance_within(access, fleet, now),
+        )
+        .await
+        {
+            Ok(Err(refused)) if refused.is_bound_reached() => "bound_reached",
+            Ok(result) => return result,
+            Err(_elapsed) => "budget_elapsed",
+        };
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
         tracing::warn!(event = "fleet_setup_budget_elapsed", fleet_id = %fleet, error_code, reason);
@@ -163,7 +162,7 @@ impl Creations {
         )
         .await
         .map_err(query(CONTEXT))?;
-        afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.streams()))
+        afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.notices()))
             .await
             .map_err(query(CONTEXT))?;
         // Only the commit whose guarded update moved `installing` to `active`

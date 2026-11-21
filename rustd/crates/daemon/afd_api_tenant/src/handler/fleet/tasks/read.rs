@@ -11,6 +11,7 @@ use axum::{
     extract::{Path, RawQuery, State},
     response::{IntoResponse as _, Response},
 };
+use headers::{ETag, HeaderMapExt as _, IfNoneMatch};
 use http::{HeaderMap, StatusCode, header};
 
 use super::input::{self, TaskPath};
@@ -90,9 +91,9 @@ pub(crate) async fn one<D: TenantPlane>(
         .map_err(Refusal::at(EVENT_READ))?;
     let tag = saved.etag();
     let unchanged = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| afd_http::etag::matches_if_none_match(value, &tag));
+        .typed_get::<IfNoneMatch>()
+        .zip(tag.parse::<ETag>().ok())
+        .is_some_and(|(condition, current)| !condition.precondition_passes(&current));
     let response = if unchanged {
         StatusCode::NOT_MODIFIED.into_response()
     } else {

@@ -27,6 +27,7 @@ pub(in crate::lane::runs) fn gateway(stores: &Datastores, kek: &Arc<Kek>) -> (Ga
         frame_memory: af_stream::MemoryLimits::default(),
         wall_clock: Arc::new(af_core::clock::SystemClock),
         analytics: af_observability::Analytics::silent(),
+        frames: afd_gateway::FrameCeilings::default(),
     });
     (gateway, drafts)
 }

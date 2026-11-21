@@ -29,7 +29,10 @@ use crate::handler::{parse_id, refuse, reject};
 use crate::request_id::RequestId;
 
 const DETAIL_ID: &str = "id must be a canonical UUIDv7";
-pub(crate) const DETAIL_LIMIT: &str = "limit must be an integer between 1 and 100";
+/// The refusal a page size outside the list page earns.
+pub(crate) fn limit_detail(ceiling: af_validate::Ceiling) -> String {
+    afd_http::paging::limit_sentence("limit must be an integer", ceiling)
+}
 const DETAIL_NOT_FOUND: &str = "No catalogue model matches this id";
 const DETAIL_DUPLICATE: &str = "A catalogue row for this provider and model already exists";
 const DETAIL_IN_USE: &str =
@@ -60,13 +63,15 @@ pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    let limit = match af_validate::Limit::parse(
-        params.get("limit").map(String::as_str),
-        af_core::paging::CEILING,
-    ) {
+    let ceiling = services.pages().list;
+    let limit = match af_validate::Limit::parse(params.get("limit").map(String::as_str), ceiling) {
         Ok(limit) => limit,
         Err(_invalid) => {
-            return reject(error_code::INVALID_REQUEST, DETAIL_LIMIT);
+            return afd_http::handler::Refusal::coded_sentence(
+                error_code::INVALID_REQUEST,
+                limit_detail(ceiling),
+            )
+            .into_response();
         }
     };
     match services
@@ -295,5 +300,5 @@ fn item(model: &Model) -> AdminModelItem<'_> {
 }
 
 fn request_id() -> Cow<'static, str> {
-    Cow::Owned(RequestId::mint().to_string())
+    Cow::Owned(RequestId::current().to_string())
 }

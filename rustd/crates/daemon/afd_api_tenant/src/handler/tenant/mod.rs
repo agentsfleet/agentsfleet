@@ -40,8 +40,8 @@ pub use self::model_entry::{
 };
 pub(crate) use self::models::catalogue;
 pub use self::models::{
-    DETAIL_CATALOGUE_LIMIT, DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH,
-    DETAIL_PROVIDER_BOUNDS, DETAIL_QUERY_UNREADABLE,
+    DETAIL_CURSOR_MALFORMED, DETAIL_CURSOR_MISMATCH, DETAIL_PROVIDER_BOUNDS,
+    DETAIL_QUERY_UNREADABLE,
 };
 pub(crate) use self::provider::view as provider_view;
 pub(crate) use self::provider::write::{apply as provider_apply, reset as provider_reset};
@@ -51,8 +51,8 @@ pub use self::provider::{
     DETAIL_SECRET_REF_REQUIRED,
 };
 pub use self::workspace::{
-    DETAIL_CREATE_BODY, DETAIL_CREATE_NO_TENANT, DETAIL_INVALID_CURSOR, DETAIL_INVALID_LIMIT,
-    DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY,
+    DETAIL_CREATE_BODY, DETAIL_CREATE_NO_TENANT, DETAIL_INVALID_CURSOR, DETAIL_INVALID_NAME,
+    DETAIL_MALFORMED_QUERY,
 };
 // Renamed at the re-export: both families mint and both revoke, and the router
 // names them side by side. The prefix belongs to the collision, so it lives

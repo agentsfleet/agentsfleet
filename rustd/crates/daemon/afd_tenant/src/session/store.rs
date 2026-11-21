@@ -23,12 +23,33 @@ use crate::Result;
 use crate::error::query;
 use crate::sql::session as sql;
 
-/// A session's life, re-stamped at every transition.
-pub(crate) const SESSION_TTL: Duration = Duration::from_secs(300);
-/// How long a redeemed session answers the same request again.
-pub(crate) const CONSUME_REPLAY_WINDOW: Duration = Duration::from_secs(60);
-/// Wrong codes a session survives before it aborts.
-pub(crate) const MAX_VERIFY_ATTEMPTS: u8 = 5;
+/// A session's life, re-stamped at every transition, when nothing configures it.
+pub const SESSION_TTL: Duration = Duration::from_secs(300);
+/// How long a redeemed session answers the same request again, by default.
+pub const CONSUME_REPLAY_WINDOW: Duration = Duration::from_secs(60);
+/// Wrong codes a session survives before it aborts, by default.
+pub const MAX_VERIFY_ATTEMPTS: u8 = 5;
+
+/// A deployment's device-login lifetimes and its wrong-code allowance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionPolicy {
+    /// A session's life, re-stamped at every transition.
+    pub ttl: Duration,
+    /// How long a redeemed session answers the same request again.
+    pub replay_window: Duration,
+    /// Wrong codes a session survives before it aborts.
+    pub max_verify_attempts: u8,
+}
+
+impl Default for SessionPolicy {
+    fn default() -> Self {
+        Self {
+            ttl: SESSION_TTL,
+            replay_window: CONSUME_REPLAY_WINDOW,
+            max_verify_attempts: MAX_VERIFY_ATTEMPTS,
+        }
+    }
+}
 
 const CONTEXT_OPEN: &str = "open a device session";
 const CONTEXT_READ: &str = "read a device session";
@@ -40,6 +61,7 @@ const CONTEXT_ABORT: &str = "abort device sessions";
 #[derive(Debug, Clone)]
 pub struct DeviceSessions {
     database: Db,
+    policy: SessionPolicy,
 }
 
 /// A live session as a poll sees it.
@@ -86,8 +108,18 @@ pub(crate) enum Write {
 impl DeviceSessions {
     /// Binds the store to the runtime pool.
     #[must_use]
-    pub const fn new(database: Db) -> Self {
-        Self { database }
+    pub fn new(database: Db) -> Self {
+        Self {
+            database,
+            policy: SessionPolicy::default(),
+        }
+    }
+
+    /// Replaces the default lifetimes and wrong-code allowance.
+    #[must_use]
+    pub const fn with_policy(mut self, policy: SessionPolicy) -> Self {
+        self.policy = policy;
+        self
     }
 
     /// Writes a new `pending` session.
@@ -103,7 +135,7 @@ impl DeviceSessions {
             .bind(SessionStatus::Pending.as_str())
             .bind(cli_public_key)
             .bind(token_name)
-            .bind(SESSION_TTL)
+            .bind(self.policy.ttl)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_OPEN))?;
@@ -138,7 +170,12 @@ impl DeviceSessions {
         else {
             return Ok(VerifyOutcome::Missing);
         };
-        let (outcome, write) = classify(&row, submitted, fingerprint)?;
+        let (outcome, write) = classify(
+            &row,
+            submitted,
+            fingerprint,
+            self.policy.max_verify_attempts,
+        )?;
         match write {
             None => return Ok(outcome),
             Some(Write::Attempt {
@@ -151,7 +188,7 @@ impl DeviceSessions {
                     .bind(i16::from(attempts))
                     .bind(status.as_str())
                     .bind(reason.map(AbortReason::as_str))
-                    .bind(SESSION_TTL)
+                    .bind(self.policy.ttl)
                     .execute(&mut *transaction)
                     .await
                     .map_err(query(CONTEXT_VERIFY))?;
@@ -161,9 +198,9 @@ impl DeviceSessions {
                     .bind(id)
                     .bind(SessionStatus::Consumed.as_str())
                     .bind(jiff_sqlx::Timestamp::from(row.now))
-                    .bind(CONSUME_REPLAY_WINDOW)
+                    .bind(self.policy.replay_window)
                     .bind(fingerprint.as_bytes().as_slice())
-                    .bind(SESSION_TTL)
+                    .bind(self.policy.ttl)
                     .execute(&mut *transaction)
                     .await
                     .map_err(query(CONTEXT_VERIFY))?;
@@ -191,7 +228,7 @@ impl DeviceSessions {
             .bind(approval.nonce)
             .bind(approval.code.as_bytes().as_slice())
             .bind(approval.approver)
-            .bind(SESSION_TTL)
+            .bind(self.policy.ttl)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_APPROVE))?;
@@ -224,7 +261,7 @@ impl DeviceSessions {
             .bind(terminal.as_slice())
             .bind(SessionStatus::Aborted.as_str())
             .bind(reason.as_str())
-            .bind(SESSION_TTL)
+            .bind(self.policy.ttl)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_ABORT))?;
@@ -239,6 +276,7 @@ pub(crate) fn classify(
     row: &Locked,
     submitted: &HmacSha256Tag,
     fingerprint: &Fingerprint,
+    max_attempts: u8,
 ) -> Result<(VerifyOutcome, Option<Write>)> {
     if row.now >= row.expires_at {
         return Ok((VerifyOutcome::Expired, None));
@@ -265,7 +303,7 @@ pub(crate) fn classify(
             VerifyOutcome::Aborted(row.aborted_reason.as_deref().and_then(AbortReason::parse))
         }
         SessionStatus::Pending => VerifyOutcome::NotApproved,
-        SessionStatus::VerificationPending => return compare(row, submitted),
+        SessionStatus::VerificationPending => return compare(row, submitted, max_attempts),
     };
     Ok((outcome, None))
 }
@@ -274,10 +312,14 @@ pub(crate) fn classify(
 ///
 /// An approval writes the digest and the status in one statement, and only
 /// a verify writes the count, so an approved row with no digest, a digest of
-/// the wrong length, or a count outside `0..MAX_VERIFY_ATTEMPTS` was written
+/// the wrong length, or a count outside `0..max_attempts` was written
 /// by something else. Each is refused as unreadable rather than read as a
 /// wrong code, which would hide the corruption behind a person's typo.
-fn compare(row: &Locked, submitted: &HmacSha256Tag) -> Result<(VerifyOutcome, Option<Write>)> {
+fn compare(
+    row: &Locked,
+    submitted: &HmacSha256Tag,
+    max_attempts: u8,
+) -> Result<(VerifyOutcome, Option<Write>)> {
     let stored = row
         .verification_code_hmac
         .as_deref()
@@ -293,7 +335,7 @@ fn compare(row: &Locked, submitted: &HmacSha256Tag) -> Result<(VerifyOutcome, Op
     }
     let recorded = u8::try_from(row.verification_attempt_count)
         .ok()
-        .filter(|recorded| *recorded < MAX_VERIFY_ATTEMPTS)
+        .filter(|recorded| *recorded < max_attempts)
         .ok_or_else(|| {
             crate::error::session_unreadable(format!(
                 "verification_attempt_count {}",
@@ -301,7 +343,7 @@ fn compare(row: &Locked, submitted: &HmacSha256Tag) -> Result<(VerifyOutcome, Op
             ))
         })?;
     let attempts = recorded + 1;
-    if attempts >= MAX_VERIFY_ATTEMPTS {
+    if attempts >= max_attempts {
         let write = Write::Attempt {
             attempts,
             status: SessionStatus::Aborted,

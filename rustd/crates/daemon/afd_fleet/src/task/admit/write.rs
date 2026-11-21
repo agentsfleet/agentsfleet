@@ -93,7 +93,13 @@ impl Writer<'_> {
         binding.applies_here = active;
         binding.task_generation = Some(1);
         if active {
-            insert::run(connection, self.run, binding).await?;
+            insert::run(
+                connection,
+                self.run,
+                binding,
+                self.tasks.times().slice_seconds(),
+            )
+            .await?;
             insert::bind_turn(connection, &self.plan.source_turn_id, binding).await?;
             bound.clone_from(&binding.task_id);
         }

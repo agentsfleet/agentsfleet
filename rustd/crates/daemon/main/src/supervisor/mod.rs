@@ -38,7 +38,8 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-/// How long a task may take to notice cancellation before it is reported.
+/// How long a task may take to notice cancellation before it is reported,
+/// when `[server] task_join_timeout_seconds` names nothing else.
 ///
 /// A deadline at the call site, per Invariant 4, and it exists because the
 /// alternative is worse: a task that ignores its token would hang shutdown
@@ -77,7 +78,7 @@ struct Supervised {
 pub struct ShutdownReport {
     /// Tasks that stopped and were joined, in the order they were spawned.
     pub joined: Vec<&'static str>,
-    /// Tasks still running when [`JOIN_TIMEOUT`] expired.
+    /// Tasks still running when the join timeout expired.
     ///
     /// Non-empty means a task is not selecting over its cancellation token —
     /// a bug in that task, and the report names it rather than leaving an
@@ -100,6 +101,8 @@ impl ShutdownReport {
 pub struct Supervisor {
     token: CancellationToken,
     tasks: Vec<Supervised>,
+    /// How long each task gets to stop once cancelled.
+    join_timeout: Duration,
 }
 
 impl Supervisor {
@@ -109,7 +112,21 @@ impl Supervisor {
         Self {
             token: CancellationToken::new(),
             tasks: Vec::new(),
+            join_timeout: JOIN_TIMEOUT,
         }
+    }
+
+    /// Gives each task `timeout` to stop once cancelled, in place of [`JOIN_TIMEOUT`].
+    #[must_use]
+    pub const fn with_join_timeout(mut self, timeout: Duration) -> Self {
+        self.join_timeout = timeout;
+        self
+    }
+
+    /// How long each task gets to stop once cancelled.
+    #[must_use]
+    pub const fn join_timeout(&self) -> Duration {
+        self.join_timeout
     }
 
     /// The token supervised tasks stop on.
@@ -177,23 +194,23 @@ impl Supervisor {
 
         let mut report = ShutdownReport::default();
         for task in self.tasks {
-            settle(task, &mut report).await;
+            settle(task, self.join_timeout, &mut report).await;
         }
         report
     }
 }
 
-async fn settle(task: Supervised, report: &mut ShutdownReport) {
+async fn settle(task: Supervised, timeout: Duration, report: &mut ShutdownReport) {
     let Supervised {
         task_id,
         name,
         started,
         handle,
     } = task;
-    match tokio::time::timeout(JOIN_TIMEOUT, handle).await {
+    match tokio::time::timeout(timeout, handle).await {
         Ok(Ok(())) => completed(task_id, name, started, report),
         Ok(Err(_panicked)) => panicked(task_id, name, started, report),
-        Err(_elapsed) => timed_out(task_id, name, started, report),
+        Err(_elapsed) => timed_out(task_id, name, started, timeout, report),
     }
 }
 
@@ -233,9 +250,15 @@ fn panicked(task_id: u64, name: &'static str, started: Instant, report: &mut Shu
     report.panicked.push(name);
 }
 
-fn timed_out(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
+fn timed_out(
+    task_id: u64,
+    name: &'static str,
+    started: Instant,
+    timeout: Duration,
+    report: &mut ShutdownReport,
+) {
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-    let timeout_ms = JOIN_TIMEOUT.as_millis();
+    let timeout_ms = timeout.as_millis();
     let duration_ms = started.elapsed().as_millis();
     {
         let (task, reason, event, message) = (

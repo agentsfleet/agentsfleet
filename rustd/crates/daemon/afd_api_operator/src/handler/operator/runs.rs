@@ -10,7 +10,7 @@ use axum::response::{IntoResponse as _, Response};
 use super::query;
 use crate::OperatorPlane;
 use crate::auth::PersonIdentity;
-use crate::handler::{malformed, parse_id, refuse};
+use crate::handler::{parse_id, refuse};
 
 const EVENT: &str = "runner_runs_failed";
 
@@ -61,9 +61,15 @@ pub(crate) async fn list<D: OperatorPlane>(
         Ok(runner) => runner,
         Err(refused) => return refused.into_response(),
     };
-    let query = match query::runs(&params) {
+    let ceiling = services.pages().list;
+    let query = match query::runs(&params, ceiling) {
         Ok(query) => query,
-        Err(detail) => return malformed(detail),
+        Err(bad) => {
+            return afd_http::handler::Refusal::malformed_sentence(
+                bad.sentence(ceiling).into_owned(),
+            )
+            .into_response();
+        }
     };
     match services
         .runner_run_history()

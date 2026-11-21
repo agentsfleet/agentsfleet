@@ -87,7 +87,7 @@ pub(crate) async fn approve<D: TenantPlane>(
         .await
     {
         Ok(()) => {
-            let request_id = RequestId::mint();
+            let request_id = RequestId::current();
             // The moment a person completes a sign-in. Reported HERE rather
             // than at the verify beside it: the verify is the terminal
             // collecting its credential and knows no subject, and attributing

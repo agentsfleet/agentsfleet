@@ -154,6 +154,9 @@ impl Expiry<PlatformKeyKey, Held> for PerEntry {
 pub struct PlatformKeys {
     entries: Cache<PlatformKeyKey, Held>,
     clock: Arc<dyn Clock>,
+    /// The longest an entry is held, whatever its window; see
+    /// [`PLATFORM_KEY_TTL`].
+    ceiling: Duration,
 }
 
 impl Default for PlatformKeys {
@@ -172,7 +175,15 @@ impl PlatformKeys {
                 .expire_after(PerEntry)
                 .build(),
             clock,
+            ceiling: PLATFORM_KEY_TTL,
         }
+    }
+
+    /// This cache holding no entry longer than `ceiling`.
+    #[must_use]
+    pub const fn with_ceiling(mut self, ceiling: Duration) -> Self {
+        self.ceiling = ceiling;
+        self
     }
 
     /// The instant now, by the clock the entries are judged against.
@@ -217,7 +228,7 @@ impl PlatformKeys {
     /// `started` is the instant the read began: the window's span was measured
     /// after it, so adding the span to it can only end the entry early.
     pub(crate) async fn insert(&self, observed: Observed, started: Timestamp, resolved: Resolved) {
-        let lifetime = lifetime(observed.window);
+        let lifetime = lifetime(observed.window, self.ceiling);
         let held = Held {
             resolved,
             open_until: after(started, lifetime),
@@ -228,9 +239,9 @@ impl PlatformKeys {
 }
 
 /// How long an entry may be held: the price window the read matched, and never
-/// more than [`PLATFORM_KEY_TTL`].
-fn lifetime(window: Option<Duration>) -> Duration {
-    window.map_or(PLATFORM_KEY_TTL, |span| span.min(PLATFORM_KEY_TTL))
+/// more than `ceiling`.
+fn lifetime(window: Option<Duration>, ceiling: Duration) -> Duration {
+    window.map_or(ceiling, |span| span.min(ceiling))
 }
 
 #[cfg(test)]

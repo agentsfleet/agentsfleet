@@ -56,8 +56,9 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 /// The one rung both listings declare, so nothing here is refused by the rung.
 const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
-/// The sentence a page size outside the served band earns.
-const DETAIL_LIMIT: &str = "limit must be between 1 and 200";
+/// The sentence a page size outside the served band (`[api]`'s list page,
+/// 100 by default) earns.
+const DETAIL_LIMIT: &str = "limit must be between 1 and 100";
 
 /// The sentence naming a moment AND a row earns.
 const DETAIL_WINDOW_AMBIGUOUS: &str = "since_and_cursor_mutually_exclusive";
@@ -131,7 +132,7 @@ async fn assert_accepted(suffix: &str) {
 async fn a_page_size_inside_the_served_band_reaches_the_store() {
     // Absent and blank are the default page, and the two ends are the band: an
     // off-by-one at either would refuse a size a client sends today.
-    for suffix in ["", "?limit=", "?limit=1", "?limit=200", "?limit=50"] {
+    for suffix in ["", "?limit=", "?limit=1", "?limit=100", "?limit=50"] {
         assert_accepted(suffix).await;
     }
 }
@@ -144,7 +145,7 @@ async fn a_page_size_inside_the_served_band_reaches_the_store() {
 async fn a_page_size_outside_the_served_band_is_refused() {
     let outside = [
         "?limit=0",
-        "?limit=201",
+        "?limit=101",
         "?limit=-1",
         "?limit=abc",
         // Past the width the parameter is read at, which is a different

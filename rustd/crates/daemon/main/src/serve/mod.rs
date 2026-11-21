@@ -42,7 +42,6 @@ use std::net::SocketAddr;
 use af_core::env::EnvSource;
 use af_observability::{Analytics, Telemetry};
 use afd_db::Db;
-use afd_http::admission::Admission;
 
 pub use self::accept::Acceptor;
 #[cfg(feature = "test-util")]
@@ -50,7 +49,9 @@ pub use self::accept::serve_accepts;
 pub use self::drain::{DRAIN_TIMEOUT, Drain, Settled};
 
 use self::exporting::gauge_sources;
-pub(crate) use self::exporting::{attach_exports, flush_unsupervised, open_telemetry};
+pub(crate) use self::exporting::{
+    FLUSH_BUDGET, attach_exports, flush_unsupervised, open_telemetry,
+};
 use self::listen::listen;
 pub use self::listen::{ACCEPT_LOOP, dual_stack_listener};
 use self::optional::open_analytics;
@@ -193,13 +194,9 @@ async fn open(
             return Err(failure);
         }
     };
-    let admission = Admission::new(config.runtime.requests);
-    // Before the router takes them: both are the state a gauge reads, and the
-    // clones are handles onto the same semaphore and the same ceiling rather
-    // than second copies that could disagree with what admission decides.
-    let sources = gauge_sources(&admission, &runtime.live, &runtime.database);
+    let sources = gauge_sources(&runtime.live, &runtime.database);
     open_telemetry(prepared, supervisor, &sources, &runtime.database)?;
-    serve_plane(runtime, &admission, &config, analytics, port, supervisor).await
+    serve_plane(runtime, &config, analytics, port, supervisor).await
 }
 
 /// Routes the plane, starts every background worker, then binds the port.
@@ -210,7 +207,6 @@ async fn open(
 /// workers are spawned.
 async fn serve_plane(
     runtime: Runtime,
-    admission: &Admission,
     config: &BootConfig,
     analytics: Analytics,
     port: u16,
@@ -221,7 +217,10 @@ async fn serve_plane(
     let gateway = runtime.plane.runner_streams().clone();
     let native = runner_stream::Signals::default();
     let serving_failed = tokio_util::sync::CancellationToken::new();
-    let router = afd_api::router::build(std::sync::Arc::clone(&runtime.plane), admission);
+    let router = afd_api::router::build(
+        std::sync::Arc::clone(&runtime.plane),
+        config.runtime.requests,
+    );
     start_workers(supervisor, config, &analytics, &runtime).await;
     let drain = runner_drain(&gateway, &native);
     serve_runner(

@@ -64,7 +64,7 @@ pub(crate) async fn publish<D: RunnerPlane>(
         let mut response = ProblemResponse::effect_conflict(
             reason.code(),
             reason.detail(),
-            RequestId::mint(),
+            RequestId::current(),
             effect,
         )
         .into_response();

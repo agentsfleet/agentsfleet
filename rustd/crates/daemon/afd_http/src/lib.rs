@@ -7,16 +7,16 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub mod admission;
 pub mod auth;
 pub mod client;
 pub mod envelope;
-pub mod etag;
 pub mod handler;
+pub mod in_flight;
 pub mod request_id;
 // The published document's shared vocabulary. Gated with the generator that
 // reads it: without the feature there are no annotations to name these.
 #[cfg(feature = "openapi")]
 pub mod openapi;
+pub mod paging;
 pub mod route;
 pub mod services;

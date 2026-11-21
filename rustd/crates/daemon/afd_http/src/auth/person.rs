@@ -280,7 +280,7 @@ fn unproven() -> Response {
 
 /// Writes a refusal from an extractor, which has no service to log through.
 fn refuse(code: ErrorCode, detail: &'static str, event: &'static str) -> Response {
-    let request_id = RequestId::mint();
+    let request_id = RequestId::current();
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let code_field = code.as_str();

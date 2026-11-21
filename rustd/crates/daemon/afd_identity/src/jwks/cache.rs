@@ -51,6 +51,8 @@ pub(crate) struct KeyCache<S> {
     source: S,
     clock: Arc<dyn Clock>,
     ttl: Duration,
+    stale_grace: Duration,
+    refresh_min_interval: Duration,
     held: tokio::sync::RwLock<Option<Held>>,
     /// The single-flight gate. Held across the fetch, which happens with the
     /// `held` lock RELEASED so a cache hit never queues behind a slow provider.
@@ -63,11 +65,17 @@ struct LastAttempt(Option<Timestamp>);
 
 impl<S: KeySetSource> KeyCache<S> {
     /// Builds a cache over `source`.
-    pub(crate) fn new(source: S, clock: Arc<dyn Clock>, ttl: Duration) -> Self {
+    pub(crate) fn new(
+        source: S,
+        clock: Arc<dyn Clock>,
+        config: &super::verifier::VerifierConfig,
+    ) -> Self {
         Self {
             source,
             clock,
-            ttl,
+            ttl: config.ttl,
+            stale_grace: config.stale_grace,
+            refresh_min_interval: config.refresh_min_interval,
             held: tokio::sync::RwLock::new(None),
             flight: tokio::sync::Mutex::new(LastAttempt(None)),
         }
@@ -115,7 +123,7 @@ impl<S: KeySetSource> KeyCache<S> {
         let Some((keys, fetched_at)) = held else {
             return Err(VerifyError::KeySetUnavailable);
         };
-        let ceiling = self.ttl.saturating_add(STALE_GRACE);
+        let ceiling = self.ttl.saturating_add(self.stale_grace);
         if self.clock.now() > after(fetched_at, ceiling) {
             return Err(VerifyError::KeySetUnavailable);
         }
@@ -160,7 +168,7 @@ impl<S: KeySetSource> KeyCache<S> {
             return;
         }
         if let LastAttempt(Some(previous)) = *last
-            && entered < after(previous, REFRESH_MIN_INTERVAL)
+            && entered < after(previous, self.refresh_min_interval)
         {
             // Rate-limited. The caller serves whatever set we still hold, which
             // is the same thing it would do after a failed fetch.

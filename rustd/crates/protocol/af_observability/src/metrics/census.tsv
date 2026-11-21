@@ -59,7 +59,6 @@ agentsfleet_billing_settle_total	counter	u64	1	cumulative	work_type,outcome	-	fi
 agentsfleet_billing_unpriced_tokens_total	counter	u64	{token}	cumulative	gen_ai.provider.name,gen_ai.request.model	-	shared:cost	no	errors	tokens charged nothing because the catalogue publishes no price for them
 agentsfleet_api_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	any growth: requests shed at the cap
 agentsfleet_api_request_duration_seconds	histogram	f64	s	cumulative	http.route,http.request.method,status_class	0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:32768	no	latency	matched route latency until response headers; raw paths never exported
-agentsfleet_api_in_flight_requests	gauge	u64	{request}	-	-	-	fixed:1	no	saturation	approaching `api_max_in_flight_requests`
 agentsfleet_sse_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	streams refused at the cap
 agentsfleet_sse_in_flight_streams	gauge	u64	{stream}	-	-	-	fixed:1	no	saturation	approaching the stream cap
 agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	slow consumers losing frames

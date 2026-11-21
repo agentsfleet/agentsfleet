@@ -61,7 +61,7 @@ async fn registered(
         .map(|object| object.id.clone())
         .collect();
     attach(connection, plan, &eligible).await?;
-    super::transfer::protect(connection, &eligible, pin).await?;
+    super::transfer::protect(connection, &eligible, pin, tasks.times().orphan_seconds()).await?;
     let mut by_content: BTreeMap<_, _> = objects
         .into_iter()
         .map(|object| (object.content_identity.clone(), object))
@@ -123,7 +123,13 @@ async fn allocate(
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    reserve(connection, plan, &new, storage).await?;
+    reserve(
+        connection,
+        plan,
+        &new,
+        (storage, tasks.times().orphan_seconds()),
+    )
+    .await?;
     Ok((identity.id, content))
 }
 
@@ -146,7 +152,7 @@ async fn reserve(
     connection: &mut PgConnection,
     plan: &Plan,
     new: &[NewObject],
-    storage: &R2CheckpointStore,
+    (storage, orphan_seconds): (&R2CheckpointStore, i32),
 ) -> Result<()> {
     let new_bytes = new
         .iter()
@@ -176,7 +182,7 @@ async fn reserve(
             .bind(&plan.owner_run_id)
             .bind(plan.owner_fence)
             .bind(storage.bucket_reference())
-            .bind(super::ORPHAN_SECONDS)
+            .bind(orphan_seconds)
             .execute(&mut *connection)
             .await
             .map_err(query(

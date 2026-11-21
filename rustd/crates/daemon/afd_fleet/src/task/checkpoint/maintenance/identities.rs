@@ -25,7 +25,7 @@ pub(super) async fn retain(
 ) -> Result<(u64, u64)> {
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let rows: Vec<Identity> = sqlx::query_as(include_str!("../sql/identity_retention.sql"))
-        .bind(super::super::TERMINAL_SECONDS)
+        .bind(tasks.times().terminal_seconds())
         .bind(cursor.identity_after.as_ref().map(|(at, _)| at.to_sqlx()))
         .bind(cursor.identity_after.as_ref().map(|(_, id)| id))
         .bind(BATCH)
@@ -66,7 +66,7 @@ async fn remove(tasks: &Tasks, identity: &Identity) -> Result<u64> {
             .bind(&identity.id)
             .bind(&identity.workspace_id)
             .bind(&identity.repository)
-            .bind(super::super::TERMINAL_SECONDS)
+            .bind(tasks.times().terminal_seconds())
             .execute(&mut *tx)
             .await
             .map_err(query(

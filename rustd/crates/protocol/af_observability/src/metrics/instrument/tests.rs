@@ -49,7 +49,7 @@ fn an_undeclared_family_cannot_be_claimed() {
 #[test]
 fn a_family_claimed_as_the_wrong_kind_is_refused() {
     let instruments = instruments();
-    let miscast: Declared<CounterKind> = Declared::new(http::API_IN_FLIGHT_REQUESTS.wire_name());
+    let miscast: Declared<CounterKind> = Declared::new(http::SSE_IN_FLIGHT_STREAMS.wire_name());
 
     let refusal = instruments
         .counter_u64(&miscast)

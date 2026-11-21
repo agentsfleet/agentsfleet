@@ -57,6 +57,30 @@ pub struct GatewayDependencies {
     pub wall_clock: Arc<dyn Clock>,
     /// Product completion events reuse the daemon's configured sink.
     pub analytics: af_observability::Analytics,
+    /// The frame ceilings a runner is told when it connects.
+    pub frames: FrameCeilings,
+}
+
+/// The largest frames the runner link carries, sent in every welcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameCeilings {
+    /// Largest frame on the work, reports and progress streams.
+    pub message_bytes: u32,
+    /// Largest frame on the control stream.
+    pub control_message_bytes: u32,
+}
+
+impl Default for FrameCeilings {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "both protocol ceilings are a few MiB, far below u32::MAX"
+    )]
+    fn default() -> Self {
+        Self {
+            message_bytes: af_wire::protocol::MESSAGE_BYTES_MAX as u32,
+            control_message_bytes: af_wire::protocol::CONTROL_MESSAGE_BYTES_MAX as u32,
+        }
+    }
 }
 
 /// Bounded daemon scheduler work; one connection still owns one assignment at a time.
@@ -64,6 +88,8 @@ pub struct GatewayDependencies {
 pub struct RecoverySettings {
     /// Maximum active assignments across credited hosts.
     pub max_concurrent_assignments: std::num::NonZeroUsize,
+    /// The longest wait between two broker subscription repairs.
+    pub max_repair_backoff: std::time::Duration,
 }
 
 impl Default for RecoverySettings {
@@ -71,6 +97,7 @@ impl Default for RecoverySettings {
         const ASSIGNMENTS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
         Self {
             max_concurrent_assignments: ASSIGNMENTS,
+            max_repair_backoff: scheduler::REPAIR_BACKOFF_MAX,
         }
     }
 }

@@ -4,10 +4,10 @@ mod harness;
 
 mod build_stamp;
 
-#[path = "admission_ceiling.rs"]
-mod admission_ceiling;
 #[path = "header_limit.rs"]
 mod header_limit;
+#[path = "in_flight_ceiling.rs"]
+mod in_flight_ceiling;
 #[path = "person_policy.rs"]
 mod person_policy;
 #[path = "problem_json_envelope.rs"]

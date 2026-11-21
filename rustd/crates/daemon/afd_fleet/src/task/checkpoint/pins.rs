@@ -58,8 +58,8 @@ pub(super) async fn insert(
                 .map_err(|_overflow| TaskRefusal::StaleState)?,
         )
         .bind(kind == "writer")
-        .bind(super::TRANSFER_SECONDS)
-        .bind(super::PIN_SECONDS)
+        .bind(tasks.times().transfer_seconds())
+        .bind(tasks.times().pin_seconds())
         .execute(&mut *connection)
         .await
         .map_err(query("acquire bounded checkpoint operation pin"))?;
@@ -121,7 +121,7 @@ pub(in crate::task) async fn renew(
     }
     sqlx::query(include_str!("sql/pin_renew.sql"))
         .bind(pin)
-        .bind(super::PIN_SECONDS)
+        .bind(tasks.times().pin_seconds())
         .execute(&mut *tx)
         .await
         .map_err(query("renew pin within original operation deadline"))?;

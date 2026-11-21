@@ -89,7 +89,7 @@ pub(super) fn created_response<'created>(
     CreatedWorkspaceResponse {
         workspace_id: Cow::Borrowed(created.id.as_str()),
         name: Cow::Borrowed(&created.name),
-        request_id: Cow::Owned(RequestId::mint().into()),
+        request_id: Cow::Owned(RequestId::current().into()),
         tenant_id: Cow::Borrowed(tenant.as_str()),
     }
 }

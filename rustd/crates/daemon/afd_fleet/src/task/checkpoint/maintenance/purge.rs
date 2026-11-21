@@ -23,8 +23,9 @@ struct Purge {
 pub(super) async fn run(tasks: &Tasks, storage: &R2CheckpointStore) -> Result<(u64, u64)> {
     let session = storage.session().await?;
     let (mut completed, mut deferred, mut attempted) = (0, 0, 0_i64);
-    while attempted < super::super::GC_BATCH {
-        let purges = claim(tasks, (super::super::GC_BATCH - attempted).min(4)).await?;
+    let batch = tasks.times().gc_batch();
+    while attempted < batch {
+        let purges = claim(tasks, (batch - attempted).min(4)).await?;
         if purges.is_empty() {
             break;
         }

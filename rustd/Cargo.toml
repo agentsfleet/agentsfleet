@@ -732,9 +732,8 @@ axum = { version = "0.8.9", default-features = false, features = [
 # prevent, silently. `keys_and_config/mod.rs`'s spread assertion is what catches a
 # future edit that drops it again.
 backon = { version = "1.6.0", default-features = false, features = ["std", "tokio-sleep"] }
-# Tower is the middleware algebra axum composes. The admission ceiling is ours:
-# it counts in-flight requests per route CLASS, which no off-the-shelf layer
-# knows about.
+# Tower is the middleware algebra axum composes; the in-flight ceiling is its
+# stock concurrency limit and load shedder, enabled where they are used.
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
 # The HTTP/1 connection underneath axum, taken DIRECTLY rather than through
 # `axum::serve`, for one reason: `axum::serve` exposes no way to bound the
@@ -784,6 +783,16 @@ tokio-rustls = { version = "0.26.6", default-features = false, features = ["aws_
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.
 http = { version = "1.5.0", default-features = false, features = ["std"] }
+# The caller's address behind Fly's proxy: `Fly-Client-IP`, then the rightmost
+# `X-Forwarded-For` hop. No `serde`, and `connect-info` only for the socket
+# peer a direct-connected caller falls back to.
+axum-client-ip = { version = "1.3.1", default-features = false, features = ["connect-info"] }
+# Typed `If-None-Match` and `ETag`: the RFC 9110 weak comparison a conditional
+# GET answers 304 by.
+headers = { version = "0.4.2", default-features = false }
+# `x-request-id` stamped on the request and echoed on the response. Only the
+# middleware this daemon mounts.
+tower-http = { version = "0.7.1", default-features = false, features = ["request-id"] }
 
 # The byte buffer hyper and axum carry a body in, named directly by the runner
 # crates whose own types hold one, and by `afd_api`'s live tests.

@@ -12,7 +12,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use super::query;
 use crate::OperatorPlane;
-use crate::handler::{malformed, parse_id, refuse};
+use crate::handler::{parse_id, refuse};
 
 const EVENT_LIST: &str = "runner_list_failed";
 const EVENT_DETAIL: &str = "runner_detail_failed";
@@ -42,14 +42,28 @@ pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    page(services.runners().platform(), &params).await
+    page(
+        services.runners().platform(),
+        &params,
+        services.pages().list,
+    )
+    .await
 }
 
 /// One page of the runners `scope` covers, newest first.
-pub(super) async fn page(scope: RunnerScope<'_>, params: &HashMap<String, String>) -> Response {
-    let page = match query::page(params) {
+pub(super) async fn page(
+    scope: RunnerScope<'_>,
+    params: &HashMap<String, String>,
+    ceiling: af_validate::Ceiling,
+) -> Response {
+    let page = match query::page(params, ceiling) {
         Ok(page) => page,
-        Err(detail) => return malformed(detail),
+        Err(bad) => {
+            return afd_http::handler::Refusal::malformed_sentence(
+                bad.sentence(ceiling).into_owned(),
+            )
+            .into_response();
+        }
     };
     match scope.list_runners(page.cursor.as_ref(), page.limit).await {
         Ok(rows) => Json(RunnersResponse {

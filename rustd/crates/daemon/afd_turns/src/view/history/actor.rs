@@ -5,7 +5,7 @@ use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 
 use super::statement::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
-use super::{Cursor, History, MAX_LIMIT, TurnRow};
+use super::{Cursor, History, TurnRow};
 use crate::view::error::{self, Result};
 
 /// What the read was doing, for the operator's log line.
@@ -41,7 +41,7 @@ impl History {
         let mut connection = self.database.acquire().await?;
         let rows = query
             .bind(actor)
-            .bind(limit.clamp(1, MAX_LIMIT))
+            .bind(limit.max(1))
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_ACTOR_PAGE))?;

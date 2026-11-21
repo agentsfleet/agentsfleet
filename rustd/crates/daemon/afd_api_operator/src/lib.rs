@@ -16,8 +16,11 @@ pub use self::plane::OperatorPlane;
 /// Native response vocabulary shared by served HTTP assertions.
 #[cfg(feature = "test-util")]
 pub mod test_util {
-    /// Refusal for a catalogue page size outside the native bound.
-    pub const MODEL_PAGE_LIMIT_DETAIL: &str = crate::handler::admin::models::DETAIL_LIMIT;
+    /// Refusal for a catalogue page size outside the default list page.
+    #[must_use]
+    pub fn model_page_limit_detail() -> String {
+        crate::handler::admin::models::limit_detail(af_core::paging::CEILING)
+    }
 }
 
 // The document generator, compiled only when it is asked for.

@@ -11,8 +11,8 @@ use af_core::error_code;
 use axum::response::{IntoResponse, Response};
 use http::{HeaderValue, header};
 
-use crate::admission::RETRY_AFTER_SECONDS;
 use crate::envelope::ProblemResponse;
+use crate::in_flight::RETRY_AFTER_SECONDS;
 use crate::request_id::RequestId;
 
 /// The sentence a stream refused at the ceiling carries.
@@ -68,7 +68,7 @@ impl Refusal {
     #[must_use]
     pub fn review_changed(detail: &'static str, digest: &str) -> Self {
         Self(Box::new(
-            ProblemResponse::review_changed(detail, RequestId::mint(), digest).into_response(),
+            ProblemResponse::review_changed(detail, RequestId::current(), digest).into_response(),
         ))
     }
 
@@ -102,6 +102,24 @@ impl Refusal {
         Self(Box::new(malformed(detail)))
     }
 
+    /// [`Refusal::malformed`] with a sentence built at run time, such as one
+    /// naming the deployment's page size.
+    #[must_use]
+    pub fn malformed_sentence(detail: String) -> Self {
+        Self(Box::new(
+            ProblemResponse::new(error_code::INVALID_REQUEST, detail, RequestId::mint())
+                .into_response(),
+        ))
+    }
+
+    /// [`Refusal::coded`] with a sentence built at run time.
+    #[must_use]
+    pub fn coded_sentence(code: error_code::ErrorCode, detail: String) -> Self {
+        Self(Box::new(
+            ProblemResponse::new(code, detail, RequestId::mint()).into_response(),
+        ))
+    }
+
     /// The refusal of a text past the one ceiling every text shares
     /// (`af_validate::TEXT_MAX_CHARS`), under its own code so the dashboard
     /// shows the person the ceiling it names.
@@ -119,7 +137,7 @@ impl Refusal {
     #[must_use]
     pub fn coded(code: error_code::ErrorCode, detail: &'static str) -> Self {
         Self(Box::new(
-            ProblemResponse::new(code, detail, RequestId::mint()).into_response(),
+            ProblemResponse::new(code, detail, RequestId::current()).into_response(),
         ))
     }
 
@@ -136,7 +154,7 @@ impl Refusal {
         current_state: &str,
     ) -> Self {
         Self(Box::new(
-            ProblemResponse::conflict(code, detail, RequestId::mint(), current_state)
+            ProblemResponse::conflict(code, detail, RequestId::current(), current_state)
                 .into_response(),
         ))
     }
@@ -157,7 +175,7 @@ impl Refusal {
     /// optimistic here, but it is what a client is already written against and
     /// a longer one would only delay a retry that costs one round trip.
     pub fn at_stream_ceiling(carrying: usize, capacity: usize) -> Self {
-        let request_id = RequestId::mint();
+        let request_id = RequestId::current();
         let code = error_code::SSE_STREAM_CAP.as_str();
         let id = request_id.as_str();
         {
@@ -184,7 +202,7 @@ impl Refusal {
     #[must_use]
     pub fn forbidden(detail: &'static str) -> Self {
         Self(Box::new(
-            ProblemResponse::new(error_code::AUTH_FORBIDDEN, detail, RequestId::mint())
+            ProblemResponse::new(error_code::AUTH_FORBIDDEN, detail, RequestId::current())
                 .into_response(),
         ))
     }
@@ -198,7 +216,7 @@ impl Refusal {
     #[must_use]
     pub fn unauthorized(detail: &'static str) -> Self {
         Self(Box::new(
-            ProblemResponse::new(error_code::AUTH_UNAUTHORIZED, detail, RequestId::mint())
+            ProblemResponse::new(error_code::AUTH_UNAUTHORIZED, detail, RequestId::current())
                 .into_response(),
         ))
     }
@@ -212,7 +230,7 @@ impl Refusal {
     #[must_use]
     pub fn preconditioned(code: error_code::ErrorCode, detail: &'static str, etag: &str) -> Self {
         Self(Box::new(
-            ProblemResponse::precondition_failed(code, detail, RequestId::mint(), etag)
+            ProblemResponse::precondition_failed(code, detail, RequestId::current(), etag)
                 .into_response(),
         ))
     }
@@ -229,7 +247,7 @@ impl Refusal {
         resolution: crate::envelope::Resolution,
     ) -> Self {
         Self(Box::new(
-            ProblemResponse::already_resolved(code, detail, RequestId::mint(), resolution)
+            ProblemResponse::already_resolved(code, detail, RequestId::current(), resolution)
                 .into_response(),
         ))
     }
@@ -245,7 +263,7 @@ impl Refusal {
         current_state: &'static str,
     ) -> impl FnOnce(E) -> Self {
         move |error| {
-            let request_id = RequestId::mint();
+            let request_id = RequestId::current();
             log_refusal(&error, event, &request_id);
             Self(Box::new(
                 ProblemResponse::conflict(error.code(), error.detail(), request_id, current_state)
@@ -288,7 +306,7 @@ impl Refusal {
         current_state: &'static str,
     ) -> impl FnOnce(E) -> Self {
         move |error| {
-            let request_id = RequestId::mint();
+            let request_id = RequestId::current();
             log_refusal(&error, event, &request_id);
             Self(Box::new(
                 ProblemResponse::conflict(error.code(), detail, request_id, current_state)

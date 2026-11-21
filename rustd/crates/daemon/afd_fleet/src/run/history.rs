@@ -40,10 +40,11 @@ use crate::run::sql::history::{SELECT_CALLS_OF, SELECT_FINISHED_BEFORE};
 pub(super) const EVENT_HISTORY_UNAVAILABLE: &str = "run_history_unavailable";
 /// The event an assignment whose oldest turns the frame cut is logged under.
 pub(super) const EVENT_HISTORY_CUT: &str = "run_history_cut_to_frame";
-/// The finished turns one read takes: a bound on one statement's cost, not
-/// on the history, which is read page after page until the thread or the
-/// frame runs out.
-pub(crate) const HISTORY_PAGE_TURNS: i64 = 100;
+/// The finished turns one read takes, unless `[turns] history_page_size` says.
+///
+/// A bound on one statement's cost, not on the history, which is read page
+/// after page until the thread or the frame runs out.
+pub const HISTORY_PAGE_TURNS: i64 = 100;
 /// Room the run frame's envelope takes around its payload: the message's
 /// `type` and the run's `kind` tags. Measured in this module's tests.
 pub(crate) const FRAME_ENVELOPE_BYTES: usize = 64;
@@ -129,19 +130,35 @@ pub trait Thread: Send + Sync + Debug {
         fleet: &Uuid7,
         turns: &[Uuid7],
     ) -> crate::Result<Vec<CallRow>>;
+
+    /// The finished turns one [`Self::finished_before`] read asks for.
+    fn page_turns(&self) -> i64 {
+        HISTORY_PAGE_TURNS
+    }
 }
 
 /// The fleet threads a chat run's history is read from, in Postgres.
 #[derive(Debug, Clone)]
 pub struct Conversations {
     database: Db,
+    page_turns: i64,
 }
 
 impl Conversations {
     /// Reads through `database`.
     #[must_use]
     pub const fn new(database: Db) -> Self {
-        Self { database }
+        Self {
+            database,
+            page_turns: HISTORY_PAGE_TURNS,
+        }
+    }
+
+    /// Reads `turns` finished turns per statement.
+    #[must_use]
+    pub const fn with_page_turns(mut self, turns: i64) -> Self {
+        self.page_turns = turns;
+        self
     }
 }
 
@@ -182,6 +199,10 @@ impl Thread for Conversations {
             .fetch_all(&mut *connection)
             .await
             .map_err(query("read a fleet's earlier tool calls"))
+    }
+
+    fn page_turns(&self) -> i64 {
+        self.page_turns
     }
 }
 
@@ -247,11 +268,12 @@ async fn read(
     let mut newest_first = Vec::new();
     let mut stored = 0_usize;
     let mut cursor = at.clone();
+    let page_turns = thread.page_turns();
     loop {
         let page = thread
-            .finished_before(workspace, fleet, &cursor, HISTORY_PAGE_TURNS)
+            .finished_before(workspace, fleet, &cursor, page_turns)
             .await?;
-        let ended = i64::try_from(page.len()).map_or(true, |read| read < HISTORY_PAGE_TURNS);
+        let ended = i64::try_from(page.len()).map_or(true, |read| read < page_turns);
         let Some(oldest) = page.last() else {
             break;
         };

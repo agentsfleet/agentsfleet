@@ -79,7 +79,10 @@ async fn every_wrong_limit_earns_the_one_sentence() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(
             detail_of(response).await,
-            afd_api_tenant::tenant::DETAIL_INVALID_LIMIT,
+            afd_http::paging::limit_sentence(
+                "Limit must be",
+                afd_http::paging::Pages::default().list
+            ),
             "{path}"
         );
     }

@@ -124,12 +124,14 @@ const fn default_message_limit() -> u32 {
 
 /// Bounded creator-only draft list; all filters bind the continuation.
 #[derive(Debug, Clone, Deserialize, garde::Validate)]
+#[garde(context(af_validate::Ceiling as ceiling))]
 #[serde(deny_unknown_fields)]
 pub struct ListQuery {
-    /// Rows per page, 1..100.
-    #[serde(default = "default_limit")]
-    #[garde(range(min = 1, max = super::MAX_PAGE_SIZE))]
-    pub limit: u32,
+    /// Rows per page, up to the deployment's list page (`[api]`); its default
+    /// when absent.
+    #[serde(default)]
+    #[garde(inner(range(min = 1, max = ceiling.max())))]
+    pub limit: Option<u32>,
     /// Optional lifecycle filter.
     #[serde(default, deserialize_with = "super::present")]
     #[garde(skip)]
@@ -150,8 +152,4 @@ pub struct ListQuery {
     #[serde(default, deserialize_with = "super::present")]
     #[garde(inner(length(bytes, min = 1, max = super::MAX_CURSOR_BYTES)))]
     pub starting_after: Option<String>,
-}
-
-const fn default_limit() -> u32 {
-    super::DEFAULT_PAGE_SIZE
 }

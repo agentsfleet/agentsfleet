@@ -246,7 +246,7 @@ fn item(key: &PlatformKey) -> PlatformKeyItem<'static> {
 }
 
 fn request_id() -> Cow<'static, str> {
-    Cow::Owned(RequestId::mint().to_string())
+    Cow::Owned(RequestId::current().to_string())
 }
 
 #[cfg(test)]

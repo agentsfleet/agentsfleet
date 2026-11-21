@@ -44,13 +44,18 @@ impl Creations {
         let store = self
             .schedules
             .clone()
-            .with_activity_streams(self.activity_streams());
+            .with_activity_notices(self.turns.notices());
         self.registrar = Some(afd_cron::ScheduleService::new(store, scheduler));
         self
     }
 
     pub(crate) fn activity_streams(&self) -> afd_bus::Handle {
         self.turns.streams()
+    }
+
+    /// Where this service's receipts are announced.
+    pub(crate) fn activity_notices(&self) -> afd_turns::view::activity::Notices {
+        self.turns.notices()
     }
 
     /// Shares the daemon's ledger, queue, pool and credential inspection service.

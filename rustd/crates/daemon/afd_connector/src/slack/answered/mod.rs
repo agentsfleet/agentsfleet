@@ -162,6 +162,44 @@ pub async fn holds_answer(
     marker: &AnswerMarker,
     author: &str,
 ) -> Result<bool, Unavailable> {
+    let check = Check {
+        client,
+        api_base,
+        token,
+        thread,
+    };
+    holds_answer_within(check, marker, author, ANSWER_CHECK_DEADLINE).await
+}
+
+/// Where a thread check reads, and with what.
+#[derive(Debug, Clone, Copy)]
+pub struct Check<'a> {
+    /// The client the read goes out on.
+    pub client: &'a reqwest::Client,
+    /// [`super::SLACK_API_BASE`] in a deployment.
+    pub api_base: &'a str,
+    /// The bot's token.
+    pub token: &'a SecretString,
+    /// The thread read.
+    pub thread: &'a Thread,
+}
+
+/// [`holds_answer`], under `deadline` rather than [`ANSWER_CHECK_DEADLINE`].
+///
+/// # Errors
+/// As [`holds_answer`].
+pub async fn holds_answer_within(
+    check: Check<'_>,
+    marker: &AnswerMarker,
+    author: &str,
+    deadline: Duration,
+) -> Result<bool, Unavailable> {
+    let Check {
+        client,
+        api_base,
+        token,
+        thread,
+    } = check;
     let endpoint = format!("{api_base}{METHOD_CONVERSATIONS_REPLIES}");
     let oldest = since(&marker.turn_id);
     let mut found = false;
@@ -180,7 +218,7 @@ pub async fn holds_answer(
             }
         },
     );
-    tokio::time::timeout(ANSWER_CHECK_DEADLINE, read)
+    tokio::time::timeout(deadline, read)
         .await
         .unwrap_or(Err(Unavailable::Timeout))?;
     Ok(found)

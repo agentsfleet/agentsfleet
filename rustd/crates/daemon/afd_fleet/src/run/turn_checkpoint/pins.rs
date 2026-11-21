@@ -5,7 +5,6 @@ use af_wire::run::{
     TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef, TurnCheckpointResponse,
 };
 use af_wire::task::CheckpointPin;
-use sqlx::PgConnection;
 
 use super::{
     TurnCheckpointRefusal, TurnRun, allocation,
@@ -82,22 +81,12 @@ pub(super) async fn insert(
     operation: &Uuid7,
 ) -> Result<Pin> {
     let id = runs.entropy().uuid7(owner.fresh().await?)?;
-    insert_on(
-        &mut owner.tx,
-        &id,
-        (owner.current.id.clone(), owner.current.fence),
-        checkpoint,
-        deadline,
-        super::WRITER,
-        operation,
-    )
-    .await
+    insert_on(owner, &id, checkpoint, deadline, super::WRITER, operation).await
 }
 
 async fn insert_on(
-    connection: &mut PgConnection,
+    owner: &mut TurnRunGuard<'_>,
     id: &Uuid7,
-    custodian: (Uuid7, i64),
     checkpoint: &Uuid7,
     deadline: jiff::Timestamp,
     kind: &str,
@@ -107,12 +96,12 @@ async fn insert_on(
         .bind(id)
         .bind(checkpoint)
         .bind(kind)
-        .bind(custodian.0)
-        .bind(custodian.1)
+        .bind(&owner.current.id)
+        .bind(owner.current.fence)
         .bind(jiff_sqlx::Timestamp::from(deadline))
-        .bind(super::PIN_SECONDS)
+        .bind(owner.limits.pin_seconds())
         .bind(operation)
-        .fetch_one(connection)
+        .fetch_one(&mut *owner.tx)
         .await
         .map_err(query("allocate bounded turn writer pin"))
 }
@@ -176,20 +165,9 @@ pub(super) async fn reader(
         return Err(TurnCheckpointRefusal::Limit.into());
     }
     let id = runs.entropy().uuid7(owner.fresh().await?)?;
-    let duration = std::time::Duration::from_secs(
-        u64::try_from(super::TRANSFER_SECONDS).map_err(|_overflow| TurnCheckpointRefusal::Limit)?,
-    );
+    let duration = owner.limits.upload_url_ttl;
     let deadline = af_core::clock::after(now, duration);
-    insert_on(
-        &mut owner.tx,
-        &id,
-        (owner.current.id.clone(), owner.current.fence),
-        checkpoint,
-        deadline,
-        super::READER,
-        operation,
-    )
-    .await
+    insert_on(owner, &id, checkpoint, deadline, super::READER, operation).await
 }
 
 pub(super) async fn update(
@@ -240,7 +218,7 @@ async fn renew(owner: &mut TurnRunGuard<'_>, pin: Pin, expected: u64) -> Result<
         .bind(expected)
         .bind(i64::MAX)
         .bind(jiff_sqlx::Timestamp::from(now))
-        .bind(super::PIN_SECONDS)
+        .bind(owner.limits.pin_seconds())
         .fetch_optional(&mut *owner.tx)
         .await
         .map_err(query(

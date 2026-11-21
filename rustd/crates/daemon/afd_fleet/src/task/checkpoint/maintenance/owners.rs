@@ -27,7 +27,7 @@ pub(super) async fn retain(
         .bind(cutoff.to_sqlx())
         .bind(cursor.after.as_ref().map(|(at, _id)| at.to_sqlx()))
         .bind(cursor.after.as_ref().map(|(_at, id)| id))
-        .bind(super::super::GC_BATCH)
+        .bind(tasks.times().gc_batch())
         .fetch_all(&mut **connection)
         .await
         .map_err(query("read indexed due checkpoint owners"))?;
@@ -78,8 +78,8 @@ async fn retain_one(tasks: &Tasks, task: &Task) -> Result<u64> {
             .map_err(query("abandon expired or fenced capture owners"))?;
         let removed = sqlx::query(include_str!("../sql/retention_delete.sql"))
             .bind(&task.id)
-            .bind(super::super::LIVE_GENERATIONS)
-            .bind(super::super::TERMINAL_SECONDS)
+            .bind(tasks.times().live_generations())
+            .bind(tasks.times().terminal_seconds())
             .execute(&mut *tx)
             .await
             .map_err(query(
@@ -88,7 +88,7 @@ async fn retain_one(tasks: &Tasks, task: &Task) -> Result<u64> {
             .rows_affected();
         sqlx::query(include_str!("../sql/retention_next.sql"))
             .bind(&task.id)
-            .bind(super::super::TERMINAL_SECONDS)
+            .bind(tasks.times().terminal_seconds())
             .execute(&mut *tx)
             .await
             .map_err(query(
@@ -114,8 +114,8 @@ struct Base {
 pub(super) async fn bases(tasks: &Tasks) -> Result<u64> {
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let bases: Vec<Base> = sqlx::query_as(include_str!("../sql/base_orphans.sql"))
-        .bind(super::super::ORPHAN_SECONDS)
-        .bind(super::super::GC_BATCH)
+        .bind(tasks.times().orphan_seconds())
+        .bind(tasks.times().gc_batch())
         .fetch_all(&mut **connection)
         .await
         .map_err(query("read retained bases without checkpoint owners"))?;
@@ -129,7 +129,7 @@ pub(super) async fn bases(tasks: &Tasks) -> Result<u64> {
             removed += sqlx::query(include_str!("../sql/base_delete.sql"))
                 .bind(&base.id)
                 .bind(&base.workspace_id)
-                .bind(super::super::ORPHAN_SECONDS)
+                .bind(tasks.times().orphan_seconds())
                 .execute(&mut *tx)
                 .await
                 .map_err(query("remove only a still-unreferenced retained base"))?

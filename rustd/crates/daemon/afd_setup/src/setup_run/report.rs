@@ -235,8 +235,8 @@ impl Creations {
         announcement: Announcement,
         owed: SetupOwed,
     ) -> Result<()> {
-        let streams = self.activity_streams();
-        afd_turns::view::activity::commit(transaction, announcement, Some(&streams))
+        let notices = self.activity_notices();
+        afd_turns::view::activity::commit(transaction, announcement, Some(&notices))
             .await
             .map_err(query(sql::CONTEXT))?;
         owed.settle(&self.setup.drafts);

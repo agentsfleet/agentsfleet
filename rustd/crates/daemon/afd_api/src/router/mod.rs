@@ -18,11 +18,11 @@
 //!
 //! A route's middleware chain is a constant in the table, so it is read once,
 //! while the router is BUILT, rather than re-decided on every request: a route
-//! that is not metered has no admission layer in its stack to consult, and a
+//! that is not metered has no in-flight layer in its stack to consult, and a
 //! route with no guard has no authenticator in its stack to reach. The request
 //! path costs what the route actually needs and not one branch more.
 //!
-//! The order is load-bearing. Admission is outermost: a shed has to stay
+//! The order is load-bearing. The in-flight ceiling is outermost: a shed has to stay
 //! cheaper than the work it refuses, and proving a credential means a datastore
 //! round trip. Authentication and the capability
 //! gate come next, so a handler never runs for a caller who should not reach
@@ -50,17 +50,25 @@ mod mount;
 pub(crate) mod probes;
 mod trace;
 
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::error_handling::HandleErrorLayer;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
-use http::{Method, StatusCode};
+use http::{Method, StatusCode, Uri};
+use tower::limit::GlobalConcurrencyLimitLayer;
+use tower::load_shed::LoadShedLayer;
+use tower::util::MapRequestLayer;
+use tower::{BoxError, ServiceBuilder};
+use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 
-use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, Owner, own, plane_of, prove};
+use crate::in_flight::shed;
+use crate::route::RouteClass;
 use crate::route::{Route, RouteMeta};
 use afd_api_ingress::services::IngressPlane;
 use afd_api_operator::OperatorPlane;
@@ -96,12 +104,17 @@ impl<D> Serving for D where
 /// table are written from. A path cannot be mounted here under a spelling the
 /// table does not know, and it cannot be mounted under a guard its own row does
 /// not declare.
-pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router {
-    let mut router = Router::new();
-    let (mounted, merged) = mounted_routes(&dependencies, admission);
-    for (template, handler) in merged {
-        router = router.route(template, handler);
+pub fn build<D: Serving>(dependencies: Arc<D>, max_in_flight: NonZeroUsize) -> Router {
+    let (mut api, mut open) = (Router::new(), Router::new());
+    let (mounted, merged) = mounted_routes(&dependencies);
+    for ((class, template), handler) in merged {
+        if class == RouteClass::Api {
+            api = api.route(template, handler);
+        } else {
+            open = open.route(template, handler);
+        }
     }
+    let router = open.merge(limited(api, max_in_flight));
     let tabled = Route::all().count();
     tracing::info!(mounted, tabled, event = "router_built", "router built");
     router
@@ -112,18 +125,24 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
             crate::telemetry::record::<D>,
         ))
         .with_state(dependencies)
+        // Every request, matched or not: an `x-request-id` minted here, made
+        // the id every refusal under it carries, and echoed on the response.
+        // Outermost last.
+        .layer(from_fn(afd_http::request_id::scope))
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(SetRequestIdLayer::x_request_id(afd_http::request_id::Mint))
+        // In front of the stamp: a caller's id is never accepted, so the stamp
+        // always mints ours.
+        .layer(MapRequestLayer::new(afd_http::request_id::drop_incoming))
 }
 
 /// One mounted template and the method router that serves it.
 ///
 /// Named because the pair travels together out of [`mounted_routes`] and back
 /// into the merge loop; the tuple spelled inline reads as noise at both ends.
-type MountedRoute<D> = (&'static str, MethodRouter<Arc<D>>);
+type MountedRoute<D> = ((RouteClass, &'static str), MethodRouter<Arc<D>>);
 
-fn mounted_routes<D: Serving>(
-    dependencies: &Arc<D>,
-    admission: &Admission,
-) -> (usize, Vec<MountedRoute<D>>) {
+fn mounted_routes<D: Serving>(dependencies: &Arc<D>) -> (usize, Vec<MountedRoute<D>>) {
     let mut mounted = 0usize;
     let mut merged = Vec::with_capacity(Route::all().count());
     for route in Route::all() {
@@ -137,11 +156,14 @@ fn mounted_routes<D: Serving>(
         let template = meta.template;
         let class = meta.class;
         tracing::debug!(template, ?class, event = "route_mounted", "route mounted");
-        let handler = layered(handler, meta, dependencies, admission);
+        let handler = layered(handler, meta, dependencies);
         // Counts route identities, not unique paths. Two identities sharing one
         // template remain two separately tabled pieces of the surface.
         mounted += 1;
-        match merged.iter_mut().find(|(known, _)| *known == template) {
+        match merged
+            .iter_mut()
+            .find(|(known, _)| *known == (class, template))
+        {
             // The handler already carries only its own route's layers. Merging
             // preserves those per-method services without making an open GET
             // and a bearer DELETE share an authenticator.
@@ -155,7 +177,7 @@ fn mounted_routes<D: Serving>(
                 let combined = std::mem::replace(existing, MethodRouter::new());
                 *existing = combined.merge(handler);
             }
-            None => merged.push((template, handler)),
+            None => merged.push(((class, template), handler)),
         }
     }
     (mounted, merged)
@@ -182,15 +204,12 @@ pub fn unlayered_mount<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>>
 
 /// Wraps `handler` in exactly the layers its route's row calls for.
 ///
-/// Outermost last, which is how `tower` composes: the guard is added first and
-/// admission second, so a request meets the ceiling before it meets the
-/// datastore. A route that is neither metered nor guarded comes back untouched
-/// rather than wrapped in a pair of layers that would each answer "carry on".
+/// Outermost last, which is how `tower` composes. A route that is not guarded
+/// comes back untouched.
 fn layered<D: Serving>(
     handler: MethodRouter<Arc<D>>,
     meta: RouteMeta,
     dependencies: &Arc<D>,
-    admission: &Admission,
 ) -> MethodRouter<Arc<D>> {
     // Innermost, so it runs LAST of the three and closest to the handler. That
     // ordering is the whole cost argument: ownership is the only one of the
@@ -203,12 +222,27 @@ fn layered<D: Serving>(
     } else {
         handler
     };
-    let guarded = authenticate_route(owned, meta, dependencies);
-    if is_metered(meta.class) {
-        guarded.layer(from_fn_with_state(admission.clone(), admit))
-    } else {
-        guarded
-    }
+    authenticate_route(owned, meta, dependencies)
+}
+
+/// `router`'s routes counted against one in-flight ceiling of `limit`.
+///
+/// Mounted once over the API route group, outside each route's own
+/// authentication, so a shed costs no datastore round trip: tower's
+/// concurrency limit, shedding rather than queueing, with the overload
+/// answered as [`shed`]. Probe and stream routes are never inside it.
+pub fn limited<S>(router: Router<S>, limit: NonZeroUsize) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    router.route_layer(
+        ServiceBuilder::new()
+            .layer(HandleErrorLayer::new(
+                move |uri: Uri, _overloaded: BoxError| std::future::ready(shed(limit, &uri)),
+            ))
+            .layer(LoadShedLayer::new())
+            .layer(GlobalConcurrencyLimitLayer::new(limit.get())),
+    )
 }
 
 /// Choose authentication once from the route's declared guard and traffic class.
@@ -219,7 +253,7 @@ fn authenticate_route<D: Serving>(
 ) -> MethodRouter<Arc<D>> {
     use afd_http::auth::{BearerAuthentication, RunnerStreamAuthentication};
     match (meta.guard, meta.class) {
-        (crate::route::Guard::RunnerBearer, crate::route::RouteClass::Stream) => {
+        (crate::route::Guard::RunnerBearer, RouteClass::Stream) => {
             let authentication = RunnerStreamAuthentication::new(Arc::clone(dependencies));
             handler.layer(from_fn_with_state(
                 Gate::new(authentication, meta),

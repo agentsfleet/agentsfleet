@@ -50,15 +50,15 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use self::cache::{Cached, PerToken, Refused};
-pub use self::vendors::{Exchanger, Vendors};
+pub use self::vendors::{Exchanger, Lifetimes, Vendors};
 use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::secrets::connector::{Connector, Connectors, FIELD_INTEGRATION};
 
-/// How many live tokens the process will hold.
+/// How many live tokens the process holds when nothing configures it.
 ///
-/// A bound on memory rather than a tuning knob — `moka` evicts least-recently
-/// used beyond it, and an evicted entry costs one re-mint.
-const MAX_CACHED_TOKENS: u64 = 8192;
+/// A bound on memory — `moka` evicts least-recently used beyond it, and an
+/// evicted entry costs one re-mint.
+pub const MAX_CACHED_TOKENS: u64 = 8192;
 
 /// The vault-handle fields that change on an ordinary rotation.
 ///
@@ -137,9 +137,19 @@ impl Broker {
     /// A broker over `connectors`, minting through `vendors`.
     #[must_use]
     pub fn new(connectors: Arc<dyn Connectors>, vendors: Arc<dyn Exchanger>) -> Self {
+        Self::holding(connectors, vendors, MAX_CACHED_TOKENS)
+    }
+
+    /// [`Self::new`], holding at most `capacity` live tokens.
+    #[must_use]
+    pub fn holding(
+        connectors: Arc<dyn Connectors>,
+        vendors: Arc<dyn Exchanger>,
+        capacity: u64,
+    ) -> Self {
         Self {
             cache: Cache::builder()
-                .max_capacity(MAX_CACHED_TOKENS)
+                .max_capacity(capacity)
                 .expire_after(PerToken)
                 .build(),
             connectors,

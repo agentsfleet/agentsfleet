@@ -57,6 +57,7 @@ impl Creations {
             operation,
             &person.id,
             &digest,
+            self.setup.drafts.tuning.replay_window,
         )
         .await?
         {
@@ -81,6 +82,7 @@ impl Creations {
             operation,
             &person.id,
             &digest,
+            self.setup.drafts.tuning.replay_window,
         )
         .await?
         {
@@ -108,6 +110,7 @@ impl Creations {
                 operation,
                 digest: &digest,
                 resource: &revision,
+                window: self.setup.drafts.tuning.replay_window,
             },
         )
         .await?;
@@ -124,12 +127,13 @@ impl Creations {
                 operation,
                 &person.id,
                 &digest,
+                self.setup.drafts.tuning.replay_window,
             )
             .await?
             .ok_or(ErrorKind::Gone)?;
             (revision, afd_turns::view::activity::Announcement::default())
         };
-        afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.streams()))
+        afd_turns::view::activity::commit(tx, announcement, Some(&self.turns.notices()))
             .await
             .map_err(query(CONTEXT))?;
         Ok(revision)

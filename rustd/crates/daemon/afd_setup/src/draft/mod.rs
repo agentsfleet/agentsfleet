@@ -34,6 +34,10 @@ pub struct Drafts {
     /// a setup run's live answer. `None` publishes nothing; the 5 s probe
     /// still finds the work.
     pub(crate) bus: Option<afd_bus::Handle>,
+    /// The deployment's `[setup]` settings.
+    pub(crate) tuning: crate::tuning::SetupTuning,
+    /// The deployment's list page (`[api]`): what a draft or model list serves.
+    pub(crate) list_page: af_validate::Ceiling,
 }
 
 impl Drafts {
@@ -57,7 +61,23 @@ impl Drafts {
             analytics: Analytics::silent(),
             senders: Cache::new(MAX_CACHED_SEND_GATES),
             bus: None,
+            tuning: crate::tuning::SetupTuning::default(),
+            list_page: af_core::paging::CEILING,
         }
+    }
+
+    /// Serves draft and model lists under the deployment's list page.
+    #[must_use]
+    pub const fn with_list_page(mut self, ceiling: af_validate::Ceiling) -> Self {
+        self.list_page = ceiling;
+        self
+    }
+
+    /// Runs under the deployment's `[setup]` settings.
+    #[must_use]
+    pub const fn with_tuning(mut self, tuning: crate::tuning::SetupTuning) -> Self {
+        self.tuning = tuning;
+        self
     }
 
     /// Publishes this service's wake, Cancel and live-answer hints on `bus`.

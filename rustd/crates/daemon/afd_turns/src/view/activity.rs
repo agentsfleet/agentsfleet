@@ -13,7 +13,36 @@ use crate::view::Result;
 pub const EVENT_TYPE_ACTIVITY: &str = "activity";
 /// Receipts describe system facts rather than messages from a person or runner.
 pub const ACTOR_ACTIVITY: &str = "system";
-const MAX_CONCURRENT_ACTIVITY_NOTICES: usize = 16;
+/// Fleets told about one commit's receipts at once, when
+/// `[server] max_live_activity_notices` names nothing else.
+pub const DEFAULT_ACTIVITY_NOTICES: usize = 16;
+
+/// Where receipts are announced, and how many fleets are told at once.
+#[derive(Debug, Clone)]
+pub struct Notices {
+    streams: Handle,
+    fanout: usize,
+}
+
+impl Notices {
+    /// Announces on `streams`, telling at most `fanout` fleets at once.
+    #[must_use]
+    pub const fn new(streams: Handle, fanout: usize) -> Self {
+        Self { streams, fanout }
+    }
+
+    /// The bus the announcements go out on.
+    #[must_use]
+    pub const fn streams(&self) -> &Handle {
+        &self.streams
+    }
+
+    /// How many fleets are told at once.
+    #[must_use]
+    pub const fn fanout(&self) -> usize {
+        self.fanout
+    }
+}
 
 /// Unpublished recipients produced by a receipt write; consumed by [`commit`].
 #[derive(Debug, Default)]
@@ -36,14 +65,15 @@ impl Announcement {
 pub async fn commit(
     transaction: Transaction<'static, Postgres>,
     mut announcement: Announcement,
-    streams: Option<&Handle>,
+    notices: Option<&Notices>,
 ) -> Result<(), sqlx::Error> {
     transaction.commit().await?;
     announcement.fleets.sort_unstable();
     announcement.fleets.dedup();
-    if let Some(streams) = streams {
+    if let Some(notices) = notices {
+        let streams = notices.streams();
         futures_util::stream::iter(announcement.fleets)
-            .for_each_concurrent(MAX_CONCURRENT_ACTIVITY_NOTICES, async move |fleet| {
+            .for_each_concurrent(notices.fanout(), async move |fleet| {
                 announce(streams, &fleet).await;
             })
             .await;

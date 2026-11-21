@@ -503,6 +503,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower",
+ "tower-http 0.7.1",
  "tracing",
  "utoipa",
 ]
@@ -623,6 +624,7 @@ dependencies = [
  "const_format",
  "futures-util",
  "garde",
+ "headers",
  "http",
  "jiff 1.0.1",
  "serde",
@@ -1068,6 +1070,7 @@ dependencies = [
  "afd_turns",
  "afd_vault",
  "axum",
+ "axum-client-ip",
  "garde",
  "hex",
  "http",
@@ -1077,6 +1080,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower",
+ "tower-http 0.7.1",
  "tracing",
  "utoipa",
 ]
@@ -1158,7 +1162,6 @@ dependencies = [
  "af_observability",
  "af_wire",
  "afd_api_wire",
- "afd_bus",
  "afd_db",
  "afd_turns",
  "garde",
@@ -1365,7 +1368,6 @@ version = "0.78.0"
 dependencies = [
  "af_core",
  "af_crypto",
- "afd_bus",
  "afd_db",
  "afd_turns",
  "garde",
@@ -1662,6 +1664,7 @@ dependencies = [
  "af_observability",
  "af_otlp",
  "af_stream",
+ "af_validate",
  "af_wire",
  "afd_admin",
  "afd_api",
@@ -2212,6 +2215,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-client-ip"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8ba1af5b620232acf37f2eb6d22151ea465491e0b4c25f552d1990f64ec5a67"
+dependencies = [
+ "axum",
+ "client-ip",
+]
+
+[[package]]
 name = "axum-core"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2655,6 +2668,15 @@ name = "clap_lex"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0921b3876b3a1df8a1c9f912e7f94342458022c2e84288015893d83c4d62a79"
+
+[[package]]
+name = "client-ip"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39d2056bf065c8b4bce5a8898d40e175211ff4410add2a84d695845d3937c729"
+dependencies = [
+ "http",
+]
 
 [[package]]
 name = "clru"
@@ -4960,6 +4982,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "headers"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc2700e3fe555c3310aa7286cac6167449f2c87e0eb58769c9208a1c58a1d106"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "headers-core",
+ "http",
+ "httpdate",
+ "mime",
+ "sha1 0.10.7",
+]
+
+[[package]]
+name = "headers-core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54b4a22553d4242c49fddb9ba998a99962b5cc6f22cb5a3482bec22522403ce4"
+dependencies = [
+ "http",
+]
+
+[[package]]
 name = "heapless"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6796,7 +6842,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sha1",
+ "sha1 0.11.0",
  "sha2 0.10.9",
  "tokio",
  "tracing",
@@ -7338,7 +7384,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tower",
- "tower-http",
+ "tower-http 0.6.11",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -7867,6 +7913,17 @@ dependencies = [
 
 [[package]]
 name = "sha1"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "sha1"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
@@ -8218,7 +8275,7 @@ dependencies = [
  "log",
  "percent-encoding",
  "serde",
- "sha1",
+ "sha1 0.11.0",
  "sha2 0.11.1",
  "sqlx-core",
  "thiserror 2.0.21",
@@ -8830,6 +8887,22 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "url",
+]
+
+[[package]]
+name = "tower-http"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08a05a66a4fdd61cbbe0a1d755ffe0ca6aba159dd4820936a0ff8a8278245b9c"
+dependencies = [
+ "bitflags 2.13.2",
+ "bytes",
+ "http",
+ "percent-encoding",
+ "pin-project-lite",
+ "tower-layer",
+ "tower-service",
+ "uuid",
 ]
 
 [[package]]

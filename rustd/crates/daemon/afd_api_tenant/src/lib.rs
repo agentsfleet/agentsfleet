@@ -7,7 +7,7 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-use afd_http::{auth, client, etag, request_id, route};
+use afd_http::{auth, client, request_id, route};
 
 pub mod services;
 

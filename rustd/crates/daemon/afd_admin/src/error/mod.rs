@@ -86,7 +86,7 @@ impl Error {
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
             ErrorKind::Page => {
-                "Use a limit between 1 and 100 and a cursor from the same catalogue generation and page size; restart listing after catalogue edits"
+                "Use a positive limit and a cursor from the same catalogue generation and page size; restart listing after catalogue edits"
             }
             ErrorKind::DecisionRevision => {
                 "Changed decision settings require a new profile revision"

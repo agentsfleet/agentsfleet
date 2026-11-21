@@ -88,6 +88,7 @@ struct Fake {
     rows: Option<Vec<FinishedTurn>>,
     calls: Vec<CallRow>,
     pages: AtomicUsize,
+    page_turns: i64,
 }
 
 impl Fake {
@@ -96,7 +97,13 @@ impl Fake {
             rows,
             calls: Vec::new(),
             pages: AtomicUsize::new(0),
+            page_turns: HISTORY_PAGE_TURNS,
         }
+    }
+
+    const fn with_page_turns(mut self, turns: i64) -> Self {
+        self.page_turns = turns;
+        self
     }
 
     fn with_calls(mut self, calls: Vec<CallRow>) -> Self {
@@ -139,6 +146,10 @@ impl Thread for Fake {
             .filter(|call| turns.contains(&call.turn_id))
             .cloned()
             .collect())
+    }
+
+    fn page_turns(&self) -> i64 {
+        self.page_turns
     }
 }
 
@@ -277,6 +288,20 @@ async fn test_a_thread_past_one_page_is_read_whole() {
         3,
         "two full pages and a short one"
     );
+}
+
+/// A thread's configured page size is the size each read asks for:
+/// seventeen turns at seven a page take two full pages and a short one.
+#[tokio::test]
+async fn test_the_configured_page_size_is_what_each_read_takes() {
+    // A chat read observes the process-wide history counters.
+    let _counted_alone = COUNTED.lock().await;
+    let thread = Fake::new(Some(processed(17, "a"))).with_page_turns(7);
+
+    let turns = turns_for(&thread, TurnKind::Chat).await;
+
+    assert_eq!(turns.len(), 17);
+    assert_eq!(thread.pages.load(Ordering::SeqCst), 3);
 }
 
 /// A read stops paging once what it read passes one frame: older turns

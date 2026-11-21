@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use af_core::paging::{Boundary as _, CEILING, Page};
+use af_core::paging::{Boundary as _, Page};
 use afd_api_wire::tenant::{
     ApiKeySummary, MintApiKeyRequest, MintedApiKeyResponse, PageResponse, PatchApiKeyRequest,
     RevokedApiKeyResponse,
@@ -128,8 +128,9 @@ pub(crate) async fn list<D: TenantPlane>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name), CEILING)
-        .map_err(|refusal| Refusal::malformed(refusal.detail()))?;
+    let ceiling = services.pages().list;
+    let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name), ceiling)
+        .map_err(|refusal| afd_http::paging::refused(refusal, ceiling))?;
 
     let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
 

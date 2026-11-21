@@ -7,7 +7,7 @@
 -- answered. The lock order is thread, then run, as in every assignment.
 --
 -- The run is deleted: no runner ever heard of it, so it holds no items, usage or folds, and a
--- run that never left the daemon must not count toward its turn's EVENT_RUNS_MAX (every row
+-- run that never left the daemon must not count toward its turn's DEFAULT_MAX_RUNS_PER_TURN (every row
 -- of the turn counts, `assign_turn_head.sql` earlier_runs). The thread is freed the way
 -- an assignment that issued no run frees it (`release_runless_thread.sql`), so the next
 -- assignment takes the same work at the next fence. A fleet's thread is keyed by the fleet,

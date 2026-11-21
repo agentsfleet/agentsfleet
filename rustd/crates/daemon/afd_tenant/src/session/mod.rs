@@ -43,7 +43,9 @@ use jiff::Timestamp;
 
 pub use self::state::SessionStatus;
 use self::state::{AbortReason, ApproveOutcome, VerifyOutcome};
-pub use self::store::DeviceSessions;
+pub use self::store::{
+    CONSUME_REPLAY_WINDOW, DeviceSessions, MAX_VERIFY_ATTEMPTS, SESSION_TTL, SessionPolicy,
+};
 
 use crate::Result;
 use crate::error;

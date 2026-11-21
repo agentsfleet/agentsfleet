@@ -64,7 +64,10 @@ pub(super) async fn open_runtime(
     // in the build, and nothing below should be opened only to be abandoned.
     let clients = Clients::open()?;
     let database = open_database(config).await?;
-    let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
+    let (capabilities, sessions, signup_writeback) = crate::identity::resolve(
+        config.identity(),
+        config.runtime.operations.tuning.identity(),
+    );
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());
     let broker = open_broker(config, &database, &kek, clients.broker).await;
@@ -128,6 +131,7 @@ async fn open_broker(
         &afd_vault::Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
         config.platform_admin_workspace(),
         client,
+        config.runtime.operations.tuning.minting(),
     )
     .await;
     #[cfg(feature = "test-util")]
@@ -165,6 +169,7 @@ fn schedule_config(config: &BootConfig, client: reqwest::Client) -> crate::plane
     crate::plane::ScheduleConfig {
         client,
         api_url: config.api_url().into(),
+        retries: config.runtime.operations.scheduler_retries,
     }
 }
 

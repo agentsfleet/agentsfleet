@@ -5,7 +5,6 @@ use crate::{Result, error::query, run::Runs};
 use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
-const RETENTION_SECONDS: i32 = 7 * 24 * 60 * 60;
 const BATCH: i64 = 100;
 const PLANS_PER_OWNER: i64 = 64;
 
@@ -25,10 +24,11 @@ impl Runs {
         &self,
         after: &mut Option<Uuid7>,
     ) -> Result<(u64, u64)> {
+        let retention = self.limits().turn_checkpoints.retention_seconds();
         let mut connection = transaction::acquire(self.pool()).await?;
         let candidates: Vec<Candidate> =
             sqlx::query_as(include_str!("sql/maintenance_candidates.sql"))
-                .bind(RETENTION_SECONDS)
+                .bind(retention)
                 .bind(BATCH)
                 .bind(after.as_ref())
                 .fetch_all(&mut **connection)
@@ -64,7 +64,7 @@ impl Runs {
 async fn retain_orphans(runs: &Runs) -> Result<()> {
     let mut connection = transaction::acquire(runs.pool()).await?;
     sqlx::query(include_str!("sql/maintenance_orphans.sql"))
-        .bind(RETENTION_SECONDS)
+        .bind(runs.limits().turn_checkpoints.retention_seconds())
         .bind(BATCH)
         .execute(&mut **connection)
         .await
@@ -95,7 +95,12 @@ async fn retain(runs: &Runs, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) ->
             .await
             .map_err(query("hold turn retention head"))?;
         if head.is_some() {
-            removed = collect(&mut tx, event).await?;
+            removed = collect(
+                &mut tx,
+                event,
+                runs.limits().turn_checkpoints.retention_seconds(),
+            )
+            .await?;
         }
     }
     tx.commit()
@@ -105,11 +110,15 @@ async fn retain(runs: &Runs, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) ->
     Ok(removed)
 }
 
-async fn collect(connection: &mut sqlx::PgConnection, event: &Uuid7) -> Result<u64> {
+async fn collect(
+    connection: &mut sqlx::PgConnection,
+    event: &Uuid7,
+    retention: i32,
+) -> Result<u64> {
     let plans: Vec<Uuid7> = sqlx::query_scalar(include_str!("sql/maintenance_lock_plans.sql"))
         .bind(event)
         .bind(PLANS_PER_OWNER)
-        .bind(RETENTION_SECONDS)
+        .bind(retention)
         .fetch_all(&mut *connection)
         .await
         .map_err(query("hold turn retention generations"))?;
@@ -125,7 +134,7 @@ async fn collect(connection: &mut sqlx::PgConnection, event: &Uuid7) -> Result<u
     let removed = sqlx::query(include_str!("sql/maintenance_delete.sql"))
         .bind(event)
         .bind(now)
-        .bind(RETENTION_SECONDS)
+        .bind(retention)
         .bind(&plans)
         .execute(&mut *connection)
         .await
@@ -134,7 +143,7 @@ async fn collect(connection: &mut sqlx::PgConnection, event: &Uuid7) -> Result<u
     let terminal: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/maintenance_head.sql"))
         .bind(event)
         .bind(now)
-        .bind(RETENTION_SECONDS)
+        .bind(retention)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query("collect terminal turn recovery head"))?;

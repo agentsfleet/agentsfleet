@@ -18,10 +18,8 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use af_core::paging::{
-    CEILING, Cursor as PageCursor, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER,
-};
-use af_validate::{Ceiling, Limit};
+use af_core::paging::{Cursor as PageCursor, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_validate::Limit;
 use af_wire::fleets_verb::{FleetItem, FleetTurnItem, FleetTurnsPage, FleetsPage};
 use af_wire::turn::message_of;
 use afd_fleet::run::Standing;
@@ -48,24 +46,8 @@ pub(super) const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 /// The refusal a fleet this workspace does not hold earns.
 pub(super) const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 
-/// The refusal a fleets page size outside the shared band earns.
-const DETAIL_LIMIT: &str = PagingRefusal::Limit.detail();
-
-/// The most events one read serves: the thread read's own page.
-const EVENTS_MAX: u32 = 100;
-
-/// The events a read serves when it names no `limit`.
-const EVENTS_DEFAULT: u32 = 25;
-
-/// The refusal an events page size outside its band earns.
-const DETAIL_EVENTS_LIMIT: &str =
-    const_format::concatcp!("limit must be between 1 and ", EVENTS_MAX);
-
 /// The refusal a `starting_after` this daemon never issued earns.
 const DETAIL_CURSOR: &str = "The cursor is not valid";
-
-/// One fleet's events: [`EVENTS_DEFAULT`] unless asked, at most [`EVENTS_MAX`].
-const EVENTS_CEILING: Ceiling = Ceiling::new(EVENTS_MAX, EVENTS_DEFAULT);
 
 /// Lists the fleets of the held fleet's workspace, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -101,8 +83,9 @@ pub(crate) async fn list<D: RunnerPlane>(
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
     let token = fence(Some(&query))?;
-    let limit = Limit::parse(parameter(&query, QUERY_LIMIT), CEILING)
-        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))?;
+    let ceiling = services.pages().list;
+    let limit = Limit::parse(parameter(&query, QUERY_LIMIT), ceiling)
+        .map_err(|_break| afd_http::paging::refused(PagingRefusal::Limit, ceiling))?;
     let after = list_cursor(starting_after(&query)?.as_deref())?;
     let run = proven(&*services, runner.id(), &run_id, token, EVENT_FAILED).await?;
     let page = services
@@ -151,8 +134,10 @@ pub(crate) async fn events<D: RunnerPlane>(
     let query = query.unwrap_or_default();
     let fleet = parse_id(&fleet_id, DETAIL_FLEET_ID)?;
     let token = fence(Some(&query))?;
-    let limit = Limit::parse(parameter(&query, QUERY_LIMIT), EVENTS_CEILING)
-        .map_err(|_break| Refusal::malformed(DETAIL_EVENTS_LIMIT))?;
+    // One fleet's events are the thread read's own page.
+    let ceiling = services.pages().thread;
+    let limit = Limit::parse(parameter(&query, QUERY_LIMIT), ceiling)
+        .map_err(|_break| afd_http::paging::refused(PagingRefusal::Limit, ceiling))?;
     let cursor = starting_after(&query)?
         .as_deref()
         .map(Cursor::decode)

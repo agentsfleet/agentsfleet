@@ -67,6 +67,7 @@ pub(super) struct OutboundParts {
     pub(super) turns: Turns,
     pub(super) vendor_client: reqwest::Client,
     pub(super) slack_api_base: String,
+    pub(super) tuning: crate::config::tuning::Tuning,
 }
 
 /// Builds the outbound family.
@@ -89,12 +90,20 @@ pub(super) fn outbound(database: &Db, kek: &Arc<Kek>, parts: OutboundParts) -> O
         turns,
         vendor_client,
         slack_api_base,
+        tuning,
     } = parts;
     let upstream = platform::qstash(database, kek, admin, schedule);
-    let bus = turns.streams();
+    let notices = turns.notices();
     let schedules = config::schedule_plane(database, Arc::clone(&upstream), turns);
-    let interjector = platform::interjector(database, kek, vendor_client.clone(), slack_api_base);
-    let connectors = platform::connect_flow(database, kek, &bus, vendor_client);
+    let interjector = platform::interjector(
+        database,
+        kek,
+        vendor_client.clone(),
+        slack_api_base,
+        tuning.slack_deadlines(),
+    );
+    let connectors =
+        platform::connect_flow(database, kek, &notices, vendor_client, tuning.connect());
     Outbound {
         schedules,
         scheduler: upstream,
@@ -115,9 +124,13 @@ pub(super) struct Login {
 ///
 /// The surface BORROWS the dashboard url, so it is built before the url moves
 /// into the returned value.
-pub(super) fn login(login: LoginConfig, database: &Db) -> Login {
+pub(super) fn login(
+    login: LoginConfig,
+    database: &Db,
+    auth: &crate::config::tuning::AuthTuning,
+) -> Login {
     let logins = Logins::new(
-        afd_tenant::session::DeviceSessions::new(database.clone()),
+        afd_tenant::session::DeviceSessions::new(database.clone()).with_policy(auth.sessions()),
         login.code_pepper,
         Entropy::new(),
         login.app_url.as_str(),

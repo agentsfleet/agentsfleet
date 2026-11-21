@@ -48,6 +48,8 @@ pub(super) struct TurnRunGuard<'a> {
     pub tx: Transaction<'a, Postgres>,
     pub current: Current,
     pub setup: Uuid7,
+    /// The deployment's checkpoint lifetimes, read from the run store.
+    pub limits: crate::run::TurnCheckpointLimits,
 }
 
 impl<'a> TurnRunGuard<'a> {
@@ -77,7 +79,12 @@ impl<'a> TurnRunGuard<'a> {
             .setup_revision_id
             .clone()
             .ok_or(TurnCheckpointRefusal::Incompatible)?;
-        let mut owner = Self { tx, current, setup };
+        let mut owner = Self {
+            tx,
+            current,
+            setup,
+            limits: runs.limits().turn_checkpoints,
+        };
         owner.fresh().await?;
         Ok(owner)
     }

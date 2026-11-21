@@ -3,7 +3,7 @@
 //! The run row is written before its frame is built, so a frame that is never
 //! sent leaves a run no runner holds. Left alone it would lapse, be reassigned
 //! at the next fence and, for a frame too large, fail the same way until
-//! `EVENT_RUNS_MAX` ended it, the fleet's queue stalled behind it all the
+//! `DEFAULT_MAX_RUNS_PER_TURN` ended it, the fleet's queue stalled behind it all the
 //! while. What it is owed turns on whether another try could send it:
 //!
 //! - [`Cause::TooLarge`]: the assignment, measured before it is framed, passes

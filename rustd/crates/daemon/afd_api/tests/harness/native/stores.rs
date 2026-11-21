@@ -55,6 +55,7 @@ impl Fleet {
             frame_memory: af_stream::MemoryLimits::default(),
             wall_clock: Arc::new(af_core::clock::SystemClock),
             analytics: self.analytics.clone(),
+            frames: afd_gateway::FrameCeilings::default(),
         })
     }
 }

@@ -126,7 +126,14 @@ impl RunService {
         runner_runs::acquired(runner);
         log_assigned(&turn.draft_id, &run_id, runner, won.fencing_token);
         let (fence, expires_at) = (won.fencing_token, won.run_expires_at);
-        let assignment = DraftAssignment::new(run_id, fence, expires_at, turn, route);
+        let assignment = DraftAssignment::new(
+            run_id,
+            fence,
+            expires_at,
+            turn,
+            route,
+            self.runs.limits().tool_windows,
+        );
         Ok(Placement::Issued(Box::new(assignment)))
     }
 }

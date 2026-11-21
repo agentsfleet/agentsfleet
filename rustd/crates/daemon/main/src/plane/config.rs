@@ -109,6 +109,8 @@ pub struct ScheduleConfig {
     /// This deployment's own base URL; the scheduler adapter derives the
     /// callback a fire returns to from it.
     pub api_url: Box<str>,
+    /// How often and how long each scheduler call is tried.
+    pub retries: afd_cron::qstash::RetryPolicy,
 }
 
 /// What the device-flow login surface needs from configuration.
@@ -143,7 +145,7 @@ pub(super) fn schedule_plane(
     afd_http::services::SchedulePlane::new(
         afd_cron::ScheduleService::new(
             afd_cron::Schedules::new(database.clone(), Entropy::new())
-                .with_activity_streams(turns.streams()),
+                .with_activity_notices(turns.notices()),
             scheduler,
         ),
         afd_cron::Fire::new(turns),

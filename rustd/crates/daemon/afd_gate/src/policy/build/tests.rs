@@ -27,6 +27,7 @@ fn ready<'a>(
             provider: resolved,
             declared,
             repair_branch: None,
+            windows: crate::policy::context::ToolWindows::default(),
         },
         &Grants::none(),
     )
@@ -136,6 +137,7 @@ fn a_write_binding_with_no_authorised_branch_is_refused() {
             provider: &resolved,
             declared: &declared,
             repair_branch: None,
+            windows: crate::policy::context::ToolWindows::default(),
         },
         &Grants::none(),
     )

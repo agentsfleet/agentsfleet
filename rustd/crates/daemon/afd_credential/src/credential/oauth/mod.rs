@@ -53,7 +53,7 @@ const ERROR_INVALID_GRANT: &str = "invalid_grant";
 /// Deliberately short. An assumed lifetime that is too long caches a dead token
 /// and a child meets a 401 mid-run; one that is too short re-mints early, which
 /// costs a round trip. The floor is the safe direction.
-const DEFAULT_ACCESS_TTL: Duration = Duration::from_mins(5);
+pub const DEFAULT_ACCESS_TTL: Duration = Duration::from_mins(5);
 
 /// The longest `expires_in` this daemon will believe: ten years.
 ///
@@ -154,6 +154,9 @@ pub struct Refresh<'a> {
     pub http: &'a reqwest::Client,
     /// The instant the token's expiry is measured from.
     pub now: Timestamp,
+    /// The lifetime assumed when the provider states none; see
+    /// [`DEFAULT_ACCESS_TTL`].
+    pub assumed_ttl: Duration,
 }
 
 /// Exchanges the handle's refresh token for a fresh access token.
@@ -207,18 +210,30 @@ pub async fn mint(refresh: Refresh<'_>) -> Outcome {
         return Outcome::MintFailed(Retry::Transient);
     };
 
-    answer(status, &body, refresh_token, refresh.now)
+    answer(
+        status,
+        &body,
+        refresh_token,
+        refresh.now,
+        refresh.assumed_ttl,
+    )
 }
 
 /// The outcome the provider's answer decides, by its status and its body.
 ///
 /// A body that does not parse is malformed on a success status, and simply
 /// uninformative on a failure one — where the status still classifies.
-fn answer(status: reqwest::StatusCode, body: &[u8], posted: &str, now: Timestamp) -> Outcome {
+fn answer(
+    status: reqwest::StatusCode,
+    body: &[u8],
+    posted: &str,
+    now: Timestamp,
+    assumed_ttl: Duration,
+) -> Outcome {
     let answered = serde_json::from_slice::<Answered>(body).ok();
     if status.is_success() {
         answered.map_or(Outcome::MintFailed(Retry::Permanent), |answered| {
-            granted(&answered, posted, now)
+            granted(&answered, posted, now, assumed_ttl)
         })
     } else {
         classify(status, answered.as_ref())
@@ -229,14 +244,14 @@ fn answer(status: reqwest::StatusCode, body: &[u8], posted: &str, now: Timestamp
 ///
 /// A success status with no `access_token` is a malformed body, not a mint: the
 /// one field this exchange exists to obtain is the one that must be there.
-fn granted(answered: &Answered, posted: &str, now: Timestamp) -> Outcome {
+fn granted(answered: &Answered, posted: &str, now: Timestamp, assumed_ttl: Duration) -> Outcome {
     let Some(token) = answered.access_token.as_deref() else {
         return Outcome::MintFailed(Retry::Permanent);
     };
     // ABSENT is the conservative default; PRESENT and unreadable is a malformed
     // body, and is never fed into expiry arithmetic.
     let lifetime = match answered.expires_in.as_ref() {
-        None => DEFAULT_ACCESS_TTL,
+        None => assumed_ttl,
         Some(stated) => {
             let Some(lifetime) = stated.duration() else {
                 return Outcome::MintFailed(Retry::Permanent);

@@ -58,7 +58,38 @@ fn the_waits_between_three_attempts_add_up_to_at_most_one_point_two_seconds() {
     // Jitter can stretch a wait to twice its delay: the first 200ms delay to
     // 400ms, and the second, doubled to the 800ms cap, to 800ms. The budget
     // assertion beside the schedule adds this to the attempts' timeouts.
-    assert_eq!(super::retry::longest_waits(), 1_200);
+    assert_eq!(
+        super::retry::longest_waits(super::ATTEMPTS, super::MAX_DELAY),
+        1_200
+    );
+}
+
+/// A configured policy that could outlast its call budget, or the sync fence,
+/// is refused; one that fits is the one calls are tried under.
+#[test]
+fn a_retry_policy_is_refused_unless_it_fits_its_budget() {
+    use std::time::Duration;
+    let fits = super::RetryPolicy::new(
+        2,
+        Duration::from_secs(1),
+        Duration::from_millis(400),
+        Duration::from_secs(5),
+    )
+    .expect("two one-second tries and their wait fit five seconds");
+    assert_eq!(fits.attempt_timeout(), Duration::from_secs(1));
+    assert_ne!(fits, super::RetryPolicy::default());
+    for (attempts, timeout, budget) in [(3, 4, 10), (0, 1, 10), (3, 1, 40)] {
+        assert!(
+            super::RetryPolicy::new(
+                attempts,
+                Duration::from_secs(timeout),
+                super::MAX_DELAY,
+                Duration::from_secs(budget),
+            )
+            .is_none(),
+            "{attempts} x {timeout}s in {budget}s"
+        );
+    }
 }
 
 /// The two hosts a fire travels between, kept apart.

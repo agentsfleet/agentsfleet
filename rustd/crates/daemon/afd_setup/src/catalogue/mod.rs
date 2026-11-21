@@ -7,7 +7,7 @@ use crate::{
     Access, Drafts, Result, access,
     error::{ErrorKind, raise::query},
     replay,
-    types::{ModelsQuery, Page, WorkspaceModel},
+    types::{ModelPurpose, ModelsQuery, Page, WorkspaceModel},
 };
 use af_core::paging::Cursor;
 use afd_credential::provider::PLATFORM_MODEL_REF;
@@ -26,7 +26,9 @@ impl Drafts {
         access: Access<'_>,
         request: ModelsQuery,
     ) -> Result<Page<WorkspaceModel>> {
-        let request = garde::Unvalidated::new(request).validate()?;
+        let ceiling = self.list_page;
+        let request = garde::Unvalidated::new(request).validate_with(&ceiling)?;
+        let limit = request.limit.unwrap_or_else(|| ceiling.default_rows());
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
@@ -36,18 +38,18 @@ impl Drafts {
             &person.owner,
             &person.id,
             request.purpose,
-            request.limit,
+            limit,
         ))?;
         let after = boundary(request.starting_after.as_deref(), &binding)?;
         let rows: Vec<project::Row> = sqlx::query_as(sql::PAGE)
             .bind(&person.owner)
             .bind(PLATFORM_MODEL_REF)
             .bind(after)
-            .bind(i64::from(request.limit) + 1)
+            .bind(i64::from(limit) + 1)
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        let page = page(rows, &request, &binding);
+        let page = page(rows, limit, request.purpose, &binding);
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(page)
     }
@@ -63,13 +65,18 @@ fn boundary(raw: Option<&str>, binding: &str) -> Result<Option<String>> {
     }
 }
 
-fn page(rows: Vec<project::Row>, request: &ModelsQuery, binding: &str) -> Page<WorkspaceModel> {
-    let more = rows.len() > usize::try_from(request.limit).unwrap_or(usize::MAX);
+fn page(
+    rows: Vec<project::Row>,
+    limit: u32,
+    purpose: Option<ModelPurpose>,
+    binding: &str,
+) -> Page<WorkspaceModel> {
+    let more = rows.len() > usize::try_from(limit).unwrap_or(usize::MAX);
     let mut items = Vec::new();
     let mut last = None;
     for row in rows
         .into_iter()
-        .take(usize::try_from(request.limit).unwrap_or(usize::MAX))
+        .take(usize::try_from(limit).unwrap_or(usize::MAX))
     {
         last = Some(
             Cursor::Text {
@@ -78,7 +85,7 @@ fn page(rows: Vec<project::Row>, request: &ModelsQuery, binding: &str) -> Page<W
             }
             .to_string(),
         );
-        if let Some(item) = project::eligible(row, request.purpose) {
+        if let Some(item) = project::eligible(row, purpose) {
             items.push(item);
         }
     }

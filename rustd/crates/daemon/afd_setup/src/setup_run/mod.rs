@@ -117,7 +117,7 @@ impl Drafts {
             .bind(EDITING)
             .bind(QUEUED)
             .bind(RUNNING)
-            .bind(sql::SCAN_LIMIT)
+            .bind(self.tuning.scan_batch)
             .bind(runner)
             .fetch_all(&mut *self.database.acquire().await?)
             .await

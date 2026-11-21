@@ -93,7 +93,7 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for Acting {
 /// The refusal for a handler whose layer is not mounted, logged as the routing
 /// fault it is: `event` names which layer, `message` what went missing.
 fn layer_absent(event: &'static str, message: &'static str) -> Response {
-    let request_id = RequestId::mint();
+    let request_id = RequestId::current();
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let request_id_field = request_id.as_str();
     {

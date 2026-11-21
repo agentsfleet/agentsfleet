@@ -19,6 +19,14 @@ pub(super) fn read(
         telemetry: garde::Unvalidated::new(settings.telemetry.otlp)
             .validate()
             .map_err(|report| invalid(format!("telemetry.otlp: {report}")))?,
+        tuning: super::tuning::Tuning::from(&**settings),
+        scheduler_retries: settings.connectors.qstash.policy().ok_or_else(|| {
+            invalid(
+                "connectors.qstash: every attempt and wait must end inside call_budget_seconds, \
+                 the budget under 30 seconds, and max_retry_delay_ms at least 200"
+                    .to_owned(),
+            )
+        })?,
     })
 }
 

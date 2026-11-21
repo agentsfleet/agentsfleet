@@ -4,6 +4,8 @@
 //! Split from the broker by concern: these perform one exchange and know
 //! nothing of the cache or of which connector set resolved it.
 
+use std::time::Duration;
+
 use serde_json::Value;
 use zeroize::Zeroizing;
 
@@ -39,13 +41,44 @@ pub struct Vendors {
     platform: Platform,
     /// Shared, so the connection pool and the timeout are one decision.
     http: reqwest::Client,
+    /// How long the tokens this dispatch mints are taken to live.
+    lifetimes: Lifetimes,
+}
+
+/// How long a minted token is taken to live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Lifetimes {
+    /// An OAuth access token whose provider states no lifetime.
+    pub assumed_access: Duration,
+    /// A GitHub App installation token.
+    pub installation_token: Duration,
+}
+
+impl Default for Lifetimes {
+    fn default() -> Self {
+        Self {
+            assumed_access: oauth::DEFAULT_ACCESS_TTL,
+            installation_token: github::INSTALLATION_TOKEN_TTL,
+        }
+    }
 }
 
 impl Vendors {
     /// The dispatch over `platform`, posting through `http`.
     #[must_use]
-    pub const fn new(platform: Platform, http: reqwest::Client) -> Self {
-        Self { platform, http }
+    pub fn new(platform: Platform, http: reqwest::Client) -> Self {
+        Self {
+            platform,
+            http,
+            lifetimes: Lifetimes::default(),
+        }
+    }
+
+    /// This dispatch taking its minted tokens to live for `lifetimes`.
+    #[must_use]
+    pub const fn with_lifetimes(mut self, lifetimes: Lifetimes) -> Self {
+        self.lifetimes = lifetimes;
+        self
     }
 }
 
@@ -71,6 +104,7 @@ impl Exchanger for Vendors {
                             binding: ask.binding,
                             http: &self.http,
                             now: ask.now,
+                            token_ttl: self.lifetimes.installation_token,
                         })
                         .await
                     }
@@ -89,6 +123,7 @@ impl Exchanger for Vendors {
                                 token_url,
                                 http: &self.http,
                                 now: ask.now,
+                                assumed_ttl: self.lifetimes.assumed_access,
                             })
                             .await
                         }

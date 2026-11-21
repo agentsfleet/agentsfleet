@@ -18,7 +18,8 @@
 //!   runaway.
 //! - No sandbox and one tool, `propose_setup`; no turn checkpoint. A lapsed
 //!   run is reassigned and reruns its message from the start, at most
-//!   [`af_core::limits::EVENT_RUNS_MAX`] runs, then the message fails.
+//!   `[turns] max_runs_per_turn` runs (default
+//!   [`af_core::limits::DEFAULT_MAX_RUNS_PER_TURN`]), then the message fails.
 //! - The draft's compacted context, read through the fenced context verb
 //!   (`super::context`) and saved through `afd_setup`'s fenced save, as a
 //!   fleet chat's is.

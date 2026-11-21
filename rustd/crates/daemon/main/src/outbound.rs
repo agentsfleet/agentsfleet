@@ -32,7 +32,8 @@ pub(crate) fn spawn(
         database.clone(),
         bus,
         Posters {
-            slack: SlackPoster::new(grants, vendor_client, slack_api_base),
+            slack: SlackPoster::new(grants, vendor_client, slack_api_base)
+                .with_deadlines(settings.tuning.slack_deadlines()),
         },
         Entropy::new(),
     )

@@ -46,8 +46,8 @@ async fn orphans(tasks: &Tasks) -> Result<u64> {
     let mut removed = 0;
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/orphans.sql"))
-        .bind(super::ORPHAN_SECONDS)
-        .bind(super::GC_BATCH)
+        .bind(tasks.times().orphan_seconds())
+        .bind(tasks.times().gc_batch())
         .fetch_all(&mut **connection)
         .await
         .map_err(query("page genuinely unreferenced private objects"))?;

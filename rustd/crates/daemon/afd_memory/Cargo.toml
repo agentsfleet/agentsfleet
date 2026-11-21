@@ -14,7 +14,6 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-afd_bus.workspace = true
 afd_turns.workspace = true
 # Instants are `jiff::Timestamp`; `TIMESTAMPTZ(3)` columns decode through jiff-sqlx.
 jiff.workspace = true

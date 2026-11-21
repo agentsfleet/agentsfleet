@@ -23,12 +23,14 @@ pub async fn run<F>(config: BootConfig, port: u16, signal: F) -> Result<Outcome,
 where
     F: Future<Output = ()> + Send,
 {
-    let (supervisor, booted) = boot_supervised(config, port).await?;
+    let server = config.runtime.operations.tuning.server;
+    let (supervisor, booted) = boot_supervised(config, port, server.task_join_timeout).await?;
     show_banner(&booted);
 
     // A failed native listener must stop the process rather than leave a healthy public API
     // advertising a runner service that no longer has a listener or scheduler.
     let outcome = Daemon::new(supervisor)
+        .with_drain_timeout(server.drain_timeout)
         .draining(booted.drain.clone())
         .run(booted.serving_failed.cancelled(), signal)
         .await;
@@ -47,8 +49,9 @@ where
 async fn boot_supervised(
     config: BootConfig,
     port: u16,
+    join_timeout: std::time::Duration,
 ) -> Result<(Supervisor, Booted), BootFailure> {
-    let mut supervisor = Supervisor::new();
+    let mut supervisor = Supervisor::new().with_join_timeout(join_timeout);
     // Not `?`, for [`super::open`]'s reason one stage later. Once `super::open_telemetry` has
     // handed the exporters over, the thing that delivers them is a supervised
     // task waiting on the cancellation token — and a supervisor that is dropped

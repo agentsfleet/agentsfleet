@@ -13,7 +13,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{Handle, Received, Result};
 
-pub use config::{DEFAULT_WAKE_QUEUE_CAPACITY, ENV_WAKE_QUEUE_CAPACITY, MAX_WAKE_QUEUE_CAPACITY};
+pub use config::{
+    DEFAULT_WAKE_QUEUE_CAPACITY, ENV_WAKE_QUEUE_CAPACITY, MAX_WAKE_QUEUE_CAPACITY, QueueBounds,
+};
 pub use publish::publish;
 
 /// Identity of an independent recovery request.
@@ -65,7 +67,18 @@ impl Wake {
     /// # Errors
     /// Refuses malformed, zero or excessive capacities without allocating the queue.
     pub fn from_env(env: &(impl af_core::env::EnvSource + ?Sized)) -> Result<Self> {
-        Ok(Self::bounded(config::resolve(env)?))
+        Self::from_env_within(env, QueueBounds::default())
+    }
+
+    /// [`Self::from_env`] under a deployment's own default and ceiling.
+    ///
+    /// # Errors
+    /// Refuses malformed, zero or above-`bounds.max` capacities without allocating the queue.
+    pub fn from_env_within(
+        env: &(impl af_core::env::EnvSource + ?Sized),
+        bounds: QueueBounds,
+    ) -> Result<Self> {
+        Ok(Self::bounded(config::resolve(env, bounds)?))
     }
 
     /// Construct an isolated replica queue for an explicitly configured capacity.
@@ -73,7 +86,10 @@ impl Wake {
     /// # Errors
     /// Refuses zero or more than [`MAX_WAKE_QUEUE_CAPACITY`] entries before allocation.
     pub fn with_capacity(capacity: usize) -> Result<Self> {
-        Ok(Self::bounded(config::prove(capacity)?))
+        Ok(Self::bounded(config::prove(
+            capacity,
+            MAX_WAKE_QUEUE_CAPACITY,
+        )?))
     }
 
     fn bounded(capacity: usize) -> Self {

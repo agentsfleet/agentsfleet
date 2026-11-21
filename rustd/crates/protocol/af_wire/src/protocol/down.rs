@@ -69,6 +69,16 @@ pub enum Down<'a> {
         connection_id: Cow<'a, str>,
         /// Interval the runner must use for liveness reports.
         heartbeat_interval_ms: u32,
+        /// Largest frame on the work, reports and progress streams.
+        ///
+        /// Absent from a daemon that predates it; a runner then keeps
+        /// [`super::MESSAGE_BYTES_MAX`].
+        #[serde(default = "message_bytes_max")]
+        max_message_bytes: u32,
+        /// Largest frame on the control stream; absent, a runner keeps
+        /// [`super::CONTROL_MESSAGE_BYTES_MAX`].
+        #[serde(default = "control_message_bytes_max")]
+        max_control_message_bytes: u32,
     },
     /// A committed operator change pushes policy without inventing a request id.
     Policy {
@@ -219,4 +229,22 @@ impl Down<'_> {
             }
         }
     }
+}
+
+/// The work-stream ceiling a welcome that names none implies.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the frame ceiling is 32 MiB, far below u32::MAX"
+)]
+const fn message_bytes_max() -> u32 {
+    super::MESSAGE_BYTES_MAX as u32
+}
+
+/// The control-stream ceiling a welcome that names none implies.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the control ceiling is 2 MiB, far below u32::MAX"
+)]
+const fn control_message_bytes_max() -> u32 {
+    super::CONTROL_MESSAGE_BYTES_MAX as u32
 }

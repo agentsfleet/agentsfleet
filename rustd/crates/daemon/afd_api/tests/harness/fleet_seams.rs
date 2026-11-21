@@ -96,7 +96,10 @@ impl Fleet {
             )),
             Grants::new(
                 SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new())
-                    .with_activity_streams(bus),
+                    .with_activity_notices(afd_turns::view::activity::Notices::new(
+                        bus,
+                        afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
+                    )),
                 database.clone(),
                 Entropy::new(),
             ),
@@ -120,8 +123,18 @@ impl Fleet {
         bus: afd_bus::Handle,
         budgets: afd_turns::Budgets,
     ) -> Self {
-        self.secrets = self.secrets.with_activity_streams(bus.clone());
-        self.memories = self.memories.with_activity_streams(bus.clone());
+        self.secrets = self
+            .secrets
+            .with_activity_notices(afd_turns::view::activity::Notices::new(
+                bus.clone(),
+                afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
+            ));
+        self.memories =
+            self.memories
+                .with_activity_notices(afd_turns::view::activity::Notices::new(
+                    bus.clone(),
+                    afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
+                ));
         self.creations = afd_setup::Creations::new(
             self.setup.clone(),
             afd_turns::Turns::for_tests(database.clone(), bus).with_budgets(budgets),
@@ -298,8 +311,7 @@ impl Fleet {
     }
 
     pub(crate) fn router(self) -> Router {
-        let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
-        build(Arc::new(self), &admission)
+        build(Arc::new(self), DEFAULT_MAX_IN_FLIGHT)
     }
 
     /// An instance whose ingress ANSWERS, rather than refusing at an acquire.

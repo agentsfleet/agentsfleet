@@ -26,6 +26,7 @@ mod review;
 mod setup;
 pub mod setup_run;
 mod sql;
+pub mod tuning;
 pub mod types;
 
 pub use self::access::Access;

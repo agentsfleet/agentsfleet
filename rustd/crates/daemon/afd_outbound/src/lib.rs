@@ -64,5 +64,5 @@ pub use self::delivery::{Claimed, Outgoing};
 pub use self::interim::{Interim, Interjector};
 pub use self::lanes::{Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes};
 pub use self::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry, dispatch};
-pub use self::slack::SlackPoster;
+pub use self::slack::{Deadlines as SlackDeadlines, POST_DEADLINE, SlackPoster};
 pub use self::worker::Worker;

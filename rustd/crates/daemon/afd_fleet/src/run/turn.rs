@@ -145,13 +145,14 @@ impl Runs {
         self.end_unreported(acquired, ending).await
     }
 
-    /// End an event whose runs kept lapsing, as the failed run it is.
+    /// End a turn whose runs kept lapsing, as the failed run it is.
     ///
-    /// A lapsed run is reassigned and its event runs again from the start.
-    /// Past [`af_core::limits::EVENT_RUNS_MAX`] holders the daemon stops:
-    /// the event ends under the label a lapsed run reports, its thread is
-    /// told, and the fleet's next event is free to run. The caller keeps a
-    /// durable task's event out of here: ending it would leave its task
+    /// A lapsed run is reassigned and its turn runs again from the start.
+    /// Past the deployment's runs per turn (default
+    /// [`af_core::limits::DEFAULT_MAX_RUNS_PER_TURN`]) the daemon stops:
+    /// the turn ends under the label a lapsed run reports, its thread is
+    /// told, and the fleet's next turn is free to run. The caller keeps a
+    /// durable task's turn out of here: ending it would leave its task
     /// running with nothing left to run it.
     ///
     /// # Errors

@@ -170,7 +170,14 @@ impl Connectors {
         token: &SecretString,
         thread: &Thread,
     ) -> Result<Replies, Unavailable> {
-        replies(&self.client, self.exchange.pinned_endpoint(), token, thread).await
+        replies_within(
+            &self.client,
+            self.exchange.pinned_endpoint(),
+            token,
+            thread,
+            self.timing.slack_read,
+        )
+        .await
     }
 }
 
@@ -186,14 +193,25 @@ pub async fn replies(
     token: &SecretString,
     thread: &Thread,
 ) -> Result<Replies, Unavailable> {
+    replies_within(client, pinned, token, thread, READ_DEADLINE).await
+}
+
+/// [`replies`], under `deadline` rather than [`READ_DEADLINE`].
+///
+/// # Errors
+/// As [`replies`].
+pub async fn replies_within(
+    client: &reqwest::Client,
+    pinned: Option<&str>,
+    token: &SecretString,
+    thread: &Thread,
+    deadline: Duration,
+) -> Result<Replies, Unavailable> {
     let vendor = format!("{SLACK_API_BASE}{METHOD_CONVERSATIONS_REPLIES}");
     let endpoint = endpoint::redirected(&vendor, pinned).ok_or(Unavailable::Unreachable)?;
-    tokio::time::timeout(
-        READ_DEADLINE,
-        pages(client, &endpoint, token.expose(), thread),
-    )
-    .await
-    .unwrap_or(Err(Unavailable::Timeout))
+    tokio::time::timeout(deadline, pages(client, &endpoint, token.expose(), thread))
+        .await
+        .unwrap_or(Err(Unavailable::Timeout))
 }
 
 /// Every page of the thread, folded into the parent and the latest replies.

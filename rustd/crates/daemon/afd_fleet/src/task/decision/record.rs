@@ -28,7 +28,7 @@ pub(super) async fn record(
         return Err(stale_fence());
     }
     tokio::time::timeout(
-        super::OPERATION_TIMEOUT,
+        tasks.times().operation_timeout,
         run(tasks, task_run, id, &input.receipt),
     )
     .await

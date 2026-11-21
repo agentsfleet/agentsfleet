@@ -91,6 +91,11 @@ pub struct Tasks {
 }
 
 impl Tasks {
+    /// The deployment's task lifetimes, carried by the run store this plane shares.
+    pub(crate) fn times(&self) -> &policy::TaskTimes {
+        &self.runs.limits().tasks
+    }
+
     /// Uses the same database, entropy and run authority as the fleet plane.
     #[must_use]
     pub const fn new(runs: Runs, turns: afd_turns::Turns, dependencies: TaskDependencies) -> Self {

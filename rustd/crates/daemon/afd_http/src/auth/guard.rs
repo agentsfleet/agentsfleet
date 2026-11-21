@@ -64,7 +64,7 @@ pub(super) fn reject(
     detail: impl Into<String>,
     event: &'static str,
 ) -> Response {
-    let request_id = RequestId::mint();
+    let request_id = RequestId::current();
     let error_code = code.as_str();
     let request_id_field = request_id.as_str();
     let route = meta.template;

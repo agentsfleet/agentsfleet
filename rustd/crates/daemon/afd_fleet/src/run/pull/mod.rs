@@ -147,7 +147,7 @@ impl RunService {
         // durable task is exempt: its own run allowance bounds it, and its
         // sweep ends it there with the task itself moved on.
         if acquired.opened.head == HeadKind::Plain
-            && acquired.earlier_runs >= i64::from(af_core::limits::EVENT_RUNS_MAX)
+            && acquired.earlier_runs >= self.runs.limits().runs_per_turn()
         {
             return self
                 .abandoned(&acquired, runner_id)

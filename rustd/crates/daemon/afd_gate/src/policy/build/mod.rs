@@ -67,6 +67,8 @@ pub struct Inputs<'a> {
     pub declared: &'a Declared,
     /// The branch a write-bound run may author on, when one was authorised.
     pub repair_branch: Option<&'a str>,
+    /// The deployment's tool-window tiers.
+    pub windows: context::ToolWindows,
 }
 
 /// The policy this run runs under.
@@ -134,6 +136,7 @@ fn policy(inputs: Inputs<'_>) -> crate::Result<ExecutionPolicy<'_>> {
             Overlay {
                 cap_tokens: inputs.provider.context_cap_tokens,
                 model: &inputs.provider.model,
+                windows: inputs.windows,
             },
         ),
     })

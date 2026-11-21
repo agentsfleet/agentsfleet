@@ -9,6 +9,7 @@ use af_fleet_runtime::config::decision::{MAX_COMPLETION_STATEMENTS, MAX_QUESTION
 use af_wire::task::TaskLimits;
 use garde::Validate;
 use serde::Deserialize;
+use std::time::Duration;
 
 /// Deployment limits for new interpretations and objectives.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
@@ -84,5 +85,112 @@ impl TaskPolicy {
 
     pub(super) const fn limits(self) -> TaskLimits {
         self.settings.defaults.snapshot()
+    }
+}
+
+/// How long a durable task's slices, operations and checkpoints live, and how
+/// many checkpoints it keeps.
+///
+/// Each default is the number the task plane ran with before it was a setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskTimes {
+    /// A task runs in slices of this length; its funds are checked before each.
+    pub slice: Duration,
+    /// How long one task operation may take.
+    pub operation_timeout: Duration,
+    /// A finished task's records are kept this long.
+    pub terminal_retention: Duration,
+    /// Newest checkpoints kept per task.
+    pub keep_generations: u32,
+    /// How long a runner's upload link stays valid.
+    pub upload_url_ttl: Duration,
+    /// How long a runner's download link stays valid.
+    pub download_url_ttl: Duration,
+    /// A checkpoint being restored cannot be deleted during this window.
+    pub restore_pin: Duration,
+    /// An upload never committed is deletable after this.
+    pub orphan_after: Duration,
+    /// Objects deleted per storage call.
+    pub delete_batch_size: u32,
+}
+
+impl Default for TaskTimes {
+    fn default() -> Self {
+        Self {
+            slice: super::run::SLICE,
+            operation_timeout: super::decision::OPERATION_TIMEOUT,
+            terminal_retention: super::checkpoint::TERMINAL,
+            keep_generations: super::checkpoint::LIVE_GENERATIONS,
+            upload_url_ttl: super::checkpoint::TRANSFER,
+            download_url_ttl: super::checkpoint::URL,
+            restore_pin: super::checkpoint::PIN,
+            orphan_after: super::checkpoint::ORPHAN,
+            delete_batch_size: super::checkpoint::GC_BATCH,
+        }
+    }
+}
+
+impl TaskTimes {
+    pub(crate) fn slice_seconds(&self) -> i32 {
+        crate::run::limits::seconds(self.slice)
+    }
+
+    pub(crate) fn terminal_seconds(&self) -> i32 {
+        crate::run::limits::seconds(self.terminal_retention)
+    }
+
+    pub(crate) fn transfer_seconds(&self) -> i32 {
+        crate::run::limits::seconds(self.upload_url_ttl)
+    }
+
+    pub(crate) fn pin_seconds(&self) -> i32 {
+        crate::run::limits::seconds(self.restore_pin)
+    }
+
+    pub(crate) fn orphan_seconds(&self) -> i32 {
+        crate::run::limits::seconds(self.orphan_after)
+    }
+
+    pub(crate) fn live_generations(&self) -> i64 {
+        i64::from(self.keep_generations)
+    }
+
+    pub(crate) fn gc_batch(&self) -> i64 {
+        i64::from(self.delete_batch_size)
+    }
+}
+
+#[cfg(test)]
+mod times_tests {
+    use super::TaskTimes;
+    use std::time::Duration;
+
+    #[test]
+    fn defaults_are_the_numbers_the_task_plane_ran_with() {
+        let times = TaskTimes::default();
+        assert_eq!(times.slice_seconds(), 600);
+        assert_eq!(times.operation_timeout, Duration::from_secs(30));
+        assert_eq!(times.terminal_seconds(), 7 * 24 * 60 * 60);
+        assert_eq!(times.live_generations(), 3);
+        assert_eq!(times.transfer_seconds(), 15 * 60);
+        assert_eq!(times.download_url_ttl, Duration::from_mins(5));
+        assert_eq!(times.pin_seconds(), 30 * 60);
+        assert_eq!(times.orphan_seconds(), 60 * 60);
+        assert_eq!(times.gc_batch(), 256);
+    }
+
+    #[test]
+    fn a_configured_value_is_what_a_statement_binds() {
+        let times = TaskTimes {
+            slice: Duration::from_secs(90),
+            keep_generations: 5,
+            delete_batch_size: 32,
+            orphan_after: Duration::from_mins(2),
+            ..TaskTimes::default()
+        };
+        assert_eq!(times.slice_seconds(), 90);
+        assert_eq!(times.live_generations(), 5);
+        assert_eq!(times.gc_batch(), 32);
+        assert_eq!(times.orphan_seconds(), 120);
     }
 }

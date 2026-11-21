@@ -86,7 +86,7 @@ async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_assigned_again() {
         let task = fixture.bind_goal().await;
         let task_id = id(&task.task_id);
         support::expire(case).await;
-        for _holder in 1..af_core::limits::EVENT_RUNS_MAX {
+        for _holder in 1..af_core::limits::DEFAULT_MAX_RUNS_PER_TURN {
             let run = reassigned(case, support::assign(case).await).await;
             let lapsed = id(run
                 .get("run_id")
@@ -104,7 +104,7 @@ async fn a_task_whose_runs_lapsed_past_the_plain_cap_is_assigned_again() {
 
         assert_eq!(
             counted,
-            i64::from(af_core::limits::EVENT_RUNS_MAX),
+            i64::from(af_core::limits::DEFAULT_MAX_RUNS_PER_TURN),
             "the event is at the plain cap"
         );
         assert_eq!(

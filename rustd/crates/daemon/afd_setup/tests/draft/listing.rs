@@ -9,7 +9,7 @@ use afd_setup::types::{DraftState, ListQuery};
 
 const fn query(cursor: Option<String>) -> ListQuery {
     ListQuery {
-        limit: 1,
+        limit: Some(1),
         starting_after: cursor,
         state: None,
         linked_fleet_id: None,
@@ -144,7 +144,7 @@ const RENAME: &str = "UPDATE setup.drafts SET title = $2 WHERE id = $1";
 /// A whole-page search for `text`.
 fn search(text: &str) -> ListQuery {
     ListQuery {
-        limit: 50,
+        limit: Some(50),
         q: Some(text.to_owned()),
         ..query(None)
     }
@@ -231,7 +231,7 @@ async fn assert_search_binds_the_cursor(f: &Fixture) {
         .list(
             f.access(),
             ListQuery {
-                limit: 1,
+                limit: Some(1),
                 ..search("e")
             },
         )
@@ -241,7 +241,7 @@ async fn assert_search_binds_the_cursor(f: &Fixture) {
     let changed = ListQuery {
         starting_after: Some(cursor),
         ..ListQuery {
-            limit: 1,
+            limit: Some(1),
             ..search("o")
         }
     };

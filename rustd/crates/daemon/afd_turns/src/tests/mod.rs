@@ -167,3 +167,33 @@ fn budgets_default_to_the_deployment_ceiling() {
 }
 
 mod reply;
+
+/// The deployment's backlog ceiling and receipt fan-out are what the ledger
+/// runs under (`[turns] max_queued_turns`, `[server] max_live_activity_notices`).
+#[tokio::test]
+async fn configured_ceiling_and_fanout_reach_the_ledger() {
+    let turns = super::Turns::new(
+        afd_db::test_util::unreachable_db(),
+        afd_bus::test_util::unreachable(),
+        af_crypto::entropy::Entropy::new(),
+    )
+    .with_budgets(Budgets {
+        deployment_backlog: 7,
+    })
+    .with_notice_fanout(3);
+    assert_eq!(turns.budgets.deployment_backlog, 7);
+    assert_eq!(turns.notices().fanout(), 3);
+    let defaults = super::Turns::new(
+        afd_db::test_util::unreachable_db(),
+        afd_bus::test_util::unreachable(),
+        af_crypto::entropy::Entropy::new(),
+    );
+    assert_eq!(
+        defaults.budgets.deployment_backlog,
+        DEPLOYMENT_BACKLOG_BUDGET
+    );
+    assert_eq!(
+        defaults.notices().fanout(),
+        crate::view::activity::DEFAULT_ACTIVITY_NOTICES
+    );
+}

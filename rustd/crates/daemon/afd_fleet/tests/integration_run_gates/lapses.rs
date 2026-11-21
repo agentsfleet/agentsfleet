@@ -6,7 +6,7 @@
 //! queue, so the pass counts the runs an event was issued and stops at the
 //! cap.
 
-use af_core::limits::EVENT_RUNS_MAX;
+use af_core::limits::DEFAULT_MAX_RUNS_PER_TURN;
 use af_core::test_util::trace::Capture;
 use af_core::turn::label::RUN_EXPIRED;
 use af_core::turn::status::FLEET_ERROR;
@@ -77,7 +77,7 @@ async fn an_event_whose_every_run_lapsed_is_ended_as_failed_and_frees_the_queue(
     let fixtures = Fixtures::create().await;
     let (seeded, workspace) = funded(&fixtures).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    lapse(&fixtures, &seeded, EVENT_RUNS_MAX).await;
+    lapse(&fixtures, &seeded, DEFAULT_MAX_RUNS_PER_TURN).await;
 
     let assigned = assign(&fixtures, &seeded).await;
     let counted = assigned.earlier_runs;
@@ -85,7 +85,7 @@ async fn an_event_whose_every_run_lapsed_is_ended_as_failed_and_frees_the_queue(
 
     assert_eq!(
         counted,
-        i64::from(EVENT_RUNS_MAX),
+        i64::from(DEFAULT_MAX_RUNS_PER_TURN),
         "the assignment counts every run the event was issued"
     );
     assert!(answer.is_none(), "a fourth run was issued: {answer:?}");
@@ -118,7 +118,7 @@ async fn an_event_one_lapse_short_of_the_cap_is_assigned_again() {
     let fixtures = Fixtures::create().await;
     let (seeded, _workspace) = funded(&fixtures).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
-    lapse(&fixtures, &seeded, EVENT_RUNS_MAX - 1).await;
+    lapse(&fixtures, &seeded, DEFAULT_MAX_RUNS_PER_TURN - 1).await;
 
     let assigned = assign(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, assigned).await;
@@ -140,7 +140,7 @@ async fn an_event_one_lapse_short_of_the_cap_is_assigned_again() {
 async fn an_event_ended_at_the_cap_is_logged_as_abandoned_and_never_as_a_refusal() {
     let fixtures = Fixtures::create().await;
     let (seeded, _workspace) = funded(&fixtures).await;
-    lapse(&fixtures, &seeded, EVENT_RUNS_MAX).await;
+    lapse(&fixtures, &seeded, DEFAULT_MAX_RUNS_PER_TURN).await;
     let assigned = assign(&fixtures, &seeded).await;
     let log = Capture::install();
 
@@ -148,7 +148,7 @@ async fn an_event_ended_at_the_cap_is_logged_as_abandoned_and_never_as_a_refusal
 
     assert!(answer.is_none(), "a fourth run was issued: {answer:?}");
     let line = log.only("runner_run_abandoned");
-    let cap = EVENT_RUNS_MAX.to_string();
+    let cap = DEFAULT_MAX_RUNS_PER_TURN.to_string();
     assert_eq!(
         (
             line.field("agentsfleet_turn_id"),

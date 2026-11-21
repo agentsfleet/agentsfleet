@@ -120,7 +120,7 @@ fn read_every_knob<E: EnvSource + ?Sized>(
     let optional_url =
         |knob: &str, fallback: &str| optional(env, knob).unwrap_or_else(|| fallback.into());
     let sse_max_streams = read::sse_max_streams(env, faults);
-    let runner_wake = read::runner_wake(env, faults);
+    let runner_wake = read::runner_wake(env, faults, runtime.operations.tuning.wake);
     let frame_memory = read::frame_memory(env, faults);
     let runner_listener = runner_listener::read(env, faults);
     let posthog = posthog(env);

@@ -99,6 +99,7 @@ pub(super) async fn run(
     connection: &mut PgConnection,
     run: TaskRun<'_>,
     binding: &TaskBinding,
+    slice_seconds: i32,
 ) -> Result<()> {
     sqlx::query(sql::BIND_RUN)
         .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
@@ -106,7 +107,7 @@ pub(super) async fn run(
         .bind(run.runner_id)
         .bind(afd_billing::biller::WorkKey::FleetRun(run.run_id.clone()).work_type())
         .bind(af_wire::usage::LineKind::Model.as_str())
-        .bind(super::super::run::SLICE_SECONDS)
+        .bind(slice_seconds)
         .bind(1_000_000_000_i64)
         .execute(connection)
         .await

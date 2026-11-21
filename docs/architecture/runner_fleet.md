@@ -1216,7 +1216,7 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 | Input per model call | Selected model's physical window | guffbolt's window hook compacts the oldest turns when the window fills. |
 | Wall time per run | None | A setup run renews as a fleet run does; the payer's balance at a renewal or a person's Stop ends it. The proposal loop has no cap. |
 | Funds bound | One run lifetime of runtime, the run's first slice | `afd_setup`'s `setup_run/model.rs`; the assignment's gate checks it and sets nothing aside, and every renewal checks the balance again. |
-| Runs per message | `af_core::limits::EVENT_RUNS_MAX` (3) | A lapsed run is reassigned at the next fence and reruns the message from the start. Past the limit, the message fails. |
+| Runs per message | `[turns] max_runs_per_turn`, default `af_core::limits::DEFAULT_MAX_RUNS_PER_TURN` (3) | A lapsed run is reassigned at the next fence and reruns the message from the start. Past the limit, the message fails. |
 | Instructions | 1,048,576 characters | The one text ceiling, `af_validate::TEXT_MAX_CHARS`, independently of tokenizer counts. |
 | Proposal in a report | 6,553,600 bytes | `af_validate::DEFINITION_MAX_BYTES`, the bound the Definition parser applies. |
 | Answer preview chunk | 163,157 bytes, about 159 KiB | `afd_setup`'s `setup_run/progress.rs`: the 960 KiB draft frame (`afd_bus::DRAFT_FRAME_BYTES`) less a 4 KiB envelope, over six bytes per escaped character. A longer chunk is skipped. |

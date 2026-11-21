@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use af_core::error_code;
-use af_core::paging::{CEILING, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_core::paging::{PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
 use af_validate::Limit;
 use af_wire::schedule_verb::{ScheduleRun, ScheduleRunRequest};
 use af_wire::turn::TurnsResponse;
@@ -43,10 +43,6 @@ use super::effect;
 use super::schedule::{DETAIL_MALFORMED, EVENT_FAILED, fence, log_refused, schedule_id, standing};
 use crate::auth::RunnerIdentity;
 use crate::services::{FleetSchedules as _, RunnerPlane, WorkspaceTurns as _};
-
-/// The refusal a page size outside the served band earns: the paging
-/// vocabulary's own sentence, which names [`CEILING`].
-const DETAIL_LIMIT: &str = PagingRefusal::Limit.detail();
 
 /// The refusal a schedule that would not fire on its own earns.
 const DETAIL_NOT_RUNNABLE: &str =
@@ -185,8 +181,9 @@ pub(crate) async fn runs<D: RunnerPlane>(
     // is the event store's own, because a run IS a history row and only that
     // store mints and reads its `next_cursor`. `Page::parse` decodes the core
     // cursor form, which no history page hands out.
-    let limit = Limit::parse(parameter(&query, QUERY_LIMIT), CEILING)
-        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))?;
+    let ceiling = services.pages().list;
+    let limit = Limit::parse(parameter(&query, QUERY_LIMIT), ceiling)
+        .map_err(|_break| afd_http::paging::refused(PagingRefusal::Limit, ceiling))?;
     let cursor = parameter(&query, QUERY_STARTING_AFTER)
         .map(Cursor::decode)
         .transpose()

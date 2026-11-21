@@ -96,7 +96,7 @@ pub fn malformed(detail: &'static str) -> Response {
 /// Writes a registry refusal whose detail only the call site knows.
 #[must_use]
 pub fn reject(code: af_core::error_code::ErrorCode, detail: &'static str) -> Response {
-    crate::envelope::ProblemResponse::new(code, detail, crate::request_id::RequestId::mint())
+    crate::envelope::ProblemResponse::new(code, detail, crate::request_id::RequestId::current())
         .into_response()
 }
 

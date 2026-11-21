@@ -71,6 +71,8 @@ pub struct ServingPlane {
     platform_admin_workspace: Option<Uuid7>,
     live: Live,
     analytics: Analytics,
+    /// The page sizes every list route is bounded by (`[api]`).
+    pages: afd_http::paging::Pages,
 }
 
 impl ServingPlane {
@@ -128,12 +130,19 @@ impl ServingPlane {
     #[must_use]
     pub fn new(parts: PlaneParts) -> Self {
         let common = construction::Common::new(&parts);
+        let tuning = parts.runtime.operations.tuning;
         let database = parts.database;
         let kek = parts.kek;
         let mut setup = surfaces::setup(common.drafts, &kek, &common.turns);
         let admin = stores::admin(&database);
         let activity_streams = parts.bus.clone();
-        let tenant = stores::tenant(&database, &kek, &common.providers, &activity_streams);
+        let tenant = stores::tenant(
+            &database,
+            &kek,
+            &common.providers,
+            &common.turns.notices(),
+            crate::config::tuning::seconds(tuning.mail.send_timeout_seconds),
+        );
         let activity = stores::activity(&database, &kek, &common.turns);
         let task_turns = common.turns.clone();
         let outbound = surfaces::outbound(
@@ -145,6 +154,7 @@ impl ServingPlane {
                 turns: common.turns,
                 vendor_client: parts.vendor_client,
                 slack_api_base: parts.slack_api_base,
+                tuning,
             },
         );
         attach_schedules(&mut setup, &outbound);
@@ -174,7 +184,7 @@ impl ServingPlane {
             admin,
             activity,
             outbound,
-            login: surfaces::login(parts.login, &database),
+            login: surfaces::login(parts.login, &database, &tuning.auth),
             probes: LiveDependencies::new(database.clone(), parts.bus),
             signup_writeback: parts.signup_writeback,
             authenticator: authenticator(database, parts.capabilities, parts.sessions),
@@ -187,6 +197,7 @@ impl ServingPlane {
             platform_admin_workspace: parts.platform_admin_workspace,
             live: parts.live,
             analytics: parts.analytics,
+            pages: construction::pages(&tuning.api),
         }
     }
 }
@@ -229,8 +240,8 @@ fn run_plane(
     bus: afd_bus::Handle,
     broker: Arc<afd_credential::credential::Broker>,
     biller: Arc<dyn afd_billing::biller::Biller>,
+    notices: afd_turns::view::activity::Notices,
 ) -> RunService {
-    let activity_streams = bus.clone();
     RunService {
         task_reports: None,
         turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
@@ -242,8 +253,7 @@ fn run_plane(
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),
         biller,
-        memories: Memories::new(database.clone(), Entropy::new())
-            .with_activity_streams(activity_streams),
+        memories: Memories::new(database.clone(), Entropy::new()).with_activity_notices(notices),
         providers,
         // The thread a chat run reads its earlier turns and their tool
         // calls from.

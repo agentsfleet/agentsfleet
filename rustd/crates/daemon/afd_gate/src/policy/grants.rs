@@ -125,6 +125,7 @@ mod tests {
                 provider: &resolved,
                 declared: &declared,
                 repair_branch: None,
+                windows: crate::policy::context::ToolWindows::default(),
             },
             &Grants::none(),
         )
@@ -157,6 +158,7 @@ mod tests {
                 provider: &resolved,
                 declared: &declared,
                 repair_branch: None,
+                windows: crate::policy::context::ToolWindows::default(),
             },
             &granted,
         )
@@ -192,6 +194,7 @@ mod tests {
                 provider: &resolved,
                 declared: &declared,
                 repair_branch: None,
+                windows: crate::policy::context::ToolWindows::default(),
             },
             &granted,
         )

@@ -57,8 +57,13 @@ garde.workspace = true
 jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+# `rt` for the task-local a request's id is read back through.
+tokio = { workspace = true, features = ["rt", "sync"] }
 tracing.workspace = true
+# The caller's address, which `client::Origin` falls back across.
+axum-client-ip.workspace = true
+# The request id's carrier: the extension a minted or incoming id rides.
+tower-http.workspace = true
 
 # The document generator, reachable only under `openapi`. Optional, so the
 # default resolve of the substrate every plane depends on is unchanged.

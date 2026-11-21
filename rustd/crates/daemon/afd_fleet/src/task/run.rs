@@ -39,9 +39,9 @@ struct Selected {
 pub(crate) async fn attach(
     connection: &mut PgConnection,
     acquired: &Acquired,
-    runner: &Uuid7,
-    run: &Uuid7,
+    (runner, run): (&Uuid7, &Uuid7),
     revision: Option<&crate::run::installed::IssueRevision>,
+    slice_seconds: i32,
 ) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
     // A plain turn under the assignment's setup proof: the run insert
     // rechecked the head revision and the host, so there is nothing to attach
@@ -81,15 +81,22 @@ pub(crate) async fn attach(
     if !selected.capable || revision.is_none() || selected.turn_generation != selected.generation {
         return Ok(None);
     }
-    attach_task(connection, acquired, run, &task_id, revision).await
+    attach_task(
+        connection,
+        acquired,
+        run,
+        (&task_id, revision),
+        slice_seconds,
+    )
+    .await
 }
 
 async fn attach_task(
     connection: &mut PgConnection,
     acquired: &Acquired,
     run: &Uuid7,
-    task_id: &Uuid7,
-    revision: Option<&crate::run::installed::IssueRevision>,
+    (task_id, revision): (&Uuid7, Option<&crate::run::installed::IssueRevision>),
+    slice_seconds: i32,
 ) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
     let task = task_id.clone();
     let _locked: Option<String> = sqlx::query_scalar(super::sql::LOCK_TASK)
@@ -106,7 +113,7 @@ async fn attach_task(
             .bind(TaskState::Ready.as_str())
             .bind(TaskState::Running.as_str())
             .bind(revision.and_then(|proof| proof.task_generation))
-            .bind(SLICE_SECONDS)
+            .bind(slice_seconds)
             .bind(NANOS_PER_SECOND)
             .fetch_optional(&mut *connection)
             .await
@@ -128,7 +135,8 @@ async fn attach_task(
     Ok(Some((Some(context), deadline.to_jiff())))
 }
 
-pub(crate) const SLICE_SECONDS: i32 = 600;
+/// A task's slice length, by default.
+pub(crate) const SLICE: std::time::Duration = std::time::Duration::from_mins(10);
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
 
 impl crate::run::Runs {

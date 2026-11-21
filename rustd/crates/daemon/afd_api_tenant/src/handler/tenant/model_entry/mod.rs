@@ -187,7 +187,7 @@ async fn read_registry<D: TenantPlane>(
     query: Option<String>,
 ) -> Result<Response, Refusal> {
     let raw = query.unwrap_or_default();
-    let limit = requested_limit(&raw)?;
+    let limit = requested_limit(&raw, services.pages().list)?;
     let tenant = tenant_of(
         services,
         identity.person(),

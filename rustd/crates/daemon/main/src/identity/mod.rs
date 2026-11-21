@@ -141,12 +141,50 @@ impl TokenVerifier for Sessions {
 /// already refused the boot if a knob was missing, so an absent provider can no
 /// longer reach this function at all.
 #[must_use]
-pub fn resolve(identity: &IdentityConfig) -> (Capabilities, Sessions, SignupWriteback) {
-    resolve_with(identity, build_claims, build_key_set, build_metadata)
+pub fn resolve(
+    identity: &IdentityConfig,
+    timing: Timing,
+) -> (Capabilities, Sessions, SignupWriteback) {
+    resolve_with(
+        identity,
+        timing,
+        |identity| build_claims(identity, timing.provider_timeout),
+        build_key_set,
+        |identity| build_metadata(identity, timing.provider_timeout),
+    )
+}
+
+/// How long calls to the identity provider may take, and how long its
+/// signing keys are trusted.
+#[derive(Debug, Clone, Copy)]
+pub struct Timing {
+    /// One capability read or metadata write; see [`PROVIDER_TIMEOUT`].
+    pub provider_timeout: Duration,
+    /// One key-set fetch; see [`KEY_SET_TIMEOUT`].
+    pub key_set_timeout: Duration,
+    /// How long a fetched key set is served without asking again.
+    pub key_set_ttl: Duration,
+    /// How long past that a set is still served after a failed refetch.
+    pub key_set_stale_grace: Duration,
+    /// The shortest gap between two key-set fetches.
+    pub key_set_refresh_min_interval: Duration,
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self {
+            provider_timeout: PROVIDER_TIMEOUT,
+            key_set_timeout: KEY_SET_TIMEOUT,
+            key_set_ttl: afd_identity::jwks::cache::DEFAULT_TTL,
+            key_set_stale_grace: afd_identity::jwks::cache::STALE_GRACE,
+            key_set_refresh_min_interval: afd_identity::jwks::cache::REFRESH_MIN_INTERVAL,
+        }
+    }
 }
 
 fn resolve_with<C, K, M>(
     identity: &IdentityConfig,
+    timing: Timing,
     claim_builder: C,
     key_set_builder: K,
     metadata_builder: M,
@@ -158,25 +196,31 @@ where
 {
     (
         capabilities(identity, claim_builder),
-        sessions(identity, key_set_builder),
+        sessions(identity, timing, key_set_builder),
         writeback(identity, metadata_builder),
     )
 }
 
-fn build_claims(identity: &IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable> {
+fn build_claims(
+    identity: &IdentityConfig,
+    timeout: Duration,
+) -> Result<ProviderClaims, ClaimUnavailable> {
     ProviderClaims::new(
         identity.api_base.clone(),
         identity.secret.clone(),
-        PROVIDER_TIMEOUT,
+        timeout,
         &identity.transport,
     )
 }
 
-fn build_metadata(identity: &IdentityConfig) -> Result<ProviderMetadata, MetadataUnwritten> {
+fn build_metadata(
+    identity: &IdentityConfig,
+    timeout: Duration,
+) -> Result<ProviderMetadata, MetadataUnwritten> {
     ProviderMetadata::new(
         identity.api_base.clone(),
         identity.secret.clone(),
-        PROVIDER_TIMEOUT,
+        timeout,
         &identity.transport,
     )
 }
@@ -252,7 +296,7 @@ where
 }
 
 /// The session seam for a configured issuer.
-fn sessions<K>(identity: &IdentityConfig, build: K) -> Sessions
+fn sessions<K>(identity: &IdentityConfig, timing: Timing, build: K) -> Sessions
 where
     K: FnOnce(&IdentityConfig, String, Duration) -> Result<HttpKeySet, VerifyError>,
 {
@@ -261,12 +305,19 @@ where
     let Some(url) = jwks_url(identity.jwks_url.as_deref(), Some(&identity.issuer)) else {
         return Sessions::Unconfigured(NoVerifier);
     };
-    match build(identity, url, KEY_SET_TIMEOUT) {
-        Ok(key_set) => Sessions::Jwks(Arc::new(JwksVerifier::new(
-            key_set,
-            VerifierConfig::new(identity.issuer.clone(), identity.audience.clone()),
-            Arc::new(af_core::clock::SystemClock),
-        ))),
+    match build(identity, url, timing.key_set_timeout) {
+        Ok(key_set) => {
+            let mut config =
+                VerifierConfig::new(identity.issuer.clone(), identity.audience.clone());
+            config.ttl = timing.key_set_ttl;
+            config.stale_grace = timing.key_set_stale_grace;
+            config.refresh_min_interval = timing.key_set_refresh_min_interval;
+            Sessions::Jwks(Arc::new(JwksVerifier::new(
+                key_set,
+                config,
+                Arc::new(af_core::clock::SystemClock),
+            )))
+        }
         Err(_unbuildable) => {
             let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
             {

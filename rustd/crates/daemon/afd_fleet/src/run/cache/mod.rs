@@ -153,16 +153,22 @@ pub struct PriceBooks {
 
 impl Default for PriceBooks {
     fn default() -> Self {
-        Self {
-            entries: Cache::builder()
-                .max_capacity(PRICE_BOOK_CAPACITY)
-                .eviction_policy(EvictionPolicy::lru())
-                .build(),
-        }
+        Self::with_capacity(PRICE_BOOK_CAPACITY)
     }
 }
 
 impl PriceBooks {
+    /// A cache holding at most `books` price books.
+    #[must_use]
+    pub fn with_capacity(books: u64) -> Self {
+        Self {
+            entries: Cache::builder()
+                .max_capacity(books)
+                .eviction_policy(EvictionPolicy::lru())
+                .build(),
+        }
+    }
+
     /// The pricing for `posture`, `provider` and `model` at `catalogue_version`,
     /// read on a miss.
     ///
@@ -263,17 +269,23 @@ struct Versions {
 
 impl Default for Latest {
     fn default() -> Self {
-        Self(Arc::new(Versions {
-            catalogue: AtomicI64::new(UNKNOWN),
-            heads: Cache::builder()
-                .max_capacity(HEAD_CAPACITY)
-                .eviction_policy(EvictionPolicy::lru())
-                .build(),
-        }))
+        Self::with_capacity(HEAD_CAPACITY)
     }
 }
 
 impl Latest {
+    /// Versions remembering at most `heads` fleets' head revisions.
+    #[must_use]
+    pub fn with_capacity(heads: u64) -> Self {
+        Self(Arc::new(Versions {
+            catalogue: AtomicI64::new(UNKNOWN),
+            heads: Cache::builder()
+                .max_capacity(heads)
+                .eviction_policy(EvictionPolicy::lru())
+                .build(),
+        }))
+    }
+
     /// A statement answered `fleet`'s head as `head` and the catalogue as
     /// `catalogue`. Versions only move forward, so the larger is kept.
     pub(crate) async fn observe(&self, fleet: &Uuid7, head: Option<&Uuid7>, catalogue: i64) {

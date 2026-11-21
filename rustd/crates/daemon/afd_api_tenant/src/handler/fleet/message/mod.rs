@@ -21,14 +21,13 @@ use std::sync::Arc;
 use af_validate::Ceiling;
 use af_validate::Limit;
 use af_wire::turn::ThreadResponse;
-use afd_turns::view::{Cursor, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, TurnDetailRow};
+use afd_turns::view::{Cursor, TurnDetailRow};
 use axum::Json;
 use axum::extract::{Path, Query, RawQuery, State, rejection::QueryRejection};
 use axum::response::{IntoResponse as _, Response};
 use serde::Deserialize;
 
 use crate::auth::WorkspaceContext;
-use crate::handler::paging::store_ceiling;
 use crate::handler::turn::expanded;
 use crate::handler::{Refusal, parameter};
 use crate::services::{TenantPlane, WorkspaceTurns as _};
@@ -60,9 +59,6 @@ fn event_type(asked: Result<Query<TurnFilter>, QueryRejection>) -> Result<Option
     Ok(asked.event_type.clone())
 }
 
-/// The refusal a page size outside the served band earns.
-const DETAIL_LIMIT: &str = "limit must be between 1 and 100";
-
 /// The refusal a continuation this walk did not issue earns.
 const DETAIL_CURSOR: &str = "invalid starting_after cursor";
 
@@ -71,19 +67,16 @@ const DETAIL_CURSOR: &str = "invalid starting_after cursor";
 /// `THREAD_PAGE_BODY_BUDGET_BYTES`, mirrored.
 const PAGE_BUDGET_BYTES: usize = 512 * 1024;
 
-/// The thread's bound on `?limit`: the event store's thread constants.
+/// The page size inside the thread's bound (`[api]`'s thread page), or the
+/// refusal a caller outside it earns.
 ///
-/// One to twenty-five, an order of magnitude below the event listings' band:
-/// every row here carries two bodies. Zero is refused rather than clamped —
-/// a caller asking for no turns has made a mistake, and an empty page would
-/// read as an empty thread.
-const CEILING: Ceiling = store_ceiling(THREAD_MAX_LIMIT, THREAD_DEFAULT_LIMIT);
-
-/// The page size, or the refusal a caller outside the band earns.
-fn requested_limit(raw: Option<&str>) -> Result<i64, Refusal> {
-    Limit::parse(raw, CEILING)
-        .map(i64::from)
-        .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))
+/// Every row here carries two bodies, so the thread's band is its own. Zero is
+/// refused rather than clamped — a caller asking for no turns has made a
+/// mistake, and an empty page would read as an empty thread.
+fn requested_limit(raw: Option<&str>, ceiling: Ceiling) -> Result<i64, Refusal> {
+    Limit::parse(raw, ceiling).map(i64::from).map_err(|_break| {
+        Refusal::malformed_sentence(afd_http::paging::limit_sentence("limit must be", ceiling))
+    })
 }
 
 /// The continuation this walk issued, or the refusal one it did not earns.
@@ -127,7 +120,7 @@ pub(crate) async fn thread<D: TenantPlane>(
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let query = query.unwrap_or_default();
-    let limit = requested_limit(parameter(&query, QUERY_LIMIT))?;
+    let limit = requested_limit(parameter(&query, QUERY_LIMIT), services.pages().thread)?;
     let after = parse_cursor(parameter(&query, QUERY_STARTING_AFTER))?;
     let event_type = event_type(filter)?;
 

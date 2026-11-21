@@ -44,7 +44,7 @@ async fn assert_purpose_filters(f: &Fixture) {
             .models(
                 f.access(),
                 ModelsQuery {
-                    limit: 100,
+                    limit: Some(100),
                     purpose,
                     starting_after: None,
                 },

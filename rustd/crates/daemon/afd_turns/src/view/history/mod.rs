@@ -61,22 +61,17 @@ const CONTEXT_STOP: &str = "stop a fleet turn";
 const CONTEXT_THREAD: &str = "read a fleet's message thread";
 const CONTEXT_FINISHED: &str = "read a fleet's finished turns";
 
-/// The page a caller gets when they name no size.
-pub const DEFAULT_LIMIT: i64 = 50;
-
-/// The page a caller of the message thread gets when they name no size.
+/// The page a caller of the message thread gets when they name no size and
+/// `[api] default_thread_page_size` names nothing else.
 pub const THREAD_DEFAULT_LIMIT: i64 = 25;
 
-/// The largest message-thread page this surface will build. Every row
-/// carries a trigger payload and an agent's full answer, so the page is also
-/// cut to its byte budget.
-pub const THREAD_MAX_LIMIT: i64 = 100;
-
-/// The largest page this surface will build.
+/// The largest message-thread page when `[api] max_thread_page_size` names
+/// nothing else. Every row carries a trigger payload and an agent's full
+/// answer, so the page is also cut to its byte budget.
 ///
-/// `LIMIT_MAX`, mirrored. The ceiling is the correlated cost subselect's bound
-/// as much as the payload's: it executes once per returned row.
-pub const MAX_LIMIT: i64 = 200;
+/// The reads below take the caller's `limit` as already bounded: each caller
+/// holds it to a configured ceiling, so the store adds none of its own.
+pub const THREAD_MAX_LIMIT: i64 = 100;
 
 /// The operator's read side of a fleet's opened `thread.turns` events.
 #[derive(Debug, Clone)]
@@ -199,7 +194,7 @@ impl History {
                     .bind(&at.turn_id)
             },
         );
-        let bound = limit.clamp(1, THREAD_MAX_LIMIT + 1);
+        let bound = limit.max(1);
         let mut connection = self.database.acquire().await?;
         let rows = scoped
             .bind(bound)
@@ -237,7 +232,7 @@ impl History {
             .bind(&at.turn_id)
             .bind(status::PROCESSED)
             .bind(status::FLEET_ERROR)
-            .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
+            .bind(limit.max(1))
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_FINISHED))?
@@ -276,7 +271,7 @@ impl History {
         let rows = query
             .bind(Since::instant(filter.since).map(jiff_sqlx::ToSqlx::to_sqlx))
             .bind(Since::span(filter.since))
-            .bind(limit.clamp(1, MAX_LIMIT))
+            .bind(limit.max(1))
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(context))?;
@@ -331,13 +326,13 @@ mod tests {
 
     #[test]
     fn an_empty_page_ends_the_walk() {
-        assert!(next_cursor(&[], DEFAULT_LIMIT).is_none());
+        assert!(next_cursor(&[], 50).is_none());
     }
 
     #[test]
     fn a_short_page_ends_the_walk() -> af_core::error::Result<()> {
         let page = vec![row_at(10, &event(1)?), row_at(9, &event(2)?)];
-        assert!(next_cursor(&page, DEFAULT_LIMIT).is_none());
+        assert!(next_cursor(&page, 50).is_none());
         Ok(())
     }
 

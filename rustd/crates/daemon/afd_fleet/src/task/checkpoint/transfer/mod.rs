@@ -100,7 +100,7 @@ pub(in crate::task) async fn uploads(
             "freeze complete ciphertext descriptors before URL exposure",
         ))?;
     let objects = scoped(&mut tx, &plan, &ids).await?;
-    protect(&mut tx, &ids, &pin).await?;
+    protect(&mut tx, &ids, &pin, tasks.times().orphan_seconds()).await?;
     tx.commit()
         .await
         .map_err(query("commit immutable create-only upload authority"))?;
@@ -168,7 +168,7 @@ pub(in crate::task) async fn authorize(
     {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
-    protect(&mut tx, &object_ids, &pin).await?;
+    protect(&mut tx, &object_ids, &pin, tasks.times().orphan_seconds()).await?;
     let response = plan.wire(&pin, false)?;
     tx.commit()
         .await
@@ -214,7 +214,7 @@ pub(in crate::task) async fn list(
     if objects.iter().any(|object| !object.verified) {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
-    protect(&mut tx, &ids, &pin).await?;
+    protect(&mut tx, &ids, &pin, tasks.times().orphan_seconds()).await?;
     tx.commit()
         .await
         .map_err(query("commit bounded restore transfer authority"))?;
@@ -252,10 +252,15 @@ pub(super) async fn scoped(
     Ok(objects)
 }
 
-pub(super) async fn protect(connection: &mut PgConnection, ids: &[Uuid7], pin: &Pin) -> Result<()> {
+pub(super) async fn protect(
+    connection: &mut PgConnection,
+    ids: &[Uuid7],
+    pin: &Pin,
+    orphan_seconds: i32,
+) -> Result<()> {
     sqlx::query(include_str!("../sql/objects_protect.sql"))
         .bind(ids)
-        .bind(super::ORPHAN_SECONDS + 60)
+        .bind(orphan_seconds.saturating_add(60))
         .bind(pin.expires_at.to_sqlx())
         .execute(connection)
         .await

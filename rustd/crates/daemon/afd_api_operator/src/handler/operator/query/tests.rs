@@ -4,6 +4,21 @@
 
 use super::*;
 
+/// The list page when the deployment names none.
+const CEILING: Ceiling = af_core::paging::CEILING;
+
+fn page(params: &HashMap<String, String>) -> Result<PageQuery, Bad> {
+    super::page(params, CEILING)
+}
+
+fn runs(params: &HashMap<String, String>) -> Result<RunQuery, Bad> {
+    super::runs(params, CEILING)
+}
+
+fn events(params: &HashMap<String, String>) -> Result<EventQuery, Bad> {
+    super::events(params, CEILING)
+}
+
 #[test]
 fn page_query_accepts_defaults_and_composite_cursors() {
     let empty = HashMap::new();
@@ -26,9 +41,9 @@ fn page_query_accepts_defaults_and_composite_cursors() {
 #[test]
 fn page_query_refuses_out_of_range_inputs() {
     for (key, value, detail) in [
-        (QUERY_LIMIT, "0", DETAIL_BAD_PAGE),
-        (QUERY_LIMIT, "101", DETAIL_BAD_PAGE),
-        (QUERY_STARTING_AFTER, "not-a-cursor", DETAIL_BAD_PAGE),
+        (QUERY_LIMIT, "0", Bad::Page),
+        (QUERY_LIMIT, "101", Bad::Page),
+        (QUERY_STARTING_AFTER, "not-a-cursor", Bad::Page),
     ] {
         let params = HashMap::from([(key.to_owned(), value.to_owned())]);
         assert_eq!(page(&params).err(), Some(detail));
@@ -58,10 +73,10 @@ fn run_query_parses_independent_filters_and_refuses_each_bad_dimension() {
     assert_eq!(parsed.fleet.as_deref(), Some("Production"));
 
     for (key, value, detail) in [
-        (QUERY_LIMIT, "0", DETAIL_BAD_RUN_LIMIT),
-        (QUERY_STARTING_AFTER, "foreign", DETAIL_BAD_RUN_CURSOR),
-        (QUERY_WORKSPACE_ID, "workspace", DETAIL_BAD_WORKSPACE),
-        (QUERY_FLEET, "", DETAIL_BAD_FLEET),
+        (QUERY_LIMIT, "0", Bad::RunLimit),
+        (QUERY_STARTING_AFTER, "foreign", Bad::RunCursor),
+        (QUERY_WORKSPACE_ID, "workspace", Bad::Workspace),
+        (QUERY_FLEET, "", Bad::Fleet),
     ] {
         assert_eq!(
             runs(&HashMap::from([(key.to_owned(), value.to_owned())])).err(),
@@ -88,14 +103,14 @@ fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
     assert_eq!(parsed.cursor.as_ref().map(format).as_deref(), Some(cursor));
 
     for (key, value, detail) in [
-        (QUERY_LIMIT, "0", DETAIL_BAD_EVENTS),
-        (QUERY_STARTING_AFTER, "not-a-cursor", DETAIL_BAD_EVENTS),
-        (QUERY_EVENT_TYPE, "", DETAIL_BAD_EVENTS),
-        (QUERY_EVENT_TYPE, "runner_online,", DETAIL_BAD_EVENTS),
-        (QUERY_EVENT_TYPE, "not_an_event", DETAIL_BAD_EVENTS),
-        (QUERY_SINCE, "yesterday", DETAIL_BAD_EVENTS),
-        (QUERY_SINCE, "1725000010000", DETAIL_BAD_EVENTS),
-        (QUERY_UNTIL, "2024-08-30T06:40:20.0001Z", DETAIL_BAD_EVENTS),
+        (QUERY_LIMIT, "0", Bad::Events),
+        (QUERY_STARTING_AFTER, "not-a-cursor", Bad::Events),
+        (QUERY_EVENT_TYPE, "", Bad::Events),
+        (QUERY_EVENT_TYPE, "runner_online,", Bad::Events),
+        (QUERY_EVENT_TYPE, "not_an_event", Bad::Events),
+        (QUERY_SINCE, "yesterday", Bad::Events),
+        (QUERY_SINCE, "1725000010000", Bad::Events),
+        (QUERY_UNTIL, "2024-08-30T06:40:20.0001Z", Bad::Events),
     ] {
         assert_eq!(
             events(&HashMap::from([(key.to_owned(), value.to_owned())])).err(),
@@ -108,7 +123,7 @@ fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
             (QUERY_UNTIL.to_owned(), "2024-08-30T06:40:20Z".to_owned()),
         ]))
         .err(),
-        Some(DETAIL_BAD_EVENTS)
+        Some(Bad::Events)
     );
 }
 
@@ -123,14 +138,14 @@ fn the_fleet_filter_and_the_event_type_set_are_bounded() {
         .err()
     };
     assert_eq!(fleet(MAX_FLEET_FILTER_LEN), None);
-    assert_eq!(fleet(MAX_FLEET_FILTER_LEN + 1), Some(DETAIL_BAD_FLEET));
+    assert_eq!(fleet(MAX_FLEET_FILTER_LEN + 1), Some(Bad::Fleet));
 
     let set = |count: usize| {
         let raw = vec!["runner_online"; count].join(",");
         events(&HashMap::from([(QUERY_EVENT_TYPE.to_owned(), raw)])).err()
     };
     assert_eq!(set(MAX_EVENT_TYPE_TOKENS), None);
-    assert_eq!(set(MAX_EVENT_TYPE_TOKENS + 1), Some(DETAIL_BAD_EVENTS));
+    assert_eq!(set(MAX_EVENT_TYPE_TOKENS + 1), Some(Bad::Events));
 }
 
 /// A set far past its bound is cut while it is split: one token past the
@@ -143,7 +158,7 @@ fn an_event_type_set_is_counted_while_it_is_split() {
     assert_eq!(split_tokens(&flood).len(), MAX_EVENT_TYPE_TOKENS + 1);
     assert_eq!(
         events(&HashMap::from([(QUERY_EVENT_TYPE.to_owned(), flood)])).err(),
-        Some(DETAIL_BAD_EVENTS)
+        Some(Bad::Events)
     );
     let at_bound = ["runner_online"; MAX_EVENT_TYPE_TOKENS].join(",");
     assert_eq!(split_tokens(&at_bound).len(), MAX_EVENT_TYPE_TOKENS);
@@ -181,7 +196,7 @@ fn an_event_type_token_reads_by_its_stored_spelling_and_an_unknown_one_refuses()
         "runner_online,not_an_event",
         "runner-online",
     ] {
-        assert_eq!(set(unknown).err(), Some(DETAIL_BAD_EVENTS), "{unknown}");
+        assert_eq!(set(unknown).err(), Some(Bad::Events), "{unknown}");
     }
 }
 
@@ -202,6 +217,21 @@ fn a_cursor_that_is_not_a_timestamp_and_a_uuid7_is_refused() {
         "not-digits:0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010",
     ] {
         let params = HashMap::from([(QUERY_STARTING_AFTER.to_owned(), refused.to_owned())]);
-        assert_eq!(page(&params).err(), Some(DETAIL_BAD_PAGE), "{refused}");
+        assert_eq!(page(&params).err(), Some(Bad::Page), "{refused}");
     }
+}
+
+/// `[api]`'s list page bounds every operator list, and each sentence names it.
+#[test]
+fn the_configured_list_page_bounds_and_names_every_list() {
+    let configured = Ceiling::new(7, 3);
+    let blank = HashMap::new();
+    assert_eq!(
+        super::page(&blank, configured).map(|q| q.limit).ok(),
+        Some(3)
+    );
+    let over = HashMap::from([(QUERY_LIMIT.to_owned(), "8".to_owned())]);
+    assert_eq!(super::runs(&over, configured).err(), Some(Bad::RunLimit));
+    assert!(Bad::Page.sentence(configured).contains("between 1 and 7"));
+    assert!(Bad::Events.sentence(configured).contains("between 1 and 7"));
 }

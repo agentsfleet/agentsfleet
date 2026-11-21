@@ -209,7 +209,7 @@ async fn allocate(
         ))
         .bind(run.run_id)
         .bind(owned.current.fence)
-        .bind(super::TRANSFER_SECONDS)
+        .bind(tasks.times().transfer_seconds())
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
         .execute(&mut *connection)
         .await

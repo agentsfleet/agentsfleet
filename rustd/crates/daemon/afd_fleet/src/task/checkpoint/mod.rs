@@ -31,10 +31,19 @@ pub(crate) const OBJECTS_INSERT: &str = include_str!("sql/objects_insert.sql");
 pub(crate) const DESCRIPTORS: &str = include_str!("sql/descriptors.sql");
 pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");
 
-const TRANSFER_SECONDS: i32 = 15 * 60;
-const PIN_SECONDS: i32 = 30 * 60;
-const URL_SECONDS: u64 = 5 * 60;
-const ORPHAN_SECONDS: i32 = 60 * 60;
-const GC_BATCH: i64 = 256;
-const LIVE_GENERATIONS: i64 = 3;
-const TERMINAL_SECONDS: i32 = 7 * 24 * 60 * 60;
+use std::time::Duration;
+
+/// How long a runner's upload link stays valid, by default.
+pub(crate) const TRANSFER: Duration = Duration::from_mins(15);
+/// How long a restoring checkpoint is pinned, by default.
+pub(crate) const PIN: Duration = Duration::from_mins(30);
+/// How long a runner's download link stays valid, by default.
+pub(crate) const URL: Duration = Duration::from_mins(5);
+/// How long an uncommitted upload is kept, by default.
+pub(crate) const ORPHAN: Duration = Duration::from_hours(1);
+/// Objects deleted per storage call, by default.
+pub(crate) const GC_BATCH: u32 = 256;
+/// Newest checkpoints kept per task, by default.
+pub(crate) const LIVE_GENERATIONS: u32 = 3;
+/// How long a finished task's records are kept, by default.
+pub(crate) const TERMINAL: Duration = af_core::timing::DAY.saturating_mul(7);

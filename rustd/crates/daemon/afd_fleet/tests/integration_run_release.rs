@@ -37,7 +37,7 @@ async fn state(held: &Held) -> (Option<String>, bool) {
 }
 
 // Value: protects=a run whose frame never reached its runner is put back on the queue at
-// once and never counts against its turn's EVENT_RUNS_MAX; fails_when=the release keeps the
+// once and never counts against its turn's DEFAULT_MAX_RUNS_PER_TURN; fails_when=the release keeps the
 // run's row, so the reassignment counts it, or leaves the thread held; why_new=Greptile P1
 // on PR #855; seam=the release statement over live Postgres, then the production selection.
 #[tokio::test]

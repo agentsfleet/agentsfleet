@@ -50,6 +50,10 @@ impl Shared for Fleet {
     fn now(&self) -> jiff::Timestamp {
         self.now
     }
+
+    fn pages(&self) -> afd_http::paging::Pages {
+        afd_http::paging::Pages::default()
+    }
 }
 
 impl TenantPlane for Fleet {

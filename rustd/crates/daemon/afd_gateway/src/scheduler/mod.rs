@@ -3,6 +3,8 @@
 mod recovery;
 mod subscriptions;
 
+pub(crate) use subscriptions::REPAIR_BACKOFF_MAX;
+
 use crate::{
     Gateway, Result,
     connection::{AssignMode, AssignOutcome, ConnectionHandle},

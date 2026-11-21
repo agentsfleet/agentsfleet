@@ -28,8 +28,9 @@ use afd_vault::Vault as SecretVault;
 pub(super) fn connect_flow(
     database: &Db,
     kek: &Arc<Kek>,
-    bus: &afd_bus::Handle,
+    notices: &afd_turns::view::activity::Notices,
     vendor_client: reqwest::Client,
+    timing: afd_connector::Timing,
 ) -> afd_connector::Connectors {
     afd_connector::Connectors::new(
         afd_connector::PlatformApp::new(SecretVault::new(
@@ -39,7 +40,7 @@ pub(super) fn connect_flow(
         )),
         afd_connector::Grants::new(
             SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new())
-                .with_activity_streams(bus.clone()),
+                .with_activity_notices(notices.clone()),
             database.clone(),
             Entropy::new(),
         ),
@@ -48,18 +49,24 @@ pub(super) fn connect_flow(
         database.clone(),
         Entropy::new(),
     )
+    .with_timing(timing)
 }
 
 /// The invite mailer, over its own reader of the admin workspace's vault.
 ///
 /// Its own `Vault` value for the reason the connect flow's platform half is
 /// one: it opens this deployment's credentials and nothing a tenant stored.
-pub(super) fn invite_mailer(database: &Db, kek: &Arc<Kek>) -> InviteMailer {
+pub(super) fn invite_mailer(
+    database: &Db,
+    kek: &Arc<Kek>,
+    deadline: std::time::Duration,
+) -> InviteMailer {
     InviteMailer::new(SecretVault::new(
         database.clone(),
         Arc::clone(kek),
         Entropy::new(),
     ))
+    .with_deadline(deadline)
 }
 
 /// The scheduler this deployment ships, behind the [`afd_cron::Scheduler`]
@@ -82,12 +89,15 @@ pub(super) fn qstash(
             tracing::error!(event = "scheduler_callback_unusable", error_code);
             String::new()
         });
-    Arc::new(afd_cron::QStash::new(
-        schedule.client,
-        SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
-        admin,
-        destination,
-    ))
+    Arc::new(
+        afd_cron::QStash::new(
+            schedule.client,
+            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+            admin,
+            destination,
+        )
+        .with_retries(schedule.retries),
+    )
 }
 
 /// The interim message poster: a Slack poster over its own grant store, posting
@@ -101,14 +111,18 @@ pub(super) fn interjector(
     kek: &Arc<Kek>,
     vendor_client: reqwest::Client,
     slack_api_base: String,
+    deadlines: afd_outbound::SlackDeadlines,
 ) -> afd_outbound::Interjector {
-    afd_outbound::Interjector::new(afd_outbound::SlackPoster::new(
-        afd_connector::Grants::new(
-            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
-            database.clone(),
-            Entropy::new(),
-        ),
-        vendor_client,
-        slack_api_base,
-    ))
+    afd_outbound::Interjector::new(
+        afd_outbound::SlackPoster::new(
+            afd_connector::Grants::new(
+                SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+                database.clone(),
+                Entropy::new(),
+            ),
+            vendor_client,
+            slack_api_base,
+        )
+        .with_deadlines(deadlines),
+    )
 }

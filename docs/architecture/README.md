@@ -42,6 +42,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 |---|---|
 | How do several unfinished jobs share one fleet? | [Durable Tasks](durable_tasks.md) |
 | Who routes intent and judges goal progress? | [Configurable decision models](goal_evaluation.md) |
+| Which settings does `agentsfleetd` read from its file, and what are their defaults? | [`config_reference.md`](./config_reference.md) |
 | How long can a fleet run before its run expires? | [`runner_fleet.md`](./runner_fleet.md) §"Per-run renewal: how a long fleet keeps its run" |
 | What happens when a runner dies mid-turn? | [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model" |
 | Where are checkpoints saved, and how do many failed fleets resume? | [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) |

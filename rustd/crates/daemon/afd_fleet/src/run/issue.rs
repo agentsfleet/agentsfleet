@@ -152,9 +152,14 @@ impl Runs {
         else {
             return Ok(None);
         };
-        let Some((task, expires_at)) =
-            crate::task::run::attach(&mut transaction, acquired, runner_id, &run_id, revision)
-                .await?
+        let Some((task, expires_at)) = crate::task::run::attach(
+            &mut transaction,
+            acquired,
+            (runner_id, &run_id),
+            revision,
+            self.limits().tasks.slice_seconds(),
+        )
+        .await?
         else {
             return Ok(None);
         };

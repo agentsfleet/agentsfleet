@@ -50,6 +50,8 @@ openapi = ["afd_api/openapi"]
 
 [dependencies]
 af_config.workspace = true
+# The runner link's frame ceilings bound `[runners]`' message sizes.
+af_wire.workspace = true
 toml.workspace = true
 serde.workspace = true
 afd_bus.workspace = true
@@ -79,6 +81,8 @@ afd_api_operator.workspace = true
 afd_api_runner.workspace = true
 afd_api_tenant.workspace = true
 afd_http.workspace = true
+# The `[api]` page sizes, as the `?limit` ceiling every list route reads.
+af_validate.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true
 # `signal::shutdown`, the stop `serve` waits on.
@@ -189,9 +193,6 @@ tokio = { workspace = true, features = [
 tokio-util.workspace = true
 axum.workspace = true
 serde_json.workspace = true
-# The stream kinds and inference shapes the configuration and observation
-# proofs read.
-af_wire.workspace = true
 # The TLS posture proof: a rustls client and server over an rcgen certificate.
 rcgen.workspace = true
 rustls.workspace = true

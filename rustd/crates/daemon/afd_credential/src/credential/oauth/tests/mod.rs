@@ -92,6 +92,7 @@ fn a_success_body_mints_for_exactly_as_long_as_it_states() {
         &answered(&json!({"access_token": "at_live", "expires_in": EXPIRES_IN_AN_HOUR})),
         "rt_posted",
         NOW,
+        DEFAULT_ACCESS_TTL,
     );
     let minted = outcome.minted().expect("a success body mints");
     assert_eq!(minted.token.as_str(), "at_live");
@@ -115,6 +116,7 @@ fn expires_in_is_read_however_the_provider_spells_a_number() {
             &answered(&json!({"access_token": "at", "expires_in": spelled})),
             "rt",
             NOW,
+            DEFAULT_ACCESS_TTL,
         );
         assert_eq!(
             outcome.minted().expect("a success body mints").expires_at,
@@ -124,11 +126,33 @@ fn expires_in_is_read_however_the_provider_spells_a_number() {
     }
 }
 
+/// A deployment's configured lifetime, not the default, is what an absent
+/// expiry assumes.
+#[test]
+fn an_absent_expiry_assumes_the_configured_lifetime() {
+    let configured = Duration::from_mins(2);
+    let outcome = granted(
+        &answered(&json!({"access_token": "at"})),
+        "rt",
+        NOW,
+        configured,
+    );
+    assert_eq!(
+        outcome.minted().expect("a success body mints").expires_at,
+        after(NOW, configured)
+    );
+}
+
 #[test]
 fn an_absent_expiry_falls_to_the_conservative_floor() {
     // Short, never long: an assumed lifetime past the real one caches a dead
     // token and a child meets a 401 mid-run.
-    let outcome = granted(&answered(&json!({"access_token": "at"})), "rt", NOW);
+    let outcome = granted(
+        &answered(&json!({"access_token": "at"})),
+        "rt",
+        NOW,
+        DEFAULT_ACCESS_TTL,
+    );
     assert_eq!(
         outcome.minted().expect("a success body mints").expires_at,
         after(NOW, DEFAULT_ACCESS_TTL)
@@ -150,7 +174,7 @@ fn a_success_body_this_daemon_cannot_read_mints_nothing() {
         // Beyond any integer: a float a naive cast would saturate or trap on.
         json!({"access_token": "at", "expires_in": 1e30}),
     ] {
-        let outcome = granted(&answered(&malformed), "rt", NOW);
+        let outcome = granted(&answered(&malformed), "rt", NOW, DEFAULT_ACCESS_TTL);
         assert!(
             matches!(outcome, Outcome::MintFailed(Retry::Permanent)),
             "{malformed}: {outcome:?}"
@@ -238,6 +262,7 @@ async fn a_handle_that_names_no_refresh_token_never_reaches_the_network() {
         token_url: DECLARED,
         http: &http,
         now: NOW,
+        assumed_ttl: DEFAULT_ACCESS_TTL,
     })
     .await;
     assert!(matches!(outcome, Outcome::ReconnectRequired));
@@ -250,6 +275,7 @@ async fn a_handle_that_names_no_refresh_token_never_reaches_the_network() {
         token_url: DECLARED,
         http: &http,
         now: NOW,
+        assumed_ttl: DEFAULT_ACCESS_TTL,
     })
     .await;
     assert!(matches!(outcome, Outcome::MintFailed(Retry::Permanent)));
@@ -263,6 +289,7 @@ async fn a_handle_that_names_no_refresh_token_never_reaches_the_network() {
         token_url: DECLARED,
         http: &http,
         now: NOW,
+        assumed_ttl: DEFAULT_ACCESS_TTL,
     })
     .await;
     assert!(matches!(outcome, Outcome::MintFailed(Retry::Permanent)));

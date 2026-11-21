@@ -33,6 +33,7 @@ pub struct DraftAssignment {
     api_key: SecretString,
     inference_host: Box<str>,
     tool: serde_json::Value,
+    windows: afd_gate::policy::context::ToolWindows,
 }
 
 impl DraftAssignment {
@@ -44,6 +45,7 @@ impl DraftAssignment {
         expires_at: Timestamp,
         turn: SetupTurn,
         route: RegisteredRoute,
+        windows: afd_gate::policy::context::ToolWindows,
     ) -> Self {
         let tool = setup_tool(turn.candidate.is_some());
         Self {
@@ -54,6 +56,7 @@ impl DraftAssignment {
             api_key: route.api_key,
             inference_host: route.inference_host,
             tool,
+            windows,
         }
     }
 
@@ -150,6 +153,7 @@ impl DraftAssignment {
                 afd_gate::policy::context::Overlay {
                     cap_tokens: context_tokens,
                     model: &model.model,
+                    windows: self.windows,
                 },
             ),
         }

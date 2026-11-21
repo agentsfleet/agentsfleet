@@ -22,12 +22,6 @@ use std::time::Duration;
 const CONTEXT: &str = "check setup operation replay";
 const HASH_PREFIX: &str = "setup:v1:sha256:";
 
-/// How long a receipt answers its key, measured from its `created_at`.
-///
-/// Inside it the same key and body replay the first result; at and past it the
-/// key is new and a claim of it deletes the old receipt.
-pub(crate) const REPLAY_WINDOW: Duration = af_core::timing::DAY;
-
 pub(crate) fn digest(value: &impl Serialize) -> Result<String> {
     let value = serde_json::to_value(value).map_err(stored)?;
     let bytes = serde_json::to_vec(&sorted(value)).map_err(stored)?;
@@ -107,11 +101,12 @@ pub(crate) async fn find(
     operation: &Uuid7,
     actor: &Uuid7,
     digest: &str,
+    window: Duration,
 ) -> Result<Option<Uuid7>> {
     let receipt = sqlx::query_as::<_, Receipt>(sql::READ)
         .bind(scope)
         .bind(operation)
-        .bind(REPLAY_WINDOW)
+        .bind(window)
         .bind(resource.kind())
         .fetch_optional(connection)
         .await
@@ -145,11 +140,13 @@ pub(crate) struct Reservation<'a> {
     pub(crate) operation: &'a Uuid7,
     pub(crate) digest: &'a str,
     pub(crate) resource: &'a Uuid7,
+    /// How long the receipt answers a repeat.
+    pub(crate) window: Duration,
 }
 
 /// Files the operation's receipt; `false` when another claim filed it first.
 ///
-/// A receipt past [`REPLAY_WINDOW`] still holds the unique key, so it is
+/// A receipt past the replay window still holds the unique key, so it is
 /// deleted first, on the caller's transaction. A concurrent claim on the same
 /// expired key waits on that delete's row lock, finds the row gone, then loses
 /// the insert to the new receipt and replays it: one new receipt either way.
@@ -160,7 +157,7 @@ pub(crate) async fn reserve(
     sqlx::query(sql::EXPIRE)
         .bind(reservation.scope)
         .bind(reservation.operation)
-        .bind(REPLAY_WINDOW)
+        .bind(reservation.window)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

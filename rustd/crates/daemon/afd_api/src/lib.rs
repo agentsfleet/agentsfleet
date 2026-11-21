@@ -1,4 +1,4 @@
-//! The HTTP shell: routes, admission, and the shape of a refusal.
+//! The HTTP shell: routes, the in-flight ceiling, and the shape of a refusal.
 //!
 //! # One table, not four
 //!
@@ -33,7 +33,7 @@ use {
     serde_json as _, sha2 as _, sqlx as _, tempfile as _, tokio as _, tokio_util as _, tower as _,
 };
 
-use afd_http::{admission, auth, envelope, route};
+use afd_http::{auth, envelope, in_flight, route};
 // The document generator, compiled only when it is asked for.
 #[cfg(feature = "openapi")]
 pub mod openapi;

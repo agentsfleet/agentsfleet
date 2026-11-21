@@ -294,6 +294,7 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
         binding: Some(&repository),
         http: &http,
         now: Timestamp::UNIX_EPOCH,
+        token_ttl: crate::credential::github::INSTALLATION_TOKEN_TTL,
     })
     .await;
     assert!(matches!(absent_installation, Outcome::ReconnectRequired));
@@ -304,6 +305,7 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
         binding: None,
         http: &http,
         now: Timestamp::UNIX_EPOCH,
+        token_ttl: crate::credential::github::INSTALLATION_TOKEN_TTL,
     })
     .await;
     assert!(matches!(
@@ -317,6 +319,7 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
         binding: Some(&repository),
         http: &http,
         now: Timestamp::UNIX_EPOCH,
+        token_ttl: crate::credential::github::INSTALLATION_TOKEN_TTL,
     })
     .await;
     assert!(matches!(bad_key, Outcome::MintFailed(Retry::Permanent)));

@@ -47,7 +47,7 @@ use af_core::id::Uuid7;
 use afd_bus::Subject;
 use afd_db::test_util::mint_id;
 use afd_sse::tail;
-use afd_turns::view::{Filter, History, MAX_LIMIT, Since};
+use afd_turns::view::{Filter, History, Since};
 use futures_util::StreamExt as _;
 use jiff::Timestamp;
 
@@ -281,7 +281,7 @@ async fn page_since(lane: &TurnsLane, since: Since) -> BTreeSet<Uuid7> {
     };
 
     history
-        .page_for_workspace(&lane.workspace, Some(&lane.fleet), &filter, None, MAX_LIMIT)
+        .page_for_workspace(&lane.workspace, Some(&lane.fleet), &filter, None, 200)
         .await
         .expect("the history read must run")
         .into_iter()

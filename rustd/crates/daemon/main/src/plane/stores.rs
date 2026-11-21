@@ -58,20 +58,21 @@ pub(super) fn tenant(
     database: &Db,
     kek: &Arc<Kek>,
     providers: &Providers,
-    streams: &afd_bus::Handle,
+    notices: &afd_turns::view::activity::Notices,
+    mail_deadline: std::time::Duration,
 ) -> Tenant {
     Tenant {
         workspaces: Workspaces::new(database.clone(), Entropy::new()),
         fleets: Fleets::new(database.clone()),
         api_keys: ApiKeys::new(database.clone(), Entropy::new()),
         team: Team::new(database.clone(), Entropy::new()),
-        invite_mail: platform::invite_mailer(database, kek),
+        invite_mail: platform::invite_mailer(database, kek, mail_deadline),
         cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
         billing: Billing::new(database.clone()),
         models: Models::new(database.clone()),
         providers: providers.clone(),
         secrets: SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new())
-            .with_activity_streams(streams.clone()),
+            .with_activity_notices(notices.clone()),
         preferences: Preferences::new(database.clone(), Entropy::new()),
         signups: Signups::new(database.clone(), Entropy::new()),
     }

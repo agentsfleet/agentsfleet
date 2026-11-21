@@ -118,6 +118,8 @@ impl ConfirmedConnection {
             heartbeat_interval_ms: opening::interval_millis(
                 &self.gateway.inner.dependencies.runners,
             )?,
+            max_message_bytes: self.gateway.inner.dependencies.frames.message_bytes,
+            max_control_message_bytes: self.gateway.inner.dependencies.frames.control_message_bytes,
         };
         let frame = af_stream::encode(
             &welcome,

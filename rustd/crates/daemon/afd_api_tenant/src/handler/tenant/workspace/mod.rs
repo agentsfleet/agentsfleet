@@ -25,9 +25,7 @@ use crate::services::{TenantPlane, TenantWorkspaces as _};
 mod input;
 mod render;
 
-pub use self::input::{
-    DETAIL_INVALID_CURSOR, DETAIL_INVALID_LIMIT, DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY,
-};
+pub use self::input::{DETAIL_INVALID_CURSOR, DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY};
 use self::input::{decoded, parse_cursor, parse_name, requested_limit};
 use self::render::{created_response, page_response};
 
@@ -84,7 +82,10 @@ pub(crate) async fn list<D: TenantPlane>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let limit = requested_limit(decoded(&query, QUERY_LIMIT)?.as_deref())?;
+    let limit = requested_limit(
+        decoded(&query, QUERY_LIMIT)?.as_deref(),
+        services.pages().list,
+    )?;
     let after = parse_cursor(decoded(&query, QUERY_STARTING_AFTER)?)?;
     let filter = parse_name(decoded(&query, QUERY_NAME)?)?;
 
@@ -168,7 +169,7 @@ pub(crate) async fn create<D: TenantPlane>(
         actor: person.subject().as_str().to_owned(),
         workspace_id: created.id.as_str().to_owned(),
         tenant_id: tenant.as_str().to_owned(),
-        request_id: RequestId::mint().as_str().to_owned(),
+        request_id: RequestId::current().as_str().to_owned(),
     });
 
     Ok((

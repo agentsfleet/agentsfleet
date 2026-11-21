@@ -78,7 +78,7 @@ pub const OVERFLOW_RUNNER: &str = "_other";
 /// failed to do its job.
 pub const SDK_OVERFLOW_MARKER: &str = "otel.metric.overflow";
 
-/// How many distinct runners get their own series.
+/// How many distinct runners get their own series when nothing configures it.
 ///
 /// The number is not the point — the bound is. Four thousand is far past any
 /// real deployment's host count and far below anything that threatens memory.
@@ -119,7 +119,7 @@ struct Counters {
 /// other test is counting.
 #[derive(Debug)]
 pub struct RunnerMetrics {
-    /// One entry per runner, up to [`MAX_SERIES`].
+    /// One entry per runner, up to its capacity.
     ///
     /// Behind an `Arc` so a publisher can drop the shard it looked up in
     /// before it writes — which is what keeps a slow publisher from blocking a
@@ -146,6 +146,8 @@ pub struct RunnerMetrics {
     /// it is happening — a series that silently merged would look like a quiet
     /// fleet rather than an exhausted table.
     overflowed: AtomicU64,
+    /// How many runners get a series of their own; see [`MAX_SERIES`].
+    capacity: usize,
 }
 
 impl Default for RunnerMetrics {
@@ -158,10 +160,17 @@ impl RunnerMetrics {
     /// An empty table.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_capacity(MAX_SERIES)
+    }
+
+    /// An empty table giving at most `capacity` runners a series.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
             series: DashMap::new(),
             admitted: AtomicUsize::new(0),
             overflowed: AtomicU64::new(0),
+            capacity,
         }
     }
 
@@ -212,7 +221,7 @@ impl RunnerMetrics {
 
     /// How many distinct runners currently hold a series.
     ///
-    /// Never above [`MAX_SERIES`], which is the property the table's capacity
+    /// Never above its capacity, which is the property the table's capacity
     /// exists for and the reason this is public.
     #[must_use]
     pub fn series_count(&self) -> usize {
@@ -241,7 +250,7 @@ impl RunnerMetrics {
 
     /// Whether the table could still admit a runner it has not seen.
     fn has_room(&self) -> bool {
-        self.admitted.load(Ordering::Relaxed) < MAX_SERIES
+        self.admitted.load(Ordering::Relaxed) < self.capacity
     }
 
     /// How many records the overflow series absorbed.
@@ -278,7 +287,7 @@ impl RunnerMetrics {
         }
     }
 
-    /// Claims one of the table's [`MAX_SERIES`] seats, or `None` when they are
+    /// Claims one of the table's seats, or `None` when they are
     /// all taken.
     ///
     /// The compare-and-swap IS the cap. Reading a length and then inserting
@@ -287,7 +296,7 @@ impl RunnerMetrics {
     fn take_a_seat(&self) -> Option<()> {
         self.admitted
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |taken| {
-                (taken < MAX_SERIES).then_some(taken + 1)
+                (taken < self.capacity).then_some(taken + 1)
             })
             .ok()
             .map(|_previous| ())

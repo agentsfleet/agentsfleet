@@ -60,6 +60,7 @@ pub async fn resolve(
     vault: &Vault,
     admin_workspace: Option<&Uuid7>,
     client: reqwest::Client,
+    minting: Minting,
 ) -> Arc<Broker> {
     let Some(workspace) = admin_workspace else {
         {
@@ -71,10 +72,19 @@ pub async fn resolve(
             );
             tracing::info!(message, event);
         };
-        return broker(Platform::empty(), client);
+        return broker(Platform::empty(), client, minting);
     };
     let platform = Platform::load(vault, workspace).await;
-    broker(platform, client)
+    broker(platform, client, minting)
+}
+
+/// How long the broker's tokens live and how many it holds.
+#[derive(Debug, Clone, Copy)]
+pub struct Minting {
+    /// Lifetimes the minted tokens are taken to have.
+    pub lifetimes: afd_credential::credential::Lifetimes,
+    /// Live tokens held in memory.
+    pub cached_tokens: u64,
 }
 
 /// The broker over whatever this deployment turned out to hold.
@@ -83,10 +93,11 @@ pub async fn resolve(
 /// workspace and one whose rows would not open must produce the SAME broker —
 /// one that resolves every connector and mints for none of them — and two
 /// construction sites would be two chances for them to diverge.
-fn broker(platform: Platform, client: reqwest::Client) -> Arc<Broker> {
-    Arc::new(Broker::new(
+fn broker(platform: Platform, client: reqwest::Client, minting: Minting) -> Arc<Broker> {
+    Arc::new(Broker::holding(
         Arc::new(Registry::default()),
-        Arc::new(Vendors::new(platform, client)),
+        Arc::new(Vendors::new(platform, client).with_lifetimes(minting.lifetimes)),
+        minting.cached_tokens,
     ))
 }
 

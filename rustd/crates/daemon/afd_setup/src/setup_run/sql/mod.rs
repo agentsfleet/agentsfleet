@@ -6,9 +6,6 @@
 /// Names the setup-run statements in a query failure.
 pub(super) const CONTEXT: &str = "draft run setup turn";
 
-/// How many drafts one assignment pass walks.
-pub(super) const SCAN_LIMIT: i64 = 64;
-
 /// Drafts whose head message a draft run may take.
 ///
 /// `$1` editing, `$2` queued, `$3` running, `$4` limit, `$5` runner.

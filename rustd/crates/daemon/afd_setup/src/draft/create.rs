@@ -53,6 +53,7 @@ impl Drafts {
             &request.operation_id,
             &person.id,
             &digest,
+            self.tuning.replay_window,
         )
         .await?;
         let (id, replayed) = if let Some(id) = existing {
@@ -110,6 +111,7 @@ impl Drafts {
                 operation: &new.request.operation_id,
                 digest: new.digest,
                 resource: &id,
+                window: self.tuning.replay_window,
             },
         )
         .await?;
@@ -121,6 +123,7 @@ impl Drafts {
                 &new.request.operation_id,
                 &new.person.id,
                 new.digest,
+                self.tuning.replay_window,
             )
             .await?
             .ok_or(ErrorKind::Hidden)?;
@@ -167,6 +170,7 @@ impl Drafts {
                     text,
                     save: new.request.save,
                     model: &new.request.setup_model_ref,
+                    window: self.tuning.replay_window,
                 },
             )
             .await?;

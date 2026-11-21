@@ -1,8 +1,8 @@
 //! A setup run whose runner stops renewing is rerun: its turn is assigned
-//! again at the next fence, up to `EVENT_RUNS_MAX` runs, and then fails as a
+//! again at the next fence, up to `DEFAULT_MAX_RUNS_PER_TURN` runs, and then fails as a
 //! lost turn instead of being retried forever.
 
-use af_core::limits::EVENT_RUNS_MAX;
+use af_core::limits::DEFAULT_MAX_RUNS_PER_TURN;
 use afd_state::sql::RUN_STATUS_EXPIRED;
 
 use super::Case;
@@ -18,7 +18,7 @@ async fn an_expired_setup_run_reruns_the_turn() {
     let case = Case::queued().await;
     let first = case.take_on_host().await;
     case.lapse(&first.run_id()).await;
-    for fence in 2..=u64::from(EVENT_RUNS_MAX) {
+    for fence in 2..=u64::from(DEFAULT_MAX_RUNS_PER_TURN) {
         let rerun = case.take_on_host().await;
         assert_eq!(rerun.fence, fence, "each rerun takes the next fence");
         assert_eq!(rerun.turn, first.turn, "the same turn, run again");
@@ -27,7 +27,7 @@ async fn an_expired_setup_run_reruns_the_turn() {
 
     assert!(
         case.take(&case.running.runner).await.is_none(),
-        "past {EVENT_RUNS_MAX} lapsed runs the turn is not assigned again"
+        "past {DEFAULT_MAX_RUNS_PER_TURN} lapsed runs the turn is not assigned again"
     );
     let turn = case.turn(&first.turn_id()).await;
     assert_eq!(turn.status, "failed", "{turn:?}");
@@ -37,7 +37,7 @@ async fn an_expired_setup_run_reruns_the_turn() {
         "{turn:?}"
     );
     assert_eq!(turn.answer, None);
-    let expired: Vec<(i64, String)> = (1..=i64::from(EVENT_RUNS_MAX))
+    let expired: Vec<(i64, String)> = (1..=i64::from(DEFAULT_MAX_RUNS_PER_TURN))
         .map(|fence| (fence, RUN_STATUS_EXPIRED.to_owned()))
         .collect();
     assert_eq!(

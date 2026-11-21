@@ -109,6 +109,7 @@ impl Drafts {
                 &person.id,
                 &message_digest(&text, request.save)?,
                 id,
+                self.tuning.replay_window,
             )
             .await?
             .ok_or(ErrorKind::State {
@@ -155,7 +156,7 @@ impl Drafts {
             .bind(&person.id)
             .bind(scope(&draft.workspace_id, &draft.id))
             .bind(&digest)
-            .bind(replay::REPLAY_WINDOW)
+            .bind(self.tuning.replay_window)
             .bind(request.save)
             .bind(TURN_KIND)
             .fetch_one(connection)
@@ -172,6 +173,7 @@ async fn replayed(
     person: &Uuid7,
     digest: &str,
     draft: &Uuid7,
+    window: std::time::Duration,
 ) -> Result<Option<Accepted>> {
     let Some(message) = replay::find(
         connection,
@@ -180,6 +182,7 @@ async fn replayed(
         operation,
         person,
         digest,
+        window,
     )
     .await?
     else {
@@ -210,6 +213,8 @@ pub(crate) struct Insertion<'a> {
     pub(crate) text: &'a str,
     pub(crate) save: bool,
     pub(crate) model: &'a str,
+    /// How long the message's retry receipt answers a repeat.
+    pub(crate) window: std::time::Duration,
 }
 
 /// Writes the message, files its retry key and advances the draft's sequence.
@@ -242,6 +247,7 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
             operation: insertion.operation,
             digest: &message_digest(insertion.text, insertion.save)?,
             resource: insertion.id,
+            window: insertion.window,
         },
     )
     .await?;

@@ -20,8 +20,8 @@
 //!   * anything that reaches a plane can fail — 500
 //!   * anything that reaches a plane can find it unreachable — the datastore
 //!     behind it, or the credential directory in front of it — 503
-//!   * anything the admission ceiling meters can be shed — 429,
-//!     `API_BACKPRESSURE`, from `admission::is_metered`
+//!   * anything the in-flight ceiling meters can be shed — 429,
+//!     `API_BACKPRESSURE`, the API route group
 //!   * anything whose path names a workspace is checked by the ownership
 //!     layer before the handler runs, which refuses a malformed id with 400
 //!     and somebody else's workspace with 403 — from `RouteMeta::ownership`
@@ -238,7 +238,7 @@ fn test_documented_codes_match_refusals() {
                 required.push(INTERNAL);
                 required.push(UNAVAILABLE);
             }
-            if afd_http::admission::is_metered(meta.class) {
+            if meta.class == RouteClass::Api {
                 required.push(TOO_MANY_REQUESTS);
             }
             if meta.ownership.is_checked() {

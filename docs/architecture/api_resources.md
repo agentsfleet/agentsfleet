@@ -347,7 +347,7 @@ A setup run has no runtime ceiling.
 It renews as a fleet run does, until the payer's balance at a renewal or a person's Stop ends it.
 
 A lapsed run is reassigned at the next fence, and the message reruns from its start.
-A turn gets at most three runs (`af_core::limits::EVENT_RUNS_MAX`); when all three lapse, the message fails as `provider_usage_unknown`.
+A turn gets at most three runs by default (`[turns] max_runs_per_turn`, default `af_core::limits::DEFAULT_MAX_RUNS_PER_TURN`); when all three lapse, the message fails as `provider_usage_unknown`.
 A run whose frame never left the daemon is deleted when it is released, so it does not count toward the three.
 
 `propose_setup` takes `{kind:"initialize",definition}` before a candidate exists.

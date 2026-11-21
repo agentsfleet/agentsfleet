@@ -24,7 +24,7 @@ async fn model_choices_use_the_saved_credential_workspace_not_the_oldest_workspa
         .models(
             f.access(),
             ModelsQuery {
-                limit: 100,
+                limit: Some(100),
                 purpose: None,
                 starting_after: None,
             },
@@ -58,7 +58,7 @@ async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_ou
             .models(
                 f.access(),
                 ModelsQuery {
-                    limit: 100,
+                    limit: Some(100),
                     purpose,
                     starting_after: None,
                 },

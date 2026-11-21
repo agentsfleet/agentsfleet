@@ -35,7 +35,7 @@ const EVENT_ACCESS_CHANGED: &str = "memory_access_changed";
 #[derive(Debug, Clone)]
 pub struct Memories {
     inner: Arc<Inner>,
-    activity_streams: Option<afd_bus::Handle>,
+    activity_streams: Option<afd_turns::view::activity::Notices>,
 }
 
 #[derive(Debug)]
@@ -81,8 +81,8 @@ impl Memories {
 
     /// Enables best-effort history notifications after changed grants commit.
     #[must_use]
-    pub fn with_activity_streams(mut self, streams: afd_bus::Handle) -> Self {
-        self.activity_streams = Some(streams);
+    pub fn with_activity_notices(mut self, notices: afd_turns::view::activity::Notices) -> Self {
+        self.activity_streams = Some(notices);
         self
     }
 

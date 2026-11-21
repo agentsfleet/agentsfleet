@@ -22,7 +22,6 @@ ignored = ["jiff-sqlx"]
 workspace = true
 
 [dependencies]
-afd_bus.workspace = true
 afd_turns.workspace = true
 # Identifiers, the clock the write stamps rows with, and the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }

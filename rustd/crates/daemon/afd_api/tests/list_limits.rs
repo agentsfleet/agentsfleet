@@ -77,10 +77,10 @@ fn every_list_route() -> Vec<ListRoute> {
             100,
             INVALID_REQUEST,
         ),
-        ListRoute::new(format!("{workspace}/turns"), 200, INVALID_REQUEST),
+        ListRoute::new(format!("{workspace}/turns"), 100, INVALID_REQUEST),
         ListRoute::new(
             format!("{workspace}/fleets/{FLEET}/turns"),
-            200,
+            100,
             INVALID_REQUEST,
         ),
         ListRoute::new(format!("{workspace}/approvals"), 200, INVALID_REQUEST),

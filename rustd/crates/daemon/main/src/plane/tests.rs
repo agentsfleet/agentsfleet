@@ -88,6 +88,7 @@ fn schedule() -> crate::plane::ScheduleConfig {
     crate::plane::ScheduleConfig {
         client: reqwest::Client::new(),
         api_url: DEPLOYMENT.into(),
+        retries: afd_cron::qstash::RetryPolicy::default(),
     }
 }
 
@@ -272,6 +273,7 @@ async fn an_api_url_that_cannot_form_a_callback_leaves_a_line_saying_so() {
         crate::plane::ScheduleConfig {
             client: reqwest::Client::new(),
             api_url: "not a url".into(),
+            retries: afd_cron::qstash::RetryPolicy::default(),
         },
     );
 

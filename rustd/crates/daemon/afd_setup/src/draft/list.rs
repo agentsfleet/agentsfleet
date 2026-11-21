@@ -41,7 +41,10 @@ impl Drafts {
         mut request: ListQuery,
     ) -> Result<Page<DraftCard>> {
         request.q = request.q.map(|text| text.trim().to_owned());
-        let request = garde::Unvalidated::new(request).validate()?;
+        let request = garde::Unvalidated::new(request).validate_with(&self.list_page)?;
+        let limit = request
+            .limit
+            .unwrap_or_else(|| self.list_page.default_rows());
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
@@ -49,7 +52,7 @@ impl Drafts {
             RESOURCE,
             access.workspace,
             &person.id,
-            request.limit,
+            limit,
             request.state,
             &request.linked_fleet_id,
             &request.q,
@@ -62,16 +65,12 @@ impl Drafts {
             .bind(request.linked_fleet_id.as_ref())
             .bind(after.as_ref().map(|(at, _)| at.to_sqlx()))
             .bind(after.as_ref().map(|(_, id)| id))
-            .bind(i64::from(request.limit) + 1)
+            .bind(i64::from(limit) + 1)
             .bind(request.q.as_deref().map(contains))
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        let page = project(
-            rows,
-            usize::try_from(request.limit).unwrap_or(usize::MAX),
-            &binding,
-        )?;
+        let page = project(rows, usize::try_from(limit).unwrap_or(usize::MAX), &binding)?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(page)
     }

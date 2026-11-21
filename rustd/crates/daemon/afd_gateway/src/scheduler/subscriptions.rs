@@ -5,12 +5,14 @@ use af_core::error_code::{Coded as _, Logged};
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use tokio_util::sync::CancellationToken;
 
-/// The longest wait between two subscription repairs.
-const REPAIR_BACKOFF_MAX: std::time::Duration = std::time::Duration::from_secs(5);
+/// The longest wait between two subscription repairs, when the deployment's
+/// `[runners] max_repair_backoff_seconds` names no other.
+pub(crate) const REPAIR_BACKOFF_MAX: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
     let wake = &gateway.inner.dependencies.wake;
     let mut retry = std::time::Duration::from_millis(100);
+    let ceiling = gateway.inner.dependencies.recovery.max_repair_backoff;
     let mut lost = false;
     loop {
         let listening = tokio::select! {
@@ -48,8 +50,13 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             () = stop.cancelled() => return Ok(()),
             () = tokio::time::sleep(retry) => {}
         }
-        retry = retry.saturating_mul(2).min(REPAIR_BACKOFF_MAX);
+        retry = next_retry(retry, ceiling);
     }
+}
+
+/// The wait after `retry`: doubled, never past the deployment's `ceiling`.
+fn next_retry(retry: std::time::Duration, ceiling: std::time::Duration) -> std::time::Duration {
+    retry.saturating_mul(2).min(ceiling)
 }
 
 fn timed_out(source: tokio::time::error::Elapsed) {
@@ -64,4 +71,28 @@ fn timed_out(source: tokio::time::error::Elapsed) {
         error_code,
         reason
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{REPAIR_BACKOFF_MAX, next_retry};
+    use std::time::Duration;
+
+    #[test]
+    fn a_configured_ceiling_bounds_the_repair_backoff() {
+        let ceiling = Duration::from_secs(2);
+        assert_eq!(
+            next_retry(Duration::from_millis(800), ceiling),
+            Duration::from_millis(1_600)
+        );
+        assert_eq!(next_retry(Duration::from_millis(1_600), ceiling), ceiling);
+        assert_eq!(
+            next_retry(Duration::from_secs(4), REPAIR_BACKOFF_MAX),
+            Duration::from_secs(5)
+        );
+        assert_eq!(
+            crate::RecoverySettings::default().max_repair_backoff,
+            REPAIR_BACKOFF_MAX
+        );
+    }
 }

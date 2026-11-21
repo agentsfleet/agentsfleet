@@ -18,7 +18,7 @@ use crate::metrics::registry::{Kind, Registry};
 const REJECTIONS: &str = "agentsfleet_api_backpressure_rejections_total";
 
 /// A gauge the census really declares.
-const IN_FLIGHT: &str = "agentsfleet_api_in_flight_requests";
+const IN_FLIGHT: &str = "agentsfleet_sse_in_flight_streams";
 
 fn declared() -> Registry {
     Registry::declared().expect("the compiled-in census reads")

@@ -144,7 +144,7 @@ async fn insert(
         .bind(i64::try_from(input.logical_bytes).map_err(|_overflow| TurnCheckpointRefusal::Limit)?)
         .bind(i32::try_from(input.entry_count).map_err(|_overflow| TurnCheckpointRefusal::Limit)?)
         .bind(&input.history_digest)
-        .bind(super::TRANSFER_SECONDS)
+        .bind(owner.limits.transfer_seconds())
         .execute(&mut *owner.tx)
         .await
         .map_err(query("persist complete turn capture plan"))?;

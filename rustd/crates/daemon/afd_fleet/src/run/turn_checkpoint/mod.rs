@@ -37,8 +37,14 @@ pub struct TurnRun<'a> {
     pub fencing_token: u64,
 }
 
-const TRANSFER_SECONDS: i32 = 15 * 60;
-const PIN_SECONDS: i32 = 2 * 60;
+/// How long a runner's upload link stays valid, by default.
+pub(crate) const TRANSFER: std::time::Duration = std::time::Duration::from_mins(15);
+/// How long a restoring checkpoint is pinned, by default.
+pub(crate) const PIN: std::time::Duration = std::time::Duration::from_mins(2);
+/// How long a settled turn's checkpoint is kept, by default.
+pub(crate) const RETENTION: std::time::Duration = af_core::timing::DAY.saturating_mul(7);
+/// How long an uncommitted upload is kept, by default.
+pub(crate) const ORPHAN: std::time::Duration = std::time::Duration::from_hours(1);
 const READY_GENERATIONS: i64 = 2;
 const WRITER: &str = "writer";
 const READER: &str = "reader";

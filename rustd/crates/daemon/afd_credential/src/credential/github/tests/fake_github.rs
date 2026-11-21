@@ -109,12 +109,18 @@ impl FakeGithub {
     }
 
     pub(super) async fn mint(&self) -> Outcome {
+        self.mint_for(crate::credential::github::INSTALLATION_TOKEN_TTL)
+            .await
+    }
+
+    /// [`Self::mint`] under a deployment's own token lifetime.
+    pub(super) async fn mint_for(&self, token_ttl: std::time::Duration) -> Outcome {
         let api = AppApi::new(
             &self.http,
             Url::parse(&self.base).expect("the loopback base is a URL"),
             Zeroizing::new(UNSIGNED.to_owned()),
         );
-        request_token(&api, INSTALLATION_ID, &binding(), NOW).await
+        request_token(&api, INSTALLATION_ID, &binding(), NOW, token_ttl).await
     }
 
     /// The `Authorization` header of every call, in order.
@@ -156,7 +162,14 @@ pub(super) async fn mint_against_nothing() -> Outcome {
         Url::parse(&format!("http://{closed}/")).expect("the loopback base is a URL"),
         Zeroizing::new(UNSIGNED.to_owned()),
     );
-    request_token(&api, INSTALLATION_ID, &binding(), NOW).await
+    request_token(
+        &api,
+        INSTALLATION_ID,
+        &binding(),
+        NOW,
+        crate::credential::github::INSTALLATION_TOKEN_TTL,
+    )
+    .await
 }
 
 /// The bearer an unsigned fixture client presents.

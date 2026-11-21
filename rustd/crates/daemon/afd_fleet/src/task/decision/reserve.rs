@@ -18,7 +18,7 @@ pub(super) async fn reserve(
     task_run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
 ) -> Result<ReservedDecision> {
-    tokio::time::timeout(super::OPERATION_TIMEOUT, run(tasks, task_run, input))
+    tokio::time::timeout(tasks.times().operation_timeout, run(tasks, task_run, input))
         .await
         .map_err(|source| Error::from(ErrorKind::DecisionDeadline { source }))?
 }

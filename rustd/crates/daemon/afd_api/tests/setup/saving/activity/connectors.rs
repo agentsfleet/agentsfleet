@@ -72,8 +72,12 @@ async fn assert_ownership_rollback(saved: &Saved, other: &Saved, reader: &mut Re
 
 fn grants(saved: &Saved) -> Grants {
     Grants::new(
-        crate::harness::vault(saved.case.base.db.clone())
-            .with_activity_streams(saved.case.bus.clone()),
+        crate::harness::vault(saved.case.base.db.clone()).with_activity_notices(
+            afd_turns::view::activity::Notices::new(
+                saved.case.bus.clone(),
+                afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
+            ),
+        ),
         saved.case.base.db.clone(),
         Entropy::new(),
     )

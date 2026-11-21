@@ -76,7 +76,10 @@ async fn every_wrong_limit_earns_the_bounds_refusal() {
         let (_, code, detail) = harness::problem(response).await;
         assert_eq!(
             detail,
-            afd_api_tenant::tenant::DETAIL_CATALOGUE_LIMIT,
+            afd_http::paging::limit_sentence(
+                "limit must be an integer",
+                afd_http::paging::Pages::default().list
+            ),
             "{path}"
         );
         assert_eq!(code, "UZ-LIBRARY-003", "{path}");
