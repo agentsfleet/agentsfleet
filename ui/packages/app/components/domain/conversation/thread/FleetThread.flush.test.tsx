@@ -141,7 +141,7 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
   vi.stubGlobal("fetch", network);
   try {
     const events = [{...turn("Last confirmed answer", AGENTSFLEET_EVENT_STATUS.PROCESSED), tools: [{name: "file_write", args: {path: "src/repair.ts"}, startedAtMs: 0, ms: 1, done: true, status: "succeeded" as const}]}];
-    shell.stream.mockReturnValue({...STABLE, events});
+    shell.stream.mockReturnValue({...STABLE, events, workEvents: events});
     const view = render(thread());
     const draft = screen.getByRole("textbox", {name: /^Message your fleet/});
     fireEvent.change(draft, {target: {value: "Keep the existing redirect checks."}});

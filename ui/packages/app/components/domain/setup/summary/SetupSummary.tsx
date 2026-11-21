@@ -30,14 +30,14 @@ export function SetupSummary({definition, requirements, modelLabel, sourceLabel,
   return <div className="ph-no-capture ph-no-record min-w-0 text-label leading-label [overflow-wrap:anywhere]">
     <dl className="space-y-md">
       <Meta label="Model">{modelLabel ?? "Not reviewed"}</Meta>
-      <Meta label="Spending limit">{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
-      <Meta label="Next wake-up">{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
+      <Meta label="Spending limit" emphasize>{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
+      <Meta label="Next wake-up" emphasize>{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
     </dl>
-    {sourceLabel ? <p className="mt-lg flex items-center gap-sm text-eyebrow leading-summary-label text-text-dim"><PuzzlePieceIcon size={14} className="shrink-0" aria-hidden="true" />From {sourceLabel}</p> : null}
+    {sourceLabel ? <p className="mt-lg flex items-center gap-sm text-eyebrow leading-eyebrow text-text-dim"><PuzzlePieceIcon size={14} className="shrink-0" aria-hidden="true" />From {sourceLabel}</p> : null}
     {scheduleRecovery ? <div className="mt-lg">{scheduleRecovery}</div> : null}
     <SummarySection title="Repositories" className="mt-lg" action={<Manage kind="repositories" href={editHref} disabled={disabled} onClick={onManage && (trigger => onManage("repositories", trigger))} />}>
       <SummaryResources items={setup?.repositories} kind="repositories" />
-      {tools ? <p className="mt-sm text-eyebrow leading-eyebrow"><span className="mr-md text-text-dim">Tools</span>{tools}</p> : null}
+      {tools ? <p className="mt-sm text-eyebrow leading-summary-label text-muted-foreground"><span className="mr-md text-text-dim">Tools</span>{tools}</p> : null}
     </SummarySection>
     <SummarySection title="Public internet access">
       {setup ? <SetupNetworkPolicy publicInternet={network?.http_egress === "public"} packages={network?.package_manager_domains === true}
@@ -50,8 +50,11 @@ export function SetupSummary({definition, requirements, modelLabel, sourceLabel,
   </div>;
 }
 
-function Meta({label, children}: {label: string; children: ReactNode}) {
-  return <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] items-baseline gap-md"><dt className="text-eyebrow leading-summary-label text-text-dim">{label}</dt><dd className="min-w-0 break-words font-medium">{children}</dd></div>;
+function Meta({label, emphasize, children}: {label: string; emphasize?: boolean; children: ReactNode}) {
+  return <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] items-baseline gap-md">
+    <dt className="text-eyebrow leading-summary-label text-text-dim">{label}</dt>
+    <dd className={cn("min-w-0 break-words", emphasize && "font-medium")}>{children}</dd>
+  </div>;
 }
 function SummarySection({title, action, children, className}: {title: string; action?: ReactNode; children: ReactNode; className?: string}) {
   return <Section aria-label={title} variant="divided" className={cn("space-y-sm py-lg last:pb-0", className)}>
