@@ -17,7 +17,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 21, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, guffbolt is published for others to build on, and today nobody can run it without writing a provider
 
