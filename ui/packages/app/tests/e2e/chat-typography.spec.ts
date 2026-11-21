@@ -179,7 +179,7 @@ test("the pull request starter remains editable and readable before any setup re
   await page.goto(`${chatProbe}?starters=1`);
   await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
   const suggestion = page.getByRole("button", {name: "Watch a pull request", exact: true});
-  const input = page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+  const input = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
   await expect(input).toHaveValue("");
   const unfinished = page.getByRole("region", {name: "Unfinished setups"});
   const resume = unfinished.getByRole("link", {name: DRAFT.title});

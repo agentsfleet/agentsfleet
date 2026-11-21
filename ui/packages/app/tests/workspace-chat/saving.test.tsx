@@ -31,13 +31,13 @@ async function setup() {
 }
 
 describe("private chat Save", () => {
-  it("restores the editable Plugin starter only when the preserved UI tree is enabled", async () => {
+  it("offers the editable Chief of Staff starter even when the legacy plugin UI is enabled", async () => {
     plugins.enabled = true;
     render(<WorkspaceChat {...CHAT_PROPS} />);
-    const starter = await screen.findByRole("button", {name: "Create a plugin"});
+    const starter = await screen.findByRole("button", {name: "Set up a Chief of Staff"});
     await waitFor(() => expect(starter).toHaveProperty("disabled", false));
     fireEvent.click(starter);
-    expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", expect.stringContaining("reusable fleet setup"));
+    expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", expect.stringContaining("bring his report back to me"));
     expect(fixture.writes()).toEqual([]);
     expect(fixture.calls.some(call => call.path.includes("/plugins"))).toBe(false);
   });

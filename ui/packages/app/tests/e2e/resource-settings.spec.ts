@@ -98,7 +98,7 @@ test("remaining resource pages and empty setup retain the approved frame", async
       await page.locator("[data-review-pages]").getByRole("button", {name: label, exact: true}).click();
       if (label === "Plugins") await expect(page.getByText("Release watch", {exact: true})).toBeVisible();
       else if (label === "New fleet") {
-        const composer = page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+        const composer = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
         await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
         await expect(composer).toBeVisible();
         await expect(page.getByRole("complementary", {name: "Summary"})).toHaveCount(0);

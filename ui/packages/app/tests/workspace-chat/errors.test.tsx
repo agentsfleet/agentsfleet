@@ -41,7 +41,7 @@ it("reloads unavailable unfinished setups from their own recovery action without
   fireEvent.click(screen.getByRole("button", {name: "Try again"}));
   await waitFor(() => expect(screen.queryByText(/Unfinished setups could not be loaded/)).toBeNull());
   expect(screen.queryByText(/We couldn’t load your model choices/)).toBeNull();
-  fireEvent.change(screen.getByRole("textbox", {name: "Describe the work you want this fleet to do…"}), {target: {value: "Review the nightly build"}});
+  fireEvent.change(screen.getByRole("textbox", {name: "What would you like your fleet to do?"}), {target: {value: "Review the nightly build"}});
   expect(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/})).toHaveProperty("disabled", false);
   expect(fixture.writes()).toHaveLength(0);
 });
@@ -50,7 +50,7 @@ it("reloads unavailable unfinished setups from their own recovery action without
 it("shows an oversized message refusal inside the chat without creating a draft", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  const input = await screen.findByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+  const input = await screen.findByRole("textbox", {name: "What would you like your fleet to do?"});
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
   fireEvent.change(input, {target: {value: "🌱".repeat(8_193)}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
@@ -173,7 +173,7 @@ it("loads the new saved revision when the same fleet source changes in place", a
 // why_new=existing recovery tests retried initial lists or setup activation; seam=none; no_claim=successful rename persistence.
 it("refreshes a draft after an edit refusal while retaining the unsent message", async () => {
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
-  const input = await screen.findByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+  const input = await screen.findByRole("textbox", {name: "What would you like your fleet to do?"});
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
   const unsent = "Keep this follow-up question";
   fireEvent.change(input, {target: {value: unsent}});

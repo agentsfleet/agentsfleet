@@ -12,7 +12,7 @@ test("fleet_schedule_activity_rows_show_confirmed_facts", async ({page, chatProb
     await expect(page.getByText(`Schedule At 9:00 AM (Asia/Kolkata) ${fact}`, {exact: false})).toBeVisible();
   await expect(page.getByText(/could not sync:.*Scheduler refused. Will retry on the next sync./)).toBeVisible();
   await expect(page.getByText("Scheduled wake-up: Review support failures — 東京 🦉")).toHaveCount(3);
-  await expect(page.getByText("Scheduled wake-up: Review support failures — 東京 🦉").first()).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
+  await expect(page.getByText("Scheduled wake-up: Review support failures — 東京 🦉").first()).toHaveCSS("font-size", "13px");
   await expect(page.getByText("Support queue reviewed.", {exact: true})).toBeVisible();
   await expect(page.getByText(/Ran out of memory/)).toBeVisible();
   await expect(page.getByRole("button", {name: "Run details"})).toHaveCount(2);

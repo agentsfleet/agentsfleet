@@ -7,14 +7,13 @@ import type { ReactNode } from "react";
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import Link from "next/link";
-import { GitPullRequestIcon, PuzzlePieceIcon, TerminalWindowIcon } from "@phosphor-icons/react/ssr";
+import { GitPullRequestIcon, UsersIcon, TerminalWindowIcon } from "@phosphor-icons/react/ssr";
 import nextDynamic from "next/dynamic";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { BrandMark, Button, PageTitle, cn } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { CHAT_STARTERS } from "../chat-defaults";
-import {pluginsUiEnabled} from "@/lib/plugin-ui";
 import { ChatComposer } from "../composer/ChatComposer";
 import { ChatThread } from "../../shared/chat/ChatThread";
 import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
@@ -115,8 +114,8 @@ function ChatEntrance() {
 
 function ChatSuggestions({ disabled }: { disabled: boolean }) {
   return <div className="mt-5 flex w-full flex-wrap justify-start gap-lg sm:justify-center">
-    {CHAT_STARTERS.filter(starter => starter.title !== "Create a plugin" || pluginsUiEnabled()).map(({ title, prompt }, index) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
-      <Button variant="outline" size="sm" disabled={disabled} className="min-h-9.5 rounded-full text-eyebrow font-semibold text-muted-foreground">{index === 0 ? <TerminalWindowIcon size={16} /> : index === 1 ? <GitPullRequestIcon size={16} /> : <PuzzlePieceIcon size={16} />}{title}</Button>
+    {CHAT_STARTERS.map(({ title, prompt }, index) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
+      <Button variant="outline" size="sm" disabled={disabled} className="min-h-9.5 rounded-full border-border bg-transparent text-eyebrow font-semibold text-muted-foreground">{index === 0 ? <TerminalWindowIcon size={16} /> : index === 1 ? <GitPullRequestIcon size={16} /> : <UsersIcon size={16} />}{title}</Button>
     </ThreadPrimitive.Suggestion>)}
   </div>;
 }

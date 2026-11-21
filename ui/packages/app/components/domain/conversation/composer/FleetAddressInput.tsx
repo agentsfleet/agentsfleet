@@ -25,7 +25,12 @@ const emptySnapshot = () => EMPTY;
 const emptySubscribe = () => () => {};
 
 export function FleetAddressInput(props: Props) {
-  const picker = useFleetAddress(props);
+  const workspace = workspaceIdFromPath(usePathname());
+  return <WorkspaceFleetAddressInput {...props} workspace={workspace} inSetup={false} />;
+}
+
+export function WorkspaceFleetAddressInput({workspace, inSetup, ...props}: Props & {workspace: string | null; inSetup: boolean}) {
+  const picker = useFleetAddress(props, inSetup, workspace);
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const activeId = picker.open && picker.selected >= 0 ? `${listId}-${picker.selected}` : undefined;
@@ -35,7 +40,7 @@ export function FleetAddressInput(props: Props) {
   }, [activeId]);
 
   return <div className="relative flex min-w-0 flex-1" onKeyDownCapture={picker.keyDown}
-    onFocus={() => picker.focus(true)} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget)) picker.focus(false);}}>
+    onFocus={event => {picker.focus(true); if (event.target instanceof HTMLTextAreaElement) picker.caret(event.target);}} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget)) picker.focus(false);}}>
     <ChatComposerInput {...props}
       aria-autocomplete="list" aria-controls={picker.open ? listId : undefined} aria-activedescendant={activeId}
       onSelect={event => picker.caret(event.currentTarget)} onChange={picker.change} />
@@ -48,8 +53,7 @@ export function FleetAddressInput(props: Props) {
   </div>;
 }
 
-function useFleetAddress({inputRef, disabled}: Props) {
-  const workspace = workspaceIdFromPath(usePathname());
+function useFleetAddress({inputRef, disabled}: Props, inSetup: boolean, workspace: string | null) {
   const aui = useAui();
   const text = useAuiState(state => state.composer.text);
   const [caret, setCaret] = useState(0);
@@ -60,7 +64,7 @@ function useFleetAddress({inputRef, disabled}: Props) {
   const prefix = text.slice(0, caret);
   const mention = /(?:^|\s)@([a-z\d-]{0,64})$/i.exec(prefix);
   const open = Boolean(workspace && focused && !disabled && mention && dismissed !== text
-    && !/^\s*@[a-z\d-]+[\s,:]/i.test(prefix));
+    && (inSetup || !/^\s*@[a-z\d-]+[\s,:]/i.test(prefix)));
   const query = mention?.[1] ?? "";
   const collection = useRecentPage(open && workspace ? `/live${fleetsPath(workspace)}` : null, FleetListSchema);
   const page = useSyncExternalStore(collection?.subscribe ?? emptySubscribe,
@@ -72,7 +76,7 @@ function useFleetAddress({inputRef, disabled}: Props) {
     const before = text.slice(0, caret - query.length - 1).trimStart();
     const after = text.slice(caret);
     const words = [before.trimEnd(), after.trimStart()].filter(Boolean).join(" ");
-    const addressed = `@${name} ${words}`;
+    const addressed = inSetup ? text.slice(0, caret - query.length - 1) + "@" + name + " " + after.trimStart() : `@${name} ${words}`;
     // Native selection events may still describe the old cursor after the text changes.
     setCaret(addressed.length);
     setDismissed(addressed);

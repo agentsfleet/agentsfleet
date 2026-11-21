@@ -3,7 +3,7 @@ import { useRef } from "react";
 import { AssistantRuntimeProvider, ComposerPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { FleetAddressInput } from "./FleetAddressInput";
+import { FleetAddressInput, WorkspaceFleetAddressInput } from "./FleetAddressInput";
 import { FLEET_DETAIL, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import userEvent from "@testing-library/user-event";
 
@@ -18,11 +18,11 @@ const options = [
 const read = vi.fn();
 const page = (items = options, cursor: string | null = null) => response({items, next_cursor: cursor, total: null});
 
-function Harness({disabled = false, onNew = async () => {}}: {disabled?: boolean; onNew?: (message: AppendMessage) => Promise<void>}) {
+function Harness({disabled = false, inSetup = false, onNew = async () => {}}: {disabled?: boolean; inSetup?: boolean; onNew?: (message: AppendMessage) => Promise<void>}) {
   const runtime = useExternalStoreRuntime({messages: [], convertMessage: (message: ThreadMessageLike) => message, onNew});
   const ref = useRef<HTMLTextAreaElement>(null);
   return <AssistantRuntimeProvider runtime={runtime}><ComposerPrimitive.Root>
-    <FleetAddressInput inputRef={ref} placeholder="Message" disabled={disabled} />
+    {inSetup ? <WorkspaceFleetAddressInput workspace={WORKSPACE} inSetup inputRef={ref} placeholder="Message" disabled={disabled} /> : <FleetAddressInput inputRef={ref} placeholder="Message" disabled={disabled} />}
   </ComposerPrimitive.Root></AssistantRuntimeProvider>;
 }
 function enter(text: string) {
@@ -145,4 +145,12 @@ it("never displays a late list from another workspace", async () => {
   view.rerender(<Harness />);
   fireEvent.keyDown(input, {key: "ArrowDown"});
   await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+});
+
+
+it("keeps a setup mention inside the owner's instructions", async () => {
+  render(<Harness inSetup />);
+  const input = enter("Ask @bo");
+  await userEvent.click(await screen.findByRole("option", {name: "@bob"}));
+  expect(input.value).toBe("Ask @bob ");
 });

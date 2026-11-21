@@ -150,7 +150,7 @@ test("chat load failures flash without displacing the page and retain scoped rec
     await recovery.getByRole("button", {name: "Retry", exact: true}).click();
     await expect(recovery).toHaveCount(0);
     await expect(page.getByRole("combobox", {name: "Authoring model"})).toBeEnabled();
-    await page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"}).fill("Review the callback regression");
+    await page.getByRole("textbox", {name: "What would you like your fleet to do?"}).fill("Review the callback regression");
     await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeEnabled();
   }
   expect(errors).toEqual([]);

@@ -16,9 +16,9 @@ export function ChatComposerModel({ children, select, ...trigger }: ModelProps) 
     : <span data-composer-part="model" className="min-w-0 font-sans text-eyebrow leading-label text-muted-foreground">{content}</span>;
 }
 
-export function ChatComposerHint({ children }: { children?: ReactNode }) {
+export function ChatComposerHint({ children, hint = "Enter to send · Shift + Enter for a new line" }: { children?: ReactNode; hint?: string }) {
   return <div data-composer-part="hint" className="mt-md flex items-center justify-between gap-lg px-sm font-sans text-eyebrow leading-eyebrow text-text-dim">
-    <span className="min-w-0">Enter to send · Shift + Enter for a new line</span>
+    <span className="min-w-0">{hint}</span>
     {children ? <span className="min-w-0">{children}</span> : null}
   </div>;
 }

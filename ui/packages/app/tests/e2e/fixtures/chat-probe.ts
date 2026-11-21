@@ -19,9 +19,9 @@ export const test = base.extend<object, {chatProbe: string}>({
       const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
       const source = new URL(request.headers.referer ?? "http://localhost");
       const base = `/live/v1/workspaces/${WORKSPACE}`;
-      if (source.searchParams.has("visual") && request.method === "GET" && (pathname === `${base}/fleets` || pathname === `${base}/drafts`)) {
+      if ((source.searchParams.has("visual") || source.searchParams.has("emptySetup")) && request.method === "GET" && (pathname === `${base}/fleets` || pathname === `${base}/drafts`)) {
         const phase = source.searchParams.get("state");
-        const name = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : "Release watch";
+        const name = source.searchParams.has("emptySetup") ? "bob" : phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
         const items = pathname === `${base}/drafts` ? [] : [{...FLEET_DETAIL, name, status: "active", description: null}];
         response.writeHead(200, {"content-type": "application/json"});
         response.end(JSON.stringify({items, total: null, next_cursor: null}));
@@ -31,7 +31,7 @@ export const test = base.extend<object, {chatProbe: string}>({
         const referer = new URL(request.headers.referer ?? "http://localhost");
         if (referer.searchParams.has("visual")) {
           const selected = referer.searchParams.get("state");
-          const scenario = selected === "activity" || selected === "empty" || selected === "completed" || selected === "error" ? selected : "running";
+          const scenario = selected === "activity" || selected === "wake-up" || selected === "empty" || selected === "completed" || selected === "error" ? selected : "running";
           const started = Date.now();
           response.writeHead(200, {"content-type": "application/json"});
           response.end(JSON.stringify(request.url.includes("?limit=") ? visualTaskPage(scenario, started) : visualTaskDetail(scenario, started)));

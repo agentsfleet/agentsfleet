@@ -49,14 +49,13 @@ export function RefreshVisualFixture() {
     return phase === "activity" && params.has("openSession") ? rows.map(row => ({...row, status: "received" as const})) : rows;
   }, [phase, started]);
   const grouped = useFleetThreadEntries(events, convertEvent);
-  const fleetName = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : "Release watch";
+  const fleetName = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
-    if (phase === "error") showScenario("running");
-    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}]}]);
-  }, [phase, showScenario]);
+    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}], metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);
+  }, []);
   const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", events, onNew});
-  const messages = useMemo(() => [...(phase === "wake-up" ? grouped.entries.map(grouped.convertEntry) : conversation(events, started)), ...sent, ...previews.entries.map(entry => entry.message)], [events, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);
+  const messages = useMemo(() => [...(phase === "wake-up" || phase === "error" ? grouped.entries.map(grouped.convertEntry) : conversation(events, started)), ...sent, ...previews.entries.map(entry => entry.message)], [events, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);
   const runtime = useExternalStoreRuntime({ messages, isDisabled: archived, isRunning: !archived && phase === "running",
     convertMessage: (message: ThreadMessageLike) => message,
     onNew: previews.onNew, adapters: {attachments: previews.attachments},
@@ -73,7 +72,7 @@ export function RefreshVisualFixture() {
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
       <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" || phase === "activity" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+        <FleetTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
         <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
