@@ -7,6 +7,9 @@
 @import "./incident-flow.css";
 
 @source "../../design-system/src/**/*.{ts,tsx}";
+@source not "../tests";
+@source not "./**/*.test.{ts,tsx}";
+@source not "../../design-system/src/**/*.test.{ts,tsx}";
 
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; scroll-padding-top: calc(var(--sp-5xl) + var(--sp-2xl)); }
