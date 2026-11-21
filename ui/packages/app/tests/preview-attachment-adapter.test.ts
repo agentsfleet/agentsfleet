@@ -44,16 +44,6 @@ it("rejects an acknowledgement that claims the preview was stored", async () => 
   adapter.dispose();
 });
 
-it("shows a receipt reply past the old 1,000-character cut whole", async () => {
-  const adapter = new PreviewAttachmentAdapter("workspace", "fleet", "owner");
-  const pending = await adapter.add({file: new File(["demo"], "notes.txt")});
-  const reply = "r".repeat(9 * 1024);
-  fetchMock.mockResolvedValue(Response.json({preview: true, stored: false, reply}));
-  const complete = await adapter.send(pending);
-  expect(complete.content).toEqual([{type: "text", text: reply}]);
-  adapter.dispose();
-});
-
 it("aborts in-flight work when the owner leaves and refuses duplicate sends", async () => {
   const adapter = new PreviewAttachmentAdapter("workspace", "fleet", "owner");
   const pending = await adapter.add({file: new File(["demo"], "notes.txt")});

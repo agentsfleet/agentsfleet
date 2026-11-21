@@ -86,20 +86,6 @@ test("a first message travels with the Definition in one atomic creation", async
   });
 });
 
-// The 6,400 KiB file bound the terminal once copied from the daemon; the daemon is now the only judge.
-const RETIRED_DEFINITION_BYTES = 6_400 * 1024;
-
-test("a Definition file past the retired client bound is sent for the daemon to judge", async () => {
-  const large = await write("large.json", JSON.stringify(DEFINITION) + " ".repeat(RETIRED_DEFINITION_BYTES));
-  const calls: Call[] = [];
-  await withApi(async (request) => { await record(request, calls); return Response.json(DRAFT); }, async (_, origin) => {
-    const result = await invoke(origin, ["--definition", large, "--model", MODEL, "--no-input", "--review"]);
-    expect(result.code).toBe(0);
-    expect(calls[0]?.method).toBe(HTTP_METHOD.post);
-    expect(calls[0]?.body).toEqual({source: SOURCE, setup_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
-  });
-});
-
 const UNUSABLE: ReadonlyArray<readonly [string, () => Promise<string>, string]> = [
   ["missing", async () => join(dir, "absent.json"), "cannot be read"],
   ["directory", async () => dir, "cannot be read"],

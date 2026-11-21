@@ -308,7 +308,6 @@ dependencies = [
  "af_egress",
  "af_inference",
  "af_observability",
- "af_validate",
  "af_wire",
  "axum",
  "backon",

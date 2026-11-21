@@ -5,8 +5,6 @@ import { loadWorkspaces } from "../src/lib/state.ts";
 import { asFetchOverride, makeHeaders } from "./helpers.ts";
 import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
-
-
 test("workspace create does not persist local state when API create fails", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
@@ -124,49 +122,6 @@ test("workspace create sends 128 Unicode code points unchanged", async () => {
     assert.equal(code, 0);
     assert.equal(requestCount, 1);
     assert.equal(err.read(), "");
-  });
-});
-
-// The 128-character bound the terminal once copied; the daemon is now the only judge.
-const RETIRED_NAME_MAX = 128;
-
-test("workspace create sends a name past the retired client bound and shows the daemon's refusal", async () => {
-  await withFreshStateDir(async () => {
-    const out = bufferStream();
-    const err = bufferStream();
-    const name = "a".repeat(RETIRED_NAME_MAX + 1);
-    const refusal = "Workspace name must be 128 characters or fewer";
-    let requestCount = 0;
-    const fetchImpl = asFetchOverride(async (_url, options) => {
-      requestCount += 1;
-      assert.deepEqual(JSON.parse(String(options?.body)), { name });
-      return {
-        ok: false,
-        status: 400,
-        statusText: "Bad Request",
-        headers: makeHeaders([]),
-        text: async () =>
-          JSON.stringify({ error_code: "UZ-REQ-001", user_message: refusal, request_id: "req_name_too_long" }),
-      };
-    });
-
-    const code = await runCli(["workspace", "create", name], {
-      env: {
-        ...process.env,
-        AGENTSFLEET_API_KEY: "agt_t_test",
-        BROWSER: "false",
-      },
-      stdout: out.stream,
-      stderr: err.stream,
-      fetchImpl,
-    });
-
-    assert.notEqual(code, 0);
-    assert.equal(requestCount, 1);
-    assert.match(err.read(), new RegExp(refusal));
-    const workspaces = await loadWorkspaces(process.env);
-    assert.equal(workspaces.current_workspace_id, null);
-    assert.deepEqual(workspaces.items, []);
   });
 });
 

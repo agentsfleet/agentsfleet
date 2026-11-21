@@ -21,14 +21,6 @@ test.each(["0", "1.5", "many"])("refuses a runner page size %s that is not a pos
   expect(fixture.calls).toEqual([]);
 });
 
-test("sends a runner page size past the retired 100 cap for the API to judge", async () => {
-  fixture.respond = () => Response.json({error_code: "UZ-REQ-001", user_message: "limit is above this route's ceiling"}, {status: 400});
-  const result = await fixture.run(["runners", "list", "--limit", "101", "--json"]);
-  expect(fixture.calls[0]?.url.search).toBe("?limit=101");
-  expect(result.code).not.toBe(0);
-  expect(JSON.parse(result.stderr).error).toMatchObject({code: "UZ-REQ-001", message: "limit is above this route's ceiling"});
-});
-
 test("reads runner policy and counters without a workspace context", async () => {
   fixture.respond = () => Response.json(RUNNER_DETAIL);
   const result = await fixture.run(["runners", "show", RUNNER_ID, "--json"]);

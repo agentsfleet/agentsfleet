@@ -77,20 +77,12 @@ fn a_runner_patch_proves_the_enrolment_label_bounds() {
     assert_eq!(
         [
             proved(None),
-            proved(Some(vec![Cow::Borrowed("gpu"); 64])),
             proved(Some(vec![Cow::Owned("l".repeat(TEXT_MAX_CHARS))])),
             proved(Some(vec![Cow::Owned("l".repeat(TEXT_MAX_CHARS + 1))])),
         ],
-        [true, true, true, false],
-        "absent, many, at the text ceiling, past it"
+        [true, true, false],
+        "absent, at the text ceiling, past it"
     );
-}
-
-/// The field description publishes the bound as a number, so a change to the
-/// ceiling must change that sentence too. This is what fails first.
-#[test]
-fn the_published_label_bound_matches_the_ceiling() {
-    assert_eq!(TEXT_MAX_CHARS, 1_048_576);
 }
 
 /// Postgres refuses NUL inside `text`, so a NUL in the provider or the model

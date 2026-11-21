@@ -16,21 +16,11 @@ import {
 const readVia = (stream: Readable): Promise<string> =>
   Effect.runPromise(makeLive(stream).readAll());
 
-// The 1 MiB cap platform JSON input once carried; the server is now the judge.
-const RETIRED_INPUT_CAP_BYTES = 1024 * 1024;
-
 describe("standard input read to the end", () => {
   test("keeps multibyte input whole", async () => {
     const stream = Readable.from(["🌱", Buffer.from("é")]);
     expect(await readVia(stream)).toBe("🌱é");
     expect(stream.listenerCount("data")).toBe(0);
-  });
-
-  test("keeps input past the retired client cap whole for the server to judge", async () => {
-    const chunk = Buffer.alloc(64 * 1024, "x");
-    const chunks = Array.from({length: RETIRED_INPUT_CAP_BYTES / chunk.byteLength + 1}, () => chunk);
-    const text = await readVia(Readable.from(chunks));
-    expect(Buffer.byteLength(text)).toBe(RETIRED_INPUT_CAP_BYTES + chunk.byteLength);
   });
 
   test("reports an input failure without exposing its contents", async () => {

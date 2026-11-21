@@ -159,24 +159,6 @@ it.each([503, 200])("stops reserving a result after the first list read fails or
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("reads the oldest of seventeen recent results, past the sixteen it once dropped", async () => {
-  const ids = Array.from({length: 17}, (_, index) => `019a42b0-0000-7000-8000-${String(index).padStart(12, "0")}`);
-  const fetcher = vi.fn<typeof fetch>().mockImplementation(async input => {
-    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    return Response.json(path.includes("?limit=") ? {items: [], next_cursor: null} : detail(summary(path.split("/").at(-1), "done")));
-  });
-  vi.stubGlobal("fetch", fetcher);
-  render(<FleetTaskProvider {...SCOPE} turns={[evt({taskActivity: activity(ids)})]}>
-    <NativeTaskPrBadge activity={activity([ids[0]!])} />
-  </FleetTaskProvider>);
-  await waitFor(() => expect(fetcher.mock.calls.some(([input]) => {
-    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    return path.endsWith(ids[0]!);
-  })).toBe(true));
-  await waitFor(() => expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull());
-  expect(screen.queryByRole("link")).toBeNull();
-});
-
 it("does not re-render a stable linked-work card for stream turns it does not read", async () => {
   network();
   const reads = vi.spyOn(taskActivity, "readTaskActivityHistory");

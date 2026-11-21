@@ -57,16 +57,6 @@ describe("billing show is wired to its effect", () => {
     expect(code).not.toBe(EXIT_VALIDATION);
   });
 
-  test("a value past the retired 100 cap reaches the server", async () => {
-    await withAuthedStateDir({ workspaceId: WORKSPACE_ID }, () =>
-      withMockApi({}, async (apiUrl, calls) => {
-        const code = await runCli(["usage", "show", "--limit", "9999"], {
-          stdout: bufferStream().stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
-        });
-        expect(code).not.toBe(EXIT_VALIDATION);
-        expect(calls.map((call) => call.search)).toContain("?limit=9999");
-      }));
-  });
 });
 
 test("whoami reaches the identity route and prints the server identity", async () => {

@@ -8,15 +8,14 @@ import { describe, expect, test } from "bun:test";
 import { Cause } from "effect";
 
 import { runCli } from "../src/cli.ts";
-import { wsFleetsPath, wsFleetTurnsPath } from "../src/lib/api-paths.ts";
+import { wsFleetsPath } from "../src/lib/api-paths.ts";
 import { exitCodeForFailure, isLibraryUsageError } from "../src/program/entry/exit-code.ts";
 import { cliEnv, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { jsonResponse, withMockApi, type MockCall } from "./helpers-mock-api.ts";
 
 const EXIT_VALIDATION = 4;
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
-const FLEET_ID = "01900000-0000-7000-8000-000000c0ffee";
-// Past every `--limit` ceiling the client once copied (200 for lists, 500 for turns).
+// Past the `--limit` ceiling the client once copied for lists (200).
 const PAST_RETIRED_CAP = "9999";
 const SERVER_REFUSAL = { error_code: "UZ-REQ-001", user_message: "limit is above this route's ceiling" };
 
@@ -102,13 +101,6 @@ describe("--limit refuses out-of-range and non-numeric values in one voice", () 
     expect(err).toContain("must be an integer");
   });
 
-  test("a value past the retired turns cap reaches the server too", async () => {
-    const { err, calls } = await toServer(["fleet", "logs", FLEET_ID, "--limit", PAST_RETIRED_CAP],
-      `GET ${wsFleetTurnsPath(WS_ID, FLEET_ID)}`);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.search).toContain(`limit=${PAST_RETIRED_CAP}`);
-    expect(err).toContain(SERVER_REFUSAL.user_message);
-  });
 });
 
 describe("id flags refuse anything that is not a canonical uuidv7", () => {

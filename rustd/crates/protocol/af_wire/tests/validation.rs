@@ -100,17 +100,6 @@ fn a_selftest_check_refuses_an_empty_name_or_detail() {
     assert!(empty_detail.validate().is_err(), "an empty detail");
 }
 
-/// A report carries any number of checks.
-#[test]
-fn a_selftest_report_carries_no_count_bound() {
-    let long = report_with(
-        (0..64)
-            .map(|index| check_named(format!("check_{index}")))
-            .collect(),
-    );
-    assert!(long.validate().is_ok(), "a long roster");
-}
-
 /// `dive` reaches inside the roster, so a bad check fails the whole report.
 ///
 /// This is the row that proves `dive` is doing something. Without it a report

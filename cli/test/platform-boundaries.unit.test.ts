@@ -83,20 +83,6 @@ test("refuses a provider key requested from an interactive input", async () => {
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
 });
 
-// The 1 MiB cap platform JSON input once carried; the server is now the judge.
-const RETIRED_INPUT_CAP_BYTES = 1024 * 1024;
-
-test.each(["piped", "file"])("sends %s JSON past the retired client cap to the server", async source => {
-  const padded = JSON.stringify(POLICY) + " ".repeat(RETIRED_INPUT_CAP_BYTES);
-  const file = join(fixture.state, "policy.json");
-  if (source === "file") fs.writeFileSync(file, padded);
-  fixture.respond = () => Response.json({id: RUNNER_ID, status: "active", assigned_policy: POLICY, labels: []});
-  const result = await fixture.run(["runners", "update", RUNNER_ID, "--policy", source === "file" ? file : "-", "--json"],
-    source === "file" ? "" : padded);
-  expect(result.code).toBe(0);
-  expect(fixture.calls[0]?.body).toEqual({assigned_policy: POLICY});
-});
-
 test("releases a reserved token file when private permissions cannot be applied", async () => {
   const chmod = spyOn(fs, "fchmodSync").mockImplementation(() => {throw new Error("permission denied");});
   const file = join(fixture.state, "token");

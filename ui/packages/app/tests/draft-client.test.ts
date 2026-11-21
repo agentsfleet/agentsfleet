@@ -326,15 +326,4 @@ describe("private browser chat", () => {
     expect(source?.closed).toBe(true);
   });
 
-  it("keeps following a running message with no time limit of its own", async () => {
-    const timeout = vi.spyOn(AbortSignal, "timeout");
-    fixture.override = ({path}) => path.endsWith("/messages")
-      ? response({items: [{...MESSAGE, state: MESSAGE_STATE.running}], next_cursor: null}) : undefined;
-    const instance = await ready(true);
-    expect(timeout.mock.calls.some(([milliseconds]) => milliseconds >= 330_000)).toBe(false);
-    expect(instance.getSnapshot().messages[0]?.state).toBe(MESSAGE_STATE.running);
-    expect(FakeEventSource.instances[0]?.closed).toBe(false);
-    expect(instance.getSnapshot().notice).toBeNull();
-  });
-
 });

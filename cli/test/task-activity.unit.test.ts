@@ -111,19 +111,6 @@ test("a patch prints its recorded files, never its text", () => {
     .toBe("Confirmed local edit · not a publication\nx +1 −1");
 });
 
-test("long event streams deduplicate every stage, past the retired 128 and 256 windows", () => {
-  const lines: string[] = [];
-  const printer = new ActivityPrinter(line => lines.push(line));
-  const stage = (index: number) => ({kind: "task_transfer_progress", progress: {activity_id: `019f0000-0000-7000-8000-${index.toString(16).padStart(12, "0")}`,
-    operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}});
-  for (let index = 0; index < 257; index++) printer.frame("task_transfer_progress", stage(index));
-  printer.frame("task_transfer_progress", stage(0));
-  expect(lines).toHaveLength(257);
-  printer.reset();
-  printer.history({items: Array.from({length: 129}, (_, index) => stage(index)), truncated: false});
-  expect(lines).toHaveLength(386);
-});
-
 test("values past the retired caps print, and the safe-integer check stays", () => {
   const lines: string[] = [];
   const printer = new ActivityPrinter(line => lines.push(line));

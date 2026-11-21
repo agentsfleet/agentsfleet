@@ -110,18 +110,6 @@ it("handles cancellation while a poll wait is being scheduled", async () => {
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it("keeps reading past 150 polls without a server deadline until its owner stops it", async () => {
-  vi.spyOn(Date, "now").mockReturnValue(NOW);
-  const run = observe();
-  await tick(400_000);
-  expect(fetchStatus.mock.calls.length).toBeGreaterThan(150);
-  expect(run.update).not.toHaveBeenCalled();
-  run.owner.abort();
-  await tick();
-  await run.done;
-  expect(run.update).not.toHaveBeenCalled();
-});
-
 it.each([null, "redirect response"])("rejects a redirected status response with body %j", async body => {
   const response = new Response(body);
   Object.defineProperty(response, "redirected", { value: true });

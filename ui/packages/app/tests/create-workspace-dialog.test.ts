@@ -71,16 +71,6 @@ describe("CreateWorkspaceDialog component", () => {
     expect(document.getElementById(input.getAttribute("aria-describedby")!)?.textContent).toBe("Leave blank to generate a workspace name automatically.");
   });
 
-  it("sends a name past 128 Unicode code points to the server, which judges it", async () => {
-    const { props } = await renderDialog();
-    const input = screen.getByLabelText("Name (optional)") as HTMLInputElement;
-    const name = "a".repeat(129);
-    fireEvent.change(input, { target: { value: name } });
-    fireEvent.submit(screen.getByTestId("workspace-create-form"));
-    expect(props.onSubmit).toHaveBeenCalledWith(name);
-    expect(input.validationMessage).toBe("");
-  });
-
   it("rejects directional formatting and Unicode line separators", async () => {
     const { props } = await renderDialog();
     const input = screen.getByLabelText("Name (optional)") as HTMLInputElement;

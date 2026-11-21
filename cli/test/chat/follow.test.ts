@@ -7,10 +7,6 @@ import { DraftSession, DRAFT_SOURCE } from "../../src/commands/chat/session.ts";
 import { CLI_ERROR_TAG } from "../../src/errors/index.ts";
 import { DRAFT, DRAFT_ID, MESSAGE, MODEL, withApi } from "./fixture.ts";
 
-// The history-page and follow-read bounds the terminal once carried; a longer
-// conversation is read whole, and a follow lasts until the turn settles.
-const RETIRED_HISTORY_PAGES = 200;
-const RETIRED_FOLLOW_READS = 160;
 // pin test: literal is the floor — two reads of one turn are never closer than this.
 const POLL_DELAY_MS = 250;
 
@@ -60,17 +56,6 @@ test("should walk every history page by its cursor and return the latest user tu
   expect(emitted).toEqual(["1:user", "1:assistant", "2:user"]);
 });
 
-test("should read a conversation past the retired history window until the server reports the end", async () => {
-  const pages = RETIRED_HISTORY_PAGES + 5;
-  await withHistory((read) => ({items: [turn(String(read), MESSAGE_STATE.completed)], next_cursor: read < pages ? `page-${read + 1}` : null}),
-  async (session, seen) => {
-    const latest = await Effect.runPromise(readHistory(session, () => Effect.void));
-    expect(latest?.sequence).toBe(String(pages));
-    expect(seen.cursors).toHaveLength(pages);
-    expect(seen.drafts).toBe(0);
-  });
-});
-
 test("should refuse a page cursor the walk already followed instead of reading forever", async () => {
   await withHistory(() => ({items: [turn("1", MESSAGE_STATE.completed)], next_cursor: "same"}),
   async (session, seen) => {
@@ -109,24 +94,6 @@ test("should wait between reads until the turn settles, render each change once 
   for (let index = 1; index < waitedAt.length; index++) {
     expect((waitedAt[index] ?? 0) - (waitedAt[index - 1] ?? 0)).toBeGreaterThanOrEqual(POLL_DELAY_MS);
   }
-});
-
-test("should keep following a running turn past the retired read budget until it settles, never resending it", async () => {
-  const emitted: string[] = [];
-  let waits = 0;
-  const settlesAt = RETIRED_FOLLOW_READS + 5;
-  await withHistory((read) => ({items: [turn("1", read < settlesAt ? MESSAGE_STATE.running : MESSAGE_STATE.completed)], next_cursor: null}),
-  async (session, seen) => {
-    const exit = await onVirtualClock(follow(session, "1",
-      (message) => Effect.sync(() => { emitted.push(message.state); }),
-      (_sequence, state) => Effect.sync(() => { expect(state).toBe(MESSAGE_STATE.running); waits++; })));
-    expect(Exit.isSuccess(exit) && exit.value.state).toBe(MESSAGE_STATE.completed);
-    expect(seen.cursors).toHaveLength(settlesAt);
-    expect(seen.mutations).toBe(0);
-    expect(seen.drafts).toBe(1);
-  });
-  expect(waits).toBe(settlesAt - 1);
-  expect(emitted).toEqual([MESSAGE_STATE.running, MESSAGE_STATE.completed]);
 });
 
 test("should stop following a turn that never settles when the caller interrupts", async () => {

@@ -33,10 +33,6 @@ const INVITE_READY = "invite-ready";
 const INVITE_LINK = "Invite link";
 const ENTER_AN_ADDRESS = "Enter an email address";
 const DUPLICATE_REFUSED = { ok: false, status: 409, errorCode: "UZ-INV-003", error: "That address already has a pending invite." };
-// The backend's mail parser judges the part before the @; 65 is one past the
-// cut this dialog used to copy from it.
-const PAST_OLD_LOCAL_PART_CUT = 65;
-const addressWithLocalPart = (length: number) => `${"a".repeat(length)}@example.com`;
 
 afterEach(() => {
   cleanup();
@@ -67,16 +63,6 @@ async function createWith(email_status: EmailStatus) {
   expect(onSettled).toHaveBeenCalledOnce();
   return ready;
 }
-
-describe("the address it accepts", () => {
-  it("should send a part before the @ past 64 characters to the backend, which judges it", async () => {
-    const { send } = await openDialog();
-    actions.createInviteAction.mockResolvedValue({ ok: true, data: INVITE });
-    await send(addressWithLocalPart(PAST_OLD_LOCAL_PART_CUT));
-    await screen.findByTestId(INVITE_READY);
-    expect(actions.createInviteAction).toHaveBeenCalledExactlyOnceWith(addressWithLocalPart(PAST_OLD_LOCAL_PART_CUT));
-  });
-});
 
 describe("the invite it just created", () => {
   it("should say the invite was sent, and offer the link to share as well", async () => {

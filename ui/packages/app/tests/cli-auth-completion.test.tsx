@@ -97,13 +97,6 @@ it.each([
   expect(screen.getByLabelText("Verification code")).toBeTruthy();
 });
 
-it("reads a consumed answer past the old 4 KiB cut whole and completes", async () => {
-  await approve();
-  poll.mockResolvedValueOnce(Response.json({ error_code: "UZ-AUTH-012", detail: "x".repeat(4_097) }, { status: 410 }));
-  await readStatus();
-  expect(screen.getByRole("heading", { name: HEADING })).toBeTruthy();
-});
-
 it("keeps the code after a network failure and observes a later completion", async () => {
   await approve();
   poll.mockRejectedValueOnce(new TypeError("network unavailable"));

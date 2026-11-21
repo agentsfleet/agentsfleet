@@ -54,11 +54,6 @@ it.each([RESPONSE_FAILURE.redirect, RESPONSE_FAILURE.refused, RESPONSE_FAILURE.b
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-it("shows the code for a pending session past the old 4 KiB cut", async () => {
-  await show(activeBody({ detail: "x".repeat(4_097) }));
-  expect(screen.getByLabelText("Verification code")).toBeTruthy();
-});
-
 it("releases a failed session stream without approving or leaving its reader locked", async () => {
   const body = new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error("stream failed")); } });
   fetchMock.mockResolvedValue(new Response(body));

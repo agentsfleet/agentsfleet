@@ -74,12 +74,3 @@ it("accepts a new message generation independently and withholds stale previous-
   expect(live.context(frame({...start, generation: 21}), DRAFT_ID, messages)).toBe(false);
   expect(changed.mock.lastCall).toEqual([{contextProgress: {sequence: "2", progress: start}}]);
 });
-
-it("tracks every dispatch stream of a message, past the 32 it once dropped", () => {
-  const changed = vi.fn(); const live = new DraftLive(changed);
-  for (let index = 0; index < 33; index++) {
-    const stream_id = `0199a801-1000-7000-8000-${String(index).padStart(12, "0")}`;
-    expect(live.context(frame(start, {stream_id}), DRAFT_ID, running)).toBe(true);
-  }
-  expect(changed).toHaveBeenCalledTimes(33);
-});

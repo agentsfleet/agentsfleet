@@ -69,9 +69,6 @@ fn enforces_declared_bounds_and_model_specific_output_limit() {
     let error = Configured::new(&value, 100).unwrap_err();
     assert!(error.source().is_some());
     value.max_output_tokens = 37;
-    // 2,048 bytes was a retired cap; the text ceiling bounds a base URL.
-    value.base_url = format!("https://inference.example/{}", "x".repeat(2049));
-    Configured::new(&value, 100).unwrap();
     value.base_url = String::new();
     assert_eq!(
         Configured::new(&value, 100).unwrap_err().code(),

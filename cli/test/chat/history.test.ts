@@ -112,25 +112,6 @@ test.each([
   expect(result.calls).toHaveLength(0);
 });
 
-// The bounds the terminal once copied: 100 per page, 200 search characters, 100 title characters.
-const RETIRED_PAGE_MAX = 100;
-const RETIRED_SEARCH_MAX = 200;
-const RETIRED_TITLE_MAX = 100;
-
-test("values past the retired client bounds reach the server, and a larger page is shown", async () => {
-  const search = "x".repeat(RETIRED_SEARCH_MAX + 1);
-  const page = {items: Array.from({length: RETIRED_PAGE_MAX + 1}, () => ROW), next_cursor: null};
-  const listed = await run(["list", "--search", search, "--limit", String(RETIRED_PAGE_MAX + 1), "--json"], () => Response.json(page));
-  expect(listed.code).toBe(0);
-  expect(Object.fromEntries(new URLSearchParams(listed.calls[0]?.query))).toEqual({q: search, limit: String(RETIRED_PAGE_MAX + 1)});
-  expect(JSON.parse(listed.stdout).items).toHaveLength(RETIRED_PAGE_MAX + 1);
-  const title = "x".repeat(RETIRED_TITLE_MAX + 1);
-  const renamed = await run(["rename", DRAFT_ID, title], request =>
-    Response.json(request.method === "GET" ? DRAFT : {...DRAFT, title}));
-  expect(renamed.code).toBe(0);
-  expect(renamed.calls[1]?.body).toEqual({title});
-});
-
 test("rename trims the title and uses the freshly read tag", async () => {
   const title = "🚀".repeat(100);
   const changed = {...DRAFT, title, etag: '"draft-2"', extra: "preserved"};

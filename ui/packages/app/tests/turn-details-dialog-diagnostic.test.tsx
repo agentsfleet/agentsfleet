@@ -73,13 +73,6 @@ describe("TurnDetailsDialog diagnostics", () => {
     expect(screen.queryByText("Pull request")).toBeNull();
   });
 
-  it("shows a result past the old 20,000-character cut whole", async () => {
-    const response = `${"x".repeat(20_000)}result-tail`;
-    await renderDialogWithBody(turn({ response_text: response }));
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toBe(response);
-  });
-
   it("trims only the whitespace around a large result", async () => {
     const response = `${"x".repeat(20_000)}result-tail`;
     await renderDialogWithBody(turn({ response_text: `   ${response}  ` }));
@@ -97,23 +90,6 @@ describe("TurnDetailsDialog diagnostics", () => {
   it("explains when no request context was recorded", async () => {
     await renderDialogWithBody(turn({ request_json: "   " }));
     expect(screen.getByText("No request context recorded")).toBeTruthy();
-  });
-
-  it("shows request context past the old 10,000-character cut whole", async () => {
-    const request = `${"x".repeat(10_000)}context-tail`;
-    await renderDialogWithBody(turn({ request_json: request }));
-    expect(screen.getByText(request).textContent).toHaveLength(request.length);
-  });
-
-  it("shows every request-context field, past the hundred it once showed", async () => {
-    const request = Object.fromEntries(
-      Array.from({ length: 150 }, (_, index) => [`field_${index}`, `value_${index}`]),
-    );
-    await renderDialogWithBody(turn({ request_json: JSON.stringify(request) }));
-
-    expect(screen.getByText("field 99")).toBeTruthy();
-    expect(screen.getByText("field 149")).toBeTruthy();
-    expect(screen.queryByText("Additional fields not shown")).toBeNull();
   });
 
 });

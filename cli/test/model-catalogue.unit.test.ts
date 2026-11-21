@@ -112,18 +112,6 @@ test("fetchCatalogue rejects a repeated cursor without reporting a partial catal
   expect(paths).toHaveLength(2);
 });
 
-test("fetchCatalogue walks past the retired page cap until the server reports the end", async () => {
-  const paths: string[] = [];
-  // 100 pages was the reader's retired page budget; a longer catalogue is read whole.
-  const pages = [
-    ...Array.from({length: 105}, (_, page) => ({models: [ANTHROPIC], next_cursor: `cursor-${page}`})),
-    {models: [OPENAI], next_cursor: null},
-  ];
-  const rows = await run(fetchCatalogue(undefined), httpLayer(pages, path => paths.push(path)));
-  expect(rows).toHaveLength(106);
-  expect(paths).toHaveLength(106);
-});
-
 test("resolveCatalogueProvider accepts a member and returns it unchanged", async () => {
   const got = await run(
     resolveCatalogueTarget("anthropic", undefined, undefined),

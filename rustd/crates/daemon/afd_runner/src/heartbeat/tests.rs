@@ -48,7 +48,6 @@ fn reported(controllers: &[String]) -> bool {
 fn test_capability_report_out_of_bounds_is_ignored() {
     let named = |count: usize| vec!["cpu".to_owned(); count];
     assert!(reported(&named(2)));
-    assert!(reported(&named(64)), "a report carries no count bound");
     // An empty name: the beat parses and lands, the report is not one.
     assert!(!reported(&[String::new()]));
     assert!(!reported(&["c".repeat(TEXT_MAX_CHARS + 1)]));

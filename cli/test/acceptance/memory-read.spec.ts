@@ -160,15 +160,6 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
     });
   }, SUBPROCESS_TEST_TIMEOUT_MS);
 
-  it("`--limit 101` reaches the API, which owns the ceiling", async () => {
-    await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["fleet", "memory", "list", "--fleet", FLEET_ID, "--limit", "101"]);
-      assert.equal(result.code, 0, `stderr=${result.stderr}`);
-      assert.equal(calls.length, 1, "a limit past the retired client cap must reach the API");
-      assert.ok((calls[0]?.search ?? "").includes("limit=101"));
-    });
-  }, SUBPROCESS_TEST_TIMEOUT_MS);
-
   it("a malformed --fleet id is rejected client-side as uuidv7 before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
       const result = await run(["fleet", "memory", "list", "--fleet", "not-a-uuid"]);

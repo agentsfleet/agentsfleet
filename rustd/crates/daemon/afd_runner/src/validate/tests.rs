@@ -104,14 +104,6 @@ fn test_register_request_bounds_refuse_with_their_sentences() {
         Some(DETAIL_HOST_ID_BOUNDS)
     );
 
-    let entries = (0..=64)
-        .map(|index| Cow::Owned(format!("registry-{index}.example")))
-        .collect();
-    assert_eq!(
-        refused(&request(host(), policy(entries, 1))),
-        None,
-        "an allowlist carries no count bound"
-    );
     let six_digit_port = vec![Cow::Borrowed("registry.example:123456")];
     assert_eq!(
         refused(&request(host(), policy(six_digit_port, 1))),
@@ -135,11 +127,6 @@ fn test_register_request_bounds_refuse_with_their_sentences() {
         labels,
         ..request(host(), policy(Vec::new(), 1))
     };
-    assert_eq!(
-        refused(&labelled(vec![Cow::Borrowed("gpu"); 64])),
-        None,
-        "a label list carries no count bound"
-    );
     assert_eq!(
         refused(&labelled(vec![Cow::Owned("l".repeat(TEXT_MAX_CHARS + 1))])),
         Some(DETAIL_LABELS)

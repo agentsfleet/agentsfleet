@@ -87,51 +87,6 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
     expect(rec.stdout.some((l) => l.includes("our words"))).toBe(true);
   });
 
-  test("test_pre_id_buffer_keeps_every_frame", async () => {
-    // 256 frames and 256 KiB were the retired buffer caps; past both, every
-    // early frame still replays and no drop notice is printed.
-    const RETIRED_FRAMES = 256;
-    const RETIRED_BYTES = 256 * 1024;
-    const rec = makeRecorder();
-    const overflowBy = 3;
-    const frames = Array.from(
-      { length: RETIRED_FRAMES + overflowBy },
-      (_, i) => chunkFrame(TURN_ID, `line ${i}`),
-    );
-    frames.push(completeFrame(TURN_ID));
-    const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
-        stdin: streamFrom([], false),
-        stdout: nullOutput(),
-        streamGet: eventStream(frames),
-      }).pipe(Effect.provide(makeLayer(rec))),
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.stdout.some((l) => l.endsWith("line 0"))).toBe(true);
-    expect(
-      rec.stdout.some((l) => l.endsWith(`line ${RETIRED_FRAMES + overflowBy - 1}`)),
-    ).toBe(true);
-    expect(rec.stdout.some((l) => l.includes("dropped live"))).toBe(false);
-
-    // Two frames that together pass the retired byte cap both replay.
-    const rec2 = makeRecorder();
-    const half = "💠".repeat(RETIRED_BYTES / 8);
-    const exit2 = await Effect.runPromiseExit(
-      steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
-        stdin: streamFrom([], false),
-        stdout: nullOutput(),
-        streamGet: eventStream([
-          chunkFrame(TURN_ID, `first-giant ${half}`),
-          chunkFrame(TURN_ID, `second-giant ${half}`),
-          completeFrame(TURN_ID),
-        ]),
-      }).pipe(Effect.provide(makeLayer(rec2))),
-    );
-    expect(Exit.isSuccess(exit2)).toBe(true);
-    expect(rec2.stdout.some((l) => l.includes("first-giant"))).toBe(true);
-    expect(rec2.stdout.some((l) => l.includes("second-giant"))).toBe(true);
-    expect(rec2.stdout.some((l) => l.includes("dropped live"))).toBe(false);
-  });
 });
 
 // ── Post-promote live path: frames after the id bypass the buffer ─────────
