@@ -77,7 +77,8 @@ fn corpus() -> Vec<String> {
     // cron with no timezone, a webhook with no repositories, and
     // `tool_window: "auto"` with a templated model.
     found.extend(
-        ["minimal", "full", "with_model_and_context"].map(|name| format!("definitions/{name}.json")),
+        ["minimal", "full", "with_model_and_context"]
+            .map(|name| format!("definitions/{name}.json")),
     );
     found.sort();
     found
