@@ -380,5 +380,6 @@ Unchanged: the 1M message, the body sizes, shell output and listing budgets, the
   - > Owner (Indy, Nov 21, 2026): "yes signedoff approved" — context: the final per-section table of removed caps; §8 is approved. §7 is a separate sign-off.
   - > Owner (Indy, Nov 21, 2026): "I agree on the removals. But i want ot debate each one, example  sweeper:expiry - i feel this runner cordon and drain will handle this? we dont want to overengineer here at the start." — context: §7. `sweeper:expiry` goes; a dead run's last slice (at most 35 s, $0.0035) is not billed.
   - > Owner (Indy, Nov 21, 2026): "If we use with JETSTREAM on can this work?" and "ultrathink to see how we can remove all of the sweepers?" then "QStash wake-ups (Recommended)" — context: §7's design. JetStream stays off; the three clock jobs book one-shot QStash wake-ups.
+  - > Owner (Indy, Nov 21, 2026): "also ensure all the crates are using the latest updated version, except any anamolies to stick to libc < 1.x version and so on." — context: new §9. Every external dependency moves to its newest release; a crate held back names its reason (libc stays on 0.2).
 - **Open blockers** — none. Unverified at sign-off: QStash's per-message price and its plan's longest delay against the 7-day turn-checkpoint deletion.
 - **Deferrals and transfers** — none.
