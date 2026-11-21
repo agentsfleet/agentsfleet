@@ -10,9 +10,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::command;
-use super::oneshot::{TIMEOUT_DEFAULT, run_to_end, timeout_of};
+use super::oneshot::{run_to_end, timeout_ms, timeout_of};
 use crate::tools::env::Env;
-use crate::tools::{Context, Handler};
+use crate::tools::{Context, Handler, Limits, Schema};
 
 /// `shell`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -20,7 +20,7 @@ use crate::tools::{Context, Handler};
 pub struct Command {
     /// The command, as `sh -c` runs it in the working directory.
     command: String,
-    /// How long it may run, in milliseconds: 10000 when absent.
+    /// How long it may run, in milliseconds; the tool's default when absent.
     #[serde(default)]
     timeout_ms: Option<u64>,
 }
@@ -34,13 +34,13 @@ pub struct Shell<'run> {
 }
 
 impl<'run> Shell<'run> {
-    /// The tool, running in `backend` for [`TIMEOUT_DEFAULT`] when the model
-    /// names no timeout.
+    /// The tool, running in `backend` for [`Limits::default_timeout`] when
+    /// the model names no timeout.
     #[must_use]
     pub const fn new(backend: &'run dyn Env) -> Self {
         Self {
             backend,
-            default_timeout: TIMEOUT_DEFAULT,
+            default_timeout: Limits::DEFAULT.default_timeout,
         }
     }
 
@@ -59,6 +59,13 @@ impl Handler for Shell<'_> {
         read back its output and exit code. The command is killed once \
         timeout_ms passes. To keep a process running across calls, use exec_command.";
     type Arguments = Command;
+
+    fn schema(&self) -> Schema {
+        timeout_ms(
+            Schema::of::<Command>(Self::DESCRIPTION),
+            self.default_timeout,
+        )
+    }
 
     async fn run(&self, arguments: Command, context: Context<'_>) -> ToolOutput {
         let timeout = timeout_of(arguments.timeout_ms, self.default_timeout);

@@ -6,12 +6,13 @@
 use guffbolt::{Image, ImageKind, ToolOutput};
 use serde_json::json;
 
-use super::{IMAGE_MAX_BYTES, sniffed};
+use super::sniffed;
 use crate::catalog::IMAGE;
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call, call_in, hosted, offered};
+use guffbolt::tools::Limits;
 
 /// The argument name the calls spell.
 const PATH: &str = "path";
@@ -68,7 +69,7 @@ async fn viewed(live: &Live, path: &str, images: bool) -> (ToolOutput, Option<Im
 #[tokio::test]
 async fn test_image_refusals_carry_codes() {
     let live = Live::start().await;
-    let oversize = usize::try_from(IMAGE_MAX_BYTES).unwrap() * 4;
+    let oversize = usize::try_from(Limits::DEFAULT.max_image_bytes).unwrap() * 4;
     std::fs::write(live.root.join(BIG), bytes_of(ImageKind::Png, oversize)).unwrap();
     std::fs::write(live.root.join(NOTES), b"not pixels").unwrap();
     std::fs::write(live.root.join(SHOT), bytes_of(ImageKind::Png, SHOT_BYTES)).unwrap();
@@ -225,11 +226,4 @@ async fn a_missing_image_a_path_out_and_no_sandbox_read_their_codes() {
         "a refused call carries no image"
     );
     live.stop().await;
-}
-
-/// The cap is the Messages wire's: five mebibytes per image.
-#[test]
-fn the_image_cap_is_five_mebibytes() {
-    // pin test: literal is the contract
-    assert_eq!(IMAGE_MAX_BYTES, 5_242_880);
 }

@@ -1,7 +1,8 @@
 //! `file_read`: a window of a file's lines, cut to the model's output budget.
 //!
 //! A read starts at line `offset` (the first when absent) and carries at most
-//! `limit` lines (2,000 when absent),
+//! `limit` lines (the tool's default when absent,
+//! [`Limits::default_read_lines`](crate::tools::Limits::default_read_lines)),
 //! never more bytes than a command's output reads back. A read that stops
 //! before the file ends says on its last line where the next one starts, so a
 //! model pages a large file instead of taking it whole into its window. The
@@ -18,12 +19,8 @@ use super::{Answer, failed, inside, settled};
 use crate::tool::ToolOutput;
 use crate::tools::env::{Env, MAX_READ_BYTES};
 use crate::tools::process::output;
-use crate::tools::{Context, Handler, code};
+use crate::tools::{Context, Handler, Limits, Schema, code};
 
-/// The lines a read carries when the model names no limit, unless the
-/// embedder chooses another
-/// ([`Limits::default_read_lines`](crate::tools::Limits::default_read_lines)).
-pub const LINES_DEFAULT: usize = 2000;
 /// How a read that stopped before the file ended says where to go on.
 const CONTINUES_AT: &str = "... the file continues at line";
 const READ_ON: &str = "read on with offset";
@@ -42,7 +39,7 @@ pub struct Window {
     /// The line to start at, counting from 1: the first when absent.
     #[serde(default)]
     offset: Option<NonZeroUsize>,
-    /// The most lines to read: 2000 when absent.
+    /// The most lines to read; the tool's default when absent.
     #[serde(default)]
     limit: Option<NonZeroUsize>,
 }
@@ -56,13 +53,13 @@ pub struct FileRead<'run> {
 }
 
 impl<'run> FileRead<'run> {
-    /// The tool, reading from `backend`, [`LINES_DEFAULT`] lines when the
-    /// model names no limit.
+    /// The tool, reading from `backend`, [`Limits::default_read_lines`]
+    /// lines when the model names no limit.
     #[must_use]
     pub const fn new(backend: &'run dyn Env) -> Self {
         Self {
             backend,
-            default_lines: LINES_DEFAULT,
+            default_lines: Limits::DEFAULT.default_read_lines,
         }
     }
 
@@ -77,10 +74,18 @@ impl<'run> FileRead<'run> {
 impl Handler for FileRead<'_> {
     const NAME: &'static str = "file_read";
     const DESCRIPTION: &'static str = "Read a file in the working directory and read back its \
-        text: at most `limit` lines (2000 when absent) from line `offset` (1 when absent), cut to \
-        the same output budget as a command's. A read that stops before the file ends says on \
-        its last line which offset to read on from.";
+        text: at most `limit` lines from line `offset` (1 when absent), cut to the same output \
+        budget as a command's. A read that stops before the file ends says on its last line \
+        which offset to read on from.";
     type Arguments = Window;
+
+    fn schema(&self) -> Schema {
+        let lines = self.default_lines;
+        Schema::of::<Window>(Self::DESCRIPTION).with_argument(
+            "limit",
+            format!("The most lines to read: {lines} when absent."),
+        )
+    }
 
     async fn run(&self, arguments: Window, _context: Context<'_>) -> ToolOutput {
         settled(read(self.backend, &arguments, self.default_lines).await)

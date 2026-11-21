@@ -635,6 +635,10 @@ use guffbolt::tools::outbound::{Admitted, Outbound, OutboundFuture, Refused, Req
 struct Offline;
 
 impl Outbound for Offline {
+    fn max_redirects(&self) -> u8 {
+        0
+    }
+
     fn send<'a>(&'a self, tool: &'a str, request: Request) -> OutboundFuture<'a, Response> {
         let why = format!("{tool} may not reach {}: this run is offline", request.url);
         Box::pin(std::future::ready(Err(Refused::new(code::HOST_NOT_ALLOWED, why))))

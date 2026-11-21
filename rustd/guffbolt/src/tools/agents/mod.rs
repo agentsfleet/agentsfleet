@@ -22,14 +22,11 @@ use crate::agents::{
     SEND_INPUT, SPAWN_AGENT, Spawn, WAIT_AGENT,
 };
 use crate::tool::ToolOutput;
-use crate::tools::{Context, Handler, NoArguments, code};
+use crate::tools::process::saturating_millis;
+use crate::tools::{Context, Handler, Limits, NoArguments, Schema, code};
 
 /// How long a wait lasts when the model names no timeout.
 const WAIT_DEFAULT: Duration = Duration::from_secs(30);
-/// The longest wait unless the embedder chooses another
-/// ([`Limits::max_wait`](crate::tools::Limits::max_wait)): an hour. Zero is
-/// allowed, to only look.
-pub const WAIT_MAX: Duration = Duration::from_hours(1);
 /// What a `fork_turns` the tool cannot read answers.
 const FORK_TURNS: &str = "fork_turns must be `none`, `all` or a number of turns";
 
@@ -66,8 +63,8 @@ pub struct Steer {
 pub struct Wait {
     /// The `agent_id` `spawn_agent` answered with.
     target: u64,
-    /// How long to wait for the child's turn to end, in milliseconds: 30000
-    /// when absent, at most 3600000; 0 only looks.
+    /// How long to wait for the child's turn to end, in milliseconds; 0 only
+    /// looks.
     #[serde(default)]
     timeout_ms: Option<u64>,
 }
@@ -130,12 +127,12 @@ pub struct WaitAgent {
 
 impl WaitAgent {
     /// The tool, over the children `agents` keeps, waiting at most
-    /// [`WAIT_MAX`].
+    /// [`Limits::max_wait`].
     #[must_use]
     pub fn new(agents: &Agents) -> Self {
         Self {
             agents: agents.clone(),
-            max_wait: WAIT_MAX,
+            max_wait: Limits::DEFAULT.max_wait,
         }
     }
 
@@ -245,6 +242,18 @@ impl Handler for WaitAgent {
         answer. Answers its status, with its answer once done or its detail once failed, and \
         running when the timeout passed first.";
     type Arguments = Wait;
+
+    fn schema(&self) -> Schema {
+        let default = saturating_millis(WAIT_DEFAULT.min(self.max_wait));
+        let most = saturating_millis(self.max_wait);
+        Schema::of::<Wait>(Self::DESCRIPTION).with_argument(
+            "timeout_ms",
+            format!(
+                "How long to wait for the child's turn to end, in milliseconds: {default} when \
+                 absent, at most {most}; 0 only looks."
+            ),
+        )
+    }
 
     fn run(
         &self,

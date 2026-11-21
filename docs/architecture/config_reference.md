@@ -16,7 +16,7 @@ Startup refuses the file, with `UZ-STARTUP-004`, when:
   `max_wake_queue_size`, `min_connections` over `max_connections`;
 - `small_model_max_tokens` is not below `large_model_min_tokens`;
 - `drain_timeout_seconds` is under 6, the time a runner answer already in
-  flight needs, or `task_join_timeout_seconds` is under 9, the time the
+  flight needs, or `background_task_join_timeout_seconds` is under 9, the time the
   telemetry flush needs;
 - `max_message_mib` or `max_control_message_mib` exceeds the frame the runner
   link carries (32 MiB and 2 MiB);
@@ -46,7 +46,7 @@ the others in `settings.rs`).
 max_in_flight_requests     = 256            # requests served at once; past this the API answers 503 so it never falls over
 # read_timeout_seconds       = 300            # how long one request may take to arrive before it is dropped  (not read yet; see below)
 drain_timeout_seconds      = 15             # on shutdown, how long open requests get to finish
-task_join_timeout_seconds  = 10             # on shutdown, how long background tasks get to stop
+background_task_join_timeout_seconds = 10             # on shutdown, how long background tasks get to stop
 max_live_activity_notices  = 16             # live-activity updates sent to dashboards at the same time
 
 [api]                                       # list reads
@@ -72,13 +72,13 @@ max_wake_queue_size        = 65_536         # the most the wake queue may be rai
 # heartbeat_interval_seconds = 10             # how often a runner checks in; sent to runners when they connect  (not read yet; see below)
 max_message_mib            = 32             # largest message on the runner link; sent to runners when they connect
 max_control_message_mib    = 2              # largest control message on the runner link; sent to runners when they connect
-assign_batch_size          = 64             # waiting turns considered per assignment pass
-max_repair_backoff_seconds = 5              # longest wait before retrying a broken runner connection repair
+turns_per_assignment_pass  = 64             # waiting turns considered per assignment pass
+max_subscription_repair_backoff_seconds = 5              # longest wait between two repairs of the daemon's bus subscriptions
 
 [turns]                                     # queued and running turns
 max_runs_per_turn          = 3              # a turn whose runner dies is retried on another; after this many runs it fails
 max_queued_turns           = 100_000        # queued turns across the deployment; past this new messages are refused
-history_page_size          = 100            # earlier turns read per page when a run is given its chat history
+history_turns_per_page     = 100            # earlier turns read per page when a run is given its chat history
 
 [turns.checkpoints]                         # turn checkpoints stored in R2
 retention_days             = 7              # a settled turn's checkpoint is deleted after this
@@ -115,17 +115,17 @@ download_link_ttl_minutes  = 5              # how long a runner's presigned down
 transfer_window_minutes    = 15             # how long a checkpoint's uploads or restore may run in total
 restore_pin_minutes        = 30             # a checkpoint being restored cannot be deleted during this window
 orphan_after_minutes       = 60             # an upload never committed is deletable after this
-delete_batch_size          = 256            # objects deleted per storage call
+objects_per_delete_call    = 256            # objects deleted per storage call
 
 [setup]                                     # the setup chat
-budget_seconds             = 15             # how long one setup request may take before it is answered as busy
+request_timeout_seconds    = 15             # how long one setup request may take before it is answered as busy
 replay_window_hours        = 24             # a repeated setup request within this returns the first answer
-scan_batch_size            = 64             # drafts read per page by setup maintenance
+maintenance_drafts_per_page = 64             # drafts read per page by setup maintenance
 
 [auth]                                      # sign-in, sessions and tokens (startup refuses unsafe values)
-session_ttl_seconds        = 300            # how long a CLI login session waits to be approved
-session_replay_seconds     = 60             # a login code reused within this is refused
-max_session_verify_attempts = 5             # wrong codes allowed before a login session is closed
+cli_login_ttl_seconds      = 300            # how long a CLI login session waits to be approved
+cli_login_code_replay_seconds = 60             # a login code reused within this is refused
+max_cli_login_code_attempts = 5             # wrong codes allowed before a login session is closed
 oauth_state_ttl_minutes    = 10             # how long a connector sign-in link stays valid
 identity_timeout_seconds   = 5              # how long a call to the identity provider may take
 jwks_fetch_timeout_seconds = 5              # how long fetching the identity provider's signing keys may take
@@ -145,7 +145,7 @@ installation_token_ttl_minutes = 60         # how long a GitHub app token is use
 [connectors.slack]
 post_timeout_seconds         = 5            # how long posting an answer to Slack may take
 answer_check_timeout_seconds = 3            # how long checking whether a thread was already answered may take
-read_timeout_ms              = 1_500        # how long reading a Slack thread may take
+thread_read_timeout_ms       = 1_500        # how long reading a Slack thread may take
 # signature_clock_skew_seconds = 300          # a Slack request older than this is refused as a replay  (not read yet; see below)
 
 [connectors.mail]
@@ -211,12 +211,13 @@ runner used before the key existed. The parser lives in
 daemon, when:
 
 - a count, size or timeout is `0`;
-- `min_exec_yield_ms` exceeds `max_exec_yield_ms`, or `[egress]
+- `min_command_output_wait_ms` exceeds `max_command_output_wait_ms`, or `[egress]
   connect_timeout_seconds` exceeds `request_timeout_seconds`;
-- `default_shell_timeout_seconds` is over 29: with the executor's 5-second
-  ending grace it must stay under the run's 35-second lease;
-- `max_sessions_per_run` is 8 or fewer: the 8 most recently used sessions are
-  never closed to make room, so a smaller cap would not hold;
+- `default_shell_timeout_seconds` is over 2,147,483, the longest timer
+  tokio holds (2^31 - 1 milliseconds). The run's lease does not bound it: the
+  supervisor renews the lease while a tool call runs;
+- `max_shell_processes_per_run` is 8 or fewer: the 8 most recently used shell
+  processes are never closed to make room, so a smaller cap would not hold;
 - `max_subagent_depth` is over 2, the depth a restore checks a checkpoint's
   children against;
 - `[daemon] call_timeout_seconds` is 12 or less, the daemon's own message
@@ -240,25 +241,25 @@ ready_timeout_seconds        = 10           # how long a new sandbox may take to
 
 [tools]                                     # what a run's tools may do
 default_shell_timeout_seconds = 10          # how long a shell command runs when the model names no timeout
-min_exec_yield_ms            = 250          # shortest wait for a running command's output
-max_exec_yield_ms            = 30_000       # longest wait for a running command's output
-max_sessions_per_run         = 64           # interactive shell sessions one run may keep open
+min_command_output_wait_ms   = 250          # shortest wait for a running command's output
+max_command_output_wait_ms   = 30_000       # longest wait for a running command's output
+max_shell_processes_per_run  = 64           # interactive shell processes one run may keep open
 # output_edge_kib              = 512          # command output kept from the start and end  (not read; see below)
 # max_read_mib                 = 8            # largest file a read returns  (not read; see below)
-default_read_lines           = 2_000        # lines a read returns when the model names no limit
+default_file_read_lines      = 2_000        # lines a file read returns when the model names no limit
 max_image_dimension_px       = 2_048        # larger images are scaled down to this before the model sees them
 max_image_mib                = 5            # largest image sent to the model after scaling
 max_sleep_hours              = 12           # longest a sleep may wait
 # mcp_call_timeout_seconds     = 300          # how long one MCP tool call may take  (not read; see below)
-max_wait_seconds             = 3_600        # longest a run waits for a subagent
+max_subagent_wait_seconds    = 3_600        # longest a run waits for a subagent
 max_open_subagents           = 6            # subagents open at once in one run
 max_subagent_depth           = 2            # how deep subagents may start their own subagents
 
 [provider]                                  # decision calls and token counts
-connect_timeout_seconds      = 3            # how long connecting to a provider for a decision call may take
-physical_timeout_seconds     = 12           # how long one decision call may take, its whole reply included
-count_timeout_seconds        = 10           # how long a token-count call may take
-max_count_reply_kib          = 16           # largest token-count reply accepted
+decision_connect_timeout_seconds = 3            # how long connecting to a provider for a decision call may take
+decision_call_timeout_seconds = 12           # how long one decision call may take, its whole reply included
+token_count_timeout_seconds  = 10           # how long a token-count call may take
+max_token_count_reply_kib    = 16           # largest token-count reply accepted
 
 [egress]                                    # outbound HTTP from tools (web fetch, connectors)
 connect_timeout_seconds      = 10           # how long connecting may take

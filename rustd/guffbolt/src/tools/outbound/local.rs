@@ -290,6 +290,10 @@ fn unreached(failure: reqwest::Error) -> Refused {
 }
 
 impl Outbound for LocalOutbound {
+    fn max_redirects(&self) -> u8 {
+        REDIRECTS_MAX
+    }
+
     fn send<'a>(&'a self, _tool: &'a str, request: Request) -> OutboundFuture<'a, Response> {
         Box::pin(self.sent(request))
     }

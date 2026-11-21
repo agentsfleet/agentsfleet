@@ -39,7 +39,7 @@ async fn test_runtime_boundaries_emit_exactly_one_terminal_event() {
     assert_eq!(started.get("task_id"), terminal.get("task_id"));
 }
 
-/// `[server] task_join_timeout_seconds` is the deadline a task that ignores
+/// `[server] background_task_join_timeout_seconds` is the deadline a task that ignores
 /// its token is abandoned at.
 #[tokio::test(start_paused = true)]
 async fn the_configured_join_timeout_abandons_a_task_that_will_not_stop() {

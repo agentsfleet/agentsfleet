@@ -1,6 +1,15 @@
 use af_core::id::Uuid7;
 
-use super::{DEFAULT_WAKE_QUEUE_CAPACITY as CAPACITY, Wake};
+use super::{QueueBounds, Wake};
+
+/// The queue every case here is sized by.
+const CAPACITY: usize = 64;
+
+/// A deployment's default and ceiling.
+const BOUNDS: QueueBounds = QueueBounds {
+    default: CAPACITY,
+    max: 65_536,
+};
 
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -26,19 +35,19 @@ fn configured_capacity_is_applied_and_invalid_settings_fail() -> TestResult {
     use af_core::env::MapEnv;
     for raw in ["0", "65537", "-1", "not-a-number"] {
         let env = MapEnv::from_pairs([(super::ENV_WAKE_QUEUE_CAPACITY, raw)]);
-        let Err(_) = Wake::from_env(&env) else {
+        let Err(_) = Wake::from_env(&env, BOUNDS) else {
             return Err("invalid capacity accepted".into());
         };
     }
     let env = MapEnv::from_pairs([(super::ENV_WAKE_QUEUE_CAPACITY, "2")]);
-    let wake = Wake::from_env(&env)?;
+    let wake = Wake::from_env(&env, BOUNDS)?;
     for id in 0..3 {
         wake.ring(fleet(id)?);
     }
     assert_eq!(wake.take(), Some(fleet(1)?));
     assert_eq!(wake.take(), Some(fleet(2)?));
     assert_eq!(wake.take(), None);
-    let default = Wake::from_env(&MapEnv::default())?;
+    let default = Wake::from_env(&MapEnv::default(), BOUNDS)?;
     default.ring(fleet(0)?);
     assert_eq!(default.take(), Some(fleet(0)?));
     Ok(())
@@ -47,7 +56,7 @@ fn configured_capacity_is_applied_and_invalid_settings_fail() -> TestResult {
 #[test]
 fn a_thousand_fleet_notifications_remain_bounded_and_consumed_fleets_can_ring_again() -> TestResult
 {
-    let wake = Wake::with_capacity(64)?;
+    let wake = Wake::bounded(64);
     for id in 0..1000 {
         wake.ring(fleet(id)?);
     }
@@ -64,7 +73,7 @@ fn a_thousand_fleet_notifications_remain_bounded_and_consumed_fleets_can_ring_ag
 
 #[test]
 fn a_poisoned_wake_queue_is_reset_before_reuse() -> TestResult {
-    let wake = Wake::with_capacity(2)?;
+    let wake = Wake::bounded(2);
     wake.ring(fleet(1)?);
     let poisoned = wake.clone();
     let worker = std::thread::spawn(move || {
@@ -126,7 +135,7 @@ async fn a_notified_session_can_already_consume_the_published_fleet()
 #[test]
 fn bounded_queue_keeps_recent_fleets_and_a_duplicate_still_advances_the_generation()
 -> crate::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let wake = Wake::default();
+    let wake = Wake::bounded(CAPACITY);
     let observed = wake.generations();
     for number in 0..=CAPACITY {
         let fleet = Uuid7::parse(&format!("0195b4ba-8d3a-7000-8000-{number:012x}"))?;

@@ -135,6 +135,13 @@ pub trait Handler: Send + Sync + fmt::Debug {
     /// What one call carries.
     type Arguments: DeserializeOwned + JsonSchema + Send;
 
+    /// What the model is told it does and takes: [`Handler::DESCRIPTION`]
+    /// over the arguments' schema. A tool whose words quote a bound it was
+    /// built with states that bound here, so the model reads the one it holds.
+    fn schema(&self) -> Schema {
+        Schema::of::<Self::Arguments>(Self::DESCRIPTION)
+    }
+
     /// Runs one call.
     fn run(
         &self,
@@ -151,13 +158,11 @@ pub struct Typed<H> {
 }
 
 impl<H: Handler> Typed<H> {
-    /// `handler`, its schema derived from its arguments' type.
+    /// `handler`, its schema the one it states ([`Handler::schema`]).
     #[must_use]
     pub fn new(handler: H) -> Self {
-        Self {
-            handler,
-            schema: Schema::of::<H::Arguments>(H::DESCRIPTION),
-        }
+        let schema = handler.schema();
+        Self { handler, schema }
     }
 
     /// The handler it runs.

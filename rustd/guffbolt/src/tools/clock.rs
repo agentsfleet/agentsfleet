@@ -13,13 +13,9 @@ use tokio::sync::Notify;
 use tokio::time::Instant;
 
 use crate::tool::ToolOutput;
+use crate::tools::limits::spoken;
 use crate::tools::process::saturating_millis;
-use crate::tools::{Context, Handler, NoArguments};
-
-/// The longest a sleep waits, whatever the model asks, unless the embedder
-/// chooses another ([`Limits::max_sleep`](crate::tools::Limits::max_sleep)):
-/// twelve hours.
-pub const SLEEP_MAX: Duration = Duration::from_hours(12);
+use crate::tools::{Context, Handler, Limits, NoArguments, Schema};
 
 /// What a run pokes when new input reaches it, so a sleeping call wakes.
 ///
@@ -63,8 +59,8 @@ impl Handler for CurrentTime {
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Nap {
-    /// How long to wait, in milliseconds, at most 43200000; the wait ends
-    /// early when a new message arrives.
+    /// How long to wait, in milliseconds; the wait ends early when a new
+    /// message arrives.
     duration_ms: u64,
 }
 
@@ -84,15 +80,29 @@ impl Sleep {
 
 impl Default for Sleep {
     fn default() -> Self {
-        Self::new(SLEEP_MAX)
+        Self::new(Limits::DEFAULT.max_sleep)
     }
 }
 
 impl Handler for Sleep {
     const NAME: &'static str = "sleep";
-    const DESCRIPTION: &'static str = "Wait for duration_ms milliseconds, at most twelve hours, \
-        before going on; the wait ends early when a new message arrives, and says so.";
+    const DESCRIPTION: &'static str = "Wait for duration_ms milliseconds before going on; the \
+        wait ends early when a new message arrives, and says so.";
     type Arguments = Nap;
+
+    fn schema(&self) -> Schema {
+        let most = spoken(self.max);
+        Schema::of::<Nap>(Self::DESCRIPTION)
+            .with_description(format!("{} It waits at most {most}.", Self::DESCRIPTION))
+            .with_argument(
+                "duration_ms",
+                format!(
+                    "How long to wait, in milliseconds, at most {}; the wait ends early when \
+                     a new message arrives.",
+                    saturating_millis(self.max)
+                ),
+            )
+    }
 
     async fn run(&self, arguments: Nap, context: Context<'_>) -> ToolOutput {
         let asked = Duration::from_millis(arguments.duration_ms).min(self.max);

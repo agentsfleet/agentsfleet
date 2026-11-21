@@ -11,8 +11,8 @@ mod privacy;
 mod target;
 pub use target::Target;
 
-/// The largest number of continuations for a single tool call, unless the
-/// runner chooses another ([`Chain::with_max_redirects`]).
+/// The largest number of continuations for a single tool call when the
+/// runner's `[egress] max_redirects` names nothing else.
 pub const MAX_REDIRECTS: u8 = 3;
 
 /// Closed stopping reasons; none holds private target data.
@@ -105,29 +105,23 @@ impl Chain {
         };
     }
 
-    /// Begin after the first request's admission, retaining only modeled headers.
+    /// Begin after the first request's admission, retaining only modeled
+    /// headers and following at most `max_redirects` before giving up.
     #[must_use]
-    pub fn new(current: &Url, headers: Vec<(String, String)>) -> Self {
+    pub fn new(current: &Url, headers: Vec<(String, String)>, max_redirects: u8) -> Self {
         Self {
             current: current.clone(),
             headers,
             seen: BTreeSet::from([identity(current)]),
             privacy: privacy::Privacy::default(),
             hops: 0,
-            max_hops: MAX_REDIRECTS,
+            max_hops: max_redirects,
             stripped: false,
             started: false,
             ending: "interrupted",
             began: Instant::now(),
             status: 0,
         }
-    }
-
-    /// The same chain, following at most `max_redirects` before it gives up.
-    #[must_use]
-    pub const fn with_max_redirects(mut self, max_redirects: u8) -> Self {
-        self.max_hops = max_redirects;
-        self
     }
 
     /// Draft a continuation, which must pass the same run's admission before send.

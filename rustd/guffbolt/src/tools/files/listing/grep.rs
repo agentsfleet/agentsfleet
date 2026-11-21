@@ -89,7 +89,10 @@ async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
     };
     let mut lines = Vec::new();
     'files: for (path, relative) in files {
-        if only.as_ref().is_some_and(|glob| !glob.is_match(&relative)) {
+        if only
+            .as_ref()
+            .is_some_and(|glob| !glob.is_match(relative.as_bytes()))
+        {
             continue;
         }
         let Ok(file) = env.read_file(&path, MAX_READ_BYTES).await else {

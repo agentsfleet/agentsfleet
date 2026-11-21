@@ -2,6 +2,6 @@
 //! sandbox, egress guard and memory, so what agentsfleet's runs read is
 //! proved here.
 
-use guffbolt::tools::files::image::{IMAGE_MAX_BYTES, sniffed};
+use guffbolt::tools::files::image::sniffed;
 
 mod tests;

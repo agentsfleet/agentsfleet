@@ -2,12 +2,11 @@
 //!
 //! # What the token carries
 //!
-//! The boundary pair, `(created_at, turn_id)`, as `{instant}|{turn_id}` in
-//! base64url without padding: the instant in RFC 3339 exactly as the API
-//! serializes one (`…:49Z`, `…:49.123Z`), never as epoch digits, because an
-//! instant is never a number anywhere this product speaks. The separator is a
-//! character no RFC 3339 instant contains, so the first one ends the instant
-//! whatever the event id holds.
+//! The boundary pair, `(created_at, turn_id)`, as an
+//! [`af_core::paging::struct_cursor`] payload: canonical JSON in unpadded
+//! base64url, the instant in RFC 3339 exactly as the API serializes one
+//! (`…:49Z`, `…:49.123Z`), never as epoch digits, because an instant is never
+//! a number anywhere this product speaks.
 //!
 //! # Why this is not [`af_core::paging::Cursor`]
 //!
@@ -16,16 +15,11 @@
 //! client that would otherwise parse it.
 
 use af_core::id::Uuid7;
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
-
+use af_core::paging::struct_cursor::{self, StructCursor};
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 
 use crate::view::error::{Result, cursor_malformed};
-
-/// The character between the two fields, inside the encoded payload: one no
-/// RFC 3339 instant contains.
-const FIELD_SEPARATOR: char = '|';
 
 /// The boundary a page resumes strictly after, newest-first.
 ///
@@ -39,6 +33,21 @@ pub struct Cursor {
     pub turn_id: Uuid7,
 }
 
+/// The token's payload, in its canonical key order.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Payload {
+    v: u8,
+    created_at: Timestamp,
+    turn_id: Uuid7,
+}
+
+impl StructCursor for Payload {
+    fn generation(&self) -> u8 {
+        self.v
+    }
+}
+
 impl Cursor {
     /// The cursor a page ending on this row hands back.
     #[must_use]
@@ -50,35 +59,34 @@ impl Cursor {
     }
 
     /// The opaque string a client is given.
-    ///
-    /// Base64url without padding — a `=` would have to be percent-encoded in
-    /// the query string it comes back in.
     #[must_use]
     pub fn encode(&self) -> String {
-        BASE64.encode(format!(
-            "{}{FIELD_SEPARATOR}{}",
-            self.created_at, self.turn_id
-        ))
+        struct_cursor::render(&Payload {
+            v: struct_cursor::VERSION,
+            created_at: self.created_at,
+            turn_id: self.turn_id.clone(),
+        })
     }
 
     /// The cursor a client sent back, or a refusal.
     ///
-    /// Every failure answers the same [`cursor_malformed`] and says
-    /// nothing more. A parser that distinguished "not base64" from "no
-    /// separator" from "identifier too long" would be describing this
-    /// daemon's internal format to whoever was probing it.
+    /// Every failure, another generation included, answers the same
+    /// [`cursor_malformed`] and says nothing more. A parser that distinguished
+    /// "not base64" from "not the payload" would be describing this daemon's
+    /// internal format to whoever was probing it.
     ///
     /// # Errors
     /// [`cursor_malformed`] for anything this daemon did not mint.
     pub fn decode(raw: &str) -> Result<Self> {
-        let decoded = BASE64.decode(raw).map_err(|_decode| cursor_malformed())?;
-        let plain = String::from_utf8(decoded).map_err(|_utf8| cursor_malformed())?;
-        let (head, id) = plain
-            .split_once(FIELD_SEPARATOR)
-            .ok_or_else(cursor_malformed)?;
-        let created_at: Timestamp = head.parse().map_err(|_instant| cursor_malformed())?;
-        let turn_id = Uuid7::parse(id).map_err(|_id| cursor_malformed())?;
-        Ok(Self::after(created_at, &turn_id))
+        let Payload {
+            created_at,
+            turn_id,
+            ..
+        } = struct_cursor::parse(raw).map_err(|_foreign| cursor_malformed())?;
+        Ok(Self {
+            created_at,
+            turn_id,
+        })
     }
 }
 
@@ -88,6 +96,9 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
+
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
 
     use super::*;
 
@@ -122,7 +133,10 @@ mod tests {
         // data format, so its shape is asserted, not re-derived.
         assert_eq!(
             Cursor::after(AT, &event()).encode(),
-            "MjAyNS0wMS0wMVQwMDowMDowMC4xMjNafDAxOTBkNWMyLTdlMWEtNzAwMC04MDAwLTAwMDAwMDAwMDAwMQ"
+            BASE64.encode(
+                "{\"v\":2,\"created_at\":\"2025-01-01T00:00:00.123Z\",\
+\"turn_id\":\"0190d5c2-7e1a-7000-8000-000000000001\"}"
+            )
         );
     }
 
@@ -130,7 +144,9 @@ mod tests {
     fn an_identifier_that_is_not_a_uuidv7_is_refused() {
         // Every event id is a UUIDv7, so a cursor naming anything else was not
         // minted here.
-        let raw = BASE64.encode("2025-01-01T00:00:00.123Z|cron:a|b");
+        let raw = BASE64.encode(
+            "{\"v\":2,\"created_at\":\"2025-01-01T00:00:00.123Z\",\"turn_id\":\"cron:a|b\"}",
+        );
         let refused = Cursor::decode(&raw).err();
         assert!(refused.is_some());
     }
@@ -140,10 +156,11 @@ mod tests {
         for raw in [
             "",                                                // empty
             "not-base64!!",                                    // not the alphabet
-            &BASE64.encode("no-separator"),                    // decodes, no separator
-            &BASE64.encode("1735689600000|01HZQ"),             // epoch digits, not an instant
-            &BASE64.encode("2025-01-01T00:00:00Z|"),           // empty identifier
-            &BASE64.encode("2025-01-01T00:00:00Z|01HZQ8P0X3"), // not a UUIDv7
+            &BASE64.encode("no-payload"),                      // decodes, not the payload
+            &BASE64.encode("2025-01-01T00:00:00Z|0190d5c2-7e1a-7000-8000-000000000001"), // the earlier pipe form
+            &BASE64.encode("{\"v\":2,\"created_at\":1735689600000,\"turn_id\":\"0190d5c2-7e1a-7000-8000-000000000001\"}"), // epoch digits
+            &BASE64.encode("{\"v\":1,\"created_at\":\"2025-01-01T00:00:00Z\",\"turn_id\":\"0190d5c2-7e1a-7000-8000-000000000001\"}"), // another generation
+            &BASE64.encode("{\"v\":2,\"created_at\":\"2025-01-01T00:00:00Z\",\"turn_id\":\"01HZQ8P0X3\"}"), // not a UUIDv7
         ] {
             let refused = Cursor::decode(raw);
             assert!(refused.is_err(), "accepted {raw:?}");

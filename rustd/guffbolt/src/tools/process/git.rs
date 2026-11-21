@@ -18,11 +18,11 @@ use std::time::Duration;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::oneshot::{TIMEOUT_DEFAULT, run_to_end, timeout_of};
+use super::oneshot::{run_to_end, timeout_ms, timeout_of};
 use super::with_environment;
 use crate::tool::ToolOutput;
 use crate::tools::env::{Env, Spawn};
-use crate::tools::{Context, Handler, code};
+use crate::tools::{Context, Handler, Limits, Schema, code};
 
 /// The git the environment carries, found on its search path.
 const GIT_PROGRAM: &str = "git";
@@ -51,7 +51,7 @@ pub struct Invocation {
     /// The arguments after `git`, one per element, such as
     /// `["log", "--oneline", "-5"]`.
     args: Vec<String>,
-    /// How long it may run, in milliseconds: 10000 when absent.
+    /// How long it may run, in milliseconds; the tool's default when absent.
     #[serde(default)]
     timeout_ms: Option<u64>,
 }
@@ -76,7 +76,7 @@ impl<'run> Git<'run> {
         Self {
             env,
             repository,
-            default_timeout: TIMEOUT_DEFAULT,
+            default_timeout: Limits::DEFAULT.default_timeout,
         }
     }
 
@@ -96,6 +96,13 @@ impl Handler for Git<'_> {
         fetch, pull, remote and clone are refused, because this environment does not reach \
         the repository's remote.";
     type Arguments = Invocation;
+
+    fn schema(&self) -> Schema {
+        timeout_ms(
+            Schema::of::<Invocation>(Self::DESCRIPTION),
+            self.default_timeout,
+        )
+    }
 
     async fn run(&self, arguments: Invocation, context: Context<'_>) -> ToolOutput {
         let run_id = context.run_id;

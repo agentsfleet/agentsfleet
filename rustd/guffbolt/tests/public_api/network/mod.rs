@@ -99,6 +99,10 @@ impl Canned {
 }
 
 impl Outbound for Canned {
+    fn max_redirects(&self) -> u8 {
+        3
+    }
+
     fn send<'a>(&'a self, tool: &'a str, request: Request) -> OutboundFuture<'a, Response> {
         lock(&self.sent).push((tool.to_owned(), request));
         Box::pin(std::future::ready(self.answer.clone()))

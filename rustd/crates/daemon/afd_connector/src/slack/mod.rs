@@ -13,11 +13,9 @@ mod replies;
 
 pub use self::answered::{
     ANSWER_CHECK_DEADLINE, ANSWER_EVENT_TYPE, AnswerMarker, Check, INTERIM_EVENT_TYPE, Part, Stamp,
-    holds_answer, holds_answer_within,
+    holds_answer,
 };
-pub use self::replies::{
-    MAX_MESSAGES, Message, READ_DEADLINE, Replies, Unavailable, replies, replies_within,
-};
+pub use self::replies::{MAX_MESSAGES, Message, READ_DEADLINE, Replies, Unavailable, replies};
 
 /// The Slack Web API root, which every Slack method this daemon calls hangs
 /// off.

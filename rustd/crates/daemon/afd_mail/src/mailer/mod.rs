@@ -30,7 +30,7 @@ use crate::{InviteLetter, render_invite};
 /// Creating an invite waits for it, so this bounds what a slow relay costs the
 /// owner's click; past it the invite records `failed` and the owner can send
 /// again.
-pub(crate) const MAIL_SEND_DEADLINE: Duration = Duration::from_secs(10);
+pub const MAIL_SEND_DEADLINE: Duration = Duration::from_secs(10);
 
 const EVENT_STARTED: &str = "invite_email_started";
 const EVENT_COMPLETED: &str = "invite_email_completed";

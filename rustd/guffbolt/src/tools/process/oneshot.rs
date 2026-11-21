@@ -13,14 +13,10 @@ use tokio::time::Instant;
 use super::output::{self, Collected};
 use super::saturating_millis;
 use crate::tool::{ErrorCode, ToolOutput};
-use crate::tools::code;
 use crate::tools::env::{Ending, Env, Process, Spawn};
 use crate::tools::files::failed;
+use crate::tools::{Schema, code};
 
-/// How long a command runs when the model names no timeout, unless the
-/// embedder chooses another
-/// ([`Limits::default_timeout`](crate::tools::Limits::default_timeout)).
-pub const TIMEOUT_DEFAULT: Duration = Duration::from_secs(10);
 /// The longest a command runs, whatever the model asks:
 /// 2^31 - 1 milliseconds, about 24.8 days. It is no working limit; it keeps
 /// a deadline from overflowing `Instant`.
@@ -31,6 +27,16 @@ pub const EVENT_ENDING_DEADLINE: &str = "process_ending_deadline_exceeded";
 pub const EVENT_TIMED_OUT: &str = "process_timed_out";
 /// The event a command the kernel killed for memory logs under.
 pub const EVENT_OUT_OF_MEMORY: &str = "sandbox_out_of_memory";
+
+/// `schema` with its `timeout_ms` argument stating `default`, the timeout a
+/// command runs for when the model names none.
+pub(super) fn timeout_ms(schema: Schema, default: Duration) -> Schema {
+    let default = saturating_millis(default);
+    schema.with_argument(
+        "timeout_ms",
+        format!("How long it may run, in milliseconds: {default} when absent."),
+    )
+}
 
 /// How long a command may run: what the model asked, or `default`, never
 /// past the ceiling.

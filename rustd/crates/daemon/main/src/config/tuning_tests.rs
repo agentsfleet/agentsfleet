@@ -32,18 +32,9 @@ fn tuned(text: &str) -> Result<Tuning, Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn an_empty_file_selects_todays_values() -> Checked {
+fn an_empty_file_selects_the_compiled_defaults() -> Checked {
     let tuning = tuned("")?;
-    assert_eq!(tuning.server.drain_timeout, Duration::from_secs(15));
-    assert_eq!(tuning.api.max_page_size, 100);
-    assert_eq!(tuning.runners.max_message_mib, 32);
-    assert_eq!(tuning.runners.max_control_message_mib, 2);
-    assert_eq!(tuning.turns.max_queued_turns, 100_000);
-    assert_eq!(tuning.context.large_model_min_tokens, 1_000_000);
-    assert_eq!(tuning.tasks.checkpoints.delete_batch_size, 256);
-    assert_eq!(tuning.auth.jwks_cache_hours, 6);
-    assert_eq!(tuning.metrics.max_metric_series, 4_096);
-    assert_eq!(tuning.wake, afd_bus::wake::QueueBounds::default());
+    assert_eq!(format!("{tuning:?}"), format!("{:?}", Tuning::default()));
     Ok(())
 }
 
@@ -51,7 +42,7 @@ fn an_empty_file_selects_todays_values() -> Checked {
 fn server_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
         "[server]\ndrain_timeout_seconds=7\n\
-         task_join_timeout_seconds=12\nmax_live_activity_notices=2",
+         background_task_join_timeout_seconds=12\nmax_live_activity_notices=2",
     )?;
     assert_eq!(tuning.server.drain_timeout, Duration::from_secs(7));
     assert_eq!(tuning.server.task_join_timeout, Duration::from_secs(12));
@@ -116,7 +107,7 @@ fn nats_values_bound_the_wake_queue() -> Checked {
 fn runners_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
         "[runners]\nmax_message_mib=16\n\
-         max_control_message_mib=1\nassign_batch_size=8\nmax_repair_backoff_seconds=2",
+         max_control_message_mib=1\nturns_per_assignment_pass=8\nmax_subscription_repair_backoff_seconds=2",
     )?;
     let runners = tuning.runners;
     assert_eq!(
@@ -125,8 +116,8 @@ fn runners_values_reach_the_runtime() -> Checked {
     );
     assert_eq!(
         (
-            runners.assign_batch_size,
-            runners.max_repair_backoff_seconds
+            runners.turns_per_assignment_pass,
+            runners.max_subscription_repair_backoff_seconds
         ),
         (8, 2)
     );
@@ -136,7 +127,7 @@ fn runners_values_reach_the_runtime() -> Checked {
 #[test]
 fn turns_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
-        "[turns]\nmax_runs_per_turn=5\nmax_queued_turns=10\nhistory_page_size=7\n\
+        "[turns]\nmax_runs_per_turn=5\nmax_queued_turns=10\nhistory_turns_per_page=7\n\
          [turns.checkpoints]\nretention_days=2\ntransfer_window_minutes=3\n\
          restore_pin_minutes=4\norphan_after_minutes=5",
     )?;
@@ -145,7 +136,7 @@ fn turns_values_reach_the_runtime() -> Checked {
         (
             turns.max_runs_per_turn,
             turns.max_queued_turns,
-            turns.history_page_size
+            turns.history_turns_per_page
         ),
         (5, 10, 7)
     );
@@ -210,7 +201,7 @@ fn tasks_values_reach_the_runtime() -> Checked {
         "[tasks]\nslice_seconds=60\noperation_timeout_seconds=6\nterminal_retention_days=1\n\
          [tasks.checkpoints]\nkeep_generations=2\nupload_link_ttl_minutes=3\n\
          download_link_ttl_minutes=4\ntransfer_window_minutes=8\nrestore_pin_minutes=5\n\
-         orphan_after_minutes=6\ndelete_batch_size=7",
+         orphan_after_minutes=6\nobjects_per_delete_call=7",
     )?;
     let tasks = tuning.tasks;
     assert_eq!(
@@ -235,7 +226,7 @@ fn tasks_values_reach_the_runtime() -> Checked {
         (
             checkpoints.restore_pin_minutes,
             checkpoints.orphan_after_minutes,
-            checkpoints.delete_batch_size
+            checkpoints.objects_per_delete_call
         ),
         (5, 6, 7)
     );
@@ -244,12 +235,15 @@ fn tasks_values_reach_the_runtime() -> Checked {
 
 #[test]
 fn setup_values_reach_the_runtime() -> Checked {
-    let setup = tuned("[setup]\nbudget_seconds=9\nreplay_window_hours=2\nscan_batch_size=8")?.setup;
+    let setup = tuned(
+        "[setup]\nrequest_timeout_seconds=9\nreplay_window_hours=2\nmaintenance_drafts_per_page=8",
+    )?
+    .setup;
     assert_eq!(
         (
-            setup.budget_seconds,
+            setup.request_timeout_seconds,
             setup.replay_window_hours,
-            setup.scan_batch_size
+            setup.maintenance_drafts_per_page
         ),
         (9, 2, 8)
     );
@@ -259,17 +253,17 @@ fn setup_values_reach_the_runtime() -> Checked {
 #[test]
 fn auth_values_reach_the_runtime() -> Checked {
     let auth = tuned(
-        "[auth]\nsession_ttl_seconds=120\nsession_replay_seconds=30\n\
-         max_session_verify_attempts=3\noauth_state_ttl_minutes=4\nidentity_timeout_seconds=6\n\
+        "[auth]\ncli_login_ttl_seconds=120\ncli_login_code_replay_seconds=30\n\
+         max_cli_login_code_attempts=3\noauth_state_ttl_minutes=4\nidentity_timeout_seconds=6\n\
          jwks_fetch_timeout_seconds=7\njwks_cache_hours=2\n\
          jwks_stale_grace_minutes=9\njwks_min_refresh_seconds=11",
     )?
     .auth;
     assert_eq!(
         (
-            auth.session_ttl_seconds,
-            auth.session_replay_seconds,
-            auth.max_session_verify_attempts
+            auth.cli_login_ttl_seconds,
+            auth.cli_login_code_replay_seconds,
+            auth.max_cli_login_code_attempts
         ),
         (120, 30, 3)
     );
@@ -299,7 +293,7 @@ fn credentials_and_connector_values_reach_the_runtime() -> Checked {
          assumed_token_ttl_minutes=3\n\
          [connectors.github]\ninstallation_token_ttl_minutes=30\n\
          [connectors.slack]\npost_timeout_seconds=2\nanswer_check_timeout_seconds=1\n\
-         read_timeout_ms=700\n\
+         thread_read_timeout_ms=700\n\
          [connectors.mail]\nsend_timeout_seconds=4",
     )?;
     assert_eq!(
@@ -320,7 +314,7 @@ fn credentials_and_connector_values_reach_the_runtime() -> Checked {
         (
             slack.post_timeout_seconds,
             slack.answer_check_timeout_seconds,
-            slack.read_timeout_ms
+            slack.thread_read_timeout_ms
         ),
         (2, 1, 700)
     );
@@ -366,8 +360,8 @@ fn telemetry_values_reach_the_runtime() -> Checked {
 const REFUSED: &[(&str, &str)] = &[
     ("[server]\ndrain_timeout_seconds=0", "drain_timeout_seconds"),
     (
-        "[server]\ntask_join_timeout_seconds=0",
-        "task_join_timeout_seconds",
+        "[server]\nbackground_task_join_timeout_seconds=0",
+        "background_task_join_timeout_seconds",
     ),
     (
         "[server]\nmax_live_activity_notices=0",
@@ -409,14 +403,20 @@ const REFUSED: &[(&str, &str)] = &[
         "[runners]\nmax_control_message_mib=3",
         "max_control_message_mib",
     ),
-    ("[runners]\nassign_batch_size=0", "assign_batch_size"),
     (
-        "[runners]\nmax_repair_backoff_seconds=0",
-        "max_repair_backoff_seconds",
+        "[runners]\nturns_per_assignment_pass=0",
+        "turns_per_assignment_pass",
+    ),
+    (
+        "[runners]\nmax_subscription_repair_backoff_seconds=0",
+        "max_subscription_repair_backoff_seconds",
     ),
     ("[turns]\nmax_runs_per_turn=0", "max_runs_per_turn"),
     ("[turns]\nmax_queued_turns=0", "max_queued_turns"),
-    ("[turns]\nhistory_page_size=0", "history_page_size"),
+    (
+        "[turns]\nhistory_turns_per_page=0",
+        "history_turns_per_page",
+    ),
     ("[turns.checkpoints]\nretention_days=0", "retention_days"),
     (
         "[turns.checkpoints]\ntransfer_window_minutes=0",
@@ -482,25 +482,34 @@ const REFUSED: &[(&str, &str)] = &[
         "transfer_window_minutes",
     ),
     (
-        "[tasks.checkpoints]\ndelete_batch_size=0",
-        "delete_batch_size",
+        "[tasks.checkpoints]\nobjects_per_delete_call=0",
+        "objects_per_delete_call",
     ),
-    ("[setup]\nbudget_seconds=0", "budget_seconds"),
+    (
+        "[setup]\nrequest_timeout_seconds=0",
+        "request_timeout_seconds",
+    ),
     ("[setup]\nreplay_window_hours=0", "replay_window_hours"),
-    ("[setup]\nscan_batch_size=0", "scan_batch_size"),
-    ("[auth]\nsession_ttl_seconds=0", "session_ttl_seconds"),
-    ("[auth]\nsession_ttl_seconds=86401", "session_ttl_seconds"),
     (
-        "[auth]\nsession_replay_seconds=86401",
-        "session_replay_seconds",
+        "[setup]\nmaintenance_drafts_per_page=0",
+        "maintenance_drafts_per_page",
+    ),
+    ("[auth]\ncli_login_ttl_seconds=0", "cli_login_ttl_seconds"),
+    (
+        "[auth]\ncli_login_ttl_seconds=86401",
+        "cli_login_ttl_seconds",
     ),
     (
-        "[auth]\nmax_session_verify_attempts=0",
-        "max_session_verify_attempts",
+        "[auth]\ncli_login_code_replay_seconds=86401",
+        "cli_login_code_replay_seconds",
     ),
     (
-        "[auth]\nmax_session_verify_attempts=11",
-        "max_session_verify_attempts",
+        "[auth]\nmax_cli_login_code_attempts=0",
+        "max_cli_login_code_attempts",
+    ),
+    (
+        "[auth]\nmax_cli_login_code_attempts=11",
+        "max_cli_login_code_attempts",
     ),
     (
         "[auth]\noauth_state_ttl_minutes=1441",
@@ -552,7 +561,10 @@ const REFUSED: &[(&str, &str)] = &[
         "[connectors.slack]\nanswer_check_timeout_seconds=0",
         "answer_check_timeout_seconds",
     ),
-    ("[connectors.slack]\nread_timeout_ms=0", "read_timeout_ms"),
+    (
+        "[connectors.slack]\nthread_read_timeout_ms=0",
+        "thread_read_timeout_ms",
+    ),
     (
         "[connectors.mail]\nsend_timeout_seconds=0",
         "send_timeout_seconds",

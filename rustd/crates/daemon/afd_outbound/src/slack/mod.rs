@@ -267,7 +267,7 @@ impl SlackPoster {
             Err(verdict) => return verdict,
         };
         let held = match inputs.author.as_deref() {
-            Some(author) => afd_connector::slack::holds_answer_within(
+            Some(author) => afd_connector::slack::holds_answer(
                 afd_connector::slack::Check {
                     client: &self.http,
                     api_base: &self.api_base,

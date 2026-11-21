@@ -14,12 +14,13 @@ use bytes::Bytes;
 use serde_json::{Value, json};
 use tokio::time::Instant;
 
-use super::{EMPTY_WRITE_YIELD_MIN, YIELD_DEFAULT, YIELD_MAX, YIELD_MIN, session};
+use super::{EMPTY_WRITE_YIELD_MIN, YIELD_DEFAULT, session};
 use crate::catalog::{EXEC_COMMAND, Entry, WRITE_STDIN};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
+use guffbolt::tools::Limits;
 use guffbolt::tools::process::oneshot::EVENT_OUT_OF_MEMORY;
 use guffbolt::tools::process::sessions::SESSIONS_PER_RUN_MAX;
 
@@ -95,7 +96,7 @@ pub(super) async fn open(executor: &ScriptedExecutor, run: &Run<'_>, cmd: &str) 
         exec(),
         executor,
         run,
-        opening(cmd, Some(saturating_millis(YIELD_MIN))),
+        opening(cmd, Some(saturating_millis(Limits::DEFAULT.min_yield))),
     )
     .await;
 }
@@ -184,8 +185,8 @@ async fn should_hold_a_yield_between_the_shortest_and_the_longest() {
     call_in(exec(), &executor, &run, opening("b", Some(3_600_000))).await;
     let longest = started.elapsed();
 
-    assert_eq!(shortest, YIELD_MIN);
-    assert_eq!(longest, YIELD_MAX);
+    assert_eq!(shortest, Limits::DEFAULT.min_yield);
+    assert_eq!(longest, Limits::DEFAULT.max_yield);
 }
 
 /// Past the cap a new session opens, and the least recently used one is
@@ -237,7 +238,7 @@ async fn should_poll_with_an_empty_write_for_at_least_five_seconds() {
         write(),
         &executor,
         &run,
-        writing(1, "", Some(saturating_millis(YIELD_MIN))),
+        writing(1, "", Some(saturating_millis(Limits::DEFAULT.min_yield))),
     )
     .await;
 
@@ -280,7 +281,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     let exiting = Arc::clone(&executor);
     // The process exits a moment after it reads what was written.
     let exit = tokio::spawn(async move {
-        tokio::time::sleep(YIELD_MIN).await;
+        tokio::time::sleep(Limits::DEFAULT.min_yield).await;
         exiting.end(FIRST, Ending::Exited(0))
     });
     let started = Instant::now();
@@ -292,7 +293,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     assert_eq!(output.exit_code, Some(0));
     assert_eq!(
         started.elapsed(),
-        YIELD_MIN,
+        Limits::DEFAULT.min_yield,
         "answered as the process ended, not at the yield"
     );
     assert!(

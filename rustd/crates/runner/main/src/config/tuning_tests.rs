@@ -54,33 +54,6 @@ fn an_empty_profile_selects_todays_values() -> Checked {
     Ok(())
 }
 
-/// The approved file's defaults, written out: each equals today's value.
-#[test]
-fn the_approved_defaults_are_todays_values() -> Checked {
-    let selected = settings(
-        "[sandbox]\nmemory_mib = 2_048\ndisk_mib = 4_096\nio_mib_per_second = 200\n\
-         ready_timeout_seconds = 10\n\
-         [tools]\ndefault_shell_timeout_seconds = 10\nmin_exec_yield_ms = 250\n\
-         max_exec_yield_ms = 30_000\nmax_sessions_per_run = 64\ndefault_read_lines = 2_000\n\
-         max_image_dimension_px = 2_048\nmax_image_mib = 5\nmax_sleep_hours = 12\n\
-         max_wait_seconds = 3_600\nmax_open_subagents = 6\nmax_subagent_depth = 2\n\
-         [provider]\nconnect_timeout_seconds = 3\nphysical_timeout_seconds = 12\n\
-         count_timeout_seconds = 10\nmax_count_reply_kib = 16\n\
-         [egress]\nconnect_timeout_seconds = 10\nrequest_timeout_seconds = 30\nmax_redirects = 3\n\
-         [daemon]\ncall_timeout_seconds = 20\nmax_activity_batches_held = 4\n\
-         max_activity_batch_kib = 64\n\
-         [telemetry]\nmax_spans_per_run = 256\n",
-    )?;
-    let empty = settings("")?;
-    assert_eq!(selected.tuning, empty.tuning);
-    assert_eq!(selected.engine, empty.engine);
-    assert_eq!(selected.run_limits, empty.run_limits);
-    assert_eq!(selected.egress, empty.egress);
-    assert_eq!(selected.max_run_spans, empty.max_run_spans);
-    assert_eq!(selected.inference, empty.inference);
-    Ok(())
-}
-
 #[test]
 fn sandbox_values_reach_the_limits_and_the_engine() -> Checked {
     let selected = settings(
@@ -97,10 +70,10 @@ fn sandbox_values_reach_the_limits_and_the_engine() -> Checked {
 #[test]
 fn tools_values_reach_the_run_limits() -> Checked {
     let selected = settings(
-        "[tools]\ndefault_shell_timeout_seconds = 20\nmin_exec_yield_ms = 100\n\
-         max_exec_yield_ms = 5_000\nmax_sessions_per_run = 16\ndefault_read_lines = 500\n\
+        "[tools]\ndefault_shell_timeout_seconds = 20\nmin_command_output_wait_ms = 100\n\
+         max_command_output_wait_ms = 5_000\nmax_shell_processes_per_run = 16\ndefault_file_read_lines = 500\n\
          max_image_dimension_px = 1_024\nmax_image_mib = 2\nmax_sleep_hours = 1\n\
-         max_wait_seconds = 60\nmax_open_subagents = 3\nmax_subagent_depth = 1\n",
+         max_subagent_wait_seconds = 60\nmax_open_subagents = 3\nmax_subagent_depth = 1\n",
     )?;
     let limits = selected.run_limits;
     assert_eq!(limits.tools.default_timeout, Duration::from_secs(20));
@@ -119,8 +92,8 @@ fn tools_values_reach_the_run_limits() -> Checked {
 #[test]
 fn provider_values_reach_decisions_and_counting() -> Checked {
     let selected = settings(
-        "[provider]\nconnect_timeout_seconds = 2\nphysical_timeout_seconds = 30\n\
-         count_timeout_seconds = 4\nmax_count_reply_kib = 8\n",
+        "[provider]\ndecision_connect_timeout_seconds = 2\ndecision_call_timeout_seconds = 30\n\
+         token_count_timeout_seconds = 4\nmax_token_count_reply_kib = 8\n",
     )?;
     assert_eq!(selected.tuning.decision.connect, Duration::from_secs(2));
     assert_eq!(selected.tuning.decision.physical, Duration::from_secs(30));
@@ -173,20 +146,20 @@ const ZEROES: &[(&str, &str)] = &[
     ("sandbox", "io_mib_per_second"),
     ("sandbox", "ready_timeout_seconds"),
     ("tools", "default_shell_timeout_seconds"),
-    ("tools", "min_exec_yield_ms"),
-    ("tools", "max_exec_yield_ms"),
-    ("tools", "max_sessions_per_run"),
-    ("tools", "default_read_lines"),
+    ("tools", "min_command_output_wait_ms"),
+    ("tools", "max_command_output_wait_ms"),
+    ("tools", "max_shell_processes_per_run"),
+    ("tools", "default_file_read_lines"),
     ("tools", "max_image_dimension_px"),
     ("tools", "max_image_mib"),
     ("tools", "max_sleep_hours"),
-    ("tools", "max_wait_seconds"),
+    ("tools", "max_subagent_wait_seconds"),
     ("tools", "max_open_subagents"),
     ("tools", "max_subagent_depth"),
-    ("provider", "connect_timeout_seconds"),
-    ("provider", "physical_timeout_seconds"),
-    ("provider", "count_timeout_seconds"),
-    ("provider", "max_count_reply_kib"),
+    ("provider", "decision_connect_timeout_seconds"),
+    ("provider", "decision_call_timeout_seconds"),
+    ("provider", "token_count_timeout_seconds"),
+    ("provider", "max_token_count_reply_kib"),
     ("egress", "connect_timeout_seconds"),
     ("egress", "request_timeout_seconds"),
     ("egress", "max_redirects"),
@@ -206,20 +179,20 @@ fn every_zero_count_size_and_timeout_is_refused() -> Checked {
 
 #[test]
 fn values_past_their_bounds_are_refused() -> Checked {
-    // The shortest yield may not exceed the longest.
+    // The shortest output wait may not exceed the longest.
     refused_naming(
-        "[tools]\nmin_exec_yield_ms = 2_000\nmax_exec_yield_ms = 1_000\n",
-        "min_exec_yield_ms",
+        "[tools]\nmin_command_output_wait_ms = 2_000\nmax_command_output_wait_ms = 1_000\n",
+        "min_command_output_wait_ms",
     )?;
-    // A default command timeout, with its ending grace, outlasting the run's lease.
+    // A default command timeout past tokio's longest timer.
     refused_naming(
-        "[tools]\ndefault_shell_timeout_seconds = 30\n",
+        "[tools]\ndefault_shell_timeout_seconds = 2_147_484\n",
         "default_shell_timeout_seconds",
     )?;
-    // A session cap the most recently used, never pruned, would overrun.
+    // A shell-process cap the most recently used, never pruned, would overrun.
     refused_naming(
-        "[tools]\nmax_sessions_per_run = 8\n",
-        "max_sessions_per_run",
+        "[tools]\nmax_shell_processes_per_run = 8\n",
+        "max_shell_processes_per_run",
     )?;
     // Deeper than a restore checks a checkpoint's children against.
     refused_naming("[tools]\nmax_subagent_depth = 3\n", "max_subagent_depth")?;

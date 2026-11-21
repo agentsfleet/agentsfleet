@@ -110,6 +110,7 @@ fn state_for(provider: Provider, subject: &str) -> String {
         subject,
         NONCE,
         NOW,
+        afd_connector::Timing::default().state_ttl,
     )
 }
 
@@ -163,6 +164,7 @@ async fn a_state_signed_under_a_secret_this_deployment_does_not_hold_is_a_bad_si
         STARTER,
         NONCE,
         NOW,
+        afd_connector::Timing::default().state_ttl,
     );
 
     assert_eq!(

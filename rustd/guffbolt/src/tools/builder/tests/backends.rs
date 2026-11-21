@@ -149,3 +149,76 @@ async fn the_builders_limits_reach_the_tools_it_builds() {
     );
     assert_eq!(slept.text, "Slept 5 ms");
 }
+
+/// What the model reads about each bounded tool states the limit the builder
+/// was given, never the default it replaced.
+#[test]
+fn the_builders_limits_are_what_the_model_reads() {
+    let root = tempfile::tempdir().expect("a scratch directory");
+    let local = local_at(root.path());
+    let (agents, _requests) = crate::agents::Agents::new(crate::agents::Caps { depth: 1, open: 1 });
+    let limits = crate::tools::Limits {
+        default_timeout: std::time::Duration::from_millis(4_321),
+        min_yield: std::time::Duration::from_millis(111),
+        max_yield: std::time::Duration::from_millis(7_777),
+        default_read_lines: 1_234,
+        max_image_dimension: 999,
+        max_image_bytes: 1,
+        max_sleep: std::time::Duration::from_hours(3),
+        max_wait: std::time::Duration::from_millis(9_876),
+    };
+    let tools = local
+        .builder()
+        .with_agents(&agents)
+        .with_limits(limits)
+        .build(&config(&[
+            "shell",
+            "git",
+            "exec_command",
+            "write_stdin",
+            "file_read",
+            "image",
+            "sleep",
+            "wait_agent",
+        ]))
+        .expect("every backend is given");
+    let told = |name: &str| -> String {
+        let spec = tools
+            .specs()
+            .find(|spec| spec.name == name)
+            .expect("the tool is offered");
+        format!("{} {}", spec.description, spec.parameters)
+    };
+
+    for (tool, figure) in [
+        ("shell", "4321 when absent"),
+        ("git", "4321 when absent"),
+        ("exec_command", "7777 when absent, between 111 and 7777"),
+        (
+            "write_stdin",
+            "between 111 and 7777; an empty write waits at least 5000",
+        ),
+        ("file_read", "1234 when absent"),
+        ("image", "longer than 999 pixels"),
+        ("sleep", "at most 10800000 milliseconds (3 hours)"),
+        ("sleep", "at most 10800000;"),
+        ("wait_agent", "9876 when absent, at most 9876"),
+    ] {
+        let text = told(tool);
+        assert!(text.contains(figure), "{tool} reads {figure:?}: {text}");
+    }
+    for stale in [
+        "milliseconds: 10000 when absent",
+        "2000 when absent",
+        "2048",
+        "twelve hours",
+        "3600000",
+    ] {
+        assert!(
+            tools
+                .specs()
+                .all(|spec| !format!("{} {}", spec.description, spec.parameters).contains(stale)),
+            "no tool still reads {stale:?}"
+        );
+    }
+}

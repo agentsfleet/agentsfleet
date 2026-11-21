@@ -153,7 +153,7 @@ fn page_response(rows: &[ChargeRow], limit: u32) -> ChargesResponse<'_> {
     let next_cursor = full
         .then(|| rows.last())
         .flatten()
-        .map(|last| Cow::Owned(cursor::render(last.created_at, last.id.as_str())));
+        .map(|last| Cow::Owned(cursor::render(last.created_at, &last.id)));
     ChargesResponse {
         items: rows.iter().map(summary).collect(),
         next_cursor,

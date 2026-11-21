@@ -1,5 +1,7 @@
 //! What the model is told about a tool.
 
+use std::borrow::Cow;
+
 use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
 use serde::{Deserialize, Deserializer};
@@ -14,11 +16,13 @@ const TITLE: &str = "title";
 /// Provider-neutral: each provider wraps it in its own function-calling wire.
 /// Built only by [`Schema::of`], so what a model is told a tool takes is always
 /// derived from the type the tool's arguments parse into, never hand-written
-/// beside it.
+/// beside it. A tool built with a bound its words quote rewords them with
+/// [`Schema::with_description`] and [`Schema::with_argument`], so the model
+/// reads the bound the tool holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Schema {
     /// What the tool does, as the model reads it.
-    description: &'static str,
+    description: Cow<'static, str>,
     /// The arguments' JSON Schema, an object schema.
     parameters: serde_json::Value,
 }
@@ -26,8 +30,8 @@ pub struct Schema {
 impl Schema {
     /// What the tool does, as the model reads it.
     #[must_use]
-    pub const fn description(&self) -> &'static str {
-        self.description
+    pub fn description(&self) -> &str {
+        &self.description
     }
 
     /// The arguments' JSON Schema: one flat object schema.
@@ -38,10 +42,10 @@ impl Schema {
 
     /// The tool named `name` under this schema, as the model is offered it.
     #[must_use]
-    pub const fn spec<'a>(&'a self, name: &'a str) -> ToolSpec<'a> {
+    pub fn spec<'a>(&'a self, name: &'a str) -> ToolSpec<'a> {
         ToolSpec {
             name,
-            description: self.description,
+            description: &self.description,
             parameters: &self.parameters,
         }
     }
@@ -60,9 +64,31 @@ impl Schema {
             .into_root_schema_for::<T>();
         parameters.remove(TITLE);
         Self {
-            description,
+            description: Cow::Borrowed(description),
             parameters: parameters.to_value(),
         }
+    }
+
+    /// The same schema, the tool described to the model as `description`.
+    #[must_use]
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = Cow::Owned(description);
+        self
+    }
+
+    /// The same schema, its argument `name` described to the model as
+    /// `description`; unchanged when it takes no argument of that name.
+    #[must_use]
+    pub fn with_argument(mut self, name: &str, description: String) -> Self {
+        if let Some(argument) = self
+            .parameters
+            .get_mut("properties")
+            .and_then(|properties| properties.get_mut(name))
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            argument.insert("description".to_owned(), description.into());
+        }
+        self
     }
 }
 
@@ -100,7 +126,7 @@ struct UnknownField(!);
 
 impl<'de> Deserialize<'de> for UnknownField {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        let name = Cow::<str>::deserialize(deserializer)?;
         Err(serde::de::Error::unknown_field(&name, &[]))
     }
 }

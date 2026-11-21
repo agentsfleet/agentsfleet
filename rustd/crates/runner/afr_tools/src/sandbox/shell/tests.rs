@@ -14,9 +14,8 @@ use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
-use guffbolt::tools::process::oneshot::{
-    EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_DEFAULT, TIMEOUT_MAX,
-};
+use guffbolt::tools::Limits;
+use guffbolt::tools::process::oneshot::{EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_MAX};
 
 /// Two sleeps in one process group, the shell waiting on the second.
 const SLEEP_TWICE: &str = "sleep 60 & sleep 60";
@@ -53,7 +52,7 @@ async fn test_shell_runs_through_the_executor_and_reports_its_exit_code() {
     );
     let spawn = only_spawn(&executor);
     assert_eq!(spawn.argv(), ["/bin/sh", "-c", "echo hi; exit 3"]);
-    assert_eq!(spawn.time_limit(), Some(TIMEOUT_DEFAULT));
+    assert_eq!(spawn.time_limit(), Some(Limits::DEFAULT.default_timeout));
     assert!(!spawn.on_terminal(), "a command runs on pipes");
     assert_eq!(spawn.working_directory(), None, "in the workspace root");
     let environment = spawn.environment();

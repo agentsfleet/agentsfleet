@@ -35,6 +35,7 @@ afd_runner.workspace = true
 afd_state.workspace = true
 afd_sse.workspace = true
 axum.workspace = true
+backon.workspace = true
 dashmap.workspace = true
 futures-util.workspace = true
 garde.workspace = true

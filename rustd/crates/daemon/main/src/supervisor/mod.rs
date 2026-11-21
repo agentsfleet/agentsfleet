@@ -39,7 +39,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 /// How long a task may take to notice cancellation before it is reported,
-/// when `[server] task_join_timeout_seconds` names nothing else.
+/// when `[server] background_task_join_timeout_seconds` names nothing else.
 ///
 /// A deadline at the call site, per Invariant 4, and it exists because the
 /// alternative is worse: a task that ignores its token would hang shutdown

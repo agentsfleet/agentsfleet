@@ -15,6 +15,9 @@ use af_crypto::secret::SecretString;
 use afd_connector::slack::{self, AnswerMarker, Thread, Unavailable};
 use afd_connector::test_util::{FakeSlack, Reply};
 
+/// How long every check here may take.
+const CHECK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// The bot token the grant holds.
 const TOKEN: &str = "xoxb-fixture-answered";
 /// The bot user the grant recorded: the author a marker must carry.
@@ -62,15 +65,16 @@ fn answered(marker: &AnswerMarker) -> String {
 )]
 async fn check(fake: &FakeSlack) -> Result<bool, Unavailable> {
     let token = SecretString::new(TOKEN.to_owned());
-    slack::holds_answer(
-        &reqwest::Client::new(),
-        &fake.api_base(),
-        &token,
-        &thread(),
-        &marker(),
-        BOT_USER,
-    )
-    .await
+    let client = reqwest::Client::new();
+    let api_base = fake.api_base();
+    let thread = thread();
+    let check = slack::Check {
+        client: &client,
+        api_base: &api_base,
+        token: &token,
+        thread: &thread,
+    };
+    slack::holds_answer(check, &marker(), BOT_USER, CHECK_DEADLINE).await
 }
 
 /// The marker on the second page is found, and the read asks Slack for the
@@ -140,7 +144,7 @@ async fn a_thread_that_never_answers_is_a_timeout_not_a_yes() {
 
     assert_eq!(check(&fake).await, Err(Unavailable::Timeout));
     assert!(
-        started.elapsed() < slack::ANSWER_CHECK_DEADLINE * 2,
+        started.elapsed() < CHECK_DEADLINE * 2,
         "bounded by the check's own deadline: {:?}",
         started.elapsed()
     );

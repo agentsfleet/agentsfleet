@@ -12,7 +12,8 @@
 //! # It counts per replica, in memory
 //!
 //! Each replica keeps its own windows, one per fleet, tool, action and rule
-//! window, bounded at [`ANOMALY_KEYS_MAX`] with the oldest window evicted. A
+//! window, bounded at [`ANOMALY_KEYS_MAX`]; past it the cache evicts the
+//! windows hit least, so a runaway's hot window outlives one-off calls. A
 //! runaway spread over R replicas can repeat up to R times a threshold before
 //! an archive, and a restart forgets every count. Both are accepted costs: a
 //! shared count would put a network round trip on every first encounter, and
@@ -25,8 +26,6 @@
 //! fleet for being patient. The caller's ordering — a recorded gate is read and
 //! honoured before any policy is consulted — is what keeps that from happening.
 
-use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use af_core::id::Uuid7;
@@ -34,7 +33,7 @@ use af_fleet_runtime::config::AnomalyRule;
 
 use crate::gate::store::Gates;
 
-/// Windows one replica holds before the oldest is evicted.
+/// Windows one replica holds before the least-hit are evicted.
 pub(crate) const ANOMALY_KEYS_MAX: usize = 10_000;
 
 /// A repetition crossed its threshold.
@@ -70,61 +69,47 @@ struct Window {
 /// Every window this replica counts, bounded.
 #[derive(Debug)]
 pub(crate) struct Brake {
-    max: usize,
-    windows: Mutex<HashMap<Key, Window>>,
+    windows: moka::sync::Cache<Key, Window>,
 }
 
 impl Brake {
     pub(crate) fn new(max: usize) -> Self {
         Self {
-            max,
-            windows: Mutex::new(HashMap::new()),
+            // LRU, not moka's default TinyLFU: TinyLFU may refuse a new key when the
+            // cache is full, and an uncounted key is a call the brake cannot stop.
+            windows: moka::sync::Cache::builder()
+                .max_capacity(u64::try_from(max).unwrap_or(u64::MAX))
+                .eviction_policy(moka::policy::EvictionPolicy::lru())
+                .build(),
         }
-    }
-
-    fn lock(&self) -> MutexGuard<'_, HashMap<Key, Window>> {
-        // A count lost to a panic is a count the brake fails open on anyway.
-        self.windows.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Counts one call against `key`'s window and answers the new count. A
-    /// window starts at its first call and lasts `window_s`.
+    /// window starts at its first call and lasts `window_s`. Calls on one key
+    /// run one at a time, so no two callers read the same count.
     fn hit(&self, key: Key, now: Instant) -> u64 {
         let window = Duration::from_secs(u64::from(key.window_s));
-        let mut windows = self.lock();
-        if let Some(open) = windows.get_mut(&key)
-            && now.saturating_duration_since(open.started) < window
-        {
-            open.count += 1;
-            return open.count;
-        }
-        if !windows.contains_key(&key) && windows.len() >= self.max {
-            evict_oldest(&mut windows);
-        }
-        windows.insert(
-            key,
-            Window {
+        let entry = self.windows.entry(key).and_upsert_with(|held| match held {
+            Some(open) if now.saturating_duration_since(open.value().started) < window => {
+                let open = open.into_value();
+                Window {
+                    count: open.count + 1,
+                    ..open
+                }
+            }
+            _ => Window {
                 started: now,
                 count: 1,
             },
-        );
-        1
+        });
+        entry.into_value().count
     }
 
-    /// Windows currently held.
+    /// Windows currently held, once pending evictions have run.
     #[cfg(test)]
-    fn len(&self) -> usize {
-        self.lock().len()
-    }
-}
-
-fn evict_oldest(windows: &mut HashMap<Key, Window>) {
-    let oldest = windows
-        .iter()
-        .min_by_key(|(_, window)| window.started)
-        .map(|(key, _)| key.clone());
-    if let Some(oldest) = oldest {
-        windows.remove(&oldest);
+    fn len(&self) -> u64 {
+        self.windows.run_pending_tasks();
+        self.windows.entry_count()
     }
 }
 

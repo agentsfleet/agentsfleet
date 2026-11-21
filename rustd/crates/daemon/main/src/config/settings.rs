@@ -81,7 +81,7 @@ pub(super) struct Server {
     /// On shutdown, how long background tasks get to stop; longer than the
     /// telemetry flush, so the flush is joined rather than abandoned.
     #[garde(range(min = JOIN_SECONDS_MIN))]
-    pub task_join_timeout_seconds: u32,
+    pub background_task_join_timeout_seconds: u32,
     /// Live-activity updates sent to dashboards at the same time.
     #[garde(range(min = 1))]
     pub max_live_activity_notices: usize,
@@ -109,9 +109,9 @@ impl Default for Server {
             app_url: None,
             max_in_flight_requests: None,
             max_sse_streams: None,
-            drain_timeout_seconds: 15,
-            task_join_timeout_seconds: 10,
-            max_live_activity_notices: 16,
+            drain_timeout_seconds: seconds(crate::serve::DRAIN_TIMEOUT),
+            background_task_join_timeout_seconds: seconds(crate::supervisor::JOIN_TIMEOUT),
+            max_live_activity_notices: afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
         }
     }
 }
@@ -370,14 +370,15 @@ pub(super) struct Telemetry {
 
 impl Default for Telemetry {
     fn default() -> Self {
+        let metrics = af_observability::producers::Limits::default();
         Self {
             otlp: af_otlp::PipelineSettings::default(),
             log_level: None,
             posthog_host: None,
             otlp_endpoint: None,
             otlp_protocol: None,
-            max_metric_series: af_observability::runner::MAX_SERIES,
-            metric_max_age_seconds: 120,
+            max_metric_series: metrics.max_runner_series,
+            metric_max_age_seconds: seconds(metrics.model_snapshot_max_age),
         }
     }
 }

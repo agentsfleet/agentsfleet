@@ -170,7 +170,7 @@ impl Connectors {
         token: &SecretString,
         thread: &Thread,
     ) -> Result<Replies, Unavailable> {
-        replies_within(
+        replies(
             &self.client,
             self.exchange.pinned_endpoint(),
             token,
@@ -181,26 +181,14 @@ impl Connectors {
     }
 }
 
-/// Reads `thread`: every page, under [`READ_DEADLINE`].
+/// Reads `thread`: every page, under `deadline` (the deployment's
+/// `[connectors.slack] read_timeout_ms`).
 ///
 /// # Errors
 /// The [`Unavailable`] reason the read failed for. A pin that is not a usable
 /// origin refuses before anything is dialled rather than falling back to
 /// Slack — the lane set it to keep this bearer off the vendor.
 pub async fn replies(
-    client: &reqwest::Client,
-    pinned: Option<&str>,
-    token: &SecretString,
-    thread: &Thread,
-) -> Result<Replies, Unavailable> {
-    replies_within(client, pinned, token, thread, READ_DEADLINE).await
-}
-
-/// [`replies`], under `deadline` rather than [`READ_DEADLINE`].
-///
-/// # Errors
-/// As [`replies`].
-pub async fn replies_within(
     client: &reqwest::Client,
     pinned: Option<&str>,
     token: &SecretString,

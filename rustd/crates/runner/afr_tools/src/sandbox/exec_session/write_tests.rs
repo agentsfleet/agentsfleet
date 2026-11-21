@@ -14,11 +14,12 @@ use super::session;
 use super::tests::{
     CAT, EXIT, FIRST, FIRST_RUNNING, ONE, REPL, RUN_ID, named_run, open, write, writing,
 };
-use super::{INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_MIN};
+use super::{INPUT_REFUSED, WRITE_UNDELIVERED};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
+use guffbolt::tools::Limits;
 use guffbolt::tools::process::oneshot::EVENT_OUT_OF_MEMORY;
 
 /// A process that ended between the look before a write and the write
@@ -86,13 +87,13 @@ async fn should_read_a_process_gone_by_a_write_as_running_until_its_ending() {
         write(),
         &executor,
         &run,
-        writing(1, EXIT, Some(saturating_millis(YIELD_MIN))),
+        writing(1, EXIT, Some(saturating_millis(Limits::DEFAULT.min_yield))),
     )
     .await;
     assert!(executor.end(FIRST, Ending::Exited(0)));
     let next = call_in(write(), &executor, &run, writing(1, "", None)).await;
 
-    assert_eq!(started.elapsed(), YIELD_MIN);
+    assert_eq!(started.elapsed(), Limits::DEFAULT.min_yield);
     assert_eq!(first.text, format!("{WRITE_UNDELIVERED}\n{FIRST_RUNNING}"));
     assert_eq!(first.error_code, None);
     assert_eq!(next.text, "Process exited with code 0");

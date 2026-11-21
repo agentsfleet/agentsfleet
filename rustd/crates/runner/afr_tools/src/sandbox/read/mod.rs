@@ -2,6 +2,6 @@
 //! sandbox, egress guard and memory, so what agentsfleet's runs read is
 //! proved here.
 
-use guffbolt::tools::files::read::{LINES_DEFAULT, Page};
+use guffbolt::tools::files::read::Page;
 
 mod tests;

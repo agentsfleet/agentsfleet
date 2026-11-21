@@ -134,7 +134,7 @@ async fn a_glob_too_large_to_compile_is_refused() {
     let desk = Desk::new();
     tree(&desk);
     let tools = desk.tools(false);
-    let huge = "?".repeat(100_000);
+    let huge = "?".repeat(1_000_000);
 
     let found = call(&tools, "find", json!({"pattern": huge})).await;
 

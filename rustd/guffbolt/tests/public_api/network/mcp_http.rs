@@ -12,6 +12,10 @@ struct Admitting {
 }
 
 impl Outbound for Admitting {
+    fn max_redirects(&self) -> u8 {
+        3
+    }
+
     fn send<'a>(&'a self, _tool: &'a str, _request: Request) -> OutboundFuture<'a, Response> {
         Box::pin(std::future::ready(Err(Refused::new(
             code::HOST_NOT_ALLOWED,

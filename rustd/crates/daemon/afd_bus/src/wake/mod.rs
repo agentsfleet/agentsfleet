@@ -1,4 +1,6 @@
-//! Bounded recent-work queue; a missed notification is recovered by the replica probe.
+//! Bounded recent-work queue; a lost or unreadable notification calls
+//! [`Wake::recheck`], which starts a pass over every eligible session that
+//! reads ready work from Postgres.
 
 mod config;
 mod publish;
@@ -62,34 +64,16 @@ impl Default for Wake {
 }
 
 impl Wake {
-    /// Resolve the capacity once during daemon boot, before accepting sessions.
-    ///
-    /// # Errors
-    /// Refuses malformed, zero or excessive capacities without allocating the queue.
-    pub fn from_env(env: &(impl af_core::env::EnvSource + ?Sized)) -> Result<Self> {
-        Self::from_env_within(env, QueueBounds::default())
-    }
-
-    /// [`Self::from_env`] under a deployment's own default and ceiling.
+    /// Resolve the capacity once during daemon boot, before accepting
+    /// sessions, under the deployment's `[nats]` default and ceiling.
     ///
     /// # Errors
     /// Refuses malformed, zero or above-`bounds.max` capacities without allocating the queue.
-    pub fn from_env_within(
+    pub fn from_env(
         env: &(impl af_core::env::EnvSource + ?Sized),
         bounds: QueueBounds,
     ) -> Result<Self> {
         Ok(Self::bounded(config::resolve(env, bounds)?))
-    }
-
-    /// Construct an isolated replica queue for an explicitly configured capacity.
-    ///
-    /// # Errors
-    /// Refuses zero or more than [`MAX_WAKE_QUEUE_CAPACITY`] entries before allocation.
-    pub fn with_capacity(capacity: usize) -> Result<Self> {
-        Ok(Self::bounded(config::prove(
-            capacity,
-            MAX_WAKE_QUEUE_CAPACITY,
-        )?))
     }
 
     fn bounded(capacity: usize) -> Self {

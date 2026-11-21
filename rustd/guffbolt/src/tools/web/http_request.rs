@@ -15,7 +15,7 @@ use crate::tool::ToolOutput;
 use crate::tools::outbound::{
     Outbound, Placement, RESPONSE_MAX_BYTES, Redirects, Request as Draft, Response,
 };
-use crate::tools::{Context, Handler};
+use crate::tools::{Context, Handler, Schema};
 
 /// The method a request that names none is sent with.
 const DEFAULT_METHOD: &str = "GET";
@@ -50,10 +50,19 @@ impl Handler for HttpRequest<'_> {
         policy allows, and read back its status and up to 1 MiB of a complete body. \
         Truncated bodies are omitted with an explicit incomplete-source notice. \
         Write a credential as ${secrets.NAME.FIELD} in the Authorization header; it is \
-        put in place when the request is sent. A GET without a body follows up to \
-        three redirects, admitting every target under the same policy. All supplied \
-        headers are removed permanently after an origin change; temporary URLs stay private.";
+        put in place when the request is sent. All supplied headers are removed \
+        permanently after an origin change; temporary URLs stay private.";
     type Arguments = Request;
+
+    fn schema(&self) -> Schema {
+        let most = self.backend.max_redirects();
+        let description = format!(
+            "{} A GET without a body follows up to {most} redirects, admitting every \
+             target under the same policy.",
+            Self::DESCRIPTION
+        );
+        Schema::of::<Request>(Self::DESCRIPTION).with_description(description)
+    }
 
     async fn run(&self, arguments: Request, _context: Context<'_>) -> ToolOutput {
         let method = arguments

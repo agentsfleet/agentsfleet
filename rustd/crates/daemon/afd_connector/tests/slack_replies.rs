@@ -19,9 +19,12 @@
 use std::time::{Duration, Instant};
 
 use af_crypto::secret::SecretString;
-use afd_connector::slack::{self, READ_DEADLINE, Thread, Unavailable};
+use afd_connector::slack::{self, Thread, Unavailable};
 use afd_connector::test_util::{FakeSlack, Reply};
 use tokio::net::TcpListener;
+
+/// How long every read here may take.
+const READ_DEADLINE: Duration = Duration::from_millis(1_500);
 
 /// The bot token the grant holds.
 const TOKEN: &str = "xoxb-fixture-replies";
@@ -44,6 +47,7 @@ async fn read(fake: &FakeSlack) -> Result<slack::Replies, Unavailable> {
         Some(fake.base()),
         &token(),
         &thread(),
+        READ_DEADLINE,
     )
     .await
 }
@@ -141,6 +145,7 @@ async fn an_unusable_pin_dials_nothing() {
         Some(&unusable),
         &token(),
         &thread(),
+        READ_DEADLINE,
     )
     .await;
     assert_eq!(answer, Err(Unavailable::Unreachable));
@@ -160,6 +165,13 @@ async fn an_absent_slack_is_a_reason() {
         closed.local_addr().expect("the listener is bound").port()
     );
     drop(closed);
-    let answer = slack::replies(&reqwest::Client::new(), Some(&nowhere), &token(), &thread()).await;
+    let answer = slack::replies(
+        &reqwest::Client::new(),
+        Some(&nowhere),
+        &token(),
+        &thread(),
+        READ_DEADLINE,
+    )
+    .await;
     assert_eq!(answer, Err(Unavailable::Unreachable));
 }

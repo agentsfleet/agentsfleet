@@ -4,8 +4,28 @@
 //! Every count, size and timeout refuses zero; a pair whose order matters
 //! refuses its wrong order; `[auth]` refuses values that would weaken sign-in.
 
+use std::time::Duration;
+
 use garde::Validate;
 use serde::Deserialize;
+
+const MILLISECOND: Duration = Duration::from_millis(1);
+const SECOND: Duration = Duration::from_secs(1);
+const MINUTE: Duration = Duration::from_mins(1);
+const HOUR: Duration = Duration::from_hours(1);
+const DAY: Duration = af_core::timing::DAY;
+
+/// Whole `unit`s in a compiled default; every default is far below
+/// `u32::MAX` of them.
+fn whole(duration: Duration, unit: Duration) -> u32 {
+    u32::try_from(duration.as_millis() / unit.as_millis()).unwrap_or(u32::MAX)
+}
+
+/// A compiled default count as a key's `u32`; every one is far below
+/// `u32::MAX`.
+fn count(value: impl TryInto<u32>) -> u32 {
+    value.try_into().unwrap_or(u32::MAX)
+}
 
 /// One hour, the ceiling GitHub sets on an installation token.
 const HOUR_MINUTES: u32 = 60;
@@ -49,11 +69,12 @@ pub(crate) struct ApiTuning {
 
 impl Default for ApiTuning {
     fn default() -> Self {
+        let pages = afd_http::paging::Pages::default();
         Self {
-            default_page_size: 50,
-            max_page_size: 100,
-            default_thread_page_size: 25,
-            max_thread_page_size: 100,
+            default_page_size: pages.list.default_rows(),
+            max_page_size: pages.list.max(),
+            default_thread_page_size: pages.thread.default_rows(),
+            max_thread_page_size: pages.thread.max(),
         }
     }
 }
@@ -70,10 +91,10 @@ pub(crate) struct RunnersTuning {
     pub max_control_message_mib: u32,
     /// Waiting turns considered per assignment pass.
     #[garde(range(min = 1))]
-    pub assign_batch_size: usize,
-    /// Longest wait before retrying a broken runner connection repair.
+    pub turns_per_assignment_pass: usize,
+    /// Longest wait between two repairs of the daemon's bus subscriptions.
     #[garde(range(min = 1))]
-    pub max_repair_backoff_seconds: u32,
+    pub max_subscription_repair_backoff_seconds: u32,
 }
 
 /// The runner link's framing holds no larger message than this.
@@ -95,8 +116,11 @@ impl Default for RunnersTuning {
         Self {
             max_message_mib: MESSAGE_MIB_MAX,
             max_control_message_mib: CONTROL_MESSAGE_MIB_MAX,
-            assign_batch_size: 64,
-            max_repair_backoff_seconds: 5,
+            turns_per_assignment_pass: afd_fleet::run::RunLimits::default().assign_batch_size,
+            max_subscription_repair_backoff_seconds: whole(
+                afd_gateway::RecoverySettings::default().max_repair_backoff,
+                SECOND,
+            ),
         }
     }
 }
@@ -113,7 +137,7 @@ pub(crate) struct TurnsTuning {
     pub max_queued_turns: u64,
     /// Earlier turns read per page when a run is given its chat history.
     #[garde(range(min = 1))]
-    pub history_page_size: u32,
+    pub history_turns_per_page: u32,
     /// Turn checkpoints stored in R2.
     #[garde(dive)]
     pub checkpoints: TurnCheckpointTuning,
@@ -122,9 +146,9 @@ pub(crate) struct TurnsTuning {
 impl Default for TurnsTuning {
     fn default() -> Self {
         Self {
-            max_runs_per_turn: 3,
-            max_queued_turns: 100_000,
-            history_page_size: 100,
+            max_runs_per_turn: afd_fleet::run::RunLimits::default().max_runs_per_turn,
+            max_queued_turns: afd_turns::Budgets::default().deployment_backlog,
+            history_turns_per_page: count(afd_fleet::run::history::HISTORY_PAGE_TURNS),
             checkpoints: TurnCheckpointTuning::default(),
         }
     }
@@ -150,11 +174,12 @@ pub(crate) struct TurnCheckpointTuning {
 
 impl Default for TurnCheckpointTuning {
     fn default() -> Self {
+        let limits = afd_fleet::run::RunLimits::default().turn_checkpoints;
         Self {
-            retention_days: 7,
-            transfer_window_minutes: 15,
-            restore_pin_minutes: 2,
-            orphan_after_minutes: 60,
+            retention_days: whole(limits.retention, DAY),
+            transfer_window_minutes: whole(limits.transfer_window, MINUTE),
+            restore_pin_minutes: whole(limits.restore_pin, MINUTE),
+            orphan_after_minutes: whole(limits.orphan_after, MINUTE),
         }
     }
 }
@@ -182,12 +207,13 @@ pub(crate) struct ContextTuning {
 
 impl Default for ContextTuning {
     fn default() -> Self {
+        let windows = afd_gate::policy::context::ToolWindows::default();
         Self {
-            small_model_max_tokens: 200_000,
-            large_model_min_tokens: 1_000_000,
-            small_tool_window_count: 10,
-            default_tool_window_count: 20,
-            large_tool_window_count: 30,
+            small_model_max_tokens: windows.small_model_max_tokens,
+            large_model_min_tokens: windows.large_model_min_tokens,
+            small_tool_window_count: windows.small,
+            default_tool_window_count: windows.default,
+            large_tool_window_count: windows.large,
         }
     }
 }
@@ -206,9 +232,10 @@ pub(crate) struct FleetsTuning {
 
 impl Default for FleetsTuning {
     fn default() -> Self {
+        let run = afd_fleet::run::RunLimits::default();
         Self {
-            definition_cache_mib: 64,
-            head_cache_count: 16_384,
+            definition_cache_mib: count(run.definition_cache_bytes / (1024 * 1024)),
+            head_cache_count: run.head_cache_count,
         }
     }
 }
@@ -225,7 +252,7 @@ pub(crate) struct BillingTuning {
 impl Default for BillingTuning {
     fn default() -> Self {
         Self {
-            price_book_cache_count: 1_024,
+            price_book_cache_count: afd_fleet::run::RunLimits::default().price_book_cache_count,
         }
     }
 }
@@ -250,10 +277,11 @@ pub(crate) struct TasksTuning {
 
 impl Default for TasksTuning {
     fn default() -> Self {
+        let times = afd_fleet::task::policy::TaskTimes::default();
         Self {
-            slice_seconds: 600,
-            operation_timeout_seconds: 30,
-            terminal_retention_days: 7,
+            slice_seconds: whole(times.slice, SECOND),
+            operation_timeout_seconds: whole(times.operation_timeout, SECOND),
+            terminal_retention_days: whole(times.terminal_retention, DAY),
             checkpoints: TaskCheckpointTuning::default(),
         }
     }
@@ -283,19 +311,20 @@ pub(crate) struct TaskCheckpointTuning {
     pub orphan_after_minutes: u32,
     /// Objects deleted per storage call.
     #[garde(range(min = 1))]
-    pub delete_batch_size: u32,
+    pub objects_per_delete_call: u32,
 }
 
 impl Default for TaskCheckpointTuning {
     fn default() -> Self {
+        let times = afd_fleet::task::policy::TaskTimes::default();
         Self {
-            keep_generations: 3,
-            upload_link_ttl_minutes: 5,
-            download_link_ttl_minutes: 5,
-            transfer_window_minutes: 15,
-            restore_pin_minutes: 30,
-            orphan_after_minutes: 60,
-            delete_batch_size: 256,
+            keep_generations: times.keep_generations,
+            upload_link_ttl_minutes: whole(times.upload_link_ttl, MINUTE),
+            download_link_ttl_minutes: whole(times.download_link_ttl, MINUTE),
+            transfer_window_minutes: whole(times.transfer_window, MINUTE),
+            restore_pin_minutes: whole(times.restore_pin, MINUTE),
+            orphan_after_minutes: whole(times.orphan_after, MINUTE),
+            objects_per_delete_call: times.delete_batch_size,
         }
     }
 }
@@ -306,21 +335,22 @@ impl Default for TaskCheckpointTuning {
 pub(crate) struct SetupTuning {
     /// How long one setup request may take before it is answered as busy.
     #[garde(range(min = 1))]
-    pub budget_seconds: u32,
+    pub request_timeout_seconds: u32,
     /// A repeated setup request within this returns the first answer.
     #[garde(range(min = 1))]
     pub replay_window_hours: u32,
     /// Drafts read per page by setup maintenance.
     #[garde(range(min = 1))]
-    pub scan_batch_size: u32,
+    pub maintenance_drafts_per_page: u32,
 }
 
 impl Default for SetupTuning {
     fn default() -> Self {
+        let setup = afd_setup::tuning::SetupTuning::default();
         Self {
-            budget_seconds: 15,
-            replay_window_hours: 24,
-            scan_batch_size: 64,
+            request_timeout_seconds: whole(setup.budget, SECOND),
+            replay_window_hours: whole(setup.replay_window, HOUR),
+            maintenance_drafts_per_page: count(setup.scan_batch),
         }
     }
 }
@@ -331,13 +361,13 @@ impl Default for SetupTuning {
 pub(crate) struct AuthTuning {
     /// How long a CLI login session waits to be approved.
     #[garde(range(min = 1, max = DAY_SECONDS))]
-    pub session_ttl_seconds: u32,
+    pub cli_login_ttl_seconds: u32,
     /// A login code reused within this is refused.
     #[garde(range(min = 1, max = DAY_SECONDS))]
-    pub session_replay_seconds: u32,
+    pub cli_login_code_replay_seconds: u32,
     /// Wrong codes allowed before a login session is closed.
     #[garde(range(min = 1, max = VERIFY_ATTEMPTS_MAX))]
-    pub max_session_verify_attempts: u32,
+    pub max_cli_login_code_attempts: u32,
     /// How long a connector sign-in link stays valid.
     #[garde(range(min = 1, max = DAY_MINUTES))]
     pub oauth_state_ttl_minutes: u32,
@@ -360,16 +390,18 @@ pub(crate) struct AuthTuning {
 
 impl Default for AuthTuning {
     fn default() -> Self {
+        let sessions = afd_tenant::session::SessionPolicy::default();
+        let identity = crate::identity::Timing::default();
         Self {
-            session_ttl_seconds: 300,
-            session_replay_seconds: 60,
-            max_session_verify_attempts: 5,
-            oauth_state_ttl_minutes: 10,
-            identity_timeout_seconds: 5,
-            jwks_fetch_timeout_seconds: 5,
-            jwks_cache_hours: 6,
-            jwks_stale_grace_minutes: 15,
-            jwks_min_refresh_seconds: 30,
+            cli_login_ttl_seconds: whole(sessions.ttl, SECOND),
+            cli_login_code_replay_seconds: whole(sessions.replay_window, SECOND),
+            max_cli_login_code_attempts: u32::from(sessions.max_verify_attempts),
+            oauth_state_ttl_minutes: whole(afd_connector::Timing::default().state_ttl, MINUTE),
+            identity_timeout_seconds: whole(identity.provider_timeout, SECOND),
+            jwks_fetch_timeout_seconds: whole(identity.key_set_timeout, SECOND),
+            jwks_cache_hours: whole(identity.key_set_ttl, HOUR),
+            jwks_stale_grace_minutes: whole(identity.key_set_stale_grace, MINUTE),
+            jwks_min_refresh_seconds: whole(identity.key_set_refresh_min_interval, SECOND),
         }
     }
 }
@@ -392,9 +424,15 @@ pub(crate) struct CredentialsTuning {
 impl Default for CredentialsTuning {
     fn default() -> Self {
         Self {
-            token_cache_count: 8_192,
-            platform_key_cache_minutes: 5,
-            assumed_token_ttl_minutes: 5,
+            token_cache_count: afd_credential::credential::broker::MAX_CACHED_TOKENS,
+            platform_key_cache_minutes: whole(
+                afd_credential::provider::cache::PLATFORM_KEY_TTL,
+                MINUTE,
+            ),
+            assumed_token_ttl_minutes: whole(
+                afd_credential::credential::Lifetimes::default().assumed_access,
+                MINUTE,
+            ),
         }
     }
 }
@@ -411,7 +449,10 @@ pub(crate) struct GithubTuning {
 impl Default for GithubTuning {
     fn default() -> Self {
         Self {
-            installation_token_ttl_minutes: HOUR_MINUTES,
+            installation_token_ttl_minutes: whole(
+                afd_credential::credential::Lifetimes::default().installation_token,
+                MINUTE,
+            ),
         }
     }
 }
@@ -428,15 +469,16 @@ pub(crate) struct SlackTuning {
     pub answer_check_timeout_seconds: u32,
     /// How long reading a Slack thread may take.
     #[garde(range(min = 1))]
-    pub read_timeout_ms: u32,
+    pub thread_read_timeout_ms: u32,
 }
 
 impl Default for SlackTuning {
     fn default() -> Self {
+        let deadlines = afd_outbound::SlackDeadlines::default();
         Self {
-            post_timeout_seconds: 5,
-            answer_check_timeout_seconds: 3,
-            read_timeout_ms: 1_500,
+            post_timeout_seconds: whole(deadlines.post, SECOND),
+            answer_check_timeout_seconds: whole(deadlines.answer_check, SECOND),
+            thread_read_timeout_ms: whole(afd_connector::Timing::default().slack_read, MILLISECOND),
         }
     }
 }
@@ -453,7 +495,7 @@ pub(crate) struct MailTuning {
 impl Default for MailTuning {
     fn default() -> Self {
         Self {
-            send_timeout_seconds: 10,
+            send_timeout_seconds: whole(afd_mail::MAIL_SEND_DEADLINE, SECOND),
         }
     }
 }
@@ -479,10 +521,10 @@ pub(crate) struct QstashTuning {
 impl Default for QstashTuning {
     fn default() -> Self {
         Self {
-            attempt_timeout_ms: 2_500,
-            call_budget_seconds: 10,
-            max_attempts: 3,
-            max_retry_delay_ms: 800,
+            attempt_timeout_ms: whole(afd_cron::qstash::ATTEMPT_TIMEOUT, MILLISECOND),
+            call_budget_seconds: whole(afd_cron::qstash::CALL_BUDGET, SECOND),
+            max_attempts: count(afd_cron::qstash::ATTEMPTS),
+            max_retry_delay_ms: whole(afd_cron::qstash::MAX_DELAY, MILLISECOND),
         }
     }
 }
@@ -512,8 +554,8 @@ pub(crate) struct Tuning {
 /// `[server]`'s timing and fan-out keys.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ServerTimes {
-    pub drain_timeout: std::time::Duration,
-    pub task_join_timeout: std::time::Duration,
+    pub drain_timeout: Duration,
+    pub task_join_timeout: Duration,
     pub max_live_activity_notices: usize,
 }
 
@@ -527,7 +569,7 @@ impl From<&super::settings::Server> for ServerTimes {
     fn from(server: &super::settings::Server) -> Self {
         Self {
             drain_timeout: super::settings::secs(server.drain_timeout_seconds),
-            task_join_timeout: super::settings::secs(server.task_join_timeout_seconds),
+            task_join_timeout: super::settings::secs(server.background_task_join_timeout_seconds),
             max_live_activity_notices: server.max_live_activity_notices,
         }
     }
@@ -537,7 +579,7 @@ impl From<&super::settings::Server> for ServerTimes {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MetricTuning {
     pub max_metric_series: usize,
-    pub metric_max_age: std::time::Duration,
+    pub metric_max_age: Duration,
 }
 
 impl Default for MetricTuning {
@@ -585,10 +627,10 @@ impl AuthTuning {
     /// The device-login store's lifetimes and wrong-code allowance.
     pub(crate) fn sessions(&self) -> afd_tenant::session::SessionPolicy {
         afd_tenant::session::SessionPolicy {
-            ttl: super::settings::secs(self.session_ttl_seconds),
-            replay_window: super::settings::secs(self.session_replay_seconds),
+            ttl: super::settings::secs(self.cli_login_ttl_seconds),
+            replay_window: super::settings::secs(self.cli_login_code_replay_seconds),
             // Garde holds this at or below `VERIFY_ATTEMPTS_MAX`.
-            max_verify_attempts: u8::try_from(self.max_session_verify_attempts).unwrap_or(u8::MAX),
+            max_verify_attempts: u8::try_from(self.max_cli_login_code_attempts).unwrap_or(u8::MAX),
         }
     }
 }
@@ -609,12 +651,12 @@ impl Tuning {
 }
 
 /// A configured count of seconds as a duration.
-pub(crate) fn seconds(value: u32) -> std::time::Duration {
+pub(crate) fn seconds(value: u32) -> Duration {
     super::settings::secs(value)
 }
 
 /// A configured count of minutes as a duration.
-pub(crate) fn minutes(value: u32) -> std::time::Duration {
+pub(crate) fn minutes(value: u32) -> Duration {
     super::settings::mins(value)
 }
 
@@ -631,7 +673,7 @@ impl Tuning {
     pub(crate) fn connect(&self) -> afd_connector::Timing {
         afd_connector::Timing {
             state_ttl: minutes(self.auth.oauth_state_ttl_minutes),
-            slack_read: std::time::Duration::from_millis(u64::from(self.slack.read_timeout_ms)),
+            slack_read: Duration::from_millis(u64::from(self.slack.thread_read_timeout_ms)),
         }
     }
 }
@@ -642,8 +684,8 @@ impl QstashTuning {
     pub(crate) fn policy(&self) -> Option<afd_cron::qstash::RetryPolicy> {
         afd_cron::qstash::RetryPolicy::new(
             usize::try_from(self.max_attempts).ok()?,
-            std::time::Duration::from_millis(u64::from(self.attempt_timeout_ms)),
-            std::time::Duration::from_millis(u64::from(self.max_retry_delay_ms)),
+            Duration::from_millis(u64::from(self.attempt_timeout_ms)),
+            Duration::from_millis(u64::from(self.max_retry_delay_ms)),
             seconds(self.call_budget_seconds),
         )
     }

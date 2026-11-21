@@ -55,7 +55,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64URL;
 use jiff::Timestamp;
 
-use crate::registry::{STATE_TTL_SECONDS, StateBinding};
+use crate::registry::StateBinding;
 
 /// What separates the payload's four fields.
 const FIELD_SEP: char = '|';
@@ -164,27 +164,14 @@ impl Verified {
     }
 }
 
-/// Signs a state binding `workspace` and `subject`, valid for the flow's window.
+/// Signs a state binding `workspace` and `subject`, valid for `ttl`: the
+/// deployment's `[auth] oauth_state_ttl_minutes`.
 ///
 /// `nonce` is supplied rather than drawn here: this half is pure, so a suite
 /// can pin the exact bytes a state carries, and the entropy draw is the
 /// caller's — see [`nonce::mint`].
 #[must_use]
 pub fn sign(
-    binding: StateBinding,
-    secret: &SecretBytes,
-    workspace: &str,
-    subject: &str,
-    nonce: &str,
-    now: Timestamp,
-) -> String {
-    let ttl = Duration::from_secs(u64::from(STATE_TTL_SECONDS));
-    sign_for(binding, secret, workspace, subject, nonce, now, ttl)
-}
-
-/// [`sign`], valid for `ttl` rather than [`STATE_TTL_SECONDS`].
-#[must_use]
-pub fn sign_for(
     binding: StateBinding,
     secret: &SecretBytes,
     workspace: &str,

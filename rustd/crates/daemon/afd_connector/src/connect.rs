@@ -214,7 +214,7 @@ impl Connectors {
         let binding = provider.state_binding();
         let nonce = nonce::mint(&self.entropy)?;
         let ttl = self.timing.state_ttl;
-        let state = state::sign_for(
+        let state = state::sign(
             binding,
             secret,
             workspace.as_str(),
@@ -223,7 +223,7 @@ impl Connectors {
             now,
             ttl,
         );
-        nonce::remember_for(&self.database, &self.entropy, provider, &nonce, now, ttl).await?;
+        nonce::remember(&self.database, &self.entropy, provider, &nonce, now, ttl).await?;
 
         // Both archetypes start the same way — a consent screen carrying a
         // signed state — and differ only in what the code is redeemed FOR. The

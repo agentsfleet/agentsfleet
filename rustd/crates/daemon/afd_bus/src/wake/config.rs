@@ -37,7 +37,7 @@ struct Capacity {
     value: usize,
 }
 
-pub(super) fn prove(value: usize, max: usize) -> Result<usize> {
+fn prove(value: usize, max: usize) -> Result<usize> {
     Ok(Unvalidated::new(Capacity { value })
         .validate_with(&max)?
         .value)

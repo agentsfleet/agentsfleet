@@ -26,7 +26,6 @@ use guffbolt::tools::env::{
     Browser, DirEntry, Ending, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, Events,
     FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
 };
-use guffbolt::tools::process::oneshot::TIMEOUT_DEFAULT;
 
 use crate::sandbox::{GIT_IDENTITY_EMAIL, GIT_IDENTITY_NAME};
 
@@ -39,11 +38,6 @@ const REPLY_SLACK: Duration = Duration::from_secs(1);
 const ENDING_GRACE: Duration = KILL_GRACE
     .saturating_add(DRAIN_GRACE)
     .saturating_add(REPLY_SLACK);
-/// A command's default timeout, with the executor's ending grace, stays
-/// under this: the run's lease. A chosen default is checked against it at
-/// boot.
-pub const DEFAULT_TIMEOUT_CEILING: Duration = af_core::timing::RUN_TTL.saturating_sub(ENDING_GRACE);
-const _: () = assert!(TIMEOUT_DEFAULT.as_nanos() < DEFAULT_TIMEOUT_CEILING.as_nanos());
 const _: () = assert!(ENDING_GRACE.as_nanos() <= af_core::timing::ENGINE_STOP_GRACE.as_nanos());
 // The tools word their limits by the harness's figures, which must be the
 // executor's.

@@ -107,10 +107,10 @@ async fn current_time_reads_an_rfc_3339_instant_in_utc() {
     assert_eq!(refused.error_code, Some(code::INVALID_ARGUMENTS));
 }
 
-/// `sleep` waits as asked, never past twelve hours, and wakes at once when
+/// `sleep` waits as asked, never past its limit, and wakes at once when
 /// input arrived first. The clock is tokio's paused one, so no test waits.
 #[tokio::test(start_paused = true)]
-async fn sleep_waits_as_asked_capped_at_twelve_hours_and_wakes_for_input() {
+async fn sleep_waits_as_asked_capped_at_its_limit_and_wakes_for_input() {
     let tools = built(Tools::builder(), &["sleep"]);
     let wake = Wake::default();
 
@@ -127,7 +127,8 @@ async fn sleep_waits_as_asked_capped_at_twelve_hours_and_wakes_for_input() {
     let refused = run(&tools, "sleep", json!({"duration_ms": -1}), None).await;
 
     assert_eq!(slept.text, "Slept 1500 ms");
-    assert_eq!(capped.text, "Slept 43200000 ms");
+    let most = guffbolt::tools::Limits::DEFAULT.max_sleep.as_millis();
+    assert_eq!(capped.text, format!("Slept {most} ms"));
     assert_eq!(woken_early.text, "Woke after 0 ms: a new message arrived");
     assert_eq!(refused.error_code, Some(code::INVALID_ARGUMENTS));
 }

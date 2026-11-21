@@ -253,7 +253,7 @@ pub(super) fn runner_wake<E: EnvSource + ?Sized>(
         true,
         afd_bus::wake::ENV_WAKE_QUEUE_CAPACITY,
         "a scheduling queue capacity between 1 and [nats] max_wake_queue_size",
-        afd_bus::wake::Wake::from_env_within(env, bounds),
+        afd_bus::wake::Wake::from_env(env, bounds),
     )
 }
 

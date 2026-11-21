@@ -29,7 +29,6 @@ use sha2::{Digest as _, Sha256};
 
 use crate::error::{Result, query};
 use crate::provider::Provider;
-use crate::registry::STATE_TTL_SECONDS;
 use crate::sql;
 
 /// Bytes of entropy behind a nonce, rendered as twice as many hex characters.
@@ -56,28 +55,13 @@ fn digest(nonce: &str) -> Vec<u8> {
     Sha256::digest(nonce.as_bytes()).to_vec()
 }
 
-/// Remembers `nonce` for as long as a connect round-trip may take.
+/// Remembers `nonce` for `ttl`, as long as a connect round-trip may take.
 ///
 /// # Errors
 /// Reports a store that would not answer. A connect whose nonce was not
 /// remembered must not proceed: its state would verify and then fail to
 /// consume, which reads to the person as a forged callback.
 pub async fn remember(
-    database: &Db,
-    entropy: &Entropy,
-    provider: Provider,
-    nonce: &str,
-    now: Timestamp,
-) -> Result<()> {
-    let ttl = Duration::from_secs(u64::from(STATE_TTL_SECONDS));
-    remember_for(database, entropy, provider, nonce, now, ttl).await
-}
-
-/// [`remember`], for `ttl` rather than [`STATE_TTL_SECONDS`].
-///
-/// # Errors
-/// As [`remember`].
-pub async fn remember_for(
     database: &Db,
     entropy: &Entropy,
     provider: Provider,

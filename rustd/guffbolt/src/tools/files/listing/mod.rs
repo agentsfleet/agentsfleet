@@ -9,9 +9,11 @@
 
 mod grep;
 
+use std::borrow::Cow;
 use std::collections::VecDeque;
 
-use regex::Regex;
+use globset::GlobBuilder;
+use regex::bytes::Regex;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -133,7 +135,7 @@ async fn find(env: &dyn Env, arguments: &Search) -> Answer {
     let mut found: Vec<String> = walked
         .files
         .into_iter()
-        .filter(|relative| glob.is_match(relative))
+        .filter(|relative| glob.is_match(relative.as_bytes()))
         .collect();
     found.sort_unstable();
     let note = if found.len() > limit {
@@ -153,34 +155,25 @@ fn start<'p>(env: &dyn Env, path: Option<&'p str>) -> Result<&'p str, ToolOutput
     }
 }
 
-/// `glob` as the regular expression it means, matched against a whole path.
+/// `glob` as a matcher of whole relative paths: `*` and `?` stay within one
+/// directory, `**` crosses them. A glob with no directory in it matches a
+/// file's name at any depth.
+///
+/// `globset` translates the glob; the `regex` crate compiles it, under its
+/// default size limit, so a glob too large to compile is refused rather than
+/// built.
 fn glob(glob: &str) -> Result<Regex, ToolOutput> {
-    let mut pattern = String::from("^");
-    let mut rest = glob.chars().peekable();
-    while let Some(next) = rest.next() {
-        match next {
-            '*' if rest.peek() == Some(&'*') => {
-                rest.next();
-                // `**/` also matches no directory at all.
-                if rest.peek() == Some(&'/') {
-                    rest.next();
-                    pattern.push_str("(?:.*/)?");
-                } else {
-                    pattern.push_str(".*");
-                }
-            }
-            '*' => pattern.push_str("[^/]*"),
-            '?' => pattern.push_str("[^/]"),
-            other => pattern.push_str(&regex::escape(&other.to_string())),
-        }
-    }
-    pattern.push('$');
-    // A glob with no directory in it matches a file's name at any depth.
-    if !glob.contains('/') {
-        pattern.replace_range(..1, "^(?:.*/)?");
-    }
-    Regex::new(&pattern)
-        .map_err(|refused| ToolOutput::failed(code::INVALID_ARGUMENTS, &refused.to_string()))
+    let glob = if glob.contains('/') || glob.starts_with("**") {
+        Cow::Borrowed(glob)
+    } else {
+        Cow::Owned(format!("**/{glob}"))
+    };
+    let refused = |reason: String| ToolOutput::failed(code::INVALID_ARGUMENTS, &reason);
+    let built = GlobBuilder::new(&glob)
+        .literal_separator(true)
+        .build()
+        .map_err(|error| refused(error.to_string()))?;
+    Regex::new(built.regex()).map_err(|error| refused(error.to_string()))
 }
 
 /// What a walk found: every file below its root, by its path relative to

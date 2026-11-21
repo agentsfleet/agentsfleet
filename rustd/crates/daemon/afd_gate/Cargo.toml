@@ -40,6 +40,8 @@ af_wire.workspace = true
 base64.workspace = true
 # The instant an identifier is minted at; every other instant is the database's.
 jiff.workspace = true
+# The runaway brake's bounded window map.
+moka = { workspace = true, features = ["sync"] }
 serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true

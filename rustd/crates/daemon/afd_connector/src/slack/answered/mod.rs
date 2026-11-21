@@ -144,33 +144,6 @@ impl Posted {
     }
 }
 
-/// Whether `thread` already holds the answer `marker` names.
-///
-/// Only a message `author` posted counts: the bot user the grant recorded.
-/// Read through `api_base` ([`super::SLACK_API_BASE`] in a deployment) under
-/// [`ANSWER_CHECK_DEADLINE`], starting at [`since`] the marker's event, and
-/// stopping at the first page that shows the marker.
-///
-/// # Errors
-/// The [`Unavailable`] reason the thread could not be read for; the caller
-/// posts anyway, as the module note says.
-pub async fn holds_answer(
-    client: &reqwest::Client,
-    api_base: &str,
-    token: &SecretString,
-    thread: &Thread,
-    marker: &AnswerMarker,
-    author: &str,
-) -> Result<bool, Unavailable> {
-    let check = Check {
-        client,
-        api_base,
-        token,
-        thread,
-    };
-    holds_answer_within(check, marker, author, ANSWER_CHECK_DEADLINE).await
-}
-
 /// Where a thread check reads, and with what.
 #[derive(Debug, Clone, Copy)]
 pub struct Check<'a> {
@@ -184,11 +157,18 @@ pub struct Check<'a> {
     pub thread: &'a Thread,
 }
 
-/// [`holds_answer`], under `deadline` rather than [`ANSWER_CHECK_DEADLINE`].
+/// Whether `thread` already holds the answer `marker` names.
+///
+/// Only a message `author` posted counts: the bot user the grant recorded.
+/// Read through `check.api_base` ([`super::SLACK_API_BASE`] in a deployment)
+/// under `deadline` (the deployment's `[connectors.slack]
+/// answer_check_timeout_seconds`), starting at [`since`] the marker's event,
+/// and stopping at the first page that shows the marker.
 ///
 /// # Errors
-/// As [`holds_answer`].
-pub async fn holds_answer_within(
+/// The [`Unavailable`] reason the thread could not be read for; the caller
+/// posts anyway, as the module note says.
+pub async fn holds_answer(
     check: Check<'_>,
     marker: &AnswerMarker,
     author: &str,

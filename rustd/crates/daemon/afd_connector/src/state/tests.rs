@@ -14,7 +14,6 @@ use jiff::Timestamp;
 
 use super::{Rejected, Verified, sign, verify};
 use crate::provider::Provider;
-use crate::registry::STATE_TTL_SECONDS;
 
 /// The instant `millis` after the epoch: fixtures here are spelled in the
 /// milliseconds the stored shape carries.
@@ -41,6 +40,9 @@ const NONCE: &str = "deadbeefdeadbeefdeadbeefdeadbeef";
 /// The instant every case signs at.
 const NOW: i64 = 1_700_000_000_000;
 
+/// How long every case's state is valid for.
+const TTL: std::time::Duration = std::time::Duration::from_mins(10);
+
 /// The signing key, as the secret type the production path holds.
 fn secret() -> SecretBytes {
     SecretBytes::new(SECRET.as_bytes().to_vec())
@@ -55,6 +57,7 @@ fn minted(provider: Provider) -> String {
         STARTER,
         NONCE,
         at(NOW),
+        TTL,
     )
 }
 
@@ -190,8 +193,7 @@ fn a_state_minted_for_one_connector_does_not_verify_as_another() {
 #[test]
 fn the_expiry_window_holds_at_both_of_its_edges() {
     let state = minted(Provider::Slack);
-    // pin test: literal is the contract
-    let window = i64::from(STATE_TTL_SECONDS) * 1_000;
+    let window = i64::try_from(TTL.as_millis()).expect("ten minutes fits in i64");
     let binding = Provider::Slack.state_binding();
 
     let inside = verify(binding, &secret(), &state, at(NOW + window));

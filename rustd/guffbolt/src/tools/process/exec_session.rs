@@ -17,19 +17,16 @@ use tokio::time::Instant;
 
 use super::output::{self, Collected};
 use super::sessions::Sessions;
-use super::{command, oneshot, unavailable};
+use super::{command, oneshot, saturating_millis, unavailable};
 use crate::tool::ToolOutput;
 use crate::tools::env::{Ending, Env, ProcessId, Spawn};
 use crate::tools::files::failed;
-use crate::tools::{Context, Handler, code};
+use crate::tools::{Context, Handler, Limits, Schema, code};
 
-/// The shortest a call waits for output, unless the embedder chooses another
-/// ([`Limits::min_yield`](crate::tools::Limits::min_yield)).
-pub const YIELD_MIN: Duration = Duration::from_millis(250);
-/// The longest a call waits for output, unless the embedder chooses another
-/// ([`Limits::max_yield`](crate::tools::Limits::max_yield)).
-pub const YIELD_MAX: Duration = Duration::from_secs(30);
-/// How long a call waits when the model names no yield.
+/// How long a call waits when the model names no yield, held between the
+/// tool's shortest and longest
+/// ([`Limits::min_yield`](crate::tools::Limits::min_yield) and
+/// [`Limits::max_yield`](crate::tools::Limits::max_yield)).
 pub const YIELD_DEFAULT: Duration = Duration::from_secs(10);
 /// The shortest an empty write waits, so polling a session is never a busy
 /// loop.
@@ -62,8 +59,7 @@ pub struct Open {
     /// pipes when absent.
     #[serde(default)]
     tty: bool,
-    /// How long to wait for output before answering, in milliseconds: 10000
-    /// when absent, between 250 and 30000.
+    /// How long to wait for output before answering, in milliseconds.
     #[serde(default)]
     yield_time_ms: Option<u64>,
     /// The most output tokens to read back: 10000 when absent, at most
@@ -81,8 +77,7 @@ pub struct Input {
     /// What to write to the process's input; empty to only read what arrived.
     #[serde(default)]
     chars: String,
-    /// How long to wait for output before answering, in milliseconds: 10000
-    /// when absent, between 250 and 30000; an empty write waits at least 5000.
+    /// How long to wait for output before answering, in milliseconds.
     #[serde(default)]
     yield_time_ms: Option<u64>,
     /// The most output tokens to read back: 10000 when absent, at most
@@ -106,8 +101,23 @@ impl<'run> Held<'run> {
         Self {
             env,
             sessions,
-            yields: (YIELD_MIN, YIELD_MAX),
+            yields: (Limits::DEFAULT.min_yield, Limits::DEFAULT.max_yield),
         }
+    }
+
+    /// `schema` with its `yield_time_ms` argument stating this tool's
+    /// default and bounds, and `then` after them.
+    fn told(self, schema: Schema, then: &str) -> Schema {
+        let (min, max) = self.yields;
+        let default = saturating_millis(yield_of(None, min, max));
+        let (min, max) = (saturating_millis(min.min(max)), saturating_millis(max));
+        schema.with_argument(
+            "yield_time_ms",
+            format!(
+                "How long to wait for output before answering, in milliseconds: {default} \
+                 when absent, between {min} and {max}{then}."
+            ),
+        )
     }
 }
 
@@ -138,6 +148,10 @@ impl Handler for ExecCommand<'_> {
         while the process runs, its session ID; use write_stdin to send it input or read more. \
         The session ends when the process exits or the run ends.";
     type Arguments = Open;
+
+    fn schema(&self) -> Schema {
+        self.0.told(Schema::of::<Open>(Self::DESCRIPTION), "")
+    }
 
     async fn run(&self, arguments: Open, context: Context<'_>) -> ToolOutput {
         let Held {
@@ -194,6 +208,12 @@ impl Handler for WriteStdin<'_> {
         what it printed within yield_time_ms. Send empty chars to only read. Answers the exit \
         code once the process has ended.";
     type Arguments = Input;
+
+    fn schema(&self) -> Schema {
+        let empty = saturating_millis(EMPTY_WRITE_YIELD_MIN.min(self.0.yields.1));
+        let then = format!("; an empty write waits at least {empty}");
+        self.0.told(Schema::of::<Input>(Self::DESCRIPTION), &then)
+    }
 
     async fn run(&self, arguments: Input, context: Context<'_>) -> ToolOutput {
         let Held {

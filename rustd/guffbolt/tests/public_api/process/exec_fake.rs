@@ -1,6 +1,7 @@
 //! `exec_command` and `write_stdin` on the fake, on tokio's paused clock.
 
 use super::*;
+use guffbolt::tools::Limits;
 
 /// A process that ended between calls answers the next write with its
 /// ending, and the write is never sent.
@@ -81,8 +82,8 @@ async fn write_stdin_reads_each_way_a_write_is_refused() {
     assert_eq!(read, expected);
 }
 
-/// A call waits its yield, held between 250 ms and 30 s; an empty write,
-/// which only reads, waits at least 5 s.
+/// A call waits its yield, held between the default limits' shortest and
+/// longest; an empty write, which only reads, waits at least 5 s.
 #[tokio::test(start_paused = true)]
 async fn a_calls_yield_is_held_between_its_floor_and_thirty_seconds() {
     let fake = Fake::default();
@@ -110,11 +111,11 @@ async fn a_calls_yield_is_held_between_its_floor_and_thirty_seconds() {
     assert_eq!(
         [short, default, long, empty, written],
         [
-            Duration::from_millis(250),
+            Limits::DEFAULT.min_yield,
             Duration::from_secs(10),
-            Duration::from_secs(30),
+            Limits::DEFAULT.max_yield,
             Duration::from_secs(5),
-            Duration::from_millis(250),
+            Limits::DEFAULT.min_yield,
         ]
     );
 }

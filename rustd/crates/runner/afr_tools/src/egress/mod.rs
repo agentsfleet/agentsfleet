@@ -69,6 +69,11 @@ impl<'l, 'run> Egressed<'l, 'run> {
 }
 
 impl Outbound for Egressed<'_, '_> {
+    fn max_redirects(&self) -> u8 {
+        self.transport
+            .map_or(0, |transport| transport.limits().max_redirects)
+    }
+
     fn send<'a>(&'a self, tool: &'a str, request: Request) -> OutboundFuture<'a, Response> {
         Box::pin(async move {
             let Some(transport) = self.transport else {
@@ -201,8 +206,7 @@ async fn get_chain(
         .prepare(draft)
         .await
         .map_err(|failure| refused(tool, run.run_id, &failure))?;
-    let mut chain =
-        Chain::new(outbound.url(), headers).with_max_redirects(transport.limits().max_redirects);
+    let mut chain = Chain::new(outbound.url(), headers, transport.limits().max_redirects);
     loop {
         let mut inbound = transport
             .send(outbound.for_redirect_read())

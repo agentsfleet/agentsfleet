@@ -16,13 +16,14 @@ const MIB: u64 = 1024 * 1024;
 /// One kibibyte.
 const KIB: usize = 1024;
 
-/// A default command timeout, with the executor's ending grace, stays under
-/// the run's lease.
-const SHELL_TIMEOUT_SECONDS_MAX: u64 = afr_tools::DEFAULT_TIMEOUT_CEILING.as_secs() - 1;
+/// The longest timeout a command may run under: tokio's timer holds no longer
+/// a sleep than `2^31 - 1` milliseconds. The run's lease does not bound it,
+/// because the supervisor renews the lease while a tool call runs.
+const SHELL_TIMEOUT_SECONDS_MAX: u64 = guffbolt::tools::process::oneshot::TIMEOUT_MAX.as_secs();
 
-/// Room is never made from the most recently used sessions, so a cap at or
-/// below their count would not hold.
-const SESSIONS_MIN: usize = guffbolt::tools::process::sessions::SESSIONS_PROTECTED + 1;
+/// Room is never made from the most recently used shell processes, so a cap
+/// at or below their count would not hold.
+const SHELL_PROCESSES_MIN: usize = guffbolt::tools::process::sessions::SESSIONS_PROTECTED + 1;
 
 /// A restore checks a checkpoint's children against this depth.
 const SUBAGENT_DEPTH_MAX: u8 = afr_agent::RunLimits::DEFAULT.caps.depth;
@@ -88,17 +89,17 @@ pub(super) struct ToolsTuning {
     #[garde(range(min = 1, max = SHELL_TIMEOUT_SECONDS_MAX))]
     pub default_shell_timeout_seconds: u64,
     /// Shortest wait for a running command's output.
-    #[garde(range(min = 1, max = self.max_exec_yield_ms))]
-    pub min_exec_yield_ms: u64,
+    #[garde(range(min = 1, max = self.max_command_output_wait_ms))]
+    pub min_command_output_wait_ms: u64,
     /// Longest wait for a running command's output.
     #[garde(range(min = 1))]
-    pub max_exec_yield_ms: u64,
-    /// Interactive shell sessions one run may keep open.
-    #[garde(range(min = SESSIONS_MIN))]
-    pub max_sessions_per_run: usize,
-    /// Lines a read returns when the model names no limit.
+    pub max_command_output_wait_ms: u64,
+    /// Interactive shell processes one run may keep open.
+    #[garde(range(min = SHELL_PROCESSES_MIN))]
+    pub max_shell_processes_per_run: usize,
+    /// Lines a file read returns when the model names no limit.
     #[garde(range(min = 1))]
-    pub default_read_lines: usize,
+    pub default_file_read_lines: usize,
     /// Larger images are scaled down to this before the model sees them.
     #[garde(range(min = 1))]
     pub max_image_dimension_px: u32,
@@ -110,7 +111,7 @@ pub(super) struct ToolsTuning {
     pub max_sleep_hours: u64,
     /// Longest a run waits for a subagent.
     #[garde(range(min = 1))]
-    pub max_wait_seconds: u64,
+    pub max_subagent_wait_seconds: u64,
     /// Subagents open at once in one run.
     #[garde(range(min = 1))]
     pub max_open_subagents: usize,
@@ -130,14 +131,14 @@ impl Default for ToolsTuning {
         let tools = run.tools;
         Self {
             default_shell_timeout_seconds: tools.default_timeout.as_secs(),
-            min_exec_yield_ms: millis(tools.min_yield),
-            max_exec_yield_ms: millis(tools.max_yield),
-            max_sessions_per_run: run.max_sessions,
-            default_read_lines: tools.default_read_lines,
+            min_command_output_wait_ms: millis(tools.min_yield),
+            max_command_output_wait_ms: millis(tools.max_yield),
+            max_shell_processes_per_run: run.max_sessions,
+            default_file_read_lines: tools.default_read_lines,
             max_image_dimension_px: tools.max_image_dimension,
             max_image_mib: tools.max_image_bytes / MIB,
             max_sleep_hours: tools.max_sleep.as_secs() / 3600,
-            max_wait_seconds: tools.max_wait.as_secs(),
+            max_subagent_wait_seconds: tools.max_wait.as_secs(),
             max_open_subagents: run.caps.open,
             max_subagent_depth: run.caps.depth,
         }
@@ -150,15 +151,15 @@ impl ToolsTuning {
         afr_agent::RunLimits {
             tools: guffbolt::tools::Limits {
                 default_timeout: Duration::from_secs(self.default_shell_timeout_seconds),
-                min_yield: Duration::from_millis(self.min_exec_yield_ms),
-                max_yield: Duration::from_millis(self.max_exec_yield_ms),
-                default_read_lines: self.default_read_lines,
+                min_yield: Duration::from_millis(self.min_command_output_wait_ms),
+                max_yield: Duration::from_millis(self.max_command_output_wait_ms),
+                default_read_lines: self.default_file_read_lines,
                 max_image_dimension: self.max_image_dimension_px,
                 max_image_bytes: self.max_image_mib.saturating_mul(MIB),
                 max_sleep: Duration::from_hours(self.max_sleep_hours),
-                max_wait: Duration::from_secs(self.max_wait_seconds),
+                max_wait: Duration::from_secs(self.max_subagent_wait_seconds),
             },
-            max_sessions: self.max_sessions_per_run,
+            max_sessions: self.max_shell_processes_per_run,
             caps: guffbolt::agents::Caps {
                 depth: self.max_subagent_depth,
                 open: self.max_open_subagents,
@@ -173,16 +174,16 @@ impl ToolsTuning {
 pub(super) struct ProviderTuning {
     /// How long connecting to a provider for a decision call may take.
     #[garde(range(min = 1))]
-    pub connect_timeout_seconds: u64,
+    pub decision_connect_timeout_seconds: u64,
     /// How long one decision call may take, its whole reply included.
     #[garde(range(min = 1))]
-    pub physical_timeout_seconds: u64,
+    pub decision_call_timeout_seconds: u64,
     /// How long a token-count call may take.
     #[garde(range(min = 1))]
-    pub count_timeout_seconds: u64,
+    pub token_count_timeout_seconds: u64,
     /// Largest token-count reply accepted.
     #[garde(range(min = 1))]
-    pub max_count_reply_kib: usize,
+    pub max_token_count_reply_kib: usize,
 }
 
 impl Default for ProviderTuning {
@@ -190,10 +191,10 @@ impl Default for ProviderTuning {
         let decision = af_providers::decision::DecisionTimeouts::DEFAULT;
         let inference = af_inference::Timeouts::DEFAULT;
         Self {
-            connect_timeout_seconds: decision.connect.as_secs(),
-            physical_timeout_seconds: decision.physical.as_secs(),
-            count_timeout_seconds: inference.count().as_secs(),
-            max_count_reply_kib: inference.count_reply_bytes() / KIB,
+            decision_connect_timeout_seconds: decision.connect.as_secs(),
+            decision_call_timeout_seconds: decision.physical.as_secs(),
+            token_count_timeout_seconds: inference.count().as_secs(),
+            max_token_count_reply_kib: inference.count_reply_bytes() / KIB,
         }
     }
 }
@@ -202,8 +203,8 @@ impl ProviderTuning {
     /// How long a decision call may take to connect, and to finish.
     pub(super) const fn decision(&self) -> af_providers::decision::DecisionTimeouts {
         af_providers::decision::DecisionTimeouts {
-            connect: Duration::from_secs(self.connect_timeout_seconds),
-            physical: Duration::from_secs(self.physical_timeout_seconds),
+            connect: Duration::from_secs(self.decision_connect_timeout_seconds),
+            physical: Duration::from_secs(self.decision_call_timeout_seconds),
         }
     }
 
@@ -213,8 +214,8 @@ impl ProviderTuning {
         timeouts: af_inference::Timeouts,
     ) -> af_inference::Timeouts {
         timeouts.with_count(
-            Duration::from_secs(self.count_timeout_seconds),
-            self.max_count_reply_kib.saturating_mul(KIB),
+            Duration::from_secs(self.token_count_timeout_seconds),
+            self.max_token_count_reply_kib.saturating_mul(KIB),
         )
     }
 }

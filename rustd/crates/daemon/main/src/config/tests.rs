@@ -360,7 +360,7 @@ fn a_file_pool_floor_must_fit_the_selected_ceiling() -> TestResult {
 fn shutdown_timeouts_below_their_floors_refuse_startup() -> TestResult {
     for contents in [
         "[server]\ndrain_timeout_seconds = 5",
-        "[server]\ntask_join_timeout_seconds = 8",
+        "[server]\nbackground_task_join_timeout_seconds = 8",
     ] {
         let mut file = tempfile::NamedTempFile::new()?;
         file.write_all(contents.as_bytes())?;
@@ -371,7 +371,9 @@ fn shutdown_timeouts_below_their_floors_refuse_startup() -> TestResult {
         assert!(refused.is_err(), "{contents} was accepted");
     }
     let mut file = tempfile::NamedTempFile::new()?;
-    file.write_all(b"[server]\ndrain_timeout_seconds = 6\ntask_join_timeout_seconds = 9")?;
+    file.write_all(
+        b"[server]\ndrain_timeout_seconds = 6\nbackground_task_join_timeout_seconds = 9",
+    )?;
     let environment = MapEnv::default();
     let config = ConfigBuilder::new(&environment)
         .file(Some(file.path()))

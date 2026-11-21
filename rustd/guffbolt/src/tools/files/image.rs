@@ -7,13 +7,16 @@
 //! any read, and a file that is not one of the four kinds the wires take, or
 //! does not decode as the one it begins as, is refused after it.
 //!
-//! A picture longer than [`IMAGE_MAX_DIMENSION`] on either side is scaled to
+//! A picture longer than the tool's
+//! [`Limits::max_image_dimension`](crate::tools::Limits::max_image_dimension)
+//! on either side is scaled to
 //! fit and written again: the aspect ratio kept, the triangle filter, a PNG,
 //! JPEG or WebP in its own kind and a GIF as a PNG, with its RGB color profile
 //! and its EXIF data. One that already fits is passed on as the file holds it. A file is read whole
 //! or refused, so one longer than one read carries ([`MAX_READ_BYTES`]) is
-//! not scaled. [`IMAGE_MAX_BYTES`] bounds what the model is shown, so a
-//! picture still heavier once scaled is refused.
+//! not scaled. [`Limits::max_image_bytes`](crate::tools::Limits::max_image_bytes)
+//! bounds what the model is shown, so a picture still heavier once scaled is
+//! refused.
 
 use std::io::Cursor;
 
@@ -32,18 +35,8 @@ use serde::Deserialize;
 use super::{Answer, failed, inside, settled};
 use crate::tool::{Image, ImageKind, ToolOutput};
 use crate::tools::env::{Env, MAX_READ_BYTES};
-use crate::tools::{Context, Handler, code};
+use crate::tools::{Context, Handler, Limits, Schema, code};
 
-/// The most an image the model is shown may weigh.
-///
-/// The Messages wire's cap per image, the stricter of the two wires that take
-/// one. It bounds the picture after any scaling, unless the embedder chooses
-/// another ([`Limits::max_image_bytes`](crate::tools::Limits::max_image_bytes)).
-pub const IMAGE_MAX_BYTES: u64 = 5 * 1024 * 1024;
-/// The longest side, in pixels, of a picture the model is shown; a longer one
-/// is scaled to fit. The embedder may choose another
-/// ([`Limits::max_image_dimension`](crate::tools::Limits::max_image_dimension)).
-pub const IMAGE_MAX_DIMENSION: u32 = 2048;
 /// How a PNG begins.
 pub const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 /// How a JPEG begins.
@@ -123,8 +116,8 @@ impl<'run> ImageTool<'run> {
             env,
             image_input,
             bounds: Bounds {
-                max_dimension: IMAGE_MAX_DIMENSION,
-                max_bytes: IMAGE_MAX_BYTES,
+                max_dimension: Limits::DEFAULT.max_image_dimension,
+                max_bytes: Limits::DEFAULT.max_image_bytes,
             },
         }
     }
@@ -145,9 +138,18 @@ impl<'run> ImageTool<'run> {
 impl Handler for ImageTool<'_> {
     const NAME: &'static str = "image";
     const DESCRIPTION: &'static str = "Look at an image file in the working directory: PNG, \
-        JPEG, GIF or WebP. One longer than 2048 pixels on a side is scaled down to fit. The \
-        image is shown to you with this call's result on your next step.";
+        JPEG, GIF or WebP. The image is shown to you with this call's result on your next \
+        step.";
     type Arguments = Named;
+
+    fn schema(&self) -> Schema {
+        let side = self.bounds.max_dimension;
+        let description = format!(
+            "{} One longer than {side} pixels on a side is scaled down to fit.",
+            Self::DESCRIPTION
+        );
+        Schema::of::<Named>(Self::DESCRIPTION).with_description(description)
+    }
 
     async fn run(&self, arguments: Named, _context: Context<'_>) -> ToolOutput {
         settled(view(self.env, self.image_input, self.bounds, &arguments.path).await)

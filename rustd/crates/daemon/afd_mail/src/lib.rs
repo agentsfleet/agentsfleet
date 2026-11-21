@@ -24,7 +24,7 @@ pub use self::deliver::IDEMPOTENCY_HEADER;
 pub use self::error::{Error, Result};
 pub use self::invite::InviteLetter;
 pub(crate) use self::invite::{RenderedEmail, render_invite};
-pub use self::mailer::{InviteMailer, InviteSend, deliverable};
+pub use self::mailer::{InviteMailer, InviteSend, MAIL_SEND_DEADLINE, deliverable};
 pub use self::relay::SMTP_RELAY_BAG;
 
 #[cfg(any(test, feature = "test-util"))]

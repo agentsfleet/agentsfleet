@@ -160,6 +160,10 @@ pub trait Outbound: Send + Sync + fmt::Debug {
     /// refusal is the code and sentence the model reads.
     fn send<'a>(&'a self, tool: &'a str, request: Request) -> OutboundFuture<'a, Response>;
 
+    /// The most redirects a request that follows them follows: what the
+    /// model is told `http_request` does.
+    fn max_redirects(&self) -> u8;
+
     /// `text` with every secret the hook placed masked; `text` itself when
     /// none is in it.
     fn mask(&self, text: String) -> Pin<Box<dyn Future<Output = String> + Send + '_>>;

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use af_core::timing::{READY_WAKE_DEADLINE, STREAM_ANSWER_TIMEOUT};
 use afd_bus::{Command, Received, Subject};
+use backon::{BackoffBuilder as _, ExponentialBuilder};
 
 use super::{ConnectionHandle, ConnectionServices};
 use crate::{Gateway, Operation, Result};
@@ -25,9 +26,17 @@ pub(super) async fn announce(gateway: &Gateway, runner: &af_core::id::Uuid7) -> 
     Ok(())
 }
 
+/// Resubscribe waits: 100 ms, doubling to the stream's answer timeout, for as
+/// long as the connection lives.
+const RESUBSCRIBE: ExponentialBuilder = ExponentialBuilder::new()
+    .with_factor(2.0)
+    .with_min_delay(std::time::Duration::from_millis(100))
+    .with_max_delay(STREAM_ANSWER_TIMEOUT)
+    .without_max_times();
+
 /// Reconnect only the subscription. The database backstop does not depend on broker availability.
 pub(super) async fn listen(services: Arc<ConnectionServices>) -> Result<()> {
-    let mut retry = std::time::Duration::from_millis(100);
+    let mut pauses = RESUBSCRIBE.build();
     let mut lost = false;
     loop {
         if services.handle.stop.is_cancelled() {
@@ -47,7 +56,7 @@ pub(super) async fn listen(services: Arc<ConnectionServices>) -> Result<()> {
         if let Ok(mut subscription) = subscription {
             services.handle.command(Command::Recheck);
             lost = false;
-            retry = std::time::Duration::from_millis(100);
+            pauses = RESUBSCRIBE.build();
             match receive(&services.handle, &mut subscription).await {
                 Ok(()) => return Ok(()),
                 Err(error) => Gateway::observe(&error, Operation::Recheck),
@@ -64,12 +73,13 @@ pub(super) async fn listen(services: Arc<ConnectionServices>) -> Result<()> {
             .bytes()
             .fold(0_u64, |sum, byte| sum + u64::from(byte))
             % 251;
+        // The schedule has no last attempt, so it always has a wait.
+        let pause = pauses.next().unwrap_or_default() + std::time::Duration::from_millis(stagger);
         tokio::select! {
             biased;
             () = services.handle.stop.cancelled() => return Ok(()),
-            () = tokio::time::sleep(retry + std::time::Duration::from_millis(stagger)) => {}
+            () = tokio::time::sleep(pause) => {}
         }
-        retry = retry.saturating_mul(2).min(STREAM_ANSWER_TIMEOUT);
     }
 }
 

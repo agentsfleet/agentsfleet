@@ -598,6 +598,9 @@ gix = { version = "0.90.0", default-features = false, features = ["sha1"] }
 # The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
 regex = { version = "1.13.2", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
+# The glob `find` and `grep` match a path against: ripgrep's matcher, not a
+# hand-written glob-to-regex translation.
+globset = { version = "0.4.20", default-features = false }
 # Overlapping private spellings need every accepting pattern, not one alternative.
 regex-automata = { version = "0.4.19", default-features = false, features = ["std", "syntax", "dfa-build", "dfa-search"] }
 # `web_fetch` reads a page's text, never its markup: scripts, styles and tags

@@ -46,7 +46,7 @@ async fn should_walk_charges_newest_first_and_resume_strictly_after_the_cursor()
     );
     assert_eq!(newest.charge_type, afd_billing::sql::charge::STAGE);
 
-    let token = cursor::render(last.created_at, last.id.as_str());
+    let token = cursor::render(last.created_at, &last.id);
     let boundary = cursor::parse(&token).expect("a token this daemon issued");
     let rest = lane
         .billing

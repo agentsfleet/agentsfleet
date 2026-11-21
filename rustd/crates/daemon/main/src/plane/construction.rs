@@ -111,7 +111,7 @@ impl NativeInputs<'_> {
             .with_limits(run_limits(&self.runtime.operations.tuning));
         runs.thread = Arc::new(
             afd_fleet::run::history::Conversations::new(self.database.clone()).with_page_turns(
-                i64::from(self.runtime.operations.tuning.turns.history_page_size),
+                i64::from(self.runtime.operations.tuning.turns.history_turns_per_page),
             ),
         );
         let tasks = task_plane(
@@ -133,7 +133,7 @@ impl NativeInputs<'_> {
                         .operations
                         .tuning
                         .runners
-                        .max_repair_backoff_seconds,
+                        .max_subscription_repair_backoff_seconds,
                 )),
             },
             database: self.database.clone(),
@@ -181,7 +181,7 @@ fn run_limits(tuning: &crate::config::tuning::Tuning) -> afd_fleet::run::RunLimi
     let tasks = tuning.tasks;
     afd_fleet::run::RunLimits {
         max_runs_per_turn: tuning.turns.max_runs_per_turn,
-        assign_batch_size: tuning.runners.assign_batch_size,
+        assign_batch_size: tuning.runners.turns_per_assignment_pass,
         definition_cache_bytes: u64::from(tuning.fleets.definition_cache_mib) * 1024 * 1024,
         head_cache_count: tuning.fleets.head_cache_count,
         price_book_cache_count: tuning.billing.price_book_cache_count,
@@ -203,7 +203,7 @@ fn run_limits(tuning: &crate::config::tuning::Tuning) -> afd_fleet::run::RunLimi
             transfer_window: minutes(tasks.checkpoints.transfer_window_minutes),
             restore_pin: minutes(tasks.checkpoints.restore_pin_minutes),
             orphan_after: minutes(tasks.checkpoints.orphan_after_minutes),
-            delete_batch_size: tasks.checkpoints.delete_batch_size,
+            delete_batch_size: tasks.checkpoints.objects_per_delete_call,
         },
         tool_windows: tool_windows(&tuning.context),
     }
@@ -233,9 +233,9 @@ pub(super) const fn pages(api: &crate::config::tuning::ApiTuning) -> afd_http::p
 /// The setup chat's settings from the deployment file's `[setup]`.
 fn setup_tuning(setup: &crate::config::tuning::SetupTuning) -> afd_setup::tuning::SetupTuning {
     afd_setup::tuning::SetupTuning {
-        budget: std::time::Duration::from_secs(u64::from(setup.budget_seconds)),
+        budget: std::time::Duration::from_secs(u64::from(setup.request_timeout_seconds)),
         replay_window: std::time::Duration::from_secs(u64::from(setup.replay_window_hours) * 3_600),
-        scan_batch: i64::from(setup.scan_batch_size),
+        scan_batch: i64::from(setup.maintenance_drafts_per_page),
     }
 }
 
@@ -255,12 +255,12 @@ mod run_limit_tests {
     fn a_file_value_reaches_the_run_plane() {
         let mut tuning = crate::config::tuning::Tuning::default();
         tuning.turns.max_runs_per_turn = 5;
-        tuning.runners.assign_batch_size = 9;
+        tuning.runners.turns_per_assignment_pass = 9;
         tuning.fleets.head_cache_count = 7;
         tuning.billing.price_book_cache_count = 11;
         tuning.turns.checkpoints.restore_pin_minutes = 4;
         tuning.tasks.slice_seconds = 120;
-        tuning.tasks.checkpoints.delete_batch_size = 16;
+        tuning.tasks.checkpoints.objects_per_delete_call = 16;
         let limits = run_limits(&tuning);
         assert_eq!(limits.max_runs_per_turn, 5);
         assert_eq!(limits.assign_batch_size, 9);
