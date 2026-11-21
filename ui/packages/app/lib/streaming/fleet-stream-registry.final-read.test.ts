@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LiveFrame } from "@/lib/api/turns";
 import { FRAME_KIND } from "@/lib/api/turns-types";
 import { OUTCOME } from "@/lib/turns/turn-summary";
 import { getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
 import { createEntry } from "./fleet-stream-entry";
+import { applyLiveFrame } from "./fleet-stream-frames";
 import { applyReplyDelta } from "./fleet-stream-reply-frames";
 import type { FleetTurn } from "./fleet-stream-row";
-import { dispatchReplyFrame, markReplyGap, setTurnDetailReader, settleRepliesFromBackfill, type TurnDetailReader } from "./fleet-stream-reply-registry";
+import { setTurns } from "./fleet-stream-snapshot";
+import { dispatchReplyFrame, markReplyGap, setTurnDetailReader, settleRepliesFromBackfill, type ApplyTurns, type TurnDetailReader } from "./fleet-stream-reply-registry";
 import { setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, fetchSpy, flushBackfill, pageWith, reconnect, reconnectAgain, MISSED_AT_MS, SEED_AT_MS } from "@/tests/helpers/fleet-stream-backfill-fixtures";
 import { fleetActionsMock, getFleetTurnActionMock, resetFleetTurnAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
@@ -278,5 +281,45 @@ describe("a body-less row a backfill brings in", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(getFleetTurnActionMock).not.toHaveBeenCalled();
     expect(bodiless.bodyReads.size).toBe(0);
+  });
+});
+
+// A message past the frame bound rides its frames as a head; the saved row
+// holds it whole. Unmarked, the same rows read nothing.
+describe("a message its frames carried only the head of", () => {
+  const STEER_ID = "evt_long_message";
+  const SENDER = "steer:user_abc";
+  const HEAD = "Deploy the preview and";
+  const WHOLE = `${HEAD} run the smoke suite against it`;
+  const ANSWERED = "Deployed.";
+  const saved = row({ turn_id: STEER_ID, actor: SENDER, status: "processed", request_json: JSON.stringify({ message: WHOLE }), response_text: ANSWERED });
+  const admitted = (trimmed: boolean): LiveFrame => ({ kind: FRAME_KIND.TURN_ADMITTED, turn_id: STEER_ID, actor: SENDER, message: HEAD, ...(trimmed ? { message_trimmed: true } : {}) });
+
+  it.each([[true, WHOLE, 1], [false, HEAD, 0]])("reads a settled row with its answer when marked=%s", async (trimmed, text, reads) => {
+    getFleetTurnActionMock.mockResolvedValue({ ok: true, data: saved });
+    // The answer is on hand; the message is only what the frame carried.
+    const entry = createEntry(WS, [row({ ...saved, request_json: "{}" })]);
+    const apply: ApplyTurns = (next, facts) => setTurns(entry, next, facts);
+    apply((prev) => applyLiveFrame(prev, admitted(trimmed)), {});
+    const listRow = { ...saved, request_json: undefined, response_text: undefined };
+    settleRepliesFromBackfill(entry, Z_A, [listRow], apply, () => true);
+    settleRepliesFromBackfill(entry, Z_A, [listRow], apply, () => true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getFleetTurnActionMock).toHaveBeenCalledTimes(reads);
+    expect(entry.snapshot.turns[0]).toMatchObject({ text, reply: ANSWERED });
+    expect(entry.snapshot.turns[0]?.textTrimmed).toBeUndefined();
+  });
+
+  it.each([[true, WHOLE, 1], [false, HEAD, 0]])("reads the saved row after an inline answer when marked=%s", async (trimmed, text, reads) => {
+    getFleetTurnActionMock.mockResolvedValue({ ok: true, data: saved });
+    const release = subscribe(WS, Z_A, [], () => {});
+    const source = sourceAt(0);
+    source.emit(admitted(trimmed));
+    source.emit({ kind: FRAME_KIND.TURN_COMPLETE, turn_id: STEER_ID, status: "processed", final_reply: ANSWERED });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getFleetTurnActionMock).toHaveBeenCalledTimes(reads);
+    expect(getSnapshot(Z_A).turns[0]).toMatchObject({ text, reply: ANSWERED, status: "processed" });
+    expect(getSnapshot(Z_A).turns[0]?.textTrimmed).toBeUndefined();
+    release();
   });
 });

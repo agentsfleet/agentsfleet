@@ -124,8 +124,9 @@ function completeReply(
     }
     entry.replyGaps.delete(frame.turn_id);
     // The answer came inline, but a call the turn closed itself may have ended
-    // otherwise: the saved trace says how.
-    if (seen.closedCalls || entry.snapshot.turns.some(turn => turn.id === frame.turn_id && turn.runRestarted)) refreshSavedTrace(entry, fleetId, frame.turn_id, apply, isCurrent, readTurnDetail);
+    // otherwise: the saved trace says how. A message the frames carried only
+    // the head of is whole on the same saved row.
+    if (seen.closedCalls || entry.snapshot.turns.some(turn => turn.id === frame.turn_id && (turn.runRestarted || turn.textTrimmed))) refreshSavedTrace(entry, fleetId, frame.turn_id, apply, isCurrent, readTurnDetail);
   };
   const decoder = entry.replyStreams.get(frame.turn_id);
   if (decoder === undefined) {

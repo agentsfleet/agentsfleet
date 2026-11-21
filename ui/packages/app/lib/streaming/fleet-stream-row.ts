@@ -26,6 +26,13 @@ export function figure(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** A frame's message as a row's text, marked when the frame says it is only
+ * the message's head. The wire is untrusted: anything but `true` is whole. */
+export function frameMessage(message: unknown, trimmed: unknown): Pick<FleetTurn, "text" | "textTrimmed"> {
+  const value = text(message);
+  return trimmed === true && value.length > 0 ? { text: value, textTrimmed: true } : { text: value };
+}
+
 /** A string off the wire, trimmed, or empty for anything that is not one — so
  * a malformed field renders as absent instead of throwing inside the
  * EventSource listener and losing the frame. */
@@ -97,6 +104,9 @@ export type FleetTurn = {
    * reply never overwrites it. Empty for a row that is itself a reply.
    */
   text: string;
+  /** `text` is a live frame's head of a longer message: the saved row holds
+   * the whole of it, and a read of that row replaces `text` and drops this. */
+  textTrimmed?: true;
   /**
    * The fleet's reply on this same durable row (`response_text`), accumulated
    * from CHUNK frames while streaming. Empty until the fleet answers; the row

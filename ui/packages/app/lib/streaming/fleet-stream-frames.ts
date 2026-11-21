@@ -18,6 +18,7 @@ import {
   TERMINAL_STATUSES,
   closeReasoningSpan,
   figure,
+  frameMessage,
   rowToTurn,
   sameTurn,
   text,
@@ -105,7 +106,7 @@ function applyTurnReceived(
     updated[index] = started;
     return adoptInstant(updated, index, started, createdAt);
   }
-  const message = text(frame.message);
+  const message = frameMessage(frame.message, frame.message_trimmed);
   return [
     ...prev,
     {
@@ -116,11 +117,11 @@ function applyTurnReceived(
       // payload, so the trigger comes from the actor and the turn kind the
       // daemon recorded: a webhook or cron trigger gets its own neutral
       // headline rather than a chat caption.
-      text: message.length > 0 ? message : triggerBodyFor({
+      ...(message.text.length > 0 ? message : { text: triggerBodyFor({
         actor: frame.actor,
         request_json: EMPTY_PAYLOAD,
         event_type: typeof frame.event_type === "string" ? frame.event_type : "",
-      }),
+      }) }),
       reply: "",
       outcome: outcomeForStatus(AGENTSFLEET_TURN_STATUS.RECEIVED),
       failureLabel: null,
@@ -285,9 +286,11 @@ export function mergeBackfill(
     // The reasoning span is the browser's own measure — no row carries it — so
     // it is kept, and a span still open closes here once: a terminal row is
     // the end of the turn, whether or not the answer's first word was seen.
+    // A saved text replaces a frame's head of it; a list row has none, so the
+    // head stays marked for the read that brings the whole.
     const withBodies = closeReasoningSpan({
       ...reconciled,
-      text: reconciled.text.length > 0 ? reconciled.text : e.text,
+      ...(reconciled.text.length > 0 ? {} : { text: e.text, textTrimmed: e.textTrimmed }),
       reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
       taskActivity: mergeTaskActivity(e.taskActivity, reconciled.taskActivity),
       runRestarted: e.runRestarted,

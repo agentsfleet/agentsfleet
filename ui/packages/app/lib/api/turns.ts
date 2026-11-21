@@ -172,6 +172,8 @@ export type ActivityLiveFrame = (
       actor: string;
       event_type?: TurnKindValue;
       message?: string;
+      /** `true` only when `message` is the head of a longer text the turn holds whole. */
+      message_trimmed?: boolean;
       created_at?: string;
     }
   // The row as the run verb opened it: who raised it, how it entered, and
@@ -186,6 +188,8 @@ export type ActivityLiveFrame = (
       created_at?: string;
       /** What a person typed, on a steer's frame only. */
       message?: string;
+      /** `true` only when `message` is the head of a longer text the turn holds whole. */
+      message_trimmed?: boolean;
     } & FleetCountersSnapshot)
 
   | {

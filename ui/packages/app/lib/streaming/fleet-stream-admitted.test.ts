@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { LiveFrame } from "@/lib/api/turns";
+import type { LiveFrame, TurnRow } from "@/lib/api/turns";
 import { FRAME_KIND } from "@/lib/api/turns-types";
 import { ACTOR } from "@/lib/turns/turn-summary";
 import { convertTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { toReplyMessage } from "@/components/domain/activity/replies/fleetReplyMessage";
-import { applyLiveFrame } from "./fleet-stream-frames";
+import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
 import { foldRow, optimisticRow } from "./fleet-stream-optimistic";
 import { AGENTSFLEET_TURN_STATUS, FOLDED_OUTCOME, type FleetTurn } from "./fleet-stream-row";
+import { row } from "@/tests/helpers/fleet-stream-registry-fixtures";
 
 const TURN_ID = "1725000000000-3";
 const TEAMMATE = `${ACTOR.STEER_PREFIX}user_bob`;
@@ -99,6 +100,72 @@ describe("a message waiting for a runner", () => {
     const { created_at: _dropped, ...undated } = admitted() as Extract<LiveFrame, { created_at?: string }>;
     const [row] = fold([undated as LiveFrame]);
     expect(row?.createdAt.getTime()).toBeGreaterThanOrEqual(before);
+  });
+});
+
+// A message past the frame bound rides as its head; the turn holds it whole.
+describe("a message its frame carried only the head of", () => {
+  const HEAD = "check the tests in";
+  const WHOLE = `${HEAD} every package, then report`;
+
+  // Off the wire as the EventSource listener reads it, so a malformed flag
+  // needs no cast.
+  function wire(over: Record<string, unknown>, base: LiveFrame = admitted(HEAD)): LiveFrame {
+    const frame = parseLiveFrame(JSON.stringify({ ...base, ...over }));
+    if (frame === null) throw new Error("not a frame");
+    return frame;
+  }
+
+  // The saved row; the turns list carries neither body.
+  function saved(requestJson: string | null): TurnRow {
+    const detail = row({ turn_id: TURN_ID, actor: TEAMMATE, created_at: new Date(RECEIVED_AT).toISOString(), request_json: requestJson ?? "{}", response_text: "Done." });
+    if (requestJson !== null) return detail;
+    const { request_json: _request, response_text: _response, ...listRow } = detail;
+    return listRow;
+  }
+
+  it("marks a waiting row whose admitted frame says it was trimmed", () => {
+    expect(fold([wire({ message_trimmed: true })])[0]).toMatchObject({ text: HEAD, textTrimmed: true });
+  });
+
+  it("marks an empty text an admitted frame fills with a head", () => {
+    const rows = fold([received(), wire({ message_trimmed: true })]);
+    expect(rows[0]).toMatchObject({ text: HEAD, textTrimmed: true, status: AGENTSFLEET_TURN_STATUS.RECEIVED });
+  });
+
+  it("marks a row a trimmed received frame opens or fills", () => {
+    const head = wire({ message_trimmed: true }, received(HEAD));
+    expect(fold([head])[0]).toMatchObject({ text: HEAD, textTrimmed: true });
+    expect(fold([admitted(null), head])[0]).toMatchObject({ text: HEAD, textTrimmed: true });
+  });
+
+  it.each([undefined, false, "true", 1, null])("leaves the row unmarked when the flag is %j", (flag) => {
+    const [shown] = fold([wire({ message_trimmed: flag })]);
+    expect(shown?.text).toBe(HEAD);
+    expect(shown).not.toHaveProperty("textTrimmed");
+  });
+
+  it("marks neither an empty message nor a row that already holds its own text", () => {
+    expect(fold([wire({ message: "", message_trimmed: true })])[0]).not.toHaveProperty("textTrimmed");
+    const kept = fold([received("what the row already says"), wire({ message_trimmed: true })])[0];
+    expect(kept).toMatchObject({ text: "what the row already says" });
+    expect(kept).not.toHaveProperty("textTrimmed");
+  });
+
+  it("keeps the head marked over a list row, which carries no message", () => {
+    const [merged] = mergeBackfill(fold([wire({ message_trimmed: true })]), [saved(null)]);
+    expect(merged).toMatchObject({ text: HEAD, textTrimmed: true, status: "processed" });
+  });
+
+  it("takes the saved row's whole message and drops the mark", () => {
+    const [merged] = mergeBackfill(fold([wire({ message_trimmed: true })]), [saved(JSON.stringify({ message: WHOLE }))]);
+    expect(merged).toMatchObject({ text: WHOLE, reply: "Done." });
+    expect(merged?.textTrimmed).toBeUndefined();
+  });
+
+  it("keeps the head marked when the saved body names no message", () => {
+    const [merged] = mergeBackfill(fold([wire({ message_trimmed: true })]), [saved("not json")]);
+    expect(merged).toMatchObject({ text: HEAD, textTrimmed: true });
   });
 });
 

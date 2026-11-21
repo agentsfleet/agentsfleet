@@ -97,7 +97,8 @@ async function readUntilAnswered(
 
 // A turn that started and ended while the stream was away arrives as a list
 // row, which carries neither the operator's message nor the fleet's answer, and
-// no later list read can supply them. Its saved row is read once for them.
+// no later list read can supply them. Its saved row is read once for them. A
+// message a frame carried only the head of counts as missing.
 export function readMissingBodies(
   entry: Entry,
   fleetId: string,
@@ -109,7 +110,7 @@ export function readMissingBodies(
   const shown = entry.snapshot.turns.find((turn) => turn.id === turnId);
   if (shown === undefined) return;
   // Only an operator's steer carries a message; every turn can carry an answer.
-  const missingMessage = shown.role === OPERATOR_ROLE && shown.text.length === 0;
+  const missingMessage = shown.textTrimmed === true || (shown.role === OPERATOR_ROLE && shown.text.length === 0);
   if (!missingMessage && shown.reply.length > 0) return;
   if (read === null || entry.bodyReads.has(turnId)) return;
   entry.bodyReads.add(turnId);
@@ -124,7 +125,8 @@ export function isGone(entry: Entry, turnId: string, status: number | undefined)
 
 /**
  * Reads a settled turn again for its saved trace, when its turn had to close
- * a call it never heard end. One read loop per turn, however often its
+ * a call it never heard end, or for the whole of a message its frames carried
+ * only the head of (`textTrimmed`). One read loop per turn, however often its
  * completion repeats, at the final reply's cadence: a read that fails once
  * must not leave the guess standing as "interrupted" when the saved row says
  * the call went fine. The answer is already on screen, so a gone turn marks
